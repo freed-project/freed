@@ -400,6 +400,20 @@ test("app loads and renders without crashing", async ({ app }) => {
   await expect(app.page.locator("main")).toBeVisible();
 });
 
+test("startup emits renderer health before background work can run", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        return (window as unknown as { __FREED_RENDERER_HEARTBEATS__?: number })
+          .__FREED_RENDERER_HEARTBEATS__ ?? 0;
+      }),
+    )
+    .toBeGreaterThanOrEqual(1);
+});
+
 test("page title is set", async ({ page }) => {
   await page.addInitScript(tauriInitScript());
   await page.goto("/");

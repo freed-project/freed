@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent,
 import { formatDistanceToNow } from "date-fns";
 import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
 import { usePlatform } from "../../context/PlatformContext.js";
+import type { FeedCardDensity } from "../../lib/feed-card-density.js";
 import { ChannelAvatar } from "../ChannelAvatar.js";
 import { Tooltip } from "../Tooltip.js";
 import {
@@ -38,6 +39,8 @@ interface FeedItemProps {
   onLike?: (e: React.MouseEvent) => void;
   /** Opens comment URL in the browser. Pass the URL handler for your platform. */
   onOpenCommentUrl?: (url: string) => void;
+  /** Vertical density for full feed cards. Compact thumbnail cards ignore it. */
+  density?: FeedCardDensity;
   /**
    * Explicit pixel height for story tiles. FeedList computes this from the
    * current container width so each tile fills its column at a 3:4 portrait
@@ -158,6 +161,7 @@ export const FeedItem = memo(function FeedItem({
   onArchive,
   onLike,
   onOpenCommentUrl,
+  density = "comfortable",
   storyHeight = 288,
   fixedHeight,
 }: FeedItemProps) {
@@ -179,6 +183,106 @@ export const FeedItem = memo(function FeedItem({
   const [swipeX, setSwipeX] = useState(0);
   const [mediaFailed, setMediaFailed] = useState(false);
   const showInlineMedia = feedMediaPreviews === "inline";
+  const fullCardDensity = {
+    compact: {
+      article: "p-3",
+      padding: "12px",
+      headerGap: "gap-2 mb-2",
+      avatarSize: 32,
+      author: "text-sm",
+      meta: "text-[11px]",
+      title: "mb-1 line-clamp-1 text-base leading-snug",
+      body: "mb-2 line-clamp-2 text-sm leading-relaxed",
+      chipWrap: "mb-2 gap-1.5",
+      chip: "px-2 py-0.5 text-[11px]",
+      mediaWrap: "mt-2 rounded-lg",
+      media: "h-36 sm:h-40",
+      tagWrap: "mt-2 gap-1.5",
+    },
+    comfortable: {
+      article: "",
+      padding: undefined,
+      headerGap: "gap-3 mb-3",
+      avatarSize: 40,
+      author: "",
+      meta: "text-xs",
+      title: "mb-1.5 line-clamp-2 text-lg leading-snug",
+      body: "mb-3 line-clamp-3 leading-relaxed",
+      chipWrap: "mb-3 gap-2",
+      chip: "px-2.5 py-1 text-xs",
+      mediaWrap: "mt-3 rounded-xl",
+      media: "h-48 sm:h-56",
+      tagWrap: "mt-3 gap-2",
+    },
+    expansive: {
+      article: "p-5",
+      padding: "20px",
+      headerGap: "gap-3.5 mb-4",
+      avatarSize: 44,
+      author: "text-[17px]",
+      meta: "text-sm",
+      title: "mb-2 line-clamp-3 text-xl leading-snug",
+      body: "mb-4 line-clamp-5 text-[15px] leading-7",
+      chipWrap: "mb-4 gap-2",
+      chip: "px-3 py-1.5 text-xs",
+      mediaWrap: "mt-4 rounded-xl",
+      media: "h-64 sm:h-72",
+      tagWrap: "mt-4 gap-2",
+    },
+  }[density];
+  const fixedCardDensity = {
+    compact: {
+      article: "p-3",
+      gap: "gap-3",
+      headerGap: "mb-2 gap-2",
+      avatarSize: 32,
+      author: "text-sm",
+      handle: "text-xs",
+      meta: "text-[11px]",
+      title: "mb-1 line-clamp-1 text-base leading-snug",
+      bodyWithMedia: "line-clamp-2 text-sm leading-relaxed",
+      bodyWithoutMedia: "line-clamp-3 text-sm leading-relaxed",
+      chipWrap: "gap-1.5 pt-2",
+      chip: "px-2 py-0.5 text-[11px]",
+      mediaWell: "w-[34%] min-w-[140px] max-w-[190px] rounded-lg",
+      tagLimitWithMedia: 1,
+      tagLimitWithoutMedia: 2,
+    },
+    comfortable: {
+      article: "p-4",
+      gap: "gap-4",
+      headerGap: "mb-3 gap-3",
+      avatarSize: 40,
+      author: "",
+      handle: "text-sm",
+      meta: "text-xs",
+      title: "mb-1.5 line-clamp-2 text-lg leading-snug",
+      bodyWithMedia: "line-clamp-3 leading-relaxed",
+      bodyWithoutMedia: "line-clamp-4 leading-relaxed",
+      chipWrap: "gap-2 pt-3",
+      chip: "px-2.5 py-1 text-xs",
+      mediaWell: "w-[42%] min-w-[190px] max-w-[260px] rounded-xl",
+      tagLimitWithMedia: 2,
+      tagLimitWithoutMedia: 4,
+    },
+    expansive: {
+      article: "p-5",
+      gap: "gap-5",
+      headerGap: "mb-4 gap-3.5",
+      avatarSize: 44,
+      author: "text-[17px]",
+      handle: "text-sm",
+      meta: "text-sm",
+      title: "mb-2 line-clamp-3 text-xl leading-snug",
+      bodyWithMedia: "line-clamp-5 text-[15px] leading-7",
+      bodyWithoutMedia: "line-clamp-6 text-[15px] leading-7",
+      chipWrap: "gap-2 pt-4",
+      chip: "px-3 py-1.5 text-xs",
+      mediaWell: "w-[44%] min-w-[220px] max-w-[300px] rounded-xl",
+      tagLimitWithMedia: 3,
+      tagLimitWithoutMedia: 6,
+    },
+  }[density];
   const showFixedMedia = showInlineMedia && firstMediaUrl && !mediaFailed;
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
@@ -247,6 +351,7 @@ export const FeedItem = memo(function FeedItem({
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
           data-selected={selected ? "true" : "false"}
+          data-feed-card-density={density}
           className={`relative overflow-hidden rounded-[var(--feed-card-radius)] cursor-pointer group select-none w-full transition-opacity ${readVisualClass}`}
           style={{ height: storyHeight }}
           onClick={handleActivateClick}
@@ -446,7 +551,12 @@ export const FeedItem = memo(function FeedItem({
   const likeStatus = likeState(item);
   const likeLabel = getLikeLabel(item, likeStatus);
   const visibleTags = fixedHeight
-    ? item.userState.tags.slice(0, showFixedMedia ? 2 : 4)
+    ? item.userState.tags.slice(
+        0,
+        showFixedMedia
+          ? fixedCardDensity.tagLimitWithMedia
+          : fixedCardDensity.tagLimitWithoutMedia,
+      )
     : item.userState.tags;
 
   if (fixedHeight) {
@@ -473,7 +583,8 @@ export const FeedItem = memo(function FeedItem({
         <article
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
-          className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
+          data-feed-card-density={density}
+          className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${fixedCardDensity.article} ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
           style={{
             height: fixedHeight,
             transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,
@@ -489,21 +600,21 @@ export const FeedItem = memo(function FeedItem({
           tabIndex={0}
           onKeyDown={handleActivateKeyDown}
         >
-          <div className={`flex h-full min-h-0 gap-4 ${showFixedMedia ? "items-stretch" : "items-start"}`}>
+          <div className={`flex h-full min-h-0 ${fixedCardDensity.gap} ${showFixedMedia ? "items-stretch" : "items-start"}`}>
             <div className="flex min-w-0 flex-1 flex-col">
-              <div className="mb-3 flex items-start gap-3">
+              <div className={`flex items-start ${fixedCardDensity.headerGap}`}>
                 <ChannelAvatar
                   name={item.author.displayName}
                   avatarUrl={item.author.avatarUrl}
-                  size={40}
+                  size={fixedCardDensity.avatarSize}
                   className="text-lg ring-1 ring-white/10"
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="truncate font-medium">{item.author.displayName}</span>
-                    <span className="truncate text-sm text-[var(--theme-text-muted)]">@{item.author.handle}</span>
+                    <span className={`truncate font-medium ${fixedCardDensity.author}`}>{item.author.displayName}</span>
+                    <span className={`truncate text-[var(--theme-text-muted)] ${fixedCardDensity.handle}`}>@{item.author.handle}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-[var(--theme-text-muted)]">
+                  <div className={`flex items-center gap-2 ${fixedCardDensity.meta} text-[var(--theme-text-muted)]`}>
                     <span>{platformIcon}</span>
                     <span>{timeAgo}</span>
                     {item.preservedContent?.readingTime && (
@@ -630,28 +741,28 @@ export const FeedItem = memo(function FeedItem({
               </div>
 
               {item.content.linkPreview?.title && (
-                <h3 className="mb-1.5 line-clamp-2 text-lg font-semibold leading-snug">
+                <h3 className={`font-semibold ${fixedCardDensity.title}`}>
                   {item.content.linkPreview.title}
                 </h3>
               )}
 
               {item.content.text && (
-                <p className={`min-h-0 leading-relaxed text-[var(--theme-text-secondary)] ${showFixedMedia ? "line-clamp-3" : "line-clamp-4"}`}>
+                <p className={`min-h-0 text-[var(--theme-text-secondary)] ${showFixedMedia ? fixedCardDensity.bodyWithMedia : fixedCardDensity.bodyWithoutMedia}`}>
                   {item.content.text}
                 </p>
               )}
 
               {(semanticLabel || visibleTags.length > 0) && (
-                <div className="mt-auto flex flex-wrap gap-2 overflow-hidden pt-3">
+                <div className={`mt-auto flex flex-wrap overflow-hidden ${fixedCardDensity.chipWrap}`}>
                   {semanticLabel && (
-                    <span className="theme-accent-tag rounded-full px-2.5 py-1 text-xs">
+                    <span className={`theme-accent-tag rounded-full ${fixedCardDensity.chip}`}>
                       {semanticLabel}
                     </span>
                   )}
                   {visibleTags.map((tag) => (
                     <span
                       key={tag}
-                      className="theme-accent-tag rounded-full px-2.5 py-1 text-xs"
+                      className={`theme-accent-tag rounded-full ${fixedCardDensity.chip}`}
                     >
                       {tag}
                     </span>
@@ -661,7 +772,7 @@ export const FeedItem = memo(function FeedItem({
             </div>
 
             {showFixedMedia && (
-              <div className="h-full w-[42%] min-w-[190px] max-w-[260px] shrink-0 overflow-hidden rounded-xl ring-1 ring-white/5">
+              <div className={`h-full shrink-0 overflow-hidden ring-1 ring-white/5 ${fixedCardDensity.mediaWell}`}>
                 <img
                   src={firstMediaUrl}
                   alt=""
@@ -701,8 +812,10 @@ export const FeedItem = memo(function FeedItem({
       <article
         data-feed-item-id={item.globalId}
         data-focused={focused ? "true" : "false"}
-        className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
+        data-feed-card-density={density}
+        className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${fullCardDensity.article} ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
         style={{
+          padding: fullCardDensity.padding,
           transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,
           transition: swipeX === 0 ? "transform 0.25s ease" : undefined,
           willChange: swipeX !== 0 ? "transform" : undefined,
@@ -716,19 +829,19 @@ export const FeedItem = memo(function FeedItem({
         tabIndex={0}
         onKeyDown={handleActivateKeyDown}
       >
-        <div className="flex items-center gap-3 mb-3">
+        <div className={`flex items-center ${fullCardDensity.headerGap}`}>
           <ChannelAvatar
             name={item.author.displayName}
             avatarUrl={item.author.avatarUrl}
-            size={40}
+            size={fullCardDensity.avatarSize}
             className="text-lg ring-1 ring-white/10"
           />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium truncate">{item.author.displayName}</span>
+              <span className={`font-medium truncate ${fullCardDensity.author}`}>{item.author.displayName}</span>
               <span className="text-[var(--theme-text-muted)] text-sm">@{item.author.handle}</span>
             </div>
-            <div className="flex items-center gap-2 text-xs text-[var(--theme-text-muted)]">
+            <div className={`flex items-center gap-2 ${fullCardDensity.meta} text-[var(--theme-text-muted)]`}>
               <span>{platformIcon}</span>
               <span>{timeAgo}</span>
               {item.preservedContent?.readingTime && (
@@ -855,44 +968,44 @@ export const FeedItem = memo(function FeedItem({
         </div>
 
         {item.content.linkPreview?.title && (
-          <h3 className="font-semibold mb-1.5 line-clamp-2 leading-snug text-lg">
+          <h3 className={`font-semibold ${fullCardDensity.title}`}>
             {item.content.linkPreview.title}
           </h3>
         )}
 
         {item.content.text && (
-          <p className="mb-3 leading-relaxed line-clamp-3 text-[var(--theme-text-secondary)]">
+          <p className={`${fullCardDensity.body} text-[var(--theme-text-secondary)]`}>
             {item.content.text}
           </p>
         )}
 
         {semanticLabel && (
-          <div className="mb-3 flex flex-wrap gap-2">
-            <span className="theme-accent-tag rounded-full px-2.5 py-1 text-xs">
+          <div className={`flex flex-wrap ${fullCardDensity.chipWrap}`}>
+            <span className={`theme-accent-tag rounded-full ${fullCardDensity.chip}`}>
               {semanticLabel}
             </span>
           </div>
         )}
 
         {showInlineMedia && firstMediaUrl && !mediaFailed && (
-          <div className="mt-3 rounded-xl overflow-hidden ring-1 ring-white/5">
+          <div className={`${fullCardDensity.mediaWrap} overflow-hidden ring-1 ring-white/5`}>
             <img
               src={firstMediaUrl}
               alt=""
               loading="lazy"
               decoding="async"
               onError={() => setMediaFailed(true)}
-              className="w-full h-48 sm:h-56 object-cover bg-white/5"
+              className={`w-full ${fullCardDensity.media} object-cover bg-white/5`}
             />
           </div>
         )}
 
         {visibleTags.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className={`flex flex-wrap ${fullCardDensity.tagWrap}`}>
             {visibleTags.map((tag) => (
               <span
                 key={tag}
-                className="theme-accent-tag rounded-full px-2.5 py-1 text-xs"
+                className={`theme-accent-tag rounded-full ${fullCardDensity.chip}`}
               >
                 {tag}
               </span>

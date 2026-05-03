@@ -1,8 +1,13 @@
 import { test, expect } from "./fixtures/app";
 
-const FIXED_CARD_HEIGHT = 240;
 const DELAYED_MEDIA_URL = "/delayed-feed-image.svg";
 const BROKEN_MEDIA_URL = "/broken-feed-image.svg";
+const DESKTOP_CARD_HEIGHT_BY_DENSITY = {
+  compact: 172,
+  comfortable: 220,
+  expansive: 300,
+} as const;
+type DesktopCardDensity = keyof typeof DESKTOP_CARD_HEIGHT_BY_DENSITY;
 
 function svgBody(label: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360"><rect width="640" height="360" fill="#e8dcc7"/><rect x="30" y="30" width="580" height="300" rx="24" fill="#c7aa7a"/><text x="320" y="190" text-anchor="middle" font-family="Arial" font-size="34" fill="#352515">${label}</text></svg>`;
@@ -32,6 +37,12 @@ async function disableReadOnScroll(page: import("@playwright/test").Page): Promi
       },
     });
   });
+}
+
+async function setCardDensity(page: import("@playwright/test").Page, density: DesktopCardDensity): Promise<void> {
+  await page.addInitScript((nextDensity) => {
+    window.localStorage.setItem("freed-feed-card-density", nextDensity);
+  }, density);
 }
 
 async function injectMixedFeedItems(page: import("@playwright/test").Page): Promise<void> {
@@ -163,60 +174,63 @@ async function collectVisibleGeometry(page: import("@playwright/test").Page) {
   });
 }
 
-test("desktop feed rows do not shift when media loads or fails", async ({ app, page }) => {
-  let releaseDelayedImages!: () => void;
-  const delayedImages = new Promise<void>((resolve) => {
-    releaseDelayedImages = resolve;
-  });
-
-  await page.route(`**${DELAYED_MEDIA_URL}?*`, async (route) => {
-    await delayedImages;
-    await route.fulfill({
-      status: 200,
-      contentType: "image/svg+xml",
-      body: svgBody("delayed"),
+for (const [density, expectedCardHeight] of Object.entries(DESKTOP_CARD_HEIGHT_BY_DENSITY) as Array<[DesktopCardDensity, number]>) {
+  test(`desktop ${density} feed rows do not shift when media loads or fails`, async ({ app, page }) => {
+    let releaseDelayedImages!: () => void;
+    const delayedImages = new Promise<void>((resolve) => {
+      releaseDelayedImages = resolve;
     });
-  });
-  await page.route(`**${BROKEN_MEDIA_URL}`, async (route) => {
-    await route.fulfill({ status: 404, body: "" });
-  });
 
-  await app.goto();
-  await app.waitForReady();
-  await disableReadOnScroll(page);
-  await injectMixedFeedItems(page);
-
-  const scrollContainer = page.getByTestId("feed-list-scroll-container");
-  await expect(scrollContainer).toBeVisible();
-  await scrollContainer.evaluate((element) => {
-    element.scrollTop = 520;
-  });
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
-
-  const before = await collectVisibleGeometry(page);
-  expect(before.cards.length).toBeGreaterThan(0);
-  for (const card of before.cards) {
-    expect(card.computedHeight).toBe(FIXED_CARD_HEIGHT);
-  }
-
-  releaseDelayedImages();
-  await page.waitForFunction(() =>
-    Array.from(document.images)
-      .filter((image) => image.currentSrc.includes("delayed-feed-image.svg"))
-      .every((image) => image.complete),
-  );
-
-  const brokenImage = page.locator(`img[src="${BROKEN_MEDIA_URL}"]`).first();
-  if (await brokenImage.count()) {
-    await brokenImage.evaluate((image) => {
-      image.dispatchEvent(new Event("error"));
+    await setCardDensity(page, density);
+    await page.route(`**${DELAYED_MEDIA_URL}?*`, async (route) => {
+      await delayedImages;
+      await route.fulfill({
+        status: 200,
+        contentType: "image/svg+xml",
+        body: svgBody("delayed"),
+      });
     });
-  }
-  await page.waitForTimeout(100);
+    await page.route(`**${BROKEN_MEDIA_URL}`, async (route) => {
+      await route.fulfill({ status: 404, body: "" });
+    });
 
-  const after = await collectVisibleGeometry(page);
-  expect(after.scrollTop).toBe(before.scrollTop);
-  expect(after.totalHeight).toBe(before.totalHeight);
-  expect(after.rows).toEqual(before.rows);
-  expect(after.cards).toEqual(before.cards);
-});
+    await app.goto();
+    await app.waitForReady();
+    await disableReadOnScroll(page);
+    await injectMixedFeedItems(page);
+
+    const scrollContainer = page.getByTestId("feed-list-scroll-container");
+    await expect(scrollContainer).toBeVisible();
+    await scrollContainer.evaluate((element) => {
+      element.scrollTop = 520;
+    });
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+
+    const before = await collectVisibleGeometry(page);
+    expect(before.cards.length).toBeGreaterThan(0);
+    for (const card of before.cards) {
+      expect(card.computedHeight).toBe(expectedCardHeight);
+    }
+
+    releaseDelayedImages();
+    await page.waitForFunction(() =>
+      Array.from(document.images)
+        .filter((image) => image.currentSrc.includes("delayed-feed-image.svg"))
+        .every((image) => image.complete),
+    );
+
+    const brokenImage = page.locator(`img[src="${BROKEN_MEDIA_URL}"]`).first();
+    if (await brokenImage.count()) {
+      await brokenImage.evaluate((image) => {
+        image.dispatchEvent(new Event("error"));
+      });
+    }
+    await page.waitForTimeout(100);
+
+    const after = await collectVisibleGeometry(page);
+    expect(after.scrollTop).toBe(before.scrollTop);
+    expect(after.totalHeight).toBe(before.totalHeight);
+    expect(after.rows).toEqual(before.rows);
+    expect(after.cards).toEqual(before.cards);
+  });
+}

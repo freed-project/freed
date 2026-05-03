@@ -288,6 +288,44 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(openReaderButton).toBeVisible();
 });
 
+test("top toolbar card density slider persists locally", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    if (window.sessionStorage.getItem("feed-card-density-test-started") === "1") return;
+    window.sessionStorage.setItem("feed-card-density-test-started", "1");
+    window.localStorage.removeItem("freed-feed-card-density");
+  });
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(page);
+
+  const slider = page.getByTestId("feed-card-density-slider");
+  const card = page.locator('[data-feed-item-id="test-facebook-card-ui-overhaul"]').first();
+
+  await expect(slider).toBeVisible();
+  await expect(card).toHaveAttribute("data-feed-card-density", "comfortable");
+  const comfortableHeight = await card.evaluate((element) => element.getBoundingClientRect().height);
+
+  await slider.focus();
+  await slider.press("ArrowLeft");
+  await expect(card).toHaveAttribute("data-feed-card-density", "compact");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-feed-card-density"))).toBe("compact");
+  const compactHeight = await card.evaluate((element) => element.getBoundingClientRect().height);
+
+  await slider.press("ArrowRight");
+  await slider.press("ArrowRight");
+  await expect(card).toHaveAttribute("data-feed-card-density", "expansive");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-feed-card-density"))).toBe("expansive");
+  const expansiveHeight = await card.evaluate((element) => element.getBoundingClientRect().height);
+
+  expect(compactHeight).toBeLessThan(comfortableHeight);
+  expect(expansiveHeight).toBeGreaterThan(comfortableHeight);
+
+  await page.reload();
+  await app.waitForReady();
+  await expect(page.getByTestId("feed-card-density-slider")).toHaveValue("2");
+});
+
 test("story cards participate in feed layout transitions", async ({ app }) => {
   await app.goto();
   await app.waitForReady();

@@ -85,6 +85,7 @@ import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
 import { startMemoryMonitor, stopMemoryMonitor } from "./lib/memory-monitor";
+import { noteMemoryPressure, noteRendererHeartbeat } from "./lib/background-runtime-coordinator";
 import {
   bootstrapDesktopReleaseChannel,
   loadDesktopReleaseChannelState,
@@ -223,6 +224,9 @@ function App() {
           },
         });
       },
+      onSample: (snapshot) => {
+        noteMemoryPressure(snapshot);
+      },
     });
     return () => {
       stopRssPoller();
@@ -255,19 +259,29 @@ function App() {
   }, [legalAccepted]);
 
   useEffect(() => {
-    if (!isTauri()) return;
+    const hasTauriMock = "__TAURI_INTERNALS__" in window;
+    const canEmitRendererHeartbeat =
+      import.meta.env.VITE_TEST_TAURI === "1" || isTauri() || hasTauriMock;
+    if (!canEmitRendererHeartbeat) return;
 
     let heartbeatSeq = 0;
 
     const sendRendererHeartbeat = (reason: string) => {
       heartbeatSeq += 1;
-      void emit("renderer-heartbeat", {
+      const payload = {
         seq: heartbeatSeq,
         ts: Date.now(),
         reason,
         visibility: document.visibilityState,
         href: window.location.href,
-      }).catch(() => {
+      };
+      noteRendererHeartbeat(payload);
+      if (import.meta.env.VITE_TEST_TAURI === "1") {
+        const testWindow = window as unknown as { __FREED_RENDERER_HEARTBEATS__?: number };
+        testWindow.__FREED_RENDERER_HEARTBEATS__ =
+          (testWindow.__FREED_RENDERER_HEARTBEATS__ ?? 0) + 1;
+      }
+      void emit("renderer-heartbeat", payload).catch(() => {
         // If the renderer is already failing, heartbeat delivery may fail too.
       });
     };

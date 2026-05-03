@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, fixed-height unified feed rows shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, background runtime coordination shipped, density-aware fixed-height unified feed rows shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -35,7 +35,9 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Balanced compact rail inset** — The icon-only desktop sidebar now uses the same outer inset on the bottom edge as it already uses on the top and sides, so the Settings button no longer sits flush against the floor
 - **Live toolbar reopen cue** — During desktop drag preview, once the primary sidebar crosses into the closed state, the toolbar control now swaps immediately from collapse to expand so the reopen affordance stays truthful before mouseup
 - **Animated preview rail toggle:** The desktop reader keeps the compact preview rail mounted through show and hide transitions, while `Animations: None` still snaps instantly
+- **Local card density control:** The feed toolbar now exposes a three-stop card density slider that persists on the current device, with compact, comfortable, and expansive vertical card spacing
 - **Hot-path side-effect scheduling:** Desktop routes native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains through typed queues so clicks, scroll callbacks, and document subscriptions do not directly run slow native I/O or large scans
+- **Background runtime coordination:** Desktop gates high-risk background work behind healthy renderer startup, shared memory pressure cooldowns, and a native social-scrape lease so WebKit pressure cannot keep blanking the main window
 
 ---
 
@@ -300,6 +302,7 @@ export async function captureDomFeed(
 - [x] Once the primary sidebar crosses into its simplified narrow labeled state or the compact icon rail, the RSS section always behaves as closed and never renders inline sub-feed rows
 - [x] The primary sidebar now resizes without a minimum width, previews its expanded, compact, and fully closed snap states live during drag, keeps the resize handle under the cursor while the card itself snaps, uses a tighter square-button compact rail with quieter 18px glyphs, lightly boosts the visually smaller brand marks like `X` and Facebook so they sit with the rest of the source icons, shell-matched corner radii, keeps narrow desktop windows on that compact desktop rail, and only falls back to the floating drawer on actual mobile devices
 - [x] Expanded sidebar padding now flips between tighter roomy and condensed presets at a crossover instead of interpolating linearly, labeled widths below 200px drop counts, chevrons, and similar trailing chrome before labels, narrow-width labels now clip cleanly without ellipses and keep a small inner right gutter before the shell edge, provider status dots and spinners now ride on the source icons at every sidebar width, widths below 100px snap into the compact rail, compact search moves into a floating palette, and the shared mobile drawer now closes when the same hamburger button is tapped again
+- [x] The feed toolbar now includes a local three-position card density slider, and full feed cards render compact, comfortable, or expansive vertical spacing without syncing that device preference through Automerge
 - [x] Provider sync actions swap to an inline spinner while that specific provider is actively syncing
 - [x] Provider health badges and section headers use specific state labels like `Cooling down`, `Paused`, `Reconnect required`, and `Sync issue` instead of generic attention copy
 - [x] Settings expandable lists now use the shared filtered inner-list panel, so Facebook groups, RSS management, OPML previews, saved import errors, and scrape logs cannot stretch the outer Settings scroll when content loads late
@@ -308,6 +311,9 @@ export async function captureDomFeed(
 - [x] Desktop debug tooling now samples runtime memory, relay document size, relay client count, and content-fetcher queue depth so long-run RAM growth can be correlated without attaching Instruments first
 - [x] Desktop diagnostics now also sample renderer JS heap and DOM node counts so overnight RAM growth can be split between native process pressure and WebView pressure
 - [x] Desktop diagnostics now include Freed-owned WebKit renderer RSS, Automerge binary size, IndexedDB size, WebKit cache size, and adaptive memory guardrails that reclaim scraper windows and network-cache blobs before pausing social capture
+- [x] Desktop now records rotating runtime-health diagnostics with renderer heartbeat state, memory preflight results, recovery attempts, and active background work so blank-renderer reports include the last bad minute of runtime context
+- [x] High-risk background work now waits for healthy renderer startup and memory pressure cooldowns before running content fetches, RSS polls, automatic snapshots, cloud uploads, outbox drains, or native social scrapes
+- [x] Native renderer recovery now marks failed recovery state, requests relaunch, and forces the old process to exit if the main WebView label stays stuck after a destroyed renderer
 - [x] Native relay broadcasts now reuse shared document buffers and stop writing a full snapshot on every live document push, reducing clone pressure during heavy sync churn
 - [x] Desktop worker state no longer ships the full `allItemIds` list or full Automerge binary back to the main thread on every mutation, and the content fetcher now bounds its failed-item cooldown cache instead of keeping an immortal set of every fetch miss
 - [x] Background fetch now tracks in-flight items, runs one active worker job at a time, and uses randomized pacing plus capped backoff so slow AI or network work cannot overlap the queue into renderer pressure
@@ -320,7 +326,7 @@ export async function captureDomFeed(
 - [x] Desktop item-patch updates now maintain a main-thread item index and adjust unread, total, and archivable aggregates incrementally instead of walking the visible item list after each patch
 - [x] Desktop reader hydration now uses native fetch and authenticated provider paths on open, caches successful reader content locally, pins saved items by default, hydrates X reply threads with media, hydrates visible Facebook and Instagram post comments, and explains private story replies when the user is online
 - [x] Freed Desktop feed cards now show captured media thumbnails in the full feed, social story tiles, and the compact reader rail, with broken image fallback to the existing text card
-- [x] Freed Desktop unified feed rows now use a fixed-height virtualization contract, with 240px primary feed cards, side media wells, clamped previews, and story tiles that do not remeasure when media loads
+- [x] Freed Desktop unified feed rows now use the local card density setting as a fixed-height virtualization contract, with post cards and story rows sharing each selected height, side media wells, density-aware clamped previews, and no row remeasurement when media loads
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
 - [x] Search now builds a shared MiniSearch index asynchronously in chunks, drops it after the query clears, rebuilds only when the worker says the searchable corpus changed, and indexes a smaller preserved-text window so one exploratory search cannot pin duplicate full-text copies of the library in renderer memory
 - [x] Desktop perf memory checks now use CDP heap-usage sampling instead of the broken zero-value metric path, and they include a heavy preserved-text search scenario so renderer retention regressions show up in CI
@@ -357,7 +363,11 @@ export async function captureDomFeed(
 > WebKit cache size, and adaptive high and critical memory limits. Social
 > capture now runs a native preflight that recycles stale scraper windows and
 > trims only Freed WebKit network-cache blobs before it decides a scrape must
-> pause. Critical memory pressure pauses background content fetching, then
+> pause. The background runtime now also gates content fetches, RSS polls,
+> automatic snapshots, cloud uploads, outbox drains, and social scrapes behind
+> healthy renderer startup and shared pressure cooldowns, while native recovery
+> writes runtime-health records and relaunches if the old renderer label stays
+> stuck after destroy. Critical memory pressure pauses background content fetching, then
 > offers a restart action instead of letting WebKit conduct the RAM orchestra
 > with a shovel. The background content fetcher now runs one active worker job
 > at a time, randomizes its next fetch delay, backs off after timeouts or AI
