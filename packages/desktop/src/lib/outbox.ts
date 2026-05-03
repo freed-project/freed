@@ -25,6 +25,10 @@ import type { PlatformActions } from "./platform-actions";
 import type { DocChangeEvent } from "./automerge-types";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { scheduleSideEffect } from "./side-effect-scheduler";
+import {
+  isBackgroundRuntimeDeferredError,
+  runBackgroundJob,
+} from "./background-runtime-coordinator";
 
 // =============================================================================
 // Constants
@@ -254,7 +258,13 @@ export function startOutboxProcessor(
       kind: "drain",
       timeoutMs: 120_000,
       slowMs: 1_000,
-      run: drainNow,
+      run: () =>
+        runBackgroundJob({
+          kind: "outbox",
+          source: "outbox",
+          timeoutMs: 120_000,
+          run: drainNow,
+        }),
     });
   }
 
@@ -268,6 +278,12 @@ export function startOutboxProcessor(
     drainTimer = setTimeout(() => {
       drainTimer = null;
       drain().catch((err) => {
+        if (isBackgroundRuntimeDeferredError(err)) {
+          addDebugEvent("change", `[Outbox] drain deferred: ${err.reason}`);
+          isDraining = false;
+          scheduleDrain();
+          return;
+        }
         addDebugEvent("error", `[Outbox] drain threw: ${err instanceof Error ? err.message : String(err)}`);
         isDraining = false;
       });
@@ -279,6 +295,12 @@ export function startOutboxProcessor(
 
   // Run an immediate drain on startup (catch anything queued while offline)
   drain().catch((err) => {
+    if (isBackgroundRuntimeDeferredError(err)) {
+      addDebugEvent("change", `[Outbox] startup drain deferred: ${err.reason}`);
+      isDraining = false;
+      scheduleDrain();
+      return;
+    }
     addDebugEvent("error", `[Outbox] startup drain threw: ${err instanceof Error ? err.message : String(err)}`);
     isDraining = false;
   });

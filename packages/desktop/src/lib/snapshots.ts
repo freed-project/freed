@@ -13,6 +13,10 @@ import {
 import { getDocBinary, getDocState, replaceLocalDoc, subscribe } from "./automerge";
 import { log } from "./logger.js";
 import { readContactSyncState, readContactSyncStateJson, writeContactSyncStateJson } from "./contact-sync-storage.js";
+import {
+  isBackgroundRuntimeDeferredError,
+  runBackgroundJob,
+} from "./background-runtime-coordinator.js";
 
 export type SnapshotReason = "auto" | "manual";
 
@@ -294,7 +298,16 @@ function scheduleAutoSnapshot(): void {
       return;
     }
 
-    createSnapshot("auto").catch((error) => {
+    runBackgroundJob({
+      kind: "snapshot",
+      source: "auto-snapshot",
+      timeoutMs: 180_000,
+      run: () => createSnapshot("auto"),
+    }).catch((error) => {
+      if (isBackgroundRuntimeDeferredError(error)) {
+        log.info(`[snapshots] auto snapshot deferred: ${error.reason}`);
+        return;
+      }
       log.error(
         `[snapshots] auto snapshot failed: ${
           error instanceof Error ? error.message : String(error)

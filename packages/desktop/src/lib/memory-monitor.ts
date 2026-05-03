@@ -76,6 +76,7 @@ type MemoryPressureLevel = "normal" | "high" | "critical";
 interface MemoryMonitorOptions {
   getAutomergeStats?: () => { binaryBytes?: number; itemCount?: number } | null;
   onCriticalPressure?: (snapshot: RuntimeMemorySnapshot) => void;
+  onSample?: (snapshot: RuntimeMemorySnapshot) => void;
 }
 
 export function formatBytesForMemoryLog(bytes: number): string {
@@ -200,6 +201,7 @@ async function sampleRuntimeMemory(
     sampleTs: Date.now(),
   };
   setRuntimeMemory(snapshot);
+  options.onSample?.(snapshot);
 
   sampleCount += 1;
   const shouldLog =

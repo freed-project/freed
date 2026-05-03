@@ -97,6 +97,7 @@ export function tauriInitScript(): string {
       retry_startup_after_crash: () => null,
       reset_pairing_token: () => null,
       get_recent_logs: () => [],
+      get_recent_runtime_health: () => [],
       start_relay: () => null,
       stop_relay: () => null,
       list_snapshots: () => [],
