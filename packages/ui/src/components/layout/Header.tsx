@@ -97,6 +97,7 @@ const READER_LAYOUT_CONTROL_BUTTON_SIZE_PX = 32;
 const READER_LAYOUT_CONTROL_ICON_SIZE_PX = 20;
 const READER_LAYOUT_CONTROL_BUTTON_GAP_PX = 0;
 const LAYOUT_CONTROL_SAFE_GAP_PX = 8;
+const MENU_VIEWPORT_MARGIN_PX = 8;
 const CLOSED_SIDEBAR_TOGGLE_LEFT_PX = 12;
 const DEFAULT_LAYOUT_CONTROL_SAFE_LEFT_PX = 180;
 const DEFAULT_LAYOUT_CONTROL_RESERVED_WIDTH_PX = 280;
@@ -202,10 +203,12 @@ function ToolbarOverflowIcon({ className = "h-5 w-5" }: { className?: string }) 
 function FeedCardDensitySlider({
   value,
   onChange,
+  fullWidth = false,
   style,
 }: {
   value: FeedCardDensity;
   onChange: (value: FeedCardDensity) => void;
+  fullWidth?: boolean;
   style?: CSSProperties;
 }) {
   const valueIndex = Math.max(0, FEED_CARD_DENSITY_OPTIONS.indexOf(value));
@@ -215,11 +218,17 @@ function FeedCardDensitySlider({
   };
 
   return (
-    <Tooltip label={FEED_CARD_DENSITY_LABELS[value]}>
+    <Tooltip
+      label={FEED_CARD_DENSITY_LABELS[value]}
+      className={fullWidth ? "w-full" : undefined}
+    >
       <div
         data-testid="feed-card-density-control"
         className="theme-toolbar-density-control"
-        style={style}
+        style={{
+          ...(fullWidth ? { width: "100%" } : {}),
+          ...style,
+        }}
         onPointerDown={(event) => event.stopPropagation()}
       >
         <span className="theme-toolbar-density-icon theme-toolbar-density-icon-compact" aria-hidden="true">
@@ -447,8 +456,11 @@ export function Header({
   const showFeedCardDensityControl =
     activeView === "feed" &&
     !selectedItem &&
-    !isMobile &&
-    !isBelowLargeToolbar;
+    !isMobile;
+  const showInlineFeedCardDensityControl =
+    showFeedCardDensityControl && !isBelowLargeToolbar;
+  const showOverflowFeedCardDensityControl =
+    showFeedCardDensityControl && isBelowLargeToolbar;
   const showInlineReaderBookmark =
     !!selectedItem && !isBelowReaderBookmarkToolbar;
   const collapsedReaderTitlePaddingClass = selectedItem?.sourceUrl
@@ -930,7 +942,9 @@ export function Header({
     showFeedBulkActions,
     unreadCount,
   ]);
-  const showToolbarOverflowMenuButton = toolbarOverflowActions.length > 0;
+  const showToolbarOverflowMenuButton =
+    toolbarOverflowActions.length > 0 ||
+    showOverflowFeedCardDensityControl;
 
   const showReaderLayoutToggle =
     !isMobile &&
@@ -1234,8 +1248,9 @@ export function Header({
 
   useEffect(() => {
     if (toolbarOverflowActions.length > 0) return;
+    if (showOverflowFeedCardDensityControl) return;
     setToolbarOverflowMenuOpen(false);
-  }, [toolbarOverflowActions.length]);
+  }, [showOverflowFeedCardDensityControl, toolbarOverflowActions.length]);
 
   useLayoutEffect(() => {
     if (isMobileDevice) return undefined;
@@ -1406,6 +1421,27 @@ export function Header({
     handleWindowToolbarPointerEnd,
     handleWindowToolbarPointerMove,
   ]);
+
+  const toolbarOverflowMenuTop = toolbarOverflowMenuPosition?.top ?? 60;
+  const signalFilterMenuTop = signalFilterMenuPosition?.top ?? 60;
+  const toolbarOverflowMenuStyle = {
+    top: toolbarOverflowMenuTop,
+    right: toolbarOverflowMenuPosition?.right ?? 8,
+    ["--theme-menu-top" as string]: `${toolbarOverflowMenuTop}px`,
+    ["--theme-menu-viewport-margin" as string]: `${MENU_VIEWPORT_MARGIN_PX}px`,
+    ...(headerDragRegion ? noDrag : {}),
+  } as CSSProperties;
+  const signalFilterMenuStyle = {
+    top: signalFilterMenuTop,
+    right: signalFilterMenuPosition?.right ?? 8,
+    ["--theme-menu-top" as string]: `${signalFilterMenuTop}px`,
+    ["--theme-menu-viewport-margin" as string]: `${MENU_VIEWPORT_MARGIN_PX}px`,
+    ...(headerDragRegion ? noDrag : {}),
+  } as CSSProperties;
+  const newMenuStyle = {
+    ["--theme-menu-max-height" as string]: "calc(100dvh - 2rem)",
+    ...(headerDragRegion ? noDrag : {}),
+  } as CSSProperties;
 
   return (
     <>
@@ -1786,8 +1822,8 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showFeedCardDensityControl} width="7.25rem" className="hidden xl:flex">
-                  {showFeedCardDensityControl ? (
+                <ToolbarAnimatedSlot visible={showInlineFeedCardDensityControl} width="7.25rem" className="hidden lg:flex">
+                  {showInlineFeedCardDensityControl ? (
                     <FeedCardDensitySlider
                       value={feedCardDensity}
                       onChange={setFeedCardDensity}
@@ -1899,36 +1935,55 @@ export function Header({
           ref={toolbarOverflowMenuRef}
           data-testid="toolbar-overflow-menu"
           role="menu"
-          className="theme-dialog-shell fixed z-[300] w-[16rem] max-w-[calc(100vw-1rem)] overflow-hidden py-1.5 shadow-2xl shadow-black/35"
-          style={{
-            top: toolbarOverflowMenuPosition?.top ?? 60,
-            right: toolbarOverflowMenuPosition?.right ?? 8,
-            ...(headerDragRegion ? noDrag : {}),
-          }}
+          className="theme-dialog-shell theme-menu-shell fixed z-[300] w-[16rem] max-w-[calc(100vw-1rem)] py-1.5 shadow-2xl shadow-black/35"
+          style={toolbarOverflowMenuStyle}
         >
-          {toolbarOverflowActions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                action.onClick();
-                if (action.id !== "delete-archived" || action.danger) {
-                  setToolbarOverflowMenuOpen(false);
-                }
-              }}
-              className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--theme-bg-muted)] ${
-                action.danger
-                  ? "text-red-400"
-                  : action.active
-                    ? "text-[var(--theme-text-primary)]"
-                    : "text-[var(--theme-text-secondary)]"
-              }`}
+          {showOverflowFeedCardDensityControl ? (
+            <div
+              data-testid="toolbar-overflow-density-section"
+              className={`${toolbarOverflowActions.length > 0 ? "border-b border-[var(--theme-border-subtle)]" : ""} px-4 pb-3 pt-2`}
             >
-              <span className="shrink-0 text-current">{action.icon}</span>
-              <span className="min-w-0 flex-1 truncate">{action.label}</span>
-            </button>
-          ))}
+              <p className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Card density
+              </p>
+              <FeedCardDensitySlider
+                value={feedCardDensity}
+                onChange={setFeedCardDensity}
+                fullWidth
+                style={headerDragRegion ? toolbarControlStyle : undefined}
+              />
+            </div>
+          ) : null}
+          {toolbarOverflowActions.length > 0 ? (
+            <div data-testid="toolbar-overflow-actions-section" className="pt-2">
+              <p className="px-4 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Actions
+              </p>
+              {toolbarOverflowActions.map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    action.onClick();
+                    if (action.id !== "delete-archived" || action.danger) {
+                      setToolbarOverflowMenuOpen(false);
+                    }
+                  }}
+                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--theme-bg-muted)] ${
+                    action.danger
+                      ? "text-red-400"
+                      : action.active
+                        ? "text-[var(--theme-text-primary)]"
+                        : "text-[var(--theme-text-secondary)]"
+                  }`}
+                >
+                  <span className="shrink-0 text-current">{action.icon}</span>
+                  <span className="min-w-0 flex-1 truncate">{action.label}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -1937,15 +1992,14 @@ export function Header({
           ref={signalFilterMenuRef}
           data-testid="feed-signal-filter-menu"
           role="menu"
-          className="theme-dialog-shell fixed z-[300] w-[20rem] max-w-[calc(100vw-1rem)] overflow-hidden py-2 shadow-2xl shadow-black/35"
-          style={{
-            top: signalFilterMenuPosition?.top ?? 60,
-            right: signalFilterMenuPosition?.right ?? 8,
-            ...(headerDragRegion ? noDrag : {}),
-          }}
+          className="theme-dialog-shell theme-menu-shell fixed z-[300] w-[20rem] max-w-[calc(100vw-1rem)] py-2 shadow-2xl shadow-black/35"
+          style={signalFilterMenuStyle}
         >
           {showCollapsedToolbarFilterMenu && showSocialContentControls ? (
             <div className={`${showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 pb-3 pt-1`}>
+              <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Format
+              </p>
               <ToolbarToggleGroup
                 dataTestId="mobile-social-content-toolbar-filter"
                 options={[
@@ -1964,7 +2018,7 @@ export function Header({
           {showCollapsedToolbarFilterMenu && showWorkspaceIdentityControls ? (
             <div className={`${showMapTimeControls || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
               <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
-                View
+                Connections
               </p>
               <ToolbarToggleGroup
                 dataTestId={mobileIdentityToolbarDataTestId}
@@ -1997,49 +2051,58 @@ export function Header({
             </div>
           ) : null}
 
-          {showFeedSignalFilter ? [everythingSignalPreset, ...selectableFeedSignalPresets].map((preset) => {
-            const selected = preset.mode === "all"
-              ? allFeedSignalsSelected
-              : allFeedSignalsSelected || activeFeedSignalModeSet.has(preset.mode);
-            const feedbackKey = signalFilterFeedback?.mode === preset.mode
-              ? signalFilterFeedback.tick
-              : 0;
-            return (
-              <button
-                key={preset.mode}
-                type="button"
-                role="menuitemcheckbox"
-                aria-checked={selected}
-                onClick={() => handleFeedSignalModeChange(preset.mode)}
-                className={`flex w-full items-start gap-4 py-3.5 pl-7 pr-6 text-left transition-colors hover:bg-[var(--theme-bg-muted)] ${
-                  selected ? "text-[var(--theme-text-primary)]" : "text-[var(--theme-text-secondary)]"
-                }`}
-              >
-                <span
-                  key={`${preset.mode}-${selected ? "checked" : "empty"}-${feedbackKey}`}
-                  className={`feed-signal-checkbox mt-0.5 ${selected ? "feed-signal-checkbox-checked" : ""} ${
-                    feedbackKey ? "feed-signal-checkbox-feedback" : ""
-                  }`}
-                  aria-hidden="true"
-                >
-                  {selected ? (
-                    <svg className="feed-signal-check-icon h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : null}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium">{preset.label}</span>
-                  <span className="block text-xs leading-5 text-[var(--theme-text-muted)]">
-                    {preset.description}
-                  </span>
-                </span>
-                <span className="mt-0.5 shrink-0 text-xs tabular-nums text-[var(--theme-text-muted)]">
-                  {feedSignalCounts[preset.mode].toLocaleString()}
-                </span>
-              </button>
-            );
-          }) : null}
+          {showFeedSignalFilter ? (
+            <div>
+              <div className="px-3 pt-3">
+                <p className="px-1 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                  Classification
+                </p>
+              </div>
+              {[everythingSignalPreset, ...selectableFeedSignalPresets].map((preset) => {
+                const selected = preset.mode === "all"
+                  ? allFeedSignalsSelected
+                  : allFeedSignalsSelected || activeFeedSignalModeSet.has(preset.mode);
+                const feedbackKey = signalFilterFeedback?.mode === preset.mode
+                  ? signalFilterFeedback.tick
+                  : 0;
+                return (
+                  <button
+                    key={preset.mode}
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={selected}
+                    onClick={() => handleFeedSignalModeChange(preset.mode)}
+                    className={`flex w-full items-start gap-3 py-2.5 pl-7 pr-6 text-left transition-colors hover:bg-[var(--theme-bg-muted)] ${
+                      selected ? "text-[var(--theme-text-primary)]" : "text-[var(--theme-text-secondary)]"
+                    }`}
+                  >
+                    <span
+                      key={`${preset.mode}-${selected ? "checked" : "empty"}-${feedbackKey}`}
+                      className={`feed-signal-checkbox mt-0.5 ${selected ? "feed-signal-checkbox-checked" : ""} ${
+                        feedbackKey ? "feed-signal-checkbox-feedback" : ""
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {selected ? (
+                        <svg className="feed-signal-check-icon h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : null}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium">{preset.label}</span>
+                      <span className="block text-xs leading-4 text-[var(--theme-text-muted)]">
+                        {preset.description}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 shrink-0 text-xs tabular-nums text-[var(--theme-text-muted)]">
+                      {feedSignalCounts[preset.mode].toLocaleString()}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -2050,7 +2113,10 @@ export function Header({
           style={headerDragRegion ? noDrag : undefined}
         >
           {dropdownOpen && (
-            <div className="theme-floating-panel absolute bottom-[calc(100%+0.875rem)] right-0 flex min-w-[12rem] flex-col overflow-hidden py-1 shadow-2xl shadow-black/40">
+            <div
+              className="theme-floating-panel theme-menu-shell absolute bottom-[calc(100%+0.875rem)] right-0 flex min-w-[12rem] flex-col py-1 shadow-2xl shadow-black/40"
+              style={newMenuStyle}
+            >
               {canAddRss && (
                 <button
                   onClick={() => {

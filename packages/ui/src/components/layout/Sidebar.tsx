@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo, cloneElement, isValidElement, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo, cloneElement, isValidElement, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import {
   countAuthorsWithRecentLocationUpdates,
@@ -340,16 +340,24 @@ function SidebarContextMenuShell({
   }, [ignoreElement, onClose]);
 
   const gap = 6;
+  const viewportMargin = 8;
   const fitsRight = anchorRect.right + gap + width <= window.innerWidth;
   const left = fitsRight ? anchorRect.right + gap : anchorRect.left - gap - width;
-  const top = Math.min(anchorRect.top, window.innerHeight - 180);
+  const top = Math.max(viewportMargin, Math.min(anchorRect.top, window.innerHeight - 180));
+  const menuStyle = {
+    top,
+    left,
+    width,
+    ["--theme-menu-top" as string]: `${top}px`,
+    ["--theme-menu-viewport-margin" as string]: `${viewportMargin}px`,
+  } as CSSProperties;
 
   return (
     <div
       ref={menuRef}
-      style={{ top, left, width }}
+      style={menuStyle}
       data-testid={testId}
-      className="theme-dialog-shell fixed z-[300] overflow-hidden rounded-xl"
+      className="theme-dialog-shell theme-menu-shell fixed z-[300] rounded-xl"
     >
       {children}
     </div>

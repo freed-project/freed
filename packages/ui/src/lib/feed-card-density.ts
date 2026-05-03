@@ -18,6 +18,12 @@ export const FEED_CARD_DENSITY_LABELS: Record<FeedCardDensity, string> = {
   expansive: "Expansive cards",
 };
 
+export const DESKTOP_FEED_CARD_HEIGHT_BY_DENSITY: Record<FeedCardDensity, number> = {
+  compact: 136,
+  comfortable: 204,
+  expansive: 300,
+};
+
 export function isFeedCardDensity(value: string | null): value is FeedCardDensity {
   return value === "compact" || value === "comfortable" || value === "expansive";
 }

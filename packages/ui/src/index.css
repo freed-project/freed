@@ -2110,6 +2110,17 @@ html[data-theme="scriptorium"] .theme-dialog-shell::before {
   background: none;
 }
 
+.theme-menu-shell {
+  max-height: min(
+    var(--theme-menu-max-height, calc(100dvh - 1rem)),
+    calc(100dvh - var(--theme-menu-top, 0px) - var(--theme-menu-viewport-margin, 0.75rem))
+  );
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
 .theme-settings-shell {
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.06),
@@ -2735,8 +2746,8 @@ input[type="radio"]:focus-visible {
 
 .feed-signal-checkbox {
   display: flex;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 1.5rem;
+  height: 1.5rem;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
@@ -2744,6 +2755,8 @@ input[type="radio"]:focus-visible {
   border-radius: 999px;
   background: transparent;
   color: transparent;
+  transform: scale(0.78);
+  transform-origin: center;
   transition:
     border-color 0.18s ease,
     color 0.18s ease,
@@ -2753,6 +2766,7 @@ input[type="radio"]:focus-visible {
 .feed-signal-checkbox-checked {
   border-color: var(--theme-text-secondary);
   color: var(--theme-text-primary);
+  transform: scale(1);
 }
 
 .feed-signal-checkbox-feedback {
@@ -2766,15 +2780,12 @@ input[type="radio"]:focus-visible {
 
 @keyframes feed-signal-checkbox-pulse {
   0% {
-    transform: scale(1);
     box-shadow: 0 0 0 0 rgb(var(--theme-accent-secondary-rgb) / 0);
   }
   42% {
-    transform: scale(1.08);
     box-shadow: 0 0 0 5px rgb(var(--theme-accent-secondary-rgb) / 0.18);
   }
   100% {
-    transform: scale(1);
     box-shadow: 0 0 0 9px rgb(var(--theme-accent-secondary-rgb) / 0);
   }
 }

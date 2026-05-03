@@ -6,7 +6,11 @@ import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import { useFeedCardDensity, type FeedCardDensity } from "../../lib/feed-card-density.js";
+import {
+  DESKTOP_FEED_CARD_HEIGHT_BY_DENSITY,
+  useFeedCardDensity,
+  type FeedCardDensity,
+} from "../../lib/feed-card-density.js";
 
 // ── Story grouping ────────────────────────────────────────────────────────────
 
@@ -138,6 +142,7 @@ interface FeedItemRowProps {
   onItemArchive?: (item: FeedItemType) => void;
   onItemLike?: (item: FeedItemType) => void;
   onOpenCommentUrl?: (url: string) => void;
+  fixedHeight?: number;
 }
 
 const FeedItemRow = memo(function FeedItemRow({
@@ -153,6 +158,7 @@ const FeedItemRow = memo(function FeedItemRow({
   onItemArchive,
   onItemLike,
   onOpenCommentUrl,
+  fixedHeight,
 }: FeedItemRowProps) {
   const handleClick = useCallback(() => onItemClick?.(item), [item, onItemClick]);
   const handleMouseEnter = useCallback(() => onFocusChange?.(index), [index, onFocusChange]);
@@ -182,6 +188,7 @@ const FeedItemRow = memo(function FeedItemRow({
       onArchive={onItemArchive ? handleArchive : undefined}
       onLike={onItemLike ? handleLike : undefined}
       onOpenCommentUrl={onOpenCommentUrl}
+      fixedHeight={fixedHeight}
     />
   );
 });
@@ -191,7 +198,7 @@ interface StoryGroupRowProps {
   itemIndices: number[];
   /** Number of equal-width CSS columns for this row's grid. */
   numCols: number;
-  /** Explicit tile height in pixels (3:4 portrait ratio, capped at 288px). */
+  /** Explicit tile height in pixels. */
   tileHeight: number;
   showEngagement: boolean;
   showReadInGrayscale: boolean;
@@ -287,6 +294,7 @@ export function FeedList({
     (s) => s.preferences.display.reading.showReadInGrayscale,
   );
   const [cardDensity] = useFeedCardDensity();
+  const desktopFeedCardHeight = DESKTOP_FEED_CARD_HEIGHT_BY_DENSITY[cardDensity];
 
   // Track scroll container width so story group rows are sized correctly.
   // 600 is a safe non-zero starting guess; the ResizeObserver corrects it
@@ -335,11 +343,17 @@ export function FeedList({
     return map;
   }, [rows]);
 
-  // Accurate per-row height estimate for the virtualizer.
-  // Story rows use the padding-bottom trick: height = min(tileWidth × 4/3, 288px).
-  // Keeping this in sync with the CSS prevents gaps/overlaps for off-screen rows.
+  const estimateDesktopRowSize = useCallback(
+    (index: number) =>
+      desktopFeedCardHeight + FEED_CARD_GAP + (index === 0 ? FEED_CARD_GAP : 0),
+    [desktopFeedCardHeight],
+  );
+
+  // Mobile keeps measured variable rows. Desktop uses a fixed contract so the
+  // virtualizer never corrects row offsets while the user is scrolling.
   const estimateRowSize = useCallback(
     (index: number) => {
+      if (!isMobile) return estimateDesktopRowSize(index);
       const row = rows[index];
       if (!row || row.type !== "stories") return ITEM_ROW_ESTIMATE_BY_DENSITY[cardDensity];
       const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - feedCardHorizontalGutter * 2, 0);
@@ -348,7 +362,7 @@ export function FeedList({
       const tileHeight = Math.min(tileWidth * storyHeightRatio(nc), MAX_TILE_H_BY_DENSITY[cardDensity]);
       return Math.round(tileHeight + FEED_CARD_GAP + (index === 0 ? FEED_CARD_GAP : 0));
     },
-    [cardDensity, rows, containerWidth, feedCardHorizontalGutter],
+    [cardDensity, estimateDesktopRowSize, isMobile, rows, containerWidth, feedCardHorizontalGutter],
   );
 
   const listKey = useMemo(
@@ -383,7 +397,6 @@ export function FeedList({
     getScrollElement: () => (isMobile ? null : parentRef.current),
     estimateSize: estimateRowSize,
     overscan: 5,
-    measureElement: (el) => el.getBoundingClientRect().height,
     onChange: (instance) => {
       if (!isMobile) processReadOnScroll(instance, "element");
     },
@@ -471,7 +484,7 @@ export function FeedList({
         >
           {Array.from({ length: SKELETON_COUNT }, (_, i) => (
             <div key={i} style={{ marginTop: i === 0 ? 0 : `${FEED_CARD_GAP}px` }}>
-              <FeedItemSkeleton />
+              <FeedItemSkeleton fixedHeight={isMobile ? undefined : desktopFeedCardHeight} />
             </div>
           ))}
         </div>
@@ -643,7 +656,6 @@ export function FeedList({
               key={virtualItem.key}
               data-feed-row-index={virtualItem.index}
               data-index={virtualItem.index}
-              ref={elementVirtualizer.measureElement}
               style={{
                 position: "absolute",
                 top: 0,
@@ -661,16 +673,12 @@ export function FeedList({
                 }}
               >
                 {row.type === "stories" ? (() => {
-                  const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - feedCardHorizontalGutter * 2, 0);
-                  const nc = row.numCols;
-                  const tw = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
-                  const th = Math.round(Math.min(tw * storyHeightRatio(nc), MAX_TILE_H_BY_DENSITY[cardDensity]));
                   return (
                     <StoryGroupRow
                       storyItems={row.items}
                       itemIndices={row.itemIndices}
-                      numCols={nc}
-                      tileHeight={th}
+                      numCols={row.numCols}
+                      tileHeight={desktopFeedCardHeight}
                       showEngagement={showEngagementCounts}
                       showReadInGrayscale={showReadInGrayscale}
                       density={cardDensity}
@@ -693,6 +701,7 @@ export function FeedList({
                     onItemArchive={onItemArchive}
                     onItemLike={onItemLike}
                     onOpenCommentUrl={onOpenCommentUrl}
+                    fixedHeight={desktopFeedCardHeight}
                   />
                 )}
               </div>
