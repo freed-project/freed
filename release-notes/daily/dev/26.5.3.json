@@ -2,13 +2,19 @@
   "channel": "dev",
   "dayKey": "26.5.3",
   "date": "2026-05-03",
-  "preferredDeck": null,
+  "preferredDeck": "Harden startup recovery and refine feed layout",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
-  "pinnedHighlights": [],
+  "pinnedHighlights": [
+    "Refined sidebar rows, header spacing, and feed card density for a steadier reading layout.",
+    "Hardened Freed Desktop startup recovery so background work waits for healthy renderer heartbeats before running high-risk jobs.",
+    "Fixed-height desktop feed cards and story rows keep media loads from moving scroll position.",
+    "Card density controls now drive compact, comfortable, and expansive feed layouts.",
+    "Floating menus now stay inside the viewport and scroll internally."
+  ],
   "editorialNotes": [],
   "updatedAt": "2026-05-03T22:26:35.227Z"
 }

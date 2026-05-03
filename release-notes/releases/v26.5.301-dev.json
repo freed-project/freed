@@ -3,7 +3,7 @@
   "version": "26.5.301-dev",
   "channel": "dev",
   "dayKey": "26.5.3",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-03T22:26:35.226Z",
   "model": "heuristic",
@@ -37,15 +37,19 @@
     ]
   },
   "release": {
-    "deck": "Refine sidebar rows and card density, harden startup recovery and refine feed layout, and hardened Freed Desktop startup recovery so background work waits for healthy renderer heartbeats before running high-risk jobs",
+    "deck": "Harden startup recovery and refine feed layout",
     "features": [
-      "Refine sidebar rows and card density"
+      "Refined sidebar rows, header spacing, and feed card density for a steadier reading layout",
+      "Added fixed-height desktop feed cards and story rows so media loading no longer changes scroll position",
+      "Added compact, comfortable, and expansive feed card density controls with matching skeleton heights and bounded internal scrolling for floating menus"
     ],
     "fixes": [
+      "Hardened Freed Desktop startup recovery so background work waits for healthy renderer heartbeats before running high-risk jobs",
+      "Tightened collapsed feed filter menu headings, copy, spacing, and classification selection animation",
       "Added runtime-health diagnostics for blank renderer reports, including active background work, memory pressure, and recovery attempts",
       "Fixed linked account promotion so captured social accounts do not create duplicate drafts"
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.301-dev\n\nRefine sidebar rows and card density, harden startup recovery and refine feed layout, and hardened Freed Desktop startup recovery so background work waits for healthy renderer heartbeats before running high-risk jobs\n\n### Features\n\n- Refine sidebar rows and card density\n\n### Fixes\n\n- Added runtime-health diagnostics for blank renderer reports, including active background work, memory pressure, and recovery attempts\n- Fixed linked account promotion so captured social accounts do not create duplicate drafts\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.301-dev\n\nHarden startup recovery and refine feed layout\n\n### Features\n\n- Refined sidebar rows, header spacing, and feed card density for a steadier reading layout\n- Added fixed-height desktop feed cards and story rows so media loading no longer changes scroll position\n- Added compact, comfortable, and expansive feed card density controls with matching skeleton heights and bounded internal scrolling for floating menus\n\n### Fixes\n\n- Hardened Freed Desktop startup recovery so background work waits for healthy renderer heartbeats before running high-risk jobs\n- Tightened collapsed feed filter menu headings, copy, spacing, and classification selection animation\n- Added runtime-health diagnostics for blank renderer reports, including active background work, memory pressure, and recovery attempts\n- Fixed linked account promotion so captured social accounts do not create duplicate drafts\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
