@@ -344,11 +344,32 @@ test("narrow desktop toolbar exposes card density slider in overflow", async ({ 
   await overflowButton.click();
 
   const overflowMenu = page.getByTestId("toolbar-overflow-menu");
+  const densityControl = overflowMenu.getByTestId("feed-card-density-control");
   const slider = overflowMenu.getByTestId("feed-card-density-slider");
   await expect(slider).toBeVisible();
+
+  const menuGeometry = await overflowMenu.evaluate((menu) => {
+    const control = menu.querySelector('[data-testid="feed-card-density-control"]') as HTMLElement | null;
+    if (!control) throw new Error("Density control is missing");
+    const section = control.parentElement as HTMLElement | null;
+    if (!section) throw new Error("Density section is missing");
+    const controlRect = control.getBoundingClientRect();
+    const sectionRect = section.getBoundingClientRect();
+    const sectionStyle = window.getComputedStyle(section);
+    const horizontalPadding =
+      Number.parseFloat(sectionStyle.paddingLeft) +
+      Number.parseFloat(sectionStyle.paddingRight);
+    return {
+      controlWidth: Math.round(controlRect.width),
+      contentWidth: Math.round(sectionRect.width - horizontalPadding),
+    };
+  });
+  expect(menuGeometry.controlWidth).toBe(menuGeometry.contentWidth);
+
   await slider.focus();
   await slider.press("ArrowLeft");
 
+  await expect(densityControl).toBeVisible();
   await expect(card).toHaveAttribute("data-feed-card-density", "compact");
   await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-feed-card-density"))).toBe("compact");
 });

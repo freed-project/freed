@@ -202,10 +202,12 @@ function ToolbarOverflowIcon({ className = "h-5 w-5" }: { className?: string }) 
 function FeedCardDensitySlider({
   value,
   onChange,
+  fullWidth = false,
   style,
 }: {
   value: FeedCardDensity;
   onChange: (value: FeedCardDensity) => void;
+  fullWidth?: boolean;
   style?: CSSProperties;
 }) {
   const valueIndex = Math.max(0, FEED_CARD_DENSITY_OPTIONS.indexOf(value));
@@ -219,7 +221,10 @@ function FeedCardDensitySlider({
       <div
         data-testid="feed-card-density-control"
         className="theme-toolbar-density-control"
-        style={style}
+        style={{
+          ...(fullWidth ? { width: "100%" } : {}),
+          ...style,
+        }}
         onPointerDown={(event) => event.stopPropagation()}
       >
         <span className="theme-toolbar-density-icon theme-toolbar-density-icon-compact" aria-hidden="true">
@@ -1920,6 +1925,7 @@ export function Header({
               <FeedCardDensitySlider
                 value={feedCardDensity}
                 onChange={setFeedCardDensity}
+                fullWidth
                 style={headerDragRegion ? toolbarControlStyle : undefined}
               />
             </div>
