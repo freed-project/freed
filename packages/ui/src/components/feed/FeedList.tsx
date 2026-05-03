@@ -6,7 +6,11 @@ import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import { useFeedCardDensity, type FeedCardDensity } from "../../lib/feed-card-density.js";
+import {
+  DESKTOP_FEED_CARD_HEIGHT_BY_DENSITY,
+  useFeedCardDensity,
+  type FeedCardDensity,
+} from "../../lib/feed-card-density.js";
 
 // ── Story grouping ────────────────────────────────────────────────────────────
 
@@ -16,11 +20,6 @@ const TILE_GAP = FEED_CARD_GAP;
 const MIN_TILE_W = 80; // minimum tile width before a column wraps
 // Tailwind max-w-2xl = 42rem = 672px.
 const MAX_CONTENT_W = 672;
-const DESKTOP_FEED_CARD_HEIGHT_BY_DENSITY: Record<FeedCardDensity, number> = {
-  compact: 172,
-  comfortable: 220,
-  expansive: 300,
-};
 const ITEM_ROW_ESTIMATE_BY_DENSITY: Record<FeedCardDensity, number> = {
   compact: 172,
   comfortable: 220,
@@ -485,7 +484,7 @@ export function FeedList({
         >
           {Array.from({ length: SKELETON_COUNT }, (_, i) => (
             <div key={i} style={{ marginTop: i === 0 ? 0 : `${FEED_CARD_GAP}px` }}>
-              <FeedItemSkeleton />
+              <FeedItemSkeleton fixedHeight={isMobile ? undefined : desktopFeedCardHeight} />
             </div>
           ))}
         </div>

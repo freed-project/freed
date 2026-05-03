@@ -175,6 +175,29 @@ async function collectVisibleGeometry(page: import("@playwright/test").Page) {
 }
 
 for (const [density, expectedCardHeight] of Object.entries(DESKTOP_CARD_HEIGHT_BY_DENSITY) as Array<[DesktopCardDensity, number]>) {
+  test(`desktop ${density} feed skeletons match assigned card height`, async ({ app, page }) => {
+    await setCardDensity(page, density);
+    await app.goto();
+    await app.waitForReady();
+
+    await page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        setState: (patch: unknown) => void;
+      };
+      store.setState({ isLoading: true, items: [] });
+    });
+
+    const skeletons = page.getByTestId("feed-item-skeleton");
+    await expect(skeletons.first()).toBeVisible();
+
+    const heights = await skeletons.evaluateAll((elements) =>
+      elements.slice(0, 3).map((element) => Math.round(element.getBoundingClientRect().height)),
+    );
+    expect(heights).toEqual([expectedCardHeight, expectedCardHeight, expectedCardHeight]);
+  });
+}
+
+for (const [density, expectedCardHeight] of Object.entries(DESKTOP_CARD_HEIGHT_BY_DENSITY) as Array<[DesktopCardDensity, number]>) {
   test(`desktop ${density} feed rows do not shift when media loads or fails`, async ({ app, page }) => {
     let releaseDelayedImages!: () => void;
     const delayedImages = new Promise<void>((resolve) => {

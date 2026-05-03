@@ -3,9 +3,14 @@
  * Rendered while the Automerge doc is loading from IndexedDB so the
  * app chrome is visible immediately instead of showing a black spinner.
  */
-export function FeedItemSkeleton() {
+export function FeedItemSkeleton({ fixedHeight }: { fixedHeight?: number }) {
   return (
-    <div className="feed-card animate-pulse" aria-hidden>
+    <div
+      data-testid="feed-item-skeleton"
+      className="feed-card animate-pulse"
+      style={{ height: fixedHeight }}
+      aria-hidden
+    >
       {/* Author row */}
       <div className="flex items-center gap-3 mb-3">
         {/* Avatar */}

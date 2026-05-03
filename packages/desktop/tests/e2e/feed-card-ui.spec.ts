@@ -326,6 +326,33 @@ test("top toolbar card density slider persists locally", async ({ app, page }) =
   await expect(page.getByTestId("feed-card-density-slider")).toHaveValue("2");
 });
 
+test("narrow desktop toolbar exposes card density slider in overflow", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await page.addInitScript(() => {
+    window.localStorage.removeItem("freed-feed-card-density");
+  });
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(page);
+
+  const card = page.locator('[data-feed-item-id="test-facebook-card-ui-overhaul"]').first();
+  await expect(card).toHaveAttribute("data-feed-card-density", "comfortable");
+  await expect(page.getByTestId("feed-card-density-slider")).toHaveCount(0);
+
+  const overflowButton = page.getByTestId("toolbar-overflow-button");
+  await expect(overflowButton).toBeVisible({ timeout: 5_000 });
+  await overflowButton.click();
+
+  const overflowMenu = page.getByTestId("toolbar-overflow-menu");
+  const slider = overflowMenu.getByTestId("feed-card-density-slider");
+  await expect(slider).toBeVisible();
+  await slider.focus();
+  await slider.press("ArrowLeft");
+
+  await expect(card).toHaveAttribute("data-feed-card-density", "compact");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-feed-card-density"))).toBe("compact");
+});
+
 test("story cards participate in feed layout transitions", async ({ app }) => {
   await app.goto();
   await app.waitForReady();

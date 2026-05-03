@@ -447,8 +447,11 @@ export function Header({
   const showFeedCardDensityControl =
     activeView === "feed" &&
     !selectedItem &&
-    !isMobile &&
-    !isBelowLargeToolbar;
+    !isMobile;
+  const showInlineFeedCardDensityControl =
+    showFeedCardDensityControl && !isBelowLargeToolbar;
+  const showOverflowFeedCardDensityControl =
+    showFeedCardDensityControl && isBelowLargeToolbar;
   const showInlineReaderBookmark =
     !!selectedItem && !isBelowReaderBookmarkToolbar;
   const collapsedReaderTitlePaddingClass = selectedItem?.sourceUrl
@@ -930,7 +933,9 @@ export function Header({
     showFeedBulkActions,
     unreadCount,
   ]);
-  const showToolbarOverflowMenuButton = toolbarOverflowActions.length > 0;
+  const showToolbarOverflowMenuButton =
+    toolbarOverflowActions.length > 0 ||
+    showOverflowFeedCardDensityControl;
 
   const showReaderLayoutToggle =
     !isMobile &&
@@ -1234,8 +1239,9 @@ export function Header({
 
   useEffect(() => {
     if (toolbarOverflowActions.length > 0) return;
+    if (showOverflowFeedCardDensityControl) return;
     setToolbarOverflowMenuOpen(false);
-  }, [toolbarOverflowActions.length]);
+  }, [showOverflowFeedCardDensityControl, toolbarOverflowActions.length]);
 
   useLayoutEffect(() => {
     if (isMobileDevice) return undefined;
@@ -1786,8 +1792,8 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showFeedCardDensityControl} width="7.25rem" className="hidden xl:flex">
-                  {showFeedCardDensityControl ? (
+                <ToolbarAnimatedSlot visible={showInlineFeedCardDensityControl} width="7.25rem" className="hidden lg:flex">
+                  {showInlineFeedCardDensityControl ? (
                     <FeedCardDensitySlider
                       value={feedCardDensity}
                       onChange={setFeedCardDensity}
@@ -1906,6 +1912,18 @@ export function Header({
             ...(headerDragRegion ? noDrag : {}),
           }}
         >
+          {showOverflowFeedCardDensityControl ? (
+            <div className={`${toolbarOverflowActions.length > 0 ? "border-b border-[var(--theme-border-subtle)]" : ""} px-4 pb-3 pt-2`}>
+              <p className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Card density
+              </p>
+              <FeedCardDensitySlider
+                value={feedCardDensity}
+                onChange={setFeedCardDensity}
+                style={headerDragRegion ? toolbarControlStyle : undefined}
+              />
+            </div>
+          ) : null}
           {toolbarOverflowActions.map((action) => (
             <button
               key={action.id}
