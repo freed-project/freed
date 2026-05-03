@@ -69,6 +69,11 @@ interface FriendGraphProps {
   onLinkAccountToPerson?: (accountId: string, personId: string) => Promise<void> | void;
   onPinPersonPosition?: (personId: string, x: number, y: number) => Promise<void> | void;
   onPinAccountPosition?: (accountId: string, x: number, y: number) => Promise<void> | void;
+  onDropNodeToRelationshipTier?: (drop: {
+    personId?: string;
+    accountId?: string;
+    level: 1 | 3 | 5;
+  }) => Promise<void> | void;
   friendSuggestionStrengthByPerson?: Map<string, FriendCandidateConfidence>;
   friendSuggestionStrengthByAccount?: Map<string, FriendCandidateConfidence>;
   themeId?: ThemeId;
@@ -175,6 +180,7 @@ const GRAPH_INTERACTION_SETTLE_DELAY_MS = 140;
 const INTERACTIVE_LABEL_LIMIT = 16;
 const SETTLED_LABEL_LIMIT = 32;
 const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
+const RELATIONSHIP_TIER_DROP_SELECTOR = "[data-friend-tier-drop-value]";
 
 interface RgbColor {
   r: number;
@@ -216,6 +222,20 @@ interface GraphPerfSnapshot {
   visibleNodeLabelCount: number;
   visibleProviderLabelCount: number;
   qualityMode: GraphQualityMode;
+}
+
+function relationshipTierDropLevelAt(clientX: number, clientY: number): 1 | 3 | 5 | null {
+  const element = document.elementFromPoint(clientX, clientY);
+  const target = element?.closest<HTMLElement>(RELATIONSHIP_TIER_DROP_SELECTOR);
+  const value = target?.dataset.friendTierDropValue;
+  if (value === "1" || value === "3" || value === "5") {
+    return Number(value) as 1 | 3 | 5;
+  }
+  return null;
+}
+
+function emitRelationshipTierDragOver(level: 1 | 3 | 5 | null): void {
+  window.dispatchEvent(new CustomEvent("freed-friend-tier-dragover", { detail: { level } }));
 }
 
 function clampScale(scale: number): number {
@@ -630,6 +650,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     onLinkAccountToPerson,
     onPinPersonPosition,
     onPinAccountPosition,
+    onDropNodeToRelationshipTier,
     friendSuggestionStrengthByPerson,
     friendSuggestionStrengthByAccount,
     themeId,
@@ -1745,6 +1766,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       drag.moved = true;
     }
 
+    if (drag.moved && onDropNodeToRelationshipTier) {
+      emitRelationshipTierDragOver(relationshipTierDropLevelAt(event.clientX, event.clientY));
+    }
+
     if (drag.kind === "person-drag") {
       if (event.pointerType === "touch") {
         event.preventDefault();
@@ -1772,6 +1797,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (pinch && pinch.pointerIds.includes(event.pointerId)) {
       pinchStateRef.current = null;
       dragStateRef.current = null;
+      emitRelationshipTierDragOver(null);
       setIsInteracting(activeTouchPointsRef.current.size > 0);
       scheduleSyncScene();
       return;
@@ -1781,6 +1807,24 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (!drag || drag.pointerId !== event.pointerId) return;
     dragStateRef.current = null;
     setIsInteracting(false);
+    emitRelationshipTierDragOver(null);
+
+    if (
+      drag.moved &&
+      (drag.kind === "account-drag" || drag.kind === "person-drag") &&
+      onDropNodeToRelationshipTier
+    ) {
+      const level = relationshipTierDropLevelAt(event.clientX, event.clientY);
+      if (level) {
+        await onDropNodeToRelationshipTier({
+          personId: drag.kind === "person-drag" ? drag.personId : undefined,
+          accountId: drag.kind === "account-drag" ? drag.accountId : undefined,
+          level,
+        });
+        scheduleSyncScene();
+        return;
+      }
+    }
 
     if (drag.kind === "account-drag") {
       if (drag.moved && drag.dropTargetPersonId && onLinkAccountToPerson) {
@@ -1833,7 +1877,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       }
     }
     scheduleSyncScene();
-  }, [accounts, hitNodeAt, onClearSelection, onLinkAccountToPerson, onPinAccountPosition, onPinPersonPosition, onSelectAccount, onSelectPerson, personsById, scheduleSyncScene]);
+  }, [accounts, hitNodeAt, onClearSelection, onDropNodeToRelationshipTier, onLinkAccountToPerson, onPinAccountPosition, onPinPersonPosition, onSelectAccount, onSelectPerson, personsById, scheduleSyncScene]);
 
   const handlePointerLeave = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (hoveredNodeIdRef.current) {
@@ -1847,16 +1891,24 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (pinch && pinch.pointerIds.includes(event.pointerId)) {
       pinchStateRef.current = null;
       dragStateRef.current = null;
+      emitRelationshipTierDragOver(null);
       setIsInteracting(activeTouchPointsRef.current.size > 0);
       scheduleSyncScene();
       return;
     }
     const drag = dragStateRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    if (
+      onDropNodeToRelationshipTier &&
+      (drag.kind === "account-drag" || drag.kind === "person-drag")
+    ) {
+      return;
+    }
     dragStateRef.current = null;
+    emitRelationshipTierDragOver(null);
     setIsInteracting(false);
     scheduleSyncScene();
-  }, [scheduleSyncScene]);
+  }, [onDropNodeToRelationshipTier, scheduleSyncScene]);
 
   const handleDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
