@@ -11,7 +11,8 @@
   "pinnedHighlights": [
     "Freed Desktop now pauses heavy background work before high renderer memory can force repeated recovery.",
     "Renderer diagnostics now record memory footprint, route, visibility, generation, recovery state, and active jobs.",
-    "Social sync now defers shared scheduler work when memory preflight fails instead of cycling providers."
+    "Social sync now defers shared scheduler work when memory preflight fails instead of cycling providers.",
+    "Non-macOS release builds now compile the renderer memory diagnostics cleanly."
   ],
   "editorialNotes": [],
   "updatedAt": "2026-05-04T21:23:46.867Z"
