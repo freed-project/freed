@@ -36,6 +36,11 @@ body {
   background: color-mix(in oklab, var(--theme-bg-root) 78%, transparent);
 }
 
+.startup-recovery-scroll {
+  height: 100vh;
+  overflow-y: auto;
+}
+
 .cloud-sync-nudge-countdown {
   animation: cloud-sync-nudge-countdown 15s linear forwards;
   opacity: 0.65;
