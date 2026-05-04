@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, same-platform social story duplicate repair, X, Facebook, and Instagram reply hydration for the reader, captured authors now feeding the Phase 8 account catalog for identity review, and a local permanent media vault for a user's own Meta media
+> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, X, Facebook, and Instagram reply hydration for the reader, captured authors now feeding the Phase 8 account catalog for identity review, and a local permanent media vault for a user's own Meta media
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -101,7 +101,7 @@ Self-contained JavaScript injected into the WebView's execution context. No exte
 - **Facebook comments** (`fb-comments-extract.js`): Opens the post URL in the authenticated WebView, expands visible comment controls, and emits inline reader replies with media.
 - **Instagram comments** (`ig-comments-extract.js`): Opens post and reel URLs in the authenticated WebView, expands visible comment controls, and emits inline reader replies with media.
 - **Facebook stories** (`fb-stories-extract.js`): Injected into the FB story viewer overlay. Extracts author, media, timestamp, location/check-in. Emits via `fb-feed-data` with `postType: "story"`.
-- **Instagram stories** (`ig-stories-extract.js`): Injected into the IG story viewer overlay. Extracts author handle (from URL + DOM), typed media URLs, timestamp, and location sticker metadata. Timestamp-like fallback story IDs are replaced with stable content hashes. The normalized `FeedItem.location` now preserves the sticker source plus Instagram `locationUrl`, so later map resolution can recover real place names from generic labels such as `Locations`.
+- **Instagram stories** (`ig-stories-extract.js`): Injected into the IG story viewer overlay. Extraction now requires a real story URL, dialog, or full-screen story container with controls before emitting, so feed cards cannot fall through as stories. Author detection prefers `/stories/<username>/` and rejects generic handles such as `reels`, `locations`, and `instagram`. Timestamp-like fallback story IDs are replaced with stable content hashes. The normalized `FeedItem.location` now preserves the sticker source plus Instagram `locationUrl`, so later map resolution can recover real place names from generic labels such as `Locations`.
 
 Story scraping is interleaved with feed scraping in each session. A coin flip (~50%) determines whether stories are scraped before or after the initial feed passes. ~15% of sessions skip story scraping entirely (real users don't always check stories). Up to 30 story frames are captured per session.
 
@@ -206,7 +206,7 @@ const RATE_LIMITS = {
 - [ ] Facebook feed posts validated against real account (selector tuning)
 - [ ] Instagram feed posts validated against real account (selector tuning)
 - [ ] Direct own-profile crawler validated against saved Facebook profile, Instagram grid, reels, albums, and media-page DOM fixtures
-- [~] Stories captured, with IG + FB story scraping integrated, Instagram story location URLs preserved for map recovery, playable story video rendering in the feed, stable fallback IG story IDs, and same-platform story duplicate repair. Selector tuning still needs work.
+- [~] Stories captured, with IG + FB story scraping integrated, stricter Instagram story viewer validation, Instagram story location URLs preserved for map recovery, playable story video rendering in the feed, stable fallback IG story IDs, Instagram media-key duplicate repair, and same-platform story duplicate repair. Selector tuning still needs work.
 - [x] Cross-platform dedup (task 7.15): linked Facebook and Instagram stories or posts with similar text now collapse into one item when they land within a few minutes of each other, while preserving saved state, tags, and richer map metadata
 - [x] Like button with outbox pattern: intent recorded immediately, synced to platform async
 - [x] Two-state like UI: "noted" (amber) vs "memorialized" (red confirmed on platform)
