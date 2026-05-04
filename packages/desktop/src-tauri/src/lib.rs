@@ -14,7 +14,9 @@ use std::process::Command;
 use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use sysinfo::{Disks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-use tauri::menu::{Menu, MenuItem, Submenu};
+use tauri::menu::{Menu, MenuItem};
+#[cfg(target_os = "macos")]
+use tauri::menu::Submenu;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -661,10 +663,8 @@ fn capture_deep_runtime_diagnostic(
         "instagramScraper": app.get_webview_window("ig-scraper").is_some(),
         "linkedinScraper": app.get_webview_window("li-scraper").is_some()
     });
-    let webkit_pid = stats.webkit_largest_process_id;
-
     #[cfg(target_os = "macos")]
-    let vmmap_summary = webkit_pid.and_then(|pid| {
+    let vmmap_summary = stats.webkit_largest_process_id.and_then(|pid| {
         command_output_truncated(
             "/usr/bin/vmmap",
             &["-summary".to_string(), pid.to_string()],
@@ -675,7 +675,7 @@ fn capture_deep_runtime_diagnostic(
     let vmmap_summary: Option<String> = None;
 
     #[cfg(target_os = "macos")]
-    let sample_summary = webkit_pid.and_then(|pid| {
+    let sample_summary = stats.webkit_largest_process_id.and_then(|pid| {
         command_output_truncated(
             "/usr/bin/sample",
             &[pid.to_string(), "1".to_string()],
@@ -2264,7 +2264,7 @@ fn freed_webkit_memory_stats(system: &System, roots: &[PathBuf]) -> WebkitMemory
     let mut total_resident_bytes = 0u64;
     let mut process_count = 0u64;
     let mut largest: Option<WebkitProcessRuntimeStats> = None;
-    let mut processes = Vec::new();
+    let mut processes: Vec<WebkitProcessRuntimeStats> = Vec::new();
 
     #[cfg(target_os = "macos")]
     {
