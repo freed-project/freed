@@ -285,6 +285,12 @@ export async function docToggleArchived(globalId: string): Promise<void> {
   return request({ reqId, type: "TOGGLE_ARCHIVED", globalId });
 }
 
+export async function docArchiveItems(globalIds: string[]): Promise<void> {
+  if (globalIds.length === 0) return;
+  const reqId = nextReqId++;
+  return request({ reqId, type: "ARCHIVE_ITEMS", globalIds });
+}
+
 export async function docToggleLiked(globalId: string): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "TOGGLE_LIKED", globalId });

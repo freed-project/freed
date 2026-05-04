@@ -361,6 +361,7 @@ export function Header({
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
+  const archiveItems = useAppStore((s) => s.archiveItems);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setFilter = useAppStore((s) => s.setFilter);
@@ -820,8 +821,8 @@ export function Header({
   }, [filteredUnreadItemIds, markItemsAsRead]);
 
   const handleArchiveFilteredRead = useCallback(() => {
-    void Promise.all(filteredArchivableItemIds.map((id) => toggleArchived(id)));
-  }, [filteredArchivableItemIds, toggleArchived]);
+    void archiveItems(filteredArchivableItemIds);
+  }, [archiveItems, filteredArchivableItemIds]);
 
   const toolbarOverflowActions = useMemo<ToolbarOverflowAction[]>(() => {
     const actions: ToolbarOverflowAction[] = [];

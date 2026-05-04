@@ -5,7 +5,7 @@
  * These operations underpin the entire sync pipeline.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import * as A from "@automerge/automerge";
 import {
   addAccounts,
@@ -18,6 +18,7 @@ import {
   migrateLegacyIdentityGraph,
   removeFeedItem,
   markAsRead,
+  archiveItemsById,
   toggleSaved,
   unarchiveSavedItems,
   hideItem,
@@ -485,6 +486,63 @@ describe("markAsRead", () => {
     expect(() => {
       doc = A.change(doc, (d) => markAsRead(d, "nonexistent"));
     }).not.toThrow();
+  });
+});
+
+describe("archiveItemsById", () => {
+  it("archives only visible read unsaved IDs with one timestamp", () => {
+    let doc = createEmptyDoc();
+    doc = A.change(doc, (d) => {
+      addFeedItem(d, makeItem({
+        globalId: "read-target-a",
+        userState: { hidden: false, saved: false, archived: false, readAt: 1, tags: [] },
+      }));
+      addFeedItem(d, makeItem({
+        globalId: "read-target-b",
+        userState: { hidden: false, saved: false, archived: false, readAt: 2, tags: [] },
+      }));
+      addFeedItem(d, makeItem({
+        globalId: "unread-skip",
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+      }));
+      addFeedItem(d, makeItem({
+        globalId: "saved-skip",
+        userState: { hidden: false, saved: true, archived: false, readAt: 3, tags: [] },
+      }));
+      addFeedItem(d, makeItem({
+        globalId: "hidden-skip",
+        userState: { hidden: true, saved: false, archived: false, readAt: 4, tags: [] },
+      }));
+      addFeedItem(d, makeItem({
+        globalId: "archived-skip",
+        userState: { hidden: false, saved: false, archived: true, archivedAt: 5, readAt: 5, tags: [] },
+      }));
+    });
+
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(123456);
+    let changedIds: string[] = [];
+    doc = A.change(doc, (d) => {
+      changedIds = archiveItemsById(d, [
+        "read-target-a",
+        "missing-skip",
+        "unread-skip",
+        "saved-skip",
+        "hidden-skip",
+        "archived-skip",
+        "read-target-b",
+      ]);
+    });
+    nowSpy.mockRestore();
+
+    expect(changedIds).toEqual(["read-target-a", "read-target-b"]);
+    expect(doc.feedItems["read-target-a"].userState.archived).toBe(true);
+    expect(doc.feedItems["read-target-b"].userState.archived).toBe(true);
+    expect(doc.feedItems["read-target-a"].userState.archivedAt).toBe(123456);
+    expect(doc.feedItems["read-target-b"].userState.archivedAt).toBe(123456);
+    expect(doc.feedItems["unread-skip"].userState.archived).toBe(false);
+    expect(doc.feedItems["saved-skip"].userState.archived).toBe(false);
+    expect(doc.feedItems["hidden-skip"].userState.archived).toBe(false);
+    expect(doc.feedItems["archived-skip"].userState.archivedAt).toBe(5);
   });
 });
 
