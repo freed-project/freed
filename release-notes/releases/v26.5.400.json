@@ -3,8 +3,10 @@
   "version": "26.5.400",
   "channel": "production",
   "dayKey": "26.5.4",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Approved for production after renderer recovery fix merged to dev and main."
+  ],
   "generatedAt": "2026-05-04T10:34:04.475Z",
   "model": "heuristic",
   "source": {
@@ -27,10 +29,13 @@
     ]
   },
   "release": {
-    "deck": "Promote dev into main for production release",
+    "deck": "Fix stale renderer recovery restarts",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Recover stale renderers without blocking the macOS main thread while the old main window unregisters.",
+      "Let the startup recovery screen scroll in shorter windows so recovery actions stay reachable."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.400\n\nPromote dev into main for production release\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.400\n\nThis release fixes a stale renderer recovery path that could force Freed Desktop into repeated restarts after the renderer stopped sending heartbeats.\n\n### Fixes\n\n- Recover stale renderers without blocking the macOS main thread while the old main window unregisters.\n- Let the startup recovery screen scroll in shorter windows so recovery actions stay reachable.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
