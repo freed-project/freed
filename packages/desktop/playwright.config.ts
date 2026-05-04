@@ -30,7 +30,7 @@ export default defineConfig({
 
   webServer: USE_LOCAL_SERVER
     ? {
-        command: "VITE_TEST_TAURI=1 npm run dev -- --port 1422",
+        command: `${process.execPath} ../../node_modules/vite/bin/vite.js --port 1422`,
         url: BASE_URL,
         reuseExistingServer: !process.env.CI,
         timeout: 60_000,
