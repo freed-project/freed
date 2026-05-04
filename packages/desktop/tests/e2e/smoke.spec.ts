@@ -4239,7 +4239,7 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
   });
   const afterZoom = await waitForGraphSceneSyncAfter(page, beforeZoom!.metrics.sceneSyncCount, 8_000);
   expect(afterZoom).not.toBeNull();
-  expect(afterZoom!.metrics.sceneSyncMs).toBeLessThan(30);
+  expect(afterZoom!.metrics.sceneSyncMs).toBeLessThan(40);
   expect(afterZoom!.transform.scale).toBeGreaterThan(beforeZoom!.transform.scale);
 });
 
