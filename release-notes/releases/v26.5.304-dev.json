@@ -3,7 +3,7 @@
   "version": "26.5.304-dev",
   "channel": "dev",
   "dayKey": "26.5.3",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-04T03:04:19.294Z",
   "model": "heuristic",
@@ -64,9 +64,8 @@
       "Search profile actions"
     ],
     "fixes": [
-      "Relax graph zoom perf budget",
-      "Dedupe Instagram story captures",
-      "Desktop feed scroll layout are now more stable",
+      "Deduped duplicate Instagram story captures",
+      "Desktop feed scroll layout is now more stable",
       "Harden desktop background runtime recovery",
       "Promote linked accounts without duplicate drafts",
       "Tightened collapsed feed filter menu headings, copy, spacing, and classification selection animation",
@@ -74,9 +73,10 @@
     ],
     "followUps": [
       "Slim desktop e2e gates",
+      "Friends graph zoom validation now allows normal CI timing variance",
       "Added fixed-height desktop feed cards and story rows so media loading no longer changes scroll position",
       "Added compact, comfortable, and expansive feed card density controls with matching skeleton heights and bounded internal scrolling for floating menus"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.304-dev\n\nHarden startup recovery and refine feed layout\n\n### Features\n\n- Friends relationship tiers\n- Refine sidebar rows and card density\n- Search profile actions\n\n### Fixes\n\n- Relax graph zoom perf budget\n- Dedupe Instagram story captures\n- Desktop feed scroll layout are now more stable\n- Harden desktop background runtime recovery\n- Promote linked accounts without duplicate drafts\n- Tightened collapsed feed filter menu headings, copy, spacing, and classification selection animation\n- Floating menus now stay inside the viewport and scroll internally\n\n### Follow-ups\n\n- Slim desktop e2e gates\n- Added fixed-height desktop feed cards and story rows so media loading no longer changes scroll position\n- Added compact, comfortable, and expansive feed card density controls with matching skeleton heights and bounded internal scrolling for floating menus\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.304-dev\n\nHarden startup recovery and refine feed layout\n\n### Features\n\n- Friends relationship tiers\n- Refine sidebar rows and card density\n- Search profile actions\n\n### Fixes\n\n- Deduped duplicate Instagram story captures\n- Desktop feed scroll layout is now more stable\n- Harden desktop background runtime recovery\n- Promote linked accounts without duplicate drafts\n- Tightened collapsed feed filter menu headings, copy, spacing, and classification selection animation\n- Floating menus now stay inside the viewport and scroll internally\n\n### Follow-ups\n\n- Slim desktop e2e gates\n- Friends graph zoom validation now allows normal CI timing variance\n- Added fixed-height desktop feed cards and story rows so media loading no longer changes scroll position\n- Added compact, comfortable, and expansive feed card density controls with matching skeleton heights and bounded internal scrolling for floating menus\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
