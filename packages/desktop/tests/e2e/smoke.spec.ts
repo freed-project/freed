@@ -4358,8 +4358,12 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
   expect(debug!.regions.length).toBeGreaterThanOrEqual(3);
   expect(debug?.regions.some((region) => region.provider === "rss")).toBe(true);
   expect(debug?.regions.some((region) => region.provider === "instagram")).toBe(true);
-  expect(debug!.metrics.visibleLabelCount).toBeGreaterThan(0);
-  expect(debug!.metrics.visibleProviderLabelCount).toBeGreaterThan(0);
+  await expect.poll(async () => {
+    return (await readGraphDebug(page))?.metrics.visibleLabelCount ?? 0;
+  }, { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect.poll(async () => {
+    return (await readGraphDebug(page))?.metrics.visibleProviderLabelCount ?? 0;
+  }, { timeout: 10_000 }).toBeGreaterThan(0);
 });
 
 // ---------------------------------------------------------------------------
