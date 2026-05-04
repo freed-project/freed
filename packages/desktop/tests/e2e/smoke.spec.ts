@@ -3423,7 +3423,7 @@ test("AI ranked friend suggestions surface and promote connection people", async
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
+        updatePreferences: (patch: { display: { friendsMode: "friends" } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
@@ -3508,7 +3508,7 @@ test("AI ranked friend suggestions surface and promote connection people", async
       },
     ]);
 
-    await store.getState().updatePreferences({ display: { friendsMode: "all_content" } });
+    await store.getState().updatePreferences({ display: { friendsMode: "friends" } });
     store.getState().setActiveView("friends");
   });
 
@@ -3519,6 +3519,9 @@ test("AI ranked friend suggestions surface and promote connection people", async
   const detail = page.getByTestId("friend-candidate-detail");
   await expect(detail).toContainText("Personal updates");
   await expect(detail).toContainText("Evidence ...");
+  await expect(detail.getByRole("button", { name: "Dismiss" })).toBeVisible();
+  await expect(detail.getByRole("button", { name: "Promote to friend" })).toBeVisible();
+  await expect(detail.getByRole("button", { name: "Promote to Fam" })).toBeVisible();
   await detail.getByRole("button", { name: "Promote to friend" }).click();
 
   await expect.poll(async () =>
@@ -3586,6 +3589,7 @@ test("account detail promote upgrades a linked connection instead of opening a d
 
   const promoteButton = page.getByRole("button", { name: "Promote to friend", exact: true });
   await expect(promoteButton).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("button", { name: "Promote to Fam", exact: true })).toBeVisible();
   await promoteButton.click();
 
   await expect.poll(async () =>
@@ -3612,6 +3616,72 @@ test("account detail promote upgrades a linked connection instead of opening a d
       careLevel: 3,
     },
   });
+});
+
+test("relationship slider maps selected people across Followed, Friends, and Fam", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddPerson: (person: unknown) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+        setSelectedPerson: (personId: string | null) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddPerson({
+      id: "tier-slider-person",
+      name: "Tier Slider Person",
+      relationshipStatus: "connection",
+      careLevel: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await store.getState().updatePreferences({ display: { friendsMode: "all_content" } });
+    store.getState().setActiveView("friends");
+    store.getState().setSelectedPerson("tier-slider-person");
+  });
+
+  const control = page.getByTestId("relationship-tier-control");
+  await expect(control).toBeVisible({ timeout: 10_000 });
+  await control.getByRole("button", { name: "Friends" }).click();
+
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      };
+      return store.getState().persons["tier-slider-person"];
+    }),
+  ).toMatchObject({ relationshipStatus: "friend", careLevel: 3 });
+
+  await control.getByRole("button", { name: "Fam" }).click();
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      };
+      return store.getState().persons["tier-slider-person"];
+    }),
+  ).toMatchObject({ relationshipStatus: "friend", careLevel: 5 });
+
+  await control.getByRole("button", { name: "Followed" }).click();
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      };
+      return store.getState().persons["tier-slider-person"];
+    }),
+  ).toMatchObject({ relationshipStatus: "connection", careLevel: 1 });
 });
 
 test("AI ranked friend suggestion dismiss hides the candidate without deleting the account", async ({ app, page }) => {

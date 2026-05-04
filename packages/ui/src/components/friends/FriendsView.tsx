@@ -47,7 +47,7 @@ const MAX_SIDEBAR_WIDTH = 400;
 const FILTER_OPTIONS: Array<{ id: FriendOverviewFilter; label: string }> = [
   { id: "need_outreach", label: "Need outreach" },
   { id: "no_contact", label: "No contact logged" },
-  { id: "close_friends", label: "Close friends" },
+  { id: "close_friends", label: "Fam" },
   { id: "recently_active", label: "Recently active" },
   { id: "has_location", label: "Has location" },
 ];
@@ -61,6 +61,14 @@ const SORT_OPTIONS: Array<{ id: FriendOverviewSort; label: string }> = [
 
 const BUTTON_CHROME = "btn-secondary rounded-lg px-3 py-1.5 text-xs";
 const FRIENDS_SIDEBAR_SECTION = "theme-dialog-divider border-b px-4 py-3";
+
+type RelationshipTierLevel = 1 | 3 | 5;
+
+const RELATIONSHIP_TIER_OPTIONS: Array<{ level: RelationshipTierLevel; label: string }> = [
+  { level: 1, label: "Followed" },
+  { level: 3, label: "Friends" },
+  { level: 5, label: "Fam" },
+];
 
 type EditorState =
   | { kind: "new"; draft?: Partial<Friend> | null }
@@ -82,6 +90,83 @@ function CareDots({ level }: { level: 1 | 2 | 3 | 4 | 5 }) {
           className={`h-1.5 w-1.5 rounded-full ${value <= level ? "bg-[color:var(--theme-accent-secondary)]" : "bg-[color:var(--theme-border-subtle)]"}`}
         />
       ))}
+    </div>
+  );
+}
+
+function relationshipTierLevelForPerson(person: Pick<Person, "relationshipStatus" | "careLevel">): RelationshipTierLevel {
+  if (person.relationshipStatus !== "friend") return 1;
+  return person.careLevel >= 5 ? 5 : 3;
+}
+
+function relationshipTierLabelForPerson(person: Pick<Person, "relationshipStatus" | "careLevel">): string {
+  return RELATIONSHIP_TIER_OPTIONS.find((option) => option.level === relationshipTierLevelForPerson(person))?.label ?? "Followed";
+}
+
+function relationshipPatchForLevel(level: RelationshipTierLevel): Pick<Person, "relationshipStatus" | "careLevel"> {
+  if (level === 1) {
+    return { relationshipStatus: "connection", careLevel: 1 };
+  }
+  return { relationshipStatus: "friend", careLevel: level };
+}
+
+function RelationshipTierBadge({ person }: { person: Pick<Person, "relationshipStatus" | "careLevel"> }) {
+  return (
+    <span className="theme-chip rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]">
+      {relationshipTierLabelForPerson(person)}
+    </span>
+  );
+}
+
+function RelationshipTierControl({
+  value,
+  onChange,
+}: {
+  value: RelationshipTierLevel;
+  onChange: (level: RelationshipTierLevel) => void;
+}) {
+  const [dragOverLevel, setDragOverLevel] = useState<RelationshipTierLevel | null>(null);
+
+  useEffect(() => {
+    const handleDragOver = (event: Event) => {
+      const detail = (event as CustomEvent<{ level: RelationshipTierLevel | null }>).detail;
+      setDragOverLevel(detail?.level ?? null);
+    };
+    window.addEventListener("freed-friend-tier-dragover", handleDragOver);
+    return () => window.removeEventListener("freed-friend-tier-dragover", handleDragOver);
+  }, []);
+
+  return (
+    <div className="theme-dialog-divider border-b px-4 py-4" data-testid="relationship-tier-control">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+          Relationship
+        </p>
+        <span className="text-xs font-medium text-[color:var(--theme-text-primary)]">
+          {RELATIONSHIP_TIER_OPTIONS.find((option) => option.level === value)?.label ?? "Followed"}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 rounded-2xl bg-[color:var(--theme-bg-muted)] p-1">
+        {RELATIONSHIP_TIER_OPTIONS.map((option) => {
+          const active = option.level === value;
+          const dragTarget = option.level === dragOverLevel;
+          return (
+            <button
+              key={option.level}
+              type="button"
+              data-friend-tier-drop-value={option.level}
+              onClick={() => onChange(option.level)}
+              className={`rounded-xl px-2 py-2 text-xs font-semibold transition-colors ${
+                active
+                  ? "bg-[color:var(--theme-bg-card)] text-[color:var(--theme-text-primary)] shadow-[var(--theme-glow-sm)]"
+                  : "text-[color:var(--theme-text-muted)] hover:bg-[color:var(--theme-bg-card-hover)] hover:text-[color:var(--theme-text-primary)]"
+              } ${dragTarget ? "ring-2 ring-[color:var(--theme-accent-secondary)]" : ""}`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -126,7 +211,10 @@ function FriendListRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">{entry.friend.name}</p>
-            <CareDots level={entry.friend.careLevel} />
+            <div className="flex shrink-0 items-center gap-2">
+              <RelationshipTierBadge person={entry.friend} />
+              <CareDots level={entry.friend.careLevel} />
+            </div>
           </div>
           {entry.friend.bio && (
             <p className="mt-1 line-clamp-2 text-xs text-[color:var(--theme-text-muted)]">{entry.friend.bio}</p>
@@ -191,11 +279,13 @@ function friendSuggestionSignalLabel(suggestion: FriendCandidateSuggestion): str
 
 function FriendSuggestionEvidence({
   suggestion,
-  onPromote,
+  onPromoteToFriend,
+  onPromoteToFam,
   onDismiss,
 }: {
   suggestion: FriendCandidateSuggestion;
-  onPromote?: () => void;
+  onPromoteToFriend?: () => void;
+  onPromoteToFam?: () => void;
   onDismiss: (suggestionId: string) => void;
 }) {
   return (
@@ -209,7 +299,7 @@ function FriendSuggestionEvidence({
             Score {suggestion.score.toLocaleString()}, {suggestion.confidence} confidence
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
             onClick={() => onDismiss(suggestion.id)}
@@ -217,13 +307,22 @@ function FriendSuggestionEvidence({
           >
             Dismiss
           </button>
-          {onPromote ? (
+          {onPromoteToFriend ? (
             <button
               type="button"
-              onClick={onPromote}
+              onClick={onPromoteToFriend}
               className="btn-primary rounded-lg px-3 py-1.5 text-xs"
             >
               Promote to friend
+            </button>
+          ) : null}
+          {onPromoteToFam ? (
+            <button
+              type="button"
+              onClick={onPromoteToFam}
+              className="btn-primary rounded-lg px-3 py-1.5 text-xs"
+            >
+              Promote to Fam
             </button>
           ) : null}
         </div>
@@ -255,11 +354,15 @@ function FriendCandidateRow({
   selected,
   onSelect,
   onDismiss,
+  onPromoteToFriend,
+  onPromoteToFam,
 }: {
   suggestion: FriendCandidateSuggestion;
   selected: boolean;
   onSelect: () => void;
   onDismiss: (suggestionId: string) => void;
+  onPromoteToFriend: () => void;
+  onPromoteToFam: () => void;
 }) {
   const lastActivity = suggestion.lastActivityAt
     ? formatDistanceToNow(suggestion.lastActivityAt, { addSuffix: true })
@@ -295,13 +398,27 @@ function FriendCandidateRow({
           {suggestion.reasons.map((reason) => reason.label).join(", ")}
         </p>
       </button>
-      <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex flex-wrap justify-end gap-2">
         <button
           type="button"
           onClick={() => onDismiss(suggestion.id)}
           className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
         >
           Dismiss
+        </button>
+        <button
+          type="button"
+          onClick={onPromoteToFriend}
+          className="btn-primary rounded-lg px-3 py-1.5 text-xs"
+        >
+          Promote to friend
+        </button>
+        <button
+          type="button"
+          onClick={onPromoteToFam}
+          className="btn-primary rounded-lg px-3 py-1.5 text-xs"
+        >
+          Promote to Fam
         </button>
       </div>
     </div>
@@ -387,12 +504,12 @@ function contactAccountDraft(
   };
 }
 
-function friendDraftFromAccount(account: Account): Partial<Friend> {
+function friendDraftFromAccount(account: Account, careLevel: 3 | 5 = 3): Partial<Friend> {
   return {
     name: account.displayName ?? account.handle ?? account.externalId,
     avatarUrl: account.avatarUrl,
     relationshipStatus: "friend",
-    careLevel: 3,
+    careLevel,
     sources: account.kind === "social" ? [accountToFriendSource(account)] : [],
   };
 }
@@ -801,30 +918,79 @@ export function FriendsView({
     [updateAccount],
   );
 
-  const handlePromoteSelectedAccount = useCallback(async () => {
-    if (!selectedAccount) return;
-    const linkedPerson = selectedAccount.personId ? persons[selectedAccount.personId] ?? null : null;
-    if (linkedPerson && linkedPerson.relationshipStatus !== "friend") {
-      await updatePerson(linkedPerson.id, {
-        relationshipStatus: "friend",
-        careLevel: 3,
-        updatedAt: Date.now(),
-      });
-      setSelectedPerson(linkedPerson.id);
-      return;
-    }
-    setEditorState({ kind: "new", draft: friendDraftFromAccount(selectedAccount) });
-  }, [persons, selectedAccount, setSelectedPerson, updatePerson]);
-
-  const handlePromoteSelectedPerson = useCallback(async () => {
-    if (!selectedPerson || selectedPerson.relationshipStatus === "friend") return;
-    await updatePerson(selectedPerson.id, {
-      relationshipStatus: "friend",
-      careLevel: 3,
+  const handleSetPersonRelationshipLevel = useCallback(async (person: Person, level: RelationshipTierLevel) => {
+    await updatePerson(person.id, {
+      ...relationshipPatchForLevel(level),
       updatedAt: Date.now(),
     });
-    setSelectedPerson(selectedPerson.id);
-  }, [selectedPerson, setSelectedPerson, updatePerson]);
+    setSelectedPerson(person.id);
+  }, [setSelectedPerson, updatePerson]);
+
+  const handlePromoteSelectedAccount = useCallback(async (level: 3 | 5 = 3) => {
+    if (!selectedAccount) return;
+    const linkedPerson = selectedAccount.personId ? persons[selectedAccount.personId] ?? null : null;
+    if (linkedPerson) {
+      await handleSetPersonRelationshipLevel(linkedPerson, level);
+      return;
+    }
+    setEditorState({ kind: "new", draft: friendDraftFromAccount(selectedAccount, level) });
+  }, [handleSetPersonRelationshipLevel, persons, selectedAccount]);
+
+  const handlePromoteSelectedPerson = useCallback(async (level: 3 | 5 = 3) => {
+    if (!selectedPerson) return;
+    await handleSetPersonRelationshipLevel(selectedPerson, level);
+  }, [handleSetPersonRelationshipLevel, selectedPerson]);
+
+  const handlePromoteFriendSuggestion = useCallback(async (
+    suggestion: FriendCandidateSuggestion,
+    level: 3 | 5,
+  ) => {
+    if (suggestion.personId) {
+      const person = persons[suggestion.personId];
+      if (person) {
+        await handleSetPersonRelationshipLevel(person, level);
+        return;
+      }
+    }
+    const account = suggestion.accountIds.map((accountId) => accounts[accountId]).find(Boolean);
+    if (!account) return;
+    const linkedPerson = account.personId ? persons[account.personId] ?? null : null;
+    if (linkedPerson) {
+      await handleSetPersonRelationshipLevel(linkedPerson, level);
+      return;
+    }
+    setSelectedAccount(account.id);
+    setEditorState({ kind: "new", draft: friendDraftFromAccount(account, level) });
+  }, [accounts, handleSetPersonRelationshipLevel, persons, setSelectedAccount]);
+
+  const handleDropGraphNodeToRelationshipTier = useCallback(async ({
+    personId,
+    accountId,
+    level,
+  }: {
+    personId?: string;
+    accountId?: string;
+    level: RelationshipTierLevel;
+  }) => {
+    if (personId) {
+      const person = persons[personId];
+      if (person) {
+        await handleSetPersonRelationshipLevel(person, level);
+      }
+      return;
+    }
+
+    if (!accountId || level === 1) return;
+    const account = accounts[accountId];
+    if (!account) return;
+    const linkedPerson = account.personId ? persons[account.personId] ?? null : null;
+    if (linkedPerson) {
+      await handleSetPersonRelationshipLevel(linkedPerson, level);
+      return;
+    }
+    setSelectedAccount(account.id);
+    setEditorState({ kind: "new", draft: friendDraftFromAccount(account, level) });
+  }, [accounts, handleSetPersonRelationshipLevel, persons, setSelectedAccount]);
 
   const handleDismissFriendSuggestion = useCallback((suggestionId: string) => {
     const current = friendSuggestionPreferences?.dismissedSuggestionIds ?? [];
@@ -1007,7 +1173,7 @@ export function FriendsView({
           <select
             value={sortBy}
             onChange={(event) => setSortBy(event.target.value as FriendOverviewSort)}
-            className="theme-input theme-select rounded-lg px-2.5 py-1.5 text-xs"
+            className="theme-input theme-select min-w-[10.75rem] rounded-lg py-1.5 pl-2.5 pr-8 text-xs"
           >
             {SORT_OPTIONS.map((option) => (
               <option key={option.id} value={option.id}>
@@ -1019,15 +1185,12 @@ export function FriendsView({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {effectiveMode === "all_content" && friendCandidateSuggestions.length > 0 ? (
+        {friendCandidateSuggestions.length > 0 ? (
           <div className="mb-5" data-testid="friend-candidate-suggestions">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
                   Suggested friends
-                </p>
-                <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                  {friendCandidateSuggestions.length.toLocaleString()} candidate{friendCandidateSuggestions.length === 1 ? "" : "s"} from content and identity signals
                 </p>
               </div>
             </div>
@@ -1042,6 +1205,8 @@ export function FriendsView({
                   }
                   onSelect={() => handleSelectFriendCandidate(suggestion)}
                   onDismiss={handleDismissFriendSuggestion}
+                  onPromoteToFriend={() => void handlePromoteFriendSuggestion(suggestion, 3)}
+                  onPromoteToFam={() => void handlePromoteFriendSuggestion(suggestion, 5)}
                 />
               ))}
             </div>
@@ -1086,7 +1251,7 @@ export function FriendsView({
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{selectedPerson?.name}</h2>
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-              {selectedPerson?.relationshipStatus === "friend" ? "Friend detail" : "Provisional identity"}
+              {selectedPerson ? relationshipTierLabelForPerson(selectedPerson) : "Followed"}
             </p>
           </div>
         </div>
@@ -1102,14 +1267,18 @@ export function FriendsView({
         )}
       </div>
 
+      {selectedPerson ? (
+        <RelationshipTierControl
+          value={relationshipTierLevelForPerson(selectedPerson)}
+          onChange={(level) => void handleSetPersonRelationshipLevel(selectedPerson, level)}
+        />
+      ) : null}
+
       {selectedPersonFriendSuggestion ? (
         <FriendSuggestionEvidence
           suggestion={selectedPersonFriendSuggestion}
-          onPromote={
-            selectedPerson?.relationshipStatus === "connection"
-              ? () => void handlePromoteSelectedPerson()
-              : undefined
-          }
+          onPromoteToFriend={() => void handlePromoteSelectedPerson(3)}
+          onPromoteToFam={() => void handlePromoteSelectedPerson(5)}
           onDismiss={handleDismissFriendSuggestion}
         />
       ) : null}
@@ -1187,7 +1356,8 @@ export function FriendsView({
         persons={allPersons}
         feedItems={selectedAccountFeedItems}
         onBack={handleClearSelection}
-        onPromoteToFriend={handlePromoteSelectedAccount}
+        onPromoteToFriend={() => void handlePromoteSelectedAccount(3)}
+        onPromoteToFam={() => void handlePromoteSelectedAccount(5)}
         onDismissFriendSuggestion={handleDismissFriendSuggestion}
         onLinkToPerson={(personId) => void handleLinkAccountToPerson(selectedAccount.id, personId)}
         onOpenPerson={(personId) => {
@@ -1299,7 +1469,7 @@ export function FriendsView({
             ) : (
               <button
                 type="button"
-                onClick={handlePromoteSelectedAccount}
+                onClick={() => void handlePromoteSelectedAccount(3)}
                 className={BUTTON_CHROME}
               >
                 Promote to friend
@@ -1344,7 +1514,7 @@ export function FriendsView({
                     {selectedFriend.name}
                   </p>
                   <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                    {selectedPerson.relationshipStatus === "friend" ? "Friend" : "Provisional identity"}
+                    {relationshipTierLabelForPerson(selectedPerson)}
                   </p>
                 </div>
                 <button
@@ -1443,6 +1613,7 @@ export function FriendsView({
                 onLinkAccountToPerson={handleLinkAccountToPerson}
                 onPinPersonPosition={handlePinPersonPosition}
                 onPinAccountPosition={handlePinAccountPosition}
+                onDropNodeToRelationshipTier={handleDropGraphNodeToRelationshipTier}
                 friendSuggestionStrengthByPerson={friendSuggestionStrengthByPerson}
                 friendSuggestionStrengthByAccount={friendSuggestionStrengthByAccount}
                 themeId={themeId}

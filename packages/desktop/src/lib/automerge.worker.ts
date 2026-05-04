@@ -251,6 +251,7 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   const rankedItems = rankFeedItems(
     visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
     preferences.weights,
+    { persons, accounts },
   );
 
   const feedUnreadCounts: Record<string, number> = {};

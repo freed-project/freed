@@ -15,6 +15,7 @@ interface AccountDetailPanelProps {
   feedItems: FeedItem[];
   onBack: () => void;
   onPromoteToFriend: () => void;
+  onPromoteToFam: () => void;
   onDismissFriendSuggestion?: (suggestionId: string) => void;
   onLinkToPerson: (personId: string) => void;
   onOpenPerson: (personId: string) => void;
@@ -51,6 +52,7 @@ export function AccountDetailPanel({
   feedItems,
   onBack,
   onPromoteToFriend,
+  onPromoteToFam,
   onDismissFriendSuggestion,
   onLinkToPerson,
   onOpenPerson,
@@ -102,13 +104,22 @@ export function AccountDetailPanel({
           </div>
         </div>
         {!confirmedLinkedPerson ? (
-          <button
-            type="button"
-            onClick={onPromoteToFriend}
-            className="btn-primary rounded-lg px-3 py-1.5 text-xs"
-          >
-            Promote to friend
-          </button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={onPromoteToFriend}
+              className="btn-primary rounded-lg px-3 py-1.5 text-xs"
+            >
+              Promote to friend
+            </button>
+            <button
+              type="button"
+              onClick={onPromoteToFam}
+              className="btn-primary rounded-lg px-3 py-1.5 text-xs"
+            >
+              Promote to Fam
+            </button>
+          </div>
         ) : (
           <button
             type="button"
@@ -180,15 +191,31 @@ export function AccountDetailPanel({
                     Score {friendSuggestion.score.toLocaleString()}, {friendSuggestion.confidence} confidence
                   </p>
                 </div>
-                {onDismissFriendSuggestion ? (
+                <div className="flex flex-wrap justify-end gap-2">
+                  {onDismissFriendSuggestion ? (
+                    <button
+                      type="button"
+                      onClick={() => onDismissFriendSuggestion(friendSuggestion.id)}
+                      className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
+                    >
+                      Dismiss
+                    </button>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={() => onDismissFriendSuggestion(friendSuggestion.id)}
-                    className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
+                    onClick={onPromoteToFriend}
+                    className="btn-primary rounded-lg px-3 py-1.5 text-xs"
                   >
-                    Dismiss
+                    Promote to friend
                   </button>
-                ) : null}
+                  <button
+                    type="button"
+                    onClick={onPromoteToFam}
+                    className="btn-primary rounded-lg px-3 py-1.5 text-xs"
+                  >
+                    Promote to Fam
+                  </button>
+                </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {friendSuggestion.reasons.map((reason) => (

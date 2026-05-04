@@ -49,11 +49,11 @@ const platformIcons: Record<string, ReactNode> = {
 // ---------------------------------------------------------------------------
 
 const CARE_LABELS: Record<1 | 2 | 3 | 4 | 5, string> = {
-  5: "Closest — nudge weekly",
-  4: "Close — nudge every 2 weeks",
-  3: "Good friend — nudge monthly",
-  2: "Acquaintance — nudge quarterly",
-  1: "Peripheral — no nudges",
+  5: "Fam, nudge weekly",
+  4: "High friend, nudge every 2 weeks",
+  3: "Friend, nudge monthly",
+  2: "Acquaintance, nudge quarterly",
+  1: "Followed, no nudges",
 };
 
 // ---------------------------------------------------------------------------
@@ -372,7 +372,7 @@ export function FriendEditor({
               ))}
               <div className="mt-2">
                 <label className="text-xs text-text-secondary mb-1 block">
-                  Custom interval (days) — overrides the default above
+                  Custom interval (days), overrides the default above
                 </label>
                 <input
                   type="number"

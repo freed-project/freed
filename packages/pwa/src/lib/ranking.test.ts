@@ -9,7 +9,7 @@ import {
   filterFeedItems,
   sortByPriority,
 } from "@freed/shared";
-import type { FeedItem, WeightPreferences } from "@freed/shared";
+import type { Account, FeedItem, Person, WeightPreferences } from "@freed/shared";
 
 // =============================================================================
 // Test fixtures
@@ -142,6 +142,98 @@ describe("calculatePriority", () => {
     expect(calculatePriority(a, baseWeights, NOW)).toBe(
       calculatePriority(b, baseWeights, NOW)
     );
+  });
+
+  it("boosts Fam content more than regular friend content", () => {
+    const baseItem = makeItem({
+      globalId: "friend-item",
+      platform: "instagram",
+      author: { id: "friend-author", handle: "friend", displayName: "Friend Author" },
+      publishedAt: NOW - 1000 * 60 * 60,
+    });
+    const famItem = makeItem({
+      globalId: "fam-item",
+      platform: "instagram",
+      author: { id: "fam-author", handle: "fam", displayName: "Fam Author" },
+      publishedAt: baseItem.publishedAt,
+    });
+    const followedItem = makeItem({
+      globalId: "followed-item",
+      platform: "instagram",
+      author: { id: "followed-author", handle: "followed", displayName: "Followed Author" },
+      publishedAt: baseItem.publishedAt,
+    });
+    const persons: Record<string, Person> = {
+      "friend-person": {
+        id: "friend-person",
+        name: "Friend Person",
+        relationshipStatus: "friend",
+        careLevel: 3,
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+      "fam-person": {
+        id: "fam-person",
+        name: "Fam Person",
+        relationshipStatus: "friend",
+        careLevel: 5,
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+      "followed-person": {
+        id: "followed-person",
+        name: "Followed Person",
+        relationshipStatus: "connection",
+        careLevel: 1,
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+    };
+    const accounts: Record<string, Account> = {
+      "social:instagram:friend-author": {
+        id: "social:instagram:friend-author",
+        personId: "friend-person",
+        kind: "social",
+        provider: "instagram",
+        externalId: "friend-author",
+        firstSeenAt: NOW,
+        lastSeenAt: NOW,
+        discoveredFrom: "captured_item",
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+      "social:instagram:fam-author": {
+        id: "social:instagram:fam-author",
+        personId: "fam-person",
+        kind: "social",
+        provider: "instagram",
+        externalId: "fam-author",
+        firstSeenAt: NOW,
+        lastSeenAt: NOW,
+        discoveredFrom: "captured_item",
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+      "social:instagram:followed-author": {
+        id: "social:instagram:followed-author",
+        personId: "followed-person",
+        kind: "social",
+        provider: "instagram",
+        externalId: "followed-author",
+        firstSeenAt: NOW,
+        lastSeenAt: NOW,
+        discoveredFrom: "captured_item",
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+    };
+
+    const friendScore = calculatePriority(baseItem, baseWeights, NOW, { persons, accounts });
+    const famScore = calculatePriority(famItem, baseWeights, NOW, { persons, accounts });
+    const followedScore = calculatePriority(followedItem, baseWeights, NOW, { persons, accounts });
+
+    expect(famScore).toBeGreaterThan(friendScore);
+    expect(friendScore).toBeGreaterThan(followedScore);
   });
 });
 
