@@ -4352,6 +4352,7 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
   await expect.poll(async () => {
     return viewport.evaluate((element) => Number((element as HTMLElement).dataset.graphNodeCount ?? "0"));
   }).toBeGreaterThan(20);
+  await page.getByRole("button", { name: "Fit all" }).click();
 
   await expect
     .poll(async () => {
