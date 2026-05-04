@@ -274,6 +274,7 @@ Sample data now defaults to a showcase graph with 250 friends and 1,250 connecte
 Semantic zoom now promotes provider island labels at low zoom while delaying person and channel labels until the operator zooms in, so the graph reads as geography first and detail second.
 Suggested friends now appear in the Friends sidebar for both `Friends` and `All content` review flows when existing connection people or unlinked human-looking accounts have enough personal content, recent activity, linked-channel evidence, or Google Contacts overlap. Suggestions are ranked evidence only. Promotion and linking still require explicit operator action.
 The Friends sidebar now exposes the relationship model as Followed, Friends, and Fam. Those stops map to care levels 1, 3, and 5 without adding a new schema field, leaving levels 2 and 4 available for later fine tuning. Fam content receives a stronger ranking boost, but it still respects the active feed filters.
+Typed social profile search results now expose the same person workflow from the search menu: open the matched profile in Friends, focus them on Map, or promote the linked profile to Friends or Fam without detouring through the graph sidebar.
 
 ---
 
@@ -326,7 +327,7 @@ The Friends sidebar now exposes the relationship model as Followed, Friends, and
 | 8.39 | Persist optional graph placement and support drag-to-pin without breaking drag-to-link | Medium | Done |
 | 8.40 | Expand showcase and stress sample graph coverage to 250 friends plus 1,250 identities and 1,000 friends plus 5,000 identities | Medium | Done |
 | 8.41 | Add semantic zoom hierarchy so provider island labels dominate low zoom and person labels appear at closer zoom | Medium | Done |
-| 8.42 | Search and filter the primary feed by followed social channel names | Medium | Done |
+| 8.42 | Search and filter the primary feed by followed social channel names, with profile navigation and promotion commands | Medium | Done |
 | 8.43 | Add AI-ranked suggestion-only friend candidates from identity graph, contact, activity, and content signals | Medium | Done |
 
 ---
@@ -384,7 +385,7 @@ The Friends sidebar now exposes the relationship model as Followed, Friends, and
 - [x] Optional graph placement fields persist for persons and accounts
 - [x] Dragging a person or channel pins the graph position, while channel drops onto people still link accounts
 - [x] Stress coverage exercises 1,000 friends plus 5,000 connected social identities
-- [x] Primary search can find followed social channels by account name or handle and filter the feed to that exact channel
+- [x] Primary search can find followed social channels by account name or handle, filter the feed to that exact channel, open the profile in Friends or Map, and promote the profile to Friends or Fam
 - [x] Friends `All content` shows ranked suggested friends from connection people and unlinked human-looking accounts, with reasons, signal counts, sample item ids, dismissal, and explicit promotion only
 - [x] Graph benchmarks cover model build time, worker layout time, scene sync time, pan and zoom sync time, selection and hover sync time, visible label count, and quality mode transitions
 - [x] Desktop browser tests cover mixed-tier graph load, drag-to-link persistence, semantic zoom label growth, and a seeded dense-graph screenshot

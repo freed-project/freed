@@ -1,4 +1,4 @@
-import type { Account, FilterOptions, FeedItem, Platform } from "@freed/shared";
+import type { Account, FilterOptions, FeedItem, Person, Platform } from "@freed/shared";
 import { PLATFORM_LABELS } from "@freed/shared";
 import { accountTitle, providerLabel } from "./account-labels.js";
 import { toast } from "../components/Toast.js";
@@ -23,6 +23,7 @@ interface SourceDestination {
 
 interface SocialChannelDestination {
   account: Account;
+  person?: Person;
   personName?: string;
 }
 
@@ -45,6 +46,9 @@ interface BuildCommandPaletteActionsOptions {
   navigateToFeed: (filter: FilterOptions) => void;
   navigateToFriends: () => void;
   navigateToMap: () => void;
+  navigateToSocialProfileFriends?: ((account: Account, personId: string | null) => void) | null;
+  navigateToSocialProfileMap?: ((account: Account, personId: string | null) => void | Promise<void>) | null;
+  promoteSocialProfile?: ((account: Account, level: 3 | 5) => void | Promise<void>) | null;
   applyFeedSearch: (query: string) => void;
   openAddFeedDialog?: (() => void) | null;
   openSavedContentDialog?: (() => void) | null;
@@ -119,6 +123,9 @@ export function buildCommandPaletteActions({
   navigateToFeed,
   navigateToFriends,
   navigateToMap,
+  navigateToSocialProfileFriends,
+  navigateToSocialProfileMap,
+  promoteSocialProfile,
   applyFeedSearch,
   openAddFeedDialog,
   openSavedContentDialog,
@@ -215,6 +222,9 @@ export function buildCommandPaletteActions({
       : []),
   ];
 
+  const profileActionLabel = (account: Account, person?: Person, personName?: string): string =>
+    person?.name ?? personName ?? accountTitle(account);
+
   for (const source of topSources) {
     actions.push({
       id: `go-source-${source.id ?? "all"}`,
@@ -240,8 +250,8 @@ export function buildCommandPaletteActions({
       });
     }
 
-    for (const { account, personName } of socialChannels
-      .filter(({ account, personName }) =>
+    for (const { account, person, personName } of socialChannels
+      .filter(({ account, person, personName }) =>
         candidateMatchesQuery(
           [
             accountTitle(account),
@@ -251,6 +261,7 @@ export function buildCommandPaletteActions({
             account.externalId,
             account.externalId.slice(-8),
             providerLabel(account.provider),
+            person?.name,
             personName,
             "channel",
             "social",
@@ -278,6 +289,98 @@ export function buildCommandPaletteActions({
         entity: true,
         run: () => navigateToFeed({ platform: account.provider as Platform, authorId: account.externalId }),
       });
+
+      const profileLabel = profileActionLabel(account, person, personName);
+      const personId = person?.id ?? account.personId ?? null;
+
+      if (navigateToSocialProfileFriends) {
+        actions.push({
+          id: `go-profile-friends-${account.id}`,
+          title: `${profileLabel}'s Friends view`,
+          section: "Go to",
+          keywords: [
+            profileLabel.toLocaleLowerCase(),
+            account.externalId.toLocaleLowerCase(),
+            account.handle?.toLocaleLowerCase() ?? "",
+            withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
+            "friends",
+            "profile",
+            "person",
+            "relationship",
+          ].filter(Boolean),
+          entity: true,
+          run: () => navigateToSocialProfileFriends(account, personId),
+        });
+      }
+
+      if (navigateToSocialProfileMap) {
+        actions.push({
+          id: `go-profile-map-${account.id}`,
+          title: `${profileLabel} on Map`,
+          section: "Go to",
+          keywords: [
+            profileLabel.toLocaleLowerCase(),
+            account.externalId.toLocaleLowerCase(),
+            account.handle?.toLocaleLowerCase() ?? "",
+            withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
+            "map",
+            "location",
+            "person",
+          ].filter(Boolean),
+          entity: true,
+          run: () => navigateToSocialProfileMap(account, personId),
+        });
+      }
+
+      if (promoteSocialProfile) {
+        const alreadyFriend = person?.relationshipStatus === "friend";
+        const alreadyCloseFriend = alreadyFriend && person.careLevel >= 5;
+        if (!alreadyFriend) {
+          actions.push({
+            id: `promote-profile-friend-${account.id}`,
+            title: `Promote ${profileLabel} to friend`,
+            section: "People",
+            keywords: [
+              profileLabel.toLocaleLowerCase(),
+              account.externalId.toLocaleLowerCase(),
+              account.handle?.toLocaleLowerCase() ?? "",
+              withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
+              "friend",
+              "promote",
+              "relationship",
+            ].filter(Boolean),
+            entity: true,
+            run: () =>
+              runWithToast(
+                () => promoteSocialProfile(account, 3),
+                `${profileLabel} promoted to friend`,
+              ),
+          });
+        }
+        if (!alreadyCloseFriend) {
+          actions.push({
+            id: `promote-profile-close-friend-${account.id}`,
+            title: `Promote ${profileLabel} to close friend`,
+            section: "People",
+            keywords: [
+              profileLabel.toLocaleLowerCase(),
+              account.externalId.toLocaleLowerCase(),
+              account.handle?.toLocaleLowerCase() ?? "",
+              withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
+              "close friend",
+              "fam",
+              "promote",
+              "relationship",
+            ].filter(Boolean),
+            entity: true,
+            run: () =>
+              runWithToast(
+                () => promoteSocialProfile(account, 5),
+                `${profileLabel} promoted to close friend`,
+              ),
+          });
+        }
+      }
     }
   }
 
