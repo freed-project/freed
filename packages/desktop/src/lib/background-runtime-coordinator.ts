@@ -7,6 +7,7 @@ export type BackgroundJobKind =
   | "content-fetch"
   | "outbox"
   | "rss-poll"
+  | "semantic-classifier"
   | "snapshot";
 
 export interface RendererHeartbeatNote {
@@ -22,9 +23,19 @@ export interface BackgroundRuntimeStatus {
   rendererReady: boolean;
   cooldownUntil: number | null;
   pressureLevel: "normal" | "high" | "critical";
+  safeModeUntil: number | null;
+  lastRecoveryPhase: string | null;
+  lastRecoveryReason: string | null;
   activeJob: BackgroundJobKind | null;
   activeSource: string | null;
   activeAgeMs: number | null;
+}
+
+export interface RendererRecoveryStateEvent {
+  phase: "stale" | "recovery_attempt" | "safe_mode" | "rebuilt" | "recovered";
+  reason?: string;
+  safeModeActive?: boolean;
+  safeModeRemainingMs?: number | null;
 }
 
 export interface BackgroundRuntimeTask<T> {
@@ -41,6 +52,9 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 
 let healthyHeartbeats = 0;
 let cooldownUntil = 0;
+let safeModeUntil = 0;
+let lastRecoveryPhase: string | null = null;
+let lastRecoveryReason: string | null = null;
 let pressureLevel: "normal" | "high" | "critical" = "normal";
 let activeJob: {
   kind: BackgroundJobKind;
@@ -82,7 +96,31 @@ export function noteRendererHeartbeat(_payload: RendererHeartbeatNote): void {
 
 export function noteRendererRecovery(reason: string): void {
   healthyHeartbeats = 0;
+  lastRecoveryPhase = "recovery";
+  lastRecoveryReason = reason;
   markCooldown(CRITICAL_PRESSURE_COOLDOWN_MS, `renderer_recovery:${reason}`);
+}
+
+export function noteRendererRecoveryState(event: RendererRecoveryStateEvent): void {
+  lastRecoveryPhase = event.phase;
+  lastRecoveryReason = event.reason ?? null;
+
+  if (event.phase === "recovered") {
+    safeModeUntil = 0;
+    return;
+  }
+
+  if (event.phase === "stale" || event.phase === "recovery_attempt" || event.phase === "safe_mode") {
+    healthyHeartbeats = 0;
+    const reason = event.reason ?? event.phase;
+    markCooldown(CRITICAL_PRESSURE_COOLDOWN_MS, `renderer_${event.phase}:${reason}`);
+  }
+
+  if (event.safeModeActive || event.phase === "safe_mode") {
+    const durationMs = Math.max(event.safeModeRemainingMs ?? CRITICAL_PRESSURE_COOLDOWN_MS, CRITICAL_PRESSURE_COOLDOWN_MS);
+    safeModeUntil = Math.max(safeModeUntil, nowMs() + durationMs);
+    markCooldown(durationMs, `renderer_safe_mode:${event.reason ?? "repeated_recovery"}`);
+  }
 }
 
 export function noteMemoryPressure(snapshot: RuntimeMemorySnapshot): void {
@@ -101,6 +139,9 @@ export function getBackgroundRuntimeStatus(): BackgroundRuntimeStatus {
     rendererReady: !requireRendererHealth || healthyHeartbeats >= REQUIRED_HEALTHY_HEARTBEATS,
     cooldownUntil: cooldownUntil > nowMs() ? cooldownUntil : null,
     pressureLevel,
+    safeModeUntil: safeModeUntil > nowMs() ? safeModeUntil : null,
+    lastRecoveryPhase,
+    lastRecoveryReason,
     activeJob: activeJob?.kind ?? null,
     activeSource: activeJob?.source ?? null,
     activeAgeMs,
@@ -115,8 +156,16 @@ export function canStartBackgroundJob(kind: BackgroundJobKind): { ok: true } | {
     };
   }
 
+  const safeModeRemainingMs = safeModeUntil - nowMs();
+  if (safeModeRemainingMs > 0 && kind !== "snapshot") {
+    return {
+      ok: false,
+      reason: `renderer_safe_mode:${Math.ceil(safeModeRemainingMs).toLocaleString()}`,
+    };
+  }
+
   const cooldownRemainingMs = cooldownUntil - nowMs();
-  if (cooldownRemainingMs > 0) {
+  if (cooldownRemainingMs > 0 && kind !== "snapshot") {
     return {
       ok: false,
       reason: `cooldown:${Math.ceil(cooldownRemainingMs).toLocaleString()}`,
@@ -174,6 +223,9 @@ export async function runBackgroundJob<T>(task: BackgroundRuntimeTask<T>): Promi
 export function resetBackgroundRuntimeForTests(options?: { requireRendererHealth?: boolean }): void {
   healthyHeartbeats = 0;
   cooldownUntil = 0;
+  safeModeUntil = 0;
+  lastRecoveryPhase = null;
+  lastRecoveryReason = null;
   pressureLevel = "normal";
   activeJob = null;
   requireRendererHealth = options?.requireRendererHealth ?? false;

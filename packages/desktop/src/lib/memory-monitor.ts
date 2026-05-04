@@ -23,6 +23,17 @@ interface NativeRuntimeMemoryStats {
   webkitProcessCount?: number;
   webkitLargestResidentBytes?: number;
   webkitLargestProcessId?: number;
+  webkitLargestCpuUsage?: number;
+  webkitLargestAgeSeconds?: number;
+  webkitLargestRole?: string;
+  webkitProcesses?: Array<{
+    processId: number;
+    residentBytes: number;
+    virtualBytes: number;
+    cpuUsage: number;
+    ageSeconds: number;
+    role: string;
+  }>;
   webkitTelemetryAvailable?: boolean;
   indexedDbBytes?: number;
   webkitCacheBytes?: number;
@@ -38,6 +49,7 @@ interface ScrapeMemoryPreparation {
   recycledScraperWindows: boolean;
   cacheTrimmed: boolean;
   mayProceed: boolean;
+  deferredReason?: string;
 }
 
 interface BrowserMemoryStats {
@@ -70,6 +82,10 @@ let peakRelayDocBytes = 0;
 let lastCriticalToastAt = 0;
 let currentPressureLevel: MemoryPressureLevel = "normal";
 let currentPressureSampleAt = 0;
+let socialPreflightLease: Promise<ScrapeMemoryPreparation> | null = null;
+let socialPreflightDeferredUntil = 0;
+let socialPreflightDeferredResult: ScrapeMemoryPreparation | null = null;
+let socialPreflightDeferredReason = "";
 
 type MemoryPressureLevel = "normal" | "high" | "critical";
 
@@ -124,6 +140,10 @@ function emptyNativeRuntimeMemoryStats(): NativeRuntimeMemoryStats {
     webkitProcessCount: 0,
     webkitLargestResidentBytes: undefined,
     webkitLargestProcessId: undefined,
+    webkitLargestCpuUsage: undefined,
+    webkitLargestAgeSeconds: undefined,
+    webkitLargestRole: undefined,
+    webkitProcesses: [],
     webkitTelemetryAvailable: false,
     indexedDbBytes: undefined,
     webkitCacheBytes: undefined,
@@ -157,6 +177,9 @@ async function sampleRuntimeMemory(
   const pressureLevel = getMemoryPressureLevel(pressureBytes, limits);
   currentPressureLevel = pressureLevel;
   currentPressureSampleAt = Date.now();
+  if (typeof document !== "undefined") {
+    document.documentElement.dataset.memoryPressure = pressureLevel;
+  }
 
   peakResidentBytes = Math.max(peakResidentBytes, pressureBytes);
   peakWebkitResidentBytes = Math.max(
@@ -177,6 +200,10 @@ async function sampleRuntimeMemory(
     webkitProcessCount: native.webkitProcessCount,
     webkitLargestResidentBytes: native.webkitLargestResidentBytes,
     webkitLargestProcessId: native.webkitLargestProcessId,
+    webkitLargestCpuUsage: native.webkitLargestCpuUsage,
+    webkitLargestAgeSeconds: native.webkitLargestAgeSeconds,
+    webkitLargestRole: native.webkitLargestRole,
+    webkitProcesses: native.webkitProcesses,
     webkitTelemetryAvailable: native.webkitTelemetryAvailable,
     automergeBinaryBytes: automerge?.binaryBytes,
     automergeItemCount: automerge?.itemCount,
@@ -314,10 +341,40 @@ export async function prepareSocialScrapeMemory(
     };
   }
 
-  return invoke<ScrapeMemoryPreparation>("prepare_social_scrape_memory", {
+  const now = Date.now();
+  if (socialPreflightDeferredResult && now < socialPreflightDeferredUntil) {
+    return {
+      ...socialPreflightDeferredResult,
+      deferredReason: socialPreflightDeferredReason,
+      mayProceed: false,
+    };
+  }
+
+  if (socialPreflightLease) {
+    return socialPreflightLease;
+  }
+
+  socialPreflightLease = invoke<ScrapeMemoryPreparation>("prepare_social_scrape_memory", {
     provider,
     operation,
-  });
+  })
+    .then((result) => {
+      if (!result.mayProceed) {
+        socialPreflightDeferredUntil = Date.now() + 60_000;
+        socialPreflightDeferredResult = result;
+        socialPreflightDeferredReason = `${provider}:${operation}`;
+      } else {
+        socialPreflightDeferredUntil = 0;
+        socialPreflightDeferredResult = null;
+        socialPreflightDeferredReason = "";
+      }
+      return result;
+    })
+    .finally(() => {
+      socialPreflightLease = null;
+    });
+
+  return socialPreflightLease;
 }
 
 export function stopMemoryMonitor(): void {

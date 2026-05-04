@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, X, Facebook, and Instagram reply hydration for the reader, captured authors now feeding the Phase 8 account catalog for identity review, and a local permanent media vault for a user's own Meta media
+> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, shared memory-preflight backoff, Facebook group controls, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, X, Facebook, and Instagram reply hydration for the reader, captured authors now feeding the Phase 8 account catalog for identity review, and a local permanent media vault for a user's own Meta media
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -109,6 +109,8 @@ Story replies are treated differently from post comments. Facebook and Instagram
 
 Background scrape and auth-check sessions now force provider media elements silent through the injected WebKit mask layer. Audio elements are paused outright, video elements are forced muted, and newly inserted media is re-silenced as the DOM changes.
 
+Social memory preflight now has shared backoff across Facebook, Instagram, and LinkedIn. When one provider cannot start because Freed Desktop memory is high after cleanup, the next providers reuse that deferred result instead of immediately opening more WebKit work.
+
 ### Permanent Media Archive
 
 Facebook and Instagram settings now expose a local-only media archive for the user's own uploaded media. This is not the standard content cache. Files are copied under the Freed Desktop app-data folder in `media-vault/{provider}` and are kept until the user explicitly deletes the archive, removes that provider archive, or factory-resets Freed Desktop.
@@ -165,6 +167,7 @@ const RATE_LIMITS = {
 | 7.18 | Own-profile backfill crawler                | 🚧 In Progress |
 | 7.19 | Reader reply hydration for X posts          | ✓ Complete  |
 | 7.20 | Reader comment hydration for Facebook and Instagram posts | ✓ Complete |
+| 7.21 | Shared social memory-preflight backoff      | ✓ Complete  |
 
 ---
 
@@ -191,6 +194,7 @@ const RATE_LIMITS = {
 - [x] Social provider status dots switch to a live spinner while that provider is actively syncing
 - [x] Social provider sections include a filtered line-by-line scrape log so users can see what the scraper is doing in real time without expanding the outer Settings view
 - [x] Desktop social scraper commands serialize behind a shared native session lock so background WebKit jobs cannot overlap and starve the main renderer
+- [x] Social memory preflight blocks fan-out across providers when Freed Desktop memory remains high after cleanup
 - [x] Facebook, Instagram, and LinkedIn extractors expand common long-text controls before normalization
 - [x] Social provider source menus surface a quick status explanation for warning or reconnect states before routing into full settings
 - [x] Captured social authors can backfill the Phase 8 account catalog so followed accounts exist before identity confirmation
