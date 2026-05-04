@@ -85,7 +85,12 @@ import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
 import { startMemoryMonitor, stopMemoryMonitor } from "./lib/memory-monitor";
-import { noteMemoryPressure, noteRendererHeartbeat } from "./lib/background-runtime-coordinator";
+import {
+  noteMemoryPressure,
+  noteRendererHeartbeat,
+  noteRendererRecoveryState,
+  type RendererRecoveryStateEvent,
+} from "./lib/background-runtime-coordinator";
 import {
   bootstrapDesktopReleaseChannel,
   loadDesktopReleaseChannelState,
@@ -255,6 +260,27 @@ function App() {
       log.info("[app] system resume (wake)");
     }).then((unlisten) => cleanups.push(unlisten));
 
+    listen<RendererRecoveryStateEvent>("renderer-recovery-state", (event) => {
+      noteRendererRecoveryState(event.payload);
+      if (typeof document !== "undefined") {
+        document.documentElement.dataset.rendererRecoveryPhase = event.payload.phase;
+        document.documentElement.dataset.rendererSafeMode = String(Boolean(event.payload.safeModeActive));
+      }
+      if (event.payload.phase === "safe_mode") {
+        stopContentFetcher();
+        stopSemanticClassifier();
+        toast.error("Freed paused background work while the renderer recovers", {
+          actionLabel: "Restart",
+          onAction: () => {
+            void relaunch();
+          },
+        });
+      }
+      if (event.payload.phase === "recovered" && typeof document !== "undefined") {
+        document.documentElement.dataset.rendererSafeMode = "false";
+      }
+    }).then((unlisten) => cleanups.push(unlisten));
+
     return () => cleanups.forEach((fn) => fn());
   }, [legalAccepted]);
 
@@ -265,16 +291,45 @@ function App() {
     if (!canEmitRendererHeartbeat) return;
 
     let heartbeatSeq = 0;
+    const pageLoadId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now().toLocaleString()}-${Math.random().toString(36).slice(2)}`;
+    const startedAt = performance.now();
+    let expectedHeartbeatAt = performance.now();
+    let lastInputAt = performance.now();
+
+    const noteInput = () => {
+      lastInputAt = performance.now();
+    };
 
     const sendRendererHeartbeat = (reason: string) => {
       heartbeatSeq += 1;
+      const now = performance.now();
+      const perf = performance as Performance & {
+        memory?: {
+          usedJSHeapSize?: number;
+          totalJSHeapSize?: number;
+        };
+      };
       const payload = {
         seq: heartbeatSeq,
         ts: Date.now(),
         reason,
         visibility: document.visibilityState,
         href: window.location.href,
+        pageLoadId,
+        uptimeMs: Math.max(0, Math.round(now - startedAt)),
+        appPhase: legalAccepted ? "ready" : "legal",
+        eventLoopLagMs: Math.max(0, now - expectedHeartbeatAt),
+        domNodeCount: document.getElementsByTagName("*").length,
+        rendererHeapUsedBytes: perf.memory?.usedJSHeapSize,
+        rendererHeapTotalBytes: perf.memory?.totalJSHeapSize,
+        lastInputAgeMs: Math.max(0, Math.round(now - lastInputAt)),
+        settingsOpen: Boolean(document.querySelector(".theme-settings-shell")),
+        dialogOpen: Boolean(document.querySelector(".theme-dialog-shell")),
       };
+      expectedHeartbeatAt = now + RENDERER_HEARTBEAT_INTERVAL_MS;
       noteRendererHeartbeat(payload);
       if (import.meta.env.VITE_TEST_TAURI === "1") {
         const testWindow = window as unknown as { __FREED_RENDERER_HEARTBEATS__?: number };
@@ -301,15 +356,19 @@ function App() {
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pointerdown", noteInput, { passive: true });
+    window.addEventListener("keydown", noteInput);
     window.addEventListener("pagehide", handlePageHide);
 
     return () => {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pointerdown", noteInput);
+      window.removeEventListener("keydown", noteInput);
       window.removeEventListener("pagehide", handlePageHide);
       sendRendererHeartbeat("cleanup");
     };
-  }, []);
+  }, [legalAccepted]);
 
   // --- Update system ---
 

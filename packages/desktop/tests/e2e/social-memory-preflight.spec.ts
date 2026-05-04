@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures/app";
 
 const MEMORY_PRESSURE_COPY =
-  "Facebook sync did not start because Freed Desktop memory is critically high.";
+  "Facebook sync did not start because Freed Desktop memory is high.";
 
 async function seedAcceptedDesktopConsent(page: import("@playwright/test").Page) {
   await page.addInitScript(() => {
