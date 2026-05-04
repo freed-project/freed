@@ -76,7 +76,8 @@ const BACKGROUND_RECOVERY_COOLDOWN: Duration = Duration::from_secs(120);
 const BACKGROUND_JOB_MAX_HELD: Duration = Duration::from_secs(120);
 const FORCE_EXIT_AFTER_RESTART_REQUEST: Duration = Duration::from_secs(8);
 const MAIN_WINDOW_RELEASE_POLL_INTERVAL: Duration = Duration::from_millis(50);
-const MAIN_WINDOW_RELEASE_POLL_ATTEMPTS: usize = 20;
+const MAIN_WINDOW_RELEASE_POLL_ATTEMPTS: usize = 100;
+const MAIN_THREAD_WINDOW_STEP_TIMEOUT: Duration = Duration::from_secs(5);
 const LOCAL_AI_DOWNLOAD_PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
     (function() {
@@ -1197,6 +1198,11 @@ mod renderer_watchdog_tests {
             renderer_recovery_threshold(false, "hidden"),
             RENDERER_HIDDEN_RECOVERY_AFTER
         );
+    }
+
+    #[test]
+    fn main_window_release_timeout_allows_main_loop_to_unregister_label() {
+        assert_eq!(main_window_release_timeout_ms(), 5_000);
     }
 
     #[test]
@@ -4657,8 +4663,12 @@ fn wait_for_main_window_release(app: &tauri::AppHandle, reason: &str) -> Result<
 
     Err(format!(
         "main window label stayed registered for {} ms after destroy",
-        MAIN_WINDOW_RELEASE_POLL_INTERVAL.as_millis() * MAIN_WINDOW_RELEASE_POLL_ATTEMPTS as u128
+        main_window_release_timeout_ms()
     ))
+}
+
+fn main_window_release_timeout_ms() -> u128 {
+    MAIN_WINDOW_RELEASE_POLL_INTERVAL.as_millis() * MAIN_WINDOW_RELEASE_POLL_ATTEMPTS as u128
 }
 
 #[cfg(target_os = "macos")]
@@ -4797,31 +4807,27 @@ fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tau
     Ok(window)
 }
 
-fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
-    let app_for_recovery = app.clone();
-    let reason_for_recovery = reason.to_string();
+fn run_main_window_step_on_main_thread<F, T>(
+    app: &tauri::AppHandle,
+    context: &'static str,
+    step: F,
+) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
     let (tx, rx) = std::sync::mpsc::channel();
 
     app.run_on_main_thread(move || {
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            recover_main_window_on_main_thread(&app_for_recovery, &reason_for_recovery)
-        }))
-        .unwrap_or_else(|_| Err("renderer recovery panicked on main thread".to_string()));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(step))
+            .unwrap_or_else(|_| Err(format!("{context} panicked on main thread")));
         let _ = tx.send(outcome);
     })
-    .map_err(|error| format!("failed to schedule renderer recovery on main thread: {error}"))?;
+    .map_err(|error| format!("failed to schedule {context} on main thread: {error}"))?;
 
-    match rx.recv_timeout(Duration::from_secs(15)) {
+    match rx.recv_timeout(MAIN_THREAD_WINDOW_STEP_TIMEOUT) {
         Ok(outcome) => outcome,
-        Err(error) => {
-            let message = format!("timed out waiting for main-thread renderer recovery: {error}");
-            error!(
-                "[main-window] {}; requesting app restart reason={}",
-                message, reason
-            );
-            request_restart_after_recovery_failure(app, reason, &message);
-            Err(message)
-        }
+        Err(error) => Err(format!("timed out waiting for {context}: {error}")),
     }
 }
 
@@ -4851,9 +4857,23 @@ fn request_restart_after_recovery_failure(app: &tauri::AppHandle, reason: &str, 
     });
 }
 
-fn recover_main_window_on_main_thread(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
-    let _keepalive = open_main_window_recovery_keepalive(app, reason)?;
-    let outcome = recover_main_window_with_keepalive(app, reason);
+fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
+    let app_for_destroy = app.clone();
+    let reason_for_destroy = reason.to_string();
+    let outcome =
+        run_main_window_step_on_main_thread(app, "renderer recovery destroy", move || {
+            open_main_window_recovery_keepalive(&app_for_destroy, &reason_for_destroy)?;
+            destroy_main_window_for_recovery(&app_for_destroy, &reason_for_destroy)
+        })
+        .and_then(|was_visible| {
+            wait_for_main_window_release(app, reason)?;
+
+            let app_for_create = app.clone();
+            let reason_for_create = reason.to_string();
+            run_main_window_step_on_main_thread(app, "renderer recovery rebuild", move || {
+                rebuild_main_window_after_recovery(&app_for_create, &reason_for_create, was_visible)
+            })
+        });
 
     if outcome.is_ok() {
         close_main_window_recovery_keepalive(app, reason);
@@ -4863,17 +4883,13 @@ fn recover_main_window_on_main_thread(app: &tauri::AppHandle, reason: &str) -> R
             reason, error
         );
         request_restart_after_recovery_failure(app, reason, error);
-
-        if let Ok(window) = open_or_focus_recovery_window(app) {
-            show_webview_window(&window);
-            close_main_window_recovery_keepalive(app, reason);
-        }
+        close_main_window_recovery_keepalive(app, reason);
     }
 
     outcome
 }
 
-fn recover_main_window_with_keepalive(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
+fn destroy_main_window_for_recovery(app: &tauri::AppHandle, reason: &str) -> Result<bool, String> {
     let was_visible = app
         .get_webview_window(MAIN_WINDOW_LABEL)
         .and_then(|window| window.is_visible().ok())
@@ -4885,9 +4901,16 @@ fn recover_main_window_with_keepalive(app: &tauri::AppHandle, reason: &str) -> R
             .destroy()
             .map_err(|error| format!("destroy failed: {}", error))?;
         info!("[main-window] destroyed stale renderer ({})", reason);
-        wait_for_main_window_release(app, reason)?;
     }
 
+    Ok(was_visible)
+}
+
+fn rebuild_main_window_after_recovery(
+    app: &tauri::AppHandle,
+    reason: &str,
+    was_visible: bool,
+) -> Result<(), String> {
     let window = create_main_window(app).map_err(|error| error.to_string())?;
 
     if was_visible {
