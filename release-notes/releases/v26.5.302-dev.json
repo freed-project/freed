@@ -1,0 +1,66 @@
+{
+  "tag": "v26.5.302-dev",
+  "version": "26.5.302-dev",
+  "channel": "dev",
+  "dayKey": "26.5.3",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-04T00:39:19.217Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.301-dev",
+    "previousPublishedDayTag": "v26.5.201-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.300-dev",
+      "v26.5.301-dev",
+      "v26.5.302-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.300-dev",
+      "v26.5.301-dev",
+      "v26.5.302-dev"
+    ],
+    "prNumbers": [
+      399,
+      401,
+      402,
+      403,
+      404,
+      406
+    ],
+    "commitSubjects": [
+      "feat: add friends relationship tiers (#404)",
+      "chore: slim desktop e2e gates (#406)",
+      "release: approve v26.5.301-dev notes",
+      "release: v26.5.301-dev",
+      "fix: stabilize desktop feed scroll layout (#402)",
+      "release: approve v26.5.300-dev notes",
+      "release: v26.5.300-dev",
+      "fix: harden desktop background runtime recovery (#403)",
+      "feat: refine sidebar rows and card density (#399)",
+      "fix: promote linked accounts without duplicate drafts (#401)"
+    ]
+  },
+  "release": {
+    "deck": "Harden startup recovery and refine feed layout",
+    "features": [
+      "Friends relationship tiers",
+      "Refine sidebar rows and card density",
+      "Added fixed-height desktop feed cards and story rows so media loading no longer changes scroll position"
+    ],
+    "fixes": [
+      "Desktop feed scroll layout are now more stable",
+      "Harden desktop background runtime recovery",
+      "Promote linked accounts without duplicate drafts",
+      "Tightened collapsed feed filter menu headings, copy, spacing, and classification selection animation"
+    ],
+    "followUps": [
+      "Slim desktop e2e gates",
+      "Added compact, comfortable, and expansive feed card density controls with matching skeleton heights and bounded internal scrolling for floating menus"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.302-dev\n\nHarden startup recovery and refine feed layout\n\n### Features\n\n- Friends relationship tiers\n- Refine sidebar rows and card density\n- Added fixed-height desktop feed cards and story rows so media loading no longer changes scroll position\n\n### Fixes\n\n- Desktop feed scroll layout are now more stable\n- Harden desktop background runtime recovery\n- Promote linked accounts without duplicate drafts\n- Tightened collapsed feed filter menu headings, copy, spacing, and classification selection animation\n\n### Follow-ups\n\n- Slim desktop e2e gates\n- Added compact, comfortable, and expansive feed card density controls with matching skeleton heights and bounded internal scrolling for floating menus\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
