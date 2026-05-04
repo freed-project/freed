@@ -2,13 +2,17 @@
   "channel": "dev",
   "dayKey": "26.5.4",
   "date": "2026-05-04",
-  "preferredDeck": null,
+  "preferredDeck": "Freed Desktop is calmer during renderer memory spikes",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
-  "pinnedHighlights": [],
+  "pinnedHighlights": [
+    "Freed Desktop now pauses heavy background work before high renderer memory can force repeated recovery.",
+    "Renderer diagnostics now record memory footprint, route, visibility, generation, recovery state, and active jobs.",
+    "Social sync now defers shared scheduler work when memory preflight fails instead of cycling providers."
+  ],
   "editorialNotes": [],
   "updatedAt": "2026-05-04T20:49:00.374Z"
 }

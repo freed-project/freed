@@ -3,7 +3,7 @@
   "version": "26.5.401-dev",
   "channel": "dev",
   "dayKey": "26.5.4",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-04T20:49:00.374Z",
   "model": "heuristic",
@@ -37,10 +37,20 @@
     ]
   },
   "release": {
-    "deck": "Stale renderer without blocking main thread, let startup recovery dialog scroll, and renderer recovery under memory pressure are now more stable",
+    "deck": "Freed Desktop is calmer during renderer memory spikes",
     "features": [],
-    "fixes": [],
-    "followUps": []
+    "fixes": [
+      "Freed Desktop now pauses heavy background work before high renderer memory can force repeated recovery.",
+      "Renderer health events now include generation, route, visibility, memory footprint, recovery state, and active background work.",
+      "High memory social sync preflights now defer the shared scheduler instead of cycling through every provider.",
+      "Stale renderer recovery now uses safer backoff and safe mode gates after repeated stalls.",
+      "Startup recovery and Settings copy now distinguish high memory from critical memory."
+    ],
+    "followUps": [
+      "Local diagnostics now write bounded runtime bundles for memory pressure, stale heartbeats, and pre-recovery samples.",
+      "Startup recovery UI can scroll when the dialog content is taller than the window.",
+      "Visible archive actions now batch state work more aggressively."
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.401-dev\n\nStale renderer without blocking main thread, let startup recovery dialog scroll, and renderer recovery under memory pressure are now more stable\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.401-dev\n\nFreed Desktop is calmer during renderer memory spikes\n\n### Fixes\n\n- Freed Desktop now pauses heavy background work before high renderer memory can force repeated recovery.\n- Renderer health events now include generation, route, visibility, memory footprint, recovery state, and active background work.\n- High memory social sync preflights now defer the shared scheduler instead of cycling through every provider.\n- Stale renderer recovery now uses safer backoff and safe mode gates after repeated stalls.\n- Startup recovery and Settings copy now distinguish high memory from critical memory.\n\n### Follow-ups\n\n- Local diagnostics now write bounded runtime bundles for memory pressure, stale heartbeats, and pre-recovery samples.\n- Startup recovery UI can scroll when the dialog content is taller than the window.\n- Visible archive actions now batch state work more aggressively.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
