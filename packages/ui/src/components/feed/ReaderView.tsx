@@ -14,6 +14,10 @@ import {
   getReaderOfflineCacheMode,
   shouldPinOpenedReaderItem,
 } from "../../lib/reader-cache-settings.js";
+import {
+  getPassiveDragRegionProps,
+  noDragRegionStyle as noDrag,
+} from "../../lib/native-drag-region.js";
 import { Tooltip } from "../Tooltip.js";
 import { ExternalLinkIcon, TrashIcon } from "../icons.js";
 
@@ -199,7 +203,6 @@ const HEADING_CLASSES: Record<number, string> = {
   6: "mt-4 mb-2 text-sm font-medium text-[var(--theme-text-primary)]",
 };
 
-const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 const STORY_REPLY_MESSAGE = "Story replies are private on this platform. Open the story to reply there.";
 
 export function ReaderView({ item, onClose, dualColumn = false, inline = false, onOpenUrl }: ReaderViewProps) {
@@ -507,16 +510,14 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
       {!inline && (
         <header
           className="theme-topbar sticky top-0 z-10 border-b"
-          {...(headerDragRegion
-            ? {
-                "data-tauri-drag-region": true,
-                style: { WebkitAppRegion: "drag" } as React.CSSProperties,
-              }
-            : {})}
+          {...getPassiveDragRegionProps(headerDragRegion)}
         >
           <div
             className="h-14 w-full px-3 flex items-center gap-2"
-            style={headerDragRegion ? { paddingLeft: MACOS_TRAFFIC_LIGHT_INSET } : undefined}
+            {...getPassiveDragRegionProps(
+              headerDragRegion,
+              headerDragRegion ? { paddingLeft: MACOS_TRAFFIC_LIGHT_INSET } : undefined,
+            )}
           >
             <button
               onClick={onClose}
@@ -532,12 +533,20 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              <span className="truncate text-sm text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]">
+              <span
+                data-testid="reader-view-toolbar-title"
+                className="cursor-default select-none truncate text-sm text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]"
+                {...getPassiveDragRegionProps(headerDragRegion)}
+              >
                 {item.author.displayName}
               </span>
             </button>
 
-            <div className="flex-1" />
+            <div
+              data-testid="reader-view-toolbar-spacer"
+              className="flex-1"
+              {...getPassiveDragRegionProps(headerDragRegion)}
+            />
 
             {contentSource === "cache" && (
               <Tooltip label="Served from your device cache">
