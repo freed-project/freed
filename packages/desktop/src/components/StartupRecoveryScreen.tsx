@@ -30,6 +30,7 @@ type RecoveryStatus =
   | { kind: "error"; message: string };
 
 const RETRY_COMMAND = "retry_startup_after_crash";
+const INTEGER_FORMATTER = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 
 export function StartupRecoveryScreen() {
   const [releaseChannel, setReleaseChannel] = useState(() => bootstrapDesktopReleaseChannel());
@@ -177,7 +178,7 @@ export function StartupRecoveryScreen() {
   const statusIsError = !actionNotice && status.kind === "error";
 
   return (
-    <main className="min-h-screen bg-transparent px-7 py-7 text-[var(--theme-text-primary)]">
+    <main className="startup-recovery-scroll bg-transparent px-7 py-7 text-[var(--theme-text-primary)]">
       <div className="mx-auto flex min-h-[calc(100vh-56px)] w-full max-w-[560px] items-center">
         <section className="theme-dialog-shell w-full rounded-[24px] p-8 shadow-2xl shadow-black/50">
           <h1 className="text-4xl font-semibold leading-[1.05]">
@@ -220,7 +221,7 @@ export function StartupRecoveryScreen() {
                 className="rounded-[14px] border border-[rgba(124,92,255,0.28)] bg-[rgba(124,92,255,0.12)] px-5 py-3 text-base font-semibold text-[var(--theme-text-primary)] transition-colors hover:bg-[rgba(124,92,255,0.2)] disabled:cursor-wait disabled:opacity-70"
               >
                 {status.kind === "downloading"
-                  ? `Downloading ${Math.round(status.percent)}%`
+                  ? `Downloading ${INTEGER_FORMATTER.format(Math.round(status.percent))}%`
                   : "Install update and restart"}
               </button>
             ) : null}
@@ -269,7 +270,7 @@ function getStatusLine(
         ? "An update is available. Install it in place, or use the browser download fallback."
         : "An update is available.";
     case "downloading":
-      return `Downloading update... ${Math.round(status.percent)}%`;
+      return `Downloading update... ${INTEGER_FORMATTER.format(Math.round(status.percent))}%`;
     case "error":
       return status.message;
   }
