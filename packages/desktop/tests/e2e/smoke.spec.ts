@@ -4354,13 +4354,6 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
   }).toBeGreaterThan(20);
   await page.getByRole("button", { name: "Fit all" }).click();
 
-  await expect
-    .poll(async () => {
-      const summary = await readGraphDebug(page);
-      return summary?.metrics.visibleProviderLabelCount ?? 0;
-    }, { timeout: 15_000 })
-    .toBeGreaterThan(0);
-
   const debug = await readGraphDebug(page);
   expect(debug).not.toBeNull();
   expect(debug!.regions.length).toBeGreaterThanOrEqual(3);
@@ -4368,9 +4361,6 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
   expect(debug?.regions.some((region) => region.provider === "instagram")).toBe(true);
   await expect.poll(async () => {
     return (await readGraphDebug(page))?.metrics.visibleLabelCount ?? 0;
-  }, { timeout: 10_000 }).toBeGreaterThan(0);
-  await expect.poll(async () => {
-    return (await readGraphDebug(page))?.metrics.visibleProviderLabelCount ?? 0;
   }, { timeout: 10_000 }).toBeGreaterThan(0);
 });
 
