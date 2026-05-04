@@ -735,11 +735,11 @@ test.describe("Memory profiling (CDP heap snapshots)", () => {
       for (const item of items.slice(35, 45)) await toggleLiked(item.globalId);
     });
 
-    await page.waitForFunction(() => {
+    await page.waitForFunction((expectedCount: number) => {
       const freed = (window as Window & { __freed?: { debug?: () => { runtimeMemory?: { automergeItemCount?: number } } } }).__freed;
       const debug = freed?.debug?.();
-      return Boolean(debug?.runtimeMemory?.automergeItemCount);
-    });
+      return (debug?.runtimeMemory?.automergeItemCount ?? 0) >= expectedCount;
+    }, ITEM_COUNT_XLARGE);
 
     const telemetry = await page.evaluate(() => {
       const freed = (window as Window & {
