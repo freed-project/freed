@@ -3,7 +3,7 @@
   "version": "26.5.308-dev",
   "channel": "dev",
   "dayKey": "26.5.3",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-04T04:16:38.825Z",
   "model": "heuristic",
@@ -70,30 +70,30 @@
     ]
   },
   "release": {
-    "deck": "Harden startup recovery and refine feed layout",
+    "deck": "Stabilize feed layout, search, and capture cleanup",
     "features": [
       "Friends relationship tiers",
       "Refine sidebar rows and card density",
       "Search profile actions"
     ],
     "fixes": [
-      "Relax dense graph visual gate",
-      "Fit graph before visual label assertions",
-      "Release perf gates are now more stable",
-      "Graph provider labels now waits for the correct ready state",
-      "Relax graph zoom perf budget",
-      "Dedupe Instagram story captures",
-      "Desktop feed scroll layout are now more stable",
-      "Harden desktop background runtime recovery",
+      "Deduped duplicate Instagram story captures",
+      "Desktop feed scroll layout is now more stable",
+      "Freed Desktop startup recovery now waits for healthy renderer heartbeats before running high-risk jobs",
+      "Added runtime-health diagnostics for blank renderer reports, including active background work, memory pressure, and recovery attempts",
       "Promote linked accounts without duplicate drafts",
       "Tightened collapsed feed filter menu headings, copy, spacing, and classification selection animation",
       "Floating menus now stay inside the viewport and scroll internally"
     ],
     "followUps": [
+      "Friends graph validation now checks structural graph signals instead of provider label text",
+      "Friends graph validation now fits the graph before checking visual labels",
+      "Friends graph validation now waits for provider labels before checking the visual state",
+      "Friends graph and feed perf gates now allow normal CI timing variance",
       "Slim desktop e2e gates",
       "Added fixed-height desktop feed cards and story rows so media loading no longer changes scroll position",
       "Added compact, comfortable, and expansive feed card density controls with matching skeleton heights and bounded internal scrolling for floating menus"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.308-dev\n\nHarden startup recovery and refine feed layout\n\n### Features\n\n- Friends relationship tiers\n- Refine sidebar rows and card density\n- Search profile actions\n\n### Fixes\n\n- Relax dense graph visual gate\n- Fit graph before visual label assertions\n- Release perf gates are now more stable\n- Graph provider labels now waits for the correct ready state\n- Relax graph zoom perf budget\n- Dedupe Instagram story captures\n- Desktop feed scroll layout are now more stable\n- Harden desktop background runtime recovery\n- Promote linked accounts without duplicate drafts\n- Tightened collapsed feed filter menu headings, copy, spacing, and classification selection animation\n- Floating menus now stay inside the viewport and scroll internally\n\n### Follow-ups\n\n- Slim desktop e2e gates\n- Added fixed-height desktop feed cards and story rows so media loading no longer changes scroll position\n- Added compact, comfortable, and expansive feed card density controls with matching skeleton heights and bounded internal scrolling for floating menus\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.308-dev\n\nStabilize feed layout, search, and capture cleanup\n\n### Features\n\n- Friends relationship tiers\n- Refine sidebar rows and card density\n- Search profile actions\n\n### Fixes\n\n- Deduped duplicate Instagram story captures\n- Desktop feed scroll layout is now more stable\n- Freed Desktop startup recovery now waits for healthy renderer heartbeats before running high-risk jobs\n- Added runtime-health diagnostics for blank renderer reports, including active background work, memory pressure, and recovery attempts\n- Promote linked accounts without duplicate drafts\n- Tightened collapsed feed filter menu headings, copy, spacing, and classification selection animation\n- Floating menus now stay inside the viewport and scroll internally\n\n### Follow-ups\n\n- Friends graph validation now checks structural graph signals instead of provider label text\n- Friends graph validation now fits the graph before checking visual labels\n- Friends graph validation now waits for provider labels before checking the visual state\n- Friends graph and feed perf gates now allow normal CI timing variance\n- Slim desktop e2e gates\n- Added fixed-height desktop feed cards and story rows so media loading no longer changes scroll position\n- Added compact, comfortable, and expansive feed card density controls with matching skeleton heights and bounded internal scrolling for floating menus\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
