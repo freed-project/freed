@@ -5,6 +5,7 @@ import type {
   GeneratedBugReportBundle,
   ReportPrivacyTier,
 } from "@freed/shared";
+import { getReleaseChannelFromVersion } from "@freed/shared";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
 import {
   buildBugReportManifest,
@@ -32,6 +33,11 @@ function collectEvents(events: BugReportEvent[], tier: ReportPrivacyTier): BugRe
 function getPwaRuntimeInfo() {
   return {
     version: __APP_VERSION__,
+    releaseChannel: getReleaseChannelFromVersion(__APP_VERSION__),
+    buildKind: __BUILD_KIND__,
+    commitSha: __BUILD_COMMIT_SHA__,
+    commitRef: __BUILD_COMMIT_REF__,
+    deployedAt: __BUILD_DEPLOYED_AT__,
     userAgent: navigator.userAgent,
     platform: navigator.platform || "web",
     serviceWorker: "serviceWorker" in navigator,

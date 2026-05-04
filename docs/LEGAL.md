@@ -31,6 +31,7 @@ Freed should not describe itself as:
 - Guaranteed compliant with third-party terms
 - Protected from bans, lockouts, or other enforcement
 - A managed service acting on the user's behalf on Freed-operated servers
+- A guaranteed way to restore, replace, or batch rebuild a banned social account
 
 If the copy starts sounding like a stealth scraper brochure, rewrite it.
 
@@ -60,6 +61,7 @@ Current implementation:
 - PWA first launch is blocked behind a full-screen legal gate
 - Freed Desktop first launch is blocked behind a full-screen legal gate that includes the Desktop EULA
 - X, Facebook, Instagram, and LinkedIn flows require separate provider-specific risk consent before login or sync actions
+- Facebook and Instagram media-archive controls are opt-in and live inside those provider-specific settings sections
 
 Acceptance records are stored locally only.
 
@@ -95,6 +97,7 @@ The software should continue to enforce the following defaults:
 - consent changes are versioned, so material risk changes force reacceptance
 - consent stays local to the device or browser
 - settings expose the current accepted versions and legal documents
+- permanent provider media archives stay local, unsynced, and outside normal cache expiry
 
 This keeps the contract surface honest and avoids surprise activation of risky behavior.
 
@@ -111,6 +114,8 @@ That means:
 
 If a future feature requires server-side state, it must be reviewed against this document before shipping. Quietly adding backend behavior that changes the privacy or legal story would be an own goal of biblical proportions.
 
+Permanent Facebook and Instagram media archives are part of this local-first posture. Exported or captured media is stored in the Freed Desktop app-data folder, not in Automerge, not in the local relay document, and not in cloud sync. Archive deletion must be explicit. Normal cache expiry must not delete these files.
+
 ## Third-Party Platform Posture
 
 Freed should assume that some providers will dislike or prohibit automated or semi-automated behavior. The product response is not to promise safety. The product response is to:
@@ -121,6 +126,8 @@ Freed should assume that some providers will dislike or prohibit automated or se
 - avoid documentation that reads like an evasion manual
 
 Internal and public docs should describe capabilities in neutral terms. Do not celebrate stealth, evasion, or ban avoidance. Those phrases are how tomorrow's opposing counsel buys lunch.
+
+Post-ban recovery copy needs the same restraint. Meta export import can help a user keep a local copy of their own uploaded media before anything goes wrong, but Freed must not promise that Facebook or Instagram will provide exports after enforcement, or that a friends roster is enough to restore an account. Roster metadata can support future restore planning only after export and restore behavior is separately implemented and tested.
 
 ## What This Document Does Not Claim
 
@@ -148,5 +155,6 @@ Before shipping a feature that changes risk, check these questions:
 3. Does the first-run or provider-specific consent copy need updating?
 4. Does the Privacy Policy need to describe new local or cloud data handling?
 5. Does any public copy now overclaim safety, compliance, or stealth?
+6. Does it imply post-ban recovery, account restoration, or provider export availability that the product cannot prove?
 
 If the answer to any of those is yes, update the legal docs and the gate copy in the same change set.

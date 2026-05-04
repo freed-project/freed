@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { formatBytesForMemoryLog, getMemoryPressureLevel } from "./memory-monitor";
+import {
+  formatBytesForMemoryLog,
+  getAdaptiveMemoryLimits,
+  getMemoryPressureLevel,
+} from "./memory-monitor";
 
 describe("memory monitor", () => {
   it("formats byte values for log output", () => {
@@ -9,9 +13,23 @@ describe("memory monitor", () => {
     expect(formatBytesForMemoryLog(3 * 1024 * 1024 * 1024)).toBe("3.00 GB");
   });
 
-  it("classifies high and critical resident memory", () => {
+  it("derives adaptive high and critical resident memory limits", () => {
+    const gib = 1024 * 1024 * 1024;
+
+    expect(getAdaptiveMemoryLimits(16 * gib).criticalBytes).toBe(3.5 * gib);
+    expect(getAdaptiveMemoryLimits(32 * gib).criticalBytes).toBe(
+      Math.floor(32 * gib * 0.12),
+    );
+    expect(getAdaptiveMemoryLimits(64 * gib).criticalBytes).toBe(
+      Math.floor(64 * gib * 0.12),
+    );
+  });
+
+  it("classifies high and critical app resident memory", () => {
+    const limits = getAdaptiveMemoryLimits(16 * 1024 * 1024 * 1024);
+
     expect(getMemoryPressureLevel(512 * 1024 * 1024)).toBe("normal");
-    expect(getMemoryPressureLevel(1_500 * 1024 * 1024)).toBe("high");
-    expect(getMemoryPressureLevel(3_000 * 1024 * 1024)).toBe("critical");
+    expect(getMemoryPressureLevel(limits.highBytes, limits)).toBe("high");
+    expect(getMemoryPressureLevel(limits.criticalBytes, limits)).toBe("critical");
   });
 });

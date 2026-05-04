@@ -2,13 +2,27 @@ import { test, expect } from "./fixtures/app";
 
 const FACEBOOK_TITLE = "Card UI Overhaul Facebook Item";
 const RSS_TITLE = "Card UI Overhaul RSS Item";
+const STORY_TITLE = "Story thumbnail proof";
+const BROKEN_TITLE = "Broken thumbnail fallback proof";
 const FACEBOOK_URL = "https://example.com/facebook/card-ui-overhaul";
 const RSS_URL = "https://example.com/rss/card-ui-overhaul";
-const FACEBOOK_MEDIA_URL = "https://images.example.com/facebook/card-ui-overhaul.jpg";
+const FACEBOOK_MEDIA_URL = "/freed.svg?feed-card";
+const STORY_MEDIA_URL = "/freed.svg?story-tile";
+const BROKEN_MEDIA_URL = "/freed.svg?fallback";
 
 async function injectCardUiItems(page: import("@playwright/test").Page): Promise<void> {
   await page.evaluate(
-    async ({ facebookTitle, rssTitle, facebookUrl, rssUrl, facebookMediaUrl }) => {
+    async ({
+      facebookTitle,
+      rssTitle,
+      storyTitle,
+      brokenTitle,
+      facebookUrl,
+      rssUrl,
+      facebookMediaUrl,
+      storyMediaUrl,
+      brokenMediaUrl,
+    }) => {
       const now = Date.now();
       const w = window as Record<string, unknown>;
       const automerge = w.__FREED_AUTOMERGE__ as {
@@ -50,6 +64,56 @@ async function injectCardUiItems(page: import("@playwright/test").Page): Promise
           },
           topics: ["testing"],
           sourceUrl: facebookUrl,
+        },
+        {
+          globalId: "test-instagram-story-thumbnail",
+          platform: "instagram",
+          contentType: "story",
+          capturedAt: now - 25_000,
+          publishedAt: now - 55_000,
+          author: {
+            id: "test-instagram-story-author",
+            handle: "story.thumbnail",
+            displayName: "Story Thumbnail",
+          },
+          content: {
+            text: storyTitle,
+            mediaUrls: [storyMediaUrl],
+            mediaTypes: ["image"],
+          },
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: false,
+            tags: [],
+          },
+          topics: ["testing"],
+          sourceUrl: "https://www.instagram.com/stories/story.thumbnail/123",
+        },
+        {
+          globalId: "test-broken-thumbnail-fallback",
+          platform: "facebook",
+          contentType: "post",
+          capturedAt: now - 22_000,
+          publishedAt: now - 50_000,
+          author: {
+            id: "test-broken-thumbnail-author",
+            handle: "broken.thumbnail",
+            displayName: "Broken Thumbnail",
+          },
+          content: {
+            text: brokenTitle,
+            mediaUrls: [brokenMediaUrl],
+            mediaTypes: ["image"],
+          },
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: false,
+            tags: [],
+          },
+          topics: ["testing"],
+          sourceUrl: "https://example.com/broken-thumbnail",
         },
         {
           globalId: "test-rss-card-ui-overhaul",
@@ -95,9 +159,13 @@ async function injectCardUiItems(page: import("@playwright/test").Page): Promise
     {
       facebookTitle: FACEBOOK_TITLE,
       rssTitle: RSS_TITLE,
+      storyTitle: STORY_TITLE,
+      brokenTitle: BROKEN_TITLE,
       facebookUrl: FACEBOOK_URL,
       rssUrl: RSS_URL,
       facebookMediaUrl: FACEBOOK_MEDIA_URL,
+      storyMediaUrl: STORY_MEDIA_URL,
+      brokenMediaUrl: BROKEN_MEDIA_URL,
     },
   );
 }
@@ -129,6 +197,36 @@ async function setShowEngagementCounts(
   }, show);
 }
 
+async function setDualColumnMode(
+  page: import("@playwright/test").Page,
+  enabled: boolean,
+): Promise<void> {
+  await page.evaluate(async (shouldEnable) => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        preferences: {
+          display: {
+            reading: Record<string, unknown>;
+          };
+        };
+        updatePreferences: (update: unknown) => Promise<void>;
+      };
+    };
+
+    const state = store.getState();
+    await state.updatePreferences({
+      display: {
+        ...state.preferences.display,
+        reading: {
+          ...state.preferences.display.reading,
+          dualColumnMode: shouldEnable,
+        },
+      },
+    });
+  }, enabled);
+}
+
 test("feed card overhaul actions and reader open flow work", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
@@ -141,7 +239,24 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(facebookCard).toContainText("45");
   await expect(facebookCard).toHaveClass(/grayscale/);
   await expect(facebookCard.locator('button[aria-label="Archive"]').first()).toBeVisible();
-  await expect(facebookCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`)).toHaveCount(0);
+  const facebookImage = facebookCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
+  await expect(facebookImage).toBeVisible();
+  await expect(facebookImage).toHaveAttribute("src", /\/freed\.svg\?feed-card$/);
+
+  const storyTile = app.page.locator('[data-feed-item-id="test-instagram-story-thumbnail"]');
+  const storyImage = storyTile.locator("img").first();
+  await expect(storyImage).toBeVisible();
+  await expect(storyImage).toHaveAttribute("src", /\/freed\.svg\?story-tile$/);
+
+  const brokenCard = app.page.locator('[data-feed-item-id="test-broken-thumbnail-fallback"]');
+  const brokenImage = brokenCard.locator("img").first();
+  await expect(brokenImage).toBeVisible();
+  await expect(brokenImage).toHaveAttribute("src", /\/freed\.svg\?fallback$/);
+  await brokenImage.evaluate((image) => {
+    image.dispatchEvent(new Event("error"));
+  });
+  await expect(brokenCard.locator("img")).toHaveCount(0);
+  await expect(brokenCard).toContainText(BROKEN_TITLE);
 
   await facebookCard.hover();
   const likeButton = facebookCard.locator('button[aria-label="Like"]').last();
@@ -151,7 +266,6 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   const rssCard = app.page.locator("article").filter({ hasText: RSS_TITLE }).first();
   await expect(rssCard).toBeVisible();
   await rssCard.hover();
-  await rssCard.locator('button[aria-label="Like"]').first().hover();
   await expect(rssCard.locator('button[aria-label="Love"]')).toHaveCount(0);
 
   await expect(facebookCard.locator('button[aria-label="Open"]')).toBeVisible();
@@ -160,14 +274,206 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(facebookCard).not.toContainText("1,234");
   await expect(facebookCard).not.toContainText("45");
 
+  await setDualColumnMode(app.page, true);
   await facebookCard.click();
-  const reader = app.page.locator("header").filter({ hasText: "Card UI Overhaul" }).first();
   const readerHeading = app.page.locator("article h1").filter({ hasText: FACEBOOK_TITLE }).first();
-  await expect(reader).toBeVisible();
-  await expect(reader.locator('button[aria-label="Archive"]').first()).toBeVisible();
   await expect(readerHeading).toBeVisible();
-  await expect(app.page.getByLabel("Archive")).toBeVisible();
+  await expect(app.page.getByLabel("Archive").first()).toBeVisible();
+  const compactRailCard = app.page.locator('[data-testid="compact-feed-panel-scroll-container"] [data-feed-item-id="test-facebook-card-ui-overhaul"]');
+  const compactRailImage = compactRailCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
+  await expect(compactRailImage).toBeVisible();
+  await expect(compactRailImage).toHaveAttribute("src", /\/freed\.svg\?feed-card$/);
 
-  const openReaderButton = app.page.locator("header").getByRole("button", { name: "Open", exact: true });
+  const openReaderButton = app.page.getByRole("button", { name: "Open", exact: true }).first();
   await expect(openReaderButton).toBeVisible();
+});
+
+test("top toolbar card density slider persists locally", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    if (window.sessionStorage.getItem("feed-card-density-test-started") === "1") return;
+    window.sessionStorage.setItem("feed-card-density-test-started", "1");
+    window.localStorage.removeItem("freed-feed-card-density");
+  });
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(page);
+
+  const slider = page.getByTestId("feed-card-density-slider");
+  const card = page.locator('[data-feed-item-id="test-facebook-card-ui-overhaul"]').first();
+
+  await expect(slider).toBeVisible();
+  await expect(card).toHaveAttribute("data-feed-card-density", "comfortable");
+  const comfortableHeight = await card.evaluate((element) => element.getBoundingClientRect().height);
+
+  await slider.focus();
+  await slider.press("ArrowLeft");
+  await expect(card).toHaveAttribute("data-feed-card-density", "compact");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-feed-card-density"))).toBe("compact");
+  const compactHeight = await card.evaluate((element) => element.getBoundingClientRect().height);
+
+  await slider.press("ArrowRight");
+  await slider.press("ArrowRight");
+  await expect(card).toHaveAttribute("data-feed-card-density", "expansive");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-feed-card-density"))).toBe("expansive");
+  const expansiveHeight = await card.evaluate((element) => element.getBoundingClientRect().height);
+
+  expect(compactHeight).toBeLessThan(comfortableHeight);
+  expect(expansiveHeight).toBeGreaterThan(comfortableHeight);
+
+  await page.reload();
+  await app.waitForReady();
+  await expect(page.getByTestId("feed-card-density-slider")).toHaveValue("2");
+});
+
+test("narrow desktop toolbar exposes card density slider in overflow", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await page.addInitScript(() => {
+    window.localStorage.removeItem("freed-feed-card-density");
+  });
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(page);
+
+  const card = page.locator('[data-feed-item-id="test-facebook-card-ui-overhaul"]').first();
+  await expect(card).toHaveAttribute("data-feed-card-density", "comfortable");
+  await expect(page.getByTestId("feed-card-density-slider")).toHaveCount(0);
+
+  const overflowButton = page.getByTestId("toolbar-overflow-button");
+  await expect(overflowButton).toBeVisible({ timeout: 5_000 });
+  await overflowButton.click();
+
+  const overflowMenu = page.getByTestId("toolbar-overflow-menu");
+  const densitySection = overflowMenu.getByTestId("toolbar-overflow-density-section");
+  const actionsSection = overflowMenu.getByTestId("toolbar-overflow-actions-section");
+  const densityControl = overflowMenu.getByTestId("feed-card-density-control");
+  const slider = overflowMenu.getByTestId("feed-card-density-slider");
+  await expect(slider).toBeVisible();
+  await expect(densitySection.getByText("Card density", { exact: true })).toBeVisible();
+  await expect(actionsSection.getByText("Actions", { exact: true })).toBeVisible();
+
+  const menuGeometry = await densitySection.evaluate((section) => {
+    const control = section.querySelector('[data-testid="feed-card-density-control"]') as HTMLElement | null;
+    if (!control) throw new Error("Density control is missing");
+    const controlRect = control.getBoundingClientRect();
+    const sectionRect = section.getBoundingClientRect();
+    const sectionStyle = window.getComputedStyle(section);
+    const horizontalPadding =
+      Number.parseFloat(sectionStyle.paddingLeft) +
+      Number.parseFloat(sectionStyle.paddingRight);
+    return {
+      controlWidth: Math.round(controlRect.width),
+      contentWidth: Math.round(sectionRect.width - horizontalPadding),
+    };
+  });
+  expect(menuGeometry.controlWidth).toBe(menuGeometry.contentWidth);
+
+  await slider.focus();
+  await slider.press("ArrowLeft");
+
+  await expect(densityControl).toBeVisible();
+  await expect(card).toHaveAttribute("data-feed-card-density", "compact");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-feed-card-density"))).toBe("compact");
+});
+
+test("story cards participate in feed layout transitions", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(app.page);
+  await setDualColumnMode(app.page, true);
+
+  await app.page.evaluate(() => {
+    const doc = document as Document & {
+      startViewTransition?: (update: () => void) => { finished: Promise<void> };
+    };
+    const state = { count: 0 };
+    (window as Record<string, unknown>).__FREED_STORY_VIEW_TRANSITIONS__ = state;
+
+    Object.defineProperty(doc, "startViewTransition", {
+      configurable: true,
+      writable: true,
+      value: (update: () => void) => {
+        state.count += 1;
+        update();
+        return { finished: Promise.resolve() };
+      },
+    });
+  });
+
+  const storyTile = app.page.locator('[data-feed-item-id="test-instagram-story-thumbnail"]').first();
+  await expect(storyTile).toBeVisible({ timeout: 5_000 });
+
+  const transitionName = await storyTile.evaluate((element) =>
+    window.getComputedStyle(element.parentElement as Element).viewTransitionName,
+  );
+  expect(transitionName).toBe("feed-card-test-instagram-story-thumbnail");
+
+  await storyTile.click();
+  await expect(app.page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({
+    timeout: 5_000,
+  });
+  await expect(app.page.getByLabel("Back to list")).toBeVisible({ timeout: 5_000 });
+
+  await expect.poll(async () => {
+    return app.page.evaluate(() => {
+      const state = (window as Record<string, unknown>).__FREED_STORY_VIEW_TRANSITIONS__ as
+        | { count: number }
+        | undefined;
+      return state?.count ?? 0;
+    });
+  }).toBe(1);
+});
+
+test("feed cards show compact event metadata from semantic enrichment", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await app.page.evaluate(async () => {
+    const publishedAt = Date.parse("2026-04-25T12:00:00Z");
+    const automerge = (window as Record<string, unknown>).__FREED_AUTOMERGE__ as {
+      docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+    };
+
+    await automerge.docBatchImportItems([
+      {
+        globalId: "test-semantic-event-card",
+        platform: "rss",
+        contentType: "article",
+        capturedAt: publishedAt,
+        publishedAt,
+        author: {
+          id: "semantic-feed",
+          handle: "semantic-feed",
+          displayName: "Semantic Feed",
+        },
+        content: {
+          text: "Join us at Civic Hall on May 12 at 7pm for a live event. RSVP now.",
+          mediaUrls: [],
+          mediaTypes: [],
+          linkPreview: {
+            url: "https://example.com/semantic-event",
+            title: "Semantic Event Card",
+            description: "A high-confidence event candidate for the feed card.",
+          },
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+        rssSource: {
+          feedUrl: "https://example.com/semantic-feed.xml",
+          feedTitle: "Semantic Feed",
+          siteUrl: "https://example.com",
+        },
+        sourceUrl: "https://example.com/semantic-event",
+      },
+    ]);
+  });
+
+  const eventCard = app.page.locator("article").filter({ hasText: "Semantic Event Card" }).first();
+  await expect(eventCard).toBeVisible();
+  await expect(eventCard).toContainText(/Event/);
 });

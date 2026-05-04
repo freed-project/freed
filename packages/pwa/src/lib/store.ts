@@ -28,6 +28,7 @@ import {
   docRemoveAllFeeds,
   docUpdateRssFeed,
   docUpdateFeedItem,
+  docBackfillContentSignals,
   docMarkAsRead,
   docMarkItemsAsRead,
   docMarkAllAsRead,
@@ -52,6 +53,20 @@ import {
   docLogReachOut,
 } from "./automerge";
 import type { DocState } from "./automerge";
+import { pinReaderItemInPwa } from "./reader-cache";
+
+function readStateIdTails(ids: readonly string[]): string[] {
+  return ids.slice(0, 5).map((id) => `...${id.slice(-8)}`);
+}
+
+function recordReadStateInfo(message: string, detail: Record<string, unknown>): void {
+  recordBugReportEvent(
+    "pwa:readState",
+    "info",
+    message,
+    JSON.stringify(detail),
+  );
+}
 
 /** PWA-specific store state — extends the shared base with sync connection status. */
 interface AppState extends BaseAppState {
@@ -84,6 +99,26 @@ async function pruneConnectionPersonIfNeeded(
     return;
   }
   await docRemovePerson(personId!);
+}
+
+async function runStartupMigrations(archivePruneDays: number): Promise<void> {
+  try {
+    if (archivePruneDays > 0) {
+      await docPruneArchivedItems(archivePruneDays * 24 * 60 * 60 * 1000);
+    }
+  } catch {
+    // non-fatal
+  }
+
+  try {
+    for (;;) {
+      const summary = await docBackfillContentSignals(200);
+      if (summary.updated === 0 || summary.remaining === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  } catch {
+    // non-fatal
+  }
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -161,14 +196,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         isLoading: false,
       });
 
-      // Prune archived items in the background. Idempotent; failure is non-fatal.
-      // The subscriber above propagates the doc change to the UI automatically.
+      // Run idempotent maintenance in the background. The subscriber above
+      // propagates doc changes to the UI automatically.
       const pruneDays = state.preferences.display.archivePruneDays ?? 30;
-      if (pruneDays > 0) {
-        void docPruneArchivedItems(pruneDays * 24 * 60 * 60 * 1000).catch(() => {
-          // non-fatal
-        });
-      }
+      void runStartupMigrations(pruneDays);
     } catch (error) {
       recordRuntimeError({ source: "pwa:initialize", error, fatal: false });
       recordBugReportEvent("pwa:initialize", "error", "Initialization failed");
@@ -193,7 +224,42 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markItemsAsRead: async (ids) => {
-    await docMarkItemsAsRead(ids);
+    const nextIds = ids.filter(Boolean);
+    if (nextIds.length === 0) return;
+
+    const startedAt = performance.now();
+    const beforeUnreadCount = get().totalUnreadCount;
+    recordReadStateInfo(
+      `Queued ${nextIds.length.toLocaleString()} read mark${nextIds.length === 1 ? "" : "s"}`,
+      {
+        queuedCount: nextIds.length,
+        beforeUnreadCount,
+        itemIdTails: readStateIdTails(nextIds),
+      },
+    );
+
+    try {
+      await docMarkItemsAsRead(nextIds);
+      recordReadStateInfo(
+        `Flushed ${nextIds.length.toLocaleString()} read mark${nextIds.length === 1 ? "" : "s"}`,
+        {
+          batchCount: nextIds.length,
+          beforeUnreadCount,
+          afterUnreadCount: get().totalUnreadCount,
+          durationMs: Math.round(performance.now() - startedAt),
+          itemIdTails: readStateIdTails(nextIds),
+        },
+      );
+    } catch (error) {
+      recordRuntimeError({ source: "pwa:readState", error, fatal: false });
+      recordBugReportEvent(
+        "pwa:readState",
+        "error",
+        `Read state update failed for ${nextIds.length.toLocaleString()} item${nextIds.length === 1 ? "" : "s"}`,
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
   },
 
   markAllAsRead: async (platform) => {
@@ -201,7 +267,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleSaved: async (id) => {
+    const item = get().items.find((candidate) => candidate.globalId === id);
+    const shouldPin = !!item && !item.userState.saved;
     await docToggleSaved(id);
+    if (shouldPin) {
+      void pinReaderItemInPwa(item).catch((error) => {
+        recordRuntimeError({ source: "pwa:pinReaderItem", error, fatal: false });
+      });
+    }
   },
 
   toggleArchived: async (id) => {

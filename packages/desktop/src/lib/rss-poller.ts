@@ -7,6 +7,10 @@
 
 import { refreshAllFeeds } from "./capture";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import {
+  isBackgroundRuntimeDeferredError,
+  runBackgroundJob,
+} from "./background-runtime-coordinator";
 
 /** Default poll interval: 30 minutes */
 const DEFAULT_INTERVAL_MS = 30 * 60 * 1000;
@@ -51,8 +55,17 @@ async function triggerPoll(): Promise<void> {
   isPolling = true;
 
   try {
-    await refreshAllFeeds();
+    await runBackgroundJob({
+      kind: "rss-poll",
+      source: "rss-poller",
+      timeoutMs: 180_000,
+      run: refreshAllFeeds,
+    });
   } catch (err) {
+    if (isBackgroundRuntimeDeferredError(err)) {
+      addDebugEvent("change", `[RSS] poll deferred: ${err.reason}`);
+      return;
+    }
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[RssPoller] Error during poll:", err);
     addDebugEvent("error", `[RSS] poller crashed: ${msg}`);

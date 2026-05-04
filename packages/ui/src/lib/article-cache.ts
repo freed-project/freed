@@ -1,4 +1,6 @@
 const ARTICLE_CONTENT_CACHE_NAME = "freed-articles-v1";
+const PINNED_ARTICLE_CONTENT_CACHE_NAME = "freed-articles-pinned-v1";
+const PINNED_CONTENT_PATH_PREFIX = "/pinned-content/";
 const ARTICLE_IMAGE_CACHE_NAME = "freed-images";
 const CACHEABLE_PROTOCOLS = new Set(["http:", "https:"]);
 const IMAGE_ATTRIBUTE_NAMES = [
@@ -65,16 +67,41 @@ export function collectCacheableArticleImageUrls(html: string, baseUrl: string):
   return [...urls];
 }
 
-export async function cacheArticleHtml(articleUrl: string, globalId: string, html: string): Promise<void> {
+export async function cacheArticleHtml(
+  articleUrl: string,
+  globalId: string,
+  html: string,
+  options: { pinned?: boolean } = {},
+): Promise<void> {
   if (!("caches" in window)) return;
 
-  const cache = await caches.open(ARTICLE_CONTENT_CACHE_NAME);
+  const cache = await caches.open(options.pinned ? PINNED_ARTICLE_CONTENT_CACHE_NAME : ARTICLE_CONTENT_CACHE_NAME);
   const response = new Response(html, {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 
   await cache.put(articleUrl, response.clone());
-  await cache.put(`/content/${globalId}`, response);
+  await cache.put(`/content/${globalId}`, response.clone());
+  if (options.pinned) {
+    await cache.put(`${PINNED_CONTENT_PATH_PREFIX}${globalId}`, response);
+  }
+}
+
+export async function getCachedArticleHtml(globalId: string, articleUrl?: string): Promise<string | null> {
+  if (!("caches" in window)) return null;
+
+  const keys = articleUrl
+    ? [`${PINNED_CONTENT_PATH_PREFIX}${globalId}`, `/content/${globalId}`, articleUrl]
+    : [`${PINNED_CONTENT_PATH_PREFIX}${globalId}`, `/content/${globalId}`];
+  for (const cacheName of [PINNED_ARTICLE_CONTENT_CACHE_NAME, ARTICLE_CONTENT_CACHE_NAME]) {
+    const cache = await caches.open(cacheName);
+    for (const key of keys) {
+      const response = await cache.match(key);
+      if (response) return response.text();
+    }
+  }
+
+  return null;
 }
 
 export async function warmArticleImageCache(html: string, baseUrl: string): Promise<void> {
@@ -98,4 +125,3 @@ export async function warmArticleImageCache(html: string, baseUrl: string): Prom
     }),
   );
 }
-

@@ -71,7 +71,7 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'icons/*.png'],
       manifest: false,
       workbox: {
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         runtimeCaching: [
           {
             // API routes must bypass the service worker entirely — Workbox's
@@ -91,6 +91,18 @@ export default defineConfig({
               expiration: {
                 maxEntries: 5_000,
                 maxAgeSeconds: 30 * 24 * 60 * 60,
+              },
+            },
+          },
+          {
+            // Saved reader HTML is pinned by user intent and has no time based
+            // expiration. Manual cache clearing can still remove it.
+            urlPattern: ({ url }) => url.pathname.startsWith('/pinned-content/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'freed-articles-pinned-v1',
+              expiration: {
+                maxEntries: 10_000,
               },
             },
           },

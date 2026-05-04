@@ -115,6 +115,32 @@ describe("store read-state batching", () => {
       error.message,
     );
   });
+
+  it("records queued and flushed diagnostics for multi-item read updates", async () => {
+    const useAppStore = await loadStore();
+    useAppStore.setState({ totalUnreadCount: 3 });
+
+    const markItemsPromise = useAppStore.getState().markItemsAsRead([
+      "rss:test:article-12345678",
+      "rss:test:article-87654321",
+    ]);
+
+    await vi.advanceTimersByTimeAsync(READ_MARK_BATCH_DELAY_MS_FOR_TESTS);
+    await markItemsPromise;
+
+    expect(mockRecordBugReportEvent).toHaveBeenCalledWith(
+      "desktop:readState",
+      "info",
+      "Queued 2 read marks",
+      expect.stringContaining("...12345678"),
+    );
+    expect(mockRecordBugReportEvent).toHaveBeenCalledWith(
+      "desktop:readState",
+      "info",
+      "Flushed 2 read marks",
+      expect.stringContaining("...87654321"),
+    );
+  });
 });
 
 const READ_MARK_BATCH_DELAY_MS_FOR_TESTS = 50;

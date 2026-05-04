@@ -13,6 +13,7 @@ import {
   type HealthChartRange,
 } from "../ProviderHealthSummary.js";
 import { getWebsiteHostForChannel, type FeedItem } from "@freed/shared";
+import { SettingsListPanel } from "./SettingsListPanel.js";
 
 type SavedTab = "overview" | "import" | "export";
 
@@ -433,11 +434,22 @@ function ImportPane() {
           <summary className="theme-feedback-text-danger cursor-pointer text-xs font-medium">
             Show {summary!.errors.length.toLocaleString()} error{summary!.errors.length !== 1 ? "s" : ""}
           </summary>
-          <ul className="mt-2 space-y-0.5 max-h-32 overflow-y-auto">
-            {summary!.errors.map((err, i) => (
-              <li key={i} className="theme-feedback-text-danger truncate text-xs font-mono">{err}</li>
-            ))}
-          </ul>
+          <SettingsListPanel
+            items={summary!.errors.map((error, index) => ({ error, index }))}
+            searchPlaceholder="Filter errors"
+            ariaLabel="Filter saved import errors"
+            emptyLabel="No errors."
+            noMatchesLabel="No errors match that filter."
+            dataTestId="saved-import-error-list"
+            searchDataTestId="saved-import-error-filter"
+            scrollDataTestId="saved-import-error-list-scroll"
+            listClassName="space-y-0.5"
+            itemKey={({ index }) => index}
+            getSearchText={({ error }) => error}
+            renderItem={({ error }) => (
+              <div className="theme-feedback-text-danger truncate text-xs font-mono">{error}</div>
+            )}
+          />
         </details>
       )}
 

@@ -23,24 +23,38 @@ function createMockAppState() {
   return state;
 }
 
-async function loadProviderHealthModule() {
+async function loadProviderHealthModule(options: { native?: boolean } = {}) {
   vi.resetModules();
   localStorage.clear();
 
-  const persisted = { value: undefined as unknown };
+  const nativeFiles = new Map<string, string>();
+  const nativeWrites: Array<{ path: string; contents: string }> = [];
   const toastInfo = vi.fn();
   const openTo = vi.fn();
   const storeState = createMockAppState();
-  const storeSet = vi.fn(async (_key: string, value: unknown) => {
-    persisted.value = value;
-  });
 
-  vi.doMock("@tauri-apps/plugin-store", () => ({
-    Store: class Store {},
-    load: vi.fn(async () => ({
-      get: vi.fn(async () => persisted.value),
-      set: storeSet,
-    })),
+  vi.doMock("@tauri-apps/api/core", () => ({
+    isTauri: () => options.native === true,
+  }));
+  vi.doMock("@tauri-apps/api/path", () => ({
+    appDataDir: vi.fn(async () => "/mock/app-data"),
+  }));
+  vi.doMock("@tauri-apps/plugin-fs", () => ({
+    readTextFile: vi.fn(async (path: string) => {
+      const value = nativeFiles.get(path);
+      if (value === undefined) throw new Error(`ENOENT: ${path}`);
+      return value;
+    }),
+    writeTextFile: vi.fn(async (path: string, contents: string) => {
+      nativeWrites.push({ path, contents });
+      nativeFiles.set(path, contents);
+    }),
+    rename: vi.fn(async (oldPath: string, newPath: string) => {
+      const value = nativeFiles.get(oldPath);
+      if (value === undefined) throw new Error(`ENOENT: ${oldPath}`);
+      nativeFiles.set(newPath, value);
+      nativeFiles.delete(oldPath);
+    }),
   }));
   vi.doMock("@freed/ui/components/Toast", () => ({
     toast: {
@@ -75,7 +89,8 @@ async function loadProviderHealthModule() {
   const mod = await import("./provider-health");
   return {
     mod,
-    persisted,
+    nativeFiles,
+    nativeWrites,
     toastInfo,
     openTo,
     storeState,
@@ -120,6 +135,88 @@ describe("provider health", () => {
       provider?.hourlyBuckets.find((bucket) => bucket.hourKey === "2026-04-02T19")
         ?.itemsSeen,
     ).toBe(12);
+  });
+
+  it("persists native health state through the filesystem instead of Tauri store", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, nativeFiles, nativeWrites } = await loadProviderHealthModule({ native: true });
+
+    await mod.recordProviderHealthEvent({
+      provider: "rss",
+      scope: "rss_feed",
+      feedUrl: "https://example.com/rss.xml",
+      feedTitle: "Example Feed",
+      outcome: "success",
+      finishedAt: now.getTime(),
+      itemsSeen: 42,
+      itemsAdded: 5,
+    });
+
+    const stored = JSON.parse(
+      nativeFiles.get("/mock/app-data/sync-health.json") ?? "{}",
+    ) as {
+      "provider-health"?: {
+        providers?: {
+          rss?: { latestAttempts?: Array<{ itemsSeen?: number }> };
+        };
+        rssFeeds?: Record<string, unknown>;
+      };
+    };
+
+    expect(nativeWrites.some((write) => write.path.endsWith("sync-health.json.tmp"))).toBe(true);
+    expect(stored["provider-health"]?.rssFeeds?.["https://example.com/rss.xml"]).toBeTruthy();
+    expect(stored["provider-health"]?.providers?.rss?.latestAttempts?.[0]?.itemsSeen).toBe(42);
+  });
+
+  it("reads existing native health files written in the store-compatible shape", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, nativeFiles, debugStore } = await loadProviderHealthModule({ native: true });
+    nativeFiles.set(
+      "/mock/app-data/sync-health.json",
+      JSON.stringify({
+        "provider-health": {
+          version: 1,
+          providers: {
+            x: {
+              provider: "x",
+              dailyBuckets: [],
+              hourlyBuckets: [],
+              latestAttempts: [
+                {
+                  id: "existing",
+                  provider: "x",
+                  scope: "provider",
+                  outcome: "error",
+                  reason: "Rate limit exceeded",
+                  startedAt: now.getTime() - 1_000,
+                  finishedAt: now.getTime(),
+                  durationMs: 1_000,
+                  itemsSeen: 0,
+                  itemsAdded: 0,
+                  bytesMoved: 0,
+                  signalType: "explicit",
+                },
+              ],
+              pause: null,
+            },
+          },
+          rssFeeds: {},
+          updatedAt: now.getTime(),
+        },
+      }),
+    );
+
+    await mod.initProviderHealth();
+
+    const provider = debugStore.useDebugStore.getState().health?.providers.x;
+    expect(provider?.lastOutcome).toBe("error");
+    expect(provider?.lastError).toBe("Rate limit exceeded");
   });
 
   it("does not auto-pause on cooldown outcomes", async () => {

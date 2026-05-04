@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react";
 import { useAppStore } from "../../context/PlatformContext.js";
-import { initialsForName } from "../../lib/friend-avatar.js";
+import { personInitialsForName } from "../../lib/friend-avatar.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 
 interface FriendAvatarProps {
@@ -17,7 +18,14 @@ export function FriendAvatar({
 }: FriendAvatarProps) {
   const themeId = useAppStore((state) => state.preferences.display.themeId);
   const palette = createFriendAvatarPalette(themeId);
-  const initials = initialsForName(name);
+  const initials = personInitialsForName(name);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const resolvedUrl = avatarUrl || null;
+  const showImage = !!resolvedUrl && failedUrl !== resolvedUrl;
+
+  useEffect(() => {
+    setFailedUrl((current) => (current && current !== resolvedUrl ? null : current));
+  }, [resolvedUrl]);
 
   return (
     <div
@@ -32,11 +40,12 @@ export function FriendAvatar({
         background: `radial-gradient(circle at 30% 28%, ${palette.gradientStart}, ${palette.gradientMid} 34%, ${palette.gradientEnd} 100%)`,
       }}
     >
-      {avatarUrl ? (
+      {showImage ? (
         <>
           <img
-            src={avatarUrl}
+            src={resolvedUrl}
             alt=""
+            onError={() => setFailedUrl(resolvedUrl)}
             className="h-full w-full object-cover"
             style={{
               filter: "saturate(0.9) contrast(1.02) brightness(0.92)",

@@ -1,7 +1,10 @@
 import {
   Application,
+  Assets,
   Container,
   Graphics,
+  Sprite,
+  Texture,
   Text,
   TextStyle,
 } from "pixi.js";
@@ -14,7 +17,14 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Account, FeedItem, MapMode, Person, RssFeed } from "@freed/shared";
+import type {
+  Account,
+  FeedItem,
+  FriendCandidateConfidence,
+  MapMode,
+  Person,
+  RssFeed,
+} from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
 import {
   buildSpatialIndex,
@@ -59,6 +69,13 @@ interface FriendGraphProps {
   onLinkAccountToPerson?: (accountId: string, personId: string) => Promise<void> | void;
   onPinPersonPosition?: (personId: string, x: number, y: number) => Promise<void> | void;
   onPinAccountPosition?: (accountId: string, x: number, y: number) => Promise<void> | void;
+  onDropNodeToRelationshipTier?: (drop: {
+    personId?: string;
+    accountId?: string;
+    level: 1 | 3 | 5;
+  }) => Promise<void> | void;
+  friendSuggestionStrengthByPerson?: Map<string, FriendCandidateConfidence>;
+  friendSuggestionStrengthByAccount?: Map<string, FriendCandidateConfidence>;
   themeId?: ThemeId;
 }
 
@@ -129,11 +146,18 @@ interface PixiScene {
 interface NodeDisplay {
   container: Container;
   outer: Graphics;
+  avatarSprite: Sprite;
+  avatarMask: Graphics;
   inner: Graphics | null;
-  initials: Text | null;
+  initials: Text;
   providerDot: Graphics | null;
   highlightRing: Graphics;
 }
+
+type AvatarTextureCacheEntry =
+  | { state: "loading" }
+  | { state: "loaded"; texture: Texture }
+  | { state: "failed" };
 
 interface LabelDisplay {
   container: Container;
@@ -156,6 +180,7 @@ const GRAPH_INTERACTION_SETTLE_DELAY_MS = 140;
 const INTERACTIVE_LABEL_LIMIT = 16;
 const SETTLED_LABEL_LIMIT = 32;
 const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
+const RELATIONSHIP_TIER_DROP_SELECTOR = "[data-friend-tier-drop-value]";
 
 interface RgbColor {
   r: number;
@@ -197,6 +222,20 @@ interface GraphPerfSnapshot {
   visibleNodeLabelCount: number;
   visibleProviderLabelCount: number;
   qualityMode: GraphQualityMode;
+}
+
+function relationshipTierDropLevelAt(clientX: number, clientY: number): 1 | 3 | 5 | null {
+  const element = document.elementFromPoint(clientX, clientY);
+  const target = element?.closest<HTMLElement>(RELATIONSHIP_TIER_DROP_SELECTOR);
+  const value = target?.dataset.friendTierDropValue;
+  if (value === "1" || value === "3" || value === "5") {
+    return Number(value) as 1 | 3 | 5;
+  }
+  return null;
+}
+
+function emitRelationshipTierDragOver(level: 1 | 3 | 5 | null): void {
+  window.dispatchEvent(new CustomEvent("freed-friend-tier-dragover", { detail: { level } }));
 }
 
 function clampScale(scale: number): number {
@@ -393,7 +432,7 @@ function kindColor(node: IdentityGraphLayoutNode, palette: GraphThemePalette) {
   if (node.kind === "connection_person") {
     return {
       fill: palette.connectionFill,
-      stroke: palette.connectionStroke,
+      stroke: node.friendSuggestionConfidence ? palette.highlight : palette.connectionStroke,
       text: palette.connectionText,
     };
   }
@@ -406,7 +445,7 @@ function kindColor(node: IdentityGraphLayoutNode, palette: GraphThemePalette) {
   }
   return {
     fill: providerColor(node.provider, palette),
-    stroke: palette.channelStroke,
+    stroke: node.friendSuggestionConfidence ? palette.highlight : palette.channelStroke,
     text: palette.labelText,
   };
 }
@@ -442,24 +481,33 @@ function createNodeDisplay(
   const outer = new Graphics();
   container.addChild(outer);
 
+  const avatarSprite = new Sprite(Texture.EMPTY);
+  avatarSprite.anchor.set(0.5);
+  avatarSprite.visible = false;
+  container.addChild(avatarSprite);
+
+  const avatarMask = new Graphics();
+  container.addChild(avatarMask);
+  avatarSprite.mask = avatarMask;
+
   let inner: Graphics | null = null;
-  let initials: Text | null = null;
   if (node.kind === "friend_person" || node.kind === "connection_person") {
     inner = new Graphics();
     container.addChild(inner);
-    initials = new Text(
-      node.initials ?? "",
-      new TextStyle({
-        fill: nodePalette.text,
-        fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
-        fontSize: Math.max(12, node.radius * 0.48),
-        fontWeight: "700",
-        letterSpacing: 1,
-      }),
-    );
-    initials.anchor.set(0.5);
-    container.addChild(initials);
   }
+
+  const initials = new Text(
+    node.initials ?? "",
+    new TextStyle({
+      fill: nodePalette.text,
+      fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
+      fontSize: Math.max(9, node.radius * 0.48),
+      fontWeight: "700",
+      letterSpacing: node.kind === "account" || node.kind === "feed" ? 0 : 1,
+    }),
+  );
+  initials.anchor.set(0.5);
+  container.addChild(initials);
 
   let providerDot: Graphics | null = null;
   if (node.kind === "account") {
@@ -473,6 +521,8 @@ function createNodeDisplay(
   return {
     container,
     outer,
+    avatarSprite,
+    avatarMask,
     inner,
     initials,
     providerDot,
@@ -600,6 +650,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     onLinkAccountToPerson,
     onPinPersonPosition,
     onPinAccountPosition,
+    onDropNodeToRelationshipTier,
+    friendSuggestionStrengthByPerson,
+    friendSuggestionStrengthByAccount,
     themeId,
   },
   ref,
@@ -625,6 +678,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const lastLabelLayoutKeyRef = useRef("");
   const visibleLabelIdsRef = useRef<string[]>([]);
   const textStyleCacheRef = useRef<Map<string, TextStyle>>(new Map());
+  const avatarTextureCacheRef = useRef<Map<string, AvatarTextureCacheEntry>>(new Map());
   const previousRequestedModelRef = useRef<IdentityGraphModel | null>(null);
   const previousRequestSnapshotRef = useRef<{
     signature: string;
@@ -634,6 +688,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const lastLayoutMsRef = useRef(0);
   const graphQualityModeRef = useRef<GraphQualityMode>("settled");
   const layoutReadyRef = useRef(false);
+  const syncSceneRef = useRef<() => void>(() => {});
   const perfSnapshotRef = useRef<GraphPerfSnapshot>({
     modelBuildMs: 0,
     layoutMs: 0,
@@ -667,8 +722,18 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         feeds,
         feedItems,
         mode: mode as IdentityGraphMode,
+        friendSuggestionStrengthByPerson,
+        friendSuggestionStrengthByAccount,
       }),
-    [accounts, feedItems, feeds, mode, persons],
+    [
+      accounts,
+      feedItems,
+      feeds,
+      friendSuggestionStrengthByAccount,
+      friendSuggestionStrengthByPerson,
+      mode,
+      persons,
+    ],
   );
   const modelSignature = useMemo(
     () => createIdentityGraphModelSignature(model),
@@ -703,6 +768,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     );
     const accountDrag = drag?.kind === "account-drag" ? drag : null;
     const nodeById = new Map(layoutRef.current.nodes.map((node) => [node.id, node]));
+    const avatarCache = avatarTextureCacheRef.current;
+    const queueAvatarRefresh = () => {
+      lastStaticRenderKeyRef.current = "";
+      requestAnimationFrame(() => syncSceneRef.current());
+    };
     const staticRenderKey = [
       layoutVersion,
       themeId ?? "",
@@ -794,6 +864,42 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         display.outer.drawCircle(0, 0, node.radius);
         display.outer.endFill();
 
+        display.avatarMask.clear();
+        display.avatarMask.beginFill(0xffffff, 1);
+        display.avatarMask.drawCircle(0, 0, node.radius);
+        display.avatarMask.endFill();
+
+        let avatarTexture: Texture | null = null;
+        const avatarUrl = node.avatarUrl ?? null;
+        if (avatarUrl) {
+          const cached = avatarCache.get(avatarUrl);
+          if (cached?.state === "loaded") {
+            avatarTexture = cached.texture;
+          } else if (!cached) {
+            avatarCache.set(avatarUrl, { state: "loading" });
+            void Assets.load<Texture>(avatarUrl)
+              .then((texture) => {
+                avatarCache.set(avatarUrl, { state: "loaded", texture });
+                queueAvatarRefresh();
+              })
+              .catch(() => {
+                avatarCache.set(avatarUrl, { state: "failed" });
+                queueAvatarRefresh();
+              });
+          }
+        }
+
+        if (avatarTexture) {
+          display.avatarSprite.texture = avatarTexture;
+          display.avatarSprite.width = node.radius * 2;
+          display.avatarSprite.height = node.radius * 2;
+          display.avatarSprite.visible = true;
+          display.initials.visible = false;
+        } else {
+          display.avatarSprite.visible = false;
+          display.initials.visible = true;
+        }
+
         if (display.inner) {
           display.inner.clear();
           display.inner.beginFill(0xffffff, 0.08);
@@ -805,27 +911,26 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           display.inner.endFill();
         }
 
-        if (display.initials) {
-          display.initials.text = node.initials ?? "";
-          display.initials.style = getCachedTextStyle(
-            [
-              "initials",
-              themeId ?? "default",
-              palette.text,
-              Math.max(12, Math.round(node.radius * 0.48)),
-            ].join(":"),
-            {
-              fill: palette.text,
-              fontFamily:
-                themeId === "scriptorium"
-                  ? "Georgia, serif"
-                  : "system-ui, sans-serif",
-              fontSize: Math.max(12, node.radius * 0.48),
-              fontWeight: "700",
-              letterSpacing: 1,
-            },
-          );
-        }
+        display.initials.text = node.initials ?? "";
+        display.initials.style = getCachedTextStyle(
+          [
+            "initials",
+            themeId ?? "default",
+            palette.text,
+            Math.max(9, Math.round(node.radius * 0.48)),
+            node.kind,
+          ].join(":"),
+          {
+            fill: palette.text,
+            fontFamily:
+              themeId === "scriptorium"
+                ? "Georgia, serif"
+                : "system-ui, sans-serif",
+            fontSize: Math.max(9, node.radius * 0.48),
+            fontWeight: "700",
+            letterSpacing: node.kind === "account" || node.kind === "feed" ? 0 : 1,
+          },
+        );
 
         if (display.providerDot) {
           display.providerDot.clear();
@@ -842,6 +947,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         if (accountDrag?.dropTargetPersonId && node.personId === accountDrag.dropTargetPersonId) {
           display.highlightRing.lineStyle(4, graphPalette.highlight, 0.8);
           display.highlightRing.drawCircle(0, 0, node.radius + 6);
+        } else if (node.friendSuggestionConfidence) {
+          display.highlightRing.lineStyle(
+            node.friendSuggestionConfidence === "high" ? 2.2 : 1.6,
+            graphPalette.highlight,
+            node.friendSuggestionConfidence === "high" ? 0.48 : 0.34,
+          );
+          display.highlightRing.drawCircle(0, 0, node.radius + 5);
         }
       }
 
@@ -910,6 +1022,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         );
         display.outer.drawCircle(0, 0, node.radius);
         display.outer.endFill();
+        display.avatarMask.clear();
+        display.avatarMask.beginFill(0xffffff, 1);
+        display.avatarMask.drawCircle(0, 0, node.radius);
+        display.avatarMask.endFill();
       }
       lastSelectionStyleKeyRef.current = selectionStyleKey;
     }
@@ -1205,6 +1321,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     selectedPersonId,
     themeId,
   ]);
+  syncSceneRef.current = syncScene;
 
   const scheduleSyncScene = useCallback(() => {
     cancelAnimationFrame(drawRafRef.current);
@@ -1649,6 +1766,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       drag.moved = true;
     }
 
+    if (drag.moved && onDropNodeToRelationshipTier) {
+      emitRelationshipTierDragOver(relationshipTierDropLevelAt(event.clientX, event.clientY));
+    }
+
     if (drag.kind === "person-drag") {
       if (event.pointerType === "touch") {
         event.preventDefault();
@@ -1676,6 +1797,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (pinch && pinch.pointerIds.includes(event.pointerId)) {
       pinchStateRef.current = null;
       dragStateRef.current = null;
+      emitRelationshipTierDragOver(null);
       setIsInteracting(activeTouchPointsRef.current.size > 0);
       scheduleSyncScene();
       return;
@@ -1685,6 +1807,24 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (!drag || drag.pointerId !== event.pointerId) return;
     dragStateRef.current = null;
     setIsInteracting(false);
+    emitRelationshipTierDragOver(null);
+
+    if (
+      drag.moved &&
+      (drag.kind === "account-drag" || drag.kind === "person-drag") &&
+      onDropNodeToRelationshipTier
+    ) {
+      const level = relationshipTierDropLevelAt(event.clientX, event.clientY);
+      if (level) {
+        await onDropNodeToRelationshipTier({
+          personId: drag.kind === "person-drag" ? drag.personId : undefined,
+          accountId: drag.kind === "account-drag" ? drag.accountId : undefined,
+          level,
+        });
+        scheduleSyncScene();
+        return;
+      }
+    }
 
     if (drag.kind === "account-drag") {
       if (drag.moved && drag.dropTargetPersonId && onLinkAccountToPerson) {
@@ -1737,7 +1877,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       }
     }
     scheduleSyncScene();
-  }, [accounts, hitNodeAt, onClearSelection, onLinkAccountToPerson, onPinAccountPosition, onPinPersonPosition, onSelectAccount, onSelectPerson, personsById, scheduleSyncScene]);
+  }, [accounts, hitNodeAt, onClearSelection, onDropNodeToRelationshipTier, onLinkAccountToPerson, onPinAccountPosition, onPinPersonPosition, onSelectAccount, onSelectPerson, personsById, scheduleSyncScene]);
 
   const handlePointerLeave = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (hoveredNodeIdRef.current) {
@@ -1751,16 +1891,24 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (pinch && pinch.pointerIds.includes(event.pointerId)) {
       pinchStateRef.current = null;
       dragStateRef.current = null;
+      emitRelationshipTierDragOver(null);
       setIsInteracting(activeTouchPointsRef.current.size > 0);
       scheduleSyncScene();
       return;
     }
     const drag = dragStateRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    if (
+      onDropNodeToRelationshipTier &&
+      (drag.kind === "account-drag" || drag.kind === "person-drag")
+    ) {
+      return;
+    }
     dragStateRef.current = null;
+    emitRelationshipTierDragOver(null);
     setIsInteracting(false);
     scheduleSyncScene();
-  }, [scheduleSyncScene]);
+  }, [onDropNodeToRelationshipTier, scheduleSyncScene]);
 
   const handleDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();

@@ -58,7 +58,7 @@ function matchesFilters(entry: FriendOverviewEntry, filters: Set<FriendOverviewF
         if (entry.lastContactAt !== null) return false;
         break;
       case "close_friends":
-        if (entry.friend.careLevel < 4) return false;
+        if (entry.friend.careLevel < 5) return false;
         break;
       case "recently_active":
         if (!entry.isRecentlyActive) return false;

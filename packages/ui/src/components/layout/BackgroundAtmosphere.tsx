@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  DEFAULT_THEME_ID,
   getThemeDefinition,
   resolveThemeId,
   type ThemeId,
@@ -204,7 +205,7 @@ function resolveTextureOpacity(
 export function BackgroundAtmosphere() {
   const [orbs, setOrbs] = useState<Orb[] | null>(null);
   const [viewportWidth, setViewportWidth] = useState(DESKTOP_BASELINE_WIDTH);
-  const [themeId, setThemeId] = useState<ThemeId>("neon");
+  const [themeId, setThemeId] = useState<ThemeId>(DEFAULT_THEME_ID);
   const themeRecipe = useMemo(
     () => getThemeDefinition(themeId).background,
     [themeId],
@@ -218,14 +219,14 @@ export function BackgroundAtmosphere() {
 
   useEffect(() => {
     const initialThemeId = resolveThemeId(
-      document.documentElement.dataset.theme || "neon",
+      document.documentElement.dataset.theme || DEFAULT_THEME_ID,
     );
     setViewportWidth(window.innerWidth);
     setThemeId(initialThemeId);
 
     const observer = new MutationObserver(() => {
       const nextThemeId = resolveThemeId(
-        document.documentElement.dataset.theme || "neon",
+        document.documentElement.dataset.theme || DEFAULT_THEME_ID,
       );
       setThemeId(nextThemeId);
     });

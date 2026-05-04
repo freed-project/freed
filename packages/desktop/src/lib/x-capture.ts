@@ -15,6 +15,7 @@ import {
   X_API_BASE,
   X_BEARER_TOKEN,
   HomeLatestTimeline,
+  TweetDetail,
   FavoriteTweet,
   UnfavoriteTweet,
   buildMutationUrl,
@@ -22,6 +23,7 @@ import {
   tweetsToFeedItems,
   deduplicateFeedItems,
   getHomeLatestTimelineVariables,
+  getTweetDetailVariables,
 } from "@freed/capture-x/browser";
 import type { XTweetResult, TimelineResponse } from "@freed/capture-x/browser";
 import type { XCookies } from "./x-auth";
@@ -98,6 +100,12 @@ export interface XSyncResult {
   diag: XSyncDiag;
 }
 
+export interface XThreadResult {
+  replies: ReturnType<typeof tweetsToFeedItems>;
+  errorStage: string | null;
+  errorMessage: string | null;
+}
+
 // =============================================================================
 // Transport Layer
 // =============================================================================
@@ -149,6 +157,35 @@ async function xRequest(
   const url = `${base}?${params.toString()}`;
 
   return requester(url, "", buildXHeaders(cookies, false), "GET");
+}
+
+function collectTweets(value: unknown, tweets: XTweetResult[], seen: Set<string>): void {
+  if (!value || typeof value !== "object") return;
+
+  const record = value as Record<string, unknown>;
+  const typename = record.__typename;
+  const legacy = record.legacy;
+  const restId = record.rest_id;
+  if (
+    (typename === "Tweet" || typename === "TweetWithVisibilityResults") &&
+    typeof restId === "string" &&
+    legacy &&
+    typeof legacy === "object" &&
+    !seen.has(restId)
+  ) {
+    seen.add(restId);
+    tweets.push(value as XTweetResult);
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) collectTweets(item, tweets, seen);
+    return;
+  }
+
+  for (const child of Object.values(record)) {
+    collectTweets(child, tweets, seen);
+  }
 }
 
 // =============================================================================
@@ -307,6 +344,52 @@ export async function fetchXTimeline(
   );
 
   return { items, diag };
+}
+
+export async function fetchXThreadReplies(
+  tweetId: string,
+  cookies: XCookies,
+  requester: XRequester = defaultRequester,
+): Promise<XThreadResult> {
+  let rawResponse: string;
+  try {
+    rawResponse = await xRequest(
+      cookies,
+      TweetDetail,
+      getTweetDetailVariables(tweetId),
+      requester,
+    );
+  } catch (err) {
+    return {
+      replies: [],
+      errorStage: "transport",
+      errorMessage: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawResponse);
+  } catch (err) {
+    return {
+      replies: [],
+      errorStage: "parse",
+      errorMessage: `JSON.parse failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const tweets: XTweetResult[] = [];
+  collectTweets(parsed, tweets, new Set());
+  const normalized = tweetsToFeedItems(tweets).filter((item) => {
+    if (item.globalId === `x:${tweetId}`) return false;
+    return item.sourceUrl !== `https://x.com/${item.author.handle}/status/${tweetId}`;
+  });
+
+  return {
+    replies: deduplicateFeedItems(normalized).slice(0, 25),
+    errorStage: null,
+    errorMessage: null,
+  };
 }
 
 // =============================================================================

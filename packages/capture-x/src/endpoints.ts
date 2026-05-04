@@ -276,3 +276,26 @@ export function getUserTweetsVariables(
 
   return variables;
 }
+
+/**
+ * Default variables for TweetDetail.
+ */
+export function getTweetDetailVariables(tweetId: string, cursor?: string): Record<string, unknown> {
+  const variables: Record<string, unknown> = {
+    focalTweetId: tweetId,
+    referrer: "tweet",
+    controller_data: "DAACDAABDAABCgABAAAAAAAAAAAKAAkAAQoAAwAAAAEIAAIAAAABCAADAAAAAAgABAAAAAABAAIAAAAB",
+    rankingMode: "Relevance",
+    includePromotedContent: false,
+    withCommunity: true,
+    withQuickPromoteEligibilityTweetFields: true,
+    withBirdwatchNotes: true,
+    withVoice: true,
+  };
+
+  if (cursor) {
+    variables.cursor = cursor;
+  }
+
+  return variables;
+}

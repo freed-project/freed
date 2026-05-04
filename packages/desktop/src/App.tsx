@@ -33,10 +33,12 @@ import {
   stopAllCloudSyncs,
   getActiveProviders,
   getCloudToken,
+  getValidCloudToken,
   clearCloudProvider,
   deleteCloudFile,
   startCloudSync,
   initiateDesktopOAuth,
+  isOAuthCanceledError,
   storeCloudToken,
   type CloudProvider,
 } from "./lib/sync";
@@ -56,11 +58,15 @@ import { captureIgFeed } from "./lib/instagram-capture";
 import { captureLiFeed } from "./lib/li-capture";
 import { contentCache } from "./lib/content-cache";
 import { saveUrlInDesktop } from "./lib/save-url";
+import { hydrateReaderItem as hydrateReaderItemForDesktop } from "./lib/reader-hydration";
 import { importMarkdownFiles, exportLibrary } from "./lib/import-export";
 import { secureStorage } from "./lib/secure-storage";
-import { start as startContentFetcher, stop as stopContentFetcher } from "./lib/content-fetcher";
+import { localAIModels } from "./lib/local-ai-models";
+import { pinReaderItem, start as startContentFetcher, stop as stopContentFetcher } from "./lib/content-fetcher";
+import { start as startSemanticClassifier, stop as stopSemanticClassifier } from "./lib/semantic-classifier";
 import { useAppStore as useDesktopStore, withProviderSyncing } from "./lib/store";
 import { pickContactViaTauri } from "./lib/contacts";
+import { fetchGoogleContactsViaTauri } from "./lib/google-contacts";
 import { FeedEmptyState } from "./components/FeedEmptyState";
 import { XSettingsSection } from "./components/XSettingsSection";
 import { FacebookSettingsSection } from "./components/FacebookSettingsSection";
@@ -79,6 +85,7 @@ import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
 import { startMemoryMonitor, stopMemoryMonitor } from "./lib/memory-monitor";
+import { noteMemoryPressure, noteRendererHeartbeat } from "./lib/background-runtime-coordinator";
 import {
   bootstrapDesktopReleaseChannel,
   loadDesktopReleaseChannelState,
@@ -96,7 +103,7 @@ import {
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1";
 const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
-const RENDERER_HEARTBEAT_INTERVAL_MS = 60 * 1000;
+const RENDERER_HEARTBEAT_INTERVAL_MS = 15 * 1000;
 
 // Register the desktop log transport so addDebugEvent calls from ui/ flow
 // through the native logger in both local preview and release builds.
@@ -121,6 +128,7 @@ function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const error = useAppStore((state) => state.error);
+  const tauriRuntimeAvailable = import.meta.env.VITE_TEST_TAURI === "1" || isTauri();
   const [legalResolved, setLegalResolved] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [releaseChannel, setReleaseChannelState] = useState<ReleaseChannel>(() =>
@@ -192,10 +200,23 @@ function App() {
     }
     // Start background content fetcher -- processes article HTML fetch queue.
     startContentFetcher();
+    startSemanticClassifier({
+      isEnabled: () => {
+        const prefs = useDesktopStore.getState().preferences.ai;
+        return prefs.provider === "integrated" && prefs.extractTopics;
+      },
+      subscribeToPreferenceChanges: (callback) =>
+        useDesktopStore.subscribe((state, previous) => {
+          if (state.preferences.ai !== previous.preferences.ai) {
+            callback();
+          }
+        }),
+    });
     startMemoryMonitor({
       getAutomergeStats: getCachedDocStats,
       onCriticalPressure: () => {
         stopContentFetcher();
+        stopSemanticClassifier();
         toast.error("Freed paused background fetch because memory is critically high", {
           actionLabel: "Restart",
           onAction: () => {
@@ -203,12 +224,16 @@ function App() {
           },
         });
       },
+      onSample: (snapshot) => {
+        noteMemoryPressure(snapshot);
+      },
     });
     return () => {
       stopRssPoller();
       stopSync();
       stopSnapshotManager();
       stopContentFetcher();
+      stopSemanticClassifier();
       stopMemoryMonitor();
     };
   }, [isInitialized, legalAccepted]);
@@ -234,19 +259,29 @@ function App() {
   }, [legalAccepted]);
 
   useEffect(() => {
-    if (!isTauri()) return;
+    const hasTauriMock = "__TAURI_INTERNALS__" in window;
+    const canEmitRendererHeartbeat =
+      import.meta.env.VITE_TEST_TAURI === "1" || isTauri() || hasTauriMock;
+    if (!canEmitRendererHeartbeat) return;
 
     let heartbeatSeq = 0;
 
     const sendRendererHeartbeat = (reason: string) => {
       heartbeatSeq += 1;
-      void emit("renderer-heartbeat", {
+      const payload = {
         seq: heartbeatSeq,
         ts: Date.now(),
         reason,
         visibility: document.visibilityState,
         href: window.location.href,
-      }).catch(() => {
+      };
+      noteRendererHeartbeat(payload);
+      if (import.meta.env.VITE_TEST_TAURI === "1") {
+        const testWindow = window as unknown as { __FREED_RENDERER_HEARTBEATS__?: number };
+        testWindow.__FREED_RENDERER_HEARTBEATS__ =
+          (testWindow.__FREED_RENDERER_HEARTBEATS__ ?? 0) + 1;
+      }
+      void emit("renderer-heartbeat", payload).catch(() => {
         // If the renderer is already failing, heartbeat delivery may fail too.
       });
     };
@@ -472,12 +507,13 @@ function App() {
   }, []);
 
   const retryCloudProvider = useCallback(async (provider: CloudProvider) => {
-    const token = getCloudToken(provider);
+    const token = await getValidCloudToken(provider);
     if (!token) return;
     await startCloudSync(provider, token);
   }, []);
 
   const recordGoogleContactsConnectError = useCallback((error: unknown) => {
+    if (isOAuthCanceledError(error)) return;
     const message = error instanceof Error ? error.message : "Google Contacts connection failed.";
     setContactSyncError(message, "auth");
     log.warn(`[contacts] Google reconnect failed: ${message}`);
@@ -488,7 +524,7 @@ function App() {
     try {
       const token = await initiateDesktopOAuth(provider);
       storeCloudToken(provider, token);
-      await startCloudSync(provider, token);
+      await startCloudSync(provider, token.accessToken);
     } catch (error) {
       if (provider === "gdrive") {
         recordGoogleContactsConnectError(error);
@@ -497,16 +533,38 @@ function App() {
     }
   }, [recordGoogleContactsConnectError]);
 
-  const connectGoogleContacts = useCallback(async () => {
+  const connectGoogleContacts = useCallback(async (options?: { signal?: AbortSignal }) => {
     try {
-      const token = await initiateDesktopOAuth("gdrive");
+      const token = await initiateDesktopOAuth("gdrive", options);
       storeCloudToken("gdrive", token);
-      await startCloudSync("gdrive", token);
+      await startCloudSync("gdrive", token.accessToken);
     } catch (error) {
+      if (isOAuthCanceledError(error)) {
+        log.info("[contacts] Google reconnect canceled");
+        throw error;
+      }
       recordGoogleContactsConnectError(error);
       throw error;
     }
   }, [recordGoogleContactsConnectError]);
+
+  const fetchGoogleContactsForDesktop = useCallback(async (
+    accessToken: string,
+    syncToken?: string | null,
+  ) => {
+    log.info(`[contacts] Google sync requested mode=${syncToken ? "incremental" : "full"}`);
+    try {
+      const result = await fetchGoogleContactsViaTauri(accessToken, syncToken);
+      log.info(
+        `[contacts] Google sync fetched contacts=${result.contacts.length.toLocaleString()} deleted=${result.deleted.length.toLocaleString()} next_sync_token=${result.nextSyncToken ? "yes" : "no"}`,
+      );
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log.warn(`[contacts] Google sync failed: ${message}`);
+      throw error;
+    }
+  }, []);
 
   // Fake-authenticate all social providers for local testing. Writes stub
   // credentials to localStorage (matching the real auth persistence format)
@@ -552,7 +610,7 @@ function App() {
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
-      feedMediaPreviews: "reader-only",
+      feedMediaPreviews: "inline",
       addRssFeed,
       importOPMLFeeds,
       exportFeedsAsOPML,
@@ -570,7 +628,7 @@ function App() {
       FacebookSettingsContent: FacebookSettingsSection,
       InstagramSettingsContent: InstagramSettingsSection,
       LinkedInSettingsContent: LinkedInSettingsSection,
-      GoogleContactsSettingsContent: GoogleContactsSection,
+      GoogleContactsSettingsContent: tauriRuntimeAvailable ? GoogleContactsSection : null,
       checkForUpdates: IS_LOCAL_PREVIEW ? undefined : checkForUpdates,
       applyUpdate: IS_LOCAL_PREVIEW ? undefined : applyUpdate,
       releaseChannel: IS_LOCAL_PREVIEW || !releaseChannelResolved ? undefined : releaseChannel,
@@ -652,18 +710,24 @@ function App() {
       // Local content cache (Tauri FS layer)
       getLocalContent: (globalId) => contentCache.get(globalId),
       getLocalPreservedText: (globalId) => getItemPreservedText(globalId),
+      hydrateReaderItem: hydrateReaderItemForDesktop,
+      pinReaderItem,
       // Encrypted API key store (type-widened: ApiKeyProvider -> string for PlatformConfig interface)
       secureStorage: secureStorage as {
         getApiKey: (provider: string) => Promise<string | null>;
         setApiKey: (provider: string, key: string) => Promise<void>;
         clearApiKey: (provider: string) => Promise<void>;
       },
+      localAIModels,
       openUrl: (url: string) => { void shellOpen(url); },
       pickContact: pickContactViaTauri,
-      googleContacts: {
-        getToken: () => localStorage.getItem("freed_cloud_token_gdrive"),
-        connect: connectGoogleContacts,
-      },
+      googleContacts: tauriRuntimeAvailable
+        ? {
+            getToken: () => getValidCloudToken("gdrive"),
+            connect: connectGoogleContacts,
+            fetchContacts: fetchGoogleContactsForDesktop,
+          }
+        : undefined,
       updateDownloadProgress: ((): UpdateDownloadProgress | null => {
         if (updateState.phase === "downloading") return { phase: "downloading", percent: updateState.percent };
         if (updateState.phase === "error") return { phase: "error", message: updateState.message };
@@ -671,7 +735,7 @@ function App() {
       })(),
       bugReporting: desktopBugReporting,
     }),
-     [checkForUpdates, applyUpdate, connectGoogleContacts, handleFactoryReset, installedReleaseChannel, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, updateState],
+     [checkForUpdates, applyUpdate, connectGoogleContacts, fetchGoogleContactsForDesktop, handleFactoryReset, installedReleaseChannel, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, tauriRuntimeAvailable, updateState],
   );
 
   if (!legalResolved) {

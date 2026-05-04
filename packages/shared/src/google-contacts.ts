@@ -1,6 +1,6 @@
 import type { GoogleContact } from "./types.js";
 
-interface ConnectionsResponse {
+export interface GoogleContactsConnectionsResponse {
   connections?: Array<{
     resourceName: string;
     etag?: string;
@@ -21,7 +21,12 @@ export interface GoogleContactsResult {
   deleted: string[];
 }
 
-function parseContact(raw: NonNullable<ConnectionsResponse["connections"]>[number]): GoogleContact {
+export type GoogleContactsPageFetcher = (
+  accessToken: string,
+  params: URLSearchParams,
+) => Promise<GoogleContactsConnectionsResponse>;
+
+function parseContact(raw: NonNullable<GoogleContactsConnectionsResponse["connections"]>[number]): GoogleContact {
   const primaryName = raw.names?.find(n => n.metadata?.primary) ?? raw.names?.[0];
   return {
     resourceName: raw.resourceName,
@@ -43,7 +48,7 @@ function parseContact(raw: NonNullable<ConnectionsResponse["connections"]>[numbe
 async function fetchPage(
   accessToken: string,
   params: URLSearchParams
-): Promise<ConnectionsResponse> {
+): Promise<GoogleContactsConnectionsResponse> {
   const url = `https://people.googleapis.com/v1/people/me/connections?${params.toString()}`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -52,12 +57,13 @@ async function fetchPage(
     const status = res.status;
     throw Object.assign(new Error(`People API error ${status}`), { status });
   }
-  return res.json() as Promise<ConnectionsResponse>;
+  return res.json() as Promise<GoogleContactsConnectionsResponse>;
 }
 
-export async function fetchGoogleContacts(
+export async function fetchGoogleContactsWithPageFetcher(
   accessToken: string,
-  syncToken?: string | null
+  syncToken: string | null | undefined,
+  pageFetcher: GoogleContactsPageFetcher,
 ): Promise<GoogleContactsResult> {
   const baseParams = new URLSearchParams({
     personFields: "names,emailAddresses,phoneNumbers,photos,organizations",
@@ -70,7 +76,7 @@ export async function fetchGoogleContacts(
     baseParams.set("requestSyncToken", "true");
   }
 
-  const allRaw: NonNullable<ConnectionsResponse["connections"]> = [];
+  const allRaw: NonNullable<GoogleContactsConnectionsResponse["connections"]> = [];
   let nextSyncToken = "";
   let pageToken: string | undefined;
 
@@ -78,7 +84,7 @@ export async function fetchGoogleContacts(
     do {
       const params = new URLSearchParams(baseParams);
       if (pageToken) params.set("pageToken", pageToken);
-      const page = await fetchPage(accessToken, params);
+      const page = await pageFetcher(accessToken, params);
       allRaw.push(...(page.connections ?? []));
       nextSyncToken = page.nextSyncToken ?? nextSyncToken;
       pageToken = page.nextPageToken;
@@ -92,7 +98,7 @@ export async function fetchGoogleContacts(
       (err as { status: number }).status === 410 &&
       syncToken
     ) {
-      return fetchGoogleContacts(accessToken, null);
+      return fetchGoogleContactsWithPageFetcher(accessToken, null, pageFetcher);
     }
     throw err;
   }
@@ -109,6 +115,13 @@ export async function fetchGoogleContacts(
   }
 
   return { contacts, nextSyncToken, deleted };
+}
+
+export async function fetchGoogleContacts(
+  accessToken: string,
+  syncToken?: string | null
+): Promise<GoogleContactsResult> {
+  return fetchGoogleContactsWithPageFetcher(accessToken, syncToken, fetchPage);
 }
 
 export function mergeContactChanges(

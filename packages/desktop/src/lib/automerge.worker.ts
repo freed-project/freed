@@ -54,7 +54,7 @@ import {
   confirmLikedSynced,
   confirmSeenSynced,
 } from "@freed/shared/schema";
-import { createDefaultPreferences, rankFeedItems } from "@freed/shared";
+import { mergeDefaultPreferences, rankFeedItems } from "@freed/shared";
 import type { Account, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
 import {
@@ -187,8 +187,11 @@ function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean 
   if (
     "author" in updates ||
     "contentSignals" in updates ||
+    "eventCandidate" in updates ||
     "content" in updates ||
     "contentType" in updates ||
+    "location" in updates ||
+    "timeRange" in updates ||
     "preservedContent" in updates ||
     "publishedAt" in updates ||
     "rssSource" in updates ||
@@ -242,51 +245,13 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   const persons = (plain.persons ?? {}) as Record<string, Person>;
   const accounts = (plain.accounts ?? {}) as Record<string, Account>;
   const friends = projectLegacyFriends(persons, accounts);
-  const preferences = {
-    ...createDefaultPreferences(),
-    ...(plain.preferences as Partial<UserPreferences>),
-    xCapture: {
-      ...createDefaultPreferences().xCapture,
-      ...(plain.preferences?.xCapture as Partial<UserPreferences["xCapture"]> | undefined),
-    },
-    fbCapture: {
-      ...createDefaultPreferences().fbCapture,
-      ...(plain.preferences?.fbCapture as Partial<UserPreferences["fbCapture"]> | undefined),
-    },
-    ai: {
-      ...createDefaultPreferences().ai,
-      ...(plain.preferences?.ai as Partial<UserPreferences["ai"]> | undefined),
-    },
-    display: {
-      ...createDefaultPreferences().display,
-      ...(plain.preferences?.display as Partial<UserPreferences["display"]> | undefined),
-      reading: {
-        ...createDefaultPreferences().display.reading,
-        ...(plain.preferences?.display?.reading as Partial<UserPreferences["display"]["reading"]> | undefined),
-      },
-    },
-    sync: {
-      ...createDefaultPreferences().sync,
-      ...(plain.preferences?.sync as Partial<UserPreferences["sync"]> | undefined),
-    },
-    ulysses: {
-      ...createDefaultPreferences().ulysses,
-      ...(plain.preferences?.ulysses as Partial<UserPreferences["ulysses"]> | undefined),
-      allowedPaths: {
-        ...createDefaultPreferences().ulysses.allowedPaths,
-        ...(plain.preferences?.ulysses?.allowedPaths as Record<string, string[]> | undefined),
-      },
-    },
-    weights: {
-      ...createDefaultPreferences().weights,
-      ...(plain.preferences?.weights as Partial<UserPreferences["weights"]> | undefined),
-    },
-  } satisfies UserPreferences;
+  const preferences = mergeDefaultPreferences(plain.preferences as Partial<UserPreferences> | undefined);
 
   const visibleItems = plainItems.filter((item) => !item.userState.hidden);
   const rankedItems = rankFeedItems(
     visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
     preferences.weights,
+    { persons, accounts },
   );
 
   const feedUnreadCounts: Record<string, number> = {};
@@ -375,7 +340,7 @@ async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
     binarySize: binary.byteLength,
   };
   send(snapshot);
-  send({ type: "STATE_UPDATE", state });
+  send({ type: "STATE_UPDATE", state, mutation: trace?.opType });
 
   // Request main thread to relay the binary to connected PWA clients.
   // Array.from() (O(binary size)) runs here in the worker, off the main thread.
@@ -471,7 +436,12 @@ async function applyItemPatchChange(
     .filter((item): item is FeedItem => Boolean(item))
     .map((item) => ({ item: cloneFeedItemForPatch(item) }));
   if (patches.length > 0) {
-    send({ type: "ITEM_PATCH", patches });
+    send({
+      type: "ITEM_PATCH",
+      patches,
+      changedItemIds: changedIds,
+      mutation: trace?.opType,
+    });
   }
 }
 

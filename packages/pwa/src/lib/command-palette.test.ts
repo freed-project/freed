@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { create } from "zustand";
-import type { BaseAppState, FeedItem, FilterOptions } from "@freed/shared";
+import type { Account, BaseAppState, FeedItem, FilterOptions, Person } from "@freed/shared";
 import type { PlatformConfig } from "../../../ui/src/context/PlatformContext.tsx";
 import { PlatformProvider } from "../../../ui/src/context/PlatformContext.tsx";
 import { AppShell } from "../../../ui/src/components/layout/AppShell.tsx";
@@ -421,6 +421,153 @@ describe("command palette", () => {
     expect(actions.at(-1)?.id).toBe("search-feed");
   });
 
+  it("hides feed and danger suggestions until the user types", () => {
+    const common = {
+      activeView: "feed" as const,
+      activeFilter: {},
+      settingsSections: [],
+      topSources: [{ id: "rss" as const, label: "Feeds" }],
+      feeds: [{ url: "https://alpha.example/feed.xml", title: "Alpha Feed" }],
+      tagFilters: [],
+      currentSourceId: null,
+      selectedItem: null,
+      unreadScopeCount: 0,
+      archivableScopeCount: 0,
+      savedArchivedCount: 0,
+      archivedCount: 2,
+      openSettingsTo: noop,
+      navigateToFeed: noop,
+      navigateToFriends: noop,
+      navigateToMap: noop,
+      applyFeedSearch: noop,
+      deleteAllArchived: noop,
+    };
+
+    const blankActions = filterCommandPaletteActions(buildCommandPaletteActions({ ...common, query: "" }), "");
+    expect(blankActions.some((action) => action.id.startsWith("go-feed-"))).toBe(false);
+    expect(blankActions.some((action) => action.id.startsWith("danger-"))).toBe(false);
+
+    const typedActions = filterCommandPaletteActions(buildCommandPaletteActions({ ...common, query: "alpha" }), "alpha");
+    expect(typedActions.some((action) => action.id === "go-feed-https://alpha.example/feed.xml")).toBe(true);
+    expect(typedActions.some((action) => action.id === "danger-delete-archived")).toBe(false);
+
+    const dangerActions = filterCommandPaletteActions(buildCommandPaletteActions({ ...common, query: "delete" }), "delete");
+    expect(dangerActions.some((action) => action.id === "danger-delete-archived")).toBe(true);
+  });
+
+  it("adds typed social channel suggestions that navigate to an author filter", () => {
+    const navigateToFeed = vi.fn();
+    const account: Account = {
+      id: "social:x:rob",
+      kind: "social",
+      provider: "x",
+      externalId: "rob",
+      handle: "@rob",
+      displayName: "Rob Beschizza",
+      firstSeenAt: 1,
+      lastSeenAt: 1,
+      discoveredFrom: "captured_item",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+
+    const actions = buildCommandPaletteActions({
+      query: "besch",
+      activeView: "feed",
+      activeFilter: {},
+      settingsSections: [],
+      topSources: [],
+      feeds: [],
+      socialChannels: [{ account, personName: "Rob" }],
+      tagFilters: [],
+      currentSourceId: null,
+      selectedItem: null,
+      unreadScopeCount: 0,
+      archivableScopeCount: 0,
+      savedArchivedCount: 0,
+      archivedCount: 0,
+      openSettingsTo: noop,
+      navigateToFeed,
+      navigateToFriends: noop,
+      navigateToMap: noop,
+      applyFeedSearch: noop,
+    });
+
+    const channelAction = actions.find((action) => action.id === "go-channel-x-rob");
+    expect(channelAction?.title).toBe("Rob Beschizza");
+    channelAction?.run();
+    expect(navigateToFeed).toHaveBeenCalledWith({ platform: "x", authorId: "rob" });
+  });
+
+  it("adds typed social profile navigation and promotion actions", async () => {
+    const navigateToSocialProfileFriends = vi.fn();
+    const navigateToSocialProfileMap = vi.fn();
+    const promoteSocialProfile = vi.fn();
+    const account: Account = {
+      id: "social:instagram:kr3ture_music",
+      personId: "person-kr3ture",
+      kind: "social",
+      provider: "instagram",
+      externalId: "kr3ture_music",
+      handle: "@kr3ture_music",
+      displayName: "kr3ture_music",
+      firstSeenAt: 1,
+      lastSeenAt: 1,
+      discoveredFrom: "captured_item",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const person: Person = {
+      id: "person-kr3ture",
+      name: "Kr3ture",
+      relationshipStatus: "connection",
+      careLevel: 2,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+
+    const actions = buildCommandPaletteActions({
+      query: "kr3tu",
+      activeView: "feed",
+      activeFilter: {},
+      settingsSections: [],
+      topSources: [],
+      feeds: [],
+      socialChannels: [{ account, person }],
+      tagFilters: [],
+      currentSourceId: null,
+      selectedItem: null,
+      unreadScopeCount: 0,
+      archivableScopeCount: 0,
+      savedArchivedCount: 0,
+      archivedCount: 0,
+      openSettingsTo: noop,
+      navigateToFeed: noop,
+      navigateToFriends: noop,
+      navigateToMap: noop,
+      navigateToSocialProfileFriends,
+      navigateToSocialProfileMap,
+      promoteSocialProfile,
+      applyFeedSearch: noop,
+    });
+
+    const friendsAction = actions.find((action) => action.id === "go-profile-friends-social:instagram:kr3ture_music");
+    expect(friendsAction?.title).toBe("Kr3ture's Friends view");
+    friendsAction?.run();
+    expect(navigateToSocialProfileFriends).toHaveBeenCalledWith(account, "person-kr3ture");
+
+    const mapAction = actions.find((action) => action.id === "go-profile-map-social:instagram:kr3ture_music");
+    expect(mapAction?.title).toBe("Kr3ture on Map");
+    mapAction?.run();
+    expect(navigateToSocialProfileMap).toHaveBeenCalledWith(account, "person-kr3ture");
+
+    await actions.find((action) => action.id === "promote-profile-friend-social:instagram:kr3ture_music")?.run();
+    expect(promoteSocialProfile).toHaveBeenCalledWith(account, 3);
+
+    await actions.find((action) => action.id === "promote-profile-close-friend-social:instagram:kr3ture_music")?.run();
+    expect(promoteSocialProfile).toHaveBeenCalledWith(account, 5);
+  });
+
   it("focuses the sidebar search from AppShell with Cmd/Ctrl+K", async () => {
     const shortcutSpy = vi.fn();
     const store = createTestStore();
@@ -443,7 +590,7 @@ describe("command palette", () => {
     keydown(window, "k", { metaKey: true });
     await flush();
 
-    const searchInput = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
+    const searchInput = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
     expect(searchInput).not.toBeNull();
     expect(document.activeElement).toBe(searchInput);
     expect(document.querySelector("[data-testid='command-palette-modal']")).toBeNull();
@@ -474,7 +621,7 @@ describe("command palette", () => {
     cleanups.push(render.cleanup);
     await flush();
 
-    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
     expect(input).not.toBeNull();
     act(() => input!.focus());
     await flush();
@@ -494,6 +641,41 @@ describe("command palette", () => {
       platform: "rss",
       feedUrl: "https://alpha.example/feed.xml",
     });
+  });
+
+  it("renders command action icons and keeps reset confirmation mounted after blur", async () => {
+    const resetDevice = vi.fn(async () => {});
+    const store = createTestStore();
+    const platform = createPlatform(store, { factoryReset: resetDevice });
+    const render = renderNode(
+      createElement(
+        PlatformProvider,
+        { value: platform, children: createElement(SearchJumpField) },
+      ),
+    );
+    cleanups.push(render.cleanup);
+    await flush();
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
+    await flush();
+
+    const feedAction = document.querySelector("[data-testid='search-command-action-go-unified-feed']");
+    expect(feedAction?.querySelector("[data-testid='search-command-action-icon'] svg")).not.toBeNull();
+
+    changeInput(input!, "reset");
+    await flush();
+
+    const resetAction = document.querySelector("[data-testid='search-command-action-danger-reset-device']");
+    expect(resetAction?.querySelector("[data-testid='search-command-action-icon'] svg")).not.toBeNull();
+    click(resetAction!);
+    act(() => input!.blur());
+    await flush();
+
+    expect(document.body.textContent).toContain("Reset this device?");
+    expect(document.querySelector<HTMLInputElement>("#search-command-confirm")).not.toBeNull();
+    expect(resetDevice).not.toHaveBeenCalled();
   });
 
   it("shows destructive confirmation and refuses to run before the token matches", async () => {
@@ -524,9 +706,11 @@ describe("command palette", () => {
     cleanups.push(render.cleanup);
     await flush();
 
-    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
     expect(input).not.toBeNull();
     act(() => input!.focus());
+    await flush();
+    changeInput(input!, "delete");
     await flush();
 
     const deleteAction = Array.from(document.querySelectorAll("button")).find((button) =>
@@ -577,9 +761,11 @@ describe("command palette", () => {
     cleanups.push(render.cleanup);
     await flush();
 
-    let input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
+    let input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
     expect(input).not.toBeNull();
     act(() => input!.focus());
+    await flush();
+    changeInput(input!, "alpha");
     await flush();
 
     const feedAction = Array.from(document.querySelectorAll("button")).find((button) =>
@@ -594,8 +780,9 @@ describe("command palette", () => {
       platform: "rss",
       feedUrl: "https://alpha.example/feed.xml",
     });
+    expect(store.getState().searchQuery).toBe("");
 
-    input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
+    input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
     expect(input).not.toBeNull();
     act(() => input!.focus());
     await flush();

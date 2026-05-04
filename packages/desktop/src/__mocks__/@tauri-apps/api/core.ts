@@ -52,27 +52,80 @@ async function proxyFetch(args: Record<string, unknown>): Promise<string> {
   return resp.text();
 }
 
+async function proxyFetchBinary(args: Record<string, unknown>): Promise<number[]> {
+  const resp = await fetch("/api/proxy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: args.url,
+      headers: args.headers ?? {},
+      method: args.method ?? "GET",
+      body: args.body ?? "",
+    }),
+  });
+  if (!resp.ok) throw new Error(`Proxy ${resp.status}: ${await resp.text()}`);
+  return Array.from(new Uint8Array(await resp.arrayBuffer()));
+}
+
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
   broadcast_doc: () => null,
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
+  google_api_request: (args: Record<string, unknown>) => proxyFetch({
+    url: args.url,
+    method: "GET",
+    headers: { Authorization: `Bearer ${String(args.accessToken ?? "")}` },
+  }),
+  fetch_binary_url: (args: Record<string, unknown>) => proxyFetchBinary({ url: args.url, method: "GET" }),
   x_api_request: (args: Record<string, unknown>) => proxyFetch(args),
   get_local_ip: () => "127.0.0.1",
   get_all_local_ips: () => [],
   get_sync_url: () => "ws://127.0.0.1:8765",
+  sha256_file: () => "",
+  download_local_ai_model_file: (args: Record<string, unknown>) => {
+    const request = args.request as { expectedSizeBytes?: number } | undefined;
+    return request?.expectedSizeBytes ?? 0;
+  },
+  cancel_local_ai_model_download: () => null,
   get_sync_client_count: () => 0,
   get_runtime_memory_stats: () => ({
+    totalPhysicalMemoryBytes: 16 * 1024 * 1024 * 1024,
     processResidentBytes: 64 * 1024 * 1024,
     processVirtualBytes: 256 * 1024 * 1024,
+    appResidentBytes: 160 * 1024 * 1024,
     webkitResidentBytes: 96 * 1024 * 1024,
     webkitVirtualBytes: 512 * 1024 * 1024,
     webkitProcessId: 12345,
+    webkitTotalResidentBytes: 96 * 1024 * 1024,
+    webkitProcessCount: 1,
+    webkitLargestResidentBytes: 96 * 1024 * 1024,
+    webkitLargestProcessId: 12345,
     webkitTelemetryAvailable: true,
     indexedDbBytes: 8 * 1024 * 1024,
     webkitCacheBytes: 16 * 1024 * 1024,
+    memoryHighBytes: 2508 * 1024 * 1024,
+    memoryCriticalBytes: 3584 * 1024 * 1024,
     relayDocBytes: 0,
     relayClientCount: 0,
   }),
+  get_ai_hardware_profile: (args: Record<string, unknown>) => ({
+    totalMemoryBytes: 16 * 1024 * 1024 * 1024,
+    availableMemoryBytes: 10 * 1024 * 1024 * 1024,
+    availableAppDataBytes: 64 * 1024 * 1024 * 1024,
+    os: "macos",
+    arch: "aarch64",
+    webGPUAvailable: Boolean(args.webGpuAvailable),
+  }),
+  prepare_social_scrape_memory: () => {
+    const after = handlers.get_runtime_memory_stats({});
+    return {
+      before: after,
+      after,
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    };
+  },
   get_updater_target: () => "darwin-aarch64",
   retry_startup_after_crash: () => null,
   reset_pairing_token: () => null,
@@ -91,11 +144,13 @@ const handlers: Record<string, Handler> = {
   fb_check_auth: () => true,
   fb_scrape_feed: () => null,
   fb_scrape_groups: () => [],
+  fb_scrape_comments: () => null,
   fb_disconnect: () => null,
   ig_show_login: () => null,
   ig_hide_login: () => null,
   ig_check_auth: () => true,
   ig_scrape_feed: () => null,
+  ig_scrape_comments: () => null,
   ig_disconnect: () => null,
   li_show_login: () => null,
   li_hide_login: () => null,

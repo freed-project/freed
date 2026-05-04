@@ -1,5 +1,6 @@
-import type { FilterOptions, FeedItem, Platform } from "@freed/shared";
+import type { Account, FilterOptions, FeedItem, Person, Platform } from "@freed/shared";
 import { PLATFORM_LABELS } from "@freed/shared";
+import { accountTitle, providerLabel } from "./account-labels.js";
 import { toast } from "../components/Toast.js";
 import type { AvailableUpdateInfo } from "../context/PlatformContext.js";
 import type { CommandPaletteAction } from "./command-palette.js";
@@ -20,6 +21,12 @@ interface SourceDestination {
   label: string;
 }
 
+interface SocialChannelDestination {
+  account: Account;
+  person?: Person;
+  personName?: string;
+}
+
 interface BuildCommandPaletteActionsOptions {
   query: string;
   activeView: "feed" | "friends" | "map";
@@ -27,6 +34,7 @@ interface BuildCommandPaletteActionsOptions {
   settingsSections: readonly SectionMeta[];
   topSources: readonly SourceDestination[];
   feeds: readonly FeedDestination[];
+  socialChannels?: readonly SocialChannelDestination[];
   tagFilters: readonly TagFilter[];
   currentSourceId: Platform | null;
   selectedItem: FeedItem | null;
@@ -38,6 +46,9 @@ interface BuildCommandPaletteActionsOptions {
   navigateToFeed: (filter: FilterOptions) => void;
   navigateToFriends: () => void;
   navigateToMap: () => void;
+  navigateToSocialProfileFriends?: ((account: Account, personId: string | null) => void) | null;
+  navigateToSocialProfileMap?: ((account: Account, personId: string | null) => void | Promise<void>) | null;
+  promoteSocialProfile?: ((account: Account, level: 3 | 5) => void | Promise<void>) | null;
   applyFeedSearch: (query: string) => void;
   openAddFeedDialog?: (() => void) | null;
   openSavedContentDialog?: (() => void) | null;
@@ -59,6 +70,9 @@ interface BuildCommandPaletteActionsOptions {
   activeCloudProviderLabel?: (() => string | null) | null;
 }
 
+const MAX_TYPED_FEED_ACTIONS = 25;
+const MAX_TYPED_CHANNEL_ACTIONS = 25;
+
 async function runWithToast(
   runner: () => void | Promise<void>,
   successMessage?: string,
@@ -77,6 +91,19 @@ function currentSourceLabel(sourceId: Platform | null): string | null {
   return sourceId ? PLATFORM_LABELS[sourceId] ?? sourceId.toLocaleUpperCase() : null;
 }
 
+function normalizedNeedle(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+function candidateMatchesQuery(candidates: ReadonlyArray<string | undefined>, query: string): boolean {
+  if (!query) return false;
+  return candidates.some((candidate) => candidate?.toLocaleLowerCase().includes(query));
+}
+
+function withoutAtPrefix(value: string | undefined): string | undefined {
+  return value?.startsWith("@") ? value.slice(1) : value;
+}
+
 export function buildCommandPaletteActions({
   query,
   activeView,
@@ -84,6 +111,7 @@ export function buildCommandPaletteActions({
   settingsSections,
   topSources,
   feeds,
+  socialChannels = [],
   tagFilters,
   currentSourceId,
   selectedItem,
@@ -95,6 +123,9 @@ export function buildCommandPaletteActions({
   navigateToFeed,
   navigateToFriends,
   navigateToMap,
+  navigateToSocialProfileFriends,
+  navigateToSocialProfileMap,
+  promoteSocialProfile,
   applyFeedSearch,
   openAddFeedDialog,
   openSavedContentDialog,
@@ -115,6 +146,8 @@ export function buildCommandPaletteActions({
   factoryReset,
   activeCloudProviderLabel,
 }: BuildCommandPaletteActionsOptions): CommandPaletteAction[] {
+  const trimmedQuery = query.trim();
+  const normalizedQuery = normalizedNeedle(query);
   const actions: CommandPaletteAction[] = [
     {
       id: "go-unified-feed",
@@ -189,6 +222,9 @@ export function buildCommandPaletteActions({
       : []),
   ];
 
+  const profileActionLabel = (account: Account, person?: Person, personName?: string): string =>
+    person?.name ?? personName ?? accountTitle(account);
+
   for (const source of topSources) {
     actions.push({
       id: `go-source-${source.id ?? "all"}`,
@@ -200,15 +236,152 @@ export function buildCommandPaletteActions({
     });
   }
 
-  for (const feed of feeds) {
-    actions.push({
-      id: `go-feed-${feed.url}`,
-      title: feed.title,
-      section: "Go to",
-      keywords: [feed.url.toLocaleLowerCase(), "feed", "rss", feed.title.toLocaleLowerCase()],
-      entity: true,
-      run: () => navigateToFeed({ platform: "rss", feedUrl: feed.url }),
-    });
+  if (trimmedQuery) {
+    for (const feed of feeds
+      .filter((feed) => candidateMatchesQuery([feed.title, feed.url, "feed", "rss"], normalizedQuery))
+      .slice(0, MAX_TYPED_FEED_ACTIONS)) {
+      actions.push({
+        id: `go-feed-${feed.url}`,
+        title: feed.title,
+        section: "Go to",
+        keywords: [feed.url.toLocaleLowerCase(), "feed", "rss", feed.title.toLocaleLowerCase()],
+        entity: true,
+        run: () => navigateToFeed({ platform: "rss", feedUrl: feed.url }),
+      });
+    }
+
+    for (const { account, person, personName } of socialChannels
+      .filter(({ account, person, personName }) =>
+        candidateMatchesQuery(
+          [
+            accountTitle(account),
+            account.displayName,
+            account.handle,
+            withoutAtPrefix(account.handle),
+            account.externalId,
+            account.externalId.slice(-8),
+            providerLabel(account.provider),
+            person?.name,
+            personName,
+            "channel",
+            "social",
+          ],
+          normalizedQuery,
+        ),
+      )
+      .slice(0, MAX_TYPED_CHANNEL_ACTIONS)) {
+      const label = accountTitle(account);
+      const provider = providerLabel(account.provider);
+      actions.push({
+        id: `go-channel-${account.provider}-${account.externalId}`,
+        title: label,
+        section: "Go to",
+        keywords: [
+          provider.toLocaleLowerCase(),
+          account.externalId.toLocaleLowerCase(),
+          account.externalId.slice(-8).toLocaleLowerCase(),
+          account.handle?.toLocaleLowerCase() ?? "",
+          withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
+          personName?.toLocaleLowerCase() ?? "",
+          "channel",
+          "social",
+        ].filter(Boolean),
+        entity: true,
+        run: () => navigateToFeed({ platform: account.provider as Platform, authorId: account.externalId }),
+      });
+
+      const profileLabel = profileActionLabel(account, person, personName);
+      const personId = person?.id ?? account.personId ?? null;
+
+      if (navigateToSocialProfileFriends) {
+        actions.push({
+          id: `go-profile-friends-${account.id}`,
+          title: `${profileLabel}'s Friends view`,
+          section: "Go to",
+          keywords: [
+            profileLabel.toLocaleLowerCase(),
+            account.externalId.toLocaleLowerCase(),
+            account.handle?.toLocaleLowerCase() ?? "",
+            withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
+            "friends",
+            "profile",
+            "person",
+            "relationship",
+          ].filter(Boolean),
+          entity: true,
+          run: () => navigateToSocialProfileFriends(account, personId),
+        });
+      }
+
+      if (navigateToSocialProfileMap) {
+        actions.push({
+          id: `go-profile-map-${account.id}`,
+          title: `${profileLabel} on Map`,
+          section: "Go to",
+          keywords: [
+            profileLabel.toLocaleLowerCase(),
+            account.externalId.toLocaleLowerCase(),
+            account.handle?.toLocaleLowerCase() ?? "",
+            withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
+            "map",
+            "location",
+            "person",
+          ].filter(Boolean),
+          entity: true,
+          run: () => navigateToSocialProfileMap(account, personId),
+        });
+      }
+
+      if (promoteSocialProfile) {
+        const alreadyFriend = person?.relationshipStatus === "friend";
+        const alreadyCloseFriend = alreadyFriend && person.careLevel >= 5;
+        if (!alreadyFriend) {
+          actions.push({
+            id: `promote-profile-friend-${account.id}`,
+            title: `Promote ${profileLabel} to friend`,
+            section: "People",
+            keywords: [
+              profileLabel.toLocaleLowerCase(),
+              account.externalId.toLocaleLowerCase(),
+              account.handle?.toLocaleLowerCase() ?? "",
+              withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
+              "friend",
+              "promote",
+              "relationship",
+            ].filter(Boolean),
+            entity: true,
+            run: () =>
+              runWithToast(
+                () => promoteSocialProfile(account, 3),
+                `${profileLabel} promoted to friend`,
+              ),
+          });
+        }
+        if (!alreadyCloseFriend) {
+          actions.push({
+            id: `promote-profile-close-friend-${account.id}`,
+            title: `Promote ${profileLabel} to close friend`,
+            section: "People",
+            keywords: [
+              profileLabel.toLocaleLowerCase(),
+              account.externalId.toLocaleLowerCase(),
+              account.handle?.toLocaleLowerCase() ?? "",
+              withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
+              "close friend",
+              "fam",
+              "promote",
+              "relationship",
+            ].filter(Boolean),
+            entity: true,
+            run: () =>
+              runWithToast(
+                () => promoteSocialProfile(account, 5),
+                `${profileLabel} promoted to close friend`,
+              ),
+          });
+        }
+      }
+    }
   }
 
   for (const tagFilter of tagFilters) {
@@ -371,7 +544,7 @@ export function buildCommandPaletteActions({
     });
   }
 
-  if (deleteAllArchived) {
+  if (trimmedQuery && deleteAllArchived) {
     actions.push({
       id: "danger-delete-archived",
       title: "Delete all archived items",
@@ -392,7 +565,7 @@ export function buildCommandPaletteActions({
     });
   }
 
-  if (factoryReset) {
+  if (trimmedQuery && factoryReset) {
     actions.push({
       id: "danger-reset-device",
       title: "Factory reset this device",
@@ -425,17 +598,17 @@ export function buildCommandPaletteActions({
     }
   }
 
-  if (query.trim()) {
+  if (trimmedQuery) {
     actions.push({
       id: "search-feed",
       title:
         activeView === "feed"
-          ? `Search current feed for "${query.trim()}"`
-          : `Search feed for "${query.trim()}"`,
+          ? `Search current feed for "${trimmedQuery}"`
+          : `Search feed for "${trimmedQuery}"`,
       section: "Search",
-      keywords: [query.trim().toLocaleLowerCase(), "search", "feed"],
+      keywords: [normalizedQuery, "search", "feed"],
       fallback: true,
-      run: () => applyFeedSearch(query.trim()),
+      run: () => applyFeedSearch(trimmedQuery),
     });
   }
 

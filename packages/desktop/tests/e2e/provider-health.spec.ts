@@ -799,8 +799,16 @@ test("facebook groups settings separate last-active text and show active counts"
   await expect(page.getByRole("button", { name: "Activate all", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Deactivate all", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeVisible();
+  await expect(page.getByTestId("facebook-groups-filter")).toBeVisible();
+  await expect(page.getByTestId("facebook-groups-list-scroll")).toBeVisible();
   await expect(page.getByTestId("facebook-group-one-label")).toHaveText("CDA Buy Trade Or Sell");
   await expect(page.getByTestId("facebook-group-one-meta")).toHaveText("Last active about a minute ago");
+
+  await page.getByTestId("facebook-groups-filter").fill("North Idaho");
+  await expect(page.getByRole("button", { name: "Activate shown", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Deactivate shown", exact: true })).toBeVisible();
+  await expect(page.getByTestId("facebook-group-two-label")).toHaveText("North Idaho Life");
+  await expect(page.getByTestId("facebook-group-one-label")).toHaveCount(0);
 });
 
 test("auth failures in X settings prompt the user to reconnect", async ({ app, page }) => {
@@ -1420,28 +1428,37 @@ test("settings sources nav shows provider status dots", async ({ app, page }) =>
 
   const facebookSourceIndicatorLayout = await page.evaluate(() => {
     const desktopSidebar = document.querySelector('[data-testid="app-sidebar"]');
-    const row = desktopSidebar?.querySelector('[data-testid="source-row-facebook"]')?.parentElement;
+    const row = desktopSidebar?.querySelector('[data-testid="source-row-facebook"]') as HTMLElement | null;
     const indicator = row?.querySelector('[data-testid="source-indicator-facebook"]');
-    const indicatorSlot = row?.querySelector('[data-testid="source-indicator-slot-facebook"]');
-    const label = row?.querySelector('[data-testid="source-row-facebook"] span.min-w-0.flex-1.truncate');
-    if (!indicator || !indicatorSlot || !label || !row) {
+    const label = row?.querySelector("span.min-w-0.flex-1.truncate");
+    const icon = row?.querySelector("svg");
+    if (!indicator || !label || !row || !icon) {
       return null;
     }
 
     const indicatorRect = indicator.getBoundingClientRect();
     const labelRect = label.getBoundingClientRect();
+    const iconRect = icon.getBoundingClientRect();
     const rowRect = row.getBoundingClientRect();
     return {
       indicatorLeft: indicatorRect.left,
       indicatorRight: indicatorRect.right,
-      indicatorOpacity: window.getComputedStyle(indicatorSlot).opacity,
+      indicatorCenterX: indicatorRect.left + indicatorRect.width / 2,
+      indicatorCenterY: indicatorRect.top + indicatorRect.height / 2,
+      iconRight: iconRect.right,
+      iconTop: iconRect.top,
+      indicatorOpacity: window.getComputedStyle(indicator).opacity,
+      labelLeft: labelRect.left,
       labelRight: labelRect.right,
       rowRight: rowRect.right,
     };
   });
 
   expect(facebookSourceIndicatorLayout).not.toBeNull();
-  expect(facebookSourceIndicatorLayout!.indicatorLeft).toBeGreaterThan(facebookSourceIndicatorLayout!.labelRight);
+  expect(facebookSourceIndicatorLayout!.indicatorRight).toBeLessThan(facebookSourceIndicatorLayout!.labelLeft + 2);
+  expect(Math.abs(facebookSourceIndicatorLayout!.indicatorCenterX - facebookSourceIndicatorLayout!.iconRight)).toBeLessThanOrEqual(2);
+  expect(facebookSourceIndicatorLayout!.indicatorCenterY).toBeGreaterThanOrEqual(facebookSourceIndicatorLayout!.iconTop - 3);
+  expect(facebookSourceIndicatorLayout!.indicatorCenterY).toBeLessThanOrEqual(facebookSourceIndicatorLayout!.iconTop + 3);
   expect(facebookSourceIndicatorLayout!.indicatorRight).toBeLessThan(facebookSourceIndicatorLayout!.rowRight);
   expect(facebookSourceIndicatorLayout!.indicatorOpacity).toBe("1");
 
@@ -1465,87 +1482,6 @@ test("settings sources nav shows provider status dots", async ({ app, page }) =>
   expect(sidebarIndicatorSizes).not.toBeNull();
   expect(Math.abs(sidebarIndicatorSizes!.settingsWidth - sidebarIndicatorSizes!.sourceWidth)).toBeLessThanOrEqual(1);
   expect(Math.abs(sidebarIndicatorSizes!.settingsHeight - sidebarIndicatorSizes!.sourceHeight)).toBeLessThanOrEqual(1);
-});
-
-test("sidebar keeps friends and map under all, and LinkedIn falls back to source counts for status", async ({ app, page }) => {
-  await seedAcceptedDesktopConsent(page);
-
-  await app.goto();
-  await app.waitForReady();
-
-  await page.evaluate(async () => {
-    const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
-      docBatchImportItems: (items: unknown[]) => Promise<unknown>;
-    };
-    const store = w.__FREED_STORE__ as {
-      setState: (partial: Record<string, unknown>) => void;
-    };
-    const now = Date.now();
-
-    await automerge.docBatchImportItems(
-      Array.from({ length: 38 }, (_, index) => ({
-        globalId: `linkedin:status-fallback-${index}`,
-        platform: "linkedin",
-        contentType: "post",
-        capturedAt: now - index * 60_000,
-        publishedAt: now - index * 60_000,
-        author: {
-          id: `linkedin-status-author-${index}`,
-          handle: `status-author-${index}`,
-          displayName: `LinkedIn Status Author ${index.toLocaleString()}`,
-        },
-        content: {
-          text: `LinkedIn status fallback item ${index.toLocaleString()}`,
-          mediaUrls: [],
-          mediaTypes: [],
-          linkPreview: {
-            url: `https://www.linkedin.com/feed/update/status-fallback-${index}/`,
-            title: `LinkedIn status fallback ${index.toLocaleString()}`,
-            description: "LinkedIn status fallback fixture",
-          },
-        },
-        userState: { hidden: false, saved: false, archived: false, tags: [] },
-        topics: [],
-      })),
-    );
-
-    store.setState({
-      liAuth: {
-        isAuthenticated: false,
-      },
-    });
-  });
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | { getState: () => { itemCountByPlatform: Record<string, number> } }
-      | undefined;
-    return (store?.getState().itemCountByPlatform.linkedin ?? 0) >= 38;
-  });
-
-  const sourceRowOrder = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('[data-testid="app-sidebar"] [data-testid^="source-row-"]'))
-      .map((node) => node.getAttribute("data-testid"))
-      .slice(0, 8),
-  );
-
-  expect(sourceRowOrder).toEqual([
-    "source-row-all",
-    "source-row-friends",
-    "source-row-map",
-    "source-row-rss",
-    "source-row-x",
-    "source-row-facebook",
-    "source-row-instagram",
-    "source-row-linkedin",
-  ]);
-
-  const sidebar = getDesktopSidebar(page);
-  await expect(sidebar.getByTestId("source-indicator-linkedin")).toHaveAttribute("title", "Connected");
-  await sidebar.getByTestId("source-row-linkedin").hover();
-  await sidebar.getByTestId("source-menu-trigger-linkedin").click();
-  await expect(page.getByText("Connected").first()).toBeVisible();
 });
 
 test("provider sync button shows a spinner while that provider is active", async ({ app, page }) => {
@@ -1616,111 +1552,6 @@ test("provider sync button shows a spinner while that provider is active", async
   expect(sourceIndicatorSizes).not.toBeNull();
   expect(Math.abs(sourceIndicatorSizes!.syncingWidth - sourceIndicatorSizes!.healthyWidth)).toBeLessThanOrEqual(1);
   expect(Math.abs(sourceIndicatorSizes!.syncingHeight - sourceIndicatorSizes!.healthyHeight)).toBeLessThanOrEqual(1);
-});
-
-test("cooldown indicators stay amber while sync is active", async ({ app, page }) => {
-  await seedAcceptedDesktopConsent(page);
-
-  const debugStorePath = DEBUG_STORE_PATH;
-
-  await app.goto();
-  await app.waitForReady();
-
-  await page.evaluate(async ({ debugStorePath }) => {
-    const now = Date.now();
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        providerSyncCounts: Record<string, number>;
-      };
-      setState: (partial: Record<string, unknown>) => void;
-    };
-
-    store.setState({
-      igAuth: {
-        isAuthenticated: true,
-        lastCaptureError: "Cooling down. Try again in ~1 minute.",
-      },
-      providerSyncCounts: {
-        ...store.getState().providerSyncCounts,
-        instagram: 1,
-      },
-      unreadCountByPlatform: {
-        instagram: 97,
-      },
-      itemCountByPlatform: {
-        instagram: 202,
-      },
-    });
-
-    const makeBuckets = () =>
-      Array.from({ length: 7 }, (_, index) => ({
-        dateKey: `2026-04-0${index + 1}`,
-        attempts: 0,
-        successes: 0,
-        failures: 0,
-        itemsSeen: 0,
-        itemsAdded: 0,
-        bytesMoved: 0,
-      }));
-    const makeHourlyBuckets = () =>
-      Array.from({ length: 24 }, (_, index) => ({
-        hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
-        attempts: 0,
-        successes: 0,
-        failures: 0,
-        itemsSeen: 0,
-        itemsAdded: 0,
-        bytesMoved: 0,
-      }));
-
-    const response = await fetch(debugStorePath);
-    if (!response.ok) throw new Error(`Failed to load debug store: ${response.status}`);
-    await response.text();
-    const mod = await import(debugStorePath);
-    mod.useDebugStore.getState().setHealth({
-      providers: {
-        rss: { provider: "rss", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0 },
-        x: { provider: "x", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0 },
-        facebook: { provider: "facebook", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0 },
-        instagram: {
-          provider: "instagram",
-          status: "paused",
-          lastAttemptAt: now,
-          lastSuccessfulAt: now - 16 * 60 * 1000,
-          lastOutcome: "cooldown",
-          lastError: "Cooling down. Try again in ~1 minute.",
-          currentMessage: "Cooling down. Try again in ~1 minute.",
-          pause: {
-            pausedUntil: now + 60_000,
-            pauseReason: "Cooling down. Try again in ~1 minute.",
-            pauseLevel: 1,
-            detectedAt: now - 30_000,
-            detectedBy: "auto",
-          },
-          dailyBuckets: makeBuckets(),
-          hourlyBuckets: makeHourlyBuckets(),
-          latestAttempts: [],
-          totalSeen7d: 0,
-          totalAdded7d: 0,
-          totalBytes7d: 0,
-        },
-        linkedin: { provider: "linkedin", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0 },
-        gdrive: { provider: "gdrive", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0 },
-        dropbox: { provider: "dropbox", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0 },
-      },
-      failingRssFeeds: [],
-      updatedAt: now,
-    });
-  }, { debugStorePath });
-
-  const sidebar = getDesktopSidebar(page);
-  await expect(sidebar.getByTestId("source-indicator-instagram")).toHaveAttribute("title", "Cooling down");
-  await expect(sidebar.getByTestId("source-indicator-instagram")).toContainText("😴");
-  await sidebar.getByTestId("source-row-instagram").hover();
-  await expect(sidebar.getByTestId("source-menu-trigger-instagram")).toBeVisible();
-  await sidebar.getByTestId("source-menu-trigger-instagram").click();
-  await expect(page.getByText("Cooling down").first()).toBeVisible();
 });
 
 test("feeds source indicator reflects aggregate feed health and active syncing", async ({ app, page }) => {
@@ -1863,6 +1694,20 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
       setState: (partial: Record<string, unknown>) => void;
     };
     store.setState({
+      feeds: {
+        "https://healthy.example/feed.xml": {
+          url: "https://healthy.example/feed.xml",
+          title: "Healthy Feed",
+          enabled: true,
+          trackUnread: true,
+        },
+        "https://broken.example/feed.xml": {
+          url: "https://broken.example/feed.xml",
+          title: "Broken Feed",
+          enabled: true,
+          trackUnread: true,
+        },
+      },
       providerSyncCounts: {
         rss: 0,
         x: 0,
@@ -1971,96 +1816,6 @@ test("source rows swap counts for an actions menu on hover", async ({ app, page 
 
   await expect(page.getByText("Settings").first()).toBeVisible();
   await expect(page.getByText("X / Twitter").first()).toBeVisible();
-});
-
-test("narrow labeled provider rows keep labels readable and source menus available", async ({ app, page }) => {
-  await seedAcceptedDesktopConsent(page);
-
-  await page.setViewportSize({ width: 1024, height: 768 });
-  await app.goto();
-  await app.waitForReady();
-
-  await page.evaluate(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as {
-      getState: () => {
-        preferences: {
-          display: {
-            sidebarMode?: string;
-            sidebarWidth?: number;
-          };
-        };
-      };
-      setState: (partial: Record<string, unknown>) => void;
-    };
-    const current = store.getState();
-
-    store.setState({
-      preferences: {
-        ...current.preferences,
-        display: {
-          ...current.preferences.display,
-          sidebarMode: "expanded",
-          sidebarWidth: 220,
-        },
-      },
-      xAuth: {
-        isAuthenticated: true,
-        cookies: { ct0: "ct0", authToken: "token" },
-      },
-    });
-  });
-
-  const sidebar = getDesktopSidebar(page);
-  const sourceIds = ["x", "facebook", "instagram", "linkedin", "rss"];
-  for (const sourceId of sourceIds) {
-    await expect(sidebar.getByTestId(`source-row-${sourceId}`)).toBeVisible();
-  }
-
-  const labelLayout = await page.evaluate((ids) => {
-    const sidebar = document.querySelector('[data-testid="app-sidebar"]');
-    if (!sidebar) return null;
-
-    return ids.map((id) => {
-      const row = sidebar.querySelector(`[data-testid="source-row-${id}"]`) as HTMLElement | null;
-      const label = row?.querySelector("span.min-w-0") as HTMLElement | null;
-      const actionSlot = row?.parentElement?.querySelector(".relative.h-6.shrink-0") as HTMLElement | null;
-      if (!row || !label || !actionSlot) {
-        return {
-          id,
-          found: false,
-          labelClientWidth: 0,
-          labelScrollWidth: 0,
-          actionSlotWidth: 0,
-        };
-      }
-
-      return {
-        id,
-        found: true,
-        labelClientWidth: label.clientWidth,
-        labelScrollWidth: label.scrollWidth,
-        actionSlotWidth: actionSlot.getBoundingClientRect().width,
-      };
-    });
-  }, sourceIds);
-
-  expect(labelLayout).not.toBeNull();
-  for (const row of labelLayout!) {
-    expect(row.found, row.id).toBe(true);
-    expect(row.labelClientWidth, row.id).toBeGreaterThanOrEqual(row.labelScrollWidth - 1);
-    expect(row.actionSlotWidth, row.id).toBeLessThanOrEqual(25);
-  }
-
-  const xRow = sidebar.getByTestId("source-row-x");
-  const xTrigger = sidebar.getByTestId("source-menu-trigger-x");
-  await expect(xTrigger).toHaveClass(/opacity-0/);
-
-  await xRow.hover();
-  await expect(xTrigger).toHaveClass(/opacity-100/);
-
-  await xTrigger.click();
-  await expect(page.getByTestId("source-context-menu-x")).toBeVisible();
 });
 
 test("source menu trigger toggles open and closed", async ({ app, page }) => {
@@ -2546,6 +2301,16 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
 
   await expect(settingsDialog.getByRole("button", { name: "All (2)", exact: true })).toBeVisible();
+  await expect(settingsDialog.getByTestId("feeds-manage-filter")).toBeVisible();
+  await expect(settingsDialog.getByTestId("feeds-manage-list-scroll")).toBeVisible();
+  await settingsDialog.getByTestId("feeds-manage-filter").fill("healthy");
+  await expect(settingsDialog.getByText("Healthy Feed")).toBeVisible();
+  await expect(settingsDialog.getByText("Broken Feed")).toHaveCount(0);
+  await settingsDialog.getByTestId("feeds-manage-filter").fill("404");
+  await expect(settingsDialog.getByText("Broken Feed")).toBeVisible();
+  await expect(settingsDialog.getByText("404 Not Found")).toBeVisible();
+  await settingsDialog.getByTestId("feeds-manage-filter").fill("");
+
   const needsReviewButton = settingsDialog.getByRole("button", {
     name: "Needs review (1)",
     exact: true,

@@ -14,6 +14,8 @@ declare global {
   interface ImportMetaEnv {
     /** Google Drive OAuth client ID for the desktop app. */
     readonly VITE_GDRIVE_DESKTOP_CLIENT_ID: string;
+    /** Optional server token exchange proxy for Google web OAuth clients. */
+    readonly VITE_GDRIVE_TOKEN_PROXY_URL: string;
     /** Dropbox OAuth app key for the desktop app. */
     readonly VITE_DROPBOX_CLIENT_ID: string;
     /**

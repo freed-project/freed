@@ -36,6 +36,7 @@ export {
   getHomeLatestTimelineVariables,
   getFollowingVariables,
   getUserTweetsVariables,
+  getTweetDetailVariables,
 } from "./endpoints.js";
 
 export {

@@ -72,6 +72,24 @@
       });
   }
 
+  function expandLongTextControls(root) {
+    var controls = root.querySelectorAll("button, a, span[role='button']");
+    var clicked = 0;
+    for (var i = 0; i < controls.length && clicked < 8; i++) {
+      var label = (
+        controls[i].getAttribute("aria-label") ||
+        controls[i].textContent ||
+        ""
+      ).trim().toLowerCase();
+      if (label === "see more" || label === "show more" || label === "...see more" || label === "read more") {
+        try {
+          controls[i].click();
+          clicked++;
+        } catch (_) {}
+      }
+    }
+  }
+
   function extractProfileHandle(url) {
     if (!url) return "unknown";
     try {
@@ -140,6 +158,8 @@
   // ---------------------------------------------------------------------------
 
   function extractPost(container) {
+    expandLongTextControls(container);
+
     // URN / ID
     var urn = container.getAttribute("data-urn") || null;
 

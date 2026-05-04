@@ -1,0 +1,23 @@
+{
+  "channel": "dev",
+  "dayKey": "26.5.1",
+  "date": "2026-05-01",
+  "preferredDeck": "Keeps crash recovery, AI downloads, and common desktop actions responsive",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Startup recovery can now check for updates, install them, relaunch, and open fallback browser downloads.",
+    "Integrated AI pack downloads now stream through native disk IO so large local model downloads do not run inside the WebKit renderer.",
+    "Renderer recovery now rebuilds stale macOS windows on the main thread after heartbeat failure.",
+    "Local AI classification now stays off until Topics and ranking is enabled, with settings health hidden while the workflow is disabled.",
+    "Typed side-effect queues now keep slow desktop persistence and sync work off hot UI gestures.",
+    "Changed-item Automerge events now prevent common read and like updates from triggering full outbox scans.",
+    "Desktop item patches now update aggregate counts incrementally on the main thread.",
+    "Side-effect queues now preserve serialization after timeouts."
+  ],
+  "editorialNotes": [],
+  "updatedAt": "2026-05-02T05:47:58.267Z"
+}

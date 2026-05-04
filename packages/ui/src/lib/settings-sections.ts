@@ -48,8 +48,10 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
       "engagement", "counts", "likes", "reposts", "views",
       "focus", "focus mode", "bionic", "bold", "reading speed",
       "intensity", "light", "normal", "strong", "mark read", "scroll",
+      "animations", "motion", "reduced motion", "none", "detailed",
       "grayscale", "read grayscale", "read appearance",
       "archive", "delete archived", "prune", "reading",
+      "offline", "cache", "saved only", "everything opened", "recent feed", "manual only",
     ],
   },
   {
@@ -151,8 +153,8 @@ export function buildSettingsSectionMetas(
   return [
     baseSectionById.appearance,
     baseSectionById.sync,
-    ...(availability.hasGoogleContacts ? [GOOGLE_CONTACTS_SECTION_META] : []),
     baseSectionById.saved,
+    ...(availability.hasGoogleContacts ? [GOOGLE_CONTACTS_SECTION_META] : []),
     ...(availability.hasX ? [X_SECTION_META] : []),
     ...(availability.hasFacebook ? [FB_SECTION_META] : []),
     ...(availability.hasInstagram ? [IG_SECTION_META] : []),

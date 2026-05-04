@@ -1,4 +1,5 @@
 import { useDebugStore, type HealthProviderId } from "@freed/ui/lib/debug-store";
+import { SettingsListPanel } from "@freed/ui/components/settings/SettingsListPanel";
 import { useAppStore } from "../lib/store";
 
 const PROVIDER_PREFIX: Partial<Record<HealthProviderId, string>> = {
@@ -54,17 +55,26 @@ export function ProviderActivityLog({
       </div>
 
       {lines.length > 0 ? (
-        <div
-          className="max-h-40 space-y-1 overflow-y-auto rounded-lg bg-[var(--theme-bg-muted)] px-2 py-2 font-mono text-[11px] text-[var(--theme-text-secondary)]"
-          data-testid={`provider-activity-log-${provider}`}
-        >
-          {lines.map((event) => (
-            <div key={event.id} className="flex gap-2 leading-relaxed">
+        <SettingsListPanel
+          items={lines}
+          searchPlaceholder="Filter log"
+          ariaLabel={`Filter ${provider} scrape log`}
+          emptyLabel="No scraper output yet."
+          noMatchesLabel="No log lines match that filter."
+          dataTestId={`provider-activity-log-${provider}`}
+          searchDataTestId={`provider-activity-log-filter-${provider}`}
+          scrollDataTestId={`provider-activity-log-scroll-${provider}`}
+          className="border-0 bg-[var(--theme-bg-muted)] p-2"
+          listClassName="space-y-1 font-mono text-[11px] text-[var(--theme-text-secondary)]"
+          itemKey={(event) => event.id}
+          getSearchText={(event) => `${formatLogTime(event.ts)} ${event.detail}`}
+          renderItem={(event) => (
+            <div className="flex gap-2 leading-relaxed">
               <span className="shrink-0 text-[var(--theme-text-muted)]">{formatLogTime(event.ts)}</span>
               <span className="break-words text-[var(--theme-text-primary)]">{event.detail}</span>
             </div>
-          ))}
-        </div>
+          )}
+        />
       ) : (
         <p
           className="rounded-lg bg-[var(--theme-bg-muted)] px-2 py-2 text-[11px] text-[var(--theme-text-muted)]"

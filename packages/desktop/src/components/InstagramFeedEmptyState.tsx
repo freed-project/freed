@@ -13,6 +13,7 @@ import { captureIgFeed } from "../lib/instagram-capture";
 import { useSettingsStore } from "@freed/ui/lib/settings-store";
 import { resetProviderPauseState } from "../lib/provider-health";
 import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTestingSection";
+import { socialProviderCopy } from "../lib/social-provider-copy";
 
 const IgIcon = () => (
   <svg className="h-7 w-7 text-[var(--theme-media-instagram)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -27,19 +28,22 @@ export function InstagramFeedEmptyState() {
   const setIgAuth = useAppStore((s) => s.setIgAuth);
   const isLoading = useAppStore((s) => s.isLoading);
   const activeFilter = useAppStore((s) => s.activeFilter);
-  const storeError = useAppStore((s) => s.error);
   const setError = useAppStore((s) => s.setError);
   const openSettings = useSettingsStore((s) => s.openTo);
 
   const [syncing, setSyncing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const copy = socialProviderCopy("instagram");
 
   const handleSync = async () => {
     setError(null);
+    setActionError(null);
     setSyncing(true);
     try {
       await captureIgFeed();
     } catch (err) {
       console.error("Instagram sync failed:", err);
+      setActionError(err instanceof Error ? err.message : "Instagram sync failed");
     } finally {
       setSyncing(false);
     }
@@ -54,9 +58,10 @@ export function InstagramFeedEmptyState() {
     await resetProviderPauseState("instagram");
     setIgAuth({ isAuthenticated: false });
     setError(null);
+    setActionError(null);
   };
 
-  const syncError = storeError && igAuth.isAuthenticated ? storeError : null;
+  const syncError = igAuth.isAuthenticated ? igAuth.lastCaptureError ?? actionError : null;
 
   if (activeFilter.platform !== "instagram") return null;
 
@@ -67,7 +72,7 @@ export function InstagramFeedEmptyState() {
           <IgIcon />
         </div>
         <p className="text-lg font-medium mb-2">All caught up!</p>
-        <p className="mb-6 text-sm text-[var(--theme-text-muted)]">Your Instagram feed is up to date.</p>
+        <p className="mb-6 text-sm text-[var(--theme-text-muted)]">{copy.connectedEmptyState}</p>
         <div className="flex gap-3">
           <button
             onClick={handleSync}
@@ -114,7 +119,7 @@ export function InstagramFeedEmptyState() {
       </div>
       <p className="text-lg font-medium mb-2">Connect Instagram</p>
       <p className="mb-6 max-w-xs text-center text-sm text-[var(--theme-text-muted)]">
-        Pull your feed into Freed. Set it up in Sources settings.
+        {copy.disconnectedEmptyState}
       </p>
       <button
         onClick={() => openSettings("instagram")}

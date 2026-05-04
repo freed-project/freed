@@ -24,7 +24,9 @@ import { getIgScraperWindowMode } from "./scraper-prefs";
 import { storeIgAuthState } from "./instagram-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
-import { isMemoryPressureCritical } from "./memory-monitor";
+import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-monitor";
+import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
+import { socialProviderCopy } from "./social-provider-copy";
 
 // =============================================================================
 // Rate Limiting
@@ -86,9 +88,12 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
     errorMessage: null,
   };
 
-  if (isMemoryPressureCritical()) {
+  const memoryPrep = await prepareSocialScrapeMemory("instagram", "feed scrape");
+  if (!memoryPrep.mayProceed) {
     diag.errorStage = "memory_pressure";
-    diag.errorMessage = "Instagram sync paused because Freed Desktop memory is critically high.";
+    diag.errorMessage =
+      `${socialProviderCopy("instagram").memoryPressure} ` +
+      `App RSS is ${formatBytesForMemoryLog(memoryPrep.after.appResidentBytes)} after cleanup.`;
     return { items: [], diag };
   }
 
@@ -262,6 +267,17 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
         .getState()
         .items.filter((i) => i.platform === "instagram").length;
       result.diag.itemsAdded = Math.max(0, after - before);
+      await upsertMediaVaultRosterFromItems("instagram", result.items);
+      const archivedCount = await archiveRecentProviderMedia(
+        "instagram",
+        useAppStore.getState().items.filter((i) => i.platform === "instagram"),
+      );
+      if (archivedCount > 0) {
+        addDebugEvent(
+          "change",
+          `[IG] archived ${archivedCount.toLocaleString()} permanent media file${archivedCount === 1 ? "" : "s"}`,
+        );
+      }
       addDebugEvent(
         "change",
         `[IG] synced: ${result.diag.postsExtracted.toLocaleString()} posts extracted, ${result.diag.itemsAdded.toLocaleString()} new items`,
@@ -291,6 +307,9 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
       error instanceof Error ? error.message : "Failed to capture Instagram feed";
     store.setError(message);
     addDebugEvent("error", `[IG] captureIgFeed threw: ${message}`);
+    const errState = { ...useAppStore.getState().igAuth, lastCaptureError: message };
+    store.setIgAuth(errState);
+    storeIgAuthState(errState);
     await recordProviderHealthEvent({
       provider: "instagram",
       outcome: "error",

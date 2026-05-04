@@ -109,6 +109,22 @@ export type WorkerRequest =
   // Relay management (fire-and-forget, reqId ignored)
   | { reqId: number; type: "UPDATE_RELAY_CLIENT_COUNT"; count: number };
 
+export type DocChangeEvent =
+  | {
+      source: "state_update";
+      mutation?: WorkerRequest["type"];
+      changedItemIds: null;
+      changedItems?: undefined;
+      requiresFullScan: true;
+    }
+  | {
+      source: "item_patch";
+      mutation?: WorkerRequest["type"];
+      changedItemIds: string[];
+      changedItems: FeedItem[];
+      requiresFullScan: false;
+    };
+
 // ---------------------------------------------------------------------------
 // Worker → main thread
 // ---------------------------------------------------------------------------
@@ -117,9 +133,9 @@ export type WorkerResponse =
   /** Simple acknowledgement for mutations that return void */
   | { reqId: number; type: "ACK"; error?: string }
   /** Broadcast on every doc mutation - main thread uses this to update UI */
-  | { type: "STATE_UPDATE"; state: DocState }
+  | { type: "STATE_UPDATE"; state: DocState; mutation?: WorkerRequest["type"] }
   /** Small mutation update that avoids cloning and hydrating the full document. */
-  | { type: "ITEM_PATCH"; patches: FeedItemPatch[] }
+  | { type: "ITEM_PATCH"; patches: FeedItemPatch[]; changedItemIds: string[]; mutation?: WorkerRequest["type"] }
   /** Debug panel event forwarding */
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
   /** Doc size snapshot for the debug panel */

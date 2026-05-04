@@ -61,6 +61,7 @@ import { buildPlatformActionsRegistry } from "./platform-actions";
 import { startOutboxProcessor } from "./outbox";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
+import { pinReaderItem } from "./content-fetcher";
 
 let outboxTeardown: (() => void) | null = null;
 import { initFbAuth, type FbAuthState } from "./fb-auth";
@@ -319,6 +320,19 @@ function recordReadStateFailure(error: unknown, batchSize: number): void {
   );
 }
 
+function readStateIdTails(ids: readonly string[]): string[] {
+  return ids.slice(0, 5).map((id) => `...${id.slice(-8)}`);
+}
+
+function recordReadStateInfo(message: string, detail: Record<string, unknown>): void {
+  recordBugReportEvent(
+    "desktop:readState",
+    "info",
+    message,
+    JSON.stringify(detail),
+  );
+}
+
 async function flushPendingReadMarks(): Promise<void> {
   if (readMarkBatchInFlight) return;
   readMarkBatchInFlight = true;
@@ -466,7 +480,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const platformActionsRegistry = buildPlatformActionsRegistry(xCookiesFn);
       outboxTeardown = startOutboxProcessor(
         () => getDocState()?.items ?? null,
-        (cb) => subscribe(() => cb()),
+        (cb) => subscribe((_state, event) => cb(event)),
         platformActionsRegistry,
         async (id, syncedAt) => { await docConfirmLikedSynced(id, syncedAt); },
         async (id, syncedAt) => { await docConfirmSeenSynced(id, syncedAt); },
@@ -498,7 +512,36 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markItemsAsRead: async (ids) => {
-    await queueReadMarks(ids);
+    const nextIds = ids.filter(Boolean);
+    if (nextIds.length === 0) return;
+
+    const startedAt = performance.now();
+    const beforeUnreadCount = get().totalUnreadCount;
+    recordReadStateInfo(
+      `Queued ${nextIds.length.toLocaleString()} read mark${nextIds.length === 1 ? "" : "s"}`,
+      {
+        queuedCount: nextIds.length,
+        beforeUnreadCount,
+        itemIdTails: readStateIdTails(nextIds),
+      },
+    );
+
+    try {
+      await queueReadMarks(nextIds);
+      recordReadStateInfo(
+        `Flushed ${nextIds.length.toLocaleString()} read mark${nextIds.length === 1 ? "" : "s"}`,
+        {
+          batchCount: nextIds.length,
+          beforeUnreadCount,
+          afterUnreadCount: get().totalUnreadCount,
+          durationMs: Math.round(performance.now() - startedAt),
+          itemIdTails: readStateIdTails(nextIds),
+        },
+      );
+    } catch (error) {
+      recordReadStateFailure(error, nextIds.length);
+      throw error;
+    }
   },
 
   markAllAsRead: async (platform) => {
@@ -506,7 +549,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleSaved: async (id) => {
+    const item = get().items.find((candidate) => candidate.globalId === id);
+    const shouldPin = !!item && !item.userState.saved;
     await docToggleSaved(id);
+    if (shouldPin) {
+      void pinReaderItem(item).catch((error) => {
+        recordRuntimeError({
+          source: "desktop:pinReaderItem",
+          error: error instanceof Error ? error : new Error(String(error)),
+          fatal: false,
+        });
+      });
+    }
   },
 
   toggleArchived: async (id) => {

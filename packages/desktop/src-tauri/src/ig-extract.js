@@ -34,6 +34,24 @@
     });
   }
 
+  function expandLongTextControls(root) {
+    var controls = root.querySelectorAll('button, div[role="button"], span[role="button"], a[role="button"]');
+    var clicked = 0;
+    for (var i = 0; i < controls.length && clicked < 8; i++) {
+      var label = (
+        controls[i].getAttribute("aria-label") ||
+        controls[i].textContent ||
+        ""
+      ).trim().toLowerCase();
+      if (label === "more" || label === "see more" || label === "show more" || label === "read more") {
+        try {
+          controls[i].click();
+          clicked++;
+        } catch (_) {}
+      }
+    }
+  }
+
   function contentHash(author, text) {
     var seed = (author || "") + "||" + (text || "").substring(0, 120);
     var hash = 0;
@@ -347,6 +365,7 @@
 
       // Skip tiny or invisible articles
       if (article.offsetHeight < 100) continue;
+      expandLongTextControls(article);
 
       // Skip suggested-for-you, sponsored, and non-followed-account posts
       if (isSuggestedOrSponsored(article)) continue;

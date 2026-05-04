@@ -1,0 +1,78 @@
+{
+  "tag": "v26.5.103-dev",
+  "version": "26.5.103-dev",
+  "channel": "dev",
+  "dayKey": "26.5.1",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-02T05:47:58.265Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.102-dev",
+    "previousPublishedDayTag": "v26.4.3006-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.101-dev",
+      "v26.5.102-dev",
+      "v26.5.103-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.101-dev",
+      "v26.5.102-dev",
+      "v26.5.103-dev"
+    ],
+    "prNumbers": [
+      385,
+      386,
+      387,
+      388,
+      389,
+      391,
+      392,
+      393
+    ],
+    "commitSubjects": [
+      "fix: grant startup recovery window desktop permissions (#393)",
+      "release: approve v26.5.102-dev notes",
+      "release: v26.5.102-dev",
+      "fix: stabilize desktop AI downloads and renderer recovery (#392)",
+      "release: approve v26.5.101-dev notes",
+      "release: v26.5.101-dev",
+      "fix: update outbox test fixture types (#391)",
+      "release: approve v26.5.100-dev notes",
+      "release: v26.5.100-dev",
+      "fix: preserve side-effect queue serialization on timeout (#389)",
+      "perf: preserve count maps for neutral patches (#388)",
+      "perf: update item patch state incrementally (#387)",
+      "perf: avoid outbox scans for item patches (#386)",
+      "refactor: route desktop hot-path side effects (#385)"
+    ]
+  },
+  "release": {
+    "deck": "Keeps crash recovery, AI downloads, and common desktop actions responsive",
+    "features": [],
+    "fixes": [
+      "Startup recovery can now check for updates, install them, relaunch, and open fallback browser downloads",
+      "Desktop AI downloads and renderer recovery are now more stable",
+      "Update outbox test fixture types",
+      "Preserve side-effect queue serialization on timeout",
+      "Kept desktop side-effect queues serialized even when a queued task times out, so one slow persistence or sync action cannot let later work overlap out of order",
+      "Moved provider health, secure storage, cloud upload, snapshots, and outbox side effects through typed queues so UI gestures return quickly",
+      "Prevented read, like, archive, and sync-confirmation item patches from making the outbox rescan the full feed",
+      "Updated desktop item patches incrementally on the main thread, including count-map identity preservation for like and sync-confirmation patches",
+      "Fixed stale outbox test fixtures so release validation covers the new patch-drain path",
+      "Integrated AI pack downloads now stream through native disk IO, which keeps large local model downloads out of the WebKit renderer",
+      "Renderer recovery now rebuilds stale macOS windows on the main thread after heartbeat failure",
+      "Local AI classification now stays off until Topics and ranking is enabled, and settings show classification as off while disabled",
+      "Desktop scrapers now log and respect WebKit memory pressure before launching new provider work"
+    ],
+    "followUps": [
+      "Preserve count maps for neutral patches",
+      "Item patch state incrementally",
+      "Route desktop hot-path side effects"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.103-dev\n\nKeeps crash recovery, AI downloads, and common desktop actions responsive\n\n### Fixes\n\n- Startup recovery can now check for updates, install them, relaunch, and open fallback browser downloads\n- Desktop AI downloads and renderer recovery are now more stable\n- Update outbox test fixture types\n- Preserve side-effect queue serialization on timeout\n- Kept desktop side-effect queues serialized even when a queued task times out, so one slow persistence or sync action cannot let later work overlap out of order\n- Moved provider health, secure storage, cloud upload, snapshots, and outbox side effects through typed queues so UI gestures return quickly\n- Prevented read, like, archive, and sync-confirmation item patches from making the outbox rescan the full feed\n- Updated desktop item patches incrementally on the main thread, including count-map identity preservation for like and sync-confirmation patches\n- Fixed stale outbox test fixtures so release validation covers the new patch-drain path\n- Integrated AI pack downloads now stream through native disk IO, which keeps large local model downloads out of the WebKit renderer\n- Renderer recovery now rebuilds stale macOS windows on the main thread after heartbeat failure\n- Local AI classification now stays off until Topics and ranking is enabled, and settings show classification as off while disabled\n- Desktop scrapers now log and respect WebKit memory pressure before launching new provider work\n\n### Follow-ups\n\n- Preserve count maps for neutral patches\n- Item patch state incrementally\n- Route desktop hot-path side effects\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

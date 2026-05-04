@@ -1,6 +1,9 @@
+/**
+ * @vitest-environment jsdom
+ */
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { act } from "react";
+import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { PlatformProvider, type PlatformConfig } from "../../context/PlatformContext.js";
@@ -75,10 +78,13 @@ const platformConfig = {
   GoogleContactsSettingsContent: null,
 } as unknown as PlatformConfig;
 
-function renderFeedItemToStaticMarkup(item: FeedItemType): string {
+function renderFeedItemToStaticMarkup(
+  item: FeedItemType,
+  props: Partial<ComponentProps<typeof FeedItem>> = {},
+): string {
   return renderToStaticMarkup(
     <PlatformProvider value={platformConfig}>
-      <FeedItem item={item} />
+      <FeedItem item={item} {...props} />
     </PlatformProvider>,
   );
 }
@@ -116,6 +122,21 @@ describe("FeedItem read styling", () => {
 });
 
 describe("FeedItem story media", () => {
+  it("shares the feed card view transition name in primary story tiles", () => {
+    const html = renderFeedItemToStaticMarkup(makeItem({ globalId: "ig:story/transition proof" }));
+
+    expect(html).toContain("view-transition-name:feed-card-ig-story-transition-proof");
+  });
+
+  it("shares the feed card view transition name in compact story tiles", () => {
+    const html = renderFeedItemToStaticMarkup(
+      makeItem({ globalId: "ig:story/compact transition proof" }),
+      { compact: true },
+    );
+
+    expect(html).toContain("view-transition-name:feed-card-ig-story-compact-transition-proof");
+  });
+
   it("renders image stories as images", () => {
     const html = renderFeedItemToStaticMarkup(makeItem());
 
@@ -164,6 +185,93 @@ describe("FeedItem story media", () => {
 
       expect(container.querySelector("img[src='https://example.com/story.jpg']")).toBeNull();
       expect(container.querySelector(".bg-gradient-to-br")).not.toBeNull();
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
+});
+
+describe("FeedItem channel avatars", () => {
+  it("falls back to the channel initial when a story avatar fails", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem
+              item={makeItem({
+                author: {
+                  displayName: "Lotus Alchemist",
+                  avatarUrl: "https://example.com/avatar.jpg",
+                },
+              })}
+            />
+          </PlatformProvider>,
+        );
+      });
+
+      const avatar = container.querySelector("img[src='https://example.com/avatar.jpg']");
+      expect(avatar).toBeInstanceOf(HTMLImageElement);
+
+      await act(async () => {
+        avatar?.dispatchEvent(new Event("error", { bubbles: true }));
+      });
+
+      expect(container.querySelector("img[src='https://example.com/avatar.jpg']")).toBeNull();
+      expect(container.textContent).toContain("L");
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
+
+  it("falls back to the channel initial when a regular post avatar fails", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem
+              item={makeItem({
+                contentType: "post",
+                author: {
+                  displayName: "Lotus Alchemist",
+                  avatarUrl: "https://example.com/post-avatar.jpg",
+                },
+                content: {
+                  mediaUrls: [],
+                  mediaTypes: [],
+                },
+              })}
+            />
+          </PlatformProvider>,
+        );
+      });
+
+      const avatar = container.querySelector("img[src='https://example.com/post-avatar.jpg']");
+      expect(avatar).toBeInstanceOf(HTMLImageElement);
+
+      await act(async () => {
+        avatar?.dispatchEvent(new Event("error", { bubbles: true }));
+      });
+
+      expect(container.querySelector("img[src='https://example.com/post-avatar.jpg']")).toBeNull();
+      expect(container.textContent).toContain("L");
     } finally {
       await act(async () => {
         root.unmount();

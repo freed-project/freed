@@ -419,6 +419,10 @@ function rotateArray<T>(values: T[], offset: number): T[] {
   return values.slice(normalizedOffset).concat(values.slice(0, normalizedOffset));
 }
 
+function positiveModulo(value: number, divisor: number): number {
+  return ((value % divisor) + divisor) % divisor;
+}
+
 function namespaceId(batchId: string, value: string): string {
   return `${batchId}:${value}`;
 }
@@ -446,19 +450,23 @@ function generatedPersona(index: number): {
   bio: string;
   notes?: string;
 } {
-  const existing = SAMPLE_FRIEND_PERSONAS[index % SAMPLE_FRIEND_PERSONAS.length];
-  if (index < SAMPLE_FRIEND_PERSONAS.length) {
+  const normalizedIndex = positiveModulo(index, SAMPLE_FRIEND_PERSONAS.length);
+  const existing = SAMPLE_FRIEND_PERSONAS[normalizedIndex]!;
+  if (index >= 0 && index < SAMPLE_FRIEND_PERSONAS.length) {
     return existing;
   }
 
-  const first = GENERATED_FIRST_NAMES[index % GENERATED_FIRST_NAMES.length];
-  const last = GENERATED_LAST_NAMES[Math.floor(index / GENERATED_FIRST_NAMES.length) % GENERATED_LAST_NAMES.length];
-  const variant = Math.floor(index / (GENERATED_FIRST_NAMES.length * GENERATED_LAST_NAMES.length));
+  const generatedIndex = Math.abs(index);
+  const first = GENERATED_FIRST_NAMES[positiveModulo(generatedIndex, GENERATED_FIRST_NAMES.length)]!;
+  const last = GENERATED_LAST_NAMES[
+    positiveModulo(Math.floor(generatedIndex / GENERATED_FIRST_NAMES.length), GENERATED_LAST_NAMES.length)
+  ]!;
+  const variant = Math.floor(generatedIndex / (GENERATED_FIRST_NAMES.length * GENERATED_LAST_NAMES.length));
   const name = `${first} ${last}${variant > 0 ? ` ${variant + 1}` : ""}`;
   return {
-    slug: `${first}-${last}-${index}`.toLowerCase(),
+    slug: `${first}-${last}-${generatedIndex}`.toLowerCase(),
     name,
-    careLevel: ((index % 5) + 1) as Friend["careLevel"],
+    careLevel: (positiveModulo(generatedIndex, 5) + 1) as Friend["careLevel"],
     bio: "Sample friend with linked channels, recent activity, and enough graph signal to make the workspace worth opening.",
   };
 }
@@ -474,7 +482,7 @@ function buildSampleFriendDefs(options?: SampleDataOptions): SampleFriendDef[] {
   const { batchId, seed, friendCount, identitiesPerFriend } = resolveSampleDataOptions(options);
 
   return Array.from({ length: friendCount }, (_, rawIndex) => {
-    const index = (rawIndex + seed) % friendCount;
+    const index = positiveModulo(rawIndex + seed, friendCount);
     const persona = generatedPersona(index);
     const avatarUrl = `https://picsum.photos/seed/friend-${batchId}-${persona.slug}/128/128`;
     const sources = Array.from({ length: identitiesPerFriend }, (_, sourceIndex) => {

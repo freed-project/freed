@@ -1,5 +1,4 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { Store, load } from "@tauri-apps/plugin-store";
 import { toast } from "@freed/ui/components/Toast";
 import {
   setProviderHealth,
@@ -19,6 +18,7 @@ import { useAppStore } from "./store";
 import { storeFbAuthState } from "./fb-auth";
 import { storeIgAuthState } from "./instagram-auth";
 import { storeLiAuthState } from "./li-auth";
+import { readNativeJsonFile, writeNativeJsonValue } from "./native-json-store";
 
 const HEALTH_STORE_FILE = "sync-health.json";
 const HEALTH_STORE_KEY = "provider-health";
@@ -107,7 +107,6 @@ interface PersistedHealthState {
   updatedAt: number;
 }
 
-let healthStore: Store | null = null;
 let currentState: PersistedHealthState | null = null;
 let initPromise: Promise<void> | null = null;
 
@@ -208,16 +207,6 @@ function fallbackWrite(state: PersistedHealthState): void {
   } catch {
     // Ignore mock store persistence failures.
   }
-}
-
-async function getStore(): Promise<Store> {
-  if (!isTauri()) {
-    throw new Error("Native health store is unavailable outside Freed Desktop");
-  }
-  if (!healthStore) {
-    healthStore = await load(HEALTH_STORE_FILE, { defaults: {}, autoSave: true });
-  }
-  return healthStore;
 }
 
 function coerceBuckets<T extends HealthDailyBucket | HealthHourlyBucket>(
@@ -893,17 +882,7 @@ async function persistState(state: PersistedHealthState): Promise<void> {
     fallbackWrite(state);
     return;
   }
-  try {
-    const store = await getStore();
-    await store.set(HEALTH_STORE_KEY, state);
-  } catch (error) {
-    log.error(
-      `[provider-health] failed to persist health store, falling back: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    fallbackWrite(state);
-  }
+  await persistNativeState(state);
 }
 
 async function readState(): Promise<PersistedHealthState> {
@@ -911,9 +890,9 @@ async function readState(): Promise<PersistedHealthState> {
     return fallbackRead() ?? createEmptyState();
   }
   try {
-    const store = await getStore();
-    const value = await store.get<unknown>(HEALTH_STORE_KEY);
-    return coercePersistedHealthState(value);
+    const parsed = await readNativeJsonFile(HEALTH_STORE_FILE);
+    if (!parsed) return createEmptyState();
+    return coercePersistedHealthState(parsed[HEALTH_STORE_KEY] ?? parsed);
   } catch (error) {
     log.error(
       `[provider-health] failed to read health store, falling back: ${
@@ -921,6 +900,24 @@ async function readState(): Promise<PersistedHealthState> {
       }`,
     );
     return fallbackRead() ?? createEmptyState();
+  }
+}
+
+async function persistNativeState(state: PersistedHealthState): Promise<void> {
+  try {
+    await writeNativeJsonValue(
+      HEALTH_STORE_FILE,
+      HEALTH_STORE_KEY,
+      state,
+      "provider-health",
+    );
+  } catch (error) {
+    log.error(
+      `[provider-health] failed to persist health file, falling back: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    fallbackWrite(state);
   }
 }
 

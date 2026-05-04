@@ -1,0 +1,18 @@
+{
+  "channel": "dev",
+  "dayKey": "26.4.29",
+  "date": "2026-04-29",
+  "preferredDeck": "Renderer recovery, semantic content enrichment, unified AI provider settings, and read-on-scroll fixes",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Freed Desktop now rebuilds the main window after renderer stalls",
+    "Feed items now mark read while scrolling",
+    "Provider health persistence no longer uses the Tauri store mutex path that could freeze Freed Desktop shortly after launch"
+  ],
+  "editorialNotes": [],
+  "updatedAt": "2026-04-30T03:59:21.841Z"
+}

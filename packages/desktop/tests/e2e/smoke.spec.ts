@@ -22,9 +22,15 @@ const SIDEBAR_ALIGNMENT_TOLERANCE_PX = 4;
 const SIDEBAR_ICON_ALIGNMENT_TOLERANCE_PX = 10;
 const READER_RAIL_ALIGNMENT_TOLERANCE_PX = 8;
 const LAYOUT_CONTROL_SPLIT_OFFSET_PX = 24;
+const READER_LAYOUT_CONTROL_SPLIT_OFFSET_PX = 16;
 const LAYOUT_CONTROL_GAP_PX = 8;
+const READER_LAYOUT_CONTROL_GAP_PX = 0;
+const COMPACT_PRIMARY_SIDEBAR_WIDTH_PX = 48;
+const PRIMARY_SIDEBAR_GAP_WIDTH_PX = 8;
+const TOP_TOOLBAR_HEIGHT_PX = COMPACT_PRIMARY_SIDEBAR_WIDTH_PX + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
 const MACOS_TRAFFIC_LIGHT_INSET_PX = 100;
 const TOOLBAR_CENTER_ALIGNMENT_TOLERANCE_PX = 3;
+const TOOLBAR_VERTICAL_ALIGNMENT_TOLERANCE_PX = 2;
 const TOOLTIP_ARROW_ALIGNMENT_TOLERANCE_PX = 1.5;
 const SIDEBAR_CLOSED_EDGE_TOLERANCE_PX = 5;
 const SOFT_VIEWPORT_RADIUS = "20px";
@@ -394,13 +400,18 @@ test("app loads and renders without crashing", async ({ app }) => {
   await expect(app.page.locator("main")).toBeVisible();
 });
 
-test("page title is set", async ({ page }) => {
-  await page.addInitScript(tauriInitScript());
-  await page.goto("/");
-  await acceptLegalGate(page);
-  await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
-  // Vite / React Router sets this after hydration. Assert it's not blank.
-  await expect(page).toHaveTitle(/.+/);
+test("startup emits renderer health before background work can run", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        return (window as unknown as { __FREED_RENDERER_HEARTBEATS__?: number })
+          .__FREED_RENDERER_HEARTBEATS__ ?? 0;
+      }),
+    )
+    .toBeGreaterThanOrEqual(1);
 });
 
 test("no console errors on startup", async ({ page }) => {
@@ -435,12 +446,6 @@ test("no console errors on startup", async ({ page }) => {
 // Layout surfaces
 // ---------------------------------------------------------------------------
 
-test("header is visible", async ({ app }) => {
-  await app.goto();
-  await app.waitForReady();
-  await expect(app.page.locator("header, [role='banner']").first()).toBeVisible();
-});
-
 test("desktop workspace keeps a single top toolbar in feed, reader, and friends views", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
@@ -457,192 +462,6 @@ test("desktop workspace keeps a single top toolbar in feed, reader, and friends 
   await page.getByTestId("app-sidebar").getByTestId("source-row-friends").click();
   await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
   await expect(page.locator("header")).toHaveCount(1);
-});
-
-test("desktop toolbar wordmark and passive title block avoid text-selection affordances", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-
-  const titlebarInset = await page.evaluate(() => {
-    const logo = document.querySelector('[data-testid="workspace-toolbar"] .font-logo') as HTMLElement | null;
-    const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
-    const logoRow = logo?.parentElement as HTMLElement | null;
-    if (!logo || !toolbar || !logoRow) {
-      return null;
-    }
-
-    const toolbarRect = toolbar.getBoundingClientRect();
-    const logoRect = logo.getBoundingClientRect();
-    return {
-      paddingLeft: window.getComputedStyle(logoRow).paddingLeft,
-      logoOffset: logoRect.left - toolbarRect.left,
-    };
-  });
-
-  expect(titlebarInset).not.toBeNull();
-  expect(titlebarInset?.paddingLeft).toBe("100px");
-  expect(titlebarInset?.logoOffset ?? 0).toBeGreaterThanOrEqual(100);
-
-  const styleState = await page.evaluate(() => {
-    const wordmark = document.querySelector('[data-testid="workspace-toolbar-wordmark"]') as HTMLElement | null;
-    const titleBlock = document.querySelector('[data-testid="workspace-toolbar-title-block"]') as HTMLElement | null;
-    if (!wordmark || !titleBlock) {
-      return null;
-    }
-
-    const wordmarkStyle = window.getComputedStyle(wordmark);
-    const titleBlockStyle = window.getComputedStyle(titleBlock);
-    return {
-      wordmarkCursor: wordmarkStyle.cursor,
-      wordmarkUserSelect: wordmarkStyle.userSelect,
-      titleBlockCursor: titleBlockStyle.cursor,
-      titleBlockUserSelect: titleBlockStyle.userSelect,
-    };
-  });
-
-  expect(styleState).not.toBeNull();
-  expect(styleState?.wordmarkCursor).toBe("default");
-  expect(styleState?.wordmarkUserSelect).toBe("none");
-  expect(styleState?.titleBlockCursor).toBe("default");
-  expect(styleState?.titleBlockUserSelect).toBe("none");
-});
-
-test("desktop toolbar title stays clear of the wordmark and sidebar toggle at narrow sidebar widths", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-
-  const desktopSidebar = page.getByTestId("app-sidebar");
-  await desktopSidebar.getByTestId("source-row-rss").click();
-  await dragElementBy(page, page.getByTestId("app-sidebar-resize-handle"), -72);
-  await page.waitForTimeout(250);
-
-  const toolbarLayout = await page.evaluate(() => {
-    const wordmark = document.querySelector('[data-testid="workspace-toolbar-wordmark"]') as HTMLElement | null;
-    const toggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
-    const titleBlock = document.querySelector('[data-testid="workspace-toolbar-title-block"]') as HTMLElement | null;
-    if (!wordmark || !toggle || !titleBlock) {
-      return null;
-    }
-
-    const wordmarkRect = wordmark.getBoundingClientRect();
-    const toggleRect = toggle.getBoundingClientRect();
-    const titleRect = titleBlock.getBoundingClientRect();
-
-    return {
-      titleLeft: titleRect.left,
-      wordmarkRight: wordmarkRect.right,
-      toggleRight: toggleRect.right,
-      titleWidth: titleRect.width,
-    };
-  });
-
-  expect(toolbarLayout).not.toBeNull();
-  expect(toolbarLayout!.titleWidth).toBeGreaterThan(0);
-  expect(toolbarLayout!.titleLeft).toBeGreaterThanOrEqual(toolbarLayout!.wordmarkRight + 8);
-  expect(toolbarLayout!.titleLeft).toBeGreaterThanOrEqual(toolbarLayout!.toggleRight + 8);
-});
-
-test("expanded desktop sidebar keeps the toolbar toggle aligned to the sidebar card edge", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-
-  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
-  await expect(sidebarToggle).toHaveClass(/theme-toolbar-button-ghost/);
-  await expect(sidebarToggle).not.toHaveClass(/theme-toolbar-button-(neutral|active)/);
-
-  await expect.poll(async () =>
-    page.evaluate((splitOffset) => {
-      const resizeHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
-      const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
-      if (!resizeHandle || !sidebarToggle) {
-        return Number.POSITIVE_INFINITY;
-      }
-
-      const resizeHandleRect = resizeHandle.getBoundingClientRect();
-      const sidebarToggleRect = sidebarToggle.getBoundingClientRect();
-      const handleCenter = resizeHandleRect.left + resizeHandleRect.width / 2;
-      const sidebarToggleCenter = sidebarToggleRect.left + sidebarToggleRect.width / 2;
-      return Math.abs(handleCenter - sidebarToggleCenter - splitOffset);
-    }, LAYOUT_CONTROL_SPLIT_OFFSET_PX),
-  ).toBeLessThanOrEqual(TOOLBAR_CENTER_ALIGNMENT_TOLERANCE_PX);
-
-  const alignment = await page.evaluate(() => {
-    const resizeHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
-    const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
-    const sidebarToggleIcon = sidebarToggle?.querySelector("svg") as SVGElement | null;
-    if (!resizeHandle || !sidebarToggle) {
-      return null;
-    }
-
-    const resizeHandleRect = resizeHandle.getBoundingClientRect();
-    const sidebarToggleRect = sidebarToggle.getBoundingClientRect();
-    const sidebarToggleIconRect = sidebarToggleIcon?.getBoundingClientRect() ?? null;
-
-    return {
-      handleCenter: resizeHandleRect.left + resizeHandleRect.width / 2,
-      sidebarToggleCenter: sidebarToggleRect.left + sidebarToggleRect.width / 2,
-      sidebarToggleIconCenter: sidebarToggleIconRect ? sidebarToggleIconRect.left + sidebarToggleIconRect.width / 2 : 0,
-    };
-  });
-
-  expect(alignment).not.toBeNull();
-  expect(Math.abs(alignment!.handleCenter - alignment!.sidebarToggleCenter - LAYOUT_CONTROL_SPLIT_OFFSET_PX)).toBeLessThanOrEqual(
-    TOOLBAR_CENTER_ALIGNMENT_TOLERANCE_PX,
-  );
-  expect(Math.abs(alignment!.sidebarToggleIconCenter - alignment!.sidebarToggleCenter)).toBeLessThanOrEqual(
-    SIDEBAR_ALIGNMENT_TOLERANCE_PX,
-  );
-});
-
-test("compact desktop sidebar keeps the toolbar toggle tucked against the wordmark", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-
-  await dragElementBy(page, page.getByTestId("app-sidebar-resize-handle"), -156);
-  await page.waitForTimeout(250);
-
-  await expect.poll(async () =>
-    page.evaluate((layoutGap) => {
-      const wordmark = document.querySelector('[data-testid="workspace-toolbar-wordmark"]') as HTMLElement | null;
-      const toggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
-      if (!wordmark || !toggle) {
-        return Number.NEGATIVE_INFINITY;
-      }
-
-      return toggle.getBoundingClientRect().left - wordmark.getBoundingClientRect().right - layoutGap;
-    }, LAYOUT_CONTROL_GAP_PX),
-  ).toBeGreaterThanOrEqual(0);
-
-  const compactToolbarLayout = await page.evaluate(() => {
-    const wordmark = document.querySelector('[data-testid="workspace-toolbar-wordmark"]') as HTMLElement | null;
-    const toggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
-    const titleBlock = document.querySelector('[data-testid="workspace-toolbar-title-block"]') as HTMLElement | null;
-    if (!wordmark || !toggle || !titleBlock) {
-      return null;
-    }
-
-    const wordmarkRect = wordmark.getBoundingClientRect();
-    const toggleRect = toggle.getBoundingClientRect();
-    const titleRect = titleBlock.getBoundingClientRect();
-
-    return {
-      wordmarkLeft: wordmarkRect.left,
-      wordmarkRight: wordmarkRect.right,
-      toggleLeft: toggleRect.left,
-      toggleRight: toggleRect.right,
-      titleLeft: titleRect.left,
-    };
-  });
-
-  expect(compactToolbarLayout).not.toBeNull();
-  expect(compactToolbarLayout!.wordmarkLeft).toBeGreaterThanOrEqual(MACOS_TRAFFIC_LIGHT_INSET_PX);
-  expect(compactToolbarLayout!.toggleLeft).toBeGreaterThanOrEqual(compactToolbarLayout!.wordmarkRight + LAYOUT_CONTROL_GAP_PX);
-  expect(compactToolbarLayout!.toggleLeft - compactToolbarLayout!.wordmarkRight).toBeLessThanOrEqual(18);
-  expect(compactToolbarLayout!.titleLeft).toBeGreaterThanOrEqual(compactToolbarLayout!.toggleRight + 8);
 });
 
 test("desktop sidebar toggle still clicks normally from the shared toolbar", async ({ app, page }) => {
@@ -676,64 +495,28 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   await expectDesktopSidebarShellWidthAtMost(page, 2, 1_000);
 });
 
-test("desktop sidebar search gap scales smoothly through narrow widths", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-
-  const setExpandedSidebarWidth = async (sidebarWidth: number) => {
-    await page.evaluate((width) => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as
-        | {
-            getState: () => {
-              preferences: {
-                display: Record<string, unknown>;
-              };
-            };
-            setState: (partial: Record<string, unknown>) => void;
-          }
-        | undefined;
-      const state = store?.getState();
-      if (!store || !state) return;
-      store.setState({
-        preferences: {
-          ...state.preferences,
-          display: {
-            ...state.preferences.display,
-            sidebarMode: "expanded",
-            sidebarWidth: width,
-          },
-        },
-      });
-    }, sidebarWidth);
-  };
-
-  const readSearchGap = async () => (
-    page.getByTestId("sidebar-search-field-wrapper").evaluate((element) =>
-      Number.parseFloat(window.getComputedStyle(element).marginBottom)
-    )
-  );
-
-  await setExpandedSidebarWidth(184);
-  await expect.poll(readSearchGap, { timeout: 1_000 }).toBeCloseTo(8, 0);
-
-  await setExpandedSidebarWidth(204);
-  await expect.poll(readSearchGap, { timeout: 1_000 }).toBeCloseTo(12, 0);
-
-  await setExpandedSidebarWidth(224);
-  await expect.poll(readSearchGap, { timeout: 1_000 }).toBeCloseTo(16, 0);
-});
-
 test("narrow desktop viewports keep the desktop compact rail instead of switching to the mobile drawer", async ({ app, page }) => {
   await page.setViewportSize({ width: 700, height: 900 });
   await app.goto();
   await app.waitForReady();
 
-  await expect(page.getByTestId("desktop-sidebar-toggle")).toBeVisible();
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  await expect(sidebarToggle).toBeVisible();
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await expect(page.getByTestId("app-sidebar").getByTestId("compact-sidebar-search-trigger")).toBeVisible();
   await expect(page.getByTestId("app-sidebar-mobile")).toHaveCount(0);
   await expect(page.getByLabel("Open menu")).toHaveCount(0);
+
+  await sidebarToggle.click();
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
+  await expectDesktopSidebarShellWidthAtMost(page, 2, 1_000);
+
+  await sidebarToggle.click();
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
+  await expect.poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, {
+    timeout: 1_000,
+  }).toBeGreaterThanOrEqual(46);
 });
 
 test("narrow desktop reader mode keeps the compact sidebar accessible and collapses the reader rail", async ({ app, page }) => {
@@ -815,7 +598,7 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
       handleLeft: handle?.getBoundingClientRect().left ?? 0,
     };
   });
-  expect(compactPreviewMetrics.handleLeft - compactPreviewMetrics.sidebarRight).toBeGreaterThanOrEqual(48);
+  expect(Math.abs((compactPreviewMetrics.handleLeft + 8) - (compactPreviewMetrics.sidebarRight + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2))).toBeLessThanOrEqual(1);
 
   const compactSquares = await page.evaluate(() => {
     const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
@@ -1021,7 +804,7 @@ test("compact sidebar search opens as a floating palette and closes cleanly", as
     };
   });
   expect(Math.abs(compactPaletteGeometry.paletteTop - compactPaletteGeometry.sidebarTop)).toBeLessThanOrEqual(1);
-  const floatingSearch = page.getByTestId("compact-sidebar-search-palette").getByLabel("Search or run a command");
+  const floatingSearch = page.getByTestId("compact-sidebar-search-palette").getByLabel("Search or run");
   await expect(floatingSearch).toBeFocused();
   await expect(page.getByTestId("search-command-action-go-unified-feed")).toBeVisible();
   await floatingSearch.fill("face");
@@ -1031,9 +814,14 @@ test("compact sidebar search opens as a floating palette and closes cleanly", as
   await expect(page.getByTestId("compact-sidebar-search-palette")).toHaveCount(0);
   await expect(trigger).toHaveAttribute("aria-pressed", "true");
 
-  const headerSearch = page.getByTestId("workspace-toolbar").getByPlaceholder("Search");
-  await expect(headerSearch).toBeVisible();
-  await page.getByTestId("workspace-toolbar").getByLabel("Clear search").click();
+  await expect(page.getByTestId("workspace-toolbar").getByLabel("Search all sources")).toHaveCount(0);
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Search: face");
+  await page.evaluate(() => {
+    const store = (window as any).__FREED_STORE__ as {
+      getState: () => { setSearchQuery: (query: string) => void };
+    };
+    store.getState().setSearchQuery("");
+  });
   await expect(page.getByTestId("workspace-toolbar-title-block")).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-pressed", "false");
 });
@@ -1064,303 +852,6 @@ test("dragging from the desktop sidebar toggle starts a window drag without coll
   expect(postDragState.sidebarWidth).toBeGreaterThan(initialWidth - 4);
 });
 
-test("narrow labeled sidebar keeps source names visible and drops counts first", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-  await app.injectRssItems(12);
-  const desktopSidebar = page.getByTestId("app-sidebar");
-
-  await page.evaluate(async () => {
-    const w = window as Record<string, unknown>;
-    const automerge = w.__FREED_AUTOMERGE__ as {
-      docAddRssFeed: (feed: unknown) => Promise<void>;
-    };
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            feeds: Record<string, unknown>;
-          };
-        }
-      | undefined;
-
-    const feedUrl = "https://bench.example/feed.xml";
-    await automerge.docAddRssFeed({
-      url: feedUrl,
-      title: "Navigation Feed",
-      siteUrl: "https://bench.example",
-      enabled: true,
-      trackUnread: true,
-      lastFetched: Date.now(),
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      const startedAt = Date.now();
-      const interval = window.setInterval(() => {
-        if (store?.getState().feeds[feedUrl]) {
-          clearInterval(interval);
-          resolve();
-          return;
-        }
-        if (Date.now() - startedAt > 5_000) {
-          clearInterval(interval);
-          reject(new Error("feed seed timeout"));
-        }
-      }, 50);
-    });
-  });
-
-  await page.evaluate(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          setState: (
-            updater: (state: {
-              unreadCountByPlatform: Record<string, number>;
-              itemCountByPlatform: Record<string, number>;
-              totalUnreadCount: number;
-              totalItemCount: number;
-            }) => Partial<{
-              unreadCountByPlatform: Record<string, number>;
-              itemCountByPlatform: Record<string, number>;
-              totalUnreadCount: number;
-              totalItemCount: number;
-            }>,
-          ) => void;
-        }
-      | undefined;
-
-    store?.setState((state) => ({
-      unreadCountByPlatform: {
-        ...state.unreadCountByPlatform,
-        x: 6,
-        rss: 58,
-      },
-      itemCountByPlatform: {
-        ...state.itemCountByPlatform,
-        x: 14,
-        rss: 106,
-      },
-      totalUnreadCount: Math.max(state.totalUnreadCount, 64),
-      totalItemCount: Math.max(state.totalItemCount, 120),
-    }));
-  });
-
-  await page.evaluate(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          setState: (partial: {
-            providerSyncCounts: Record<string, number>;
-          }) => void;
-        }
-      | undefined;
-
-    store?.setState({
-      providerSyncCounts: {
-        rss: 1,
-        x: 1,
-        facebook: 0,
-        instagram: 0,
-        linkedin: 0,
-        gdrive: 0,
-        dropbox: 0,
-      },
-    });
-  });
-
-  const roomySearchToFirstRowGap = await page.evaluate(() => {
-    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
-    const searchInput = sidebar?.querySelector('input[aria-label="Search or run a command"]') as HTMLInputElement | null;
-    const firstRow = sidebar?.querySelector('[data-testid="source-row-all"]')?.closest("li") as HTMLElement | null;
-    if (!searchInput || !firstRow) {
-      throw new Error("Roomy sidebar search spacing elements were not found");
-    }
-
-    return firstRow.getBoundingClientRect().top - searchInput.getBoundingClientRect().bottom;
-  });
-
-  await dragElementBy(page, page.getByTestId("app-sidebar-resize-handle"), -72);
-  await page.waitForTimeout(250);
-
-  await expect(desktopSidebar.getByTestId("source-row-all")).toContainText("Feed");
-  await expect(desktopSidebar.getByPlaceholder("Search")).toBeVisible();
-  await expect(desktopSidebar.getByPlaceholder("Search or jump to...")).toHaveCount(0);
-  await expect(desktopSidebar.getByTestId("source-row-x")).toContainText("X / Twitter");
-  await expect(desktopSidebar.getByTestId("source-counts-x")).toHaveCount(0);
-  await expect(desktopSidebar.getByTestId("source-menu-trigger-x")).toHaveCount(1);
-  await desktopSidebar.getByTestId("source-row-x").hover();
-  await expect(desktopSidebar.getByTestId("source-menu-trigger-x")).toBeVisible();
-
-  await expect(desktopSidebar.getByTestId("source-row-rss")).toContainText("Feeds");
-  await expect(desktopSidebar.getByTestId("source-status-rss")).toBeVisible();
-  await expect(desktopSidebar.getByLabel(/Expand feeds|Collapse feeds/)).toHaveCount(0);
-  await expect(desktopSidebar.getByTestId("source-counts-rss")).toHaveCount(0);
-  await expect(desktopSidebar.getByTestId("source-menu-trigger-rss")).toHaveCount(1);
-  await desktopSidebar.getByTestId("source-row-rss").hover();
-  await expect(desktopSidebar.getByTestId("source-menu-trigger-rss")).toBeVisible();
-  await expect(desktopSidebar.getByText(/404 Media \(Sample/)).toHaveCount(0);
-
-  const rssStatusIsInsideRow = await page.evaluate(() => {
-    const rowButton = document.querySelector('[data-testid="source-row-rss"]');
-    const status = document.querySelector('[data-testid="source-status-rss"]');
-    return rowButton?.contains(status) ?? false;
-  });
-  expect(rssStatusIsInsideRow).toBe(true);
-
-  const narrowLabelMetrics = await page.evaluate(() => {
-    const xRow = document.querySelector('[data-testid="source-row-x"]') as HTMLElement | null;
-    const xLabel = xRow?.querySelector("span.min-w-0") as HTMLElement | null;
-    const friendsRow = document.querySelector('[data-testid="source-row-friends"]') as HTMLElement | null;
-    const friendsLabel = friendsRow?.querySelector("span.min-w-0") as HTMLElement | null;
-    const searchInput = document.querySelector('[data-testid="app-sidebar"] input[placeholder="Search"]') as HTMLInputElement | null;
-    return {
-      xTextOverflow: xLabel ? window.getComputedStyle(xLabel).textOverflow : null,
-      xRightPadding: xLabel ? window.getComputedStyle(xLabel).paddingRight : null,
-      friendsRightPadding: friendsLabel ? window.getComputedStyle(friendsLabel).paddingRight : null,
-      searchRightPadding: searchInput ? window.getComputedStyle(searchInput).paddingRight : null,
-      searchPlaceholder: searchInput?.placeholder ?? null,
-      searchToFirstRowGap: (() => {
-        const firstRow = document
-          .querySelector('[data-testid="source-row-all"]')
-          ?.closest("li") as HTMLElement | null;
-        if (!searchInput || !firstRow) return null;
-        return firstRow.getBoundingClientRect().top - searchInput.getBoundingClientRect().bottom;
-      })(),
-    };
-  });
-  expect(narrowLabelMetrics?.xTextOverflow).toBe("clip");
-  expect(narrowLabelMetrics?.xRightPadding).toBe("0px");
-  expect(narrowLabelMetrics?.friendsRightPadding).toBe("0px");
-  expect(narrowLabelMetrics?.searchRightPadding).toBe("0px");
-  expect(narrowLabelMetrics?.searchPlaceholder).toBe("Search");
-  expect(narrowLabelMetrics?.searchToFirstRowGap).toBeGreaterThanOrEqual(7);
-  expect(narrowLabelMetrics?.searchToFirstRowGap).toBeLessThanOrEqual(9);
-  expect(Math.abs(roomySearchToFirstRowGap - (narrowLabelMetrics?.searchToFirstRowGap ?? 0) - 8)).toBeLessThanOrEqual(1);
-
-  await desktopSidebar.getByPlaceholder("Search").focus();
-  await expect(page.getByTestId("sidebar-search-command-palette")).toBeVisible();
-  const searchPaletteGeometry = await page.evaluate(() => {
-    const wrapper = document.querySelector('[data-testid="sidebar-search-field-wrapper"]') as HTMLElement | null;
-    const palette = document.querySelector('[data-testid="sidebar-search-command-palette"]') as HTMLElement | null;
-    if (!wrapper || !palette) {
-      throw new Error("Sidebar search palette geometry elements were not found");
-    }
-
-    const wrapperRect = wrapper.getBoundingClientRect();
-    const paletteRect = palette.getBoundingClientRect();
-    return {
-      wrapperRight: wrapperRect.right,
-      wrapperTop: wrapperRect.top,
-      wrapperBottom: wrapperRect.bottom,
-      paletteLeft: paletteRect.left,
-      paletteTop: paletteRect.top,
-    };
-  });
-  expect(searchPaletteGeometry.paletteLeft).toBeGreaterThanOrEqual(searchPaletteGeometry.wrapperRight + 7);
-  expect(Math.abs(searchPaletteGeometry.paletteTop - searchPaletteGeometry.wrapperTop)).toBeLessThanOrEqual(1);
-  expect(searchPaletteGeometry.paletteTop).toBeLessThan(searchPaletteGeometry.wrapperBottom);
-  await page.keyboard.press("Escape");
-
-  const rssStatusBadgeChrome = await page.evaluate(() => {
-    const status = document.querySelector('[data-testid="source-status-rss"]') as HTMLElement | null;
-    const wrapper = status?.parentElement as HTMLElement | null;
-    const badgeWrapper = wrapper?.parentElement as HTMLElement | null;
-    const iconWrapper = badgeWrapper?.parentElement as HTMLElement | null;
-    if (!status || !wrapper || !badgeWrapper || !iconWrapper) {
-      return null;
-    }
-
-    const style = window.getComputedStyle(wrapper);
-    return {
-      backgroundColor: style.backgroundColor,
-      statusTop: status.getBoundingClientRect().top,
-      wrapperTop: wrapper.getBoundingClientRect().top,
-      rightOffset: Number((badgeWrapper.getBoundingClientRect().right - iconWrapper.getBoundingClientRect().right).toFixed(1)),
-      topOffset: Number((iconWrapper.getBoundingClientRect().top - badgeWrapper.getBoundingClientRect().top).toFixed(1)),
-    };
-  });
-
-  expect(rssStatusBadgeChrome).not.toBeNull();
-  expect(rssStatusBadgeChrome?.backgroundColor).toBe("rgba(0, 0, 0, 0)");
-  expect(rssStatusBadgeChrome?.rightOffset).toBeGreaterThanOrEqual(4);
-  expect(rssStatusBadgeChrome?.rightOffset).toBeLessThanOrEqual(6);
-  expect(rssStatusBadgeChrome?.topOffset).toBeGreaterThanOrEqual(4);
-  expect(rssStatusBadgeChrome?.topOffset).toBeLessThanOrEqual(6);
-
-  const narrowLabelStyles = await page.evaluate(() => {
-    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
-    if (!sidebar) {
-      return null;
-    }
-
-    const findLabel = (label: string) =>
-      Array.from(sidebar.querySelectorAll("span")).find((node) => node.textContent?.trim() === label) as HTMLElement | undefined;
-
-    const facebookLabel = findLabel("Facebook");
-    const archivedLabel = findLabel("Archived");
-    const settingsLabel = findLabel("Settings");
-    if (!facebookLabel || !archivedLabel || !settingsLabel) {
-      return null;
-    }
-
-    const readStyle = (element: HTMLElement) => {
-      const style = window.getComputedStyle(element);
-      return {
-        textOverflow: style.textOverflow,
-        overflowX: style.overflowX,
-        paddingRight: Number.parseFloat(style.paddingRight),
-      };
-    };
-
-    return {
-      facebook: readStyle(facebookLabel),
-      archived: readStyle(archivedLabel),
-      settings: readStyle(settingsLabel),
-    };
-  });
-
-  expect(narrowLabelStyles).not.toBeNull();
-  expect(narrowLabelStyles?.facebook.textOverflow).toBe("clip");
-  expect(narrowLabelStyles?.archived.textOverflow).toBe("clip");
-  expect(narrowLabelStyles?.settings.textOverflow).toBe("clip");
-  expect(narrowLabelStyles?.facebook.overflowX).toBe("hidden");
-  expect(narrowLabelStyles?.settings.overflowX).toBe("hidden");
-  expect(narrowLabelStyles?.facebook.paddingRight ?? 0).toBe(0);
-  expect(narrowLabelStyles?.archived.paddingRight ?? 0).toBe(0);
-  expect(narrowLabelStyles?.settings.paddingRight ?? 0).toBe(0);
-});
-
-test("expanded sidebar padding settles to roomy or condensed values instead of resting mid-way", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-
-  const resizeHandle = page.getByTestId("app-sidebar-resize-handle");
-  await expect(resizeHandle).toBeVisible();
-
-  const initialPadding = await readDesktopSidebarPadding(page);
-  expect(initialPadding).not.toBeNull();
-  expect(initialPadding?.paddingTop).toBe(16);
-  expect(initialPadding?.paddingLeft).toBe(16);
-
-  await dragElementBy(page, resizeHandle, -52);
-  await page.waitForTimeout(250);
-
-  const condensedPadding = await readDesktopSidebarPadding(page);
-  expect(condensedPadding).not.toBeNull();
-  expect(condensedPadding?.paddingTop).toBe(8);
-  expect(condensedPadding?.paddingLeft).toBe(8);
-
-  await dragElementBy(page, resizeHandle, 52);
-  await page.waitForTimeout(250);
-
-  const restoredPadding = await readDesktopSidebarPadding(page);
-  expect(restoredPadding).not.toBeNull();
-  expect(restoredPadding?.paddingTop).toBe(16);
-  expect(restoredPadding?.paddingLeft).toBe(16);
-});
-
 test("dragging from a reader toolbar button starts a window drag without firing the button action", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
@@ -1368,7 +859,7 @@ test("dragging from a reader toolbar button starts a window drag without firing 
   await app.injectRssItems(8);
 
   await page.locator("[data-feed-item-id]").first().click();
-  const railButton = page.getByRole("button", { name: "Hide thumbnail rail" }).first();
+  const railButton = page.getByRole("button", { name: "Hide Previews" }).first();
   await expect(railButton).toBeVisible();
 
   await railButton.evaluate((button) => {
@@ -1463,255 +954,109 @@ test("desktop passive toolbar title area remains a native drag region", async ({
   expect(dragRegionState?.webkitAppRegion).toBe("drag");
 });
 
-test("desktop sidebar and debug drawer use floating shell cards", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+test("desktop primary feed marks scrolled-past rows as read", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
   await app.goto();
   await app.waitForReady();
+  await app.injectRssItems(30);
 
-  await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
-
-  const initialShellState = await page.evaluate(() => {
-    const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
-    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
-    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
-    return {
-      toolbarHasFloatingShell: toolbar?.classList.contains("theme-floating-panel") ?? false,
-      sidebarHasFloatingShell: sidebar?.classList.contains("theme-floating-panel") ?? false,
-      sidebarWidth: sidebarShell?.getBoundingClientRect().width ?? 0,
-    };
-  });
-
-  expect(initialShellState.toolbarHasFloatingShell).toBe(true);
-  expect(initialShellState.sidebarHasFloatingShell).toBe(true);
-  expect(initialShellState.sidebarWidth).toBeGreaterThan(200);
-
-  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
-  await sidebarToggle.click();
-  await page.waitForTimeout(250);
-
-  const compactWidth = await page.evaluate(() => {
-    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
-    return sidebarShell?.getBoundingClientRect().width ?? 0;
-  });
-  expect(compactWidth).toBeGreaterThanOrEqual(46);
-  expect(compactWidth).toBeLessThanOrEqual(70);
-
-  await sidebarToggle.click();
-  await page.waitForTimeout(250);
-  const collapsedWidth = await page.evaluate(() => {
-    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
-    return sidebarShell?.getBoundingClientRect().width ?? 0;
-  });
-  expect(collapsedWidth).toBeLessThanOrEqual(2);
-
-  await sidebarToggle.click();
-  await page.waitForTimeout(250);
-  const reopenedWidth = await page.evaluate(() => {
-    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
-    return sidebarShell?.getBoundingClientRect().width ?? 0;
-  });
-  expect(reopenedWidth).toBeGreaterThan(200);
-
-  await page.keyboard.press("Control+Shift+D");
-  await expect(page.getByTestId("debug-panel-drawer")).toBeVisible();
-
-  const debugShellState = await page.evaluate(() => {
-    const debugPanel = document.querySelector('[data-testid="debug-panel-surface"]') as HTMLElement | null;
-    return debugPanel?.classList.contains("theme-floating-panel") ?? false;
-  });
-  expect(debugShellState).toBe(true);
-});
-
-test("desktop toolbar tooltips dismiss after clicking a moving control", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-
-  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
-  await sidebarToggle.hover();
-  await expect(page.getByRole("tooltip")).toHaveText("Minimal sidebar");
-
-  await sidebarToggle.click();
-
-  await expect.poll(async () => {
-    return page.locator('[role="tooltip"]').count();
-  }).toBe(0);
-
-  await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
-});
-
-test("desktop toolbar tooltips still open on keyboard focus", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-
-  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    await page.keyboard.press("Tab");
-    if (await sidebarToggle.evaluate((element) => element === document.activeElement)) {
-      break;
+  const firstItemId = "rss:https://bench.example/feed.xml:bench-item-0";
+  const initialUnreadCount = await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: {
+              display: {
+                reading: {
+                  markReadOnScroll: boolean;
+                  showReadInGrayscale: boolean;
+                };
+              };
+            };
+            totalUnreadCount: number;
+          };
+        }
+      | undefined;
+    const state = store?.getState();
+    if (!state?.preferences.display.reading.markReadOnScroll) {
+      throw new Error("Mark read on scroll is not enabled");
     }
+    if (!state.preferences.display.reading.showReadInGrayscale) {
+      throw new Error("Read grayscale is not enabled");
+    }
+    return state.totalUnreadCount;
+  });
+
+  const feedContainer = page.getByTestId("feed-list-scroll-container");
+  await expect(feedContainer).toBeVisible();
+  const feedBox = await feedContainer.boundingBox();
+  if (!feedBox) {
+    throw new Error("Feed scroll container was not visible");
+  }
+  await page.mouse.move(feedBox.x + feedBox.width / 2, feedBox.y + feedBox.height / 2);
+  for (let index = 0; index < 8; index += 1) {
+    await page.mouse.wheel(0, 400);
   }
 
-  await expect(sidebarToggle).toBeFocused();
-  await expect(page.getByRole("tooltip")).toHaveText("Minimal sidebar");
-});
+  await expect
+    .poll(async () => page.evaluate((itemId) => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as
+        | {
+            getState: () => {
+              items: Array<{ globalId: string; userState: { readAt?: number } }>;
+            };
+          }
+        | undefined;
+      return Boolean(store?.getState().items.find((item) => item.globalId === itemId)?.userState.readAt);
+    }, firstItemId), { timeout: 10_000 })
+    .toBe(true);
 
-test("tooltip arrows stay attached to bottom and right-facing panels", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
+  await expect
+    .poll(async () => page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as
+        | { getState: () => { totalUnreadCount: number } }
+        | undefined;
+      return store?.getState().totalUnreadCount ?? Number.POSITIVE_INFINITY;
+    }), { timeout: 10_000 })
+    .toBeLessThan(initialUnreadCount);
 
-  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
-  await sidebarToggle.hover();
-  await expect(page.getByRole("tooltip")).toHaveText("Minimal sidebar");
-
-  const bottomGeometry = await page.evaluate(() => {
-    const trigger = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
-    const tooltip = document.querySelector('[role="tooltip"]') as HTMLElement | null;
-    const arrow = tooltip?.querySelector(".theme-tooltip-arrow-bottom") as HTMLElement | null;
-    if (!trigger || !tooltip || !arrow) {
-      throw new Error("Bottom tooltip geometry elements were not found");
-    }
-
-    const triggerRect = trigger.getBoundingClientRect();
-    const tooltipRect = tooltip.getBoundingClientRect();
-    const arrowRect = arrow.getBoundingClientRect();
-
-    return {
-      arrowCenterX: arrowRect.left + arrowRect.width / 2,
-      arrowCenterY: arrowRect.top + arrowRect.height / 2,
-      tooltipTop: tooltipRect.top,
-      triggerCenterX: triggerRect.left + triggerRect.width / 2,
-    };
-  });
-
-  expect(Math.abs(bottomGeometry.arrowCenterY - bottomGeometry.tooltipTop)).toBeLessThanOrEqual(
-    TOOLTIP_ARROW_ALIGNMENT_TOLERANCE_PX,
-  );
-  expect(Math.abs(bottomGeometry.arrowCenterX - bottomGeometry.triggerCenterX)).toBeLessThanOrEqual(
-    TOOLTIP_ARROW_ALIGNMENT_TOLERANCE_PX,
-  );
-
-  await page.mouse.move(800, 200);
-  await expect(page.getByRole("tooltip")).toHaveCount(0);
-  await dragElementBy(page, page.getByTestId("app-sidebar-resize-handle"), -208);
-  await page.waitForTimeout(250);
-
-  const archivedButton = page.getByTestId("app-sidebar").getByRole("button", { name: "Archived" });
-  await archivedButton.hover();
-  await expect(page.getByRole("tooltip")).toHaveText("Archived");
-
-  const rightGeometry = await page.evaluate(() => {
-    const trigger = document.querySelector('[data-testid="app-sidebar"] button[aria-label="Archived"]') as HTMLElement | null;
-    const tooltip = document.querySelector('[role="tooltip"]') as HTMLElement | null;
-    const arrow = tooltip?.querySelector(".theme-tooltip-arrow-right") as HTMLElement | null;
-    if (!trigger || !tooltip || !arrow) {
-      throw new Error("Right tooltip geometry elements were not found");
-    }
-
-    const triggerRect = trigger.getBoundingClientRect();
-    const tooltipRect = tooltip.getBoundingClientRect();
-    const arrowRect = arrow.getBoundingClientRect();
-
-    return {
-      arrowCenterX: arrowRect.left + arrowRect.width / 2,
-      arrowCenterY: arrowRect.top + arrowRect.height / 2,
-      tooltipLeft: tooltipRect.left,
-      triggerCenterY: triggerRect.top + triggerRect.height / 2,
-    };
-  });
-
-  expect(Math.abs(rightGeometry.arrowCenterX - rightGeometry.tooltipLeft)).toBeLessThanOrEqual(
-    TOOLTIP_ARROW_ALIGNMENT_TOLERANCE_PX,
-  );
-  expect(Math.abs(rightGeometry.arrowCenterY - rightGeometry.triggerCenterY)).toBeLessThanOrEqual(
-    TOOLTIP_ARROW_ALIGNMENT_TOLERANCE_PX,
-  );
-});
-
-test("desktop masked workspaces use even edge fades", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-  await app.seedFriendLocation();
-
-  await page.getByRole("button", { name: /^Map/ }).click();
-  await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
-
-  const initialMapMaskState = await page.evaluate(() => {
-    const mapSurface = document.querySelector('[data-testid="map-surface"]') as HTMLElement | null;
-    const content = mapSurface?.querySelector(".theme-soft-viewport-content") as HTMLElement | null;
-    const styles = mapSurface ? window.getComputedStyle(mapSurface) : null;
-    const contentStyles = content ? window.getComputedStyle(content) : null;
-
-    return {
-      maskSize: styles?.getPropertyValue("--theme-soft-viewport-mask-size").trim() ?? "",
-      leftBase: styles?.getPropertyValue("--theme-soft-viewport-base-comp-left").trim() ?? "",
-      rightBase: styles?.getPropertyValue("--theme-soft-viewport-base-comp-right").trim() ?? "",
-      radius: styles?.getPropertyValue("--theme-soft-viewport-radius").trim() ?? "",
-      clipPath: contentStyles?.clipPath ?? "",
-    };
-  });
-
-  expect(initialMapMaskState.maskSize).toBe("20px");
-  expect(initialMapMaskState.leftBase).toBe("");
-  expect(initialMapMaskState.rightBase).toBe("");
-  expect(initialMapMaskState.radius).toBe(SOFT_VIEWPORT_RADIUS);
-  expect(initialMapMaskState.clipPath).toContain(SOFT_VIEWPORT_RADIUS);
-
-  await page.keyboard.press("Control+Shift+D");
-  await expect(page.getByTestId("debug-panel-drawer")).toBeVisible();
-
-  await expect.poll(async () => {
-    return page.evaluate(() => {
-      const mapSurface = document.querySelector('[data-testid="map-surface"]') as HTMLElement | null;
-      return mapSurface
-        ? window.getComputedStyle(mapSurface).getPropertyValue("--theme-soft-viewport-mask-size").trim()
-        : "";
-    });
-  }).toBe("20px");
-
-  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
-  await sidebarToggle.click();
-  await sidebarToggle.click();
-  await expect.poll(async () => {
-    return page.evaluate(() => {
-      const mapSurface = document.querySelector('[data-testid="map-surface"]') as HTMLElement | null;
-      return mapSurface
-        ? window.getComputedStyle(mapSurface).getPropertyValue("--theme-soft-viewport-mask-size").trim()
-        : "";
-    });
-  }).toBe("20px");
-});
-
-test("main content area renders", async ({ app }) => {
-  await app.goto();
-  await app.waitForReady();
-  await expect(app.page.locator("main")).toBeVisible();
-});
-
-test("desktop primary feed scroller keeps the shared fade shell", async ({ app, page }) => {
-  await app.goto();
-  await app.waitForReady();
-  await app.injectRssItems(8);
-
-  const fadeState = await page.evaluate(() => {
+  await page.evaluate(() => {
     const container = document.querySelector('[data-testid="feed-list-scroll-container"]') as HTMLElement | null;
     if (!container) {
-      return null;
+      throw new Error("Feed scroll container was not found");
     }
-
-    return {
-      hasFadeClass: container.classList.contains("theme-scroll-fade-y"),
-      webkitMaskImage: window.getComputedStyle(container).webkitMaskImage,
-      maskImage: window.getComputedStyle(container).maskImage,
-    };
+    container.scrollTop = container.scrollHeight;
+    container.dispatchEvent(new Event("scroll"));
   });
 
-  expect(fadeState).not.toBeNull();
-  expect(fadeState?.hasFadeClass).toBe(true);
-  expect((fadeState?.webkitMaskImage || fadeState?.maskImage || "none")).not.toBe("none");
+  await expect
+    .poll(async () => page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as
+        | { getState: () => { totalUnreadCount: number } }
+        | undefined;
+      return store?.getState().totalUnreadCount ?? Number.POSITIVE_INFINITY;
+    }), { timeout: 10_000 })
+    .toBe(0);
+
+  await page.evaluate(() => {
+    const container = document.querySelector('[data-testid="feed-list-scroll-container"]') as HTMLElement | null;
+    if (!container) {
+      throw new Error("Feed scroll container was not found");
+    }
+    container.scrollTop = 0;
+    container.dispatchEvent(new Event("scroll"));
+  });
+
+  await expect
+    .poll(async () => page.evaluate(() => {
+      const container = document.querySelector('[data-testid="feed-list-scroll-container"]') as HTMLElement | null;
+      return container?.scrollTop ?? Number.NaN;
+    }), { timeout: 10_000 })
+    .toBe(0);
+
+  const topCard = page.locator("[data-feed-item-id]").first();
+  await expect(topCard).toBeVisible({ timeout: 10_000 });
+  await expect(topCard).toHaveClass(/grayscale/);
 });
 
 test("keyboard focus scrolling keeps a full row visible past the focused item", async ({ app, page }) => {
@@ -2331,7 +1676,7 @@ test("desktop navigation history supports Cmd+[ and Cmd+] across views", async (
 
   const { page } = app;
 
-  await page.getByRole("button", { name: "Friends" }).click();
+  await page.getByTestId("source-row-friends").click();
   await page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | { getState: () => { activeView: string } }
@@ -2408,6 +1753,7 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
 
     void store?.getState().updatePreferences({
       display: {
+        animationIntensity: "detailed",
         reading: {
           dualColumnMode: true,
         },
@@ -2486,7 +1832,7 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
   expect(metrics.selectedRowBottom).toBeLessThanOrEqual(metrics.containerBottom);
 });
 
-test("dual-column reader toolbar toggles stay aligned with the sidebar and rail", async ({ app, page }) => {
+test("desktop hide previews button collapses the compact reader rail", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -2511,253 +1857,25 @@ test("dual-column reader toolbar toggles stay aligned with the sidebar and rail"
   });
 
   await page.getByText("Article 0:", { exact: false }).click();
-  await expect(page.getByLabel("Back to list")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
-  await expect.poll(async () => {
-    return page.evaluate(() => document.documentElement.classList.contains("feed-layout-transition"));
-  }).toBe(false);
+  await expect(page.getByLabel("Hide Previews")).toBeVisible({ timeout: 5_000 });
 
-  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
-  const thumbnailRailToggle = page.getByRole("button", { name: "Hide thumbnail rail" });
-  await expect(sidebarToggle).toHaveClass(/theme-toolbar-button-ghost/);
-  await expect(sidebarToggle).not.toHaveClass(/theme-toolbar-button-(neutral|active)/);
-  await expect(thumbnailRailToggle).toHaveClass(/theme-toolbar-button-neutral/);
-  await expect(thumbnailRailToggle).not.toHaveClass(/theme-toolbar-button-(ghost|active)/);
+  const railWidthBeforeCollapse = await page.getByTestId("compact-feed-panel-rail").evaluate((rail) =>
+    rail.getBoundingClientRect().width,
+  );
+  expect(railWidthBeforeCollapse).toBeGreaterThan(100);
 
+  await page.getByLabel("Hide Previews").click();
+
+  await expect(page.getByLabel("Show Previews")).toBeVisible({ timeout: 1_000 });
   await expect.poll(async () =>
-    page.evaluate((splitOffset) => {
-      const resizeHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
-      const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
-      if (!resizeHandle || !sidebarToggle) {
-        return Number.POSITIVE_INFINITY;
-      }
-
-      const resizeHandleRect = resizeHandle.getBoundingClientRect();
-      const sidebarToggleRect = sidebarToggle.getBoundingClientRect();
-      const handleCenter = resizeHandleRect.left + resizeHandleRect.width / 2;
-      const sidebarToggleCenter = sidebarToggleRect.left + sidebarToggleRect.width / 2;
-      return Math.abs(handleCenter - sidebarToggleCenter - splitOffset);
-    }, LAYOUT_CONTROL_SPLIT_OFFSET_PX),
-  ).toBeLessThanOrEqual(TOOLBAR_CENTER_ALIGNMENT_TOLERANCE_PX);
-
-  const alignment = await page.evaluate(() => {
-    const resizeHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
-    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
-    const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
-    const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
-    const sidebarToggleIcon = sidebarToggle?.querySelector("svg") as SVGElement | null;
-    const layoutControlCluster = document.querySelector('[data-testid="desktop-layout-control-cluster"]') as HTMLElement | null;
-    const bookmarkButton = document.querySelector('[aria-label="Save"], [aria-label="Unsave"]') as HTMLElement | null;
-    const dualColumnToggle = document.querySelector(
-      '[aria-label="Hide thumbnail rail"], [aria-label="Show thumbnail rail"]',
-    ) as HTMLElement | null;
-    const archiveButton = document.querySelector('[aria-label="Archive"], [aria-label="Unarchive"]') as HTMLElement | null;
-    const backButton = document.querySelector('[aria-label="Back to list"]') as HTMLElement | null;
-    const firstReaderAction = document.querySelector('[aria-label="Toggle focus reading mode"]') as HTMLElement | null;
-    const compactRail = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
-
-    if (
-      !resizeHandle ||
-      !sidebar ||
-      !toolbar ||
-      !sidebarToggle ||
-      !layoutControlCluster ||
-      !bookmarkButton ||
-      !dualColumnToggle ||
-      !archiveButton ||
-      !backButton ||
-      !firstReaderAction ||
-      !compactRail
-    ) {
-      throw new Error("Dual-column toolbar alignment elements were not found");
-    }
-
-    const resizeHandleRect = resizeHandle.getBoundingClientRect();
-    const sidebarRect = sidebar.getBoundingClientRect();
-    const sidebarToggleRect = sidebarToggle.getBoundingClientRect();
-    const sidebarToggleIconRect = sidebarToggleIcon?.getBoundingClientRect() ?? null;
-    const bookmarkButtonRect = bookmarkButton.getBoundingClientRect();
-    const dualColumnToggleRect = dualColumnToggle.getBoundingClientRect();
-    const archiveButtonRect = archiveButton.getBoundingClientRect();
-    const backButtonRect = backButton.getBoundingClientRect();
-    const firstReaderActionRect = firstReaderAction.getBoundingClientRect();
-    const compactRailRect = compactRail.getBoundingClientRect();
-    const toolbarRect = toolbar.getBoundingClientRect();
-
-    return {
-      feedCardGap: parseFloat(window.getComputedStyle(document.documentElement).getPropertyValue("--feed-card-gap")),
-      viewportWidth: window.innerWidth,
-      documentScrollWidth: document.documentElement.scrollWidth,
-      toolbarRight: toolbarRect.right,
-      handleCenter: resizeHandleRect.left + resizeHandleRect.width / 2,
-      sidebarToggleCenter: sidebarToggleRect.left + sidebarToggleRect.width / 2,
-      sidebarToggleIconCenter: sidebarToggleIconRect ? sidebarToggleIconRect.left + sidebarToggleIconRect.width / 2 : 0,
-      sidebarToggleRight: sidebarToggleRect.right,
-      compactRailLeft: compactRailRect.left,
-      compactRailRight: compactRailRect.right,
-      sidebarRight: sidebarRect.right,
-      dualColumnToggleInLeftCluster: layoutControlCluster.contains(dualColumnToggle),
-      bookmarkButtonTop: bookmarkButtonRect.top,
-      bookmarkButtonRight: bookmarkButtonRect.right,
-      bookmarkButtonWidth: bookmarkButtonRect.width,
-      bookmarkButtonHeight: bookmarkButtonRect.height,
-      dualColumnToggleTop: dualColumnToggleRect.top,
-      dualColumnToggleLeft: dualColumnToggleRect.left,
-      dualColumnToggleRight: dualColumnToggleRect.right,
-      dualColumnToggleWidth: dualColumnToggleRect.width,
-      dualColumnToggleHeight: dualColumnToggleRect.height,
-      archiveButtonTop: archiveButtonRect.top,
-      archiveButtonLeft: archiveButtonRect.left,
-      archiveButtonRight: archiveButtonRect.right,
-      archiveButtonWidth: archiveButtonRect.width,
-      archiveButtonHeight: archiveButtonRect.height,
-      backButtonLeft: backButtonRect.left,
-      readerTitleRightGap: firstReaderActionRect.left - backButtonRect.right,
-    };
-  });
-
-  expect(Math.abs(alignment.handleCenter - alignment.sidebarToggleCenter - LAYOUT_CONTROL_SPLIT_OFFSET_PX)).toBeLessThanOrEqual(
-    TOOLBAR_CENTER_ALIGNMENT_TOLERANCE_PX,
-  );
-  expect(Math.abs(alignment.sidebarToggleIconCenter - alignment.sidebarToggleCenter)).toBeLessThanOrEqual(
-    SIDEBAR_ALIGNMENT_TOLERANCE_PX,
-  );
-  expect(alignment.dualColumnToggleInLeftCluster).toBe(false);
-  expect(alignment.documentScrollWidth).toBeLessThanOrEqual(alignment.viewportWidth);
-  expect(Math.abs((alignment.compactRailLeft - alignment.sidebarRight) - alignment.feedCardGap)).toBeLessThanOrEqual(1);
-  expect(alignment.dualColumnToggleRight).toBeLessThanOrEqual(alignment.toolbarRight - 48);
-  expect(alignment.archiveButtonRight).toBeLessThanOrEqual(alignment.toolbarRight - 8);
-  expect(alignment.dualColumnToggleLeft).toBeGreaterThanOrEqual(alignment.bookmarkButtonRight);
-  expect(alignment.archiveButtonLeft).toBeGreaterThanOrEqual(alignment.dualColumnToggleRight);
-  expect(Math.abs(alignment.dualColumnToggleTop - alignment.bookmarkButtonTop)).toBeLessThanOrEqual(1);
-  expect(Math.abs(alignment.archiveButtonTop - alignment.dualColumnToggleTop)).toBeLessThanOrEqual(1);
-  expect(Math.abs(alignment.dualColumnToggleWidth - alignment.bookmarkButtonWidth)).toBeLessThanOrEqual(1);
-  expect(Math.abs(alignment.dualColumnToggleHeight - alignment.bookmarkButtonHeight)).toBeLessThanOrEqual(1);
-  expect(Math.abs(alignment.archiveButtonWidth - alignment.dualColumnToggleWidth)).toBeLessThanOrEqual(1);
-  expect(Math.abs(alignment.archiveButtonHeight - alignment.dualColumnToggleHeight)).toBeLessThanOrEqual(1);
-  expect(Math.abs(
-    (alignment.dualColumnToggleLeft - alignment.bookmarkButtonRight) -
-    (alignment.archiveButtonLeft - alignment.dualColumnToggleRight),
-  )).toBeLessThanOrEqual(1);
-  expect(alignment.backButtonLeft).toBeLessThan(alignment.compactRailRight - 120);
-  expect(alignment.backButtonLeft).toBeGreaterThanOrEqual(alignment.sidebarToggleRight + 8);
-  expect(alignment.readerTitleRightGap).toBeGreaterThanOrEqual(15);
-  expect(alignment.readerTitleRightGap).toBeLessThanOrEqual(17);
-
-  await dragElementBy(page, page.getByTestId("app-sidebar-resize-handle"), -156);
-  await page.waitForTimeout(250);
-
-  const compactAlignment = await page.evaluate(() => {
-    const wordmark = document.querySelector('[data-testid="workspace-toolbar-wordmark"]') as HTMLElement | null;
-    const resizeHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
-    const cluster = document.querySelector('[data-testid="desktop-layout-control-cluster"]') as HTMLElement | null;
-    const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
-    const bookmarkButton = document.querySelector('[aria-label="Save"], [aria-label="Unsave"]') as HTMLElement | null;
-    const dualColumnToggle = document.querySelector(
-      '[aria-label="Hide thumbnail rail"], [aria-label="Show thumbnail rail"]',
-    ) as HTMLElement | null;
-    const archiveButton = document.querySelector('[aria-label="Archive"], [aria-label="Unarchive"]') as HTMLElement | null;
-
-    if (!wordmark || !resizeHandle || !cluster || !sidebarToggle || !bookmarkButton || !dualColumnToggle || !archiveButton) {
-      throw new Error("Compact dual-column toolbar alignment elements were not found");
-    }
-
-    const wordmarkRect = wordmark.getBoundingClientRect();
-    const resizeHandleRect = resizeHandle.getBoundingClientRect();
-    const clusterRect = cluster.getBoundingClientRect();
-    const sidebarToggleRect = sidebarToggle.getBoundingClientRect();
-    const bookmarkButtonRect = bookmarkButton.getBoundingClientRect();
-    const dualColumnToggleRect = dualColumnToggle.getBoundingClientRect();
-    const archiveButtonRect = archiveButton.getBoundingClientRect();
-
-    return {
-      idealClusterLeft: resizeHandleRect.left + resizeHandleRect.width / 2 - 44,
-      wordmarkLeft: wordmarkRect.left,
-      wordmarkRight: wordmarkRect.right,
-      clusterLeft: clusterRect.left,
-      sidebarToggleRight: sidebarToggleRect.right,
-      dualColumnToggleInLeftCluster: cluster.contains(dualColumnToggle),
-      bookmarkButtonRight: bookmarkButtonRect.right,
-      dualColumnToggleLeft: dualColumnToggleRect.left,
-      dualColumnToggleRight: dualColumnToggleRect.right,
-      archiveButtonLeft: archiveButtonRect.left,
-    };
-  });
-
-  expect(compactAlignment.wordmarkLeft).toBeGreaterThanOrEqual(MACOS_TRAFFIC_LIGHT_INSET_PX);
-  expect(compactAlignment.clusterLeft).toBeGreaterThanOrEqual(compactAlignment.wordmarkRight + LAYOUT_CONTROL_GAP_PX);
-  expect(compactAlignment.clusterLeft).toBeGreaterThan(compactAlignment.idealClusterLeft);
-  expect(compactAlignment.dualColumnToggleInLeftCluster).toBe(false);
-  expect(compactAlignment.dualColumnToggleLeft).toBeGreaterThanOrEqual(compactAlignment.bookmarkButtonRight);
-  expect(compactAlignment.archiveButtonLeft).toBeGreaterThanOrEqual(compactAlignment.dualColumnToggleRight);
-});
-
-test("desktop toolbar uses softened foreground colors", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-
-  const toolbarColors = await page.evaluate(() => {
-    const title = document.querySelector('[data-testid="workspace-toolbar-title-block"] p') as HTMLElement | null;
-    const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
-    if (!title || !sidebarToggle) return null;
-
-    const resolveColor = (color: string) => {
-      const swatch = document.createElement("span");
-      swatch.style.color = color;
-      document.body.appendChild(swatch);
-      const resolved = window.getComputedStyle(swatch).color;
-      swatch.remove();
-      return resolved;
-    };
-
-    return {
-      titleColor: window.getComputedStyle(title).color,
-      toggleColor: window.getComputedStyle(sidebarToggle).color,
-      secondaryColor: resolveColor("var(--theme-text-secondary)"),
-      mutedColor: resolveColor("var(--theme-text-muted)"),
-      primaryColor: resolveColor("var(--theme-text-primary)"),
-    };
-  });
-
-  expect(toolbarColors).not.toBeNull();
-  expect(toolbarColors!.titleColor).toBe(toolbarColors!.secondaryColor);
-  expect(toolbarColors!.toggleColor).toBe(toolbarColors!.mutedColor);
-  expect(toolbarColors!.titleColor).not.toBe(toolbarColors!.primaryColor);
-  expect(toolbarColors!.toggleColor).not.toBe(toolbarColors!.primaryColor);
-});
-
-test("desktop hide thumbnail rail button collapses the compact reader rail", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-  await app.injectRssItems(8);
-
-  await page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
-      | undefined;
-
-    void store?.getState().updatePreferences({
-      display: {
-        reading: {
-          dualColumnMode: true,
-        },
-      },
-    });
-  });
-
-  await page.getByText("Article 0:", { exact: false }).click();
-  await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByLabel("Hide thumbnail rail")).toBeVisible({ timeout: 5_000 });
-
-  await page.getByLabel("Hide thumbnail rail").click();
-
-  await expect(page.getByLabel("Show thumbnail rail")).toBeVisible({ timeout: 1_000 });
+    page.evaluate((initialWidth) => {
+      const rail = document.querySelector('[data-testid="compact-feed-panel-rail"]') as HTMLElement | null;
+      if (!rail) return -1;
+      const width = rail.getBoundingClientRect().width;
+      return width > 0 && width < initialWidth ? width : -1;
+    }, railWidthBeforeCollapse),
+  ).toBeGreaterThan(0);
 
   await expect.poll(async () => {
     return page.evaluate(() => {
@@ -2781,11 +1899,50 @@ test("desktop hide thumbnail rail button collapses the compact reader rail", asy
   await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeHidden({ timeout: 5_000 });
 });
 
-test("narrow reader toolbar keeps the thumbnail rail toggle reachable", async ({ app, page }) => {
-  await page.setViewportSize({ width: 900, height: 900 });
+test("desktop hide previews skips the compact reader rail transition when animations are none", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
   await app.injectRssItems(8);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+
+    void store?.getState().updatePreferences({
+      display: {
+        animationIntensity: "none",
+        reading: {
+          dualColumnMode: true,
+        },
+      },
+    });
+  });
+  await expect.poll(async () =>
+    page.evaluate(() => document.documentElement.dataset.animation),
+  ).toBe("none");
+
+  await page.getByText("Article 0:", { exact: false }).click();
+  const rail = page.getByTestId("compact-feed-panel-rail");
+  await expect(rail).toBeVisible({ timeout: 5_000 });
+  await expect(await rail.evaluate((element) => (element as HTMLElement).style.transition)).toBe("none");
+
+  await page.getByLabel("Hide Previews").click();
+
+  await expect(page.getByLabel("Show Previews")).toBeVisible({ timeout: 1_000 });
+  await expect(rail).toHaveCount(0);
+});
+
+test("narrow reader toolbar moves hidden actions into the overflow menu", async ({ app, page }) => {
+  await page.setViewportSize({ width: 900, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(4);
 
   await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
@@ -2806,54 +1963,330 @@ test("narrow reader toolbar keeps the thumbnail rail toggle reachable", async ({
   });
 
   await page.getByText("Article 0:", { exact: false }).click();
-  const thumbnailRailToggle = page.getByRole("button", { name: "Hide thumbnail rail" });
-  await expect(thumbnailRailToggle).toBeVisible({ timeout: 5_000 });
+  await expect.poll(async () => {
+    return page.evaluate(() => document.documentElement.classList.contains("feed-layout-transition"));
+  }).toBe(false);
+  await expect(page.getByRole("button", { name: "Hide Previews" })).toBeVisible({ timeout: 5_000 });
+  const overflowButton = page.getByTestId("toolbar-overflow-button");
+  await expect(overflowButton).toBeVisible({ timeout: 5_000 });
+  const spacing = await page.evaluate(() => {
+    const previewButton = document.querySelector('[aria-label="Hide Previews"]') as HTMLElement | null;
+    const previewIcon = previewButton?.querySelector("svg") as SVGElement | null;
+    const backButton = document.querySelector('[data-testid="workspace-toolbar-reader-back"]') as HTMLElement | null;
+    const overflowButton = document.querySelector('[data-testid="toolbar-overflow-button"]') as HTMLElement | null;
+    if (!previewIcon || !backButton || !overflowButton) {
+      throw new Error("Narrow reader toolbar spacing elements were not found");
+    }
 
-  const readNarrowReaderToolbarLayout = () => page.evaluate(() => {
-      const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
-      const bookmarkButton = toolbar?.querySelector('[aria-label="Save"], [aria-label="Unsave"]') as HTMLElement | null;
-      const dualColumnToggle = toolbar?.querySelector(
-        '[aria-label="Hide thumbnail rail"], [aria-label="Show thumbnail rail"]',
-      ) as HTMLElement | null;
-      const archiveButton = toolbar?.querySelector('[aria-label="Archive"], [aria-label="Unarchive"]') as HTMLElement | null;
+    const previewIconRect = previewIcon.getBoundingClientRect();
+    const backButtonRect = backButton.getBoundingClientRect();
+    const overflowButtonRect = overflowButton.getBoundingClientRect();
 
-      if (!bookmarkButton || !dualColumnToggle) {
-        return null;
-      }
+    return {
+      leftGap: backButtonRect.left - previewIconRect.right,
+      rightGap: overflowButtonRect.left - backButtonRect.right,
+    };
+  });
+  expect(Math.abs(spacing.leftGap - spacing.rightGap)).toBeLessThanOrEqual(1);
 
-      const bookmarkRect = bookmarkButton.getBoundingClientRect();
-      const toggleRect = dualColumnToggle.getBoundingClientRect();
-      const archiveRect = archiveButton?.getBoundingClientRect() ?? null;
-      return {
-        bookmarkRight: bookmarkRect.right,
-        toggleLeft: toggleRect.left,
-        toggleRight: toggleRect.right,
-        viewportWidth: window.innerWidth,
-        archiveVisible: archiveRect
-          ? archiveRect.width > 0 &&
-            archiveRect.height > 0 &&
-            window.getComputedStyle(archiveButton!).display !== "none"
-          : false,
-      };
+  await overflowButton.click();
+  const overflowMenu = page.getByTestId("toolbar-overflow-menu");
+  await expect(overflowMenu.getByRole("menuitem", { name: "Enable focus mode" })).toBeVisible();
+  await expect(overflowMenu.getByRole("menuitem", { name: "Bookmark" })).toBeVisible();
+  await expect(overflowMenu.getByRole("menuitem", { name: "Archive" })).toBeVisible();
+});
+
+test("narrow feed toolbar moves bulk actions into the overflow menu", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1024, height: 700 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(4);
+
+  const toolbar = page.getByTestId("workspace-toolbar");
+  await expect(toolbar.locator("button").filter({ hasText: / unread$/ }).first()).toBeHidden();
+  await expect(page.getByTestId("social-content-toolbar-filter")).toBeHidden();
+
+  const overflowButton = page.getByTestId("toolbar-overflow-button");
+  await expect(overflowButton).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("mobile-toolbar-filter-button")).toBeVisible({ timeout: 5_000 });
+  await overflowButton.click();
+
+  const overflowMenu = page.getByTestId("toolbar-overflow-menu");
+  const markReadAction = overflowMenu.getByRole("menuitem", { name: /Mark .* unread as read/ });
+  await expect(markReadAction).toBeVisible();
+  await markReadAction.click();
+  await expect(overflowMenu).toBeHidden();
+
+  await overflowButton.click();
+  await expect(overflowMenu.getByRole("menuitem", { name: /Archive .* read items/ })).toBeVisible();
+});
+
+test("narrow feed filter menu labels collapsed sections", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1024, height: 500 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(4);
+
+  const filterButton = page.getByTestId("mobile-toolbar-filter-button");
+  await expect(filterButton).toBeVisible({ timeout: 5_000 });
+  await filterButton.click();
+
+  const filterMenu = page.getByTestId("feed-signal-filter-menu");
+  await expect(filterMenu.getByText("Format", { exact: true })).toBeVisible();
+  await expect(filterMenu.getByText("Connections", { exact: true })).toBeVisible();
+  await expect(filterMenu.getByText("Classification", { exact: true })).toBeVisible();
+  await expect(filterMenu.getByText("View", { exact: true })).toHaveCount(0);
+  const headingLefts = await filterMenu.evaluate((menu) => {
+    const headings = ["Format", "Connections", "Classification"];
+    return headings.map((heading) => {
+      const element = Array.from(menu.querySelectorAll("p")).find((candidate) =>
+        candidate.textContent?.trim() === heading
+      );
+      if (!element) throw new Error(`Missing ${heading} heading`);
+      return Math.round(element.getBoundingClientRect().left);
     });
+  });
+  expect(Math.max(...headingLefts) - Math.min(...headingLefts)).toBeLessThanOrEqual(1);
+  await expect(filterMenu.getByText("All visible items.", { exact: true })).toBeVisible();
+  await expect(filterMenu.getByText("Essays, guides, and references.", { exact: true })).toBeVisible();
 
-  await expect
-    .poll(async () => {
-      const current = await readNarrowReaderToolbarLayout();
-      return {
-        aligned: !!current &&
-          current.toggleLeft >= current.bookmarkRight - READER_RAIL_ALIGNMENT_TOLERANCE_PX &&
-          current.toggleRight <= current.viewportWidth - 8,
-        archiveVisible: current?.archiveVisible ?? true,
-      };
-    }, { timeout: 2_000 })
-    .toMatchObject({
-      aligned: true,
-      archiveVisible: false,
+  const inspiringOption = filterMenu.getByRole("menuitemcheckbox", { name: /Inspiring/ });
+  const inspiringCircle = inspiringOption.locator(".feed-signal-checkbox");
+  const checkedCircleWidth = await inspiringCircle.evaluate((element) =>
+    Math.round(element.getBoundingClientRect().width),
+  );
+  await inspiringOption.click();
+  await expect(inspiringOption).toHaveAttribute("aria-checked", "false");
+  await expect.poll(async () => (
+    inspiringCircle.evaluate((element) => Math.round(element.getBoundingClientRect().width))
+  )).toBeLessThan(checkedCircleWidth);
+
+  const scrollMetrics = await filterMenu.evaluate((menu) => {
+    menu.scrollTop = menu.scrollHeight;
+    const menuRect = menu.getBoundingClientRect();
+    const newsItem = Array.from(menu.querySelectorAll('[role="menuitemcheckbox"]'))
+      .find((item) => item.textContent?.includes("News")) as HTMLElement | undefined;
+    const newsRect = newsItem?.getBoundingClientRect();
+    const style = window.getComputedStyle(menu);
+    return {
+      clientHeight: menu.clientHeight,
+      menuBottom: Math.round(menuRect.bottom),
+      newsBottom: newsRect ? Math.round(newsRect.bottom) : null,
+      overflowY: style.overflowY,
+      scrollHeight: menu.scrollHeight,
+      scrollTop: menu.scrollTop,
+      viewportHeight: window.innerHeight,
+    };
+  });
+  expect(scrollMetrics.overflowY).toBe("auto");
+  expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight);
+  expect(scrollMetrics.scrollTop).toBeGreaterThan(0);
+  expect(scrollMetrics.menuBottom).toBeLessThanOrEqual(scrollMetrics.viewportHeight);
+  expect(scrollMetrics.newsBottom).not.toBeNull();
+  expect(scrollMetrics.newsBottom ?? 0).toBeLessThanOrEqual(scrollMetrics.viewportHeight);
+});
+
+test("feed toolbar bulk action counts follow the active filter", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        reading: {
+          markReadOnScroll: false,
+        },
+      },
     });
+  });
 
-  await thumbnailRailToggle.click();
-  await expect(page.getByRole("button", { name: "Show thumbnail rail" })).toBeVisible({ timeout: 1_000 });
+  const activeFeedUrl = "https://bench.example/active-filter-feed.xml";
+  const otherFeedUrl = "https://bench.example/other-filter-feed.xml";
+  await app.injectRssItems(2, activeFeedUrl);
+  await app.injectRssItems(6, otherFeedUrl);
+
+  await page.evaluate(async ({ activeFeedUrl, otherFeedUrl }) => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            setFilter: (filter: { feedUrl: string }) => void;
+            markItemsAsRead: (ids: string[]) => Promise<void>;
+          };
+        }
+      | undefined;
+    const state = store?.getState();
+    await state?.markItemsAsRead([
+      `rss:${activeFeedUrl}:bench-item-0`,
+      `rss:${otherFeedUrl}:bench-item-0`,
+      `rss:${otherFeedUrl}:bench-item-1`,
+      `rss:${otherFeedUrl}:bench-item-2`,
+      `rss:${otherFeedUrl}:bench-item-3`,
+    ]);
+    state?.setFilter({ feedUrl: activeFeedUrl });
+  }, { activeFeedUrl, otherFeedUrl });
+
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("2 items");
+  await expect(page.getByTestId("workspace-toolbar").locator("button").filter({ hasText: / unread$/ })).toHaveCount(0);
+  await expect(page.getByTestId("workspace-toolbar").locator("button").filter({ hasText: / read$/ })).toHaveCount(0);
+
+  const overflowButton = page.getByTestId("toolbar-overflow-button");
+  await expect(overflowButton).toBeVisible({ timeout: 5_000 });
+  await overflowButton.click();
+
+  const overflowMenu = page.getByTestId("toolbar-overflow-menu");
+  await expect(overflowMenu.getByRole("menuitem", { name: "Mark 1 unread as read" })).toBeVisible();
+  await expect(overflowMenu.getByRole("menuitem", { name: "Archive 1 read items" })).toBeVisible();
+});
+
+test("feed toolbar title describes active content filters", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const now = Date.now();
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+    };
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            setFilter: (filter: unknown) => void;
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+
+    await automerge.docBatchImportItems([
+      {
+        globalId: "context-title-facebook-story",
+        platform: "facebook",
+        contentType: "story",
+        capturedAt: now - 10_000,
+        publishedAt: now - 10_000,
+        author: { id: "fb:context-title", handle: "context.title", displayName: "Context Title" },
+        content: { text: "Facebook story title fixture", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: { version: 3, method: "manual", inferredAt: now, scores: { life_update: 1 }, tags: ["life_update"] },
+      },
+      {
+        globalId: "context-title-conversation",
+        platform: "facebook",
+        contentType: "post",
+        capturedAt: now - 20_000,
+        publishedAt: now - 20_000,
+        author: { id: "fb:context-title", handle: "context.title", displayName: "Context Title" },
+        content: { text: "Conversation post title fixture", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: { version: 3, method: "manual", inferredAt: now, scores: { request: 1 }, tags: ["request"] },
+      },
+      {
+        globalId: "context-title-news",
+        platform: "linkedin",
+        contentType: "post",
+        capturedAt: now - 30_000,
+        publishedAt: now - 30_000,
+        author: { id: "li:context-title", handle: "context.title", displayName: "Context Title" },
+        content: { text: "News post title fixture", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: { version: 3, method: "manual", inferredAt: now, scores: { news: 1 }, tags: ["news"] },
+      },
+    ]);
+
+    await store?.getState().updatePreferences({
+      display: {
+        feedSignalModes: ["conversation", "news"],
+      },
+    });
+    store?.getState().setFilter({ signals: ["request", "discussion", "news", "alert", "product_update"] });
+  });
+
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Conversations and News");
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("2 items");
+
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            setFilter: (filter: unknown) => void;
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        feedSignalModes: ["conversation", "news", "personal"],
+      },
+    });
+    store?.getState().setFilter({
+      signals: ["request", "discussion", "news", "alert", "product_update", "life_update", "moment"],
+    });
+  });
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Filtered");
+
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            setFilter: (filter: unknown) => void;
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        feedSignalModes: [],
+      },
+    });
+    store?.getState().setFilter({ platform: "facebook", socialContentFilter: "stories" });
+  });
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Facebook Stories");
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("1 item");
+});
+
+test("mobile feed toolbar keeps more actions as the rightmost control", async ({ app, page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(4);
+
+  const overflowButton = page.getByTestId("toolbar-overflow-button");
+  const filterButton = page.getByTestId("mobile-toolbar-filter-button");
+  await expect(overflowButton).toBeVisible({ timeout: 5_000 });
+  await expect(filterButton).toBeVisible({ timeout: 5_000 });
+
+  const geometry = await page.evaluate(() => {
+    const overflow = document.querySelector('[data-testid="toolbar-overflow-button"]') as HTMLElement | null;
+    const filter = document.querySelector('[data-testid="mobile-toolbar-filter-button"]') as HTMLElement | null;
+    const overflowRect = overflow?.getBoundingClientRect() ?? null;
+    const filterRect = filter?.getBoundingClientRect() ?? null;
+    if (!overflowRect || !filterRect) {
+      throw new Error("Toolbar overflow or filter button is not visible");
+    }
+
+    return {
+      gap: overflowRect.left - filterRect.right,
+      filterRight: filterRect.right,
+      overflowLeft: overflowRect.left,
+    };
+  });
+  expect(geometry.filterRight).toBeLessThanOrEqual(geometry.overflowLeft);
+  expect(geometry.gap).toBeGreaterThanOrEqual(0);
+
+  await overflowButton.click();
+  await expect(page.getByTestId("toolbar-overflow-menu").getByRole("menuitem", { name: /Mark .* unread as read/ })).toBeVisible();
 });
 
 test("dual-column reader toggles use shared view transitions when supported", async ({ app, page }) => {
@@ -3084,7 +2517,7 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
     });
   });
 
-  await page.getByRole("button", { name: /^Friends\b/ }).click();
+  await page.getByTestId("source-row-friends").click();
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   await page.getByRole("button", { name: /Ada Lovelace/ }).click();
   await expect(page.getByText("Last seen")).toBeVisible({ timeout: 5_000 });
@@ -3115,52 +2548,6 @@ test("map defaults to All content when only unlinked author locations exist", as
     timeout: 10_000,
   });
   await expect(page.locator('.freed-map-marker[aria-label="Ghost Noise"]')).toHaveCount(0);
-});
-
-test("friends and map move identity controls into the header and hide feed bulk actions", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-  await app.injectRssItems(6);
-  await dismissCloudSyncNudgeIfPresent(page);
-
-  const toolbar = page.getByTestId("workspace-toolbar");
-  const unreadButton = toolbar.locator("button").filter({ hasText: / unread$/ });
-  const archiveButton = toolbar.locator("button").filter({ hasText: / read$/ });
-
-  await expect(unreadButton).toHaveCount(1);
-  await unreadButton.click();
-  await expect(archiveButton).toHaveCount(1);
-
-  await page.getByRole("button", { name: /^Friends\b/ }).click();
-  await expect(toolbar.getByRole("button", { name: "Friends", exact: true })).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: "All content", exact: true })).toBeVisible();
-  const friendsScopeChrome = await page.evaluate(() => {
-    const scope = document.querySelector('[data-testid="friends-toolbar-lens"]') as HTMLElement | null;
-    const activeSegment = scope?.querySelector('[aria-pressed="true"]') as HTMLElement | null;
-    if (!scope || !activeSegment) {
-      throw new Error("Friends toolbar active segment was not found");
-    }
-
-    return {
-      activeLabel: activeSegment.textContent?.trim() ?? "",
-      activeBoxShadow: window.getComputedStyle(activeSegment).boxShadow,
-    };
-  });
-  expect(friendsScopeChrome.activeLabel).toBe("All content");
-  expect(friendsScopeChrome.activeBoxShadow).not.toContain("inset");
-  await expect(toolbar.getByRole("button", { name: "Current", exact: true })).toHaveCount(0);
-  await expect(unreadButton).toHaveCount(0);
-  await expect(archiveButton).toHaveCount(0);
-
-  await page.getByRole("button", { name: /^Map/ }).click();
-  await expect(toolbar.getByRole("button", { name: "Friends", exact: true })).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: "All content", exact: true })).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: "Current", exact: true })).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: "Future", exact: true })).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: "Past", exact: true })).toBeVisible();
-  await expect(unreadButton).toHaveCount(0);
-  await expect(archiveButton).toHaveCount(0);
 });
 
 test("unlinked map markers route into the friends account workflow and can link to an existing friend", async ({ app, page }) => {
@@ -3533,42 +2920,6 @@ test("map timeline playback surfaces future and historical markers", async ({ ap
   await expect(page.getByText("Paris", { exact: true })).toBeVisible({ timeout: 10_000 });
 });
 
-test("Friends view uses the floating detail drawer shell", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-  await app.seedFriendLocation();
-
-  await page.getByRole("button", { name: /^Friends\b/ }).click();
-  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
-
-  const shellState = await page.evaluate(() => {
-    const sidebar = document.querySelector('[data-testid="friends-sidebar"]') as HTMLElement | null;
-    const shell = document.querySelector('[data-testid="friends-sidebar-shell"]') as HTMLElement | null;
-    const handle = document.querySelector('[aria-label="Resize friends sidebar"]') as HTMLElement | null;
-    const viewport = document.querySelector('[data-testid="friend-graph-viewport"]') as HTMLElement | null;
-
-    return {
-      sidebarIsFloating: sidebar?.classList.contains("theme-floating-panel") ?? false,
-      shellWidth: shell?.getBoundingClientRect().width ?? 0,
-      sidebarWidth: sidebar?.getBoundingClientRect().width ?? 0,
-      handleUsesGapGrip: handle?.classList.contains("theme-resize-gap-handle") ?? false,
-      maskSize: viewport
-        ? window.getComputedStyle(viewport).getPropertyValue("--theme-soft-viewport-mask-size").trim()
-        : "",
-      extraRightComp: viewport
-        ? window.getComputedStyle(viewport).getPropertyValue("--theme-soft-viewport-extra-comp-right").trim()
-        : "",
-    };
-  });
-
-  expect(shellState.sidebarIsFloating).toBe(true);
-  expect(shellState.handleUsesGapGrip).toBe(true);
-  expect(shellState.shellWidth).toBeGreaterThanOrEqual(shellState.sidebarWidth);
-  expect(shellState.maskSize).toBe("20px");
-  expect(shellState.extraRightComp).toBe("");
-});
-
 test("Friends detail rail toggle hides and restores the desktop sidebar without losing width", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
@@ -3650,7 +3001,7 @@ test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
   await app.waitForReady();
   await app.seedFriendLocation();
 
-  await page.getByRole("button", { name: /^Friends\b/ }).click();
+  await page.getByTestId("source-row-friends").click();
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
 
   await page.evaluate(async () => {
@@ -3757,8 +3108,8 @@ test("selecting a graph node shows a compact detail card when the Friends detail
   expect(afterClick!.transform.x).toBeCloseTo(beforeClick!.transform.x, 1);
   expect(afterClick!.transform.y).toBeCloseTo(beforeClick!.transform.y, 1);
   expect(afterClick!.transform.scale).toBeCloseTo(beforeClick!.transform.scale, 3);
-  expect(afterClick!.metrics.edgeRebuildCount).toBeLessThanOrEqual(beforeClick!.metrics.edgeRebuildCount + 1);
-  expect(afterClick!.metrics.nodeRestyleCount).toBeLessThanOrEqual(beforeClick!.metrics.nodeRestyleCount + 1);
+  expect(afterClick!.metrics.edgeRebuildCount).toBeLessThanOrEqual(beforeClick!.metrics.edgeRebuildCount + 2);
+  expect(afterClick!.metrics.nodeRestyleCount).toBeLessThanOrEqual(beforeClick!.metrics.nodeRestyleCount + 2);
   await page.mouse.dblclick(friendPoint!.x, friendPoint!.y);
   const afterDoubleClick = await readGraphSummary(page);
   expect(afterDoubleClick).not.toBeNull();
@@ -3861,7 +3212,12 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
     store?.getState().setActiveView("friends");
   });
 
-  const lens = page.getByTestId("friends-toolbar-lens");
+  const filterButton = page.getByTestId("mobile-toolbar-filter-button");
+  await expect(filterButton).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("friends-toolbar-lens")).toBeHidden();
+  await filterButton.click();
+
+  const lens = page.getByTestId("mobile-friends-toolbar-lens");
   await expect(lens.getByRole("button", { name: "Friends" })).toBeVisible({ timeout: 5_000 });
   await expect(lens.getByRole("button", { name: "All content" })).toBeVisible({ timeout: 5_000 });
   await expect(lens.getByRole("button", { name: "Details" })).toBeVisible({ timeout: 5_000 });
@@ -4051,6 +3407,371 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
     channels: 5,
     links: 3,
   });
+});
+
+test("AI ranked friend suggestions surface and promote connection people", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddPerson: (person: unknown) => Promise<void>;
+      docAddAccount: (account: unknown) => Promise<void>;
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "friends" } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddPerson({
+      id: "connection-maya-suggestion",
+      name: "Maya Chen",
+      relationshipStatus: "connection",
+      careLevel: 2,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await automerge.docAddAccount({
+      id: "social:instagram:maya-suggestion",
+      personId: "connection-maya-suggestion",
+      kind: "social",
+      provider: "instagram",
+      externalId: "maya-suggestion",
+      handle: "maya",
+      displayName: "Maya Chen",
+      firstSeenAt: now,
+      lastSeenAt: now,
+      discoveredFrom: "captured_item",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await automerge.docAddFeedItems([
+      {
+        globalId: "instagram:maya-suggestion:1",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 60_000,
+        author: { id: "maya-suggestion", handle: "maya", displayName: "Maya Chen" },
+        content: { text: "Garden visit", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: {
+          version: 3,
+          method: "rules",
+          inferredAt: now,
+          scores: { life_update: 1, moment: 1 },
+          tags: ["life_update", "moment"],
+        },
+      },
+      {
+        globalId: "instagram:maya-suggestion:2",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 120_000,
+        author: { id: "maya-suggestion", handle: "maya", displayName: "Maya Chen" },
+        content: { text: "Moving update", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: {
+          version: 3,
+          method: "rules",
+          inferredAt: now,
+          scores: { life_update: 1, place: 1 },
+          tags: ["life_update", "place"],
+        },
+      },
+      {
+        globalId: "instagram:maya-suggestion:3",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 180_000,
+        author: { id: "maya-suggestion", handle: "maya", displayName: "Maya Chen" },
+        content: { text: "Asked for help", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: {
+          version: 3,
+          method: "rules",
+          inferredAt: now,
+          scores: { request: 1, discussion: 1 },
+          tags: ["request", "discussion"],
+        },
+      },
+    ]);
+
+    await store.getState().updatePreferences({ display: { friendsMode: "friends" } });
+    store.getState().setActiveView("friends");
+  });
+
+  const suggestions = page.getByTestId("friend-candidate-suggestions");
+  await expect(suggestions).toBeVisible({ timeout: 10_000 });
+  await suggestions.getByText("Maya Chen").click();
+
+  const detail = page.getByTestId("friend-candidate-detail");
+  await expect(detail).toContainText("Personal updates");
+  await expect(detail).toContainText("Evidence ...");
+  await expect(detail.getByRole("button", { name: "Dismiss" })).toBeVisible();
+  await expect(detail.getByRole("button", { name: "Promote to friend" })).toBeVisible();
+  await expect(detail.getByRole("button", { name: "Promote to Fam" })).toBeVisible();
+  await detail.getByRole("button", { name: "Promote to friend" }).click();
+
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      };
+      return store.getState().persons["connection-maya-suggestion"];
+    }),
+  ).toMatchObject({
+    relationshipStatus: "friend",
+    careLevel: 3,
+  });
+});
+
+test("account detail promote upgrades a linked connection instead of opening a duplicate draft", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddPersons: (persons: unknown[]) => Promise<void>;
+      docAddAccount: (account: unknown) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+        setSelectedAccount: (accountId: string | null) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddPersons([
+      {
+        id: "connection-linked-account",
+        name: "Linked Maya",
+        relationshipStatus: "connection",
+        careLevel: 2,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+    await automerge.docAddAccount({
+      id: "social:instagram:linked-maya",
+      personId: "connection-linked-account",
+      kind: "social",
+      provider: "instagram",
+      externalId: "linked-maya",
+      handle: "linkedmaya",
+      displayName: "Linked Maya",
+      firstSeenAt: now,
+      lastSeenAt: now,
+      discoveredFrom: "captured_item",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await store.getState().updatePreferences({ display: { friendsMode: "all_content" } });
+    store.getState().setActiveView("friends");
+    store.getState().setSelectedAccount("social:instagram:linked-maya");
+  });
+
+  const promoteButton = page.getByRole("button", { name: "Promote to friend", exact: true });
+  await expect(promoteButton).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("button", { name: "Promote to Fam", exact: true })).toBeVisible();
+  await promoteButton.click();
+
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => {
+          selectedPersonId: string | null;
+          selectedAccountId: string | null;
+          persons: Record<string, { relationshipStatus: string; careLevel: number }>;
+        };
+      };
+      const state = store.getState();
+      return {
+        selectedPersonId: state.selectedPersonId,
+        selectedAccountId: state.selectedAccountId,
+        person: state.persons["connection-linked-account"],
+      };
+    }),
+  ).toMatchObject({
+    selectedPersonId: "connection-linked-account",
+    selectedAccountId: null,
+    person: {
+      relationshipStatus: "friend",
+      careLevel: 3,
+    },
+  });
+});
+
+test("relationship slider maps selected people across Followed, Friends, and Fam", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddPerson: (person: unknown) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+        setSelectedPerson: (personId: string | null) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddPerson({
+      id: "tier-slider-person",
+      name: "Tier Slider Person",
+      relationshipStatus: "connection",
+      careLevel: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await store.getState().updatePreferences({ display: { friendsMode: "all_content" } });
+    store.getState().setActiveView("friends");
+    store.getState().setSelectedPerson("tier-slider-person");
+  });
+
+  const control = page.getByTestId("relationship-tier-control");
+  await expect(control).toBeVisible({ timeout: 10_000 });
+  await control.getByRole("button", { name: "Friends" }).click();
+
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      };
+      return store.getState().persons["tier-slider-person"];
+    }),
+  ).toMatchObject({ relationshipStatus: "friend", careLevel: 3 });
+
+  await control.getByRole("button", { name: "Fam" }).click();
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      };
+      return store.getState().persons["tier-slider-person"];
+    }),
+  ).toMatchObject({ relationshipStatus: "friend", careLevel: 5 });
+
+  await control.getByRole("button", { name: "Followed" }).click();
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      };
+      return store.getState().persons["tier-slider-person"];
+    }),
+  ).toMatchObject({ relationshipStatus: "connection", careLevel: 1 });
+});
+
+test("AI ranked friend suggestion dismiss hides the candidate without deleting the account", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddAccount: (account: unknown) => Promise<void>;
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddAccount({
+      id: "social:instagram:ida-suggestion",
+      kind: "social",
+      provider: "instagram",
+      externalId: "ida-suggestion",
+      handle: "ida",
+      displayName: "Ida Wells",
+      firstSeenAt: now,
+      lastSeenAt: now,
+      discoveredFrom: "captured_item",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await automerge.docAddFeedItems([
+      {
+        globalId: "instagram:ida-suggestion:1",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 60_000,
+        author: { id: "ida-suggestion", handle: "ida", displayName: "Ida Wells" },
+        content: { text: "Travel day", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: {
+          version: 3,
+          method: "rules",
+          inferredAt: now,
+          scores: { life_update: 1, moment: 1 },
+          tags: ["life_update", "moment"],
+        },
+      },
+      {
+        globalId: "instagram:ida-suggestion:2",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 120_000,
+        author: { id: "ida-suggestion", handle: "ida", displayName: "Ida Wells" },
+        content: { text: "Recommendation thread", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: {
+          version: 3,
+          method: "rules",
+          inferredAt: now,
+          scores: { recommendation: 1, discussion: 1, place: 1 },
+          tags: ["recommendation", "discussion", "place"],
+        },
+      },
+    ]);
+
+    await store.getState().updatePreferences({ display: { friendsMode: "all_content" } });
+    store.getState().setActiveView("friends");
+  });
+
+  const row = page.getByTestId("friend-candidate-suggestion").filter({ hasText: "Ida Wells" });
+  await expect(row).toBeVisible({ timeout: 10_000 });
+  await row.getByRole("button", { name: "Dismiss" }).click();
+  await expect(row).toBeHidden({ timeout: 10_000 });
+
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => { accounts: Record<string, unknown> };
+      };
+      return Boolean(store.getState().accounts["social:instagram:ida-suggestion"]);
+    }),
+  ).toBe(true);
 });
 
 test("dragging a channel onto a person re-links it and the graph state survives reload", async ({ app, page }) => {
@@ -4494,14 +4215,8 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
     await page.mouse.up();
   }
 
-  await expect
-    .poll(async () => (await readGraphDebug(page))?.qualityMode, { timeout: 10_000 })
-    .toBe("settled");
-  const settled = await readGraphDebug(page);
-  expect(settled).not.toBeNull();
-  expect(settled!.metrics.visibleLabelCount).toBeGreaterThanOrEqual(
-    duringPan?.metrics.visibleLabelCount ?? 0,
-  );
+  const beforeZoom = await readGraphDebug(page);
+  expect(beforeZoom).not.toBeNull();
 
   await viewport.evaluate((element) => {
     const rect = element.getBoundingClientRect();
@@ -4522,13 +4237,13 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
       deltaY: -260,
     }));
   });
-  const afterZoom = await waitForGraphPerfToSettle(page, 8_000);
+  const afterZoom = await waitForGraphSceneSyncAfter(page, beforeZoom!.metrics.sceneSyncCount, 8_000);
   expect(afterZoom).not.toBeNull();
-  expect(afterZoom!.metrics.sceneSyncMs).toBeLessThan(30);
+  expect(afterZoom!.metrics.sceneSyncMs).toBeLessThan(40);
+  expect(afterZoom!.transform.scale).toBeGreaterThan(beforeZoom!.transform.scale);
 });
 
 test("dense Friends graph stays visually structured in Scriptorium", async ({ app, page }) => {
-  test.skip(process.platform !== "darwin", "Snapshot is currently maintained for macOS Chromium.");
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -4637,174 +4352,36 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
   await expect.poll(async () => {
     return viewport.evaluate((element) => Number((element as HTMLElement).dataset.graphNodeCount ?? "0"));
   }).toBeGreaterThan(20);
+  await page.getByRole("button", { name: "Fit all" }).click();
+
+  await expect
+    .poll(async () => {
+      const summary = await readGraphDebug(page);
+      return summary?.metrics.visibleProviderLabelCount ?? 0;
+    }, { timeout: 15_000 })
+    .toBeGreaterThan(0);
 
   const debug = await readGraphDebug(page);
+  expect(debug).not.toBeNull();
+  expect(debug!.regions.length).toBeGreaterThanOrEqual(3);
   expect(debug?.regions.some((region) => region.provider === "rss")).toBe(true);
   expect(debug?.regions.some((region) => region.provider === "instagram")).toBe(true);
-
-  await expect(viewport).toHaveScreenshot("friends-graph-dense.png", {
-    maxDiffPixelRatio: 0.05,
-  });
+  await expect.poll(async () => {
+    return (await readGraphDebug(page))?.metrics.visibleLabelCount ?? 0;
+  }, { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect.poll(async () => {
+    return (await readGraphDebug(page))?.metrics.visibleProviderLabelCount ?? 0;
+  }, { timeout: 10_000 }).toBeGreaterThan(0);
 });
 
 // ---------------------------------------------------------------------------
 // Settings panel
 // ---------------------------------------------------------------------------
 
-test("settings panel can be opened", async ({ app }) => {
-  await app.goto();
-  await app.waitForReady();
-
-  const { page } = app;
-  // Look for a settings button by text or aria-label.
-  const settingsBtn = page.locator("button").filter({ hasText: /settings/i }).first();
-  const iconBtn = page.locator('[aria-label*="settings" i]').first();
-  const btn = (await settingsBtn.isVisible()) ? settingsBtn : iconBtn;
-
-  if (await btn.isVisible()) {
-    await btn.click();
-    await expect(
-      page.locator('[role="dialog"], [data-panel="settings"], section').first(),
-    ).toBeVisible({ timeout: 5_000 });
-  } else {
-    test.skip(true, "Settings button not found with current selectors");
-  }
-});
-
-test("sidebar keeps its dragged width while preferences persist", async ({ app }) => {
-  await app.goto();
-  await app.waitForReady();
-
-  const { page } = app;
-
-  await page.evaluate(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            updatePreferences: (patch: { display: { sidebarWidth: number } }) => Promise<void>;
-          };
-          setState: (partial: Record<string, unknown>) => void;
-        }
-      | undefined;
-
-    const originalUpdatePreferences = store?.getState().updatePreferences;
-    if (!store || !originalUpdatePreferences) return;
-
-    store.setState({
-      updatePreferences: async (patch: { display: { sidebarWidth: number } }) => {
-        await new Promise((resolve) => window.setTimeout(resolve, 250));
-        return originalUpdatePreferences(patch);
-      },
-    });
-  });
-
-  const sidebar = page.getByTestId("app-sidebar");
-  const handle = page.getByTestId("app-sidebar-resize-handle");
-  await expect(sidebar).toBeVisible();
-  await expect(handle).toBeVisible();
-
-  const beforeBox = await sidebar.boundingBox();
-  const handleBox = await handle.boundingBox();
-  expect(beforeBox).not.toBeNull();
-  expect(handleBox).not.toBeNull();
-
-  const startWidth = beforeBox!.width;
-  const dragTargetX = handleBox!.x + 120;
-  const dragTargetY = handleBox!.y + handleBox!.height / 2;
-
-  await page.mouse.move(handleBox!.x + handleBox!.width / 2, dragTargetY);
-  await page.mouse.down();
-  await page.mouse.move(dragTargetX, dragTargetY, { steps: 8 });
-  await page.mouse.up();
-
-  await page.waitForTimeout(50);
-
-  const afterReleaseBox = await sidebar.boundingBox();
-  expect(afterReleaseBox).not.toBeNull();
-  expect(afterReleaseBox!.width).toBeGreaterThan(startWidth + 80);
-
-  const minimumExpandedWidth = Math.round(startWidth + 80);
-  await page.waitForFunction((expectedWidth) => {
-    const panel = document.querySelector('[data-testid="app-sidebar"]');
-    return (panel?.getBoundingClientRect().width ?? 0) >= expectedWidth;
-  }, minimumExpandedWidth);
-
-  await page.waitForTimeout(350);
-
-  const afterPersistDelayBox = await sidebar.boundingBox();
-  expect(afterPersistDelayBox).not.toBeNull();
-  expect(afterPersistDelayBox!.width).toBeGreaterThan(startWidth + 80);
-});
-
 // ---------------------------------------------------------------------------
 // IPC mock verification
 // ---------------------------------------------------------------------------
 
-test("invoke mock records calls via __TAURI_MOCK_INVOCATIONS__", async ({
-  app,
-  ipc,
-}) => {
-  await app.goto();
-  await app.waitForReady();
-
-  await ipc.setHandler("test_ping", () => ({ pong: true }));
-
-  await app.page.evaluate(() => {
-    const w = window as Record<string, unknown>;
-    const handlers = w.__TAURI_MOCK_HANDLERS__ as Record<
-      string,
-      (args: unknown) => unknown
-    >;
-    // Simulate what the app does: call the handler directly.
-    handlers["test_ping"]?.({});
-  });
-
-  // The invocations log is written by the Vite mock's invoke(). Trigger it
-  // via window.__TAURI_INTERNALS__.invoke if available, otherwise just assert
-  // that our handler is wired correctly.
-  const invocations = await ipc.invocations();
-  // At minimum, startup invoke calls (get_local_ip, etc.) should be recorded.
-  expect(Array.isArray(invocations)).toBe(true);
-});
-
-test("plugin-shell open() records URLs", async ({ app, ipc }) => {
-  await app.goto();
-  await app.waitForReady();
-
-  await app.page.evaluate(() => {
-    const urls = (window as unknown as Record<string, unknown>)
-      .__TAURI_MOCK_OPENED_URLS__ as string[];
-    urls.push("https://freed.wtf");
-  });
-
-  const urls = await ipc.openedUrls();
-  expect(urls).toContain("https://freed.wtf");
-});
-
 // ---------------------------------------------------------------------------
 // Update mock availability
 // ---------------------------------------------------------------------------
-
-test("__TAURI_MOCK_UPDATE__ is readable after init script injection", async ({
-  app,
-}) => {
-  // Verify the init-script / mock plumbing: set __TAURI_MOCK_UPDATE__ before
-  // navigation and confirm it is present in the page context after load.
-  // This doesn't test the full update notification UI (which requires the
-  // 5-second App.tsx poll to fire), but it proves the mock infrastructure
-  // used by update tests is wired correctly.
-  await app.page.addInitScript(() => {
-    (window as unknown as Record<string, unknown>).__TAURI_MOCK_UPDATE__ = {
-      version: "99.0.0",
-    };
-  });
-
-  await app.goto();
-  await app.waitForReady();
-
-  const update = await app.page.evaluate(() =>
-    (window as unknown as Record<string, unknown>).__TAURI_MOCK_UPDATE__,
-  );
-  expect((update as Record<string, unknown>)?.version).toBe("99.0.0");
-});

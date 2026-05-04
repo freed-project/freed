@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { getPwaHostForChannel } from "@freed/shared";
+import type { CloudProvider } from "@freed/ui/components/CloudProviderCard";
 import { usePlatform } from "@freed/ui/context";
 import { invoke } from "@tauri-apps/api/core";
 import QRCode from "react-qr-code";
@@ -67,7 +68,8 @@ export function MobileSyncTab() {
   const [resetting, setResetting] = useState(false);
   const [mdnsActive, setMdnsActive] = useState<boolean | null>(null);
 
-  const { providers, connect, disconnect } = useCloudProviders();
+  const { providers, connect, cancelConnect, disconnect } = useCloudProviders();
+  const [cancelProvider, setCancelProvider] = useState<CloudProvider | null>(null);
   const [allIPs, setAllIPs] = useState<NetworkInterface[]>([]);
   const [showIPPicker, setShowIPPicker] = useState(false);
 
@@ -133,6 +135,7 @@ export function MobileSyncTab() {
 
   const ip = parseIp(syncUrl);
   const token = parseToken(syncUrl);
+  const cancelProviderLabel = cancelProvider === "gdrive" ? "Google Drive" : "Dropbox";
 
   return (
     <>
@@ -167,6 +170,7 @@ export function MobileSyncTab() {
               provider={provider}
               state={providers[provider]}
               onConnect={connect}
+              onCancelConnect={setCancelProvider}
               onDisconnect={disconnect}
             />
           ))}
@@ -371,6 +375,42 @@ export function MobileSyncTab() {
         </>
       )}
       </section>
+      {cancelProvider && (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cloud-provider-cancel-title"
+        >
+          <div className="theme-dialog-panel w-full max-w-sm rounded-2xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4 shadow-2xl">
+            <h2 id="cloud-provider-cancel-title" className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+              Cancel {cancelProviderLabel} connection?
+            </h2>
+            <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
+              The browser sign-in attempt will stop and you can reconnect again from settings.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn-secondary rounded-lg px-3 py-1.5 text-sm"
+                onClick={() => setCancelProvider(null)}
+              >
+                Keep Connecting
+              </button>
+              <button
+                type="button"
+                className="btn-primary rounded-lg px-3 py-1.5 text-sm"
+                onClick={() => {
+                  cancelConnect(cancelProvider);
+                  setCancelProvider(null);
+                }}
+              >
+                Cancel Connection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <DesktopSnapshotsSection />
     </>
   );
