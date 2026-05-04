@@ -1,0 +1,22 @@
+{
+  "channel": "production",
+  "dayKey": "26.5.3",
+  "date": "2026-05-03",
+  "preferredDeck": "Relationship views, optional local intelligence, reliable capture, and calmer reading",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Friends graph tools now include ranked suggestions, relationship tiers, shared Friends or All content scoping, and search profile actions.",
+    "Optional local AI model packs can be installed from settings to enrich semantic analysis without bundling model weights.",
+    "Reading layouts now keep feeds, stories, sidebars, and cards steadier while media and view transitions load.",
+    "Startup recovery now waits for healthy renderer heartbeats, records diagnostics, and keeps background work from running into stalled windows.",
+    "Social capture is more reliable across Instagram, Facebook, LinkedIn, and X, with stronger story dedupe, comment hydration, OAuth, and memory-pressure handling."
+  ],
+  "editorialNotes": [
+    "Production rollup manually preserved the dev prerelease themes after automatic consolidation could not fit the full prerelease span."
+  ],
+  "updatedAt": "2026-05-04T04:39:00.000Z"
+}
