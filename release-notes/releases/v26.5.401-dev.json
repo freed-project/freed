@@ -1,0 +1,46 @@
+{
+  "tag": "v26.5.401-dev",
+  "version": "26.5.401-dev",
+  "channel": "dev",
+  "dayKey": "26.5.4",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-04T20:49:00.374Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.308-dev",
+    "previousPublishedDayTag": "v26.5.308-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.401-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.401-dev"
+    ],
+    "prNumbers": [
+      408,
+      418,
+      419,
+      420,
+      424,
+      425
+    ],
+    "commitSubjects": [
+      "fix: stabilize renderer recovery under memory pressure (#425)",
+      "fix: retry deferred startup rss poll (#424)",
+      "fix: batch visible archive actions (#420)",
+      "fix: recover stale renderer without blocking main thread (#419)",
+      "fix: let startup recovery dialog scroll (#408)",
+      "chore: reverse integrate v26.5.309 production release (#418)"
+    ]
+  },
+  "release": {
+    "deck": "Stale renderer without blocking main thread, let startup recovery dialog scroll, and renderer recovery under memory pressure are now more stable",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.401-dev\n\nStale renderer without blocking main thread, let startup recovery dialog scroll, and renderer recovery under memory pressure are now more stable\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
