@@ -3,7 +3,7 @@
   "version": "26.5.309",
   "channel": "production",
   "dayKey": "26.5.3",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [
     "Manually authored after prepare-release-notes could not consolidate the full dev prerelease run into the production rollup."
   ],
