@@ -1019,6 +1019,25 @@ test.describe("FREED PWA", () => {
     await expect(page.getByRole("button", { name: "Alpha Dispatch" })).toHaveCount(0);
   });
 
+  test("rss source row selects feeds without opening the accordion", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await seedSidebarFeeds(page);
+
+    const sidebar = page.locator("aside");
+    await sidebar.getByTestId("source-row-rss").click();
+
+    await expect.poll(() => new URL(page.url()).search).toBe("?platform=rss");
+    await expect(sidebar.getByRole("button", { name: "Alpha Dispatch" })).toHaveCount(0);
+    const expandFeedsButton = sidebar.locator('button[aria-label="Expand feeds"]');
+    await expect(expandFeedsButton).toBeVisible();
+
+    await expandFeedsButton.click();
+    await expect(sidebar.getByRole("button", { name: "Alpha Dispatch" })).toBeVisible();
+  });
+
   test("feed pagination clears an off-page feed selection back to top-level feeds", async ({
     page,
   }) => {

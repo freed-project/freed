@@ -20,13 +20,17 @@ import type {
   ContentSignal,
   ContentSignalBackfillSummary,
   ContentSignals,
+  EventCandidate,
+  LocationSource,
 } from "./types.js";
 import { createDefaultPreferences, createDefaultMeta } from "./types.js";
 import { friendForAuthor, personForAuthor } from "./friends.js";
 import {
   CONTENT_SIGNAL_KEYS,
   CONTENT_SIGNAL_VERSION,
+  EVENT_CANDIDATE_THRESHOLD,
   hasCurrentContentSignals,
+  inferEventCandidate,
   inferContentSignals,
 } from "./content-signals.js";
 
@@ -387,6 +391,7 @@ const CROSS_POST_PLATFORMS = new Set<FeedItem["platform"]>([
   "instagram",
 ]);
 const SAME_PLATFORM_STORY_DEDUP_WINDOW_MS = 10 * 60 * 1000;
+const INSTAGRAM_FALSE_STORY_MATCH_WINDOW_MS = 2 * 60 * 60 * 1000;
 
 type LegacyFriendRoot = FreedDoc & {
   friends?: Record<string, Friend>;
@@ -432,6 +437,10 @@ function dedupKeeperScore(item: FeedItem): number {
   return dedupUserStateScore(item) + dedupMetadataScore(item);
 }
 
+function dedupKeeperClass(item: FeedItem): number {
+  return isLikelyFalseInstagramFeedStory(item) ? 0 : 1;
+}
+
 function normalizedDedupText(item: FeedItem): string | null {
   const raw = item.content.text ?? item.content.linkPreview?.title ?? "";
   const normalized = raw
@@ -457,7 +466,39 @@ function normalizedStoryDedupText(item: FeedItem): string {
 }
 
 function normalizedStoryMediaKey(item: FeedItem): string {
-  return item.content.mediaUrls[0] ?? item.sourceUrl ?? "";
+  if (item.platform !== "instagram") {
+    return item.content.mediaUrls[0] ?? item.sourceUrl ?? "";
+  }
+
+  for (const url of item.content.mediaUrls ?? []) {
+    const key = instagramMediaAssetKey(url);
+    if (key) return key;
+  }
+
+  return item.sourceUrl ?? "";
+}
+
+function instagramMediaAssetKey(rawUrl: string | undefined): string | null {
+  if (!rawUrl) return null;
+
+  try {
+    const url = new URL(rawUrl);
+    const cacheKey = url.searchParams.get("ig_cache_key");
+    if (cacheKey) return `ig-cache:${cacheKey}`;
+
+    const videoServerKey = url.searchParams.get("vs");
+    if (videoServerKey) return `ig-video:${videoServerKey}`;
+
+    const filename = url.pathname.split("/").filter(Boolean).at(-1);
+    if (filename) return `ig-file:${filename}`;
+  } catch {
+    const cacheMatch = rawUrl.match(/[?&]ig_cache_key=([^&]+)/);
+    if (cacheMatch) return `ig-cache:${decodeURIComponent(cacheMatch[1])}`;
+    const filenameMatch = rawUrl.match(/\/([^/?#]+\.(?:jpe?g|png|webp|mp4))(?:[?#]|$)/i);
+    if (filenameMatch) return `ig-file:${filenameMatch[1]}`;
+  }
+
+  return null;
 }
 
 function samePlatformStoryDedupKey(item: FeedItem): string | null {
@@ -467,6 +508,11 @@ function samePlatformStoryDedupKey(item: FeedItem): string | null {
   const mediaKey = normalizedStoryMediaKey(item);
   const textKey = normalizedStoryDedupText(item);
   if (!mediaKey && !textKey) return null;
+
+  if (item.platform === "instagram" && mediaKey) {
+    const publishedBucket = Math.floor(item.publishedAt / SAME_PLATFORM_STORY_DEDUP_WINDOW_MS);
+    return [item.platform, publishedBucket.toString(), mediaKey].join("::");
+  }
 
   const authorKey = item.author.id || item.author.handle || item.author.displayName;
   const publishedBucket = Math.floor(item.publishedAt / SAME_PLATFORM_STORY_DEDUP_WINDOW_MS);
@@ -480,6 +526,71 @@ function samePlatformStoryDedupKey(item: FeedItem): string | null {
     locationKey,
     textKey,
   ].join("::");
+}
+
+function isInstagramFeedHomeUrl(sourceUrl: string | undefined): boolean {
+  if (!sourceUrl) return false;
+  try {
+    const parsed = new URL(sourceUrl);
+    return (
+      parsed.hostname.endsWith("instagram.com") &&
+      (parsed.pathname === "/" || parsed.pathname === "") &&
+      parsed.searchParams.get("variant") === "following"
+    );
+  } catch {
+    return sourceUrl === "https://www.instagram.com/?variant=following";
+  }
+}
+
+function isGenericInstagramStoryLocation(item: FeedItem): boolean {
+  if (!item.location) return true;
+  const locationName = item.location.name?.trim().toLowerCase() ?? "";
+  const locationUrl = item.location.url ?? "";
+  return (
+    locationName === "" ||
+    locationName === "location" ||
+    locationName === "locations" ||
+    locationUrl === "https://www.instagram.com/explore/locations/" ||
+    locationUrl === "https://www.instagram.com/explore/locations"
+  );
+}
+
+function isLikelyFalseInstagramFeedStory(item: FeedItem): boolean {
+  return (
+    item.platform === "instagram" &&
+    item.contentType === "story" &&
+    isInstagramFeedHomeUrl(item.sourceUrl) &&
+    (item.content.text ?? "").trim() === "" &&
+    isGenericInstagramStoryLocation(item) &&
+    normalizedStoryMediaKey(item) !== ""
+  );
+}
+
+function addFalseInstagramStoryGroups(
+  parent: Map<string, string>,
+  items: FeedItem[],
+): void {
+  const realItemsByMediaKey = new Map<string, FeedItem[]>();
+
+  for (const item of items) {
+    if (item.platform !== "instagram" || item.contentType === "story") continue;
+    const mediaKey = normalizedStoryMediaKey(item);
+    if (!mediaKey) continue;
+    const group = realItemsByMediaKey.get(mediaKey);
+    if (group) group.push(item);
+    else realItemsByMediaKey.set(mediaKey, [item]);
+  }
+
+  for (const item of items) {
+    if (!isLikelyFalseInstagramFeedStory(item)) continue;
+    const mediaKey = normalizedStoryMediaKey(item);
+    const matches = (realItemsByMediaKey.get(mediaKey) ?? []).filter(
+      (candidate) =>
+        Math.abs(candidate.publishedAt - item.publishedAt) <= INSTAGRAM_FALSE_STORY_MATCH_WINDOW_MS,
+    );
+    if (matches.length === 0) continue;
+    addDedupGroup(parent, [item.globalId, ...matches.map((candidate) => candidate.globalId)]);
+  }
 }
 
 function dedupIdentityKey(doc: FreedDoc, item: FeedItem): string | null {
@@ -661,6 +772,70 @@ function applyContentSignalsToItem(
   target.tags.splice(0, target.tags.length, ...clean.tags);
 }
 
+function isStrongerLocationSource(source: LocationSource | undefined): boolean {
+  return source === "geo_tag" || source === "check_in" || source === "sticker";
+}
+
+function applyEventCandidateToItem(
+  item: FeedItem,
+  candidate: EventCandidate | null = inferEventCandidate(item, item.contentSignals ?? inferContentSignals(item)),
+): void {
+  if (!candidate) {
+    delete item.eventCandidate;
+    return;
+  }
+
+  const clean = stripUndefined(candidate);
+  if (!item.eventCandidate) {
+    item.eventCandidate = clean;
+  } else {
+    const target = item.eventCandidate;
+    target.version = clean.version;
+    target.method = clean.method;
+    target.detectedAt = clean.detectedAt;
+    target.confidence = clean.confidence;
+    assignOptionalField(target as unknown as Record<string, unknown>, "title", clean.title);
+    assignOptionalField(target as unknown as Record<string, unknown>, "startsAt", clean.startsAt);
+    assignOptionalField(target as unknown as Record<string, unknown>, "endsAt", clean.endsAt);
+    assignOptionalField(target as unknown as Record<string, unknown>, "timezone", clean.timezone);
+    assignOptionalField(target as unknown as Record<string, unknown>, "locationName", clean.locationName);
+    assignOptionalField(target as unknown as Record<string, unknown>, "locationUrl", clean.locationUrl);
+    assignOptionalField(target as unknown as Record<string, unknown>, "evidence", clean.evidence);
+  }
+
+  if (clean.confidence < EVENT_CANDIDATE_THRESHOLD) return;
+
+  if (clean.startsAt && !item.timeRange) {
+    item.timeRange = stripUndefined({
+      startsAt: clean.startsAt,
+      endsAt: clean.endsAt,
+      kind: "event",
+    });
+  }
+
+  if (clean.locationName && !isStrongerLocationSource(item.location?.source)) {
+    if (!item.location) {
+      item.location = stripUndefined({
+        name: clean.locationName,
+        url: clean.locationUrl,
+        source: "text_extraction",
+      });
+    } else if (item.location.source === "text_extraction") {
+      item.location.name = clean.locationName;
+      assignOptionalField(
+        item.location as unknown as Record<string, unknown>,
+        "url",
+        clean.locationUrl ?? item.location.url,
+      );
+    }
+  }
+}
+
+function applySemanticEnrichmentToItem(item: FeedItem): void {
+  applyContentSignalsToItem(item);
+  applyEventCandidateToItem(item);
+}
+
 function feedItemUpdatesAffectContentSignals(updates: Partial<FeedItem>): boolean {
   return (
     "author" in updates ||
@@ -795,7 +970,7 @@ function mergeFeedItemInto(target: FeedItem, source: FeedItem): void {
     ),
   );
   mergeUserState(target.userState, source.userState);
-  applyContentSignalsToItem(target);
+  applySemanticEnrichmentToItem(target);
 }
 
 function dedupKeeperId(doc: FreedDoc, ids: string[]): string {
@@ -803,6 +978,7 @@ function dedupKeeperId(doc: FreedDoc, ids: string[]): string {
     const left = doc.feedItems[leftId];
     const right = doc.feedItems[rightId];
     return (
+      dedupKeeperClass(right) - dedupKeeperClass(left) ||
       dedupKeeperScore(right) - dedupKeeperScore(left) ||
       right.publishedAt - left.publishedAt ||
       rightId.localeCompare(leftId)
@@ -812,6 +988,7 @@ function dedupKeeperId(doc: FreedDoc, ids: string[]): string {
 
 export function deduplicateDocFeedItems(doc: FreedDoc): number {
   const unions = new Map<string, string>();
+  const items = Object.values(doc.feedItems) as FeedItem[];
   const exactUrlGroups = new Map<string, string[]>();
 
   for (const [id, item] of Object.entries(doc.feedItems) as [string, FeedItem][]) {
@@ -839,8 +1016,10 @@ export function deduplicateDocFeedItems(doc: FreedDoc): number {
     addDedupGroup(unions, ids);
   }
 
+  addFalseInstagramStoryGroups(unions, items);
+
   const crossPostGroups = new Map<string, FeedItem[]>();
-  for (const item of Object.values(doc.feedItems) as FeedItem[]) {
+  for (const item of items) {
     if (!CROSS_POST_PLATFORMS.has(item.platform)) continue;
     const identityKey = dedupIdentityKey(doc, item);
     const textKey = normalizedDedupText(item);
@@ -935,7 +1114,7 @@ function normalizePerson(person: Person): Person {
 export function addFeedItem(doc: FreedDoc, item: FeedItem): void {
   const next = stripUndefined({ ...item }) as FeedItem;
   if (!hasCurrentContentSignals(next)) {
-    applyContentSignalsToItem(next);
+    applySemanticEnrichmentToItem(next);
   }
   doc.feedItems[item.globalId] = stripUndefined(next);
 }
@@ -964,25 +1143,17 @@ export function updateFeedItem(
     Object.assign(existing, cleanUpdates);
     if (nextSignals) {
       applyContentSignalsToItem(existing, nextSignals);
+      applyEventCandidateToItem(existing);
     } else if (feedItemUpdatesAffectContentSignals(updates)) {
-      applyContentSignalsToItem(existing);
+      applySemanticEnrichmentToItem(existing);
     }
   }
 }
 
 function createEmptyContentSignalCounts(): Record<ContentSignal, number> {
-  return {
-    event: 0,
-    essay: 0,
-    moment: 0,
-    life_update: 0,
-    announcement: 0,
-    recommendation: 0,
-    request: 0,
-    discussion: 0,
-    promotion: 0,
-    news: 0,
-  };
+  return Object.fromEntries(
+    CONTENT_SIGNAL_KEYS.map((signal) => [signal, 0]),
+  ) as Record<ContentSignal, number>;
 }
 
 function summarizeContentSignals(
@@ -1050,7 +1221,7 @@ export function backfillContentSignals(
   const batch = staleItems.slice(0, Math.max(1, batchSize));
 
   for (const item of batch) {
-    applyContentSignalsToItem(item);
+    applySemanticEnrichmentToItem(item);
   }
 
   return summarizeContentSignals(

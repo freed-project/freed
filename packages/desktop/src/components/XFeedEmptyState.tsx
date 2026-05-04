@@ -16,6 +16,7 @@ import { captureXTimeline } from "../lib/x-capture";
 import { useSettingsStore } from "@freed/ui/lib/settings-store";
 import { resetProviderPauseState } from "../lib/provider-health";
 import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTestingSection";
+import { socialProviderCopy } from "../lib/social-provider-copy";
 
 const XIcon = () => (
   <svg className="h-7 w-7 text-[var(--theme-media-x)]" viewBox="0 0 24 24" fill="currentColor">
@@ -28,21 +29,24 @@ export function XFeedEmptyState() {
   const setXAuth = useAppStore((s) => s.setXAuth);
   const isLoading = useAppStore((s) => s.isLoading);
   const activeFilter = useAppStore((s) => s.activeFilter);
-  const storeError = useAppStore((s) => s.error);
   const setError = useAppStore((s) => s.setError);
   const openSettings = useSettingsStore((s) => s.openTo);
 
   const [syncing, setSyncing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const copy = socialProviderCopy("x");
 
   const handleSync = async () => {
     const cookies = loadStoredCookies();
     if (!cookies) return;
     setError(null);
+    setActionError(null);
     setSyncing(true);
     try {
       await captureXTimeline(cookies);
     } catch (err) {
       console.error("X sync failed:", err);
+      setActionError(err instanceof Error ? err.message : "X sync failed");
     } finally {
       setSyncing(false);
     }
@@ -53,9 +57,10 @@ export function XFeedEmptyState() {
     await resetProviderPauseState("x");
     setXAuth({ isAuthenticated: false });
     setError(null);
+    setActionError(null);
   };
 
-  const syncError = storeError && xAuth.isAuthenticated ? storeError : null;
+  const syncError = xAuth.isAuthenticated ? xAuth.lastCaptureError ?? actionError : null;
 
   // Non-X filter → generic empty state
   if (activeFilter.platform !== "x") {
@@ -79,7 +84,7 @@ export function XFeedEmptyState() {
           <XIcon />
         </div>
         <p className="text-lg font-medium mb-2">All caught up!</p>
-        <p className="mb-6 text-sm text-[var(--theme-text-muted)]">Your X timeline is up to date.</p>
+        <p className="mb-6 text-sm text-[var(--theme-text-muted)]">{copy.connectedEmptyState}</p>
         <div className="flex gap-3">
           <button
             onClick={handleSync}
@@ -127,7 +132,7 @@ export function XFeedEmptyState() {
         </div>
       <p className="text-lg font-medium mb-2">Connect X / Twitter</p>
       <p className="mb-6 max-w-xs text-center text-sm text-[var(--theme-text-muted)]">
-        Pull your home timeline into Freed. Set it up in Sources settings.
+        {copy.disconnectedEmptyState}
       </p>
       <button
         onClick={() => openSettings("x")}

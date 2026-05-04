@@ -8,7 +8,7 @@
 
 export type ScraperWindowMode = "shown" | "cloaked" | "hidden";
 
-const DEFAULT_SCRAPER_WINDOW_MODE: ScraperWindowMode = "cloaked";
+const DEFAULT_SCRAPER_WINDOW_MODE: ScraperWindowMode = "hidden";
 
 const IG_KEY = "ig_scraper_debug_window";
 const FB_KEY = "fb_scraper_debug_window";
@@ -21,7 +21,7 @@ function readMode(key: string): ScraperWindowMode {
   }
 
   // Legacy migration: the old boolean flag only supported "shown" vs the
-  // default background mode. Any non-true legacy value falls back to cloaked.
+  // default background mode. Any non-true legacy value falls back to hidden.
   if (stored === "true") {
     return "shown";
   }

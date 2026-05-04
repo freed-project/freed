@@ -18,13 +18,20 @@ import type {
   ContactSyncState,
   BugReportDraft,
   BugReportIssueType,
+  FeedItem,
   GeneratedBugReportBundle,
   ImportProgress,
+  LocalAIModelId,
+  LocalAIHardwareProfile,
+  LocalAIModelInstallState,
+  LocalAIModelManifestEntry,
   ReportPrivacyTier,
 } from "@freed/shared";
 import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
+import type { GoogleContactsResult } from "@freed/shared/google-contacts";
 import type { ImportSummary, ProgressFn } from "../components/LibraryDialog.types.js";
 import type { ProviderStatusTone } from "../lib/provider-status.js";
+import type { ReaderOfflineCacheMode } from "../lib/reader-cache-settings.js";
 
 /**
  * Pixel offset reserved for macOS traffic-light window controls when
@@ -78,6 +85,64 @@ export interface BugReportingConfig {
   }) => Promise<GeneratedBugReportBundle>;
   exportBundle?: (bundle: GeneratedBugReportBundle) => Promise<void>;
   openUrl?: (url: string) => void;
+}
+
+export interface GoogleContactsConnectOptions {
+  signal?: AbortSignal;
+}
+
+export interface ReaderThreadReply {
+  id: string;
+  authorName: string;
+  authorHandle?: string;
+  authorAvatarUrl?: string;
+  text?: string;
+  publishedAt?: number;
+  mediaUrls: string[];
+  mediaTypes: Array<"image" | "video" | "link">;
+  sourceUrl?: string;
+  engagement?: {
+    likes?: number;
+    reposts?: number;
+    comments?: number;
+    views?: number;
+  };
+}
+
+export interface ReaderHydrationResult {
+  html?: string;
+  text?: string;
+  mediaUrls?: string[];
+  mediaTypes?: Array<"image" | "video" | "link">;
+  replies?: ReaderThreadReply[];
+  status?: "hydrated" | "partial" | "expired" | "auth_required" | "unsupported";
+  message?: string;
+}
+
+export interface LocalAIModelDownloadProgress {
+  id: LocalAIModelId;
+  downloadedBytes: number;
+  totalBytes: number;
+  currentFile?: string;
+}
+
+export interface LocalAIModelViewState {
+  manifest: LocalAIModelManifestEntry;
+  state: LocalAIModelInstallState;
+  webGPUAvailable: boolean;
+  selected: boolean;
+}
+
+export interface LocalAIModelControls {
+  listModels: () => Promise<LocalAIModelViewState[]>;
+  selectModel: (id: LocalAIModelId) => Promise<LocalAIModelViewState[]>;
+  downloadModel: (
+    id: LocalAIModelId,
+    onProgress?: (progress: LocalAIModelDownloadProgress) => void,
+  ) => Promise<LocalAIModelViewState[]>;
+  pauseDownload: (id: LocalAIModelId) => Promise<LocalAIModelViewState[]>;
+  removeModel: (id: LocalAIModelId) => Promise<LocalAIModelViewState[]>;
+  getHardwareProfile: () => Promise<LocalAIHardwareProfile | null>;
 }
 
 export interface PlatformConfig {
@@ -228,6 +293,22 @@ export interface PlatformConfig {
   getLocalPreservedText?: (globalId: string) => Promise<string | null>;
 
   /**
+   * Hydrate reader content on demand from the host platform.
+   * Desktop can use native fetch and authenticated WebViews. PWA can use
+   * public browser fetch where possible.
+   */
+  hydrateReaderItem?: (
+    item: FeedItem,
+    options: {
+      cacheMode: ReaderOfflineCacheMode;
+      pin: boolean;
+    },
+  ) => Promise<ReaderHydrationResult>;
+
+  /** Pin the current item in the device-local reader cache. */
+  pinReaderItem?: (item: FeedItem) => Promise<void>;
+
+  /**
    * Save a URL to the local library with full content extraction.
    * Desktop: fetches HTML via Tauri IPC, extracts content, writes to cache.
    * PWA: writes a stub item; desktop picks it up via relay and fetches content.
@@ -282,6 +363,9 @@ export interface PlatformConfig {
     clearApiKey: (provider: string) => Promise<void>;
   };
 
+  /** Device-local optional model downloads for offline AI. */
+  localAIModels?: LocalAIModelControls;
+
   /**
    * Google Contacts API integration.
    * Provides a token accessor for the People API.
@@ -289,9 +373,11 @@ export interface PlatformConfig {
    */
   googleContacts?: {
     /** Return the current Google OAuth access token, or null when not authenticated. */
-    getToken: () => string | null;
+    getToken: () => string | null | Promise<string | null>;
     /** Start or refresh the Google OAuth flow so contacts scope is granted. */
-    connect: () => Promise<void>;
+    connect: (options?: GoogleContactsConnectOptions) => Promise<void>;
+    /** Fetch Google Contacts through the platform's network layer when needed. */
+    fetchContacts?: (accessToken: string, syncToken?: string | null) => Promise<GoogleContactsResult>;
   };
 
   /**

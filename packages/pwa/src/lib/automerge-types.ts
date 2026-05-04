@@ -8,7 +8,16 @@
  * postMessage boundary without serialization loss.
  */
 
-import type { Account, FeedItem, Friend, Person, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
+import type {
+  Account,
+  ContentSignalBackfillSummary,
+  FeedItem,
+  Friend,
+  Person,
+  ReachOutLog,
+  RssFeed,
+  UserPreferences,
+} from "@freed/shared";
 
 // ---------------------------------------------------------------------------
 // Hydrated state posted to the main thread after every doc mutation.
@@ -73,6 +82,7 @@ export type WorkerRequest =
   | { reqId: number; type: "UPDATE_ACCOUNT"; accountId: string; updates: Partial<Account> }
   | { reqId: number; type: "REMOVE_ACCOUNT"; accountId: string }
   | { reqId: number; type: "ADD_STUB_ITEM"; url: string; tags: string[] }
+  | { reqId: number; type: "BACKFILL_CONTENT_SIGNALS"; batchSize?: number }
   | { reqId: number; type: "MERGE_DOC"; binary: Uint8Array }
   | { reqId: number; type: "CLEAR_LOCAL" };
 
@@ -89,5 +99,7 @@ export type WorkerResponse =
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
   /** Doc size snapshot for the debug panel */
   | { type: "DEBUG_SNAPSHOT"; deviceId: string; itemCount: number; feedCount: number; binarySize: number }
+  /** One-batch content signal backfill summary. */
+  | { reqId: number; type: "CONTENT_SIGNAL_BACKFILL_RESULT"; summary: ContentSignalBackfillSummary }
   /** Sent once when the worker module finishes loading and is ready for messages */
   | { type: "READY" };

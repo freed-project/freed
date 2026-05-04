@@ -73,6 +73,36 @@ export function FilterIcon({ className = "w-4 h-4", style }: IconProps) {
   );
 }
 
+export function AnimatedMenuIcon({
+  open = false,
+  className = "w-5 h-5",
+  style,
+}: IconProps & { open?: boolean }) {
+  return (
+    <span
+      className={`relative inline-flex ${className}`}
+      style={style}
+      aria-hidden="true"
+    >
+      <span
+        className={`absolute left-[3px] h-[2px] rounded-full bg-current transition-all duration-200 ease-out ${
+          open ? "top-1/2 w-[18px] -translate-y-1/2 rotate-45" : "top-[5px] w-[18px]"
+        }`}
+      />
+      <span
+        className={`absolute left-[3px] top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-current transition-all duration-200 ease-out ${
+          open ? "w-0 opacity-0" : "w-[14px] opacity-100"
+        }`}
+      />
+      <span
+        className={`absolute left-[3px] h-[2px] rounded-full bg-current transition-all duration-200 ease-out ${
+          open ? "top-1/2 w-[18px] -translate-y-1/2 -rotate-45" : "top-[15px] w-[10px]"
+        }`}
+      />
+    </span>
+  );
+}
+
 /** Location pin – map view. */
 export function MapPinIcon({ className = "w-4 h-4", style }: IconProps) {
   return (

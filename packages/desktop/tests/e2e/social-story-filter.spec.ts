@@ -90,6 +90,14 @@ test("Instagram source toolbar filters posts, stories, and all items", async ({ 
   await page.getByTestId("source-row-instagram").first().click();
   const filter = page.getByTestId("social-content-toolbar-filter");
   await expect(filter).toBeVisible();
+  const signalFilter = page.getByTestId("feed-signal-filter-button");
+  await expect(signalFilter).toBeVisible();
+
+  const filterBox = await filter.boundingBox();
+  const signalFilterBox = await signalFilter.boundingBox();
+  expect(filterBox).not.toBeNull();
+  expect(signalFilterBox).not.toBeNull();
+  expect((signalFilterBox?.x ?? 0) - ((filterBox?.x ?? 0) + (filterBox?.width ?? 0))).toBeGreaterThanOrEqual(8);
 
   await expect(page.getByText("Instagram filter post item")).toBeVisible();
   await expect(page.getByText("Instagram filter reel item")).toBeVisible();
@@ -109,4 +117,37 @@ test("Instagram source toolbar filters posts, stories, and all items", async ({ 
   await expect(page.getByText("Instagram filter post item")).toBeVisible();
   await expect(page.getByText("Instagram filter reel item")).toBeVisible();
   await expect(page.getByText("Instagram filter story item")).toBeVisible();
+});
+
+test("mobile source toolbar collapses social and signal filters into one menu", async ({ app, page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await app.goto();
+  await app.waitForReady();
+  await injectInstagramItems(page);
+
+  await page.getByTestId("source-row-instagram").first().click();
+  await expect(page.getByTestId("social-content-toolbar-filter")).toBeHidden();
+  await expect(page.getByTestId("feed-signal-filter-button")).toBeHidden();
+
+  const filterButton = page.getByTestId("mobile-toolbar-filter-button");
+  await expect(filterButton).toBeVisible();
+  await expect(filterButton).toHaveClass(/theme-toolbar-button-neutral/);
+  await expect(filterButton).not.toHaveClass(/theme-toolbar-button-ghost/);
+
+  await filterButton.click();
+  const menu = page.getByTestId("feed-signal-filter-menu");
+  await expect(menu).toBeVisible();
+
+  const contentFilter = page.getByTestId("mobile-social-content-toolbar-filter");
+  await expect(contentFilter.getByRole("button", { name: "All" })).toBeVisible();
+  await expect(contentFilter.getByRole("button", { name: "Posts" })).toBeVisible();
+  await expect(contentFilter.getByRole("button", { name: "Stories" })).toBeVisible();
+  await expect(menu.getByRole("menuitemcheckbox", { name: /Everything/ })).toBeVisible();
+  await expect(menu.getByRole("menuitemcheckbox", { name: /Inspiring/ })).toBeVisible();
+  await expect(menu.getByRole("menuitemcheckbox", { name: /Events/ })).toBeVisible();
+
+  await contentFilter.getByRole("button", { name: "Stories" }).click();
+  await expect(page.getByText("Instagram filter story item")).toBeVisible();
+  await expect(page.getByText("Instagram filter post item")).toBeHidden();
+  await expect(page.getByText("Instagram filter reel item")).toBeHidden();
 });

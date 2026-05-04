@@ -1,27 +1,43 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockInvoke, mockStoreData, mockStoreShouldThrow } = vi.hoisted(() => ({
+const { mockInvoke, mockNativeFiles, mockStoreShouldThrow } = vi.hoisted(() => ({
   mockInvoke: vi.fn(),
-  mockStoreData: new Map<string, unknown>(),
+  mockNativeFiles: new Map<string, string>(),
   mockStoreShouldThrow: { current: false },
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: mockInvoke,
+  isTauri: () => true,
 }));
 
-vi.mock("@tauri-apps/plugin-store", () => ({
-  load: vi.fn(async () => {
+vi.mock("@tauri-apps/api/path", () => ({
+  appDataDir: vi.fn(async () => "/mock/app-data"),
+}));
+
+vi.mock("@tauri-apps/plugin-fs", () => ({
+  readTextFile: vi.fn(async (path: string) => {
     if (mockStoreShouldThrow.current) {
       throw new Error("store unavailable");
     }
-
-    return {
-      get: vi.fn(async (key: string) => mockStoreData.get(key) ?? null),
-      set: vi.fn(async (key: string, value: unknown) => {
-        mockStoreData.set(key, value);
-      }),
-    };
+    const value = mockNativeFiles.get(path);
+    if (value === undefined) throw new Error(`ENOENT: ${path}`);
+    return value;
+  }),
+  writeTextFile: vi.fn(async (path: string, contents: string) => {
+    if (mockStoreShouldThrow.current) {
+      throw new Error("store unavailable");
+    }
+    mockNativeFiles.set(path, contents);
+  }),
+  rename: vi.fn(async (oldPath: string, newPath: string) => {
+    if (mockStoreShouldThrow.current) {
+      throw new Error("store unavailable");
+    }
+    const value = mockNativeFiles.get(oldPath);
+    if (value === undefined) throw new Error(`ENOENT: ${oldPath}`);
+    mockNativeFiles.set(newPath, value);
+    mockNativeFiles.delete(oldPath);
   }),
 }));
 
@@ -38,7 +54,7 @@ import {
 describe("desktop release channel helpers", () => {
   beforeEach(() => {
     mockInvoke.mockReset();
-    mockStoreData.clear();
+    mockNativeFiles.clear();
     mockStoreShouldThrow.current = false;
     window.localStorage.clear();
   });
@@ -77,7 +93,7 @@ describe("desktop release channel helpers", () => {
   });
 
   it("loads the desktop channel from native store when browser storage is empty", async () => {
-    mockStoreData.set("channel", "dev");
+    mockNativeFiles.set("/mock/app-data/release-channel.json", JSON.stringify({ channel: "dev" }));
 
     await expect(loadDesktopReleaseChannel()).resolves.toBe("dev");
     expect(window.localStorage.getItem("freed-release-channel")).toBe("dev");
@@ -87,13 +103,15 @@ describe("desktop release channel helpers", () => {
     window.localStorage.setItem("freed-release-channel", "dev");
 
     await expect(loadDesktopReleaseChannel()).resolves.toBe("dev");
-    expect(mockStoreData.get("channel")).toBe("dev");
+    const stored = JSON.parse(mockNativeFiles.get("/mock/app-data/release-channel.json") ?? "{}");
+    expect(stored.channel).toBe("dev");
   });
 
   it("persists channel changes to native store and browser storage", async () => {
     await persistDesktopReleaseChannel("dev");
 
-    expect(mockStoreData.get("channel")).toBe("dev");
+    const stored = JSON.parse(mockNativeFiles.get("/mock/app-data/release-channel.json") ?? "{}");
+    expect(stored.channel).toBe("dev");
     expect(window.localStorage.getItem("freed-release-channel")).toBe("dev");
   });
 

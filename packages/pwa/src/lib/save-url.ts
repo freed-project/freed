@@ -63,7 +63,7 @@ export async function saveUrlInPwa(
     return;
   }
 
-  await cacheArticleHtml(stableUrl, item.globalId, articleHtml);
+  await cacheArticleHtml(stableUrl, item.globalId, articleHtml, { pinned: true });
   void warmArticleImageCache(articleHtml, stableUrl);
   await docAddFeedItem(item);
 }

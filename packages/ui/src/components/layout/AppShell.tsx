@@ -27,6 +27,10 @@ import {
   createContactAccountFromGoogleContact,
 } from "@freed/shared/google-contacts-automation";
 import { applyThemeToDocument, persistTheme } from "../../lib/theme.js";
+import {
+  applyAnimationIntensityToDocument,
+  resolveAnimationIntensity,
+} from "../../lib/animation-preferences.js";
 import { MapView } from "../map/MapView.js";
 import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
 import {
@@ -60,6 +64,9 @@ export function AppShell({ children }: AppShellProps) {
   const createConnectionPersonsFromCandidates = useAppStore((s) => s.createConnectionPersonsFromCandidates);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const themeId = useAppStore((s) => s.preferences.display.themeId);
+  const animationIntensity = useAppStore((s) =>
+    resolveAnimationIntensity(s.preferences.display.animationIntensity),
+  );
   const showAtmosphere = activeView !== "friends" && activeView !== "map";
   const settingsOpen = useSettingsStore((s) => s.open);
   const requestSearchPalette = useCommandSurfaceStore((s) => s.requestSearchPalette);
@@ -100,6 +107,11 @@ export function AppShell({ children }: AppShellProps) {
     savedContentOpen ||
     libraryDialogOpen ||
     showContactReview;
+  const forceCompactDesktopSidebar = !isMobileDevice && isMobileViewport;
+  const effectiveDesktopSidebarDisplayMode =
+    forceCompactDesktopSidebar && desktopSidebarMode !== "closed"
+      ? "compact"
+      : desktopSidebarDisplayMode;
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
@@ -140,13 +152,13 @@ export function AppShell({ children }: AppShellProps) {
   }, [updatePreferences]);
 
   const handleDesktopSidebarToggle = useCallback(() => {
-    const nextMode = desktopSidebarMode === "closed"
+    const nextMode = effectiveDesktopSidebarDisplayMode === "closed"
       ? "expanded"
-      : desktopSidebarMode === "compact"
+      : effectiveDesktopSidebarDisplayMode === "compact"
         ? "closed"
         : "compact";
     persistDesktopSidebarMode(nextMode);
-  }, [desktopSidebarMode, persistDesktopSidebarMode]);
+  }, [effectiveDesktopSidebarDisplayMode, persistDesktopSidebarMode]);
 
   const handleFriendsSidebarOpenChange = useCallback((open: boolean) => {
     void updatePreferences({
@@ -204,6 +216,11 @@ export function AppShell({ children }: AppShellProps) {
   }, [isInitialized, themeId]);
 
   useEffect(() => {
+    if (!isInitialized) return;
+    applyAnimationIntensityToDocument(animationIntensity);
+  }, [animationIntensity, isInitialized]);
+
+  useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -224,6 +241,15 @@ export function AppShell({ children }: AppShellProps) {
     if (!isMobileDevice && mobileSidebarOpen) {
       setMobileSidebarOpen(false);
     }
+  }, [isMobileDevice, mobileSidebarOpen]);
+
+  useEffect(() => {
+    if (!isMobileDevice || !mobileSidebarOpen) return;
+
+    document.documentElement.classList.add("freed-mobile-sidebar-open");
+    return () => {
+      document.documentElement.classList.remove("freed-mobile-sidebar-open");
+    };
   }, [isMobileDevice, mobileSidebarOpen]);
 
   useEffect(() => {
@@ -329,7 +355,7 @@ export function AppShell({ children }: AppShellProps) {
           mobileSidebarOpen={mobileSidebarOpen}
           onMobileMenuToggle={() => setMobileSidebarOpen((value) => !value)}
           desktopSidebarMode={desktopSidebarMode}
-          desktopSidebarDisplayMode={desktopSidebarDisplayMode}
+          desktopSidebarDisplayMode={effectiveDesktopSidebarDisplayMode}
           onDesktopSidebarToggle={handleDesktopSidebarToggle}
           friendsSidebarOpen={friendsSidebarOpen}
           onFriendsSidebarToggle={() =>
@@ -374,7 +400,11 @@ export function AppShell({ children }: AppShellProps) {
             style={{
               width: debugVisible ? debugWidth + AUXILIARY_DRAWER_GAP_WIDTH_PX : 0,
               opacity: debugVisible ? 1 : 0,
-              transition: dragging.current ? "none" : "width 300ms ease-in-out, opacity 180ms ease-in-out",
+              transition: dragging.current || animationIntensity === "none"
+                ? "none"
+                : animationIntensity === "light"
+                  ? "width 140ms ease-out, opacity 120ms ease-out"
+                  : "width 300ms ease-in-out, opacity 180ms ease-in-out",
             }}
           >
             <div className="relative flex h-full w-full items-stretch">

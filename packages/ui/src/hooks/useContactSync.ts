@@ -108,7 +108,8 @@ export function useContactSync() {
 
   const runSync = useCallback(async () => {
     const current = syncStateRef.current;
-    const token = googleContacts?.getToken() ?? null;
+    const contactsApi = googleContacts;
+    const token = contactsApi ? await contactsApi.getToken() : null;
 
     if (!token) {
       const nextState = withError(current, "missing_token", "Reconnect Google to sync contacts.");
@@ -125,7 +126,9 @@ export function useContactSync() {
     });
 
     try {
-      const result: GoogleContactsResult = await fetchGoogleContacts(token, current.syncToken);
+      const result: GoogleContactsResult = contactsApi?.fetchContacts
+        ? await contactsApi.fetchContacts(token, current.syncToken)
+        : await fetchGoogleContacts(token, current.syncToken);
       const merged = mergeContactChanges(current.cachedContacts, result.contacts, result.deleted);
       const allMatches = matchContacts(
         merged,
@@ -170,9 +173,9 @@ export function useContactSync() {
   useEffect(() => {
     if (!googleContacts) return undefined;
     const id = setInterval(() => {
-      if (googleContacts.getToken()) {
-        void runSync();
-      }
+      void Promise.resolve(googleContacts.getToken()).then((token) => {
+        if (token) void runSync();
+      });
     }, SYNC_INTERVAL_MS);
     return () => clearInterval(id);
   }, [googleContacts, runSync]);
@@ -180,14 +183,16 @@ export function useContactSync() {
   useEffect(() => {
     if (!googleContacts) return undefined;
     const onFocus = () => {
-      if (googleContacts.getToken()) {
-        void runSync();
-      } else {
+      void Promise.resolve(googleContacts.getToken()).then((token) => {
+        if (token) {
+          void runSync();
+          return;
+        }
         const current = syncStateRef.current;
         if (current.authStatus !== "reconnect_required" || current.syncStatus !== "error") {
           commitSyncState(withError(current, "missing_token", "Reconnect Google to sync contacts."));
         }
-      }
+      });
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);

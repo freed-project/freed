@@ -4,12 +4,14 @@ import type {
   DeviceContact,
   FeedItem,
   Friend,
+  FriendCandidateSuggestion,
+  FriendCandidateConfidence,
   FriendSource,
   Person,
   ReachOutLog,
 } from "@freed/shared";
 import { formatDistanceToNow } from "date-fns";
-import { friendFromPerson, isInReconnectZone } from "@freed/shared";
+import { buildFriendCandidateSuggestions, friendFromPerson, isInReconnectZone } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
@@ -19,6 +21,7 @@ import { FriendGraph } from "./FriendGraph.js";
 import { FriendDetailPanel } from "./FriendDetailPanel.js";
 import { AccountDetailPanel } from "./AccountDetailPanel.js";
 import { FriendEditor } from "./FriendEditor.js";
+import { ChannelAvatar } from "../ChannelAvatar.js";
 import { SearchField } from "../SearchField.js";
 import { UsersIcon, MapPinIcon } from "../icons.js";
 import {
@@ -44,7 +47,7 @@ const MAX_SIDEBAR_WIDTH = 400;
 const FILTER_OPTIONS: Array<{ id: FriendOverviewFilter; label: string }> = [
   { id: "need_outreach", label: "Need outreach" },
   { id: "no_contact", label: "No contact logged" },
-  { id: "close_friends", label: "Close friends" },
+  { id: "close_friends", label: "Fam" },
   { id: "recently_active", label: "Recently active" },
   { id: "has_location", label: "Has location" },
 ];
@@ -58,6 +61,14 @@ const SORT_OPTIONS: Array<{ id: FriendOverviewSort; label: string }> = [
 
 const BUTTON_CHROME = "btn-secondary rounded-lg px-3 py-1.5 text-xs";
 const FRIENDS_SIDEBAR_SECTION = "theme-dialog-divider border-b px-4 py-3";
+
+type RelationshipTierLevel = 1 | 3 | 5;
+
+const RELATIONSHIP_TIER_OPTIONS: Array<{ level: RelationshipTierLevel; label: string }> = [
+  { level: 1, label: "Followed" },
+  { level: 3, label: "Friends" },
+  { level: 5, label: "Fam" },
+];
 
 type EditorState =
   | { kind: "new"; draft?: Partial<Friend> | null }
@@ -79,6 +90,83 @@ function CareDots({ level }: { level: 1 | 2 | 3 | 4 | 5 }) {
           className={`h-1.5 w-1.5 rounded-full ${value <= level ? "bg-[color:var(--theme-accent-secondary)]" : "bg-[color:var(--theme-border-subtle)]"}`}
         />
       ))}
+    </div>
+  );
+}
+
+function relationshipTierLevelForPerson(person: Pick<Person, "relationshipStatus" | "careLevel">): RelationshipTierLevel {
+  if (person.relationshipStatus !== "friend") return 1;
+  return person.careLevel >= 5 ? 5 : 3;
+}
+
+function relationshipTierLabelForPerson(person: Pick<Person, "relationshipStatus" | "careLevel">): string {
+  return RELATIONSHIP_TIER_OPTIONS.find((option) => option.level === relationshipTierLevelForPerson(person))?.label ?? "Followed";
+}
+
+function relationshipPatchForLevel(level: RelationshipTierLevel): Pick<Person, "relationshipStatus" | "careLevel"> {
+  if (level === 1) {
+    return { relationshipStatus: "connection", careLevel: 1 };
+  }
+  return { relationshipStatus: "friend", careLevel: level };
+}
+
+function RelationshipTierBadge({ person }: { person: Pick<Person, "relationshipStatus" | "careLevel"> }) {
+  return (
+    <span className="theme-chip rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]">
+      {relationshipTierLabelForPerson(person)}
+    </span>
+  );
+}
+
+function RelationshipTierControl({
+  value,
+  onChange,
+}: {
+  value: RelationshipTierLevel;
+  onChange: (level: RelationshipTierLevel) => void;
+}) {
+  const [dragOverLevel, setDragOverLevel] = useState<RelationshipTierLevel | null>(null);
+
+  useEffect(() => {
+    const handleDragOver = (event: Event) => {
+      const detail = (event as CustomEvent<{ level: RelationshipTierLevel | null }>).detail;
+      setDragOverLevel(detail?.level ?? null);
+    };
+    window.addEventListener("freed-friend-tier-dragover", handleDragOver);
+    return () => window.removeEventListener("freed-friend-tier-dragover", handleDragOver);
+  }, []);
+
+  return (
+    <div className="theme-dialog-divider border-b px-4 py-4" data-testid="relationship-tier-control">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+          Relationship
+        </p>
+        <span className="text-xs font-medium text-[color:var(--theme-text-primary)]">
+          {RELATIONSHIP_TIER_OPTIONS.find((option) => option.level === value)?.label ?? "Followed"}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 rounded-2xl bg-[color:var(--theme-bg-muted)] p-1">
+        {RELATIONSHIP_TIER_OPTIONS.map((option) => {
+          const active = option.level === value;
+          const dragTarget = option.level === dragOverLevel;
+          return (
+            <button
+              key={option.level}
+              type="button"
+              data-friend-tier-drop-value={option.level}
+              onClick={() => onChange(option.level)}
+              className={`rounded-xl px-2 py-2 text-xs font-semibold transition-colors ${
+                active
+                  ? "bg-[color:var(--theme-bg-card)] text-[color:var(--theme-text-primary)] shadow-[var(--theme-glow-sm)]"
+                  : "text-[color:var(--theme-text-muted)] hover:bg-[color:var(--theme-bg-card-hover)] hover:text-[color:var(--theme-text-primary)]"
+              } ${dragTarget ? "ring-2 ring-[color:var(--theme-accent-secondary)]" : ""}`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -123,7 +211,10 @@ function FriendListRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">{entry.friend.name}</p>
-            <CareDots level={entry.friend.careLevel} />
+            <div className="flex shrink-0 items-center gap-2">
+              <RelationshipTierBadge person={entry.friend} />
+              <CareDots level={entry.friend.careLevel} />
+            </div>
           </div>
           {entry.friend.bio && (
             <p className="mt-1 line-clamp-2 text-xs text-[color:var(--theme-text-muted)]">{entry.friend.bio}</p>
@@ -166,6 +257,169 @@ function CompactDetailCard({
         className="pointer-events-auto theme-floating-panel w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl px-4 py-3 shadow-2xl shadow-black/30"
       >
         {children}
+      </div>
+    </div>
+  );
+}
+
+function evidenceIdLabel(itemId: string): string {
+  return `...${itemId.slice(-8)}`;
+}
+
+function friendSuggestionSignalLabel(suggestion: FriendCandidateSuggestion): string {
+  const entries = Object.entries(suggestion.signalCounts)
+    .filter(([, count]) => (count ?? 0) > 0)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .slice(0, 4);
+  if (entries.length === 0) return "No classified signals yet";
+  return entries
+    .map(([signal, count]) => `${signal.replace(/_/g, " ")} ${Number(count).toLocaleString()}`)
+    .join(", ");
+}
+
+function FriendSuggestionEvidence({
+  suggestion,
+  onPromoteToFriend,
+  onPromoteToFam,
+  onDismiss,
+}: {
+  suggestion: FriendCandidateSuggestion;
+  onPromoteToFriend?: () => void;
+  onPromoteToFam?: () => void;
+  onDismiss: (suggestionId: string) => void;
+}) {
+  return (
+    <div className="theme-dialog-divider border-b px-4 py-4" data-testid="friend-candidate-detail">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+            Suggested friend
+          </p>
+          <p className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
+            Score {suggestion.score.toLocaleString()}, {suggestion.confidence} confidence
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => onDismiss(suggestion.id)}
+            className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
+          >
+            Dismiss
+          </button>
+          {onPromoteToFriend ? (
+            <button
+              type="button"
+              onClick={onPromoteToFriend}
+              className="btn-primary rounded-lg px-3 py-1.5 text-xs"
+            >
+              Promote to friend
+            </button>
+          ) : null}
+          {onPromoteToFam ? (
+            <button
+              type="button"
+              onClick={onPromoteToFam}
+              className="btn-primary rounded-lg px-3 py-1.5 text-xs"
+            >
+              Promote to Fam
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {suggestion.reasons.map((reason) => (
+          <span
+            key={reason.code}
+            className="theme-chip rounded-full px-2 py-0.5 text-[11px]"
+          >
+            {reason.label}
+          </span>
+        ))}
+      </div>
+      <p className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
+        {friendSuggestionSignalLabel(suggestion)}
+      </p>
+      {suggestion.sampleItemIds.length > 0 ? (
+        <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
+          Evidence {suggestion.sampleItemIds.map(evidenceIdLabel).join(", ")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function FriendCandidateRow({
+  suggestion,
+  selected,
+  onSelect,
+  onDismiss,
+  onPromoteToFriend,
+  onPromoteToFam,
+}: {
+  suggestion: FriendCandidateSuggestion;
+  selected: boolean;
+  onSelect: () => void;
+  onDismiss: (suggestionId: string) => void;
+  onPromoteToFriend: () => void;
+  onPromoteToFam: () => void;
+}) {
+  const lastActivity = suggestion.lastActivityAt
+    ? formatDistanceToNow(suggestion.lastActivityAt, { addSuffix: true })
+    : "No recent posts";
+  return (
+    <div
+      data-testid="friend-candidate-suggestion"
+      className={`theme-card-soft rounded-2xl px-3 py-3 transition-colors ${
+        selected
+          ? "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-bg-card-hover)]"
+          : ""
+      }`}
+    >
+      <button type="button" onClick={onSelect} className="w-full text-left">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
+              {suggestion.displayName}
+            </p>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+              Score {suggestion.score.toLocaleString()}, {lastActivity}
+            </p>
+          </div>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+            suggestion.confidence === "high"
+              ? "bg-[color:rgb(var(--theme-feedback-success-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-success-rgb))]"
+              : "bg-[color:rgb(var(--theme-feedback-warning-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-warning-rgb))]"
+          }`}>
+            {suggestion.confidence}
+          </span>
+        </div>
+        <p className="mt-2 line-clamp-1 text-xs text-[color:var(--theme-text-muted)]">
+          {suggestion.reasons.map((reason) => reason.label).join(", ")}
+        </p>
+      </button>
+      <div className="mt-3 flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => onDismiss(suggestion.id)}
+          className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
+        >
+          Dismiss
+        </button>
+        <button
+          type="button"
+          onClick={onPromoteToFriend}
+          className="btn-primary rounded-lg px-3 py-1.5 text-xs"
+        >
+          Promote to friend
+        </button>
+        <button
+          type="button"
+          onClick={onPromoteToFam}
+          className="btn-primary rounded-lg px-3 py-1.5 text-xs"
+        >
+          Promote to Fam
+        </button>
       </div>
     </div>
   );
@@ -250,12 +504,12 @@ function contactAccountDraft(
   };
 }
 
-function friendDraftFromAccount(account: Account): Partial<Friend> {
+function friendDraftFromAccount(account: Account, careLevel: 3 | 5 = 3): Partial<Friend> {
   return {
     name: account.displayName ?? account.handle ?? account.externalId,
     avatarUrl: account.avatarUrl,
     relationshipStatus: "friend",
-    careLevel: 3,
+    careLevel,
     sources: account.kind === "social" ? [accountToFriendSource(account)] : [],
   };
 }
@@ -284,6 +538,7 @@ export function FriendsView({
   const setActiveView = useAppStore((s) => s.setActiveView);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const display = useAppStore((s) => s.preferences.display);
+  const friendSuggestionPreferences = useAppStore((s) => s.preferences.friendSuggestions);
   const savedSidebarWidth = Math.min(
     MAX_SIDEBAR_WIDTH,
     display.friendsSidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
@@ -305,7 +560,7 @@ export function FriendsView({
   const pendingPersistedSidebarWidth = useRef<number | null>(null);
   const isMobile = useIsMobile();
 
-  const { openReview } = useContactSyncContext();
+  const contactSync = useContactSyncContext();
 
   const feedItems = useMemo(() => {
     const map: Record<string, FeedItem> = {};
@@ -362,6 +617,56 @@ export function FriendsView({
     () => buildSuggestionsByPerson(persons, accounts),
     [accounts, persons],
   );
+  const friendCandidateSuggestions = useMemo(
+    () =>
+      buildFriendCandidateSuggestions({
+        persons: allPersons,
+        accounts,
+        feedItems: items,
+        contactSuggestions: contactSync.syncState.pendingSuggestions,
+        preferences: friendSuggestionPreferences,
+        limit: 10,
+      }),
+    [accounts, allPersons, contactSync.syncState.pendingSuggestions, friendSuggestionPreferences, items],
+  );
+  const friendCandidateByPerson = useMemo(() => {
+    const next = new Map<string, FriendCandidateSuggestion>();
+    for (const suggestion of friendCandidateSuggestions) {
+      if (suggestion.personId && !next.has(suggestion.personId)) {
+        next.set(suggestion.personId, suggestion);
+      }
+    }
+    return next;
+  }, [friendCandidateSuggestions]);
+  const friendCandidateByAccount = useMemo(() => {
+    const next = new Map<string, FriendCandidateSuggestion>();
+    for (const suggestion of friendCandidateSuggestions) {
+      for (const accountId of suggestion.accountIds) {
+        if (!next.has(accountId)) {
+          next.set(accountId, suggestion);
+        }
+      }
+    }
+    return next;
+  }, [friendCandidateSuggestions]);
+  const friendSuggestionStrengthByPerson = useMemo(() => {
+    const next = new Map<string, FriendCandidateConfidence>();
+    for (const suggestion of friendCandidateSuggestions) {
+      if (suggestion.personId) {
+        next.set(suggestion.personId, suggestion.confidence);
+      }
+    }
+    return next;
+  }, [friendCandidateSuggestions]);
+  const friendSuggestionStrengthByAccount = useMemo(() => {
+    const next = new Map<string, FriendCandidateConfidence>();
+    for (const suggestion of friendCandidateSuggestions) {
+      for (const accountId of suggestion.accountIds) {
+        next.set(accountId, suggestion.confidence);
+      }
+    }
+    return next;
+  }, [friendCandidateSuggestions]);
 
   const overviewEntries = useMemo(
     () => buildFriendOverviewEntries(friendsById, feedItems),
@@ -389,6 +694,12 @@ export function FriendsView({
     () => (selectedPerson ? suggestionsByPerson.get(selectedPerson.id) ?? [] : []),
     [selectedPerson, suggestionsByPerson],
   );
+  const selectedPersonFriendSuggestion = selectedPerson
+    ? friendCandidateByPerson.get(selectedPerson.id) ?? null
+    : null;
+  const selectedAccountFriendSuggestion = selectedAccount
+    ? friendCandidateByAccount.get(selectedAccount.id) ?? null
+    : null;
   const selectedOverviewEntry = useMemo(
     () =>
       selectedPerson
@@ -607,19 +918,112 @@ export function FriendsView({
     [updateAccount],
   );
 
-  const handlePromoteSelectedAccount = useCallback(() => {
+  const handleSetPersonRelationshipLevel = useCallback(async (person: Person, level: RelationshipTierLevel) => {
+    await updatePerson(person.id, {
+      ...relationshipPatchForLevel(level),
+      updatedAt: Date.now(),
+    });
+    setSelectedPerson(person.id);
+  }, [setSelectedPerson, updatePerson]);
+
+  const handlePromoteSelectedAccount = useCallback(async (level: 3 | 5 = 3) => {
     if (!selectedAccount) return;
-    setEditorState({ kind: "new", draft: friendDraftFromAccount(selectedAccount) });
-  }, [selectedAccount]);
+    const linkedPerson = selectedAccount.personId ? persons[selectedAccount.personId] ?? null : null;
+    if (linkedPerson) {
+      await handleSetPersonRelationshipLevel(linkedPerson, level);
+      return;
+    }
+    setEditorState({ kind: "new", draft: friendDraftFromAccount(selectedAccount, level) });
+  }, [handleSetPersonRelationshipLevel, persons, selectedAccount]);
+
+  const handlePromoteSelectedPerson = useCallback(async (level: 3 | 5 = 3) => {
+    if (!selectedPerson) return;
+    await handleSetPersonRelationshipLevel(selectedPerson, level);
+  }, [handleSetPersonRelationshipLevel, selectedPerson]);
+
+  const handlePromoteFriendSuggestion = useCallback(async (
+    suggestion: FriendCandidateSuggestion,
+    level: 3 | 5,
+  ) => {
+    if (suggestion.personId) {
+      const person = persons[suggestion.personId];
+      if (person) {
+        await handleSetPersonRelationshipLevel(person, level);
+        return;
+      }
+    }
+    const account = suggestion.accountIds.map((accountId) => accounts[accountId]).find(Boolean);
+    if (!account) return;
+    const linkedPerson = account.personId ? persons[account.personId] ?? null : null;
+    if (linkedPerson) {
+      await handleSetPersonRelationshipLevel(linkedPerson, level);
+      return;
+    }
+    setSelectedAccount(account.id);
+    setEditorState({ kind: "new", draft: friendDraftFromAccount(account, level) });
+  }, [accounts, handleSetPersonRelationshipLevel, persons, setSelectedAccount]);
+
+  const handleDropGraphNodeToRelationshipTier = useCallback(async ({
+    personId,
+    accountId,
+    level,
+  }: {
+    personId?: string;
+    accountId?: string;
+    level: RelationshipTierLevel;
+  }) => {
+    if (personId) {
+      const person = persons[personId];
+      if (person) {
+        await handleSetPersonRelationshipLevel(person, level);
+      }
+      return;
+    }
+
+    if (!accountId || level === 1) return;
+    const account = accounts[accountId];
+    if (!account) return;
+    const linkedPerson = account.personId ? persons[account.personId] ?? null : null;
+    if (linkedPerson) {
+      await handleSetPersonRelationshipLevel(linkedPerson, level);
+      return;
+    }
+    setSelectedAccount(account.id);
+    setEditorState({ kind: "new", draft: friendDraftFromAccount(account, level) });
+  }, [accounts, handleSetPersonRelationshipLevel, persons, setSelectedAccount]);
+
+  const handleDismissFriendSuggestion = useCallback((suggestionId: string) => {
+    const current = friendSuggestionPreferences?.dismissedSuggestionIds ?? [];
+    if (current.includes(suggestionId)) return;
+    void updatePreferences({
+      friendSuggestions: {
+        dismissedSuggestionIds: [...current, suggestionId],
+      },
+    } as Parameters<typeof updatePreferences>[0]);
+  }, [friendSuggestionPreferences, updatePreferences]);
+
+  const handleSelectFriendCandidate = useCallback((suggestion: FriendCandidateSuggestion) => {
+    if (suggestion.personId) {
+      const person = persons[suggestion.personId];
+      if (person) {
+        handleSelectPerson(person, true);
+        return;
+      }
+    }
+    const account = suggestion.accountIds.map((accountId) => accounts[accountId]).find(Boolean);
+    if (account) {
+      handleSelectAccount(account, true);
+    }
+  }, [accounts, handleSelectAccount, handleSelectPerson, persons]);
 
   const handleOpenSyncModal = useCallback(async () => {
     setOpeningSyncModal(true);
     try {
-      await openReview();
+      await contactSync.openReview();
     } finally {
       setOpeningSyncModal(false);
     }
-  }, [openReview]);
+  }, [contactSync]);
 
   const toggleFilter = useCallback((filter: FriendOverviewFilter) => {
     setActiveFilters((current) => {
@@ -769,7 +1173,7 @@ export function FriendsView({
           <select
             value={sortBy}
             onChange={(event) => setSortBy(event.target.value as FriendOverviewSort)}
-            className="theme-input theme-select rounded-lg px-2.5 py-1.5 text-xs"
+            className="theme-input theme-select min-w-[10.75rem] rounded-lg py-1.5 pl-2.5 pr-8 text-xs"
           >
             {SORT_OPTIONS.map((option) => (
               <option key={option.id} value={option.id}>
@@ -781,6 +1185,34 @@ export function FriendsView({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        {friendCandidateSuggestions.length > 0 ? (
+          <div className="mb-5" data-testid="friend-candidate-suggestions">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+                  Suggested friends
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {friendCandidateSuggestions.map((suggestion) => (
+                <FriendCandidateRow
+                  key={suggestion.id}
+                  suggestion={suggestion}
+                  selected={
+                    (suggestion.personId !== undefined && suggestion.personId === selectedPerson?.id) ||
+                    (selectedAccount?.id !== undefined && suggestion.accountIds.includes(selectedAccount.id))
+                  }
+                  onSelect={() => handleSelectFriendCandidate(suggestion)}
+                  onDismiss={handleDismissFriendSuggestion}
+                  onPromoteToFriend={() => void handlePromoteFriendSuggestion(suggestion, 3)}
+                  onPromoteToFam={() => void handlePromoteFriendSuggestion(suggestion, 5)}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {filteredOverviewEntries.length === 0 ? (
           <div className="theme-panel-muted rounded-xl px-4 py-6 text-center">
             <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">No friends match those filters</p>
@@ -819,7 +1251,7 @@ export function FriendsView({
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{selectedPerson?.name}</h2>
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-              {selectedPerson?.relationshipStatus === "friend" ? "Friend detail" : "Provisional identity"}
+              {selectedPerson ? relationshipTierLabelForPerson(selectedPerson) : "Followed"}
             </p>
           </div>
         </div>
@@ -834,6 +1266,22 @@ export function FriendsView({
           </button>
         )}
       </div>
+
+      {selectedPerson ? (
+        <RelationshipTierControl
+          value={relationshipTierLevelForPerson(selectedPerson)}
+          onChange={(level) => void handleSetPersonRelationshipLevel(selectedPerson, level)}
+        />
+      ) : null}
+
+      {selectedPersonFriendSuggestion ? (
+        <FriendSuggestionEvidence
+          suggestion={selectedPersonFriendSuggestion}
+          onPromoteToFriend={() => void handlePromoteSelectedPerson(3)}
+          onPromoteToFam={() => void handlePromoteSelectedPerson(5)}
+          onDismiss={handleDismissFriendSuggestion}
+        />
+      ) : null}
 
       {selectedPerson && selectedPersonSuggestions.length > 0 ? (
         <div className="theme-dialog-divider border-b px-4 py-4">
@@ -904,10 +1352,13 @@ export function FriendsView({
         account={selectedAccount}
         linkedPerson={linkedPerson}
         suggestions={selectedAccountSuggestions}
+        friendSuggestion={selectedAccountFriendSuggestion}
         persons={allPersons}
         feedItems={selectedAccountFeedItems}
         onBack={handleClearSelection}
-        onPromoteToFriend={handlePromoteSelectedAccount}
+        onPromoteToFriend={() => void handlePromoteSelectedAccount(3)}
+        onPromoteToFam={() => void handlePromoteSelectedAccount(5)}
+        onDismissFriendSuggestion={handleDismissFriendSuggestion}
         onLinkToPerson={(personId) => void handleLinkAccountToPerson(selectedAccount.id, personId)}
         onOpenPerson={(personId) => {
           const person = persons[personId];
@@ -967,10 +1418,11 @@ export function FriendsView({
       return (
         <CompactDetailCard>
           <div className="flex items-start gap-3">
-            <FriendAvatar
+            <ChannelAvatar
               name={accountTitle(selectedAccount)}
               avatarUrl={selectedAccount.avatarUrl}
               size={48}
+              className="text-lg"
             />
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-3">
@@ -1017,7 +1469,7 @@ export function FriendsView({
             ) : (
               <button
                 type="button"
-                onClick={handlePromoteSelectedAccount}
+                onClick={() => void handlePromoteSelectedAccount(3)}
                 className={BUTTON_CHROME}
               >
                 Promote to friend
@@ -1062,7 +1514,7 @@ export function FriendsView({
                     {selectedFriend.name}
                   </p>
                   <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                    {selectedPerson.relationshipStatus === "friend" ? "Friend" : "Provisional identity"}
+                    {relationshipTierLabelForPerson(selectedPerson)}
                   </p>
                 </div>
                 <button
@@ -1161,6 +1613,9 @@ export function FriendsView({
                 onLinkAccountToPerson={handleLinkAccountToPerson}
                 onPinPersonPosition={handlePinPersonPosition}
                 onPinAccountPosition={handlePinAccountPosition}
+                onDropNodeToRelationshipTier={handleDropGraphNodeToRelationshipTier}
+                friendSuggestionStrengthByPerson={friendSuggestionStrengthByPerson}
+                friendSuggestionStrengthByAccount={friendSuggestionStrengthByAccount}
                 themeId={themeId}
               />
             )}

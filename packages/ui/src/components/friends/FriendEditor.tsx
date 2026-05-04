@@ -24,6 +24,7 @@ import {
   BookmarkIcon,
 } from "../icons.js";
 import type { ReactNode } from "react";
+import { ChannelAvatar } from "../ChannelAvatar.js";
 import { SearchField } from "../SearchField.js";
 
 // ---------------------------------------------------------------------------
@@ -48,11 +49,11 @@ const platformIcons: Record<string, ReactNode> = {
 // ---------------------------------------------------------------------------
 
 const CARE_LABELS: Record<1 | 2 | 3 | 4 | 5, string> = {
-  5: "Closest — nudge weekly",
-  4: "Close — nudge every 2 weeks",
-  3: "Good friend — nudge monthly",
-  2: "Acquaintance — nudge quarterly",
-  1: "Peripheral — no nudges",
+  5: "Fam, nudge weekly",
+  4: "High friend, nudge every 2 weeks",
+  3: "Friend, nudge monthly",
+  2: "Acquaintance, nudge quarterly",
+  1: "Followed, no nudges",
 };
 
 // ---------------------------------------------------------------------------
@@ -371,7 +372,7 @@ export function FriendEditor({
               ))}
               <div className="mt-2">
                 <label className="text-xs text-text-secondary mb-1 block">
-                  Custom interval (days) — overrides the default above
+                  Custom interval (days), overrides the default above
                 </label>
                 <input
                   type="number"
@@ -520,15 +521,12 @@ export function FriendEditor({
                   onClick={() => toggleSource(c)}
                   className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors text-left"
                 >
-                  {c.avatarUrl ? (
-                    <img
-                      src={c.avatarUrl}
-                      alt=""
-                      className="w-6 h-6 rounded-full bg-white/5 shrink-0"
-                    />
-                  ) : (
-                    <div className="h-6 w-6 shrink-0 rounded-full" style={{ background: "var(--theme-button-primary-background)" }} />
-                  )}
+                  <ChannelAvatar
+                    name={c.displayName}
+                    avatarUrl={c.avatarUrl}
+                    size={24}
+                    className="text-xs"
+                  />
                   <span className="flex-1 min-w-0">
                     <span className="text-xs text-text-primary truncate block">
                       {c.displayName}

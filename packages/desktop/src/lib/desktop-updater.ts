@@ -1,5 +1,9 @@
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { getWebsiteHostForChannel, type ReleaseChannel } from "@freed/shared";
+import {
+  getWebsiteHostForChannel,
+  stripReleaseChannelSuffix,
+  type ReleaseChannel,
+} from "@freed/shared";
 import {
   buildDesktopUpdateTargets,
   getNativeUpdaterTarget,
@@ -23,6 +27,30 @@ export type PendingDesktopUpdate = {
 export type DesktopInstallProgress =
   | { phase: "downloading"; percent: number }
   | { phase: "ready" };
+
+function parseUpdateVersion(version: string): [number, number, number] {
+  const [yy = "0", month = "0", patch = "0"] = stripReleaseChannelSuffix(
+    version,
+  ).split(".");
+  return [Number(yy) || 0, Number(month) || 0, Number(patch) || 0];
+}
+
+function compareUpdateVersions(left: string, right: string): number {
+  const a = parseUpdateVersion(left);
+  const b = parseUpdateVersion(right);
+
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) {
+      return a[index] - b[index];
+    }
+  }
+
+  return 0;
+}
+
+function isNewerUpdate(left: Update, right: Update): boolean {
+  return compareUpdateVersions(left.version, right.version) > 0;
+}
 
 export function mapUpdaterTargetToDownloadTarget(
   updaterTarget: string,
@@ -69,19 +97,24 @@ export async function checkDesktopUpdate(
     nativeUpdaterTarget,
   );
 
+  let latestUpdate: PendingDesktopUpdate | null = null;
+
   for (const candidate of buildDesktopUpdateTargets(channel, nativeUpdaterTarget)) {
     const update = await check({ target: candidate.target });
     if (update) {
-      return {
+      const pendingUpdate = {
         channel: candidate.channel,
         update,
         fallbackDownloadUrl,
         nativeUpdaterTarget,
       };
+      if (!latestUpdate || isNewerUpdate(update, latestUpdate.update)) {
+        latestUpdate = pendingUpdate;
+      }
     }
   }
 
-  return null;
+  return latestUpdate;
 }
 
 export async function installPendingDesktopUpdate(

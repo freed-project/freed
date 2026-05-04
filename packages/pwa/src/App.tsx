@@ -29,6 +29,7 @@ import {
   stopCloudSync,
   getCloudProvider,
   getCloudToken,
+  getValidCloudToken,
   clearCloudSync,
   deleteCloudFile,
 } from "./lib/sync";
@@ -55,6 +56,8 @@ import {
   persistReleaseChannel,
 } from "@freed/ui/lib/release-channel";
 import { saveUrlInPwa } from "./lib/save-url";
+import { getCachedArticleHtml } from "@freed/ui/lib/article-cache";
+import { hydrateReaderItemInPwa, pinReaderItemInPwa } from "./lib/reader-cache";
 import {
   clearInstallNoticeDismissal,
   dismissInstallNotice,
@@ -294,20 +297,19 @@ function App() {
       },
       // PWA local content: check the Workbox Cache API
       getLocalContent: async (globalId: string) => {
-        if (!("caches" in window)) return null;
         try {
-          const cache = await caches.open("freed-articles-v1");
-          const resp = await cache.match(`/content/${globalId}`);
-          return resp ? resp.text() : null;
+          return await getCachedArticleHtml(globalId);
         } catch {
           return null;
         }
       },
+      hydrateReaderItem: hydrateReaderItemInPwa,
+      pinReaderItem: pinReaderItemInPwa,
       // Web Contact Picker API — available on iOS/Android, absent on desktop browsers.
       // FriendEditor falls back to manual entry when this is undefined at runtime.
       pickContact: pickContactViaWebApi,
       googleContacts: {
-        getToken: () => localStorage.getItem("freed_cloud_token_gdrive"),
+        getToken: () => getValidCloudToken("gdrive"),
         connect: initiateGDriveOAuth,
       },
       openUrl: (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); },

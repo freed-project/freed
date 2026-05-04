@@ -13,6 +13,7 @@ export * from "./ranking";
 // Re-export local content signal inference (browser-safe, no deps)
 export * from "./content-signals";
 export * from "./feed-signal-filters";
+export * from "./local-ai";
 
 // Re-export OPML utilities (browser-safe, no Automerge)
 export * from "./opml";
@@ -26,6 +27,7 @@ export * from "./navigation-state";
 
 // Re-export friends identity resolution and CRM utilities (browser-safe, no deps)
 export * from "./friends";
+export * from "./friend-suggestions";
 export * from "./identity-graph";
 export * from "./contact-sync-state";
 

@@ -5,21 +5,39 @@ import { log } from "./logger";
 
 const MEMORY_SAMPLE_INTERVAL_MS = 15_000;
 const MEMORY_LOG_INTERVAL = 4;
-const HIGH_RESIDENT_BYTES = 1_500 * 1024 * 1024;
-const CRITICAL_RESIDENT_BYTES = 3_000 * 1024 * 1024;
+const BYTES_PER_GIB = 1024 * 1024 * 1024;
+const MIN_CRITICAL_RESIDENT_BYTES = 3.5 * BYTES_PER_GIB;
+const MAX_CRITICAL_RESIDENT_BYTES = 8 * BYTES_PER_GIB;
 const HIGH_RELAY_DOC_BYTES = 64 * 1024 * 1024;
+const PRESSURE_SAMPLE_MAX_AGE_MS = 30_000;
 
 interface NativeRuntimeMemoryStats {
+  totalPhysicalMemoryBytes: number;
   processResidentBytes: number;
   processVirtualBytes: number;
+  appResidentBytes: number;
   webkitResidentBytes?: number;
   webkitVirtualBytes?: number;
   webkitProcessId?: number;
+  webkitTotalResidentBytes?: number;
+  webkitProcessCount?: number;
+  webkitLargestResidentBytes?: number;
+  webkitLargestProcessId?: number;
   webkitTelemetryAvailable?: boolean;
   indexedDbBytes?: number;
   webkitCacheBytes?: number;
+  memoryHighBytes?: number;
+  memoryCriticalBytes?: number;
   relayDocBytes: number;
   relayClientCount: number;
+}
+
+interface ScrapeMemoryPreparation {
+  before: NativeRuntimeMemoryStats;
+  after: NativeRuntimeMemoryStats;
+  recycledScraperWindows: boolean;
+  cacheTrimmed: boolean;
+  mayProceed: boolean;
 }
 
 interface BrowserMemoryStats {
@@ -51,12 +69,14 @@ let peakWebkitResidentBytes = 0;
 let peakRelayDocBytes = 0;
 let lastCriticalToastAt = 0;
 let currentPressureLevel: MemoryPressureLevel = "normal";
+let currentPressureSampleAt = 0;
 
 type MemoryPressureLevel = "normal" | "high" | "critical";
 
 interface MemoryMonitorOptions {
   getAutomergeStats?: () => { binaryBytes?: number; itemCount?: number } | null;
   onCriticalPressure?: (snapshot: RuntimeMemorySnapshot) => void;
+  onSample?: (snapshot: RuntimeMemorySnapshot) => void;
 }
 
 export function formatBytesForMemoryLog(bytes: number): string {
@@ -66,10 +86,52 @@ export function formatBytesForMemoryLog(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-export function getMemoryPressureLevel(bytes: number): MemoryPressureLevel {
-  if (bytes >= CRITICAL_RESIDENT_BYTES) return "critical";
-  if (bytes >= HIGH_RESIDENT_BYTES) return "high";
+export function getAdaptiveMemoryLimits(totalPhysicalMemoryBytes: number): {
+  highBytes: number;
+  criticalBytes: number;
+} {
+  const proportional = Math.floor(totalPhysicalMemoryBytes * 0.12);
+  const criticalBytes = Math.min(
+    Math.max(proportional, MIN_CRITICAL_RESIDENT_BYTES),
+    MAX_CRITICAL_RESIDENT_BYTES,
+  );
+  return {
+    highBytes: Math.floor(criticalBytes * 0.7),
+    criticalBytes,
+  };
+}
+
+export function getMemoryPressureLevel(
+  bytes: number,
+  limits = getAdaptiveMemoryLimits(0),
+): MemoryPressureLevel {
+  if (bytes >= limits.criticalBytes) return "critical";
+  if (bytes >= limits.highBytes) return "high";
   return "normal";
+}
+
+function emptyNativeRuntimeMemoryStats(): NativeRuntimeMemoryStats {
+  const limits = getAdaptiveMemoryLimits(0);
+  return {
+    totalPhysicalMemoryBytes: 0,
+    processResidentBytes: 0,
+    processVirtualBytes: 0,
+    appResidentBytes: 0,
+    webkitResidentBytes: undefined,
+    webkitVirtualBytes: undefined,
+    webkitProcessId: undefined,
+    webkitTotalResidentBytes: undefined,
+    webkitProcessCount: 0,
+    webkitLargestResidentBytes: undefined,
+    webkitLargestProcessId: undefined,
+    webkitTelemetryAvailable: false,
+    indexedDbBytes: undefined,
+    webkitCacheBytes: undefined,
+    memoryHighBytes: limits.highBytes,
+    memoryCriticalBytes: limits.criticalBytes,
+    relayDocBytes: 0,
+    relayClientCount: 0,
+  };
 }
 
 async function sampleRuntimeMemory(
@@ -82,43 +144,56 @@ async function sampleRuntimeMemory(
   const automerge = options.getAutomergeStats?.() ?? null;
   const native = canSampleNativeMemoryStats()
     ? await invoke<NativeRuntimeMemoryStats>("get_runtime_memory_stats")
-    : {
-        processResidentBytes: 0,
-        processVirtualBytes: 0,
-        webkitResidentBytes: undefined,
-        webkitVirtualBytes: undefined,
-        webkitProcessId: undefined,
-        webkitTelemetryAvailable: false,
-        indexedDbBytes: undefined,
-        webkitCacheBytes: undefined,
-        relayDocBytes: 0,
-        relayClientCount: 0,
-      };
-  const pressureBytes = native.webkitResidentBytes ?? native.processResidentBytes;
-  const pressureLevel = getMemoryPressureLevel(pressureBytes);
+    : emptyNativeRuntimeMemoryStats();
+  const limits = {
+    highBytes:
+      native.memoryHighBytes ??
+      getAdaptiveMemoryLimits(native.totalPhysicalMemoryBytes).highBytes,
+    criticalBytes:
+      native.memoryCriticalBytes ??
+      getAdaptiveMemoryLimits(native.totalPhysicalMemoryBytes).criticalBytes,
+  };
+  const pressureBytes = native.appResidentBytes ?? native.processResidentBytes;
+  const pressureLevel = getMemoryPressureLevel(pressureBytes, limits);
   currentPressureLevel = pressureLevel;
+  currentPressureSampleAt = Date.now();
 
-  peakResidentBytes = Math.max(peakResidentBytes, native.processResidentBytes);
-  peakWebkitResidentBytes = Math.max(peakWebkitResidentBytes, native.webkitResidentBytes ?? 0);
+  peakResidentBytes = Math.max(peakResidentBytes, pressureBytes);
+  peakWebkitResidentBytes = Math.max(
+    peakWebkitResidentBytes,
+    native.webkitTotalResidentBytes ?? native.webkitResidentBytes ?? 0,
+  );
   peakRelayDocBytes = Math.max(peakRelayDocBytes, native.relayDocBytes);
 
   const snapshot: RuntimeMemorySnapshot = {
+    totalPhysicalMemoryBytes: native.totalPhysicalMemoryBytes,
     processResidentBytes: native.processResidentBytes,
     processVirtualBytes: native.processVirtualBytes,
+    appResidentBytes: native.appResidentBytes,
     webkitResidentBytes: native.webkitResidentBytes,
     webkitVirtualBytes: native.webkitVirtualBytes,
     webkitProcessId: native.webkitProcessId,
+    webkitTotalResidentBytes: native.webkitTotalResidentBytes,
+    webkitProcessCount: native.webkitProcessCount,
+    webkitLargestResidentBytes: native.webkitLargestResidentBytes,
+    webkitLargestProcessId: native.webkitLargestProcessId,
     webkitTelemetryAvailable: native.webkitTelemetryAvailable,
     automergeBinaryBytes: automerge?.binaryBytes,
     automergeItemCount: automerge?.itemCount,
     indexedDbBytes: native.indexedDbBytes,
     webkitCacheBytes: native.webkitCacheBytes,
+    memoryHighBytes: limits.highBytes,
+    memoryCriticalBytes: limits.criticalBytes,
     pressureLevel,
     relayDocBytes: native.relayDocBytes,
     relayClientCount: native.relayClientCount,
     contentQueuePending: fetcher.pending,
     contentCompleted: fetcher.completed,
     contentFailed: fetcher.failedCount,
+    contentActive: fetcher.active,
+    contentActiveAgeMs: fetcher.activeAgeMs,
+    contentNextDelayMs: fetcher.nextDelayMs,
+    contentBackoffLevel: fetcher.backoffLevel,
     rendererHeapUsedBytes: renderer?.usedJSHeapSize,
     rendererHeapTotalBytes: renderer?.totalJSHeapSize,
     rendererHeapLimitBytes: renderer?.jsHeapSizeLimit,
@@ -126,6 +201,7 @@ async function sampleRuntimeMemory(
     sampleTs: Date.now(),
   };
   setRuntimeMemory(snapshot);
+  options.onSample?.(snapshot);
 
   sampleCount += 1;
   const shouldLog =
@@ -144,12 +220,16 @@ async function sampleRuntimeMemory(
 
   log[level](
     `[memory] pressure=${pressureLevel} ` +
+      `app_rss=${formatBytesForMemoryLog(pressureBytes)} ` +
+      `high_at=${formatBytesForMemoryLog(limits.highBytes)} ` +
+      `critical_at=${formatBytesForMemoryLog(limits.criticalBytes)} ` +
       `native_rss=${formatBytesForMemoryLog(native.processResidentBytes)} ` +
       `peak_native_rss=${formatBytesForMemoryLog(peakResidentBytes)} ` +
       `native_virtual=${formatBytesForMemoryLog(native.processVirtualBytes)} ` +
       (native.webkitTelemetryAvailable
         ? `webkit_pid=${(native.webkitProcessId ?? 0).toLocaleString()} ` +
-          `webkit_rss=${formatBytesForMemoryLog(native.webkitResidentBytes ?? 0)} ` +
+          `webkit_rss=${formatBytesForMemoryLog(native.webkitTotalResidentBytes ?? native.webkitResidentBytes ?? 0)} ` +
+          `webkit_processes=${(native.webkitProcessCount ?? 0).toLocaleString()} ` +
           `peak_webkit_rss=${formatBytesForMemoryLog(peakWebkitResidentBytes)} ` +
           `webkit_virtual=${formatBytesForMemoryLog(native.webkitVirtualBytes ?? 0)} `
         : "webkit_rss=unavailable ") +
@@ -170,7 +250,11 @@ async function sampleRuntimeMemory(
       `relay_clients=${native.relayClientCount.toLocaleString()} ` +
       `fetch_pending=${fetcher.pending.toLocaleString()} ` +
       `fetch_completed=${fetcher.completed.toLocaleString()} ` +
-      `fetch_failed=${fetcher.failedCount.toLocaleString()}` +
+      `fetch_failed=${fetcher.failedCount.toLocaleString()} ` +
+      `fetch_active=${String(fetcher.active)} ` +
+      `fetch_active_age_ms=${(fetcher.activeAgeMs ?? 0).toLocaleString()} ` +
+      `fetch_next_delay_ms=${(fetcher.nextDelayMs ?? 0).toLocaleString()} ` +
+      `fetch_backoff_level=${fetcher.backoffLevel.toLocaleString()}` +
       (renderer
         ? ` renderer_heap=${formatBytesForMemoryLog(renderer.usedJSHeapSize)} ` +
           `renderer_total=${formatBytesForMemoryLog(renderer.totalJSHeapSize)}`
@@ -210,7 +294,30 @@ export function startMemoryMonitor(options: MemoryMonitorOptions = {}): void {
 }
 
 export function isMemoryPressureCritical(): boolean {
-  return currentPressureLevel === "critical";
+  return (
+    currentPressureLevel === "critical" &&
+    Date.now() - currentPressureSampleAt <= PRESSURE_SAMPLE_MAX_AGE_MS
+  );
+}
+
+export async function prepareSocialScrapeMemory(
+  provider: "facebook" | "instagram" | "linkedin",
+  operation: string,
+): Promise<ScrapeMemoryPreparation> {
+  if (!canSampleNativeMemoryStats()) {
+    return {
+      before: emptyNativeRuntimeMemoryStats(),
+      after: emptyNativeRuntimeMemoryStats(),
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    };
+  }
+
+  return invoke<ScrapeMemoryPreparation>("prepare_social_scrape_memory", {
+    provider,
+    operation,
+  });
 }
 
 export function stopMemoryMonitor(): void {

@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { startCloudSync, storeCloudToken, type CloudProvider } from "../lib/sync";
+import { startCloudSync, storeCloudToken, type CloudProvider, type CloudTokenBundle } from "../lib/sync";
 
 const DROPBOX_TOKEN_ENDPOINT = "https://api.dropboxapi.com/oauth2/token";
 
@@ -28,7 +28,7 @@ const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
 const OAUTH_REDIRECT_URI = `${window.location.origin}/oauth-callback`;
 
 type ExchangeResult =
-  | { ok: true; accessToken: string }
+  | { ok: true; token: CloudTokenBundle }
   | { ok: false; error: string };
 
 async function exchangeGDrive(code: string, verifier: string): Promise<ExchangeResult> {
@@ -46,10 +46,17 @@ async function exchangeGDrive(code: string, verifier: string): Promise<ExchangeR
     return { ok: false, error: `GDrive token exchange failed: ${data.error ?? res.status}` };
   }
 
-  const { access_token } = data;
+  const { access_token, refresh_token, expires_in } = data;
   if (!access_token) return { ok: false, error: "GDrive proxy returned no access_token" };
 
-  return { ok: true, accessToken: access_token as string };
+  return {
+    ok: true,
+    token: {
+      accessToken: access_token as string,
+      refreshToken: refresh_token as string | undefined,
+      expiresAt: typeof expires_in === "number" ? Date.now() + expires_in * 1000 : undefined,
+    },
+  };
 }
 
 async function exchangeDropbox(code: string, verifier: string): Promise<ExchangeResult> {
@@ -72,10 +79,17 @@ async function exchangeDropbox(code: string, verifier: string): Promise<Exchange
     return { ok: false, error: `Dropbox token exchange failed (${res.status}): ${text}` };
   }
 
-  const { access_token } = await res.json();
+  const { access_token, refresh_token, expires_in } = await res.json();
   if (!access_token) return { ok: false, error: "Dropbox returned no access_token" };
 
-  return { ok: true, accessToken: access_token as string };
+  return {
+    ok: true,
+    token: {
+      accessToken: access_token as string,
+      refreshToken: refresh_token as string | undefined,
+      expiresAt: typeof expires_in === "number" ? Date.now() + expires_in * 1000 : undefined,
+    },
+  };
 }
 
 type Status = "exchanging" | "success" | "error";
@@ -129,12 +143,12 @@ export function OAuthCallback() {
           return;
         }
 
-        storeCloudToken(provider, result.accessToken);
+        storeCloudToken(provider, result.token);
 
         // Fire-and-forget — token exchange is the success condition.
         // The initial download/merge happens in the background; if it fails
         // the poll loop will retry. Don't block the callback page on it.
-        startCloudSync(provider, result.accessToken).catch((err) => {
+        startCloudSync(provider, result.token.accessToken).catch((err) => {
           console.error("[OAuthCallback] startCloudSync failed:", err);
         });
 

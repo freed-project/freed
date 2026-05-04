@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { FeedList } from "./FeedList.js";
 import { ReaderView } from "./ReaderView.js";
 import { FeedItem as FeedItemCard } from "./FeedItem.js";
+import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
@@ -10,7 +11,7 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import type { FeedItem } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
-import { PRIMARY_SIDEBAR_GAP_WIDTH_PX } from "../layout/layoutConstants.js";
+import { animationAwareScrollBehavior, resolveAnimationIntensity } from "../../lib/animation-preferences.js";
 
 // ─── Compact sidebar panel for dual-column mode ────────────────────────────
 
@@ -19,11 +20,13 @@ const MAX_PANEL_WIDTH = 500;
 const DEFAULT_PANEL_WIDTH = 150;
 const NARROW_THRESHOLD = 150;
 const COMPACT_CARD_GAP = 8;
-const COMPACT_CARD_X_PAD = 0;
+const COMPACT_CARD_LEFT_PAD = 8;
+const COMPACT_CARD_RIGHT_PAD = 4;
+const COMPACT_PANEL_RESIZE_HANDLE_WIDTH = 16;
 
 // Card geometry: all cards are square (width × width), including story tiles.
 // Wrapper padding and row spacing match the nav-button radius token at 10px.
-const CARD_H_PAD = COMPACT_CARD_X_PAD * 2;
+const CARD_H_PAD = COMPACT_CARD_LEFT_PAD + COMPACT_CARD_RIGHT_PAD;
 const CARD_V_GAP = COMPACT_CARD_GAP;
 
 interface CompactFeedPanelProps {
@@ -31,6 +34,9 @@ interface CompactFeedPanelProps {
   selectedId: string;
   selectionMoveDirection?: -1 | 0 | 1;
   onItemClick: (item: FeedItem) => void;
+  markReadOnScroll: boolean;
+  showReadInGrayscale: boolean;
+  markItemsAsRead: (ids: string[]) => Promise<void>;
   width: number;
   leadingOffset?: string;
 }
@@ -40,6 +46,9 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   selectedId,
   selectionMoveDirection = 0,
   onItemClick,
+  markReadOnScroll,
+  showReadInGrayscale,
+  markItemsAsRead,
   width,
   leadingOffset,
 }: CompactFeedPanelProps) {
@@ -84,12 +93,37 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     },
     [items, itemHeight, storyItemHeight],
   );
+  const readRows = useMemo(
+    () => items.map((item) => ({ type: "item" as const, item })),
+    [items],
+  );
+  const readListKey = useMemo(
+    () => items.map((item) => item.globalId).join("|"),
+    [items],
+  );
+  const getReadScrollMetrics = useCallback(() => ({
+    rawScrollTop: parentRef.current?.scrollTop ?? 0,
+    viewportHeight: parentRef.current?.clientHeight ?? 0,
+    scrollMargin: 0,
+  }), []);
+  const processReadOnScroll = useReadOnScrollTracker({
+    surface: "compact-feed",
+    listKey: readListKey,
+    rows: readRows,
+    items,
+    markReadOnScroll,
+    getScrollMetrics: getReadScrollMetrics,
+    markItemsAsRead,
+  });
 
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
     estimateSize: estimateItemSize,
     overscan: 3,
+    onChange: (instance) => {
+      processReadOnScroll(instance, "element");
+    },
   });
 
   // Restore scroll after DOM updates with new card sizes (runs before paint).
@@ -121,7 +155,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   const didInitialScroll = useRef(false);
   useLayoutEffect(() => {
     if (selectedIndex < 0) return;
-    const behavior = didInitialScroll.current ? "smooth" : "auto";
+    const behavior = animationAwareScrollBehavior(didInitialScroll.current ? "smooth" : "auto");
 
     if (selectionMoveDirection === 0) {
       virtualizer.scrollToIndex(selectedIndex, {
@@ -158,7 +192,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     <div
       ref={parentRef}
       data-testid="compact-feed-panel-scroll-container"
-      className="theme-scroll-fade-y shrink-0 min-h-0 overflow-y-auto minimal-scroll bg-transparent"
+      className="theme-scroll-fade-y shrink-0 min-h-0 overflow-y-auto overflow-x-visible minimal-scroll bg-transparent"
       style={{ width, marginInlineStart: leadingOffset }}
     >
       <div
@@ -182,7 +216,8 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
             >
               <div
                 style={{
-                  paddingInline: `${COMPACT_CARD_X_PAD}px`,
+                  paddingLeft: `${COMPACT_CARD_LEFT_PAD}px`,
+                  paddingRight: `${COMPACT_CARD_RIGHT_PAD}px`,
                   paddingBottom: `${COMPACT_CARD_GAP}px`,
                   paddingTop: vi.index === 0 ? `${COMPACT_CARD_GAP}px` : undefined,
                 }}
@@ -192,6 +227,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
                   compact
                   narrow={width < NARROW_THRESHOLD}
                   selected={item.globalId === selectedId}
+                  showReadInGrayscale={showReadInGrayscale}
                   onClick={() => onItemClick(item)}
                   storyHeight={item.contentType === "story" ? storyTileH : undefined}
                 />
@@ -265,6 +301,12 @@ export function FeedView() {
   );
 
   const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
+  const markReadOnScroll = useAppStore((s) => s.preferences.display.reading.markReadOnScroll);
+  const showReadInGrayscale = useAppStore((s) => s.preferences.display.reading.showReadInGrayscale);
+  const animationIntensity = useAppStore((s) =>
+    resolveAnimationIntensity(s.preferences.display.animationIntensity),
+  );
+  const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const isMobileViewport = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const autoCollapseReaderRail = !isMobileDevice && isMobileViewport;
@@ -274,7 +316,7 @@ export function FeedView() {
   const desktopSidebarMode = useAppStore((s) => s.preferences.display.sidebarMode ?? "expanded");
   const compactRailLeadingOffset =
     !isMobileDevice && desktopSidebarMode !== "closed"
-      ? `calc(var(--feed-card-gap, 8px) - ${PRIMARY_SIDEBAR_GAP_WIDTH_PX}px)`
+      ? `-${COMPACT_CARD_LEFT_PAD}px`
       : undefined;
 
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
@@ -407,9 +449,40 @@ export function FeedView() {
   // ─── Dual-column drag-resize ───────────────────────────────────────────────
 
   const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH);
+  const [railMounted, setRailMounted] = useState(showDualColumn);
+  const [railExpanded, setRailExpanded] = useState(showDualColumn);
   const isDraggingRef = useRef(false);
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(0);
+  const previousShowDualColumnRef = useRef(showDualColumn);
+  const railMotionDisabled = animationIntensity === "none";
+
+  useEffect(() => {
+    const wasShowingDualColumn = previousShowDualColumnRef.current;
+    previousShowDualColumnRef.current = showDualColumn;
+
+    if (showDualColumn) {
+      setRailMounted(true);
+
+      if (railMotionDisabled || wasShowingDualColumn || typeof window === "undefined") {
+        setRailExpanded(true);
+        return;
+      }
+
+      setRailExpanded(false);
+      const frameId = window.requestAnimationFrame(() => {
+        setRailExpanded(true);
+      });
+
+      return () => window.cancelAnimationFrame(frameId);
+    }
+
+    setRailExpanded(false);
+
+    if (railMotionDisabled) {
+      setRailMounted(false);
+    }
+  }, [railMotionDisabled, showDualColumn]);
 
   useLayoutEffect(() => {
     if (typeof document === "undefined") return;
@@ -418,6 +491,33 @@ export function FeedView() {
       showDualColumn ? `${panelWidth}px` : "0px",
     );
   }, [panelWidth, showDualColumn]);
+
+  const railTransition = railMotionDisabled || isDraggingRef.current
+    ? "none"
+    : animationIntensity === "light"
+      ? "width 140ms ease-out, margin-inline-start 140ms ease-out, opacity 120ms ease-out"
+      : "width 220ms ease, margin-inline-start 220ms ease, opacity 180ms ease";
+  const railWidth = railExpanded ? panelWidth + COMPACT_PANEL_RESIZE_HANDLE_WIDTH : 0;
+  const railSlotStyle = {
+    width: `${railWidth}px`,
+    marginInlineStart: railExpanded ? compactRailLeadingOffset : undefined,
+    opacity: railExpanded ? 1 : 0,
+    pointerEvents: railExpanded ? undefined : "none",
+    transition: railTransition,
+  } satisfies React.CSSProperties;
+  const railContentStyle = {
+    width: `${panelWidth + COMPACT_PANEL_RESIZE_HANDLE_WIDTH}px`,
+  } satisfies React.CSSProperties;
+
+  const handleRailTransitionEnd = useCallback(
+    (e: React.TransitionEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget || e.propertyName !== "width") return;
+      if (!showDualColumn && !railExpanded) {
+        setRailMounted(false);
+      }
+    },
+    [railExpanded, showDualColumn],
+  );
 
   const handleDragStart = useCallback(
     (e: React.PointerEvent) => {
@@ -451,31 +551,40 @@ export function FeedView() {
   if (showInlineReader && selectedItem) {
     return (
       <div className="h-full flex flex-col overflow-hidden">
-        <div className="flex-1 flex overflow-hidden">
-          {showDualColumn ? (
-            <>
-              <CompactFeedPanel
-                items={readerItems}
-                selectedId={selectedItem.globalId}
-                selectionMoveDirection={compactSelectionDirection}
-                onItemClick={openItemDirect}
-                width={panelWidth}
-                leadingOffset={compactRailLeadingOffset}
-              />
-              <div
-                className="theme-resize-gap-handle w-4 shrink-0 self-stretch"
-                style={{
-                  marginTop: "var(--feed-card-gap, 8px)",
-                }}
-                onPointerDown={handleDragStart}
-                onPointerMove={handleDragMove}
-                onPointerUp={handleDragEnd}
-                onPointerCancel={handleDragEnd}
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize sidebar"
-              />
-            </>
+        <div className="flex-1 flex overflow-y-hidden overflow-x-visible">
+          {railMounted ? (
+            <div
+              data-testid="compact-feed-panel-rail"
+              className="flex-none overflow-hidden"
+              style={railSlotStyle}
+              onTransitionEnd={handleRailTransitionEnd}
+            >
+              <div className="flex h-full" style={railContentStyle}>
+                <CompactFeedPanel
+                  items={readerItems}
+                  selectedId={selectedItem.globalId}
+                  selectionMoveDirection={compactSelectionDirection}
+                  onItemClick={openItemDirect}
+                  markReadOnScroll={markReadOnScroll}
+                  showReadInGrayscale={showReadInGrayscale}
+                  markItemsAsRead={markItemsAsRead}
+                  width={panelWidth}
+                />
+                <div
+                  className="theme-resize-gap-handle w-4 shrink-0 self-stretch"
+                  style={{
+                    marginTop: "var(--feed-card-gap, 8px)",
+                  }}
+                  onPointerDown={handleDragStart}
+                  onPointerMove={handleDragMove}
+                  onPointerUp={handleDragEnd}
+                  onPointerCancel={handleDragEnd}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize sidebar"
+                />
+              </div>
+            </div>
           ) : null}
           <ReaderView
             item={selectedItem}

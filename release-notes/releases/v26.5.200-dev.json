@@ -1,0 +1,46 @@
+{
+  "tag": "v26.5.200-dev",
+  "version": "26.5.200-dev",
+  "channel": "dev",
+  "dayKey": "26.5.2",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-02T21:50:14.995Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.103-dev",
+    "previousPublishedDayTag": "v26.5.103-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.200-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.200-dev"
+    ],
+    "prNumbers": [
+      395,
+      396,
+      397
+    ],
+    "commitSubjects": [
+      "fix: show friends lens on feed views (#397)",
+      "feat: add AI ranked friend suggestions (#396)",
+      "fix: preserve paused native local AI downloads (#395)"
+    ]
+  },
+  "release": {
+    "deck": "AI ranked friend suggestions and a shared friends lens across core views.",
+    "features": [
+      "Added ranked friend suggestions built from identity graph data, activity signals, contact overlap, and optional local AI content classifications.",
+      "Added suggested-friend review surfaces with reasons, sample evidence counts, dismiss controls, and explicit promote or link actions.",
+      "Added the Friends and All content lens to the feed toolbar so the map, feed, and friends views share the same scope control."
+    ],
+    "fixes": [
+      "Preserved paused native local AI downloads more reliably across pause and bookkeeping boundaries."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.200-dev\n\nAI ranked friend suggestions and a shared friends lens across core views.\n\n### Highlights\n\n- Added ranked friend suggestions built from identity graph data, activity signals, contact overlap, and optional local AI content classifications.\n- Added suggested-friend review surfaces with reasons, sample evidence counts, dismiss controls, and explicit promote or link actions.\n- Added the Friends and All content lens to the feed toolbar so the map, feed, and friends views share the same scope control.\n- Preserved paused native local AI downloads more reliably across pause and bookkeeping boundaries.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

@@ -66,6 +66,16 @@ export type TimeRangeKind = "event" | "travel" | "overlap";
  */
 export type ContentSignal =
   | "event"
+  | "deadline"
+  | "opportunity"
+  | "how_to"
+  | "reference"
+  | "transaction"
+  | "product_update"
+  | "alert"
+  | "deal"
+  | "place"
+  | "media"
   | "essay"
   | "moment"
   | "life_update"
@@ -205,6 +215,20 @@ export interface ContentSignals {
   tags: ContentSignal[];
 }
 
+export interface EventCandidate {
+  version: number;
+  method: ContentSignalMethod;
+  detectedAt: number;
+  confidence: number;
+  title?: string;
+  startsAt?: number;
+  endsAt?: number;
+  timezone?: string;
+  locationName?: string;
+  locationUrl?: string;
+  evidence?: string;
+}
+
 export interface ContentSignalBackfillSummary {
   version: number;
   total: number;
@@ -218,13 +242,13 @@ export interface ContentSignalBackfillSummary {
 }
 
 /**
- * AI provider and model preferences (synced -- no secrets here)
+ * AI provider and model preferences (synced, no secrets here)
  */
 export interface AIPreferences {
   /** AI provider selection */
-  provider: "none" | "ollama" | "openai" | "anthropic" | "gemini";
+  provider: "none" | "integrated" | "ollama" | "openai" | "anthropic" | "gemini";
 
-  /** Model identifier (e.g. "qwen2.5:1.5b", "gpt-4o-mini", "claude-haiku-4-5") */
+  /** Model identifier, when the selected provider exposes a single model name */
   model: string;
 
   /** Ollama base URL (default: "http://localhost:11434") */
@@ -235,6 +259,119 @@ export interface AIPreferences {
 
   /** Extract topics from summaries to feed the ranking algorithm */
   extractTopics: boolean;
+}
+
+export type FriendCandidateSuggestionKind = "connection_person" | "unlinked_account";
+
+export type FriendCandidateConfidence = "high" | "medium";
+
+export type FriendCandidateReasonCode =
+  | "personal_updates"
+  | "life_events"
+  | "direct_requests"
+  | "places_and_moments"
+  | "multi_channel_identity"
+  | "recent_activity"
+  | "contact_overlap";
+
+export interface FriendCandidateReason {
+  code: FriendCandidateReasonCode;
+  label: string;
+  score: number;
+}
+
+export interface FriendCandidateSuggestion {
+  id: string;
+  kind: FriendCandidateSuggestionKind;
+  personId?: string;
+  accountIds: string[];
+  displayName: string;
+  score: number;
+  confidence: FriendCandidateConfidence;
+  reasons: FriendCandidateReason[];
+  signalCounts: Partial<Record<ContentSignal, number>>;
+  lastActivityAt?: number;
+  sampleItemIds: string[];
+}
+
+export interface FriendSuggestionPreferences {
+  dismissedSuggestionIds: string[];
+}
+
+export type LocalAIModelId =
+  | "integrated-light"
+  | "integrated-balanced"
+  | "integrated-pro"
+  /** @deprecated Legacy single-pack id migrated to integrated-balanced. */
+  | "integrated-local-ai";
+
+export type LocalAIPackTier = "light" | "balanced" | "pro";
+
+export type LocalAIModelStatus =
+  | "not_downloaded"
+  | "downloading"
+  | "paused"
+  | "available"
+  | "error"
+  | "unsupported";
+
+export interface LocalAIModelFileManifest {
+  path: string;
+  sourcePath?: string;
+  sizeBytes: number;
+  sha256?: string;
+  sha1?: string;
+  etag?: string;
+  repo?: string;
+  revision?: string;
+}
+
+export interface LocalAIModelManifestEntry {
+  id: LocalAIModelId;
+  tier: LocalAIPackTier;
+  title: string;
+  capability: string;
+  description: string;
+  repo: string;
+  revision: string;
+  sourceUrl: string;
+  estimatedDownloadBytes: number;
+  estimatedStorageBytes: number;
+  hardwareNote: string;
+  requiresWebGPU: boolean;
+  wasmFallback: boolean;
+  supportsSemanticSearch: boolean;
+  supportsSummaries: boolean;
+  supportsAssistant: boolean;
+  files: LocalAIModelFileManifest[];
+}
+
+export interface LocalAIHardwareProfile {
+  totalMemoryBytes?: number;
+  availableMemoryBytes?: number;
+  availableAppDataBytes?: number;
+  os: string;
+  arch: string;
+  webGPUAvailable: boolean;
+}
+
+export interface LocalAIModelHealth {
+  lastIndexedItemCount?: number;
+  lastRunAt?: number;
+  failureCount?: number;
+}
+
+export interface LocalAIModelInstallState {
+  id: LocalAIModelId;
+  status: LocalAIModelStatus;
+  revision: string;
+  downloadedBytes: number;
+  totalBytes: number;
+  storageBytes: number;
+  installedAt?: number;
+  updatedAt: number;
+  lastError?: string;
+  health?: LocalAIModelHealth;
 }
 
 /**
@@ -351,6 +488,9 @@ export interface FeedItem {
 
   /** Local or AI-inferred content intent signals */
   contentSignals?: ContentSignals;
+
+  /** Compact local or AI-inferred event metadata. */
+  eventCandidate?: EventCandidate;
 
   /** Pre-computed priority score (0-100), calculated by Desktop/OpenClaw */
   priority?: number;
@@ -525,6 +665,11 @@ export interface SyncPreferences {
 export type ReadingIntensity = "light" | "normal" | "strong";
 
 /**
+ * Global interface animation intensity
+ */
+export type AnimationIntensity = "none" | "light" | "detailed";
+
+/**
  * Visual theme identifiers shared across website, desktop, and PWA.
  */
 export type ThemeId =
@@ -578,6 +723,9 @@ export interface DisplayPreferences {
   /** Show engagement counts (default: false - opt-in only) */
   showEngagementCounts: boolean;
 
+  /** Global interface animation intensity (default: detailed) */
+  animationIntensity: AnimationIntensity;
+
   /** Reading enhancements */
   reading: ReadingEnhancements;
 
@@ -628,6 +776,8 @@ export interface UserPreferences {
   display: DisplayPreferences;
   xCapture: XCapturePreferences;
   fbCapture: FacebookCapturePreferences;
+  /** Review-only friend candidate preferences. Suggestions never auto-promote. */
+  friendSuggestions: FriendSuggestionPreferences;
   /** AI summarization + topic extraction preferences (no API keys here) */
   ai: AIPreferences;
 }
@@ -809,8 +959,9 @@ export function createDefaultPreferences(): UserPreferences {
     display: {
       itemsPerPage: 20,
       compactMode: false,
-      themeId: "neon",
+      themeId: "scriptorium",
       showEngagementCounts: false, // Hidden by default
+      animationIntensity: "detailed",
       reading: {
         focusMode: false,
         focusIntensity: "normal",
@@ -836,11 +987,112 @@ export function createDefaultPreferences(): UserPreferences {
       knownGroups: {},
       excludedGroupIds: {},
     },
+    friendSuggestions: {
+      dismissedSuggestionIds: [],
+    },
     ai: {
       provider: "none",
       model: "",
       autoSummarize: false,
       extractTopics: false,
+    },
+  };
+}
+
+/**
+ * Merge persisted preferences with current defaults.
+ */
+export function mergeDefaultPreferences(
+  preferences?: Partial<UserPreferences> | null,
+): UserPreferences {
+  const defaults = createDefaultPreferences();
+  if (!preferences) {
+    return defaults;
+  }
+
+  const display = preferences.display as Partial<DisplayPreferences> | undefined;
+  const reading = display?.reading as Partial<ReadingEnhancements> | undefined;
+  const weights = preferences.weights as Partial<WeightPreferences> | undefined;
+  const ulysses = preferences.ulysses as Partial<UlyssesPreferences> | undefined;
+  const sync = preferences.sync as Partial<SyncPreferences> | undefined;
+  const xCapture = preferences.xCapture as Partial<XCapturePreferences> | undefined;
+  const fbCapture = preferences.fbCapture as Partial<FacebookCapturePreferences> | undefined;
+  const friendSuggestions = preferences.friendSuggestions as Partial<FriendSuggestionPreferences> | undefined;
+  const ai = preferences.ai as Partial<AIPreferences> | undefined;
+
+  return {
+    ...defaults,
+    ...preferences,
+    weights: {
+      ...defaults.weights,
+      ...weights,
+      platforms: {
+        ...defaults.weights.platforms,
+        ...(weights?.platforms ?? {}),
+      },
+      topics: {
+        ...defaults.weights.topics,
+        ...(weights?.topics ?? {}),
+      },
+      authors: {
+        ...defaults.weights.authors,
+        ...(weights?.authors ?? {}),
+      },
+    },
+    ulysses: {
+      ...defaults.ulysses,
+      ...ulysses,
+      allowedPaths: {
+        ...defaults.ulysses.allowedPaths,
+        ...(ulysses?.allowedPaths ?? {}),
+      },
+    },
+    sync: {
+      ...defaults.sync,
+      ...sync,
+    },
+    display: {
+      ...defaults.display,
+      ...display,
+      reading: {
+        ...defaults.display.reading,
+        ...reading,
+      },
+    },
+    xCapture: {
+      ...defaults.xCapture,
+      ...xCapture,
+      whitelist: {
+        ...defaults.xCapture.whitelist,
+        ...(xCapture?.whitelist ?? {}),
+      },
+      blacklist: {
+        ...defaults.xCapture.blacklist,
+        ...(xCapture?.blacklist ?? {}),
+      },
+    },
+    fbCapture: {
+      ...defaults.fbCapture,
+      ...fbCapture,
+      knownGroups: {
+        ...defaults.fbCapture.knownGroups,
+        ...(fbCapture?.knownGroups ?? {}),
+      },
+      excludedGroupIds: {
+        ...defaults.fbCapture.excludedGroupIds,
+        ...(fbCapture?.excludedGroupIds ?? {}),
+      },
+    },
+    friendSuggestions: {
+      ...defaults.friendSuggestions,
+      ...friendSuggestions,
+      dismissedSuggestionIds: [
+        ...(friendSuggestions?.dismissedSuggestionIds ?? defaults.friendSuggestions.dismissedSuggestionIds),
+      ],
+    },
+    ai: {
+      ...defaults.ai,
+      ...ai,
     },
   };
 }

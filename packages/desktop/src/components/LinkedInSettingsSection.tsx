@@ -40,6 +40,7 @@ import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
 import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
+import { socialProviderCopy } from "../lib/social-provider-copy";
 
 // =============================================================================
 // Diagnostic Panel
@@ -111,14 +112,14 @@ export function LinkedInSettingsSection({
   const liAuth = useAppStore((s) => s.liAuth);
   const setLiAuth = useAppStore((s) => s.setLiAuth);
   const isLoading = useAppStore((s) => s.isLoading);
-  const storeError = useAppStore((s) => s.error);
-  const setError = useAppStore((s) => s.setError);
   const syncing = useAppStore((s) => (s.providerSyncCounts.linkedin ?? 0) > 0);
   const healthSnapshot = useDebugStore((s) => s.health?.providers.linkedin ?? null);
 
   const [checking, setChecking] = useState(false);
   const [lastDiag, setLastDiag] = useState<LiSyncDiag | null>(null);
   const [windowMode, setWindowMode] = useState(() => getLiScraperWindowMode());
+  const [actionError, setActionError] = useState<string | null>(null);
+  const copy = socialProviderCopy("linkedin");
   const { confirm, dialog } = useProviderRiskGate("linkedin");
 
   const runSync = useCallback(async () => {
@@ -150,19 +151,19 @@ export function LinkedInSettingsSection({
 
   const handleLogin = useCallback(async () => {
     await confirm(async () => {
-      setError(null);
+      setActionError(null);
       try {
         await showLiLogin();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to open login window");
+        setActionError(err instanceof Error ? err.message : "Failed to open login window");
       }
     });
-  }, [confirm, setError]);
+  }, [confirm]);
 
   const handleCheckAuth = useCallback(async () => {
     await confirm(async () => {
       setChecking(true);
-      setError(null);
+      setActionError(null);
       try {
         const loggedIn = await checkLiAuth();
         const newState = { isAuthenticated: loggedIn, lastCheckedAt: Date.now() };
@@ -170,15 +171,15 @@ export function LinkedInSettingsSection({
         storeLiAuthState(newState);
 
         if (!loggedIn) {
-          setError("Not logged in. Please log in through the LinkedIn window first.");
+          setActionError("Not logged in. Please log in through the LinkedIn window first.");
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Auth check failed");
+        setActionError(err instanceof Error ? err.message : "Auth check failed");
       } finally {
         setChecking(false);
       }
     });
-  }, [confirm, setLiAuth, setError]);
+  }, [confirm, setLiAuth]);
 
   const handleDisconnect = useCallback(async () => {
     try {
@@ -189,11 +190,11 @@ export function LinkedInSettingsSection({
     await resetProviderPauseState("linkedin");
     setLiAuth({ isAuthenticated: false });
     setLastDiag(null);
-    setError(null);
-  }, [setLiAuth, setError]);
+    setActionError(null);
+  }, [setLiAuth]);
 
-  const syncError = storeError && liAuth.isAuthenticated ? storeError : null;
-  const authError = liAuth.lastCaptureError ?? syncError;
+  const syncError = liAuth.isAuthenticated ? liAuth.lastCaptureError ?? null : null;
+  const authError = liAuth.lastCaptureError ?? actionError;
   const needsReconnect = needsProviderReconnect(authError);
   const statusTone = getProviderStatusTone({
     isConnected: liAuth.isAuthenticated,
@@ -215,7 +216,7 @@ export function LinkedInSettingsSection({
       if (lastDiag.itemsAdded === 0 && lastDiag.postsExtracted === 0) {
         return (
           <p className="text-xs text-[#52525b]">
-            Feed returned no posts. LinkedIn may need a moment to load.
+            {copy.feedReturnedEmpty}
           </p>
         );
       }
@@ -281,14 +282,18 @@ export function LinkedInSettingsSection({
 
           {needsReconnect && (
             <p className="text-xs text-red-400 leading-relaxed">
-              {formatProviderReconnectMessage("LinkedIn", authError)}
+              {formatProviderReconnectMessage(copy.label, authError)}
             </p>
+          )}
+
+          {actionError && !needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
           )}
 
           {syncError && !needsReconnect && (
             <p className="text-xs text-red-400 leading-relaxed">
               {syncError.includes("timeout")
-                ? "Scrape timed out. LinkedIn may be slow to load. Try again."
+                ? copy.timeout
                 : syncError}
             </p>
           )}
@@ -317,8 +322,7 @@ export function LinkedInSettingsSection({
           </details>
 
           <p className="text-xs text-[#52525b] leading-relaxed">
-            Freed reads your LinkedIn feed through a native browser session.
-            Your traffic looks identical to normal browsing.
+            {copy.connectedInfo}
           </p>
         </div>
       </SyncProviderSectionSurface>
@@ -336,7 +340,7 @@ export function LinkedInSettingsSection({
         <p className="text-sm text-[#71717a] leading-relaxed">
           {needsReconnect
             ? "Your LinkedIn session is no longer valid. Sign in again to restore sync."
-            : "Pull your LinkedIn feed into Freed. Log in through a native browser window. Freed reads your feed the same way you would, so your account stays safe."}
+            : copy.disconnectedSettings}
         </p>
         <div className="flex gap-2">
           <button
@@ -355,8 +359,11 @@ export function LinkedInSettingsSection({
         </div>
         {needsReconnect && authError && (
           <p className="text-xs text-amber-400 leading-relaxed">
-            {formatProviderReconnectMessage("LinkedIn", authError)}
+            {formatProviderReconnectMessage(copy.label, authError)}
           </p>
+        )}
+        {actionError && !needsReconnect && (
+          <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
         )}
         <ProviderHealthSectionSummary provider="linkedin" />
       </div>

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cacheArticleHtml,
   collectCacheableArticleImageUrls,
+  getCachedArticleHtml,
   warmArticleImageCache,
 } from "@freed/ui/lib/article-cache";
 
@@ -52,6 +53,36 @@ describe("article cache helpers", () => {
       "/content/saved:abc123",
       expect.any(Response),
     );
+  });
+
+  it("stores pinned saved HTML in the permanent article cache", async () => {
+    const pinnedStore = new Map<string, Response>();
+    const normalStore = new Map<string, Response>();
+    const open = vi.fn(async (name: string) => {
+      const store = name === "freed-articles-pinned-v1" ? pinnedStore : normalStore;
+      return {
+        put: vi.fn(async (key: string, response: Response) => {
+          store.set(key, response);
+        }),
+        match: vi.fn(async (key: string) => store.get(key)),
+      };
+    });
+
+    vi.stubGlobal("caches", { open });
+
+    await cacheArticleHtml(
+      "https://example.com/article",
+      "saved:abc123",
+      "<article>Pinned</article>",
+      { pinned: true },
+    );
+
+    expect(open).toHaveBeenCalledWith("freed-articles-pinned-v1");
+    expect(pinnedStore.has("https://example.com/article")).toBe(true);
+    expect(pinnedStore.has("/content/saved:abc123")).toBe(true);
+    expect(pinnedStore.has("/pinned-content/saved:abc123")).toBe(true);
+    expect(normalStore.size).toBe(0);
+    await expect(getCachedArticleHtml("saved:abc123")).resolves.toBe("<article>Pinned</article>");
   });
 
   it("warms only uncached article images", async () => {

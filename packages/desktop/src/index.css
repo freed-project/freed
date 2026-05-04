@@ -1,6 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
 
-/* Shared design system — design tokens + all component classes.
+/* Shared design system, design tokens plus all component classes.
    Must precede @tailwind directives; @import after any non-import rule
    is invalid CSS and silently ignored by browsers. */
 @import "../../ui/src/index.css";
@@ -34,4 +34,30 @@ body {
   height: 100%;
   overflow: hidden;
   background: color-mix(in oklab, var(--theme-bg-root) 78%, transparent);
+}
+
+.cloud-sync-nudge-countdown {
+  animation: cloud-sync-nudge-countdown 15s linear forwards;
+  opacity: 0.65;
+  stroke: currentColor;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.25;
+  vector-effect: non-scaling-stroke;
+}
+
+@keyframes cloud-sync-nudge-countdown {
+  to {
+    stroke-dashoffset: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cloud-sync-nudge-countdown {
+    animation: none;
+    opacity: 0.45;
+    stroke-dashoffset: 0.25;
+  }
 }

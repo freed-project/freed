@@ -9,7 +9,7 @@
  * "pushes" to that section's content with a back button (iOS-style).
  */
 
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   formatReleaseVersion,
   RELEASE_CHANNEL_LABELS,
@@ -18,6 +18,7 @@ import {
   SAMPLE_SHOWCASE_FRIEND_COUNT,
   SAMPLE_SHOWCASE_ITEM_COUNT,
   SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+  type AnimationIntensity,
   type ReleaseChannel,
 } from "@freed/shared";
 import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
@@ -32,10 +33,17 @@ import {
   persistTheme,
   useThemePreviewController,
 } from "../lib/theme.js";
+import { animationAwareScrollBehavior } from "../lib/animation-preferences.js";
 import {
   getProviderStatusLabel,
   getProviderStatusTone,
 } from "../lib/provider-status.js";
+import {
+  READER_OFFLINE_CACHE_MODE_DESCRIPTIONS,
+  READER_OFFLINE_CACHE_MODE_LABELS,
+  useReaderOfflineCacheMode,
+  type ReaderOfflineCacheMode,
+} from "../lib/reader-cache-settings.js";
 import { ProviderStatusIndicator } from "./ProviderStatusIndicator.js";
 import { toast } from "./Toast.js";
 import { UpdateProgressBar } from "./UpdateProgressBar.js";
@@ -75,6 +83,12 @@ interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
 }
+
+const ANIMATION_OPTIONS: ReadonlyArray<{ value: AnimationIntensity; label: string }> = [
+  { value: "none", label: "None" },
+  { value: "light", label: "Light" },
+  { value: "detailed", label: "Detailed" },
+];
 
 type ProviderSectionId = Extract<SectionId, "x" | "facebook" | "instagram" | "linkedin">;
 type ProviderAuthState = {
@@ -275,6 +289,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const pendingThemeIdRef = useRef<ThemeId | null>(null);
   const pendingThemeSaveSeqRef = useRef(0);
   const committedThemeIdRef = useRef(preferences.display.themeId);
+  const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
   const allSections: Section[] = buildSettingsSectionMetas({
@@ -296,13 +311,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const navStructure: NavStructureItem[] = [
     sectionById.appearance,
     sectionById.sync,
-    ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
     {
       kind: "group",
       label: "Sources",
       icon: ICON_SOURCES,
       children: [
         sectionById.saved,
+        ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
         ...(XSettingsContent ? [sectionById.x] : []),
         ...(FacebookSettingsContent ? [sectionById.facebook] : []),
         ...(InstagramSettingsContent ? [sectionById.instagram] : []),
@@ -756,7 +771,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     container.addEventListener("scrollend", clearScrolling, { once: true });
     scrollEndTimerRef.current = setTimeout(clearScrolling, 800);
 
-    container.scrollTo({ top: targetTop, behavior });
+    container.scrollTo({ top: targetTop, behavior: animationAwareScrollBehavior(behavior) });
   }, [isMobile]);
 
   useEffect(() => {
@@ -881,9 +896,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   function renderSectionBlock(id: SectionId) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
-    const mobileSectionMinHeightClass = isMobile && mobileView === "section"
-      ? "min-h-[calc(100%+6rem)]"
-      : "min-h-full";
+    const sectionMinHeight = isMobile && mobileView !== "section"
+      ? "100%"
+      : "calc(100% + 20rem)";
 
     // SectionContent and this wrapper both stay plain function calls because
     // they are defined inside SettingsDialog. Rendering either as JSX would
@@ -891,7 +906,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     // active subtree, which is visible as periodic flicker in provider sections
     // when sync health updates land.
     return (
-      <section data-section={id} className={`pb-8 flex flex-col ${mobileSectionMinHeightClass}`}>
+      <section
+        data-section={id}
+        className="flex flex-col pb-8"
+        style={{ minHeight: sectionMinHeight }}
+      >
         {SectionContent({ id })}
       </section>
     );
@@ -982,6 +1001,44 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   </div>
                 </div>
               )}
+              <div className="space-y-2">
+                <p className="text-sm text-text-secondary">Animations</p>
+                <div className="flex gap-2">
+                  {ANIMATION_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => handleDisplayChange({ animationIntensity: option.value })}
+                      className={`flex-1 rounded-lg border py-1.5 text-sm transition-colors ${
+                        display.animationIntensity === option.value
+                          ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_20%,transparent)] text-[var(--theme-accent-secondary)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)]"
+                          : "bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] text-text-muted hover:text-text-primary border-transparent"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm text-text-primary">Offline reader cache</p>
+                  <p className="mt-0.5 text-xs text-text-muted">
+                    {READER_OFFLINE_CACHE_MODE_DESCRIPTIONS[readerOfflineCacheMode]} This setting stays on this device.
+                  </p>
+                </div>
+                <select
+                  value={readerOfflineCacheMode}
+                  onChange={(e) => setReaderOfflineCacheMode(e.target.value as ReaderOfflineCacheMode)}
+                  className="theme-input theme-select shrink-0 rounded-xl px-3 py-2 text-sm text-text-primary focus:outline-none"
+                >
+                  {Object.entries(READER_OFFLINE_CACHE_MODE_LABELS).map(([mode, label]) => (
+                    <option key={mode} value={mode}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-sm text-text-primary">Delete archived content after</p>
@@ -1062,7 +1119,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       case "ai":
         return (
           <>
-            <SectionHeading label="AI" />
             <AISection />
           </>
         );
@@ -1358,8 +1414,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           theme-dialog-shell theme-settings-shell relative z-10 flex w-full flex-col
           h-[100dvh] rounded-none
           sm:rounded-[28px]
-          sm:flex-row sm:max-w-3xl sm:h-[80vh] sm:max-h-[700px]
+          sm:flex-row sm:w-[clamp(48rem,78vw,70rem)] sm:max-w-none sm:h-[min(85dvh,65rem)] sm:max-h-none
         `}
+        style={{
+          "--settings-inner-list-max-height": isMobile
+            ? "50dvh"
+            : "min(42.5dvh, 32.5rem)",
+        } as CSSProperties}
       >
         {/* ── Left column ────────────────────────────────────────────────── */}
         <div
@@ -1468,7 +1529,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <div
             ref={scrollRef}
             data-testid="settings-scroll-container"
-            className="flex-1 overflow-y-auto px-6 pt-6 [&>section+section]:mt-14"
+            className="flex-1 overflow-y-auto px-6 pt-6 [&>section+section]:mt-24"
             style={{ paddingBottom: scrollContainerBottomPadding }}
           >
             {searchLower && visibleSections.length === 0 ? (

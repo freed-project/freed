@@ -22,7 +22,13 @@
 
 import type { FeedItem, Platform } from "@freed/shared";
 import type { PlatformActions } from "./platform-actions";
+import type { DocChangeEvent } from "./automerge-types";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import { scheduleSideEffect } from "./side-effect-scheduler";
+import {
+  isBackgroundRuntimeDeferredError,
+  runBackgroundJob,
+} from "./background-runtime-coordinator";
 
 // =============================================================================
 // Constants
@@ -30,6 +36,7 @@ import { addDebugEvent } from "@freed/ui/lib/debug-store";
 
 const DEBOUNCE_MS = 5_000;
 const MAX_RETRIES = 3;
+const SCAN_YIELD_EVERY = 500;
 
 // =============================================================================
 // Types
@@ -54,7 +61,7 @@ export type ConfirmFn = (id: string, syncedAt?: number) => Promise<void>;
  */
 export function startOutboxProcessor(
   getItems: () => FeedItem[] | null,
-  subscribe: (cb: () => void) => () => void,
+  subscribe: (cb: (event: DocChangeEvent) => void) => () => void,
   platformActions: Map<Platform, PlatformActions>,
   confirmLiked: ConfirmFn,
   confirmSeen: ConfirmFn,
@@ -77,23 +84,41 @@ export function startOutboxProcessor(
 
   let drainTimer: ReturnType<typeof setTimeout> | null = null;
   let isDraining = false;
+  let drainRequested = false;
+  let fullScanRequested = true;
+  const pendingChangedItems = new Map<string, FeedItem>();
 
-  // ── Core drain logic ────────────────────────────────────────────────────
-
-  async function drain() {
-    if (isDraining) return;
-    isDraining = true;
-
-    const items = getItems();
-    if (!items) {
-      isDraining = false;
+  function addDrainEvent(event?: DocChangeEvent) {
+    if (!event) {
       return;
     }
 
+    if (event.requiresFullScan) {
+      fullScanRequested = true;
+      return;
+    }
+
+    for (const item of event.changedItems) {
+      pendingChangedItems.set(item.globalId, item);
+    }
+  }
+
+  function requeueItem(item: FeedItem) {
+    pendingChangedItems.set(item.globalId, item);
+  }
+
+  // ── Core drain logic ────────────────────────────────────────────────────
+
+  async function collectPendingQueues(items: FeedItem[]) {
     const likeQueue: FeedItem[] = [];
     const seenQueue: FeedItem[] = [];
 
-    for (const item of items) {
+    for (let index = 0; index < items.length; index += 1) {
+      if (index > 0 && index % SCAN_YIELD_EVERY === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      const item = items[index];
       const us = item.userState;
 
       if (us.liked && us.likedAt && !us.likedSyncedAt) {
@@ -110,6 +135,36 @@ export function startOutboxProcessor(
         }
       }
     }
+
+    return { likeQueue, seenQueue };
+  }
+
+  async function drainNow() {
+    if (isDraining) return;
+    isDraining = true;
+    drainRequested = false;
+
+    let items: FeedItem[];
+    if (fullScanRequested) {
+      const currentItems = getItems();
+      if (!currentItems) {
+        isDraining = false;
+        return;
+      }
+      fullScanRequested = false;
+      pendingChangedItems.clear();
+      items = currentItems;
+    } else {
+      items = Array.from(pendingChangedItems.values());
+      pendingChangedItems.clear();
+    }
+
+    if (items.length === 0) {
+      isDraining = false;
+      return;
+    }
+
+    const { likeQueue, seenQueue } = await collectPendingQueues(items);
 
     if (likeQueue.length > 0) {
       addDebugEvent("change", `[Outbox] draining ${likeQueue.length} pending like(s)`);
@@ -138,6 +193,8 @@ export function startOutboxProcessor(
             retries.likeRetries = 0;
             maybeDeleteRetries(item.globalId);
             addDebugEvent("error", `[Outbox] like permanently failed for ${item.globalId}`);
+          } else {
+            requeueItem(item);
           }
         }
       } catch (err) {
@@ -147,6 +204,8 @@ export function startOutboxProcessor(
           try { await confirmLiked(item.globalId, -1); } catch { /* already logged */ }
           retries.likeRetries = 0;
           maybeDeleteRetries(item.globalId);
+        } else {
+          requeueItem(item);
         }
       }
     }
@@ -168,6 +227,8 @@ export function startOutboxProcessor(
             try { await confirmSeen(item.globalId, -1); } catch { /* logged below */ }
             retries.seenRetries = 0;
             maybeDeleteRetries(item.globalId);
+          } else {
+            requeueItem(item);
           }
         }
       } catch (err) {
@@ -177,41 +238,52 @@ export function startOutboxProcessor(
           try { await confirmSeen(item.globalId, -1); } catch { /* already logged */ }
           retries.seenRetries = 0;
           maybeDeleteRetries(item.globalId);
+        } else {
+          requeueItem(item);
         }
       }
     }
 
     isDraining = false;
 
-    // If new items arrived during drain, schedule another pass so they
-    // don't sit in the outbox until the next external doc change.
-    if (hasPendingItems(getItems())) {
+    if (drainRequested || fullScanRequested || pendingChangedItems.size > 0) {
       scheduleDrain();
     }
   }
 
-  /** Quick check for any items that still need outbox processing. */
-  function hasPendingItems(items: FeedItem[] | null): boolean {
-    if (!items) return false;
-    for (const item of items) {
-      const us = item.userState;
-      if (us.liked && us.likedAt && !us.likedSyncedAt) {
-        const r = retryMap.get(item.globalId);
-        if (!r || r.likeRetries < MAX_RETRIES) return true;
-      }
-      if (us.readAt && !us.seenSyncedAt && item.sourceUrl) {
-        const r = retryMap.get(item.globalId);
-        if (!r || r.seenRetries < MAX_RETRIES) return true;
-      }
-    }
-    return false;
+  async function drain() {
+    await scheduleSideEffect({
+      queue: "outbox",
+      source: "outbox",
+      kind: "drain",
+      timeoutMs: 120_000,
+      slowMs: 1_000,
+      run: () =>
+        runBackgroundJob({
+          kind: "outbox",
+          source: "outbox",
+          timeoutMs: 120_000,
+          run: drainNow,
+        }),
+    });
   }
 
-  function scheduleDrain() {
+  function scheduleDrain(event?: DocChangeEvent) {
+    addDrainEvent(event);
+    if (isDraining) {
+      drainRequested = true;
+      return;
+    }
     if (drainTimer) clearTimeout(drainTimer);
     drainTimer = setTimeout(() => {
       drainTimer = null;
       drain().catch((err) => {
+        if (isBackgroundRuntimeDeferredError(err)) {
+          addDebugEvent("change", `[Outbox] drain deferred: ${err.reason}`);
+          isDraining = false;
+          scheduleDrain();
+          return;
+        }
         addDebugEvent("error", `[Outbox] drain threw: ${err instanceof Error ? err.message : String(err)}`);
         isDraining = false;
       });
@@ -223,6 +295,12 @@ export function startOutboxProcessor(
 
   // Run an immediate drain on startup (catch anything queued while offline)
   drain().catch((err) => {
+    if (isBackgroundRuntimeDeferredError(err)) {
+      addDebugEvent("change", `[Outbox] startup drain deferred: ${err.reason}`);
+      isDraining = false;
+      scheduleDrain();
+      return;
+    }
     addDebugEvent("error", `[Outbox] startup drain threw: ${err instanceof Error ? err.message : String(err)}`);
     isDraining = false;
   });

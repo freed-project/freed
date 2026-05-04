@@ -1,0 +1,66 @@
+{
+  "tag": "v26.4.2604-dev",
+  "version": "26.4.2604-dev",
+  "channel": "dev",
+  "dayKey": "26.4.26",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-26T15:14:06.711Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.2500-dev",
+    "previousPublishedDayTag": "v26.4.2500-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.2604-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.2604-dev"
+    ],
+    "prNumbers": [
+      320,
+      321,
+      322,
+      330,
+      331,
+      332,
+      333,
+      335,
+      337,
+      339,
+      340
+    ],
+    "commitSubjects": [
+      "fix: harden release validation assertions (#340)",
+      "fix: preserve saved and archived signal filters (#339)",
+      "fix: stabilize graph selection perf assertion (#337)",
+      "fix: stabilize provider health status fallback test (#335)",
+      "fix: stabilize release validation e2e (#333)",
+      "fix: speed up production validation stress tests (#332)",
+      "fix: stabilize production validation e2e (#331)",
+      "fix: update rss source test fixture (#330)",
+      "fix: polish sidebar rail behavior (#320)",
+      "feat: rebuild friends graph for scale (#321)",
+      "feat: add content signal filters",
+      "fix: remember desktop release channel (#322)"
+    ]
+  },
+  "release": {
+    "deck": "Friends graph scaling, content filters, and saved signal filters",
+    "features": [
+      "Rebuild friends graph for scale",
+      "Content signal filters"
+    ],
+    "fixes": [
+      "Archived items no longer clear saved feed choices",
+      "Sidebar rail behavior is more polished",
+      "Graph selection and release validation checks are more stable",
+      "Provider health fallback tests are more stable",
+      "Freed Desktop remembers the selected release channel"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2604-dev\n\nFriends graph scaling, content filters, and saved signal filters\n\n### Features\n\n- Rebuild friends graph for scale\n- Content signal filters\n\n### Fixes\n\n- Archived items no longer clear saved feed choices\n- Sidebar rail behavior is more polished\n- Graph selection and release validation checks are more stable\n- Provider health fallback tests are more stable\n- Freed Desktop remembers the selected release channel\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

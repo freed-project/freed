@@ -35,6 +35,24 @@
     });
   }
 
+  function expandLongTextControls(root) {
+    var controls = root.querySelectorAll('button, div[role="button"], span[role="button"], a[role="button"]');
+    var clicked = 0;
+    for (var i = 0; i < controls.length && clicked < 8; i++) {
+      var label = (
+        controls[i].getAttribute("aria-label") ||
+        controls[i].textContent ||
+        ""
+      ).trim().toLowerCase();
+      if (label === "see more" || label === "more" || label === "show more" || label === "read more") {
+        try {
+          controls[i].click();
+          clicked++;
+        } catch (_) {}
+      }
+    }
+  }
+
   // Generate a content-based ID for deduplication across scroll passes
   function contentHash(author, text) {
     var seed = (author || "") + "||" + (text || "").substring(0, 120);
@@ -395,6 +413,7 @@
     var posts = [];
     for (var idx = 0; idx < postEls.length && posts.length < 50; idx++) {
       var el = postEls[idx];
+      expandLongTextControls(el);
 
       if (isSuggestedOrSponsored(el)) continue;
 

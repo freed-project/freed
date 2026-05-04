@@ -7,7 +7,7 @@
 
 ## Overview
 
-Final polish, accessibility, UX refinements, AI-powered features, and community infrastructure.
+Final polish, accessibility, UX refinements, global animation controls, Integrated AI pack selection, local semantic enrichment for friend suggestions, and community infrastructure.
 
 ---
 
@@ -112,11 +112,13 @@ Freed now has a real global command palette, opened with `Cmd/Ctrl+K`, mounted f
 
 The command palette now covers:
 
-- **Navigation**: Unified Feed, Saved, Archived, Friends, Map, every top source, every RSS feed, top-level tag scopes, and every visible settings section
+- **Navigation**: Unified Feed, Saved, Archived, Friends, Map, every top source, typed RSS feed matches, followed social channel matches, top-level tag scopes, and every visible settings section
 - **Create flows**: Add RSS Feed, Save URL, import Freed Markdown, export Freed Markdown
 - **Current item actions**: Open original URL, close reader, save or unsave, archive or unarchive, like or unlike when supported
 - **Current scope actions**: Mark current scope read, archive current scope read items, unarchive saved items, sync RSS, sync the current provider, and check for updates when supported
 - **Danger actions**: Delete all archived items plus local or cloud-backed factory reset, guarded by typed confirmation
+
+Blank suggestions now stay compact. Individual RSS feeds and danger actions are hidden until the operator starts typing, and broad matches are capped so a large feed list cannot turn the command surface into a scroll chore.
 
 The shared extension points now live in `packages/ui/src/lib/command-palette.ts`, `packages/ui/src/lib/command-palette-registry.ts`, and `packages/ui/src/lib/command-surface-store.ts`.
 
@@ -177,7 +179,17 @@ export function useKeyboardShortcuts() {
 
 ### Reduced Motion
 
+Appearance now exposes a synced `Animations` preference with `None`, `Light`, and `Detailed` options. `Detailed` keeps the full interface motion, `Light` keeps short layout and state feedback while cutting decorative loops, and `None` disables app-controlled fades, slides, layout morphs, shimmers, spinners, and theme transition blur.
+
 ```css
+html[data-animation="none"] *,
+html[data-animation="none"] *::before,
+html[data-animation="none"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -382,7 +394,7 @@ Reward security researchers for responsible disclosure.
 | 10.4  | Export to CSV                      | Low        |
 | 10.5  | Keyboard shortcuts                 | Medium     |
 | 10.6  | Screen reader support              | Medium     |
-| 10.7  | Reduced motion support             | Low        |
+| 10.7  | Reduced motion support             | Low        | ✓ Complete (Appearance animation intensity controls plus global app motion gating)
 | 10.8  | Color contrast audit               | Low        |
 | 10.9  | Native Liquid Glass buttons        | High       |
 | 10.24 | Command bar — full action launcher | High       | ✓ Complete (Global `Cmd/Ctrl+K` palette with navigation, creation, current-item, sync, and danger actions)
@@ -396,8 +408,10 @@ Reward security researchers for responsible disclosure.
 | 10.12 | Content summarization    | High       | ✓ Complete (summarize() in content-fetcher.ts)
 | 10.13 | Sentiment analysis       | Medium     | ✓ Complete (AISummary.sentiment field)
 | 10.14 | Smart notifications      | High       |
-| 10.15 | AI settings UI           | Medium     | ✓ Complete (AISection.tsx in packages/ui)
-| 10.25 | Local content signals    | Medium     | ✓ Complete (rule-based contentSignals metadata, automatic ingestion inference, resumable desktop backfill, saved toolbar filter presets, and news classification)
+| 10.15 | AI settings UI           | Medium     | ✓ Complete (unified provider selector for Integrated AI, Ollama, OpenAI, Anthropic, and Gemini with provider-scoped sharing tags, optimistic selection, and default workflows when AI is enabled)
+| 10.25 | Local content signals    | Medium     | ✓ Complete (rule-based contentSignals metadata, automatic ingestion inference, resumable desktop and PWA semantic backfill, inclusive saved toolbar filter presets, expanded signal taxonomy, and compact event candidate extraction)
+| 10.26 | Optional local AI packs  | High       | ✓ Complete (disabled-by-default Light, Balanced, and Pro Integrated AI packs, hardware-based recommendations, pinned download manifests, semantic scan health, source links, resumable desktop downloads, raw-file checksum verification, and removal controls)
+| 10.27 | Local AI signal consumers | Medium | ✓ Complete (Friends suggestions improve from Integrated AI `Topics and ranking` contentSignals while still working deterministically when AI is off)
 
 ### Extensibility
 
@@ -434,14 +448,17 @@ Reward security researchers for responsible disclosure.
 - [ ] Export works to JSON and CSV
 - [ ] Keyboard navigation complete
 - [ ] Screen reader accessible
-- [ ] Reduced motion respected
+- [x] Reduced motion respected through `Animations: None`, OS reduced motion, and reduced View Transition behavior
 - [x] Command bar can trigger every major app action without a mouse
 
 ### AI
 
 - [ ] Topic extraction works (at least one method)
 - [ ] Summarization available for long content
-- [x] Local content signals classify existing and newly ingested items without cloud AI, with saved feed filter presets and news classification in the toolbar
+- [x] AI settings start with a single provider choice that determines whether content stays local, goes to Ollama, or goes to a selected API provider, without selection flicker while preferences persist
+- [x] Local content signals classify existing and newly ingested items without cloud AI on Desktop and PWA, with inclusive saved feed filter presets, expanded semantic signals, and compact event metadata for high-confidence upcoming items
+- [x] Optional local AI stays out of the installer, remains off by default, recommends Light, Balanced, or Pro from local hardware, stores pack selection plus model files in device-local state, and refreshes semantic scan health while settings is open
+- [x] Friend suggestions consume local `contentSignals` and optional Integrated AI enrichment without adding a cloud prompt path or automatic friend promotion
 - [ ] Smart notifications reduce noise
 
 ### Community

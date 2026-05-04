@@ -7,11 +7,17 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
 } from "react";
-import type { FilterOptions, Platform } from "@freed/shared";
+import {
+  filterFeedItems,
+  isFriendAuthoredItem,
+  type FilterOptions,
+  type Platform,
+} from "@freed/shared";
 
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
-import { useSearchResults } from "../../hooks/useSearchResults.js";
+import { prepareSearchIndex } from "../../hooks/useSearchResults.js";
 import { buildCommandPaletteActions } from "../../lib/command-palette-registry.js";
 import {
   filterCommandPaletteActions,
@@ -25,6 +31,22 @@ import { applyFeedSearch, navigateToFeedView } from "../../lib/workspace-navigat
 import { SearchField } from "../SearchField.js";
 import { Tooltip } from "../Tooltip.js";
 import { TOP_SOURCE_ITEMS } from "../../lib/source-navigation.js";
+import {
+  AllIcon,
+  ArchiveIcon,
+  BookmarkIcon,
+  ExternalLinkIcon,
+  FacebookIcon,
+  FilterIcon,
+  GoogleContactsIcon,
+  InstagramIcon,
+  LinkedInIcon,
+  MapPinIcon,
+  RssIcon,
+  TrashIcon,
+  UsersIcon,
+  XIcon,
+} from "../icons.js";
 
 function groupActionsBySection(actions: readonly CommandPaletteAction[]) {
   const sections: Array<{ section: string; actions: CommandPaletteAction[] }> = [];
@@ -39,14 +61,203 @@ function groupActionsBySection(actions: readonly CommandPaletteAction[]) {
   return sections;
 }
 
+function PaletteLineIcon({ children }: { children: ReactNode }) {
+  return (
+    <span
+      data-testid="search-command-action-icon"
+      className="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--theme-text-muted)]"
+      aria-hidden="true"
+    >
+      {children}
+    </span>
+  );
+}
+
+function PaletteSvgIcon({
+  children,
+  fill = "none",
+  strokeWidth = 2,
+}: {
+  children: ReactNode;
+  fill?: string;
+  strokeWidth?: number;
+}) {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill={fill}
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function getCommandPaletteIcon(action: CommandPaletteAction): ReactNode {
+  const iconClass = "h-4 w-4";
+
+  if (action.id === "go-unified-feed" || action.id === "go-source-all") {
+    return <AllIcon className={iconClass} />;
+  }
+  if (action.id === "go-saved" || action.id === "go-settings-saved" || action.id === "item-toggle-saved") {
+    return <BookmarkIcon className={iconClass} />;
+  }
+  if (action.id === "go-archived" || action.id === "item-toggle-archived" || action.id === "scope-unarchive-saved") {
+    return <ArchiveIcon className={iconClass} />;
+  }
+  if (action.id === "go-friends") {
+    return <UsersIcon className={iconClass} />;
+  }
+  if (action.id === "go-map") {
+    return <MapPinIcon className={iconClass} />;
+  }
+  if (action.id.startsWith("go-profile-friends-") || action.id.startsWith("promote-profile-")) {
+    return <UsersIcon className={iconClass} />;
+  }
+  if (action.id.startsWith("go-profile-map-")) {
+    return <MapPinIcon className={iconClass} />;
+  }
+  if (action.id === "go-source-rss" || action.id.startsWith("go-feed-") || action.id === "go-settings-feeds" || action.id === "scope-sync-rss") {
+    return <RssIcon className={iconClass} />;
+  }
+  if (action.id === "go-source-x" || action.id === "go-settings-x" || action.id.startsWith("go-channel-x-")) {
+    return <XIcon className={iconClass} />;
+  }
+  if (action.id === "go-source-facebook" || action.id === "go-settings-facebook" || action.id.startsWith("go-channel-facebook-")) {
+    return <FacebookIcon className={iconClass} />;
+  }
+  if (action.id === "go-source-instagram" || action.id === "go-settings-instagram" || action.id.startsWith("go-channel-instagram-")) {
+    return <InstagramIcon className={iconClass} />;
+  }
+  if (action.id === "go-source-linkedin" || action.id === "go-settings-linkedin" || action.id.startsWith("go-channel-linkedin-")) {
+    return <LinkedInIcon className={iconClass} />;
+  }
+  if (action.id === "go-settings-googleContacts") {
+    return <GoogleContactsIcon className={iconClass} />;
+  }
+  if (action.id === "go-settings-danger" || action.id.startsWith("danger-")) {
+    return <TrashIcon className={iconClass} />;
+  }
+  if (action.id.startsWith("go-tag-")) {
+    return (
+      <PaletteSvgIcon>
+        <path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0l-7.2-7.2V4h9.4l7.8 7.8a2 2 0 010 1.6z" />
+        <circle cx="7.5" cy="7.5" r="1.5" />
+      </PaletteSvgIcon>
+    );
+  }
+  if (action.id.startsWith("go-settings-")) {
+    return (
+      <PaletteSvgIcon>
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.7 1.7 0 00.34 1.88l.04.04a2 2 0 01-2.83 2.83l-.04-.04A1.7 1.7 0 0015 19.4a1.7 1.7 0 00-1 1.55V21a2 2 0 01-4 0v-.05a1.7 1.7 0 00-1-1.55 1.7 1.7 0 00-1.88.34l-.04.04a2 2 0 01-2.83-2.83l.04-.04A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.55-1H3a2 2 0 010-4h.05A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.34-1.88l-.04-.04a2 2 0 012.83-2.83l.04.04A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.55V3a2 2 0 014 0v.05a1.7 1.7 0 001 1.55 1.7 1.7 0 001.88-.34l.04-.04a2 2 0 012.83 2.83l-.04.04A1.7 1.7 0 0019.4 9a1.7 1.7 0 001.55 1H21a2 2 0 010 4h-.05a1.7 1.7 0 00-1.55 1z" />
+      </PaletteSvgIcon>
+    );
+  }
+  if (action.id === "create-add-rss" || action.id === "create-save-url") {
+    return (
+      <PaletteSvgIcon>
+        <path d="M12 5v14" />
+        <path d="M5 12h14" />
+      </PaletteSvgIcon>
+    );
+  }
+  if (action.id === "create-import-markdown") {
+    return (
+      <PaletteSvgIcon>
+        <path d="M12 3v12" />
+        <path d="M8 11l4 4 4-4" />
+        <path d="M5 21h14" />
+      </PaletteSvgIcon>
+    );
+  }
+  if (action.id === "create-export-markdown") {
+    return (
+      <PaletteSvgIcon>
+        <path d="M12 21V9" />
+        <path d="M8 13l4-4 4 4" />
+        <path d="M5 3h14" />
+      </PaletteSvgIcon>
+    );
+  }
+  if (action.id === "item-open-original") {
+    return <ExternalLinkIcon className={iconClass} />;
+  }
+  if (action.id === "item-close-reader") {
+    return (
+      <PaletteSvgIcon>
+        <path d="M19 12H5" />
+        <path d="M12 19l-7-7 7-7" />
+      </PaletteSvgIcon>
+    );
+  }
+  if (action.id === "item-toggle-liked") {
+    return (
+      <PaletteSvgIcon>
+        <path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21.2l7.8-7.8 1-1a5.5 5.5 0 000-7.8z" />
+      </PaletteSvgIcon>
+    );
+  }
+  if (action.id === "scope-mark-read" || action.id === "scope-archive-read") {
+    return (
+      <PaletteSvgIcon>
+        <path d="M20 6L9 17l-5-5" />
+      </PaletteSvgIcon>
+    );
+  }
+  if (action.id.startsWith("scope-sync-source-")) {
+    return (
+      <PaletteSvgIcon>
+        <path d="M21 12a9 9 0 01-15.5 6.2" />
+        <path d="M3 12A9 9 0 0118.5 5.8" />
+        <path d="M18.5 2.8v3h-3" />
+        <path d="M5.5 21.2v-3h3" />
+      </PaletteSvgIcon>
+    );
+  }
+  if (action.id === "scope-check-updates") {
+    return (
+      <PaletteSvgIcon>
+        <path d="M12 3v12" />
+        <path d="M7 10l5 5 5-5" />
+        <path d="M5 21h14" />
+      </PaletteSvgIcon>
+    );
+  }
+  if (action.id === "search-feed") {
+    return (
+      <PaletteSvgIcon>
+        <circle cx="11" cy="11" r="7" />
+        <path d="M21 21l-4.3-4.3" />
+      </PaletteSvgIcon>
+    );
+  }
+  if (action.section === "Search") {
+    return <FilterIcon className={iconClass} />;
+  }
+
+  return (
+    <PaletteSvgIcon>
+      <path d="M9 18l6-6-6-6" />
+    </PaletteSvgIcon>
+  );
+}
+
 export function SearchJumpField({
   compactSidebar = false,
   narrowSidebar = false,
+  mobileSidebar = false,
   variant = "inline",
   inlineMarginBottomPx,
 }: {
   compactSidebar?: boolean;
   narrowSidebar?: boolean;
+  mobileSidebar?: boolean;
   variant?: "inline" | "trigger";
   inlineMarginBottomPx?: number;
 }) {
@@ -87,6 +298,9 @@ export function SearchJumpField({
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
+  const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
+  const updatePerson = useAppStore((s) => s.updatePerson);
+  const createConnectionPersonFromAccounts = useAppStore((s) => s.createConnectionPersonFromAccounts);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
@@ -116,38 +330,37 @@ export function SearchJumpField({
   const confirmInputRef = useRef<HTMLInputElement | null>(null);
   const lastSearchPaletteRequestIdRef = useRef(searchPaletteRequestId);
   const hasActiveSearch = searchQuery.trim().length > 0;
-  const inlinePlaceholder = narrowSidebar ? "Search" : "Search or run a command";
+  const inlinePlaceholder = narrowSidebar ? "Search" : "Search or run";
   const usesFloatingTrigger = variant === "trigger";
   const showFloatingField = usesFloatingTrigger && isTriggerOpen;
   const showInlineSurface = !usesFloatingTrigger && isFocused;
-  const showCommandSurface = showFloatingField || showInlineSurface;
+  const showCommandSurface = showFloatingField || showInlineSurface || !!confirmAction;
 
   const selectedItem = useMemo(
     () => (selectedItemId ? items.find((item) => item.globalId === selectedItemId) ?? null : null),
     [items, selectedItemId],
   );
 
-  const { filteredItems } = useSearchResults(
-    items,
-    searchQuery,
-    activeFilter,
-    searchCorpusVersion,
-    display.friendsMode ?? "all_content",
-    persons,
-    accounts,
-    friends,
-  );
+  const commandScopeItems = useMemo(() => {
+    const identityItems = display.friendsMode === "friends"
+      ? items.filter((item) => isFriendAuthoredItem(item, persons, accounts, friends))
+      : items;
+    const filtered = filterFeedItems(identityItems, activeFilter);
+    return activeFilter.feedUrl
+      ? filtered.filter((item) => item.rssSource?.feedUrl === activeFilter.feedUrl)
+      : filtered;
+  }, [accounts, activeFilter, display.friendsMode, friends, items, persons]);
 
   const unreadScopeIds = useMemo(
-    () => filteredItems.filter((item) => !item.userState.readAt).map((item) => item.globalId),
-    [filteredItems],
+    () => commandScopeItems.filter((item) => !item.userState.readAt).map((item) => item.globalId),
+    [commandScopeItems],
   );
   const archivableScopeItems = useMemo(
     () =>
-      filteredItems.filter(
+      commandScopeItems.filter(
         (item) => !!item.userState.readAt && !item.userState.saved && !item.userState.archived,
       ),
-    [filteredItems],
+    [commandScopeItems],
   );
   const savedArchivedCount = useMemo(
     () => items.filter((item) => item.userState.saved && item.userState.archived).length,
@@ -163,6 +376,26 @@ export function SearchJumpField({
         .filter((feed) => feed.enabled)
         .sort((left, right) => left.title.localeCompare(right.title)),
     [feeds],
+  );
+  const socialChannels = useMemo(
+    () =>
+      Object.values(accounts)
+        .filter((account) =>
+          account.kind === "social" &&
+          account.provider !== "rss" &&
+          account.provider !== "saved"
+        )
+        .map((account) => ({
+          account,
+          person: account.personId ? persons[account.personId] : undefined,
+          personName: account.personId ? persons[account.personId]?.name : undefined,
+        }))
+        .sort((left, right) => {
+          const leftTitle = left.account.displayName ?? left.account.handle ?? left.account.externalId;
+          const rightTitle = right.account.displayName ?? right.account.handle ?? right.account.externalId;
+          return leftTitle.localeCompare(rightTitle);
+        }),
+    [accounts, persons],
   );
   const allTags = useMemo(() => collectAllTags(items), [items]);
   const tagFilters = useMemo(() => buildTopLevelTagFilters(allTags), [allTags]);
@@ -199,6 +432,17 @@ export function SearchJumpField({
     setConfirmValue("");
     setIsTriggerOpen(false);
   }, []);
+  const prepareSearch = useCallback(() => {
+    void prepareSearchIndex(items, searchCorpusVersion, accounts);
+  }, [accounts, items, searchCorpusVersion]);
+  const clearQueryForNavigation = useCallback(() => {
+    setSearchQuery("");
+    setInputValue("");
+  }, [setSearchQuery]);
+  const ensurePersonForAccount = useCallback(async (accountId: string, personId: string | null) => {
+    if (personId && persons[personId]) return personId;
+    return await createConnectionPersonFromAccounts([accountId]);
+  }, [createConnectionPersonFromAccounts, persons]);
 
   const actions = useMemo(
     () =>
@@ -215,6 +459,7 @@ export function SearchJumpField({
           url: feed.url,
           title: feed.title,
         })),
+        socialChannels,
         tagFilters,
         currentSourceId,
         selectedItem,
@@ -223,7 +468,9 @@ export function SearchJumpField({
         savedArchivedCount,
         archivedCount,
         openSettingsTo,
-        navigateToFeed: (filter: FilterOptions) =>
+        navigateToFeed: (filter: FilterOptions) => {
+          setSearchQuery("");
+          setInputValue("");
           navigateToFeedView(
             {
               setActiveView,
@@ -232,7 +479,8 @@ export function SearchJumpField({
               setFilter,
             },
             filter,
-          ),
+          );
+        },
         navigateToFriends: () => {
           setSelectedItem(null);
           setSelectedPerson(null);
@@ -242,6 +490,32 @@ export function SearchJumpField({
           setSelectedItem(null);
           setSelectedPerson(null);
           setActiveView("map");
+        },
+        navigateToSocialProfileFriends: (account, personId) => {
+          clearQueryForNavigation();
+          setSelectedItem(null);
+          if (personId && persons[personId]) {
+            setSelectedPerson(personId);
+          } else {
+            setSelectedAccount(account.id);
+          }
+          setActiveView("friends");
+        },
+        navigateToSocialProfileMap: async (account, personId) => {
+          const resolvedPersonId = await ensurePersonForAccount(account.id, personId);
+          clearQueryForNavigation();
+          setSelectedItem(null);
+          setSelectedPerson(resolvedPersonId);
+          setActiveView("map");
+        },
+        promoteSocialProfile: async (account, level) => {
+          const resolvedPersonId = await ensurePersonForAccount(account.id, account.personId ?? null);
+          await updatePerson(resolvedPersonId, {
+            relationshipStatus: "friend",
+            careLevel: level,
+            updatedAt: Date.now(),
+          });
+          setSelectedPerson(resolvedPersonId);
         },
         applyFeedSearch: (nextQuery: string) =>
           applyFeedSearch(
@@ -313,12 +587,16 @@ export function SearchJumpField({
       deleteAllArchived,
       enabledFeeds,
       factoryReset,
+      clearQueryForNavigation,
+      createConnectionPersonFromAccounts,
       inputValue,
+      ensurePersonForAccount,
       markItemsAsRead,
       openAddFeedDialog,
       openSavedContentDialog,
       openSettingsTo,
       openUrl,
+      prepareSearch,
       importMarkdown,
       exportMarkdown,
       saveUrl,
@@ -327,8 +605,10 @@ export function SearchJumpField({
       setActiveView,
       setFilter,
       setSearchQuery,
+      setSelectedAccount,
       setSelectedItem,
       setSelectedPerson,
+      socialChannels,
       settingsSections,
       syncRssNow,
       syncSourceNow,
@@ -338,6 +618,7 @@ export function SearchJumpField({
       toggleSaved,
       unreadScopeIds,
       unarchiveSavedItems,
+      updatePerson,
       openLibraryDialog,
     ],
   );
@@ -450,8 +731,10 @@ export function SearchJumpField({
       setPalettePosition({
         left: Math.min(anchorRect.right + gap, maxLeft),
         top,
+        ["--theme-menu-top" as string]: `${top}px`,
+        ["--theme-menu-viewport-margin" as string]: `${viewportPadding}px`,
         visibility: "visible",
-      });
+      } as CSSProperties);
     };
 
     const handlePointerDown = (event: MouseEvent) => {
@@ -640,10 +923,11 @@ export function SearchJumpField({
                 autoFocus
                 value={inputValue}
                 onChange={(event) => setInputValue(event.target.value)}
+                onFocus={prepareSearch}
                 onKeyDown={handleInputKeyDown}
                 onClear={clearSearch}
-                placeholder="Search or run a command"
-                aria-label="Search or run a command"
+                placeholder="Search or run"
+                aria-label="Search or run"
                 containerClassName="mb-3"
               />
             ) : null}
@@ -664,6 +948,7 @@ export function SearchJumpField({
                       {section.actions.map((action) => {
                         const index = filteredActions.findIndex((candidate) => candidate.id === action.id);
                         const isActive = index === activeIndex;
+                        const actionIcon = getCommandPaletteIcon(action);
                         return (
                           <button
                             key={action.id}
@@ -676,12 +961,13 @@ export function SearchJumpField({
                             onClick={() => {
                               void handleActionSelection(action);
                             }}
-                            className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
                               isActive
                                 ? "bg-[var(--theme-bg-muted)] text-[var(--theme-text-primary)]"
                                 : "text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                             }`}
                           >
+                            <PaletteLineIcon>{actionIcon}</PaletteLineIcon>
                             <span className="min-w-0 flex-1 truncate">{action.title}</span>
                             {action.confirm ? (
                               <span className="shrink-0 rounded-md border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
@@ -711,7 +997,7 @@ export function SearchJumpField({
         <div
           ref={triggerPaletteRef}
           data-testid={usesFloatingTrigger ? "compact-sidebar-search-palette" : "sidebar-search-command-palette"}
-          className="theme-dialog-shell fixed z-[320] w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-[var(--card-radius)] border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-2 shadow-2xl shadow-black/50"
+          className="theme-dialog-shell theme-menu-shell fixed z-[320] w-[min(20rem,calc(100vw-1.5rem))] rounded-[var(--card-radius)] border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-2 shadow-2xl shadow-black/50"
           style={palettePosition}
         >
           {renderActionSurface(usesFloatingTrigger)}
@@ -726,7 +1012,7 @@ export function SearchJumpField({
     return (
       <div className={compactSidebar ? "relative z-20 mb-[2px] w-full" : "relative z-20 mb-3 flex justify-center"}>
         <Tooltip
-          label="Search or run a command"
+          label="Search or run"
           side={compactSidebar ? "right" : undefined}
           className={compactSidebar ? "flex w-full" : undefined}
         >
@@ -734,7 +1020,10 @@ export function SearchJumpField({
             ref={triggerButtonRef}
             type="button"
             data-testid="compact-sidebar-search-trigger"
-            onClick={() => setIsTriggerOpen((value) => !value)}
+            onClick={() => {
+              prepareSearch();
+              setIsTriggerOpen((value) => !value);
+            }}
             className={compactSidebar
               ? `relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-[var(--card-radius)] border transition-colors ${
                   triggerActive
@@ -744,7 +1033,7 @@ export function SearchJumpField({
               : `relative flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--theme-border-subtle)] bg-transparent text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-quiet)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)] ${
                   showFloatingField ? "border-[var(--theme-border-strong)] bg-[var(--theme-bg-muted)] text-[var(--theme-text-primary)]" : ""
                 }`}
-            aria-label="Search or run a command"
+            aria-label="Search or run"
             aria-expanded={showFloatingField}
             aria-pressed={triggerActive}
             aria-haspopup="dialog"
@@ -776,7 +1065,7 @@ export function SearchJumpField({
       data-testid="sidebar-search-field-wrapper"
       className="relative z-20"
       style={{
-        marginBottom: `${inlineMarginBottomPx ?? (narrowSidebar ? 8 : 16)}px`,
+        marginBottom: `${inlineMarginBottomPx ?? (mobileSidebar ? 14 : narrowSidebar ? 8 : 16)}px`,
         transition: "margin-bottom 180ms ease",
       }}
     >
@@ -784,7 +1073,10 @@ export function SearchJumpField({
         ref={inlineInputRef}
         value={inputValue}
         onChange={(event) => setInputValue(event.target.value)}
-        onFocus={() => setIsFocused(true)}
+        onFocus={() => {
+          prepareSearch();
+          setIsFocused(true);
+        }}
         onBlur={() => {
           window.setTimeout(() => {
             if (!triggerPaletteRef.current?.matches(":hover")) {
@@ -795,10 +1087,12 @@ export function SearchJumpField({
         onKeyDown={handleInputKeyDown}
         onClear={clearSearch}
         placeholder={inlinePlaceholder}
-        aria-label="Search or run a command"
+        aria-label="Search or run"
         style={narrowSidebar && !inputValue ? { paddingRight: 0 } : undefined}
         inputClassName={
-          compactSidebar
+          mobileSidebar
+            ? "h-12 rounded-xl pl-10 pr-8 text-base"
+            : compactSidebar
             ? "pl-7 pr-6"
             : narrowSidebar
               ? inputValue
