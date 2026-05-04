@@ -1,0 +1,84 @@
+{
+  "tag": "v26.5.307",
+  "version": "26.5.307",
+  "channel": "production",
+  "dayKey": "26.5.3",
+  "approved": false,
+  "editorialNotes": [
+    "Manually authored after prepare-release-notes could not consolidate the full dev prerelease run into the production rollup."
+  ],
+  "generatedAt": "2026-05-04T04:03:01.000Z",
+  "model": "manual",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.4.2603",
+    "previousPublishedDayTag": "v26.4.2603",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.307"
+    ],
+    "relatedBuildTags": [
+      "v26.4.2604-dev",
+      "v26.4.2605-dev",
+      "v26.4.2606-dev",
+      "v26.4.2700-dev",
+      "v26.4.2800-dev",
+      "v26.4.2900-dev",
+      "v26.4.2901-dev",
+      "v26.4.2902-dev",
+      "v26.4.2903-dev",
+      "v26.4.2904-dev",
+      "v26.4.3000-dev",
+      "v26.4.3001-dev",
+      "v26.4.3002-dev",
+      "v26.4.3003-dev",
+      "v26.4.3005-dev",
+      "v26.4.3006-dev",
+      "v26.5.100-dev",
+      "v26.5.101-dev",
+      "v26.5.102-dev",
+      "v26.5.103-dev",
+      "v26.5.200-dev",
+      "v26.5.201-dev",
+      "v26.5.300-dev",
+      "v26.5.301-dev",
+      "v26.5.302-dev",
+      "v26.5.303-dev",
+      "v26.5.304-dev",
+      "v26.5.305-dev",
+      "v26.5.306-dev",
+      "v26.5.307"
+    ],
+    "prNumbers": [
+      411,
+      412,
+      414
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for production release"
+    ]
+  },
+  "release": {
+    "deck": "A larger Freed Desktop update focused on relationship views, optional local intelligence, reliable capture, and calmer reading.",
+    "features": [
+      "Friends graph tools now include ranked suggestions, relationship tiers, shared Friends or All content scoping, and search profile actions.",
+      "Optional local AI model packs can be installed from settings to enrich semantic analysis without bundling model weights.",
+      "Reading layouts now keep feeds, stories, sidebars, and cards steadier while media and view transitions load."
+    ],
+    "fixes": [
+      "Startup recovery now waits for healthy renderer heartbeats, records diagnostics, and keeps background work from running into stalled windows.",
+      "Social capture is more reliable across Instagram, Facebook, LinkedIn, and X, with stronger story dedupe, comment hydration, OAuth, and memory-pressure handling.",
+      "Sync and update flows are steadier across Google Drive, Dropbox, mobile pairing, updater channels, outbox persistence, and Automerge state patches.",
+      "Provider health, source action menus, graph selection, and graph label checks have stronger Freed Desktop validation coverage.",
+      "Cloud media vault setup, Google contacts sync, and local archive handling have clearer settings and safer storage paths.",
+      "Read-on-scroll, reader hydration, saved signals, search, map markers, and command state now preserve context more consistently."
+    ],
+    "followUps": [
+      "Release validation now covers the full primary platform matrix and slimmer Freed Desktop E2E gates.",
+      "Website changelog and roadmap presentation will be refreshed from the production tag after the release workflow publishes.",
+      "Reverse integration will merge this production release back into dev after updater verification."
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.307\n\nA larger Freed Desktop update focused on relationship views, optional local intelligence, reliable capture, and calmer reading.\n\n### Features\n\n- Friends graph tools now include ranked suggestions, relationship tiers, shared Friends or All content scoping, and search profile actions.\n- Optional local AI model packs can be installed from settings to enrich semantic analysis without bundling model weights.\n- Reading layouts now keep feeds, stories, sidebars, and cards steadier while media and view transitions load.\n\n### Fixes\n\n- Startup recovery now waits for healthy renderer heartbeats, records diagnostics, and keeps background work from running into stalled windows.\n- Social capture is more reliable across Instagram, Facebook, LinkedIn, and X, with stronger story dedupe, comment hydration, OAuth, and memory-pressure handling.\n- Sync and update flows are steadier across Google Drive, Dropbox, mobile pairing, updater channels, outbox persistence, and Automerge state patches.\n- Provider health, source action menus, graph selection, and graph label checks have stronger Freed Desktop validation coverage.\n- Cloud media vault setup, Google contacts sync, and local archive handling have clearer settings and safer storage paths.\n- Read-on-scroll, reader hydration, saved signals, search, map markers, and command state now preserve context more consistently.\n\n### Follow-ups\n\n- Release validation now covers the full primary platform matrix and slimmer Freed Desktop E2E gates.\n- Website changelog and roadmap presentation will be refreshed from the production tag after the release workflow publishes.\n- Reverse integration will merge this production release back into dev after updater verification.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
