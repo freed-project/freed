@@ -1,5 +1,36 @@
 [
   {
+    "version": "26.5.400",
+    "tagName": "v26.5.400",
+    "channel": "production",
+    "date": "2026-05-04T11:05:47Z",
+    "deck": "Fix stale renderer recovery restarts",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Recover stale renderers without blocking the macOS main thread while the old main window unregisters."
+      },
+      {
+        "text": "Let the startup recovery screen scroll in shorter windows so recovery actions stay reachable."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.400",
+    "prNumbers": [
+      421
+    ],
+    "builds": [
+      "26.5.400"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.5.400",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.400",
+        "channel": "production"
+      }
+    ]
+  },
+  {
     "version": "26.5.309",
     "tagName": "v26.5.309",
     "channel": "production",
