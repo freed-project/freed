@@ -4353,6 +4353,13 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
     return viewport.evaluate((element) => Number((element as HTMLElement).dataset.graphNodeCount ?? "0"));
   }).toBeGreaterThan(20);
 
+  await expect
+    .poll(async () => {
+      const summary = await readGraphDebug(page);
+      return summary?.metrics.visibleProviderLabelCount ?? 0;
+    }, { timeout: 15_000 })
+    .toBeGreaterThan(0);
+
   const debug = await readGraphDebug(page);
   expect(debug).not.toBeNull();
   expect(debug!.regions.length).toBeGreaterThanOrEqual(3);
