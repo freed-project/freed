@@ -35,6 +35,7 @@ import {
   markItemsAsRead,
   toggleSaved,
   toggleArchived,
+  archiveItemsById,
   archiveAllReadUnsaved,
   unarchiveSavedItems,
   pruneArchivedItems,
@@ -350,6 +351,16 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
       case "TOGGLE_ARCHIVED":
         await applyChange((doc) => toggleArchived(doc, req.globalId), "Toggle archived");
+        ack(req.reqId);
+        break;
+
+      case "ARCHIVE_ITEMS":
+        await applyChange(
+          (doc) => {
+            archiveItemsById(doc, req.globalIds);
+          },
+          `Archive ${req.globalIds.length.toLocaleString()} items`,
+        );
         ack(req.reqId);
         break;
 

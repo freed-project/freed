@@ -167,6 +167,17 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
           ),
         }));
       }),
+    archiveItems:
+      overrides.archiveItems
+      ?? (async (ids: string[]) => {
+        set((state) => ({
+          items: state.items.map((item) =>
+            ids.includes(item.globalId)
+              ? { ...item, userState: { ...item.userState, archived: true, archivedAt: Date.now() } }
+              : item,
+          ),
+        }));
+      }),
     archiveAllReadUnsaved: overrides.archiveAllReadUnsaved ?? noopAsync,
     unarchiveSavedItems:
       overrides.unarchiveSavedItems
@@ -641,6 +652,68 @@ describe("command palette", () => {
       platform: "rss",
       feedUrl: "https://alpha.example/feed.xml",
     });
+  });
+
+  it("archives current scope read items with one visible ID batch", async () => {
+    const archiveItems = vi.fn(async () => {});
+    const toggleArchived = vi.fn(async () => {});
+    const visibleReadPost = createItem({
+      globalId: "instagram:visible-read-post",
+      platform: "instagram",
+      contentType: "post",
+      userState: { hidden: false, saved: false, archived: false, readAt: 10, tags: [], highlights: [] },
+    });
+    const hiddenByContentFilter = createItem({
+      globalId: "instagram:story-read",
+      platform: "instagram",
+      contentType: "story",
+      userState: { hidden: false, saved: false, archived: false, readAt: 11, tags: [], highlights: [] },
+    });
+    const unreadPost = createItem({
+      globalId: "instagram:unread-post",
+      platform: "instagram",
+      contentType: "post",
+      userState: { hidden: false, saved: false, archived: false, tags: [], highlights: [] },
+    });
+    const savedPost = createItem({
+      globalId: "instagram:saved-post",
+      platform: "instagram",
+      contentType: "post",
+      userState: { hidden: false, saved: true, archived: false, readAt: 12, tags: [], highlights: [] },
+    });
+    const store = createTestStore({
+      activeFilter: { platform: "instagram", socialContentFilter: "posts" },
+      items: [visibleReadPost, hiddenByContentFilter, unreadPost, savedPost],
+      archiveItems,
+      toggleArchived,
+    });
+    const platform = createPlatform(store);
+    const render = renderNode(
+      createElement(
+        PlatformProvider,
+        { value: platform, children: createElement(SearchJumpField) },
+      ),
+    );
+    cleanups.push(render.cleanup);
+    await flush();
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
+    await flush();
+    changeInput(input!, "archive");
+    await flush();
+
+    const archiveAction = Array.from(document.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("Archive current scope read items"),
+    );
+    expect(archiveAction).not.toBeUndefined();
+    click(archiveAction!);
+    await flush();
+
+    expect(archiveItems).toHaveBeenCalledTimes(1);
+    expect(archiveItems).toHaveBeenCalledWith(["instagram:visible-read-post"]);
+    expect(toggleArchived).not.toHaveBeenCalled();
   });
 
   it("renders command action icons and keeps reset confirmation mounted after blur", async () => {

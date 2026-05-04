@@ -2146,6 +2146,144 @@ test("feed toolbar bulk action counts follow the active filter", async ({ app, p
   await expect(overflowMenu.getByRole("menuitem", { name: "Archive 1 read items" })).toBeVisible();
 });
 
+test("feed toolbar archives visible read Instagram posts in one batch", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const now = Date.now();
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        setActiveView: (view: "feed" | "friends" | "map") => void;
+        setFilter: (filter: { platform: string; socialContentFilter: "posts" }) => void;
+      };
+    };
+    const makeItem = (
+      globalId: string,
+      contentType: "post" | "story",
+      userState: Record<string, unknown>,
+    ) => ({
+      globalId,
+      platform: "instagram",
+      contentType,
+      capturedAt: now,
+      publishedAt: now,
+      author: {
+        id: "visible-archive",
+        handle: "visible_archive",
+        displayName: "Visible Archive",
+      },
+      content: {
+        text: `Visible archive item ${globalId}`,
+        mediaUrls: [],
+        mediaTypes: [],
+      },
+      topics: [],
+      sourceUrl: `https://www.instagram.com/p/${globalId}`,
+      userState: {
+        hidden: false,
+        saved: false,
+        archived: false,
+        tags: [],
+        ...userState,
+      },
+    });
+
+    const archiveCandidates = Array.from({ length: 300 }, (_, index) =>
+      makeItem(`instagram:visible-archive:${index}`, "post", { readAt: now - index })
+    );
+    const storyItems = Array.from({ length: 5 }, (_, index) =>
+      makeItem(`instagram:visible-story:${index}`, "story", { readAt: now - index })
+    );
+    const unreadPosts = Array.from({ length: 4 }, (_, index) =>
+      makeItem(`instagram:visible-unread:${index}`, "post", {})
+    );
+    const savedPosts = Array.from({ length: 3 }, (_, index) =>
+      makeItem(`instagram:visible-saved:${index}`, "post", { saved: true, readAt: now - index })
+    );
+
+    await automerge.docBatchImportItems([
+      ...archiveCandidates,
+      ...storyItems,
+      ...unreadPosts,
+      ...savedPosts,
+    ]);
+    store.getState().setActiveView("feed");
+    store.getState().setFilter({ platform: "instagram", socialContentFilter: "posts" });
+  });
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        archiveItems: (ids: string[]) => Promise<void>;
+      };
+      setState: (patch: { archiveItems: (ids: string[]) => Promise<void> }) => void;
+    };
+    const originalArchiveItems = store.getState().archiveItems;
+    w.__FREED_ARCHIVE_ITEM_CALLS__ = [];
+    store.setState({
+      archiveItems: async (ids: string[]) => {
+        (w.__FREED_ARCHIVE_ITEM_CALLS__ as string[][]).push(ids);
+        await originalArchiveItems(ids);
+      },
+    });
+  });
+
+  const overflowButton = page.getByTestId("toolbar-overflow-button");
+  await expect(overflowButton).toBeVisible({ timeout: 5_000 });
+  await overflowButton.click();
+
+  const archiveAction = page
+    .getByTestId("toolbar-overflow-menu")
+    .getByRole("menuitem", { name: "Archive 300 read items" });
+  await expect(archiveAction).toBeVisible({ timeout: 10_000 });
+  await archiveAction.click();
+
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const calls = (window as Record<string, unknown>).__FREED_ARCHIVE_ITEM_CALLS__ as string[][] | undefined;
+      return calls?.length ?? 0;
+    }),
+  ).toBe(1);
+  const archiveCallSize = await page.evaluate(() => {
+    const calls = (window as Record<string, unknown>).__FREED_ARCHIVE_ITEM_CALLS__ as string[][];
+    return calls[0]?.length ?? 0;
+  });
+  expect(archiveCallSize).toBe(300);
+
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { items: Array<{ globalId: string; userState: { archived?: boolean } }> } }
+      | undefined;
+    const items = store?.getState().items ?? [];
+    const archivedCandidates = items.filter((item) =>
+      item.globalId.startsWith("instagram:visible-archive:")
+    );
+    const storyItems = items.filter((item) =>
+      item.globalId.startsWith("instagram:visible-story:")
+    );
+    const unreadPosts = items.filter((item) =>
+      item.globalId.startsWith("instagram:visible-unread:")
+    );
+    const savedPosts = items.filter((item) =>
+      item.globalId.startsWith("instagram:visible-saved:")
+    );
+    return (
+      archivedCandidates.length === 300 &&
+      archivedCandidates.every((item) => item.userState.archived === true) &&
+      storyItems.every((item) => item.userState.archived !== true) &&
+      unreadPosts.every((item) => item.userState.archived !== true) &&
+      savedPosts.every((item) => item.userState.archived !== true)
+    );
+  }, { timeout: 30_000 });
+});
+
 test("feed toolbar title describes active content filters", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();

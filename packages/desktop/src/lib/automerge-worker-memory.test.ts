@@ -17,6 +17,7 @@ describe("automerge worker memory routing", () => {
     "MARK_AS_READ",
     "MARK_ITEMS_AS_READ",
     "TOGGLE_ARCHIVED",
+    "ARCHIVE_ITEMS",
     "TOGGLE_LIKED",
     "CONFIRM_LIKED_SYNCED",
     "CONFIRM_SEEN_SYNCED",

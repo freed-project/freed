@@ -10,14 +10,12 @@ import {
   type ReactNode,
 } from "react";
 import {
-  filterFeedItems,
-  isFriendAuthoredItem,
   type FilterOptions,
   type Platform,
 } from "@freed/shared";
 
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
-import { prepareSearchIndex } from "../../hooks/useSearchResults.js";
+import { prepareSearchIndex, useSearchResults } from "../../hooks/useSearchResults.js";
 import { buildCommandPaletteActions } from "../../lib/command-palette-registry.js";
 import {
   filterCommandPaletteActions,
@@ -303,6 +301,7 @@ export function SearchJumpField({
   const createConnectionPersonFromAccounts = useAppStore((s) => s.createConnectionPersonFromAccounts);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
+  const archiveItems = useAppStore((s) => s.archiveItems);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
   const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
@@ -341,15 +340,16 @@ export function SearchJumpField({
     [items, selectedItemId],
   );
 
-  const commandScopeItems = useMemo(() => {
-    const identityItems = display.friendsMode === "friends"
-      ? items.filter((item) => isFriendAuthoredItem(item, persons, accounts, friends))
-      : items;
-    const filtered = filterFeedItems(identityItems, activeFilter);
-    return activeFilter.feedUrl
-      ? filtered.filter((item) => item.rssSource?.feedUrl === activeFilter.feedUrl)
-      : filtered;
-  }, [accounts, activeFilter, display.friendsMode, friends, items, persons]);
+  const { filteredItems: commandScopeItems } = useSearchResults(
+    items,
+    searchQuery,
+    activeFilter,
+    searchCorpusVersion,
+    display.friendsMode ?? "all_content",
+    persons,
+    accounts,
+    friends,
+  );
 
   const unreadScopeIds = useMemo(
     () => commandScopeItems.filter((item) => !item.userState.readAt).map((item) => item.globalId),
@@ -361,6 +361,10 @@ export function SearchJumpField({
         (item) => !!item.userState.readAt && !item.userState.saved && !item.userState.archived,
       ),
     [commandScopeItems],
+  );
+  const archivableScopeIds = useMemo(
+    () => archivableScopeItems.map((item) => item.globalId),
+    [archivableScopeItems],
   );
   const savedArchivedCount = useMemo(
     () => items.filter((item) => item.userState.saved && item.userState.archived).length,
@@ -560,12 +564,8 @@ export function SearchJumpField({
             ? () => markItemsAsRead(unreadScopeIds)
             : null,
         archiveScopeRead:
-          activeView === "feed" && archivableScopeItems.length > 0
-            ? async () => {
-                for (const item of archivableScopeItems) {
-                  await toggleArchived(item.globalId);
-                }
-              }
+          activeView === "feed" && archivableScopeIds.length > 0
+            ? () => archiveItems(archivableScopeIds)
             : null,
         unarchiveSavedItems,
         syncRssNow,
@@ -587,6 +587,8 @@ export function SearchJumpField({
       deleteAllArchived,
       enabledFeeds,
       factoryReset,
+      archiveItems,
+      archivableScopeIds,
       clearQueryForNavigation,
       createConnectionPersonFromAccounts,
       inputValue,
