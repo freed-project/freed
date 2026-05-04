@@ -116,6 +116,12 @@ function getCommandPaletteIcon(action: CommandPaletteAction): ReactNode {
   if (action.id === "go-map") {
     return <MapPinIcon className={iconClass} />;
   }
+  if (action.id.startsWith("go-profile-friends-") || action.id.startsWith("promote-profile-")) {
+    return <UsersIcon className={iconClass} />;
+  }
+  if (action.id.startsWith("go-profile-map-")) {
+    return <MapPinIcon className={iconClass} />;
+  }
   if (action.id === "go-source-rss" || action.id.startsWith("go-feed-") || action.id === "go-settings-feeds" || action.id === "scope-sync-rss") {
     return <RssIcon className={iconClass} />;
   }
@@ -292,6 +298,9 @@ export function SearchJumpField({
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
+  const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
+  const updatePerson = useAppStore((s) => s.updatePerson);
+  const createConnectionPersonFromAccounts = useAppStore((s) => s.createConnectionPersonFromAccounts);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
@@ -378,6 +387,7 @@ export function SearchJumpField({
         )
         .map((account) => ({
           account,
+          person: account.personId ? persons[account.personId] : undefined,
           personName: account.personId ? persons[account.personId]?.name : undefined,
         }))
         .sort((left, right) => {
@@ -425,6 +435,14 @@ export function SearchJumpField({
   const prepareSearch = useCallback(() => {
     void prepareSearchIndex(items, searchCorpusVersion, accounts);
   }, [accounts, items, searchCorpusVersion]);
+  const clearQueryForNavigation = useCallback(() => {
+    setSearchQuery("");
+    setInputValue("");
+  }, [setSearchQuery]);
+  const ensurePersonForAccount = useCallback(async (accountId: string, personId: string | null) => {
+    if (personId && persons[personId]) return personId;
+    return await createConnectionPersonFromAccounts([accountId]);
+  }, [createConnectionPersonFromAccounts, persons]);
 
   const actions = useMemo(
     () =>
@@ -472,6 +490,32 @@ export function SearchJumpField({
           setSelectedItem(null);
           setSelectedPerson(null);
           setActiveView("map");
+        },
+        navigateToSocialProfileFriends: (account, personId) => {
+          clearQueryForNavigation();
+          setSelectedItem(null);
+          if (personId && persons[personId]) {
+            setSelectedPerson(personId);
+          } else {
+            setSelectedAccount(account.id);
+          }
+          setActiveView("friends");
+        },
+        navigateToSocialProfileMap: async (account, personId) => {
+          const resolvedPersonId = await ensurePersonForAccount(account.id, personId);
+          clearQueryForNavigation();
+          setSelectedItem(null);
+          setSelectedPerson(resolvedPersonId);
+          setActiveView("map");
+        },
+        promoteSocialProfile: async (account, level) => {
+          const resolvedPersonId = await ensurePersonForAccount(account.id, account.personId ?? null);
+          await updatePerson(resolvedPersonId, {
+            relationshipStatus: "friend",
+            careLevel: level,
+            updatedAt: Date.now(),
+          });
+          setSelectedPerson(resolvedPersonId);
         },
         applyFeedSearch: (nextQuery: string) =>
           applyFeedSearch(
@@ -543,7 +587,10 @@ export function SearchJumpField({
       deleteAllArchived,
       enabledFeeds,
       factoryReset,
+      clearQueryForNavigation,
+      createConnectionPersonFromAccounts,
       inputValue,
+      ensurePersonForAccount,
       markItemsAsRead,
       openAddFeedDialog,
       openSavedContentDialog,
@@ -558,6 +605,7 @@ export function SearchJumpField({
       setActiveView,
       setFilter,
       setSearchQuery,
+      setSelectedAccount,
       setSelectedItem,
       setSelectedPerson,
       socialChannels,
@@ -570,6 +618,7 @@ export function SearchJumpField({
       toggleSaved,
       unreadScopeIds,
       unarchiveSavedItems,
+      updatePerson,
       openLibraryDialog,
     ],
   );

@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { create } from "zustand";
-import type { Account, BaseAppState, FeedItem, FilterOptions } from "@freed/shared";
+import type { Account, BaseAppState, FeedItem, FilterOptions, Person } from "@freed/shared";
 import type { PlatformConfig } from "../../../ui/src/context/PlatformContext.tsx";
 import { PlatformProvider } from "../../../ui/src/context/PlatformContext.tsx";
 import { AppShell } from "../../../ui/src/components/layout/AppShell.tsx";
@@ -497,6 +497,75 @@ describe("command palette", () => {
     expect(channelAction?.title).toBe("Rob Beschizza");
     channelAction?.run();
     expect(navigateToFeed).toHaveBeenCalledWith({ platform: "x", authorId: "rob" });
+  });
+
+  it("adds typed social profile navigation and promotion actions", async () => {
+    const navigateToSocialProfileFriends = vi.fn();
+    const navigateToSocialProfileMap = vi.fn();
+    const promoteSocialProfile = vi.fn();
+    const account: Account = {
+      id: "social:instagram:kr3ture_music",
+      personId: "person-kr3ture",
+      kind: "social",
+      provider: "instagram",
+      externalId: "kr3ture_music",
+      handle: "@kr3ture_music",
+      displayName: "kr3ture_music",
+      firstSeenAt: 1,
+      lastSeenAt: 1,
+      discoveredFrom: "captured_item",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const person: Person = {
+      id: "person-kr3ture",
+      name: "Kr3ture",
+      relationshipStatus: "connection",
+      careLevel: 2,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+
+    const actions = buildCommandPaletteActions({
+      query: "kr3tu",
+      activeView: "feed",
+      activeFilter: {},
+      settingsSections: [],
+      topSources: [],
+      feeds: [],
+      socialChannels: [{ account, person }],
+      tagFilters: [],
+      currentSourceId: null,
+      selectedItem: null,
+      unreadScopeCount: 0,
+      archivableScopeCount: 0,
+      savedArchivedCount: 0,
+      archivedCount: 0,
+      openSettingsTo: noop,
+      navigateToFeed: noop,
+      navigateToFriends: noop,
+      navigateToMap: noop,
+      navigateToSocialProfileFriends,
+      navigateToSocialProfileMap,
+      promoteSocialProfile,
+      applyFeedSearch: noop,
+    });
+
+    const friendsAction = actions.find((action) => action.id === "go-profile-friends-social:instagram:kr3ture_music");
+    expect(friendsAction?.title).toBe("Kr3ture's Friends view");
+    friendsAction?.run();
+    expect(navigateToSocialProfileFriends).toHaveBeenCalledWith(account, "person-kr3ture");
+
+    const mapAction = actions.find((action) => action.id === "go-profile-map-social:instagram:kr3ture_music");
+    expect(mapAction?.title).toBe("Kr3ture on Map");
+    mapAction?.run();
+    expect(navigateToSocialProfileMap).toHaveBeenCalledWith(account, "person-kr3ture");
+
+    await actions.find((action) => action.id === "promote-profile-friend-social:instagram:kr3ture_music")?.run();
+    expect(promoteSocialProfile).toHaveBeenCalledWith(account, 3);
+
+    await actions.find((action) => action.id === "promote-profile-close-friend-social:instagram:kr3ture_music")?.run();
+    expect(promoteSocialProfile).toHaveBeenCalledWith(account, 5);
   });
 
   it("focuses the sidebar search from AppShell with Cmd/Ctrl+K", async () => {
