@@ -11,6 +11,7 @@
   "pinnedHighlights": [
     "Refined sidebar rows, header spacing, and feed card density for a steadier reading layout.",
     "Hardened Freed Desktop startup recovery so background work waits for healthy renderer heartbeats before running high-risk jobs.",
+    "Deduped duplicate Instagram story captures by tightening story viewer validation and repairing media-key matches.",
     "Fixed-height desktop feed cards and story rows keep media loads from moving scroll position.",
     "Card density controls now drive compact, comfortable, and expansive feed layouts.",
     "Floating menus now stay inside the viewport and scroll internally."
