@@ -16,7 +16,9 @@
     "Feed cards isolate layout and paint work during scrolling",
     "Feed priority ordering and common bulk actions avoid full render-path document work",
     "Local snapshots prune stale binaries on startup and listing",
-    "Maintenance tasks skip full feed-state broadcasts when no records changed"
+    "Maintenance tasks skip full feed-state broadcasts when no records changed",
+    "Freed Desktop caps oversized article text before projecting feed state into the renderer",
+    "Feed cards render bounded text previews for long article bodies"
   ],
   "editorialNotes": [],
   "updatedAt": "2026-05-05T14:44:36.716Z"
