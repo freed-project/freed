@@ -3,7 +3,7 @@
   "version": "26.5.501-dev",
   "channel": "dev",
   "dayKey": "26.5.5",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-05T08:04:26.641Z",
   "model": "heuristic",
@@ -36,10 +36,12 @@
     "deck": "Startup repair ships",
     "features": [],
     "fixes": [
-      "Strengthen desktop native activation",
-      "Desktop main window activation restored"
+      "Freed Desktop now calls AppKit activation directly when restoring the main window",
+      "Startup now retries the native show path and records activation probe results",
+      "macOS launch recovery now restores regular app activation before showing the main Freed Desktop window",
+      "Freed Desktop now unminimizes and orders the main window front when reopening or recovering it"
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.501-dev\n\nStartup repair ships\n\n### Fixes\n\n- Strengthen desktop native activation\n- Desktop main window activation restored\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.501-dev\n\nStartup repair ships\n\n### Fixes\n\n- Freed Desktop now calls AppKit activation directly when restoring the main window\n- Startup now retries the native show path and records activation probe results\n- macOS launch recovery now restores regular app activation before showing the main Freed Desktop window\n- Freed Desktop now unminimizes and orders the main window front when reopening or recovering it\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
