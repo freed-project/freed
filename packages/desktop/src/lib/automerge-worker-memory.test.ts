@@ -46,6 +46,24 @@ describe("automerge worker memory routing", () => {
     expect(body).not.toContain("STATE_UPDATE");
   });
 
+  it("last sync persists without rehydrating the full document", () => {
+    const body = caseBody("UPDATE_LAST_SYNC");
+
+    expect(body).toContain("persistAndBroadcastWithoutHydration");
+    expect(body).not.toContain("applyRequestChange");
+    expect(body).not.toContain("saveAndBroadcast");
+  });
+
+  it.each(["HEAL_UNTITLED_FEEDS", "DEDUPLICATE_ITEMS", "PRUNE_ARCHIVED_ITEMS"])(
+    "%s skips full hydration when no records change",
+    (caseName) => {
+      const body = caseBody(caseName);
+
+      expect(body).toContain("applyCountedChange");
+      expect(body).not.toContain("applyRequestChange");
+    },
+  );
+
   it("batches provisional connection repair into one document mutation", () => {
     const body = caseBody("UPSERT_CONNECTION_PERSONS");
 
