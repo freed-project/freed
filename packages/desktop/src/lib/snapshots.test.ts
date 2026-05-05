@@ -162,6 +162,18 @@ describe("snapshots", () => {
     expect(await exists("/mock/app-data/snapshots/notes.txt")).toBe(true);
   });
 
+  it("prunes orphaned snapshot files when snapshots are listed", async () => {
+    await writeFile("/mock/app-data/snapshots/orphan.automerge", new Uint8Array([9]));
+    await writeFile("/mock/app-data/snapshots/orphan.contacts.json", "{}");
+    await writeFile("/mock/app-data/snapshots/notes.txt", "keep me");
+
+    await listSnapshots();
+
+    expect(await exists("/mock/app-data/snapshots/orphan.automerge")).toBe(false);
+    expect(await exists("/mock/app-data/snapshots/orphan.contacts.json")).toBe(false);
+    expect(await exists("/mock/app-data/snapshots/notes.txt")).toBe(true);
+  });
+
   it("creates an initial auto snapshot when the manager starts", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-01T15:00:00Z"));

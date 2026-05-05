@@ -227,15 +227,16 @@ export async function listSnapshots(): Promise<SnapshotSummary[]> {
 
   const root = await ensureSnapshotDir();
   const indexed = await readSnapshotIndex();
+  const pruned = await pruneSnapshots(root, indexed);
   const filtered: SnapshotSummary[] = [];
 
-  for (const snapshot of indexed) {
+  for (const snapshot of pruned) {
     if (await exists(snapshotBinaryPath(root, snapshot.id))) {
       filtered.push(snapshot);
     }
   }
 
-  if (filtered.length !== indexed.length) {
+  if (filtered.length !== indexed.length || filtered.length !== pruned.length) {
     await writeSnapshotIndex(filtered);
   }
 
