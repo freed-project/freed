@@ -40,8 +40,6 @@ import {
   toggleSaved,
   toggleArchived,
   archiveItemsById,
-  archiveAllReadUnsaved,
-  unarchiveSavedItems,
   pruneArchivedItems,
   deleteAllArchivedItems,
   updatePreferences,
@@ -219,6 +217,48 @@ function cloneFeedItemForPatch(item: FeedItem): FeedItem {
     };
   }
   return cloned;
+}
+
+function markAllVisibleAsRead(doc: FreedDoc, platform?: string): string[] {
+  const now = Date.now();
+  const changedIds: string[] = [];
+  for (const item of Object.values(doc.feedItems) as FeedItem[]) {
+    if (item.userState.readAt) continue;
+    if (item.userState.hidden || item.userState.archived) continue;
+    if (platform && item.platform !== platform) continue;
+    item.userState.readAt = now;
+    changedIds.push(item.globalId);
+  }
+  return changedIds;
+}
+
+function archiveAllReadableUnsaved(doc: FreedDoc, platform?: string, feedUrl?: string): string[] {
+  const now = Date.now();
+  const changedIds: string[] = [];
+  for (const item of Object.values(doc.feedItems) as FeedItem[]) {
+    if (item.userState.archived) continue;
+    if (item.userState.hidden) continue;
+    if (item.userState.saved) continue;
+    if (!item.userState.readAt) continue;
+    if (platform && item.platform !== platform) continue;
+    if (feedUrl && item.rssSource?.feedUrl !== feedUrl) continue;
+    item.userState.archived = true;
+    item.userState.archivedAt = now;
+    changedIds.push(item.globalId);
+  }
+  return changedIds;
+}
+
+function unarchiveSavedItemIds(doc: FreedDoc): string[] {
+  const changedIds: string[] = [];
+  for (const item of Object.values(doc.feedItems) as FeedItem[]) {
+    if (!item.userState.saved) continue;
+    if (!item.userState.archived) continue;
+    item.userState.archived = false;
+    delete (item.userState as unknown as Record<string, unknown>).archivedAt;
+    changedIds.push(item.globalId);
+  }
+  return changedIds;
 }
 
 /**
@@ -576,20 +616,19 @@ async function handleRequest(
         break;
 
       case "MARK_ALL_AS_READ":
-        await applyRequestChange((doc) => {
-          const now = Date.now();
-          for (const item of Object.values(doc.feedItems) as FeedItem[]) {
-            if (item.userState.readAt) continue;
-            if (item.userState.hidden || item.userState.archived) continue;
-            if (req.platform && item.platform !== req.platform) continue;
-            item.userState.readAt = now;
-          }
-        }, "Mark all as read");
+        await applyItemPatchChange(
+          (doc) => markAllVisibleAsRead(doc, req.platform),
+          "Mark all as read",
+          trace,
+        );
         ack(req.reqId);
         break;
 
       case "TOGGLE_SAVED":
-        await applyRequestChange((doc) => toggleSaved(doc, req.globalId), "Toggle saved");
+        await applyItemPatchChange((doc) => {
+          toggleSaved(doc, req.globalId);
+          return [req.globalId];
+        }, "Toggle saved", trace);
         ack(req.reqId);
         break;
 
@@ -676,15 +715,20 @@ async function handleRequest(
         break;
 
       case "ARCHIVE_ALL_READ_UNSAVED":
-        await applyRequestChange(
-          (doc) => archiveAllReadUnsaved(doc, req.platform, req.feedUrl),
+        await applyItemPatchChange(
+          (doc) => archiveAllReadableUnsaved(doc, req.platform, req.feedUrl),
           "Archive all read",
+          trace,
         );
         ack(req.reqId);
         break;
 
       case "UNARCHIVE_SAVED_ITEMS":
-        await applyRequestChange((doc) => unarchiveSavedItems(doc), "Unarchive saved items");
+        await applyItemPatchChange(
+          (doc) => unarchiveSavedItemIds(doc),
+          "Unarchive saved items",
+          trace,
+        );
         ack(req.reqId);
         break;
 
