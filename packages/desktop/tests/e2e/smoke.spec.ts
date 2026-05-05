@@ -1174,48 +1174,17 @@ test("sidebar resize holds the dragged width after mouseup", async ({ app, page 
   });
 
   const sidebar = page.getByTestId("app-sidebar");
-  const { initialWidth, widthAfterRelease } = await page.evaluate(async () => {
-    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
-    const resizeHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
-    if (!sidebar || !resizeHandle) {
-      throw new Error("Sidebar resize elements were not found");
-    }
+  const resizeHandle = page.getByTestId("app-sidebar-resize-handle");
+  const initialWidth = await sidebar.evaluate((element) =>
+    element.getBoundingClientRect().width,
+  );
 
-    const initialWidth = sidebar.getBoundingClientRect().width;
-    const handleRect = resizeHandle.getBoundingClientRect();
-    const startX = handleRect.left + handleRect.width / 2;
-    const pointerY = handleRect.top + handleRect.height / 2;
-    const endX = startX + 72;
+  await dragElementBy(page, resizeHandle, 72);
+  await page.waitForTimeout(100);
 
-    resizeHandle.dispatchEvent(
-      new MouseEvent("mousedown", {
-        bubbles: true,
-        clientX: startX,
-        clientY: pointerY,
-      }),
-    );
-    document.dispatchEvent(
-      new MouseEvent("mousemove", {
-        bubbles: true,
-        clientX: endX,
-        clientY: pointerY,
-      }),
-    );
-    document.dispatchEvent(
-      new MouseEvent("mouseup", {
-        bubbles: true,
-        clientX: endX,
-        clientY: pointerY,
-      }),
-    );
-
-    await new Promise((resolve) => window.setTimeout(resolve, 100));
-
-    return {
-      initialWidth,
-      widthAfterRelease: sidebar.getBoundingClientRect().width,
-    };
-  });
+  const widthAfterRelease = await sidebar.evaluate((element) =>
+    element.getBoundingClientRect().width,
+  );
 
   expect(widthAfterRelease).toBeGreaterThan(initialWidth + 24);
 
