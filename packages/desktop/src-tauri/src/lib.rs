@@ -5262,10 +5262,22 @@ fn apply_main_window_vibrancy(_window: &tauri::WebviewWindow, _context: &str) ->
 }
 
 fn show_webview_window(window: &tauri::WebviewWindow) {
+    show_app_for_main_window(window);
     let _ = window.show();
+    let _ = window.unminimize();
     let _ = window.set_focus();
     force_show_webview_window(window);
 }
+
+#[cfg(target_os = "macos")]
+fn show_app_for_main_window(window: &tauri::WebviewWindow) {
+    let app = window.app_handle();
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+    let _ = app.show();
+}
+
+#[cfg(not(target_os = "macos"))]
+fn show_app_for_main_window(_window: &tauri::WebviewWindow) {}
 
 #[cfg(target_os = "macos")]
 fn force_show_webview_window(window: &tauri::WebviewWindow) {
@@ -5277,6 +5289,7 @@ fn force_show_webview_window(window: &tauri::WebviewWindow) {
     unsafe {
         let nil: *mut AnyObject = std::ptr::null_mut();
         let _: () = msg_send![ns_window, setIsVisible: true];
+        let _: () = msg_send![ns_window, setReleasedWhenClosed: false];
         let _: () = msg_send![ns_window, deminiaturize: nil];
         let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
         let _: () = msg_send![ns_window, orderFrontRegardless];
