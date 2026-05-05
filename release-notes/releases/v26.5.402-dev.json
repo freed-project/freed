@@ -1,0 +1,61 @@
+{
+  "tag": "v26.5.402-dev",
+  "version": "26.5.402-dev",
+  "channel": "dev",
+  "dayKey": "26.5.4",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-04T21:23:46.867Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.308-dev",
+    "previousPublishedDayTag": "v26.5.308-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.402-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.402-dev"
+    ],
+    "prNumbers": [
+      408,
+      418,
+      419,
+      420,
+      424,
+      425,
+      427
+    ],
+    "commitSubjects": [
+      "fix: restore linux release compile (#427)",
+      "release: approve v26.5.401-dev notes",
+      "release: v26.5.401-dev",
+      "fix: stabilize renderer recovery under memory pressure (#425)",
+      "fix: retry deferred startup rss poll (#424)",
+      "fix: batch visible archive actions (#420)",
+      "fix: recover stale renderer without blocking main thread (#419)",
+      "fix: let startup recovery dialog scroll (#408)",
+      "chore: reverse integrate v26.5.309 production release (#418)"
+    ]
+  },
+  "release": {
+    "deck": "Freed Desktop is calmer during renderer memory spikes",
+    "features": [],
+    "fixes": [
+      "Freed Desktop now pauses heavy background work before high renderer memory can force repeated recovery.",
+      "Renderer health events now include generation, route, visibility, memory footprint, recovery state, and active background work.",
+      "Social sync memory preflights now defer the shared scheduler instead of cycling through providers.",
+      "Startup recovery now waits for stable renderer heartbeats before high-memory background jobs resume.",
+      "Startup recovery and Settings copy now distinguish high memory from critical memory.",
+      "Non-macOS release builds now compile the renderer memory diagnostics cleanly."
+    ],
+    "followUps": [
+      "Local diagnostics now write bounded runtime bundles for memory pressure, stale heartbeats, and pre-recovery samples.",
+      "Startup recovery UI can scroll when the dialog content is taller than the window.",
+      "Visible archive actions now batch state work more aggressively."
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.402-dev\n\nFreed Desktop is calmer during renderer memory spikes\n\n### Fixes\n\n- Freed Desktop now pauses heavy background work before high renderer memory can force repeated recovery.\n- Renderer health events now include generation, route, visibility, memory footprint, recovery state, and active background work.\n- Social sync memory preflights now defer the shared scheduler instead of cycling through providers.\n- Startup recovery now waits for stable renderer heartbeats before high-memory background jobs resume.\n- Startup recovery and Settings copy now distinguish high memory from critical memory.\n- Non-macOS release builds now compile the renderer memory diagnostics cleanly.\n\n### Follow-ups\n\n- Local diagnostics now write bounded runtime bundles for memory pressure, stale heartbeats, and pre-recovery samples.\n- Startup recovery UI can scroll when the dialog content is taller than the window.\n- Visible archive actions now batch state work more aggressively.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

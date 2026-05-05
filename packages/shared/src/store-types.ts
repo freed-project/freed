@@ -102,6 +102,7 @@ export interface BaseAppState {
   markAllAsRead: (platform?: string) => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
   toggleArchived: (id: string) => Promise<void>;
+  archiveItems: (ids: string[]) => Promise<void>;
   /** Archive all read, non-saved items in the current view. */
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
   /** Repair legacy states where saved items are also marked archived. */

@@ -34,6 +34,7 @@ import {
   docToggleSaved,
   docRemoveFeedItem,
   docToggleArchived,
+  docArchiveItems,
   docArchiveAllReadUnsaved,
   docUnarchiveSavedItems,
   docDeleteAllArchived,
@@ -144,6 +145,7 @@ interface AppState {
   toggleSaved: (id: string) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
   toggleArchived: (id: string) => Promise<void>;
+  archiveItems: (ids: string[]) => Promise<void>;
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
   /** Record like intent in Automerge. Outbox processor drains to platform. */
   toggleLiked: (id: string) => Promise<void>;
@@ -565,6 +567,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleArchived: async (id) => {
     await docToggleArchived(id);
+  },
+
+  archiveItems: async (ids) => {
+    await docArchiveItems(ids);
   },
 
   toggleLiked: async (id) => {

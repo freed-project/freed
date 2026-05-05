@@ -135,4 +135,44 @@ describe("Automerge item patch state updates", () => {
     expect(result.state.totalItemCount).toBe(state.totalItemCount);
     expect(result.state.totalArchivableCount).toBe(state.totalArchivableCount);
   });
+
+  it("applies a large archive patch batch to aggregate counts", () => {
+    const items = Array.from({ length: 300 }, (_, index) =>
+      makeItem(`rss:read-${index}`, { readAt: 10 + index })
+    );
+    const state: DocState = {
+      ...makeState(items),
+      feedUnreadCounts: {},
+      totalUnreadCount: 0,
+      unreadCountByPlatform: {},
+      feedTotalCounts: { [FEED_URL]: 300 },
+      totalItemCount: 300,
+      itemCountByPlatform: { rss: 300 },
+      totalArchivableCount: 300,
+      archivableCountByPlatform: { rss: 300 },
+      archivableFeedCounts: { [FEED_URL]: 300 },
+    };
+    const index = createItemIndex(state.items);
+    const patches = items.map((item) => ({
+      item: {
+        ...item,
+        userState: {
+          ...item.userState,
+          archived: true,
+          archivedAt: 500,
+        },
+      },
+    }));
+
+    const result = applyItemPatchesToState(state, patches, index);
+
+    expect(result.state.items).toHaveLength(300);
+    expect(result.state.items.every((item) => item.userState.archived)).toBe(true);
+    expect(result.state.totalItemCount).toBe(0);
+    expect(result.state.itemCountByPlatform).toEqual({});
+    expect(result.state.feedTotalCounts).toEqual({});
+    expect(result.state.totalArchivableCount).toBe(0);
+    expect(result.state.archivableCountByPlatform).toEqual({});
+    expect(result.state.archivableFeedCounts).toEqual({});
+  });
 });

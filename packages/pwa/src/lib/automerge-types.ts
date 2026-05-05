@@ -54,6 +54,7 @@ export type WorkerRequest =
   | { reqId: number; type: "MARK_ALL_AS_READ"; platform?: string }
   | { reqId: number; type: "TOGGLE_SAVED"; globalId: string }
   | { reqId: number; type: "TOGGLE_ARCHIVED"; globalId: string }
+  | { reqId: number; type: "ARCHIVE_ITEMS"; globalIds: string[] }
   | { reqId: number; type: "TOGGLE_LIKED"; globalId: string }
   | { reqId: number; type: "CONFIRM_LIKED_SYNCED"; globalId: string; syncedAt?: number }
   | { reqId: number; type: "CONFIRM_SEEN_SYNCED"; globalId: string; syncedAt?: number }

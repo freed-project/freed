@@ -1291,6 +1291,30 @@ export function toggleArchived(doc: FreedDoc, globalId: string): void {
 }
 
 /**
+ * Archive a specific visible set of read, non-saved feed items in one change.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param globalIds - The item IDs to archive
+ * @returns Item IDs that were actually changed
+ */
+export function archiveItemsById(doc: FreedDoc, globalIds: readonly string[]): string[] {
+  const now = Date.now();
+  const changedIds: string[] = [];
+  for (const globalId of globalIds) {
+    const item = doc.feedItems[globalId];
+    if (!item) continue;
+    if (item.userState.archived) continue;
+    if (item.userState.hidden) continue;
+    if (item.userState.saved) continue;
+    if (!item.userState.readAt) continue;
+    item.userState.archived = true;
+    item.userState.archivedAt = now;
+    changedIds.push(globalId);
+  }
+  return changedIds;
+}
+
+/**
  * Archive all read, non-saved items — optionally scoped to a platform or feed.
  * Skips items already archived, hidden, or saved.
  *

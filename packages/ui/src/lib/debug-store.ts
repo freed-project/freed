@@ -61,6 +61,17 @@ export interface RuntimeMemorySnapshot {
   webkitProcessCount?: number;
   webkitLargestResidentBytes?: number;
   webkitLargestProcessId?: number;
+  webkitLargestCpuUsage?: number;
+  webkitLargestAgeSeconds?: number;
+  webkitLargestRole?: string;
+  webkitProcesses?: Array<{
+    processId: number;
+    residentBytes: number;
+    virtualBytes: number;
+    cpuUsage: number;
+    ageSeconds: number;
+    role: string;
+  }>;
   webkitTelemetryAvailable?: boolean;
   automergeBinaryBytes?: number;
   automergeItemCount?: number;
