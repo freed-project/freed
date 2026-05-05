@@ -20,6 +20,10 @@ import { test, expect } from "./fixtures/app";
 const ITEM_COUNT_MEDIUM = 1_000;
 const ITEM_COUNT_LARGE = 3_000;
 const ITEM_COUNT_XLARGE = 5_000;
+const SCROLL_LONG_TASK_COUNT_BUDGET = 2;
+const SCROLL_LONG_TASK_WORST_MS_BUDGET = 120;
+const SCROLL_FRAME_P95_MS_BUDGET = 50;
+const SCROLL_DROPPED_FRAME_BUDGET = 10;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -273,11 +277,12 @@ test.describe("Scroll performance", () => {
         const tasks = (window as Record<string, unknown>).__PERF_LONG_TASKS__ as PerformanceEntry[];
         tasks.push(...list.getEntries());
       });
-      obs.observe({ type: "longtask", buffered: true });
+      obs.observe({ type: "longtask", buffered: false });
       (window as Record<string, unknown>).__PERF_OBS__ = obs;
     });
 
     // Simulate rapid scroll: 20 steps of 500px downward.
+    const scrollStartedAt = await page.evaluate(() => performance.now());
     const elapsed = await measureBrowserMs(page, "Scroll 3k items (20 × 500px)", async () => {
       for (let i = 0; i < 20; i++) {
         await scrollContainer.evaluate((el) =>
@@ -288,21 +293,25 @@ test.describe("Scroll performance", () => {
       // Let the virtualiser finish measuring after the last scroll.
       await page.waitForTimeout(100);
     });
+    const scrollEndedAt = await page.evaluate(() => performance.now());
 
-    const longTaskData = await page.evaluate(() => {
+    const longTaskData = await page.evaluate(({ scrollStartedAt, scrollEndedAt }) => {
       const tasks = (window as Record<string, unknown>).__PERF_LONG_TASKS__ as PerformanceEntry[];
       const obs = (window as Record<string, unknown>).__PERF_OBS__ as PerformanceObserver;
       obs.disconnect();
+      const scrollTasks = tasks.filter(
+        (task) => task.startTime >= scrollStartedAt - 1 && task.startTime <= scrollEndedAt + 1,
+      );
       return {
-        count: tasks.length,
-        totalMs: tasks.reduce((s, t) => s + t.duration, 0),
-        worstMs: Math.max(0, ...tasks.map((t) => t.duration)),
-        tasks: tasks.map((t) => ({
+        count: scrollTasks.length,
+        totalMs: scrollTasks.reduce((s, t) => s + t.duration, 0),
+        worstMs: Math.max(0, ...scrollTasks.map((t) => t.duration)),
+        tasks: scrollTasks.map((t) => ({
           duration: Math.round(t.duration),
           startTime: Math.round(t.startTime),
         })),
       };
-    });
+    }, { scrollStartedAt, scrollEndedAt });
 
     console.log(`[PERF] Scroll elapsed: ${elapsed.toLocaleString()} ms`);
     console.log(`[PERF] Long tasks (>50ms): ${longTaskData.count}`);
@@ -313,10 +322,8 @@ test.describe("Scroll performance", () => {
       console.log("[PERF] Long task breakdown:", JSON.stringify(longTaskData.tasks, null, 2));
     }
 
-    // Flag but don't fail: more than 5 long tasks during a scroll is a red alert.
-    if (longTaskData.count > 5) {
-      console.warn(`[PERF] WARNING: ${longTaskData.count} long tasks during scroll - investigate jank`);
-    }
+    expect(longTaskData.count).toBeLessThanOrEqual(SCROLL_LONG_TASK_COUNT_BUDGET);
+    expect(longTaskData.worstMs).toBeLessThan(SCROLL_LONG_TASK_WORST_MS_BUDGET);
   });
 });
 
@@ -659,9 +666,10 @@ test.describe("FPS harness (rAF-based frame measurement)", () => {
       },
     );
 
-    // Scroll should not produce p95 frame times above 33ms (30fps threshold)
+    // Keep this below obvious jank while leaving room for shared CI runners.
     console.log(`[PERF] fps harness scroll 3k items p95: ${fps.p95Ms} ms`);
-    expect(fps.p95Ms).toBeLessThan(100); // wide tolerance - informational until fix
+    expect(fps.p95Ms).toBeLessThan(SCROLL_FRAME_P95_MS_BUDGET);
+    expect(fps.droppedFrames).toBeLessThanOrEqual(SCROLL_DROPPED_FRAME_BUDGET);
   });
 });
 

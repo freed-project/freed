@@ -5,6 +5,7 @@ import {
   buildValidationPlan,
   collectReleaseArtifactsToValidate,
   describePlan,
+  isDesktopPerfSensitiveSurface,
   parseArgs,
 } from "./validate-worktree.mjs";
 
@@ -48,7 +49,43 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
     "pwa unit tests",
     "desktop unit tests",
     "desktop e2e smoke",
+    "desktop e2e perf",
   ]);
+});
+
+test("feature plan for feed UI changes runs desktop perf checks", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", ["packages/ui/src/components/feed/useReadOnScrollTracker.ts"]),
+  );
+
+  assert.deepEqual(labels, [
+    "root typecheck",
+    "pwa production build",
+    "pwa typecheck",
+    "pwa unit tests",
+    "desktop unit tests",
+    "desktop e2e smoke",
+    "desktop e2e perf",
+  ]);
+});
+
+test("feature plan for non-feed desktop changes skips desktop perf checks", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", ["packages/desktop/src/components/ProviderHealthSectionSummary.tsx"]),
+  );
+
+  assert.deepEqual(labels, [
+    "root typecheck",
+    "desktop unit tests",
+    "desktop e2e smoke",
+  ]);
+});
+
+test("desktop perf sensitivity is scoped to hot paths and perf harnesses", () => {
+  assert.equal(isDesktopPerfSensitiveSurface("packages/desktop/src/lib/automerge.worker.ts"), true);
+  assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/components/feed/FeedList.tsx"), true);
+  assert.equal(isDesktopPerfSensitiveSurface("packages/shared/src/ranking.ts"), true);
+  assert.equal(isDesktopPerfSensitiveSurface("packages/desktop/src/components/ProviderHealthSectionSummary.tsx"), false);
 });
 
 test("dev plan runs desktop smoke, regression, perf, and visual lanes", () => {
