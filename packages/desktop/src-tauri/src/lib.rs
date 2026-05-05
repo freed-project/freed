@@ -34,7 +34,12 @@ use tokio_tungstenite::{
 #[cfg(target_os = "macos")]
 use objc2::rc::Retained;
 #[cfg(target_os = "macos")]
-use objc2::{class, msg_send, runtime::AnyObject};
+use objc2::{msg_send, runtime::AnyObject};
+#[cfg(target_os = "macos")]
+use objc2_app_kit::{
+    NSApplication, NSApplicationActivationOptions, NSApplicationActivationPolicy,
+    NSRunningApplication,
+};
 #[cfg(target_os = "macos")]
 use objc2_foundation::{ns_string, MainThreadMarker, NSObjectNSKeyValueCoding, NSString};
 #[cfg(target_os = "macos")]
@@ -5282,36 +5287,38 @@ fn show_app_for_main_window(_window: &tauri::WebviewWindow, _context: &str) {}
 
 #[cfg(target_os = "macos")]
 fn force_activate_ns_app(context: &str) {
-    unsafe {
-        let nil: *mut AnyObject = std::ptr::null_mut();
-        let ns_app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
-        if ns_app.is_null() {
-            warn!(
-                "[main-window] NSApplication unavailable during activation context={}",
-                context
-            );
-            return;
-        }
-
-        let regular_policy: isize = 0;
-        let policy_changed: bool = msg_send![ns_app, setActivationPolicy: regular_policy];
-        let _: () = msg_send![ns_app, unhide: nil];
-        let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
-
-        let running_app: *mut AnyObject =
-            msg_send![class!(NSRunningApplication), currentApplication];
-        let mut running_activation_requested = false;
-        if !running_app.is_null() {
-            let activation_options: usize = 1 | (1 << 1);
-            running_activation_requested =
-                msg_send![running_app, activateWithOptions: activation_options];
-        }
-
-        info!(
-            "[main-window] forced app activation context={} policy_changed={} running_activation_requested={}",
-            context, policy_changed, running_activation_requested
+    let Some(mtm) = MainThreadMarker::new() else {
+        warn!(
+            "[main-window] forced app activation skipped off main thread context={}",
+            context
         );
-    }
+        return;
+    };
+
+    let ns_app = NSApplication::sharedApplication(mtm);
+    let policy_before = ns_app.activationPolicy();
+    let policy_changed = ns_app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+    let policy_after = ns_app.activationPolicy();
+    ns_app.unhide(None);
+    ns_app.activate();
+
+    let running_app = NSRunningApplication::currentApplication();
+    let running_unhidden = running_app.unhide();
+    #[allow(deprecated)]
+    let running_activation_requested = running_app.activateWithOptions(
+        NSApplicationActivationOptions::ActivateAllWindows
+            | NSApplicationActivationOptions::ActivateIgnoringOtherApps,
+    );
+
+    info!(
+        "[main-window] forced app activation context={} policy_before={} policy_after={} policy_changed={} running_unhidden={} running_activation_requested={}",
+        context,
+        policy_before.0,
+        policy_after.0,
+        policy_changed,
+        running_unhidden,
+        running_activation_requested
+    );
 }
 
 #[cfg(not(target_os = "macos"))]
