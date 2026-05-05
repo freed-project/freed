@@ -18,7 +18,8 @@
     "Local snapshots prune stale binaries on startup and listing",
     "Maintenance tasks skip full feed-state broadcasts when no records changed",
     "Freed Desktop caps oversized article text before projecting feed state into the renderer",
-    "Feed cards render bounded text previews for long article bodies"
+    "Feed cards render bounded text previews for long article bodies",
+    "Desktop memory pressure caps at 4 GiB before background social scraping starts"
   ],
   "editorialNotes": [],
   "updatedAt": "2026-05-05T15:59:53.529Z"
