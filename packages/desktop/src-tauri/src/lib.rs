@@ -14,9 +14,9 @@ use std::process::Command;
 use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use sysinfo::{Disks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-use tauri::menu::{Menu, MenuItem};
 #[cfg(target_os = "macos")]
 use tauri::menu::Submenu;
+use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -64,6 +64,7 @@ const MIN_CRITICAL_MEMORY_BYTES: u64 = 7 * BYTES_PER_GIB / 2;
 const MAX_CRITICAL_MEMORY_BYTES: u64 = 8 * BYTES_PER_GIB;
 const WEBKIT_CACHE_TRIM_AT_BYTES: u64 = 768 * 1024 * 1024;
 const WEBKIT_CACHE_TRIM_TARGET_BYTES: u64 = 512 * 1024 * 1024;
+const OPTIONAL_STORY_MEMORY_BUDGET_PERCENT: u64 = 85;
 const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
 const RUNTIME_HEALTH_FILE: &str = "runtime-health.jsonl";
 const RUNTIME_DIAGNOSTICS_FILE: &str = "runtime-diagnostics.jsonl";
@@ -2449,6 +2450,88 @@ fn scrape_memory_may_proceed(stats: &RuntimeMemoryStats) -> bool {
     stats.app_resident_bytes < stats.memory_high_bytes
 }
 
+fn optional_story_scrape_may_proceed(stats: &RuntimeMemoryStats) -> bool {
+    stats.app_resident_bytes
+        < stats
+            .memory_high_bytes
+            .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
+            / 100
+}
+
+fn social_scrape_may_continue(
+    app: &tauri::AppHandle,
+    provider: &str,
+    operation: &str,
+    pass_index: usize,
+    total_passes: usize,
+) -> bool {
+    let stats = collect_runtime_memory_stats(app, 0, 0);
+    let may_continue = scrape_memory_may_proceed(&stats);
+    if !may_continue {
+        warn!(
+            "[memory] ending scrape early provider={} operation={} pass={}/{} app_rss={} webkit_rss={} high_bytes={} critical_bytes={}",
+            provider,
+            operation,
+            pass_index,
+            total_passes,
+            stats.app_resident_bytes,
+            stats.webkit_total_resident_bytes,
+            stats.memory_high_bytes,
+            stats.memory_critical_bytes
+        );
+        append_runtime_health(
+            app,
+            serde_json::json!({
+                "event": "social_scrape_stopped_for_memory",
+                "provider": provider,
+                "operation": operation,
+                "passIndex": pass_index,
+                "totalPasses": total_passes,
+                "appResidentBytes": stats.app_resident_bytes,
+                "webkitResidentBytes": stats.webkit_total_resident_bytes,
+                "webkitLargestProcessId": stats.webkit_largest_process_id,
+                "webkitLargestResidentBytes": stats.webkit_largest_resident_bytes,
+                "memoryHighBytes": stats.memory_high_bytes,
+                "memoryCriticalBytes": stats.memory_critical_bytes
+            }),
+        );
+    }
+    may_continue
+}
+
+fn optional_story_scrape_may_continue(
+    app: &tauri::AppHandle,
+    provider: &str,
+    operation: &str,
+) -> bool {
+    let stats = collect_runtime_memory_stats(app, 0, 0);
+    let may_continue = optional_story_scrape_may_proceed(&stats);
+    if !may_continue {
+        info!(
+            "[memory] skipping optional story scrape provider={} operation={} app_rss={} webkit_rss={} story_budget={} high_bytes={}",
+            provider,
+            operation,
+            stats.app_resident_bytes,
+            stats.webkit_total_resident_bytes,
+            stats.memory_high_bytes.saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT) / 100,
+            stats.memory_high_bytes
+        );
+        append_runtime_health(
+            app,
+            serde_json::json!({
+                "event": "optional_story_scrape_skipped_for_memory",
+                "provider": provider,
+                "operation": operation,
+                "appResidentBytes": stats.app_resident_bytes,
+                "webkitResidentBytes": stats.webkit_total_resident_bytes,
+                "storyBudgetBytes": stats.memory_high_bytes.saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT) / 100,
+                "memoryHighBytes": stats.memory_high_bytes
+            }),
+        );
+    }
+    may_continue
+}
+
 fn recycle_social_scraper_windows_except(
     app: &tauri::AppHandle,
     preserve_label: Option<&str>,
@@ -3509,7 +3592,7 @@ async fn fb_scrape_feed(
 
     // Randomized ordering: ~50% stories-first, ~50% feed-first.
     // ~15% chance to skip story scraping entirely (real users don't always check stories).
-    let skip_stories = {
+    let skip_stories = !optional_story_scrape_may_continue(&app, "Facebook", "feed scrape") || {
         use rand::Rng;
         rand::thread_rng().gen_bool(0.15)
     };
@@ -3519,7 +3602,7 @@ async fn fb_scrape_feed(
     };
     let story_frame_cap = {
         use rand::Rng;
-        rand::thread_rng().gen_range(4usize..=8)
+        rand::thread_rng().gen_range(2usize..=4)
     };
 
     if stories_first {
@@ -3537,7 +3620,7 @@ async fn fb_scrape_feed(
     // We must scroll incrementally, extracting at each position.
     let num_passes = {
         use rand::Rng;
-        rand::thread_rng().gen_range(8usize..=18)
+        rand::thread_rng().gen_range(6usize..=10)
     };
     // If doing feed-first, split the passes: 2-4 passes before stories, rest after.
     let early_passes = if !stories_first && !skip_stories {
@@ -3555,6 +3638,9 @@ async fn fb_scrape_feed(
 
         tokio::time::sleep(Duration::from_millis(300)).await;
         cleanup_background_scraper_media(&wv);
+        if !social_scrape_may_continue(&app, "Facebook", "feed scrape", i + 1, num_passes) {
+            break;
+        }
 
         let scroll_amount = {
             use rand::Rng;
@@ -4074,7 +4160,7 @@ async fn ig_scrape_feed(
 
     // Randomized ordering: ~50% stories-first, ~50% feed-first.
     // ~15% chance to skip story scraping entirely.
-    let skip_stories = {
+    let skip_stories = !optional_story_scrape_may_continue(&app, "Instagram", "feed scrape") || {
         use rand::Rng;
         rand::thread_rng().gen_bool(0.15)
     };
@@ -4084,7 +4170,7 @@ async fn ig_scrape_feed(
     };
     let story_frame_cap = {
         use rand::Rng;
-        rand::thread_rng().gen_range(4usize..=8)
+        rand::thread_rng().gen_range(2usize..=4)
     };
 
     if stories_first {
@@ -4101,7 +4187,7 @@ async fn ig_scrape_feed(
     // incrementally, extracting at each position.
     let num_passes = {
         use rand::Rng;
-        rand::thread_rng().gen_range(7usize..=14)
+        rand::thread_rng().gen_range(5usize..=9)
     };
     // Feed-first: scrape stories after the first 2-4 passes
     let early_passes = if !stories_first && !skip_stories {
@@ -4119,6 +4205,9 @@ async fn ig_scrape_feed(
 
         tokio::time::sleep(Duration::from_millis(300)).await;
         cleanup_background_scraper_media(&wv);
+        if !social_scrape_may_continue(&app, "Instagram", "feed scrape", i + 1, num_passes) {
+            break;
+        }
 
         let scroll_amount = {
             use rand::Rng;
@@ -4715,7 +4804,7 @@ async fn li_scrape_feed(
     // position. Fewer passes than FB (LinkedIn loads fewer posts per scroll).
     let num_passes = {
         use rand::Rng;
-        rand::thread_rng().gen_range(6usize..=12)
+        rand::thread_rng().gen_range(4usize..=8)
     };
 
     // Inject the extract script as a const so we can append done=true on last pass.
@@ -4748,6 +4837,9 @@ async fn li_scrape_feed(
         inject_script(&wv, is_last)?;
         tokio::time::sleep(Duration::from_millis(300)).await;
         cleanup_background_scraper_media(&wv);
+        if !social_scrape_may_continue(&app, "LinkedIn", "feed scrape", i + 1, num_passes) {
+            break;
+        }
 
         let scroll_amount = {
             use rand::Rng;
@@ -4823,6 +4915,18 @@ async fn li_scrape_feed(
         );
     }
 
+    let _ = wv.eval(
+        r#"
+        (function() {
+            if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {
+                window.__TAURI__.event.emit("li-feed-data", {
+                    posts: [], done: true, extractedAt: Date.now(),
+                    url: window.location.href, candidateCount: 0, scrollY: window.scrollY
+                });
+            }
+        })();
+    "#,
+    );
     tokio::time::sleep(Duration::from_millis(500)).await;
     println!(
         "[LI] scrape complete, {} extraction passes emitted",
@@ -6290,6 +6394,46 @@ mod tests {
         assert!(scrape_memory_may_proceed(&stats));
         assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
             app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            ..stats
+        }));
+    }
+
+    #[test]
+    fn optional_story_scrape_uses_stricter_memory_budget() {
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_virtual_bytes: 256,
+            app_resident_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
+                * OPTIONAL_STORY_MEMORY_BUDGET_PERCENT
+                / 100
+                - 1,
+            webkit_resident_bytes: None,
+            webkit_virtual_bytes: None,
+            webkit_process_id: None,
+            webkit_total_resident_bytes: 0,
+            webkit_process_count: 0,
+            webkit_largest_resident_bytes: None,
+            webkit_largest_process_id: None,
+            webkit_largest_cpu_usage: None,
+            webkit_largest_age_seconds: None,
+            webkit_largest_role: None,
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: false,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert!(optional_story_scrape_may_proceed(&stats));
+        assert!(!optional_story_scrape_may_proceed(&RuntimeMemoryStats {
+            app_resident_bytes: stats
+                .memory_high_bytes
+                .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
+                / 100,
             ..stats
         }));
     }
