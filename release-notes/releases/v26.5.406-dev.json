@@ -3,7 +3,7 @@
   "version": "26.5.406-dev",
   "channel": "dev",
   "dayKey": "26.5.4",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-05T06:37:36.351Z",
   "model": "heuristic",
@@ -61,11 +61,15 @@
     ]
   },
   "release": {
-    "deck": "Freed Desktop is calmer during renderer memory spikes",
+    "deck": "Freed Desktop avoids unnecessary renderer recovery while background pages are hidden",
     "features": [],
     "fixes": [
       "Reader, feed, and header polish",
-      "Optimized social scraper frame drops",
+      "Freed Desktop is calmer during renderer memory spikes",
+      "Social scraper extraction now does less layout work while feed pages are open",
+      "Social memory preflights now ignore WebKit processes from earlier Freed Desktop launches",
+      "Hidden renderer heartbeats now use hidden-window thresholds before diagnostics or recovery",
+      "macOS window recovery now forces the main Freed Desktop window to order front when shown",
       "Release build and type-safety cleanup",
       "Social sync memory preflights now defer the shared scheduler instead of cycling through providers",
       "Startup recovery and Settings copy now distinguish high memory from critical memory"
@@ -76,5 +80,5 @@
       "Reader, sidebar, and settings UX work"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.406-dev\n\nFreed Desktop is calmer during renderer memory spikes\n\n### Fixes\n\n- Reader, feed, and header polish\n- Optimized social scraper frame drops\n- Release build and type-safety cleanup\n- Social sync memory preflights now defer the shared scheduler instead of cycling through providers\n- Startup recovery and Settings copy now distinguish high memory from critical memory\n\n### Follow-ups\n\n- Reverse integrate v26.5.309 production release\n- Local diagnostics now write bounded runtime bundles for memory pressure, stale heartbeats, and pre-recovery samples\n- Reader, sidebar, and settings UX work\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.406-dev\n\nFreed Desktop avoids unnecessary renderer recovery while background pages are hidden\n\n### Fixes\n\n- Reader, feed, and header polish\n- Freed Desktop is calmer during renderer memory spikes\n- Social scraper extraction now does less layout work while feed pages are open\n- Social memory preflights now ignore WebKit processes from earlier Freed Desktop launches\n- Hidden renderer heartbeats now use hidden-window thresholds before diagnostics or recovery\n- macOS window recovery now forces the main Freed Desktop window to order front when shown\n- Release build and type-safety cleanup\n- Social sync memory preflights now defer the shared scheduler instead of cycling through providers\n- Startup recovery and Settings copy now distinguish high memory from critical memory\n\n### Follow-ups\n\n- Reverse integrate v26.5.309 production release\n- Local diagnostics now write bounded runtime bundles for memory pressure, stale heartbeats, and pre-recovery samples\n- Reader, sidebar, and settings UX work\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
