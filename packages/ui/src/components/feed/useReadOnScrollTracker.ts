@@ -165,20 +165,6 @@ export function useReadOnScrollTracker<TItem extends ReadTrackItem>({
         newlyPassedEnd,
       );
       maxPassedRowIndexRef.current = newlyPassedEnd;
-      recordReadScrollDiagnostic("Processed read-on-scroll boundary", {
-        surface,
-        scrollSource,
-        rowCount: rows.length,
-        scrollTop: Math.round(scrollTop),
-        viewportHeight: Math.round(rawMetrics.viewportHeight),
-        totalSize: Math.round(virtualizer.getTotalSize()),
-        firstVirtualRowIndex: vItems[0]?.index ?? null,
-        firstVirtualRowEnd: Math.round(vItems[0]?.end ?? 0),
-        previousPassedRowIndex,
-        newlyPassedRowIndex: newlyPassedEnd,
-        unreadCandidateCount: unreadIds.length,
-        markReadOnScroll,
-      });
       flushReadIds(unreadIds, "passed-rows");
     }
 

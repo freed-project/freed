@@ -259,6 +259,11 @@ export function FeedList({
 }: FeedListProps) {
   // Desktop in-element scroll container
   const parentRef = useRef<HTMLDivElement>(null);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
+  const setParentElement = useCallback((node: HTMLDivElement | null) => {
+    parentRef.current = node;
+    setScrollElement(node);
+  }, []);
   // Mobile window-scroll container (used to compute scrollMargin for the virtualizer)
   const windowListRef = useRef<HTMLDivElement>(null);
 
@@ -301,13 +306,8 @@ export function FeedList({
   // after the first render.
   const [containerWidth, setContainerWidth] = useState(600);
 
-  // We must set up the ResizeObserver AFTER the scroll container is in the DOM.
-  // `parentRef.current` is null during early-return paths (loading skeleton,
-  // empty state), so we use a polling-style layout effect that checks every
-  // render whether the ref is now available and, if so, starts observing.
-  // Once connected the observer fires on every resize (sidebar ↔ full-width).
   useEffect(() => {
-    const el = parentRef.current;
+    const el = scrollElement;
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       setContainerWidth(entry.contentRect.width);
@@ -316,9 +316,7 @@ export function FeedList({
     // Fire once immediately so the width is captured before any scroll event.
     setContainerWidth(el.getBoundingClientRect().width);
     return () => ro.disconnect();
-  }); // intentionally no dep array — re-runs every render, but the RefObject
-      // only changes when the ref target mounts/unmounts so the observer is
-      // reconnected at most a handful of times.
+  }, [scrollElement]);
 
   // Max grid columns based on current container width (capped at 3).
   // Inner width = containerWidth minus the feed-card gutter on each side.
@@ -640,7 +638,7 @@ export function FeedList({
   // Desktop: in-element scroll with fixed layout.
   return (
     <div
-      ref={parentRef}
+      ref={setParentElement}
       data-testid="feed-list-scroll-container"
       className="theme-scroll-fade-y flex-1 min-h-0 overflow-auto overscroll-none minimal-scroll"
     >

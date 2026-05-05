@@ -127,6 +127,10 @@ const PLATFORM_REACTIONS: Partial<Record<FeedItemType["platform"], ReadonlyArray
   ],
 };
 
+const FEED_CARD_LAYOUT_CONTAINMENT_STYLE = {
+  contain: "layout paint style",
+} satisfies React.CSSProperties;
+
 function likeState(item: FeedItemType): "none" | "noted" | "synced" | "failed" {
   const us = item.userState;
   if (!us.liked) return "none";
@@ -471,11 +475,12 @@ export const FeedItem = memo(function FeedItem({
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
           data-selected={selected ? "true" : "false"}
-          className={`feed-card group relative cursor-pointer aspect-square overflow-hidden p-3 flex flex-col transition-colors ${
+          className={`feed-card group relative min-w-0 cursor-pointer aspect-square overflow-hidden p-3 flex flex-col transition-colors ${
             selected
               ? "border-l-2 border-l-[var(--theme-accent-secondary)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]"
               : "hover:bg-[var(--theme-bg-muted)]"
           } ${readVisualClass}`}
+          style={FEED_CARD_LAYOUT_CONTAINMENT_STYLE}
           onClick={handleActivateClick}
           onMouseEnter={onMouseEnter}
           role="button"
@@ -497,7 +502,7 @@ export const FeedItem = memo(function FeedItem({
           )}
 
           {!narrow && (
-            <div className="flex items-center gap-2 mb-2">
+            <div className="mb-2 flex min-w-0 items-center gap-2">
               <ChannelAvatar
                 name={item.author.displayName}
                 avatarUrl={item.author.avatarUrl}
@@ -515,19 +520,19 @@ export const FeedItem = memo(function FeedItem({
           )}
 
           {item.content.linkPreview?.title && (
-            <h3 className={`font-semibold leading-snug mb-1 ${showCompactMedia ? "mt-auto text-white drop-shadow" : ""} ${narrow ? "text-xs line-clamp-3" : "text-sm line-clamp-2"}`}>
+            <h3 className={`mb-1 min-w-0 break-words font-semibold leading-snug ${showCompactMedia ? "mt-auto text-white drop-shadow" : ""} ${narrow ? "text-xs line-clamp-3" : "text-sm line-clamp-2"}`}>
               {item.content.linkPreview.title}
             </h3>
           )}
 
           {item.content.text && (
-            <p className={`${showCompactMedia ? "text-white/85 drop-shadow flex-none" : "text-[var(--theme-text-secondary)] flex-1"} leading-relaxed min-h-0 ${narrow ? "text-[10px] line-clamp-4" : "text-xs line-clamp-3"}`}>
+            <p className={`min-h-0 min-w-0 break-words ${showCompactMedia ? "text-white/85 drop-shadow flex-none" : "text-[var(--theme-text-secondary)] flex-1"} leading-relaxed ${narrow ? "text-[10px] line-clamp-4" : "text-xs line-clamp-3"}`}>
               {item.content.text}
             </p>
           )}
 
           {(semanticLabel || item.userState.tags.length > 0) && (
-            <div className="mt-auto pt-2 flex flex-wrap gap-1">
+            <div className="mt-auto flex min-w-0 flex-wrap gap-1 pt-2">
               {semanticLabel && (
                 <span className="theme-accent-tag rounded-full px-1.5 py-0.5 text-[10px]">
                   {semanticLabel}
@@ -536,7 +541,7 @@ export const FeedItem = memo(function FeedItem({
               {item.userState.tags.slice(0, 2).map((tag) => (
                 <span
                   key={tag}
-                  className="theme-accent-tag rounded-full px-1.5 py-0.5 text-[10px]"
+                  className="theme-accent-tag max-w-full truncate rounded-full px-1.5 py-0.5 text-[10px]"
                 >
                   {tag}
                 </span>
@@ -584,8 +589,9 @@ export const FeedItem = memo(function FeedItem({
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
           data-feed-card-density={density}
-          className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${fixedCardDensity.article} ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
+          className={`feed-card group min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fixedCardDensity.article} ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
           style={{
+            ...FEED_CARD_LAYOUT_CONTAINMENT_STYLE,
             height: fixedHeight,
             transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,
             transition: swipeX === 0 ? "transform 0.25s ease" : undefined,
@@ -600,9 +606,9 @@ export const FeedItem = memo(function FeedItem({
           tabIndex={0}
           onKeyDown={handleActivateKeyDown}
         >
-          <div className={`flex h-full min-h-0 ${fixedCardDensity.gap} ${showFixedMedia ? "items-stretch" : "items-start"}`}>
+          <div className={`flex h-full min-h-0 min-w-0 ${fixedCardDensity.gap} ${showFixedMedia ? "items-stretch" : "items-start"}`}>
             <div className="flex min-w-0 flex-1 flex-col">
-              <div className={`flex items-start ${fixedCardDensity.headerGap}`}>
+              <div className={`flex min-w-0 items-start ${fixedCardDensity.headerGap}`}>
                 <ChannelAvatar
                   name={item.author.displayName}
                   avatarUrl={item.author.avatarUrl}
@@ -610,13 +616,13 @@ export const FeedItem = memo(function FeedItem({
                   className="text-lg ring-1 ring-white/10"
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     <span className={`truncate font-medium ${fixedCardDensity.author}`}>{item.author.displayName}</span>
                     <span className={`truncate text-[var(--theme-text-muted)] ${fixedCardDensity.handle}`}>@{item.author.handle}</span>
                   </div>
-                  <div className={`flex items-center gap-2 ${fixedCardDensity.meta} text-[var(--theme-text-muted)]`}>
+                  <div className={`flex min-w-0 items-center gap-2 ${fixedCardDensity.meta} text-[var(--theme-text-muted)]`}>
                     <span>{platformIcon}</span>
-                    <span>{timeAgo}</span>
+                    <span className="min-w-0 truncate">{timeAgo}</span>
                     {item.preservedContent?.readingTime && (
                       <>
                         <span>•</span>
@@ -741,28 +747,28 @@ export const FeedItem = memo(function FeedItem({
               </div>
 
               {item.content.linkPreview?.title && (
-                <h3 className={`font-semibold ${fixedCardDensity.title}`}>
+                <h3 className={`min-w-0 break-words font-semibold ${fixedCardDensity.title}`}>
                   {item.content.linkPreview.title}
                 </h3>
               )}
 
               {item.content.text && (
-                <p className={`min-h-0 text-[var(--theme-text-secondary)] ${showFixedMedia ? fixedCardDensity.bodyWithMedia : fixedCardDensity.bodyWithoutMedia}`}>
+                <p className={`min-h-0 min-w-0 break-words text-[var(--theme-text-secondary)] ${showFixedMedia ? fixedCardDensity.bodyWithMedia : fixedCardDensity.bodyWithoutMedia}`}>
                   {item.content.text}
                 </p>
               )}
 
               {(semanticLabel || visibleTags.length > 0) && (
-                <div className={`mt-auto flex flex-wrap overflow-hidden ${fixedCardDensity.chipWrap}`}>
+                <div className={`mt-auto flex min-w-0 flex-wrap overflow-hidden ${fixedCardDensity.chipWrap}`}>
                   {semanticLabel && (
-                    <span className={`theme-accent-tag rounded-full ${fixedCardDensity.chip}`}>
+                    <span className={`theme-accent-tag max-w-full truncate rounded-full ${fixedCardDensity.chip}`}>
                       {semanticLabel}
                     </span>
                   )}
                   {visibleTags.map((tag) => (
                     <span
                       key={tag}
-                      className={`theme-accent-tag rounded-full ${fixedCardDensity.chip}`}
+                      className={`theme-accent-tag max-w-full truncate rounded-full ${fixedCardDensity.chip}`}
                     >
                       {tag}
                     </span>
@@ -813,8 +819,9 @@ export const FeedItem = memo(function FeedItem({
         data-feed-item-id={item.globalId}
         data-focused={focused ? "true" : "false"}
         data-feed-card-density={density}
-        className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${fullCardDensity.article} ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
+        className={`feed-card group min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fullCardDensity.article} ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
         style={{
+          ...FEED_CARD_LAYOUT_CONTAINMENT_STYLE,
           padding: fullCardDensity.padding,
           transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,
           transition: swipeX === 0 ? "transform 0.25s ease" : undefined,
@@ -829,7 +836,7 @@ export const FeedItem = memo(function FeedItem({
         tabIndex={0}
         onKeyDown={handleActivateKeyDown}
       >
-        <div className={`flex items-center ${fullCardDensity.headerGap}`}>
+        <div className={`flex min-w-0 items-center ${fullCardDensity.headerGap}`}>
           <ChannelAvatar
             name={item.author.displayName}
             avatarUrl={item.author.avatarUrl}
@@ -837,13 +844,13 @@ export const FeedItem = memo(function FeedItem({
             className="text-lg ring-1 ring-white/10"
           />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               <span className={`font-medium truncate ${fullCardDensity.author}`}>{item.author.displayName}</span>
-              <span className="text-[var(--theme-text-muted)] text-sm">@{item.author.handle}</span>
+              <span className="min-w-0 truncate text-sm text-[var(--theme-text-muted)]">@{item.author.handle}</span>
             </div>
-            <div className={`flex items-center gap-2 ${fullCardDensity.meta} text-[var(--theme-text-muted)]`}>
+            <div className={`flex min-w-0 items-center gap-2 ${fullCardDensity.meta} text-[var(--theme-text-muted)]`}>
               <span>{platformIcon}</span>
-              <span>{timeAgo}</span>
+              <span className="min-w-0 truncate">{timeAgo}</span>
               {item.preservedContent?.readingTime && (
                 <>
                   <span>•</span>
@@ -968,20 +975,20 @@ export const FeedItem = memo(function FeedItem({
         </div>
 
         {item.content.linkPreview?.title && (
-          <h3 className={`font-semibold ${fullCardDensity.title}`}>
+          <h3 className={`min-w-0 break-words font-semibold ${fullCardDensity.title}`}>
             {item.content.linkPreview.title}
           </h3>
         )}
 
         {item.content.text && (
-          <p className={`${fullCardDensity.body} text-[var(--theme-text-secondary)]`}>
+          <p className={`min-w-0 break-words ${fullCardDensity.body} text-[var(--theme-text-secondary)]`}>
             {item.content.text}
           </p>
         )}
 
         {semanticLabel && (
-          <div className={`flex flex-wrap ${fullCardDensity.chipWrap}`}>
-            <span className={`theme-accent-tag rounded-full ${fullCardDensity.chip}`}>
+          <div className={`flex min-w-0 flex-wrap ${fullCardDensity.chipWrap}`}>
+            <span className={`theme-accent-tag max-w-full truncate rounded-full ${fullCardDensity.chip}`}>
               {semanticLabel}
             </span>
           </div>
@@ -1001,11 +1008,11 @@ export const FeedItem = memo(function FeedItem({
         )}
 
         {visibleTags.length > 0 && (
-          <div className={`flex flex-wrap ${fullCardDensity.tagWrap}`}>
+          <div className={`flex min-w-0 flex-wrap ${fullCardDensity.tagWrap}`}>
             {visibleTags.map((tag) => (
               <span
                 key={tag}
-                className={`theme-accent-tag rounded-full ${fullCardDensity.chip}`}
+                className={`theme-accent-tag max-w-full truncate rounded-full ${fullCardDensity.chip}`}
               >
                 {tag}
               </span>
