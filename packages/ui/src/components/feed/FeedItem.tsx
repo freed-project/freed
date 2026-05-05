@@ -58,6 +58,10 @@ function feedCardTransitionName(globalId: string): string {
 const cls = "w-3.5 h-3.5";
 const SWIPE_THRESHOLD = 72;
 const EVENT_CHIP_THRESHOLD = 0.7;
+const STORY_CARD_TEXT_LIMIT = 240;
+const COMPACT_CARD_TEXT_LIMIT = 500;
+const FIXED_CARD_TEXT_LIMIT = 900;
+const FULL_CARD_TEXT_LIMIT = 1_500;
 const EVENT_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
@@ -151,6 +155,19 @@ function getLikeLabel(item: FeedItemType, state: ReturnType<typeof likeState>): 
   return "Like";
 }
 
+function cardPreviewText(text: string | undefined, limit: number): string | null {
+  const trimmed = text?.trim();
+  if (!trimmed) return null;
+  if (trimmed.length <= limit) return trimmed;
+
+  const boundary = Math.max(
+    trimmed.lastIndexOf(" ", limit - 3),
+    trimmed.lastIndexOf("\n", limit - 3),
+  );
+  const end = boundary > Math.floor(limit * 0.6) ? boundary : limit - 3;
+  return `${trimmed.slice(0, end).trimEnd()}...`;
+}
+
 export const FeedItem = memo(function FeedItem({
   item,
   onClick,
@@ -183,6 +200,10 @@ export const FeedItem = memo(function FeedItem({
   const commentCount = formatEngagementCount(item.engagement?.comments);
   const semanticLabel = semanticChip(item);
   const firstMediaUrl = item.content.mediaUrls[0];
+  const storyPreviewText = cardPreviewText(item.content.text, STORY_CARD_TEXT_LIMIT);
+  const compactPreviewText = cardPreviewText(item.content.text, COMPACT_CARD_TEXT_LIMIT);
+  const fixedPreviewText = cardPreviewText(item.content.text, FIXED_CARD_TEXT_LIMIT);
+  const fullPreviewText = cardPreviewText(item.content.text, FULL_CARD_TEXT_LIMIT);
 
   const [swipeX, setSwipeX] = useState(0);
   const [mediaFailed, setMediaFailed] = useState(false);
@@ -415,9 +436,9 @@ export const FeedItem = memo(function FeedItem({
             </div>
 
             <div className="flex-1 min-w-0">
-              {item.content.text && (
+              {storyPreviewText && (
                 <p className="text-[11px] text-white/90 drop-shadow line-clamp-1 leading-tight mb-1">
-                  {item.content.text}
+                  {storyPreviewText}
                 </p>
               )}
               {item.location?.name && (
@@ -525,9 +546,9 @@ export const FeedItem = memo(function FeedItem({
             </h3>
           )}
 
-          {item.content.text && (
+          {compactPreviewText && (
             <p className={`min-h-0 min-w-0 break-words ${showCompactMedia ? "text-white/85 drop-shadow flex-none" : "text-[var(--theme-text-secondary)] flex-1"} leading-relaxed ${narrow ? "text-[10px] line-clamp-4" : "text-xs line-clamp-3"}`}>
-              {item.content.text}
+              {compactPreviewText}
             </p>
           )}
 
@@ -752,9 +773,9 @@ export const FeedItem = memo(function FeedItem({
                 </h3>
               )}
 
-              {item.content.text && (
+              {fixedPreviewText && (
                 <p className={`min-h-0 min-w-0 break-words text-[var(--theme-text-secondary)] ${showFixedMedia ? fixedCardDensity.bodyWithMedia : fixedCardDensity.bodyWithoutMedia}`}>
-                  {item.content.text}
+                  {fixedPreviewText}
                 </p>
               )}
 
@@ -980,9 +1001,9 @@ export const FeedItem = memo(function FeedItem({
           </h3>
         )}
 
-        {item.content.text && (
+        {fullPreviewText && (
           <p className={`min-w-0 break-words ${fullCardDensity.body} text-[var(--theme-text-secondary)]`}>
-            {item.content.text}
+            {fullPreviewText}
           </p>
         )}
 
