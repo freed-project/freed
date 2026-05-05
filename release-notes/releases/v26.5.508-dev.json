@@ -3,7 +3,7 @@
   "version": "26.5.508-dev",
   "channel": "dev",
   "dayKey": "26.5.5",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-05T13:44:57.028Z",
   "model": "heuristic",
@@ -92,13 +92,11 @@
       "Feed bulk action counts now share one cached pass across header and jump controls",
       "Local snapshot cleanup now prunes orphaned snapshot binaries and contact metadata",
       "Startup now prunes stale snapshot binaries when local snapshots are listed",
-      "Saved toggles plus bulk read and archive actions now update through item patches instead of full document hydration"
+      "Saved toggles plus bulk read and archive actions now update through item patches instead of full document hydration",
+      "Maintenance tasks now skip full document hydration when feed title repair, deduplication, or archive pruning has no changes",
+      "Last-sync updates now persist without rebroadcasting a full feed state snapshot"
     ],
-    "followUps": [
-      "Skip no-op startup hydration",
-      "Patch hot feed state mutations",
-      "Cache feed action scopes"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.508-dev\n\nStartup repair ships\n\n### Fixes\n\n- AppKit activation for desktop launch now uses the correct path\n- Strengthen desktop native activation\n- Desktop main window activation restored\n- Startup now retries the native show path and records activation probe results\n- Feed cards now isolate layout and paint work so long content does less damage while scrolling\n- Feed resizing now observes the active scroll container without reconnecting on every render\n- Read-on-scroll tracking now skips a per-row diagnostic event on the active scroll path\n- Feed priority ordering now runs in the Automerge workers instead of the normal render path\n- The feed search hook now reuses identical filter results across the feed, header, and command search callers\n- The normal feed path now skips building the search item map when the search box is empty\n- Feed bulk action counts now share one cached pass across header and jump controls\n- Local snapshot cleanup now prunes orphaned snapshot binaries and contact metadata\n- Startup now prunes stale snapshot binaries when local snapshots are listed\n- Saved toggles plus bulk read and archive actions now update through item patches instead of full document hydration\n\n### Follow-ups\n\n- Skip no-op startup hydration\n- Patch hot feed state mutations\n- Cache feed action scopes\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.508-dev\n\nStartup repair ships\n\n### Fixes\n\n- AppKit activation for desktop launch now uses the correct path\n- Strengthen desktop native activation\n- Desktop main window activation restored\n- Startup now retries the native show path and records activation probe results\n- Feed cards now isolate layout and paint work so long content does less damage while scrolling\n- Feed resizing now observes the active scroll container without reconnecting on every render\n- Read-on-scroll tracking now skips a per-row diagnostic event on the active scroll path\n- Feed priority ordering now runs in the Automerge workers instead of the normal render path\n- The feed search hook now reuses identical filter results across the feed, header, and command search callers\n- The normal feed path now skips building the search item map when the search box is empty\n- Feed bulk action counts now share one cached pass across header and jump controls\n- Local snapshot cleanup now prunes orphaned snapshot binaries and contact metadata\n- Startup now prunes stale snapshot binaries when local snapshots are listed\n- Saved toggles plus bulk read and archive actions now update through item patches instead of full document hydration\n- Maintenance tasks now skip full document hydration when feed title repair, deduplication, or archive pruning has no changes\n- Last-sync updates now persist without rebroadcasting a full feed state snapshot\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
