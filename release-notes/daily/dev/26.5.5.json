@@ -12,7 +12,10 @@
     "Freed Desktop now calls AppKit activation directly when restoring the main window",
     "Startup now retries the native show path and records activation probe results",
     "macOS launch recovery now restores regular app activation before showing the main Freed Desktop window",
-    "Freed Desktop now unminimizes and orders the main window front when reopening or recovering it"
+    "Freed Desktop now unminimizes and orders the main window front when reopening or recovering it",
+    "Feed cards isolate layout and paint work during scrolling",
+    "Feed priority ordering and common bulk actions avoid full render-path document work",
+    "Local snapshots prune stale binaries on startup and listing"
   ],
   "editorialNotes": [],
   "updatedAt": "2026-05-05T13:10:27.727Z"
