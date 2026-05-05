@@ -2074,7 +2074,6 @@ html.freed-mobile-sidebar-open body {
   -webkit-backdrop-filter: blur(0px) saturate(100%);
 }
 
-html[data-memory-pressure="high"] .theme-settings-overlay,
 html[data-memory-pressure="critical"] .theme-settings-overlay,
 html[data-renderer-safe-mode="true"] .theme-settings-overlay {
   background: rgb(var(--theme-shell-rgb) / 0.18);
@@ -2097,7 +2096,6 @@ html[data-renderer-safe-mode="true"] .theme-settings-overlay {
   -webkit-backdrop-filter: blur(24px) saturate(150%);
 }
 
-html[data-memory-pressure="high"] .theme-dialog-shell,
 html[data-memory-pressure="critical"] .theme-dialog-shell,
 html[data-renderer-safe-mode="true"] .theme-dialog-shell {
   backdrop-filter: none;

@@ -1426,6 +1426,39 @@ test("settings dialog closes from the desktop sidebar close button", async ({ ap
   await expect(page.getByTestId("settings-close-button-sidebar")).toHaveCount(0);
 });
 
+test("settings backdrop stays blurred during high memory pressure", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  const { page } = app;
+  await page.evaluate(async (settingsStorePath) => {
+    document.documentElement.dataset.memoryPressure = "high";
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openDefault();
+  }, SETTINGS_STORE_PATH);
+  await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
+
+  const styles = await page.evaluate(() => {
+    const overlay = document.querySelector(".theme-settings-overlay");
+    const shell = document.querySelector(".theme-dialog-shell");
+    if (!(overlay instanceof HTMLElement) || !(shell instanceof HTMLElement)) {
+      throw new Error("Settings dialog styles were not mounted");
+    }
+
+    const overlayStyle = window.getComputedStyle(overlay);
+    const shellStyle = window.getComputedStyle(shell);
+    return {
+      overlayFilter: overlayStyle.backdropFilter || overlayStyle.webkitBackdropFilter,
+      shellFilter: shellStyle.backdropFilter || shellStyle.webkitBackdropFilter,
+    };
+  });
+
+  expect(styles.overlayFilter).toContain("blur");
+  expect(styles.overlayFilter).not.toBe("none");
+  expect(styles.shellFilter).toContain("blur");
+  expect(styles.shellFilter).not.toBe("none");
+});
+
 test("settings dialog closes from the mobile header close button", async ({ app, page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await app.goto();
