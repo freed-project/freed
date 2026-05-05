@@ -79,6 +79,7 @@ const SLOW_QUEUE_WAIT_MS = 1_000;
 const SLOW_REQUEST_PROCESS_MS = 5_000;
 const SLOW_SAVE_AND_BROADCAST_MS = 2_000;
 const DESKTOP_UI_PRESERVED_TEXT_LIMIT = 3_000;
+const DESKTOP_UI_CONTENT_TEXT_LIMIT = 10_000;
 
 interface RequestTrace {
   reqId: number;
@@ -219,6 +220,34 @@ function cloneFeedItemForPatch(item: FeedItem): FeedItem {
   return cloned;
 }
 
+function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
+  let next: FeedItem = item;
+  const preservedContent = item.preservedContent;
+  const preservedText = preservedContent?.text;
+  if (preservedContent && preservedText && preservedText.length > DESKTOP_UI_PRESERVED_TEXT_LIMIT) {
+    next = {
+      ...next,
+      preservedContent: {
+        ...preservedContent,
+        text: preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT),
+      },
+    };
+  }
+
+  const contentText = next.content.text;
+  if (contentText && contentText.length > DESKTOP_UI_CONTENT_TEXT_LIMIT) {
+    next = {
+      ...next,
+      content: {
+        ...next.content,
+        text: contentText.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT),
+      },
+    };
+  }
+
+  return next;
+}
+
 function markAllVisibleAsRead(doc: FreedDoc, platform?: string): string[] {
   const now = Date.now();
   const changedIds: string[] = [];
@@ -283,21 +312,7 @@ function healUntitledFeedTitles(doc: FreedDoc): number {
  */
 function hydrateFromDoc(doc: FreedDoc): DocState {
   const plain = A.toJS(doc) as FreedDoc;
-  const plainItems = Object.values(plain.feedItems as Record<string, FeedItem>).map((item) => {
-    const preservedContent = item.preservedContent;
-    const preservedText = preservedContent?.text;
-    if (!preservedContent || !preservedText || preservedText.length <= DESKTOP_UI_PRESERVED_TEXT_LIMIT) {
-      return item;
-    }
-
-    return {
-      ...item,
-      preservedContent: {
-        ...preservedContent,
-        text: preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT),
-      },
-    } as FeedItem;
-  });
+  const plainItems = Object.values(plain.feedItems as Record<string, FeedItem>).map(trimFeedItemForDesktopUi);
   const feeds = plain.rssFeeds as Record<string, RssFeed>;
   const persons = (plain.persons ?? {}) as Record<string, Person>;
   const accounts = (plain.accounts ?? {}) as Record<string, Account>;

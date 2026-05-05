@@ -12,6 +12,11 @@ function caseBody(caseName: string): string {
   return workerSource.match(pattern)?.[0] ?? "";
 }
 
+function functionBody(functionName: string): string {
+  const pattern = new RegExp(`function ${functionName}\\([\\s\\S]*?\\n}`);
+  return workerSource.match(pattern)?.[0] ?? "";
+}
+
 describe("automerge worker memory routing", () => {
   const patchOnlyMutations = [
     "MARK_AS_READ",
@@ -44,6 +49,15 @@ describe("automerge worker memory routing", () => {
     expect(body).toContain("storage.save");
     expect(body).not.toContain("hydrateFromDoc");
     expect(body).not.toContain("STATE_UPDATE");
+  });
+
+  it("caps oversized item text in the desktop UI projection", () => {
+    const body = functionBody("trimFeedItemForDesktopUi");
+
+    expect(workerSource).toContain("DESKTOP_UI_CONTENT_TEXT_LIMIT = 10_000");
+    expect(body).toContain("contentText.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT)");
+    expect(body).toContain("preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT)");
+    expect(workerSource).toContain(".map(trimFeedItemForDesktopUi)");
   });
 
   it("last sync persists without rehydrating the full document", () => {
