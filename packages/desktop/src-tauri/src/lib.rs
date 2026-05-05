@@ -34,7 +34,7 @@ use tokio_tungstenite::{
 #[cfg(target_os = "macos")]
 use objc2::rc::Retained;
 #[cfg(target_os = "macos")]
-use objc2::{msg_send, runtime::AnyObject};
+use objc2::{class, msg_send, runtime::AnyObject};
 #[cfg(target_os = "macos")]
 use objc2_foundation::{ns_string, MainThreadMarker, NSObjectNSKeyValueCoding, NSString};
 #[cfg(target_os = "macos")]
@@ -5262,29 +5262,73 @@ fn apply_main_window_vibrancy(_window: &tauri::WebviewWindow, _context: &str) ->
 }
 
 fn show_webview_window(window: &tauri::WebviewWindow) {
-    show_app_for_main_window(window);
+    show_app_for_main_window(window, "show");
     let _ = window.show();
     let _ = window.unminimize();
     let _ = window.set_focus();
-    force_show_webview_window(window);
+    force_show_webview_window(window, "show");
 }
 
 #[cfg(target_os = "macos")]
-fn show_app_for_main_window(window: &tauri::WebviewWindow) {
+fn show_app_for_main_window(window: &tauri::WebviewWindow, context: &str) {
     let app = window.app_handle();
     let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
     let _ = app.show();
+    force_activate_ns_app(context);
 }
 
 #[cfg(not(target_os = "macos"))]
-fn show_app_for_main_window(_window: &tauri::WebviewWindow) {}
+fn show_app_for_main_window(_window: &tauri::WebviewWindow, _context: &str) {}
 
 #[cfg(target_os = "macos")]
-fn force_show_webview_window(window: &tauri::WebviewWindow) {
+fn force_activate_ns_app(context: &str) {
+    unsafe {
+        let nil: *mut AnyObject = std::ptr::null_mut();
+        let ns_app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+        if ns_app.is_null() {
+            warn!(
+                "[main-window] NSApplication unavailable during activation context={}",
+                context
+            );
+            return;
+        }
+
+        let regular_policy: isize = 0;
+        let policy_changed: bool = msg_send![ns_app, setActivationPolicy: regular_policy];
+        let _: () = msg_send![ns_app, unhide: nil];
+        let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
+
+        let running_app: *mut AnyObject =
+            msg_send![class!(NSRunningApplication), currentApplication];
+        let mut running_activation_requested = false;
+        if !running_app.is_null() {
+            let activation_options: usize = 1 | (1 << 1);
+            running_activation_requested =
+                msg_send![running_app, activateWithOptions: activation_options];
+        }
+
+        info!(
+            "[main-window] forced app activation context={} policy_changed={} running_activation_requested={}",
+            context, policy_changed, running_activation_requested
+        );
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn force_activate_ns_app(_context: &str) {}
+
+#[cfg(target_os = "macos")]
+fn force_show_webview_window(window: &tauri::WebviewWindow, context: &str) {
     let Ok(ns_window) = window.ns_window() else {
+        warn!(
+            "[main-window] NSWindow unavailable during forced show context={}",
+            context
+        );
         return;
     };
 
+    let was_visible = window.is_visible().ok();
+    let was_focused = window.is_focused().ok();
     let ns_window = ns_window.cast::<AnyObject>();
     unsafe {
         let nil: *mut AnyObject = std::ptr::null_mut();
@@ -5294,10 +5338,55 @@ fn force_show_webview_window(window: &tauri::WebviewWindow) {
         let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
         let _: () = msg_send![ns_window, orderFrontRegardless];
     }
+    info!(
+        "[main-window] forced native window show context={} was_visible={:?} was_focused={:?} now_visible={:?} now_focused={:?}",
+        context,
+        was_visible,
+        was_focused,
+        window.is_visible().ok(),
+        window.is_focused().ok()
+    );
 }
 
 #[cfg(not(target_os = "macos"))]
-fn force_show_webview_window(_window: &tauri::WebviewWindow) {}
+fn force_show_webview_window(_window: &tauri::WebviewWindow, _context: &str) {}
+
+fn schedule_main_window_visibility_probe(
+    app: &tauri::AppHandle,
+    delay: Duration,
+    context: &'static str,
+) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(delay).await;
+        let app_for_main = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let Some(window) = live_main_window(&app_for_main) else {
+                warn!(
+                    "[main-window] visibility probe found no live main window context={}",
+                    context
+                );
+                return;
+            };
+
+            let before_visible = window.is_visible().ok();
+            let before_focused = window.is_focused().ok();
+            show_app_for_main_window(&window, context);
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+            force_show_webview_window(&window, context);
+            info!(
+                "[main-window] visibility probe context={} before_visible={:?} before_focused={:?} after_visible={:?} after_focused={:?}",
+                context,
+                before_visible,
+                before_focused,
+                window.is_visible().ok(),
+                window.is_focused().ok()
+            );
+        });
+    });
+}
 
 fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
@@ -5398,6 +5487,9 @@ fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tau
 
     let window = create_main_window(app)?;
     show_webview_window(&window);
+    schedule_main_window_visibility_probe(app, Duration::from_millis(250), "startup-250ms");
+    schedule_main_window_visibility_probe(app, Duration::from_secs(1), "startup-1s");
+    schedule_main_window_visibility_probe(app, Duration::from_secs(3), "startup-3s");
     let vibrancy_applied = apply_main_window_vibrancy(&window, "startup");
     info!(
         "[main-window] startup window ready vibrancy_applied={}",
