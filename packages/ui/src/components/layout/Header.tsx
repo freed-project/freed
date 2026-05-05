@@ -52,6 +52,7 @@ import {
   useFeedCardDensity,
   type FeedCardDensity,
 } from "../../lib/feed-card-density.js";
+import { getFeedActionScope } from "../../lib/feed-action-scope.js";
 import {
   dragRegionStyle as dragStyle,
   getPassiveDragRegionProps,
@@ -470,25 +471,12 @@ export function Header({
     ? showInlineReaderBookmark ? "w-[11rem]" : "w-[8.5rem]"
     : showInlineReaderBookmark ? "w-[6.5rem]" : "w-14";
 
-  const filteredUnreadItemIds = useMemo(
-    () => filteredItems
-      .filter((item) => !item.userState.readAt && !item.userState.hidden && !item.userState.archived)
-      .map((item) => item.globalId),
-    [filteredItems],
-  );
-  const filteredArchivableItemIds = useMemo(
-    () => filteredItems
-      .filter((item) =>
-        !!item.userState.readAt &&
-        !item.userState.hidden &&
-        !item.userState.archived &&
-        !item.userState.saved
-      )
-      .map((item) => item.globalId),
-    [filteredItems],
-  );
-  const unreadCount = filteredUnreadItemIds.length;
-  const archivableCount = filteredArchivableItemIds.length;
+  const {
+    unreadItemIds: filteredUnreadItemIds,
+    archivableItemIds: filteredArchivableItemIds,
+    unreadCount,
+    archivableCount,
+  } = useMemo(() => getFeedActionScope(filteredItems), [filteredItems]);
 
   const handleSocialContentFilterChange = useCallback(
     (value: SocialContentFilter) => {

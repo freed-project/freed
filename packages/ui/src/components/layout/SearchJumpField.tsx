@@ -24,6 +24,7 @@ import {
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import { buildSettingsSectionMetas } from "../../lib/settings-sections.js";
+import { getFeedActionScope, getFeedArchiveCounts } from "../../lib/feed-action-scope.js";
 import { buildTopLevelTagFilters, collectAllTags } from "../../lib/tag-navigation.js";
 import { applyFeedSearch, navigateToFeedView } from "../../lib/workspace-navigation.js";
 import { SearchField } from "../SearchField.js";
@@ -351,29 +352,12 @@ export function SearchJumpField({
     friends,
   );
 
-  const unreadScopeIds = useMemo(
-    () => commandScopeItems.filter((item) => !item.userState.readAt).map((item) => item.globalId),
-    [commandScopeItems],
-  );
-  const archivableScopeItems = useMemo(
-    () =>
-      commandScopeItems.filter(
-        (item) => !!item.userState.readAt && !item.userState.saved && !item.userState.archived,
-      ),
-    [commandScopeItems],
-  );
-  const archivableScopeIds = useMemo(
-    () => archivableScopeItems.map((item) => item.globalId),
-    [archivableScopeItems],
-  );
-  const savedArchivedCount = useMemo(
-    () => items.filter((item) => item.userState.saved && item.userState.archived).length,
-    [items],
-  );
-  const archivedCount = useMemo(
-    () => items.filter((item) => item.userState.archived && !item.userState.saved).length,
-    [items],
-  );
+  const {
+    unreadItemIds: unreadScopeIds,
+    archivableItemIds: archivableScopeIds,
+    archivableCount: archivableScopeCount,
+  } = useMemo(() => getFeedActionScope(commandScopeItems), [commandScopeItems]);
+  const { archivedCount, savedArchivedCount } = useMemo(() => getFeedArchiveCounts(items), [items]);
   const enabledFeeds = useMemo(
     () =>
       Object.values(feeds)
@@ -468,7 +452,7 @@ export function SearchJumpField({
         currentSourceId,
         selectedItem,
         unreadScopeCount: activeView === "feed" ? unreadScopeIds.length : 0,
-        archivableScopeCount: activeView === "feed" ? archivableScopeItems.length : 0,
+        archivableScopeCount: activeView === "feed" ? archivableScopeCount : 0,
         savedArchivedCount,
         archivedCount,
         openSettingsTo,
@@ -580,7 +564,7 @@ export function SearchJumpField({
       activeFilter,
       activeView,
       addRssFeed,
-      archivableScopeItems,
+      archivableScopeCount,
       archivedCount,
       checkForUpdates,
       currentSourceId,
