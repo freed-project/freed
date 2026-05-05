@@ -3,7 +3,7 @@
   "version": "26.5.403",
   "channel": "production",
   "dayKey": "26.5.4",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-05T01:38:28.202Z",
   "model": "heuristic",
@@ -41,25 +41,20 @@
     ]
   },
   "release": {
-    "deck": "Fix stale renderer recovery restarts",
+    "deck": "Freed Desktop reliability fixes",
     "features": [],
     "fixes": [
-      "Recover stale renderers without blocking the macOS main thread while the old main window unregisters",
-      "Let the startup recovery screen scroll in shorter windows so recovery actions stay reachable",
-      "Freed Desktop now pauses heavy background work before high renderer memory can force repeated recovery",
-      "Renderer health events now include generation, route, visibility, memory footprint, recovery state, and active background work",
-      "Social sync memory preflights now defer the shared scheduler instead of cycling through providers",
-      "Startup recovery now waits for stable renderer heartbeats before high-memory background jobs resume",
-      "Startup recovery and Settings copy now distinguish high memory from critical memory",
-      "Non-macOS release builds now compile the renderer memory diagnostics cleanly"
+      "Native macOS window dragging now works from the FREED wordmark, nearby titlebar gap, passive toolbar title areas, and fullscreen reader titlebar.",
+      "Toolbar controls stay clickable because buttons remain explicit no-drag targets while passive titlebar surfaces handle native dragging.",
+      "Fix stale renderer recovery restarts.",
+      "Recover stale renderers without blocking the macOS main thread while the old main window unregisters.",
+      "Let the startup recovery screen scroll in shorter windows so recovery actions stay reachable.",
+      "Pause heavy background work before high renderer memory can force repeated recovery.",
+      "Retry deferred startup RSS polls instead of waiting for the next normal polling interval.",
+      "Batch visible archive actions more aggressively.",
+      "Restore Linux release compilation for renderer memory diagnostics."
     ],
-    "followUps": [
-      "Promote dev into main for production release",
-      "Freed Desktop is calmer during renderer memory spikes",
-      "Local diagnostics now write bounded runtime bundles for memory pressure, stale heartbeats, and pre-recovery samples",
-      "Startup recovery UI can scroll when the dialog content is taller than the window",
-      "Visible archive actions now batch state work more aggressively"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.403\n\nFix stale renderer recovery restarts\n\n### Fixes\n\n- Recover stale renderers without blocking the macOS main thread while the old main window unregisters\n- Let the startup recovery screen scroll in shorter windows so recovery actions stay reachable\n- Freed Desktop now pauses heavy background work before high renderer memory can force repeated recovery\n- Renderer health events now include generation, route, visibility, memory footprint, recovery state, and active background work\n- Social sync memory preflights now defer the shared scheduler instead of cycling through providers\n- Startup recovery now waits for stable renderer heartbeats before high-memory background jobs resume\n- Startup recovery and Settings copy now distinguish high memory from critical memory\n- Non-macOS release builds now compile the renderer memory diagnostics cleanly\n\n### Follow-ups\n\n- Promote dev into main for production release\n- Freed Desktop is calmer during renderer memory spikes\n- Local diagnostics now write bounded runtime bundles for memory pressure, stale heartbeats, and pre-recovery samples\n- Startup recovery UI can scroll when the dialog content is taller than the window\n- Visible archive actions now batch state work more aggressively\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.403\n\nFreed Desktop reliability fixes\n\n### Fixes\n\n- Native macOS window dragging now works from the FREED wordmark, nearby titlebar gap, passive toolbar title areas, and fullscreen reader titlebar.\n- Toolbar controls stay clickable because buttons remain explicit no-drag targets while passive titlebar surfaces handle native dragging.\n- Fix stale renderer recovery restarts.\n- Recover stale renderers without blocking the macOS main thread while the old main window unregisters.\n- Let the startup recovery screen scroll in shorter windows so recovery actions stay reachable.\n- Pause heavy background work before high renderer memory can force repeated recovery.\n- Retry deferred startup RSS polls instead of waiting for the next normal polling interval.\n- Batch visible archive actions more aggressively.\n- Restore Linux release compilation for renderer memory diagnostics.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)\n**Windows:** `.exe` (NSIS installer)\n**Linux:** `.AppImage`\n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

@@ -2,18 +2,18 @@
   "channel": "production",
   "dayKey": "26.5.4",
   "date": "2026-05-04",
-  "preferredDeck": "Fix stale renderer recovery restarts",
+  "preferredDeck": "Freed Desktop reliability fixes",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
-    "Stale renderer recovery no longer blocks the macOS main thread while the old main window unregisters.",
-    "Startup recovery actions remain reachable in shorter windows."
+    "Native macOS window dragging works from passive titlebar regions without stealing toolbar button clicks.",
+    "Freed Desktop is calmer during renderer memory pressure and stale renderer recovery."
   ],
   "editorialNotes": [
-    "Production follow-up for the renderer recovery restart fix."
+    "Production release for native toolbar dragging, renderer recovery stability, RSS startup retry, archive batching, and Linux release compile fixes."
   ],
-  "updatedAt": "2026-05-05T01:38:28.204Z"
+  "updatedAt": "2026-05-05T01:42:09.263Z"
 }
