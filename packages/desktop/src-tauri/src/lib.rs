@@ -75,6 +75,7 @@ const RECOVERY_WINDOW_LABEL: &str = "startup-recovery";
 const RECOVERY_WINDOW_ROUTE: &str = "startup-recovery.html";
 const RENDERER_HEARTBEAT_WATCHDOG_INTERVAL: Duration = Duration::from_secs(15);
 const RENDERER_STALE_LOG_AFTER: Duration = Duration::from_secs(45);
+const RENDERER_HIDDEN_STALE_LOG_AFTER: Duration = Duration::from_secs(300);
 const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(75);
 const RENDERER_HIDDEN_RECOVERY_AFTER: Duration = Duration::from_secs(600);
 const BACKGROUND_REQUIRED_HEALTHY_HEARTBEATS: u64 = 2;
@@ -1468,7 +1469,7 @@ fn renderer_recovery_threshold_for_count(
     last_visibility: &str,
     recent_recovery_count: usize,
 ) -> Duration {
-    if is_visible || last_visibility == "visible" {
+    if renderer_is_effectively_visible(is_visible, last_visibility) {
         match recent_recovery_count {
             0 | 1 => RENDERER_VISIBLE_RECOVERY_AFTER,
             2 => Duration::from_secs(120),
@@ -1476,6 +1477,18 @@ fn renderer_recovery_threshold_for_count(
         }
     } else {
         RENDERER_HIDDEN_RECOVERY_AFTER
+    }
+}
+
+fn renderer_is_effectively_visible(is_visible: bool, last_visibility: &str) -> bool {
+    is_visible && last_visibility == "visible"
+}
+
+fn renderer_stale_log_after(is_visible: bool, last_visibility: &str) -> Duration {
+    if renderer_is_effectively_visible(is_visible, last_visibility) {
+        RENDERER_STALE_LOG_AFTER
+    } else {
+        RENDERER_HIDDEN_STALE_LOG_AFTER
     }
 }
 
@@ -1504,15 +1517,35 @@ mod renderer_watchdog_tests {
     fn renderer_recovery_threshold_prefers_visible_windows() {
         assert_eq!(
             renderer_recovery_threshold(true, "hidden"),
-            RENDERER_VISIBLE_RECOVERY_AFTER
+            RENDERER_HIDDEN_RECOVERY_AFTER
         );
         assert_eq!(
             renderer_recovery_threshold(false, "visible"),
-            RENDERER_VISIBLE_RECOVERY_AFTER
+            RENDERER_HIDDEN_RECOVERY_AFTER
         );
         assert_eq!(
             renderer_recovery_threshold(false, "hidden"),
             RENDERER_HIDDEN_RECOVERY_AFTER
+        );
+        assert_eq!(
+            renderer_recovery_threshold(true, "visible"),
+            RENDERER_VISIBLE_RECOVERY_AFTER
+        );
+    }
+
+    #[test]
+    fn renderer_stale_log_threshold_uses_hidden_timer_slack() {
+        assert_eq!(
+            renderer_stale_log_after(true, "visible"),
+            RENDERER_STALE_LOG_AFTER
+        );
+        assert_eq!(
+            renderer_stale_log_after(true, "hidden"),
+            RENDERER_HIDDEN_STALE_LOG_AFTER
+        );
+        assert_eq!(
+            renderer_stale_log_after(false, "visible"),
+            RENDERER_HIDDEN_STALE_LOG_AFTER
         );
     }
 
@@ -5231,7 +5264,27 @@ fn apply_main_window_vibrancy(_window: &tauri::WebviewWindow, _context: &str) ->
 fn show_webview_window(window: &tauri::WebviewWindow) {
     let _ = window.show();
     let _ = window.set_focus();
+    force_show_webview_window(window);
 }
+
+#[cfg(target_os = "macos")]
+fn force_show_webview_window(window: &tauri::WebviewWindow) {
+    let Ok(ns_window) = window.ns_window() else {
+        return;
+    };
+
+    let ns_window = ns_window.cast::<AnyObject>();
+    unsafe {
+        let nil: *mut AnyObject = std::ptr::null_mut();
+        let _: () = msg_send![ns_window, setIsVisible: true];
+        let _: () = msg_send![ns_window, deminiaturize: nil];
+        let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
+        let _: () = msg_send![ns_window, orderFrontRegardless];
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn force_show_webview_window(_window: &tauri::WebviewWindow) {}
 
 fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
@@ -5925,8 +5978,10 @@ pub fn run() {
                             &health.last_visibility,
                             recent_recovery_count,
                         );
+                        let stale_log_after =
+                            renderer_stale_log_after(is_main_visible, &health.last_visibility);
                         let should_log_stale =
-                            age > RENDERER_STALE_LOG_AFTER && !health.stale_logged;
+                            age > stale_log_after && !health.stale_logged;
                         let should_recover =
                             age > recovery_threshold &&
                             health
