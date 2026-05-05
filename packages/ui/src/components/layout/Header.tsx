@@ -8,8 +8,6 @@ import {
   type CSSProperties,
   type ButtonHTMLAttributes,
   type ChangeEvent,
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import {
@@ -55,6 +53,11 @@ import {
   type FeedCardDensity,
 } from "../../lib/feed-card-density.js";
 import {
+  dragRegionStyle as dragStyle,
+  getPassiveDragRegionProps,
+  noDragRegionStyle as noDrag,
+} from "../../lib/native-drag-region.js";
+import {
   COMPACT_PRIMARY_SIDEBAR_WIDTH_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
   TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
@@ -83,10 +86,7 @@ interface ToolbarOverflowAction {
   danger?: boolean;
 }
 
-const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
-const dragStyle = { WebkitAppRegion: "drag" } as CSSProperties;
 const toolbarControlStyle = { ...noDrag, userSelect: "none" } as CSSProperties;
-const TOOLBAR_DRAG_THRESHOLD_PX = 6;
 const TOP_TOOLBAR_HEIGHT_PX =
   COMPACT_PRIMARY_SIDEBAR_WIDTH_PX + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
 const TOOLBAR_ICON_BUTTON_CLASS =
@@ -321,7 +321,6 @@ export function Header({
   const {
     HeaderSyncIndicator,
     headerDragRegion,
-    startWindowDrag,
     addRssFeed,
     saveUrl,
     importMarkdown,
@@ -1002,7 +1001,6 @@ export function Header({
     handleFriendsToolbarModeChange,
     handleIdentityModeChange,
   ]);
-  const canManuallyDragToolbarControls = !!(headerDragRegion && startWindowDrag);
   const macosTrafficLightInsetStyle = headerDragRegion
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
@@ -1031,14 +1029,17 @@ export function Header({
   const layoutControlClusterStyle = {
     left: 0,
     width: px(layoutControlMetrics.reservedWidthPx),
+    pointerEvents: "none",
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
   const sidebarTogglePositionStyle = {
     left: px(layoutControlMetrics.sidebarToggleLeftPx),
+    pointerEvents: "auto",
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
   const previewTogglePositionStyle = {
     left: px(layoutControlMetrics.previewToggleLeftPx),
+    pointerEvents: "auto",
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
   const toolbarContainerStyle = {
@@ -1056,88 +1057,6 @@ export function Header({
   const previewToggleButtonRef = useRef<HTMLButtonElement | null>(null);
   const wordmarkRef = useRef<HTMLSpanElement | null>(null);
   const sidebarHandleCenterlineStyleRef = useRef<string | null>(null);
-  const toolbarDragGestureRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    target: HTMLElement;
-  } | null>(null);
-  const suppressedToolbarClickRef = useRef<EventTarget | null>(null);
-  const suppressedToolbarClickTimeoutRef = useRef<number | null>(null);
-
-  const clearSuppressedToolbarClick = useCallback(() => {
-    suppressedToolbarClickRef.current = null;
-    if (suppressedToolbarClickTimeoutRef.current !== null) {
-      window.clearTimeout(suppressedToolbarClickTimeoutRef.current);
-      suppressedToolbarClickTimeoutRef.current = null;
-    }
-  }, []);
-
-  const scheduleSuppressedToolbarClickClear = useCallback(() => {
-    if (suppressedToolbarClickTimeoutRef.current !== null) {
-      window.clearTimeout(suppressedToolbarClickTimeoutRef.current);
-    }
-    suppressedToolbarClickTimeoutRef.current = window.setTimeout(() => {
-      suppressedToolbarClickRef.current = null;
-      suppressedToolbarClickTimeoutRef.current = null;
-    }, 250);
-  }, []);
-
-  const finishToolbarDragGesture = useCallback((pointerId?: number) => {
-    const gesture = toolbarDragGestureRef.current;
-    if (!gesture) return;
-    if (pointerId !== undefined && gesture.pointerId !== pointerId) return;
-    toolbarDragGestureRef.current = null;
-  }, []);
-
-  const handleToolbarControlPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (!canManuallyDragToolbarControls) return;
-    if (event.button !== 0 || !event.isPrimary || event.pointerType === "touch") return;
-
-    clearSuppressedToolbarClick();
-    toolbarDragGestureRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      target: event.currentTarget,
-    };
-  }, [canManuallyDragToolbarControls, clearSuppressedToolbarClick]);
-
-  const handleWindowToolbarPointerMove = useCallback((event: PointerEvent) => {
-    const gesture = toolbarDragGestureRef.current;
-    if (!gesture || !startWindowDrag) return;
-    if (gesture.pointerId !== event.pointerId) return;
-
-    const travelDistance = Math.hypot(
-      event.clientX - gesture.startX,
-      event.clientY - gesture.startY,
-    );
-
-    if (travelDistance <= TOOLBAR_DRAG_THRESHOLD_PX) return;
-
-    suppressedToolbarClickRef.current = gesture.target;
-    scheduleSuppressedToolbarClickClear();
-    finishToolbarDragGesture(gesture.pointerId);
-    void startWindowDrag().catch(() => {
-      clearSuppressedToolbarClick();
-    });
-  }, [
-    clearSuppressedToolbarClick,
-    finishToolbarDragGesture,
-    scheduleSuppressedToolbarClickClear,
-    startWindowDrag,
-  ]);
-
-  const handleWindowToolbarPointerEnd = useCallback((event: PointerEvent) => {
-    finishToolbarDragGesture(event.pointerId);
-  }, [finishToolbarDragGesture]);
-
-  const handleToolbarControlClickCapture = useCallback((event: ReactMouseEvent<HTMLElement>) => {
-    if (suppressedToolbarClickRef.current !== event.currentTarget) return;
-    clearSuppressedToolbarClick();
-    event.preventDefault();
-    event.stopPropagation();
-  }, [clearSuppressedToolbarClick]);
 
   const handlePreviewToggleButtonRef = useCallback((node: HTMLButtonElement | null) => {
     previewToggleButtonRef.current = node;
@@ -1145,19 +1064,10 @@ export function Header({
   }, []);
 
   const getToolbarControlProps = useCallback((style?: CSSProperties) => ({
-    ...(canManuallyDragToolbarControls
-      ? {
-          onPointerDown: handleToolbarControlPointerDown,
-          onClickCapture: handleToolbarControlClickCapture,
-        }
-      : {}),
     style: headerDragRegion
       ? ({ ...style, ...toolbarControlStyle } as CSSProperties)
       : style,
   }), [
-    canManuallyDragToolbarControls,
-    handleToolbarControlClickCapture,
-    handleToolbarControlPointerDown,
     headerDragRegion,
   ]);
 
@@ -1397,31 +1307,11 @@ export function Header({
   }, [activeFilter.archivedOnly]);
 
   useEffect(() => () => {
-    finishToolbarDragGesture();
-    clearSuppressedToolbarClick();
     if (deleteConfirmTimerRef.current) {
       window.clearTimeout(deleteConfirmTimerRef.current);
       deleteConfirmTimerRef.current = null;
     }
-  }, [clearSuppressedToolbarClick, finishToolbarDragGesture]);
-
-  useEffect(() => {
-    if (!canManuallyDragToolbarControls) return;
-
-    window.addEventListener("pointermove", handleWindowToolbarPointerMove);
-    window.addEventListener("pointerup", handleWindowToolbarPointerEnd);
-    window.addEventListener("pointercancel", handleWindowToolbarPointerEnd);
-
-    return () => {
-      window.removeEventListener("pointermove", handleWindowToolbarPointerMove);
-      window.removeEventListener("pointerup", handleWindowToolbarPointerEnd);
-      window.removeEventListener("pointercancel", handleWindowToolbarPointerEnd);
-    };
-  }, [
-    canManuallyDragToolbarControls,
-    handleWindowToolbarPointerEnd,
-    handleWindowToolbarPointerMove,
-  ]);
+  }, []);
 
   const toolbarOverflowMenuTop = toolbarOverflowMenuPosition?.top ?? 60;
   const signalFilterMenuTop = signalFilterMenuPosition?.top ?? 60;
@@ -1470,24 +1360,29 @@ export function Header({
               style={leftToolbarStyle}
             >
               {isMobileDevice ? (
-              <Tooltip label="Menu">
-                <button
-                  onClick={onMobileMenuToggle}
-                  {...getToolbarControlProps()}
-                  className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-ghost`}
-                  aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
-                  aria-pressed={mobileSidebarOpen}
-                >
-                  <AnimatedMenuIcon open={mobileSidebarOpen} className="h-5 w-5" />
-                </button>
-              </Tooltip>
+                <Tooltip label="Menu">
+                  <button
+                    onClick={onMobileMenuToggle}
+                    {...getToolbarControlProps()}
+                    className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-ghost`}
+                    aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
+                    aria-pressed={mobileSidebarOpen}
+                  >
+                    <AnimatedMenuIcon open={mobileSidebarOpen} className="h-5 w-5" />
+                  </button>
+                </Tooltip>
               ) : null}
 
-              <div className="flex h-full items-center pl-3 sm:pl-4" style={toolbarLogoRowStyle}>
+              <div
+                data-testid="workspace-toolbar-logo-drag-region"
+                className="flex h-full min-w-0 flex-1 items-center pl-3 sm:pl-4"
+                {...getPassiveDragRegionProps(headerDragRegion, toolbarLogoRowStyle)}
+              >
                 <span
                   ref={wordmarkRef}
                   data-testid="workspace-toolbar-wordmark"
                   className="cursor-default select-none text-lg font-bold gradient-text font-logo"
+                  {...getPassiveDragRegionProps(headerDragRegion)}
                 >
                   FREED
                 </span>
@@ -1565,7 +1460,8 @@ export function Header({
               >
                 <div
                   data-testid="workspace-toolbar-reader-title-block"
-                  className="pointer-events-none flex min-w-0 max-w-full cursor-default select-none items-center justify-center gap-2 text-center"
+                  className="flex min-w-0 max-w-full cursor-default select-none items-center justify-center gap-2 text-center"
+                  {...getPassiveDragRegionProps(headerDragRegion)}
                 >
                   <span className="flex h-8 w-5 shrink-0 items-center justify-center rounded-lg">
                     <svg
@@ -1578,10 +1474,23 @@ export function Header({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
                   </span>
-                  <p className="truncate text-sm font-medium text-[var(--theme-text-secondary)]">
+                  <p
+                    className="truncate text-sm font-medium text-[var(--theme-text-secondary)]"
+                    {...getPassiveDragRegionProps(headerDragRegion)}
+                  >
                     {contextualListTitle}
-                    <span className="mx-1.5 font-normal text-[var(--theme-text-muted)]">•</span>
-                    <span className="font-normal text-[var(--theme-text-muted)]">{currentListSubtitle}</span>
+                    <span
+                      className="mx-1.5 font-normal text-[var(--theme-text-muted)]"
+                      {...getPassiveDragRegionProps(headerDragRegion)}
+                    >
+                      •
+                    </span>
+                    <span
+                      className="font-normal text-[var(--theme-text-muted)]"
+                      {...getPassiveDragRegionProps(headerDragRegion)}
+                    >
+                      {currentListSubtitle}
+                    </span>
                   </p>
                 </div>
               </button>
@@ -1589,11 +1498,25 @@ export function Header({
               <div
                 data-testid="workspace-toolbar-title-block"
                 className="flex min-w-0 cursor-default select-none justify-center px-1 text-center"
+                {...getPassiveDragRegionProps(headerDragRegion)}
               >
-                <p className="truncate text-center text-sm font-semibold text-[var(--theme-text-secondary)]">
+                <p
+                  className="truncate text-center text-sm font-semibold text-[var(--theme-text-secondary)]"
+                  {...getPassiveDragRegionProps(headerDragRegion)}
+                >
                   {currentTitle}
-                  <span className="mx-1.5 font-normal text-[var(--theme-text-muted)]">•</span>
-                  <span className="font-normal text-[var(--theme-text-muted)]">{currentSubtitle}</span>
+                  <span
+                    className="mx-1.5 font-normal text-[var(--theme-text-muted)]"
+                    {...getPassiveDragRegionProps(headerDragRegion)}
+                  >
+                    •
+                  </span>
+                  <span
+                    className="font-normal text-[var(--theme-text-muted)]"
+                    {...getPassiveDragRegionProps(headerDragRegion)}
+                  >
+                    {currentSubtitle}
+                  </span>
                 </p>
               </div>
             )}

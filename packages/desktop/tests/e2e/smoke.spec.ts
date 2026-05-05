@@ -118,6 +118,36 @@ async function dragElementBy(page: Page, locator: Locator, deltaX: number, delta
   await page.mouse.up();
 }
 
+async function readPointDragState(page: Page, x: number, y: number) {
+  return page.evaluate(
+    ({ x, y }) => {
+      const target = document.elementFromPoint(x, y) as HTMLElement | null;
+      if (!target) return null;
+      const style = window.getComputedStyle(target);
+      return {
+        tagName: target.tagName.toLowerCase(),
+        testId: target.getAttribute("data-testid"),
+        text: target.textContent?.trim() ?? "",
+        hasDirectDragAttr: target.hasAttribute("data-tauri-drag-region"),
+        dragAttrValue: target.getAttribute("data-tauri-drag-region"),
+        inlineWebkitAppRegion: target.style.webkitAppRegion,
+        computedCursor: style.cursor,
+        computedUserSelect: style.userSelect,
+      };
+    },
+    { x, y },
+  );
+}
+
+async function readElementFromPointDragState(page: Page, locator: Locator) {
+  const box = await locator.boundingBox();
+  if (!box) {
+    throw new Error("Drag target is not visible");
+  }
+
+  return readPointDragState(page, box.x + box.width / 2, box.y + box.height / 2);
+}
+
 async function readDesktopSidebarGeometry(page: Page) {
   return page.evaluate(() => {
     const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
@@ -826,7 +856,7 @@ test("compact sidebar search opens as a floating palette and closes cleanly", as
   await expect(trigger).toHaveAttribute("aria-pressed", "false");
 });
 
-test("dragging from the desktop sidebar toggle starts a window drag without collapsing the sidebar", async ({ app, page }) => {
+test("desktop toolbar controls remain clickable no-drag targets", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -836,91 +866,85 @@ test("dragging from the desktop sidebar toggle starts a window drag without coll
     return sidebarShell?.getBoundingClientRect().width ?? 0;
   });
 
-  await dragElementBy(page, page.getByTestId("desktop-sidebar-toggle"), 24);
-  await page.waitForTimeout(100);
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  const targetState = await readElementFromPointDragState(page, sidebarToggle);
+  const sidebarToggleRegion = await sidebarToggle.evaluate((button) => button.style.webkitAppRegion);
+  expect(targetState).not.toBeNull();
+  expect(targetState?.hasDirectDragAttr).toBe(false);
+  expect(sidebarToggleRegion).toBe("no-drag");
 
-  const postDragState = await page.evaluate(() => {
-    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
-    const win = window as Record<string, unknown>;
+  await sidebarToggle.click();
+
+  expect(initialWidth).toBeGreaterThan(200);
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+      return sidebarShell?.getBoundingClientRect().width ?? 0;
+    });
+  }).toBeLessThan(initialWidth);
+});
+
+test("desktop passive toolbar targets expose direct native drag attributes", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const wordmarkState = await readElementFromPointDragState(page, page.getByTestId("workspace-toolbar-wordmark"));
+  const titleState = await readElementFromPointDragState(page, page.getByTestId("workspace-toolbar-title-block").locator("p"));
+  const logoGapPoint = await page.evaluate(() => {
+    const wordmark = document.querySelector('[data-testid="workspace-toolbar-wordmark"]') as HTMLElement | null;
+    const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
+    if (!wordmark || !sidebarToggle) return null;
+
+    const wordmarkRect = wordmark.getBoundingClientRect();
+    const toggleRect = sidebarToggle.getBoundingClientRect();
     return {
-      sidebarWidth: sidebarShell?.getBoundingClientRect().width ?? 0,
-      dragCalls: ((win.__TAURI_MOCK_WINDOW_DRAG_CALLS__ as Array<unknown> | undefined) ?? []).length,
+      x: wordmarkRect.right + Math.max(2, Math.min(24, (toggleRect.left - wordmarkRect.right) / 2)),
+      y: wordmarkRect.top + wordmarkRect.height / 2,
     };
   });
+  expect(logoGapPoint).not.toBeNull();
+  const logoGapState = await readPointDragState(page, logoGapPoint!.x, logoGapPoint!.y);
 
-  expect(postDragState.dragCalls).toBe(1);
-  expect(postDragState.sidebarWidth).toBeGreaterThan(initialWidth - 4);
+  expect(wordmarkState).not.toBeNull();
+  expect(wordmarkState?.hasDirectDragAttr).toBe(true);
+  expect(wordmarkState?.inlineWebkitAppRegion).toBe("drag");
+  expect(wordmarkState?.computedCursor).toBe("default");
+  expect(wordmarkState?.computedUserSelect).toBe("none");
+  expect(titleState).not.toBeNull();
+  expect(titleState?.hasDirectDragAttr).toBe(true);
+  expect(titleState?.inlineWebkitAppRegion).toBe("drag");
+  expect(titleState?.computedCursor).toBe("default");
+  expect(titleState?.computedUserSelect).toBe("none");
+  expect(logoGapState).not.toBeNull();
+  expect(logoGapState?.testId).toBe("workspace-toolbar-logo-drag-region");
+  expect(logoGapState?.hasDirectDragAttr).toBe(true);
+  expect(logoGapState?.inlineWebkitAppRegion).toBe("drag");
 });
 
-test("dragging from a reader toolbar button starts a window drag without firing the button action", async ({ app, page }) => {
+test("reader toolbar keeps back button clickable while title text is a drag target", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
   await app.injectRssItems(8);
 
   await page.locator("[data-feed-item-id]").first().click();
-  const railButton = page.getByRole("button", { name: "Hide Previews" }).first();
-  await expect(railButton).toBeVisible();
-
-  await railButton.evaluate((button) => {
-    const rect = button.getBoundingClientRect();
-    const startX = rect.left + rect.width / 2;
-    const startY = rect.top + rect.height / 2;
-    const pointerId = 41;
-
-    button.dispatchEvent(new PointerEvent("pointerdown", {
-      bubbles: true,
-      composed: true,
-      pointerId,
-      pointerType: "mouse",
-      isPrimary: true,
-      button: 0,
-      clientX: startX,
-      clientY: startY,
-    }));
-    window.dispatchEvent(new PointerEvent("pointermove", {
-      bubbles: true,
-      composed: true,
-      pointerId,
-      pointerType: "mouse",
-      isPrimary: true,
-      button: 0,
-      clientX: startX + 24,
-      clientY: startY,
-    }));
-    window.dispatchEvent(new PointerEvent("pointerup", {
-      bubbles: true,
-      composed: true,
-      pointerId,
-      pointerType: "mouse",
-      isPrimary: true,
-      button: 0,
-      clientX: startX + 24,
-      clientY: startY,
-    }));
-  });
-  await page.waitForTimeout(100);
-
-  const dragCalls = await page.evaluate(() => {
-    const win = window as Record<string, unknown>;
-    return ((win.__TAURI_MOCK_WINDOW_DRAG_CALLS__ as Array<unknown> | undefined) ?? []).length;
-  });
-
-  expect(dragCalls).toBe(1);
-  await expect(railButton).toBeVisible();
-});
-
-test("clicking the reader toolbar title region returns to the feed list", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await app.goto();
-  await app.waitForReady();
-  await app.injectRssItems(8);
-
-  await page.locator("[data-feed-item-id]").first().click();
+  await expect.poll(async () => {
+    return page.evaluate(() => document.documentElement.classList.contains("feed-layout-transition"));
+  }).toBe(false);
   const readerTitleBlock = page.getByTestId("workspace-toolbar-reader-title-block");
   await expect(readerTitleBlock).toBeVisible();
 
-  await readerTitleBlock.click();
+  const readerTitleState = await readElementFromPointDragState(page, readerTitleBlock.locator("p"));
+  const backButton = page.getByTestId("workspace-toolbar-reader-back");
+  const backButtonRegion = await backButton.evaluate((button) => button.style.webkitAppRegion);
+
+  expect(readerTitleState).not.toBeNull();
+  expect(readerTitleState?.hasDirectDragAttr).toBe(true);
+  expect(readerTitleState?.inlineWebkitAppRegion).toBe("drag");
+  expect(backButtonRegion).toBe("no-drag");
+
+  await backButton.click();
 
   await page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
@@ -931,27 +955,34 @@ test("clicking the reader toolbar title region returns to the feed list", async 
   await expect(page.locator("[data-feed-item-id]")).toHaveCount(8);
 });
 
-test("desktop passive toolbar title area remains a native drag region", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+test("fullscreen reader toolbar passive targets expose direct native drag attributes", async ({ app, page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "userAgentData", {
+      configurable: true,
+      get: () => ({ mobile: true }),
+    });
+  });
+  await page.setViewportSize({ width: 430, height: 844 });
   await app.goto();
   await app.waitForReady();
+  await app.injectRssItems(4);
 
-  const dragRegionState = await page.evaluate(() => {
-    const titleBlock = document.querySelector('[data-testid="workspace-toolbar-title-block"]') as HTMLElement | null;
-    const dragRegion = titleBlock?.parentElement as HTMLElement | null;
-    if (!titleBlock || !dragRegion) {
-      return null;
-    }
+  await page.getByText("Article 0:", { exact: false }).click();
+  const title = page.getByTestId("reader-view-toolbar-title");
+  await expect(title).toBeVisible({ timeout: 5_000 });
 
-    return {
-      hasDragRegionAttr: dragRegion.hasAttribute("data-tauri-drag-region"),
-      webkitAppRegion: dragRegion.style.webkitAppRegion,
-    };
-  });
+  const titleState = await readElementFromPointDragState(page, title);
+  const spacerState = await readElementFromPointDragState(page, page.getByTestId("reader-view-toolbar-spacer"));
+  const backButton = page.getByRole("button", { name: "Back", exact: true });
+  const backButtonRegion = await backButton.evaluate((button) => button.style.webkitAppRegion);
 
-  expect(dragRegionState).not.toBeNull();
-  expect(dragRegionState?.hasDragRegionAttr).toBe(true);
-  expect(dragRegionState?.webkitAppRegion).toBe("drag");
+  expect(titleState).not.toBeNull();
+  expect(titleState?.hasDirectDragAttr).toBe(true);
+  expect(titleState?.inlineWebkitAppRegion).toBe("drag");
+  expect(spacerState).not.toBeNull();
+  expect(spacerState?.hasDirectDragAttr).toBe(true);
+  expect(spacerState?.inlineWebkitAppRegion).toBe("drag");
+  expect(backButtonRegion).toBe("no-drag");
 });
 
 test("desktop primary feed marks scrolled-past rows as read", async ({ app, page }) => {
