@@ -261,6 +261,22 @@ function unarchiveSavedItemIds(doc: FreedDoc): string[] {
   return changedIds;
 }
 
+function healUntitledFeedTitles(doc: FreedDoc): number {
+  let changed = 0;
+  for (const feed of Object.values(doc.rssFeeds) as RssFeed[]) {
+    const isUntitled = feed.title === "Untitled Feed" || feed.title === feed.url;
+    if (!isUntitled) continue;
+    let healed: string | undefined;
+    try {
+      healed = new URL(feed.url).hostname.replace(/^(?:www|feeds?)\./, "");
+    } catch { /* non-fatal */ }
+    if (!healed || healed === feed.title) continue;
+    feed.title = healed;
+    changed++;
+  }
+  return changed;
+}
+
 /**
  * Convert the Automerge proxy document to a plain-JS DocState for postMessage.
  * Identical to the PWA worker — runs entirely off the main thread.
@@ -459,6 +475,36 @@ async function applyChange(
   if (searchCorpusChanged) bumpSearchCorpusVersion();
   send({ type: "DEBUG_EVENT", kind: "change", detail: message });
   await saveAndBroadcast(trace);
+}
+
+async function applyCountedChange(
+  changeFn: (doc: FreedDoc) => number,
+  message: string,
+  trace?: RequestTrace,
+  searchCorpusChanged = false,
+): Promise<number> {
+  if (!currentDoc) throw new Error("Document not initialized");
+  let changedCount = 0;
+  currentDoc = A.change(currentDoc, message, (doc) => {
+    changedCount = changeFn(doc);
+  });
+
+  if (changedCount === 0) {
+    emitWorkerTrace(
+      `[automerge-worker] skip op=${trace?.opType ?? "unknown"} reason=no_changes`,
+      "change",
+    );
+    return changedCount;
+  }
+
+  if (searchCorpusChanged) bumpSearchCorpusVersion();
+  send({
+    type: "DEBUG_EVENT",
+    kind: "change",
+    detail: `${message}: ${changedCount.toLocaleString()} changed`,
+  });
+  await saveAndBroadcast(trace);
+  return changedCount;
 }
 
 async function applyItemPatchChange(
@@ -733,9 +779,10 @@ async function handleRequest(
         break;
 
       case "PRUNE_ARCHIVED_ITEMS":
-        await applyRequestChange(
+        await applyCountedChange(
           (doc) => pruneArchivedItems(doc, req.maxAgeMs),
           "Prune archived items",
+          trace,
           true,
         );
         ack(req.reqId);
@@ -791,7 +838,12 @@ async function handleRequest(
         break;
 
       case "UPDATE_LAST_SYNC":
-        await applyRequestChange((doc) => updateLastSync(doc), "Update last sync");
+        if (!currentDoc) throw new Error("Document not initialized");
+        currentDoc = A.change(currentDoc, "Update last sync", (doc) => {
+          updateLastSync(doc);
+        });
+        send({ type: "DEBUG_EVENT", kind: "change", detail: "Update last sync" });
+        await persistAndBroadcastWithoutHydration(trace);
         ack(req.reqId);
         break;
 
@@ -921,22 +973,22 @@ async function handleRequest(
       }
 
       case "HEAL_UNTITLED_FEEDS":
-        await applyRequestChange((doc) => {
-          for (const feed of Object.values(doc.rssFeeds) as RssFeed[]) {
-            const isUntitled = feed.title === "Untitled Feed" || feed.title === feed.url;
-            if (!isUntitled) continue;
-            let healed: string | undefined;
-            try { healed = new URL(feed.url).hostname.replace(/^(?:www|feeds?)\./, ""); } catch { /* */ }
-            if (healed) feed.title = healed;
-          }
-        }, "Heal untitled feed titles from URL hostname", true);
+        await applyCountedChange(
+          healUntitledFeedTitles,
+          "Heal untitled feed titles from URL hostname",
+          trace,
+          true,
+        );
         ack(req.reqId);
         break;
 
       case "DEDUPLICATE_ITEMS":
-        await applyRequestChange((doc) => {
-          deduplicateDocFeedItems(doc);
-        }, "Deduplicate feed items by article link URL and linked social cross-posts", true);
+        await applyCountedChange(
+          deduplicateDocFeedItems,
+          "Deduplicate feed items by article link URL and linked social cross-posts",
+          trace,
+          true,
+        );
         ack(req.reqId);
         break;
 
