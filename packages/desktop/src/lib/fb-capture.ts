@@ -120,80 +120,83 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
     return { items: [], diag };
   }
 
-  return new Promise<FbSyncResult>((resolve) => {
-    let unlisten: UnlistenFn | null = null;
+  const allRawPosts: RawFbPost[] = [];
+  const seenIds = new Set<string>();
+  let unlisten: UnlistenFn | null = null;
+  let unlistenDiag: UnlistenFn | null = null;
 
-    // Timeout if the WebView takes too long (30s for page load + extraction)
-    const timeout = setTimeout(() => {
-      unlisten?.();
-      diag.errorStage = "timeout";
-      diag.errorMessage = "Scrape timed out after 30 seconds";
-      resolve({ items: [], diag });
-    }, 30_000);
+  try {
+    attachScraperMediaDiagListener("FB", "facebook");
 
     // Listen for diagnostics (fires before extraction)
-    listen("fb-diag", (diagEvent) => {
+    unlistenDiag = await listen("fb-diag", (diagEvent) => {
       const diag = diagEvent.payload as Record<string, unknown>;
       addDebugEvent("change", `[FB] DOM diag: feedUnits=${diag.feedUnits}, fallback=${diag.feedUnitsFallback}, feed=${diag.feedContainer}, h4s=${diag.h4Count}, bodyLen=${diag.bodyLen}, url=${diag.url}, tauriEmit=${diag.hasTauriEmit}`);
       console.log("[FB] DOM diagnostics:", diag);
-    }).then((fn) => {
-      // Auto-cleanup after 35 seconds
-      setTimeout(() => fn(), 35_000);
     });
-    attachScraperMediaDiagListener("FB", "facebook");
 
-    // Listen for the extraction result
-    listen<{ posts: RawFbPost[]; error?: string; extractedAt: number; url: string; strategy?: string; candidateCount?: number }>(
+    // Listen for every extraction pass. The native scraper emits multiple
+    // batches while it scrolls through the virtualized feed.
+    unlisten = await listen<{ posts: RawFbPost[]; error?: string; extractedAt: number; url: string; strategy?: string; candidateCount?: number }>(
       "fb-feed-data",
       (event) => {
-        clearTimeout(timeout);
-        unlisten?.();
-
         const { posts, error, strategy, candidateCount } = event.payload;
 
         addDebugEvent("change", `[FB] extraction: strategy=${strategy ?? "?"}, candidates=${candidateCount ?? "?"}, posts=${posts.length}`);
 
         if (error) {
+          addDebugEvent("error", `[FB] extraction error: ${error}`);
           diag.errorStage = "extract";
           diag.errorMessage = error;
-          resolve({ items: [], diag });
           return;
         }
 
-        diag.postsExtracted = posts.length;
-
-        if (posts.length === 0) {
-          resolve({ items: [], diag });
-          return;
-        }
-
-        try {
-          const normalized = fbPostsToFeedItems(posts);
-          diag.itemsNormalized = normalized.length;
-
-          const items = deduplicateFeedItems(normalized);
-          diag.itemsDeduplicated = items.length;
-
-          resolve({ items, diag });
-        } catch (err) {
-          diag.errorStage = "normalize";
-          diag.errorMessage = err instanceof Error ? err.message : String(err);
-          resolve({ items: [], diag });
+        for (const post of posts) {
+          const key = post.id ?? post.url ?? `${post.authorName}:${(post.text ?? "").slice(0, 80)}`;
+          if (key && !seenIds.has(key)) {
+            seenIds.add(key);
+            allRawPosts.push(post);
+          }
         }
       },
-    ).then((fn) => {
-      unlisten = fn;
-    });
+    );
 
-    // Trigger the Rust command
-    invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() }).catch((err) => {
-      clearTimeout(timeout);
-      unlisten?.();
+    await invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() });
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+  } catch (err) {
+    if (!diag.errorStage) {
       diag.errorStage = "invoke";
       diag.errorMessage = err instanceof Error ? err.message : String(err);
-      resolve({ items: [], diag });
-    });
-  });
+    }
+    return { items: [], diag };
+  } finally {
+    unlisten?.();
+    unlistenDiag?.();
+  }
+
+  if (diag.errorStage) {
+    return { items: [], diag };
+  }
+
+  diag.postsExtracted = allRawPosts.length;
+
+  if (allRawPosts.length === 0) {
+    return { items: [], diag };
+  }
+
+  try {
+    const normalized = fbPostsToFeedItems(allRawPosts);
+    diag.itemsNormalized = normalized.length;
+
+    const items = deduplicateFeedItems(normalized);
+    diag.itemsDeduplicated = items.length;
+
+    return { items, diag };
+  } catch (err) {
+    diag.errorStage = "normalize";
+    diag.errorMessage = err instanceof Error ? err.message : String(err);
+    return { items: [], diag };
+  }
 }
 
 export async function captureFbGroups(): Promise<FbGroupInfo[]> {
