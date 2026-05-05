@@ -1,0 +1,80 @@
+{
+  "tag": "v26.5.406-dev",
+  "version": "26.5.406-dev",
+  "channel": "dev",
+  "dayKey": "26.5.4",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-05T06:37:36.351Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.405-dev",
+    "previousPublishedDayTag": "v26.5.308-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.402-dev",
+      "v26.5.404-dev",
+      "v26.5.405-dev",
+      "v26.5.406-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.402-dev",
+      "v26.5.404-dev",
+      "v26.5.405-dev",
+      "v26.5.406-dev"
+    ],
+    "prNumbers": [
+      408,
+      418,
+      419,
+      420,
+      424,
+      425,
+      426,
+      427,
+      431,
+      432,
+      433
+    ],
+    "commitSubjects": [
+      "fix: stabilize desktop renderer recovery (#433)",
+      "release: v26.5.405-dev",
+      "release: preserve 26.5.4 dev note rollup",
+      "fix: scope desktop WebKit memory pressure (#432)",
+      "release: approve v26.5.404-dev notes",
+      "release: v26.5.404-dev",
+      "fix: reduce social scraper frame drops (#431)",
+      "fix: restore native desktop toolbar dragging (#426)",
+      "release: approve v26.5.402-dev notes",
+      "release: v26.5.402-dev",
+      "fix: restore linux release compile (#427)",
+      "release: approve v26.5.401-dev notes",
+      "release: v26.5.401-dev",
+      "fix: stabilize renderer recovery under memory pressure (#425)",
+      "fix: retry deferred startup rss poll (#424)",
+      "fix: batch visible archive actions (#420)",
+      "fix: recover stale renderer without blocking main thread (#419)",
+      "fix: let startup recovery dialog scroll (#408)",
+      "chore: reverse integrate v26.5.309 production release (#418)"
+    ]
+  },
+  "release": {
+    "deck": "Freed Desktop is calmer during renderer memory spikes",
+    "features": [],
+    "fixes": [
+      "Reader, feed, and header polish",
+      "Optimized social scraper frame drops",
+      "Release build and type-safety cleanup",
+      "Social sync memory preflights now defer the shared scheduler instead of cycling through providers",
+      "Startup recovery and Settings copy now distinguish high memory from critical memory"
+    ],
+    "followUps": [
+      "Reverse integrate v26.5.309 production release",
+      "Local diagnostics now write bounded runtime bundles for memory pressure, stale heartbeats, and pre-recovery samples",
+      "Reader, sidebar, and settings UX work"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.406-dev\n\nFreed Desktop is calmer during renderer memory spikes\n\n### Fixes\n\n- Reader, feed, and header polish\n- Optimized social scraper frame drops\n- Release build and type-safety cleanup\n- Social sync memory preflights now defer the shared scheduler instead of cycling through providers\n- Startup recovery and Settings copy now distinguish high memory from critical memory\n\n### Follow-ups\n\n- Reverse integrate v26.5.309 production release\n- Local diagnostics now write bounded runtime bundles for memory pressure, stale heartbeats, and pre-recovery samples\n- Reader, sidebar, and settings UX work\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
