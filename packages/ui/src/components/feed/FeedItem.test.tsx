@@ -121,6 +121,45 @@ describe("FeedItem read styling", () => {
   });
 });
 
+describe("FeedItem card text previews", () => {
+  it("renders a bounded text preview for long regular posts", () => {
+    const longText = `${"Opening sentence ".repeat(120)}needle-tail`;
+    const html = renderFeedItemToStaticMarkup(
+      makeItem({
+        globalId: "item-long",
+        platform: "rss",
+        contentType: "post",
+        content: {
+          text: longText,
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+      }),
+    );
+
+    expect(html).toContain("Opening sentence");
+    expect(html).toContain("...");
+    expect(html).not.toContain("needle-tail");
+  });
+
+  it("keeps short regular post text intact", () => {
+    const html = renderFeedItemToStaticMarkup(
+      makeItem({
+        globalId: "item-short",
+        platform: "rss",
+        contentType: "post",
+        content: {
+          text: "A short post stays readable.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+      }),
+    );
+
+    expect(html).toContain("A short post stays readable.");
+  });
+});
+
 describe("FeedItem story media", () => {
   it("shares the feed card view transition name in primary story tiles", () => {
     const html = renderFeedItemToStaticMarkup(makeItem({ globalId: "ig:story/transition proof" }));
