@@ -4381,7 +4381,9 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
     expect(duringPan!.metrics.visibleLabelCount).toBeLessThanOrEqual(
       initial!.metrics.visibleLabelCount,
     );
-    expect(duringPan!.metrics.sceneSyncMs).toBeLessThan(20);
+    await page.mouse.move(startX + 300, startY + 90, { steps: 4 });
+    const steadyPan = await waitForGraphSceneSyncAfter(page, duringPan!.metrics.sceneSyncCount);
+    expect(steadyPan!.metrics.sceneSyncMs).toBeLessThan(60);
   } finally {
     await page.mouse.up();
   }

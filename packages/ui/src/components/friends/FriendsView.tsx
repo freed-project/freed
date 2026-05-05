@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
   Account,
   DeviceContact,
@@ -11,7 +12,7 @@ import type {
   ReachOutLog,
 } from "@freed/shared";
 import { formatDistanceToNow } from "date-fns";
-import { buildFriendCandidateSuggestions, friendFromPerson, isInReconnectZone } from "@freed/shared";
+import { buildFriendCandidateSuggestions, isInReconnectZone } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
@@ -26,6 +27,9 @@ import { SearchField } from "../SearchField.js";
 import { UsersIcon, MapPinIcon } from "../icons.js";
 import {
   buildFriendOverviewEntries,
+  buildFriendsById,
+  buildFriendsWorkspaceIndexes,
+  friendFromPersonWithIndexes,
   filterAndSortFriendOverview,
   type FriendOverviewEntry,
   type FriendOverviewFilter,
@@ -33,8 +37,7 @@ import {
 } from "../../lib/friends-workspace.js";
 import { resolveFriendAvatarUrl } from "../../lib/friend-avatar.js";
 import {
-  buildSuggestionsByAccount,
-  buildSuggestionsByPerson,
+  buildAccountLinkSuggestionGroups,
   type AccountLinkSuggestion,
 } from "../../lib/account-link-suggestions.js";
 import { accountSubtitle, accountTitle, providerLabel } from "../../lib/account-labels.js";
@@ -61,6 +64,7 @@ const SORT_OPTIONS: Array<{ id: FriendOverviewSort; label: string }> = [
 
 const BUTTON_CHROME = "btn-secondary rounded-lg px-3 py-1.5 text-xs";
 const FRIENDS_SIDEBAR_SECTION = "theme-dialog-divider border-b px-4 py-3";
+const FRIEND_OVERVIEW_ROW_ESTIMATE = 104;
 
 type RelationshipTierLevel = 1 | 3 | 5;
 
@@ -556,6 +560,7 @@ export function FriendsView({
   const [committedSidebarWidth, setCommittedSidebarWidth] = useState(savedSidebarWidth);
 
   const graphRef = useRef<FriendGraphHandle>(null);
+  const friendOverviewScrollRef = useRef<HTMLDivElement>(null);
   const isDraggingSidebar = useRef(false);
   const pendingPersistedSidebarWidth = useRef<number | null>(null);
   const isMobile = useIsMobile();
@@ -567,6 +572,10 @@ export function FriendsView({
     for (const item of items) map[item.globalId] = item;
     return map;
   }, [items]);
+  const friendsWorkspaceIndexes = useMemo(
+    () => buildFriendsWorkspaceIndexes(accounts, feedItems),
+    [accounts, feedItems],
+  );
   const sourceItems = useMemo(() => {
     const map = new Map<string, FeedItem>();
     for (const item of items) {
@@ -591,8 +600,8 @@ export function FriendsView({
     [persons],
   );
   const friendsById = useMemo<Record<string, Friend>>(
-    () => Object.fromEntries(friendPersons.map((person) => [person.id, friendFromPerson(person, accounts)])),
-    [accounts, friendPersons],
+    () => buildFriendsById(friendPersons, friendsWorkspaceIndexes),
+    [friendPersons, friendsWorkspaceIndexes],
   );
   const friendList = useMemo(() => Object.values(friendsById), [friendsById]);
   const socialAccountCount = useMemo(
@@ -601,7 +610,7 @@ export function FriendsView({
   );
 
   const selectedPerson = selectedPersonId ? persons[selectedPersonId] ?? null : null;
-  const selectedFriend = selectedPerson ? friendFromPerson(selectedPerson, accounts) : null;
+  const selectedFriend = selectedPerson ? friendFromPersonWithIndexes(selectedPerson, friendsWorkspaceIndexes) : null;
   const selectedAccount = selectedAccountId ? accounts[selectedAccountId] ?? null : null;
 
   const reconnectCount = useMemo(
@@ -609,13 +618,17 @@ export function FriendsView({
     [friendPersons]
   );
 
-  const suggestionsByAccount = useMemo(
-    () => buildSuggestionsByAccount(persons, accounts),
+  const accountLinkSuggestionGroups = useMemo(
+    () => buildAccountLinkSuggestionGroups(persons, accounts),
     [accounts, persons],
   );
+  const suggestionsByAccount = useMemo(
+    () => accountLinkSuggestionGroups.byAccount,
+    [accountLinkSuggestionGroups],
+  );
   const suggestionsByPerson = useMemo(
-    () => buildSuggestionsByPerson(persons, accounts),
-    [accounts, persons],
+    () => accountLinkSuggestionGroups.byPerson,
+    [accountLinkSuggestionGroups],
   );
   const friendCandidateSuggestions = useMemo(
     () =>
@@ -669,8 +682,8 @@ export function FriendsView({
   }, [friendCandidateSuggestions]);
 
   const overviewEntries = useMemo(
-    () => buildFriendOverviewEntries(friendsById, feedItems),
-    [feedItems, friendsById]
+    () => buildFriendOverviewEntries(friendsById, feedItems, { indexes: friendsWorkspaceIndexes }),
+    [feedItems, friendsById, friendsWorkspaceIndexes]
   );
   const filteredOverviewEntries = useMemo(
     () => filterAndSortFriendOverview(overviewEntries, searchQuery, activeFilters, sortBy),
@@ -707,6 +720,17 @@ export function FriendsView({
         : null,
     [overviewEntries, selectedPerson],
   );
+  const friendOverviewVirtualizer = useVirtualizer({
+    count: filteredOverviewEntries.length,
+    getScrollElement: () => friendOverviewScrollRef.current,
+    estimateSize: () => FRIEND_OVERVIEW_ROW_ESTIMATE,
+    overscan: 8,
+    getItemKey: (index) => filteredOverviewEntries[index]?.friend.id ?? index,
+  });
+
+  useEffect(() => {
+    friendOverviewVirtualizer.measure();
+  }, [filteredOverviewEntries.length, friendOverviewVirtualizer, searchQuery, sortBy]);
 
   useEffect(() => {
     if (selectedPersonId && !persons[selectedPersonId]) {
@@ -1184,7 +1208,11 @@ export function FriendsView({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div
+        ref={friendOverviewScrollRef}
+        data-testid="friends-overview-scroll"
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+      >
         {friendCandidateSuggestions.length > 0 ? (
           <div className="mb-5" data-testid="friend-candidate-suggestions">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -1219,15 +1247,31 @@ export function FriendsView({
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Try clearing a filter or changing the search query.</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {filteredOverviewEntries.map((entry) => (
-              <FriendListRow
-                key={entry.friend.id}
-                entry={entry}
-                selected={entry.friend.id === selectedPerson?.id}
-                onSelect={() => handleSelectPerson(persons[entry.friend.id] ?? friendPersons[0], true)}
-              />
-            ))}
+          <div
+            data-testid="friends-overview-list"
+            className="relative"
+            style={{ height: friendOverviewVirtualizer.getTotalSize() }}
+          >
+            {friendOverviewVirtualizer.getVirtualItems().map((virtualItem) => {
+              const entry = filteredOverviewEntries[virtualItem.index];
+              if (!entry) return null;
+              return (
+                <div
+                  key={virtualItem.key}
+                  ref={friendOverviewVirtualizer.measureElement}
+                  data-index={virtualItem.index}
+                  data-testid="friend-overview-virtual-row"
+                  className="absolute left-0 top-0 w-full pb-3"
+                  style={{ transform: `translateY(${virtualItem.start}px)` }}
+                >
+                  <FriendListRow
+                    entry={entry}
+                    selected={entry.friend.id === selectedPerson?.id}
+                    onSelect={() => handleSelectPerson(persons[entry.friend.id] ?? friendPersons[0], true)}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

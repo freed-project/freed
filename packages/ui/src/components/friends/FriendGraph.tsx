@@ -149,7 +149,7 @@ interface NodeDisplay {
   avatarSprite: Sprite;
   avatarMask: Graphics;
   inner: Graphics | null;
-  initials: Text;
+  initials: Text | null;
   providerDot: Graphics | null;
   highlightRing: Graphics;
 }
@@ -171,6 +171,11 @@ interface RegionDisplay {
   text: Text;
 }
 
+type GraphDebugNode = Pick<
+  IdentityGraphLayoutNode,
+  "id" | "personId" | "accountId" | "feedUrl" | "linkedPersonId" | "kind" | "x" | "y" | "radius"
+>;
+
 const DEFAULT_HEIGHT = 560;
 const FIT_PADDING = 84;
 const MIN_SCALE = 0.2;
@@ -179,6 +184,7 @@ const TRACKPAD_PINCH_ZOOM_SPEED = 0.005;
 const GRAPH_INTERACTION_SETTLE_DELAY_MS = 140;
 const INTERACTIVE_LABEL_LIMIT = 16;
 const SETTLED_LABEL_LIMIT = 32;
+const FAST_LAYOUT_NODE_THRESHOLD = 1_600;
 const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
 const RELATIONSHIP_TIER_DROP_SELECTOR = "[data-friend-tier-drop-value]";
 
@@ -473,10 +479,7 @@ function nodePosition(
 
 function createNodeDisplay(
   node: IdentityGraphLayoutNode,
-  palette: GraphThemePalette,
-  themeId?: ThemeId,
 ): NodeDisplay {
-  const nodePalette = kindColor(node, palette);
   const container = new Container();
   const outer = new Graphics();
   container.addChild(outer);
@@ -496,19 +499,6 @@ function createNodeDisplay(
     container.addChild(inner);
   }
 
-  const initials = new Text(
-    node.initials ?? "",
-    new TextStyle({
-      fill: nodePalette.text,
-      fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
-      fontSize: Math.max(9, node.radius * 0.48),
-      fontWeight: "700",
-      letterSpacing: node.kind === "account" || node.kind === "feed" ? 0 : 1,
-    }),
-  );
-  initials.anchor.set(0.5);
-  container.addChild(initials);
-
   let providerDot: Graphics | null = null;
   if (node.kind === "account") {
     providerDot = new Graphics();
@@ -524,10 +514,25 @@ function createNodeDisplay(
     avatarSprite,
     avatarMask,
     inner,
-    initials,
+    initials: null,
     providerDot,
     highlightRing,
   };
+}
+
+function ensureInitialsDisplay(
+  display: NodeDisplay,
+): Text {
+  if (display.initials) return display.initials;
+
+  const initials = new Text("", new TextStyle({ fontSize: 10 }));
+  initials.anchor.set(0.5);
+  const insertIndex = display.highlightRing.parent === display.container
+    ? display.container.getChildIndex(display.highlightRing)
+    : display.container.children.length;
+  display.container.addChildAt(initials, insertIndex);
+  display.initials = initials;
+  return initials;
 }
 
 function createLabelDisplay(themeId?: ThemeId): LabelDisplay {
@@ -603,6 +608,84 @@ function graphFitItems(layout: IdentityGraphLayout): Array<{ x: number; y: numbe
   ];
 }
 
+function buildNodeById(nodes: IdentityGraphLayoutNode[]): Map<string, IdentityGraphLayoutNode> {
+  return new Map(nodes.map((node) => [node.id, node]));
+}
+
+function buildGraphDebugNodes(nodes: IdentityGraphLayoutNode[]): GraphDebugNode[] {
+  return nodes.map((node) => ({
+    id: node.id,
+    personId: node.personId,
+    accountId: node.accountId,
+    feedUrl: node.feedUrl,
+    linkedPersonId: node.linkedPersonId,
+    kind: node.kind,
+    x: node.x,
+    y: node.y,
+    radius: node.radius,
+  }));
+}
+
+function isNodeNearViewport(
+  node: IdentityGraphLayoutNode,
+  transform: ViewTransform,
+  width: number,
+  height: number,
+  padding: number,
+): boolean {
+  const point = screenPointForPosition(node, transform);
+  const screenRadius = node.radius * transform.scale;
+  return (
+    point.x + screenRadius >= -padding &&
+    point.x - screenRadius <= width + padding &&
+    point.y + screenRadius >= -padding &&
+    point.y - screenRadius <= height + padding
+  );
+}
+
+function shouldLoadNodeAvatar({
+  node,
+  transform,
+  width,
+  height,
+  selectedOrHighlighted,
+  qualityMode,
+}: {
+  node: IdentityGraphLayoutNode;
+  transform: ViewTransform;
+  width: number;
+  height: number;
+  selectedOrHighlighted: boolean;
+  qualityMode: GraphQualityMode;
+}): boolean {
+  if (selectedOrHighlighted) return true;
+  if (qualityMode === "interactive") return false;
+  if (node.radius * transform.scale < 14) return false;
+  if (transform.scale < 0.68) return false;
+  return isNodeNearViewport(node, transform, width, height, 120);
+}
+
+function shouldShowNodeInitials({
+  node,
+  transform,
+  width,
+  height,
+  selectedOrHighlighted,
+  qualityMode,
+}: {
+  node: IdentityGraphLayoutNode;
+  transform: ViewTransform;
+  width: number;
+  height: number;
+  selectedOrHighlighted: boolean;
+  qualityMode: GraphQualityMode;
+}): boolean {
+  if (selectedOrHighlighted) return true;
+  if (qualityMode === "interactive") return false;
+  if (node.radius * transform.scale < 18) return false;
+  return isNodeNearViewport(node, transform, width, height, 80);
+}
+
 function countLinkedAccountChanges(
   previousModel: IdentityGraphModel | null,
   nextModel: IdentityGraphModel,
@@ -662,6 +745,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const pixiRef = useRef<PixiScene | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const layoutRef = useRef<IdentityGraphLayout>({ nodes: [], edges: [], regions: [] });
+  const layoutNodeByIdRef = useRef<Map<string, IdentityGraphLayoutNode>>(new Map());
+  const layoutDebugNodesRef = useRef<GraphDebugNode[]>([]);
   const spatialIndexRef = useRef<SpatialIndex>({ cellSize: 96, buckets: new Map() });
   const dragStateRef = useRef<DragState | null>(null);
   const pinchStateRef = useRef<PinchState | null>(null);
@@ -672,6 +757,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const latestLayoutRequestIdRef = useRef(0);
   const latestResolvedLayoutRequestIdRef = useRef(0);
   const drawRafRef = useRef(0);
+  const drawRafPendingRef = useRef(false);
   const settleTimerRef = useRef<number | null>(null);
   const lastStaticRenderKeyRef = useRef("");
   const lastSelectionStyleKeyRef = useRef("");
@@ -679,6 +765,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const visibleLabelIdsRef = useRef<string[]>([]);
   const textStyleCacheRef = useRef<Map<string, TextStyle>>(new Map());
   const avatarTextureCacheRef = useRef<Map<string, AvatarTextureCacheEntry>>(new Map());
+  const paletteCacheRef = useRef<{ key: string; value: GraphThemePalette } | null>(null);
+  const highlightedNodeIdsRef = useRef<{
+    key: string;
+    value: Set<string>;
+  }>({ key: "", value: new Set() });
   const previousRequestedModelRef = useRef<IdentityGraphModel | null>(null);
   const previousRequestSnapshotRef = useRef<{
     signature: string;
@@ -759,15 +850,33 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const drag = dragStateRef.current;
     const transform = transformRef.current;
     const qualityMode = graphQualityModeRef.current;
-    const graphPalette = readGraphThemePalette(containerRef.current);
+    const paletteKey = themeId ?? "default";
+    if (paletteCacheRef.current?.key !== paletteKey) {
+      paletteCacheRef.current = {
+        key: paletteKey,
+        value: readGraphThemePalette(containerRef.current),
+      };
+    }
+    const graphPalette = paletteCacheRef.current.value;
     const hoveredNodeId = hoveredNodeIdRef.current;
-    const highlighted = buildHighlightedNodeIds(
-      layoutRef.current,
-      selectedPersonId,
-      selectedAccountId,
-    );
+    const highlightKey = [
+      layoutVersion,
+      selectedPersonId ?? "",
+      selectedAccountId ?? "",
+    ].join("|");
+    if (highlightedNodeIdsRef.current.key !== highlightKey) {
+      highlightedNodeIdsRef.current = {
+        key: highlightKey,
+        value: buildHighlightedNodeIds(
+          layoutRef.current,
+          selectedPersonId,
+          selectedAccountId,
+        ),
+      };
+    }
+    const highlighted = highlightedNodeIdsRef.current.value;
     const accountDrag = drag?.kind === "account-drag" ? drag : null;
-    const nodeById = new Map(layoutRef.current.nodes.map((node) => [node.id, node]));
+    const nodeById = layoutNodeByIdRef.current;
     const avatarCache = avatarTextureCacheRef.current;
     const queueAvatarRefresh = () => {
       lastStaticRenderKeyRef.current = "";
@@ -784,6 +893,28 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
     scene.world.position.set(transform.x, transform.y);
     scene.world.scale.set(transform.scale);
+    const isInteractivePaint = qualityMode === "interactive" && !accountDrag;
+    const shouldCacheNodeLayer =
+      isInteractivePaint &&
+      drag?.kind !== "person-drag" &&
+      layoutRef.current.nodes.length >= 600;
+    const selectionStyleKey = [
+      layoutVersion,
+      selectedPersonId ?? "",
+      selectedAccountId ?? "",
+      themeId ?? "",
+      accountDrag?.dropTargetPersonId ?? "",
+    ].join("|");
+    const nodeStyleWillChange =
+      lastStaticRenderKeyRef.current !== staticRenderKey ||
+      lastSelectionStyleKeyRef.current !== selectionStyleKey ||
+      !!accountDrag;
+    if (scene.nodeLayer.isCachedAsTexture && (!shouldCacheNodeLayer || nodeStyleWillChange)) {
+      scene.nodeLayer.cacheAsTexture(false);
+    }
+    scene.edgeLayer.visible = !isInteractivePaint;
+    scene.edgeHighlightLayer.visible = highlighted.size > 0;
+    scene.regionLabelLayer.visible = !isInteractivePaint;
 
     if (lastStaticRenderKeyRef.current !== staticRenderKey || !!accountDrag) {
       didStaticRender = true;
@@ -836,7 +967,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         staleNodeIds.delete(node.id);
         let display = scene.nodeDisplays.get(node.id);
         if (!display) {
-          display = createNodeDisplay(node, graphPalette, themeId);
+          display = createNodeDisplay(node);
           scene.nodeDisplays.set(node.id, display);
           scene.nodeLayer.addChild(display.container);
         }
@@ -871,7 +1002,19 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
         let avatarTexture: Texture | null = null;
         const avatarUrl = node.avatarUrl ?? null;
-        if (avatarUrl) {
+        const selectedOrHighlighted = highlighted.has(node.id) ||
+          isSelectedGraphNode(node, selectedPersonId, selectedAccountId);
+        if (
+          avatarUrl &&
+          shouldLoadNodeAvatar({
+            node,
+            transform,
+            width: canvasSize.width,
+            height: canvasSize.height,
+            selectedOrHighlighted,
+            qualityMode,
+          })
+        ) {
           const cached = avatarCache.get(avatarUrl);
           if (cached?.state === "loaded") {
             avatarTexture = cached.texture;
@@ -894,10 +1037,45 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           display.avatarSprite.width = node.radius * 2;
           display.avatarSprite.height = node.radius * 2;
           display.avatarSprite.visible = true;
-          display.initials.visible = false;
+          if (display.initials) {
+            display.initials.visible = false;
+          }
         } else {
           display.avatarSprite.visible = false;
-          display.initials.visible = true;
+          const showInitials = shouldShowNodeInitials({
+            node,
+            transform,
+            width: canvasSize.width,
+            height: canvasSize.height,
+            selectedOrHighlighted,
+            qualityMode,
+          });
+          if (showInitials) {
+            const initials = ensureInitialsDisplay(display);
+            initials.visible = true;
+            initials.text = node.initials ?? "";
+            initials.style = getCachedTextStyle(
+              [
+                "initials",
+                themeId ?? "default",
+                palette.text,
+                Math.max(9, Math.round(node.radius * 0.48)),
+                node.kind,
+              ].join(":"),
+              {
+                fill: palette.text,
+                fontFamily:
+                  themeId === "scriptorium"
+                    ? "Georgia, serif"
+                    : "system-ui, sans-serif",
+                fontSize: Math.max(9, node.radius * 0.48),
+                fontWeight: "700",
+                letterSpacing: node.kind === "account" || node.kind === "feed" ? 0 : 1,
+              },
+            );
+          } else if (display.initials) {
+            display.initials.visible = false;
+          }
         }
 
         if (display.inner) {
@@ -910,27 +1088,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           );
           display.inner.endFill();
         }
-
-        display.initials.text = node.initials ?? "";
-        display.initials.style = getCachedTextStyle(
-          [
-            "initials",
-            themeId ?? "default",
-            palette.text,
-            Math.max(9, Math.round(node.radius * 0.48)),
-            node.kind,
-          ].join(":"),
-          {
-            fill: palette.text,
-            fontFamily:
-              themeId === "scriptorium"
-                ? "Georgia, serif"
-                : "system-ui, sans-serif",
-            fontSize: Math.max(9, node.radius * 0.48),
-            fontWeight: "700",
-            letterSpacing: node.kind === "account" || node.kind === "feed" ? 0 : 1,
-          },
-        );
 
         if (display.providerDot) {
           display.providerDot.clear();
@@ -974,14 +1131,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         setLayoutReady(true);
       }
     }
-
-    const selectionStyleKey = [
-      layoutVersion,
-      selectedPersonId ?? "",
-      selectedAccountId ?? "",
-      themeId ?? "",
-      accountDrag?.dropTargetPersonId ?? "",
-    ].join("|");
 
     if (lastSelectionStyleKeyRef.current !== selectionStyleKey || didStaticRender || !!accountDrag) {
       scene.edgeLayer.alpha = highlighted.size > 0 ? 0.42 : 1;
@@ -1028,6 +1177,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         display.avatarMask.endFill();
       }
       lastSelectionStyleKeyRef.current = selectionStyleKey;
+    }
+    if (shouldCacheNodeLayer && !scene.nodeLayer.isCachedAsTexture) {
+      scene.nodeLayer.cacheAsTexture({ resolution: 1, antialias: false });
     }
 
     const providerMetrics = providerLabelMetrics(transform.scale);
@@ -1274,6 +1426,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     perfSnapshotRef.current.modelBuildMs = model.buildMs;
     perfSnapshotRef.current.layoutMs = lastLayoutMsRef.current;
     perfSnapshotRef.current.sceneSyncMs = nowMs() - sceneStart;
+    scene.app.render();
 
     if (containerRef.current) {
       const personCount = layoutRef.current.nodes.filter((node) => !!node.personId).length;
@@ -1286,6 +1439,19 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       containerRef.current.dataset.graphQualityMode = qualityMode;
     }
     if (typeof window !== "undefined") {
+      const debugNodes = drag
+        ? layoutRef.current.nodes.map((node) => ({
+            id: node.id,
+            personId: node.personId,
+            accountId: node.accountId,
+            feedUrl: node.feedUrl,
+            linkedPersonId: node.linkedPersonId,
+            kind: node.kind,
+            x: nodePosition(node, drag).x,
+            y: nodePosition(node, drag).y,
+            radius: node.radius,
+          }))
+        : layoutDebugNodesRef.current;
       (window as typeof window & {
         __FREED_GRAPH_DEBUG__?: {
           nodes: Array<Pick<IdentityGraphLayoutNode, "id" | "personId" | "accountId" | "feedUrl" | "linkedPersonId" | "kind" | "x" | "y" | "radius">>;
@@ -1295,17 +1461,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           metrics: GraphPerfSnapshot;
         };
       }).__FREED_GRAPH_DEBUG__ = {
-        nodes: layoutRef.current.nodes.map((node) => ({
-          id: node.id,
-          personId: node.personId,
-          accountId: node.accountId,
-          feedUrl: node.feedUrl,
-          linkedPersonId: node.linkedPersonId,
-          kind: node.kind,
-          x: nodePosition(node, drag).x,
-          y: nodePosition(node, drag).y,
-          radius: node.radius,
-        })),
+        nodes: debugNodes,
         regions: layoutRef.current.regions,
         transform: transformRef.current,
         qualityMode,
@@ -1324,8 +1480,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   syncSceneRef.current = syncScene;
 
   const scheduleSyncScene = useCallback(() => {
-    cancelAnimationFrame(drawRafRef.current);
+    if (drawRafPendingRef.current) return;
+    drawRafPendingRef.current = true;
     drawRafRef.current = requestAnimationFrame(() => {
+      drawRafPendingRef.current = false;
       syncScene();
     });
   }, [syncScene]);
@@ -1408,6 +1566,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         backgroundAlpha: 0,
         antialias: true,
         preference: "webgl",
+        autoStart: false,
       });
       if (cancelled) {
         app.destroy(true);
@@ -1418,6 +1577,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       app.canvas.style.width = "100%";
       app.canvas.style.height = "100%";
       app.canvas.style.pointerEvents = "none";
+      app.ticker.stop();
       canvasHost.appendChild(app.canvas);
 
       const world = new Container();
@@ -1456,6 +1616,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     return () => {
       cancelled = true;
       cancelAnimationFrame(drawRafRef.current);
+      drawRafPendingRef.current = false;
       if (settleTimerRef.current !== null) {
         window.clearTimeout(settleTimerRef.current);
         settleTimerRef.current = null;
@@ -1511,6 +1672,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       if (event.data.requestId < latestResolvedLayoutRequestIdRef.current) return;
       latestResolvedLayoutRequestIdRef.current = event.data.requestId;
       layoutRef.current = event.data.layout;
+      layoutNodeByIdRef.current = buildNodeById(event.data.layout.nodes);
+      layoutDebugNodesRef.current = buildGraphDebugNodes(event.data.layout.nodes);
       spatialIndexRef.current = buildSpatialIndex(event.data.layout.nodes);
       lastLayoutMsRef.current = event.data.durationMs;
       if (!hasFittedInitialLayoutRef.current) {
@@ -1542,7 +1705,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       Math.abs(previousSnapshot.height - canvasSize.height) / Math.max(previousSnapshot.height, 1) <= 0.12;
     const relinkOnly =
       countLinkedAccountChanges(previousRequestedModelRef.current, model) === 1;
-    const quality: GraphLayoutQuality = sizeOnlyResize || relinkOnly ? "fast" : "full";
+    const largeGraph = model.nodes.length >= FAST_LAYOUT_NODE_THRESHOLD;
+    const quality: GraphLayoutQuality = sizeOnlyResize || relinkOnly || largeGraph ? "fast" : "full";
     const requestId = latestLayoutRequestIdRef.current + 1;
     latestLayoutRequestIdRef.current = requestId;
     previousRequestSnapshotRef.current = {
