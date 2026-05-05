@@ -2,6 +2,10 @@ import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { docBackfillContentSignals, subscribe } from "./automerge.js";
 import { localAIModels, subscribeToLocalAIModelState } from "./local-ai-models.js";
 import { log } from "./logger.js";
+import {
+  isBackgroundRuntimeDeferredError,
+  runBackgroundJob,
+} from "./background-runtime-coordinator.js";
 
 const BATCH_SIZE = 100;
 const PROCESS_INTERVAL_MS = 5_000;
@@ -70,7 +74,12 @@ async function processNextBatch(): Promise<void> {
 
   processing = true;
   try {
-    const summary = await docBackfillContentSignals(BATCH_SIZE);
+    const summary = await runBackgroundJob({
+      kind: "semantic-classifier",
+      source: "content-signals",
+      timeoutMs: 120_000,
+      run: () => docBackfillContentSignals(BATCH_SIZE),
+    });
     lastRunAt = Date.now();
     completed += summary.updated;
     pending = summary.remaining;
@@ -83,6 +92,10 @@ async function processNextBatch(): Promise<void> {
       );
     }
   } catch (error) {
+    if (isBackgroundRuntimeDeferredError(error)) {
+      log.info(`[semantic-classifier] deferred reason=${error.reason}`);
+      return;
+    }
     failedCount += 1;
     lastFailureAt = Date.now();
     const message = error instanceof Error ? error.message : String(error);

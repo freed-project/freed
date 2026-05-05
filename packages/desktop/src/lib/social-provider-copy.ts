@@ -27,7 +27,7 @@ export const SOCIAL_PROVIDER_COPY = {
     connectedInfo:
       "Freed syncs your home timeline every 30 minutes while the app is open. Cookies expire periodically, reconnect when sync stops working.",
     memoryPressure:
-      "X sync did not start because Freed Desktop memory is critically high.",
+      "X sync did not start because Freed Desktop memory is high.",
   },
   facebook: {
     label: "Facebook",
@@ -44,7 +44,7 @@ export const SOCIAL_PROVIDER_COPY = {
     connectedInfo:
       "Freed reads your Facebook feed through a native browser session. Your traffic looks identical to normal browsing.",
     memoryPressure:
-      "Facebook sync did not start because Freed Desktop memory is critically high.",
+      "Facebook sync did not start because Freed Desktop memory is high.",
   },
   instagram: {
     label: "Instagram",
@@ -61,7 +61,7 @@ export const SOCIAL_PROVIDER_COPY = {
     connectedInfo:
       "Freed reads your Instagram feed through a native browser session. Your traffic looks identical to normal browsing.",
     memoryPressure:
-      "Instagram sync did not start because Freed Desktop memory is critically high.",
+      "Instagram sync did not start because Freed Desktop memory is high.",
   },
   linkedin: {
     label: "LinkedIn",
@@ -78,7 +78,7 @@ export const SOCIAL_PROVIDER_COPY = {
     connectedInfo:
       "Freed reads your LinkedIn feed through a native browser session. Your traffic looks identical to normal browsing.",
     memoryPressure:
-      "LinkedIn sync did not start because Freed Desktop memory is critically high.",
+      "LinkedIn sync did not start because Freed Desktop memory is high.",
   },
 } satisfies Record<SocialProviderId, SocialProviderCopy>;
 

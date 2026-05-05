@@ -39,6 +39,7 @@ import {
   markItemsAsRead,
   toggleSaved,
   toggleArchived,
+  archiveItemsById,
   archiveAllReadUnsaved,
   unarchiveSavedItems,
   pruneArchivedItems,
@@ -595,6 +596,15 @@ async function handleRequest(
           toggleArchived(doc, req.globalId);
           return [req.globalId];
         }, "Toggle archived", trace);
+        ack(req.reqId);
+        break;
+
+      case "ARCHIVE_ITEMS":
+        await applyItemPatchChange(
+          (doc) => archiveItemsById(doc, req.globalIds),
+          `Archive ${req.globalIds.length.toLocaleString()} items`,
+          trace,
+        );
         ack(req.reqId);
         break;
 

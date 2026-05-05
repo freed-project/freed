@@ -124,4 +124,62 @@ describe("background runtime coordinator", () => {
       }),
     ).resolves.toBe("ready");
   });
+
+  it("pauses non-snapshot jobs during renderer safe mode", async () => {
+    vi.useFakeTimers();
+    const coordinator = await loadCoordinator();
+    coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: true });
+    coordinator.noteRendererHeartbeat(heartbeat(1));
+    coordinator.noteRendererHeartbeat(heartbeat(2));
+
+    coordinator.noteRendererRecoveryState({
+      phase: "safe_mode",
+      reason: "renderer heartbeat stale",
+      safeModeActive: true,
+      safeModeRemainingMs: 600_000,
+    });
+
+    expect(coordinator.canStartBackgroundJob("content-fetch")).toEqual({
+      ok: false,
+      reason: "waiting_for_renderer_heartbeat:0",
+    });
+    coordinator.noteRendererHeartbeat(heartbeat(3));
+    coordinator.noteRendererHeartbeat(heartbeat(4));
+    expect(coordinator.getBackgroundRuntimeStatus().safeModeUntil).toEqual(expect.any(Number));
+    expect(coordinator.canStartBackgroundJob("content-fetch")).toEqual({
+      ok: false,
+      reason: expect.stringContaining("renderer_safe_mode:"),
+    });
+    await expect(
+      coordinator.runBackgroundJob({
+        kind: "snapshot",
+        source: "emergency",
+        run: () => "snapshotted",
+      }),
+    ).resolves.toBe("snapshotted");
+
+    await vi.advanceTimersByTimeAsync(600_001);
+    expect(coordinator.canStartBackgroundJob("content-fetch")).toEqual({ ok: true });
+  });
+
+  it("bridges native renderer recovery events into a cooldown", async () => {
+    const coordinator = await loadCoordinator();
+    coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: true });
+    coordinator.noteRendererHeartbeat(heartbeat(1));
+    coordinator.noteRendererHeartbeat(heartbeat(2));
+
+    coordinator.noteRendererRecoveryState({
+      phase: "recovery_attempt",
+      reason: "renderer heartbeat stale",
+    });
+
+    const status = coordinator.getBackgroundRuntimeStatus();
+    expect(status.healthyHeartbeats).toBe(0);
+    expect(status.lastRecoveryPhase).toBe("recovery_attempt");
+    expect(status.lastRecoveryReason).toBe("renderer heartbeat stale");
+    expect(coordinator.canStartBackgroundJob("content-fetch")).toEqual({
+      ok: false,
+      reason: "waiting_for_renderer_heartbeat:0",
+    });
+  });
 });

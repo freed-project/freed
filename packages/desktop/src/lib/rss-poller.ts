@@ -14,9 +14,26 @@ import {
 
 /** Default poll interval: 30 minutes */
 const DEFAULT_INTERVAL_MS = 30 * 60 * 1000;
+const DEFERRED_RETRY_MS = 15_000;
 
 let pollIntervalId: ReturnType<typeof setInterval> | null = null;
+let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
 let isPolling = false;
+
+function clearDeferredRetry(): void {
+  if (retryTimeoutId !== null) {
+    clearTimeout(retryTimeoutId);
+    retryTimeoutId = null;
+  }
+}
+
+function scheduleDeferredRetry(): void {
+  if (retryTimeoutId !== null) return;
+  retryTimeoutId = setTimeout(() => {
+    retryTimeoutId = null;
+    void triggerPoll();
+  }, DEFERRED_RETRY_MS);
+}
 
 /**
  * Start background RSS polling.
@@ -28,7 +45,7 @@ export function startRssPoller(intervalMs = DEFAULT_INTERVAL_MS): void {
   if (pollIntervalId !== null) return; // Already running
 
   // Do an immediate refresh on first start
-  triggerPoll();
+  void triggerPoll();
 
   pollIntervalId = setInterval(triggerPoll, intervalMs);
   console.log(
@@ -40,6 +57,7 @@ export function startRssPoller(intervalMs = DEFAULT_INTERVAL_MS): void {
  * Stop background RSS polling.
  */
 export function stopRssPoller(): void {
+  clearDeferredRetry();
   if (pollIntervalId !== null) {
     clearInterval(pollIntervalId);
     pollIntervalId = null;
@@ -61,9 +79,11 @@ async function triggerPoll(): Promise<void> {
       timeoutMs: 180_000,
       run: refreshAllFeeds,
     });
+    clearDeferredRetry();
   } catch (err) {
     if (isBackgroundRuntimeDeferredError(err)) {
       addDebugEvent("change", `[RSS] poll deferred: ${err.reason}`);
+      scheduleDeferredRetry();
       return;
     }
     const msg = err instanceof Error ? err.message : String(err);
