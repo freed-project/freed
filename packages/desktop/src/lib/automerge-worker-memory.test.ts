@@ -16,8 +16,12 @@ describe("automerge worker memory routing", () => {
   const patchOnlyMutations = [
     "MARK_AS_READ",
     "MARK_ITEMS_AS_READ",
+    "MARK_ALL_AS_READ",
+    "TOGGLE_SAVED",
     "TOGGLE_ARCHIVED",
     "ARCHIVE_ITEMS",
+    "ARCHIVE_ALL_READ_UNSAVED",
+    "UNARCHIVE_SAVED_ITEMS",
     "TOGGLE_LIKED",
     "CONFIRM_LIKED_SYNCED",
     "CONFIRM_SEEN_SYNCED",
