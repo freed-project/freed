@@ -3,7 +3,7 @@
   "version": "26.5.500-dev",
   "channel": "dev",
   "dayKey": "26.5.5",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-05T07:27:57.580Z",
   "model": "heuristic",
@@ -27,10 +27,13 @@
     ]
   },
   "release": {
-    "deck": "Desktop main window activation restored",
+    "deck": "Startup repair ships",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "macOS launch recovery now restores regular app activation before showing the main Freed Desktop window",
+      "Freed Desktop now unminimizes and orders the main window front when reopening or recovering it"
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.500-dev\n\nDesktop main window activation restored\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.500-dev\n\nStartup repair ships\n\n### Fixes\n\n- macOS launch recovery now restores regular app activation before showing the main Freed Desktop window\n- Freed Desktop now unminimizes and orders the main window front when reopening or recovering it\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

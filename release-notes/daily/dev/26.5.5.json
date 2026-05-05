@@ -2,13 +2,16 @@
   "channel": "dev",
   "dayKey": "26.5.5",
   "date": "2026-05-05",
-  "preferredDeck": null,
+  "preferredDeck": "Startup repair ships",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
-  "pinnedHighlights": [],
+  "pinnedHighlights": [
+    "macOS launch recovery now restores regular app activation before showing the main Freed Desktop window",
+    "Freed Desktop now unminimizes and orders the main window front when reopening or recovering it"
+  ],
   "editorialNotes": [],
   "updatedAt": "2026-05-05T07:27:57.581Z"
 }
