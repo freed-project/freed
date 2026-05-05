@@ -1,0 +1,36 @@
+{
+  "tag": "v26.5.500-dev",
+  "version": "26.5.500-dev",
+  "channel": "dev",
+  "dayKey": "26.5.5",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-05T07:27:57.580Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.406-dev",
+    "previousPublishedDayTag": "v26.5.406-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.500-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.500-dev"
+    ],
+    "prNumbers": [
+      434
+    ],
+    "commitSubjects": [
+      "fix: restore desktop main window activation (#434)"
+    ]
+  },
+  "release": {
+    "deck": "Desktop main window activation restored",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.500-dev\n\nDesktop main window activation restored\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
