@@ -65,6 +65,7 @@ const MAX_CRITICAL_MEMORY_BYTES: u64 = 8 * BYTES_PER_GIB;
 const WEBKIT_CACHE_TRIM_AT_BYTES: u64 = 768 * 1024 * 1024;
 const WEBKIT_CACHE_TRIM_TARGET_BYTES: u64 = 512 * 1024 * 1024;
 const OPTIONAL_STORY_MEMORY_BUDGET_PERCENT: u64 = 85;
+const WEBKIT_PROCESS_START_GRACE_SECONDS: u64 = 10;
 const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
 const RUNTIME_HEALTH_FILE: &str = "runtime-health.jsonl";
 const RUNTIME_DIAGNOSTICS_FILE: &str = "runtime-diagnostics.jsonl";
@@ -2261,7 +2262,15 @@ fn macos_process_has_open_file_under_roots(pid: u32, roots: &[PathBuf]) -> bool 
         .any(|path| path_is_under_any_root(Path::new(path), roots))
 }
 
-fn freed_webkit_memory_stats(system: &System, roots: &[PathBuf]) -> WebkitMemoryStats {
+fn webkit_process_belongs_to_current_launch(webkit_age_seconds: u64, app_age_seconds: u64) -> bool {
+    webkit_age_seconds <= app_age_seconds.saturating_add(WEBKIT_PROCESS_START_GRACE_SECONDS)
+}
+
+fn freed_webkit_memory_stats(
+    system: &System,
+    roots: &[PathBuf],
+    app_age_seconds: u64,
+) -> WebkitMemoryStats {
     let mut total_resident_bytes = 0u64;
     let mut process_count = 0u64;
     let mut largest: Option<WebkitProcessRuntimeStats> = None;
@@ -2278,6 +2287,10 @@ fn freed_webkit_memory_stats(system: &System, roots: &[PathBuf]) -> WebkitMemory
             if !macos_process_has_open_file_under_roots(pid_u32, roots) {
                 continue;
             }
+            let age_seconds = process.run_time();
+            if !webkit_process_belongs_to_current_launch(age_seconds, app_age_seconds) {
+                continue;
+            }
             let resident = process.memory();
             let virtual_bytes = process.virtual_memory();
             total_resident_bytes = total_resident_bytes.saturating_add(resident);
@@ -2287,7 +2300,7 @@ fn freed_webkit_memory_stats(system: &System, roots: &[PathBuf]) -> WebkitMemory
                 resident_bytes: resident,
                 virtual_bytes,
                 cpu_usage: process.cpu_usage(),
-                age_seconds: process.run_time(),
+                age_seconds,
                 role: "freed-webcontent".to_string(),
             };
             if largest
@@ -2330,17 +2343,23 @@ fn collect_runtime_memory_stats(
         ProcessRefreshKind::nothing().with_memory(),
     );
 
-    let (process_resident_bytes, process_virtual_bytes) = system
+    let (process_resident_bytes, process_virtual_bytes, process_age_seconds) = system
         .process(pid)
-        .map(|process| (process.memory(), process.virtual_memory()))
-        .unwrap_or((0, 0));
+        .map(|process| {
+            (
+                process.memory(),
+                process.virtual_memory(),
+                process.run_time(),
+            )
+        })
+        .unwrap_or((0, 0, 0));
     system.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
         ProcessRefreshKind::nothing().with_memory(),
     );
 
-    let webkit = freed_webkit_memory_stats(&system, &app_storage_roots(app));
+    let webkit = freed_webkit_memory_stats(&system, &app_storage_roots(app), process_age_seconds);
     let total_physical_memory_bytes = system.total_memory();
     let (memory_high_bytes, memory_critical_bytes) =
         memory_pressure_limits(total_physical_memory_bytes);
@@ -6339,6 +6358,21 @@ mod tests {
                 "/Users/aubrey/Library/Containers/com.apple.Safari/Data/Library/Caches/com.apple.Safari/WebKitCache/Version 17/Blobs/a"
             ),
             &roots,
+        ));
+    }
+
+    #[test]
+    fn webkit_process_filter_excludes_prior_launches() {
+        let app_age = 60;
+
+        assert!(webkit_process_belongs_to_current_launch(0, app_age));
+        assert!(webkit_process_belongs_to_current_launch(
+            app_age + WEBKIT_PROCESS_START_GRACE_SECONDS,
+            app_age
+        ));
+        assert!(!webkit_process_belongs_to_current_launch(
+            app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
+            app_age
         ));
     }
 
