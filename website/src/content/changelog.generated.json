@@ -1,32 +1,118 @@
 [
   {
-    "version": "26.5.400",
-    "tagName": "v26.5.400",
+    "version": "26.5.403",
+    "tagName": "v26.5.403",
     "channel": "production",
-    "date": "2026-05-04T11:05:47Z",
-    "deck": "Fix stale renderer recovery restarts",
+    "date": "2026-05-05T02:12:56Z",
+    "deck": "Freed Desktop reliability fixes",
     "features": [],
     "fixes": [
+      {
+        "text": "Native macOS window dragging now works from the FREED wordmark, nearby titlebar gap, passive toolbar title areas, and fullscreen reader titlebar."
+      },
+      {
+        "text": "Toolbar controls stay clickable because buttons remain explicit no-drag targets while passive titlebar surfaces handle native dragging."
+      },
+      {
+        "text": "Fix stale renderer recovery restarts."
+      },
       {
         "text": "Recover stale renderers without blocking the macOS main thread while the old main window unregisters."
       },
       {
         "text": "Let the startup recovery screen scroll in shorter windows so recovery actions stay reachable."
+      },
+      {
+        "text": "Pause heavy background work before high renderer memory can force repeated recovery."
+      },
+      {
+        "text": "Retry deferred startup RSS polls instead of waiting for the next normal polling interval."
+      },
+      {
+        "text": "Batch visible archive actions more aggressively."
+      },
+      {
+        "text": "Restore Linux release compilation for renderer memory diagnostics."
       }
     ],
     "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.400",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.403",
     "prNumbers": [
-      421
+      408,
+      418,
+      419,
+      420,
+      421,
+      424,
+      425,
+      427,
+      428
     ],
     "builds": [
-      "26.5.400"
+      "26.5.400",
+      "26.5.403"
     ],
     "buildLinks": [
       {
         "version": "26.5.400",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.400",
         "channel": "production"
+      },
+      {
+        "version": "26.5.403",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.403",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.5.402-dev",
+    "tagName": "v26.5.402-dev",
+    "channel": "dev",
+    "date": "2026-05-04T21:52:52Z",
+    "deck": "Freed Desktop is calmer during renderer memory spikes",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Freed Desktop now pauses heavy background work before high renderer memory can force repeated recovery."
+      },
+      {
+        "text": "Renderer health events now include generation, route, visibility, memory footprint, recovery state, and active background work."
+      },
+      {
+        "text": "Social sync memory preflights now defer the shared scheduler instead of cycling through providers."
+      },
+      {
+        "text": "Startup recovery now waits for stable renderer heartbeats before high-memory background jobs resume."
+      },
+      {
+        "text": "Startup recovery and Settings copy now distinguish high memory from critical memory."
+      },
+      {
+        "text": "Non-macOS release builds now compile the renderer memory diagnostics cleanly."
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Local diagnostics now write bounded runtime bundles for memory pressure, stale heartbeats, and pre-recovery samples."
+      },
+      {
+        "text": "Startup recovery UI can scroll when the dialog content is taller than the window."
+      },
+      {
+        "text": "Visible archive actions now batch state work more aggressively."
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.402-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.5.402-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.5.402-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.402-dev",
+        "channel": "dev"
       }
     ]
   },
