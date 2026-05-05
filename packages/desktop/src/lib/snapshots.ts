@@ -138,6 +138,16 @@ function snapshotContactsPath(root: string, id: string): string {
   return joinPath(root, `${id}.contacts.json`);
 }
 
+function snapshotIdFromFileName(name: string): string | null {
+  if (name.endsWith(".automerge")) {
+    return name.slice(0, -".automerge".length);
+  }
+  if (name.endsWith(".contacts.json")) {
+    return name.slice(0, -".contacts.json".length);
+  }
+  return null;
+}
+
 function normalizeSnapshotList(snapshots: SnapshotSummary[]): SnapshotSummary[] {
   return snapshots
     .slice()
@@ -184,16 +194,27 @@ async function pruneSnapshots(
 ): Promise<SnapshotSummary[]> {
   const keep = normalizeSnapshotList(snapshots);
   const keepIds = new Set(keep.map((snapshot) => snapshot.id));
+  const removals: Promise<unknown>[] = [];
 
   for (const snapshot of snapshots) {
     if (keepIds.has(snapshot.id)) continue;
 
-    await Promise.allSettled([
+    removals.push(
       remove(snapshotBinaryPath(root, snapshot.id)),
       remove(snapshotContactsPath(root, snapshot.id)),
-    ]);
+    );
   }
 
+  const files = await readDir(root).catch(() => []);
+  for (const entry of files) {
+    const name = entry.name;
+    if (!name) continue;
+    const id = snapshotIdFromFileName(name);
+    if (!id || keepIds.has(id)) continue;
+    removals.push(remove(joinPath(root, name)));
+  }
+
+  await Promise.allSettled(removals);
   return keep;
 }
 
