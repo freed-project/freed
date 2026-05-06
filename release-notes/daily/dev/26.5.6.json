@@ -2,13 +2,15 @@
   "channel": "dev",
   "dayKey": "26.5.6",
   "date": "2026-05-06",
-  "preferredDeck": "Freed Desktop trims oversized WebKit caches before social scrapes",
+  "preferredDeck": "Freed Desktop keeps large social views responsive",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Dense Map views now suppress decorative marker chrome during movement and keep rendered marker data stable while panning",
+    "Dense Friends graphs now use deterministic large-graph layout, virtualized sidebar rows, dense Pixi layers, and capped interaction redraws so 1,600-person views mount and zoom within the frame budget",
     "WebKit NetworkCache Records now trim during social scrape memory preflight",
     "Large-library feed search now yields more often while building its MiniSearch index and defers bulk-action ID allocation until a command runs, eliminating the 58 ms search long task in the 5,000 item perf guard.",
     "Dense Friends graphs now allocate avatar sprites and masks only for avatars that are actually shown, avoiding thousands of unused Pixi display objects while zoomed out or when nodes have no avatar.",
@@ -35,7 +37,8 @@
     "v26.5.614-dev adds the measured 2.08 MB renderer item projection reduction from PR #475.",
     "v26.5.615-dev adds the Friends graph lazy avatar allocation fix from PR #476.",
     "v26.5.616-dev adds the feed search frame-budget cleanup from PR #477.",
-    "v26.5.618-dev replaces the canceled v26.5.617-dev attempt and includes PR #471, PR #472, and PR #478."
+    "v26.5.618-dev replaces the canceled v26.5.617-dev attempt and includes PR #471, PR #472, and PR #478.",
+    "v26.5.619-dev adds the dense Friends graph mount and interaction fix from PR #482 and the dense Map interaction trim from PR #480."
   ],
-  "updatedAt": "2026-05-06T19:50:17.790Z"
+  "updatedAt": "2026-05-06T22:11:08.175Z"
 }
