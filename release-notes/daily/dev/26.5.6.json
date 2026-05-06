@@ -15,5 +15,5 @@
     "Large Desktop libraries now send compact feed text snippets to the renderer and load longer reader text on demand, reducing the item payload the main WebKit renderer has to clone and retain"
   ],
   "editorialNotes": [],
-  "updatedAt": "2026-05-06T11:16:07.009Z"
+  "updatedAt": "2026-05-06T12:12:12.416Z"
 }
