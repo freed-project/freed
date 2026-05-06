@@ -201,6 +201,15 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
 
 export async function captureFbGroups(): Promise<FbGroupInfo[]> {
   const store = useAppStore.getState();
+  const memoryPrep = await prepareSocialScrapeMemory("facebook", "groups scrape");
+  if (!memoryPrep.mayProceed) {
+    addDebugEvent(
+      "change",
+      `[FB] group refresh deferred for memory pressure: ${formatBytesForMemoryLog(memoryPrep.after.appResidentBytes)} after cleanup`,
+    );
+    return [];
+  }
+
   const groups = await invoke<FbGroupInfo[]>("fb_scrape_groups", {
     windowMode: getFbScraperWindowMode(),
   });

@@ -137,6 +137,15 @@ describe("social capture memory pressure gate", () => {
     expect(mocks.invoke).not.toHaveBeenCalledWith("fb_scrape_feed", expect.anything());
   });
 
+  it("defers Facebook groups before invoking the native scraper", async () => {
+    const { captureFbGroups } = await import("./fb-capture");
+    const result = await captureFbGroups();
+
+    expect(result).toEqual([]);
+    expect(mocks.prepareSocialScrapeMemory).toHaveBeenCalledWith("facebook", "groups scrape");
+    expect(mocks.invoke).not.toHaveBeenCalledWith("fb_scrape_groups", expect.anything());
+  });
+
   it("returns Instagram memory diagnostics before invoking the native scraper", async () => {
     const { fetchIgFeed } = await import("./instagram-capture");
     const result = await fetchIgFeed();

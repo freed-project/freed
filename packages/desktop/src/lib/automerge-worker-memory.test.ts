@@ -57,8 +57,11 @@ describe("automerge worker memory routing", () => {
 
     expect(workerSource).toContain("DESKTOP_UI_CONTENT_TEXT_LIMIT = 600");
     expect(workerSource).toContain("DESKTOP_UI_PRESERVED_TEXT_LIMIT = 240");
+    expect(workerSource).toContain("DESKTOP_UI_LINK_DESCRIPTION_LIMIT = 180");
     expect(body).toContain("contentText.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT)");
     expect(body).toContain("preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT)");
+    expect(workerSource).toContain("linkDescription.slice(0, DESKTOP_UI_LINK_DESCRIPTION_LIMIT)");
+    expect(workerSource).toContain("scores: {}");
     expect(workerSource).toContain(".map(trimFeedItemForDesktopUi)");
     expect(patchBody).toContain("trimFeedItemForDesktopUi(cloned)");
   });
