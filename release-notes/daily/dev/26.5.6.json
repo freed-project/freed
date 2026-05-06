@@ -2,13 +2,14 @@
   "channel": "dev",
   "dayKey": "26.5.6",
   "date": "2026-05-06",
-  "preferredDeck": "Freed Desktop improves dense Map rendering and keeps Google sync on native requests",
+  "preferredDeck": "Freed Desktop trims renderer memory pressure and keeps dense Map rendering fast",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Large Desktop libraries now send a slimmer renderer item projection, capping feed preview text at 280 characters and keeping only content-signal tags in list state. On the local 11,801 item library this trims another measured 2.08 MB of raw item JSON before WebKit object expansion.",
     "Google Drive now syncs through native Freed Desktop requests, avoiding renderer fetch failures that surfaced as generic Load failed errors",
     "Google Contacts keeps using the shared Google Drive token, and Drive startup failures no longer mark Contacts auth as broken after OAuth succeeds",
     "Google Drive API errors now preserve Google's response body details in sync diagnostics, so scope and permission failures are visible in logs and provider health",
@@ -24,6 +25,8 @@
     "Facebook, Instagram, and LinkedIn scraper windows now use provider-specific WebKit data stores, keeping social browsing heaps and caches separated from the main app renderer while preserving sign-in state",
     "Feed-card regression coverage now protects that reader-only media policy so release validation catches accidental inline media work"
   ],
-  "editorialNotes": [],
-  "updatedAt": "2026-05-06T18:06:01.543Z"
+  "editorialNotes": [
+    "v26.5.614-dev adds the measured 2.08 MB renderer item projection reduction from PR #475."
+  ],
+  "updatedAt": "2026-05-06T18:06:50.542Z"
 }
