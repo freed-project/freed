@@ -85,6 +85,8 @@ const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(75);
 const RENDERER_HIDDEN_RECOVERY_AFTER: Duration = Duration::from_secs(600);
 const BACKGROUND_REQUIRED_HEALTHY_HEARTBEATS: u64 = 2;
 const BACKGROUND_RECOVERY_COOLDOWN: Duration = Duration::from_secs(120);
+const BACKGROUND_MEMORY_HIGH_COOLDOWN: Duration = Duration::from_secs(120);
+const BACKGROUND_MEMORY_CRITICAL_COOLDOWN: Duration = Duration::from_secs(10 * 60);
 const BACKGROUND_SAFE_MODE_RECOVERY_WINDOW_SHORT: Duration = Duration::from_secs(10 * 60);
 const BACKGROUND_SAFE_MODE_RECOVERY_WINDOW_LONG: Duration = Duration::from_secs(30 * 60);
 const BACKGROUND_SAFE_MODE_DURATION: Duration = Duration::from_secs(10 * 60);
@@ -1068,10 +1070,12 @@ struct BackgroundRuntimeState {
     healthy_heartbeats: u64,
     renderer_stale: bool,
     cooldown_until: Option<Instant>,
+    memory_cooldown_until: Option<Instant>,
     safe_mode_until: Option<Instant>,
     recovery_history: VecDeque<Instant>,
     active_job: Option<ActiveBackgroundJob>,
     last_recovery_reason: Option<String>,
+    last_memory_pressure_reason: Option<String>,
 }
 
 impl BackgroundRuntimeState {
@@ -1080,10 +1084,12 @@ impl BackgroundRuntimeState {
             healthy_heartbeats: 0,
             renderer_stale: true,
             cooldown_until: None,
+            memory_cooldown_until: None,
             safe_mode_until: None,
             recovery_history: VecDeque::new(),
             active_job: None,
             last_recovery_reason: None,
+            last_memory_pressure_reason: None,
         }
     }
 }
@@ -1146,6 +1152,40 @@ impl BackgroundRuntimeCoordinator {
         }
     }
 
+    fn note_memory_pressure(&self, provider: &str, operation: &str, critical: bool) -> u128 {
+        let now = Instant::now();
+        let cooldown = if critical {
+            BACKGROUND_MEMORY_CRITICAL_COOLDOWN
+        } else {
+            BACKGROUND_MEMORY_HIGH_COOLDOWN
+        };
+        let mut state = self.state.write().unwrap();
+        let until = now + cooldown;
+        if state
+            .memory_cooldown_until
+            .map(|current| current < until)
+            .unwrap_or(true)
+        {
+            state.memory_cooldown_until = Some(until);
+        }
+        state.last_memory_pressure_reason = Some(format!(
+            "{} {} memory pressure {}",
+            provider,
+            operation,
+            if critical { "critical" } else { "high" }
+        ));
+        state
+            .memory_cooldown_until
+            .and_then(|until| {
+                if until > now {
+                    Some(until.duration_since(now).as_millis())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0)
+    }
+
     fn begin_job(&self, operation: &'static str) -> Result<(), String> {
         let now = Instant::now();
         let mut state = self.state.write().unwrap();
@@ -1170,6 +1210,22 @@ impl BackgroundRuntimeCoordinator {
                 ));
             }
             state.cooldown_until = None;
+        }
+
+        if let Some(memory_cooldown_until) = state.memory_cooldown_until {
+            if memory_cooldown_until > now {
+                let wait_ms = memory_cooldown_until.duration_since(now).as_millis();
+                let reason = state
+                    .last_memory_pressure_reason
+                    .as_deref()
+                    .unwrap_or("recent memory pressure");
+                return Err(format!(
+                    "background work is cooling down for {} ms after {}",
+                    wait_ms, reason
+                ));
+            }
+            state.memory_cooldown_until = None;
+            state.last_memory_pressure_reason = None;
         }
 
         if let Some(safe_mode_until) = state.safe_mode_until {
@@ -2697,6 +2753,7 @@ async fn prepare_social_scrape_memory_internal(
 
 async fn ensure_social_scrape_memory(
     app: &tauri::AppHandle,
+    background_runtime: &BackgroundRuntimeCoordinator,
     provider: &str,
     operation: &str,
     preserve_label: Option<&str>,
@@ -2712,6 +2769,33 @@ async fn ensure_social_scrape_memory(
     } else {
         "high"
     };
+    let critical = pressure_label == "critically high";
+    if critical {
+        let reason = format!("{} {} critical memory preflight", provider, operation);
+        recycle_social_scraper_windows(app, &reason);
+    }
+    let cooldown_ms = background_runtime.note_memory_pressure(provider, operation, critical);
+    warn!(
+        "[memory] pausing background scraper work provider={} operation={} pressure={} cooldown_ms={}",
+        provider, operation, pressure_label, cooldown_ms
+    );
+    append_runtime_health(
+        app,
+        serde_json::json!({
+            "event": "background_scraper_memory_cooldown",
+            "provider": provider,
+            "operation": operation,
+            "pressureLevel": if critical { "critical" } else { "high" },
+            "cooldownMs": cooldown_ms,
+            "appResidentBytes": prep.after.app_resident_bytes,
+            "webkitResidentBytes": prep.after.webkit_total_resident_bytes,
+            "webkitLargestProcessId": prep.after.webkit_largest_process_id,
+            "webkitLargestResidentBytes": prep.after.webkit_largest_resident_bytes,
+            "memoryHighBytes": prep.after.memory_high_bytes,
+            "memoryCriticalBytes": prep.after.memory_critical_bytes,
+            "recycledAllScraperWindows": critical
+        }),
+    );
     Err(format!(
         "{} sync paused because Freed Desktop memory remains {} after cleanup.",
         provider, pressure_label
@@ -3271,7 +3355,14 @@ async fn fb_check_auth(
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_check_auth").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "auth check", Some("fb-scraper")).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Facebook",
+        "auth check",
+        Some("fb-scraper"),
+    )
+    .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "auth check");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(w) => w,
@@ -3562,7 +3653,14 @@ async fn fb_scrape_feed(
     let fb_feed_url = "https://www.facebook.com/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_feed").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "feed scrape", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Facebook",
+        "feed scrape",
+        None,
+    )
+    .await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "feed scrape complete");
 
@@ -3795,7 +3893,14 @@ async fn fb_scrape_groups(
     let fb_groups_url = "https://www.facebook.com/groups/?category=joined";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_groups").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "groups scrape", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Facebook",
+        "groups scrape",
+        None,
+    )
+    .await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "groups scrape complete");
 
@@ -4068,7 +4173,14 @@ async fn ig_check_auth(
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_check_auth").await?;
-    ensure_social_scrape_memory(&app, "Instagram", "auth check", Some("ig-scraper")).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Instagram",
+        "auth check",
+        Some("ig-scraper"),
+    )
+    .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "auth check");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => w,
@@ -4130,7 +4242,14 @@ async fn ig_scrape_feed(
     let ig_feed_url = "https://www.instagram.com/?variant=following";
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await?;
-    ensure_social_scrape_memory(&app, "Instagram", "feed scrape", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Instagram",
+        "feed scrape",
+        None,
+    )
+    .await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "ig-scraper", "feed scrape complete");
 
@@ -4446,7 +4565,8 @@ async fn fb_visit_url(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_visit_url").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "visit", None).await?;
+    ensure_social_scrape_memory(&app, &capture.background_runtime, "Facebook", "visit", None)
+        .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "visit complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -4478,7 +4598,14 @@ async fn ig_visit_url(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_visit_url").await?;
-    ensure_social_scrape_memory(&app, "Instagram", "visit", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Instagram",
+        "visit",
+        None,
+    )
+    .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "visit complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -4516,7 +4643,8 @@ async fn fb_like_post(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_like_post").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "like", None).await?;
+    ensure_social_scrape_memory(&app, &capture.background_runtime, "Facebook", "like", None)
+        .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "like complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -4566,7 +4694,8 @@ async fn ig_like_post(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_like_post").await?;
-    ensure_social_scrape_memory(&app, "Instagram", "like", None).await?;
+    ensure_social_scrape_memory(&app, &capture.background_runtime, "Instagram", "like", None)
+        .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "like complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -4710,7 +4839,14 @@ async fn li_check_auth(
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "li_check_auth").await?;
-    ensure_social_scrape_memory(&app, "LinkedIn", "auth check", Some("li-scraper")).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "LinkedIn",
+        "auth check",
+        Some("li-scraper"),
+    )
+    .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "li-scraper", "auth check");
     let wv = match app.get_webview_window("li-scraper") {
         Some(w) => {
@@ -4784,7 +4920,14 @@ async fn li_scrape_feed(
     let li_feed_url = "https://www.linkedin.com/feed/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "li_scrape_feed").await?;
-    ensure_social_scrape_memory(&app, "LinkedIn", "feed scrape", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "LinkedIn",
+        "feed scrape",
+        None,
+    )
+    .await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "li-scraper", "feed scrape complete");
 
@@ -6489,6 +6632,27 @@ mod tests {
         runtime.note_renderer_heartbeat();
         let err = runtime.begin_job("ig_scrape_feed").unwrap_err();
         assert!(err.contains("cooling down"));
+    }
+
+    #[test]
+    fn background_runtime_blocks_after_memory_pressure() {
+        let runtime = BackgroundRuntimeCoordinator::new();
+        runtime.note_renderer_heartbeat();
+        runtime.note_renderer_heartbeat();
+        assert!(runtime.begin_job("fb_scrape_feed").is_ok());
+        assert!(runtime.finish_job("fb_scrape_feed").is_some());
+
+        let high_cooldown = runtime.note_memory_pressure("Facebook", "visit", false);
+        assert!(high_cooldown > 0);
+        let high_err = runtime.begin_job("ig_visit_url").unwrap_err();
+        assert!(high_err.contains("cooling down"));
+        assert!(high_err.contains("memory pressure high"));
+
+        let critical_cooldown = runtime.note_memory_pressure("Facebook", "feed scrape", true);
+        assert!(critical_cooldown >= high_cooldown);
+        let critical_err = runtime.begin_job("fb_visit_url").unwrap_err();
+        assert!(critical_err.contains("cooling down"));
+        assert!(critical_err.contains("memory pressure critical"));
     }
 
     #[test]
