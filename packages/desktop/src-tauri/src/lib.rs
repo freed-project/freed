@@ -8,6 +8,8 @@ use log::{error, info, warn};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 use std::collections::{HashSet, VecDeque};
+#[cfg(target_os = "macos")]
+use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -1016,14 +1018,19 @@ type RelayState = Arc<SyncRelayState>;
 struct RuntimeMemoryStats {
     total_physical_memory_bytes: u64,
     process_resident_bytes: u64,
+    process_footprint_bytes: Option<u64>,
     process_virtual_bytes: u64,
     app_resident_bytes: u64,
+    app_memory_pressure_bytes: u64,
     webkit_resident_bytes: Option<u64>,
+    webkit_footprint_bytes: Option<u64>,
     webkit_virtual_bytes: Option<u64>,
     webkit_process_id: Option<u32>,
     webkit_total_resident_bytes: u64,
+    webkit_total_footprint_bytes: Option<u64>,
     webkit_process_count: u64,
     webkit_largest_resident_bytes: Option<u64>,
+    webkit_largest_footprint_bytes: Option<u64>,
     webkit_largest_process_id: Option<u32>,
     webkit_largest_cpu_usage: Option<f32>,
     webkit_largest_age_seconds: Option<u64>,
@@ -1043,6 +1050,7 @@ struct RuntimeMemoryStats {
 struct WebkitProcessRuntimeStats {
     process_id: u32,
     resident_bytes: u64,
+    footprint_bytes: Option<u64>,
     virtual_bytes: u64,
     cpu_usage: f32,
     age_seconds: u64,
@@ -1081,8 +1089,10 @@ struct WebkitCacheTrimResult {
 
 struct WebkitMemoryStats {
     total_resident_bytes: u64,
+    total_footprint_bytes: Option<u64>,
     process_count: u64,
     largest_resident_bytes: Option<u64>,
+    largest_footprint_bytes: Option<u64>,
     largest_virtual_bytes: Option<u64>,
     largest_process_id: Option<u32>,
     largest_cpu_usage: Option<f32>,
@@ -1907,11 +1917,14 @@ async fn google_drive_request(
     headers: Option<Vec<(String, String)>>,
     body: Option<Vec<u8>>,
 ) -> Result<GoogleDriveResponse, String> {
-    let parsed = url::Url::parse(&url)
-        .map_err(|e| format!("Invalid Google Drive API URL: {}", e))?;
-    let allowed_path = parsed.path().starts_with("/drive/v3/")
-        || parsed.path().starts_with("/upload/drive/v3/");
-    if parsed.scheme() != "https" || parsed.host_str() != Some("www.googleapis.com") || !allowed_path {
+    let parsed =
+        url::Url::parse(&url).map_err(|e| format!("Invalid Google Drive API URL: {}", e))?;
+    let allowed_path =
+        parsed.path().starts_with("/drive/v3/") || parsed.path().starts_with("/upload/drive/v3/");
+    if parsed.scheme() != "https"
+        || parsed.host_str() != Some("www.googleapis.com")
+        || !allowed_path
+    {
         return Err("Google Drive API URL is not allowed".to_string());
     }
 
@@ -1921,7 +1934,12 @@ async fn google_drive_request(
         "POST" => reqwest::Method::POST,
         "PATCH" => reqwest::Method::PATCH,
         "DELETE" => reqwest::Method::DELETE,
-        _ => return Err(format!("Google Drive API method is not allowed: {}", method_name)),
+        _ => {
+            return Err(format!(
+                "Google Drive API method is not allowed: {}",
+                method_name
+            ))
+        }
     };
 
     let client = reqwest::Client::builder()
@@ -2467,12 +2485,35 @@ fn webkit_process_belongs_to_current_launch(webkit_age_seconds: u64, app_age_sec
     webkit_age_seconds <= app_age_seconds.saturating_add(WEBKIT_PROCESS_START_GRACE_SECONDS)
 }
 
+#[cfg(target_os = "macos")]
+fn macos_process_physical_footprint_bytes(pid: u32) -> Option<u64> {
+    let mut usage = MaybeUninit::<libc::rusage_info_v4>::uninit();
+    let result = unsafe {
+        libc::proc_pid_rusage(
+            pid as libc::c_int,
+            libc::RUSAGE_INFO_V4,
+            usage.as_mut_ptr().cast(),
+        )
+    };
+    if result != 0 {
+        return None;
+    }
+    Some(unsafe { usage.assume_init() }.ri_phys_footprint)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn macos_process_physical_footprint_bytes(_pid: u32) -> Option<u64> {
+    None
+}
+
 fn freed_webkit_memory_stats(
     system: &System,
     roots: &[PathBuf],
     app_age_seconds: u64,
 ) -> WebkitMemoryStats {
     let mut total_resident_bytes = 0u64;
+    let mut total_footprint_bytes = 0u64;
+    let mut has_footprint = false;
     let mut process_count = 0u64;
     let mut largest: Option<WebkitProcessRuntimeStats> = None;
     let mut processes: Vec<WebkitProcessRuntimeStats> = Vec::new();
@@ -2493,12 +2534,18 @@ fn freed_webkit_memory_stats(
                 continue;
             }
             let resident = process.memory();
+            let footprint = macos_process_physical_footprint_bytes(pid_u32);
             let virtual_bytes = process.virtual_memory();
             total_resident_bytes = total_resident_bytes.saturating_add(resident);
+            if let Some(footprint) = footprint {
+                total_footprint_bytes = total_footprint_bytes.saturating_add(footprint);
+                has_footprint = true;
+            }
             process_count += 1;
             let stats = WebkitProcessRuntimeStats {
                 process_id: pid_u32,
                 resident_bytes: resident,
+                footprint_bytes: footprint,
                 virtual_bytes,
                 cpu_usage: process.cpu_usage(),
                 age_seconds,
@@ -2519,8 +2566,10 @@ fn freed_webkit_memory_stats(
 
     WebkitMemoryStats {
         total_resident_bytes,
+        total_footprint_bytes: has_footprint.then_some(total_footprint_bytes),
         process_count,
         largest_resident_bytes: largest.as_ref().map(|stats| stats.resident_bytes),
+        largest_footprint_bytes: largest.as_ref().and_then(|stats| stats.footprint_bytes),
         largest_virtual_bytes: largest.as_ref().map(|stats| stats.virtual_bytes),
         largest_process_id: largest.as_ref().map(|stats| stats.process_id),
         largest_cpu_usage: largest.as_ref().map(|stats| stats.cpu_usage),
@@ -2554,6 +2603,7 @@ fn collect_runtime_memory_stats(
             )
         })
         .unwrap_or((0, 0, 0));
+    let process_footprint_bytes = macos_process_physical_footprint_bytes(std::process::id());
     system.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
@@ -2575,18 +2625,29 @@ fn collect_runtime_memory_stats(
         .ok()
         .and_then(|path| dir_size_bytes(&path.join("WebKit")));
     let app_resident_bytes = process_resident_bytes.saturating_add(webkit.total_resident_bytes);
+    let webkit_pressure_bytes = webkit
+        .total_footprint_bytes
+        .unwrap_or(webkit.total_resident_bytes);
+    let app_memory_pressure_bytes = process_footprint_bytes
+        .unwrap_or(process_resident_bytes)
+        .saturating_add(webkit_pressure_bytes);
 
     RuntimeMemoryStats {
         total_physical_memory_bytes,
         process_resident_bytes,
+        process_footprint_bytes,
         process_virtual_bytes,
         app_resident_bytes,
+        app_memory_pressure_bytes,
         webkit_resident_bytes: webkit.largest_resident_bytes,
+        webkit_footprint_bytes: webkit.largest_footprint_bytes,
         webkit_virtual_bytes: webkit.largest_virtual_bytes,
         webkit_process_id: webkit.largest_process_id,
         webkit_total_resident_bytes: webkit.total_resident_bytes,
+        webkit_total_footprint_bytes: webkit.total_footprint_bytes,
         webkit_process_count: webkit.process_count,
         webkit_largest_resident_bytes: webkit.largest_resident_bytes,
+        webkit_largest_footprint_bytes: webkit.largest_footprint_bytes,
         webkit_largest_process_id: webkit.largest_process_id,
         webkit_largest_cpu_usage: webkit.largest_cpu_usage,
         webkit_largest_age_seconds: webkit.largest_age_seconds,
@@ -2680,11 +2741,11 @@ fn scrape_memory_start_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
 }
 
 fn scrape_memory_may_proceed(stats: &RuntimeMemoryStats) -> bool {
-    stats.app_resident_bytes < scrape_memory_start_budget_bytes(stats)
+    stats.app_memory_pressure_bytes < scrape_memory_start_budget_bytes(stats)
 }
 
 fn optional_story_scrape_may_proceed(stats: &RuntimeMemoryStats) -> bool {
-    stats.app_resident_bytes
+    stats.app_memory_pressure_bytes
         < stats
             .memory_high_bytes
             .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
@@ -2702,12 +2763,16 @@ fn social_scrape_may_continue(
     let may_continue = scrape_memory_may_proceed(&stats);
     if !may_continue {
         warn!(
-            "[memory] ending scrape early provider={} operation={} pass={}/{} app_rss={} webkit_rss={} scrape_budget={} high_bytes={} critical_bytes={}",
+            "[memory] ending scrape early provider={} operation={} pass={}/{} app_pressure={} app_rss={} webkit_pressure={} webkit_rss={} scrape_budget={} high_bytes={} critical_bytes={}",
             provider,
             operation,
             pass_index,
             total_passes,
+            stats.app_memory_pressure_bytes,
             stats.app_resident_bytes,
+            stats
+                .webkit_total_footprint_bytes
+                .unwrap_or(stats.webkit_total_resident_bytes),
             stats.webkit_total_resident_bytes,
             scrape_memory_start_budget_bytes(&stats),
             stats.memory_high_bytes,
@@ -2721,9 +2786,12 @@ fn social_scrape_may_continue(
                 "operation": operation,
                 "passIndex": pass_index,
                 "totalPasses": total_passes,
+                "appMemoryPressureBytes": stats.app_memory_pressure_bytes,
                 "appResidentBytes": stats.app_resident_bytes,
+                "webkitFootprintBytes": stats.webkit_total_footprint_bytes,
                 "webkitResidentBytes": stats.webkit_total_resident_bytes,
                 "webkitLargestProcessId": stats.webkit_largest_process_id,
+                "webkitLargestFootprintBytes": stats.webkit_largest_footprint_bytes,
                 "webkitLargestResidentBytes": stats.webkit_largest_resident_bytes,
                 "scrapeStartBudgetBytes": scrape_memory_start_budget_bytes(&stats),
                 "memoryHighBytes": stats.memory_high_bytes,
@@ -2743,10 +2811,14 @@ fn optional_story_scrape_may_continue(
     let may_continue = optional_story_scrape_may_proceed(&stats);
     if !may_continue {
         info!(
-            "[memory] skipping optional story scrape provider={} operation={} app_rss={} webkit_rss={} story_budget={} high_bytes={}",
+            "[memory] skipping optional story scrape provider={} operation={} app_pressure={} app_rss={} webkit_pressure={} webkit_rss={} story_budget={} high_bytes={}",
             provider,
             operation,
+            stats.app_memory_pressure_bytes,
             stats.app_resident_bytes,
+            stats
+                .webkit_total_footprint_bytes
+                .unwrap_or(stats.webkit_total_resident_bytes),
             stats.webkit_total_resident_bytes,
             stats.memory_high_bytes.saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT) / 100,
             stats.memory_high_bytes
@@ -2757,7 +2829,9 @@ fn optional_story_scrape_may_continue(
                 "event": "optional_story_scrape_skipped_for_memory",
                 "provider": provider,
                 "operation": operation,
+                "appMemoryPressureBytes": stats.app_memory_pressure_bytes,
                 "appResidentBytes": stats.app_resident_bytes,
+                "webkitFootprintBytes": stats.webkit_total_footprint_bytes,
                 "webkitResidentBytes": stats.webkit_total_resident_bytes,
                 "storyBudgetBytes": stats.memory_high_bytes.saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT) / 100,
                 "memoryHighBytes": stats.memory_high_bytes
@@ -2818,20 +2892,28 @@ async fn prepare_social_scrape_memory_internal(
     let after = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
     let scrape_start_budget_bytes = scrape_memory_start_budget_bytes(&after);
     let may_proceed = scrape_memory_may_proceed(&after);
-    let pressure_level = if after.app_resident_bytes >= after.memory_critical_bytes {
+    let pressure_level = if after.app_memory_pressure_bytes >= after.memory_critical_bytes {
         "critical"
-    } else if after.app_resident_bytes >= after.memory_high_bytes {
+    } else if after.app_memory_pressure_bytes >= after.memory_high_bytes {
         "high"
     } else {
         "normal"
     };
     info!(
-        "[memory] scrape preflight provider={} operation={} before_app_rss={} before_webkit_rss={} after_app_rss={} after_webkit_rss={} scrape_budget={} headroom_bytes={} high_bytes={} critical_bytes={} pressure={} recycled_scrapers={} cache_trimmed={} may_proceed={}",
+        "[memory] scrape preflight provider={} operation={} before_app_pressure={} before_app_rss={} before_webkit_pressure={} before_webkit_rss={} after_app_pressure={} after_app_rss={} after_webkit_pressure={} after_webkit_rss={} scrape_budget={} headroom_bytes={} high_bytes={} critical_bytes={} pressure={} recycled_scrapers={} cache_trimmed={} may_proceed={}",
         provider,
         operation,
+        before.app_memory_pressure_bytes,
         before.app_resident_bytes,
+        before
+            .webkit_total_footprint_bytes
+            .unwrap_or(before.webkit_total_resident_bytes),
         before.webkit_total_resident_bytes,
+        after.app_memory_pressure_bytes,
         after.app_resident_bytes,
+        after
+            .webkit_total_footprint_bytes
+            .unwrap_or(after.webkit_total_resident_bytes),
         after.webkit_total_resident_bytes,
         scrape_start_budget_bytes,
         SCRAPE_MEMORY_HEADROOM_BYTES,
@@ -2848,11 +2930,16 @@ async fn prepare_social_scrape_memory_internal(
             "event": "scrape_memory_preflight",
             "provider": provider,
             "operation": operation,
+            "beforeAppMemoryPressureBytes": before.app_memory_pressure_bytes,
             "beforeAppResidentBytes": before.app_resident_bytes,
+            "beforeWebkitFootprintBytes": before.webkit_total_footprint_bytes,
             "beforeWebkitResidentBytes": before.webkit_total_resident_bytes,
+            "afterAppMemoryPressureBytes": after.app_memory_pressure_bytes,
             "afterAppResidentBytes": after.app_resident_bytes,
+            "afterWebkitFootprintBytes": after.webkit_total_footprint_bytes,
             "afterWebkitResidentBytes": after.webkit_total_resident_bytes,
             "webkitLargestProcessId": after.webkit_largest_process_id,
+            "webkitLargestFootprintBytes": after.webkit_largest_footprint_bytes,
             "webkitLargestResidentBytes": after.webkit_largest_resident_bytes,
             "webkitLargestCpuUsage": after.webkit_largest_cpu_usage,
             "webkitLargestAgeSeconds": after.webkit_largest_age_seconds,
@@ -2904,7 +2991,8 @@ async fn ensure_social_scrape_memory(
         return Ok(());
     }
 
-    let pressure_label = if prep.after.app_resident_bytes >= prep.after.memory_critical_bytes {
+    let pressure_label = if prep.after.app_memory_pressure_bytes >= prep.after.memory_critical_bytes
+    {
         "critically high"
     } else {
         "high"
@@ -2933,9 +3021,12 @@ async fn ensure_social_scrape_memory(
             "operation": operation,
             "pressureLevel": if critical { "critical" } else { "high" },
             "cooldownMs": cooldown_ms,
+            "appMemoryPressureBytes": prep.after.app_memory_pressure_bytes,
             "appResidentBytes": prep.after.app_resident_bytes,
+            "webkitFootprintBytes": prep.after.webkit_total_footprint_bytes,
             "webkitResidentBytes": prep.after.webkit_total_resident_bytes,
             "webkitLargestProcessId": prep.after.webkit_largest_process_id,
+            "webkitLargestFootprintBytes": prep.after.webkit_largest_footprint_bytes,
             "webkitLargestResidentBytes": prep.after.webkit_largest_resident_bytes,
             "scrapeStartBudgetBytes": prep.scrape_start_budget_bytes,
             "memoryHighBytes": prep.after.memory_high_bytes,
@@ -6973,16 +7064,23 @@ mod tests {
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
             process_virtual_bytes: 256,
             app_resident_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
                 - SCRAPE_MEMORY_HEADROOM_BYTES
                 - 1,
+            app_memory_pressure_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
+                - SCRAPE_MEMORY_HEADROOM_BYTES
+                - 1,
             webkit_resident_bytes: None,
+            webkit_footprint_bytes: None,
             webkit_virtual_bytes: None,
             webkit_process_id: None,
             webkit_total_resident_bytes: 0,
+            webkit_total_footprint_bytes: None,
             webkit_process_count: 0,
             webkit_largest_resident_bytes: None,
+            webkit_largest_footprint_bytes: None,
             webkit_largest_process_id: None,
             webkit_largest_cpu_usage: None,
             webkit_largest_age_seconds: None,
@@ -7000,6 +7098,48 @@ mod tests {
         assert!(scrape_memory_may_proceed(&stats));
         assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
             app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            app_memory_pressure_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            ..stats
+        }));
+    }
+
+    #[test]
+    fn scrape_memory_uses_pressure_bytes_instead_of_rss_when_available() {
+        let budget =
+            (MIN_CRITICAL_MEMORY_BYTES * 70 / 100).saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES);
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            app_memory_pressure_bytes: budget - 1,
+            webkit_resident_bytes: Some(MIN_CRITICAL_MEMORY_BYTES),
+            webkit_footprint_bytes: Some(512 * 1024 * 1024),
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            webkit_total_footprint_bytes: Some(512 * 1024 * 1024),
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(MIN_CRITICAL_MEMORY_BYTES),
+            webkit_largest_footprint_bytes: Some(512 * 1024 * 1024),
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(0.0),
+            webkit_largest_age_seconds: Some(10),
+            webkit_largest_role: Some("freed-webcontent".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert!(scrape_memory_may_proceed(&stats));
+        assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
+            app_memory_pressure_bytes: budget,
             ..stats
         }));
     }
@@ -7009,14 +7149,19 @@ mod tests {
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
             process_virtual_bytes: 256,
             app_resident_bytes: 0,
+            app_memory_pressure_bytes: 0,
             webkit_resident_bytes: None,
+            webkit_footprint_bytes: None,
             webkit_virtual_bytes: None,
             webkit_process_id: None,
             webkit_total_resident_bytes: 0,
+            webkit_total_footprint_bytes: None,
             webkit_process_count: 0,
             webkit_largest_resident_bytes: None,
+            webkit_largest_footprint_bytes: None,
             webkit_largest_process_id: None,
             webkit_largest_cpu_usage: None,
             webkit_largest_age_seconds: None,
@@ -7038,6 +7183,7 @@ mod tests {
         );
         assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
             app_resident_bytes: budget,
+            app_memory_pressure_bytes: budget,
             ..stats
         }));
     }
@@ -7060,17 +7206,25 @@ mod tests {
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
             process_virtual_bytes: 256,
             app_resident_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
                 * OPTIONAL_STORY_MEMORY_BUDGET_PERCENT
                 / 100
                 - 1,
+            app_memory_pressure_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
+                * OPTIONAL_STORY_MEMORY_BUDGET_PERCENT
+                / 100
+                - 1,
             webkit_resident_bytes: None,
+            webkit_footprint_bytes: None,
             webkit_virtual_bytes: None,
             webkit_process_id: None,
             webkit_total_resident_bytes: 0,
+            webkit_total_footprint_bytes: None,
             webkit_process_count: 0,
             webkit_largest_resident_bytes: None,
+            webkit_largest_footprint_bytes: None,
             webkit_largest_process_id: None,
             webkit_largest_cpu_usage: None,
             webkit_largest_age_seconds: None,
@@ -7088,6 +7242,10 @@ mod tests {
         assert!(optional_story_scrape_may_proceed(&stats));
         assert!(!optional_story_scrape_may_proceed(&RuntimeMemoryStats {
             app_resident_bytes: stats
+                .memory_high_bytes
+                .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
+                / 100,
+            app_memory_pressure_bytes: stats
                 .memory_high_bytes
                 .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
                 / 100,
