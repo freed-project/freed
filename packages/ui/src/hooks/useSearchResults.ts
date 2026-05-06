@@ -189,6 +189,7 @@ interface SharedSearchIndexCache {
 
 let sharedSearchIndexCache: SharedSearchIndexCache | null = null;
 let releaseSearchIndexTimer: ReturnType<typeof setTimeout> | null = null;
+const searchItemByIdCache = new WeakMap<FeedItem[], Map<string, FeedItem>>();
 
 function searchIndexKey(
   items: FeedItem[],
@@ -244,6 +245,20 @@ function getPreparedSearchIndex(
 ): MiniSearch<SearchDoc> | null {
   const key = searchIndexKey(items, searchCorpusVersion, accounts);
   return sharedSearchIndexCache?.key === key ? sharedSearchIndexCache.index : null;
+}
+
+function getSearchItemById(
+  items: FeedItem[],
+  trimmedQuery: string,
+): Map<string, FeedItem> | null {
+  if (!trimmedQuery) return null;
+
+  let cached = searchItemByIdCache.get(items);
+  if (!cached) {
+    cached = new Map(items.map((item) => [item.globalId, item]));
+    searchItemByIdCache.set(items, cached);
+  }
+  return cached;
 }
 
 function searchOptionsForQuery(query: string) {
@@ -349,22 +364,18 @@ function computeSearchResults(args: {
     // Search then filter, preserving MiniSearch's relevance ordering.
     const hits = args.index.search(args.trimmedQuery, searchOptionsForQuery(args.trimmedQuery));
 
-    const scoreById = new Map(hits.map((r) => [r.id as string, r.score]));
-
-    const matchingItems = hits
-      .map((r) => args.itemById?.get(r.id as string))
-      .filter((item): item is FeedItem => item !== undefined);
+    const matchingItems: FeedItem[] = [];
+    for (const hit of hits) {
+      const item = args.itemById.get(hit.id as string);
+      if (item) matchingItems.push(item);
+    }
 
     const filtered = filterFeedItems(filterIdentityMode(matchingItems), args.activeFilter);
     const byFeed = args.activeFilter.feedUrl
       ? filtered.filter((item) => item.rssSource?.feedUrl === args.activeFilter.feedUrl)
       : filtered;
 
-    const sorted = [...byFeed].sort(
-      (a, b) => (scoreById.get(b.globalId) ?? 0) - (scoreById.get(a.globalId) ?? 0),
-    );
-
-    result = { filteredItems: sorted, isSearching: true, resultCount: sorted.length };
+    result = { filteredItems: byFeed, isSearching: true, resultCount: byFeed.length };
   }
 
   lastSearchResultCache = { ...args, result };
@@ -395,7 +406,7 @@ export function useSearchResults(
     getPreparedSearchIndex(items, searchCorpusVersion, accounts),
   );
   const itemById = useMemo(
-    () => (trimmedQuery ? new Map(items.map((item) => [item.globalId, item])) : null),
+    () => getSearchItemById(items, trimmedQuery),
     [items, trimmedQuery],
   );
 

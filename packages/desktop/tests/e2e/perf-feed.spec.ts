@@ -413,7 +413,7 @@ test.describe("Search input (async MiniSearch index preparation)", () => {
     console.log(`[PERF] Search long tasks: ${searchLongTasks.count}, worst: ${Math.round(searchLongTasks.worstMs)} ms`);
 
     // Typing should not wait on a synchronous full-corpus index build.
-    expect(searchLongTasks.worstMs).toBeLessThan(180);
+    expect(searchLongTasks.worstMs).toBeLessThan(120);
 
     // Verify search actually produces results (proves MiniSearch is working).
     await expect(page.locator(".feed-card")).not.toHaveCount(0, { timeout: 2_000 });
