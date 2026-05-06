@@ -2,13 +2,14 @@
   "channel": "dev",
   "dayKey": "26.5.6",
   "date": "2026-05-06",
-  "preferredDeck": "Freed Desktop trims renderer memory pressure and keeps dense Map rendering fast",
+  "preferredDeck": "Freed Desktop trims Friends graph allocations and keeps dense Map rendering fast",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Dense Friends graphs now allocate avatar sprites and masks only for avatars that are actually shown, avoiding thousands of unused Pixi display objects while zoomed out or when nodes have no avatar.",
     "Large Desktop libraries now send a slimmer renderer item projection, capping feed preview text at 280 characters and keeping only content-signal tags in list state. On the local 11,801 item library this trims another measured 2.08 MB of raw item JSON before WebKit object expansion.",
     "Google Drive now syncs through native Freed Desktop requests, avoiding renderer fetch failures that surfaced as generic Load failed errors",
     "Google Contacts keeps using the shared Google Drive token, and Drive startup failures no longer mark Contacts auth as broken after OAuth succeeds",
@@ -26,7 +27,8 @@
     "Feed-card regression coverage now protects that reader-only media policy so release validation catches accidental inline media work"
   ],
   "editorialNotes": [
-    "v26.5.614-dev adds the measured 2.08 MB renderer item projection reduction from PR #475."
+    "v26.5.614-dev adds the measured 2.08 MB renderer item projection reduction from PR #475.",
+    "v26.5.615-dev adds the Friends graph lazy avatar allocation fix from PR #476."
   ],
-  "updatedAt": "2026-05-06T18:37:11.005Z"
+  "updatedAt": "2026-05-06T18:37:48.777Z"
 }
