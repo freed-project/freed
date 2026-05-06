@@ -3,7 +3,7 @@
   "version": "26.5.603-dev",
   "channel": "dev",
   "dayKey": "26.5.6",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-06T10:17:12.082Z",
   "model": "heuristic",
@@ -49,11 +49,10 @@
     "features": [],
     "fixes": [
       "Oversized feed text compaction now rebuilds a fresh Automerge document when the saved binary is already large, so old article text history does not keep WebKit memory high after relaunch",
-      "Social scraper startup now reserves memory headroom before opening background WebKit work, reducing the chance that Facebook, Instagram, or LinkedIn scraping pushes an already heavy renderer into high pressure"
+      "Social scraper startup now reserves memory headroom before opening background WebKit work, reducing the chance that Facebook, Instagram, or LinkedIn scraping pushes an already heavy renderer into high pressure",
+      "When a Facebook, Instagram, or LinkedIn scrape is blocked for memory, Freed Desktop now recycles the preserved scraper WebView too, instead of leaving that hidden WebKit process alive after the blocked start"
     ],
-    "followUps": [
-      "Recycle blocked scraper windows"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.603-dev\n\nFreed Desktop rebuilds compacted feed documents to cut WebKit memory pressure\n\n### Fixes\n\n- Oversized feed text compaction now rebuilds a fresh Automerge document when the saved binary is already large, so old article text history does not keep WebKit memory high after relaunch\n- Social scraper startup now reserves memory headroom before opening background WebKit work, reducing the chance that Facebook, Instagram, or LinkedIn scraping pushes an already heavy renderer into high pressure\n\n### Follow-ups\n\n- Recycle blocked scraper windows\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.603-dev\n\nFreed Desktop rebuilds compacted feed documents to cut WebKit memory pressure\n\n### Fixes\n\n- Oversized feed text compaction now rebuilds a fresh Automerge document when the saved binary is already large, so old article text history does not keep WebKit memory high after relaunch\n- Social scraper startup now reserves memory headroom before opening background WebKit work, reducing the chance that Facebook, Instagram, or LinkedIn scraping pushes an already heavy renderer into high pressure\n- When a Facebook, Instagram, or LinkedIn scrape is blocked for memory, Freed Desktop now recycles the preserved scraper WebView too, instead of leaving that hidden WebKit process alive after the blocked start\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
