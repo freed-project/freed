@@ -27,6 +27,7 @@ import type {
 } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
 import {
+  buildIdentityGraphLayout,
   buildSpatialIndex,
   findHitNode,
   fitTransformToNodes,
@@ -186,6 +187,7 @@ const MIN_SCALE = 0.2;
 const MAX_SCALE = 2.8;
 const TRACKPAD_PINCH_ZOOM_SPEED = 0.005;
 const GRAPH_INTERACTION_SETTLE_DELAY_MS = 140;
+const GRAPH_LAYOUT_WORKER_TIMEOUT_MS = 4_000;
 const INTERACTIVE_LABEL_LIMIT = 16;
 const SETTLED_LABEL_LIMIT = 32;
 const FAST_LAYOUT_NODE_THRESHOLD = 1_600;
@@ -808,6 +810,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const hasFittedInitialLayoutRef = useRef(false);
   const latestLayoutRequestIdRef = useRef(0);
   const latestResolvedLayoutRequestIdRef = useRef(0);
+  const pendingLayoutTimeoutsRef = useRef<Map<number, number>>(new Map());
   const drawRafRef = useRef(0);
   const drawRafPendingRef = useRef(false);
   const settleTimerRef = useRef<number | null>(null);
@@ -832,6 +835,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const graphQualityModeRef = useRef<GraphQualityMode>("settled");
   const layoutReadyRef = useRef(false);
   const syncSceneRef = useRef<() => void>(() => {});
+  const canvasSizeRef = useRef({ width: 900, height: DEFAULT_HEIGHT });
   const perfSnapshotRef = useRef<GraphPerfSnapshot>({
     modelBuildMs: 0,
     layoutMs: 0,
@@ -850,6 +854,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     qualityMode: "settled",
   });
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: DEFAULT_HEIGHT });
+  canvasSizeRef.current = canvasSize;
   const [isInteracting, setIsInteracting] = useState(false);
   const [layoutReady, setLayoutReady] = useState(false);
   const [layoutVersion, setLayoutVersion] = useState(0);
@@ -1830,6 +1835,57 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     };
   }, []);
 
+  const applyLayoutResult = useCallback((
+    requestId: number,
+    layout: IdentityGraphLayout,
+    durationMs: number,
+  ) => {
+    if (requestId < latestResolvedLayoutRequestIdRef.current) return;
+    const timeoutId = pendingLayoutTimeoutsRef.current.get(requestId);
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId);
+      pendingLayoutTimeoutsRef.current.delete(requestId);
+    }
+    latestResolvedLayoutRequestIdRef.current = requestId;
+    layoutRef.current = layout;
+    layoutNodeByIdRef.current = buildNodeById(layout.nodes);
+    layoutDebugNodesRef.current = buildGraphDebugNodes(layout.nodes);
+    spatialIndexRef.current = buildSpatialIndex(layout.nodes);
+    lastLayoutMsRef.current = durationMs;
+    if (!hasFittedInitialLayoutRef.current) {
+      const latestCanvasSize = canvasSizeRef.current;
+      transformRef.current = fitTransformToNodes(
+        graphFitItems(layout),
+        latestCanvasSize.width,
+        latestCanvasSize.height,
+        FIT_PADDING,
+      );
+      hasFittedInitialLayoutRef.current = true;
+    }
+    setLayoutVersion((value) => value + 1);
+    requestAnimationFrame(() => syncSceneRef.current());
+  }, []);
+
+  const runLayoutOnMainThread = useCallback((
+    requestId: number,
+    requestModel: IdentityGraphModel,
+    width: number,
+    height: number,
+    quality: GraphLayoutQuality,
+  ) => {
+    window.setTimeout(() => {
+      if (requestId < latestResolvedLayoutRequestIdRef.current) return;
+      const startMs = nowMs();
+      const layout = buildIdentityGraphLayout({
+        model: requestModel,
+        width,
+        height,
+        quality,
+      });
+      applyLayoutResult(requestId, layout, nowMs() - startMs);
+    }, 0);
+  }, [applyLayoutResult]);
+
   useEffect(() => {
     const worker = new Worker(
       new URL("../../lib/identity-graph-layout.worker.ts", import.meta.url),
@@ -1837,34 +1893,29 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     );
     workerRef.current = worker;
     worker.onmessage = (event: MessageEvent<{ requestId: number; layout: IdentityGraphLayout; durationMs: number }>) => {
-      if (event.data.requestId < latestResolvedLayoutRequestIdRef.current) return;
-      latestResolvedLayoutRequestIdRef.current = event.data.requestId;
-      layoutRef.current = event.data.layout;
-      layoutNodeByIdRef.current = buildNodeById(event.data.layout.nodes);
-      layoutDebugNodesRef.current = buildGraphDebugNodes(event.data.layout.nodes);
-      spatialIndexRef.current = buildSpatialIndex(event.data.layout.nodes);
-      lastLayoutMsRef.current = event.data.durationMs;
-      if (!hasFittedInitialLayoutRef.current) {
-        transformRef.current = fitTransformToNodes(
-          graphFitItems(event.data.layout),
-          canvasSize.width,
-          canvasSize.height,
-          FIT_PADDING,
-        );
-        hasFittedInitialLayoutRef.current = true;
+      applyLayoutResult(event.data.requestId, event.data.layout, event.data.durationMs);
+    };
+    worker.onerror = (event) => {
+      console.warn("[FriendGraph] layout worker failed", event.message);
+      if (workerRef.current === worker) {
+        workerRef.current = null;
       }
-      setLayoutVersion((value) => value + 1);
-      scheduleSyncScene();
     };
 
     return () => {
+      for (const timeoutId of pendingLayoutTimeoutsRef.current.values()) {
+        window.clearTimeout(timeoutId);
+      }
+      pendingLayoutTimeoutsRef.current.clear();
       worker.terminate();
-      workerRef.current = null;
+      if (workerRef.current === worker) {
+        workerRef.current = null;
+      }
     };
-  }, [canvasSize.height, canvasSize.width, scheduleSyncScene]);
+  }, [applyLayoutResult]);
 
   useEffect(() => {
-    if (!workerRef.current || canvasSize.width <= 0 || canvasSize.height <= 0) return;
+    if (canvasSize.width <= 0 || canvasSize.height <= 0) return;
     const previousSnapshot = previousRequestSnapshotRef.current;
     const sizeOnlyResize =
       previousSnapshot &&
@@ -1883,14 +1934,30 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       height: canvasSize.height,
     };
     previousRequestedModelRef.current = model;
-    workerRef.current.postMessage({
+    const layoutRequest = {
       requestId,
       model,
       width: canvasSize.width,
       height: canvasSize.height,
       quality,
-    });
-  }, [canvasSize.height, canvasSize.width, model, modelSignature]);
+    };
+    const worker = workerRef.current;
+    if (!worker) {
+      runLayoutOnMainThread(requestId, model, canvasSize.width, canvasSize.height, quality);
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      pendingLayoutTimeoutsRef.current.delete(requestId);
+      if (requestId < latestResolvedLayoutRequestIdRef.current) return;
+      if (workerRef.current === worker) {
+        worker.terminate();
+        workerRef.current = null;
+      }
+      runLayoutOnMainThread(requestId, model, canvasSize.width, canvasSize.height, quality);
+    }, GRAPH_LAYOUT_WORKER_TIMEOUT_MS);
+    pendingLayoutTimeoutsRef.current.set(requestId, timeoutId);
+    worker.postMessage(layoutRequest);
+  }, [canvasSize.height, canvasSize.width, model, modelSignature, runLayoutOnMainThread]);
 
   useEffect(() => {
     if (!layoutReady && layoutRef.current.nodes.length > 0) {
