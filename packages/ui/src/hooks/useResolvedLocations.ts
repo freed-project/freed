@@ -5,7 +5,6 @@ import {
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
   getLastSeenLocationForFriend,
-  personForAuthor,
   type Account,
   type FeedItem,
   type Person,
@@ -31,6 +30,12 @@ interface ResolvedLocationsCacheState {
   resolvingCount: number;
 }
 
+interface NamedLocationRequest {
+  item: FeedItem;
+  friend: Person | null;
+  name: string;
+}
+
 const EMPTY_STATE: ResolvedLocationsCacheState = {
   resolvedItems: [],
   lastResolvedAt: null,
@@ -49,53 +54,82 @@ export function useResolvedLocations(
   const [state, setState] = useState<ResolvedLocationsCacheState>(EMPTY_STATE);
   const timeMode = options.timeMode ?? "current";
   const now = options.now;
+  const personBySourceKey = useMemo(() => {
+    const next = new Map<string, Person>();
+    for (const account of Object.values(accounts)) {
+      if (account.kind !== "social" || !account.personId) continue;
+      const person = persons[account.personId];
+      if (!person) continue;
+      next.set(`${account.provider}:${account.externalId}`, person);
+    }
+    return next;
+  }, [accounts, persons]);
+  const locationPlan = useMemo(() => {
+    const coordinateItems: ResolvedLocationItem[] = [];
+    const namedRequests: NamedLocationRequest[] = [];
+
+    for (const item of feedItems) {
+      const friend = personBySourceKey.get(`${item.platform}:${item.author.id}`) ?? null;
+      const coordinates = item.location?.coordinates;
+      if (coordinates) {
+        coordinateItems.push({
+          item,
+          friend,
+          lat: coordinates.lat,
+          lng: coordinates.lng,
+          label: item.location?.name,
+        });
+        continue;
+      }
+
+      const signal = extractLocationFromItem(item);
+      if (!signal || "coordinates" in signal) continue;
+      namedRequests.push({
+        item,
+        friend,
+        name: signal.name,
+      });
+    }
+
+    return {
+      coordinateItems,
+      namedRequests,
+    };
+  }, [feedItems, personBySourceKey]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function resolveLocations() {
-      const pending: Array<Promise<ResolvedLocationItem | null>> = [];
-      let resolvingCount = 0;
+      if (locationPlan.namedRequests.length === 0) {
+        setState((current) =>
+          current.resolvedItems.length === 0 && current.resolvingCount === 0
+            ? current
+            : {
+                resolvedItems: [],
+                resolvingCount: 0,
+                lastResolvedAt: Date.now(),
+              }
+        );
+        return;
+      }
 
-      for (const item of feedItems) {
-        const signal = extractLocationFromItem(item);
-        if (!signal) continue;
+      setState((current) => ({ ...current, resolvingCount: locationPlan.namedRequests.length }));
 
-        const friend = personForAuthor(persons, accounts, item.platform, item.author.id);
-
-        if ("coordinates" in signal) {
-          pending.push(
-            Promise.resolve({
-              item,
-              friend,
-              lat: signal.coordinates.lat,
-              lng: signal.coordinates.lng,
-              label: signal.name ?? item.location?.name,
-            })
-          );
-          continue;
-        }
-
-        resolvingCount += 1;
-        pending.push(
-          geocode(signal.name).then((geo) => {
+      const resolvedItems = (await Promise.all(
+        locationPlan.namedRequests.map(({ item, friend, name }) =>
+          geocode(name).then((geo): ResolvedLocationItem | null => {
             if (!geo) return null;
             return {
               item,
               friend,
               lat: geo.latitude,
               lng: geo.longitude,
-              label: geo.name ?? signal.name,
+              label: geo.name ?? name,
             };
           })
-        );
-      }
-
-      setState((current) => ({ ...current, resolvingCount }));
-
-      const resolvedItems = (await Promise.all(pending)).filter(
-        (resolved): resolved is ResolvedLocationItem => resolved !== null
-      );
+        )
+      )).filter((resolved): resolved is ResolvedLocationItem => resolved !== null);
       if (cancelled) return;
 
       setState({
@@ -110,15 +144,20 @@ export function useResolvedLocations(
     return () => {
       cancelled = true;
     };
-  }, [accounts, feedItems, persons]);
+  }, [locationPlan.namedRequests]);
+
+  const resolvedItems = useMemo(
+    () => [...locationPlan.coordinateItems, ...state.resolvedItems],
+    [locationPlan.coordinateItems, state.resolvedItems],
+  );
 
   const friendMarkers = useMemo(
-    () => getLatestFriendLocationMarkers(state.resolvedItems, { timeMode, now }),
-    [now, state.resolvedItems, timeMode],
+    () => getLatestFriendLocationMarkers(resolvedItems, { timeMode, now }),
+    [now, resolvedItems, timeMode],
   );
   const allContentMarkers = useMemo(
-    () => getLatestAuthorLocationMarkers(state.resolvedItems, { timeMode, now }),
-    [now, state.resolvedItems, timeMode],
+    () => getLatestAuthorLocationMarkers(resolvedItems, { timeMode, now }),
+    [now, resolvedItems, timeMode],
   );
   const defaultMode = useMemo(
     () => getDefaultMapMode(friendMarkers.length, allContentMarkers.length),
@@ -127,6 +166,7 @@ export function useResolvedLocations(
 
   return {
     ...state,
+    resolvedItems,
     friendMarkers,
     allContentMarkers,
     defaultMode,
