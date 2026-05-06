@@ -1,7 +1,7 @@
 {
   "name": "@freed/desktop",
   "private": true,
-  "version": "26.5.517",
+  "version": "26.5.600",
   "type": "module",
   "scripts": {
     "dev": "vite",
