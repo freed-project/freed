@@ -16,14 +16,19 @@ const PRESSURE_SAMPLE_MAX_AGE_MS = 30_000;
 interface NativeRuntimeMemoryStats {
   totalPhysicalMemoryBytes: number;
   processResidentBytes: number;
+  processFootprintBytes?: number;
   processVirtualBytes: number;
   appResidentBytes: number;
+  appMemoryPressureBytes?: number;
   webkitResidentBytes?: number;
+  webkitFootprintBytes?: number;
   webkitVirtualBytes?: number;
   webkitProcessId?: number;
   webkitTotalResidentBytes?: number;
+  webkitTotalFootprintBytes?: number;
   webkitProcessCount?: number;
   webkitLargestResidentBytes?: number;
+  webkitLargestFootprintBytes?: number;
   webkitLargestProcessId?: number;
   webkitLargestCpuUsage?: number;
   webkitLargestAgeSeconds?: number;
@@ -31,6 +36,7 @@ interface NativeRuntimeMemoryStats {
   webkitProcesses?: Array<{
     processId: number;
     residentBytes: number;
+    footprintBytes?: number;
     virtualBytes: number;
     cpuUsage: number;
     ageSeconds: number;
@@ -169,14 +175,19 @@ function emptyNativeRuntimeMemoryStats(): NativeRuntimeMemoryStats {
   return {
     totalPhysicalMemoryBytes: 0,
     processResidentBytes: 0,
+    processFootprintBytes: undefined,
     processVirtualBytes: 0,
     appResidentBytes: 0,
+    appMemoryPressureBytes: 0,
     webkitResidentBytes: undefined,
+    webkitFootprintBytes: undefined,
     webkitVirtualBytes: undefined,
     webkitProcessId: undefined,
     webkitTotalResidentBytes: undefined,
+    webkitTotalFootprintBytes: undefined,
     webkitProcessCount: 0,
     webkitLargestResidentBytes: undefined,
+    webkitLargestFootprintBytes: undefined,
     webkitLargestProcessId: undefined,
     webkitLargestCpuUsage: undefined,
     webkitLargestAgeSeconds: undefined,
@@ -211,7 +222,8 @@ async function sampleRuntimeMemory(
       native.memoryCriticalBytes ??
       getAdaptiveMemoryLimits(native.totalPhysicalMemoryBytes).criticalBytes,
   };
-  const pressureBytes = native.appResidentBytes ?? native.processResidentBytes;
+  const pressureBytes =
+    native.appMemoryPressureBytes ?? native.appResidentBytes ?? native.processResidentBytes;
   const pressureLevel = getMemoryPressureLevel(pressureBytes, limits);
   currentPressureLevel = pressureLevel;
   currentPressureSampleAt = Date.now();
@@ -229,14 +241,19 @@ async function sampleRuntimeMemory(
   const snapshot: RuntimeMemorySnapshot = {
     totalPhysicalMemoryBytes: native.totalPhysicalMemoryBytes,
     processResidentBytes: native.processResidentBytes,
+    processFootprintBytes: native.processFootprintBytes,
     processVirtualBytes: native.processVirtualBytes,
     appResidentBytes: native.appResidentBytes,
+    appMemoryPressureBytes: native.appMemoryPressureBytes,
     webkitResidentBytes: native.webkitResidentBytes,
+    webkitFootprintBytes: native.webkitFootprintBytes,
     webkitVirtualBytes: native.webkitVirtualBytes,
     webkitProcessId: native.webkitProcessId,
     webkitTotalResidentBytes: native.webkitTotalResidentBytes,
+    webkitTotalFootprintBytes: native.webkitTotalFootprintBytes,
     webkitProcessCount: native.webkitProcessCount,
     webkitLargestResidentBytes: native.webkitLargestResidentBytes,
+    webkitLargestFootprintBytes: native.webkitLargestFootprintBytes,
     webkitLargestProcessId: native.webkitLargestProcessId,
     webkitLargestCpuUsage: native.webkitLargestCpuUsage,
     webkitLargestAgeSeconds: native.webkitLargestAgeSeconds,
@@ -286,14 +303,17 @@ async function sampleRuntimeMemory(
 
   log[level](
     `[memory] pressure=${pressureLevel} ` +
-      `app_rss=${formatBytesForMemoryLog(pressureBytes)} ` +
+      `app_pressure=${formatBytesForMemoryLog(pressureBytes)} ` +
+      `app_rss=${formatBytesForMemoryLog(native.appResidentBytes ?? native.processResidentBytes)} ` +
       `high_at=${formatBytesForMemoryLog(limits.highBytes)} ` +
       `critical_at=${formatBytesForMemoryLog(limits.criticalBytes)} ` +
       `native_rss=${formatBytesForMemoryLog(native.processResidentBytes)} ` +
-      `peak_native_rss=${formatBytesForMemoryLog(peakResidentBytes)} ` +
+      `native_footprint=${formatBytesForMemoryLog(native.processFootprintBytes ?? native.processResidentBytes)} ` +
+      `peak_pressure=${formatBytesForMemoryLog(peakResidentBytes)} ` +
       `native_virtual=${formatBytesForMemoryLog(native.processVirtualBytes)} ` +
       (native.webkitTelemetryAvailable
         ? `webkit_pid=${(native.webkitProcessId ?? 0).toLocaleString()} ` +
+          `webkit_pressure=${formatBytesForMemoryLog(native.webkitTotalFootprintBytes ?? native.webkitTotalResidentBytes ?? native.webkitResidentBytes ?? 0)} ` +
           `webkit_rss=${formatBytesForMemoryLog(native.webkitTotalResidentBytes ?? native.webkitResidentBytes ?? 0)} ` +
           `webkit_processes=${(native.webkitProcessCount ?? 0).toLocaleString()} ` +
           `peak_webkit_rss=${formatBytesForMemoryLog(peakWebkitResidentBytes)} ` +
