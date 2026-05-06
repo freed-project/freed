@@ -91,8 +91,8 @@ let searchCorpusVersion = 0;
 const SLOW_QUEUE_WAIT_MS = 1_000;
 const SLOW_REQUEST_PROCESS_MS = 5_000;
 const SLOW_SAVE_AND_BROADCAST_MS = 2_000;
-const DESKTOP_UI_PRESERVED_TEXT_LIMIT = 3_000;
-const DESKTOP_UI_CONTENT_TEXT_LIMIT = 10_000;
+const DESKTOP_UI_PRESERVED_TEXT_LIMIT = 1_200;
+const DESKTOP_UI_CONTENT_TEXT_LIMIT = 1_200;
 const FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES = 4 * 1024 * 1024;
 const FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES = 16 * 1024 * 1024;
 const FRESH_DOC_REBUILD_MIN_SAVINGS_RATIO = 0.1;
@@ -277,14 +277,7 @@ function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean 
 
 function cloneFeedItemForPatch(item: FeedItem): FeedItem {
   const cloned = JSON.parse(JSON.stringify(item)) as FeedItem;
-  const preservedText = cloned.preservedContent?.text;
-  if (cloned.preservedContent && preservedText && preservedText.length > DESKTOP_UI_PRESERVED_TEXT_LIMIT) {
-    cloned.preservedContent = {
-      ...cloned.preservedContent,
-      text: preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT),
-    };
-  }
-  return cloned;
+  return trimFeedItemForDesktopUi(cloned);
 }
 
 function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
@@ -1132,7 +1125,10 @@ async function handleRequest(
           reqId: req.reqId,
           type: "ITEM_PRESERVED_TEXT",
           globalId: req.globalId,
-          text: currentDoc.feedItems[req.globalId]?.preservedContent?.text ?? null,
+          text:
+            currentDoc.feedItems[req.globalId]?.preservedContent?.text ??
+            currentDoc.feedItems[req.globalId]?.content.text ??
+            null,
         });
         break;
 

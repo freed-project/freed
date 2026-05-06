@@ -311,23 +311,24 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
         }
       }
 
-      // Layer 2: preservedContent.text -- always available for imported items
-      if (!hasReaderContent && item.preservedContent?.text) {
-        let localPreservedText = item.preservedContent.text;
+      // Layer 2: synced reader text. Desktop keeps full text in the worker and
+      // sends compact snippets through list state to keep large libraries light.
+      if (!hasReaderContent && (item.preservedContent?.text || getLocalPreservedText)) {
+        let localPreservedText = item.preservedContent?.text ?? item.content.text ?? "";
         if (getLocalPreservedText) {
           try {
             localPreservedText = (await getLocalPreservedText(item.globalId)) ?? localPreservedText;
           } catch {
-            localPreservedText = item.preservedContent.text;
+            localPreservedText = item.preservedContent?.text ?? item.content.text ?? "";
           }
         }
-        if (!cancelled) {
+        if (!cancelled && localPreservedText) {
           setPreservedText(localPreservedText);
           setHtml(null);
           setContentSource("text");
           setIsLoading(false);
+          hasReaderContent = true;
         }
-        hasReaderContent = true;
       }
 
       // Layer 3: platform hydration. Desktop uses native fetch or authenticated
