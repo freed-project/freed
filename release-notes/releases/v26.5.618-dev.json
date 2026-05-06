@@ -3,8 +3,10 @@
   "version": "26.5.618-dev",
   "channel": "dev",
   "dayKey": "26.5.6",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed and approved after preserving same-day cumulative release items."
+  ],
   "generatedAt": "2026-05-06T19:49:41.840Z",
   "model": "heuristic",
   "source": {
@@ -123,9 +125,10 @@
     ]
   },
   "release": {
-    "deck": "Feed search now stays inside the frame budget on large libraries",
+    "deck": "Freed Desktop trims oversized WebKit caches before social scrapes",
     "features": [],
     "fixes": [
+      "WebKit NetworkCache Records now trim during social scrape memory preflight",
       "Open reader authors in Friends",
       "Gate inline social replies",
       "Preserve recovered map location labels",
@@ -138,7 +141,6 @@
       "Dense Friends graphs now allocate avatar sprites and masks only for avatars that are actually shown, avoiding thousands of unused Pixi display objects while zoomed out or when nodes have no avatar"
     ],
     "followUps": [
-      "Trim webkit network cache records",
       "Lazy load friends graph avatars",
       "Optimize dense map markers",
       "Recycle blocked scraper windows",
@@ -146,8 +148,9 @@
       "Monitor installed WebKit RSS after renderer projection slimming",
       "Continue dense surface sweeps for remaining frame-budget misses",
       "Slim desktop renderer projection",
-      "Freed Desktop routes Google Drive through native sync requests and keeps Contacts on the shared Google connection"
+      "Freed Desktop routes Google Drive through native sync requests and keeps Contacts on the shared Google connection",
+      "Feed search now stays inside the frame budget on large libraries"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.618-dev\n\nFeed search now stays inside the frame budget on large libraries\n\n### Fixes\n\n- Open reader authors in Friends\n- Gate inline social replies\n- Preserve recovered map location labels\n- Sync and update reliability fixes\n- Align feed card regression with reader only media\n- Large Desktop libraries now send compact feed text snippets to the renderer and load longer reader text on demand, reducing the item payload the main WebKit renderer has to clone and retain\n- Freed Desktop feed cards now keep remote media previews reader-only, avoiding eager image and video loads in the main feed while preserving full reader hydration\n- Freed Desktop no longer sends synced reader text through every renderer item, trimming another measured 1.38 MB of raw item JSON from the local library before WebKit object expansion\n- Freed Desktop rebuilds compacted feed documents to cut WebKit memory pressure\n- Dense Friends graphs now allocate avatar sprites and masks only for avatars that are actually shown, avoiding thousands of unused Pixi display objects while zoomed out or when nodes have no avatar\n\n### Follow-ups\n\n- Trim webkit network cache records\n- Lazy load friends graph avatars\n- Optimize dense map markers\n- Recycle blocked scraper windows\n- Freed Desktop trims renderer memory pressure and keeps dense Map rendering fast\n- Monitor installed WebKit RSS after renderer projection slimming\n- Continue dense surface sweeps for remaining frame-budget misses\n- Slim desktop renderer projection\n- Freed Desktop routes Google Drive through native sync requests and keeps Contacts on the shared Google connection\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.618-dev\n\nFreed Desktop trims oversized WebKit caches before social scrapes\n\n### Fixes\n\n- WebKit NetworkCache Records now trim during social scrape memory preflight\n- Open reader authors in Friends\n- Gate inline social replies\n- Preserve recovered map location labels\n- Sync and update reliability fixes\n- Align feed card regression with reader only media\n- Large Desktop libraries now send compact feed text snippets to the renderer and load longer reader text on demand, reducing the item payload the main WebKit renderer has to clone and retain\n- Freed Desktop feed cards now keep remote media previews reader-only, avoiding eager image and video loads in the main feed while preserving full reader hydration\n- Freed Desktop no longer sends synced reader text through every renderer item, trimming another measured 1.38 MB of raw item JSON from the local library before WebKit object expansion\n- Freed Desktop rebuilds compacted feed documents to cut WebKit memory pressure\n- Dense Friends graphs now allocate avatar sprites and masks only for avatars that are actually shown, avoiding thousands of unused Pixi display objects while zoomed out or when nodes have no avatar\n\n### Follow-ups\n\n- Lazy load friends graph avatars\n- Optimize dense map markers\n- Recycle blocked scraper windows\n- Freed Desktop trims renderer memory pressure and keeps dense Map rendering fast\n- Monitor installed WebKit RSS after renderer projection slimming\n- Continue dense surface sweeps for remaining frame-budget misses\n- Slim desktop renderer projection\n- Freed Desktop routes Google Drive through native sync requests and keeps Contacts on the shared Google connection\n- Feed search now stays inside the frame budget on large libraries\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
