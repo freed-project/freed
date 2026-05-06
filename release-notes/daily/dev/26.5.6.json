@@ -13,5 +13,5 @@
     "Social scraper startup now reserves memory headroom before opening background WebKit work, reducing the chance that Facebook, Instagram, or LinkedIn scraping pushes an already heavy renderer into high pressure"
   ],
   "editorialNotes": [],
-  "updatedAt": "2026-05-06T08:49:04.193Z"
+  "updatedAt": "2026-05-06T10:17:12.083Z"
 }
