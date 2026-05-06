@@ -19,6 +19,7 @@ import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
   createEmptyDoc,
+  createDocFromData,
   addAccount,
   addAccounts,
   backfillContentSignals,
@@ -92,6 +93,7 @@ const SLOW_REQUEST_PROCESS_MS = 5_000;
 const SLOW_SAVE_AND_BROADCAST_MS = 2_000;
 const DESKTOP_UI_PRESERVED_TEXT_LIMIT = 3_000;
 const DESKTOP_UI_CONTENT_TEXT_LIMIT = 10_000;
+const FRESH_DOC_REBUILD_MIN_BINARY_BYTES = 4 * 1024 * 1024;
 
 interface RequestTrace {
   reqId: number;
@@ -195,7 +197,10 @@ function migrateLoadedIdentityGraph(message: string): void {
   });
 }
 
-function compactLoadedFeedText(message: string): void {
+function compactLoadedFeedText(
+  message: string,
+  options: { rebuildHistory?: boolean; previousBinaryBytes?: number } = {},
+): void {
   if (!currentDoc) return;
   let summary = createFeedTextCompactionSummary();
   currentDoc = A.change(currentDoc, message, (doc) => {
@@ -205,6 +210,21 @@ function compactLoadedFeedText(message: string): void {
   bumpSearchCorpusVersion();
   emitWorkerTrace(
     `[automerge-worker] ${message}: ${formatFeedTextCompactionSummary(summary)}`,
+    "change",
+  );
+
+  const previousBinaryBytes = options.previousBinaryBytes ?? currentBinary?.byteLength ?? 0;
+  if (!options.rebuildHistory || previousBinaryBytes < FRESH_DOC_REBUILD_MIN_BINARY_BYTES) return;
+
+  const plain = A.toJS(currentDoc) as Partial<FreedDoc>;
+  currentDoc = createDocFromData(plain);
+  const rebuiltBinary = A.save(currentDoc);
+  currentBinary = rebuiltBinary;
+  persistenceState = createPersistenceState(rebuiltBinary);
+  emitWorkerTrace(
+    `[automerge-worker] rebuilt compacted document` +
+      ` previous_bytes=${previousBinaryBytes.toLocaleString()}` +
+      ` rebuilt_bytes=${rebuiltBinary.byteLength.toLocaleString()}`,
     "change",
   );
 }
@@ -611,10 +631,13 @@ async function handleRequest(
         if (saved) {
           try {
             currentDoc = A.load<FreedDoc>(saved);
-            migrateLoadedIdentityGraph("Migrate legacy identity graph");
-            compactLoadedFeedText("Compact oversized synced feed text");
             currentBinary = saved;
             persistenceState = createPersistenceState(saved);
+            migrateLoadedIdentityGraph("Migrate legacy identity graph");
+            compactLoadedFeedText("Compact oversized synced feed text", {
+              rebuildHistory: true,
+              previousBinaryBytes: saved.byteLength,
+            });
           } catch {
             await storage.clear();
             persistenceState = createPersistenceState(null);
@@ -647,12 +670,14 @@ async function handleRequest(
 
       case "REPLACE_DOC":
         currentDoc = A.load<FreedDoc>(req.binary);
-        migrateLoadedIdentityGraph("Migrate legacy identity graph");
-        compactLoadedFeedText("Compact oversized synced feed text");
         currentBinary = req.binary;
         persistenceState = createPersistenceState(req.binary);
+        migrateLoadedIdentityGraph("Migrate legacy identity graph");
+        compactLoadedFeedText("Compact oversized synced feed text", {
+          rebuildHistory: true,
+          previousBinaryBytes: req.binary.byteLength,
+        });
         bumpSearchCorpusVersion();
-        await storage.save(req.binary);
         await saveAndBroadcast(trace);
         ack(req.reqId);
         break;
@@ -672,7 +697,10 @@ async function handleRequest(
         const incomingDoc = A.load<FreedDoc>(req.binary);
         currentDoc = A.merge(currentDoc, incomingDoc);
         migrateLoadedIdentityGraph("Migrate legacy identity graph");
-        compactLoadedFeedText("Compact oversized synced feed text after merge");
+        compactLoadedFeedText("Compact oversized synced feed text after merge", {
+          rebuildHistory: true,
+          previousBinaryBytes: Math.max(currentBinary?.byteLength ?? 0, req.binary.byteLength),
+        });
         const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const delta = afterCount - beforeCount;
         send({
