@@ -55,8 +55,8 @@ describe("automerge worker memory routing", () => {
     const body = functionBody("trimFeedItemForDesktopUi");
     const patchBody = functionBody("cloneFeedItemForPatch");
 
-    expect(workerSource).toContain("DESKTOP_UI_CONTENT_TEXT_LIMIT = 1_200");
-    expect(workerSource).toContain("DESKTOP_UI_PRESERVED_TEXT_LIMIT = 1_200");
+    expect(workerSource).toContain("DESKTOP_UI_CONTENT_TEXT_LIMIT = 600");
+    expect(workerSource).toContain("DESKTOP_UI_PRESERVED_TEXT_LIMIT = 240");
     expect(body).toContain("contentText.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT)");
     expect(body).toContain("preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT)");
     expect(workerSource).toContain(".map(trimFeedItemForDesktopUi)");
