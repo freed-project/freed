@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, density-aware fixed-height unified feed rows shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, density-aware fixed-height unified feed rows shipped, settings changelog preview shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -232,6 +232,7 @@ export async function captureDomFeed(
 - [x] System tray shows sync status
 - [x] App runs in background after window close
 - [x] Auto-updater checks GitHub Releases on launch and in the background, then installs updates in-app
+- [x] Desktop Settings > Updates embeds a compact scrolling preview of the latest five changelog cards with a full changelog link
 - [x] CI/CD release pipeline builds for macOS (ARM + Intel), Windows, Linux on tag push
 - [x] Dev release tags run the faster dev validation lane and build only the internal macOS Apple Silicon target, while production tags keep full validation and all supported platform builds
 - [x] App icons generated for all platforms
@@ -423,6 +424,8 @@ export async function captureDomFeed(
 > releases so older builds can be linked directly without turning the page
 > into a mile-long papyrus scroll, and card hover states now key off the
 > existing timeline lane instead of inventing a second internal accent rail.
+> Freed Desktop Settings now embeds those latest five cumulative changelog
+> cards in the Updates pane, with a channel-aware link to the full changelog.
 > The updater endpoint now lives behind `freed.wtf/api/desktop-updates/{{target}}`,
 > and Freed Desktop can switch locally between production releases from `main`
 > and dev prereleases from `dev` without syncing that preference through the

@@ -2215,52 +2215,21 @@ html[data-theme="scriptorium"] .theme-card-soft {
   border-radius: var(--button-radius);
   border: 1px solid rgb(255 255 255 / 0.06);
   cursor: pointer;
-  transform-origin: center;
   transition:
-    transform 0.2s ease,
     box-shadow 0.2s ease,
     filter 0.2s ease;
   box-shadow: var(--theme-button-primary-shadow);
   overflow: hidden;
 }
 
-.btn-primary::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    115deg,
-    transparent 0%,
-    rgb(255 255 255 / 0.18) 28%,
-    transparent 55%
-  );
-  transform: translateX(-140%);
-  transition: transform 0.6s ease;
-  z-index: -1;
-}
-
-html[data-theme="scriptorium"] .btn-primary::before {
-  display: none;
-}
-
 .btn-primary:hover {
-  transform: scale(1.01);
   box-shadow: var(--theme-button-primary-shadow-hover);
   filter: saturate(1.05);
 }
 
 html[data-theme="scriptorium"] .btn-primary:hover {
-  transform: scale(1.005);
   box-shadow: var(--theme-button-primary-shadow-hover);
   filter: none;
-}
-
-.btn-primary:hover::before {
-  transform: translateX(135%);
-}
-
-.btn-primary:active {
-  transform: scale(0.985);
 }
 
 .nav-mobile-cta.btn-primary {
@@ -2281,14 +2250,8 @@ html[data-theme="scriptorium"] .btn-primary:hover {
 
 .nav-mobile-cta.btn-primary:hover,
 .nav-mobile-cta.btn-primary:active {
-  transform: none;
   border-radius: var(--button-radius);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
-}
-
-.newsletter-modal .btn-primary:hover,
-.newsletter-modal .btn-primary:active {
-  transform: none;
 }
 
 .newsletter-modal-download-cta.btn-primary {
@@ -2308,19 +2271,13 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   transition:
     border-color 0.18s ease,
     background-color 0.18s ease,
-    color 0.18s ease,
-    transform 0.18s ease;
+    color 0.18s ease;
 }
 
 .btn-secondary:hover,
 .glass-button:hover {
   border-color: var(--theme-border-strong);
   background: var(--theme-button-secondary-hover);
-}
-
-.glass-button:active,
-.btn-secondary:active {
-  transform: scale(0.985);
 }
 
 .theme-input {
@@ -2613,19 +2570,13 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   transition:
     background-color 0.18s ease,
     border-color 0.18s ease,
-    color 0.18s ease,
-    transform 0.18s ease;
+    color 0.18s ease;
 }
 
 .theme-feedback-button-warning:hover,
 .theme-feedback-button-danger:hover {
   background: rgb(var(--feedback-rgb) / 0.18);
   border-color: rgb(var(--feedback-rgb) / 0.3);
-}
-
-.theme-feedback-button-warning:active,
-.theme-feedback-button-danger:active {
-  transform: scale(0.985);
 }
 
 .theme-feedback-button-warning {

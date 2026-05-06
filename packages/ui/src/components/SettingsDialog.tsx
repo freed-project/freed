@@ -18,12 +18,17 @@ import {
   SAMPLE_SHOWCASE_FRIEND_COUNT,
   SAMPLE_SHOWCASE_ITEM_COUNT,
   SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+  stripReleaseChannelSuffix,
   type AnimationIntensity,
   type ReleaseChannel,
 } from "@freed/shared";
 import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { createPortal } from "react-dom";
-import { useAppStore, usePlatform } from "../context/PlatformContext.js";
+import {
+  useAppStore,
+  usePlatform,
+  type ChangelogPreviewRelease,
+} from "../context/PlatformContext.js";
 import { describeInstalledBuild, readBuildMetadata } from "../lib/build-info.js";
 import { useDebugStore } from "../lib/debug-store.js";
 import { useSettingsStore } from "../lib/settings-store.js";
@@ -60,7 +65,7 @@ import { ReportComposer } from "./report/ReportComposer.js";
 import { SearchField } from "./SearchField.js";
 import { ThemePreviewButton } from "./ThemePreviewButton.js";
 import { Tooltip } from "./Tooltip.js";
-import { GoogleContactsIcon } from "./icons.js";
+import { ExternalLinkIcon, GoogleContactsIcon } from "./icons.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -103,6 +108,60 @@ type ProviderAuthSlices = {
 };
 const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
 const INSTALLED_BUILD_PRESENTATION = describeInstalledBuild(readBuildMetadata());
+const CHANGELOG_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+});
+
+function formatChangelogDate(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return CHANGELOG_DATE_FORMATTER.format(date);
+}
+
+function inferInstalledReleaseChannelFromChangelog(
+  version: string,
+  releases: ChangelogPreviewRelease[] | undefined,
+): ReleaseChannel | null {
+  const baseVersion = stripReleaseChannelSuffix(version);
+  let hasDevRelease = false;
+  let hasProductionRelease = false;
+
+  for (const release of releases ?? []) {
+    if (stripReleaseChannelSuffix(release.version) !== baseVersion) {
+      continue;
+    }
+
+    if (release.channel === "dev") {
+      hasDevRelease = true;
+    } else {
+      hasProductionRelease = true;
+    }
+  }
+
+  if (hasDevRelease && !hasProductionRelease) {
+    return "dev";
+  }
+
+  if (hasProductionRelease && !hasDevRelease) {
+    return "production";
+  }
+
+  return null;
+}
+
+function getSettingsChangelogUrl(channel: ReleaseChannel): string {
+  return channel === "dev"
+    ? "https://freed.wtf/changelog/all"
+    : "https://freed.wtf/changelog";
+}
 
 function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId {
   return (
@@ -164,6 +223,89 @@ function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
         size="xxs"
       />
     </div>
+  );
+}
+
+function ChangelogPreviewList({
+  releases,
+  fullChangelogUrl,
+  openUrl,
+}: {
+  releases: ChangelogPreviewRelease[];
+  fullChangelogUrl: string;
+  openUrl?: (url: string) => void;
+}) {
+  if (releases.length === 0) {
+    return null;
+  }
+
+  const linkClassName = "btn-secondary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold";
+
+  return (
+    <section
+      className="space-y-2 pt-5"
+      aria-label="Recent releases"
+      data-testid="settings-changelog-preview"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-text-primary">Recent releases</p>
+        </div>
+        {openUrl ? (
+          <button
+            type="button"
+            onClick={() => openUrl(fullChangelogUrl)}
+            className={linkClassName}
+          >
+            Show full changelog
+            <ExternalLinkIcon className="h-3.5 w-3.5" />
+          </button>
+        ) : (
+          <a
+            href={fullChangelogUrl}
+            target="_blank"
+            rel="noreferrer"
+            className={linkClassName}
+          >
+            Show full changelog
+            <ExternalLinkIcon className="h-3.5 w-3.5" />
+          </a>
+        )}
+      </div>
+      <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
+        {releases.map((release) => {
+          const dateLabel = formatChangelogDate(release.date);
+
+          return (
+            <article
+              key={`${release.channel}:${release.version}`}
+              className="rounded-lg border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_68%,transparent)] px-3 py-2.5"
+            >
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                <span className="font-mono font-semibold text-text-primary">
+                  v{formatReleaseVersion(release.version, release.channel)}
+                </span>
+                <span className="rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 font-semibold text-text-muted">
+                  {RELEASE_CHANNEL_LABELS[release.channel]}
+                </span>
+                {dateLabel && <span className="text-text-muted">{dateLabel}</span>}
+              </div>
+              <p className="mt-1.5 text-sm leading-5 text-text-primary">{release.summary}</p>
+              {release.items.length > 0 && (
+                <ul className="mt-2 space-y-1 text-xs leading-5 text-text-muted">
+                  {release.items.map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span aria-hidden="true" className="mt-2 h-1 w-1 shrink-0 rounded-full bg-current" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 // ── Section icons ─────────────────────────────────────────────────────────────
@@ -271,10 +413,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     LinkedInSettingsContent,
     GoogleContactsSettingsContent,
     checkForUpdates,
+    changelogPreview,
     applyUpdate,
     headerDragRegion,
     factoryReset,
     activeCloudProviderLabel,
+    openUrl,
     seedSocialConnections,
     releaseChannel,
     installedReleaseChannel,
@@ -537,10 +681,19 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [updateState, setUpdateState] = useState<UpdateCheckState>({ status: "idle" });
   const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const shouldRecheckAfterChannelChangeRef = useRef(false);
+  const inferredInstalledReleaseChannel = inferInstalledReleaseChannelFromChangelog(
+    __APP_VERSION__,
+    changelogPreview,
+  );
   const displayVersion = formatReleaseVersion(
     __APP_VERSION__,
-    installedReleaseChannel ?? releaseChannel,
+    inferredInstalledReleaseChannel ?? installedReleaseChannel ?? releaseChannel,
   );
+  const selectedReleaseChannel = releaseChannel ?? "production";
+  const fullChangelogUrl = getSettingsChangelogUrl(selectedReleaseChannel);
+  const visibleChangelogPreview = (changelogPreview ?? [])
+    .filter((release) => selectedReleaseChannel === "dev" || release.channel === "production")
+    .slice(0, 5);
 
   const runUpdateCheck = useCallback(async () => {
     if (!checkForUpdates) return;
@@ -732,15 +885,15 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
   }, [searchLower, visibleSections]);
 
-  const scrollSectionIntoView = useCallback((id: SectionId, behavior: ScrollBehavior = "smooth") => {
+  const resolveSectionScrollTarget = useCallback((id: SectionId) => {
     const container = scrollRef.current;
     if (!container) {
-      return;
+      return null;
     }
 
     const el = container.querySelector<HTMLElement>(`[data-section="${id}"]`);
     if (!el) {
-      return;
+      return null;
     }
 
     const contentAnchor = el.querySelector<HTMLElement>(":scope > :nth-child(2)");
@@ -752,6 +905,17 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       0,
       container.scrollTop + (targetRect.top - containerRect.top) - topInset,
     );
+
+    return { container, targetTop };
+  }, [isMobile]);
+
+  const scrollSectionIntoView = useCallback((id: SectionId, behavior: ScrollBehavior = "smooth") => {
+    const target = resolveSectionScrollTarget(id);
+    if (!target) {
+      return;
+    }
+
+    const { container, targetTop } = target;
 
     isScrollingProgrammatically.current = true;
     clearTimeout(scrollEndTimerRef.current);
@@ -765,14 +929,22 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
 
     const clearScrolling = () => {
+      const settledTarget = resolveSectionScrollTarget(id);
+      if (settledTarget) {
+        const delta = Math.abs(settledTarget.container.scrollTop - settledTarget.targetTop);
+        if (delta > 1) {
+          settledTarget.container.scrollTop = settledTarget.targetTop;
+        }
+      }
       isScrollingProgrammatically.current = false;
+      clearTimeout(scrollEndTimerRef.current);
     };
 
     container.addEventListener("scrollend", clearScrolling, { once: true });
     scrollEndTimerRef.current = setTimeout(clearScrolling, 800);
 
     container.scrollTo({ top: targetTop, behavior: animationAwareScrollBehavior(behavior) });
-  }, [isMobile]);
+  }, [resolveSectionScrollTarget]);
 
   useEffect(() => {
     const root = scrollRef.current;
@@ -1198,7 +1370,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <button
                     onClick={handleCheckForUpdates}
                     disabled={updateState.status === "checking" || updateDownloadProgress?.phase === "downloading"}
-                    className="text-sm px-3 py-1.5 rounded-lg bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_88%,transparent)] text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="btn-primary rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {updateState.status === "checking" ? (
                       <span className="flex items-center gap-2">
@@ -1242,6 +1414,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               {updateDownloadProgress?.phase === "error" && (
                 <p className="theme-feedback-text-danger text-xs">{updateDownloadProgress.message}</p>
               )}
+              <ChangelogPreviewList
+                releases={visibleChangelogPreview}
+                fullChangelogUrl={fullChangelogUrl}
+                openUrl={openUrl}
+              />
             </div>
           </>
         );

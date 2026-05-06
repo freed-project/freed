@@ -61,6 +61,14 @@ export interface AvailableUpdateInfo {
   channel: ReleaseChannel;
 }
 
+export interface ChangelogPreviewRelease {
+  version: string;
+  channel: ReleaseChannel;
+  date: string | null;
+  summary: string;
+  items: string[];
+}
+
 export type SyncProviderSectionSurface = "settings" | "debug-card";
 
 export interface SyncProviderSectionProps {
@@ -235,6 +243,9 @@ export interface PlatformConfig {
 
   /** Manual update check. Returns available update info, null if up-to-date. */
   checkForUpdates?: () => Promise<AvailableUpdateInfo | null>;
+
+  /** Compact release notes shown in Settings > Updates. */
+  changelogPreview?: ChangelogPreviewRelease[];
 
   /** Apply a detected update (PWA: reload, Desktop: handled by UpdateNotification). */
   applyUpdate?: () => void;
