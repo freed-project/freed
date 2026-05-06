@@ -91,7 +91,7 @@ let searchCorpusVersion = 0;
 const SLOW_QUEUE_WAIT_MS = 1_000;
 const SLOW_REQUEST_PROCESS_MS = 5_000;
 const SLOW_SAVE_AND_BROADCAST_MS = 2_000;
-const DESKTOP_UI_PRESERVED_TEXT_LIMIT = 240;
+const DESKTOP_UI_PRESERVED_TEXT_LIMIT = 0;
 const DESKTOP_UI_CONTENT_TEXT_LIMIT = 600;
 const DESKTOP_UI_LINK_DESCRIPTION_LIMIT = 180;
 const FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES = 4 * 1024 * 1024;
@@ -286,6 +286,8 @@ function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
   const preservedContent = item.preservedContent;
   const preservedText = preservedContent?.text;
   if (preservedContent && preservedText && preservedText.length > DESKTOP_UI_PRESERVED_TEXT_LIMIT) {
+    // The reader asks the worker for full preserved text on demand. Keeping
+    // it in every renderer item makes all non-reader surfaces pay for it.
     next = {
       ...next,
       preservedContent: {
