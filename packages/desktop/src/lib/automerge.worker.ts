@@ -67,6 +67,12 @@ import {
   persistDoc,
   type AutomergePersistenceState,
 } from "./automerge-persistence";
+import {
+  createFeedTextCompactionSummary,
+  compactFeedItemTextForSync,
+  compactFeedItemsTextForSync,
+  formatFeedTextCompactionSummary,
+} from "./feed-text-compaction";
 
 // ---------------------------------------------------------------------------
 // State
@@ -187,6 +193,20 @@ function migrateLoadedIdentityGraph(message: string): void {
   currentDoc = A.change(currentDoc, message, (doc) => {
     migrateLegacyIdentityGraph(doc);
   });
+}
+
+function compactLoadedFeedText(message: string): void {
+  if (!currentDoc) return;
+  let summary = createFeedTextCompactionSummary();
+  currentDoc = A.change(currentDoc, message, (doc) => {
+    summary = compactFeedItemsTextForSync(Object.values(doc.feedItems) as FeedItem[]);
+  });
+  if (summary.changed === 0) return;
+  bumpSearchCorpusVersion();
+  emitWorkerTrace(
+    `[automerge-worker] ${message}: ${formatFeedTextCompactionSummary(summary)}`,
+    "change",
+  );
 }
 
 function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean {
@@ -592,6 +612,7 @@ async function handleRequest(
           try {
             currentDoc = A.load<FreedDoc>(saved);
             migrateLoadedIdentityGraph("Migrate legacy identity graph");
+            compactLoadedFeedText("Compact oversized synced feed text");
             currentBinary = saved;
             persistenceState = createPersistenceState(saved);
           } catch {
@@ -627,6 +648,7 @@ async function handleRequest(
       case "REPLACE_DOC":
         currentDoc = A.load<FreedDoc>(req.binary);
         migrateLoadedIdentityGraph("Migrate legacy identity graph");
+        compactLoadedFeedText("Compact oversized synced feed text");
         currentBinary = req.binary;
         persistenceState = createPersistenceState(req.binary);
         bumpSearchCorpusVersion();
@@ -650,6 +672,7 @@ async function handleRequest(
         const incomingDoc = A.load<FreedDoc>(req.binary);
         currentDoc = A.merge(currentDoc, incomingDoc);
         migrateLoadedIdentityGraph("Migrate legacy identity graph");
+        compactLoadedFeedText("Compact oversized synced feed text after merge");
         const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const delta = afterCount - beforeCount;
         send({
@@ -752,6 +775,7 @@ async function handleRequest(
 
       case "ADD_FEED_ITEM":
         await applyRequestChange((doc) => {
+          compactFeedItemTextForSync(req.item);
           if (!doc.feedItems[req.item.globalId]) addFeedItem(doc, req.item);
         }, "Add feed item", true);
         ack(req.reqId);
@@ -760,6 +784,7 @@ async function handleRequest(
       case "ADD_FEED_ITEMS":
         await applyRequestChange((doc) => {
           for (const item of req.items) {
+            compactFeedItemTextForSync(item);
             if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
           }
           if (req.items.some((item) => item.platform === "facebook" || item.platform === "instagram")) {
@@ -776,7 +801,11 @@ async function handleRequest(
 
       case "UPDATE_FEED_ITEM":
         await applyRequestChange(
-          (doc) => updateFeedItem(doc, req.globalId, req.updates),
+          (doc) => {
+            updateFeedItem(doc, req.globalId, req.updates);
+            const item = doc.feedItems[req.globalId] as FeedItem | undefined;
+            if (item) compactFeedItemTextForSync(item);
+          },
           "Update feed item",
           feedItemUpdatesAffectSearchCorpus(req.updates),
         );
@@ -967,6 +996,7 @@ async function handleRequest(
             if (url) existingLinkUrls.add(url);
           }
           for (const item of req.items) {
+            compactFeedItemTextForSync(item);
             if (doc.feedItems[item.globalId]) continue;
             const linkUrl = item.content.linkPreview?.url;
             if (linkUrl && existingLinkUrls.has(linkUrl)) continue;
@@ -986,6 +1016,7 @@ async function handleRequest(
           const chunk = items.slice(i, i + CHUNK);
           await applyRequestChange((doc) => {
             for (const item of chunk) {
+              compactFeedItemTextForSync(item);
               if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
             }
           }, `Batch import chunk ${chunkIndex + 1}/${totalChunks}`, true);
