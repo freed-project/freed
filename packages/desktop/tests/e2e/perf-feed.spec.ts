@@ -327,10 +327,10 @@ test.describe("Scroll performance", () => {
   });
 });
 
-// ─── 3. Mark-as-read storm ────────────────────────────────────────────────────
+// ─── 3. Mark-as-read enqueue storm ────────────────────────────────────────────
 
-test.describe("Mark-as-read storm (hydrateFromDoc cost)", () => {
-  test("20 rapid mark-as-read mutations with 3k items", async ({ app, page }) => {
+test.describe("Mark-as-read enqueue storm", () => {
+  test("20 rapid mark-as-read enqueues with 3k items", async ({ app, page }) => {
     await app.goto();
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_LARGE);
@@ -366,10 +366,9 @@ test.describe("Mark-as-read storm (hydrateFromDoc cost)", () => {
       `[PERF] Per-call timings: [${timings.map((t) => t.toFixed(1)).join(", ")}]`,
     );
 
-    // Each mutation should resolve in a reasonable time. At 3k items,
-    // hydrateFromDoc (O(n) sort + rank) + A.change() WASM is the bottleneck.
-    // 500ms is the hard limit before it feels completely broken.
-    expect(worst).toBeLessThan(500);
+    // Single-item read marks should not wait for the durable Automerge batch.
+    // Scrolling and reader open both call markAsRead on the paint path.
+    expect(worst).toBeLessThan(50);
   });
 });
 
@@ -497,13 +496,14 @@ test.describe("Reader view open (the worst offender)", () => {
     expect(elapsed).toBeLessThan(2_000);
   });
 
-  test("measure hydrateFromDoc cost directly after reader click", async ({ app, page }) => {
+  test("measure markAsRead enqueue cost directly after reader click", async ({ app, page }) => {
     await app.goto();
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_LARGE);
 
-    // Time markAsRead in isolation (without the React re-render overhead)
-    // to isolate the Automerge + store cost from the UI paint cost.
+    // Time markAsRead in isolation without React re-render overhead.
+    // This should measure enqueue cost only. Durable Automerge writes flush in
+    // the shared read-state batch instead of blocking the paint path.
     const markAsReadMs = await page.evaluate(async () => {
       const w = window as Record<string, unknown>;
       const store = w.__FREED_STORE__ as {
@@ -520,14 +520,10 @@ test.describe("Reader view open (the worst offender)", () => {
       return performance.now() - t0;
     });
 
-    console.log(`[PERF] markAsRead (isolated, 3k items): ${markAsReadMs.toFixed(1)} ms`);
-    console.log(`[PERF] This includes: A.change() CRDT write + hydrateFromDoc O(n) sort/rank + subscriber notification`);
+    console.log(`[PERF] markAsRead enqueue (isolated, 3k items): ${markAsReadMs.toFixed(1)} ms`);
 
-    // At 3k items, hydrateFromDoc + A.change() takes ~300ms on this hardware.
-    // This SHOULD fail until we optimize hydrateFromDoc. Record it as a known regression.
-    // Target after optimization: < 50ms.
-    console.log(`[PERF] hydrateFromDoc regression threshold: ${markAsReadMs.toFixed(0)}ms (target: <50ms after optimization)`);
-    expect(markAsReadMs).toBeLessThan(1_000); // hard upper bound - anything above 1s is broken
+    console.log(`[PERF] markAsRead enqueue threshold: ${markAsReadMs.toFixed(0)}ms (target: <50ms)`);
+    expect(markAsReadMs).toBeLessThan(50);
   });
 });
 

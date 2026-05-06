@@ -1,12 +1,13 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { PlatformProvider, type PlatformConfig } from "../../context/PlatformContext.js";
+import { useDebugStore, type RuntimeMemorySnapshot } from "../../lib/debug-store.js";
 import { FeedItem } from "./FeedItem";
 
 const NOW = 1_712_147_200_000;
@@ -77,6 +78,28 @@ const platformConfig = {
   LinkedInSettingsContent: null,
   GoogleContactsSettingsContent: null,
 } as unknown as PlatformConfig;
+
+function setMemoryPressure(pressureLevel: RuntimeMemorySnapshot["pressureLevel"]): void {
+  useDebugStore.setState({
+    runtimeMemory: {
+      processResidentBytes: 0,
+      processVirtualBytes: 0,
+      relayDocBytes: 0,
+      relayClientCount: 0,
+      contentQueuePending: 0,
+      contentCompleted: 0,
+      contentFailed: 0,
+      contentActive: false,
+      contentBackoffLevel: 0,
+      sampleTs: Date.now(),
+      pressureLevel,
+    },
+  });
+}
+
+beforeEach(() => {
+  useDebugStore.setState({ runtimeMemory: null });
+});
 
 function renderFeedItemToStaticMarkup(
   item: FeedItemType,
@@ -182,6 +205,69 @@ describe("FeedItem story media", () => {
     expect(html).toContain("<img");
     expect(html).toContain("https://example.com/story.jpg");
     expect(html).not.toContain("<video");
+  });
+
+  it("suppresses story images under renderer memory pressure", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    setMemoryPressure("high");
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem item={makeItem()} />
+          </PlatformProvider>,
+        );
+      });
+
+      expect(container.querySelector("img[src='https://example.com/story.jpg']")).toBeNull();
+      expect(container.querySelector(".bg-gradient-to-br")).not.toBeNull();
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
+
+  it("suppresses regular feed media under renderer memory pressure", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    setMemoryPressure("critical");
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem
+              item={makeItem({
+                contentType: "post",
+                content: {
+                  text: "Post text",
+                  mediaUrls: ["https://example.com/post.jpg"],
+                  mediaTypes: ["image"],
+                },
+              })}
+              fixedHeight={220}
+            />
+          </PlatformProvider>,
+        );
+      });
+
+      expect(container.querySelector("img[src='https://example.com/post.jpg']")).toBeNull();
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
   });
 
   it("renders video stories as playable videos", () => {

@@ -3,6 +3,7 @@ import { formatDistanceToNow } from "date-fns";
 import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
 import { usePlatform } from "../../context/PlatformContext.js";
 import type { FeedCardDensity } from "../../lib/feed-card-density.js";
+import { useDebugStore } from "../../lib/debug-store.js";
 import { ChannelAvatar } from "../ChannelAvatar.js";
 import { Tooltip } from "../Tooltip.js";
 import {
@@ -135,6 +136,11 @@ const FEED_CARD_LAYOUT_CONTAINMENT_STYLE = {
   contain: "layout paint style",
 } satisfies React.CSSProperties;
 
+function useInlineFeedMediaEnabled(feedMediaPreviews: "inline" | "reader-only"): boolean {
+  const memoryPressure = useDebugStore((state) => state.runtimeMemory?.pressureLevel ?? "normal");
+  return feedMediaPreviews === "inline" && memoryPressure !== "high" && memoryPressure !== "critical";
+}
+
 function likeState(item: FeedItemType): "none" | "noted" | "synced" | "failed" {
   const us = item.userState;
   if (!us.liked) return "none";
@@ -187,6 +193,7 @@ export const FeedItem = memo(function FeedItem({
   fixedHeight,
 }: FeedItemProps) {
   const { feedMediaPreviews = "inline" } = usePlatform();
+  const showInlineMedia = useInlineFeedMediaEnabled(feedMediaPreviews);
   const sharedTransitionStyle = {
     viewTransitionName: feedCardTransitionName(item.globalId),
   } as React.CSSProperties;
@@ -207,7 +214,6 @@ export const FeedItem = memo(function FeedItem({
 
   const [swipeX, setSwipeX] = useState(0);
   const [mediaFailed, setMediaFailed] = useState(false);
-  const showInlineMedia = feedMediaPreviews === "inline";
   const fullCardDensity = {
     compact: {
       article: "p-3",

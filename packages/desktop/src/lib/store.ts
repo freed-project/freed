@@ -361,17 +361,21 @@ async function flushPendingReadMarks(): Promise<void> {
   }
 }
 
-function queueReadMarks(ids: readonly string[]): Promise<void> {
+function queueReadMarks(ids: readonly string[], options: { waitForFlush?: boolean } = {}): Promise<void> {
   const nextIds = ids.filter(Boolean);
   if (nextIds.length === 0) return Promise.resolve();
 
   for (const id of nextIds) pendingReadIds.add(id);
+  scheduleReadMarkBatchFlush();
+
+  if (options.waitForFlush === false) {
+    return Promise.resolve();
+  }
 
   const promise = new Promise<void>((resolve) => {
     readMarkBatchWaiters.push(resolve);
   });
 
-  scheduleReadMarkBatchFlush();
   return promise;
 }
 
@@ -514,7 +518,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markAsRead: async (id) => {
-    await queueReadMarks([id]);
+    await queueReadMarks([id], { waitForFlush: false });
   },
 
   markItemsAsRead: async (ids) => {
