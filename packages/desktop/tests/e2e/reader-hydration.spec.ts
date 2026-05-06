@@ -202,6 +202,44 @@ test("expired stories show a precise reader state", async ({ app }) => {
   await expect(app.page.getByText("Connect to the internet")).toHaveCount(0);
 });
 
+test("reader author link opens the channel details in Friends", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await injectItems(app.page);
+
+  await app.page.locator("article").filter({ hasText: IG_TITLE }).first().click();
+  await app.page.getByTestId("reader-author-friends-link").click();
+
+  await expect
+    .poll(async () =>
+      app.page.evaluate(() => {
+        const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+          getState: () => {
+            activeView: string;
+            selectedAccountId: string | null;
+            selectedItemId: string | null;
+          };
+        };
+        const state = store.getState();
+        return {
+          activeView: state.activeView,
+          selectedAccountId: state.selectedAccountId,
+          selectedItemId: state.selectedItemId,
+        };
+      }),
+    )
+    .toEqual({
+      activeView: "friends",
+      selectedAccountId: "social:instagram:ig-author",
+      selectedItemId: null,
+    });
+
+  const sidebar = app.page.getByTestId("friends-sidebar");
+  await expect(sidebar).toContainText("Instagram Author");
+  await expect(sidebar).toContainText("Instagram");
+  await expect(sidebar).toContainText("1 captured post");
+});
+
 test("X post reader offers native replies first and loads inline replies on beta action", async ({ app, ipc }) => {
   await app.goto();
   await app.waitForReady();

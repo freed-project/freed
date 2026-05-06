@@ -29,6 +29,7 @@ interface ReaderViewProps {
   /** When true, renders inline within the workspace shell and hides the local header. */
   inline?: boolean;
   onOpenUrl?: (url: string) => void;
+  onOpenAuthorInFriends?: (item: FeedItemType) => void | Promise<void>;
 }
 
 /** Content source labels for the offline badge */
@@ -204,13 +205,21 @@ const HEADING_CLASSES: Record<number, string> = {
 };
 
 const STORY_REPLY_MESSAGE = "Story replies are private on this platform. Open the story to reply there.";
+const FRIENDS_AUTHOR_PLATFORMS = new Set(["x", "facebook", "instagram", "linkedin"]);
 const REPLY_PLATFORM_LABELS: Partial<Record<FeedItemType["platform"], string>> = {
   x: "X",
   facebook: "Facebook",
   instagram: "Instagram",
 };
 
-export function ReaderView({ item, onClose, dualColumn = false, inline = false, onOpenUrl }: ReaderViewProps) {
+export function ReaderView({
+  item,
+  onClose,
+  dualColumn = false,
+  inline = false,
+  onOpenUrl,
+  onOpenAuthorInFriends,
+}: ReaderViewProps) {
   const {
     headerDragRegion,
     getLocalContent,
@@ -264,6 +273,13 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
     if (!onOpenUrl || !item.sourceUrl) return;
     onOpenUrl(item.sourceUrl);
   }, [item.sourceUrl, onOpenUrl]);
+  const canOpenAuthorInFriends = Boolean(
+    onOpenAuthorInFriends && FRIENDS_AUTHOR_PLATFORMS.has(item.platform),
+  );
+  const handleOpenAuthorInFriends = useCallback(() => {
+    if (!onOpenAuthorInFriends) return;
+    void onOpenAuthorInFriends(item);
+  }, [item, onOpenAuthorInFriends]);
   const supportsThreadHydration =
     !isStory &&
     (item.platform === "x" || item.platform === "facebook" || item.platform === "instagram");
@@ -717,7 +733,18 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
         {/* Meta */}
         <div className="mb-6">
           <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-[var(--theme-text-muted)]">
-            <span className="font-medium text-[var(--theme-text-secondary)]">{item.author.displayName}</span>
+            {canOpenAuthorInFriends ? (
+              <button
+                type="button"
+                data-testid="reader-author-friends-link"
+                onClick={handleOpenAuthorInFriends}
+                className="rounded-md font-medium text-[var(--theme-text-secondary)] underline decoration-[var(--theme-border-strong)] underline-offset-4 transition-colors hover:text-[var(--theme-text-primary)] hover:decoration-[var(--theme-text-secondary)] focus:outline-none focus:ring-2 focus:ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.45)]"
+              >
+                {item.author.displayName}
+              </button>
+            ) : (
+              <span className="font-medium text-[var(--theme-text-secondary)]">{item.author.displayName}</span>
+            )}
             <span>•</span>
             <span>{timeAgo}</span>
             {item.preservedContent?.readingTime && (
