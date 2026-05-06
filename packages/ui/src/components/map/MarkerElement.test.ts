@@ -94,4 +94,15 @@ describe("createMarkerElement", () => {
 
     expect(element.textContent).toContain((1234).toLocaleString());
   });
+
+  it("labels decorative marker layers so map movement can suppress paint-heavy chrome", () => {
+    const element = createMarkerElement(marker({ groupCount: 1234 }), palette);
+
+    expect(element.querySelector(".freed-map-marker-body")).toBeInstanceOf(HTMLDivElement);
+    expect(element.querySelector(".freed-map-marker-glow")).toBeInstanceOf(HTMLDivElement);
+    expect(element.querySelector(".freed-map-marker-image")).toBeInstanceOf(HTMLImageElement);
+    expect(element.querySelector(".freed-map-marker-tint")).toBeInstanceOf(HTMLDivElement);
+    expect(element.querySelector(".freed-map-marker-halo")).toBeInstanceOf(HTMLDivElement);
+    expect(element.querySelector(".freed-map-marker-badge")).toBeInstanceOf(HTMLDivElement);
+  });
 });
