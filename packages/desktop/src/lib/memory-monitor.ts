@@ -48,6 +48,7 @@ interface ScrapeMemoryPreparation {
   after: NativeRuntimeMemoryStats;
   recycledScraperWindows: boolean;
   cacheTrimmed: boolean;
+  scrapeStartBudgetBytes?: number;
   mayProceed: boolean;
   deferredReason?: string;
 }
