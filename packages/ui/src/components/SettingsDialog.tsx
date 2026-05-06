@@ -5,8 +5,7 @@
  * sections stacked. Scroll position drives scrollspy so the nav always reflects
  * which section is currently in view.
  *
- * Mobile: single-column. The nav is a full-screen list; tapping any section
- * "pushes" to that section's content with a back button (iOS-style).
+ * Mobile: single-column with stacked sections and compact spacing.
  */
 
 import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
@@ -182,11 +181,6 @@ const ICONS: Record<SectionId, ReactNode> = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 12.75l1.5 1.5 3-3.75" />
     </svg>
   ),
-  support: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 8h10M7 12h7m-5 8l-4-4H4a2 2 0 01-2-2V6a2 2 0 012-2h16a2 2 0 012 2v8a2 2 0 01-2 2h-7l-4 4z" />
-    </svg>
-  ),
   appearance: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -328,7 +322,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     sectionById.ai,
     ...(checkForUpdates ? [sectionById.updates] : []),
     sectionById.legal,
-    sectionById.support,
     ...(factoryReset ? [sectionById.danger] : []),
   ];
 
@@ -588,6 +581,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [deleteFromCloud, setDeleteFromCloud] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [showSampleSeedConfirm, setShowSampleSeedConfirm] = useState(false);
+  const [supportModalOpen, setSupportModalOpen] = useState(false);
 
   const handleReset = useCallback(async () => {
     if (!factoryReset) return;
@@ -666,8 +660,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     : allSections;
 
   // ── Scrollspy ────────────────────────────────────────────────────────────
-  const [activeSection, setActiveSection] = useState<SectionId>("legal");
-  const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
+  const [activeSection, setActiveSection] = useState<SectionId>("appearance");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Keep a ref in sync with updateState.status so scroll/visibility callbacks
@@ -776,7 +769,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   useEffect(() => {
     const root = scrollRef.current;
-    if (!root || searchLower || (isMobile && mobileView === "nav")) return;
+    if (!root || searchLower) return;
 
     const updateActiveSectionFromScroll = () => {
       if (isScrollingProgrammatically.current) return;
@@ -810,44 +803,38 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       root.removeEventListener("scroll", updateActiveSectionFromScroll);
       window.removeEventListener("resize", updateActiveSectionFromScroll);
     };
-  }, [isMobile, mobileView, open, searchLower]);
+  }, [open, searchLower]);
 
   const scrollToSection = useCallback((id: SectionId) => {
     setActiveSection(id);
-    if (isMobile && mobileView === "nav") {
-      isScrollingProgrammatically.current = true;
-      clearTimeout(scrollEndTimerRef.current);
-      setMobileView("section");
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scrollSectionIntoView(id, "auto");
-          setActiveSection(id);
-        });
-      });
-      return;
-    }
-
     scrollSectionIntoView(id, "smooth");
-    setMobileView("section");
-  }, [isMobile, mobileView, scrollSectionIntoView]);
+  }, [scrollSectionIntoView]);
 
   // Reset state on close
   useEffect(() => {
     if (!open) {
       setSearch("");
-      setMobileView("nav");
+      setSupportModalOpen(false);
     }
   }, [open]);
 
-  // Scroll to a programmatically requested section (e.g. nudge → Sync)
+  // Scroll to a programmatically requested section.
   const { targetSection, clearTarget } = useSettingsStore();
   useEffect(() => {
     if (!open || !targetSection) return;
+    if (targetSection === "support") {
+      setSupportModalOpen(true);
+      clearTarget();
+      return;
+    }
+    if (!allSections.some((section) => section.id === targetSection)) {
+      clearTarget();
+      return;
+    }
     const rafId = requestAnimationFrame(() => {
       setActiveSection(targetSection as SectionId);
       isScrollingProgrammatically.current = true;
       clearTimeout(scrollEndTimerRef.current);
-      setMobileView("section");
       requestAnimationFrame(() => {
         scrollSectionIntoView(targetSection as SectionId, "auto");
         setActiveSection(targetSection as SectionId);
@@ -855,7 +842,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       clearTarget();
     });
     return () => cancelAnimationFrame(rafId);
-  }, [clearTarget, open, scrollSectionIntoView, targetSection]);
+  }, [allSections, clearTarget, open, scrollSectionIntoView, targetSection]);
 
   // Body scroll lock
   useEffect(() => {
@@ -896,9 +883,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   function renderSectionBlock(id: SectionId) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
-    const sectionMinHeight = isMobile && mobileView !== "section"
-      ? "100%"
-      : "calc(100% + 20rem)";
+    const sectionMinHeight = isMobile ? undefined : "calc(100% + 20rem)";
 
     // SectionContent and this wrapper both stay plain function calls because
     // they are defined inside SettingsDialog. Rendering either as JSX would
@@ -908,7 +893,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     return (
       <section
         data-section={id}
-        className="flex flex-col pb-8"
+        className={isMobile ? "flex flex-col pb-2" : "flex flex-col pb-8"}
         style={{ minHeight: sectionMinHeight }}
       >
         {SectionContent({ id })}
@@ -1065,14 +1050,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="Legal" />
             {LegalSettingsContent ? <LegalSettingsContent /> : null}
-          </>
-        );
-
-      case "support":
-        return (
-          <>
-            <SectionHeading label="Support" />
-            <ReportComposer />
           </>
         );
 
@@ -1250,7 +1227,16 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return factoryReset ? (
           <>
             <SectionHeading label="Danger Zone" danger />
-            <div className="space-y-6">
+            <div className="space-y-3 sm:space-y-6">
+              <button
+                onClick={() => setSupportModalOpen(true)}
+                className="w-full rounded-xl bg-[var(--theme-bg-muted)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--theme-bg-card-hover)]"
+              >
+                <div>
+                  <p className="text-sm text-[var(--theme-text-secondary)]">Submit support ticket</p>
+                  <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">Share diagnostics and describe what broke</p>
+                </div>
+              </button>
               <button
                 onClick={() => {
                   onClose();
@@ -1427,7 +1413,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           className={`
             theme-dialog-divider flex shrink-0 flex-col border-b
             sm:w-52 sm:border-b-0 sm:border-r
-            ${mobileView === "section" ? "hidden sm:flex" : "flex"}
+            hidden sm:flex
           `}
         >
           {/* Header */}
@@ -1496,40 +1482,37 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         <div
           className={`
             flex-1 flex flex-col overflow-hidden
-            ${mobileView === "nav" ? "hidden sm:flex" : "flex"}
           `}
         >
-          {/* Mobile back button + section title */}
           <div
             className="theme-dialog-divider sm:hidden flex shrink-0 items-center justify-between gap-3 border-b px-4 pb-2 pt-2"
             style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
           >
-            <button
-              onClick={() => setMobileView("nav")}
-              className="-ml-1 flex min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1.5 text-text-secondary transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] hover:text-text-primary"
-              aria-label="Back to settings"
+            <h2
+              className="truncate text-base font-semibold text-text-primary"
+              data-testid="settings-mobile-section-title"
             >
-              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              <span
-                className="truncate text-sm font-medium text-text-primary"
-                data-testid="settings-mobile-section-title"
-              >
-                {allSections.find((s) => s.id === activeSection)?.label}
-              </span>
-            </button>
+              Settings
+            </h2>
             <CloseButton
               testId="settings-close-button-mobile"
               className="-mr-1 shrink-0"
             />
           </div>
+          <div className="shrink-0 px-4 pb-3 pt-3 sm:hidden">
+            <SearchField
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onClear={() => setSearch("")}
+              placeholder="Search settings"
+              aria-label="Search settings"
+            />
+          </div>
 
-          {/* Scrollable sections */}
           <div
             ref={scrollRef}
             data-testid="settings-scroll-container"
-            className="flex-1 overflow-y-auto px-6 pt-6 [&>section+section]:mt-24"
+            className="flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
             style={{ paddingBottom: scrollContainerBottomPadding }}
           >
             {searchLower && visibleSections.length === 0 ? (
@@ -1677,6 +1660,29 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           </div>
         </div>
       )}
+
+      {supportModalOpen && (
+        <div className="theme-elevated-overlay absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 sm:items-center">
+          <div className="theme-dialog-shell theme-settings-shell my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden">
+            <div className="theme-dialog-divider flex shrink-0 items-center justify-between border-b px-4 py-3">
+              <h2 className="text-base font-semibold text-text-primary">Support</h2>
+              <button
+                type="button"
+                onClick={() => setSupportModalOpen(false)}
+                aria-label="Close support"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-[28px] text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="minimal-scroll flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+              <ReportComposer />
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body,
   );
@@ -1733,7 +1739,7 @@ function UpToDateBadge() {
 function SectionHeading({ label, danger }: { label: string; danger?: boolean }) {
   return (
     <h3
-      className={`text-sm font-semibold uppercase tracking-wide mb-5 ${
+      className={`mb-4 text-base font-semibold uppercase tracking-wide sm:mb-5 sm:text-sm ${
         danger ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.64)]" : "text-text-muted"
       }`}
     >

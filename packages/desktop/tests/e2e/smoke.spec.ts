@@ -1474,9 +1474,6 @@ test("settings dialog closes from the mobile header close button", async ({ app,
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openDefault();
   }, SETTINGS_STORE_PATH);
-  await expect(page.getByTestId("settings-close-button-sidebar")).toBeVisible({ timeout: 5_000 });
-
-  await page.getByRole("button", { name: "Appearance" }).last().click();
   await expect(page.getByTestId("settings-close-button-mobile")).toBeVisible({ timeout: 5_000 });
 
   await page.getByTestId("settings-close-button-mobile").click();
@@ -2430,7 +2427,7 @@ test("feed toolbar title describes active content filters", async ({ app, page }
   await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("1 item");
 });
 
-test("mobile feed toolbar keeps more actions as the rightmost control", async ({ app, page }) => {
+test("mobile feed toolbar keeps format as the rightmost control", async ({ app, page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await app.goto();
   await app.waitForReady();
@@ -2451,16 +2448,25 @@ test("mobile feed toolbar keeps more actions as the rightmost control", async ({
     }
 
     return {
-      gap: overflowRect.left - filterRect.right,
+      gap: filterRect.left - overflowRect.right,
+      overflowRight: overflowRect.right,
+      filterLeft: filterRect.left,
       filterRight: filterRect.right,
-      overflowLeft: overflowRect.left,
+      viewportRight: window.innerWidth,
     };
   });
-  expect(geometry.filterRight).toBeLessThanOrEqual(geometry.overflowLeft);
+  expect(geometry.overflowRight).toBeLessThanOrEqual(geometry.filterLeft);
   expect(geometry.gap).toBeGreaterThanOrEqual(0);
+  expect(geometry.viewportRight - geometry.filterRight).toBeLessThanOrEqual(16);
 
   await overflowButton.click();
-  await expect(page.getByTestId("toolbar-overflow-menu").getByRole("menuitem", { name: /Mark .* unread as read/ })).toBeVisible();
+  const overflowMenu = page.getByTestId("toolbar-overflow-menu");
+  await expect(overflowMenu.getByRole("menuitem", { name: /Mark .* unread as read/ })).toBeVisible();
+  const menuTop = await overflowMenu.evaluate((menu) => Math.round(menu.getBoundingClientRect().top));
+  await page.evaluate(() => window.scrollBy(0, 180));
+  await expect
+    .poll(() => overflowMenu.evaluate((menu) => Math.round(menu.getBoundingClientRect().top)))
+    .toBe(menuTop);
 });
 
 test("dual-column reader toggles use shared view transitions when supported", async ({ app, page }) => {

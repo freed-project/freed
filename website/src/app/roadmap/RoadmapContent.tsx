@@ -747,7 +747,7 @@ const phases: Phase[] = [
     number: 6,
     title: "PWA Reader",
     description:
-      "Primary mobile surface with first-run legal gating, URL-backed view state, pinned saved-reader caching, warmed offline article plus image caching, local offline cache modes, filtered inner Settings list panels for RSS management, homescreen install prompts for browser and iOS Safari flows, public-safe bug reporting with clearer private bundle controls, and switchable production or dev update channels across `app.freed.wtf` and the `dev` branch lane at `dev-app.freed.wtf`.",
+      "Primary mobile surface with first-run legal gating, URL-backed view state, pinned saved-reader caching, warmed offline article plus image caching, local offline cache modes, filtered inner Settings list panels for RSS management, compact stacked mobile settings, balanced mobile toolbar controls, viewport-fixed reader action menus, homescreen install prompts for browser and iOS Safari flows, public-safe bug reporting with clearer private bundle controls, and switchable production or dev update channels across `app.freed.wtf` and the `dev` branch lane at `dev-app.freed.wtf`.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-6-PWA.md",

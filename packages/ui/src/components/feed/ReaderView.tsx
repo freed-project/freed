@@ -567,6 +567,15 @@ export function ReaderView({
     [html, preservedText, item.content.text],
   );
 
+  useEffect(() => {
+    if (inline) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [inline]);
+
   return (
     <div
       className={
@@ -728,7 +737,7 @@ export function ReaderView({
       {/* Article content */}
       <article
         data-testid="reader-article"
-        className="mx-auto w-full max-w-3xl max-[959px]:max-w-none px-[var(--feed-card-gap,8px)] py-6 sm:py-8 min-[960px]:px-6"
+        className="mx-auto w-full max-w-3xl max-[959px]:max-w-none px-5 py-6 sm:py-8 min-[960px]:px-6"
       >
         {/* Meta */}
         <div className="mb-6">

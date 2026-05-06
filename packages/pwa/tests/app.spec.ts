@@ -121,6 +121,21 @@ async function waitForPwaReady(
   });
 }
 
+async function emulateMobileDevice(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "userAgentData", {
+      configurable: true,
+      value: { mobile: true },
+    });
+    Object.defineProperty(navigator, "maxTouchPoints", {
+      configurable: true,
+      value: 5,
+    });
+  });
+}
+
 async function seedFriendLocation(
   page: import("@playwright/test").Page,
 ): Promise<void> {
@@ -1538,27 +1553,55 @@ test.describe("FREED PWA", () => {
   });
 
   test("responsive sidebar behavior", async ({ page }) => {
-    // Set mobile viewport
+    await emulateMobileDevice(page);
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto("/");
     await acceptLegalGate(page);
 
-    // Sidebar should be hidden on mobile
     const sidebar = page.getByTestId("app-sidebar-mobile");
     await expect(sidebar).toHaveClass(/-translate-x-full/);
 
-    // Click menu button to open sidebar
     await page.click('button[aria-label="Open menu"]');
 
-    // Sidebar should now be visible
     await expect(sidebar).toHaveClass(/translate-x-0/);
+    await expect
+      .poll(() => sidebar.evaluate((element) => Math.round(element.getBoundingClientRect().left)))
+      .toBe(0);
 
-    // Clicking the same menu button again should close the floating drawer.
-    await page.click('button[aria-label="Close menu"]');
+    const menuButton = page.getByRole("button", { name: "Close menu" });
+    const geometry = await page.evaluate(() => {
+      const button = document.querySelector('button[aria-label="Close menu"]') as HTMLElement | null;
+      const icon = button?.querySelector("span[aria-hidden='true']") as HTMLElement | null;
+      const sidebar = document.querySelector('[data-testid="app-sidebar-mobile"]') as HTMLElement | null;
+      const search = sidebar?.querySelector('input[aria-label="Search or run"]') as HTMLElement | null;
+      const firstControl = sidebar?.querySelector("input, button") as HTMLElement | null;
+      if (!button || !icon || !sidebar || !search || !firstControl) {
+        throw new Error("Mobile menu geometry elements were not found");
+      }
+      const buttonRect = button.getBoundingClientRect();
+      const iconRect = icon.getBoundingClientRect();
+      const sidebarRect = sidebar.getBoundingClientRect();
+      const searchRect = search.getBoundingClientRect();
+      return {
+        centerDelta: Math.abs(
+          (buttonRect.left + buttonRect.width / 2) -
+          (iconRect.left + iconRect.width / 2),
+        ),
+        firstControlIsSearch: firstControl === search,
+        searchTop: Math.round(searchRect.top),
+        sidebarTop: Math.round(sidebarRect.top),
+      };
+    });
+    expect(geometry.centerDelta).toBeLessThanOrEqual(1);
+    expect(geometry.firstControlIsSearch).toBe(true);
+    expect(geometry.searchTop - geometry.sidebarTop).toBeGreaterThanOrEqual(8);
+
+    await menuButton.click();
     await expect(sidebar).toHaveClass(/-translate-x-full/);
   });
 
   test("mobile settings opens without hitting recovery", async ({ page }) => {
+    await emulateMobileDevice(page);
     await page.setViewportSize({ width: 393, height: 852 });
     await page.goto("/");
     await acceptLegalGate(page);
@@ -1573,7 +1616,8 @@ test.describe("FREED PWA", () => {
     await expect(page.getByText("Cannot access 'mobileView' before initialization")).toHaveCount(0);
   });
 
-  test("mobile settings navigation keeps the selected heading in sync", async ({ page }) => {
+  test("mobile settings uses stacked sections and opens support from danger zone", async ({ page }) => {
+    await emulateMobileDevice(page);
     await page.setViewportSize({ width: 393, height: 852 });
     await page.goto("/");
     await acceptLegalGate(page);
@@ -1582,10 +1626,154 @@ test.describe("FREED PWA", () => {
     await page.getByRole("button", { name: "Settings" }).evaluate((element) => {
       (element as HTMLButtonElement).click();
     });
-    await page.getByRole("button", { name: "Updates", exact: true }).click();
+    await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Settings");
+    await expect(page.getByRole("button", { name: "Support", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
 
-    await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Updates");
-    await expect(page.getByText("Installed version:", { exact: false }).first()).toBeVisible();
+    const scrollContainer = page.getByTestId("settings-scroll-container");
+    await scrollContainer.evaluate((container) => {
+      const updates = container.querySelector('[data-section="updates"]') as HTMLElement | null;
+      updates?.scrollIntoView();
+    });
+    const sectionMetrics = await scrollContainer.evaluate((container) => {
+      const updates = container.querySelector('[data-section="updates"]') as HTMLElement | null;
+      const legal = container.querySelector('[data-section="legal"]') as HTMLElement | null;
+      if (!updates || !legal) {
+        throw new Error("Expected mobile settings sections were not found");
+      }
+      const containerRect = container.getBoundingClientRect();
+      const updatesRect = updates.getBoundingClientRect();
+      const legalRect = legal.getBoundingClientRect();
+      return {
+        updatesVisible: updatesRect.bottom > containerRect.top && updatesRect.top < containerRect.bottom,
+        legalVisible: legalRect.bottom > containerRect.top && legalRect.top < containerRect.bottom,
+        sectionGap: Math.round(legalRect.top - updatesRect.bottom),
+      };
+    });
+    expect(sectionMetrics.updatesVisible).toBe(true);
+    expect(sectionMetrics.legalVisible).toBe(true);
+    expect(sectionMetrics.sectionGap).toBeGreaterThanOrEqual(24);
+    expect(sectionMetrics.sectionGap).toBeLessThanOrEqual(64);
+
+    await scrollContainer.evaluate((container) => {
+      const danger = container.querySelector('[data-section="danger"]') as HTMLElement | null;
+      danger?.scrollIntoView();
+    });
+    const supportButton = page.getByRole("button", { name: /Submit support ticket/ });
+    const debugButton = page.getByRole("button", { name: /Open Debug Panel/ });
+    await expect(supportButton).toBeVisible();
+    await expect(debugButton).toBeVisible();
+    const dangerOrder = await page.evaluate(() => {
+      const support = Array.from(document.querySelectorAll("button")).find((button) =>
+        button.textContent?.includes("Submit support ticket"),
+      ) as HTMLElement | undefined;
+      const debug = Array.from(document.querySelectorAll("button")).find((button) =>
+        button.textContent?.includes("Open Debug Panel"),
+      ) as HTMLElement | undefined;
+      if (!support || !debug) {
+        throw new Error("Danger buttons were not found");
+      }
+      return support.getBoundingClientRect().top < debug.getBoundingClientRect().top;
+    });
+    expect(dangerOrder).toBe(true);
+
+    await supportButton.click();
+    await expect(page.getByRole("heading", { name: "Support" })).toBeVisible();
+    await expect(page.getByText("What happened?", { exact: false })).toBeVisible();
+  });
+
+  test("mobile toolbar balances menu and format controls", async ({ page }) => {
+    await emulateMobileDevice(page);
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await waitForPwaReady(page);
+    await seedNavigationFeed(page);
+
+    const menuButton = page.getByRole("button", { name: "Open menu" });
+    const overflowButton = page.getByTestId("toolbar-overflow-button");
+    const formatButton = page.getByTestId("mobile-toolbar-filter-button");
+    await expect(menuButton).toBeVisible();
+    await expect(overflowButton).toBeVisible();
+    await expect(formatButton).toBeVisible();
+
+    const geometry = await page.evaluate(() => {
+      const menu = document.querySelector('button[aria-label="Open menu"]') as HTMLElement | null;
+      const overflow = document.querySelector('[data-testid="toolbar-overflow-button"]') as HTMLElement | null;
+      const format = document.querySelector('[data-testid="mobile-toolbar-filter-button"]') as HTMLElement | null;
+      if (!menu || !overflow || !format) {
+        throw new Error("Mobile toolbar buttons were not found");
+      }
+      const menuRect = menu.getBoundingClientRect();
+      const overflowRect = overflow.getBoundingClientRect();
+      const formatRect = format.getBoundingClientRect();
+      return {
+        menuLeft: menuRect.left,
+        overflowRight: overflowRect.right,
+        formatLeft: formatRect.left,
+        formatRight: formatRect.right,
+        widths: [menuRect.width, overflowRect.width, formatRect.width],
+      };
+    });
+    expect(geometry.menuLeft).toBeLessThan(geometry.overflowRight);
+    expect(geometry.overflowRight).toBeLessThanOrEqual(geometry.formatLeft);
+    expect(geometry.formatRight).toBeGreaterThan(geometry.overflowRight);
+    for (const width of geometry.widths) {
+      expect(Math.abs(width - 40)).toBeLessThanOrEqual(1);
+    }
+
+    await overflowButton.click();
+    const menuTop = await page.getByTestId("toolbar-overflow-menu").evaluate((menu) =>
+      Math.round(menu.getBoundingClientRect().top),
+    );
+    await page.evaluate(() => window.scrollBy(0, 180));
+    await expect
+      .poll(() => page.getByTestId("toolbar-overflow-menu").evaluate((menu) =>
+        Math.round(menu.getBoundingClientRect().top),
+      ))
+      .toBe(menuTop);
+  });
+
+  test("mobile feed and reader spacing stay balanced", async ({ page }) => {
+    await emulateMobileDevice(page);
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await waitForPwaReady(page);
+    await seedNavigationFeed(page);
+
+    const firstCard = page.locator(".feed-card").filter({ hasText: "Navigation Item One" }).first();
+    await expect(firstCard).toBeVisible();
+
+    const spacing = await page.evaluate(() => {
+      const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+      const card = document.querySelector(".feed-card") as HTMLElement | null;
+      if (!toolbar || !card) {
+        throw new Error("Feed spacing elements were not found");
+      }
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+      return {
+        leftGap: Math.round(cardRect.left),
+        topGap: Math.round(cardRect.top - toolbarRect.bottom),
+      };
+    });
+    expect(Math.abs(spacing.leftGap - spacing.topGap)).toBeLessThanOrEqual(1);
+
+    await firstCard.click();
+    const reader = page.getByTestId("reader-article");
+    await expect(reader).toBeVisible();
+    const readerMetrics = await reader.evaluate((article) => {
+      const style = window.getComputedStyle(article);
+      return {
+        bodyOverflow: document.body.style.overflow,
+        paddingLeft: Number.parseFloat(style.paddingLeft),
+        paddingRight: Number.parseFloat(style.paddingRight),
+      };
+    });
+    expect(readerMetrics.bodyOverflow).toBe("hidden");
+    expect(readerMetrics.paddingLeft).toBeGreaterThanOrEqual(20);
+    expect(readerMetrics.paddingRight).toBeGreaterThanOrEqual(20);
   });
 
   test("app has correct colors and styling", async ({ page }) => {

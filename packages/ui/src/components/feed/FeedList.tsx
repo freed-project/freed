@@ -269,7 +269,7 @@ export function FeedList({
 
   const isMobile = useIsMobile();
   const feedCardHorizontalGutter = isMobile
-    ? FEED_CARD_GAP
+    ? 0
     : DESKTOP_FEED_CARD_HORIZONTAL_GUTTER;
   const { FeedEmptyState } = usePlatform();
   const isLoading = useAppStore((s) => s.isLoading);
@@ -587,7 +587,7 @@ export function FeedList({
                 <div
                   className="mx-auto w-full max-w-2xl max-[959px]:max-w-none"
                   style={{
-                    paddingInline: `${FEED_CARD_GAP}px`,
+                    paddingInline: `${feedCardHorizontalGutter}px`,
                     paddingBottom: `${FEED_CARD_GAP}px`,
                     paddingTop: virtualItem.index === 0 ? `${FEED_CARD_GAP}px` : undefined,
                   }}
