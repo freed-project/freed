@@ -93,6 +93,7 @@ const SLOW_REQUEST_PROCESS_MS = 5_000;
 const SLOW_SAVE_AND_BROADCAST_MS = 2_000;
 const DESKTOP_UI_PRESERVED_TEXT_LIMIT = 240;
 const DESKTOP_UI_CONTENT_TEXT_LIMIT = 600;
+const DESKTOP_UI_LINK_DESCRIPTION_LIMIT = 180;
 const FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES = 4 * 1024 * 1024;
 const FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES = 16 * 1024 * 1024;
 const FRESH_DOC_REBUILD_MIN_SAVINGS_RATIO = 0.1;
@@ -301,6 +302,31 @@ function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
       content: {
         ...next.content,
         text: contentText.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT),
+      },
+    };
+  }
+
+  const linkPreview = next.content.linkPreview;
+  const linkDescription = linkPreview?.description;
+  if (linkDescription && linkDescription.length > DESKTOP_UI_LINK_DESCRIPTION_LIMIT) {
+    next = {
+      ...next,
+      content: {
+        ...next.content,
+        linkPreview: {
+          ...linkPreview,
+          description: linkDescription.slice(0, DESKTOP_UI_LINK_DESCRIPTION_LIMIT),
+        },
+      },
+    };
+  }
+
+  if (next.contentSignals && Object.keys(next.contentSignals.scores ?? {}).length > 0) {
+    next = {
+      ...next,
+      contentSignals: {
+        ...next.contentSignals,
+        scores: {},
       },
     };
   }

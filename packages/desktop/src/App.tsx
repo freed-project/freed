@@ -194,29 +194,6 @@ function App() {
 
   useEffect(() => {
     if (!legalAccepted || !isInitialized) return;
-    void initProviderHealth();
-    startRssPoller();
-    // Wire the LAN relay change subscription + client-count polling.
-    startSync();
-    // Resume cloud sync loops for any previously authenticated providers.
-    startAllCloudSyncs();
-    if (isTauri()) {
-      void startSnapshotManager();
-    }
-    // Start background content fetcher -- processes article HTML fetch queue.
-    startContentFetcher();
-    startSemanticClassifier({
-      isEnabled: () => {
-        const prefs = useDesktopStore.getState().preferences.ai;
-        return prefs.provider === "integrated" && prefs.extractTopics;
-      },
-      subscribeToPreferenceChanges: (callback) =>
-        useDesktopStore.subscribe((state, previous) => {
-          if (state.preferences.ai !== previous.preferences.ai) {
-            callback();
-          }
-        }),
-    });
     startMemoryMonitor({
       getAutomergeStats: getCachedDocStats,
       onCriticalPressure: () => {
@@ -232,6 +209,29 @@ function App() {
       onSample: (snapshot) => {
         noteMemoryPressure(snapshot);
       },
+    });
+    void initProviderHealth();
+    startRssPoller();
+    // Wire the LAN relay change subscription and client-count polling.
+    startSync();
+    // Resume cloud sync loops for any previously authenticated providers.
+    startAllCloudSyncs();
+    if (isTauri()) {
+      void startSnapshotManager();
+    }
+    // Start background content fetcher, which processes the article HTML queue.
+    startContentFetcher();
+    startSemanticClassifier({
+      isEnabled: () => {
+        const prefs = useDesktopStore.getState().preferences.ai;
+        return prefs.provider === "integrated" && prefs.extractTopics;
+      },
+      subscribeToPreferenceChanges: (callback) =>
+        useDesktopStore.subscribe((state, previous) => {
+          if (state.preferences.ai !== previous.preferences.ai) {
+            callback();
+          }
+        }),
     });
     return () => {
       stopRssPoller();
