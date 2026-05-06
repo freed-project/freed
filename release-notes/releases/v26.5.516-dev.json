@@ -3,7 +3,7 @@
   "version": "26.5.516-dev",
   "channel": "dev",
   "dayKey": "26.5.5",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-06T05:14:24.832Z",
   "model": "heuristic",
@@ -136,6 +136,10 @@
       "Support Friends graph pinch zoom"
     ],
     "fixes": [
+      "Friends account-link suggestions use indexed candidate matching, cutting the 1,600 connection Friends mount benchmark from about 2.1 seconds to about 1.0 second locally",
+      "Feed search shares item lookup work across mounted consumers and keeps MiniSearch relevance order instead of sorting the full hit set again on every query",
+      "The 5,000 item feed search regression now has a 120 ms long-task guard and measured roughly 55 to 57 ms locally after the fix",
+      "Hidden renderer heartbeat logging now waits past WebKit hidden timer throttling, reducing false stale-renderer recovery noise while keeping the ten minute recovery path",
       "Reader, feed, and header polish",
       "Read-on-scroll tracking now skips a per-row diagnostic event on the active scroll path",
       "Feed priority ordering now runs in the Automerge workers instead of the normal render path",
@@ -145,6 +149,9 @@
       "Freed Desktop now caps oversized article text in renderer feed-state projections while preserving the stored Automerge content"
     ],
     "followUps": [
+      "Continue installed dev-build soaks with Friends zoom and pan coverage",
+      "Keep watching WebKit memory pressure during locked and hidden sessions",
+      "Use measured budget misses to choose the next surface instead of intuition",
       "Reader, sidebar, and settings UX work",
       "Startup repair ships",
       "Scale Friends view rendering",
@@ -156,5 +163,5 @@
       "Derive map counts off the render path"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.516-dev\n\nPerformance guardrails land\n\n### Features\n\n- Support Friends graph pinch zoom\n\n### Fixes\n\n- Reader, feed, and header polish\n- Read-on-scroll tracking now skips a per-row diagnostic event on the active scroll path\n- Feed priority ordering now runs in the Automerge workers instead of the normal render path\n- Saved toggles plus bulk read and archive actions now update through item patches instead of full document hydration\n- Release validation now exercises sidebar resize through the real browser pointer path\n- Sync and update reliability fixes\n- Freed Desktop now caps oversized article text in renderer feed-state projections while preserving the stored Automerge content\n\n### Follow-ups\n\n- Reader, sidebar, and settings UX work\n- Startup repair ships\n- Scale Friends view rendering\n- Protect desktop scroll performance\n- Skip no-op startup hydration\n- Patch hot feed state mutations\n- Cache feed action scopes\n- Throttle scrapers under memory pressure\n- Derive map counts off the render path\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.516-dev\n\nPerformance guardrails land\n\n### Features\n\n- Support Friends graph pinch zoom\n\n### Fixes\n\n- Friends account-link suggestions use indexed candidate matching, cutting the 1,600 connection Friends mount benchmark from about 2.1 seconds to about 1.0 second locally\n- Feed search shares item lookup work across mounted consumers and keeps MiniSearch relevance order instead of sorting the full hit set again on every query\n- The 5,000 item feed search regression now has a 120 ms long-task guard and measured roughly 55 to 57 ms locally after the fix\n- Hidden renderer heartbeat logging now waits past WebKit hidden timer throttling, reducing false stale-renderer recovery noise while keeping the ten minute recovery path\n- Reader, feed, and header polish\n- Read-on-scroll tracking now skips a per-row diagnostic event on the active scroll path\n- Feed priority ordering now runs in the Automerge workers instead of the normal render path\n- Saved toggles plus bulk read and archive actions now update through item patches instead of full document hydration\n- Release validation now exercises sidebar resize through the real browser pointer path\n- Sync and update reliability fixes\n- Freed Desktop now caps oversized article text in renderer feed-state projections while preserving the stored Automerge content\n\n### Follow-ups\n\n- Continue installed dev-build soaks with Friends zoom and pan coverage\n- Keep watching WebKit memory pressure during locked and hidden sessions\n- Use measured budget misses to choose the next surface instead of intuition\n- Reader, sidebar, and settings UX work\n- Startup repair ships\n- Scale Friends view rendering\n- Protect desktop scroll performance\n- Skip no-op startup hydration\n- Patch hot feed state mutations\n- Cache feed action scopes\n- Throttle scrapers under memory pressure\n- Derive map counts off the render path\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

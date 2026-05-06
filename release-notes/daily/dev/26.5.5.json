@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.5.5",
   "date": "2026-05-05",
-  "preferredDeck": "Performance guardrails land",
+  "preferredDeck": "Desktop performance pass hardens Friends, feed search, and renderer recovery",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -24,8 +24,12 @@
     "Friends view now virtualizes overview rows and keeps dense graph interaction responsive at 1,600 connections",
     "Desktop performance validation now covers the Friends scale path and feed scroll regressions",
     "Feed cards now shed inline media under high memory pressure",
-    "Single-item read marks resolve after enqueueing so scroll and reader-open paths avoid durable flush waits"
+    "Single-item read marks resolve after enqueueing so scroll and reader-open paths avoid durable flush waits",
+    "Friends account-link suggestions use indexed candidate matching, cutting the 1,600 connection Friends mount benchmark from about 2.1 seconds to about 1.0 second locally",
+    "Feed search shares item lookup work across mounted consumers and keeps MiniSearch relevance order instead of sorting the full hit set again",
+    "Desktop hidden renderer heartbeat logging now waits past WebKit hidden timer throttling to avoid false stale-renderer recovery noise",
+    "Friends graph now supports trackpad pinch zoom and pan gestures in the dense graph view"
   ],
   "editorialNotes": [],
-  "updatedAt": "2026-05-06T05:14:24.834Z"
+  "updatedAt": "2026-05-06T05:15:19.685Z"
 }
