@@ -2,13 +2,14 @@
   "channel": "dev",
   "dayKey": "26.5.6",
   "date": "2026-05-06",
-  "preferredDeck": "Freed Desktop keeps WebKit memory maintenance ahead of scrapes",
+  "preferredDeck": "More accurate memory pressure and smoother large views",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Freed Desktop now uses macOS physical footprint for memory-pressure gates, so reclaimable WebKit RSS no longer blocks social scraping by itself",
     "Freed Desktop now trims oversized WebKit caches during normal memory monitoring, before social scrape preflight has to block work",
     "Dense Map views now suppress decorative marker chrome during movement and keep rendered marker data stable while panning",
     "Dense Friends graphs now use deterministic large-graph layout, virtualized sidebar rows, dense Pixi layers, and capped interaction redraws so 1,600-person views mount and zoom within the frame budget",
@@ -40,7 +41,8 @@
     "v26.5.616-dev adds the feed search frame-budget cleanup from PR #477.",
     "v26.5.618-dev replaces the canceled v26.5.617-dev attempt and includes PR #471, PR #472, and PR #478.",
     "v26.5.619-dev adds the dense Friends graph mount and interaction fix from PR #482 and the dense Map interaction trim from PR #480.",
-    "v26.5.620-dev adds proactive WebKit cache trimming during regular memory monitoring from PR #483."
+    "v26.5.620-dev adds proactive WebKit cache trimming during regular memory monitoring from PR #483.",
+    "v26.5.621-dev adds macOS physical-footprint memory gating from PR #484."
   ],
-  "updatedAt": "2026-05-06T22:53:19.098Z"
+  "updatedAt": "2026-05-06T23:24:45.392Z"
 }
