@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { gdriveStartPollLoop, gdriveUploadSafe } from "@freed/sync/cloud";
+import { gdriveDownloadLatest, gdriveStartPollLoop, gdriveUploadSafe } from "@freed/sync/cloud";
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -72,6 +72,46 @@ describe("Google Drive cloud sync", () => {
 
     expect(uploadHeaders).toHaveLength(1);
     expect(uploadHeaders[0]).toMatchObject({ "If-Match": '"server-etag"' });
+  });
+
+  it("can route Drive downloads through a platform fetcher", async () => {
+    const globalFetch = vi.fn();
+    vi.stubGlobal("fetch", globalFetch);
+    const platformFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/files?")) {
+        return jsonResponse({ files: [{ id: "file-1" }] });
+      }
+      if (url.includes("/files/file-1?fields=")) {
+        return jsonResponse({ size: "0" });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    await expect(gdriveDownloadLatest("token", undefined, platformFetch)).resolves.toBeNull();
+
+    expect(platformFetch).toHaveBeenCalled();
+    expect(globalFetch).not.toHaveBeenCalled();
+  });
+
+  it("preserves Google Drive error body details for sync diagnostics", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/files?")) {
+        return jsonResponse({
+          error: {
+            message: "Request had insufficient authentication scopes.",
+            errors: [{ reason: "insufficientPermissions" }],
+          },
+        }, { status: 403, statusText: "Forbidden" });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    await expect(gdriveDownloadLatest("token")).rejects.toMatchObject({
+      message: "GDrive list failed: 403 Forbidden - Request had insufficient authentication scopes. (insufficientPermissions)",
+      status: 403,
+    });
   });
 
   it("omits If-Match instead of sending an invalid md5 checksum as an ETag", async () => {

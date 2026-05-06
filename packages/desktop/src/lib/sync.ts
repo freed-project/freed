@@ -19,6 +19,7 @@ import {
   dropboxDownloadLatest,
   dropboxDeleteFile,
   type CloudProvider,
+  type GoogleDriveFetch,
 } from "@freed/sync/cloud";
 import { getDocBinary, mergeDoc, subscribe, setRelayClientCount } from "./automerge";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
@@ -29,6 +30,12 @@ import {
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
 } from "./background-runtime-coordinator";
+
+let googleDriveFetch: GoogleDriveFetch | undefined;
+
+export function setGoogleDriveFetch(fetcher: GoogleDriveFetch | undefined): void {
+  googleDriveFetch = fetcher;
+}
 
 const FALLBACK_SYNC_PORT = import.meta.env.VITE_FREED_SYNC_PORT || "8765";
 const RELAY_POLL_TIMEOUT_MS = 5_000;
@@ -710,8 +717,9 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
 
   // Immediate pull to catch up on any changes since last session.
   try {
-    const download = provider === "gdrive" ? gdriveDownloadLatest : dropboxDownloadLatest;
-    const remote = await download(await resolveToken(), signal);
+    const remote = provider === "gdrive"
+      ? await gdriveDownloadLatest(await resolveToken(), signal, googleDriveFetch)
+      : await dropboxDownloadLatest(await resolveToken(), signal);
     if (remote) {
       await mergeDoc(remote);
       console.log("[CloudSync/%s] Initial merge (%d bytes)", provider, remote.length);
@@ -789,7 +797,7 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
       while (!signal.aborted) {
         const pollToken = await resolveToken();
         try {
-          await gdriveStartPollLoop(pollToken, onRemoteChange, signal, cloudLog);
+          await gdriveStartPollLoop(pollToken, onRemoteChange, signal, cloudLog, googleDriveFetch);
           return;
         } catch (error) {
           if (signal.aborted) return;
@@ -875,7 +883,7 @@ export function stopAllCloudSyncs(): void {
 export async function deleteCloudFile(provider: CloudProvider, token: string): Promise<void> {
   stopCloudSync(provider);
   if (provider === "gdrive") {
-    await gdriveDeleteFile(token);
+    await gdriveDeleteFile(token, googleDriveFetch);
   } else {
     await dropboxDeleteFile(token);
   }
@@ -913,7 +921,7 @@ export function scheduleCloudUpload(provider: CloudProvider, token?: string): vo
               const uploadToken = token ?? await getValidCloudToken(provider);
               if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
               if (provider === "gdrive") {
-                await gdriveUploadSafe(uploadToken, binary);
+                await gdriveUploadSafe(uploadToken, binary, googleDriveFetch);
               } else {
                 await dropboxUploadSafe(uploadToken, binary);
               }
