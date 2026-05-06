@@ -32,7 +32,7 @@ import { filterFeedItems, isFriendAuthoredItem, sortByPriority } from "@freed/sh
 import type { Account, FeedItem, FilterOptions, Friend, Person } from "@freed/shared";
 
 const SEARCH_PRESERVED_TEXT_LIMIT = 1_200;
-const SEARCH_INDEX_CHUNK_SIZE = 250;
+const SEARCH_INDEX_CHUNK_SIZE = 100;
 const SEARCH_INDEX_RELEASE_DELAY_MS = 75;
 
 /** Flat document shape fed to MiniSearch (one per FeedItem). */

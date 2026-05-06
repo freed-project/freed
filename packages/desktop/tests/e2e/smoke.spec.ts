@@ -1433,6 +1433,9 @@ test("settings backdrop stays blurred during high memory pressure", async ({ app
   const { page } = app;
   await page.evaluate(async (settingsStorePath) => {
     document.documentElement.dataset.memoryPressure = "high";
+    const response = await fetch(settingsStorePath);
+    if (!response.ok) throw new Error(`Failed to load settings store: ${response.status}`);
+    await response.text();
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openDefault();
   }, SETTINGS_STORE_PATH);

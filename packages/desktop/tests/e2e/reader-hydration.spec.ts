@@ -240,7 +240,7 @@ test("reader author link opens the channel details in Friends", async ({ app }) 
   await expect(sidebar).toContainText("1 captured post");
 });
 
-test("X post reader hydration renders replies with media", async ({ app, ipc }) => {
+test("X post reader offers native replies first and loads inline replies on beta action", async ({ app, ipc }) => {
   await app.goto();
   await app.waitForReady();
   await ipc.setHandler("x_api_request", () =>
@@ -387,12 +387,22 @@ test("X post reader hydration renders replies with media", async ({ app, ipc }) 
   });
 
   await app.page.locator("article").filter({ hasText: X_TITLE }).first().click();
-  await expect(app.page.getByText("Replies")).toBeVisible();
+  await expect(app.page.getByRole("button", { name: "View replies on X" })).toBeVisible();
+  await expect(app.page.getByRole("button", { name: "Load replies inline, beta" })).toBeVisible();
+  await expect
+    .poll(async () => (await ipc.invocations()).some((call) => call.cmd === "x_api_request"))
+    .toBe(false);
+  await app.page.getByRole("button", { name: "View replies on X" }).click();
+  await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toBe(
+    "https://x.com/SpaceX/status/2048427420",
+  );
+  await app.page.getByRole("button", { name: "Load replies inline, beta" }).click();
+  await expect(app.page.getByRole("heading", { name: "Replies" })).toBeVisible();
   await expect(app.page.getByText(X_REPLY_TEXT)).toBeVisible();
   await expect(app.page.locator(`img[src="${X_REPLY_MEDIA}:large"]`)).toBeVisible();
 });
 
-test("Facebook post reader hydration renders inline comments with media", async ({ app, ipc }) => {
+test("Facebook post reader offers native replies first and loads inline comments on beta action", async ({ app, ipc }) => {
   await app.goto();
   await app.waitForReady();
   await ipc.setHandler("fb_scrape_comments", () => ({
@@ -414,15 +424,25 @@ test("Facebook post reader hydration renders inline comments with media", async 
   await injectItems(app.page);
 
   await app.page.locator("article").filter({ hasText: FB_TITLE }).first().click();
+  await expect(app.page.getByRole("button", { name: "View replies on Facebook" })).toBeVisible();
+  await expect(app.page.getByRole("button", { name: "Load replies inline, beta" })).toBeVisible();
+  await expect
+    .poll(async () => (await ipc.invocations()).some((call) => call.cmd === "fb_scrape_comments"))
+    .toBe(false);
+  await app.page.getByRole("button", { name: "View replies on Facebook" }).click();
+  await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toBe(
+    "https://www.facebook.com/fb-author/posts/123",
+  );
+  await app.page.getByRole("button", { name: "Load replies inline, beta" }).click();
   await expect
     .poll(async () => (await ipc.invocations()).some((call) => call.cmd === "fb_scrape_comments"))
     .toBe(true);
-  await expect(app.page.getByText("Replies")).toBeVisible();
+  await expect(app.page.getByRole("heading", { name: "Replies" })).toBeVisible();
   await expect(app.page.getByText(FB_REPLY_TEXT)).toBeVisible();
   await expect(app.page.locator(`img[src="${FB_REPLY_MEDIA}"]`)).toBeVisible();
 });
 
-test("Instagram reader hydration renders post comments inside Freed", async ({ app, ipc }) => {
+test("Instagram reader offers native replies first and loads inline comments on beta action", async ({ app, ipc }) => {
   await app.goto();
   await app.waitForReady();
   await ipc.setHandler("ig_scrape_comments", () => ({
@@ -444,10 +464,20 @@ test("Instagram reader hydration renders post comments inside Freed", async ({ a
   await injectItems(app.page);
 
   await app.page.locator("article").filter({ hasText: IG_TITLE }).first().click();
+  await expect(app.page.getByRole("button", { name: "View replies on Instagram" })).toBeVisible();
+  await expect(app.page.getByRole("button", { name: "Load replies inline, beta" })).toBeVisible();
+  await expect
+    .poll(async () => (await ipc.invocations()).some((call) => call.cmd === "ig_scrape_comments"))
+    .toBe(false);
+  await app.page.getByRole("button", { name: "View replies on Instagram" }).click();
+  await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toBe(
+    "https://www.instagram.com/reel/ABC123/",
+  );
+  await app.page.getByRole("button", { name: "Load replies inline, beta" }).click();
   await expect
     .poll(async () => (await ipc.invocations()).some((call) => call.cmd === "ig_scrape_comments"))
     .toBe(true);
-  await expect(app.page.getByText("Replies")).toBeVisible();
+  await expect(app.page.getByRole("heading", { name: "Replies" })).toBeVisible();
   await expect(app.page.getByText(IG_REPLY_TEXT)).toBeVisible();
   await expect(app.page.locator(`img[src="${IG_REPLY_MEDIA}"]`)).toBeVisible();
 });

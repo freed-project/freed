@@ -24,7 +24,12 @@ import {
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import { buildSettingsSectionMetas } from "../../lib/settings-sections.js";
-import { getFeedActionScope, getFeedArchiveCounts } from "../../lib/feed-action-scope.js";
+import {
+  collectArchivableFeedActionIds,
+  collectUnreadFeedActionIds,
+  getFeedActionCounts,
+  getFeedArchiveCounts,
+} from "../../lib/feed-action-scope.js";
 import { buildTopLevelTagFilters, collectAllTags } from "../../lib/tag-navigation.js";
 import { applyFeedSearch, navigateToFeedView } from "../../lib/workspace-navigation.js";
 import { SearchField } from "../SearchField.js";
@@ -353,10 +358,9 @@ export function SearchJumpField({
   );
 
   const {
-    unreadItemIds: unreadScopeIds,
-    archivableItemIds: archivableScopeIds,
+    unreadCount: unreadScopeCount,
     archivableCount: archivableScopeCount,
-  } = useMemo(() => getFeedActionScope(commandScopeItems), [commandScopeItems]);
+  } = useMemo(() => getFeedActionCounts(commandScopeItems), [commandScopeItems]);
   const { archivedCount, savedArchivedCount } = useMemo(() => getFeedArchiveCounts(items), [items]);
   const enabledFeeds = useMemo(
     () =>
@@ -451,7 +455,7 @@ export function SearchJumpField({
         tagFilters,
         currentSourceId,
         selectedItem,
-        unreadScopeCount: activeView === "feed" ? unreadScopeIds.length : 0,
+        unreadScopeCount: activeView === "feed" ? unreadScopeCount : 0,
         archivableScopeCount: activeView === "feed" ? archivableScopeCount : 0,
         savedArchivedCount,
         archivedCount,
@@ -544,12 +548,12 @@ export function SearchJumpField({
         toggleCurrentItemLiked:
           selectedItem && toggleLiked ? () => toggleLiked(selectedItem.globalId) : null,
         markScopeRead:
-          activeView === "feed" && unreadScopeIds.length > 0
-            ? () => markItemsAsRead(unreadScopeIds)
+          activeView === "feed" && unreadScopeCount > 0
+            ? () => markItemsAsRead(collectUnreadFeedActionIds(commandScopeItems))
             : null,
         archiveScopeRead:
-          activeView === "feed" && archivableScopeIds.length > 0
-            ? () => archiveItems(archivableScopeIds)
+          activeView === "feed" && archivableScopeCount > 0
+            ? () => archiveItems(collectArchivableFeedActionIds(commandScopeItems))
             : null,
         unarchiveSavedItems,
         syncRssNow,
@@ -572,8 +576,8 @@ export function SearchJumpField({
       enabledFeeds,
       factoryReset,
       archiveItems,
-      archivableScopeIds,
       clearQueryForNavigation,
+      commandScopeItems,
       createConnectionPersonFromAccounts,
       inputValue,
       ensurePersonForAccount,
@@ -602,7 +606,7 @@ export function SearchJumpField({
       toggleArchived,
       toggleLiked,
       toggleSaved,
-      unreadScopeIds,
+      unreadScopeCount,
       unarchiveSavedItems,
       updatePerson,
       openLibraryDialog,
