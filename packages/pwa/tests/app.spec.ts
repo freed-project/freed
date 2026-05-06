@@ -1825,6 +1825,31 @@ test.describe("FREED PWA", () => {
     expect(readerMetrics.paddingRight).toBeGreaterThanOrEqual(20);
   });
 
+  test("inline reader does not add a second toolbar divider", async ({ page }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await waitForPwaReady(page);
+    await seedNavigationFeed(page);
+
+    const firstCard = page.locator(".feed-card").filter({ hasText: "Navigation Item One" }).first();
+    await expect(firstCard).toBeVisible();
+    await firstCard.click();
+
+    const reader = page.getByTestId("reader-article");
+    await expect(reader).toBeVisible();
+    const metrics = await reader.evaluate((article) => {
+      const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+      const scroller = article.parentElement;
+      return {
+        toolbarVisible: !!toolbar,
+        scrollerHasFadeMask: scroller?.classList.contains("theme-scroll-fade-y") ?? false,
+      };
+    });
+    expect(metrics.toolbarVisible).toBe(true);
+    expect(metrics.scrollerHasFadeMask).toBe(false);
+  });
+
   test("app has correct colors and styling", async ({ page }) => {
     await page.goto("/");
     await acceptLegalGate(page);

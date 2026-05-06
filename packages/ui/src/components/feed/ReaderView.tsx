@@ -580,7 +580,7 @@ export function ReaderView({
     <div
       className={
         inline
-          ? "theme-scroll-fade-y flex-1 min-w-0 overflow-auto bg-transparent"
+          ? "flex-1 min-w-0 overflow-auto bg-transparent"
           : "theme-scroll-fade-y fixed inset-0 z-50 overflow-auto bg-[var(--theme-bg-root)]"
       }
     >
