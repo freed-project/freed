@@ -302,6 +302,7 @@ export interface PlatformConfig {
     options: {
       cacheMode: ReaderOfflineCacheMode;
       pin: boolean;
+      includeReplies?: boolean;
     },
   ) => Promise<ReaderHydrationResult>;
 
