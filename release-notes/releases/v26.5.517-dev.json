@@ -3,7 +3,7 @@
   "version": "26.5.517-dev",
   "channel": "dev",
   "dayKey": "26.5.5",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-06T06:48:05.441Z",
   "model": "heuristic",
@@ -148,7 +148,7 @@
       "Saved toggles plus bulk read and archive actions now update through item patches instead of full document hydration",
       "Release validation now exercises sidebar resize through the real browser pointer path",
       "Sync and update reliability fixes",
-      "Freed Desktop now caps oversized article text in renderer feed-state projections while preserving the stored Automerge content",
+      "Freed Desktop now compacts oversized synced article text before hydration and feed writes, cutting the WebKit memory load from large libraries",
       "Friends account-link suggestions use indexed candidate matching, cutting the 1,600 connection Friends mount benchmark from about 2.1 seconds to about 1.0 second locally"
     ],
     "followUps": [
@@ -167,5 +167,5 @@
       "Use measured budget misses to choose the next surface instead of intuition"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.517-dev\n\nDesktop performance pass hardens Friends, feed search, and renderer recovery\n\n### Features\n\n- Support Friends graph pinch zoom\n\n### Fixes\n\n- Reader, feed, and header polish\n- Read-on-scroll tracking now skips a per-row diagnostic event on the active scroll path\n- Feed priority ordering now runs in the Automerge workers instead of the normal render path\n- Saved toggles plus bulk read and archive actions now update through item patches instead of full document hydration\n- Release validation now exercises sidebar resize through the real browser pointer path\n- Sync and update reliability fixes\n- Freed Desktop now caps oversized article text in renderer feed-state projections while preserving the stored Automerge content\n- Friends account-link suggestions use indexed candidate matching, cutting the 1,600 connection Friends mount benchmark from about 2.1 seconds to about 1.0 second locally\n\n### Follow-ups\n\n- Reader, sidebar, and settings UX work\n- Startup repair ships\n- Performance guardrails land\n- Scale Friends view rendering\n- Protect desktop scroll performance\n- Skip no-op startup hydration\n- Patch hot feed state mutations\n- Cache feed action scopes\n- Throttle scrapers under memory pressure\n- Derive map counts off the render path\n- Continue installed dev-build soaks with Friends zoom and pan coverage\n- Keep watching WebKit memory pressure during locked and hidden sessions\n- Use measured budget misses to choose the next surface instead of intuition\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.517-dev\n\nDesktop performance pass hardens Friends, feed search, and renderer recovery\n\n### Features\n\n- Support Friends graph pinch zoom\n\n### Fixes\n\n- Reader, feed, and header polish\n- Read-on-scroll tracking now skips a per-row diagnostic event on the active scroll path\n- Feed priority ordering now runs in the Automerge workers instead of the normal render path\n- Saved toggles plus bulk read and archive actions now update through item patches instead of full document hydration\n- Release validation now exercises sidebar resize through the real browser pointer path\n- Sync and update reliability fixes\n- Freed Desktop now compacts oversized synced article text before hydration and feed writes, cutting the WebKit memory load from large libraries\n- Friends account-link suggestions use indexed candidate matching, cutting the 1,600 connection Friends mount benchmark from about 2.1 seconds to about 1.0 second locally\n\n### Follow-ups\n\n- Reader, sidebar, and settings UX work\n- Startup repair ships\n- Performance guardrails land\n- Scale Friends view rendering\n- Protect desktop scroll performance\n- Skip no-op startup hydration\n- Patch hot feed state mutations\n- Cache feed action scopes\n- Throttle scrapers under memory pressure\n- Derive map counts off the render path\n- Continue installed dev-build soaks with Friends zoom and pan coverage\n- Keep watching WebKit memory pressure during locked and hidden sessions\n- Use measured budget misses to choose the next surface instead of intuition\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
