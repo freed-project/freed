@@ -80,7 +80,7 @@ const RECOVERY_WINDOW_LABEL: &str = "startup-recovery";
 const RECOVERY_WINDOW_ROUTE: &str = "startup-recovery.html";
 const RENDERER_HEARTBEAT_WATCHDOG_INTERVAL: Duration = Duration::from_secs(15);
 const RENDERER_STALE_LOG_AFTER: Duration = Duration::from_secs(45);
-const RENDERER_HIDDEN_STALE_LOG_AFTER: Duration = Duration::from_secs(300);
+const RENDERER_HIDDEN_STALE_LOG_AFTER: Duration = Duration::from_secs(480);
 const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(75);
 const RENDERER_HIDDEN_RECOVERY_AFTER: Duration = Duration::from_secs(600);
 const BACKGROUND_REQUIRED_HEALTHY_HEARTBEATS: u64 = 2;
@@ -1608,6 +1608,12 @@ mod renderer_watchdog_tests {
             renderer_stale_log_after(false, "visible"),
             RENDERER_HIDDEN_STALE_LOG_AFTER
         );
+    }
+
+    #[test]
+    fn hidden_renderer_stale_log_waits_past_webkit_timer_throttling() {
+        assert!(RENDERER_HIDDEN_STALE_LOG_AFTER > Duration::from_secs(300));
+        assert!(RENDERER_HIDDEN_STALE_LOG_AFTER < RENDERER_HIDDEN_RECOVERY_AFTER);
     }
 
     #[test]
