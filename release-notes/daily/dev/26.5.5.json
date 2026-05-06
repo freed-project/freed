@@ -20,6 +20,7 @@
     "Freed Desktop caps oversized article text before projecting feed state into the renderer",
     "Feed cards render bounded text previews for long article bodies",
     "Desktop memory pressure caps at 4 GiB before background social scraping starts",
+    "Desktop social scrapers now throttle under high memory pressure",
     "Friends view now virtualizes overview rows and keeps dense graph interaction responsive at 1,600 connections",
     "Desktop performance validation now covers the Friends scale path and feed scroll regressions",
     "Feed cards now shed inline media under high memory pressure",
