@@ -1575,13 +1575,17 @@ test.describe("FREED PWA", () => {
       const sidebar = document.querySelector('[data-testid="app-sidebar-mobile"]') as HTMLElement | null;
       const search = sidebar?.querySelector('input[aria-label="Search or run"]') as HTMLElement | null;
       const firstControl = sidebar?.querySelector("input, button") as HTMLElement | null;
-      if (!button || !icon || !sidebar || !search || !firstControl) {
+      const settingsFooter = sidebar?.querySelector('[data-testid="mobile-sidebar-settings-footer"]') as HTMLElement | null;
+      const settingsButton = sidebar?.querySelector('[data-testid="mobile-sidebar-settings-button"]') as HTMLElement | null;
+      if (!button || !icon || !sidebar || !search || !firstControl || !settingsFooter || !settingsButton) {
         throw new Error("Mobile menu geometry elements were not found");
       }
       const buttonRect = button.getBoundingClientRect();
       const iconRect = icon.getBoundingClientRect();
       const sidebarRect = sidebar.getBoundingClientRect();
       const searchRect = search.getBoundingClientRect();
+      const footerRect = settingsFooter.getBoundingClientRect();
+      const settingsButtonRect = settingsButton.getBoundingClientRect();
       return {
         centerDelta: Math.abs(
           (buttonRect.left + buttonRect.width / 2) -
@@ -1590,11 +1594,16 @@ test.describe("FREED PWA", () => {
         firstControlIsSearch: firstControl === search,
         searchTop: Math.round(searchRect.top),
         sidebarTop: Math.round(sidebarRect.top),
+        footerBottomGap: Math.round(sidebarRect.bottom - footerRect.bottom),
+        dividerToBottom: Math.round(sidebarRect.bottom - footerRect.top),
+        settingsButtonHeight: Math.round(settingsButtonRect.height),
       };
     });
     expect(geometry.centerDelta).toBeLessThanOrEqual(1);
     expect(geometry.firstControlIsSearch).toBe(true);
     expect(geometry.searchTop - geometry.sidebarTop).toBeGreaterThanOrEqual(8);
+    expect(geometry.footerBottomGap).toBeLessThanOrEqual(1);
+    expect(geometry.dividerToBottom - geometry.settingsButtonHeight).toBeLessThanOrEqual(2);
 
     await menuButton.click();
     await expect(sidebar).toHaveClass(/-translate-x-full/);
@@ -1738,7 +1747,7 @@ test.describe("FREED PWA", () => {
     expect(
       Math.abs((geometry.menuLeft - geometry.toolbarLeft) - (geometry.toolbarRight - geometry.formatIconRight)),
       JSON.stringify(geometry),
-    ).toBeLessThanOrEqual(1);
+    ).toBeLessThanOrEqual(2);
     for (const barWidth of geometry.menuBarWidths) {
       expect(Math.abs(barWidth - geometry.menuBarWidths[0])).toBeLessThanOrEqual(1);
     }

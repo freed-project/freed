@@ -1832,17 +1832,18 @@ export function Sidebar({
       >
         {sidebarBody}
         <div
-          className="shrink-0 border-t border-[var(--theme-border-subtle)] pt-2"
+          data-testid="mobile-sidebar-settings-footer"
+          className="shrink-0 border-t border-[var(--theme-border-subtle)]"
           style={{
             paddingInline: `${sidebarPaddingInlinePx}px`,
-            paddingBottom: compactRail
-              ? `calc(${COMPACT_RAIL_OUTER_INSET_PX}px + env(safe-area-inset-bottom, 0px) + 0.5rem)`
-              : `calc(${sidebarPaddingBlockPx}px + env(safe-area-inset-bottom, 0px) + 0.5rem)`,
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
           }}
         >
           <button
+            type="button"
+            data-testid="mobile-sidebar-settings-button"
             onClick={handleOpenSettingsFromMobileSidebar}
-            className={`w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-2.5 rounded-xl text-left text-base text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}
+            className={`w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} ${rowVerticalPaddingClass} rounded-lg text-left text-base text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}
           >
             {settingsButtonContent}
           </button>
