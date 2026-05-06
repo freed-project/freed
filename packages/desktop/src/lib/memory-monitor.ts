@@ -8,6 +8,8 @@ const MEMORY_LOG_INTERVAL = 4;
 const BYTES_PER_GIB = 1024 * 1024 * 1024;
 const MIN_CRITICAL_RESIDENT_BYTES = 3.5 * BYTES_PER_GIB;
 const MAX_CRITICAL_RESIDENT_BYTES = 4 * BYTES_PER_GIB;
+const WEBKIT_CACHE_TRIM_AT_BYTES = 768 * 1024 * 1024;
+const WEBKIT_CACHE_TRIM_COOLDOWN_MS = 5 * 60_000;
 const HIGH_RELAY_DOC_BYTES = 64 * 1024 * 1024;
 const PRESSURE_SAMPLE_MAX_AGE_MS = 30_000;
 
@@ -53,6 +55,12 @@ interface ScrapeMemoryPreparation {
   deferredReason?: string;
 }
 
+interface WebkitCacheTrimResult {
+  beforeBytes: number;
+  afterBytes: number;
+  cacheTrimmed: boolean;
+}
+
 interface BrowserMemoryStats {
   usedJSHeapSize: number;
   totalJSHeapSize: number;
@@ -74,6 +82,33 @@ function canSampleNativeMemoryStats(): boolean {
   return isTauri() || import.meta.env.VITE_TEST_TAURI === "1";
 }
 
+function scheduleWebkitCacheTrim(native: NativeRuntimeMemoryStats): void {
+  if (!canSampleNativeMemoryStats()) return;
+  const cacheBytes = native.webkitCacheBytes ?? 0;
+  if (cacheBytes <= WEBKIT_CACHE_TRIM_AT_BYTES) return;
+  if (webkitCacheTrimLease) return;
+
+  const now = Date.now();
+  if (now - lastWebkitCacheTrimAt < WEBKIT_CACHE_TRIM_COOLDOWN_MS) return;
+  lastWebkitCacheTrimAt = now;
+
+  webkitCacheTrimLease = invoke<WebkitCacheTrimResult>("trim_webkit_network_cache_now")
+    .then((result) => {
+      if (!result.cacheTrimmed) return;
+      log.warn(
+        `[memory] trimmed WebKit cache before=${formatBytesForMemoryLog(result.beforeBytes)} ` +
+          `after=${formatBytesForMemoryLog(result.afterBytes)}`,
+      );
+    })
+    .catch((error) => {
+      const msg = error instanceof Error ? error.message : String(error);
+      log.warn(`[memory] WebKit cache trim failed: ${msg}`);
+    })
+    .finally(() => {
+      webkitCacheTrimLease = null;
+    });
+}
+
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let startupFollowupHandles: Array<ReturnType<typeof setTimeout>> = [];
 let sampleCount = 0;
@@ -87,6 +122,8 @@ let socialPreflightLease: Promise<ScrapeMemoryPreparation> | null = null;
 let socialPreflightDeferredUntil = 0;
 let socialPreflightDeferredResult: ScrapeMemoryPreparation | null = null;
 let socialPreflightDeferredReason = "";
+let webkitCacheTrimLease: Promise<void> | null = null;
+let lastWebkitCacheTrimAt = 0;
 
 type MemoryPressureLevel = "normal" | "high" | "critical";
 
@@ -230,6 +267,7 @@ async function sampleRuntimeMemory(
   };
   setRuntimeMemory(snapshot);
   options.onSample?.(snapshot);
+  scheduleWebkitCacheTrim(native);
 
   sampleCount += 1;
   const shouldLog =

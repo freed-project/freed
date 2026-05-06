@@ -68,6 +68,11 @@ export function tauriInitScript(): string {
         relayDocBytes: 0,
         relayClientCount: 0,
       }),
+      trim_webkit_network_cache_now: () => ({
+        beforeBytes: 16 * 1024 * 1024,
+        afterBytes: 16 * 1024 * 1024,
+        cacheTrimmed: false,
+      }),
       get_ai_hardware_profile: (args) => ({
         totalMemoryBytes: 16 * 1024 * 1024 * 1024,
         availableMemoryBytes: 10 * 1024 * 1024 * 1024,

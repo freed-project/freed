@@ -1071,6 +1071,14 @@ struct ScrapeMemoryPreparation {
     may_proceed: bool,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebkitCacheTrimResult {
+    before_bytes: u64,
+    after_bytes: u64,
+    cache_trimmed: bool,
+}
+
 struct WebkitMemoryStats {
     total_resident_bytes: u64,
     process_count: u64,
@@ -2620,10 +2628,14 @@ fn collect_webkit_network_cache_files(root: &Path, files: &mut Vec<(PathBuf, u64
     }
 }
 
-fn trim_webkit_network_cache_root(webkit_root: &Path) -> bool {
+fn trim_webkit_network_cache_root_with_result(webkit_root: &Path) -> WebkitCacheTrimResult {
     let webkit_bytes = dir_size_bytes(&webkit_root).unwrap_or(0);
     if webkit_bytes <= WEBKIT_CACHE_TRIM_AT_BYTES {
-        return false;
+        return WebkitCacheTrimResult {
+            before_bytes: webkit_bytes,
+            after_bytes: webkit_bytes,
+            cache_trimmed: false,
+        };
     }
 
     let network_cache_root = webkit_root.join("NetworkCache");
@@ -2643,14 +2655,22 @@ fn trim_webkit_network_cache_root(webkit_root: &Path) -> bool {
         }
     }
 
-    trimmed
+    WebkitCacheTrimResult {
+        before_bytes: webkit_bytes,
+        after_bytes: current_bytes,
+        cache_trimmed: trimmed,
+    }
 }
 
-fn trim_webkit_network_cache(app: &tauri::AppHandle) -> bool {
+fn trim_webkit_network_cache(app: &tauri::AppHandle) -> WebkitCacheTrimResult {
     let Ok(cache_root) = app.path().app_cache_dir() else {
-        return false;
+        return WebkitCacheTrimResult {
+            before_bytes: 0,
+            after_bytes: 0,
+            cache_trimmed: false,
+        };
     };
-    trim_webkit_network_cache_root(&cache_root.join("WebKit"))
+    trim_webkit_network_cache_root_with_result(&cache_root.join("WebKit"))
 }
 
 fn scrape_memory_start_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
@@ -2788,7 +2808,8 @@ async fn prepare_social_scrape_memory_internal(
     let reason = format!("{} {} memory preflight", provider, operation);
     let recycled_scraper_windows =
         recycle_social_scraper_windows_except(app, preserve_label, &reason);
-    let cache_trimmed = trim_webkit_network_cache(app);
+    let cache_trim_result = trim_webkit_network_cache(app);
+    let cache_trimmed = cache_trim_result.cache_trimmed;
 
     if recycled_scraper_windows || cache_trimmed {
         tokio::time::sleep(Duration::from_millis(700)).await;
@@ -2949,6 +2970,20 @@ async fn get_runtime_memory_stats(
         relay_doc_bytes,
         relay_client_count,
     ))
+}
+
+#[tauri::command]
+async fn trim_webkit_network_cache_now(
+    app: tauri::AppHandle,
+) -> Result<WebkitCacheTrimResult, String> {
+    let result = trim_webkit_network_cache(&app);
+    if result.cache_trimmed {
+        info!(
+            "[memory] webkit cache trimmed during monitor sample before_bytes={} after_bytes={}",
+            result.before_bytes, result.after_bytes
+        );
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -6671,6 +6706,7 @@ pub fn run() {
             cancel_local_ai_model_download,
             get_sync_client_count,
             get_runtime_memory_stats,
+            trim_webkit_network_cache_now,
             get_recent_runtime_health,
             get_ai_hardware_profile,
             prepare_social_scrape_memory,
@@ -6902,7 +6938,11 @@ mod tests {
             .unwrap();
         file.set_len(WEBKIT_CACHE_TRIM_AT_BYTES + 1).unwrap();
 
-        assert!(trim_webkit_network_cache_root(&temp.path().join("WebKit")));
+        let result = trim_webkit_network_cache_root_with_result(&temp.path().join("WebKit"));
+
+        assert!(result.cache_trimmed);
+        assert!(result.before_bytes > WEBKIT_CACHE_TRIM_AT_BYTES);
+        assert!(result.after_bytes <= WEBKIT_CACHE_TRIM_TARGET_BYTES);
         assert!(!record_file.exists());
     }
 
