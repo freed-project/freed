@@ -60,6 +60,25 @@ describe("automerge worker memory routing", () => {
     expect(workerSource).toContain(".map(trimFeedItemForDesktopUi)");
   });
 
+  it("compacts oversized feed text before hydrating loaded documents", () => {
+    const initBody = caseBody("INIT");
+    const replaceBody = caseBody("REPLACE_DOC");
+    const mergeBody = caseBody("MERGE_DOC");
+
+    expect(workerSource).toContain("compactLoadedFeedText");
+    expect(initBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text\")");
+    expect(replaceBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text\")");
+    expect(mergeBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text after merge\")");
+    expect(initBody.indexOf("compactLoadedFeedText")).toBeLessThan(initBody.indexOf("saveAndBroadcast"));
+  });
+
+  it("compacts oversized feed text before item writes", () => {
+    for (const caseName of ["ADD_FEED_ITEM", "ADD_FEED_ITEMS", "BATCH_REFRESH_FEEDS", "BATCH_IMPORT_ITEMS"]) {
+      expect(caseBody(caseName)).toContain("compactFeedItemTextForSync");
+    }
+    expect(caseBody("UPDATE_FEED_ITEM")).toContain("compactFeedItemTextForSync(item)");
+  });
+
   it("last sync persists without rehydrating the full document", () => {
     const body = caseBody("UPDATE_LAST_SYNC");
 
