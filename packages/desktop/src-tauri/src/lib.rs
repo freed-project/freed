@@ -1862,6 +1862,75 @@ async fn google_api_request(url: String, access_token: String) -> Result<String,
     Ok(body)
 }
 
+#[derive(serde::Serialize)]
+struct GoogleDriveResponse {
+    status: u16,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+/// Make a Google Drive API request through the native networking stack.
+#[tauri::command]
+async fn google_drive_request(
+    url: String,
+    method: Option<String>,
+    headers: Option<Vec<(String, String)>>,
+    body: Option<Vec<u8>>,
+) -> Result<GoogleDriveResponse, String> {
+    let parsed = url::Url::parse(&url)
+        .map_err(|e| format!("Invalid Google Drive API URL: {}", e))?;
+    let allowed_path = parsed.path().starts_with("/drive/v3/")
+        || parsed.path().starts_with("/upload/drive/v3/");
+    if parsed.scheme() != "https" || parsed.host_str() != Some("www.googleapis.com") || !allowed_path {
+        return Err("Google Drive API URL is not allowed".to_string());
+    }
+
+    let method_name = method.unwrap_or_else(|| "GET".to_string()).to_uppercase();
+    let method = match method_name.as_str() {
+        "GET" => reqwest::Method::GET,
+        "POST" => reqwest::Method::POST,
+        "PATCH" => reqwest::Method::PATCH,
+        "DELETE" => reqwest::Method::DELETE,
+        _ => return Err(format!("Google Drive API method is not allowed: {}", method_name)),
+    };
+
+    let client = reqwest::Client::builder()
+        .user_agent("Freed/1.0 (https://freed.wtf)")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut builder = client.request(method, parsed);
+    for (key, value) in headers.unwrap_or_default() {
+        builder = builder.header(&key, &value);
+    }
+    if let Some(body) = body {
+        builder = builder.body(body);
+    }
+
+    let response = builder
+        .send()
+        .await
+        .map_err(|e| format!("Google Drive request failed: {}", e))?;
+    let status = response.status().as_u16();
+    let headers = response
+        .headers()
+        .iter()
+        .filter_map(|(key, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (key.as_str().to_string(), value.to_string()))
+        })
+        .collect();
+    let body = response.bytes().await.map_err(|e| e.to_string())?.to_vec();
+
+    Ok(GoogleDriveResponse {
+        status,
+        headers,
+        body,
+    })
+}
+
 /// Fetch any URL and return its body as bytes for permanent local media archive.
 #[tauri::command]
 async fn fetch_binary_url(url: String) -> Result<Vec<u8>, String> {
@@ -6564,6 +6633,7 @@ pub fn run() {
             retry_startup_after_crash,
             fetch_url,
             google_api_request,
+            google_drive_request,
             fetch_binary_url,
             x_api_request,
             get_local_ip,

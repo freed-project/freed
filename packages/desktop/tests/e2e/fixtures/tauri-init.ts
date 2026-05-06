@@ -28,6 +28,7 @@ export function tauriInitScript(): string {
       broadcast_doc: timedHandler('broadcast_doc', function() { return null; }),
       fetch_url: () => '',
       google_api_request: () => '{"connections":[],"nextSyncToken":"test-sync-token"}',
+      google_drive_request: () => ({ status: 200, headers: [['content-type', 'application/json']], body: Array.from(new TextEncoder().encode('{"files":[]}')) }),
       fetch_binary_url: () => [],
       get_local_ip: () => '127.0.0.1',
       get_all_local_ips: () => [],

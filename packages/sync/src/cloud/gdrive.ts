@@ -20,9 +20,43 @@ const MAX_RETRIES = 3;
 /** Per-iteration network timeout. Prevents a stalled fetch from freezing the loop. */
 const ITERATION_TIMEOUT_MS = 90_000;
 const HEARTBEAT_EVERY_N_ITERS = 120; // every 120 * 5 s = 10 minutes
+export type GoogleDriveFetch = typeof fetch;
 
-function gdriveError(message: string, status: number): Error & { status: number } {
-  return Object.assign(new Error(`${message}: ${status}`), { status });
+function parseGoogleDriveErrorBody(body: string): string | null {
+  if (!body.trim()) return null;
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: {
+        message?: unknown;
+        status?: unknown;
+        errors?: Array<{ reason?: unknown; message?: unknown }>;
+      };
+    };
+    const googleMessage = typeof parsed.error?.message === "string"
+      ? parsed.error.message
+      : null;
+    const reason = typeof parsed.error?.errors?.[0]?.reason === "string"
+      ? parsed.error.errors[0].reason
+      : null;
+    if (googleMessage && reason) return `${googleMessage} (${reason})`;
+    if (googleMessage) return googleMessage;
+    if (reason) return reason;
+  } catch {
+    // Fall through to a trimmed plain text body.
+  }
+  return body.trim().slice(0, 500);
+}
+
+async function gdriveError(message: string, response: Response): Promise<Error & { status: number }> {
+  const body = await response.text().catch(() => "");
+  const detail = parseGoogleDriveErrorBody(body);
+  const statusLabel = response.statusText
+    ? `${response.status} ${response.statusText}`
+    : String(response.status);
+  const fullMessage = detail
+    ? `${message}: ${statusLabel} - ${detail}`
+    : `${message}: ${statusLabel}`;
+  return Object.assign(new Error(fullMessage), { status: response.status });
 }
 
 interface DownloadResult {
@@ -32,17 +66,21 @@ interface DownloadResult {
 }
 
 /** Return the fileId of `freed.automerge` in appDataFolder, creating it if absent. */
-async function ensureFile(token: string, signal?: AbortSignal): Promise<string> {
-  const listRes = await fetch(
+async function ensureFile(
+  token: string,
+  signal?: AbortSignal,
+  googleFetch: GoogleDriveFetch = fetch,
+): Promise<string> {
+  const listRes = await googleFetch(
     `${GDRIVE_FILES}?spaces=appDataFolder&q=name%3D'${FILE_NAME}'&fields=files(id)`,
     { headers: { Authorization: `Bearer ${token}` }, signal },
   );
-  if (!listRes.ok) throw gdriveError("GDrive list failed", listRes.status);
+  if (!listRes.ok) throw await gdriveError("GDrive list failed", listRes);
 
   const { files } = await listRes.json();
   if (files.length > 0) return files[0].id as string;
 
-  const createRes = await fetch(GDRIVE_FILES, {
+  const createRes = await googleFetch(GDRIVE_FILES, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -51,7 +89,7 @@ async function ensureFile(token: string, signal?: AbortSignal): Promise<string> 
     body: JSON.stringify({ name: FILE_NAME, parents: ["appDataFolder"] }),
     signal,
   });
-  if (!createRes.ok) throw gdriveError("GDrive create failed", createRes.status);
+  if (!createRes.ok) throw await gdriveError("GDrive create failed", createRes);
 
   const { id } = await createRes.json();
   return id as string;
@@ -61,12 +99,13 @@ async function download(
   token: string,
   fileId: string,
   signal?: AbortSignal,
+  googleFetch: GoogleDriveFetch = fetch,
 ): Promise<DownloadResult> {
-  const metaRes = await fetch(
+  const metaRes = await googleFetch(
     `${GDRIVE_FILES}/${fileId}?fields=md5Checksum,size`,
     { headers: { Authorization: `Bearer ${token}` }, signal },
   );
-  if (!metaRes.ok) throw gdriveError("GDrive meta failed", metaRes.status);
+  if (!metaRes.ok) throw await gdriveError("GDrive meta failed", metaRes);
   const etag = metaRes.headers.get("ETag");
   const { size } = await metaRes.json();
 
@@ -74,11 +113,11 @@ async function download(
     return { binary: null, etag, fileId };
   }
 
-  const contentRes = await fetch(`${GDRIVE_FILES}/${fileId}?alt=media`, {
+  const contentRes = await googleFetch(`${GDRIVE_FILES}/${fileId}?alt=media`, {
     headers: { Authorization: `Bearer ${token}` },
     signal,
   });
-  if (!contentRes.ok) throw gdriveError("GDrive download failed", contentRes.status);
+  if (!contentRes.ok) throw await gdriveError("GDrive download failed", contentRes);
 
   return {
     binary: new Uint8Array(await contentRes.arrayBuffer()),
@@ -91,14 +130,18 @@ async function download(
  * Safe upload: always download remote first, CRDT-merge, then upload with
  * If-Match so a concurrent desktop write returns 412 → retry with back-off.
  */
-export async function gdriveUploadSafe(token: string, localBinary: Uint8Array): Promise<void> {
-  const fileId = await ensureFile(token);
+export async function gdriveUploadSafe(
+  token: string,
+  localBinary: Uint8Array,
+  googleFetch: GoogleDriveFetch = fetch,
+): Promise<void> {
+  const fileId = await ensureFile(token, undefined, googleFetch);
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    const { binary: remoteBinary, etag } = await download(token, fileId);
+    const { binary: remoteBinary, etag } = await download(token, fileId, undefined, googleFetch);
     const merged = remoteBinary ? mergeBinaries(localBinary, remoteBinary) : localBinary;
 
-    const res = await fetch(`${GDRIVE_UPLOAD}/${fileId}?uploadType=media`, {
+    const res = await googleFetch(`${GDRIVE_UPLOAD}/${fileId}?uploadType=media`, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -113,7 +156,7 @@ export async function gdriveUploadSafe(token: string, localBinary: Uint8Array): 
       await delay(200 * 2 ** attempt);
       continue;
     }
-    throw gdriveError("GDrive upload failed", res.status);
+    throw await gdriveError("GDrive upload failed", res);
   }
 
   throw new Error("GDrive upload failed after max retries (concurrent write conflict)");
@@ -122,9 +165,10 @@ export async function gdriveUploadSafe(token: string, localBinary: Uint8Array): 
 export async function gdriveDownloadLatest(
   token: string,
   signal?: AbortSignal,
+  googleFetch: GoogleDriveFetch = fetch,
 ): Promise<Uint8Array | null> {
-  const fileId = await ensureFile(token, signal);
-  const { binary } = await download(token, fileId, signal);
+  const fileId = await ensureFile(token, signal, googleFetch);
+  const { binary } = await download(token, fileId, signal, googleFetch);
   return binary;
 }
 
@@ -133,22 +177,25 @@ export async function gdriveDownloadLatest(
  * Used during factory reset when the user opts to also wipe cloud storage.
  * Silently succeeds if the file does not exist (404).
  */
-export async function gdriveDeleteFile(token: string): Promise<void> {
-  const listRes = await fetch(
+export async function gdriveDeleteFile(
+  token: string,
+  googleFetch: GoogleDriveFetch = fetch,
+): Promise<void> {
+  const listRes = await googleFetch(
     `${GDRIVE_FILES}?spaces=appDataFolder&q=name%3D'${FILE_NAME}'&fields=files(id)`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
-  if (!listRes.ok) throw gdriveError("GDrive list failed", listRes.status);
+  if (!listRes.ok) throw await gdriveError("GDrive list failed", listRes);
 
   const { files } = await listRes.json();
   if (files.length === 0) return; // Nothing to delete.
 
-  const deleteRes = await fetch(`${GDRIVE_FILES}/${files[0].id}`, {
+  const deleteRes = await googleFetch(`${GDRIVE_FILES}/${files[0].id}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!deleteRes.ok && deleteRes.status !== 404) {
-    throw gdriveError("GDrive delete failed", deleteRes.status);
+    throw await gdriveError("GDrive delete failed", deleteRes);
   }
 }
 
@@ -167,16 +214,17 @@ export async function gdriveStartPollLoop(
   onRemoteChange: (binary: Uint8Array) => void,
   signal: AbortSignal,
   onLog?: (level: "info" | "warn" | "error", msg: string) => void,
+  googleFetch: GoogleDriveFetch = fetch,
 ): Promise<void> {
   const log = (level: "info" | "warn" | "error", msg: string) => onLog?.(level, msg);
 
-  const startRes = await fetch(`${GDRIVE_CHANGES}/startPageToken`, {
+  const startRes = await googleFetch(`${GDRIVE_CHANGES}/startPageToken`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!startRes.ok) throw gdriveError("GDrive startPageToken failed", startRes.status);
+  if (!startRes.ok) throw await gdriveError("GDrive startPageToken failed", startRes);
   let { startPageToken: cursor } = await startRes.json();
 
-  const fileId = await ensureFile(token);
+  const fileId = await ensureFile(token, undefined, googleFetch);
 
   log("info", "[cloud/gdrive] poll loop started");
   let iterCount = 0;
@@ -195,13 +243,13 @@ export async function gdriveStartPollLoop(
       // stalled GDrive fetch doesn't hold the loop open overnight.
       const iterSignal = AbortSignal.any([signal, AbortSignal.timeout(ITERATION_TIMEOUT_MS)]);
 
-      const changesRes = await fetch(
+      const changesRes = await googleFetch(
         `${GDRIVE_CHANGES}?pageToken=${cursor}&spaces=appDataFolder&fields=nextPageToken,newStartPageToken,changes(fileId)`,
         { headers: { Authorization: `Bearer ${token}` }, signal: iterSignal },
       );
       if (!changesRes.ok) {
         if (changesRes.status === 401 || changesRes.status === 403) {
-          throw gdriveError("GDrive changes failed", changesRes.status);
+          throw await gdriveError("GDrive changes failed", changesRes);
         }
         continue;
       }
@@ -214,7 +262,7 @@ export async function gdriveStartPollLoop(
       );
 
       if (changed) {
-        const binary = await gdriveDownloadLatest(token, iterSignal);
+        const binary = await gdriveDownloadLatest(token, iterSignal, googleFetch);
         if (binary) onRemoteChange(binary);
       }
     } catch (err) {
