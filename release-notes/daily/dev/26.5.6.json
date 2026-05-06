@@ -12,5 +12,5 @@
     "Oversized feed text compaction now rebuilds a fresh Automerge document when the saved binary is already large, so old article text history does not keep WebKit memory high after relaunch"
   ],
   "editorialNotes": [],
-  "updatedAt": "2026-05-06T07:32:01.426Z"
+  "updatedAt": "2026-05-06T08:05:19.933Z"
 }
