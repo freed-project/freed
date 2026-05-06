@@ -4317,6 +4317,96 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
   expect(after.scale).toBeGreaterThan(initial.scale);
 });
 
+test("pinching the Friends graph zooms around the active two-touch midpoint", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        setActiveView: (view: string) => void;
+      };
+    };
+    store.getState().setActiveView("friends");
+  });
+
+  const viewport = page.getByTestId("friend-graph-viewport");
+  await expect(viewport).toBeVisible({ timeout: 10_000 });
+  await expect
+    .poll(async () => (await readGraphDebug(page))?.nodes.length ?? 0, { timeout: 10_000 })
+    .toBeGreaterThan(0);
+
+  const box = await viewport.boundingBox();
+  if (!box) {
+    throw new Error("Friends graph viewport is not visible");
+  }
+
+  const before = await readGraphDebug(page);
+  expect(before).not.toBeNull();
+  const centerX = box.x + box.width / 2;
+  const centerY = box.y + box.height / 2;
+  const initialWorldPoint = {
+    x: (box.width / 2 - before!.transform.x) / before!.transform.scale,
+    y: (box.height / 2 - before!.transform.y) / before!.transform.scale,
+  };
+  const panDelta = { x: 48, y: 32 };
+
+  await viewport.evaluate((element, gesture) => {
+    const target = element as HTMLElement & {
+      setPointerCapture: (pointerId: number) => void;
+      releasePointerCapture: (pointerId: number) => void;
+    };
+    target.setPointerCapture = () => undefined;
+    target.releasePointerCapture = () => undefined;
+
+    const dispatchTouchPointer = (
+      type: "pointerdown" | "pointermove" | "pointerup",
+      pointerId: number,
+      x: number,
+      y: number,
+      isPrimary: boolean,
+    ) => {
+      target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId,
+        pointerType: "touch",
+        isPrimary,
+        clientX: x,
+        clientY: y,
+        width: 12,
+        height: 12,
+        buttons: type === "pointerup" ? 0 : 1,
+      }));
+    };
+
+    dispatchTouchPointer("pointerdown", 11, gesture.centerX - 80, gesture.centerY, true);
+    dispatchTouchPointer("pointerdown", 12, gesture.centerX + 80, gesture.centerY, false);
+    dispatchTouchPointer("pointermove", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
+    dispatchTouchPointer("pointermove", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
+    dispatchTouchPointer("pointerup", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
+    dispatchTouchPointer("pointerup", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
+  }, { centerX, centerY, panDelta });
+
+  await expect
+    .poll(async () => (await readGraphDebug(page))?.transform.scale ?? before!.transform.scale, {
+      timeout: 8_000,
+    })
+    .toBeGreaterThan(before!.transform.scale);
+
+  const after = await readGraphDebug(page);
+  expect(after).not.toBeNull();
+  const projectedInitialMidpoint = {
+    x: box.x + initialWorldPoint.x * after!.transform.scale + after!.transform.x,
+    y: box.y + initialWorldPoint.y * after!.transform.scale + after!.transform.y,
+  };
+  expect(projectedInitialMidpoint.x).toBeCloseTo(centerX + panDelta.x, 0);
+  expect(projectedInitialMidpoint.y).toBeCloseTo(centerY + panDelta.y, 0);
+});
+
 test("stress Friends graph degrades labels during motion and avoids expensive redraws on pan", async ({ app, page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 900 });
