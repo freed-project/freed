@@ -43,6 +43,14 @@ function signalCountLabel(suggestion: FriendCandidateSuggestion): string {
     .join(", ");
 }
 
+function safeText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function personName(person: Pick<Person, "name"> | null | undefined): string {
+  return safeText(person?.name, "Unnamed friend");
+}
+
 export function AccountDetailPanel({
   account,
   linkedPerson = null,
@@ -73,7 +81,7 @@ export function AccountDetailPanel({
     if (!normalized) return next;
     return next.filter((person) => {
       return (
-        person.name.toLowerCase().includes(normalized) ||
+        personName(person).toLowerCase().includes(normalized) ||
         person.bio?.toLowerCase().includes(normalized) ||
         person.tags?.some((tag) => tag.toLowerCase().includes(normalized))
       );
@@ -153,11 +161,11 @@ export function AccountDetailPanel({
             </p>
             {confirmedLinkedPerson ? (
               <p className="mt-2 text-xs text-[color:var(--theme-accent-secondary)]">
-                Linked to {confirmedLinkedPerson.name}
+                Linked to {personName(confirmedLinkedPerson)}
               </p>
             ) : provisionalLinkedPerson ? (
               <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
-                Linked to provisional identity {provisionalLinkedPerson.name}
+                Linked to provisional identity {personName(provisionalLinkedPerson)}
               </p>
             ) : (
               <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
@@ -265,7 +273,7 @@ export function AccountDetailPanel({
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
-                            {person.name}
+                            {personName(person)}
                           </p>
                           <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                             {suggestion.reason}
@@ -318,7 +326,7 @@ export function AccountDetailPanel({
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
-                        {person.name}
+                        {personName(person)}
                       </p>
                       <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                         Care level {person.careLevel.toLocaleString()}

@@ -74,6 +74,10 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function safeText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
 function seededUnit(value: string): number {
   return (hashValue(value) % 10_000) / 10_000;
 }
@@ -329,8 +333,8 @@ export function buildIdentityGraphLayout({
     const placedBucket: IdentityGraphLayoutNode[] = [];
     bucket
       .sort((left, right) =>
-        (left.provider ?? "").localeCompare(right.provider ?? "") ||
-        left.label.localeCompare(right.label),
+        safeText(left.provider).localeCompare(safeText(right.provider)) ||
+        safeText(left.label).localeCompare(safeText(right.label)),
       )
       .forEach((node, index) => {
         const ring = Math.floor(index / 10);
@@ -409,7 +413,7 @@ export function buildIdentityGraphLayout({
     bucket
       .sort((left, right) =>
         right.weight - left.weight ||
-        left.label.localeCompare(right.label),
+        safeText(left.label).localeCompare(safeText(right.label)),
       )
       .forEach((node, index) => {
         const col = index % rows;

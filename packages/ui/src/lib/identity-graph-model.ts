@@ -181,7 +181,11 @@ export function buildIdentityGraphActivityIndex(
 }
 
 function accountLabel(account: Account): string {
-  return account.displayName?.trim() || account.handle?.trim() || account.externalId;
+  return account.displayName?.trim() || account.handle?.trim() || account.externalId?.trim() || account.provider || "Account";
+}
+
+function safeText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
 function personRadius(person: Person, linkedAccountCount: number): number {
@@ -219,8 +223,8 @@ export function buildIdentityGraphModel({
     .filter((person) => mode === "all_content" || person.relationshipStatus === "friend")
     .sort((left, right) =>
       right.careLevel - left.careLevel ||
-      left.relationshipStatus.localeCompare(right.relationshipStatus) ||
-      left.name.localeCompare(right.name),
+      safeText(left.relationshipStatus).localeCompare(safeText(right.relationshipStatus)) ||
+      safeText(left.name).localeCompare(safeText(right.name)),
     );
   const visiblePersonIds = new Set(visiblePersons.map((person) => person.id));
 
@@ -232,13 +236,13 @@ export function buildIdentityGraphModel({
     const node: IdentityGraphNode = {
       id: `person:${person.id}`,
       kind: isFriend ? "friend_person" : "connection_person",
-      label: person.name,
+      label: safeText(person.name, "Unnamed friend"),
       radius: personRadius(person, linkedCount),
       labelPriority: isFriend ? 100 : 82,
       personId: person.id,
       ring: isFriend ? 0 : 1,
       weight: isFriend ? 100 + person.careLevel * 10 + linkedCount * 2 : 60 + linkedCount * 3,
-      initials: personInitialsForName(person.name),
+      initials: personInitialsForName(safeText(person.name, "Unnamed friend")),
       avatarUrl: person.avatarUrl ?? null,
       interactive: true,
       graphX: person.graphX,
@@ -271,8 +275,8 @@ export function buildIdentityGraphModel({
     })
     .sort((left, right) =>
       (left.personId ? 0 : 1) - (right.personId ? 0 : 1) ||
-      (left.personId ?? "").localeCompare(right.personId ?? "") ||
-      left.provider.localeCompare(right.provider) ||
+      safeText(left.personId).localeCompare(safeText(right.personId)) ||
+      safeText(left.provider).localeCompare(safeText(right.provider)) ||
       accountLabel(left).localeCompare(accountLabel(right)),
     );
 

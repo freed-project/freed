@@ -835,6 +835,76 @@ async function seedNavigationFeed(
   }, NAV_FEED_URL);
 }
 
+async function seedSocialReaderItem(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        items: Array<{ globalId: string }>;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddFeedItems([
+      {
+        globalId: "facebook:reader-author:1",
+        platform: "facebook",
+        contentType: "story",
+        capturedAt: now,
+        publishedAt: now - 60_000,
+        author: {
+          id: "reader-author",
+          handle: "reader-author",
+          displayName: "Reader Author",
+        },
+        content: {
+          text: "Social author navigation item",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        preservedContent: {
+          title: "Social Author Navigation Item",
+          byline: "Reader Author",
+          content: "Social author navigation item",
+          textContent: "Social author navigation item",
+          siteName: "Facebook",
+          readingTime: 1,
+          capturedAt: now,
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+        sourceUrl: "https://facebook.com/reader-author/posts/1",
+      },
+    ]);
+
+    await new Promise<void>((resolve, reject) => {
+      const startedAt = Date.now();
+      const interval = window.setInterval(() => {
+        const state = store.getState();
+        if (state.items.some((item) => item.globalId === "facebook:reader-author:1")) {
+          clearInterval(interval);
+          resolve();
+          return;
+        }
+        if (Date.now() - startedAt > 5_000) {
+          clearInterval(interval);
+          reject(new Error("social reader seed timeout"));
+        }
+      }, 50);
+    });
+  });
+}
+
 test.describe("FREED PWA", () => {
   test("first load blocks the app shell until legal consent is accepted", async ({
     page,
@@ -1179,6 +1249,28 @@ test.describe("FREED PWA", () => {
       await page.goForward();
       await expect(page.getByLabel("Back")).toBeVisible();
       await expect.poll(() => new URL(page.url()).search).toBe("?item=rss%3Anavigation%3A1");
+    });
+
+    test("reader author link opens friends and browser back restores the article", async ({ page }) => {
+      await emulateMobileDevice(page);
+      await page.setViewportSize({ width: 430, height: 932 });
+      await page.goto("/");
+      await acceptLegalGate(page);
+      await waitForPwaReady(page);
+      await seedSocialReaderItem(page);
+
+      await page.getByRole("button", { name: /Reader Author.*Social author navigation item/i }).click();
+      await expect(page.getByTestId("reader-article")).toBeVisible();
+
+      await page.getByTestId("reader-author-friends-link").click();
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/friends");
+      await expect(page.getByText("Freed hit a fatal error")).toHaveCount(0);
+      await expect(page.getByLabel("Friends identity graph")).toBeVisible();
+
+      await page.goBack();
+      await expect.poll(() => new URL(page.url()).search).toBe("?item=facebook%3Areader-author%3A1");
+      await expect(page.getByTestId("reader-article")).toBeVisible();
+      await expect(page.getByText("Freed hit a fatal error")).toHaveCount(0);
     });
 
     test("stale item URLs are cleaned up after initialization", async ({ page }) => {
