@@ -669,7 +669,7 @@ function App() {
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
-      feedMediaPreviews: "inline",
+      feedMediaPreviews: "reader-only",
       addRssFeed,
       importOPMLFeeds,
       exportFeedsAsOPML,

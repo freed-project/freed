@@ -79,6 +79,11 @@ const platformConfig = {
   GoogleContactsSettingsContent: null,
 } as unknown as PlatformConfig;
 
+const readerOnlyPlatformConfig = {
+  ...platformConfig,
+  feedMediaPreviews: "reader-only",
+} as unknown as PlatformConfig;
+
 function setMemoryPressure(pressureLevel: RuntimeMemorySnapshot["pressureLevel"]): void {
   useDebugStore.setState({
     runtimeMemory: {
@@ -205,6 +210,32 @@ describe("FeedItem story media", () => {
     expect(html).toContain("<img");
     expect(html).toContain("https://example.com/story.jpg");
     expect(html).not.toContain("<video");
+  });
+
+  it("suppresses feed media when the platform uses reader-only previews", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={readerOnlyPlatformConfig}>
+            <FeedItem item={makeItem()} />
+          </PlatformProvider>,
+        );
+      });
+
+      expect(container.querySelector("img[src='https://example.com/story.jpg']")).toBeNull();
+      expect(container.querySelector(".bg-gradient-to-br")).not.toBeNull();
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
   });
 
   it("suppresses story images under renderer memory pressure", async () => {
