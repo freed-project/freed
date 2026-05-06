@@ -148,8 +148,8 @@ interface PixiScene {
 interface NodeDisplay {
   container: Container;
   outer: Graphics;
-  avatarSprite: Sprite;
-  avatarMask: Graphics;
+  avatarSprite: Sprite | null;
+  avatarMask: Graphics | null;
   inner: Graphics | null;
   initials: Text | null;
   providerDot: Graphics | null;
@@ -226,6 +226,7 @@ interface GraphPerfSnapshot {
   edgeRebuildCount: number;
   nodeRestyleCount: number;
   labelLayoutCount: number;
+  avatarDisplayCount: number;
   visibleLabelCount: number;
   visibleNodeLabelCount: number;
   visibleProviderLabelCount: number;
@@ -486,15 +487,6 @@ function createNodeDisplay(
   const outer = new Graphics();
   container.addChild(outer);
 
-  const avatarSprite = new Sprite(Texture.EMPTY);
-  avatarSprite.anchor.set(0.5);
-  avatarSprite.visible = false;
-  container.addChild(avatarSprite);
-
-  const avatarMask = new Graphics();
-  container.addChild(avatarMask);
-  avatarSprite.mask = avatarMask;
-
   let inner: Graphics | null = null;
   if (node.kind === "friend_person" || node.kind === "connection_person") {
     inner = new Graphics();
@@ -513,13 +505,43 @@ function createNodeDisplay(
   return {
     container,
     outer,
-    avatarSprite,
-    avatarMask,
+    avatarSprite: null,
+    avatarMask: null,
     inner,
     initials: null,
     providerDot,
     highlightRing,
   };
+}
+
+function ensureAvatarDisplay(
+  display: NodeDisplay,
+): { avatarSprite: Sprite; avatarMask: Graphics } {
+  if (display.avatarSprite && display.avatarMask) {
+    return {
+      avatarSprite: display.avatarSprite,
+      avatarMask: display.avatarMask,
+    };
+  }
+
+  const avatarSprite = new Sprite(Texture.EMPTY);
+  avatarSprite.anchor.set(0.5);
+  avatarSprite.visible = false;
+
+  const avatarMask = new Graphics();
+  avatarSprite.mask = avatarMask;
+
+  const outerIndex = display.outer.parent === display.container
+    ? display.container.getChildIndex(display.outer)
+    : -1;
+  const spriteIndex = Math.min(display.container.children.length, Math.max(0, outerIndex + 1));
+  display.container.addChildAt(avatarSprite, spriteIndex);
+  const maskIndex = Math.min(display.container.children.length, spriteIndex + 1);
+  display.container.addChildAt(avatarMask, maskIndex);
+
+  display.avatarSprite = avatarSprite;
+  display.avatarMask = avatarMask;
+  return { avatarSprite, avatarMask };
 }
 
 function ensureInitialsDisplay(
@@ -793,6 +815,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     edgeRebuildCount: 0,
     nodeRestyleCount: 0,
     labelLayoutCount: 0,
+    avatarDisplayCount: 0,
     visibleLabelCount: 0,
     visibleNodeLabelCount: 0,
     visibleProviderLabelCount: 0,
@@ -997,11 +1020,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         display.outer.drawCircle(0, 0, node.radius);
         display.outer.endFill();
 
-        display.avatarMask.clear();
-        display.avatarMask.beginFill(0xffffff, 1);
-        display.avatarMask.drawCircle(0, 0, node.radius);
-        display.avatarMask.endFill();
-
         let avatarTexture: Texture | null = null;
         const avatarUrl = node.avatarUrl ?? null;
         const selectedOrHighlighted = highlighted.has(node.id) ||
@@ -1035,15 +1053,22 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         }
 
         if (avatarTexture) {
-          display.avatarSprite.texture = avatarTexture;
-          display.avatarSprite.width = node.radius * 2;
-          display.avatarSprite.height = node.radius * 2;
-          display.avatarSprite.visible = true;
+          const { avatarSprite, avatarMask } = ensureAvatarDisplay(display);
+          avatarMask.clear();
+          avatarMask.beginFill(0xffffff, 1);
+          avatarMask.drawCircle(0, 0, node.radius);
+          avatarMask.endFill();
+          avatarSprite.texture = avatarTexture;
+          avatarSprite.width = node.radius * 2;
+          avatarSprite.height = node.radius * 2;
+          avatarSprite.visible = true;
           if (display.initials) {
             display.initials.visible = false;
           }
         } else {
-          display.avatarSprite.visible = false;
+          if (display.avatarSprite) {
+            display.avatarSprite.visible = false;
+          }
           const showInitials = shouldShowNodeInitials({
             node,
             transform,
@@ -1173,10 +1198,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         );
         display.outer.drawCircle(0, 0, node.radius);
         display.outer.endFill();
-        display.avatarMask.clear();
-        display.avatarMask.beginFill(0xffffff, 1);
-        display.avatarMask.drawCircle(0, 0, node.radius);
-        display.avatarMask.endFill();
+        if (display.avatarMask) {
+          display.avatarMask.clear();
+          display.avatarMask.beginFill(0xffffff, 1);
+          display.avatarMask.drawCircle(0, 0, node.radius);
+          display.avatarMask.endFill();
+        }
       }
       lastSelectionStyleKeyRef.current = selectionStyleKey;
     }
@@ -1420,6 +1447,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     perfSnapshotRef.current.visibleLabelCount = visibleLabelCount;
     perfSnapshotRef.current.visibleNodeLabelCount = visibleLabelIdsRef.current.length;
     perfSnapshotRef.current.visibleProviderLabelCount = visibleProviderLabelCount;
+    let avatarDisplayCount = 0;
+    for (const display of scene.nodeDisplays.values()) {
+      if (display.avatarSprite) avatarDisplayCount += 1;
+    }
+    perfSnapshotRef.current.avatarDisplayCount = avatarDisplayCount;
     if (didStaticRender || didLabelLayout) {
       perfSnapshotRef.current.contentSyncCount += 1;
     } else {
