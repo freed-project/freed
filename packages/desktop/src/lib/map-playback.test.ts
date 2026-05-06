@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
   getLocationTimelineMoments,
   type FeedItem,
@@ -203,5 +204,115 @@ describe("map playback selectors", () => {
     });
     expect(tokyoMarkers).toHaveLength(1);
     expect(tokyoMarkers[0]?.label).toBe("Tokyo");
+  });
+
+  it("keeps marker group counts correct without rescanning every location for every marker", () => {
+    const adaParis = createItem(
+      "ig:ada:paris",
+      NOW - 90_000,
+      "Paris",
+      { lat: 48.8566, lng: 2.3522 },
+    );
+    const adaParisEarlier = createItem(
+      "ig:ada:paris-earlier",
+      NOW - 120_000,
+      "Paris",
+      { lat: 48.8566, lng: 2.3522 },
+    );
+    const adaRome = createItem(
+      "ig:ada:rome",
+      NOW - 30_000,
+      "Rome",
+      { lat: 41.9028, lng: 12.4964 },
+    );
+    const authorParis = {
+      ...createItem(
+        "ig:nora:paris",
+        NOW - 60_000,
+        "Paris",
+        { lat: 48.8566, lng: 2.3522 },
+      ),
+      author: {
+        id: "nora-ig",
+        handle: "nora",
+        displayName: "Nora Quinn",
+      },
+    };
+    const authorParisLater = {
+      ...authorParis,
+      globalId: "ig:nora:paris-later",
+      publishedAt: NOW - 10_000,
+      capturedAt: NOW - 10_000,
+    };
+
+    const resolvedItems = [
+      resolved(adaParis, { lat: 48.8566, lng: 2.3522 }),
+      resolved(adaParisEarlier, { lat: 48.8566, lng: 2.3522 }),
+      resolved(adaRome, { lat: 41.9028, lng: 12.4964 }),
+      {
+        item: authorParis,
+        friend: null,
+        lat: 48.8566,
+        lng: 2.3522,
+        label: "Paris",
+      },
+      {
+        item: authorParisLater,
+        friend: null,
+        lat: 48.8566,
+        lng: 2.3522,
+        label: "Paris",
+      },
+    ];
+
+    const friendMarkers = getLatestFriendLocationMarkers(resolvedItems, { now: NOW });
+    expect(friendMarkers).toHaveLength(1);
+    expect(friendMarkers[0]?.label).toBe("Rome");
+    expect(friendMarkers[0]?.groupCount).toBe(1);
+
+    const authorMarkers = getLatestAuthorLocationMarkers(resolvedItems, { now: NOW });
+    const noraMarker = authorMarkers.find((marker) => marker.authorKey === "author:instagram:nora-ig");
+    expect(noraMarker?.groupCount).toBe(2);
+  });
+
+  it("builds dense all-content map markers within the interaction budget", () => {
+    const authorCount = 4_000;
+    const resolvedItems: ResolvedLocationItem[] = [];
+
+    for (let authorIndex = 0; authorIndex < authorCount; authorIndex += 1) {
+      for (let postIndex = 0; postIndex < 3; postIndex += 1) {
+        const publishedAt = NOW - postIndex * 60_000;
+        const item = createItem(
+          `ig:author-${authorIndex}:post-${postIndex}`,
+          publishedAt,
+          `Location ${authorIndex}`,
+          {
+            lat: 30 + (authorIndex % 80) * 0.1,
+            lng: -120 + (authorIndex % 120) * 0.1,
+          },
+        );
+        item.author = {
+          id: `author-${authorIndex}`,
+          handle: `author-${authorIndex}`,
+          displayName: `Author ${authorIndex}`,
+        };
+        resolvedItems.push({
+          item,
+          friend: null,
+          lat: item.location!.coordinates!.lat,
+          lng: item.location!.coordinates!.lng,
+          label: item.location!.name,
+        });
+      }
+    }
+
+    const startedAt = performance.now();
+    const markers = getLatestAuthorLocationMarkers(resolvedItems, { now: NOW });
+    const elapsed = performance.now() - startedAt;
+
+    console.log(`[PERF] Map all-content marker prep: ${elapsed.toFixed(1)} ms for ${resolvedItems.length.toLocaleString()} locations`);
+    expect(markers).toHaveLength(authorCount);
+    expect(markers[0]?.groupCount).toBe(3);
+    expect(elapsed).toBeLessThan(500);
   });
 });

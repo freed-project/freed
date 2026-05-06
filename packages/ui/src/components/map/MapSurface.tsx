@@ -35,6 +35,7 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
 });
 const MAP_POPUP_MAX_WIDTH = 560;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
+const MAP_DOM_MARKER_LIMIT = 240;
 const MAP_VIEWPORT_MASK_STYLE = {
   "--theme-soft-viewport-mask-size": "20px",
 } as CSSProperties;
@@ -519,6 +520,18 @@ export function MapSurface({
     () => markers.map((marker) => ({ ...marker })),
     [markers]
   );
+  const renderedMarkers = useMemo(() => {
+    if (stableMarkers.length <= MAP_DOM_MARKER_LIMIT) return stableMarkers;
+
+    const cappedMarkers = stableMarkers.slice(0, MAP_DOM_MARKER_LIMIT);
+    if (!focusedMarkerKey || cappedMarkers.some((marker) => marker.key === focusedMarkerKey)) {
+      return cappedMarkers;
+    }
+
+    const focusedMarker = stableMarkers.find((marker) => marker.key === focusedMarkerKey);
+    if (!focusedMarker) return cappedMarkers;
+    return [...cappedMarkers.slice(0, MAP_DOM_MARKER_LIMIT - 1), focusedMarker];
+  }, [focusedMarkerKey, stableMarkers]);
   const avatarPalette = useMemo(
     () => createFriendAvatarPalette(resolvedThemeId),
     [resolvedThemeId]
@@ -528,8 +541,8 @@ export function MapSurface({
     [resolvedThemeId]
   );
   const selectedFallbackMarker = useMemo(
-    () => stableMarkers.find((marker) => marker.key === selectedFallbackMarkerKey) ?? null,
-    [selectedFallbackMarkerKey, stableMarkers]
+    () => renderedMarkers.find((marker) => marker.key === selectedFallbackMarkerKey) ?? null,
+    [renderedMarkers, selectedFallbackMarkerKey]
   );
   const showFallback = loadFailed || !mapReady;
   const closeActivePopup = useCallback(() => {
@@ -609,7 +622,7 @@ export function MapSurface({
     const handleMapClick = () => closeActivePopup();
     map.on("click", handleMapClick);
 
-    for (const markerData of stableMarkers) {
+    for (const markerData of renderedMarkers) {
       const element = createMarkerElement(markerData, avatarPalette);
       const marker = new maplibre.Marker({ element }).setLngLat([
         markerData.lng,
@@ -650,12 +663,14 @@ export function MapSurface({
       map.off("click", handleMapClick);
       closeActivePopup();
     };
-  }, [avatarPalette, closeActivePopup, focusedMarkerKey, interactive, mapReady, onLinkAccount, onOpenFriend, onOpenPost, onPromoteAccount, stableMarkers]);
+  }, [avatarPalette, closeActivePopup, focusedMarkerKey, interactive, mapReady, onLinkAccount, onOpenFriend, onOpenPost, onPromoteAccount, renderedMarkers, stableMarkers]);
 
   return (
     <div
       data-testid="map-surface"
       data-map-theme={resolvedThemeId}
+      data-map-rendered-markers={renderedMarkers.length}
+      data-map-total-markers={stableMarkers.length}
       className="freed-map-shell theme-soft-viewport relative h-full w-full"
       style={MAP_VIEWPORT_MASK_STYLE}
     >
@@ -679,7 +694,7 @@ export function MapSurface({
           }}
         />
 
-        {showFallback && stableMarkers.length > 0 && (
+        {showFallback && renderedMarkers.length > 0 && (
           <div
             className="freed-map-fallback-scan absolute inset-0 overflow-hidden"
             style={{ background: fallbackScanBackground(mapPalette.background, mapPalette.water) }}
@@ -713,13 +728,13 @@ export function MapSurface({
               )`,
             }}
           />
-          {stableMarkers.map((marker) => {
+          {renderedMarkers.map((marker) => {
             const position = fallbackPosition(marker);
             return (
               <button
                 key={marker.key}
                 type="button"
-                className="freed-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full px-2.5 py-1.5 text-[11px] text-[color:var(--theme-text-primary)] backdrop-blur-xl"
+                className="freed-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full px-2.5 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]"
                 style={{
                   ...position,
                   border: "1px solid color-mix(in oklab, var(--theme-border-strong) 78%, transparent)",
