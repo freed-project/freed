@@ -16,6 +16,7 @@
     "Freed Desktop no longer sends synced reader text through every renderer item, trimming another measured 1.38 MB of raw item JSON from the local library before WebKit object expansion",
     "Freed Desktop now sends even smaller feed preview snippets to the renderer, cutting another measured 14.6 MB from the local item payload before browser object expansion",
     "Freed Desktop feed cards now keep remote media previews reader-only, avoiding eager image and video loads in the main feed while preserving full reader hydration",
+    "Facebook, Instagram, and LinkedIn scraper windows now use provider-specific WebKit data stores, keeping social browsing heaps and caches separated from the main app renderer while preserving sign-in state",
     "Feed-card regression coverage now protects that reader-only media policy so release validation catches accidental inline media work"
   ],
   "editorialNotes": [],
