@@ -4391,25 +4391,22 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
   const beforeZoom = await readGraphDebug(page);
   expect(beforeZoom).not.toBeNull();
 
-  await viewport.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    element.dispatchEvent(new WheelEvent("wheel", {
-      bubbles: true,
-      cancelable: true,
-      ctrlKey: true,
-      clientX: rect.left + rect.width / 2,
-      clientY: rect.top + rect.height / 2,
-      deltaY: -260,
-    }));
-    element.dispatchEvent(new WheelEvent("wheel", {
-      bubbles: true,
-      cancelable: true,
-      ctrlKey: true,
-      clientX: rect.left + rect.width / 2,
-      clientY: rect.top + rect.height / 2,
-      deltaY: -260,
-    }));
-  });
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.keyboard.down("Control");
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      await page.mouse.wheel(0, -320);
+    }
+  } finally {
+    await page.keyboard.up("Control");
+  }
+
+  await expect
+    .poll(async () => (await readGraphDebug(page))?.transform.scale ?? beforeZoom!.transform.scale, {
+      timeout: 8_000,
+    })
+    .toBeGreaterThan(beforeZoom!.transform.scale);
+
   const afterZoom = await waitForGraphSceneSyncAfter(page, beforeZoom!.metrics.sceneSyncCount, 8_000);
   expect(afterZoom).not.toBeNull();
   expect(afterZoom!.metrics.sceneSyncMs).toBeLessThan(40);
