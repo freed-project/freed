@@ -2594,7 +2594,7 @@ fn collect_runtime_memory_stats(
     }
 }
 
-fn collect_network_cache_blob_files(root: &Path, files: &mut Vec<(PathBuf, u64, SystemTime)>) {
+fn collect_webkit_network_cache_files(root: &Path, files: &mut Vec<(PathBuf, u64, SystemTime)>) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
@@ -2605,34 +2605,22 @@ fn collect_network_cache_blob_files(root: &Path, files: &mut Vec<(PathBuf, u64, 
             continue;
         };
         if metadata.is_dir() {
-            collect_network_cache_blob_files(&path, files);
+            collect_webkit_network_cache_files(&path, files);
             continue;
         }
         if !metadata.is_file() {
             continue;
         }
 
-        let is_blob = path.components().any(|component| {
-            component
-                .as_os_str()
-                .to_string_lossy()
-                .eq_ignore_ascii_case("Blobs")
-        });
-        if is_blob {
-            files.push((
-                path,
-                metadata.len(),
-                metadata.modified().unwrap_or(UNIX_EPOCH),
-            ));
-        }
+        files.push((
+            path,
+            metadata.len(),
+            metadata.modified().unwrap_or(UNIX_EPOCH),
+        ));
     }
 }
 
-fn trim_webkit_network_cache(app: &tauri::AppHandle) -> bool {
-    let Ok(cache_root) = app.path().app_cache_dir() else {
-        return false;
-    };
-    let webkit_root = cache_root.join("WebKit");
+fn trim_webkit_network_cache_root(webkit_root: &Path) -> bool {
     let webkit_bytes = dir_size_bytes(&webkit_root).unwrap_or(0);
     if webkit_bytes <= WEBKIT_CACHE_TRIM_AT_BYTES {
         return false;
@@ -2640,7 +2628,7 @@ fn trim_webkit_network_cache(app: &tauri::AppHandle) -> bool {
 
     let network_cache_root = webkit_root.join("NetworkCache");
     let mut files = Vec::new();
-    collect_network_cache_blob_files(&network_cache_root, &mut files);
+    collect_webkit_network_cache_files(&network_cache_root, &mut files);
     files.sort_by_key(|(_, _, modified)| *modified);
 
     let mut current_bytes = webkit_bytes;
@@ -2656,6 +2644,13 @@ fn trim_webkit_network_cache(app: &tauri::AppHandle) -> bool {
     }
 
     trimmed
+}
+
+fn trim_webkit_network_cache(app: &tauri::AppHandle) -> bool {
+    let Ok(cache_root) = app.path().app_cache_dir() else {
+        return false;
+    };
+    trim_webkit_network_cache_root(&cache_root.join("WebKit"))
 }
 
 fn scrape_memory_start_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
@@ -6873,6 +6868,42 @@ mod tests {
             app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
             app_age
         ));
+    }
+
+    #[test]
+    fn webkit_network_cache_collection_includes_record_resources() {
+        let temp = tempfile::tempdir().unwrap();
+        let network_cache_root = temp
+            .path()
+            .join("WebKit/NetworkCache/Version 17/Records/hash/Resource");
+        std::fs::create_dir_all(&network_cache_root).unwrap();
+        let record_file = network_cache_root.join("resource-blob");
+        std::fs::write(&record_file, b"record").unwrap();
+
+        let mut files = Vec::new();
+        collect_webkit_network_cache_files(&temp.path().join("WebKit/NetworkCache"), &mut files);
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].0, record_file);
+    }
+
+    #[test]
+    fn webkit_network_cache_trimmer_removes_large_records_cache() {
+        let temp = tempfile::tempdir().unwrap();
+        let record_root = temp
+            .path()
+            .join("WebKit/NetworkCache/Version 17/Records/hash/Resource");
+        std::fs::create_dir_all(&record_root).unwrap();
+        let record_file = record_root.join("large-resource");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&record_file)
+            .unwrap();
+        file.set_len(WEBKIT_CACHE_TRIM_AT_BYTES + 1).unwrap();
+
+        assert!(trim_webkit_network_cache_root(&temp.path().join("WebKit")));
+        assert!(!record_file.exists());
     }
 
     #[test]

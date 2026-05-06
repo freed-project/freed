@@ -3271,6 +3271,8 @@ test("selecting a graph node shows a compact detail card when the Friends detail
   await page.waitForTimeout(600);
   const beforeClick = await waitForGraphPerfToSettle(page);
   expect(beforeClick).not.toBeNull();
+  friendPoint = await graphNodeScreenPoint(page, { personId: "friend-ada" });
+  expect(friendPoint).not.toBeNull();
   await page.mouse.click(friendPoint!.x, friendPoint!.y);
 
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
