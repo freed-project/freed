@@ -64,6 +64,15 @@ fn sync_relay_port() -> u16 {
 const DEFAULT_WEBKIT_SAFARI_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
 const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 3] = ["fb-scraper", "ig-scraper", "li-scraper"];
+const FB_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0xfb, 0x00, 0x01, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0xfb, 0x00, 0x01,
+];
+const IG_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0x1a, 0x00, 0x02, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x1a, 0x00, 0x02,
+];
+const LI_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0x1d, 0x00, 0x03, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x1d, 0x00, 0x03,
+];
 const BYTES_PER_GIB: u64 = 1024 * 1024 * 1024;
 const MIN_CRITICAL_MEMORY_BYTES: u64 = 7 * BYTES_PER_GIB / 2;
 const MAX_CRITICAL_MEMORY_BYTES: u64 = 4 * BYTES_PER_GIB;
@@ -232,6 +241,15 @@ fn stored_or_default_user_agent(agent: &std::sync::Mutex<String>) -> String {
     }
 }
 
+fn social_scraper_data_store_identifier(label: &str) -> Option<[u8; 16]> {
+    match label {
+        "fb-scraper" => Some(FB_SCRAPER_DATA_STORE_IDENTIFIER),
+        "ig-scraper" => Some(IG_SCRAPER_DATA_STORE_IDENTIFIER),
+        "li-scraper" => Some(LI_SCRAPER_DATA_STORE_IDENTIFIER),
+        _ => None,
+    }
+}
+
 fn recycle_webview_window(app: &tauri::AppHandle, label: &str, reason: &str) {
     if let Some(window) = app.get_webview_window(label) {
         scrub_webview_before_destroy(&window);
@@ -319,6 +337,10 @@ fn build_hidden_scraper_window(
         app,
         label,
         tauri::WebviewUrl::External(url.parse().map_err(|e: url::ParseError| e.to_string())?),
+    )
+    .data_store_identifier(
+        social_scraper_data_store_identifier(label)
+            .expect("hidden scraper window labels must use isolated data stores"),
     )
     .user_agent(user_agent)
     .initialization_script(include_str!("webkit-mask.js"))
@@ -3329,6 +3351,7 @@ async fn fb_show_login(
         "fb-scraper",
         tauri::WebviewUrl::External("https://www.facebook.com/login".parse().unwrap()),
     )
+    .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
     .user_agent(&user_agent)
     .initialization_script(include_str!("webkit-mask.js"))
     .title("Connect Facebook — Freed")
@@ -3413,6 +3436,7 @@ async fn fb_check_auth(
             "fb-scraper",
             tauri::WebviewUrl::External("https://www.facebook.com/".parse().unwrap()),
         )
+        .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
         .user_agent(&scraper_user_agent)
         .initialization_script(include_str!("webkit-mask.js"))
         .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -3720,6 +3744,7 @@ async fn fb_scrape_feed(
                 "fb-scraper",
                 tauri::WebviewUrl::External(fb_feed_url.parse().unwrap()),
             )
+            .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
             .user_agent(&scraper_user_agent)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -3960,6 +3985,7 @@ async fn fb_scrape_groups(
                 "fb-scraper",
                 tauri::WebviewUrl::External(fb_groups_url.parse().unwrap()),
             )
+            .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
             .user_agent(&scraper_user_agent)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -4137,6 +4163,7 @@ async fn ig_show_login(
         "ig-scraper",
         tauri::WebviewUrl::External("https://www.instagram.com/accounts/login/".parse().unwrap()),
     )
+    .data_store_identifier(IG_SCRAPER_DATA_STORE_IDENTIFIER)
     .user_agent(&user_agent)
     .initialization_script(include_str!("webkit-mask.js"))
     .title("Connect Instagram — Freed")
@@ -4231,6 +4258,7 @@ async fn ig_check_auth(
             "ig-scraper",
             tauri::WebviewUrl::External("https://www.instagram.com/".parse().unwrap()),
         )
+        .data_store_identifier(IG_SCRAPER_DATA_STORE_IDENTIFIER)
         .user_agent(&scraper_user_agent)
         .initialization_script(include_str!("webkit-mask.js"))
         .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -4316,6 +4344,7 @@ async fn ig_scrape_feed(
                 "ig-scraper",
                 tauri::WebviewUrl::External(ig_feed_url.parse().unwrap()),
             )
+            .data_store_identifier(IG_SCRAPER_DATA_STORE_IDENTIFIER)
             .user_agent(&scraper_user_agent)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -4818,6 +4847,7 @@ async fn li_show_login(
         "li-scraper",
         tauri::WebviewUrl::External("https://www.linkedin.com/login".parse().unwrap()),
     )
+    .data_store_identifier(LI_SCRAPER_DATA_STORE_IDENTIFIER)
     .user_agent(&user_agent)
     .initialization_script(include_str!("webkit-mask.js"))
     .title("Connect LinkedIn with Freed")
@@ -4902,6 +4932,7 @@ async fn li_check_auth(
             "li-scraper",
             tauri::WebviewUrl::External("https://www.linkedin.com/feed/".parse().unwrap()),
         )
+        .data_store_identifier(LI_SCRAPER_DATA_STORE_IDENTIFIER)
         .user_agent(&scraper_user_agent)
         .initialization_script(include_str!("webkit-mask.js"))
         .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -4987,6 +5018,7 @@ async fn li_scrape_feed(
                 "li-scraper",
                 tauri::WebviewUrl::External(li_feed_url.parse().unwrap()),
             )
+            .data_store_identifier(LI_SCRAPER_DATA_STORE_IDENTIFIER)
             .user_agent(&scraper_user_agent)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -6732,6 +6764,30 @@ mod tests {
             ),
             &roots,
         ));
+    }
+
+    #[test]
+    fn social_scraper_data_stores_are_provider_specific() {
+        assert_eq!(
+            social_scraper_data_store_identifier("fb-scraper"),
+            Some(FB_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("ig-scraper"),
+            Some(IG_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("li-scraper"),
+            Some(LI_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(social_scraper_data_store_identifier("main"), None);
+
+        let unique = HashSet::from([
+            FB_SCRAPER_DATA_STORE_IDENTIFIER,
+            IG_SCRAPER_DATA_STORE_IDENTIFIER,
+            LI_SCRAPER_DATA_STORE_IDENTIFIER,
+        ]);
+        assert_eq!(unique.len(), 3);
     }
 
     #[test]
