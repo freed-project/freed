@@ -2679,6 +2679,17 @@ fn recycle_social_scraper_windows_except(
     recycled
 }
 
+fn blocked_preflight_preserved_scraper_label<'a>(
+    preserve_label: Option<&'a str>,
+    critical: bool,
+) -> Option<&'a str> {
+    if critical {
+        None
+    } else {
+        preserve_label
+    }
+}
+
 async fn prepare_social_scrape_memory_internal(
     app: &tauri::AppHandle,
     provider: &str,
@@ -2796,10 +2807,16 @@ async fn ensure_social_scrape_memory(
         let reason = format!("{} {} critical memory preflight", provider, operation);
         recycle_social_scraper_windows(app, &reason);
     }
+    let mut recycled_preserved_scraper_window = false;
+    if let Some(label) = blocked_preflight_preserved_scraper_label(preserve_label, critical) {
+        let reason = format!("{} {} blocked memory preflight", provider, operation);
+        recycled_preserved_scraper_window = app.get_webview_window(label).is_some();
+        recycle_webview_window(app, label, &reason);
+    }
     let cooldown_ms = background_runtime.note_memory_pressure(provider, operation, critical);
     warn!(
-        "[memory] pausing background scraper work provider={} operation={} pressure={} cooldown_ms={}",
-        provider, operation, pressure_label, cooldown_ms
+        "[memory] pausing background scraper work provider={} operation={} pressure={} cooldown_ms={} recycled_preserved_scraper={}",
+        provider, operation, pressure_label, cooldown_ms, recycled_preserved_scraper_window
     );
     append_runtime_health(
         app,
@@ -2816,7 +2833,9 @@ async fn ensure_social_scrape_memory(
             "scrapeStartBudgetBytes": prep.scrape_start_budget_bytes,
             "memoryHighBytes": prep.after.memory_high_bytes,
             "memoryCriticalBytes": prep.after.memory_critical_bytes,
-            "recycledAllScraperWindows": critical
+            "recycledAllScraperWindows": critical,
+            "recycledPreservedScraperWindow": recycled_preserved_scraper_window,
+            "preservedScraperLabel": preserve_label
         }),
     );
     Err(format!(
@@ -6824,6 +6843,19 @@ mod tests {
             app_resident_bytes: budget,
             ..stats
         }));
+    }
+
+    #[test]
+    fn scrape_memory_recycles_preserved_window_under_high_pressure() {
+        assert_eq!(
+            blocked_preflight_preserved_scraper_label(Some("ig-scraper"), false),
+            Some("ig-scraper")
+        );
+        assert_eq!(
+            blocked_preflight_preserved_scraper_label(Some("ig-scraper"), true),
+            None
+        );
+        assert_eq!(blocked_preflight_preserved_scraper_label(None, false), None);
     }
 
     #[test]
