@@ -85,18 +85,18 @@ export function AnimatedMenuIcon({
       aria-hidden="true"
     >
       <span
-        className={`absolute left-[3px] h-[2px] rounded-full bg-current transition-all duration-200 ease-out ${
-          open ? "top-1/2 w-[18px] -translate-y-1/2 rotate-45" : "top-[5px] w-[18px]"
+        className={`absolute left-1/2 h-[2px] w-[18px] -translate-x-1/2 rounded-full bg-current transition-all duration-200 ease-out ${
+          open ? "top-1/2 -translate-y-1/2 rotate-45" : "top-[5px]"
         }`}
       />
       <span
-        className={`absolute left-[3px] top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-current transition-all duration-200 ease-out ${
-          open ? "w-0 opacity-0" : "w-[14px] opacity-100"
+        className={`absolute left-1/2 top-1/2 h-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-current transition-all duration-200 ease-out ${
+          open ? "w-0 opacity-0" : "w-[18px] opacity-100"
         }`}
       />
       <span
-        className={`absolute left-[3px] h-[2px] rounded-full bg-current transition-all duration-200 ease-out ${
-          open ? "top-1/2 w-[18px] -translate-y-1/2 -rotate-45" : "top-[15px] w-[10px]"
+        className={`absolute left-1/2 h-[2px] w-[18px] -translate-x-1/2 rounded-full bg-current transition-all duration-200 ease-out ${
+          open ? "top-1/2 -translate-y-1/2 -rotate-45" : "top-[15px]"
         }`}
       />
     </span>

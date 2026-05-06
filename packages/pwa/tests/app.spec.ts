@@ -1698,23 +1698,50 @@ test.describe("FREED PWA", () => {
     await expect(formatButton).toBeVisible();
 
     const geometry = await page.evaluate(() => {
+      const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
       const menu = document.querySelector('button[aria-label="Open menu"]') as HTMLElement | null;
       const overflow = document.querySelector('[data-testid="toolbar-overflow-button"]') as HTMLElement | null;
       const format = document.querySelector('[data-testid="mobile-toolbar-filter-button"]') as HTMLElement | null;
-      if (!menu || !overflow || !format) {
+      const menuIcon = menu?.querySelector("[aria-hidden='true']") as HTMLElement | null;
+      const formatIcon = format?.querySelector("svg") as SVGElement | null;
+      if (!toolbar || !menu || !overflow || !format || !menuIcon || !formatIcon) {
         throw new Error("Mobile toolbar buttons were not found");
       }
+      const toolbarRect = toolbar.getBoundingClientRect();
       const menuRect = menu.getBoundingClientRect();
+      const menuBarRects = Array.from(menuIcon.children)
+        .map((child) => child.getBoundingClientRect())
+        .filter((rect) => rect.width > 0 && rect.height > 0);
+      const menuIconRect = menuIcon.getBoundingClientRect();
+      const menuVisibleLeft = menuBarRects.length
+        ? Math.min(...menuBarRects.map((rect) => rect.left))
+        : menuIconRect.left;
       const overflowRect = overflow.getBoundingClientRect();
       const formatRect = format.getBoundingClientRect();
+      const formatIconRect = formatIcon.getBoundingClientRect();
       return {
+        toolbarLeft: toolbarRect.left,
+        toolbarRight: toolbarRect.right,
         menuLeft: menuRect.left,
+        menuRight: menuRect.right,
+        menuIconLeft: menuIconRect.left,
+        menuVisibleLeft,
+        menuBarWidths: menuBarRects.map((rect) => rect.width),
         overflowRight: overflowRect.right,
         formatLeft: formatRect.left,
         formatRight: formatRect.right,
+        formatIconRight: formatIconRect.right,
+        viewportRight: window.innerWidth,
         widths: [menuRect.width, overflowRect.width, formatRect.width],
       };
     });
+    expect(
+      Math.abs((geometry.menuLeft - geometry.toolbarLeft) - (geometry.toolbarRight - geometry.formatIconRight)),
+      JSON.stringify(geometry),
+    ).toBeLessThanOrEqual(1);
+    for (const barWidth of geometry.menuBarWidths) {
+      expect(Math.abs(barWidth - geometry.menuBarWidths[0])).toBeLessThanOrEqual(1);
+    }
     expect(geometry.menuLeft).toBeLessThan(geometry.overflowRight);
     expect(geometry.overflowRight).toBeLessThanOrEqual(geometry.formatLeft);
     expect(geometry.formatRight).toBeGreaterThan(geometry.overflowRight);

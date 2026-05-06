@@ -1336,7 +1336,7 @@ export function Header({
           >
             <div
               ref={layoutControlHostRef}
-              className="relative flex h-full shrink-0 items-center"
+              className="relative flex h-full shrink-0 items-center pl-3 min-[960px]:pl-0"
               style={leftToolbarStyle}
             >
               {isMobileDevice ? (
