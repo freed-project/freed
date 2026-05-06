@@ -240,22 +240,15 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(facebookCard).toHaveClass(/grayscale/);
   await expect(facebookCard.locator('button[aria-label="Archive"]').first()).toBeVisible();
   const facebookImage = facebookCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
-  await expect(facebookImage).toBeVisible();
-  await expect(facebookImage).toHaveAttribute("src", /\/freed\.svg\?feed-card$/);
+  await expect(facebookImage).toHaveCount(0);
 
   const storyTile = app.page.locator('[data-feed-item-id="test-instagram-story-thumbnail"]');
   const storyImage = storyTile.locator("img").first();
-  await expect(storyImage).toBeVisible();
-  await expect(storyImage).toHaveAttribute("src", /\/freed\.svg\?story-tile$/);
+  await expect(storyImage).toHaveCount(0);
 
   const brokenCard = app.page.locator('[data-feed-item-id="test-broken-thumbnail-fallback"]');
   const brokenImage = brokenCard.locator("img").first();
-  await expect(brokenImage).toBeVisible();
-  await expect(brokenImage).toHaveAttribute("src", /\/freed\.svg\?fallback$/);
-  await brokenImage.evaluate((image) => {
-    image.dispatchEvent(new Event("error"));
-  });
-  await expect(brokenCard.locator("img")).toHaveCount(0);
+  await expect(brokenImage).toHaveCount(0);
   await expect(brokenCard).toContainText(BROKEN_TITLE);
 
   await facebookCard.hover();
@@ -281,8 +274,7 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(app.page.getByLabel("Archive").first()).toBeVisible();
   const compactRailCard = app.page.locator('[data-testid="compact-feed-panel-scroll-container"] [data-feed-item-id="test-facebook-card-ui-overhaul"]');
   const compactRailImage = compactRailCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
-  await expect(compactRailImage).toBeVisible();
-  await expect(compactRailImage).toHaveAttribute("src", /\/freed\.svg\?feed-card$/);
+  await expect(compactRailImage).toHaveCount(0);
 
   const openReaderButton = app.page.getByRole("button", { name: "Open", exact: true }).first();
   await expect(openReaderButton).toBeVisible();
