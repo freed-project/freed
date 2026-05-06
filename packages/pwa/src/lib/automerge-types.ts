@@ -41,6 +41,8 @@ export interface DocState {
   totalArchivableCount: number;
   archivableCountByPlatform: Record<string, number>;
   archivableFeedCounts: Record<string, number>;
+  mapFriendLocationCount: number;
+  mapAllContentLocationCount: number;
 }
 
 // ---------------------------------------------------------------------------

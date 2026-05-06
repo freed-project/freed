@@ -57,6 +57,8 @@ function makeState(items: FeedItem[]): DocState {
     totalArchivableCount: 1,
     archivableCountByPlatform: { rss: 1 },
     archivableFeedCounts: { [FEED_URL]: 1 },
+    mapFriendLocationCount: 7,
+    mapAllContentLocationCount: 11,
     docItemCount: items.length,
   };
 }
@@ -80,6 +82,8 @@ describe("Automerge item patch state updates", () => {
     expect(result.state.totalArchivableCount).toBe(2);
     expect(result.state.archivableCountByPlatform).toEqual({ rss: 2 });
     expect(result.state.archivableFeedCounts).toEqual({ [FEED_URL]: 2 });
+    expect(result.state.mapFriendLocationCount).toBe(7);
+    expect(result.state.mapAllContentLocationCount).toBe(11);
   });
 
   it("removes archived items from aggregate counts while keeping them in the item list", () => {

@@ -1,8 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo, cloneElement, isValidElement, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import {
-  countAuthorsWithRecentLocationUpdates,
-  countFriendsWithRecentLocationUpdates,
   resolveMapMode,
   type FilterOptions,
   type RssFeed,
@@ -587,7 +585,6 @@ export function Sidebar({
   const searchQuery = useAppStore((s) => s.searchQuery);
   const feeds = useAppStore((s) => s.feeds);
   const friends = useAppStore((s) => s.persons);
-  const accounts = useAppStore((s) => s.accounts);
   const feedUnreadCounts = useAppStore((s) => s.feedUnreadCounts);
   const feedTotalCounts = useAppStore((s) => s.feedTotalCounts);
   const renameFeed = useAppStore((s) => s.renameFeed);
@@ -617,14 +614,8 @@ export function Sidebar({
   const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
   const archivedCount = useMemo(() => items.filter((i) => i.userState.archived).length, [items]);
   const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
-  const mapFriendCount = useMemo(
-    () => countFriendsWithRecentLocationUpdates(items, friends, accounts),
-    [accounts, friends, items]
-  );
-  const mapAllContentCount = useMemo(
-    () => countAuthorsWithRecentLocationUpdates(items),
-    [items],
-  );
+  const mapFriendCount = useAppStore((s) => s.mapFriendLocationCount);
+  const mapAllContentCount = useAppStore((s) => s.mapAllContentLocationCount);
   const effectiveMapMode = resolveMapMode(
     display.mapMode,
     mapFriendCount,

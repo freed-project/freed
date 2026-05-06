@@ -109,6 +109,8 @@ interface AppState {
   totalArchivableCount: number;
   archivableCountByPlatform: Record<string, number>;
   archivableFeedCounts: Record<string, number>;
+  mapFriendLocationCount: number;
+  mapAllContentLocationCount: number;
   /** Total feed-item records including hidden and archived items. */
   docItemCount: number;
 
@@ -391,6 +393,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   totalArchivableCount: 0,
   archivableCountByPlatform: {},
   archivableFeedCounts: {},
+  mapFriendLocationCount: 0,
+  mapAllContentLocationCount: 0,
   docItemCount: 0,
   xAuth: { isAuthenticated: false },
   fbAuth: { isAuthenticated: false },

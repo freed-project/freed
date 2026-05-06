@@ -41,6 +41,8 @@ export interface DocState {
   totalArchivableCount: number;
   archivableCountByPlatform: Record<string, number>;
   archivableFeedCounts: Record<string, number>;
+  mapFriendLocationCount: number;
+  mapAllContentLocationCount: number;
   /** Total feed-item records in the CRDT, including hidden and archived items. */
   docItemCount: number;
 }
