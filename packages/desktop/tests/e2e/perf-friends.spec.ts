@@ -29,9 +29,12 @@ async function readGraphDebug(page: Page) {
         transform: { x: number; y: number; scale: number };
         qualityMode: "interactive" | "settled";
         metrics: {
+          modelBuildMs: number;
+          layoutMs: number;
           sceneSyncMs: number;
           labelPassMs: number;
           sceneSyncCount: number;
+          avatarDisplayCount: number;
           visibleLabelCount: number;
           visibleNodeLabelCount: number;
           transformOnlySyncCount: number;
@@ -225,11 +228,15 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
 
   console.log(`[PERF] Friends mount: ${mountElapsed.toLocaleString()} ms`);
   console.log(`[PERF] Friends mounted sidebar rows: ${mountedRows.toLocaleString()}`);
+  console.log(`[PERF] Friends graph model build: ${initialDebug!.metrics.modelBuildMs.toFixed(1)} ms`);
+  console.log(`[PERF] Friends graph layout: ${initialDebug!.metrics.layoutMs.toFixed(1)} ms`);
   console.log(`[PERF] Friends graph scene sync: ${initialDebug!.metrics.sceneSyncMs.toFixed(1)} ms`);
+  console.log(`[PERF] Friends avatar displays: ${initialDebug!.metrics.avatarDisplayCount.toLocaleString()}`);
 
   expect(mountElapsed).toBeLessThan(MOUNT_BUDGET_MS);
   expect(mountedRows).toBeLessThanOrEqual(FRIEND_ROW_MOUNT_BUDGET);
   expect(initialDebug!.metrics.sceneSyncMs).toBeLessThan(GRAPH_SCENE_SYNC_BUDGET_MS);
+  expect(initialDebug!.metrics.avatarDisplayCount).toBeLessThanOrEqual(PERSON_COUNT);
 
   const box = await viewport.boundingBox();
   if (!box) throw new Error("Friends graph viewport is not visible");
