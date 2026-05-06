@@ -53,11 +53,21 @@ describe("automerge worker memory routing", () => {
 
   it("caps oversized item text in the desktop UI projection", () => {
     const body = functionBody("trimFeedItemForDesktopUi");
+    const patchBody = functionBody("cloneFeedItemForPatch");
 
-    expect(workerSource).toContain("DESKTOP_UI_CONTENT_TEXT_LIMIT = 10_000");
+    expect(workerSource).toContain("DESKTOP_UI_CONTENT_TEXT_LIMIT = 1_200");
+    expect(workerSource).toContain("DESKTOP_UI_PRESERVED_TEXT_LIMIT = 1_200");
     expect(body).toContain("contentText.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT)");
     expect(body).toContain("preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT)");
     expect(workerSource).toContain(".map(trimFeedItemForDesktopUi)");
+    expect(patchBody).toContain("trimFeedItemForDesktopUi(cloned)");
+  });
+
+  it("reader text requests fall back to full synced feed text", () => {
+    const body = caseBody("GET_ITEM_PRESERVED_TEXT");
+
+    expect(body).toContain("preservedContent?.text");
+    expect(body).toContain("content.text");
   });
 
   it("compacts oversized feed text before hydrating loaded documents", () => {
