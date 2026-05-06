@@ -4,7 +4,7 @@ import { test, expect } from "./fixtures/app";
 const PERSON_COUNT = 1_600;
 const ACCOUNT_COUNT = 1_920;
 const ITEM_COUNT = 6_400;
-const MOUNT_BUDGET_MS = process.env.CI ? 6_000 : 3_000;
+const MOUNT_BUDGET_MS = process.env.CI ? 4_500 : 1_800;
 const GRAPH_SCENE_SYNC_BUDGET_MS = 40;
 const FRIEND_ROW_MOUNT_BUDGET = 80;
 const FRAME_P95_BUDGET_MS = 50;

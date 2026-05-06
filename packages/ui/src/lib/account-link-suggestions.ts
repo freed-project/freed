@@ -13,6 +13,24 @@ export interface AccountLinkSuggestionGroups {
   byPerson: Map<string, AccountLinkSuggestion[]>;
 }
 
+interface IndexedConfirmedPerson {
+  person: Person;
+  normalizedName: string;
+  tokens: Set<string>;
+  evidenceHandles: Set<string>;
+  evidenceAvatarUrls: Set<string>;
+}
+
+interface AccountLinkCandidateIndex {
+  peopleById: Map<string, IndexedConfirmedPerson>;
+  peopleByExactName: Map<string, Set<string>>;
+  peopleByLinkedHandle: Map<string, Set<string>>;
+  peopleByAvatarUrl: Map<string, Set<string>>;
+  peopleByToken: Map<string, Set<string>>;
+}
+
+const COMMON_TOKEN_BUCKET_LIMIT = 128;
+
 function normalize(value: string | null | undefined): string {
   return (value ?? "")
     .toLowerCase()
@@ -52,6 +70,105 @@ function buildSocialAccountsByPerson(accounts: Account[]): Map<string, Account[]
   return grouped;
 }
 
+function addToIndex(index: Map<string, Set<string>>, key: string, personId: string): void {
+  if (!key) return;
+  const bucket = index.get(key);
+  if (bucket) {
+    bucket.add(personId);
+  } else {
+    index.set(key, new Set([personId]));
+  }
+}
+
+function buildCandidateIndex(
+  confirmedPersons: Person[],
+  socialAccountsByPerson: Map<string, Account[]>,
+): AccountLinkCandidateIndex {
+  const peopleById = new Map<string, IndexedConfirmedPerson>();
+  const peopleByExactName = new Map<string, Set<string>>();
+  const peopleByLinkedHandle = new Map<string, Set<string>>();
+  const peopleByAvatarUrl = new Map<string, Set<string>>();
+  const peopleByToken = new Map<string, Set<string>>();
+
+  for (const person of confirmedPersons) {
+    const evidenceAccounts = socialAccountsByPerson.get(person.id) ?? [];
+    const normalizedName = normalize(person.name);
+    const tokens = tokenSet(person.name);
+    const evidenceHandles = new Set(
+      evidenceAccounts
+        .map((account) => normalize(account.handle))
+        .filter(Boolean),
+    );
+    const evidenceAvatarUrls = new Set(
+      evidenceAccounts
+        .map((account) => account.avatarUrl)
+        .filter((avatarUrl): avatarUrl is string => Boolean(avatarUrl)),
+    );
+
+    peopleById.set(person.id, {
+      person,
+      normalizedName,
+      tokens,
+      evidenceHandles,
+      evidenceAvatarUrls,
+    });
+    addToIndex(peopleByExactName, normalizedName, person.id);
+    for (const token of tokens) {
+      addToIndex(peopleByToken, token, person.id);
+    }
+    for (const handle of evidenceHandles) {
+      addToIndex(peopleByLinkedHandle, handle, person.id);
+    }
+    for (const avatarUrl of evidenceAvatarUrls) {
+      addToIndex(peopleByAvatarUrl, avatarUrl, person.id);
+    }
+  }
+
+  return {
+    peopleById,
+    peopleByExactName,
+    peopleByLinkedHandle,
+    peopleByAvatarUrl,
+    peopleByToken,
+  };
+}
+
+function addCandidates(
+  candidates: Set<string>,
+  bucket: Set<string> | undefined,
+): void {
+  if (!bucket) return;
+  for (const personId of bucket) {
+    candidates.add(personId);
+  }
+}
+
+function collectCandidatePeople(
+  account: Account,
+  candidateIndex: AccountLinkCandidateIndex,
+): IndexedConfirmedPerson[] {
+  const accountName = normalize(account.displayName);
+  const accountHandle = normalize(account.handle);
+  const accountTokens = tokenSet(account.displayName || account.handle || account.externalId);
+  const candidateIds = new Set<string>();
+
+  addCandidates(candidateIds, candidateIndex.peopleByExactName.get(accountName));
+  addCandidates(candidateIds, candidateIndex.peopleByLinkedHandle.get(accountHandle));
+  if (account.avatarUrl) {
+    addCandidates(candidateIds, candidateIndex.peopleByAvatarUrl.get(account.avatarUrl));
+  }
+
+  for (const token of accountTokens) {
+    const tokenCandidates = candidateIndex.peopleByToken.get(token);
+    if (!tokenCandidates || tokenCandidates.size > COMMON_TOKEN_BUCKET_LIMIT) continue;
+    addCandidates(candidateIds, tokenCandidates);
+  }
+
+  return Array.from(candidateIds)
+    .map((personId) => candidateIndex.peopleById.get(personId))
+    .filter((person): person is IndexedConfirmedPerson => Boolean(person));
+}
+
 export function buildAccountLinkSuggestions(
   persons: Record<string, Person>,
   accounts: Record<string, Account>
@@ -73,22 +190,19 @@ function visitAccountLinkSuggestions(
   const socialAccountsByPerson = buildSocialAccountsByPerson(
     Object.values(accounts).filter((account) => account.kind === "social"),
   );
+  const candidateIndex = buildCandidateIndex(confirmedPersons, socialAccountsByPerson);
 
   for (const account of unlinkedAccounts) {
     const accountName = normalize(account.displayName);
     const accountHandle = normalize(account.handle);
     const accountTokens = tokenSet(account.displayName || account.handle || account.externalId);
+    const candidatePeople = collectCandidatePeople(account, candidateIndex);
 
-    for (const person of confirmedPersons) {
-      const personName = normalize(person.name);
-      const personTokens = tokenSet(person.name);
-      const evidenceAccounts = socialAccountsByPerson.get(person.id) ?? [];
-      const exactHandleMatch = evidenceAccounts.some(
-        (candidate) => normalize(candidate.handle) && normalize(candidate.handle) === accountHandle,
-      );
-      const exactNameMatch = accountName !== "" && accountName === personName;
-      const tokenOverlap = overlapScore(accountTokens, personTokens);
-      const avatarMatch = !!(account.avatarUrl && evidenceAccounts.some((candidate) => candidate.avatarUrl && candidate.avatarUrl === account.avatarUrl));
+    for (const candidate of candidatePeople) {
+      const exactHandleMatch = accountHandle !== "" && candidate.evidenceHandles.has(accountHandle);
+      const exactNameMatch = accountName !== "" && accountName === candidate.normalizedName;
+      const tokenOverlap = overlapScore(accountTokens, candidate.tokens);
+      const avatarMatch = !!(account.avatarUrl && candidate.evidenceAvatarUrls.has(account.avatarUrl));
 
       let score = 0;
       let reason = "";
@@ -117,7 +231,7 @@ function visitAccountLinkSuggestions(
 
       visit({
         accountId: account.id,
-        personId: person.id,
+        personId: candidate.person.id,
         confidence: score >= 80 ? "high" : "medium",
         reason,
         score,
