@@ -62,6 +62,8 @@ interface BuildIdentityGraphLayoutArgs {
 
 export type GraphLayoutQuality = "full" | "fast";
 
+const DENSE_PERSON_FIELD_THRESHOLD = 1_200;
+
 function hashValue(value: string): number {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -106,6 +108,60 @@ interface ForcePersonNode extends SimulationNodeDatum {
   targetY: number;
 }
 
+function solveDensePersonField(
+  friendNodes: IdentityGraphNode[],
+  connectionNodes: IdentityGraphNode[],
+  centerX: number,
+  centerY: number,
+  width: number,
+  height: number,
+): IdentityGraphLayoutNode[] {
+  const minDimension = Math.min(width, height);
+  const friendBaseRadius = Math.max(84, minDimension * 0.18);
+  const connectionBaseRadius = Math.max(220, minDimension * 0.36);
+
+  const placeBand = (
+    nodes: IdentityGraphNode[],
+    baseRadius: number,
+    ringGap: number,
+    maxPerRing: number,
+    yScale: number,
+    angleOffset: number,
+  ): IdentityGraphLayoutNode[] => {
+    const placed: IdentityGraphLayoutNode[] = [];
+    let cursor = 0;
+    let ring = 0;
+    while (cursor < nodes.length) {
+      const remaining = nodes.length - cursor;
+      const ringCapacity = Math.min(remaining, maxPerRing + ring * 18);
+      const radius = baseRadius + ring * ringGap;
+      for (let index = 0; index < ringCapacity; index += 1) {
+        const node = nodes[cursor + index]!;
+        const angle = angleOffset + (Math.PI * 2 * index) / Math.max(1, ringCapacity) + seededUnit(`${node.id}:dense-angle`) * 0.015;
+        const jitterRadius = (seededUnit(`${node.id}:dense-radius`) - 0.5) * Math.min(12, ringGap * 0.2);
+        const fallback = {
+          x: centerX + Math.cos(angle) * (radius + jitterRadius),
+          y: centerY + Math.sin(angle) * (radius + jitterRadius) * yScale,
+        };
+        const position = applyPinnedPosition(node, fallback);
+        placed.push({
+          ...node,
+          x: position.x,
+          y: position.y,
+        });
+      }
+      cursor += ringCapacity;
+      ring += 1;
+    }
+    return placed;
+  };
+
+  return [
+    ...placeBand(friendNodes, friendBaseRadius, 58, 72, 0.72, -Math.PI / 2),
+    ...placeBand(connectionNodes, connectionBaseRadius, 54, 104, 0.72, -Math.PI / 2 + 0.025),
+  ];
+}
+
 function providerLabel(provider: string): string {
   if (provider === "rss") return "RSS";
   if (provider === "x") return "X";
@@ -126,6 +182,17 @@ function solvePersonField(
   const connectionRadius = Math.max(220, minDimension * 0.36);
   const nodes = [...friendNodes, ...connectionNodes];
   if (nodes.length === 0) return [];
+
+  if (quality === "fast" && nodes.length >= DENSE_PERSON_FIELD_THRESHOLD) {
+    return solveDensePersonField(
+      friendNodes,
+      connectionNodes,
+      centerX,
+      centerY,
+      width,
+      height,
+    );
+  }
 
   const forceNodes: ForcePersonNode[] = nodes.map((node, index) => {
     const ringRadius = node.kind === "friend_person"
