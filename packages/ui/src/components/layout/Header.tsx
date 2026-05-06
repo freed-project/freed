@@ -26,8 +26,9 @@ import {
 import { Tooltip } from "../Tooltip.js";
 import {
   ArchiveIcon,
-  AnimatedMenuIcon,
+  CloseIcon,
   FilterIcon,
+  MenuIcon,
   ReaderRailHideIcon,
   ReaderRailShowIcon,
   SidebarCollapseIcon,
@@ -1336,7 +1337,7 @@ export function Header({
           >
             <div
               ref={layoutControlHostRef}
-              className="relative flex h-full shrink-0 items-center pl-[13px] min-[960px]:pl-0"
+              className="relative flex h-full shrink-0 items-center"
               style={leftToolbarStyle}
             >
               {isMobileDevice ? (
@@ -1348,7 +1349,7 @@ export function Header({
                     aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
                     aria-pressed={mobileSidebarOpen}
                   >
-                    <AnimatedMenuIcon open={mobileSidebarOpen} className="h-5 w-5" />
+                    {mobileSidebarOpen ? <CloseIcon className="h-5 w-5" /> : <MenuIcon className="h-5 w-5" />}
                   </button>
                 </Tooltip>
               ) : null}

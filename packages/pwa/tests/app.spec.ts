@@ -1571,7 +1571,7 @@ test.describe("FREED PWA", () => {
     const menuButton = page.getByRole("button", { name: "Close menu" });
     const geometry = await page.evaluate(() => {
       const button = document.querySelector('button[aria-label="Close menu"]') as HTMLElement | null;
-      const icon = button?.querySelector("span[aria-hidden='true']") as HTMLElement | null;
+      const icon = button?.querySelector("[aria-hidden='true']") as HTMLElement | null;
       const sidebar = document.querySelector('[data-testid="app-sidebar-mobile"]') as HTMLElement | null;
       const search = sidebar?.querySelector('input[aria-label="Search or run"]') as HTMLElement | null;
       const firstControl = sidebar?.querySelector("input, button") as HTMLElement | null;
@@ -1729,13 +1729,15 @@ test.describe("FREED PWA", () => {
       }
       const toolbarRect = toolbar.getBoundingClientRect();
       const menuRect = menu.getBoundingClientRect();
-      const menuBarRects = Array.from(menuIcon.children)
-        .map((child) => child.getBoundingClientRect())
-        .filter((rect) => rect.width > 0 && rect.height > 0);
       const menuIconRect = menuIcon.getBoundingClientRect();
-      const menuVisibleLeft = menuBarRects.length
-        ? Math.min(...menuBarRects.map((rect) => rect.left))
-        : menuIconRect.left;
+      const menuBarWidths = Array.from(menuIcon.querySelectorAll("path"))
+        .map((path) => (path as SVGGraphicsElement).getBBox().width)
+        .filter((width) => width > 0);
+      const menuVisibleLeft = Math.min(
+        ...Array.from(menuIcon.querySelectorAll("path"))
+          .map((path) => (path as SVGGraphicsElement).getBBox().x)
+          .map((x) => menuIconRect.left + (x / 24) * menuIconRect.width),
+      );
       const overflowRect = overflow.getBoundingClientRect();
       const formatRect = format.getBoundingClientRect();
       const formatIconRect = formatIcon.getBoundingClientRect();
@@ -1746,7 +1748,7 @@ test.describe("FREED PWA", () => {
         menuRight: menuRect.right,
         menuIconLeft: menuIconRect.left,
         menuVisibleLeft,
-        menuBarWidths: menuBarRects.map((rect) => rect.width),
+        menuBarWidths,
         overflowRight: overflowRect.right,
         formatLeft: formatRect.left,
         formatRight: formatRect.right,
@@ -1756,7 +1758,7 @@ test.describe("FREED PWA", () => {
       };
     });
     expect(
-      Math.abs((geometry.menuLeft - geometry.toolbarLeft) - (geometry.toolbarRight - geometry.formatIconRight)),
+      Math.abs((geometry.menuVisibleLeft - geometry.toolbarLeft) - (geometry.toolbarRight - geometry.formatIconRight)),
       JSON.stringify(geometry),
     ).toBeLessThanOrEqual(2);
     for (const barWidth of geometry.menuBarWidths) {
