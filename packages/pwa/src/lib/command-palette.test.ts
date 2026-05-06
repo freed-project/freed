@@ -114,6 +114,8 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
     totalArchivableCount: overrides.totalArchivableCount ?? 0,
     archivableCountByPlatform: overrides.archivableCountByPlatform ?? {},
     archivableFeedCounts: overrides.archivableFeedCounts ?? {},
+    mapFriendLocationCount: overrides.mapFriendLocationCount ?? 0,
+    mapAllContentLocationCount: overrides.mapAllContentLocationCount ?? 0,
     isLoading: false,
     isSyncing: false,
     isInitialized: true,

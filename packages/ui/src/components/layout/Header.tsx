@@ -11,8 +11,6 @@ import {
   type ReactNode,
 } from "react";
 import {
-  countAuthorsWithRecentLocationUpdates,
-  countFriendsWithRecentLocationUpdates,
   applyFeedSignalModesToFilter,
   FEED_SIGNAL_FILTER_PRESETS,
   filterFeedItems,
@@ -386,14 +384,8 @@ export function Header({
 
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds, accounts), [accounts, activeFilter, feeds]);
   const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
-  const mappedFriendCount = useMemo(
-    () => countFriendsWithRecentLocationUpdates(items, friends),
-    [friends, items],
-  );
-  const mappedAllContentCount = useMemo(
-    () => countAuthorsWithRecentLocationUpdates(items),
-    [items],
-  );
+  const mappedFriendCount = useAppStore((s) => s.mapFriendLocationCount);
+  const mappedAllContentCount = useAppStore((s) => s.mapAllContentLocationCount);
   const socialAccountCount = useMemo(
     () => Object.values(accounts).filter((account) => account.kind === "social").length,
     [accounts],

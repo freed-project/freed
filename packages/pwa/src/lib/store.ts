@@ -140,6 +140,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   totalArchivableCount: 0,
   archivableCountByPlatform: {},
   archivableFeedCounts: {},
+  mapFriendLocationCount: 0,
+  mapAllContentLocationCount: 0,
   syncConnected: false,
   isLoading: true,
   isSyncing: false,

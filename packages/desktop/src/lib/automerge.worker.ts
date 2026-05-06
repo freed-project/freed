@@ -53,7 +53,13 @@ import {
   confirmLikedSynced,
   confirmSeenSynced,
 } from "@freed/shared/schema";
-import { mergeDefaultPreferences, rankFeedItems, sortByPriority } from "@freed/shared";
+import {
+  countAuthorsWithRecentLocationUpdates,
+  countFriendsWithRecentLocationUpdates,
+  mergeDefaultPreferences,
+  rankFeedItems,
+  sortByPriority,
+} from "@freed/shared";
 import type { Account, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
 import {
@@ -381,6 +387,8 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
     totalArchivableCount,
     archivableCountByPlatform,
     archivableFeedCounts,
+    mapFriendLocationCount: countFriendsWithRecentLocationUpdates(rankedItems, persons, accounts),
+    mapAllContentLocationCount: countAuthorsWithRecentLocationUpdates(rankedItems),
     docItemCount: Object.keys(plain.feedItems as Record<string, FeedItem>).length,
   };
 }
