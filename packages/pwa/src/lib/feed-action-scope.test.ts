@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem } from "@freed/shared";
-import { getFeedActionScope, getFeedArchiveCounts } from "../../../ui/src/lib/feed-action-scope";
+import {
+  collectArchivableFeedActionIds,
+  collectUnreadFeedActionIds,
+  getFeedActionCounts,
+  getFeedArchiveCounts,
+} from "../../../ui/src/lib/feed-action-scope";
 
 function makeItem(globalId: string, userState: Partial<FeedItem["userState"]> = {}): FeedItem {
   return {
@@ -34,7 +39,7 @@ function makeItem(globalId: string, userState: Partial<FeedItem["userState"]> = 
 }
 
 describe("feed action scope", () => {
-  it("collects unread and archivable IDs in one cached pass", () => {
+  it("counts bulk action candidates without collecting IDs during render", () => {
     const items = [
       makeItem("unread"),
       makeItem("read", { readAt: 1 }),
@@ -43,13 +48,12 @@ describe("feed action scope", () => {
       makeItem("archived", { archived: true }),
     ];
 
-    const scope = getFeedActionScope(items);
+    const counts = getFeedActionCounts(items);
 
-    expect(scope.unreadItemIds).toEqual(["unread"]);
-    expect(scope.archivableItemIds).toEqual(["read"]);
-    expect(scope.unreadCount).toBe(1);
-    expect(scope.archivableCount).toBe(1);
-    expect(getFeedActionScope(items)).toBe(scope);
+    expect(counts).toEqual({ unreadCount: 1, archivableCount: 1 });
+    expect(getFeedActionCounts(items)).toBe(counts);
+    expect(collectUnreadFeedActionIds(items)).toEqual(["unread"]);
+    expect(collectArchivableFeedActionIds(items)).toEqual(["read"]);
   });
 
   it("counts saved archived items separately from plain archived items", () => {
