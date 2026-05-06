@@ -14,5 +14,5 @@
     "When a Facebook, Instagram, or LinkedIn scrape is blocked for memory, Freed Desktop now recycles the preserved scraper WebView too, instead of leaving that hidden WebKit process alive after the blocked start"
   ],
   "editorialNotes": [],
-  "updatedAt": "2026-05-06T10:17:12.083Z"
+  "updatedAt": "2026-05-06T11:16:07.009Z"
 }
