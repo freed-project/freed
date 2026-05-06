@@ -102,6 +102,7 @@ type ProviderAuthSlices = {
 };
 const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
 const INSTALLED_BUILD_PRESENTATION = describeInstalledBuild(readBuildMetadata());
+const SETTINGS_OVERVIEW_ROW_TEXT = "text-base sm:text-xs";
 
 function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId {
   return (
@@ -1331,7 +1332,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         onClick={() => scrollToSection(section.id)}
         aria-current={isActive ? "location" : undefined}
         data-active={isActive ? "true" : "false"}
-        className={`w-full flex items-center gap-2 text-left text-xs transition-colors rounded-md ${
+        className={`w-full flex items-center gap-2 text-left ${SETTINGS_OVERVIEW_ROW_TEXT} transition-colors rounded-md ${
           indented ? "pl-7 pr-2 py-2" : "px-2 py-2"
         } ${
           isActive
@@ -1377,7 +1378,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   onClick={() => scrollToSection(item.children[0].id)}
                   aria-current={isGroupActive ? "location" : undefined}
                   data-active={isGroupActive ? "true" : "false"}
-                  className={`w-full flex items-center gap-2 px-2 py-2 text-left text-xs transition-colors rounded-md ${
+                  className={`w-full flex items-center gap-2 px-2 py-2 text-left ${SETTINGS_OVERVIEW_ROW_TEXT} transition-colors rounded-md ${
                     isGroupActive
                       ? "text-[var(--theme-accent-secondary)]"
                       : "text-text-secondary hover:text-text-primary hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)]"
@@ -1446,7 +1447,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             className="flex shrink-0 items-center justify-between px-4 pb-1.5 pt-2 sm:hidden"
             style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
           >
-            <h2 className="text-sm font-semibold text-text-primary">Settings</h2>
+            <h2 className="text-base font-semibold text-text-primary">Settings</h2>
             <CloseButton
               testId={isMobile ? "settings-close-button-sidebar" : undefined}
               className="-mr-1"

@@ -1715,6 +1715,10 @@ test.describe("FREED PWA", () => {
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Appearance" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Appearance" })).toHaveCount(0);
+    const overviewFontSize = await page.getByRole("button", { name: "Appearance" }).evaluate((button) =>
+      Number.parseFloat(window.getComputedStyle(button).fontSize),
+    );
+    expect(overviewFontSize).toBeGreaterThanOrEqual(16);
     await expect(page.getByText("Freed hit a fatal error")).toHaveCount(0);
     await expect(page.getByText("Cannot access 'mobileView' before initialization")).toHaveCount(0);
   });
