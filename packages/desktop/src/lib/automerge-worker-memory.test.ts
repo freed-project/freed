@@ -66,10 +66,24 @@ describe("automerge worker memory routing", () => {
     const mergeBody = caseBody("MERGE_DOC");
 
     expect(workerSource).toContain("compactLoadedFeedText");
-    expect(initBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text\")");
-    expect(replaceBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text\")");
-    expect(mergeBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text after merge\")");
+    expect(workerSource).toContain("FRESH_DOC_REBUILD_MIN_BINARY_BYTES = 4 * 1024 * 1024");
+    expect(initBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text\",");
+    expect(replaceBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text\",");
+    expect(mergeBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text after merge\",");
     expect(initBody.indexOf("compactLoadedFeedText")).toBeLessThan(initBody.indexOf("saveAndBroadcast"));
+  });
+
+  it("rebuilds a fresh Automerge document after compacting oversized loaded history", () => {
+    const compactBody = functionBody("compactLoadedFeedText");
+    const initBody = caseBody("INIT");
+    const replaceBody = caseBody("REPLACE_DOC");
+
+    expect(workerSource).toContain("createDocFromData");
+    expect(compactBody).toContain("createDocFromData(plain)");
+    expect(compactBody).toContain("rebuilt compacted document");
+    expect(initBody.indexOf("currentBinary = saved")).toBeLessThan(initBody.indexOf("compactLoadedFeedText"));
+    expect(replaceBody.indexOf("currentBinary = req.binary")).toBeLessThan(replaceBody.indexOf("compactLoadedFeedText"));
+    expect(replaceBody).not.toContain("await storage.save(req.binary)");
   });
 
   it("compacts oversized feed text before item writes", () => {
