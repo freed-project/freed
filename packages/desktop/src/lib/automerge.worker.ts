@@ -92,7 +92,7 @@ const SLOW_QUEUE_WAIT_MS = 1_000;
 const SLOW_REQUEST_PROCESS_MS = 5_000;
 const SLOW_SAVE_AND_BROADCAST_MS = 2_000;
 const DESKTOP_UI_PRESERVED_TEXT_LIMIT = 0;
-const DESKTOP_UI_CONTENT_TEXT_LIMIT = 600;
+const DESKTOP_UI_CONTENT_TEXT_LIMIT = 280;
 const DESKTOP_UI_LINK_DESCRIPTION_LIMIT = 180;
 const FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES = 4 * 1024 * 1024;
 const FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES = 16 * 1024 * 1024;
@@ -323,13 +323,11 @@ function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
     };
   }
 
-  if (next.contentSignals && Object.keys(next.contentSignals.scores ?? {}).length > 0) {
+  if (next.contentSignals) {
+    const tags = next.contentSignals.tags ?? [];
     next = {
       ...next,
-      contentSignals: {
-        ...next.contentSignals,
-        scores: {},
-      },
+      contentSignals: tags.length > 0 ? ({ tags } as FeedItem["contentSignals"]) : undefined,
     };
   }
 
