@@ -656,6 +656,49 @@ describe("command palette", () => {
     });
   });
 
+  it("renders with malformed stored feed and account labels", async () => {
+    const store = createTestStore({
+      feeds: {
+        "https://broken.example/feed.xml": {
+          url: "https://broken.example/feed.xml",
+          title: undefined,
+          enabled: true,
+        } as unknown as BaseAppState["feeds"][string],
+      },
+      accounts: {
+        "social:x:broken": {
+          id: "social:x:broken",
+          kind: "social",
+          provider: "x",
+          externalId: undefined,
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+          discoveredFrom: "captured_item",
+          createdAt: 1,
+          updatedAt: 1,
+        } as unknown as Account,
+      },
+    });
+    const platform = createPlatform(store);
+    const render = renderNode(
+      createElement(
+        PlatformProvider,
+        { value: platform, children: createElement(SearchJumpField) },
+      ),
+    );
+    cleanups.push(render.cleanup);
+    await flush();
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
+    await flush();
+    changeInput(input!, "broken");
+    await flush();
+
+    expect(document.body.textContent).toContain("https://broken.example/feed.xml");
+  });
+
   it("archives current scope read items with one visible ID batch", async () => {
     const archiveItems = vi.fn(async () => {});
     const toggleArchived = vi.fn(async () => {});

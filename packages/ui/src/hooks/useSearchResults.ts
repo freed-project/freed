@@ -56,28 +56,34 @@ function accountKey(platform: string, authorId: string): string {
   return `${platform}:${authorId}`;
 }
 
+function searchText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
 function buildAccountAliasMap(accounts: Record<string, Account>): Map<string, string> {
   const aliases = new Map<string, string>();
   for (const account of Object.values(accounts)) {
     if (account.kind !== "social") continue;
+    const externalId = searchText(account.externalId);
+    if (!externalId) continue;
     const values = [
       account.displayName,
       account.handle,
       account.handle?.startsWith("@") ? account.handle.slice(1) : undefined,
-      account.externalId,
-      account.externalId.slice(-8),
+      externalId,
+      externalId.slice(-8),
     ].filter((value): value is string => Boolean(value?.trim()));
-    aliases.set(accountKey(account.provider, account.externalId), values.join(" "));
+    aliases.set(accountKey(account.provider, externalId), values.join(" "));
   }
   return aliases;
 }
 
 function accountSignature(accounts: Record<string, Account>): string {
   return Object.values(accounts)
-    .filter((account) => account.kind === "social")
+    .filter((account) => account.kind === "social" && searchText(account.externalId))
     .map((account) => [
       account.provider,
-      account.externalId,
+      searchText(account.externalId),
       account.displayName ?? "",
       account.handle ?? "",
     ].join(":"))
