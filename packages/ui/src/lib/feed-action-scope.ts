@@ -1,8 +1,6 @@
 import type { FeedItem } from "@freed/shared";
 
-export interface FeedActionScope {
-  unreadItemIds: string[];
-  archivableItemIds: string[];
+interface FeedActionCounts {
   unreadCount: number;
   archivableCount: number;
 }
@@ -12,35 +10,50 @@ export interface FeedArchiveCounts {
   savedArchivedCount: number;
 }
 
-const actionScopeCache = new WeakMap<readonly FeedItem[], FeedActionScope>();
+const actionCountsCache = new WeakMap<readonly FeedItem[], FeedActionCounts>();
 const archiveCountsCache = new WeakMap<readonly FeedItem[], FeedArchiveCounts>();
 
-export function getFeedActionScope(items: readonly FeedItem[]): FeedActionScope {
-  const cached = actionScopeCache.get(items);
+export function getFeedActionCounts(items: readonly FeedItem[]): FeedActionCounts {
+  const cached = actionCountsCache.get(items);
   if (cached) return cached;
 
-  const unreadItemIds: string[] = [];
-  const archivableItemIds: string[] = [];
+  let unreadCount = 0;
+  let archivableCount = 0;
 
   for (const item of items) {
     if (item.userState.hidden || item.userState.archived) continue;
     if (!item.userState.readAt) {
-      unreadItemIds.push(item.globalId);
+      unreadCount += 1;
       continue;
     }
     if (!item.userState.saved) {
-      archivableItemIds.push(item.globalId);
+      archivableCount += 1;
     }
   }
 
-  const scope = {
-    unreadItemIds,
-    archivableItemIds,
-    unreadCount: unreadItemIds.length,
-    archivableCount: archivableItemIds.length,
-  };
-  actionScopeCache.set(items, scope);
-  return scope;
+  const counts = { unreadCount, archivableCount };
+  actionCountsCache.set(items, counts);
+  return counts;
+}
+
+export function collectUnreadFeedActionIds(items: readonly FeedItem[]): string[] {
+  const ids: string[] = [];
+  for (const item of items) {
+    if (item.userState.hidden || item.userState.archived || item.userState.readAt) continue;
+    ids.push(item.globalId);
+  }
+  return ids;
+}
+
+export function collectArchivableFeedActionIds(items: readonly FeedItem[]): string[] {
+  const ids: string[] = [];
+  for (const item of items) {
+    if (item.userState.hidden || item.userState.archived || !item.userState.readAt || item.userState.saved) {
+      continue;
+    }
+    ids.push(item.globalId);
+  }
+  return ids;
 }
 
 export function getFeedArchiveCounts(items: readonly FeedItem[]): FeedArchiveCounts {
