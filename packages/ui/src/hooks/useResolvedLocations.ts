@@ -71,18 +71,21 @@ export function useResolvedLocations(
     for (const item of feedItems) {
       const friend = personBySourceKey.get(`${item.platform}:${item.author.id}`) ?? null;
       const coordinates = item.location?.coordinates;
+      const signal = extractLocationFromItem(item);
       if (coordinates) {
+        const label = signal && "coordinates" in signal
+          ? signal.name ?? item.location?.name
+          : item.location?.name;
         coordinateItems.push({
           item,
           friend,
           lat: coordinates.lat,
           lng: coordinates.lng,
-          label: item.location?.name,
+          label,
         });
         continue;
       }
 
-      const signal = extractLocationFromItem(item);
       if (!signal || "coordinates" in signal) continue;
       namedRequests.push({
         item,
