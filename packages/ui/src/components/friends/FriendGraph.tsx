@@ -125,6 +125,8 @@ type PinchState = {
   pointerIds: [number, number];
   initialDistance: number;
   initialScale: number;
+  initialMidpoint: TouchPoint;
+  initialWorldPoint: TouchPoint;
   moved: boolean;
 };
 
@@ -1800,10 +1802,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         if (firstEntry && secondEntry) {
           const initialDistance = distanceBetween(firstEntry[1], secondEntry[1]);
           if (initialDistance > 0) {
+            const initialMidpoint = midpointBetween(firstEntry[1], secondEntry[1]);
             pinchStateRef.current = {
               pointerIds: [firstEntry[0], secondEntry[0]],
               initialDistance,
               initialScale: transformRef.current.scale,
+              initialMidpoint,
+              initialWorldPoint: viewportToWorld(initialMidpoint.x, initialMidpoint.y),
               moved: false,
             };
             dragStateRef.current = null;
@@ -1877,14 +1882,24 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       const currentDistance = distanceBetween(first, second);
       if (currentDistance <= 0) return;
 
-      pinch.moved =
-        pinch.moved || Math.abs(currentDistance - pinch.initialDistance) > 4;
       const midpoint = midpointBetween(first, second);
-      zoomAtPoint(
-        midpoint.x,
-        midpoint.y,
-        pinch.initialScale * (currentDistance / pinch.initialDistance),
-      );
+      const midpointDelta = distanceBetween(midpoint, pinch.initialMidpoint);
+      pinch.moved =
+        pinch.moved ||
+        Math.abs(currentDistance - pinch.initialDistance) > 4 ||
+        midpointDelta > 4;
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const scale = clampScale(pinch.initialScale * (currentDistance / pinch.initialDistance));
+      const localX = midpoint.x - rect.left;
+      const localY = midpoint.y - rect.top;
+      transformRef.current = {
+        scale,
+        x: localX - pinch.initialWorldPoint.x * scale,
+        y: localY - pinch.initialWorldPoint.y * scale,
+      };
+      scheduleSyncScene();
       markInteractive();
       event.preventDefault();
       return;
@@ -1950,7 +1965,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
     markInteractive();
     scheduleSyncScene();
-  }, [hitNodeAt, markInteractive, scheduleSyncScene, viewportToWorld, zoomAtPoint]);
+  }, [hitNodeAt, markInteractive, scheduleSyncScene, viewportToWorld]);
 
   const handlePointerUp = useCallback(async (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch") {
