@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.5.5",
   "date": "2026-05-05",
-  "preferredDeck": "Startup repair ships",
+  "preferredDeck": "Performance guardrails land",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -19,8 +19,10 @@
     "Maintenance tasks skip full feed-state broadcasts when no records changed",
     "Freed Desktop caps oversized article text before projecting feed state into the renderer",
     "Feed cards render bounded text previews for long article bodies",
-    "Desktop memory pressure caps at 4 GiB before background social scraping starts"
+    "Desktop memory pressure caps at 4 GiB before background social scraping starts",
+    "Friends view now virtualizes overview rows and keeps dense graph interaction responsive at 1,600 connections",
+    "Desktop performance validation now covers the Friends scale path and feed scroll regressions"
   ],
   "editorialNotes": [],
-  "updatedAt": "2026-05-06T00:25:48.440Z"
+  "updatedAt": "2026-05-06T00:28:31.418Z"
 }
