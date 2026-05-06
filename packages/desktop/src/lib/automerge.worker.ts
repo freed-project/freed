@@ -93,7 +93,9 @@ const SLOW_REQUEST_PROCESS_MS = 5_000;
 const SLOW_SAVE_AND_BROADCAST_MS = 2_000;
 const DESKTOP_UI_PRESERVED_TEXT_LIMIT = 3_000;
 const DESKTOP_UI_CONTENT_TEXT_LIMIT = 10_000;
-const FRESH_DOC_REBUILD_MIN_BINARY_BYTES = 4 * 1024 * 1024;
+const FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES = 4 * 1024 * 1024;
+const FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES = 16 * 1024 * 1024;
+const FRESH_DOC_REBUILD_MIN_SAVINGS_RATIO = 0.1;
 
 interface RequestTrace {
   reqId: number;
@@ -206,25 +208,44 @@ function compactLoadedFeedText(
   currentDoc = A.change(currentDoc, message, (doc) => {
     summary = compactFeedItemsTextForSync(Object.values(doc.feedItems) as FeedItem[]);
   });
-  if (summary.changed === 0) return;
-  bumpSearchCorpusVersion();
-  emitWorkerTrace(
-    `[automerge-worker] ${message}: ${formatFeedTextCompactionSummary(summary)}`,
-    "change",
-  );
+  if (summary.changed > 0) {
+    bumpSearchCorpusVersion();
+    emitWorkerTrace(
+      `[automerge-worker] ${message}: ${formatFeedTextCompactionSummary(summary)}`,
+      "change",
+    );
+  }
 
   const previousBinaryBytes = options.previousBinaryBytes ?? currentBinary?.byteLength ?? 0;
-  if (!options.rebuildHistory || previousBinaryBytes < FRESH_DOC_REBUILD_MIN_BINARY_BYTES) return;
+  if (!options.rebuildHistory) return;
+  const shouldRebuildForChangedText =
+    summary.changed > 0 && previousBinaryBytes >= FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES;
+  const shouldProbeLargeHistory = previousBinaryBytes >= FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES;
+  if (!shouldRebuildForChangedText && !shouldProbeLargeHistory) return;
 
   const plain = A.toJS(currentDoc) as Partial<FreedDoc>;
-  currentDoc = createDocFromData(plain);
-  const rebuiltBinary = A.save(currentDoc);
+  const rebuiltDoc = createDocFromData(plain);
+  const rebuiltBinary = A.save(rebuiltDoc);
+  const bytesSaved = previousBinaryBytes - rebuiltBinary.byteLength;
+  const minHistorySavings = previousBinaryBytes * FRESH_DOC_REBUILD_MIN_SAVINGS_RATIO;
+  if (!shouldRebuildForChangedText && bytesSaved < minHistorySavings) {
+    emitWorkerTrace(
+      `[automerge-worker] kept existing compacted document history` +
+        ` previous_bytes=${previousBinaryBytes.toLocaleString()}` +
+        ` rebuilt_bytes=${rebuiltBinary.byteLength.toLocaleString()}`,
+      "change",
+    );
+    return;
+  }
+
+  currentDoc = rebuiltDoc;
   currentBinary = rebuiltBinary;
   persistenceState = createPersistenceState(rebuiltBinary);
   emitWorkerTrace(
     `[automerge-worker] rebuilt compacted document` +
       ` previous_bytes=${previousBinaryBytes.toLocaleString()}` +
-      ` rebuilt_bytes=${rebuiltBinary.byteLength.toLocaleString()}`,
+      ` rebuilt_bytes=${rebuiltBinary.byteLength.toLocaleString()}` +
+      ` saved_bytes=${Math.max(0, bytesSaved).toLocaleString()}`,
     "change",
   );
 }
