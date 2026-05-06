@@ -1621,11 +1621,13 @@ test.describe("FREED PWA", () => {
     });
 
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Appearance" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Appearance" })).toHaveCount(0);
     await expect(page.getByText("Freed hit a fatal error")).toHaveCount(0);
     await expect(page.getByText("Cannot access 'mobileView' before initialization")).toHaveCount(0);
   });
 
-  test("mobile settings uses stacked sections and opens support from danger zone", async ({ page }) => {
+  test("mobile settings keeps overview and opens support from danger zone", async ({ page }) => {
     await emulateMobileDevice(page);
     await page.setViewportSize({ width: 393, height: 852 });
     await page.goto("/");
@@ -1635,9 +1637,13 @@ test.describe("FREED PWA", () => {
     await page.getByRole("button", { name: "Settings" }).evaluate((element) => {
       (element as HTMLButtonElement).click();
     });
-    await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Settings");
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Appearance" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Support", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Appearance" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Updates" }).click();
+    await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Updates");
 
     const scrollContainer = page.getByTestId("settings-scroll-container");
     await scrollContainer.evaluate((container) => {
@@ -1663,6 +1669,11 @@ test.describe("FREED PWA", () => {
     expect(sectionMetrics.legalVisible).toBe(true);
     expect(sectionMetrics.sectionGap).toBeGreaterThanOrEqual(24);
     expect(sectionMetrics.sectionGap).toBeLessThanOrEqual(64);
+
+    await page.getByLabel("Back to settings").click();
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await page.getByRole("button", { name: "Danger Zone" }).click();
+    await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Danger Zone");
 
     await scrollContainer.evaluate((container) => {
       const danger = container.querySelector('[data-section="danger"]') as HTMLElement | null;

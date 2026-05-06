@@ -661,6 +661,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // ── Scrollspy ────────────────────────────────────────────────────────────
   const [activeSection, setActiveSection] = useState<SectionId>("appearance");
+  const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Keep a ref in sync with updateState.status so scroll/visibility callbacks
@@ -769,7 +770,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   useEffect(() => {
     const root = scrollRef.current;
-    if (!root || searchLower) return;
+    if (!root || searchLower || (isMobile && mobileView === "nav")) return;
 
     const updateActiveSectionFromScroll = () => {
       if (isScrollingProgrammatically.current) return;
@@ -803,17 +804,32 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       root.removeEventListener("scroll", updateActiveSectionFromScroll);
       window.removeEventListener("resize", updateActiveSectionFromScroll);
     };
-  }, [open, searchLower]);
+  }, [isMobile, mobileView, open, searchLower]);
 
   const scrollToSection = useCallback((id: SectionId) => {
     setActiveSection(id);
+    if (isMobile && mobileView === "nav") {
+      isScrollingProgrammatically.current = true;
+      clearTimeout(scrollEndTimerRef.current);
+      setMobileView("section");
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollSectionIntoView(id, "auto");
+          setActiveSection(id);
+        });
+      });
+      return;
+    }
+
     scrollSectionIntoView(id, "smooth");
-  }, [scrollSectionIntoView]);
+    setMobileView("section");
+  }, [isMobile, mobileView, scrollSectionIntoView]);
 
   // Reset state on close
   useEffect(() => {
     if (!open) {
       setSearch("");
+      setMobileView("nav");
       setSupportModalOpen(false);
     }
   }, [open]);
@@ -835,6 +851,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       setActiveSection(targetSection as SectionId);
       isScrollingProgrammatically.current = true;
       clearTimeout(scrollEndTimerRef.current);
+      setMobileView("section");
       requestAnimationFrame(() => {
         scrollSectionIntoView(targetSection as SectionId, "auto");
         setActiveSection(targetSection as SectionId);
@@ -1413,7 +1430,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           className={`
             theme-dialog-divider flex shrink-0 flex-col border-b
             sm:w-52 sm:border-b-0 sm:border-r
-            hidden sm:flex
+            ${mobileView === "section" ? "hidden sm:flex" : "flex"}
           `}
         >
           {/* Header */}
@@ -1482,30 +1499,31 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         <div
           className={`
             flex-1 flex flex-col overflow-hidden
+            ${mobileView === "nav" ? "hidden sm:flex" : "flex"}
           `}
         >
           <div
             className="theme-dialog-divider sm:hidden flex shrink-0 items-center justify-between gap-3 border-b px-4 pb-2 pt-2"
             style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
           >
-            <h2
-              className="truncate text-base font-semibold text-text-primary"
-              data-testid="settings-mobile-section-title"
+            <button
+              onClick={() => setMobileView("nav")}
+              className="-ml-1 flex min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1.5 text-text-secondary transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] hover:text-text-primary"
+              aria-label="Back to settings"
             >
-              Settings
-            </h2>
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              <span
+                className="truncate text-sm font-medium text-text-primary"
+                data-testid="settings-mobile-section-title"
+              >
+                {allSections.find((s) => s.id === activeSection)?.label}
+              </span>
+            </button>
             <CloseButton
               testId="settings-close-button-mobile"
               className="-mr-1 shrink-0"
-            />
-          </div>
-          <div className="shrink-0 px-4 pb-3 pt-3 sm:hidden">
-            <SearchField
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onClear={() => setSearch("")}
-              placeholder="Search settings"
-              aria-label="Search settings"
             />
           </div>
 
