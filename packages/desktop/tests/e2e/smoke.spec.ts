@@ -4596,6 +4596,7 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
       return Boolean(debug && debug.qualityMode === "settled" && debug.transform.scale > 0);
     }, { timeout: 10_000 })
     .toBe(true);
+  await waitForGraphPerfToSettle(page);
 
   const box = await readGraphViewportBox(page);
   if (!box) {
@@ -4604,6 +4605,7 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
 
   const before = await readGraphDebug(page);
   expect(before).not.toBeNull();
+  const sceneSyncBeforeGesture = before!.metrics.sceneSyncCount;
   const centerX = box.x + box.width / 2;
   const centerY = box.y + box.height / 2;
   const initialWorldPoint = {
@@ -4651,8 +4653,16 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
     await nextFrame();
     dispatchTouchPointer("pointermove", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
     await nextFrame();
+    dispatchTouchPointer("pointermove", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
+    dispatchTouchPointer("pointermove", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
+    await nextFrame();
   }, { centerX, centerY, panDelta });
 
+  await expect
+    .poll(async () => (await readGraphDebug(page))?.metrics.sceneSyncCount ?? 0, {
+      timeout: 8_000,
+    })
+    .toBeGreaterThanOrEqual(sceneSyncBeforeGesture + 2);
   await expect
     .poll(async () => (await readGraphDebug(page))?.transform.scale ?? before!.transform.scale, {
       timeout: 8_000,
