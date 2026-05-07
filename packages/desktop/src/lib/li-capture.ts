@@ -14,6 +14,7 @@ import {
   liPostsToFeedItems,
   deduplicateFeedItems,
 } from "@freed/capture-linkedin/browser";
+import { formatClockTime } from "@freed/ui/lib/date-format";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getLiScraperWindowMode } from "./scraper-prefs";
@@ -208,7 +209,7 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
   const startedAt = Date.now();
   const providerPause = getProviderPause("linkedin");
   if (providerPause) {
-    addDebugEvent("change", `[LI] paused until ${new Date(providerPause.pausedUntil).toLocaleTimeString()}`);
+    addDebugEvent("change", `[LI] paused until ${formatClockTime(providerPause.pausedUntil)}`);
     return {
       items: [],
       diag: {

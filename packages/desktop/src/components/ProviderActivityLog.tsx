@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { useDebugStore, type HealthProviderId } from "@freed/ui/lib/debug-store";
+import { formatClockTime } from "@freed/ui/lib/date-format";
 import { SettingsListPanel } from "@freed/ui/components/settings/SettingsListPanel";
 import { useAppStore } from "../lib/store";
 
@@ -9,14 +11,6 @@ const PROVIDER_PREFIX: Partial<Record<HealthProviderId, string>> = {
   linkedin: "[LI]",
   rss: "[RSS]",
 };
-
-function formatLogTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
 
 export function ProviderActivityLog({
   provider,
@@ -31,10 +25,18 @@ export function ProviderActivityLog({
 
   if (!prefix) return null;
 
-  const lines = events
-    .filter((event) => event.detail?.startsWith(prefix))
-    .slice(0, 10)
-    .reverse();
+  const lines = useMemo(
+    () =>
+      events
+        .filter((event) => event.detail?.startsWith(prefix))
+        .slice(0, 10)
+        .reverse()
+        .map((event) => ({
+          event,
+          formattedTime: formatClockTime(event.ts),
+        })),
+    [events, prefix],
+  );
 
   if (!syncing && lines.length === 0) {
     return null;
@@ -66,12 +68,12 @@ export function ProviderActivityLog({
           scrollDataTestId={`provider-activity-log-scroll-${provider}`}
           className="border-0 bg-[var(--theme-bg-muted)] p-2"
           listClassName="space-y-1 font-mono text-[11px] text-[var(--theme-text-secondary)]"
-          itemKey={(event) => event.id}
-          getSearchText={(event) => `${formatLogTime(event.ts)} ${event.detail}`}
-          renderItem={(event) => (
+          itemKey={(line) => line.event.id}
+          getSearchText={(line) => `${line.formattedTime} ${line.event.detail}`}
+          renderItem={(line) => (
             <div className="flex gap-2 leading-relaxed">
-              <span className="shrink-0 text-[var(--theme-text-muted)]">{formatLogTime(event.ts)}</span>
-              <span className="break-words text-[var(--theme-text-primary)]">{event.detail}</span>
+              <span className="shrink-0 text-[var(--theme-text-muted)]">{line.formattedTime}</span>
+              <span className="break-words text-[var(--theme-text-primary)]">{line.event.detail}</span>
             </div>
           )}
         />

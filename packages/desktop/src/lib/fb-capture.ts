@@ -19,6 +19,7 @@ import {
   deduplicateFeedItems,
 } from "@freed/capture-facebook/browser";
 import type { FbGroupInfo, FeedItem } from "@freed/shared";
+import { formatClockTime } from "@freed/ui/lib/date-format";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getFbScraperWindowMode } from "./scraper-prefs";
@@ -248,7 +249,7 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
   const startedAt = Date.now();
   const providerPause = getProviderPause("facebook");
   if (providerPause) {
-    addDebugEvent("change", `[FB] paused until ${new Date(providerPause.pausedUntil).toLocaleTimeString()}`);
+    addDebugEvent("change", `[FB] paused until ${formatClockTime(providerPause.pausedUntil)}`);
     return {
       items: [],
       diag: {
