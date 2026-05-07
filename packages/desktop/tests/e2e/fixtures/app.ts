@@ -133,6 +133,17 @@ export class AppFixture {
       { timeout },
     );
     await this.page.locator("main").waitFor({ state: "visible", timeout });
+    await this.page.evaluate(() => {
+      const w = window as Window & {
+        __freed?: {
+          debug?: () => { setVisible: (visible: boolean) => void };
+        };
+      };
+      w.__freed?.debug?.()?.setVisible(false);
+    });
+    await expect(this.page.getByTestId("debug-panel-drawer")).toHaveCSS("width", "0px", {
+      timeout,
+    });
   }
 
   /**
