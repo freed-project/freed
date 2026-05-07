@@ -1,3 +1,5 @@
+import { formatMonthDayClockTime } from "./date-format.js";
+
 export type BuildKind = "release" | "snapshot" | "preview" | "local";
 
 export interface BuildMetadata {
@@ -23,12 +25,7 @@ function formatBuildTimestamp(value: string | null): string | null {
     return null;
   }
 
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
+  return formatMonthDayClockTime(date);
 }
 
 function shortenCommitSha(commitSha: string | null): string | null {

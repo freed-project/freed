@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, shared memory-preflight backoff, Facebook group controls, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, X, Facebook, and Instagram reply hydration for the reader, captured authors now feeding the Phase 8 account catalog for identity review, and a local permanent media vault for a user's own Meta media
+> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, shared memory-preflight backoff, Facebook group controls, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, explicit reply links with opt-in beta inline hydration for X, Facebook, and Instagram reader posts, captured authors now feeding the Phase 8 account catalog for identity review, and a local permanent media vault for a user's own Meta media
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -98,8 +98,8 @@ Self-contained JavaScript injected into the WebView's execution context. No exte
 - **Facebook** (`fb-extract.js`): Locates "Feed posts" h3, walks subtrees for post-sized blocks
 - **Instagram** (`ig-extract.js`): Queries `<article>` elements, extracts author/caption/media from semantic header/footer structure
 - **Long-form text expansion:** Facebook, Instagram, and LinkedIn extractors click common "see more" controls inside candidate post roots before reading text so long captions and essays are preserved in `content.text`.
-- **Facebook comments** (`fb-comments-extract.js`): Opens the post URL in the authenticated WebView, expands visible comment controls, and emits inline reader replies with media.
-- **Instagram comments** (`ig-comments-extract.js`): Opens post and reel URLs in the authenticated WebView, expands visible comment controls, and emits inline reader replies with media.
+- **Facebook comments** (`fb-comments-extract.js`): Used only after the user chooses the beta inline replies action. It opens the post URL in the authenticated WebView, expands visible comment controls, and emits inline reader replies with media.
+- **Instagram comments** (`ig-comments-extract.js`): Used only after the user chooses the beta inline replies action. It opens post and reel URLs in the authenticated WebView, expands visible comment controls, and emits inline reader replies with media.
 - **Facebook stories** (`fb-stories-extract.js`): Injected into the FB story viewer overlay. Extracts author, media, timestamp, location/check-in. Emits via `fb-feed-data` with `postType: "story"`.
 - **Instagram stories** (`ig-stories-extract.js`): Injected into the IG story viewer overlay. Extraction now requires a real story URL, dialog, or full-screen story container with controls before emitting, so feed cards cannot fall through as stories. Author detection prefers `/stories/<username>/` and rejects generic handles such as `reels`, `locations`, and `instagram`. Timestamp-like fallback story IDs are replaced with stable content hashes. The normalized `FeedItem.location` now preserves the sticker source plus Instagram `locationUrl`, so later map resolution can recover real place names from generic labels such as `Locations`.
 
@@ -166,7 +166,7 @@ const RATE_LIMITS = {
 | 7.17 | Meta export import for own media            | ✓ Complete  |
 | 7.18 | Own-profile backfill crawler                | 🚧 In Progress |
 | 7.19 | Reader reply hydration for X posts          | ✓ Complete  |
-| 7.20 | Reader comment hydration for Facebook and Instagram posts | ✓ Complete |
+| 7.20 | Explicit reply links and opt-in beta inline hydration for reader posts | ✓ Complete |
 | 7.21 | Shared social memory-preflight backoff      | ✓ Complete  |
 
 ---
@@ -217,7 +217,7 @@ const RATE_LIMITS = {
 - [x] Seen-sync via WebView navigation (FB/IG) - best-effort, confirmed via seenSyncedAt
 - [x] X likes via GraphQL FavoriteTweet/UnfavoriteTweet mutations
 - [x] X post reader hydration can fetch reply-thread items with media through the authenticated GraphQL path while online
-- [x] Facebook and Instagram post reader hydration can fetch visible comments with media through authenticated WebView paths while online
+- [x] Facebook and Instagram reader posts show a native site reply link first, and fetch visible comments with media through authenticated WebView paths only after the user chooses the beta inline replies action while online
 - [x] Facebook and Instagram stories show a precise private-replies state in the reader because story replies live in platform inboxes
 - [x] Comment links open post URL in system browser (platform-agnostic via PlatformContext.openUrl)
 - [x] sourceUrl populated across all normalizers (X, Facebook, Instagram, RSS, Saved)

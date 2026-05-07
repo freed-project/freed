@@ -101,6 +101,28 @@ describe("friends workspace helpers", () => {
     expect(sorted[0]?.friend.name).toBe("Ada Lovelace");
   });
 
+  it("sorts malformed friend labels without crashing", () => {
+    const now = Date.now();
+    const ada = makeFriend("friend-ada", "Ada Lovelace", 5, "ada-ig");
+    const malformed = {
+      ...makeFriend("friend-malformed", "Missing Name", 3, "missing-ig"),
+      name: undefined as unknown as string,
+    };
+    const friends = {
+      [ada.id]: ada,
+      [malformed.id]: malformed,
+    };
+    const feedItems = {
+      "ada-post": makeItem("ada-post", "ada-ig", now - 60_000, false),
+      "missing-post": makeItem("missing-post", "missing-ig", now - 30_000, false),
+    };
+
+    const entries = buildFriendOverviewEntries(friends, feedItems, now);
+
+    expect(() => filterAndSortFriendOverview(entries, "", new Set(), "name")).not.toThrow();
+    expect(() => buildFrozenFriendGraphLayout(Object.values(friends), feedItems, 430, 700, undefined, now)).not.toThrow();
+  });
+
   it("builds stable graph layout signatures and positions", () => {
     const now = Date.now();
     const friends = [

@@ -1,4 +1,4 @@
-import { socialAccountsForPerson, type Account, type Person } from "@freed/shared";
+import type { Account, Person } from "@freed/shared";
 
 export interface AccountLinkSuggestion {
   accountId: string;
@@ -7,6 +7,29 @@ export interface AccountLinkSuggestion {
   reason: string;
   score: number;
 }
+
+export interface AccountLinkSuggestionGroups {
+  byAccount: Map<string, AccountLinkSuggestion[]>;
+  byPerson: Map<string, AccountLinkSuggestion[]>;
+}
+
+interface IndexedConfirmedPerson {
+  person: Person;
+  normalizedName: string;
+  tokens: Set<string>;
+  evidenceHandles: Set<string>;
+  evidenceAvatarUrls: Set<string>;
+}
+
+interface AccountLinkCandidateIndex {
+  peopleById: Map<string, IndexedConfirmedPerson>;
+  peopleByExactName: Map<string, Set<string>>;
+  peopleByLinkedHandle: Map<string, Set<string>>;
+  peopleByAvatarUrl: Map<string, Set<string>>;
+  peopleByToken: Map<string, Set<string>>;
+}
+
+const COMMON_TOKEN_BUCKET_LIMIT = 128;
 
 function normalize(value: string | null | undefined): string {
   return (value ?? "")
@@ -33,33 +56,153 @@ function overlapScore(left: Set<string>, right: Set<string>): number {
   return intersection / Math.max(left.size, right.size);
 }
 
-function personAccountEvidence(person: Person, accounts: Record<string, Account>) {
-  return socialAccountsForPerson(accounts, person.id);
+function buildSocialAccountsByPerson(accounts: Account[]): Map<string, Account[]> {
+  const grouped = new Map<string, Account[]>();
+  for (const account of accounts) {
+    if (!account.personId) continue;
+    const bucket = grouped.get(account.personId);
+    if (bucket) {
+      bucket.push(account);
+    } else {
+      grouped.set(account.personId, [account]);
+    }
+  }
+  return grouped;
+}
+
+function addToIndex(index: Map<string, Set<string>>, key: string, personId: string): void {
+  if (!key) return;
+  const bucket = index.get(key);
+  if (bucket) {
+    bucket.add(personId);
+  } else {
+    index.set(key, new Set([personId]));
+  }
+}
+
+function buildCandidateIndex(
+  confirmedPersons: Person[],
+  socialAccountsByPerson: Map<string, Account[]>,
+): AccountLinkCandidateIndex {
+  const peopleById = new Map<string, IndexedConfirmedPerson>();
+  const peopleByExactName = new Map<string, Set<string>>();
+  const peopleByLinkedHandle = new Map<string, Set<string>>();
+  const peopleByAvatarUrl = new Map<string, Set<string>>();
+  const peopleByToken = new Map<string, Set<string>>();
+
+  for (const person of confirmedPersons) {
+    const evidenceAccounts = socialAccountsByPerson.get(person.id) ?? [];
+    const normalizedName = normalize(person.name);
+    const tokens = tokenSet(person.name);
+    const evidenceHandles = new Set(
+      evidenceAccounts
+        .map((account) => normalize(account.handle))
+        .filter(Boolean),
+    );
+    const evidenceAvatarUrls = new Set(
+      evidenceAccounts
+        .map((account) => account.avatarUrl)
+        .filter((avatarUrl): avatarUrl is string => Boolean(avatarUrl)),
+    );
+
+    peopleById.set(person.id, {
+      person,
+      normalizedName,
+      tokens,
+      evidenceHandles,
+      evidenceAvatarUrls,
+    });
+    addToIndex(peopleByExactName, normalizedName, person.id);
+    for (const token of tokens) {
+      addToIndex(peopleByToken, token, person.id);
+    }
+    for (const handle of evidenceHandles) {
+      addToIndex(peopleByLinkedHandle, handle, person.id);
+    }
+    for (const avatarUrl of evidenceAvatarUrls) {
+      addToIndex(peopleByAvatarUrl, avatarUrl, person.id);
+    }
+  }
+
+  return {
+    peopleById,
+    peopleByExactName,
+    peopleByLinkedHandle,
+    peopleByAvatarUrl,
+    peopleByToken,
+  };
+}
+
+function addCandidates(
+  candidates: Set<string>,
+  bucket: Set<string> | undefined,
+): void {
+  if (!bucket) return;
+  for (const personId of bucket) {
+    candidates.add(personId);
+  }
+}
+
+function collectCandidatePeople(
+  account: Account,
+  candidateIndex: AccountLinkCandidateIndex,
+): IndexedConfirmedPerson[] {
+  const accountName = normalize(account.displayName);
+  const accountHandle = normalize(account.handle);
+  const accountTokens = tokenSet(account.displayName || account.handle || account.externalId);
+  const candidateIds = new Set<string>();
+
+  addCandidates(candidateIds, candidateIndex.peopleByExactName.get(accountName));
+  addCandidates(candidateIds, candidateIndex.peopleByLinkedHandle.get(accountHandle));
+  if (account.avatarUrl) {
+    addCandidates(candidateIds, candidateIndex.peopleByAvatarUrl.get(account.avatarUrl));
+  }
+
+  for (const token of accountTokens) {
+    const tokenCandidates = candidateIndex.peopleByToken.get(token);
+    if (!tokenCandidates || tokenCandidates.size > COMMON_TOKEN_BUCKET_LIMIT) continue;
+    addCandidates(candidateIds, tokenCandidates);
+  }
+
+  return Array.from(candidateIds)
+    .map((personId) => candidateIndex.peopleById.get(personId))
+    .filter((person): person is IndexedConfirmedPerson => Boolean(person));
 }
 
 export function buildAccountLinkSuggestions(
   persons: Record<string, Person>,
   accounts: Record<string, Account>
 ): AccountLinkSuggestion[] {
+  const suggestions: AccountLinkSuggestion[] = [];
+  visitAccountLinkSuggestions(persons, accounts, (suggestion) => {
+    suggestions.push(suggestion);
+  });
+  return suggestions.sort((left, right) => right.score - left.score);
+}
+
+function visitAccountLinkSuggestions(
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>,
+  visit: (suggestion: AccountLinkSuggestion) => void,
+): void {
   const confirmedPersons = Object.values(persons).filter((person) => person.relationshipStatus === "friend");
   const unlinkedAccounts = Object.values(accounts).filter((account) => account.kind === "social" && !account.personId);
-  const suggestions: AccountLinkSuggestion[] = [];
+  const socialAccountsByPerson = buildSocialAccountsByPerson(
+    Object.values(accounts).filter((account) => account.kind === "social"),
+  );
+  const candidateIndex = buildCandidateIndex(confirmedPersons, socialAccountsByPerson);
 
   for (const account of unlinkedAccounts) {
     const accountName = normalize(account.displayName);
     const accountHandle = normalize(account.handle);
     const accountTokens = tokenSet(account.displayName || account.handle || account.externalId);
+    const candidatePeople = collectCandidatePeople(account, candidateIndex);
 
-    for (const person of confirmedPersons) {
-      const personName = normalize(person.name);
-      const personTokens = tokenSet(person.name);
-      const evidenceAccounts = personAccountEvidence(person, accounts);
-      const exactHandleMatch = evidenceAccounts.some(
-        (candidate) => normalize(candidate.handle) && normalize(candidate.handle) === accountHandle,
-      );
-      const exactNameMatch = accountName !== "" && accountName === personName;
-      const tokenOverlap = overlapScore(accountTokens, personTokens);
-      const avatarMatch = !!(account.avatarUrl && evidenceAccounts.some((candidate) => candidate.avatarUrl && candidate.avatarUrl === account.avatarUrl));
+    for (const candidate of candidatePeople) {
+      const exactHandleMatch = accountHandle !== "" && candidate.evidenceHandles.has(accountHandle);
+      const exactNameMatch = accountName !== "" && accountName === candidate.normalizedName;
+      const tokenOverlap = overlapScore(accountTokens, candidate.tokens);
+      const avatarMatch = !!(account.avatarUrl && candidate.evidenceAvatarUrls.has(account.avatarUrl));
 
       let score = 0;
       let reason = "";
@@ -86,26 +229,23 @@ export function buildAccountLinkSuggestions(
 
       if (score < 58) continue;
 
-      suggestions.push({
+      visit({
         accountId: account.id,
-        personId: person.id,
+        personId: candidate.person.id,
         confidence: score >= 80 ? "high" : "medium",
         reason,
         score,
       });
     }
   }
-
-  return suggestions.sort((left, right) => right.score - left.score);
 }
 
-export function buildSuggestionsByAccount(
-  persons: Record<string, Person>,
-  accounts: Record<string, Account>
+export function groupSuggestionsByAccount(
+  suggestions: AccountLinkSuggestion[],
 ): Map<string, AccountLinkSuggestion[]> {
   const grouped = new Map<string, AccountLinkSuggestion[]>();
 
-  for (const suggestion of buildAccountLinkSuggestions(persons, accounts)) {
+  for (const suggestion of suggestions) {
     if (!grouped.has(suggestion.accountId)) {
       grouped.set(suggestion.accountId, []);
     }
@@ -116,6 +256,51 @@ export function buildSuggestionsByAccount(
   }
 
   return grouped;
+}
+
+export function buildSuggestionsByAccount(
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>
+): Map<string, AccountLinkSuggestion[]> {
+  return groupSuggestionsByAccount(buildAccountLinkSuggestions(persons, accounts));
+}
+
+function insertSortedLimited(
+  bucket: AccountLinkSuggestion[],
+  suggestion: AccountLinkSuggestion,
+  limit: number,
+): void {
+  bucket.push(suggestion);
+  bucket.sort((left, right) => right.score - left.score);
+  if (bucket.length > limit) {
+    bucket.length = limit;
+  }
+}
+
+export function buildAccountLinkSuggestionGroups(
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>,
+): AccountLinkSuggestionGroups {
+  const byAccount = new Map<string, AccountLinkSuggestion[]>();
+  const byPerson = new Map<string, AccountLinkSuggestion[]>();
+
+  visitAccountLinkSuggestions(persons, accounts, (suggestion) => {
+    let accountBucket = byAccount.get(suggestion.accountId);
+    if (!accountBucket) {
+      accountBucket = [];
+      byAccount.set(suggestion.accountId, accountBucket);
+    }
+    insertSortedLimited(accountBucket, suggestion, 3);
+
+    let personBucket = byPerson.get(suggestion.personId);
+    if (!personBucket) {
+      personBucket = [];
+      byPerson.set(suggestion.personId, personBucket);
+    }
+    insertSortedLimited(personBucket, suggestion, 5);
+  });
+
+  return { byAccount, byPerson };
 }
 
 export function buildSuggestionStrengthByAccount(
@@ -131,13 +316,12 @@ export function buildSuggestionStrengthByAccount(
   );
 }
 
-export function buildSuggestionsByPerson(
-  persons: Record<string, Person>,
-  accounts: Record<string, Account>
+export function groupSuggestionsByPerson(
+  suggestions: AccountLinkSuggestion[],
 ): Map<string, AccountLinkSuggestion[]> {
   const grouped = new Map<string, AccountLinkSuggestion[]>();
 
-  for (const suggestion of buildAccountLinkSuggestions(persons, accounts)) {
+  for (const suggestion of suggestions) {
     if (!grouped.has(suggestion.personId)) {
       grouped.set(suggestion.personId, []);
     }
@@ -149,4 +333,11 @@ export function buildSuggestionsByPerson(
   }
 
   return grouped;
+}
+
+export function buildSuggestionsByPerson(
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>
+): Map<string, AccountLinkSuggestion[]> {
+  return groupSuggestionsByPerson(buildAccountLinkSuggestions(persons, accounts));
 }

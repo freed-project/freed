@@ -11,8 +11,6 @@ import {
   type ReactNode,
 } from "react";
 import {
-  countAuthorsWithRecentLocationUpdates,
-  countFriendsWithRecentLocationUpdates,
   applyFeedSignalModesToFilter,
   FEED_SIGNAL_FILTER_PRESETS,
   filterFeedItems,
@@ -28,8 +26,9 @@ import {
 import { Tooltip } from "../Tooltip.js";
 import {
   ArchiveIcon,
-  AnimatedMenuIcon,
+  CloseIcon,
   FilterIcon,
+  MenuIcon,
   ReaderRailHideIcon,
   ReaderRailShowIcon,
   SidebarCollapseIcon,
@@ -52,6 +51,11 @@ import {
   useFeedCardDensity,
   type FeedCardDensity,
 } from "../../lib/feed-card-density.js";
+import {
+  collectArchivableFeedActionIds,
+  collectUnreadFeedActionIds,
+  getFeedActionCounts,
+} from "../../lib/feed-action-scope.js";
 import {
   dragRegionStyle as dragStyle,
   getPassiveDragRegionProps,
@@ -385,14 +389,8 @@ export function Header({
 
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds, accounts), [accounts, activeFilter, feeds]);
   const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
-  const mappedFriendCount = useMemo(
-    () => countFriendsWithRecentLocationUpdates(items, friends),
-    [friends, items],
-  );
-  const mappedAllContentCount = useMemo(
-    () => countAuthorsWithRecentLocationUpdates(items),
-    [items],
-  );
+  const mappedFriendCount = useAppStore((s) => s.mapFriendLocationCount);
+  const mappedAllContentCount = useAppStore((s) => s.mapAllContentLocationCount);
   const socialAccountCount = useMemo(
     () => Object.values(accounts).filter((account) => account.kind === "social").length,
     [accounts],
@@ -470,25 +468,10 @@ export function Header({
     ? showInlineReaderBookmark ? "w-[11rem]" : "w-[8.5rem]"
     : showInlineReaderBookmark ? "w-[6.5rem]" : "w-14";
 
-  const filteredUnreadItemIds = useMemo(
-    () => filteredItems
-      .filter((item) => !item.userState.readAt && !item.userState.hidden && !item.userState.archived)
-      .map((item) => item.globalId),
-    [filteredItems],
-  );
-  const filteredArchivableItemIds = useMemo(
-    () => filteredItems
-      .filter((item) =>
-        !!item.userState.readAt &&
-        !item.userState.hidden &&
-        !item.userState.archived &&
-        !item.userState.saved
-      )
-      .map((item) => item.globalId),
-    [filteredItems],
-  );
-  const unreadCount = filteredUnreadItemIds.length;
-  const archivableCount = filteredArchivableItemIds.length;
+  const {
+    unreadCount,
+    archivableCount,
+  } = useMemo(() => getFeedActionCounts(filteredItems), [filteredItems]);
 
   const handleSocialContentFilterChange = useCallback(
     (value: SocialContentFilter) => {
@@ -816,12 +799,12 @@ export function Header({
   }, [unarchiveSavedItems]);
 
   const handleMarkFilteredUnreadAsRead = useCallback(() => {
-    void markItemsAsRead(filteredUnreadItemIds);
-  }, [filteredUnreadItemIds, markItemsAsRead]);
+    void markItemsAsRead(collectUnreadFeedActionIds(filteredItems));
+  }, [filteredItems, markItemsAsRead]);
 
   const handleArchiveFilteredRead = useCallback(() => {
-    void archiveItems(filteredArchivableItemIds);
-  }, [archiveItems, filteredArchivableItemIds]);
+    void archiveItems(collectArchivableFeedActionIds(filteredItems));
+  }, [archiveItems, filteredItems]);
 
   const toolbarOverflowActions = useMemo<ToolbarOverflowAction[]>(() => {
     const actions: ToolbarOverflowAction[] = [];
@@ -1148,12 +1131,10 @@ export function Header({
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
     window.addEventListener("resize", updateToolbarOverflowMenuPosition);
-    window.addEventListener("scroll", updateToolbarOverflowMenuPosition, true);
     return () => {
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKey);
       window.removeEventListener("resize", updateToolbarOverflowMenuPosition);
-      window.removeEventListener("scroll", updateToolbarOverflowMenuPosition, true);
     };
   }, [toolbarOverflowMenuOpen, updateToolbarOverflowMenuPosition]);
 
@@ -1364,11 +1345,11 @@ export function Header({
                   <button
                     onClick={onMobileMenuToggle}
                     {...getToolbarControlProps()}
-                    className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-ghost`}
+                    className={`${TOOLBAR_ICON_BUTTON_CLASS} ${mobileSidebarOpen ? "theme-toolbar-button-neutral" : "theme-toolbar-button-ghost"}`}
                     aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
                     aria-pressed={mobileSidebarOpen}
                   >
-                    <AnimatedMenuIcon open={mobileSidebarOpen} className="h-5 w-5" />
+                    {mobileSidebarOpen ? <CloseIcon className="h-5 w-5" /> : <MenuIcon className="h-5 w-5" />}
                   </button>
                 </Tooltip>
               ) : null}
@@ -1802,29 +1783,10 @@ export function Header({
 
                 <ToolbarAnimatedSlot
                   visible={showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu}
-                  width={showToolbarOverflowMenuButton && showCollapsedToolbarFilterMenu ? "5.375rem" : "2.5rem"}
+                  width={showToolbarOverflowMenuButton && showCollapsedToolbarFilterMenu ? "5rem" : "2.5rem"}
                 >
                   {showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu ? (
-                    <div className="flex items-center gap-2">
-                      {showCollapsedToolbarFilterMenu ? (
-                        <Tooltip label="Filter view">
-                          <button
-                            ref={signalFilterButtonRef}
-                            type="button"
-                            onClick={toggleSignalFilterMenu}
-                            {...getToolbarControlProps()}
-                            data-testid="mobile-toolbar-filter-button"
-                            className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                              isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
-                            }`}
-                            aria-haspopup="menu"
-                            aria-expanded={signalFilterMenuOpen}
-                            aria-label="Filter view"
-                          >
-                            <FilterIcon className="h-5 w-5" />
-                          </button>
-                        </Tooltip>
-                      ) : null}
+                    <div className="flex items-center gap-0">
                       {showToolbarOverflowMenuButton ? (
                         <Tooltip label="More actions">
                           <button
@@ -1841,6 +1803,25 @@ export function Header({
                             aria-label="More actions"
                           >
                             <ToolbarOverflowIcon />
+                          </button>
+                        </Tooltip>
+                      ) : null}
+                      {showCollapsedToolbarFilterMenu ? (
+                        <Tooltip label="Filter view">
+                          <button
+                            ref={signalFilterButtonRef}
+                            type="button"
+                            onClick={toggleSignalFilterMenu}
+                            {...getToolbarControlProps()}
+                            data-testid="mobile-toolbar-filter-button"
+                            className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                              isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
+                            }`}
+                            aria-haspopup="menu"
+                            aria-expanded={signalFilterMenuOpen}
+                            aria-label="Filter view"
+                          >
+                            <FilterIcon className="h-5 w-5" />
                           </button>
                         </Tooltip>
                       ) : null}

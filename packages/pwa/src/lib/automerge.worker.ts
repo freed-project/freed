@@ -51,7 +51,13 @@ import {
   confirmLikedSynced,
   confirmSeenSynced,
 } from "@freed/shared/schema";
-import { mergeDefaultPreferences, rankFeedItems } from "@freed/shared";
+import {
+  countAuthorsWithRecentLocationUpdates,
+  countFriendsWithRecentLocationUpdates,
+  mergeDefaultPreferences,
+  rankFeedItems,
+  sortByPriority,
+} from "@freed/shared";
 import type { Account, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
 
@@ -183,10 +189,12 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   const preferences = mergeDefaultPreferences(plain.preferences as Partial<UserPreferences> | undefined);
 
   const visibleItems = plainItems.filter((item) => !item.userState.hidden);
-  const rankedItems = rankFeedItems(
-    visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
-    preferences.weights,
-    { persons, accounts },
+  const rankedItems = sortByPriority(
+    rankFeedItems(
+      visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
+      preferences.weights,
+      { persons, accounts },
+    ),
   );
 
   const feedUnreadCounts: Record<string, number> = {};
@@ -241,6 +249,8 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
     totalArchivableCount,
     archivableCountByPlatform,
     archivableFeedCounts,
+    mapFriendLocationCount: countFriendsWithRecentLocationUpdates(rankedItems, persons, accounts),
+    mapAllContentLocationCount: countAuthorsWithRecentLocationUpdates(rankedItems),
   };
 }
 

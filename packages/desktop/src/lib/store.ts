@@ -109,6 +109,8 @@ interface AppState {
   totalArchivableCount: number;
   archivableCountByPlatform: Record<string, number>;
   archivableFeedCounts: Record<string, number>;
+  mapFriendLocationCount: number;
+  mapAllContentLocationCount: number;
   /** Total feed-item records including hidden and archived items. */
   docItemCount: number;
 
@@ -359,17 +361,21 @@ async function flushPendingReadMarks(): Promise<void> {
   }
 }
 
-function queueReadMarks(ids: readonly string[]): Promise<void> {
+function queueReadMarks(ids: readonly string[], options: { waitForFlush?: boolean } = {}): Promise<void> {
   const nextIds = ids.filter(Boolean);
   if (nextIds.length === 0) return Promise.resolve();
 
   for (const id of nextIds) pendingReadIds.add(id);
+  scheduleReadMarkBatchFlush();
+
+  if (options.waitForFlush === false) {
+    return Promise.resolve();
+  }
 
   const promise = new Promise<void>((resolve) => {
     readMarkBatchWaiters.push(resolve);
   });
 
-  scheduleReadMarkBatchFlush();
   return promise;
 }
 
@@ -391,6 +397,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   totalArchivableCount: 0,
   archivableCountByPlatform: {},
   archivableFeedCounts: {},
+  mapFriendLocationCount: 0,
+  mapAllContentLocationCount: 0,
   docItemCount: 0,
   xAuth: { isAuthenticated: false },
   fbAuth: { isAuthenticated: false },
@@ -510,7 +518,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markAsRead: async (id) => {
-    await queueReadMarks([id]);
+    await queueReadMarks([id], { waitForFlush: false });
   },
 
   markItemsAsRead: async (ids) => {

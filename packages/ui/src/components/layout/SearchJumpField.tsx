@@ -24,6 +24,12 @@ import {
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import { buildSettingsSectionMetas } from "../../lib/settings-sections.js";
+import {
+  collectArchivableFeedActionIds,
+  collectUnreadFeedActionIds,
+  getFeedActionCounts,
+  getFeedArchiveCounts,
+} from "../../lib/feed-action-scope.js";
 import { buildTopLevelTagFilters, collectAllTags } from "../../lib/tag-navigation.js";
 import { applyFeedSearch, navigateToFeedView } from "../../lib/workspace-navigation.js";
 import { SearchField } from "../SearchField.js";
@@ -57,6 +63,21 @@ function groupActionsBySection(actions: readonly CommandPaletteAction[]) {
     sections.push({ section: action.section, actions: [action] });
   }
   return sections;
+}
+
+function sortLabel(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function accountSortLabel(account: {
+  displayName?: string;
+  handle?: string;
+  externalId?: string;
+}): string {
+  return sortLabel(account.displayName)
+    || sortLabel(account.handle)
+    || sortLabel(account.externalId)
+    || "";
 }
 
 function PaletteLineIcon({ children }: { children: ReactNode }) {
@@ -351,34 +372,20 @@ export function SearchJumpField({
     friends,
   );
 
-  const unreadScopeIds = useMemo(
-    () => commandScopeItems.filter((item) => !item.userState.readAt).map((item) => item.globalId),
-    [commandScopeItems],
-  );
-  const archivableScopeItems = useMemo(
-    () =>
-      commandScopeItems.filter(
-        (item) => !!item.userState.readAt && !item.userState.saved && !item.userState.archived,
-      ),
-    [commandScopeItems],
-  );
-  const archivableScopeIds = useMemo(
-    () => archivableScopeItems.map((item) => item.globalId),
-    [archivableScopeItems],
-  );
-  const savedArchivedCount = useMemo(
-    () => items.filter((item) => item.userState.saved && item.userState.archived).length,
-    [items],
-  );
-  const archivedCount = useMemo(
-    () => items.filter((item) => item.userState.archived && !item.userState.saved).length,
-    [items],
-  );
+  const {
+    unreadCount: unreadScopeCount,
+    archivableCount: archivableScopeCount,
+  } = useMemo(() => getFeedActionCounts(commandScopeItems), [commandScopeItems]);
+  const { archivedCount, savedArchivedCount } = useMemo(() => getFeedArchiveCounts(items), [items]);
   const enabledFeeds = useMemo(
     () =>
       Object.values(feeds)
-        .filter((feed) => feed.enabled)
-        .sort((left, right) => left.title.localeCompare(right.title)),
+        .filter((feed) => feed.enabled && typeof feed.url === "string" && feed.url.trim())
+        .sort((left, right) => {
+          const leftTitle = sortLabel(left.title, left.url);
+          const rightTitle = sortLabel(right.title, right.url);
+          return leftTitle.localeCompare(rightTitle);
+        }),
     [feeds],
   );
   const socialChannels = useMemo(
@@ -387,7 +394,9 @@ export function SearchJumpField({
         .filter((account) =>
           account.kind === "social" &&
           account.provider !== "rss" &&
-          account.provider !== "saved"
+          account.provider !== "saved" &&
+          typeof account.externalId === "string" &&
+          account.externalId.trim()
         )
         .map((account) => ({
           account,
@@ -395,8 +404,8 @@ export function SearchJumpField({
           personName: account.personId ? persons[account.personId]?.name : undefined,
         }))
         .sort((left, right) => {
-          const leftTitle = left.account.displayName ?? left.account.handle ?? left.account.externalId;
-          const rightTitle = right.account.displayName ?? right.account.handle ?? right.account.externalId;
+          const leftTitle = accountSortLabel(left.account);
+          const rightTitle = accountSortLabel(right.account);
           return leftTitle.localeCompare(rightTitle);
         }),
     [accounts, persons],
@@ -461,14 +470,14 @@ export function SearchJumpField({
         })),
         feeds: enabledFeeds.map((feed) => ({
           url: feed.url,
-          title: feed.title,
+          title: sortLabel(feed.title, feed.url),
         })),
         socialChannels,
         tagFilters,
         currentSourceId,
         selectedItem,
-        unreadScopeCount: activeView === "feed" ? unreadScopeIds.length : 0,
-        archivableScopeCount: activeView === "feed" ? archivableScopeItems.length : 0,
+        unreadScopeCount: activeView === "feed" ? unreadScopeCount : 0,
+        archivableScopeCount: activeView === "feed" ? archivableScopeCount : 0,
         savedArchivedCount,
         archivedCount,
         openSettingsTo,
@@ -560,12 +569,12 @@ export function SearchJumpField({
         toggleCurrentItemLiked:
           selectedItem && toggleLiked ? () => toggleLiked(selectedItem.globalId) : null,
         markScopeRead:
-          activeView === "feed" && unreadScopeIds.length > 0
-            ? () => markItemsAsRead(unreadScopeIds)
+          activeView === "feed" && unreadScopeCount > 0
+            ? () => markItemsAsRead(collectUnreadFeedActionIds(commandScopeItems))
             : null,
         archiveScopeRead:
-          activeView === "feed" && archivableScopeIds.length > 0
-            ? () => archiveItems(archivableScopeIds)
+          activeView === "feed" && archivableScopeCount > 0
+            ? () => archiveItems(collectArchivableFeedActionIds(commandScopeItems))
             : null,
         unarchiveSavedItems,
         syncRssNow,
@@ -580,7 +589,7 @@ export function SearchJumpField({
       activeFilter,
       activeView,
       addRssFeed,
-      archivableScopeItems,
+      archivableScopeCount,
       archivedCount,
       checkForUpdates,
       currentSourceId,
@@ -588,8 +597,8 @@ export function SearchJumpField({
       enabledFeeds,
       factoryReset,
       archiveItems,
-      archivableScopeIds,
       clearQueryForNavigation,
+      commandScopeItems,
       createConnectionPersonFromAccounts,
       inputValue,
       ensurePersonForAccount,
@@ -618,7 +627,7 @@ export function SearchJumpField({
       toggleArchived,
       toggleLiked,
       toggleSaved,
-      unreadScopeIds,
+      unreadScopeCount,
       unarchiveSavedItems,
       updatePerson,
       openLibraryDialog,

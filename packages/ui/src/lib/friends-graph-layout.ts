@@ -58,12 +58,17 @@ function hashId(value: string): number {
   return Math.abs(hash);
 }
 
+function safeText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
 function compareFriends(a: Friend, b: Friend): number {
-  return b.careLevel - a.careLevel || a.name.localeCompare(b.name);
+  return b.careLevel - a.careLevel || safeText(a.name).localeCompare(safeText(b.name));
 }
 
 function labelForFriend(friend: Friend): string {
-  return friend.name.length > 18 ? `${friend.name.slice(0, 17)}...` : friend.name;
+  const name = safeText(friend.name, "Unnamed friend");
+  return name.length > 18 ? `${name.slice(0, 17)}...` : name;
 }
 
 function estimateLabelWidth(label: string): number {

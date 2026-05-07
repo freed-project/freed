@@ -37,6 +37,7 @@ import {
   clearCloudProvider,
   deleteCloudFile,
   startCloudSync,
+  setGoogleDriveFetch,
   initiateDesktopOAuth,
   isOAuthCanceledError,
   storeCloudToken,
@@ -67,6 +68,7 @@ import { start as startSemanticClassifier, stop as stopSemanticClassifier } from
 import { useAppStore as useDesktopStore, withProviderSyncing } from "./lib/store";
 import { pickContactViaTauri } from "./lib/contacts";
 import { fetchGoogleContactsViaTauri } from "./lib/google-contacts";
+import { googleDriveFetchViaTauri } from "./lib/google-drive";
 import { FeedEmptyState } from "./components/FeedEmptyState";
 import { XSettingsSection } from "./components/XSettingsSection";
 import { FacebookSettingsSection } from "./components/FacebookSettingsSection";
@@ -113,6 +115,7 @@ const RENDERER_HEARTBEAT_INTERVAL_MS = 15 * 1000;
 // Register the desktop log transport so addDebugEvent calls from ui/ flow
 // through the native logger in both local preview and release builds.
 setLogTransport((level, msg) => log[level](msg));
+setGoogleDriveFetch(googleDriveFetchViaTauri);
 
 // ---------------------------------------------------------------------------
 // React Profiler — activated only under Playwright (VITE_TEST_TAURI=1)
@@ -194,29 +197,6 @@ function App() {
 
   useEffect(() => {
     if (!legalAccepted || !isInitialized) return;
-    void initProviderHealth();
-    startRssPoller();
-    // Wire the LAN relay change subscription + client-count polling.
-    startSync();
-    // Resume cloud sync loops for any previously authenticated providers.
-    startAllCloudSyncs();
-    if (isTauri()) {
-      void startSnapshotManager();
-    }
-    // Start background content fetcher -- processes article HTML fetch queue.
-    startContentFetcher();
-    startSemanticClassifier({
-      isEnabled: () => {
-        const prefs = useDesktopStore.getState().preferences.ai;
-        return prefs.provider === "integrated" && prefs.extractTopics;
-      },
-      subscribeToPreferenceChanges: (callback) =>
-        useDesktopStore.subscribe((state, previous) => {
-          if (state.preferences.ai !== previous.preferences.ai) {
-            callback();
-          }
-        }),
-    });
     startMemoryMonitor({
       getAutomergeStats: getCachedDocStats,
       onCriticalPressure: () => {
@@ -232,6 +212,29 @@ function App() {
       onSample: (snapshot) => {
         noteMemoryPressure(snapshot);
       },
+    });
+    void initProviderHealth();
+    startRssPoller();
+    // Wire the LAN relay change subscription and client-count polling.
+    startSync();
+    // Resume cloud sync loops for any previously authenticated providers.
+    startAllCloudSyncs();
+    if (isTauri()) {
+      void startSnapshotManager();
+    }
+    // Start background content fetcher, which processes the article HTML queue.
+    startContentFetcher();
+    startSemanticClassifier({
+      isEnabled: () => {
+        const prefs = useDesktopStore.getState().preferences.ai;
+        return prefs.provider === "integrated" && prefs.extractTopics;
+      },
+      subscribeToPreferenceChanges: (callback) =>
+        useDesktopStore.subscribe((state, previous) => {
+          if (state.preferences.ai !== previous.preferences.ai) {
+            callback();
+          }
+        }),
     });
     return () => {
       stopRssPoller();
@@ -585,18 +588,14 @@ function App() {
       storeCloudToken(provider, token);
       await startCloudSync(provider, token.accessToken);
     } catch (error) {
-      if (provider === "gdrive") {
-        recordGoogleContactsConnectError(error);
-      }
       throw error;
     }
-  }, [recordGoogleContactsConnectError]);
+  }, []);
 
   const connectGoogleContacts = useCallback(async (options?: { signal?: AbortSignal }) => {
+    let token: Awaited<ReturnType<typeof initiateDesktopOAuth>>;
     try {
-      const token = await initiateDesktopOAuth("gdrive", options);
-      storeCloudToken("gdrive", token);
-      await startCloudSync("gdrive", token.accessToken);
+      token = await initiateDesktopOAuth("gdrive", options);
     } catch (error) {
       if (isOAuthCanceledError(error)) {
         log.info("[contacts] Google reconnect canceled");
@@ -604,6 +603,14 @@ function App() {
       }
       recordGoogleContactsConnectError(error);
       throw error;
+    }
+
+    storeCloudToken("gdrive", token);
+    try {
+      await startCloudSync("gdrive", token.accessToken);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log.warn(`[contacts] Google Drive sync failed after Contacts reconnect: ${message}`);
     }
   }, [recordGoogleContactsConnectError]);
 
@@ -669,7 +676,7 @@ function App() {
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
-      feedMediaPreviews: "inline",
+      feedMediaPreviews: "reader-only",
       addRssFeed,
       importOPMLFeeds,
       exportFeedsAsOPML,

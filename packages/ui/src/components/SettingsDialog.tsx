@@ -5,8 +5,7 @@
  * sections stacked. Scroll position drives scrollspy so the nav always reflects
  * which section is currently in view.
  *
- * Mobile: single-column. The nav is a full-screen list; tapping any section
- * "pushes" to that section's content with a back button (iOS-style).
+ * Mobile: single-column with stacked sections and compact spacing.
  */
 
 import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
@@ -103,6 +102,7 @@ type ProviderAuthSlices = {
 };
 const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
 const INSTALLED_BUILD_PRESENTATION = describeInstalledBuild(readBuildMetadata());
+const SETTINGS_OVERVIEW_ROW_TEXT = "text-base sm:text-xs";
 
 function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId {
   return (
@@ -180,11 +180,6 @@ const ICONS: Record<SectionId, ReactNode> = {
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3l7.5 3v6c0 5.25-3.34 9.922-7.5 11.25C7.84 21.922 4.5 17.25 4.5 12V6L12 3z" />
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 12.75l1.5 1.5 3-3.75" />
-    </svg>
-  ),
-  support: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 8h10M7 12h7m-5 8l-4-4H4a2 2 0 01-2-2V6a2 2 0 012-2h16a2 2 0 012 2v8a2 2 0 01-2 2h-7l-4 4z" />
     </svg>
   ),
   appearance: (
@@ -328,7 +323,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     sectionById.ai,
     ...(checkForUpdates ? [sectionById.updates] : []),
     sectionById.legal,
-    sectionById.support,
     ...(factoryReset ? [sectionById.danger] : []),
   ];
 
@@ -588,6 +582,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [deleteFromCloud, setDeleteFromCloud] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [showSampleSeedConfirm, setShowSampleSeedConfirm] = useState(false);
+  const [supportModalOpen, setSupportModalOpen] = useState(false);
 
   const handleReset = useCallback(async () => {
     if (!factoryReset) return;
@@ -666,7 +661,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     : allSections;
 
   // ── Scrollspy ────────────────────────────────────────────────────────────
-  const [activeSection, setActiveSection] = useState<SectionId>("legal");
+  const [activeSection, setActiveSection] = useState<SectionId>("appearance");
   const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -836,13 +831,23 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (!open) {
       setSearch("");
       setMobileView("nav");
+      setSupportModalOpen(false);
     }
   }, [open]);
 
-  // Scroll to a programmatically requested section (e.g. nudge → Sync)
+  // Scroll to a programmatically requested section.
   const { targetSection, clearTarget } = useSettingsStore();
   useEffect(() => {
     if (!open || !targetSection) return;
+    if (targetSection === "support") {
+      setSupportModalOpen(true);
+      clearTarget();
+      return;
+    }
+    if (!allSections.some((section) => section.id === targetSection)) {
+      clearTarget();
+      return;
+    }
     const rafId = requestAnimationFrame(() => {
       setActiveSection(targetSection as SectionId);
       isScrollingProgrammatically.current = true;
@@ -855,7 +860,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       clearTarget();
     });
     return () => cancelAnimationFrame(rafId);
-  }, [clearTarget, open, scrollSectionIntoView, targetSection]);
+  }, [allSections, clearTarget, open, scrollSectionIntoView, targetSection]);
 
   // Body scroll lock
   useEffect(() => {
@@ -896,9 +901,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   function renderSectionBlock(id: SectionId) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
-    const sectionMinHeight = isMobile && mobileView !== "section"
-      ? "100%"
-      : "calc(100% + 20rem)";
+    const sectionMinHeight = isMobile ? undefined : "calc(100% + 20rem)";
 
     // SectionContent and this wrapper both stay plain function calls because
     // they are defined inside SettingsDialog. Rendering either as JSX would
@@ -908,7 +911,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     return (
       <section
         data-section={id}
-        className="flex flex-col pb-8"
+        className={isMobile ? "flex flex-col pb-2" : "flex flex-col pb-8"}
         style={{ minHeight: sectionMinHeight }}
       >
         {SectionContent({ id })}
@@ -1065,14 +1068,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="Legal" />
             {LegalSettingsContent ? <LegalSettingsContent /> : null}
-          </>
-        );
-
-      case "support":
-        return (
-          <>
-            <SectionHeading label="Support" />
-            <ReportComposer />
           </>
         );
 
@@ -1250,7 +1245,16 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return factoryReset ? (
           <>
             <SectionHeading label="Danger Zone" danger />
-            <div className="space-y-6">
+            <div className="space-y-3 sm:space-y-6">
+              <button
+                onClick={() => setSupportModalOpen(true)}
+                className="w-full rounded-xl bg-[var(--theme-bg-muted)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--theme-bg-card-hover)]"
+              >
+                <div>
+                  <p className="text-sm text-[var(--theme-text-secondary)]">Submit support ticket</p>
+                  <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">Share diagnostics and describe what broke</p>
+                </div>
+              </button>
               <button
                 onClick={() => {
                   onClose();
@@ -1328,7 +1332,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         onClick={() => scrollToSection(section.id)}
         aria-current={isActive ? "location" : undefined}
         data-active={isActive ? "true" : "false"}
-        className={`w-full flex items-center gap-2 text-left text-xs transition-colors rounded-md ${
+        className={`w-full flex items-center gap-2 text-left ${SETTINGS_OVERVIEW_ROW_TEXT} transition-colors rounded-md ${
           indented ? "pl-7 pr-2 py-2" : "px-2 py-2"
         } ${
           isActive
@@ -1374,7 +1378,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   onClick={() => scrollToSection(item.children[0].id)}
                   aria-current={isGroupActive ? "location" : undefined}
                   data-active={isGroupActive ? "true" : "false"}
-                  className={`w-full flex items-center gap-2 px-2 py-2 text-left text-xs transition-colors rounded-md ${
+                  className={`w-full flex items-center gap-2 px-2 py-2 text-left ${SETTINGS_OVERVIEW_ROW_TEXT} transition-colors rounded-md ${
                     isGroupActive
                       ? "text-[var(--theme-accent-secondary)]"
                       : "text-text-secondary hover:text-text-primary hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)]"
@@ -1443,7 +1447,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             className="flex shrink-0 items-center justify-between px-4 pb-1.5 pt-2 sm:hidden"
             style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
           >
-            <h2 className="text-sm font-semibold text-text-primary">Settings</h2>
+            <h2 className="text-base font-semibold text-text-primary">Settings</h2>
             <CloseButton
               testId={isMobile ? "settings-close-button-sidebar" : undefined}
               className="-mr-1"
@@ -1499,7 +1503,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             ${mobileView === "nav" ? "hidden sm:flex" : "flex"}
           `}
         >
-          {/* Mobile back button + section title */}
           <div
             className="theme-dialog-divider sm:hidden flex shrink-0 items-center justify-between gap-3 border-b px-4 pb-2 pt-2"
             style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
@@ -1525,11 +1528,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             />
           </div>
 
-          {/* Scrollable sections */}
           <div
             ref={scrollRef}
             data-testid="settings-scroll-container"
-            className="flex-1 overflow-y-auto px-6 pt-6 [&>section+section]:mt-24"
+            className="flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
             style={{ paddingBottom: scrollContainerBottomPadding }}
           >
             {searchLower && visibleSections.length === 0 ? (
@@ -1677,6 +1679,29 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           </div>
         </div>
       )}
+
+      {supportModalOpen && (
+        <div className="theme-elevated-overlay absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 sm:items-center">
+          <div className="theme-dialog-shell theme-settings-shell my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden">
+            <div className="theme-dialog-divider flex shrink-0 items-center justify-between border-b px-4 py-3">
+              <h2 className="text-base font-semibold text-text-primary">Support</h2>
+              <button
+                type="button"
+                onClick={() => setSupportModalOpen(false)}
+                aria-label="Close support"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-[28px] text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="minimal-scroll flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+              <ReportComposer />
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body,
   );
@@ -1733,7 +1758,7 @@ function UpToDateBadge() {
 function SectionHeading({ label, danger }: { label: string; danger?: boolean }) {
   return (
     <h3
-      className={`text-sm font-semibold uppercase tracking-wide mb-5 ${
+      className={`mb-4 text-base font-semibold uppercase tracking-wide sm:mb-5 sm:text-sm ${
         danger ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.64)]" : "text-text-muted"
       }`}
     >

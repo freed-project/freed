@@ -8,15 +8,17 @@ use log::{error, info, warn};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 use std::collections::{HashSet, VecDeque};
+#[cfg(target_os = "macos")]
+use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use sysinfo::{Disks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-use tauri::menu::{Menu, MenuItem};
 #[cfg(target_os = "macos")]
 use tauri::menu::Submenu;
+use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -35,6 +37,11 @@ use tokio_tungstenite::{
 use objc2::rc::Retained;
 #[cfg(target_os = "macos")]
 use objc2::{msg_send, runtime::AnyObject};
+#[cfg(target_os = "macos")]
+use objc2_app_kit::{
+    NSApplication, NSApplicationActivationOptions, NSApplicationActivationPolicy,
+    NSRunningApplication,
+};
 #[cfg(target_os = "macos")]
 use objc2_foundation::{ns_string, MainThreadMarker, NSObjectNSKeyValueCoding, NSString};
 #[cfg(target_os = "macos")]
@@ -59,11 +66,23 @@ fn sync_relay_port() -> u16 {
 const DEFAULT_WEBKIT_SAFARI_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
 const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 3] = ["fb-scraper", "ig-scraper", "li-scraper"];
+const FB_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0xfb, 0x00, 0x01, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0xfb, 0x00, 0x01,
+];
+const IG_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0x1a, 0x00, 0x02, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x1a, 0x00, 0x02,
+];
+const LI_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0x1d, 0x00, 0x03, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x1d, 0x00, 0x03,
+];
 const BYTES_PER_GIB: u64 = 1024 * 1024 * 1024;
 const MIN_CRITICAL_MEMORY_BYTES: u64 = 7 * BYTES_PER_GIB / 2;
-const MAX_CRITICAL_MEMORY_BYTES: u64 = 8 * BYTES_PER_GIB;
+const MAX_CRITICAL_MEMORY_BYTES: u64 = 4 * BYTES_PER_GIB;
 const WEBKIT_CACHE_TRIM_AT_BYTES: u64 = 768 * 1024 * 1024;
 const WEBKIT_CACHE_TRIM_TARGET_BYTES: u64 = 512 * 1024 * 1024;
+const OPTIONAL_STORY_MEMORY_BUDGET_PERCENT: u64 = 85;
+const SCRAPE_MEMORY_HEADROOM_BYTES: u64 = 384 * 1024 * 1024;
+const WEBKIT_PROCESS_START_GRACE_SECONDS: u64 = 10;
 const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
 const RUNTIME_HEALTH_FILE: &str = "runtime-health.jsonl";
 const RUNTIME_DIAGNOSTICS_FILE: &str = "runtime-diagnostics.jsonl";
@@ -73,10 +92,13 @@ const RECOVERY_WINDOW_LABEL: &str = "startup-recovery";
 const RECOVERY_WINDOW_ROUTE: &str = "startup-recovery.html";
 const RENDERER_HEARTBEAT_WATCHDOG_INTERVAL: Duration = Duration::from_secs(15);
 const RENDERER_STALE_LOG_AFTER: Duration = Duration::from_secs(45);
+const RENDERER_HIDDEN_STALE_LOG_AFTER: Duration = Duration::from_secs(480);
 const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(75);
 const RENDERER_HIDDEN_RECOVERY_AFTER: Duration = Duration::from_secs(600);
 const BACKGROUND_REQUIRED_HEALTHY_HEARTBEATS: u64 = 2;
 const BACKGROUND_RECOVERY_COOLDOWN: Duration = Duration::from_secs(120);
+const BACKGROUND_MEMORY_HIGH_COOLDOWN: Duration = Duration::from_secs(120);
+const BACKGROUND_MEMORY_CRITICAL_COOLDOWN: Duration = Duration::from_secs(10 * 60);
 const BACKGROUND_SAFE_MODE_RECOVERY_WINDOW_SHORT: Duration = Duration::from_secs(10 * 60);
 const BACKGROUND_SAFE_MODE_RECOVERY_WINDOW_LONG: Duration = Duration::from_secs(30 * 60);
 const BACKGROUND_SAFE_MODE_DURATION: Duration = Duration::from_secs(10 * 60);
@@ -221,6 +243,15 @@ fn stored_or_default_user_agent(agent: &std::sync::Mutex<String>) -> String {
     }
 }
 
+fn social_scraper_data_store_identifier(label: &str) -> Option<[u8; 16]> {
+    match label {
+        "fb-scraper" => Some(FB_SCRAPER_DATA_STORE_IDENTIFIER),
+        "ig-scraper" => Some(IG_SCRAPER_DATA_STORE_IDENTIFIER),
+        "li-scraper" => Some(LI_SCRAPER_DATA_STORE_IDENTIFIER),
+        _ => None,
+    }
+}
+
 fn recycle_webview_window(app: &tauri::AppHandle, label: &str, reason: &str) {
     if let Some(window) = app.get_webview_window(label) {
         scrub_webview_before_destroy(&window);
@@ -308,6 +339,10 @@ fn build_hidden_scraper_window(
         app,
         label,
         tauri::WebviewUrl::External(url.parse().map_err(|e: url::ParseError| e.to_string())?),
+    )
+    .data_store_identifier(
+        social_scraper_data_store_identifier(label)
+            .expect("hidden scraper window labels must use isolated data stores"),
     )
     .user_agent(user_agent)
     .initialization_script(include_str!("webkit-mask.js"))
@@ -983,14 +1018,19 @@ type RelayState = Arc<SyncRelayState>;
 struct RuntimeMemoryStats {
     total_physical_memory_bytes: u64,
     process_resident_bytes: u64,
+    process_footprint_bytes: Option<u64>,
     process_virtual_bytes: u64,
     app_resident_bytes: u64,
+    app_memory_pressure_bytes: u64,
     webkit_resident_bytes: Option<u64>,
+    webkit_footprint_bytes: Option<u64>,
     webkit_virtual_bytes: Option<u64>,
     webkit_process_id: Option<u32>,
     webkit_total_resident_bytes: u64,
+    webkit_total_footprint_bytes: Option<u64>,
     webkit_process_count: u64,
     webkit_largest_resident_bytes: Option<u64>,
+    webkit_largest_footprint_bytes: Option<u64>,
     webkit_largest_process_id: Option<u32>,
     webkit_largest_cpu_usage: Option<f32>,
     webkit_largest_age_seconds: Option<u64>,
@@ -1010,6 +1050,7 @@ struct RuntimeMemoryStats {
 struct WebkitProcessRuntimeStats {
     process_id: u32,
     resident_bytes: u64,
+    footprint_bytes: Option<u64>,
     virtual_bytes: u64,
     cpu_usage: f32,
     age_seconds: u64,
@@ -1034,13 +1075,24 @@ struct ScrapeMemoryPreparation {
     after: RuntimeMemoryStats,
     recycled_scraper_windows: bool,
     cache_trimmed: bool,
+    scrape_start_budget_bytes: u64,
     may_proceed: bool,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebkitCacheTrimResult {
+    before_bytes: u64,
+    after_bytes: u64,
+    cache_trimmed: bool,
 }
 
 struct WebkitMemoryStats {
     total_resident_bytes: u64,
+    total_footprint_bytes: Option<u64>,
     process_count: u64,
     largest_resident_bytes: Option<u64>,
+    largest_footprint_bytes: Option<u64>,
     largest_virtual_bytes: Option<u64>,
     largest_process_id: Option<u32>,
     largest_cpu_usage: Option<f32>,
@@ -1060,10 +1112,12 @@ struct BackgroundRuntimeState {
     healthy_heartbeats: u64,
     renderer_stale: bool,
     cooldown_until: Option<Instant>,
+    memory_cooldown_until: Option<Instant>,
     safe_mode_until: Option<Instant>,
     recovery_history: VecDeque<Instant>,
     active_job: Option<ActiveBackgroundJob>,
     last_recovery_reason: Option<String>,
+    last_memory_pressure_reason: Option<String>,
 }
 
 impl BackgroundRuntimeState {
@@ -1072,10 +1126,12 @@ impl BackgroundRuntimeState {
             healthy_heartbeats: 0,
             renderer_stale: true,
             cooldown_until: None,
+            memory_cooldown_until: None,
             safe_mode_until: None,
             recovery_history: VecDeque::new(),
             active_job: None,
             last_recovery_reason: None,
+            last_memory_pressure_reason: None,
         }
     }
 }
@@ -1138,6 +1194,40 @@ impl BackgroundRuntimeCoordinator {
         }
     }
 
+    fn note_memory_pressure(&self, provider: &str, operation: &str, critical: bool) -> u128 {
+        let now = Instant::now();
+        let cooldown = if critical {
+            BACKGROUND_MEMORY_CRITICAL_COOLDOWN
+        } else {
+            BACKGROUND_MEMORY_HIGH_COOLDOWN
+        };
+        let mut state = self.state.write().unwrap();
+        let until = now + cooldown;
+        if state
+            .memory_cooldown_until
+            .map(|current| current < until)
+            .unwrap_or(true)
+        {
+            state.memory_cooldown_until = Some(until);
+        }
+        state.last_memory_pressure_reason = Some(format!(
+            "{} {} memory pressure {}",
+            provider,
+            operation,
+            if critical { "critical" } else { "high" }
+        ));
+        state
+            .memory_cooldown_until
+            .and_then(|until| {
+                if until > now {
+                    Some(until.duration_since(now).as_millis())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0)
+    }
+
     fn begin_job(&self, operation: &'static str) -> Result<(), String> {
         let now = Instant::now();
         let mut state = self.state.write().unwrap();
@@ -1162,6 +1252,22 @@ impl BackgroundRuntimeCoordinator {
                 ));
             }
             state.cooldown_until = None;
+        }
+
+        if let Some(memory_cooldown_until) = state.memory_cooldown_until {
+            if memory_cooldown_until > now {
+                let wait_ms = memory_cooldown_until.duration_since(now).as_millis();
+                let reason = state
+                    .last_memory_pressure_reason
+                    .as_deref()
+                    .unwrap_or("recent memory pressure");
+                return Err(format!(
+                    "background work is cooling down for {} ms after {}",
+                    wait_ms, reason
+                ));
+            }
+            state.memory_cooldown_until = None;
+            state.last_memory_pressure_reason = None;
         }
 
         if let Some(safe_mode_until) = state.safe_mode_until {
@@ -1466,7 +1572,7 @@ fn renderer_recovery_threshold_for_count(
     last_visibility: &str,
     recent_recovery_count: usize,
 ) -> Duration {
-    if is_visible || last_visibility == "visible" {
+    if renderer_is_effectively_visible(is_visible, last_visibility) {
         match recent_recovery_count {
             0 | 1 => RENDERER_VISIBLE_RECOVERY_AFTER,
             2 => Duration::from_secs(120),
@@ -1474,6 +1580,18 @@ fn renderer_recovery_threshold_for_count(
         }
     } else {
         RENDERER_HIDDEN_RECOVERY_AFTER
+    }
+}
+
+fn renderer_is_effectively_visible(is_visible: bool, last_visibility: &str) -> bool {
+    is_visible && last_visibility == "visible"
+}
+
+fn renderer_stale_log_after(is_visible: bool, last_visibility: &str) -> Duration {
+    if renderer_is_effectively_visible(is_visible, last_visibility) {
+        RENDERER_STALE_LOG_AFTER
+    } else {
+        RENDERER_HIDDEN_STALE_LOG_AFTER
     }
 }
 
@@ -1502,16 +1620,42 @@ mod renderer_watchdog_tests {
     fn renderer_recovery_threshold_prefers_visible_windows() {
         assert_eq!(
             renderer_recovery_threshold(true, "hidden"),
-            RENDERER_VISIBLE_RECOVERY_AFTER
+            RENDERER_HIDDEN_RECOVERY_AFTER
         );
         assert_eq!(
             renderer_recovery_threshold(false, "visible"),
-            RENDERER_VISIBLE_RECOVERY_AFTER
+            RENDERER_HIDDEN_RECOVERY_AFTER
         );
         assert_eq!(
             renderer_recovery_threshold(false, "hidden"),
             RENDERER_HIDDEN_RECOVERY_AFTER
         );
+        assert_eq!(
+            renderer_recovery_threshold(true, "visible"),
+            RENDERER_VISIBLE_RECOVERY_AFTER
+        );
+    }
+
+    #[test]
+    fn renderer_stale_log_threshold_uses_hidden_timer_slack() {
+        assert_eq!(
+            renderer_stale_log_after(true, "visible"),
+            RENDERER_STALE_LOG_AFTER
+        );
+        assert_eq!(
+            renderer_stale_log_after(true, "hidden"),
+            RENDERER_HIDDEN_STALE_LOG_AFTER
+        );
+        assert_eq!(
+            renderer_stale_log_after(false, "visible"),
+            RENDERER_HIDDEN_STALE_LOG_AFTER
+        );
+    }
+
+    #[test]
+    fn hidden_renderer_stale_log_waits_past_webkit_timer_throttling() {
+        assert!(RENDERER_HIDDEN_STALE_LOG_AFTER > Duration::from_secs(300));
+        assert!(RENDERER_HIDDEN_STALE_LOG_AFTER < RENDERER_HIDDEN_RECOVERY_AFTER);
     }
 
     #[test]
@@ -1756,6 +1900,83 @@ async fn google_api_request(url: String, access_token: String) -> Result<String,
     }
 
     Ok(body)
+}
+
+#[derive(serde::Serialize)]
+struct GoogleDriveResponse {
+    status: u16,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+/// Make a Google Drive API request through the native networking stack.
+#[tauri::command]
+async fn google_drive_request(
+    url: String,
+    method: Option<String>,
+    headers: Option<Vec<(String, String)>>,
+    body: Option<Vec<u8>>,
+) -> Result<GoogleDriveResponse, String> {
+    let parsed =
+        url::Url::parse(&url).map_err(|e| format!("Invalid Google Drive API URL: {}", e))?;
+    let allowed_path =
+        parsed.path().starts_with("/drive/v3/") || parsed.path().starts_with("/upload/drive/v3/");
+    if parsed.scheme() != "https"
+        || parsed.host_str() != Some("www.googleapis.com")
+        || !allowed_path
+    {
+        return Err("Google Drive API URL is not allowed".to_string());
+    }
+
+    let method_name = method.unwrap_or_else(|| "GET".to_string()).to_uppercase();
+    let method = match method_name.as_str() {
+        "GET" => reqwest::Method::GET,
+        "POST" => reqwest::Method::POST,
+        "PATCH" => reqwest::Method::PATCH,
+        "DELETE" => reqwest::Method::DELETE,
+        _ => {
+            return Err(format!(
+                "Google Drive API method is not allowed: {}",
+                method_name
+            ))
+        }
+    };
+
+    let client = reqwest::Client::builder()
+        .user_agent("Freed/1.0 (https://freed.wtf)")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut builder = client.request(method, parsed);
+    for (key, value) in headers.unwrap_or_default() {
+        builder = builder.header(&key, &value);
+    }
+    if let Some(body) = body {
+        builder = builder.body(body);
+    }
+
+    let response = builder
+        .send()
+        .await
+        .map_err(|e| format!("Google Drive request failed: {}", e))?;
+    let status = response.status().as_u16();
+    let headers = response
+        .headers()
+        .iter()
+        .filter_map(|(key, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (key.as_str().to_string(), value.to_string()))
+        })
+        .collect();
+    let body = response.bytes().await.map_err(|e| e.to_string())?.to_vec();
+
+    Ok(GoogleDriveResponse {
+        status,
+        headers,
+        body,
+    })
 }
 
 /// Fetch any URL and return its body as bytes for permanent local media archive.
@@ -2260,8 +2481,39 @@ fn macos_process_has_open_file_under_roots(pid: u32, roots: &[PathBuf]) -> bool 
         .any(|path| path_is_under_any_root(Path::new(path), roots))
 }
 
-fn freed_webkit_memory_stats(system: &System, roots: &[PathBuf]) -> WebkitMemoryStats {
+fn webkit_process_belongs_to_current_launch(webkit_age_seconds: u64, app_age_seconds: u64) -> bool {
+    webkit_age_seconds <= app_age_seconds.saturating_add(WEBKIT_PROCESS_START_GRACE_SECONDS)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_process_physical_footprint_bytes(pid: u32) -> Option<u64> {
+    let mut usage = MaybeUninit::<libc::rusage_info_v4>::uninit();
+    let result = unsafe {
+        libc::proc_pid_rusage(
+            pid as libc::c_int,
+            libc::RUSAGE_INFO_V4,
+            usage.as_mut_ptr().cast(),
+        )
+    };
+    if result != 0 {
+        return None;
+    }
+    Some(unsafe { usage.assume_init() }.ri_phys_footprint)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn macos_process_physical_footprint_bytes(_pid: u32) -> Option<u64> {
+    None
+}
+
+fn freed_webkit_memory_stats(
+    system: &System,
+    roots: &[PathBuf],
+    app_age_seconds: u64,
+) -> WebkitMemoryStats {
     let mut total_resident_bytes = 0u64;
+    let mut total_footprint_bytes = 0u64;
+    let mut has_footprint = false;
     let mut process_count = 0u64;
     let mut largest: Option<WebkitProcessRuntimeStats> = None;
     let mut processes: Vec<WebkitProcessRuntimeStats> = Vec::new();
@@ -2277,16 +2529,26 @@ fn freed_webkit_memory_stats(system: &System, roots: &[PathBuf]) -> WebkitMemory
             if !macos_process_has_open_file_under_roots(pid_u32, roots) {
                 continue;
             }
+            let age_seconds = process.run_time();
+            if !webkit_process_belongs_to_current_launch(age_seconds, app_age_seconds) {
+                continue;
+            }
             let resident = process.memory();
+            let footprint = macos_process_physical_footprint_bytes(pid_u32);
             let virtual_bytes = process.virtual_memory();
             total_resident_bytes = total_resident_bytes.saturating_add(resident);
+            if let Some(footprint) = footprint {
+                total_footprint_bytes = total_footprint_bytes.saturating_add(footprint);
+                has_footprint = true;
+            }
             process_count += 1;
             let stats = WebkitProcessRuntimeStats {
                 process_id: pid_u32,
                 resident_bytes: resident,
+                footprint_bytes: footprint,
                 virtual_bytes,
                 cpu_usage: process.cpu_usage(),
-                age_seconds: process.run_time(),
+                age_seconds,
                 role: "freed-webcontent".to_string(),
             };
             if largest
@@ -2304,8 +2566,10 @@ fn freed_webkit_memory_stats(system: &System, roots: &[PathBuf]) -> WebkitMemory
 
     WebkitMemoryStats {
         total_resident_bytes,
+        total_footprint_bytes: has_footprint.then_some(total_footprint_bytes),
         process_count,
         largest_resident_bytes: largest.as_ref().map(|stats| stats.resident_bytes),
+        largest_footprint_bytes: largest.as_ref().and_then(|stats| stats.footprint_bytes),
         largest_virtual_bytes: largest.as_ref().map(|stats| stats.virtual_bytes),
         largest_process_id: largest.as_ref().map(|stats| stats.process_id),
         largest_cpu_usage: largest.as_ref().map(|stats| stats.cpu_usage),
@@ -2329,17 +2593,24 @@ fn collect_runtime_memory_stats(
         ProcessRefreshKind::nothing().with_memory(),
     );
 
-    let (process_resident_bytes, process_virtual_bytes) = system
+    let (process_resident_bytes, process_virtual_bytes, process_age_seconds) = system
         .process(pid)
-        .map(|process| (process.memory(), process.virtual_memory()))
-        .unwrap_or((0, 0));
+        .map(|process| {
+            (
+                process.memory(),
+                process.virtual_memory(),
+                process.run_time(),
+            )
+        })
+        .unwrap_or((0, 0, 0));
+    let process_footprint_bytes = macos_process_physical_footprint_bytes(std::process::id());
     system.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
         ProcessRefreshKind::nothing().with_memory(),
     );
 
-    let webkit = freed_webkit_memory_stats(&system, &app_storage_roots(app));
+    let webkit = freed_webkit_memory_stats(&system, &app_storage_roots(app), process_age_seconds);
     let total_physical_memory_bytes = system.total_memory();
     let (memory_high_bytes, memory_critical_bytes) =
         memory_pressure_limits(total_physical_memory_bytes);
@@ -2354,18 +2625,29 @@ fn collect_runtime_memory_stats(
         .ok()
         .and_then(|path| dir_size_bytes(&path.join("WebKit")));
     let app_resident_bytes = process_resident_bytes.saturating_add(webkit.total_resident_bytes);
+    let webkit_pressure_bytes = webkit
+        .total_footprint_bytes
+        .unwrap_or(webkit.total_resident_bytes);
+    let app_memory_pressure_bytes = process_footprint_bytes
+        .unwrap_or(process_resident_bytes)
+        .saturating_add(webkit_pressure_bytes);
 
     RuntimeMemoryStats {
         total_physical_memory_bytes,
         process_resident_bytes,
+        process_footprint_bytes,
         process_virtual_bytes,
         app_resident_bytes,
+        app_memory_pressure_bytes,
         webkit_resident_bytes: webkit.largest_resident_bytes,
+        webkit_footprint_bytes: webkit.largest_footprint_bytes,
         webkit_virtual_bytes: webkit.largest_virtual_bytes,
         webkit_process_id: webkit.largest_process_id,
         webkit_total_resident_bytes: webkit.total_resident_bytes,
+        webkit_total_footprint_bytes: webkit.total_footprint_bytes,
         webkit_process_count: webkit.process_count,
         webkit_largest_resident_bytes: webkit.largest_resident_bytes,
+        webkit_largest_footprint_bytes: webkit.largest_footprint_bytes,
         webkit_largest_process_id: webkit.largest_process_id,
         webkit_largest_cpu_usage: webkit.largest_cpu_usage,
         webkit_largest_age_seconds: webkit.largest_age_seconds,
@@ -2381,7 +2663,7 @@ fn collect_runtime_memory_stats(
     }
 }
 
-fn collect_network_cache_blob_files(root: &Path, files: &mut Vec<(PathBuf, u64, SystemTime)>) {
+fn collect_webkit_network_cache_files(root: &Path, files: &mut Vec<(PathBuf, u64, SystemTime)>) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
@@ -2392,42 +2674,34 @@ fn collect_network_cache_blob_files(root: &Path, files: &mut Vec<(PathBuf, u64, 
             continue;
         };
         if metadata.is_dir() {
-            collect_network_cache_blob_files(&path, files);
+            collect_webkit_network_cache_files(&path, files);
             continue;
         }
         if !metadata.is_file() {
             continue;
         }
 
-        let is_blob = path.components().any(|component| {
-            component
-                .as_os_str()
-                .to_string_lossy()
-                .eq_ignore_ascii_case("Blobs")
-        });
-        if is_blob {
-            files.push((
-                path,
-                metadata.len(),
-                metadata.modified().unwrap_or(UNIX_EPOCH),
-            ));
-        }
+        files.push((
+            path,
+            metadata.len(),
+            metadata.modified().unwrap_or(UNIX_EPOCH),
+        ));
     }
 }
 
-fn trim_webkit_network_cache(app: &tauri::AppHandle) -> bool {
-    let Ok(cache_root) = app.path().app_cache_dir() else {
-        return false;
-    };
-    let webkit_root = cache_root.join("WebKit");
+fn trim_webkit_network_cache_root_with_result(webkit_root: &Path) -> WebkitCacheTrimResult {
     let webkit_bytes = dir_size_bytes(&webkit_root).unwrap_or(0);
     if webkit_bytes <= WEBKIT_CACHE_TRIM_AT_BYTES {
-        return false;
+        return WebkitCacheTrimResult {
+            before_bytes: webkit_bytes,
+            after_bytes: webkit_bytes,
+            cache_trimmed: false,
+        };
     }
 
     let network_cache_root = webkit_root.join("NetworkCache");
     let mut files = Vec::new();
-    collect_network_cache_blob_files(&network_cache_root, &mut files);
+    collect_webkit_network_cache_files(&network_cache_root, &mut files);
     files.sort_by_key(|(_, _, modified)| *modified);
 
     let mut current_bytes = webkit_bytes;
@@ -2442,11 +2716,129 @@ fn trim_webkit_network_cache(app: &tauri::AppHandle) -> bool {
         }
     }
 
-    trimmed
+    WebkitCacheTrimResult {
+        before_bytes: webkit_bytes,
+        after_bytes: current_bytes,
+        cache_trimmed: trimmed,
+    }
+}
+
+fn trim_webkit_network_cache(app: &tauri::AppHandle) -> WebkitCacheTrimResult {
+    let Ok(cache_root) = app.path().app_cache_dir() else {
+        return WebkitCacheTrimResult {
+            before_bytes: 0,
+            after_bytes: 0,
+            cache_trimmed: false,
+        };
+    };
+    trim_webkit_network_cache_root_with_result(&cache_root.join("WebKit"))
+}
+
+fn scrape_memory_start_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
+    stats
+        .memory_high_bytes
+        .saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES)
 }
 
 fn scrape_memory_may_proceed(stats: &RuntimeMemoryStats) -> bool {
-    stats.app_resident_bytes < stats.memory_high_bytes
+    stats.app_memory_pressure_bytes < scrape_memory_start_budget_bytes(stats)
+}
+
+fn optional_story_scrape_may_proceed(stats: &RuntimeMemoryStats) -> bool {
+    stats.app_memory_pressure_bytes
+        < stats
+            .memory_high_bytes
+            .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
+            / 100
+}
+
+fn social_scrape_may_continue(
+    app: &tauri::AppHandle,
+    provider: &str,
+    operation: &str,
+    pass_index: usize,
+    total_passes: usize,
+) -> bool {
+    let stats = collect_runtime_memory_stats(app, 0, 0);
+    let may_continue = scrape_memory_may_proceed(&stats);
+    if !may_continue {
+        warn!(
+            "[memory] ending scrape early provider={} operation={} pass={}/{} app_pressure={} app_rss={} webkit_pressure={} webkit_rss={} scrape_budget={} high_bytes={} critical_bytes={}",
+            provider,
+            operation,
+            pass_index,
+            total_passes,
+            stats.app_memory_pressure_bytes,
+            stats.app_resident_bytes,
+            stats
+                .webkit_total_footprint_bytes
+                .unwrap_or(stats.webkit_total_resident_bytes),
+            stats.webkit_total_resident_bytes,
+            scrape_memory_start_budget_bytes(&stats),
+            stats.memory_high_bytes,
+            stats.memory_critical_bytes
+        );
+        append_runtime_health(
+            app,
+            serde_json::json!({
+                "event": "social_scrape_stopped_for_memory",
+                "provider": provider,
+                "operation": operation,
+                "passIndex": pass_index,
+                "totalPasses": total_passes,
+                "appMemoryPressureBytes": stats.app_memory_pressure_bytes,
+                "appResidentBytes": stats.app_resident_bytes,
+                "webkitFootprintBytes": stats.webkit_total_footprint_bytes,
+                "webkitResidentBytes": stats.webkit_total_resident_bytes,
+                "webkitLargestProcessId": stats.webkit_largest_process_id,
+                "webkitLargestFootprintBytes": stats.webkit_largest_footprint_bytes,
+                "webkitLargestResidentBytes": stats.webkit_largest_resident_bytes,
+                "scrapeStartBudgetBytes": scrape_memory_start_budget_bytes(&stats),
+                "memoryHighBytes": stats.memory_high_bytes,
+                "memoryCriticalBytes": stats.memory_critical_bytes
+            }),
+        );
+    }
+    may_continue
+}
+
+fn optional_story_scrape_may_continue(
+    app: &tauri::AppHandle,
+    provider: &str,
+    operation: &str,
+) -> bool {
+    let stats = collect_runtime_memory_stats(app, 0, 0);
+    let may_continue = optional_story_scrape_may_proceed(&stats);
+    if !may_continue {
+        info!(
+            "[memory] skipping optional story scrape provider={} operation={} app_pressure={} app_rss={} webkit_pressure={} webkit_rss={} story_budget={} high_bytes={}",
+            provider,
+            operation,
+            stats.app_memory_pressure_bytes,
+            stats.app_resident_bytes,
+            stats
+                .webkit_total_footprint_bytes
+                .unwrap_or(stats.webkit_total_resident_bytes),
+            stats.webkit_total_resident_bytes,
+            stats.memory_high_bytes.saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT) / 100,
+            stats.memory_high_bytes
+        );
+        append_runtime_health(
+            app,
+            serde_json::json!({
+                "event": "optional_story_scrape_skipped_for_memory",
+                "provider": provider,
+                "operation": operation,
+                "appMemoryPressureBytes": stats.app_memory_pressure_bytes,
+                "appResidentBytes": stats.app_resident_bytes,
+                "webkitFootprintBytes": stats.webkit_total_footprint_bytes,
+                "webkitResidentBytes": stats.webkit_total_resident_bytes,
+                "storyBudgetBytes": stats.memory_high_bytes.saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT) / 100,
+                "memoryHighBytes": stats.memory_high_bytes
+            }),
+        );
+    }
+    may_continue
 }
 
 fn recycle_social_scraper_windows_except(
@@ -2467,6 +2859,17 @@ fn recycle_social_scraper_windows_except(
     recycled
 }
 
+fn blocked_preflight_preserved_scraper_label<'a>(
+    preserve_label: Option<&'a str>,
+    critical: bool,
+) -> Option<&'a str> {
+    if critical {
+        None
+    } else {
+        preserve_label
+    }
+}
+
 async fn prepare_social_scrape_memory_internal(
     app: &tauri::AppHandle,
     provider: &str,
@@ -2479,29 +2882,41 @@ async fn prepare_social_scrape_memory_internal(
     let reason = format!("{} {} memory preflight", provider, operation);
     let recycled_scraper_windows =
         recycle_social_scraper_windows_except(app, preserve_label, &reason);
-    let cache_trimmed = trim_webkit_network_cache(app);
+    let cache_trim_result = trim_webkit_network_cache(app);
+    let cache_trimmed = cache_trim_result.cache_trimmed;
 
     if recycled_scraper_windows || cache_trimmed {
         tokio::time::sleep(Duration::from_millis(700)).await;
     }
 
     let after = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
+    let scrape_start_budget_bytes = scrape_memory_start_budget_bytes(&after);
     let may_proceed = scrape_memory_may_proceed(&after);
-    let pressure_level = if after.app_resident_bytes >= after.memory_critical_bytes {
+    let pressure_level = if after.app_memory_pressure_bytes >= after.memory_critical_bytes {
         "critical"
-    } else if after.app_resident_bytes >= after.memory_high_bytes {
+    } else if after.app_memory_pressure_bytes >= after.memory_high_bytes {
         "high"
     } else {
         "normal"
     };
     info!(
-        "[memory] scrape preflight provider={} operation={} before_app_rss={} before_webkit_rss={} after_app_rss={} after_webkit_rss={} high_bytes={} critical_bytes={} pressure={} recycled_scrapers={} cache_trimmed={} may_proceed={}",
+        "[memory] scrape preflight provider={} operation={} before_app_pressure={} before_app_rss={} before_webkit_pressure={} before_webkit_rss={} after_app_pressure={} after_app_rss={} after_webkit_pressure={} after_webkit_rss={} scrape_budget={} headroom_bytes={} high_bytes={} critical_bytes={} pressure={} recycled_scrapers={} cache_trimmed={} may_proceed={}",
         provider,
         operation,
+        before.app_memory_pressure_bytes,
         before.app_resident_bytes,
+        before
+            .webkit_total_footprint_bytes
+            .unwrap_or(before.webkit_total_resident_bytes),
         before.webkit_total_resident_bytes,
+        after.app_memory_pressure_bytes,
         after.app_resident_bytes,
+        after
+            .webkit_total_footprint_bytes
+            .unwrap_or(after.webkit_total_resident_bytes),
         after.webkit_total_resident_bytes,
+        scrape_start_budget_bytes,
+        SCRAPE_MEMORY_HEADROOM_BYTES,
         after.memory_high_bytes,
         after.memory_critical_bytes,
         pressure_level,
@@ -2515,16 +2930,23 @@ async fn prepare_social_scrape_memory_internal(
             "event": "scrape_memory_preflight",
             "provider": provider,
             "operation": operation,
+            "beforeAppMemoryPressureBytes": before.app_memory_pressure_bytes,
             "beforeAppResidentBytes": before.app_resident_bytes,
+            "beforeWebkitFootprintBytes": before.webkit_total_footprint_bytes,
             "beforeWebkitResidentBytes": before.webkit_total_resident_bytes,
+            "afterAppMemoryPressureBytes": after.app_memory_pressure_bytes,
             "afterAppResidentBytes": after.app_resident_bytes,
+            "afterWebkitFootprintBytes": after.webkit_total_footprint_bytes,
             "afterWebkitResidentBytes": after.webkit_total_resident_bytes,
             "webkitLargestProcessId": after.webkit_largest_process_id,
+            "webkitLargestFootprintBytes": after.webkit_largest_footprint_bytes,
             "webkitLargestResidentBytes": after.webkit_largest_resident_bytes,
             "webkitLargestCpuUsage": after.webkit_largest_cpu_usage,
             "webkitLargestAgeSeconds": after.webkit_largest_age_seconds,
             "webkitLargestRole": after.webkit_largest_role,
             "webkitProcessCount": after.webkit_process_count,
+            "scrapeStartBudgetBytes": scrape_start_budget_bytes,
+            "scrapeHeadroomBytes": SCRAPE_MEMORY_HEADROOM_BYTES,
             "memoryHighBytes": after.memory_high_bytes,
             "memoryCriticalBytes": after.memory_critical_bytes,
             "pressureLevel": pressure_level,
@@ -2551,12 +2973,14 @@ async fn prepare_social_scrape_memory_internal(
         after,
         recycled_scraper_windows,
         cache_trimmed,
+        scrape_start_budget_bytes,
         may_proceed,
     }
 }
 
 async fn ensure_social_scrape_memory(
     app: &tauri::AppHandle,
+    background_runtime: &BackgroundRuntimeCoordinator,
     provider: &str,
     operation: &str,
     preserve_label: Option<&str>,
@@ -2567,11 +2991,51 @@ async fn ensure_social_scrape_memory(
         return Ok(());
     }
 
-    let pressure_label = if prep.after.app_resident_bytes >= prep.after.memory_critical_bytes {
+    let pressure_label = if prep.after.app_memory_pressure_bytes >= prep.after.memory_critical_bytes
+    {
         "critically high"
     } else {
         "high"
     };
+    let critical = pressure_label == "critically high";
+    if critical {
+        let reason = format!("{} {} critical memory preflight", provider, operation);
+        recycle_social_scraper_windows(app, &reason);
+    }
+    let mut recycled_preserved_scraper_window = false;
+    if let Some(label) = blocked_preflight_preserved_scraper_label(preserve_label, critical) {
+        let reason = format!("{} {} blocked memory preflight", provider, operation);
+        recycled_preserved_scraper_window = app.get_webview_window(label).is_some();
+        recycle_webview_window(app, label, &reason);
+    }
+    let cooldown_ms = background_runtime.note_memory_pressure(provider, operation, critical);
+    warn!(
+        "[memory] pausing background scraper work provider={} operation={} pressure={} cooldown_ms={} recycled_preserved_scraper={}",
+        provider, operation, pressure_label, cooldown_ms, recycled_preserved_scraper_window
+    );
+    append_runtime_health(
+        app,
+        serde_json::json!({
+            "event": "background_scraper_memory_cooldown",
+            "provider": provider,
+            "operation": operation,
+            "pressureLevel": if critical { "critical" } else { "high" },
+            "cooldownMs": cooldown_ms,
+            "appMemoryPressureBytes": prep.after.app_memory_pressure_bytes,
+            "appResidentBytes": prep.after.app_resident_bytes,
+            "webkitFootprintBytes": prep.after.webkit_total_footprint_bytes,
+            "webkitResidentBytes": prep.after.webkit_total_resident_bytes,
+            "webkitLargestProcessId": prep.after.webkit_largest_process_id,
+            "webkitLargestFootprintBytes": prep.after.webkit_largest_footprint_bytes,
+            "webkitLargestResidentBytes": prep.after.webkit_largest_resident_bytes,
+            "scrapeStartBudgetBytes": prep.scrape_start_budget_bytes,
+            "memoryHighBytes": prep.after.memory_high_bytes,
+            "memoryCriticalBytes": prep.after.memory_critical_bytes,
+            "recycledAllScraperWindows": critical,
+            "recycledPreservedScraperWindow": recycled_preserved_scraper_window,
+            "preservedScraperLabel": preserve_label
+        }),
+    );
     Err(format!(
         "{} sync paused because Freed Desktop memory remains {} after cleanup.",
         provider, pressure_label
@@ -2597,6 +3061,20 @@ async fn get_runtime_memory_stats(
         relay_doc_bytes,
         relay_client_count,
     ))
+}
+
+#[tauri::command]
+async fn trim_webkit_network_cache_now(
+    app: tauri::AppHandle,
+) -> Result<WebkitCacheTrimResult, String> {
+    let result = trim_webkit_network_cache(&app);
+    if result.cache_trimmed {
+        info!(
+            "[memory] webkit cache trimmed during monitor sample before_bytes={} after_bytes={}",
+            result.before_bytes, result.after_bytes
+        );
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -3063,6 +3541,7 @@ async fn fb_show_login(
         "fb-scraper",
         tauri::WebviewUrl::External("https://www.facebook.com/login".parse().unwrap()),
     )
+    .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
     .user_agent(&user_agent)
     .initialization_script(include_str!("webkit-mask.js"))
     .title("Connect Facebook — Freed")
@@ -3131,7 +3610,14 @@ async fn fb_check_auth(
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_check_auth").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "auth check", Some("fb-scraper")).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Facebook",
+        "auth check",
+        Some("fb-scraper"),
+    )
+    .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "auth check");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(w) => w,
@@ -3140,6 +3626,7 @@ async fn fb_check_auth(
             "fb-scraper",
             tauri::WebviewUrl::External("https://www.facebook.com/".parse().unwrap()),
         )
+        .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
         .user_agent(&scraper_user_agent)
         .initialization_script(include_str!("webkit-mask.js"))
         .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -3422,7 +3909,14 @@ async fn fb_scrape_feed(
     let fb_feed_url = "https://www.facebook.com/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_feed").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "feed scrape", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Facebook",
+        "feed scrape",
+        None,
+    )
+    .await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "feed scrape complete");
 
@@ -3440,6 +3934,7 @@ async fn fb_scrape_feed(
                 "fb-scraper",
                 tauri::WebviewUrl::External(fb_feed_url.parse().unwrap()),
             )
+            .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
             .user_agent(&scraper_user_agent)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -3509,7 +4004,7 @@ async fn fb_scrape_feed(
 
     // Randomized ordering: ~50% stories-first, ~50% feed-first.
     // ~15% chance to skip story scraping entirely (real users don't always check stories).
-    let skip_stories = {
+    let skip_stories = !optional_story_scrape_may_continue(&app, "Facebook", "feed scrape") || {
         use rand::Rng;
         rand::thread_rng().gen_bool(0.15)
     };
@@ -3519,7 +4014,7 @@ async fn fb_scrape_feed(
     };
     let story_frame_cap = {
         use rand::Rng;
-        rand::thread_rng().gen_range(4usize..=8)
+        rand::thread_rng().gen_range(2usize..=4)
     };
 
     if stories_first {
@@ -3537,7 +4032,7 @@ async fn fb_scrape_feed(
     // We must scroll incrementally, extracting at each position.
     let num_passes = {
         use rand::Rng;
-        rand::thread_rng().gen_range(8usize..=18)
+        rand::thread_rng().gen_range(6usize..=10)
     };
     // If doing feed-first, split the passes: 2-4 passes before stories, rest after.
     let early_passes = if !stories_first && !skip_stories {
@@ -3555,6 +4050,9 @@ async fn fb_scrape_feed(
 
         tokio::time::sleep(Duration::from_millis(300)).await;
         cleanup_background_scraper_media(&wv);
+        if !social_scrape_may_continue(&app, "Facebook", "feed scrape", i + 1, num_passes) {
+            break;
+        }
 
         let scroll_amount = {
             use rand::Rng;
@@ -3652,7 +4150,14 @@ async fn fb_scrape_groups(
     let fb_groups_url = "https://www.facebook.com/groups/?category=joined";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_groups").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "groups scrape", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Facebook",
+        "groups scrape",
+        None,
+    )
+    .await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "groups scrape complete");
 
@@ -3670,6 +4175,7 @@ async fn fb_scrape_groups(
                 "fb-scraper",
                 tauri::WebviewUrl::External(fb_groups_url.parse().unwrap()),
             )
+            .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
             .user_agent(&scraper_user_agent)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -3847,6 +4353,7 @@ async fn ig_show_login(
         "ig-scraper",
         tauri::WebviewUrl::External("https://www.instagram.com/accounts/login/".parse().unwrap()),
     )
+    .data_store_identifier(IG_SCRAPER_DATA_STORE_IDENTIFIER)
     .user_agent(&user_agent)
     .initialization_script(include_str!("webkit-mask.js"))
     .title("Connect Instagram — Freed")
@@ -3925,7 +4432,14 @@ async fn ig_check_auth(
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_check_auth").await?;
-    ensure_social_scrape_memory(&app, "Instagram", "auth check", Some("ig-scraper")).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Instagram",
+        "auth check",
+        Some("ig-scraper"),
+    )
+    .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "auth check");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => w,
@@ -3934,6 +4448,7 @@ async fn ig_check_auth(
             "ig-scraper",
             tauri::WebviewUrl::External("https://www.instagram.com/".parse().unwrap()),
         )
+        .data_store_identifier(IG_SCRAPER_DATA_STORE_IDENTIFIER)
         .user_agent(&scraper_user_agent)
         .initialization_script(include_str!("webkit-mask.js"))
         .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -3987,7 +4502,14 @@ async fn ig_scrape_feed(
     let ig_feed_url = "https://www.instagram.com/?variant=following";
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await?;
-    ensure_social_scrape_memory(&app, "Instagram", "feed scrape", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Instagram",
+        "feed scrape",
+        None,
+    )
+    .await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "ig-scraper", "feed scrape complete");
 
@@ -4012,6 +4534,7 @@ async fn ig_scrape_feed(
                 "ig-scraper",
                 tauri::WebviewUrl::External(ig_feed_url.parse().unwrap()),
             )
+            .data_store_identifier(IG_SCRAPER_DATA_STORE_IDENTIFIER)
             .user_agent(&scraper_user_agent)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -4074,7 +4597,7 @@ async fn ig_scrape_feed(
 
     // Randomized ordering: ~50% stories-first, ~50% feed-first.
     // ~15% chance to skip story scraping entirely.
-    let skip_stories = {
+    let skip_stories = !optional_story_scrape_may_continue(&app, "Instagram", "feed scrape") || {
         use rand::Rng;
         rand::thread_rng().gen_bool(0.15)
     };
@@ -4084,7 +4607,7 @@ async fn ig_scrape_feed(
     };
     let story_frame_cap = {
         use rand::Rng;
-        rand::thread_rng().gen_range(4usize..=8)
+        rand::thread_rng().gen_range(2usize..=4)
     };
 
     if stories_first {
@@ -4101,7 +4624,7 @@ async fn ig_scrape_feed(
     // incrementally, extracting at each position.
     let num_passes = {
         use rand::Rng;
-        rand::thread_rng().gen_range(7usize..=14)
+        rand::thread_rng().gen_range(5usize..=9)
     };
     // Feed-first: scrape stories after the first 2-4 passes
     let early_passes = if !stories_first && !skip_stories {
@@ -4119,6 +4642,9 @@ async fn ig_scrape_feed(
 
         tokio::time::sleep(Duration::from_millis(300)).await;
         cleanup_background_scraper_media(&wv);
+        if !social_scrape_may_continue(&app, "Instagram", "feed scrape", i + 1, num_passes) {
+            break;
+        }
 
         let scroll_amount = {
             use rand::Rng;
@@ -4300,7 +4826,8 @@ async fn fb_visit_url(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_visit_url").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "visit", None).await?;
+    ensure_social_scrape_memory(&app, &capture.background_runtime, "Facebook", "visit", None)
+        .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "visit complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -4332,7 +4859,14 @@ async fn ig_visit_url(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_visit_url").await?;
-    ensure_social_scrape_memory(&app, "Instagram", "visit", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Instagram",
+        "visit",
+        None,
+    )
+    .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "visit complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -4370,7 +4904,8 @@ async fn fb_like_post(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_like_post").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "like", None).await?;
+    ensure_social_scrape_memory(&app, &capture.background_runtime, "Facebook", "like", None)
+        .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "like complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -4420,7 +4955,8 @@ async fn ig_like_post(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_like_post").await?;
-    ensure_social_scrape_memory(&app, "Instagram", "like", None).await?;
+    ensure_social_scrape_memory(&app, &capture.background_runtime, "Instagram", "like", None)
+        .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "like complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -4501,6 +5037,7 @@ async fn li_show_login(
         "li-scraper",
         tauri::WebviewUrl::External("https://www.linkedin.com/login".parse().unwrap()),
     )
+    .data_store_identifier(LI_SCRAPER_DATA_STORE_IDENTIFIER)
     .user_agent(&user_agent)
     .initialization_script(include_str!("webkit-mask.js"))
     .title("Connect LinkedIn with Freed")
@@ -4564,7 +5101,14 @@ async fn li_check_auth(
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "li_check_auth").await?;
-    ensure_social_scrape_memory(&app, "LinkedIn", "auth check", Some("li-scraper")).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "LinkedIn",
+        "auth check",
+        Some("li-scraper"),
+    )
+    .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "li-scraper", "auth check");
     let wv = match app.get_webview_window("li-scraper") {
         Some(w) => {
@@ -4578,6 +5122,7 @@ async fn li_check_auth(
             "li-scraper",
             tauri::WebviewUrl::External("https://www.linkedin.com/feed/".parse().unwrap()),
         )
+        .data_store_identifier(LI_SCRAPER_DATA_STORE_IDENTIFIER)
         .user_agent(&scraper_user_agent)
         .initialization_script(include_str!("webkit-mask.js"))
         .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -4638,7 +5183,14 @@ async fn li_scrape_feed(
     let li_feed_url = "https://www.linkedin.com/feed/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "li_scrape_feed").await?;
-    ensure_social_scrape_memory(&app, "LinkedIn", "feed scrape", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "LinkedIn",
+        "feed scrape",
+        None,
+    )
+    .await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "li-scraper", "feed scrape complete");
 
@@ -4656,6 +5208,7 @@ async fn li_scrape_feed(
                 "li-scraper",
                 tauri::WebviewUrl::External(li_feed_url.parse().unwrap()),
             )
+            .data_store_identifier(LI_SCRAPER_DATA_STORE_IDENTIFIER)
             .user_agent(&scraper_user_agent)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -4715,7 +5268,7 @@ async fn li_scrape_feed(
     // position. Fewer passes than FB (LinkedIn loads fewer posts per scroll).
     let num_passes = {
         use rand::Rng;
-        rand::thread_rng().gen_range(6usize..=12)
+        rand::thread_rng().gen_range(4usize..=8)
     };
 
     // Inject the extract script as a const so we can append done=true on last pass.
@@ -4748,6 +5301,9 @@ async fn li_scrape_feed(
         inject_script(&wv, is_last)?;
         tokio::time::sleep(Duration::from_millis(300)).await;
         cleanup_background_scraper_media(&wv);
+        if !social_scrape_may_continue(&app, "LinkedIn", "feed scrape", i + 1, num_passes) {
+            break;
+        }
 
         let scroll_amount = {
             use rand::Rng;
@@ -4823,6 +5379,18 @@ async fn li_scrape_feed(
         );
     }
 
+    let _ = wv.eval(
+        r#"
+        (function() {
+            if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {
+                window.__TAURI__.event.emit("li-feed-data", {
+                    posts: [], done: true, extractedAt: Date.now(),
+                    url: window.location.href, candidateCount: 0, scrollY: window.scrollY
+                });
+            }
+        })();
+    "#,
+    );
     tokio::time::sleep(Duration::from_millis(500)).await;
     println!(
         "[LI] scrape complete, {} extraction passes emitted",
@@ -5106,8 +5674,132 @@ fn apply_main_window_vibrancy(_window: &tauri::WebviewWindow, _context: &str) ->
 }
 
 fn show_webview_window(window: &tauri::WebviewWindow) {
+    show_app_for_main_window(window, "show");
     let _ = window.show();
+    let _ = window.unminimize();
     let _ = window.set_focus();
+    force_show_webview_window(window, "show");
+}
+
+#[cfg(target_os = "macos")]
+fn show_app_for_main_window(window: &tauri::WebviewWindow, context: &str) {
+    let app = window.app_handle();
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+    let _ = app.show();
+    force_activate_ns_app(context);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn show_app_for_main_window(_window: &tauri::WebviewWindow, _context: &str) {}
+
+#[cfg(target_os = "macos")]
+fn force_activate_ns_app(context: &str) {
+    let Some(mtm) = MainThreadMarker::new() else {
+        warn!(
+            "[main-window] forced app activation skipped off main thread context={}",
+            context
+        );
+        return;
+    };
+
+    let ns_app = NSApplication::sharedApplication(mtm);
+    let policy_before = ns_app.activationPolicy();
+    let policy_changed = ns_app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+    let policy_after = ns_app.activationPolicy();
+    ns_app.unhide(None);
+    ns_app.activate();
+
+    let running_app = NSRunningApplication::currentApplication();
+    let running_unhidden = running_app.unhide();
+    #[allow(deprecated)]
+    let running_activation_requested = running_app.activateWithOptions(
+        NSApplicationActivationOptions::ActivateAllWindows
+            | NSApplicationActivationOptions::ActivateIgnoringOtherApps,
+    );
+
+    info!(
+        "[main-window] forced app activation context={} policy_before={} policy_after={} policy_changed={} running_unhidden={} running_activation_requested={}",
+        context,
+        policy_before.0,
+        policy_after.0,
+        policy_changed,
+        running_unhidden,
+        running_activation_requested
+    );
+}
+
+#[cfg(not(target_os = "macos"))]
+fn force_activate_ns_app(_context: &str) {}
+
+#[cfg(target_os = "macos")]
+fn force_show_webview_window(window: &tauri::WebviewWindow, context: &str) {
+    let Ok(ns_window) = window.ns_window() else {
+        warn!(
+            "[main-window] NSWindow unavailable during forced show context={}",
+            context
+        );
+        return;
+    };
+
+    let was_visible = window.is_visible().ok();
+    let was_focused = window.is_focused().ok();
+    let ns_window = ns_window.cast::<AnyObject>();
+    unsafe {
+        let nil: *mut AnyObject = std::ptr::null_mut();
+        let _: () = msg_send![ns_window, setIsVisible: true];
+        let _: () = msg_send![ns_window, setReleasedWhenClosed: false];
+        let _: () = msg_send![ns_window, deminiaturize: nil];
+        let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
+        let _: () = msg_send![ns_window, orderFrontRegardless];
+    }
+    info!(
+        "[main-window] forced native window show context={} was_visible={:?} was_focused={:?} now_visible={:?} now_focused={:?}",
+        context,
+        was_visible,
+        was_focused,
+        window.is_visible().ok(),
+        window.is_focused().ok()
+    );
+}
+
+#[cfg(not(target_os = "macos"))]
+fn force_show_webview_window(_window: &tauri::WebviewWindow, _context: &str) {}
+
+fn schedule_main_window_visibility_probe(
+    app: &tauri::AppHandle,
+    delay: Duration,
+    context: &'static str,
+) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(delay).await;
+        let app_for_main = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let Some(window) = live_main_window(&app_for_main) else {
+                warn!(
+                    "[main-window] visibility probe found no live main window context={}",
+                    context
+                );
+                return;
+            };
+
+            let before_visible = window.is_visible().ok();
+            let before_focused = window.is_focused().ok();
+            show_app_for_main_window(&window, context);
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+            force_show_webview_window(&window, context);
+            info!(
+                "[main-window] visibility probe context={} before_visible={:?} before_focused={:?} after_visible={:?} after_focused={:?}",
+                context,
+                before_visible,
+                before_focused,
+                window.is_visible().ok(),
+                window.is_focused().ok()
+            );
+        });
+    });
 }
 
 fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
@@ -5209,6 +5901,9 @@ fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tau
 
     let window = create_main_window(app)?;
     show_webview_window(&window);
+    schedule_main_window_visibility_probe(app, Duration::from_millis(250), "startup-250ms");
+    schedule_main_window_visibility_probe(app, Duration::from_secs(1), "startup-1s");
+    schedule_main_window_visibility_probe(app, Duration::from_secs(3), "startup-3s");
     let vibrancy_applied = apply_main_window_vibrancy(&window, "startup");
     info!(
         "[main-window] startup window ready vibrancy_applied={}",
@@ -5802,8 +6497,10 @@ pub fn run() {
                             &health.last_visibility,
                             recent_recovery_count,
                         );
+                        let stale_log_after =
+                            renderer_stale_log_after(is_main_visible, &health.last_visibility);
                         let should_log_stale =
-                            age > RENDERER_STALE_LOG_AFTER && !health.stale_logged;
+                            age > stale_log_after && !health.stale_logged;
                         let should_recover =
                             age > recovery_threshold &&
                             health
@@ -6089,6 +6786,7 @@ pub fn run() {
             retry_startup_after_crash,
             fetch_url,
             google_api_request,
+            google_drive_request,
             fetch_binary_url,
             x_api_request,
             get_local_ip,
@@ -6099,6 +6797,7 @@ pub fn run() {
             cancel_local_ai_model_download,
             get_sync_client_count,
             get_runtime_memory_stats,
+            trim_webkit_network_cache_now,
             get_recent_runtime_health,
             get_ai_hardware_profile,
             prepare_social_scrape_memory,
@@ -6202,6 +6901,27 @@ mod tests {
     }
 
     #[test]
+    fn background_runtime_blocks_after_memory_pressure() {
+        let runtime = BackgroundRuntimeCoordinator::new();
+        runtime.note_renderer_heartbeat();
+        runtime.note_renderer_heartbeat();
+        assert!(runtime.begin_job("fb_scrape_feed").is_ok());
+        assert!(runtime.finish_job("fb_scrape_feed").is_some());
+
+        let high_cooldown = runtime.note_memory_pressure("Facebook", "visit", false);
+        assert!(high_cooldown > 0);
+        let high_err = runtime.begin_job("ig_visit_url").unwrap_err();
+        assert!(high_err.contains("cooling down"));
+        assert!(high_err.contains("memory pressure high"));
+
+        let critical_cooldown = runtime.note_memory_pressure("Facebook", "feed scrape", true);
+        assert!(critical_cooldown >= high_cooldown);
+        let critical_err = runtime.begin_job("fb_visit_url").unwrap_err();
+        assert!(critical_err.contains("cooling down"));
+        assert!(critical_err.contains("memory pressure critical"));
+    }
+
+    #[test]
     fn mark_startup_failed_forces_recovery_on_next_launch() {
         let temp = tempfile::tempdir().unwrap();
         mark_startup_success(temp.path());
@@ -6239,6 +6959,85 @@ mod tests {
     }
 
     #[test]
+    fn social_scraper_data_stores_are_provider_specific() {
+        assert_eq!(
+            social_scraper_data_store_identifier("fb-scraper"),
+            Some(FB_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("ig-scraper"),
+            Some(IG_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("li-scraper"),
+            Some(LI_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(social_scraper_data_store_identifier("main"), None);
+
+        let unique = HashSet::from([
+            FB_SCRAPER_DATA_STORE_IDENTIFIER,
+            IG_SCRAPER_DATA_STORE_IDENTIFIER,
+            LI_SCRAPER_DATA_STORE_IDENTIFIER,
+        ]);
+        assert_eq!(unique.len(), 3);
+    }
+
+    #[test]
+    fn webkit_process_filter_excludes_prior_launches() {
+        let app_age = 60;
+
+        assert!(webkit_process_belongs_to_current_launch(0, app_age));
+        assert!(webkit_process_belongs_to_current_launch(
+            app_age + WEBKIT_PROCESS_START_GRACE_SECONDS,
+            app_age
+        ));
+        assert!(!webkit_process_belongs_to_current_launch(
+            app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
+            app_age
+        ));
+    }
+
+    #[test]
+    fn webkit_network_cache_collection_includes_record_resources() {
+        let temp = tempfile::tempdir().unwrap();
+        let network_cache_root = temp
+            .path()
+            .join("WebKit/NetworkCache/Version 17/Records/hash/Resource");
+        std::fs::create_dir_all(&network_cache_root).unwrap();
+        let record_file = network_cache_root.join("resource-blob");
+        std::fs::write(&record_file, b"record").unwrap();
+
+        let mut files = Vec::new();
+        collect_webkit_network_cache_files(&temp.path().join("WebKit/NetworkCache"), &mut files);
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].0, record_file);
+    }
+
+    #[test]
+    fn webkit_network_cache_trimmer_removes_large_records_cache() {
+        let temp = tempfile::tempdir().unwrap();
+        let record_root = temp
+            .path()
+            .join("WebKit/NetworkCache/Version 17/Records/hash/Resource");
+        std::fs::create_dir_all(&record_root).unwrap();
+        let record_file = record_root.join("large-resource");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&record_file)
+            .unwrap();
+        file.set_len(WEBKIT_CACHE_TRIM_AT_BYTES + 1).unwrap();
+
+        let result = trim_webkit_network_cache_root_with_result(&temp.path().join("WebKit"));
+
+        assert!(result.cache_trimmed);
+        assert!(result.before_bytes > WEBKIT_CACHE_TRIM_AT_BYTES);
+        assert!(result.after_bytes <= WEBKIT_CACHE_TRIM_TARGET_BYTES);
+        assert!(!record_file.exists());
+    }
+
+    #[test]
     fn local_ai_download_urls_are_restricted_to_hugging_face() {
         assert!(validate_local_ai_download_url(
             "https://huggingface.co/onnx-community/model/resolve/rev/file.onnx"
@@ -6265,14 +7064,23 @@ mod tests {
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
             process_virtual_bytes: 256,
-            app_resident_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100) - 1,
+            app_resident_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
+                - SCRAPE_MEMORY_HEADROOM_BYTES
+                - 1,
+            app_memory_pressure_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
+                - SCRAPE_MEMORY_HEADROOM_BYTES
+                - 1,
             webkit_resident_bytes: None,
+            webkit_footprint_bytes: None,
             webkit_virtual_bytes: None,
             webkit_process_id: None,
             webkit_total_resident_bytes: 0,
+            webkit_total_footprint_bytes: None,
             webkit_process_count: 0,
             webkit_largest_resident_bytes: None,
+            webkit_largest_footprint_bytes: None,
             webkit_largest_process_id: None,
             webkit_largest_cpu_usage: None,
             webkit_largest_age_seconds: None,
@@ -6290,6 +7098,157 @@ mod tests {
         assert!(scrape_memory_may_proceed(&stats));
         assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
             app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            app_memory_pressure_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            ..stats
+        }));
+    }
+
+    #[test]
+    fn scrape_memory_uses_pressure_bytes_instead_of_rss_when_available() {
+        let budget =
+            (MIN_CRITICAL_MEMORY_BYTES * 70 / 100).saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES);
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            app_memory_pressure_bytes: budget - 1,
+            webkit_resident_bytes: Some(MIN_CRITICAL_MEMORY_BYTES),
+            webkit_footprint_bytes: Some(512 * 1024 * 1024),
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            webkit_total_footprint_bytes: Some(512 * 1024 * 1024),
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(MIN_CRITICAL_MEMORY_BYTES),
+            webkit_largest_footprint_bytes: Some(512 * 1024 * 1024),
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(0.0),
+            webkit_largest_age_seconds: Some(10),
+            webkit_largest_role: Some("freed-webcontent".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert!(scrape_memory_may_proceed(&stats));
+        assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
+            app_memory_pressure_bytes: budget,
+            ..stats
+        }));
+    }
+
+    #[test]
+    fn scrape_memory_reserves_startup_headroom_below_high_pressure() {
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: 0,
+            app_memory_pressure_bytes: 0,
+            webkit_resident_bytes: None,
+            webkit_footprint_bytes: None,
+            webkit_virtual_bytes: None,
+            webkit_process_id: None,
+            webkit_total_resident_bytes: 0,
+            webkit_total_footprint_bytes: None,
+            webkit_process_count: 0,
+            webkit_largest_resident_bytes: None,
+            webkit_largest_footprint_bytes: None,
+            webkit_largest_process_id: None,
+            webkit_largest_cpu_usage: None,
+            webkit_largest_age_seconds: None,
+            webkit_largest_role: None,
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: false,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+        let budget = scrape_memory_start_budget_bytes(&stats);
+
+        assert_eq!(
+            budget,
+            stats.memory_high_bytes - SCRAPE_MEMORY_HEADROOM_BYTES
+        );
+        assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
+            app_resident_bytes: budget,
+            app_memory_pressure_bytes: budget,
+            ..stats
+        }));
+    }
+
+    #[test]
+    fn scrape_memory_recycles_preserved_window_under_high_pressure() {
+        assert_eq!(
+            blocked_preflight_preserved_scraper_label(Some("ig-scraper"), false),
+            Some("ig-scraper")
+        );
+        assert_eq!(
+            blocked_preflight_preserved_scraper_label(Some("ig-scraper"), true),
+            None
+        );
+        assert_eq!(blocked_preflight_preserved_scraper_label(None, false), None);
+    }
+
+    #[test]
+    fn optional_story_scrape_uses_stricter_memory_budget() {
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
+                * OPTIONAL_STORY_MEMORY_BUDGET_PERCENT
+                / 100
+                - 1,
+            app_memory_pressure_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
+                * OPTIONAL_STORY_MEMORY_BUDGET_PERCENT
+                / 100
+                - 1,
+            webkit_resident_bytes: None,
+            webkit_footprint_bytes: None,
+            webkit_virtual_bytes: None,
+            webkit_process_id: None,
+            webkit_total_resident_bytes: 0,
+            webkit_total_footprint_bytes: None,
+            webkit_process_count: 0,
+            webkit_largest_resident_bytes: None,
+            webkit_largest_footprint_bytes: None,
+            webkit_largest_process_id: None,
+            webkit_largest_cpu_usage: None,
+            webkit_largest_age_seconds: None,
+            webkit_largest_role: None,
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: false,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert!(optional_story_scrape_may_proceed(&stats));
+        assert!(!optional_story_scrape_may_proceed(&RuntimeMemoryStats {
+            app_resident_bytes: stats
+                .memory_high_bytes
+                .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
+                / 100,
+            app_memory_pressure_bytes: stats
+                .memory_high_bytes
+                .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
+                / 100,
             ..stats
         }));
     }

@@ -1,8 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo, cloneElement, isValidElement, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import {
-  countAuthorsWithRecentLocationUpdates,
-  countFriendsWithRecentLocationUpdates,
   resolveMapMode,
   type FilterOptions,
   type RssFeed,
@@ -15,7 +13,7 @@ import { toast } from "../Toast.js";
 import { Tooltip } from "../Tooltip.js";
 import { useDebugStore } from "../../lib/debug-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
-import { AnimatedMenuIcon, MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
+import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
 import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-navigation.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
@@ -55,6 +53,7 @@ const RESIZE_HANDLE_HIT_AREA_WIDTH_PX = 16;
 const COMPACT_READER_RAIL_VISUAL_GAP_WIDTH_PX = 8;
 const MOBILE_SIDEBAR_WIDTH_PX = DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX + 50;
 const MOBILE_SIDEBAR_VIEWPORT_MARGIN_PX = 24;
+const MOBILE_MENU_TOP_PX = COMPACT_PRIMARY_SIDEBAR_WIDTH_PX + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
 
 function MoreIcon() {
   return (
@@ -222,7 +221,6 @@ function scoreFeedMatch(feed: RssFeed, queryTerms: string[]): number {
 interface SidebarProps {
   mobileOpen: boolean;
   onMobileClose: () => void;
-  onMobileToggle: () => void;
   desktopMode: SidebarMode;
   onDesktopModeChange: (nextMode: SidebarMode) => void;
   onDesktopDisplayModeChange?: (nextMode: SidebarMode) => void;
@@ -569,12 +567,11 @@ function getDesktopModeForWidth(width: number): SidebarMode {
 export function Sidebar({
   mobileOpen,
   onMobileClose,
-  onMobileToggle,
   desktopMode,
   onDesktopModeChange,
   onDesktopDisplayModeChange,
 }: SidebarProps) {
-  const { SourceIndicator, headerDragRegion, syncRssNow, syncSourceNow, getSourceStatus } = usePlatform();
+  const { SourceIndicator, syncRssNow, syncSourceNow, getSourceStatus } = usePlatform();
   const isMobileViewport = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const forceCompactDesktopRail = !isMobileDevice && isMobileViewport;
@@ -587,7 +584,6 @@ export function Sidebar({
   const searchQuery = useAppStore((s) => s.searchQuery);
   const feeds = useAppStore((s) => s.feeds);
   const friends = useAppStore((s) => s.persons);
-  const accounts = useAppStore((s) => s.accounts);
   const feedUnreadCounts = useAppStore((s) => s.feedUnreadCounts);
   const feedTotalCounts = useAppStore((s) => s.feedTotalCounts);
   const renameFeed = useAppStore((s) => s.renameFeed);
@@ -617,14 +613,8 @@ export function Sidebar({
   const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
   const archivedCount = useMemo(() => items.filter((i) => i.userState.archived).length, [items]);
   const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
-  const mapFriendCount = useMemo(
-    () => countFriendsWithRecentLocationUpdates(items, friends, accounts),
-    [accounts, friends, items]
-  );
-  const mapAllContentCount = useMemo(
-    () => countAuthorsWithRecentLocationUpdates(items),
-    [items],
-  );
+  const mapFriendCount = useAppStore((s) => s.mapFriendLocationCount);
+  const mapAllContentCount = useAppStore((s) => s.mapAllContentLocationCount);
   const effectiveMapMode = resolveMapMode(
     display.mapMode,
     mapFriendCount,
@@ -776,7 +766,7 @@ export function Sidebar({
     paddingTop: `${sidebarPaddingBlockPx}px`,
     paddingInline: `${sidebarPaddingInlinePx}px`,
     paddingBottom: isMobileDevice
-      ? `calc(${sidebarPaddingBlockPx}px + env(safe-area-inset-bottom, 0px))`
+      ? `${sidebarPaddingBlockPx}px`
       : compactRail
       ? `${COMPACT_RAIL_OUTER_INSET_PX}px`
       : `calc(${sidebarPaddingBlockPx}px + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))`,
@@ -1783,7 +1773,8 @@ export function Sidebar({
     <>
       {isMobileDevice && mobileOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/60 md:hidden"
+          className="fixed bottom-0 left-0 right-0 z-20 bg-black/60 md:hidden"
+          style={{ top: `calc(env(safe-area-inset-top, 0px) + ${MOBILE_MENU_TOP_PX}px)` }}
           onClick={onMobileClose}
         />
       )}
@@ -1828,37 +1819,31 @@ export function Sidebar({
       <aside
         data-testid="app-sidebar-mobile"
         className={`
-          theme-mobile-sidebar fixed left-0 top-0 z-50 flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden
+          theme-mobile-sidebar fixed left-0 z-40 flex min-h-0 flex-col overflow-hidden
           transform transition-transform duration-200 ease-in-out
           ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
         `}
-        style={{ width: mobileSidebarWidth }}
+        style={{
+          width: mobileSidebarWidth,
+          top: `calc(env(safe-area-inset-top, 0px) + ${MOBILE_MENU_TOP_PX}px)`,
+          height: `calc(100dvh - env(safe-area-inset-top, 0px) - ${MOBILE_MENU_TOP_PX}px)`,
+          maxHeight: `calc(100dvh - env(safe-area-inset-top, 0px) - ${MOBILE_MENU_TOP_PX}px)`,
+        }}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-[var(--theme-border-subtle)] px-5 py-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
-          {!headerDragRegion && (
-            <span className="text-lg font-bold gradient-text font-logo">FREED</span>
-          )}
-          <button
-            onClick={onMobileToggle}
-            aria-label="Close menu"
-            className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-          >
-            <AnimatedMenuIcon open className="h-5 w-5" />
-          </button>
-        </div>
         {sidebarBody}
         <div
-          className="shrink-0 border-t border-[var(--theme-border-subtle)] pt-3"
+          data-testid="mobile-sidebar-settings-footer"
+          className="shrink-0 border-t border-[var(--theme-border-subtle)]"
           style={{
             paddingInline: `${sidebarPaddingInlinePx}px`,
-            paddingBottom: compactRail
-              ? `calc(${COMPACT_RAIL_OUTER_INSET_PX}px + env(safe-area-inset-bottom) + 1rem)`
-              : `calc(${sidebarPaddingBlockPx}px + env(safe-area-inset-bottom) + 1rem)`,
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
           }}
         >
           <button
+            type="button"
+            data-testid="mobile-sidebar-settings-button"
             onClick={handleOpenSettingsFromMobileSidebar}
-            className={`w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-3 rounded-xl text-left text-base text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}
+            className={`w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} ${rowVerticalPaddingClass} rounded-lg text-left text-base text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}
           >
             {settingsButtonContent}
           </button>

@@ -293,6 +293,45 @@ describe("identity graph v2 model", () => {
     );
   });
 
+  it("builds malformed persisted labels without crashing", () => {
+    const persons = [
+      createPerson({
+        id: "person-malformed",
+        name: undefined as unknown as string,
+        relationshipStatus: "friend",
+      }),
+    ];
+    const accounts = {
+      "account-malformed": createAccount({
+        id: "account-malformed",
+        personId: "person-malformed",
+        provider: undefined as unknown as Account["provider"],
+        externalId: undefined as unknown as string,
+        displayName: undefined,
+        handle: undefined,
+      }),
+    };
+
+    const model = buildIdentityGraphModel({
+      persons,
+      accounts,
+      feeds: {},
+      feedItems: {},
+      mode: "all_content",
+    });
+    const layout = buildIdentityGraphLayout({
+      model,
+      width: 430,
+      height: 700,
+      quality: "fast",
+    });
+
+    expect(model.nodes.map((node) => node.label)).toEqual(
+      expect.arrayContaining(["Unnamed friend", "Account"]),
+    );
+    expect(layout.nodes.length).toBe(model.nodes.length);
+  });
+
   it("rebuilds model and layout within budget for the benchmark graph", () => {
     const benchmarkPeople = 1_000;
     const benchmarkAccounts = 5_000;

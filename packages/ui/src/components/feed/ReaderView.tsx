@@ -29,6 +29,7 @@ interface ReaderViewProps {
   /** When true, renders inline within the workspace shell and hides the local header. */
   inline?: boolean;
   onOpenUrl?: (url: string) => void;
+  onOpenAuthorInFriends?: (item: FeedItemType) => void | Promise<void>;
 }
 
 /** Content source labels for the offline badge */
@@ -204,8 +205,21 @@ const HEADING_CLASSES: Record<number, string> = {
 };
 
 const STORY_REPLY_MESSAGE = "Story replies are private on this platform. Open the story to reply there.";
+const FRIENDS_AUTHOR_PLATFORMS = new Set(["x", "facebook", "instagram", "linkedin"]);
+const REPLY_PLATFORM_LABELS: Partial<Record<FeedItemType["platform"], string>> = {
+  x: "X",
+  facebook: "Facebook",
+  instagram: "Instagram",
+};
 
-export function ReaderView({ item, onClose, dualColumn = false, inline = false, onOpenUrl }: ReaderViewProps) {
+export function ReaderView({
+  item,
+  onClose,
+  dualColumn = false,
+  inline = false,
+  onOpenUrl,
+  onOpenAuthorInFriends,
+}: ReaderViewProps) {
   const {
     headerDragRegion,
     getLocalContent,
@@ -247,6 +261,8 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
   const [readerMediaTypes, setReaderMediaTypes] = useState<Array<"image" | "video" | "link"> | null>(null);
   const [threadReplies, setThreadReplies] = useState<ReaderThreadReply[]>([]);
   const [isThreadLoading, setIsThreadLoading] = useState(false);
+  const [hasRequestedThreadReplies, setHasRequestedThreadReplies] = useState(false);
+  const [threadReplyMessage, setThreadReplyMessage] = useState<string | null>(null);
 
   const articleUrl = item.content.linkPreview?.url;
   const displayMediaUrls = readerMediaUrls ?? item.content.mediaUrls;
@@ -257,9 +273,19 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
     if (!onOpenUrl || !item.sourceUrl) return;
     onOpenUrl(item.sourceUrl);
   }, [item.sourceUrl, onOpenUrl]);
+  const canOpenAuthorInFriends = Boolean(
+    onOpenAuthorInFriends && FRIENDS_AUTHOR_PLATFORMS.has(item.platform),
+  );
+  const handleOpenAuthorInFriends = useCallback(() => {
+    if (!onOpenAuthorInFriends) return;
+    void onOpenAuthorInFriends(item);
+  }, [item, onOpenAuthorInFriends]);
   const supportsThreadHydration =
     !isStory &&
     (item.platform === "x" || item.platform === "facebook" || item.platform === "instagram");
+  const replyPlatformLabel = REPLY_PLATFORM_LABELS[item.platform] ?? "the platform";
+  const canLoadInlineReplies =
+    Boolean(hydrateReaderItem) && typeof navigator !== "undefined" && navigator.onLine;
 
   // ─── Content waterfall ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -278,6 +304,8 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
       setReaderMediaTypes(null);
       setThreadReplies([]);
       setIsThreadLoading(false);
+      setHasRequestedThreadReplies(false);
+      setThreadReplyMessage(null);
       setPreservedText(item.preservedContent?.text ?? null);
 
       if (item.userState.saved && pinReaderItem) {
@@ -311,30 +339,30 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
         }
       }
 
-      // Layer 2: preservedContent.text -- always available for imported items
-      if (!hasReaderContent && item.preservedContent?.text) {
-        let localPreservedText = item.preservedContent.text;
+      // Layer 2: synced reader text. Desktop keeps full text in the worker and
+      // sends compact snippets through list state to keep large libraries light.
+      if (!hasReaderContent && (item.preservedContent?.text || getLocalPreservedText)) {
+        let localPreservedText = item.preservedContent?.text ?? item.content.text ?? "";
         if (getLocalPreservedText) {
           try {
             localPreservedText = (await getLocalPreservedText(item.globalId)) ?? localPreservedText;
           } catch {
-            localPreservedText = item.preservedContent.text;
+            localPreservedText = item.preservedContent?.text ?? item.content.text ?? "";
           }
         }
-        if (!cancelled) {
+        if (!cancelled && localPreservedText) {
           setPreservedText(localPreservedText);
           setHtml(null);
           setContentSource("text");
           setIsLoading(false);
+          hasReaderContent = true;
         }
-        hasReaderContent = true;
       }
 
       // Layer 3: platform hydration. Desktop uses native fetch or authenticated
       // provider paths here, so reader failures are not confused with CORS.
       if (hydrateReaderItem && navigator.onLine) {
         setIsCaching(true);
-        setIsThreadLoading(supportsThreadHydration);
         try {
           const hydrated = await hydrateReaderItem(item, { cacheMode, pin: shouldPin });
           if (!cancelled) {
@@ -355,9 +383,6 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
               setReaderMediaUrls(hydrated.mediaUrls);
               setReaderMediaTypes(hydrated.mediaTypes ?? []);
             }
-            if (hydrated.replies) {
-              setThreadReplies(hydrated.replies);
-            }
             setHydrationStatus(hydrated.status ?? null);
             setHydrationMessage(hydrated.message ?? null);
             setIsLoading(false);
@@ -371,7 +396,6 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
         } finally {
           if (!cancelled) {
             setIsCaching(false);
-            setIsThreadLoading(false);
           }
         }
         return;
@@ -435,8 +459,52 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
     pinReaderItem,
     item.preservedContent?.text,
     item.userState.saved,
-    supportsThreadHydration,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleLoadThreadReplies = useCallback(async () => {
+    if (!hydrateReaderItem || !navigator.onLine || isThreadLoading) return;
+
+    setHasRequestedThreadReplies(true);
+    setThreadReplyMessage(null);
+    setIsThreadLoading(true);
+
+    try {
+      const cacheMode = getReaderOfflineCacheMode();
+      const hydrated = await hydrateReaderItem(item, {
+        cacheMode,
+        pin: item.userState.saved || shouldPinOpenedReaderItem(cacheMode),
+        includeReplies: true,
+      });
+
+      if (hydrated.html) {
+        setHtml(hydrated.html);
+        setContentSource("live");
+      }
+      if (hydrated.text) {
+        setPreservedText(hydrated.text);
+        if (!hydrated.html) {
+          setHtml(null);
+          setContentSource("text");
+        }
+      }
+      if (hydrated.mediaUrls?.length) {
+        setReaderMediaUrls(hydrated.mediaUrls);
+        setReaderMediaTypes(hydrated.mediaTypes ?? []);
+      }
+
+      const replies = hydrated.replies ?? [];
+      setThreadReplies(replies);
+      setThreadReplyMessage(
+        replies.length > 0
+          ? null
+          : `No replies were available from ${replyPlatformLabel}.`,
+      );
+    } catch {
+      setThreadReplyMessage(`Freed could not load replies from ${replyPlatformLabel}.`);
+    } finally {
+      setIsThreadLoading(false);
+    }
+  }, [hydrateReaderItem, isThreadLoading, item, replyPlatformLabel]);
 
   const handleToggleSaved = useCallback(() => {
     toggleSaved(item.globalId);
@@ -499,11 +567,20 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
     [html, preservedText, item.content.text],
   );
 
+  useEffect(() => {
+    if (inline) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [inline]);
+
   return (
     <div
       className={
         inline
-          ? "theme-scroll-fade-y flex-1 min-w-0 overflow-auto bg-transparent"
+          ? "flex-1 min-w-0 overflow-auto bg-transparent"
           : "theme-scroll-fade-y fixed inset-0 z-50 overflow-auto bg-[var(--theme-bg-root)]"
       }
     >
@@ -660,12 +737,23 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
       {/* Article content */}
       <article
         data-testid="reader-article"
-        className="mx-auto w-full max-w-3xl max-[959px]:max-w-none px-[var(--feed-card-gap,8px)] py-6 sm:py-8 min-[960px]:px-6"
+        className="mx-auto w-full max-w-3xl max-[959px]:max-w-none px-5 py-6 sm:py-8 min-[960px]:px-6"
       >
         {/* Meta */}
         <div className="mb-6">
           <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-[var(--theme-text-muted)]">
-            <span className="font-medium text-[var(--theme-text-secondary)]">{item.author.displayName}</span>
+            {canOpenAuthorInFriends ? (
+              <button
+                type="button"
+                data-testid="reader-author-friends-link"
+                onClick={handleOpenAuthorInFriends}
+                className="rounded-md font-medium text-[var(--theme-text-secondary)] underline decoration-[var(--theme-border-strong)] underline-offset-4 transition-colors hover:text-[var(--theme-text-primary)] hover:decoration-[var(--theme-text-secondary)] focus:outline-none focus:ring-2 focus:ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.45)]"
+              >
+                {item.author.displayName}
+              </button>
+            ) : (
+              <span className="font-medium text-[var(--theme-text-secondary)]">{item.author.displayName}</span>
+            )}
             <span>•</span>
             <span>{timeAgo}</span>
             {item.preservedContent?.readingTime && (
@@ -757,8 +845,24 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
           </div>
         )}
 
-        {(threadReplies.length > 0 || isThreadLoading) && (
-          <ThreadReplies replies={threadReplies} loading={isThreadLoading} />
+        {supportsThreadHydration && (
+          <ReplyActions
+            platformLabel={replyPlatformLabel}
+            canOpenSource={canOpenSource}
+            loading={isThreadLoading}
+            canLoadInline={canLoadInlineReplies}
+            hasRequestedReplies={hasRequestedThreadReplies}
+            onOpenSource={handleOpenSource}
+            onLoadReplies={handleLoadThreadReplies}
+          />
+        )}
+
+        {(threadReplies.length > 0 || isThreadLoading || threadReplyMessage) && (
+          <ThreadReplies
+            replies={threadReplies}
+            loading={isThreadLoading}
+            message={threadReplyMessage}
+          />
         )}
 
         {/* Tags */}
@@ -903,12 +1007,60 @@ function StoryMediaGallery({
   );
 }
 
+function ReplyActions({
+  platformLabel,
+  canOpenSource,
+  loading,
+  canLoadInline,
+  hasRequestedReplies,
+  onOpenSource,
+  onLoadReplies,
+}: {
+  platformLabel: string;
+  canOpenSource: boolean;
+  loading: boolean;
+  canLoadInline: boolean;
+  hasRequestedReplies: boolean;
+  onOpenSource: () => void;
+  onLoadReplies: () => void;
+}) {
+  return (
+    <section className="mt-10 border-t border-[var(--theme-border-subtle)] pt-6">
+      <div className="flex flex-wrap items-center gap-3">
+        {canOpenSource && (
+          <button
+            type="button"
+            onClick={onOpenSource}
+            className="btn-secondary rounded-lg px-3 py-2 text-sm"
+          >
+            View replies on {platformLabel}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onLoadReplies}
+          disabled={loading || !canLoadInline}
+          aria-label="Load replies inline, beta"
+          className="btn-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <span>{loading ? "Loading replies" : hasRequestedReplies ? "Reload replies inline" : "Load replies inline"}</span>
+          <span className="rounded-full border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[10px] font-semibold uppercase text-[var(--theme-text-muted)]">
+            Beta
+          </span>
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function ThreadReplies({
   replies,
   loading,
+  message,
 }: {
   replies: ReaderThreadReply[];
   loading: boolean;
+  message?: string | null;
 }) {
   return (
     <section className="mt-10 border-t border-[var(--theme-border-subtle)] pt-8">
@@ -918,6 +1070,9 @@ function ThreadReplies({
           <div className="h-4 w-4 rounded-full border border-[var(--theme-border-quiet)] border-t-[var(--theme-accent-secondary)] animate-spin" />
         )}
       </div>
+      {message && (
+        <p className="mb-4 text-sm text-[var(--theme-text-muted)]">{message}</p>
+      )}
       <div className="space-y-5">
         {replies.map((reply) => (
           <ReplyCard key={reply.id} reply={reply} />

@@ -74,6 +74,11 @@ async function hydrateSocialReplies(item: FeedItem): Promise<ReaderThreadReply[]
   return [];
 }
 
+function supportsSocialReplyHydration(item: FeedItem): boolean {
+  if (item.contentType === "story") return false;
+  return item.platform === "x" || item.platform === "facebook" || item.platform === "instagram";
+}
+
 function socialStoryMessage(item: FeedItem): string | null {
   if (item.contentType !== "story") return null;
   if (item.platform !== "facebook" && item.platform !== "instagram") return null;
@@ -82,11 +87,11 @@ function socialStoryMessage(item: FeedItem): string | null {
 
 export async function hydrateReaderItem(
   item: FeedItem,
-  options: { pin: boolean },
+  options: { pin: boolean; includeReplies?: boolean },
 ): Promise<ReaderHydrationResult> {
   const [article, replies] = await Promise.all([
     hydrateArticle(item, options.pin).catch(() => null),
-    hydrateSocialReplies(item).catch(() => []),
+    options.includeReplies ? hydrateSocialReplies(item).catch(() => []) : Promise.resolve([]),
   ]);
   const storyMessage = socialStoryMessage(item);
 
@@ -108,6 +113,12 @@ export async function hydrateReaderItem(
         item.content.mediaUrls.length > 0
           ? socialStoryMessage(item) ?? "Showing the media captured with this story."
           : "This story media was not captured before the source expired it.",
+    };
+  }
+
+  if (!options.includeReplies && supportsSocialReplyHydration(item)) {
+    return {
+      status: "partial",
     };
   }
 

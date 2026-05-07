@@ -6,6 +6,7 @@ import type {
   HealthProviderId,
   ProviderHealthSnapshot,
 } from "../lib/debug-store.js";
+import { formatShortClockTime } from "../lib/date-format.js";
 import { getHealthStatusLabel } from "../lib/provider-status.js";
 
 export function providerHealthLabel(provider: HealthProviderId): string {
@@ -34,10 +35,7 @@ export function formatHealthRelative(ts?: number): string {
 
 export function formatPauseUntil(ts?: number): string {
   if (!ts) return "Paused";
-  return `Paused until ${new Date(ts).toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  })}`;
+  return `Paused until ${formatShortClockTime(ts)}`;
 }
 
 function barHeight(value: number, maxValue: number): string {
@@ -167,10 +165,7 @@ function RecentAttemptsList({
           <div key={attempt.id} className="rounded-lg bg-[var(--theme-bg-muted)] p-2 text-xs">
             <div className="flex items-center justify-between gap-3">
               <span className="font-mono text-[var(--theme-text-secondary)]">
-                {new Date(attempt.finishedAt).toLocaleTimeString([], {
-                  hour: "numeric",
-                  minute: "2-digit",
-                })}
+                {formatShortClockTime(attempt.finishedAt)}
               </span>
               <span className="text-[var(--theme-text-muted)]">{attempt.outcome}</span>
             </div>

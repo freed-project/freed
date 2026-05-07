@@ -26,6 +26,7 @@ type ReadScrollMetrics = {
 
 type ReadScrollSource = "element" | "window";
 type ReadScrollSurface = "primary-feed" | "mobile-feed" | "compact-feed";
+const READ_ON_SCROLL_FLUSH_DELAY_MS = 120;
 
 type ReadTrackItem = {
   globalId: string;
@@ -76,13 +77,22 @@ export function useReadOnScrollTracker<TItem extends ReadTrackItem>({
   markItemsAsRead,
 }: UseReadOnScrollTrackerOptions<TItem>) {
   const maxPassedRowIndexRef = useRef(-1);
+  const pendingReadIdsRef = useRef<Set<string>>(new Set());
+  const readFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listSessionRef = useRef<ReadListSession<TItem>>({
     key: listKey,
     items,
     reachedBottom: false,
   });
 
-  const flushReadIds = useCallback((ids: string[], reason: string) => {
+  const clearReadFlushTimer = useCallback(() => {
+    const timer = readFlushTimerRef.current;
+    if (!timer) return;
+    clearTimeout(timer);
+    readFlushTimerRef.current = null;
+  }, []);
+
+  const flushReadIdsNow = useCallback((ids: string[], reason: string) => {
     if (ids.length === 0) return;
 
     const startedAt = performance.now();
@@ -119,21 +129,49 @@ export function useReadOnScrollTracker<TItem extends ReadTrackItem>({
       });
   }, [markItemsAsRead, surface]);
 
+  const flushBufferedReadIds = useCallback((reason: string, ids: string[] = []) => {
+    const pendingReadIds = pendingReadIdsRef.current;
+    for (const id of ids) {
+      if (id) pendingReadIds.add(id);
+    }
+
+    if (pendingReadIds.size === 0) return;
+    const nextIds = Array.from(pendingReadIds);
+    pendingReadIds.clear();
+    clearReadFlushTimer();
+    flushReadIdsNow(nextIds, reason);
+  }, [clearReadFlushTimer, flushReadIdsNow]);
+
+  const scheduleBufferedReadIds = useCallback((ids: string[], reason: string) => {
+    if (ids.length === 0) return;
+
+    const pendingReadIds = pendingReadIdsRef.current;
+    for (const id of ids) {
+      if (id) pendingReadIds.add(id);
+    }
+
+    if (readFlushTimerRef.current) return;
+    readFlushTimerRef.current = setTimeout(() => {
+      readFlushTimerRef.current = null;
+      flushBufferedReadIds(reason);
+    }, READ_ON_SCROLL_FLUSH_DELAY_MS);
+  }, [flushBufferedReadIds]);
+
   const collectUnreadIdsFromVisibleRows = useCallback((startIndex: number, endIndex: number) => {
     return collectUnreadIdsFromRows(rows, startIndex, endIndex);
   }, [rows]);
 
   const finalizeListSession = useCallback((session: ReadListSession<TItem>) => {
     if (!markReadOnScroll || !session.reachedBottom) return;
-    flushReadIds(getRemainingUnreadIds(session.items), "session-finalize");
-  }, [flushReadIds, markReadOnScroll]);
+    flushBufferedReadIds("session-finalize", getRemainingUnreadIds(session.items));
+  }, [flushBufferedReadIds, markReadOnScroll]);
 
   const markRemainingUnreadInSession = useCallback(() => {
     const session = listSessionRef.current;
     if (session.reachedBottom) return;
     session.reachedBottom = true;
-    flushReadIds(getRemainingUnreadIds(session.items), "list-bottom");
-  }, [flushReadIds]);
+    flushBufferedReadIds("list-bottom", getRemainingUnreadIds(session.items));
+  }, [flushBufferedReadIds]);
 
   const processReadOnScroll = useCallback((
     virtualizer: ReadScrollVirtualizer,
@@ -165,21 +203,7 @@ export function useReadOnScrollTracker<TItem extends ReadTrackItem>({
         newlyPassedEnd,
       );
       maxPassedRowIndexRef.current = newlyPassedEnd;
-      recordReadScrollDiagnostic("Processed read-on-scroll boundary", {
-        surface,
-        scrollSource,
-        rowCount: rows.length,
-        scrollTop: Math.round(scrollTop),
-        viewportHeight: Math.round(rawMetrics.viewportHeight),
-        totalSize: Math.round(virtualizer.getTotalSize()),
-        firstVirtualRowIndex: vItems[0]?.index ?? null,
-        firstVirtualRowEnd: Math.round(vItems[0]?.end ?? 0),
-        previousPassedRowIndex,
-        newlyPassedRowIndex: newlyPassedEnd,
-        unreadCandidateCount: unreadIds.length,
-        markReadOnScroll,
-      });
-      flushReadIds(unreadIds, "passed-rows");
+      scheduleBufferedReadIds(unreadIds, "passed-rows-idle");
     }
 
     if (hasReachedListBottom(rows.length, viewportBottom, virtualizer.getTotalSize())) {
@@ -195,17 +219,26 @@ export function useReadOnScrollTracker<TItem extends ReadTrackItem>({
     }
   }, [
     collectUnreadIdsFromVisibleRows,
-    flushReadIds,
     getScrollMetrics,
     markReadOnScroll,
     markRemainingUnreadInSession,
     rows.length,
+    scheduleBufferedReadIds,
     surface,
   ]);
 
   useEffect(() => {
+    if (markReadOnScroll) return;
+    clearReadFlushTimer();
+    pendingReadIdsRef.current.clear();
+    maxPassedRowIndexRef.current = -1;
+    listSessionRef.current.reachedBottom = false;
+  }, [clearReadFlushTimer, markReadOnScroll]);
+
+  useEffect(() => {
     const session = listSessionRef.current;
     if (session.key !== listKey) {
+      flushBufferedReadIds("session-switch");
       finalizeListSession(session);
       listSessionRef.current = {
         key: listKey,
@@ -216,13 +249,16 @@ export function useReadOnScrollTracker<TItem extends ReadTrackItem>({
       return;
     }
     session.items = items;
-  }, [finalizeListSession, items, listKey]);
+  }, [finalizeListSession, flushBufferedReadIds, items, listKey]);
 
   useEffect(() => {
     return () => {
+      flushBufferedReadIds("session-unmount");
       finalizeListSession(listSessionRef.current);
+      clearReadFlushTimer();
+      pendingReadIdsRef.current.clear();
     };
-  }, [finalizeListSession]);
+  }, [clearReadFlushTimer, finalizeListSession, flushBufferedReadIds]);
 
   return processReadOnScroll;
 }

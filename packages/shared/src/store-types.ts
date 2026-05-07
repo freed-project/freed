@@ -78,6 +78,10 @@ export interface BaseAppState {
   archivableCountByPlatform: Record<string, number>;
   /** Archivable count bucketed by RSS feed URL. */
   archivableFeedCounts: Record<string, number>;
+  /** Friends with recent mapped content. Derived off the render path. */
+  mapFriendLocationCount: number;
+  /** Authors with recent mapped content. Derived off the render path. */
+  mapAllContentLocationCount: number;
 
   // UI state
   isLoading: boolean;

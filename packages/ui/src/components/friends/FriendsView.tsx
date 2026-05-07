@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
   Account,
   DeviceContact,
@@ -11,7 +12,7 @@ import type {
   ReachOutLog,
 } from "@freed/shared";
 import { formatDistanceToNow } from "date-fns";
-import { buildFriendCandidateSuggestions, friendFromPerson, isInReconnectZone } from "@freed/shared";
+import { buildFriendCandidateSuggestions, isInReconnectZone } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
@@ -26,6 +27,9 @@ import { SearchField } from "../SearchField.js";
 import { UsersIcon, MapPinIcon } from "../icons.js";
 import {
   buildFriendOverviewEntries,
+  buildFriendsById,
+  buildFriendsWorkspaceIndexes,
+  friendFromPersonWithIndexes,
   filterAndSortFriendOverview,
   type FriendOverviewEntry,
   type FriendOverviewFilter,
@@ -33,8 +37,7 @@ import {
 } from "../../lib/friends-workspace.js";
 import { resolveFriendAvatarUrl } from "../../lib/friend-avatar.js";
 import {
-  buildSuggestionsByAccount,
-  buildSuggestionsByPerson,
+  buildAccountLinkSuggestionGroups,
   type AccountLinkSuggestion,
 } from "../../lib/account-link-suggestions.js";
 import { accountSubtitle, accountTitle, providerLabel } from "../../lib/account-labels.js";
@@ -61,6 +64,7 @@ const SORT_OPTIONS: Array<{ id: FriendOverviewSort; label: string }> = [
 
 const BUTTON_CHROME = "btn-secondary rounded-lg px-3 py-1.5 text-xs";
 const FRIENDS_SIDEBAR_SECTION = "theme-dialog-divider border-b px-4 py-3";
+const FRIEND_OVERVIEW_ROW_ESTIMATE = 104;
 
 type RelationshipTierLevel = 1 | 3 | 5;
 
@@ -69,6 +73,14 @@ const RELATIONSHIP_TIER_OPTIONS: Array<{ level: RelationshipTierLevel; label: st
   { level: 3, label: "Friends" },
   { level: 5, label: "Fam" },
 ];
+
+function safeText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function personName(person: Pick<Person, "name"> | null | undefined): string {
+  return safeText(person?.name, "Unnamed friend");
+}
 
 type EditorState =
   | { kind: "new"; draft?: Partial<Friend> | null }
@@ -203,14 +215,16 @@ function FriendListRow({
     >
       <div className="flex items-start gap-3">
         <FriendAvatar
-          name={entry.friend.name}
+          name={safeText(entry.friend.name, "Unnamed friend")}
           avatarUrl={avatarUrl}
           size={40}
         />
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">{entry.friend.name}</p>
+            <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
+              {safeText(entry.friend.name, "Unnamed friend")}
+            </p>
             <div className="flex shrink-0 items-center gap-2">
               <RelationshipTierBadge person={entry.friend} />
               <CareDots level={entry.friend.careLevel} />
@@ -556,7 +570,9 @@ export function FriendsView({
   const [committedSidebarWidth, setCommittedSidebarWidth] = useState(savedSidebarWidth);
 
   const graphRef = useRef<FriendGraphHandle>(null);
+  const friendOverviewScrollRef = useRef<HTMLDivElement>(null);
   const isDraggingSidebar = useRef(false);
+  const sidebarDragCleanup = useRef<(() => void) | null>(null);
   const pendingPersistedSidebarWidth = useRef<number | null>(null);
   const isMobile = useIsMobile();
 
@@ -567,6 +583,10 @@ export function FriendsView({
     for (const item of items) map[item.globalId] = item;
     return map;
   }, [items]);
+  const friendsWorkspaceIndexes = useMemo(
+    () => buildFriendsWorkspaceIndexes(accounts, feedItems),
+    [accounts, feedItems],
+  );
   const sourceItems = useMemo(() => {
     const map = new Map<string, FeedItem>();
     for (const item of items) {
@@ -583,16 +603,16 @@ export function FriendsView({
     () =>
       Object.values(persons)
         .filter((person) => person.relationshipStatus === "friend")
-        .sort((left, right) => left.name.localeCompare(right.name)),
+        .sort((left, right) => personName(left).localeCompare(personName(right))),
     [persons],
   );
   const allPersons = useMemo(
-    () => Object.values(persons).sort((left, right) => left.name.localeCompare(right.name)),
+    () => Object.values(persons).sort((left, right) => personName(left).localeCompare(personName(right))),
     [persons],
   );
   const friendsById = useMemo<Record<string, Friend>>(
-    () => Object.fromEntries(friendPersons.map((person) => [person.id, friendFromPerson(person, accounts)])),
-    [accounts, friendPersons],
+    () => buildFriendsById(friendPersons, friendsWorkspaceIndexes),
+    [friendPersons, friendsWorkspaceIndexes],
   );
   const friendList = useMemo(() => Object.values(friendsById), [friendsById]);
   const socialAccountCount = useMemo(
@@ -601,7 +621,7 @@ export function FriendsView({
   );
 
   const selectedPerson = selectedPersonId ? persons[selectedPersonId] ?? null : null;
-  const selectedFriend = selectedPerson ? friendFromPerson(selectedPerson, accounts) : null;
+  const selectedFriend = selectedPerson ? friendFromPersonWithIndexes(selectedPerson, friendsWorkspaceIndexes) : null;
   const selectedAccount = selectedAccountId ? accounts[selectedAccountId] ?? null : null;
 
   const reconnectCount = useMemo(
@@ -609,13 +629,17 @@ export function FriendsView({
     [friendPersons]
   );
 
-  const suggestionsByAccount = useMemo(
-    () => buildSuggestionsByAccount(persons, accounts),
+  const accountLinkSuggestionGroups = useMemo(
+    () => buildAccountLinkSuggestionGroups(persons, accounts),
     [accounts, persons],
   );
+  const suggestionsByAccount = useMemo(
+    () => accountLinkSuggestionGroups.byAccount,
+    [accountLinkSuggestionGroups],
+  );
   const suggestionsByPerson = useMemo(
-    () => buildSuggestionsByPerson(persons, accounts),
-    [accounts, persons],
+    () => accountLinkSuggestionGroups.byPerson,
+    [accountLinkSuggestionGroups],
   );
   const friendCandidateSuggestions = useMemo(
     () =>
@@ -669,8 +693,8 @@ export function FriendsView({
   }, [friendCandidateSuggestions]);
 
   const overviewEntries = useMemo(
-    () => buildFriendOverviewEntries(friendsById, feedItems),
-    [feedItems, friendsById]
+    () => buildFriendOverviewEntries(friendsById, feedItems, { indexes: friendsWorkspaceIndexes }),
+    [feedItems, friendsById, friendsWorkspaceIndexes]
   );
   const filteredOverviewEntries = useMemo(
     () => filterAndSortFriendOverview(overviewEntries, searchQuery, activeFilters, sortBy),
@@ -707,6 +731,17 @@ export function FriendsView({
         : null,
     [overviewEntries, selectedPerson],
   );
+  const friendOverviewVirtualizer = useVirtualizer({
+    count: filteredOverviewEntries.length,
+    getScrollElement: () => friendOverviewScrollRef.current,
+    estimateSize: () => FRIEND_OVERVIEW_ROW_ESTIMATE,
+    overscan: 8,
+    getItemKey: (index) => filteredOverviewEntries[index]?.friend.id ?? index,
+  });
+
+  useEffect(() => {
+    friendOverviewVirtualizer.measure();
+  }, [filteredOverviewEntries.length, friendOverviewVirtualizer, searchQuery, sortBy]);
 
   useEffect(() => {
     if (selectedPersonId && !persons[selectedPersonId]) {
@@ -1037,32 +1072,54 @@ export function FriendsView({
     });
   }, []);
 
-  const handleSidebarDragStart = useCallback((event: React.MouseEvent) => {
+  useEffect(() => () => {
+    sidebarDragCleanup.current?.();
+    sidebarDragCleanup.current = null;
+  }, []);
+
+  const handleSidebarDragStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (isMobile) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
+    sidebarDragCleanup.current?.();
     isDraggingSidebar.current = true;
     const startX = event.clientX;
     const startWidth = sidebarWidth;
+    let latestWidth = startWidth;
+    const resizeHandle = event.currentTarget;
+    const pointerId = event.pointerId;
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
 
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
+    resizeHandle.setPointerCapture?.(pointerId);
 
-    const onMove = (moveEvent: MouseEvent) => {
-      if (!isDraggingSidebar.current) return;
-      const next = Math.min(
+    const nextWidthFromClientX = (clientX: number) =>
+      Math.min(
         MAX_SIDEBAR_WIDTH,
-        Math.max(MIN_SIDEBAR_WIDTH, startWidth - (moveEvent.clientX - startX))
+        Math.max(MIN_SIDEBAR_WIDTH, startWidth - (clientX - startX)),
       );
-      setDragWidth(next);
+
+    const cleanup = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("blur", onBlur);
+      try {
+        resizeHandle.releasePointerCapture?.(pointerId);
+      } catch {
+        // The browser may already have released capture after pointerup.
+      }
+      if (sidebarDragCleanup.current === cleanup) {
+        sidebarDragCleanup.current = null;
+      }
     };
-    const onUp = (upEvent: MouseEvent) => {
+
+    const finishDrag = (finalWidth: number) => {
       isDraggingSidebar.current = false;
-      const finalWidth = Math.min(
-        MAX_SIDEBAR_WIDTH,
-        Math.max(MIN_SIDEBAR_WIDTH, startWidth - (upEvent.clientX - startX))
-      );
       pendingPersistedSidebarWidth.current = finalWidth;
       setCommittedSidebarWidth(finalWidth);
       setDragWidth(null);
@@ -1071,14 +1128,37 @@ export function FriendsView({
           pendingPersistedSidebarWidth.current = null;
         }
       });
-      document.body.style.cursor = previousCursor;
-      document.body.style.userSelect = previousUserSelect;
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
+      cleanup();
     };
 
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
+    function onMove(moveEvent: PointerEvent) {
+      if (moveEvent.pointerId !== pointerId) return;
+      if (!isDraggingSidebar.current) return;
+      latestWidth = nextWidthFromClientX(moveEvent.clientX);
+      setDragWidth(latestWidth);
+    }
+
+    function onUp(upEvent: PointerEvent) {
+      if (upEvent.pointerId !== pointerId) return;
+      finishDrag(nextWidthFromClientX(upEvent.clientX));
+    }
+
+    function onCancel(cancelEvent: PointerEvent) {
+      if (cancelEvent.pointerId !== pointerId) return;
+      finishDrag(latestWidth);
+    }
+
+    function onBlur() {
+      isDraggingSidebar.current = false;
+      setDragWidth(null);
+      cleanup();
+    }
+
+    sidebarDragCleanup.current = cleanup;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("blur", onBlur);
   }, [isMobile, sidebarWidth, updatePreferences]);
 
   const renderOverviewSidebar = () => (
@@ -1184,7 +1264,11 @@ export function FriendsView({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div
+        ref={friendOverviewScrollRef}
+        data-testid="friends-overview-scroll"
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+      >
         {friendCandidateSuggestions.length > 0 ? (
           <div className="mb-5" data-testid="friend-candidate-suggestions">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -1219,15 +1303,31 @@ export function FriendsView({
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Try clearing a filter or changing the search query.</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {filteredOverviewEntries.map((entry) => (
-              <FriendListRow
-                key={entry.friend.id}
-                entry={entry}
-                selected={entry.friend.id === selectedPerson?.id}
-                onSelect={() => handleSelectPerson(persons[entry.friend.id] ?? friendPersons[0], true)}
-              />
-            ))}
+          <div
+            data-testid="friends-overview-list"
+            className="relative"
+            style={{ height: friendOverviewVirtualizer.getTotalSize() }}
+          >
+            {friendOverviewVirtualizer.getVirtualItems().map((virtualItem) => {
+              const entry = filteredOverviewEntries[virtualItem.index];
+              if (!entry) return null;
+              return (
+                <div
+                  key={virtualItem.key}
+                  ref={friendOverviewVirtualizer.measureElement}
+                  data-index={virtualItem.index}
+                  data-testid="friend-overview-virtual-row"
+                  className="absolute left-0 top-0 w-full pb-3"
+                  style={{ transform: `translateY(${virtualItem.start}px)` }}
+                >
+                  <FriendListRow
+                    entry={entry}
+                    selected={entry.friend.id === selectedPerson?.id}
+                    onSelect={() => handleSelectPerson(persons[entry.friend.id] ?? friendPersons[0], true)}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1249,7 +1349,7 @@ export function FriendsView({
             </svg>
           </button>
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{selectedPerson?.name}</h2>
+            <h2 className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{personName(selectedPerson)}</h2>
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
               {selectedPerson ? relationshipTierLabelForPerson(selectedPerson) : "Followed"}
             </p>
@@ -1291,7 +1391,7 @@ export function FriendsView({
                 Suggested channels
               </p>
               <p className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
-                Link likely accounts to {selectedPerson.name}.
+                Link likely accounts to {personName(selectedPerson)}.
               </p>
             </div>
           </div>
@@ -1452,7 +1552,7 @@ export function FriendsView({
                 <span>{selectedAccountFeedItems.length.toLocaleString()} captured post{selectedAccountFeedItems.length === 1 ? "" : "s"}</span>
                 <span>•</span>
                 <span>
-                  {linkedPerson ? `Linked to ${linkedPerson.name}` : "Not linked yet"}
+                  {linkedPerson ? `Linked to ${personName(linkedPerson)}` : "Not linked yet"}
                 </span>
               </div>
             </div>
@@ -1582,9 +1682,12 @@ export function FriendsView({
     : selectedPerson
       ? renderSelectedPersonSidebar()
       : renderOverviewSidebar();
-  const showGraphSurface = !isMobile || mobileSurface === "graph";
+  const hasMobileDetailSelection = Boolean(selectedPerson || selectedAccount);
+  const effectiveMobileSurface =
+    isMobile && mobileSurface === "details" && !hasMobileDetailSelection ? "graph" : mobileSurface;
+  const showGraphSurface = !isMobile || effectiveMobileSurface === "graph";
   const showDesktopSidebar = !isMobile && friendsSidebarOpen;
-  const showMobileSidebar = isMobile && mobileSurface === "details";
+  const showMobileSidebar = isMobile && effectiveMobileSurface === "details";
   const showCollapsedSelectionCard =
     !isMobile && !friendsSidebarOpen && (!!selectedPerson || !!selectedAccount);
 
@@ -1624,8 +1727,8 @@ export function FriendsView({
 
         {showDesktopSidebar && (
           <div
-            className="theme-resize-gap-handle w-3 shrink-0 self-end"
-            onMouseDown={handleSidebarDragStart}
+            className="theme-resize-gap-handle w-3 shrink-0 self-stretch"
+            onPointerDown={handleSidebarDragStart}
             role="separator"
             aria-orientation="vertical"
             aria-label="Resize friends sidebar"
