@@ -95,6 +95,13 @@ describe("createMarkerElement", () => {
     expect(element.textContent).toContain((1234).toLocaleString());
   });
 
+  it("can skip avatar images for dense map marker sets", () => {
+    const element = createMarkerElement(marker(), palette, { showAvatar: false });
+
+    expect(element.querySelector("img")).toBeNull();
+    expect(element.querySelector("[data-avatar-fallback]")?.textContent).toBe("L");
+  });
+
   it("labels decorative marker layers so map movement can suppress paint-heavy chrome", () => {
     const element = createMarkerElement(marker({ groupCount: 1234 }), palette);
 

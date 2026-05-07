@@ -8,6 +8,10 @@ import type { FriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 
 export type MarkerSize = "large" | "medium" | "small";
 
+interface MarkerElementOptions {
+  showAvatar?: boolean;
+}
+
 const SIZE_PX: Record<MarkerSize, number> = {
   large: 40,
   medium: 32,
@@ -45,13 +49,16 @@ function appendFallbackLabel(
 
 export function createMarkerElement(
   marker: LocationMarkerSummary,
-  avatarPalette: FriendAvatarPalette
+  avatarPalette: FriendAvatarPalette,
+  options: MarkerElementOptions = {},
 ): HTMLElement {
   const size = markerSize(marker.seenAt);
   const px = SIZE_PX[size];
   const friend = marker.friend;
   const item = marker.item;
-  const avatarUrl = resolveFriendAvatarUrl(friend, item.author.avatarUrl);
+  const avatarUrl = options.showAvatar === false
+    ? null
+    : resolveFriendAvatarUrl(friend, item.author.avatarUrl);
 
   const el = document.createElement("div");
   el.className = `freed-map-marker freed-map-marker--${size}`;

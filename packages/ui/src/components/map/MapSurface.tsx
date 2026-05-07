@@ -368,6 +368,11 @@ function mapStyles(interactive: boolean) {
       filter: none;
     }
 
+    .freed-map-shell[data-map-moving="true"] .freed-map-grid-overlay,
+    .freed-map-shell[data-map-moving="true"] .freed-map-edge-overlay {
+      display: none;
+    }
+
     .freed-map-shell .freed-map-marker:hover .freed-map-marker-body {
       scale: 1.06;
       filter: brightness(1.06);
@@ -560,6 +565,7 @@ export function MapSurface({
     if (!focusedMarker) return baseRenderedMarkers;
     return [...baseRenderedMarkers.slice(0, MAP_DOM_MARKER_LIMIT - 1), focusedMarker];
   }, [baseRenderedMarkers, focusedMarkerKey, stableMarkers]);
+  const showMarkerAvatars = stableMarkers.length <= MAP_DOM_MARKER_LIMIT;
   const avatarPalette = useMemo(
     () => createFriendAvatarPalette(resolvedThemeId),
     [resolvedThemeId]
@@ -672,7 +678,9 @@ export function MapSurface({
     map.on("click", handleMapClick);
 
     for (const markerData of renderedMarkers) {
-      const element = createMarkerElement(markerData, avatarPalette);
+      const element = createMarkerElement(markerData, avatarPalette, {
+        showAvatar: showMarkerAvatars,
+      });
       const marker = new maplibre.Marker({ element }).setLngLat([
         markerData.lng,
         markerData.lat,
@@ -725,7 +733,7 @@ export function MapSurface({
       map.off("click", handleMapClick);
       closeActivePopup();
     };
-  }, [avatarPalette, closeActivePopup, interactive, mapReady, renderedMarkers]);
+  }, [avatarPalette, closeActivePopup, interactive, mapReady, renderedMarkers, showMarkerAvatars]);
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
@@ -749,14 +757,14 @@ export function MapSurface({
           className={`h-full w-full ${showFallback ? "invisible" : "visible"}`}
         />
         <div
-          className="pointer-events-none absolute inset-0 [background-size:88px_88px]"
+          className="freed-map-grid-overlay pointer-events-none absolute inset-0 [background-size:88px_88px]"
           style={{
             backgroundImage: mapGridBackground(mapPalette.boundary),
             opacity: mapPalette.gridOpacity,
           }}
         />
         <div
-          className="pointer-events-none absolute inset-0"
+          className="freed-map-edge-overlay pointer-events-none absolute inset-0"
           style={{
             background: mapEdgeVignetteBackground(),
           }}
