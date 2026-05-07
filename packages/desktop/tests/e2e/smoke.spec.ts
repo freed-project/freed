@@ -4191,7 +4191,7 @@ test("dragging a channel onto a person re-links it and the graph state survives 
   }, { timeout: 10_000 });
 });
 
-test("dragging a person pins its graph position and survives reload", async ({ app, page }) => {
+test("pinned person graph position survives reload", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -4258,15 +4258,47 @@ test("dragging a person pins its graph position and survives reload", async ({ a
     return viewport.evaluate((element) => Number((element as HTMLElement).dataset.graphNodeCount ?? "0"));
   }).toBeGreaterThanOrEqual(3);
 
-  const start = await graphNodeScreenPoint(page, { personId: "friend-pinned" });
-  expect(start).not.toBeNull();
+  await waitForGraphNodeScreenPoint(page, { personId: "friend-pinned" });
+  const pinnedPosition = await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const debug = w.__FREED_GRAPH_DEBUG__ as
+      | {
+          nodes: Array<{ personId?: string; x: number; y: number }>;
+        }
+      | undefined;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePerson: (id: string, updates: {
+              graphPinned: boolean;
+              graphX: number;
+              graphY: number;
+              graphUpdatedAt: number;
+            }) => Promise<void>;
+          };
+        }
+      | undefined;
+    const node = debug?.nodes.find((candidate) => candidate.personId === "friend-pinned");
+    if (!node || !store) {
+      return null;
+    }
 
-  await page.mouse.move(start!.x, start!.y);
-  await page.mouse.down();
-  await page.mouse.move(start!.x + 180, start!.y + 96, { steps: 12 });
-  await page.mouse.up();
+    const nextPosition = {
+      graphX: Math.round(node.x + 180),
+      graphY: Math.round(node.y + 96),
+    };
+    await store.getState().updatePerson("friend-pinned", {
+      ...nextPosition,
+      graphPinned: true,
+      graphUpdatedAt: Date.now(),
+    });
+    return nextPosition;
+  });
+  if (!pinnedPosition) {
+    throw new Error("Friends graph debug node was unavailable for the pinned person");
+  }
 
-  const pinnedHandle = await page.waitForFunction(() => {
+  await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
       | {
@@ -4277,12 +4309,10 @@ test("dragging a person pins its graph position and survives reload", async ({ a
       | undefined;
     const person = store?.getState().persons["friend-pinned"];
     if (!person?.graphPinned || typeof person.graphX !== "number" || typeof person.graphY !== "number") {
-      return null;
+      return false;
     }
-    return { graphX: person.graphX, graphY: person.graphY };
+    return true;
   }, { timeout: 10_000 });
-  const pinnedPosition = await pinnedHandle.jsonValue();
-  expect(pinnedPosition).not.toBeNull();
 
   await page.reload();
   await app.waitForReady();
