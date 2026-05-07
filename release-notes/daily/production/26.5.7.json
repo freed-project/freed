@@ -1,0 +1,21 @@
+{
+  "channel": "production",
+  "dayKey": "26.5.7",
+  "date": "2026-05-07",
+  "preferredDeck": "Dense surfaces and mobile validation repairs plus feed pressure relief",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes across dense surface performance, mobile PWA polish, sync reliability, and release validation stability.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Mobile PWA polish balances the toolbar, tightens the menu and settings surfaces, moves support into a dedicated modal, and fixes reader spacing and fixed action menus.",
+    "Friends and Map views scale better with dense data through lighter graph avatars, stable marker data while moving, faster map count preparation, and new performance budgets.",
+    "Release validation now keeps Friends graph resize, compact-card, pinch, and position checks stable across CI timing differences.",
+    "Feed and WebKit memory pressure are lower during large social views and social scrape preflight."
+  ],
+  "editorialNotes": [
+    "Manual production daily rollup for v26.5.702 after generator validation could not consolidate the same train automatically."
+  ],
+  "updatedAt": "2026-05-07T10:33:19.220Z"
+}
