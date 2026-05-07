@@ -1,0 +1,71 @@
+{
+  "tag": "v26.5.702",
+  "version": "26.5.702",
+  "channel": "production",
+  "dayKey": "26.5.7",
+  "approved": true,
+  "editorialNotes": [
+    "Manual production rollup after prepare-release-notes could not consolidate the May production and dev train without dropping earlier same-day release entries."
+  ],
+  "generatedAt": "2026-05-07T10:33:19.216Z",
+  "model": "manual",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.5.631",
+    "previousPublishedDayTag": "v26.5.631",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.702"
+    ],
+    "relatedBuildTags": [
+      "v26.5.632-dev",
+      "v26.5.633-dev",
+      "v26.5.700-dev",
+      "v26.5.702"
+    ],
+    "prNumbers": [
+      508,
+      514
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for production release (#514)",
+      "chore: promote dev into main for production release (#508)"
+    ]
+  },
+  "release": {
+    "deck": "Dense surfaces and mobile validation repairs plus feed pressure relief",
+    "features": [
+      "Mobile PWA polish balances the toolbar, tightens the menu and settings surfaces, moves support into a dedicated modal, and fixes reader spacing and fixed action menus",
+      "Friends and Map views scale better with dense data through lighter graph avatars, stable marker data while moving, faster map count preparation, and new performance budgets",
+      "Google Drive sync is more resilient with safer cloud clients, upload retries, and better progress handling for larger local documents"
+    ],
+    "fixes": [
+      "Dense Map views now skip avatar image layers for large marker sets and hide grid and edge overlays while the map is moving, adding headroom for 1,600-author views",
+      "Freed Desktop rebuilds compacted feed documents to cut WebKit memory pressure",
+      "Release validation now keeps Friends graph resize, compact-card, pinch, and position checks stable across CI timing differences",
+      "Freed Desktop trims Friends graph allocations and keeps dense Map rendering fast",
+      "Freed Desktop trims oversized WebKit caches before social scrapes",
+      "Sync and update reliability fixes",
+      "Reader, feed, and header polish",
+      "Test coverage and performance hardening",
+      "Release build and type-safety cleanup"
+    ],
+    "followUps": [
+      "Freed Desktop keeps Friends release validation stable across virtualized sidebar remounts",
+      "Freed Desktop keeps reader transitions cheaper and Friends performance gates focused on visible rendering work",
+      "More accurate memory pressure and smoother large views",
+      "Freed Desktop keeps large social views responsive",
+      "Freed Desktop keeps WebKit memory maintenance ahead of scrapes",
+      "Freed Desktop improves dense Map rendering and keeps Google sync on native requests",
+      "Freed Desktop keeps display preference changes on the fast path and stabilizes Friends graph release checks",
+      "Reader, sidebar, and settings UX work",
+      "Release workflow and build-system work",
+      "Testing, diagnostics, and developer tooling",
+      "Sync, cloud, and pairing infrastructure",
+      "Capture, login, and scraping platform work",
+      "Content and documentation work"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.702\n\nDense surfaces and mobile validation repairs plus feed pressure relief\n\n### Features\n\n- Mobile PWA polish balances the toolbar, tightens the menu and settings surfaces, moves support into a dedicated modal, and fixes reader spacing and fixed action menus\n- Friends and Map views scale better with dense data through lighter graph avatars, stable marker data while moving, faster map count preparation, and new performance budgets\n- Google Drive sync is more resilient with safer cloud clients, upload retries, and better progress handling for larger local documents\n\n### Fixes\n\n- Dense Map views now skip avatar image layers for large marker sets and hide grid and edge overlays while the map is moving, adding headroom for 1,600-author views\n- Freed Desktop rebuilds compacted feed documents to cut WebKit memory pressure\n- Release validation now keeps Friends graph resize, compact-card, pinch, and position checks stable across CI timing differences\n- Freed Desktop trims Friends graph allocations and keeps dense Map rendering fast\n- Freed Desktop trims oversized WebKit caches before social scrapes\n- Sync and update reliability fixes\n- Reader, feed, and header polish\n- Test coverage and performance hardening\n- Release build and type-safety cleanup\n\n### Follow-ups\n\n- Freed Desktop keeps Friends release validation stable across virtualized sidebar remounts\n- Freed Desktop keeps reader transitions cheaper and Friends performance gates focused on visible rendering work\n- More accurate memory pressure and smoother large views\n- Freed Desktop keeps large social views responsive\n- Freed Desktop keeps WebKit memory maintenance ahead of scrapes\n- Freed Desktop improves dense Map rendering and keeps Google sync on native requests\n- Freed Desktop keeps display preference changes on the fast path and stabilizes Friends graph release checks\n- Reader, sidebar, and settings UX work\n- Release workflow and build-system work\n- Testing, diagnostics, and developer tooling\n- Sync, cloud, and pairing infrastructure\n- Capture, login, and scraping platform work\n- Content and documentation work\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
