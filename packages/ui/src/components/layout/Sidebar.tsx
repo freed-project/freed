@@ -925,7 +925,10 @@ export function Sidebar({
     [committedWidth, desktopMode, forceCompactDesktopRail, isMobileDevice, onDesktopModeChange, updatePreferences],
   );
 
-  const feedList = Object.values(feeds).filter((f) => f.enabled);
+  const feedList = useMemo(
+    () => Object.values(feeds).filter((feed) => feed.enabled),
+    [feeds],
+  );
   const trimmedSearchQuery = searchQuery.trim().toLocaleLowerCase();
   const searchTerms = useMemo(
     () => trimmedSearchQuery.split(/\s+/).filter(Boolean),

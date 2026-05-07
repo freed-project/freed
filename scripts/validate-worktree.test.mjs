@@ -85,6 +85,22 @@ test("feature plan for Friends UI changes runs desktop perf checks", () => {
   ]);
 });
 
+test("feature plan for sidebar UI changes runs desktop perf checks", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", ["packages/ui/src/components/layout/Sidebar.tsx"]),
+  );
+
+  assert.deepEqual(labels, [
+    "root typecheck",
+    "pwa production build",
+    "pwa typecheck",
+    "pwa unit tests",
+    "desktop unit tests",
+    "desktop e2e smoke",
+    "desktop e2e perf",
+  ]);
+});
+
 test("feature plan for non-feed desktop changes skips desktop perf checks", () => {
   const labels = describePlan(
     buildValidationPlan("feature", ["packages/desktop/src/components/ProviderHealthSectionSummary.tsx"]),
@@ -102,6 +118,7 @@ test("desktop perf sensitivity is scoped to hot paths and perf harnesses", () =>
   assert.equal(isDesktopPerfSensitiveSurface("packages/desktop/tests/e2e/perf-map.spec.ts"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/components/feed/FeedList.tsx"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/components/friends/FriendGraph.tsx"), true);
+  assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/components/layout/Sidebar.tsx"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/components/map/MapView.tsx"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/lib/friends-workspace.ts"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/hooks/useResolvedLocations.ts"), true);
