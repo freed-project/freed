@@ -3449,8 +3449,9 @@ test("selecting a graph node shows a compact detail card when the Friends detail
   const viewport = page.getByTestId("friend-graph-viewport");
   await expect(viewport).toBeVisible({ timeout: 10_000 });
   await page.getByRole("button", { name: "Fit all" }).click();
+  await waitForGraphPerfToSettle(page, 20_000);
 
-  const friendPoint = await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" });
+  const friendPoint = await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" }, 20_000);
   await page.waitForTimeout(300);
   const beforeClick = await readGraphSummary(page);
   expect(friendPoint).not.toBeNull();
