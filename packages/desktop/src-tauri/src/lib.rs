@@ -1595,6 +1595,10 @@ fn renderer_stale_log_after(is_visible: bool, last_visibility: &str) -> Duration
     }
 }
 
+fn renderer_stale_log_should_pause_background(is_visible: bool, last_visibility: &str) -> bool {
+    renderer_is_effectively_visible(is_visible, last_visibility)
+}
+
 fn format_bytes_for_log(bytes: u64) -> String {
     const KIB: f64 = 1024.0;
     const MIB: f64 = KIB * 1024.0;
@@ -1656,6 +1660,14 @@ mod renderer_watchdog_tests {
     fn hidden_renderer_stale_log_waits_past_webkit_timer_throttling() {
         assert!(RENDERER_HIDDEN_STALE_LOG_AFTER > Duration::from_secs(300));
         assert!(RENDERER_HIDDEN_STALE_LOG_AFTER < RENDERER_HIDDEN_RECOVERY_AFTER);
+    }
+
+    #[test]
+    fn hidden_renderer_stale_log_keeps_background_work_eligible() {
+        assert!(renderer_stale_log_should_pause_background(true, "visible"));
+        assert!(!renderer_stale_log_should_pause_background(true, "hidden"));
+        assert!(!renderer_stale_log_should_pause_background(false, "visible"));
+        assert!(!renderer_stale_log_should_pause_background(false, "hidden"));
     }
 
     #[test]
@@ -6507,6 +6519,7 @@ pub fn run() {
                                 .last_recovery_at
                                 .map(|last| last.elapsed() > recovery_threshold)
                                 .unwrap_or(true);
+                        let mut should_recycle_background_scrapers = false;
 
                         if should_log_stale {
                             let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
@@ -6538,8 +6551,16 @@ pub fn run() {
                                 webkit_details
                             );
                             health.stale_logged = true;
-                            background_runtime_for_watchdog
-                                .note_renderer_stale("renderer heartbeat stale");
+                            let pause_background_work =
+                                renderer_stale_log_should_pause_background(
+                                    is_main_visible,
+                                    &health.last_visibility,
+                                );
+                            if pause_background_work {
+                                background_runtime_for_watchdog
+                                    .note_renderer_stale("renderer heartbeat stale");
+                                should_recycle_background_scrapers = true;
+                            }
                             let (active_job, active_job_age_ms) =
                                 background_runtime_for_watchdog.active_job_for_health();
                             let (safe_mode_active, safe_mode_remaining_ms, recoveries_short, recoveries_long) =
@@ -6566,6 +6587,7 @@ pub fn run() {
                                     "lastInputAgeMs": health.last_input_age_ms,
                                     "settingsOpen": health.last_settings_open,
                                     "dialogOpen": health.last_dialog_open,
+                                    "backgroundWorkPaused": pause_background_work,
                                     "nativeResidentBytes": stats.process_resident_bytes,
                                     "webkitResidentBytes": stats.webkit_total_resident_bytes,
                                     "webkitLargestProcessId": stats.webkit_largest_process_id,
@@ -6678,7 +6700,7 @@ pub fn run() {
                             );
                         }
 
-                        (should_log_stale, should_recover)
+                        (should_recycle_background_scrapers || should_recover, should_recover)
                     };
 
                     if should_recycle_scrapers {
