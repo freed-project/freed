@@ -9,6 +9,9 @@
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Friends back-navigation validation now selects the detail target after the virtualized overview sidebar is visible, avoiding row-remount races while preserving the selected detail and back path coverage",
+    "Friends performance validation now measures visible graph mount separately from display preference persistence, so release gates catch rendering regressions instead of background save timing",
+    "Reader open now skips compact rail wrapper allocation and full item-id joins, keeping large reader transitions on the cheaper read-on-scroll path",
     "Freed Desktop keeps display preference changes on the fast path and stabilizes Friends graph release checks",
     "Freed Desktop now keeps Friends detail rail resizing on the real pointer path, with a visible full-height resize handle and cleanup across pointerup, cancel, blur, and unmount",
     "Freed Desktop now uses macOS physical footprint for memory-pressure gates, so reclaimable WebKit RSS no longer blocks social scraping by itself",
@@ -55,7 +58,8 @@
     "v26.5.623-dev was superseded before packaging because release validation caught the Friends detail rail resize regression check timing out.",
     "v26.5.624-dev adds the Friends sidebar pointer resize stability fix from PR #487 and replaces failed v26.5.622-dev and v26.5.623-dev attempts.",
     "v26.5.625-dev replaces superseded v26.5.622-dev through v26.5.624-dev attempts and adds PR #488 through PR #491, including Friends graph validation stability, Friends resize geometry hardening, display preference fast-path hydration avoidance, and exact preference patch state preservation.",
-    "v26.5.628-dev replaces the failed v26.5.625-dev packaging attempt and adds dense Map movement headroom, Friends graph pinch validation stability, mobile validation repairs, and production release e2e stabilization from PR #492, PR #494, PR #495, PR #496, and PR #498."
+    "v26.5.628-dev replaces the failed v26.5.625-dev packaging attempt and adds dense Map movement headroom, Friends graph pinch validation stability, mobile validation repairs, and production release e2e stabilization from PR #492, PR #494, PR #495, PR #496, and PR #498.",
+    "v26.5.632-dev replaces failed v26.5.625-dev and v26.5.628-dev packaging attempts and adds PR #500, PR #502, PR #504, and PR #506, including Friends validation stabilization and compact reader rail allocation removal."
   ],
-  "updatedAt": "2026-05-07T05:24:28.179Z"
+  "updatedAt": "2026-05-07T06:33:35.036Z"
 }
