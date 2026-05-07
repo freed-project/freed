@@ -3226,7 +3226,7 @@ test("Friends detail rail visibility preference hides and restores the desktop s
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsSidebarWidth: number; friendsSidebarOpen: boolean } }) => Promise<void>;
+            updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarWidth: number; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
             setSelectedPerson: (personId: string | null) => void;
             setSelectedAccount: (accountId: string | null) => void;
@@ -3235,6 +3235,7 @@ test("Friends detail rail visibility preference hides and restores the desktop s
       | undefined;
     await store?.getState().updatePreferences({
       display: {
+        friendsMode: "friends",
         friendsSidebarWidth: 388,
         friendsSidebarOpen: true,
       },
@@ -3282,7 +3283,6 @@ test("Friends detail rail visibility preference hides and restores the desktop s
       },
     });
   });
-  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   await page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
@@ -3294,6 +3294,7 @@ test("Friends detail rail visibility preference hides and restores the desktop s
     const display = store?.getState().preferences.display;
     return display?.friendsSidebarOpen === true && display?.friendsSidebarWidth === 388;
   }, { timeout: 5_000 });
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
 
   const after = await page.evaluate(() => {
     const shell = document.querySelector('[data-testid="friends-sidebar-shell"]') as HTMLElement | null;
@@ -3426,7 +3427,7 @@ test("selecting a graph node shows a compact detail card when the Friends detail
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void>;
+            updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
             setSelectedPerson: (personId: string | null) => void;
             setSelectedAccount: (accountId: string | null) => void;
@@ -3435,6 +3436,7 @@ test("selecting a graph node shows a compact detail card when the Friends detail
       | undefined;
     await store?.getState().updatePreferences({
       display: {
+        friendsMode: "friends",
         friendsSidebarOpen: false,
       },
     });
@@ -3497,7 +3499,7 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void>;
+            updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
             setSelectedPerson: (personId: string | null) => void;
             setSelectedAccount: (accountId: string | null) => void;
@@ -3506,6 +3508,7 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
       | undefined;
     await store?.getState().updatePreferences({
       display: {
+        friendsMode: "friends",
         friendsSidebarOpen: false,
       },
     });
