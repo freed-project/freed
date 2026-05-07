@@ -121,6 +121,13 @@ export type DocChangeEvent =
       requiresFullScan: true;
     }
   | {
+      source: "preferences_patch";
+      mutation?: WorkerRequest["type"];
+      changedItemIds: null;
+      changedItems: [];
+      requiresFullScan: false;
+    }
+  | {
       source: "item_patch";
       mutation?: WorkerRequest["type"];
       changedItemIds: string[];
@@ -137,6 +144,8 @@ export type WorkerResponse =
   | { reqId: number; type: "ACK"; error?: string }
   /** Broadcast on every doc mutation - main thread uses this to update UI */
   | { type: "STATE_UPDATE"; state: DocState; mutation?: WorkerRequest["type"] }
+  /** Preference-only mutation that avoids cloning, ranking, and hydrating every feed item. */
+  | { type: "PREFERENCES_PATCH"; preferences: UserPreferences; mutation?: WorkerRequest["type"] }
   /** Small mutation update that avoids cloning and hydrating the full document. */
   | { type: "ITEM_PATCH"; patches: FeedItemPatch[]; changedItemIds: string[]; mutation?: WorkerRequest["type"] }
   /** Debug panel event forwarding */
