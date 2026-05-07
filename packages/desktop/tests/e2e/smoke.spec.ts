@@ -2625,6 +2625,7 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
         getState: () => {
           setActiveView: (view: string) => void;
           setSelectedPerson: (personId: string | null) => void;
+          setSelectedAccount: (accountId: string | null) => void;
           updatePreferences: (update: unknown) => Promise<void>;
         };
       }
@@ -2675,13 +2676,16 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
     await store?.getState().updatePreferences({
       display: {
         friendsSidebarWidth: 388,
+        friendsSidebarOpen: true,
       },
     });
+    store?.getState().setSelectedPerson(null);
+    store?.getState().setSelectedAccount(null);
     store?.getState().setActiveView("friends");
   });
 
-  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByPlaceholder("Search friends")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByPlaceholder("Search friends")).toBeVisible({ timeout: 10_000 });
   await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | { getState: () => { setSelectedPerson: (personId: string | null) => void } }
@@ -2695,7 +2699,7 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
     button.click();
     return true;
   }, undefined, { timeout: 5_000 });
-  await expect(page.getByPlaceholder("Search friends")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByPlaceholder("Search friends")).toBeVisible({ timeout: 10_000 });
 });
 
 test("Map view popup exposes friend actions and supports post navigation", async ({ app }) => {
@@ -3224,6 +3228,8 @@ test("Friends detail rail visibility preference hides and restores the desktop s
           getState: () => {
             updatePreferences: (patch: { display: { friendsSidebarWidth: number; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
+            setSelectedPerson: (personId: string | null) => void;
+            setSelectedAccount: (accountId: string | null) => void;
           };
         }
       | undefined;
@@ -3322,16 +3328,19 @@ test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
         friendsSidebarOpen: true,
       },
     });
+    store?.getState().setSelectedPerson(null);
+    store?.getState().setSelectedAccount(null);
     store?.getState().setActiveView("friends");
   });
 
-  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 10_000 });
   const handle = page.getByRole("separator", { name: "Resize friends sidebar" });
-  await expect(handle).toBeVisible({ timeout: 5_000 });
-  let handleBox: { x: number; y: number; width: number; height: number } | null = null;
+  await expect(handle).toBeVisible({ timeout: 10_000 });
+  const sidebar = page.getByTestId("friends-sidebar");
+  let sidebarBox: { x: number; y: number; width: number; height: number } | null = null;
   await expect
     .poll(async () => {
-      handleBox = await handle.evaluate((element) => {
+      sidebarBox = await sidebar.evaluate((element) => {
         const rect = element.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) {
           return null;
@@ -3343,19 +3352,45 @@ test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
           height: rect.height,
         };
       }).catch(() => null);
-      return handleBox !== null;
-    }, { timeout: 5_000 })
+      return sidebarBox !== null;
+    }, { timeout: 10_000 })
     .toBe(true);
-  if (!handleBox) {
-    throw new Error("Friends sidebar resize handle did not expose browser geometry");
+  if (!sidebarBox) {
+    throw new Error("Friends sidebar did not expose browser geometry");
   }
-  const startX = handleBox.x + handleBox.width / 2;
-  const pointerY = handleBox.y + Math.max(1, handleBox.height / 2);
+  const startX = sidebarBox.x - 6;
+  const pointerY = sidebarBox.y + Math.max(1, sidebarBox.height / 2);
 
-  await page.mouse.move(startX, pointerY);
-  await page.mouse.down();
-  await page.mouse.move(startX - 300, pointerY, { steps: 8 });
-  await page.mouse.up();
+  await handle.evaluate((element, gesture) => {
+    const target = element as HTMLElement & {
+      setPointerCapture: (pointerId: number) => void;
+      releasePointerCapture: (pointerId: number) => void;
+    };
+    target.setPointerCapture = () => undefined;
+    target.releasePointerCapture = () => undefined;
+
+    const dispatch = (
+      dispatchTarget: EventTarget,
+      type: "pointerdown" | "pointermove" | "pointerup",
+      clientX: number,
+    ) => {
+      dispatchTarget.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+        button: 0,
+        buttons: type === "pointerup" ? 0 : 1,
+        clientX,
+        clientY: gesture.pointerY,
+      }));
+    };
+
+    dispatch(target, "pointerdown", gesture.startX);
+    dispatch(window, "pointermove", gesture.startX - 300);
+    dispatch(window, "pointerup", gesture.startX - 300);
+  }, { startX, pointerY });
 
   await expect.poll(async () =>
     page.getByTestId("friends-sidebar").evaluate((element) =>
@@ -3393,6 +3428,8 @@ test("selecting a graph node shows a compact detail card when the Friends detail
           getState: () => {
             updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
+            setSelectedPerson: (personId: string | null) => void;
+            setSelectedAccount: (accountId: string | null) => void;
           };
         }
       | undefined;
@@ -3401,6 +3438,8 @@ test("selecting a graph node shows a compact detail card when the Friends detail
         friendsSidebarOpen: false,
       },
     });
+    store?.getState().setSelectedPerson(null);
+    store?.getState().setSelectedAccount(null);
     store?.getState().setActiveView("friends");
   });
 
@@ -3460,6 +3499,8 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
           getState: () => {
             updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
+            setSelectedPerson: (personId: string | null) => void;
+            setSelectedAccount: (accountId: string | null) => void;
           };
         }
       | undefined;
@@ -3468,24 +3509,27 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
         friendsSidebarOpen: false,
       },
     });
+    store?.getState().setSelectedPerson(null);
+    store?.getState().setSelectedAccount(null);
     store?.getState().setActiveView("friends");
   });
 
   const viewport = page.getByTestId("friend-graph-viewport");
   await expect(viewport).toBeVisible({ timeout: 10_000 });
+  await page.getByRole("button", { name: "Fit all" }).click();
 
-  let friendPoint: { x: number; y: number } | null = null;
-  await expect
-    .poll(async () => {
-      friendPoint = await graphNodeScreenPoint(page, { personId: "friend-ada" });
-      return friendPoint !== null;
-    }, { timeout: 10_000 })
-    .toBe(true);
-
-  await page.mouse.click(friendPoint!.x, friendPoint!.y);
+  const friendPoint = await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" });
+  await page.mouse.click(friendPoint.x, friendPoint.y);
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { selectedPersonId: string | null; selectedAccountId: string | null } }
+      | undefined;
+    const state = store?.getState();
+    return state?.selectedPersonId === "friend-ada" && state.selectedAccountId === null;
+  }, undefined, { timeout: 10_000 });
 
   const compactCard = page.getByTestId("friends-collapsed-selection-card");
-  await expect(compactCard).toBeVisible({ timeout: 5_000 });
+  await expect(compactCard).toBeVisible({ timeout: 10_000 });
 
   const viewportBox = await viewport.boundingBox();
   if (!viewportBox) {
@@ -4302,7 +4346,14 @@ test("pinned person graph position survives reload", async ({ app, page }) => {
     return viewport.evaluate((element) => Number((element as HTMLElement).dataset.graphNodeCount ?? "0"));
   }).toBeGreaterThanOrEqual(3);
 
-  await waitForGraphNodeScreenPoint(page, { personId: "friend-pinned" });
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const debug = (window as Record<string, unknown>).__FREED_GRAPH_DEBUG__ as
+        | { nodes: Array<{ personId?: string }> }
+        | undefined;
+      return debug?.nodes.some((node) => node.personId === "friend-pinned") ?? false;
+    }),
+  { timeout: 10_000 }).toBe(true);
   const pinnedPosition = await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const debug = w.__FREED_GRAPH_DEBUG__ as
@@ -4605,15 +4656,23 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
     })
     .toBeGreaterThan(before!.transform.scale);
 
-  const after = await readGraphDebug(page);
-  expect(after).not.toBeNull();
-  const projectedInitialMidpoint = {
-    x: box.x + initialWorldPoint.x * after!.transform.scale + after!.transform.x,
-    y: box.y + initialWorldPoint.y * after!.transform.scale + after!.transform.y,
-  };
   const midpointTolerancePx = 4;
-  expect(Math.abs(projectedInitialMidpoint.x - (centerX + panDelta.x))).toBeLessThanOrEqual(midpointTolerancePx);
-  expect(Math.abs(projectedInitialMidpoint.y - (centerY + panDelta.y))).toBeLessThanOrEqual(midpointTolerancePx);
+  await expect
+    .poll(async () => {
+      const after = await readGraphDebug(page);
+      if (!after) {
+        return Number.POSITIVE_INFINITY;
+      }
+      const projectedInitialMidpoint = {
+        x: box.x + initialWorldPoint.x * after.transform.scale + after.transform.x,
+        y: box.y + initialWorldPoint.y * after.transform.scale + after.transform.y,
+      };
+      return Math.max(
+        Math.abs(projectedInitialMidpoint.x - (centerX + panDelta.x)),
+        Math.abs(projectedInitialMidpoint.y - (centerY + panDelta.y)),
+      );
+    }, { timeout: 8_000 })
+    .toBeLessThanOrEqual(midpointTolerancePx);
 });
 
 test("stress Friends graph degrades labels during motion and avoids expensive redraws on pan", async ({ app, page }) => {

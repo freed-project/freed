@@ -84,7 +84,10 @@ const readerOnlyPlatformConfig = {
   feedMediaPreviews: "reader-only",
 } as unknown as PlatformConfig;
 
-function setMemoryPressure(pressureLevel: RuntimeMemorySnapshot["pressureLevel"]): void {
+function setMemoryPressure(
+  pressureLevel: RuntimeMemorySnapshot["pressureLevel"],
+  overrides: Partial<RuntimeMemorySnapshot> = {},
+): void {
   useDebugStore.setState({
     runtimeMemory: {
       processResidentBytes: 0,
@@ -98,6 +101,7 @@ function setMemoryPressure(pressureLevel: RuntimeMemorySnapshot["pressureLevel"]
       contentBackoffLevel: 0,
       sampleTs: Date.now(),
       pressureLevel,
+      ...overrides,
     },
   });
 }
@@ -227,7 +231,7 @@ describe("FeedItem story media", () => {
         );
       });
 
-      expect(container.querySelector("img[src='https://example.com/story.jpg']")).toBeNull();
+      expect(container.querySelector("img[src='https://example.com/post.jpg']")).toBeNull();
       expect(container.querySelector(".bg-gradient-to-br")).not.toBeNull();
     } finally {
       await act(async () => {
@@ -349,6 +353,35 @@ describe("FeedItem story media", () => {
       (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
     }
   });
+
+  it("suppresses inline media before app pressure reaches the high threshold", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    setMemoryPressure("normal", {
+      appMemoryPressureBytes: Math.floor(2.5 * 1024 * 1024 * 1024),
+    });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem item={makeItem()} />
+          </PlatformProvider>,
+        );
+      });
+
+      expect(container.querySelector("img[src='https://example.com/story.jpg']")).toBeNull();
+      expect(container.querySelector(".bg-gradient-to-br")).not.toBeNull();
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
 });
 
 describe("FeedItem channel avatars", () => {
@@ -424,6 +457,46 @@ describe("FeedItem channel avatars", () => {
 
       await act(async () => {
         avatar?.dispatchEvent(new Event("error", { bubbles: true }));
+      });
+
+      expect(container.querySelector("img[src='https://example.com/post-avatar.jpg']")).toBeNull();
+      expect(container.textContent).toContain("L");
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
+
+  it("suppresses feed avatar images when WebKit footprint is already high", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    setMemoryPressure("normal", {
+      webkitLargestFootprintBytes: Math.floor(2.4 * 1024 * 1024 * 1024),
+    });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem
+              item={makeItem({
+                author: {
+                  displayName: "Lotus Alchemist",
+                  avatarUrl: "https://example.com/post-avatar.jpg",
+                },
+                content: {
+                  mediaUrls: [],
+                  mediaTypes: [],
+                },
+              })}
+            />
+          </PlatformProvider>,
+        );
       });
 
       expect(container.querySelector("img[src='https://example.com/post-avatar.jpg']")).toBeNull();
