@@ -562,6 +562,7 @@ export function FriendsView({
   const graphRef = useRef<FriendGraphHandle>(null);
   const friendOverviewScrollRef = useRef<HTMLDivElement>(null);
   const isDraggingSidebar = useRef(false);
+  const sidebarDragCleanup = useRef<(() => void) | null>(null);
   const pendingPersistedSidebarWidth = useRef<number | null>(null);
   const isMobile = useIsMobile();
 
@@ -1061,32 +1062,54 @@ export function FriendsView({
     });
   }, []);
 
-  const handleSidebarDragStart = useCallback((event: React.MouseEvent) => {
+  useEffect(() => () => {
+    sidebarDragCleanup.current?.();
+    sidebarDragCleanup.current = null;
+  }, []);
+
+  const handleSidebarDragStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (isMobile) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
+    sidebarDragCleanup.current?.();
     isDraggingSidebar.current = true;
     const startX = event.clientX;
     const startWidth = sidebarWidth;
+    let latestWidth = startWidth;
+    const resizeHandle = event.currentTarget;
+    const pointerId = event.pointerId;
     const previousCursor = document.body.style.cursor;
     const previousUserSelect = document.body.style.userSelect;
 
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
+    resizeHandle.setPointerCapture?.(pointerId);
 
-    const onMove = (moveEvent: MouseEvent) => {
-      if (!isDraggingSidebar.current) return;
-      const next = Math.min(
+    const nextWidthFromClientX = (clientX: number) =>
+      Math.min(
         MAX_SIDEBAR_WIDTH,
-        Math.max(MIN_SIDEBAR_WIDTH, startWidth - (moveEvent.clientX - startX))
+        Math.max(MIN_SIDEBAR_WIDTH, startWidth - (clientX - startX)),
       );
-      setDragWidth(next);
+
+    const cleanup = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("blur", onBlur);
+      try {
+        resizeHandle.releasePointerCapture?.(pointerId);
+      } catch {
+        // The browser may already have released capture after pointerup.
+      }
+      if (sidebarDragCleanup.current === cleanup) {
+        sidebarDragCleanup.current = null;
+      }
     };
-    const onUp = (upEvent: MouseEvent) => {
+
+    const finishDrag = (finalWidth: number) => {
       isDraggingSidebar.current = false;
-      const finalWidth = Math.min(
-        MAX_SIDEBAR_WIDTH,
-        Math.max(MIN_SIDEBAR_WIDTH, startWidth - (upEvent.clientX - startX))
-      );
       pendingPersistedSidebarWidth.current = finalWidth;
       setCommittedSidebarWidth(finalWidth);
       setDragWidth(null);
@@ -1095,14 +1118,37 @@ export function FriendsView({
           pendingPersistedSidebarWidth.current = null;
         }
       });
-      document.body.style.cursor = previousCursor;
-      document.body.style.userSelect = previousUserSelect;
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
+      cleanup();
     };
 
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
+    function onMove(moveEvent: PointerEvent) {
+      if (moveEvent.pointerId !== pointerId) return;
+      if (!isDraggingSidebar.current) return;
+      latestWidth = nextWidthFromClientX(moveEvent.clientX);
+      setDragWidth(latestWidth);
+    }
+
+    function onUp(upEvent: PointerEvent) {
+      if (upEvent.pointerId !== pointerId) return;
+      finishDrag(nextWidthFromClientX(upEvent.clientX));
+    }
+
+    function onCancel(cancelEvent: PointerEvent) {
+      if (cancelEvent.pointerId !== pointerId) return;
+      finishDrag(latestWidth);
+    }
+
+    function onBlur() {
+      isDraggingSidebar.current = false;
+      setDragWidth(null);
+      cleanup();
+    }
+
+    sidebarDragCleanup.current = cleanup;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("blur", onBlur);
   }, [isMobile, sidebarWidth, updatePreferences]);
 
   const renderOverviewSidebar = () => (
@@ -1668,8 +1714,8 @@ export function FriendsView({
 
         {showDesktopSidebar && (
           <div
-            className="theme-resize-gap-handle w-3 shrink-0 self-end"
-            onMouseDown={handleSidebarDragStart}
+            className="theme-resize-gap-handle w-3 shrink-0 self-stretch"
+            onPointerDown={handleSidebarDragStart}
             role="separator"
             aria-orientation="vertical"
             aria-label="Resize friends sidebar"

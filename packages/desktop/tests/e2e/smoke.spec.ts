@@ -3174,50 +3174,50 @@ test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
-
-  await page.getByTestId("source-row-friends").click();
-  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
+  await dismissCloudSyncNudgeIfPresent(page);
 
   await page.evaluate(async () => {
-    const handle = document.querySelector('[aria-label="Resize friends sidebar"]') as HTMLElement | null;
-    if (!handle) {
-      throw new Error("Friends sidebar resize handle was not found");
-    }
-    const rect = handle.getBoundingClientRect();
-    const startX = rect.left + rect.width / 2;
-    const pointerY = rect.top + Math.max(1, rect.height / 2);
-    const endX = startX - 300;
-
-    handle.dispatchEvent(
-      new MouseEvent("mousedown", {
-        bubbles: true,
-        clientX: startX,
-        clientY: pointerY,
-      }),
-    );
-    document.dispatchEvent(
-      new MouseEvent("mousemove", {
-        bubbles: true,
-        clientX: endX,
-        clientY: pointerY,
-      }),
-    );
-    document.dispatchEvent(
-      new MouseEvent("mouseup", {
-        bubbles: true,
-        clientX: endX,
-        clientY: pointerY,
-      }),
-    );
-
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (patch: { display: { friendsSidebarWidth: number; friendsSidebarOpen: boolean } }) => Promise<void>;
+            setActiveView: (view: string) => void;
+          };
+        }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        friendsSidebarWidth: 388,
+        friendsSidebarOpen: true,
+      },
+    });
+    store?.getState().setActiveView("friends");
   });
 
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
+  const handle = page.getByRole("separator", { name: "Resize friends sidebar" });
+  await expect(handle).toBeVisible({ timeout: 5_000 });
+  const handleBox = await handle.boundingBox();
+  if (!handleBox) {
+    throw new Error("Friends sidebar resize handle did not expose browser geometry");
+  }
+  const startX = handleBox.x + handleBox.width / 2;
+  const pointerY = handleBox.y + Math.max(1, handleBox.height / 2);
+
+  await page.mouse.move(startX, pointerY);
+  await page.mouse.down();
+  await page.mouse.move(startX - 300, pointerY, { steps: 8 });
+  await page.mouse.up();
+
+  await expect.poll(async () =>
+    page.getByTestId("friends-sidebar").evaluate((element) =>
+      Math.round(element.getBoundingClientRect().width),
+    ),
+  { timeout: 5_000 }).toBeGreaterThanOrEqual(396);
   const sidebarWidth = await page.getByTestId("friends-sidebar").evaluate((element) =>
     Math.round(element.getBoundingClientRect().width),
   );
   expect(sidebarWidth).toBeLessThanOrEqual(400);
-  expect(sidebarWidth).toBeGreaterThanOrEqual(396);
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
