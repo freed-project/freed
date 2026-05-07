@@ -565,7 +565,8 @@ export function MapSurface({
     if (!focusedMarker) return baseRenderedMarkers;
     return [...baseRenderedMarkers.slice(0, MAP_DOM_MARKER_LIMIT - 1), focusedMarker];
   }, [baseRenderedMarkers, focusedMarkerKey, stableMarkers]);
-  const showMarkerAvatars = stableMarkers.length <= MAP_DOM_MARKER_LIMIT;
+  const useDenseMarkers = stableMarkers.length > MAP_DOM_MARKER_LIMIT;
+  const showMarkerAvatars = !useDenseMarkers;
   const avatarPalette = useMemo(
     () => createFriendAvatarPalette(resolvedThemeId),
     [resolvedThemeId]
@@ -680,6 +681,7 @@ export function MapSurface({
     for (const markerData of renderedMarkers) {
       const element = createMarkerElement(markerData, avatarPalette, {
         showAvatar: showMarkerAvatars,
+        simplified: useDenseMarkers,
       });
       const marker = new maplibre.Marker({ element }).setLngLat([
         markerData.lng,
@@ -687,30 +689,6 @@ export function MapSurface({
       ]);
 
       if (interactive) {
-        const currentHandlers = actionHandlersRef.current;
-        const popup = new maplibre.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 12,
-          maxWidth: `${MAP_POPUP_MAX_WIDTH}px`,
-          className: "freed-map-popup",
-        })
-          .setLngLat([markerData.lng, markerData.lat])
-          .setDOMContent(buildPopupContent(
-            markerData,
-            currentHandlers.onOpenFriend
-              ? (marker) => actionHandlersRef.current.onOpenFriend?.(marker)
-              : undefined,
-            currentHandlers.onPromoteAccount
-              ? (marker) => actionHandlersRef.current.onPromoteAccount?.(marker)
-              : undefined,
-            currentHandlers.onLinkAccount
-              ? (marker) => actionHandlersRef.current.onLinkAccount?.(marker)
-              : undefined,
-            currentHandlers.onOpenPost
-              ? (marker) => actionHandlersRef.current.onOpenPost?.(marker)
-              : undefined,
-          ));
         element.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -719,6 +697,30 @@ export function MapSurface({
             return;
           }
           closeActivePopup();
+          const currentHandlers = actionHandlersRef.current;
+          const popup = new maplibre.Popup({
+            closeButton: false,
+            closeOnClick: false,
+            offset: 12,
+            maxWidth: `${MAP_POPUP_MAX_WIDTH}px`,
+            className: "freed-map-popup",
+          })
+            .setLngLat([markerData.lng, markerData.lat])
+            .setDOMContent(buildPopupContent(
+              markerData,
+              currentHandlers.onOpenFriend
+                ? (marker) => actionHandlersRef.current.onOpenFriend?.(marker)
+                : undefined,
+              currentHandlers.onPromoteAccount
+                ? (marker) => actionHandlersRef.current.onPromoteAccount?.(marker)
+                : undefined,
+              currentHandlers.onLinkAccount
+                ? (marker) => actionHandlersRef.current.onLinkAccount?.(marker)
+                : undefined,
+              currentHandlers.onOpenPost
+                ? (marker) => actionHandlersRef.current.onOpenPost?.(marker)
+                : undefined,
+            ));
           popup.addTo(map);
           activePopupRef.current = popup;
           activePopupKeyRef.current = markerData.key;
@@ -733,7 +735,7 @@ export function MapSurface({
       map.off("click", handleMapClick);
       closeActivePopup();
     };
-  }, [avatarPalette, closeActivePopup, interactive, mapReady, renderedMarkers, showMarkerAvatars]);
+  }, [avatarPalette, closeActivePopup, interactive, mapReady, renderedMarkers, showMarkerAvatars, useDenseMarkers]);
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
@@ -746,6 +748,7 @@ export function MapSurface({
       data-map-theme={resolvedThemeId}
       data-map-rendered-markers={renderedMarkers.length}
       data-map-total-markers={stableMarkers.length}
+      data-map-dense={useDenseMarkers ? "true" : "false"}
       data-map-moving="false"
       className="freed-map-shell theme-soft-viewport relative h-full w-full"
       style={MAP_VIEWPORT_MASK_STYLE}
