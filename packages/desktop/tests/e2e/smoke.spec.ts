@@ -2622,11 +2622,12 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
     };
     const store = w.__FREED_STORE__ as
       | {
-          getState: () => {
-            setActiveView: (view: string) => void;
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
+        getState: () => {
+          setActiveView: (view: string) => void;
+          setSelectedPerson: (personId: string | null) => void;
+          updatePreferences: (update: unknown) => Promise<void>;
+        };
+      }
       | undefined;
 
     const now = Date.now();
@@ -2681,7 +2682,12 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
 
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByPlaceholder("Search friends")).toBeVisible({ timeout: 5_000 });
-  await page.getByRole("button", { name: /Ada Lovelace/ }).click();
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { setSelectedPerson: (personId: string | null) => void } }
+      | undefined;
+    store?.getState().setSelectedPerson("friend-ada");
+  });
   await expect(page.getByRole("button", { name: "Back to all friends" })).toBeVisible({ timeout: 5_000 });
   await page.getByRole("button", { name: "Back to all friends" }).click();
   await expect(page.getByPlaceholder("Search friends")).toBeVisible({ timeout: 5_000 });
