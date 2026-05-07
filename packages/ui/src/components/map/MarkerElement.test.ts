@@ -112,4 +112,19 @@ describe("createMarkerElement", () => {
     expect(element.querySelector(".freed-map-marker-halo")).toBeInstanceOf(HTMLDivElement);
     expect(element.querySelector(".freed-map-marker-badge")).toBeInstanceOf(HTMLDivElement);
   });
+
+  it("can simplify dense marker chrome", () => {
+    const element = createMarkerElement(marker({ groupCount: 1234 }), palette, {
+      showAvatar: false,
+      simplified: true,
+    });
+
+    expect(element.getAttribute("data-map-marker-simplified")).toBe("true");
+    expect(element.querySelector("img")).toBeNull();
+    expect(element.querySelector("[data-avatar-fallback]")?.textContent).toBe("L");
+    expect(element.querySelector(".freed-map-marker-glow")).toBeNull();
+    expect(element.querySelector(".freed-map-marker-tint")).toBeNull();
+    expect(element.querySelector(".freed-map-marker-halo")).toBeNull();
+    expect(element.querySelector(".freed-map-marker-badge")).toBeNull();
+  });
 });
