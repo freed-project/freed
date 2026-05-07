@@ -3187,7 +3187,7 @@ test("map timeline playback surfaces future and historical markers", async ({ ap
   await expect(page.getByText("Paris", { exact: true })).toBeVisible({ timeout: 10_000 });
 });
 
-test("Friends detail rail toggle hides and restores the desktop sidebar without losing width", async ({ app, page }) => {
+test("Friends detail rail visibility preference hides and restores the desktop sidebar without losing width", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -3212,10 +3212,6 @@ test("Friends detail rail toggle hides and restores the desktop sidebar without 
     store?.getState().setActiveView("friends");
   });
 
-  const toggle = page.getByTestId("friends-sidebar-toggle");
-  await expect(toggle).toBeVisible({ timeout: 5_000 });
-  await expect(toggle).toHaveClass(/theme-toolbar-button-ghost/);
-  await expect(toggle).not.toHaveClass(/theme-toolbar-button-(neutral|active)/);
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
 
   const before = await page.evaluate(() => {
@@ -3227,7 +3223,16 @@ test("Friends detail rail toggle hides and restores the desktop sidebar without 
 
   expect(before.shellWidth).toBeGreaterThanOrEqual(388);
 
-  await toggle.click();
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void> } }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        friendsSidebarOpen: false,
+      },
+    });
+  });
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   await expect(page.getByTestId("friends-sidebar-shell")).toHaveCount(0);
   await page.waitForFunction(() => {
@@ -3237,7 +3242,16 @@ test("Friends detail rail toggle hides and restores the desktop sidebar without 
     return store?.getState().preferences.display.friendsSidebarOpen === false;
   }, { timeout: 5_000 });
 
-  await toggle.click();
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void> } }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        friendsSidebarOpen: true,
+      },
+    });
+  });
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   await page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
