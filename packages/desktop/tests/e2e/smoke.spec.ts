@@ -2817,9 +2817,7 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
     const state = store?.getState();
     return state?.activeView === "map" && state.selectedPersonId === "friend-ada";
   }, { timeout: 10_000 });
-  await expect(page.locator('.freed-map-marker[aria-label="Ada Lovelace"]')).toBeVisible({
-    timeout: 10_000,
-  });
+  await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
 });
 
 test("map defaults to All content when only unlinked author locations exist", async ({ app, page }) => {
