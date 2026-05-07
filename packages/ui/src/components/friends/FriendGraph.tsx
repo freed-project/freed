@@ -194,7 +194,7 @@ const FAST_LAYOUT_NODE_THRESHOLD = 1_600;
 const NODE_LAYER_TEXTURE_CACHE_MAX_NODES = 1_200;
 const INTERACTIVE_NODE_CULL_THRESHOLD = 1_200;
 const DENSE_GRAPH_SINGLE_LAYER_THRESHOLD = 1_200;
-const DENSE_INTERACTION_CULL_THRESHOLD = 3_200;
+const DENSE_INTERACTION_CULL_THRESHOLD = 4_800;
 const DENSE_INTERACTION_NODE_LIMIT = 900;
 const DENSE_INTERACTION_VIEWPORT_PADDING = 96;
 const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
@@ -1231,9 +1231,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       scene.denseNodeLayer.visible = !useDenseInteractionLayer;
       scene.denseInteractionNodeLayer.visible = useDenseInteractionLayer;
       if (useDenseInteractionLayer) {
-        const viewportCenterX = canvasSize.width / 2;
-        const viewportCenterY = canvasSize.height / 2;
-        const visibleNodes: Array<{ node: IdentityGraphLayoutNode; distance: number }> = [];
+        let drawnVisibleNodes = 0;
+        scene.denseInteractionNodeLayer.clear();
         for (const node of layoutRef.current.nodes) {
           if (
             !isNodeNearViewport(
@@ -1246,18 +1245,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           ) {
             continue;
           }
-          const point = screenPointForPosition(node, transform);
-          const dx = point.x - viewportCenterX;
-          const dy = point.y - viewportCenterY;
-          visibleNodes.push({ node, distance: dx * dx + dy * dy });
-        }
-        if (visibleNodes.length > DENSE_INTERACTION_NODE_LIMIT) {
-          visibleNodes.sort((left, right) => left.distance - right.distance);
-          visibleNodes.length = DENSE_INTERACTION_NODE_LIMIT;
-        }
-        scene.denseInteractionNodeLayer.clear();
-        for (const { node } of visibleNodes) {
           drawDenseGraphNode(scene.denseInteractionNodeLayer, node, graphPalette);
+          drawnVisibleNodes += 1;
+          if (drawnVisibleNodes >= DENSE_INTERACTION_NODE_LIMIT) {
+            break;
+          }
         }
       } else {
         scene.denseInteractionNodeLayer.clear();
@@ -1731,7 +1723,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
     void (async () => {
       await app.init({
-        resizeTo: canvasHost,
         backgroundAlpha: 0,
         antialias: false,
         preference: "webgl",
@@ -1747,6 +1738,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       app.canvas.style.height = "100%";
       app.canvas.style.pointerEvents = "none";
       app.ticker.stop();
+      app.renderer.resize(canvasSizeRef.current.width, canvasSizeRef.current.height);
       canvasHost.appendChild(app.canvas);
 
       const world = new Container();
@@ -1785,7 +1777,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         regionDisplays: new Map(),
         labelDisplays: new Map(),
       };
-      scheduleSyncScene();
+      syncSceneRef.current();
     })();
 
     return () => {
@@ -1799,7 +1791,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       pixiRef.current?.app.destroy(true);
       pixiRef.current = null;
     };
-  }, [scheduleSyncScene]);
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1817,6 +1809,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     observer.observe(container);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    const scene = pixiRef.current;
+    if (!scene) return;
+    scene.app.renderer.resize(canvasSize.width, canvasSize.height);
+    scheduleSyncScene();
+  }, [canvasSize.height, canvasSize.width, scheduleSyncScene]);
 
   useEffect(() => {
     const container = containerRef.current;
