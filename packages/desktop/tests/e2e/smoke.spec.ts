@@ -4394,7 +4394,12 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
   await expect
     .poll(async () => (await readGraphDebug(page))?.nodes.length ?? 0, { timeout: 10_000 })
     .toBeGreaterThan(0);
-  await page.getByRole("button", { name: "Fit all" }).click();
+  await expect
+    .poll(async () => {
+      const debug = await readGraphSummary(page);
+      return Boolean(debug && debug.qualityMode === "settled" && debug.transform.scale > 0);
+    }, { timeout: 10_000 })
+    .toBe(true);
 
   const box = await viewport.boundingBox();
   if (!box) {
