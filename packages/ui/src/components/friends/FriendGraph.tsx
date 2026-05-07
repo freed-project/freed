@@ -194,6 +194,7 @@ const FAST_LAYOUT_NODE_THRESHOLD = 1_600;
 const NODE_LAYER_TEXTURE_CACHE_MAX_NODES = 1_200;
 const INTERACTIVE_NODE_CULL_THRESHOLD = 1_200;
 const DENSE_GRAPH_SINGLE_LAYER_THRESHOLD = 1_200;
+const DENSE_INTERACTION_CULL_THRESHOLD = 3_200;
 const DENSE_INTERACTION_NODE_LIMIT = 900;
 const DENSE_INTERACTION_VIEWPORT_PADDING = 96;
 const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
@@ -945,6 +946,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         : "containers";
     const useDenseInteractionLayer =
       denseRenderMode === "dense" &&
+      graphNodeCount >= DENSE_INTERACTION_CULL_THRESHOLD &&
       qualityMode === "interactive" &&
       !accountDrag &&
       highlighted.size === 0;
@@ -1731,7 +1733,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       await app.init({
         resizeTo: canvasHost,
         backgroundAlpha: 0,
-        antialias: true,
+        antialias: false,
         preference: "webgl",
         autoStart: false,
       });
