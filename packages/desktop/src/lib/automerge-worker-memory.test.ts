@@ -127,7 +127,9 @@ describe("automerge worker memory routing", () => {
     expect(body).not.toContain("applyRequestChange");
     expect(applyBody).toContain("persistAndBroadcastWithoutHydration");
     expect(applyBody).toContain("PREFERENCES_PATCH");
+    expect(applyBody).toContain("updates, mutation");
     expect(applyBody).toContain("saveAndBroadcast");
+    expect(workerSource).not.toContain("A.toJS(doc.preferences");
     expect(requiresBody).toContain("updates.weights !== undefined");
   });
 

@@ -141,6 +141,29 @@ export function subscribe(callback: Subscriber): () => void {
   return () => subscribers.delete(callback);
 }
 
+function isMergeablePreferenceObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergePreferencePatch<T extends object>(
+  current: T,
+  update: Partial<T>,
+): T {
+  const next = { ...current };
+
+  for (const key of Object.keys(update) as Array<keyof T>) {
+    const currentValue = current[key];
+    const updateValue = update[key];
+    next[key] = (
+      isMergeablePreferenceObject(currentValue) && isMergeablePreferenceObject(updateValue)
+        ? mergePreferencePatch<Record<string, unknown>>(currentValue, updateValue)
+        : updateValue
+    ) as T[typeof key];
+  }
+
+  return next;
+}
+
 function publishState(state: DocState, event: DocChangeEvent): void {
   lastDocState = state;
   if (event.requiresFullScan) {
@@ -183,8 +206,9 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
 
   if (msg.type === "PREFERENCES_PATCH") {
     if (!lastDocState) return;
+    const preferences = mergePreferencePatch(lastDocState.preferences, msg.updates);
     publishState(
-      { ...lastDocState, preferences: msg.preferences },
+      { ...lastDocState, preferences },
       {
         source: "preferences_patch",
         mutation: msg.mutation,

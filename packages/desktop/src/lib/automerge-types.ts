@@ -145,7 +145,7 @@ export type WorkerResponse =
   /** Broadcast on every doc mutation - main thread uses this to update UI */
   | { type: "STATE_UPDATE"; state: DocState; mutation?: WorkerRequest["type"] }
   /** Preference-only mutation that avoids cloning, ranking, and hydrating every feed item. */
-  | { type: "PREFERENCES_PATCH"; preferences: UserPreferences; mutation?: WorkerRequest["type"] }
+  | { type: "PREFERENCES_PATCH"; updates: Partial<UserPreferences>; mutation?: WorkerRequest["type"] }
   /** Small mutation update that avoids cloning and hydrating the full document. */
   | { type: "ITEM_PATCH"; patches: FeedItemPatch[]; changedItemIds: string[]; mutation?: WorkerRequest["type"] }
   /** Debug panel event forwarding */

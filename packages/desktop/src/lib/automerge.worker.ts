@@ -473,10 +473,6 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   };
 }
 
-function hydratePreferencesFromDoc(doc: FreedDoc): UserPreferences {
-  return mergeDefaultPreferences(A.toJS(doc.preferences ?? {}) as Partial<UserPreferences>);
-}
-
 function preferenceUpdateRequiresFullHydration(updates: Partial<UserPreferences>): boolean {
   return updates.weights !== undefined;
 }
@@ -603,9 +599,8 @@ async function applyPreferenceChange(
     return;
   }
 
-  const preferences = hydratePreferencesFromDoc(currentDoc);
   await persistAndBroadcastWithoutHydration(trace);
-  send({ type: "PREFERENCES_PATCH", preferences, mutation: trace?.opType });
+  send({ type: "PREFERENCES_PATCH", updates, mutation: trace?.opType });
 }
 
 async function applyCountedChange(
