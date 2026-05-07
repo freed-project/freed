@@ -3230,7 +3230,24 @@ test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   const handle = page.getByRole("separator", { name: "Resize friends sidebar" });
   await expect(handle).toBeVisible({ timeout: 5_000 });
-  const handleBox = await handle.boundingBox();
+  let handleBox: { x: number; y: number; width: number; height: number } | null = null;
+  await expect
+    .poll(async () => {
+      handleBox = await handle.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) {
+          return null;
+        }
+        return {
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        };
+      }).catch(() => null);
+      return handleBox !== null;
+    }, { timeout: 5_000 })
+    .toBe(true);
   if (!handleBox) {
     throw new Error("Friends sidebar resize handle did not expose browser geometry");
   }
