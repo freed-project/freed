@@ -1599,6 +1599,13 @@ fn renderer_stale_log_should_pause_background(is_visible: bool, last_visibility:
     renderer_is_effectively_visible(is_visible, last_visibility)
 }
 
+fn renderer_stale_log_should_capture_deep_diagnostic(
+    is_visible: bool,
+    last_visibility: &str,
+) -> bool {
+    renderer_is_effectively_visible(is_visible, last_visibility)
+}
+
 fn format_bytes_for_log(bytes: u64) -> String {
     const KIB: f64 = 1024.0;
     const MIB: f64 = KIB * 1024.0;
@@ -1666,8 +1673,26 @@ mod renderer_watchdog_tests {
     fn hidden_renderer_stale_log_keeps_background_work_eligible() {
         assert!(renderer_stale_log_should_pause_background(true, "visible"));
         assert!(!renderer_stale_log_should_pause_background(true, "hidden"));
-        assert!(!renderer_stale_log_should_pause_background(false, "visible"));
+        assert!(!renderer_stale_log_should_pause_background(
+            false, "visible"
+        ));
         assert!(!renderer_stale_log_should_pause_background(false, "hidden"));
+    }
+
+    #[test]
+    fn hidden_renderer_stale_log_skips_deep_diagnostics() {
+        assert!(renderer_stale_log_should_capture_deep_diagnostic(
+            true, "visible"
+        ));
+        assert!(!renderer_stale_log_should_capture_deep_diagnostic(
+            true, "hidden"
+        ));
+        assert!(!renderer_stale_log_should_capture_deep_diagnostic(
+            false, "visible"
+        ));
+        assert!(!renderer_stale_log_should_capture_deep_diagnostic(
+            false, "hidden"
+        ));
     }
 
     #[test]
@@ -6556,6 +6581,11 @@ pub fn run() {
                                     is_main_visible,
                                     &health.last_visibility,
                                 );
+                            let capture_deep_diagnostic =
+                                renderer_stale_log_should_capture_deep_diagnostic(
+                                    is_main_visible,
+                                    &health.last_visibility,
+                                );
                             if pause_background_work {
                                 background_runtime_for_watchdog
                                     .note_renderer_stale("renderer heartbeat stale");
@@ -6588,6 +6618,7 @@ pub fn run() {
                                     "settingsOpen": health.last_settings_open,
                                     "dialogOpen": health.last_dialog_open,
                                     "backgroundWorkPaused": pause_background_work,
+                                    "deepDiagnosticCaptured": capture_deep_diagnostic,
                                     "nativeResidentBytes": stats.process_resident_bytes,
                                     "webkitResidentBytes": stats.webkit_total_resident_bytes,
                                     "webkitLargestProcessId": stats.webkit_largest_process_id,
@@ -6620,15 +6651,17 @@ pub fn run() {
                                     "recoveriesInLongWindow": recoveries_long
                                 }),
                             );
-                            capture_deep_runtime_diagnostic(
-                                &app_for_renderer_watchdog,
-                                "renderer_heartbeat_stale",
-                                "renderer heartbeat stale",
-                                &stats,
-                                active_job,
-                                active_job_age_ms,
-                                false,
-                            );
+                            if capture_deep_diagnostic {
+                                capture_deep_runtime_diagnostic(
+                                    &app_for_renderer_watchdog,
+                                    "renderer_heartbeat_stale",
+                                    "renderer heartbeat stale",
+                                    &stats,
+                                    active_job,
+                                    active_job_age_ms,
+                                    false,
+                                );
+                            }
                         }
 
                         if should_recover {

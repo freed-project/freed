@@ -4502,6 +4502,7 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
       return debug.nodeCount;
     }, { timeout: 15_000 })
     .toBeGreaterThan(1);
+  await waitForGraphPerfToSettle(page);
 
   const initial = await viewport.evaluate((element) => ({
     labels: Number((element as HTMLElement).dataset.visibleLabelCount ?? "0"),
@@ -4517,22 +4518,17 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
   expect(initialDebug).not.toBeNull();
   expect(initialDebug!.metrics.visibleNodeLabelCount).toBeGreaterThan(0);
 
-  await viewport.evaluate((element) => {
-    const dispatchZoom = (deltaY: number) => {
-      element.dispatchEvent(new WheelEvent("wheel", {
-        bubbles: true,
-        cancelable: true,
-        ctrlKey: true,
-        clientX: element.getBoundingClientRect().left + element.getBoundingClientRect().width / 2,
-        clientY: element.getBoundingClientRect().top + element.getBoundingClientRect().height / 2,
-        deltaY,
-      }));
-    };
-    dispatchZoom(-260);
-    dispatchZoom(-260);
-    dispatchZoom(-260);
-    dispatchZoom(-260);
-  });
+  const box = await viewport.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.keyboard.down("Control");
+  try {
+    for (let index = 0; index < 4; index += 1) {
+      await page.mouse.wheel(0, -260);
+    }
+  } finally {
+    await page.keyboard.up("Control");
+  }
 
   await expect
     .poll(async () => {

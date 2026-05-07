@@ -809,6 +809,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const hoveredNodeIdRef = useRef<string | null>(null);
   const transformRef = useRef<ViewTransform>({ ...FRIEND_GRAPH_DEFAULT_TRANSFORM });
   const hasFittedInitialLayoutRef = useRef(false);
+  const hasUserAdjustedTransformRef = useRef(false);
   const latestLayoutRequestIdRef = useRef(0);
   const latestResolvedLayoutRequestIdRef = useRef(0);
   const pendingLayoutTimeoutsRef = useRef<Map<number, number>>(new Map());
@@ -1962,7 +1963,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
   useEffect(() => {
     if (!layoutReady && layoutRef.current.nodes.length > 0) {
-      fitAll();
+      if (!hasUserAdjustedTransformRef.current) {
+        fitAll();
+      } else {
+        scheduleSyncScene();
+      }
       return;
     }
     scheduleSyncScene();
@@ -2005,6 +2010,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
   const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
+    hasUserAdjustedTransformRef.current = true;
     markInteractive();
     if (event.ctrlKey || event.metaKey) {
       const delta = Math.exp(-event.deltaY * TRACKPAD_PINCH_ZOOM_SPEED);
@@ -2133,6 +2139,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         x: localX - pinch.initialWorldPoint.x * scale,
         y: localY - pinch.initialWorldPoint.y * scale,
       };
+      hasUserAdjustedTransformRef.current = true;
       scheduleSyncScene();
       markInteractive();
       event.preventDefault();
@@ -2164,6 +2171,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         x: drag.originX + deltaX,
         y: drag.originY + deltaY,
       };
+      hasUserAdjustedTransformRef.current = true;
       if (event.pointerType === "touch") {
         event.preventDefault();
       }
