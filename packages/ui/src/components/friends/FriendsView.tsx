@@ -74,6 +74,14 @@ const RELATIONSHIP_TIER_OPTIONS: Array<{ level: RelationshipTierLevel; label: st
   { level: 5, label: "Fam" },
 ];
 
+function safeText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function personName(person: Pick<Person, "name"> | null | undefined): string {
+  return safeText(person?.name, "Unnamed friend");
+}
+
 type EditorState =
   | { kind: "new"; draft?: Partial<Friend> | null }
   | { kind: "edit"; personId: string }
@@ -207,14 +215,16 @@ function FriendListRow({
     >
       <div className="flex items-start gap-3">
         <FriendAvatar
-          name={entry.friend.name}
+          name={safeText(entry.friend.name, "Unnamed friend")}
           avatarUrl={avatarUrl}
           size={40}
         />
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">{entry.friend.name}</p>
+            <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
+              {safeText(entry.friend.name, "Unnamed friend")}
+            </p>
             <div className="flex shrink-0 items-center gap-2">
               <RelationshipTierBadge person={entry.friend} />
               <CareDots level={entry.friend.careLevel} />
@@ -593,11 +603,11 @@ export function FriendsView({
     () =>
       Object.values(persons)
         .filter((person) => person.relationshipStatus === "friend")
-        .sort((left, right) => left.name.localeCompare(right.name)),
+        .sort((left, right) => personName(left).localeCompare(personName(right))),
     [persons],
   );
   const allPersons = useMemo(
-    () => Object.values(persons).sort((left, right) => left.name.localeCompare(right.name)),
+    () => Object.values(persons).sort((left, right) => personName(left).localeCompare(personName(right))),
     [persons],
   );
   const friendsById = useMemo<Record<string, Friend>>(
@@ -1339,7 +1349,7 @@ export function FriendsView({
             </svg>
           </button>
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{selectedPerson?.name}</h2>
+            <h2 className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{personName(selectedPerson)}</h2>
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
               {selectedPerson ? relationshipTierLabelForPerson(selectedPerson) : "Followed"}
             </p>
@@ -1381,7 +1391,7 @@ export function FriendsView({
                 Suggested channels
               </p>
               <p className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
-                Link likely accounts to {selectedPerson.name}.
+                Link likely accounts to {personName(selectedPerson)}.
               </p>
             </div>
           </div>
@@ -1542,7 +1552,7 @@ export function FriendsView({
                 <span>{selectedAccountFeedItems.length.toLocaleString()} captured post{selectedAccountFeedItems.length === 1 ? "" : "s"}</span>
                 <span>•</span>
                 <span>
-                  {linkedPerson ? `Linked to ${linkedPerson.name}` : "Not linked yet"}
+                  {linkedPerson ? `Linked to ${personName(linkedPerson)}` : "Not linked yet"}
                 </span>
               </div>
             </div>
@@ -1672,9 +1682,12 @@ export function FriendsView({
     : selectedPerson
       ? renderSelectedPersonSidebar()
       : renderOverviewSidebar();
-  const showGraphSurface = !isMobile || mobileSurface === "graph";
+  const hasMobileDetailSelection = Boolean(selectedPerson || selectedAccount);
+  const effectiveMobileSurface =
+    isMobile && mobileSurface === "details" && !hasMobileDetailSelection ? "graph" : mobileSurface;
+  const showGraphSurface = !isMobile || effectiveMobileSurface === "graph";
   const showDesktopSidebar = !isMobile && friendsSidebarOpen;
-  const showMobileSidebar = isMobile && mobileSurface === "details";
+  const showMobileSidebar = isMobile && effectiveMobileSurface === "details";
   const showCollapsedSelectionCard =
     !isMobile && !friendsSidebarOpen && (!!selectedPerson || !!selectedAccount);
 

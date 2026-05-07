@@ -373,7 +373,6 @@ export function AppShell({ children }: AppShellProps) {
           <Sidebar
             mobileOpen={mobileSidebarOpen}
             onMobileClose={() => setMobileSidebarOpen(false)}
-            onMobileToggle={() => setMobileSidebarOpen((value) => !value)}
             desktopMode={desktopSidebarMode}
             onDesktopModeChange={persistDesktopSidebarMode}
             onDesktopDisplayModeChange={setDesktopSidebarDisplayMode}

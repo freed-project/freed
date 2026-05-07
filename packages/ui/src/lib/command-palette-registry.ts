@@ -73,6 +73,10 @@ interface BuildCommandPaletteActionsOptions {
 const MAX_TYPED_FEED_ACTIONS = 25;
 const MAX_TYPED_CHANNEL_ACTIONS = 25;
 
+function safeText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
 async function runWithToast(
   runner: () => void | Promise<void>,
   successMessage?: string,
@@ -238,6 +242,11 @@ export function buildCommandPaletteActions({
 
   if (trimmedQuery) {
     for (const feed of feeds
+      .map((feed) => ({
+        url: safeText(feed.url),
+        title: safeText(feed.title, safeText(feed.url)),
+      }))
+      .filter((feed) => feed.url)
       .filter((feed) => candidateMatchesQuery([feed.title, feed.url, "feed", "rss"], normalizedQuery))
       .slice(0, MAX_TYPED_FEED_ACTIONS)) {
       actions.push({
@@ -251,6 +260,7 @@ export function buildCommandPaletteActions({
     }
 
     for (const { account, person, personName } of socialChannels
+      .filter(({ account }) => safeText(account.externalId))
       .filter(({ account, person, personName }) =>
         candidateMatchesQuery(
           [
@@ -259,7 +269,7 @@ export function buildCommandPaletteActions({
             account.handle,
             withoutAtPrefix(account.handle),
             account.externalId,
-            account.externalId.slice(-8),
+            safeText(account.externalId).slice(-8),
             providerLabel(account.provider),
             person?.name,
             personName,
@@ -272,14 +282,15 @@ export function buildCommandPaletteActions({
       .slice(0, MAX_TYPED_CHANNEL_ACTIONS)) {
       const label = accountTitle(account);
       const provider = providerLabel(account.provider);
+      const externalId = safeText(account.externalId);
       actions.push({
-        id: `go-channel-${account.provider}-${account.externalId}`,
+        id: `go-channel-${account.provider}-${externalId}`,
         title: label,
         section: "Go to",
         keywords: [
           provider.toLocaleLowerCase(),
-          account.externalId.toLocaleLowerCase(),
-          account.externalId.slice(-8).toLocaleLowerCase(),
+          externalId.toLocaleLowerCase(),
+          externalId.slice(-8).toLocaleLowerCase(),
           account.handle?.toLocaleLowerCase() ?? "",
           withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
           personName?.toLocaleLowerCase() ?? "",
@@ -287,7 +298,7 @@ export function buildCommandPaletteActions({
           "social",
         ].filter(Boolean),
         entity: true,
-        run: () => navigateToFeed({ platform: account.provider as Platform, authorId: account.externalId }),
+        run: () => navigateToFeed({ platform: account.provider as Platform, authorId: externalId }),
       });
 
       const profileLabel = profileActionLabel(account, person, personName);
@@ -300,7 +311,7 @@ export function buildCommandPaletteActions({
           section: "Go to",
           keywords: [
             profileLabel.toLocaleLowerCase(),
-            account.externalId.toLocaleLowerCase(),
+            externalId.toLocaleLowerCase(),
             account.handle?.toLocaleLowerCase() ?? "",
             withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
             "friends",
@@ -320,7 +331,7 @@ export function buildCommandPaletteActions({
           section: "Go to",
           keywords: [
             profileLabel.toLocaleLowerCase(),
-            account.externalId.toLocaleLowerCase(),
+            externalId.toLocaleLowerCase(),
             account.handle?.toLocaleLowerCase() ?? "",
             withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
             "map",
@@ -342,7 +353,7 @@ export function buildCommandPaletteActions({
             section: "People",
             keywords: [
               profileLabel.toLocaleLowerCase(),
-              account.externalId.toLocaleLowerCase(),
+              externalId.toLocaleLowerCase(),
               account.handle?.toLocaleLowerCase() ?? "",
               withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
               "friend",
@@ -364,7 +375,7 @@ export function buildCommandPaletteActions({
             section: "People",
             keywords: [
               profileLabel.toLocaleLowerCase(),
-              account.externalId.toLocaleLowerCase(),
+              externalId.toLocaleLowerCase(),
               account.handle?.toLocaleLowerCase() ?? "",
               withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
               "close friend",

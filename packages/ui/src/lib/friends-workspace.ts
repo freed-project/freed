@@ -49,6 +49,14 @@ function sourceKey(platform: string, authorId: string): string {
   return `${platform}:${authorId}`;
 }
 
+function safeText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function compareText(left: unknown, right: unknown): number {
+  return safeText(left).localeCompare(safeText(right));
+}
+
 export function buildFriendsWorkspaceIndexes(
   accounts: Record<string, Account>,
   feedItems: Record<string, FeedItem>,
@@ -163,12 +171,12 @@ function matchesQuery(friend: Friend, query: string): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
 
-  if (friend.name.toLowerCase().includes(normalized)) return true;
+  if (safeText(friend.name).toLowerCase().includes(normalized)) return true;
   if (friend.bio?.toLowerCase().includes(normalized)) return true;
   return friend.sources.some((source) =>
     source.handle?.toLowerCase().includes(normalized)
     || source.displayName?.toLowerCase().includes(normalized)
-    || source.authorId.toLowerCase().includes(normalized)
+    || safeText(source.authorId).toLowerCase().includes(normalized)
   );
 }
 
@@ -210,18 +218,18 @@ function sortEntries(entries: FriendOverviewEntry[], sort: FriendOverviewSort): 
       case "care_level":
         return b.friend.careLevel - a.friend.careLevel
           || compareNullableDesc(a.lastPostAt, b.lastPostAt)
-          || a.friend.name.localeCompare(b.friend.name);
+          || compareText(a.friend.name, b.friend.name);
       case "last_contact":
         return compareNullableDesc(a.lastContactAt, b.lastContactAt)
           || compareNullableDesc(a.lastPostAt, b.lastPostAt)
-          || a.friend.name.localeCompare(b.friend.name);
+          || compareText(a.friend.name, b.friend.name);
       case "name":
-        return a.friend.name.localeCompare(b.friend.name);
+        return compareText(a.friend.name, b.friend.name);
       case "recent_activity":
       default:
         return compareNullableDesc(a.lastPostAt, b.lastPostAt)
           || b.friend.careLevel - a.friend.careLevel
-          || a.friend.name.localeCompare(b.friend.name);
+          || compareText(a.friend.name, b.friend.name);
     }
   });
   return next;

@@ -65,6 +65,21 @@ function groupActionsBySection(actions: readonly CommandPaletteAction[]) {
   return sections;
 }
 
+function sortLabel(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function accountSortLabel(account: {
+  displayName?: string;
+  handle?: string;
+  externalId?: string;
+}): string {
+  return sortLabel(account.displayName)
+    || sortLabel(account.handle)
+    || sortLabel(account.externalId)
+    || "";
+}
+
 function PaletteLineIcon({ children }: { children: ReactNode }) {
   return (
     <span
@@ -365,8 +380,12 @@ export function SearchJumpField({
   const enabledFeeds = useMemo(
     () =>
       Object.values(feeds)
-        .filter((feed) => feed.enabled)
-        .sort((left, right) => left.title.localeCompare(right.title)),
+        .filter((feed) => feed.enabled && typeof feed.url === "string" && feed.url.trim())
+        .sort((left, right) => {
+          const leftTitle = sortLabel(left.title, left.url);
+          const rightTitle = sortLabel(right.title, right.url);
+          return leftTitle.localeCompare(rightTitle);
+        }),
     [feeds],
   );
   const socialChannels = useMemo(
@@ -375,7 +394,9 @@ export function SearchJumpField({
         .filter((account) =>
           account.kind === "social" &&
           account.provider !== "rss" &&
-          account.provider !== "saved"
+          account.provider !== "saved" &&
+          typeof account.externalId === "string" &&
+          account.externalId.trim()
         )
         .map((account) => ({
           account,
@@ -383,8 +404,8 @@ export function SearchJumpField({
           personName: account.personId ? persons[account.personId]?.name : undefined,
         }))
         .sort((left, right) => {
-          const leftTitle = left.account.displayName ?? left.account.handle ?? left.account.externalId;
-          const rightTitle = right.account.displayName ?? right.account.handle ?? right.account.externalId;
+          const leftTitle = accountSortLabel(left.account);
+          const rightTitle = accountSortLabel(right.account);
           return leftTitle.localeCompare(rightTitle);
         }),
     [accounts, persons],
@@ -449,7 +470,7 @@ export function SearchJumpField({
         })),
         feeds: enabledFeeds.map((feed) => ({
           url: feed.url,
-          title: feed.title,
+          title: sortLabel(feed.title, feed.url),
         })),
         socialChannels,
         tagFilters,

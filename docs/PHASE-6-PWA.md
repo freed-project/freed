@@ -1,6 +1,6 @@
 # Phase 6: PWA Reader
 
-> **Status:** ✅ Complete (first-run legal gate shipped, public-safe bug reporting shipped, homescreen install flow shipped, offline article and image caching shipped, local reader cache modes shipped)
+> **Status:** ✅ Complete (first-run legal gate shipped, public-safe bug reporting shipped, homescreen install flow shipped, offline article and image caching shipped, local reader cache modes shipped, mobile toolbar and reader polish shipped)
 > **Dependencies:** Phase 4 (Sync Layer), Phase 5 (Desktop App)
 
 ---
@@ -20,6 +20,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 - **Desktop handoff in source settings** — PWA Settings exposes X / Twitter, Facebook, Instagram, and LinkedIn with clear Freed Desktop sync and download handoff states
 - **Blank-state testing escape hatch** — PWA empty states now include a secondary sample-data section below the main handoff prompt for quick local testing
 - **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
+- **Mobile chrome polish:** The PWA mobile toolbar uses balanced menu and format controls, the mobile drawer starts with search, Settings stacks compact sections, and the reader keeps fixed menus plus sane article spacing
 
 ---
 
@@ -250,9 +251,12 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] PWA Settings surfaces X / Twitter, Facebook, Instagram, and LinkedIn with Freed Desktop sync and download handoff states
 - [x] Theme changes in Settings temporarily clear the frosted backdrop on touch devices so the active page treatment stays visible while previewing themes
 - [x] Mobile Settings now open as a full-height sheet with a persistent close button, larger back target, and reliable section jumps instead of snapping back to the last scrolled provider section
+- [x] Mobile Settings use full-size shared settings typography, compact stacked sections, and a dedicated Support modal launched from Danger Zone
 - [x] Shared Settings list panels keep RSS management and OPML previews inside filtered inner scrollers capped to the Settings sheet height
 - [x] Appearance exposes `Show read in grayscale`, and mark-read-on-scroll now subtracts the feed list offset before marking mobile rows as passed
 - [x] The shared floating mobile sidebar now behaves like a real toggle, so the same hamburger button opens and closes it cleanly
+- [x] The mobile toolbar keeps the hamburger furthest left, the format menu furthest right, and viewport-fixed action menus while reader content scrolls
+- [x] Mobile feed and reader gutters are balanced so cards and zoomed reader articles avoid lopsided spacing and excessive blank space under short content
 - [x] Private diagnostics stay opt-in and are clearly separated from public GitHub sharing
 - [x] PWA installable on mobile (add to homescreen) — manifest ids and scope set, browser install notice shipped, iOS Safari homescreen guidance shipped, Playwright coverage added
 - [x] Offline access works (service worker + image cache), article HTML and cacheable reader images are warmed locally for offline reading

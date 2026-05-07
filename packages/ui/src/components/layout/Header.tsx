@@ -26,8 +26,9 @@ import {
 import { Tooltip } from "../Tooltip.js";
 import {
   ArchiveIcon,
-  AnimatedMenuIcon,
+  CloseIcon,
   FilterIcon,
+  MenuIcon,
   ReaderRailHideIcon,
   ReaderRailShowIcon,
   SidebarCollapseIcon,
@@ -1130,12 +1131,10 @@ export function Header({
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
     window.addEventListener("resize", updateToolbarOverflowMenuPosition);
-    window.addEventListener("scroll", updateToolbarOverflowMenuPosition, true);
     return () => {
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKey);
       window.removeEventListener("resize", updateToolbarOverflowMenuPosition);
-      window.removeEventListener("scroll", updateToolbarOverflowMenuPosition, true);
     };
   }, [toolbarOverflowMenuOpen, updateToolbarOverflowMenuPosition]);
 
@@ -1346,11 +1345,11 @@ export function Header({
                   <button
                     onClick={onMobileMenuToggle}
                     {...getToolbarControlProps()}
-                    className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-ghost`}
+                    className={`${TOOLBAR_ICON_BUTTON_CLASS} ${mobileSidebarOpen ? "theme-toolbar-button-neutral" : "theme-toolbar-button-ghost"}`}
                     aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
                     aria-pressed={mobileSidebarOpen}
                   >
-                    <AnimatedMenuIcon open={mobileSidebarOpen} className="h-5 w-5" />
+                    {mobileSidebarOpen ? <CloseIcon className="h-5 w-5" /> : <MenuIcon className="h-5 w-5" />}
                   </button>
                 </Tooltip>
               ) : null}
@@ -1784,29 +1783,10 @@ export function Header({
 
                 <ToolbarAnimatedSlot
                   visible={showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu}
-                  width={showToolbarOverflowMenuButton && showCollapsedToolbarFilterMenu ? "5.375rem" : "2.5rem"}
+                  width={showToolbarOverflowMenuButton && showCollapsedToolbarFilterMenu ? "5rem" : "2.5rem"}
                 >
                   {showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu ? (
-                    <div className="flex items-center gap-2">
-                      {showCollapsedToolbarFilterMenu ? (
-                        <Tooltip label="Filter view">
-                          <button
-                            ref={signalFilterButtonRef}
-                            type="button"
-                            onClick={toggleSignalFilterMenu}
-                            {...getToolbarControlProps()}
-                            data-testid="mobile-toolbar-filter-button"
-                            className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                              isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
-                            }`}
-                            aria-haspopup="menu"
-                            aria-expanded={signalFilterMenuOpen}
-                            aria-label="Filter view"
-                          >
-                            <FilterIcon className="h-5 w-5" />
-                          </button>
-                        </Tooltip>
-                      ) : null}
+                    <div className="flex items-center gap-0">
                       {showToolbarOverflowMenuButton ? (
                         <Tooltip label="More actions">
                           <button
@@ -1823,6 +1803,25 @@ export function Header({
                             aria-label="More actions"
                           >
                             <ToolbarOverflowIcon />
+                          </button>
+                        </Tooltip>
+                      ) : null}
+                      {showCollapsedToolbarFilterMenu ? (
+                        <Tooltip label="Filter view">
+                          <button
+                            ref={signalFilterButtonRef}
+                            type="button"
+                            onClick={toggleSignalFilterMenu}
+                            {...getToolbarControlProps()}
+                            data-testid="mobile-toolbar-filter-button"
+                            className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                              isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
+                            }`}
+                            aria-haspopup="menu"
+                            aria-expanded={signalFilterMenuOpen}
+                            aria-label="Filter view"
+                          >
+                            <FilterIcon className="h-5 w-5" />
                           </button>
                         </Tooltip>
                       ) : null}
