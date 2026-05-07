@@ -3521,8 +3521,9 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
   const viewport = page.getByTestId("friend-graph-viewport");
   await expect(viewport).toBeVisible({ timeout: 10_000 });
   await page.getByRole("button", { name: "Fit all" }).click();
+  await waitForGraphPerfToSettle(page, 20_000);
 
-  const friendPoint = await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" });
+  const friendPoint = await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" }, 20_000);
   await page.mouse.click(friendPoint.x, friendPoint.y);
   await page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
