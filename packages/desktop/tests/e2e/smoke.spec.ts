@@ -2863,7 +2863,15 @@ test("unlinked map markers route into the friends account workflow and can link 
     timeout: 10_000,
   });
   await expect(page.getByText("Link to existing friend")).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("button", { name: /Ada Lovelace/ }).first().click();
+  await page.waitForFunction(() => {
+    const adaRow = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((element) => {
+      const label = element.textContent ?? "";
+      return /Ada Lovelace/i.test(label) && element.getClientRects().length > 0;
+    });
+    if (!adaRow) return false;
+    adaRow.click();
+    return true;
+  }, { timeout: 5_000 });
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
