@@ -2074,7 +2074,6 @@ html.freed-mobile-sidebar-open body {
   -webkit-backdrop-filter: blur(0px) saturate(100%);
 }
 
-html[data-memory-pressure="high"] .theme-settings-overlay,
 html[data-memory-pressure="critical"] .theme-settings-overlay,
 html[data-renderer-safe-mode="true"] .theme-settings-overlay {
   background: rgb(var(--theme-shell-rgb) / 0.18);
@@ -2097,7 +2096,6 @@ html[data-renderer-safe-mode="true"] .theme-settings-overlay {
   -webkit-backdrop-filter: blur(24px) saturate(150%);
 }
 
-html[data-memory-pressure="high"] .theme-dialog-shell,
 html[data-memory-pressure="critical"] .theme-dialog-shell,
 html[data-renderer-safe-mode="true"] .theme-dialog-shell {
   backdrop-filter: none;
@@ -2359,9 +2357,7 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.04), transparent 52%),
     color-mix(in oklab, var(--theme-bg-input) 94%, transparent);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.045),
-    0 8px 18px rgb(0 0 0 / 0.08);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.045);
   padding-right: 3.25rem;
   background-image:
     linear-gradient(45deg, transparent 50%, currentColor 50%),
@@ -2387,8 +2383,7 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   border-color: var(--theme-border-strong);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.05),
-    0 0 0 1px var(--theme-focus-ring),
-    0 12px 28px rgb(0 0 0 / 0.1);
+    0 0 0 1px var(--theme-focus-ring);
 }
 
 .theme-select option {

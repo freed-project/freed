@@ -70,6 +70,8 @@ function makeDocState(): DocState {
     totalArchivableCount: 0,
     archivableCountByPlatform: {},
     archivableFeedCounts: {},
+    mapFriendLocationCount: 0,
+    mapAllContentLocationCount: 0,
   };
 }
 

@@ -121,6 +121,21 @@ async function waitForPwaReady(
   });
 }
 
+async function emulateMobileDevice(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "userAgentData", {
+      configurable: true,
+      value: { mobile: true },
+    });
+    Object.defineProperty(navigator, "maxTouchPoints", {
+      configurable: true,
+      value: 5,
+    });
+  });
+}
+
 async function seedFriendLocation(
   page: import("@playwright/test").Page,
 ): Promise<void> {
@@ -820,6 +835,76 @@ async function seedNavigationFeed(
   }, NAV_FEED_URL);
 }
 
+async function seedSocialReaderItem(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        items: Array<{ globalId: string }>;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddFeedItems([
+      {
+        globalId: "facebook:reader-author:1",
+        platform: "facebook",
+        contentType: "story",
+        capturedAt: now,
+        publishedAt: now - 60_000,
+        author: {
+          id: "reader-author",
+          handle: "reader-author",
+          displayName: "Reader Author",
+        },
+        content: {
+          text: "Social author navigation item",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        preservedContent: {
+          title: "Social Author Navigation Item",
+          byline: "Reader Author",
+          content: "Social author navigation item",
+          textContent: "Social author navigation item",
+          siteName: "Facebook",
+          readingTime: 1,
+          capturedAt: now,
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+        sourceUrl: "https://facebook.com/reader-author/posts/1",
+      },
+    ]);
+
+    await new Promise<void>((resolve, reject) => {
+      const startedAt = Date.now();
+      const interval = window.setInterval(() => {
+        const state = store.getState();
+        if (state.items.some((item) => item.globalId === "facebook:reader-author:1")) {
+          clearInterval(interval);
+          resolve();
+          return;
+        }
+        if (Date.now() - startedAt > 5_000) {
+          clearInterval(interval);
+          reject(new Error("social reader seed timeout"));
+        }
+      }, 50);
+    });
+  });
+}
+
 test.describe("FREED PWA", () => {
   test("first load blocks the app shell until legal consent is accepted", async ({
     page,
@@ -1164,6 +1249,28 @@ test.describe("FREED PWA", () => {
       await page.goForward();
       await expect(page.getByLabel("Back")).toBeVisible();
       await expect.poll(() => new URL(page.url()).search).toBe("?item=rss%3Anavigation%3A1");
+    });
+
+    test("reader author link opens friends and browser back restores the article", async ({ page }) => {
+      await emulateMobileDevice(page);
+      await page.setViewportSize({ width: 430, height: 932 });
+      await page.goto("/");
+      await acceptLegalGate(page);
+      await waitForPwaReady(page);
+      await seedSocialReaderItem(page);
+
+      await page.getByRole("button", { name: /Reader Author.*Social author navigation item/i }).click();
+      await expect(page.getByTestId("reader-article")).toBeVisible();
+
+      await page.getByTestId("reader-author-friends-link").click();
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/friends");
+      await expect(page.getByText("Freed hit a fatal error")).toHaveCount(0);
+      await expect(page.getByLabel("Friends identity graph")).toBeVisible();
+
+      await page.goBack();
+      await expect.poll(() => new URL(page.url()).search).toBe("?item=facebook%3Areader-author%3A1");
+      await expect(page.getByTestId("reader-article")).toBeVisible();
+      await expect(page.getByText("Freed hit a fatal error")).toHaveCount(0);
     });
 
     test("stale item URLs are cleaned up after initialization", async ({ page }) => {
@@ -1538,27 +1645,64 @@ test.describe("FREED PWA", () => {
   });
 
   test("responsive sidebar behavior", async ({ page }) => {
-    // Set mobile viewport
+    await emulateMobileDevice(page);
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto("/");
     await acceptLegalGate(page);
 
-    // Sidebar should be hidden on mobile
     const sidebar = page.getByTestId("app-sidebar-mobile");
     await expect(sidebar).toHaveClass(/-translate-x-full/);
 
-    // Click menu button to open sidebar
     await page.click('button[aria-label="Open menu"]');
 
-    // Sidebar should now be visible
     await expect(sidebar).toHaveClass(/translate-x-0/);
+    await expect
+      .poll(() => sidebar.evaluate((element) => Math.round(element.getBoundingClientRect().left)))
+      .toBe(0);
 
-    // Clicking the same menu button again should close the floating drawer.
-    await page.click('button[aria-label="Close menu"]');
+    const menuButton = page.getByRole("button", { name: "Close menu" });
+    const geometry = await page.evaluate(() => {
+      const button = document.querySelector('button[aria-label="Close menu"]') as HTMLElement | null;
+      const icon = button?.querySelector("[aria-hidden='true']") as HTMLElement | null;
+      const sidebar = document.querySelector('[data-testid="app-sidebar-mobile"]') as HTMLElement | null;
+      const search = sidebar?.querySelector('input[aria-label="Search or run"]') as HTMLElement | null;
+      const firstControl = sidebar?.querySelector("input, button") as HTMLElement | null;
+      const settingsFooter = sidebar?.querySelector('[data-testid="mobile-sidebar-settings-footer"]') as HTMLElement | null;
+      const settingsButton = sidebar?.querySelector('[data-testid="mobile-sidebar-settings-button"]') as HTMLElement | null;
+      if (!button || !icon || !sidebar || !search || !firstControl || !settingsFooter || !settingsButton) {
+        throw new Error("Mobile menu geometry elements were not found");
+      }
+      const buttonRect = button.getBoundingClientRect();
+      const iconRect = icon.getBoundingClientRect();
+      const sidebarRect = sidebar.getBoundingClientRect();
+      const searchRect = search.getBoundingClientRect();
+      const footerRect = settingsFooter.getBoundingClientRect();
+      const settingsButtonRect = settingsButton.getBoundingClientRect();
+      return {
+        centerDelta: Math.abs(
+          (buttonRect.left + buttonRect.width / 2) -
+          (iconRect.left + iconRect.width / 2),
+        ),
+        firstControlIsSearch: firstControl === search,
+        searchTop: Math.round(searchRect.top),
+        sidebarTop: Math.round(sidebarRect.top),
+        footerBottomGap: Math.round(sidebarRect.bottom - footerRect.bottom),
+        dividerToBottom: Math.round(sidebarRect.bottom - footerRect.top),
+        settingsButtonHeight: Math.round(settingsButtonRect.height),
+      };
+    });
+    expect(geometry.centerDelta).toBeLessThanOrEqual(1);
+    expect(geometry.firstControlIsSearch).toBe(true);
+    expect(geometry.searchTop - geometry.sidebarTop).toBeGreaterThanOrEqual(8);
+    expect(geometry.footerBottomGap).toBeLessThanOrEqual(1);
+    expect(geometry.dividerToBottom - geometry.settingsButtonHeight).toBeLessThanOrEqual(2);
+
+    await menuButton.click();
     await expect(sidebar).toHaveClass(/-translate-x-full/);
   });
 
   test("mobile settings opens without hitting recovery", async ({ page }) => {
+    await emulateMobileDevice(page);
     await page.setViewportSize({ width: 393, height: 852 });
     await page.goto("/");
     await acceptLegalGate(page);
@@ -1569,11 +1713,18 @@ test.describe("FREED PWA", () => {
     });
 
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Appearance" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Appearance" })).toHaveCount(0);
+    const overviewFontSize = await page.getByRole("button", { name: "Appearance" }).evaluate((button) =>
+      Number.parseFloat(window.getComputedStyle(button).fontSize),
+    );
+    expect(overviewFontSize).toBeGreaterThanOrEqual(16);
     await expect(page.getByText("Freed hit a fatal error")).toHaveCount(0);
     await expect(page.getByText("Cannot access 'mobileView' before initialization")).toHaveCount(0);
   });
 
-  test("mobile settings navigation keeps the selected heading in sync", async ({ page }) => {
+  test("mobile settings keeps overview and opens support from danger zone", async ({ page }) => {
+    await emulateMobileDevice(page);
     await page.setViewportSize({ width: 393, height: 852 });
     await page.goto("/");
     await acceptLegalGate(page);
@@ -1582,10 +1733,217 @@ test.describe("FREED PWA", () => {
     await page.getByRole("button", { name: "Settings" }).evaluate((element) => {
       (element as HTMLButtonElement).click();
     });
-    await page.getByRole("button", { name: "Updates", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Appearance" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Support", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Appearance" })).toHaveCount(0);
 
+    await page.getByRole("button", { name: "Updates" }).click();
     await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Updates");
-    await expect(page.getByText("Installed version:", { exact: false }).first()).toBeVisible();
+
+    const scrollContainer = page.getByTestId("settings-scroll-container");
+    await scrollContainer.evaluate((container) => {
+      const updates = container.querySelector('[data-section="updates"]') as HTMLElement | null;
+      updates?.scrollIntoView();
+    });
+    const sectionMetrics = await scrollContainer.evaluate((container) => {
+      const updates = container.querySelector('[data-section="updates"]') as HTMLElement | null;
+      const legal = container.querySelector('[data-section="legal"]') as HTMLElement | null;
+      if (!updates || !legal) {
+        throw new Error("Expected mobile settings sections were not found");
+      }
+      const containerRect = container.getBoundingClientRect();
+      const updatesRect = updates.getBoundingClientRect();
+      const legalRect = legal.getBoundingClientRect();
+      return {
+        updatesVisible: updatesRect.bottom > containerRect.top && updatesRect.top < containerRect.bottom,
+        legalVisible: legalRect.bottom > containerRect.top && legalRect.top < containerRect.bottom,
+        sectionGap: Math.round(legalRect.top - updatesRect.bottom),
+      };
+    });
+    expect(sectionMetrics.updatesVisible).toBe(true);
+    expect(sectionMetrics.legalVisible).toBe(true);
+    expect(sectionMetrics.sectionGap).toBeGreaterThanOrEqual(24);
+    expect(sectionMetrics.sectionGap).toBeLessThanOrEqual(64);
+
+    await page.getByLabel("Back to settings").click();
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await page.getByRole("button", { name: "Danger Zone" }).click();
+    await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Danger Zone");
+
+    await scrollContainer.evaluate((container) => {
+      const danger = container.querySelector('[data-section="danger"]') as HTMLElement | null;
+      danger?.scrollIntoView();
+    });
+    const supportButton = page.getByRole("button", { name: /Submit support ticket/ });
+    const debugButton = page.getByRole("button", { name: /Open Debug Panel/ });
+    await expect(supportButton).toBeVisible();
+    await expect(debugButton).toBeVisible();
+    const dangerOrder = await page.evaluate(() => {
+      const support = Array.from(document.querySelectorAll("button")).find((button) =>
+        button.textContent?.includes("Submit support ticket"),
+      ) as HTMLElement | undefined;
+      const debug = Array.from(document.querySelectorAll("button")).find((button) =>
+        button.textContent?.includes("Open Debug Panel"),
+      ) as HTMLElement | undefined;
+      if (!support || !debug) {
+        throw new Error("Danger buttons were not found");
+      }
+      return support.getBoundingClientRect().top < debug.getBoundingClientRect().top;
+    });
+    expect(dangerOrder).toBe(true);
+
+    await supportButton.click();
+    await expect(page.getByRole("heading", { name: "Support" })).toBeVisible();
+    await expect(page.getByText("What happened?", { exact: false })).toBeVisible();
+  });
+
+  test("mobile toolbar balances menu and format controls", async ({ page }) => {
+    await emulateMobileDevice(page);
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await waitForPwaReady(page);
+    await seedNavigationFeed(page);
+
+    const menuButton = page.getByRole("button", { name: "Open menu" });
+    const overflowButton = page.getByTestId("toolbar-overflow-button");
+    const formatButton = page.getByTestId("mobile-toolbar-filter-button");
+    await expect(menuButton).toBeVisible();
+    await expect(overflowButton).toBeVisible();
+    await expect(formatButton).toBeVisible();
+
+    const geometry = await page.evaluate(() => {
+      const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+      const menu = document.querySelector('button[aria-label="Open menu"]') as HTMLElement | null;
+      const overflow = document.querySelector('[data-testid="toolbar-overflow-button"]') as HTMLElement | null;
+      const format = document.querySelector('[data-testid="mobile-toolbar-filter-button"]') as HTMLElement | null;
+      const menuIcon = menu?.querySelector("[aria-hidden='true']") as HTMLElement | null;
+      const formatIcon = format?.querySelector("svg") as SVGElement | null;
+      if (!toolbar || !menu || !overflow || !format || !menuIcon || !formatIcon) {
+        throw new Error("Mobile toolbar buttons were not found");
+      }
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      const menuIconRect = menuIcon.getBoundingClientRect();
+      const menuBarWidths = Array.from(menuIcon.querySelectorAll("path"))
+        .map((path) => (path as SVGGraphicsElement).getBBox().width)
+        .filter((width) => width > 0);
+      const menuVisibleLeft = Math.min(
+        ...Array.from(menuIcon.querySelectorAll("path"))
+          .map((path) => (path as SVGGraphicsElement).getBBox().x)
+          .map((x) => menuIconRect.left + (x / 24) * menuIconRect.width),
+      );
+      const overflowRect = overflow.getBoundingClientRect();
+      const formatRect = format.getBoundingClientRect();
+      const formatIconRect = formatIcon.getBoundingClientRect();
+      return {
+        toolbarLeft: toolbarRect.left,
+        toolbarRight: toolbarRect.right,
+        menuLeft: menuRect.left,
+        menuRight: menuRect.right,
+        menuIconLeft: menuIconRect.left,
+        menuVisibleLeft,
+        menuBarWidths,
+        overflowRight: overflowRect.right,
+        formatLeft: formatRect.left,
+        formatRight: formatRect.right,
+        formatIconRight: formatIconRect.right,
+        viewportRight: window.innerWidth,
+        widths: [menuRect.width, overflowRect.width, formatRect.width],
+      };
+    });
+    expect(
+      Math.abs((geometry.menuVisibleLeft - geometry.toolbarLeft) - (geometry.toolbarRight - geometry.formatIconRight)),
+      JSON.stringify(geometry),
+    ).toBeLessThanOrEqual(2);
+    for (const barWidth of geometry.menuBarWidths) {
+      expect(Math.abs(barWidth - geometry.menuBarWidths[0])).toBeLessThanOrEqual(1);
+    }
+    expect(geometry.menuLeft).toBeLessThan(geometry.overflowRight);
+    expect(geometry.overflowRight).toBeLessThanOrEqual(geometry.formatLeft);
+    expect(geometry.formatRight).toBeGreaterThan(geometry.overflowRight);
+    for (const width of geometry.widths) {
+      expect(Math.abs(width - 40)).toBeLessThanOrEqual(1);
+    }
+
+    await overflowButton.click();
+    const menuTop = await page.getByTestId("toolbar-overflow-menu").evaluate((menu) =>
+      Math.round(menu.getBoundingClientRect().top),
+    );
+    await page.evaluate(() => window.scrollBy(0, 180));
+    await expect
+      .poll(() => page.getByTestId("toolbar-overflow-menu").evaluate((menu) =>
+        Math.round(menu.getBoundingClientRect().top),
+      ))
+      .toBe(menuTop);
+  });
+
+  test("mobile feed and reader spacing stay balanced", async ({ page }) => {
+    await emulateMobileDevice(page);
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await waitForPwaReady(page);
+    await seedNavigationFeed(page);
+
+    const firstCard = page.locator(".feed-card").filter({ hasText: "Navigation Item One" }).first();
+    await expect(firstCard).toBeVisible();
+
+    const spacing = await page.evaluate(() => {
+      const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+      const card = document.querySelector(".feed-card") as HTMLElement | null;
+      if (!toolbar || !card) {
+        throw new Error("Feed spacing elements were not found");
+      }
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+      return {
+        leftGap: Math.round(cardRect.left),
+        topGap: Math.round(cardRect.top - toolbarRect.bottom),
+      };
+    });
+    expect(Math.abs(spacing.leftGap - spacing.topGap)).toBeLessThanOrEqual(1);
+
+    await firstCard.click();
+    const reader = page.getByTestId("reader-article");
+    await expect(reader).toBeVisible();
+    const readerMetrics = await reader.evaluate((article) => {
+      const style = window.getComputedStyle(article);
+      return {
+        bodyOverflow: document.body.style.overflow,
+        paddingLeft: Number.parseFloat(style.paddingLeft),
+        paddingRight: Number.parseFloat(style.paddingRight),
+      };
+    });
+    expect(readerMetrics.bodyOverflow).toBe("hidden");
+    expect(readerMetrics.paddingLeft).toBeGreaterThanOrEqual(20);
+    expect(readerMetrics.paddingRight).toBeGreaterThanOrEqual(20);
+  });
+
+  test("inline reader does not add a second toolbar divider", async ({ page }) => {
+    await page.setViewportSize({ width: 430, height: 932 });
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await waitForPwaReady(page);
+    await seedNavigationFeed(page);
+
+    const firstCard = page.locator(".feed-card").filter({ hasText: "Navigation Item One" }).first();
+    await expect(firstCard).toBeVisible();
+    await firstCard.click();
+
+    const reader = page.getByTestId("reader-article");
+    await expect(reader).toBeVisible();
+    const metrics = await reader.evaluate((article) => {
+      const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+      const scroller = article.parentElement;
+      return {
+        toolbarVisible: !!toolbar,
+        scrollerHasFadeMask: scroller?.classList.contains("theme-scroll-fade-y") ?? false,
+      };
+    });
+    expect(metrics.toolbarVisible).toBe(true);
+    expect(metrics.scrollerHasFadeMask).toBe(false);
   });
 
   test("app has correct colors and styling", async ({ page }) => {

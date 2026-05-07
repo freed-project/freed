@@ -84,6 +84,10 @@ interface AuthorCandidate {
   avatarUrl?: string;
 }
 
+function safeText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
 function useAuthorCandidates(
   existingSources: FriendSource[],
   allFriends: Record<string, Friend>
@@ -119,7 +123,7 @@ function useAuthorCandidates(
     }
 
     return Array.from(seen.values()).sort((a, b) =>
-      a.displayName.localeCompare(b.displayName)
+      safeText(a.displayName).localeCompare(safeText(b.displayName))
     );
   }, [items, existingSources, allFriends]);
 }

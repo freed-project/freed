@@ -37,18 +37,29 @@ async function loadMonitor() {
   return import("./memory-monitor");
 }
 
+async function flushPromises(count = 4): Promise<void> {
+  for (let index = 0; index < count; index += 1) {
+    await Promise.resolve();
+  }
+}
+
 function blockedPreparation() {
   const after = {
     totalPhysicalMemoryBytes: 16 * 1024 * 1024 * 1024,
     processResidentBytes: 64 * 1024 * 1024,
+    processFootprintBytes: 64 * 1024 * 1024,
     processVirtualBytes: 256 * 1024 * 1024,
     appResidentBytes: 3 * 1024 * 1024 * 1024,
+    appMemoryPressureBytes: 3 * 1024 * 1024 * 1024,
     webkitResidentBytes: 96 * 1024 * 1024,
+    webkitFootprintBytes: 96 * 1024 * 1024,
     webkitVirtualBytes: 512 * 1024 * 1024,
     webkitProcessId: 12345,
     webkitTotalResidentBytes: 96 * 1024 * 1024,
+    webkitTotalFootprintBytes: 96 * 1024 * 1024,
     webkitProcessCount: 1,
     webkitLargestResidentBytes: 96 * 1024 * 1024,
+    webkitLargestFootprintBytes: 96 * 1024 * 1024,
     webkitLargestProcessId: 12345,
     webkitLargestCpuUsage: 0,
     webkitLargestAgeSeconds: 10,
@@ -93,5 +104,36 @@ describe("social scrape memory preflight scheduling", () => {
     await vi.advanceTimersByTimeAsync(60_001);
     await monitor.prepareSocialScrapeMemory("linkedin", "feed scrape");
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it("trims oversized WebKit cache during normal memory sampling", async () => {
+    const gib = 1024 * 1024 * 1024;
+    const after = {
+      ...blockedPreparation().after,
+      appResidentBytes: 512 * 1024 * 1024,
+      webkitCacheBytes: 900 * 1024 * 1024,
+      memoryHighBytes: 3 * gib,
+      memoryCriticalBytes: 4 * gib,
+    };
+    mocks.invoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_runtime_memory_stats") {
+        return Promise.resolve(after);
+      }
+      if (cmd === "trim_webkit_network_cache_now") {
+        return Promise.resolve({
+          beforeBytes: 900 * 1024 * 1024,
+          afterBytes: 512 * 1024 * 1024,
+          cacheTrimmed: true,
+        });
+      }
+      return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+    });
+    const monitor = await loadMonitor();
+
+    monitor.startMemoryMonitor();
+
+    await flushPromises();
+    expect(mocks.invoke).toHaveBeenCalledWith("trim_webkit_network_cache_now");
+    monitor.stopMemoryMonitor();
   });
 });

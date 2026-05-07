@@ -18,6 +18,7 @@ import {
   igPostsToFeedItems,
   deduplicateFeedItems,
 } from "@freed/capture-instagram/browser";
+import { formatClockTime } from "@freed/ui/lib/date-format";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getIgScraperWindowMode } from "./scraper-prefs";
@@ -183,7 +184,7 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
   const startedAt = Date.now();
   const providerPause = getProviderPause("instagram");
   if (providerPause) {
-    addDebugEvent("change", `[IG] paused until ${new Date(providerPause.pausedUntil).toLocaleTimeString()}`);
+    addDebugEvent("change", `[IG] paused until ${formatClockTime(providerPause.pausedUntil)}`);
     return {
       items: [],
       diag: {

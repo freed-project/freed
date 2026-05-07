@@ -27,6 +27,7 @@ import type {
 } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
 import {
+  buildIdentityGraphLayout,
   buildSpatialIndex,
   findHitNode,
   fitTransformToNodes,
@@ -125,6 +126,8 @@ type PinchState = {
   pointerIds: [number, number];
   initialDistance: number;
   initialScale: number;
+  initialMidpoint: TouchPoint;
+  initialWorldPoint: TouchPoint;
   moved: boolean;
 };
 
@@ -135,6 +138,8 @@ interface PixiScene {
   regionLabelLayer: Container;
   edgeLayer: Graphics;
   edgeHighlightLayer: Graphics;
+  denseNodeLayer: Graphics;
+  denseInteractionNodeLayer: Graphics;
   nodeLayer: Container;
   hoverLayer: Graphics;
   labelLayer: Container;
@@ -146,10 +151,10 @@ interface PixiScene {
 interface NodeDisplay {
   container: Container;
   outer: Graphics;
-  avatarSprite: Sprite;
-  avatarMask: Graphics;
+  avatarSprite: Sprite | null;
+  avatarMask: Graphics | null;
   inner: Graphics | null;
-  initials: Text;
+  initials: Text | null;
   providerDot: Graphics | null;
   highlightRing: Graphics;
 }
@@ -171,14 +176,26 @@ interface RegionDisplay {
   text: Text;
 }
 
+type GraphDebugNode = Pick<
+  IdentityGraphLayoutNode,
+  "id" | "personId" | "accountId" | "feedUrl" | "linkedPersonId" | "kind" | "x" | "y" | "radius"
+>;
+
 const DEFAULT_HEIGHT = 560;
 const FIT_PADDING = 84;
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 2.8;
 const TRACKPAD_PINCH_ZOOM_SPEED = 0.005;
 const GRAPH_INTERACTION_SETTLE_DELAY_MS = 140;
+const GRAPH_LAYOUT_WORKER_TIMEOUT_MS = 4_000;
 const INTERACTIVE_LABEL_LIMIT = 16;
 const SETTLED_LABEL_LIMIT = 32;
+const FAST_LAYOUT_NODE_THRESHOLD = 1_600;
+const NODE_LAYER_TEXTURE_CACHE_MAX_NODES = 1_200;
+const INTERACTIVE_NODE_CULL_THRESHOLD = 1_200;
+const DENSE_GRAPH_SINGLE_LAYER_THRESHOLD = 1_200;
+const DENSE_INTERACTION_NODE_LIMIT = 900;
+const DENSE_INTERACTION_VIEWPORT_PADDING = 96;
 const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
 const RELATIONSHIP_TIER_DROP_SELECTOR = "[data-friend-tier-drop-value]";
 
@@ -218,6 +235,7 @@ interface GraphPerfSnapshot {
   edgeRebuildCount: number;
   nodeRestyleCount: number;
   labelLayoutCount: number;
+  avatarDisplayCount: number;
   visibleLabelCount: number;
   visibleNodeLabelCount: number;
   visibleProviderLabelCount: number;
@@ -473,41 +491,16 @@ function nodePosition(
 
 function createNodeDisplay(
   node: IdentityGraphLayoutNode,
-  palette: GraphThemePalette,
-  themeId?: ThemeId,
 ): NodeDisplay {
-  const nodePalette = kindColor(node, palette);
   const container = new Container();
   const outer = new Graphics();
   container.addChild(outer);
-
-  const avatarSprite = new Sprite(Texture.EMPTY);
-  avatarSprite.anchor.set(0.5);
-  avatarSprite.visible = false;
-  container.addChild(avatarSprite);
-
-  const avatarMask = new Graphics();
-  container.addChild(avatarMask);
-  avatarSprite.mask = avatarMask;
 
   let inner: Graphics | null = null;
   if (node.kind === "friend_person" || node.kind === "connection_person") {
     inner = new Graphics();
     container.addChild(inner);
   }
-
-  const initials = new Text(
-    node.initials ?? "",
-    new TextStyle({
-      fill: nodePalette.text,
-      fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
-      fontSize: Math.max(9, node.radius * 0.48),
-      fontWeight: "700",
-      letterSpacing: node.kind === "account" || node.kind === "feed" ? 0 : 1,
-    }),
-  );
-  initials.anchor.set(0.5);
-  container.addChild(initials);
 
   let providerDot: Graphics | null = null;
   if (node.kind === "account") {
@@ -521,13 +514,58 @@ function createNodeDisplay(
   return {
     container,
     outer,
-    avatarSprite,
-    avatarMask,
+    avatarSprite: null,
+    avatarMask: null,
     inner,
-    initials,
+    initials: null,
     providerDot,
     highlightRing,
   };
+}
+
+function ensureAvatarDisplay(
+  display: NodeDisplay,
+): { avatarSprite: Sprite; avatarMask: Graphics } {
+  if (display.avatarSprite && display.avatarMask) {
+    return {
+      avatarSprite: display.avatarSprite,
+      avatarMask: display.avatarMask,
+    };
+  }
+
+  const avatarSprite = new Sprite(Texture.EMPTY);
+  avatarSprite.anchor.set(0.5);
+  avatarSprite.visible = false;
+
+  const avatarMask = new Graphics();
+  avatarSprite.mask = avatarMask;
+
+  const outerIndex = display.outer.parent === display.container
+    ? display.container.getChildIndex(display.outer)
+    : -1;
+  const spriteIndex = Math.min(display.container.children.length, Math.max(0, outerIndex + 1));
+  display.container.addChildAt(avatarSprite, spriteIndex);
+  const maskIndex = Math.min(display.container.children.length, spriteIndex + 1);
+  display.container.addChildAt(avatarMask, maskIndex);
+
+  display.avatarSprite = avatarSprite;
+  display.avatarMask = avatarMask;
+  return { avatarSprite, avatarMask };
+}
+
+function ensureInitialsDisplay(
+  display: NodeDisplay,
+): Text {
+  if (display.initials) return display.initials;
+
+  const initials = new Text("", new TextStyle({ fontSize: 10 }));
+  initials.anchor.set(0.5);
+  const insertIndex = display.highlightRing.parent === display.container
+    ? display.container.getChildIndex(display.highlightRing)
+    : display.container.children.length;
+  display.container.addChildAt(initials, insertIndex);
+  display.initials = initials;
+  return initials;
 }
 
 function createLabelDisplay(themeId?: ThemeId): LabelDisplay {
@@ -603,6 +641,105 @@ function graphFitItems(layout: IdentityGraphLayout): Array<{ x: number; y: numbe
   ];
 }
 
+function buildNodeById(nodes: IdentityGraphLayoutNode[]): Map<string, IdentityGraphLayoutNode> {
+  return new Map(nodes.map((node) => [node.id, node]));
+}
+
+function buildGraphDebugNodes(nodes: IdentityGraphLayoutNode[]): GraphDebugNode[] {
+  return nodes.map((node) => ({
+    id: node.id,
+    personId: node.personId,
+    accountId: node.accountId,
+    feedUrl: node.feedUrl,
+    linkedPersonId: node.linkedPersonId,
+    kind: node.kind,
+    x: node.x,
+    y: node.y,
+    radius: node.radius,
+  }));
+}
+
+function isNodeNearViewport(
+  node: IdentityGraphLayoutNode,
+  transform: ViewTransform,
+  width: number,
+  height: number,
+  padding: number,
+): boolean {
+  const point = screenPointForPosition(node, transform);
+  const screenRadius = node.radius * transform.scale;
+  return (
+    point.x + screenRadius >= -padding &&
+    point.x - screenRadius <= width + padding &&
+    point.y + screenRadius >= -padding &&
+    point.y - screenRadius <= height + padding
+  );
+}
+
+function shouldLoadNodeAvatar({
+  node,
+  transform,
+  width,
+  height,
+  selectedOrHighlighted,
+  qualityMode,
+}: {
+  node: IdentityGraphLayoutNode;
+  transform: ViewTransform;
+  width: number;
+  height: number;
+  selectedOrHighlighted: boolean;
+  qualityMode: GraphQualityMode;
+}): boolean {
+  if (selectedOrHighlighted) return true;
+  if (qualityMode === "interactive") return false;
+  if (node.radius * transform.scale < 14) return false;
+  if (transform.scale < 0.68) return false;
+  return isNodeNearViewport(node, transform, width, height, 120);
+}
+
+function shouldShowNodeInitials({
+  node,
+  transform,
+  width,
+  height,
+  selectedOrHighlighted,
+  qualityMode,
+}: {
+  node: IdentityGraphLayoutNode;
+  transform: ViewTransform;
+  width: number;
+  height: number;
+  selectedOrHighlighted: boolean;
+  qualityMode: GraphQualityMode;
+}): boolean {
+  if (selectedOrHighlighted) return true;
+  if (qualityMode === "interactive") return false;
+  if (node.radius * transform.scale < 18) return false;
+  return isNodeNearViewport(node, transform, width, height, 80);
+}
+
+function drawDenseGraphNode(
+  layer: Graphics,
+  node: IdentityGraphLayoutNode,
+  graphPalette: GraphThemePalette,
+) {
+  const palette = kindColor(node, graphPalette);
+  const fillAlpha = node.kind === "feed" ? 0.66 : node.kind === "account" ? 0.84 : 0.9;
+  layer.lineStyle(1.1, palette.stroke, 0.58);
+  layer.beginFill(palette.fill, fillAlpha);
+  layer.drawCircle(node.x, node.y, node.radius);
+  layer.endFill();
+  if (node.friendSuggestionConfidence) {
+    layer.lineStyle(
+      node.friendSuggestionConfidence === "high" ? 2 : 1.4,
+      graphPalette.highlight,
+      node.friendSuggestionConfidence === "high" ? 0.44 : 0.3,
+    );
+    layer.drawCircle(node.x, node.y, node.radius + 5);
+  }
+}
+
 function countLinkedAccountChanges(
   previousModel: IdentityGraphModel | null,
   nextModel: IdentityGraphModel,
@@ -662,6 +799,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const pixiRef = useRef<PixiScene | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const layoutRef = useRef<IdentityGraphLayout>({ nodes: [], edges: [], regions: [] });
+  const layoutNodeByIdRef = useRef<Map<string, IdentityGraphLayoutNode>>(new Map());
+  const layoutDebugNodesRef = useRef<GraphDebugNode[]>([]);
   const spatialIndexRef = useRef<SpatialIndex>({ cellSize: 96, buckets: new Map() });
   const dragStateRef = useRef<DragState | null>(null);
   const pinchStateRef = useRef<PinchState | null>(null);
@@ -671,7 +810,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const hasFittedInitialLayoutRef = useRef(false);
   const latestLayoutRequestIdRef = useRef(0);
   const latestResolvedLayoutRequestIdRef = useRef(0);
+  const pendingLayoutTimeoutsRef = useRef<Map<number, number>>(new Map());
   const drawRafRef = useRef(0);
+  const drawRafPendingRef = useRef(false);
   const settleTimerRef = useRef<number | null>(null);
   const lastStaticRenderKeyRef = useRef("");
   const lastSelectionStyleKeyRef = useRef("");
@@ -679,6 +820,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const visibleLabelIdsRef = useRef<string[]>([]);
   const textStyleCacheRef = useRef<Map<string, TextStyle>>(new Map());
   const avatarTextureCacheRef = useRef<Map<string, AvatarTextureCacheEntry>>(new Map());
+  const paletteCacheRef = useRef<{ key: string; value: GraphThemePalette } | null>(null);
+  const highlightedNodeIdsRef = useRef<{
+    key: string;
+    value: Set<string>;
+  }>({ key: "", value: new Set() });
   const previousRequestedModelRef = useRef<IdentityGraphModel | null>(null);
   const previousRequestSnapshotRef = useRef<{
     signature: string;
@@ -689,6 +835,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const graphQualityModeRef = useRef<GraphQualityMode>("settled");
   const layoutReadyRef = useRef(false);
   const syncSceneRef = useRef<() => void>(() => {});
+  const canvasSizeRef = useRef({ width: 900, height: DEFAULT_HEIGHT });
   const perfSnapshotRef = useRef<GraphPerfSnapshot>({
     modelBuildMs: 0,
     layoutMs: 0,
@@ -700,12 +847,14 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     edgeRebuildCount: 0,
     nodeRestyleCount: 0,
     labelLayoutCount: 0,
+    avatarDisplayCount: 0,
     visibleLabelCount: 0,
     visibleNodeLabelCount: 0,
     visibleProviderLabelCount: 0,
     qualityMode: "settled",
   });
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: DEFAULT_HEIGHT });
+  canvasSizeRef.current = canvasSize;
   const [isInteracting, setIsInteracting] = useState(false);
   const [layoutReady, setLayoutReady] = useState(false);
   const [layoutVersion, setLayoutVersion] = useState(0);
@@ -759,16 +908,46 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const drag = dragStateRef.current;
     const transform = transformRef.current;
     const qualityMode = graphQualityModeRef.current;
-    const graphPalette = readGraphThemePalette(containerRef.current);
+    const paletteKey = themeId ?? "default";
+    if (paletteCacheRef.current?.key !== paletteKey) {
+      paletteCacheRef.current = {
+        key: paletteKey,
+        value: readGraphThemePalette(containerRef.current),
+      };
+    }
+    const graphPalette = paletteCacheRef.current.value;
     const hoveredNodeId = hoveredNodeIdRef.current;
-    const highlighted = buildHighlightedNodeIds(
-      layoutRef.current,
-      selectedPersonId,
-      selectedAccountId,
-    );
+    const highlightKey = [
+      layoutVersion,
+      selectedPersonId ?? "",
+      selectedAccountId ?? "",
+    ].join("|");
+    if (highlightedNodeIdsRef.current.key !== highlightKey) {
+      highlightedNodeIdsRef.current = {
+        key: highlightKey,
+        value: buildHighlightedNodeIds(
+          layoutRef.current,
+          selectedPersonId,
+          selectedAccountId,
+        ),
+      };
+    }
+    const highlighted = highlightedNodeIdsRef.current.value;
     const accountDrag = drag?.kind === "account-drag" ? drag : null;
-    const nodeById = new Map(layoutRef.current.nodes.map((node) => [node.id, node]));
+    const nodeById = layoutNodeByIdRef.current;
     const avatarCache = avatarTextureCacheRef.current;
+    const graphNodeCount = layoutRef.current.nodes.length;
+    const denseRenderMode =
+      graphNodeCount >= DENSE_GRAPH_SINGLE_LAYER_THRESHOLD &&
+      !accountDrag &&
+      highlighted.size === 0
+        ? "dense"
+        : "containers";
+    const useDenseInteractionLayer =
+      denseRenderMode === "dense" &&
+      qualityMode === "interactive" &&
+      !accountDrag &&
+      highlighted.size === 0;
     const queueAvatarRefresh = () => {
       lastStaticRenderKeyRef.current = "";
       requestAnimationFrame(() => syncSceneRef.current());
@@ -778,12 +957,37 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       themeId ?? "",
       accountDrag?.accountId ?? "",
       accountDrag?.dropTargetPersonId ?? "",
+      denseRenderMode,
     ].join("|");
     let didStaticRender = false;
     let didLabelLayout = false;
 
     scene.world.position.set(transform.x, transform.y);
     scene.world.scale.set(transform.scale);
+    const isInteractivePaint = qualityMode === "interactive" && !accountDrag;
+    const shouldCacheNodeLayer =
+      isInteractivePaint &&
+      denseRenderMode !== "dense" &&
+      drag?.kind !== "person-drag" &&
+      graphNodeCount >= 600 &&
+      graphNodeCount <= NODE_LAYER_TEXTURE_CACHE_MAX_NODES;
+    const selectionStyleKey = [
+      layoutVersion,
+      selectedPersonId ?? "",
+      selectedAccountId ?? "",
+      themeId ?? "",
+      accountDrag?.dropTargetPersonId ?? "",
+    ].join("|");
+    const nodeStyleWillChange =
+      lastStaticRenderKeyRef.current !== staticRenderKey ||
+      lastSelectionStyleKeyRef.current !== selectionStyleKey ||
+      !!accountDrag;
+    if (scene.nodeLayer.isCachedAsTexture && (!shouldCacheNodeLayer || nodeStyleWillChange)) {
+      scene.nodeLayer.cacheAsTexture(false);
+    }
+    scene.edgeLayer.visible = !isInteractivePaint;
+    scene.edgeHighlightLayer.visible = highlighted.size > 0;
+    scene.regionLabelLayer.visible = !isInteractivePaint;
 
     if (lastStaticRenderKeyRef.current !== staticRenderKey || !!accountDrag) {
       didStaticRender = true;
@@ -831,157 +1035,234 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       }
       perfSnapshotRef.current.edgeRebuildCount += 1;
 
-      const staleNodeIds = new Set(scene.nodeDisplays.keys());
-      for (const node of layoutRef.current.nodes) {
-        staleNodeIds.delete(node.id);
-        let display = scene.nodeDisplays.get(node.id);
-        if (!display) {
-          display = createNodeDisplay(node, graphPalette, themeId);
-          scene.nodeDisplays.set(node.id, display);
-          scene.nodeLayer.addChild(display.container);
+      scene.denseNodeLayer.visible = denseRenderMode === "dense" && !useDenseInteractionLayer;
+      scene.denseInteractionNodeLayer.visible = useDenseInteractionLayer;
+      scene.nodeLayer.visible = denseRenderMode !== "dense";
+      if (denseRenderMode === "dense") {
+        scene.denseNodeLayer.clear();
+        scene.denseInteractionNodeLayer.clear();
+        for (const staleDisplay of scene.nodeDisplays.values()) {
+          scene.nodeLayer.removeChild(staleDisplay.container);
+          staleDisplay.container.destroy({ children: true });
         }
+        scene.nodeDisplays.clear();
+        for (const node of layoutRef.current.nodes) {
+          drawDenseGraphNode(scene.denseNodeLayer, node, graphPalette);
+        }
+      } else {
+        scene.denseNodeLayer.clear();
+        scene.denseInteractionNodeLayer.clear();
+        const staleNodeIds = new Set(scene.nodeDisplays.keys());
+        for (const node of layoutRef.current.nodes) {
+          staleNodeIds.delete(node.id);
+          let display = scene.nodeDisplays.get(node.id);
+          if (!display) {
+            display = createNodeDisplay(node);
+            scene.nodeDisplays.set(node.id, display);
+            scene.nodeLayer.addChild(display.container);
+          }
 
-        const palette = kindColor(node, graphPalette);
-        const alpha = nodeAlpha(
-          node,
-          highlighted,
-          accountDrag?.dropTargetPersonId ?? null,
-        );
-        const position = nodePosition(node, drag);
-        display.container.position.set(position.x, position.y);
-        display.container.alpha = alpha;
+          const palette = kindColor(node, graphPalette);
+          const alpha = nodeAlpha(
+            node,
+            highlighted,
+            accountDrag?.dropTargetPersonId ?? null,
+          );
+          const position = nodePosition(node, drag);
+          display.container.position.set(position.x, position.y);
+          display.container.alpha = alpha;
 
-        display.outer.clear();
-        display.outer.lineStyle(
-          1.4,
-          palette.stroke,
-          0.72,
-        );
-        display.outer.beginFill(
-          palette.fill,
-          node.kind === "feed" ? 0.72 : node.kind === "account" ? 0.9 : 0.96,
-        );
-        display.outer.drawCircle(0, 0, node.radius);
-        display.outer.endFill();
+          display.outer.clear();
+          display.outer.lineStyle(
+            1.4,
+            palette.stroke,
+            0.72,
+          );
+          display.outer.beginFill(
+            palette.fill,
+            node.kind === "feed" ? 0.72 : node.kind === "account" ? 0.9 : 0.96,
+          );
+          display.outer.drawCircle(0, 0, node.radius);
+          display.outer.endFill();
 
-        display.avatarMask.clear();
-        display.avatarMask.beginFill(0xffffff, 1);
-        display.avatarMask.drawCircle(0, 0, node.radius);
-        display.avatarMask.endFill();
+          let avatarTexture: Texture | null = null;
+          const avatarUrl = node.avatarUrl ?? null;
+          const selectedOrHighlighted = highlighted.has(node.id) ||
+            isSelectedGraphNode(node, selectedPersonId, selectedAccountId);
+          if (
+            avatarUrl &&
+            shouldLoadNodeAvatar({
+              node,
+              transform,
+              width: canvasSize.width,
+              height: canvasSize.height,
+              selectedOrHighlighted,
+              qualityMode,
+            })
+          ) {
+            const cached = avatarCache.get(avatarUrl);
+            if (cached?.state === "loaded") {
+              avatarTexture = cached.texture;
+            } else if (!cached) {
+              avatarCache.set(avatarUrl, { state: "loading" });
+              void Assets.load<Texture>(avatarUrl)
+                .then((texture) => {
+                  avatarCache.set(avatarUrl, { state: "loaded", texture });
+                  queueAvatarRefresh();
+                })
+                .catch(() => {
+                  avatarCache.set(avatarUrl, { state: "failed" });
+                  queueAvatarRefresh();
+                });
+            }
+          }
 
-        let avatarTexture: Texture | null = null;
-        const avatarUrl = node.avatarUrl ?? null;
-        if (avatarUrl) {
-          const cached = avatarCache.get(avatarUrl);
-          if (cached?.state === "loaded") {
-            avatarTexture = cached.texture;
-          } else if (!cached) {
-            avatarCache.set(avatarUrl, { state: "loading" });
-            void Assets.load<Texture>(avatarUrl)
-              .then((texture) => {
-                avatarCache.set(avatarUrl, { state: "loaded", texture });
-                queueAvatarRefresh();
-              })
-              .catch(() => {
-                avatarCache.set(avatarUrl, { state: "failed" });
-                queueAvatarRefresh();
-              });
+          if (avatarTexture) {
+            const { avatarSprite, avatarMask } = ensureAvatarDisplay(display);
+            avatarMask.clear();
+            avatarMask.beginFill(0xffffff, 1);
+            avatarMask.drawCircle(0, 0, node.radius);
+            avatarMask.endFill();
+            avatarSprite.texture = avatarTexture;
+            avatarSprite.width = node.radius * 2;
+            avatarSprite.height = node.radius * 2;
+            avatarSprite.visible = true;
+            if (display.initials) {
+              display.initials.visible = false;
+            }
+          } else {
+            if (display.avatarSprite) {
+              display.avatarSprite.visible = false;
+            }
+            const showInitials = shouldShowNodeInitials({
+              node,
+              transform,
+              width: canvasSize.width,
+              height: canvasSize.height,
+              selectedOrHighlighted,
+              qualityMode,
+            });
+            if (showInitials) {
+              const initials = ensureInitialsDisplay(display);
+              initials.visible = true;
+              initials.text = node.initials ?? "";
+              initials.style = getCachedTextStyle(
+                [
+                  "initials",
+                  themeId ?? "default",
+                  palette.text,
+                  Math.max(9, Math.round(node.radius * 0.48)),
+                  node.kind,
+                ].join(":"),
+                {
+                  fill: palette.text,
+                  fontFamily:
+                    themeId === "scriptorium"
+                      ? "Georgia, serif"
+                      : "system-ui, sans-serif",
+                  fontSize: Math.max(9, node.radius * 0.48),
+                  fontWeight: "700",
+                  letterSpacing: node.kind === "account" || node.kind === "feed" ? 0 : 1,
+                },
+              );
+            } else if (display.initials) {
+              display.initials.visible = false;
+            }
+          }
+
+          if (display.inner) {
+            display.inner.clear();
+            display.inner.beginFill(0xffffff, 0.08);
+            display.inner.drawCircle(
+              -node.radius * 0.22,
+              -node.radius * 0.24,
+              node.radius * 0.42,
+            );
+            display.inner.endFill();
+          }
+
+          if (display.providerDot) {
+            display.providerDot.clear();
+            display.providerDot.beginFill(graphPalette.selection, 0.72);
+            display.providerDot.drawCircle(
+              node.radius * 0.52,
+              -node.radius * 0.52,
+              Math.max(3, node.radius * 0.22),
+            );
+            display.providerDot.endFill();
+          }
+
+          display.highlightRing.clear();
+          if (accountDrag?.dropTargetPersonId && node.personId === accountDrag.dropTargetPersonId) {
+            display.highlightRing.lineStyle(4, graphPalette.highlight, 0.8);
+            display.highlightRing.drawCircle(0, 0, node.radius + 6);
+          } else if (node.friendSuggestionConfidence) {
+            display.highlightRing.lineStyle(
+              node.friendSuggestionConfidence === "high" ? 2.2 : 1.6,
+              graphPalette.highlight,
+              node.friendSuggestionConfidence === "high" ? 0.48 : 0.34,
+            );
+            display.highlightRing.drawCircle(0, 0, node.radius + 5);
           }
         }
 
-        if (avatarTexture) {
-          display.avatarSprite.texture = avatarTexture;
-          display.avatarSprite.width = node.radius * 2;
-          display.avatarSprite.height = node.radius * 2;
-          display.avatarSprite.visible = true;
-          display.initials.visible = false;
-        } else {
-          display.avatarSprite.visible = false;
-          display.initials.visible = true;
+        for (const staleNodeId of staleNodeIds) {
+          const staleDisplay = scene.nodeDisplays.get(staleNodeId);
+          if (!staleDisplay) continue;
+          scene.nodeLayer.removeChild(staleDisplay.container);
+          staleDisplay.container.destroy({ children: true });
+          scene.nodeDisplays.delete(staleNodeId);
         }
-
-        if (display.inner) {
-          display.inner.clear();
-          display.inner.beginFill(0xffffff, 0.08);
-          display.inner.drawCircle(
-            -node.radius * 0.22,
-            -node.radius * 0.24,
-            node.radius * 0.42,
-          );
-          display.inner.endFill();
-        }
-
-        display.initials.text = node.initials ?? "";
-        display.initials.style = getCachedTextStyle(
-          [
-            "initials",
-            themeId ?? "default",
-            palette.text,
-            Math.max(9, Math.round(node.radius * 0.48)),
-            node.kind,
-          ].join(":"),
-          {
-            fill: palette.text,
-            fontFamily:
-              themeId === "scriptorium"
-                ? "Georgia, serif"
-                : "system-ui, sans-serif",
-            fontSize: Math.max(9, node.radius * 0.48),
-            fontWeight: "700",
-            letterSpacing: node.kind === "account" || node.kind === "feed" ? 0 : 1,
-          },
-        );
-
-        if (display.providerDot) {
-          display.providerDot.clear();
-          display.providerDot.beginFill(graphPalette.selection, 0.72);
-          display.providerDot.drawCircle(
-            node.radius * 0.52,
-            -node.radius * 0.52,
-            Math.max(3, node.radius * 0.22),
-          );
-          display.providerDot.endFill();
-        }
-
-        display.highlightRing.clear();
-        if (accountDrag?.dropTargetPersonId && node.personId === accountDrag.dropTargetPersonId) {
-          display.highlightRing.lineStyle(4, graphPalette.highlight, 0.8);
-          display.highlightRing.drawCircle(0, 0, node.radius + 6);
-        } else if (node.friendSuggestionConfidence) {
-          display.highlightRing.lineStyle(
-            node.friendSuggestionConfidence === "high" ? 2.2 : 1.6,
-            graphPalette.highlight,
-            node.friendSuggestionConfidence === "high" ? 0.48 : 0.34,
-          );
-          display.highlightRing.drawCircle(0, 0, node.radius + 5);
-        }
-      }
-
-      for (const staleNodeId of staleNodeIds) {
-        const staleDisplay = scene.nodeDisplays.get(staleNodeId);
-        if (!staleDisplay) continue;
-        scene.nodeLayer.removeChild(staleDisplay.container);
-        staleDisplay.container.destroy({ children: true });
-        scene.nodeDisplays.delete(staleNodeId);
       }
 
       perfSnapshotRef.current.nodeRestyleCount += layoutRef.current.nodes.length;
       if (!accountDrag) {
         lastStaticRenderKeyRef.current = staticRenderKey;
       }
-      if (!layoutReadyRef.current && scene.nodeDisplays.size > 0) {
+      if (!layoutReadyRef.current && (scene.nodeDisplays.size > 0 || denseRenderMode === "dense")) {
         layoutReadyRef.current = true;
         setLayoutReady(true);
       }
     }
 
-    const selectionStyleKey = [
-      layoutVersion,
-      selectedPersonId ?? "",
-      selectedAccountId ?? "",
-      themeId ?? "",
-      accountDrag?.dropTargetPersonId ?? "",
-    ].join("|");
+    if (denseRenderMode === "dense") {
+      scene.denseNodeLayer.visible = !useDenseInteractionLayer;
+      scene.denseInteractionNodeLayer.visible = useDenseInteractionLayer;
+      if (useDenseInteractionLayer) {
+        const viewportCenterX = canvasSize.width / 2;
+        const viewportCenterY = canvasSize.height / 2;
+        const visibleNodes: Array<{ node: IdentityGraphLayoutNode; distance: number }> = [];
+        for (const node of layoutRef.current.nodes) {
+          if (
+            !isNodeNearViewport(
+              node,
+              transform,
+              canvasSize.width,
+              canvasSize.height,
+              DENSE_INTERACTION_VIEWPORT_PADDING,
+            )
+          ) {
+            continue;
+          }
+          const point = screenPointForPosition(node, transform);
+          const dx = point.x - viewportCenterX;
+          const dy = point.y - viewportCenterY;
+          visibleNodes.push({ node, distance: dx * dx + dy * dy });
+        }
+        if (visibleNodes.length > DENSE_INTERACTION_NODE_LIMIT) {
+          visibleNodes.sort((left, right) => left.distance - right.distance);
+          visibleNodes.length = DENSE_INTERACTION_NODE_LIMIT;
+        }
+        scene.denseInteractionNodeLayer.clear();
+        for (const { node } of visibleNodes) {
+          drawDenseGraphNode(scene.denseInteractionNodeLayer, node, graphPalette);
+        }
+      } else {
+        scene.denseInteractionNodeLayer.clear();
+      }
+    } else {
+      scene.denseInteractionNodeLayer.visible = false;
+    }
 
     if (lastSelectionStyleKeyRef.current !== selectionStyleKey || didStaticRender || !!accountDrag) {
       scene.edgeLayer.alpha = highlighted.size > 0 ? 0.42 : 1;
@@ -1022,12 +1303,45 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         );
         display.outer.drawCircle(0, 0, node.radius);
         display.outer.endFill();
-        display.avatarMask.clear();
-        display.avatarMask.beginFill(0xffffff, 1);
-        display.avatarMask.drawCircle(0, 0, node.radius);
-        display.avatarMask.endFill();
+        if (display.avatarMask) {
+          display.avatarMask.clear();
+          display.avatarMask.beginFill(0xffffff, 1);
+          display.avatarMask.drawCircle(0, 0, node.radius);
+          display.avatarMask.endFill();
+        }
       }
       lastSelectionStyleKeyRef.current = selectionStyleKey;
+    }
+    if (shouldCacheNodeLayer && !scene.nodeLayer.isCachedAsTexture) {
+      scene.nodeLayer.cacheAsTexture({ resolution: 1, antialias: false });
+    }
+
+    const shouldCullNodes =
+      isInteractivePaint &&
+      denseRenderMode !== "dense" &&
+      graphNodeCount >= INTERACTIVE_NODE_CULL_THRESHOLD;
+    const nodeCullPadding = 140;
+    for (const node of layoutRef.current.nodes) {
+      const display = scene.nodeDisplays.get(node.id);
+      if (!display) continue;
+      if (!shouldCullNodes) {
+        display.container.visible = true;
+        continue;
+      }
+      const selectedOrHighlighted =
+        highlighted.has(node.id) ||
+        isSelectedGraphNode(node, selectedPersonId, selectedAccountId);
+      if (selectedOrHighlighted) {
+        display.container.visible = true;
+        continue;
+      }
+      const point = screenPointForPosition(nodePosition(node, drag), transform);
+      const screenRadius = node.radius * transform.scale;
+      display.container.visible =
+        point.x >= -nodeCullPadding - screenRadius &&
+        point.x <= canvasSize.width + nodeCullPadding + screenRadius &&
+        point.y >= -nodeCullPadding - screenRadius &&
+        point.y <= canvasSize.height + nodeCullPadding + screenRadius;
     }
 
     const providerMetrics = providerLabelMetrics(transform.scale);
@@ -1266,6 +1580,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     perfSnapshotRef.current.visibleLabelCount = visibleLabelCount;
     perfSnapshotRef.current.visibleNodeLabelCount = visibleLabelIdsRef.current.length;
     perfSnapshotRef.current.visibleProviderLabelCount = visibleProviderLabelCount;
+    let avatarDisplayCount = 0;
+    for (const display of scene.nodeDisplays.values()) {
+      if (display.avatarSprite) avatarDisplayCount += 1;
+    }
+    perfSnapshotRef.current.avatarDisplayCount = avatarDisplayCount;
     if (didStaticRender || didLabelLayout) {
       perfSnapshotRef.current.contentSyncCount += 1;
     } else {
@@ -1274,6 +1593,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     perfSnapshotRef.current.modelBuildMs = model.buildMs;
     perfSnapshotRef.current.layoutMs = lastLayoutMsRef.current;
     perfSnapshotRef.current.sceneSyncMs = nowMs() - sceneStart;
+    scene.app.render();
 
     if (containerRef.current) {
       const personCount = layoutRef.current.nodes.filter((node) => !!node.personId).length;
@@ -1286,6 +1606,19 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       containerRef.current.dataset.graphQualityMode = qualityMode;
     }
     if (typeof window !== "undefined") {
+      const debugNodes = drag
+        ? layoutRef.current.nodes.map((node) => ({
+            id: node.id,
+            personId: node.personId,
+            accountId: node.accountId,
+            feedUrl: node.feedUrl,
+            linkedPersonId: node.linkedPersonId,
+            kind: node.kind,
+            x: nodePosition(node, drag).x,
+            y: nodePosition(node, drag).y,
+            radius: node.radius,
+          }))
+        : layoutDebugNodesRef.current;
       (window as typeof window & {
         __FREED_GRAPH_DEBUG__?: {
           nodes: Array<Pick<IdentityGraphLayoutNode, "id" | "personId" | "accountId" | "feedUrl" | "linkedPersonId" | "kind" | "x" | "y" | "radius">>;
@@ -1295,17 +1628,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           metrics: GraphPerfSnapshot;
         };
       }).__FREED_GRAPH_DEBUG__ = {
-        nodes: layoutRef.current.nodes.map((node) => ({
-          id: node.id,
-          personId: node.personId,
-          accountId: node.accountId,
-          feedUrl: node.feedUrl,
-          linkedPersonId: node.linkedPersonId,
-          kind: node.kind,
-          x: nodePosition(node, drag).x,
-          y: nodePosition(node, drag).y,
-          radius: node.radius,
-        })),
+        nodes: debugNodes,
         regions: layoutRef.current.regions,
         transform: transformRef.current,
         qualityMode,
@@ -1324,8 +1647,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   syncSceneRef.current = syncScene;
 
   const scheduleSyncScene = useCallback(() => {
-    cancelAnimationFrame(drawRafRef.current);
+    if (drawRafPendingRef.current) return;
+    drawRafPendingRef.current = true;
     drawRafRef.current = requestAnimationFrame(() => {
+      drawRafPendingRef.current = false;
       syncScene();
     });
   }, [syncScene]);
@@ -1408,6 +1733,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         backgroundAlpha: 0,
         antialias: true,
         preference: "webgl",
+        autoStart: false,
       });
       if (cancelled) {
         app.destroy(true);
@@ -1418,6 +1744,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       app.canvas.style.width = "100%";
       app.canvas.style.height = "100%";
       app.canvas.style.pointerEvents = "none";
+      app.ticker.stop();
       canvasHost.appendChild(app.canvas);
 
       const world = new Container();
@@ -1425,12 +1752,16 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       const regionLabelLayer = new Container();
       const edgeLayer = new Graphics();
       const edgeHighlightLayer = new Graphics();
+      const denseNodeLayer = new Graphics();
+      const denseInteractionNodeLayer = new Graphics();
       const nodeLayer = new Container();
       const hoverLayer = new Graphics();
       const labelLayer = new Container();
       world.addChild(regionLayer);
       world.addChild(edgeLayer);
       world.addChild(edgeHighlightLayer);
+      world.addChild(denseNodeLayer);
+      world.addChild(denseInteractionNodeLayer);
       world.addChild(nodeLayer);
       world.addChild(hoverLayer);
       world.addChild(regionLabelLayer);
@@ -1443,6 +1774,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         regionLabelLayer,
         edgeLayer,
         edgeHighlightLayer,
+        denseNodeLayer,
+        denseInteractionNodeLayer,
         nodeLayer,
         hoverLayer,
         labelLayer,
@@ -1456,6 +1789,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     return () => {
       cancelled = true;
       cancelAnimationFrame(drawRafRef.current);
+      drawRafPendingRef.current = false;
       if (settleTimerRef.current !== null) {
         window.clearTimeout(settleTimerRef.current);
         settleTimerRef.current = null;
@@ -1501,6 +1835,57 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     };
   }, []);
 
+  const applyLayoutResult = useCallback((
+    requestId: number,
+    layout: IdentityGraphLayout,
+    durationMs: number,
+  ) => {
+    if (requestId < latestResolvedLayoutRequestIdRef.current) return;
+    const timeoutId = pendingLayoutTimeoutsRef.current.get(requestId);
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId);
+      pendingLayoutTimeoutsRef.current.delete(requestId);
+    }
+    latestResolvedLayoutRequestIdRef.current = requestId;
+    layoutRef.current = layout;
+    layoutNodeByIdRef.current = buildNodeById(layout.nodes);
+    layoutDebugNodesRef.current = buildGraphDebugNodes(layout.nodes);
+    spatialIndexRef.current = buildSpatialIndex(layout.nodes);
+    lastLayoutMsRef.current = durationMs;
+    if (!hasFittedInitialLayoutRef.current) {
+      const latestCanvasSize = canvasSizeRef.current;
+      transformRef.current = fitTransformToNodes(
+        graphFitItems(layout),
+        latestCanvasSize.width,
+        latestCanvasSize.height,
+        FIT_PADDING,
+      );
+      hasFittedInitialLayoutRef.current = true;
+    }
+    setLayoutVersion((value) => value + 1);
+    requestAnimationFrame(() => syncSceneRef.current());
+  }, []);
+
+  const runLayoutOnMainThread = useCallback((
+    requestId: number,
+    requestModel: IdentityGraphModel,
+    width: number,
+    height: number,
+    quality: GraphLayoutQuality,
+  ) => {
+    window.setTimeout(() => {
+      if (requestId < latestResolvedLayoutRequestIdRef.current) return;
+      const startMs = nowMs();
+      const layout = buildIdentityGraphLayout({
+        model: requestModel,
+        width,
+        height,
+        quality,
+      });
+      applyLayoutResult(requestId, layout, nowMs() - startMs);
+    }, 0);
+  }, [applyLayoutResult]);
+
   useEffect(() => {
     const worker = new Worker(
       new URL("../../lib/identity-graph-layout.worker.ts", import.meta.url),
@@ -1508,32 +1893,29 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     );
     workerRef.current = worker;
     worker.onmessage = (event: MessageEvent<{ requestId: number; layout: IdentityGraphLayout; durationMs: number }>) => {
-      if (event.data.requestId < latestResolvedLayoutRequestIdRef.current) return;
-      latestResolvedLayoutRequestIdRef.current = event.data.requestId;
-      layoutRef.current = event.data.layout;
-      spatialIndexRef.current = buildSpatialIndex(event.data.layout.nodes);
-      lastLayoutMsRef.current = event.data.durationMs;
-      if (!hasFittedInitialLayoutRef.current) {
-        transformRef.current = fitTransformToNodes(
-          graphFitItems(event.data.layout),
-          canvasSize.width,
-          canvasSize.height,
-          FIT_PADDING,
-        );
-        hasFittedInitialLayoutRef.current = true;
+      applyLayoutResult(event.data.requestId, event.data.layout, event.data.durationMs);
+    };
+    worker.onerror = (event) => {
+      console.warn("[FriendGraph] layout worker failed", event.message);
+      if (workerRef.current === worker) {
+        workerRef.current = null;
       }
-      setLayoutVersion((value) => value + 1);
-      scheduleSyncScene();
     };
 
     return () => {
+      for (const timeoutId of pendingLayoutTimeoutsRef.current.values()) {
+        window.clearTimeout(timeoutId);
+      }
+      pendingLayoutTimeoutsRef.current.clear();
       worker.terminate();
-      workerRef.current = null;
+      if (workerRef.current === worker) {
+        workerRef.current = null;
+      }
     };
-  }, [canvasSize.height, canvasSize.width, scheduleSyncScene]);
+  }, [applyLayoutResult]);
 
   useEffect(() => {
-    if (!workerRef.current || canvasSize.width <= 0 || canvasSize.height <= 0) return;
+    if (canvasSize.width <= 0 || canvasSize.height <= 0) return;
     const previousSnapshot = previousRequestSnapshotRef.current;
     const sizeOnlyResize =
       previousSnapshot &&
@@ -1542,7 +1924,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       Math.abs(previousSnapshot.height - canvasSize.height) / Math.max(previousSnapshot.height, 1) <= 0.12;
     const relinkOnly =
       countLinkedAccountChanges(previousRequestedModelRef.current, model) === 1;
-    const quality: GraphLayoutQuality = sizeOnlyResize || relinkOnly ? "fast" : "full";
+    const largeGraph = model.nodes.length >= FAST_LAYOUT_NODE_THRESHOLD;
+    const quality: GraphLayoutQuality = sizeOnlyResize || relinkOnly || largeGraph ? "fast" : "full";
     const requestId = latestLayoutRequestIdRef.current + 1;
     latestLayoutRequestIdRef.current = requestId;
     previousRequestSnapshotRef.current = {
@@ -1551,14 +1934,30 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       height: canvasSize.height,
     };
     previousRequestedModelRef.current = model;
-    workerRef.current.postMessage({
+    const layoutRequest = {
       requestId,
       model,
       width: canvasSize.width,
       height: canvasSize.height,
       quality,
-    });
-  }, [canvasSize.height, canvasSize.width, model, modelSignature]);
+    };
+    const worker = workerRef.current;
+    if (!worker) {
+      runLayoutOnMainThread(requestId, model, canvasSize.width, canvasSize.height, quality);
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      pendingLayoutTimeoutsRef.current.delete(requestId);
+      if (requestId < latestResolvedLayoutRequestIdRef.current) return;
+      if (workerRef.current === worker) {
+        worker.terminate();
+        workerRef.current = null;
+      }
+      runLayoutOnMainThread(requestId, model, canvasSize.width, canvasSize.height, quality);
+    }, GRAPH_LAYOUT_WORKER_TIMEOUT_MS);
+    pendingLayoutTimeoutsRef.current.set(requestId, timeoutId);
+    worker.postMessage(layoutRequest);
+  }, [canvasSize.height, canvasSize.width, model, modelSignature, runLayoutOnMainThread]);
 
   useEffect(() => {
     if (!layoutReady && layoutRef.current.nodes.length > 0) {
@@ -1636,10 +2035,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         if (firstEntry && secondEntry) {
           const initialDistance = distanceBetween(firstEntry[1], secondEntry[1]);
           if (initialDistance > 0) {
+            const initialMidpoint = midpointBetween(firstEntry[1], secondEntry[1]);
             pinchStateRef.current = {
               pointerIds: [firstEntry[0], secondEntry[0]],
               initialDistance,
               initialScale: transformRef.current.scale,
+              initialMidpoint,
+              initialWorldPoint: viewportToWorld(initialMidpoint.x, initialMidpoint.y),
               moved: false,
             };
             dragStateRef.current = null;
@@ -1713,14 +2115,24 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       const currentDistance = distanceBetween(first, second);
       if (currentDistance <= 0) return;
 
-      pinch.moved =
-        pinch.moved || Math.abs(currentDistance - pinch.initialDistance) > 4;
       const midpoint = midpointBetween(first, second);
-      zoomAtPoint(
-        midpoint.x,
-        midpoint.y,
-        pinch.initialScale * (currentDistance / pinch.initialDistance),
-      );
+      const midpointDelta = distanceBetween(midpoint, pinch.initialMidpoint);
+      pinch.moved =
+        pinch.moved ||
+        Math.abs(currentDistance - pinch.initialDistance) > 4 ||
+        midpointDelta > 4;
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const scale = clampScale(pinch.initialScale * (currentDistance / pinch.initialDistance));
+      const localX = midpoint.x - rect.left;
+      const localY = midpoint.y - rect.top;
+      transformRef.current = {
+        scale,
+        x: localX - pinch.initialWorldPoint.x * scale,
+        y: localY - pinch.initialWorldPoint.y * scale,
+      };
+      scheduleSyncScene();
       markInteractive();
       event.preventDefault();
       return;
@@ -1786,7 +2198,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
     markInteractive();
     scheduleSyncScene();
-  }, [hitNodeAt, markInteractive, scheduleSyncScene, viewportToWorld, zoomAtPoint]);
+  }, [hitNodeAt, markInteractive, scheduleSyncScene, viewportToWorld]);
 
   const handlePointerUp = useCallback(async (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch") {

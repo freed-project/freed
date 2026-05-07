@@ -100,4 +100,24 @@ describe("useSearchResults", () => {
 
     expect(host.textContent).toBe("item-1");
   });
+
+  it("preserves priority-ordered browsing items without resorting the feed", () => {
+    const host = renderProbe([
+      makeItem({ globalId: "high", priority: 90 }),
+      makeItem({ globalId: "mid", priority: 40 }),
+      makeItem({ globalId: "low", priority: 10 }),
+    ], {}, "");
+
+    expect(host.textContent).toBe("high,mid,low");
+  });
+
+  it("keeps the browsing fallback sorted when callers provide unsorted items", () => {
+    const host = renderProbe([
+      makeItem({ globalId: "low", priority: 10 }),
+      makeItem({ globalId: "high", priority: 90 }),
+      makeItem({ globalId: "mid", priority: 40 }),
+    ], {}, "");
+
+    expect(host.textContent).toBe("high,mid,low");
+  });
 });

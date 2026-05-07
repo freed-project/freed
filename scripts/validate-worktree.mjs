@@ -149,6 +149,42 @@ export function isPwaSurface(filePath) {
   return filePath.startsWith("packages/pwa/");
 }
 
+export function isDesktopPerfSensitiveSurface(filePath) {
+  return (
+    filePath === ".github/workflows/ci.yml" ||
+    filePath === "scripts/perf-compare.ts" ||
+    filePath === "packages/desktop/tests/e2e/perf-feed.spec.ts" ||
+    filePath === "packages/desktop/tests/e2e/perf-friends.spec.ts" ||
+    filePath === "packages/desktop/tests/e2e/perf-map.spec.ts" ||
+    filePath === "packages/desktop/tests/e2e/perf-budgets.json" ||
+    filePath === "packages/desktop/tests/e2e/perf-baselines.json" ||
+    filePath === "packages/desktop/tests/e2e/reporters/perf-reporter.ts" ||
+    filePath === "packages/desktop/src/lib/store.ts" ||
+    filePath === "packages/desktop/src/lib/automerge.ts" ||
+    filePath === "packages/desktop/src/lib/automerge-types.ts" ||
+    filePath === "packages/desktop/src/lib/automerge.worker.ts" ||
+    filePath === "packages/desktop/src/lib/automerge-persistence.ts" ||
+    filePath === "packages/desktop/src/lib/background-runtime-coordinator.ts" ||
+    filePath === "packages/desktop/src/lib/memory-monitor.ts" ||
+    filePath === "packages/desktop/src/lib/content-fetcher.ts" ||
+    filePath === "packages/desktop/src/lib/rss-poller.ts" ||
+    filePath.startsWith("packages/desktop/src-tauri/src/") ||
+    filePath.startsWith("packages/ui/src/components/feed/") ||
+    filePath.startsWith("packages/ui/src/components/friends/") ||
+    filePath.startsWith("packages/ui/src/components/map/") ||
+    filePath === "packages/ui/src/lib/friends-workspace.ts" ||
+    filePath === "packages/ui/src/lib/account-link-suggestions.ts" ||
+    filePath === "packages/ui/src/lib/identity-graph-render.ts" ||
+    filePath === "packages/ui/src/lib/identity-graph-layout.ts" ||
+    filePath === "packages/ui/src/lib/identity-graph-model.ts" ||
+    filePath === "packages/ui/src/hooks/useResolvedLocations.ts" ||
+    filePath === "packages/ui/src/hooks/useSearchResults.ts" ||
+    filePath === "packages/shared/src/location.ts" ||
+    filePath === "packages/shared/src/ranking.ts" ||
+    filePath === "packages/shared/src/schema.ts"
+  );
+}
+
 export function captureWorkspaceForFile(filePath) {
   const match = filePath.match(/^(packages\/capture-[^/]+)/);
   return match ? match[1] : null;
@@ -319,6 +355,7 @@ export function buildValidationPlan(mode, changedFiles) {
   const plan = [npmCommand("root typecheck", ["run", "typecheck"])];
   const sharedSurfaceChanged = changedFiles.some(isSharedSurface);
   const desktopSurfaceChanged = sharedSurfaceChanged || changedFiles.some(isDesktopSurface);
+  const desktopPerfSensitiveChanged = changedFiles.some(isDesktopPerfSensitiveSurface);
   const pwaSurfaceChanged = sharedSurfaceChanged || changedFiles.some(isPwaSurface);
   const websiteSurfaceChanged = changedFiles.some(isWebsiteSurface);
   const releaseToolingChanged = changedFiles.some(isReleaseToolingPath);
@@ -341,6 +378,10 @@ export function buildValidationPlan(mode, changedFiles) {
   if (desktopSurfaceChanged) {
     addCommand(plan, npmCommand("desktop unit tests", ["run", "test:unit", "--workspace=packages/desktop"]));
     addCommand(plan, npmCommand("desktop e2e smoke", ["run", "test:e2e:smoke", "--workspace=packages/desktop"]));
+  }
+
+  if (desktopPerfSensitiveChanged) {
+    addCommand(plan, npmCommand("desktop e2e perf", ["run", "test:e2e:perf", "--workspace=packages/desktop"]));
   }
 
   if (!sharedSurfaceChanged) {

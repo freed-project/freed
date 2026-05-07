@@ -35,6 +35,7 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
 });
 const MAP_POPUP_MAX_WIDTH = 560;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
+const MAP_DOM_MARKER_LIMIT = 240;
 const MAP_VIEWPORT_MASK_STYLE = {
   "--theme-soft-viewport-mask-size": "20px",
 } as CSSProperties;
@@ -349,6 +350,29 @@ function mapStyles(interactive: boolean) {
       transition: box-shadow 160ms ease, border-color 160ms ease, filter 160ms ease, scale 160ms ease;
     }
 
+    .freed-map-shell[data-map-moving="true"] .freed-map-marker-body {
+      transition: none;
+      box-shadow: 0 0 0 1px var(--theme-border-subtle);
+      filter: none;
+    }
+
+    .freed-map-shell[data-map-moving="true"] .freed-map-marker-glow,
+    .freed-map-shell[data-map-moving="true"] .freed-map-marker-tint,
+    .freed-map-shell[data-map-moving="true"] .freed-map-marker-halo,
+    .freed-map-shell[data-map-moving="true"] .freed-map-marker-badge {
+      display: none;
+    }
+
+    .freed-map-shell[data-map-moving="true"] .freed-map-marker-image {
+      opacity: 0.72;
+      filter: none;
+    }
+
+    .freed-map-shell[data-map-moving="true"] .freed-map-grid-overlay,
+    .freed-map-shell[data-map-moving="true"] .freed-map-edge-overlay {
+      display: none;
+    }
+
     .freed-map-shell .freed-map-marker:hover .freed-map-marker-body {
       scale: 1.06;
       filter: brightness(1.06);
@@ -514,11 +538,34 @@ export function MapSurface({
   const [selectedFallbackMarkerKey, setSelectedFallbackMarkerKey] = useState<string | null>(null);
   const activePopupRef = useRef<PopupInstance | null>(null);
   const activePopupKeyRef = useRef<string | null>(null);
+  const actionHandlersRef = useRef({
+    onOpenFriend,
+    onPromoteAccount,
+    onLinkAccount,
+    onOpenPost,
+  });
 
   const stableMarkers = useMemo(
     () => markers.map((marker) => ({ ...marker })),
     [markers]
   );
+  const baseRenderedMarkers = useMemo(
+    () => stableMarkers.length <= MAP_DOM_MARKER_LIMIT
+      ? stableMarkers
+      : stableMarkers.slice(0, MAP_DOM_MARKER_LIMIT),
+    [stableMarkers],
+  );
+  const renderedMarkers = useMemo(() => {
+    if (stableMarkers.length <= MAP_DOM_MARKER_LIMIT) return baseRenderedMarkers;
+    if (!focusedMarkerKey || baseRenderedMarkers.some((marker) => marker.key === focusedMarkerKey)) {
+      return baseRenderedMarkers;
+    }
+
+    const focusedMarker = stableMarkers.find((marker) => marker.key === focusedMarkerKey);
+    if (!focusedMarker) return baseRenderedMarkers;
+    return [...baseRenderedMarkers.slice(0, MAP_DOM_MARKER_LIMIT - 1), focusedMarker];
+  }, [baseRenderedMarkers, focusedMarkerKey, stableMarkers]);
+  const showMarkerAvatars = stableMarkers.length <= MAP_DOM_MARKER_LIMIT;
   const avatarPalette = useMemo(
     () => createFriendAvatarPalette(resolvedThemeId),
     [resolvedThemeId]
@@ -528,8 +575,8 @@ export function MapSurface({
     [resolvedThemeId]
   );
   const selectedFallbackMarker = useMemo(
-    () => stableMarkers.find((marker) => marker.key === selectedFallbackMarkerKey) ?? null,
-    [selectedFallbackMarkerKey, stableMarkers]
+    () => renderedMarkers.find((marker) => marker.key === selectedFallbackMarkerKey) ?? null,
+    [renderedMarkers, selectedFallbackMarkerKey]
   );
   const showFallback = loadFailed || !mapReady;
   const closeActivePopup = useCallback(() => {
@@ -539,7 +586,17 @@ export function MapSurface({
   }, []);
 
   useEffect(() => {
+    actionHandlersRef.current = {
+      onOpenFriend,
+      onPromoteAccount,
+      onLinkAccount,
+      onOpenPost,
+    };
+  }, [onLinkAccount, onOpenFriend, onOpenPost, onPromoteAccount]);
+
+  useEffect(() => {
     if (!containerRef.current) return;
+    const shell = containerRef.current.closest(".freed-map-shell") as HTMLElement | null;
     let cancelled = false;
     setMapReady(false);
     setLoadFailed(false);
@@ -574,6 +631,16 @@ export function MapSurface({
           attributionControl: false,
         });
         mapRef.current = map;
+        const setMoving = () => {
+          if (shell) shell.dataset.mapMoving = "true";
+        };
+        const clearMoving = () => {
+          if (shell) shell.dataset.mapMoving = "false";
+        };
+        map.on("movestart", setMoving);
+        map.on("zoomstart", setMoving);
+        map.on("moveend", clearMoving);
+        map.on("zoomend", clearMoving);
         setMapReady(true);
         setTimeout(() => map.resize(), 0);
       } catch (error) {
@@ -594,6 +661,7 @@ export function MapSurface({
       markersRef.current = [];
       mapRef.current?.remove();
       mapRef.current = null;
+      if (shell) shell.dataset.mapMoving = "false";
     };
   }, [closeActivePopup, interactive, resolvedThemeId]);
 
@@ -609,14 +677,17 @@ export function MapSurface({
     const handleMapClick = () => closeActivePopup();
     map.on("click", handleMapClick);
 
-    for (const markerData of stableMarkers) {
-      const element = createMarkerElement(markerData, avatarPalette);
+    for (const markerData of renderedMarkers) {
+      const element = createMarkerElement(markerData, avatarPalette, {
+        showAvatar: showMarkerAvatars,
+      });
       const marker = new maplibre.Marker({ element }).setLngLat([
         markerData.lng,
         markerData.lat,
       ]);
 
       if (interactive) {
+        const currentHandlers = actionHandlersRef.current;
         const popup = new maplibre.Popup({
           closeButton: false,
           closeOnClick: false,
@@ -625,7 +696,21 @@ export function MapSurface({
           className: "freed-map-popup",
         })
           .setLngLat([markerData.lng, markerData.lat])
-          .setDOMContent(buildPopupContent(markerData, onOpenFriend, onPromoteAccount, onLinkAccount, onOpenPost));
+          .setDOMContent(buildPopupContent(
+            markerData,
+            currentHandlers.onOpenFriend
+              ? (marker) => actionHandlersRef.current.onOpenFriend?.(marker)
+              : undefined,
+            currentHandlers.onPromoteAccount
+              ? (marker) => actionHandlersRef.current.onPromoteAccount?.(marker)
+              : undefined,
+            currentHandlers.onLinkAccount
+              ? (marker) => actionHandlersRef.current.onLinkAccount?.(marker)
+              : undefined,
+            currentHandlers.onOpenPost
+              ? (marker) => actionHandlersRef.current.onOpenPost?.(marker)
+              : undefined,
+          ));
         element.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -644,18 +729,24 @@ export function MapSurface({
       markersRef.current.push(marker);
     }
 
-    fitMarkers(map, stableMarkers, focusedMarkerKey);
-
     return () => {
       map.off("click", handleMapClick);
       closeActivePopup();
     };
-  }, [avatarPalette, closeActivePopup, focusedMarkerKey, interactive, mapReady, onLinkAccount, onOpenFriend, onOpenPost, onPromoteAccount, stableMarkers]);
+  }, [avatarPalette, closeActivePopup, interactive, mapReady, renderedMarkers, showMarkerAvatars]);
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    fitMarkers(mapRef.current, stableMarkers, focusedMarkerKey);
+  }, [focusedMarkerKey, mapReady, stableMarkers]);
 
   return (
     <div
       data-testid="map-surface"
       data-map-theme={resolvedThemeId}
+      data-map-rendered-markers={renderedMarkers.length}
+      data-map-total-markers={stableMarkers.length}
+      data-map-moving="false"
       className="freed-map-shell theme-soft-viewport relative h-full w-full"
       style={MAP_VIEWPORT_MASK_STYLE}
     >
@@ -666,20 +757,20 @@ export function MapSurface({
           className={`h-full w-full ${showFallback ? "invisible" : "visible"}`}
         />
         <div
-          className="pointer-events-none absolute inset-0 [background-size:88px_88px]"
+          className="freed-map-grid-overlay pointer-events-none absolute inset-0 [background-size:88px_88px]"
           style={{
             backgroundImage: mapGridBackground(mapPalette.boundary),
             opacity: mapPalette.gridOpacity,
           }}
         />
         <div
-          className="pointer-events-none absolute inset-0"
+          className="freed-map-edge-overlay pointer-events-none absolute inset-0"
           style={{
             background: mapEdgeVignetteBackground(),
           }}
         />
 
-        {showFallback && stableMarkers.length > 0 && (
+        {showFallback && renderedMarkers.length > 0 && (
           <div
             className="freed-map-fallback-scan absolute inset-0 overflow-hidden"
             style={{ background: fallbackScanBackground(mapPalette.background, mapPalette.water) }}
@@ -713,13 +804,13 @@ export function MapSurface({
               )`,
             }}
           />
-          {stableMarkers.map((marker) => {
+          {renderedMarkers.map((marker) => {
             const position = fallbackPosition(marker);
             return (
               <button
                 key={marker.key}
                 type="button"
-                className="freed-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full px-2.5 py-1.5 text-[11px] text-[color:var(--theme-text-primary)] backdrop-blur-xl"
+                className="freed-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full px-2.5 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]"
                 style={{
                   ...position,
                   border: "1px solid color-mix(in oklab, var(--theme-border-strong) 78%, transparent)",

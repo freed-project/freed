@@ -7,15 +7,19 @@ export function providerLabel(provider: Account["provider"]): string {
   if (provider === "ios_contacts") return "Contacts";
   if (provider === "android_contacts") return "Contacts";
   if (provider === "web_contact") return "Manual contact";
+  if (!provider) return "Account";
   return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 
 export function accountTitle(account: Account): string {
-  return account.displayName ?? account.handle ?? account.externalId;
+  return account.displayName?.trim()
+    || account.handle?.trim()
+    || account.externalId?.trim()
+    || providerLabel(account.provider);
 }
 
 export function accountSubtitle(account: Account): string {
   if (account.handle?.trim()) return account.handle;
-  if (account.displayName?.trim()) return account.externalId;
+  if (account.displayName?.trim()) return account.externalId?.trim() || providerLabel(account.provider);
   return providerLabel(account.provider);
 }

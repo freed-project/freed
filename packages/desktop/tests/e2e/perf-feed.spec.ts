@@ -20,6 +20,10 @@ import { test, expect } from "./fixtures/app";
 const ITEM_COUNT_MEDIUM = 1_000;
 const ITEM_COUNT_LARGE = 3_000;
 const ITEM_COUNT_XLARGE = 5_000;
+const SCROLL_LONG_TASK_COUNT_BUDGET = 2;
+const SCROLL_LONG_TASK_WORST_MS_BUDGET = 120;
+const SCROLL_FRAME_P95_MS_BUDGET = 50;
+const SCROLL_DROPPED_FRAME_BUDGET = 10;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -273,11 +277,12 @@ test.describe("Scroll performance", () => {
         const tasks = (window as Record<string, unknown>).__PERF_LONG_TASKS__ as PerformanceEntry[];
         tasks.push(...list.getEntries());
       });
-      obs.observe({ type: "longtask", buffered: true });
+      obs.observe({ type: "longtask", buffered: false });
       (window as Record<string, unknown>).__PERF_OBS__ = obs;
     });
 
     // Simulate rapid scroll: 20 steps of 500px downward.
+    const scrollStartedAt = await page.evaluate(() => performance.now());
     const elapsed = await measureBrowserMs(page, "Scroll 3k items (20 × 500px)", async () => {
       for (let i = 0; i < 20; i++) {
         await scrollContainer.evaluate((el) =>
@@ -288,21 +293,25 @@ test.describe("Scroll performance", () => {
       // Let the virtualiser finish measuring after the last scroll.
       await page.waitForTimeout(100);
     });
+    const scrollEndedAt = await page.evaluate(() => performance.now());
 
-    const longTaskData = await page.evaluate(() => {
+    const longTaskData = await page.evaluate(({ scrollStartedAt, scrollEndedAt }) => {
       const tasks = (window as Record<string, unknown>).__PERF_LONG_TASKS__ as PerformanceEntry[];
       const obs = (window as Record<string, unknown>).__PERF_OBS__ as PerformanceObserver;
       obs.disconnect();
+      const scrollTasks = tasks.filter(
+        (task) => task.startTime >= scrollStartedAt - 1 && task.startTime <= scrollEndedAt + 1,
+      );
       return {
-        count: tasks.length,
-        totalMs: tasks.reduce((s, t) => s + t.duration, 0),
-        worstMs: Math.max(0, ...tasks.map((t) => t.duration)),
-        tasks: tasks.map((t) => ({
+        count: scrollTasks.length,
+        totalMs: scrollTasks.reduce((s, t) => s + t.duration, 0),
+        worstMs: Math.max(0, ...scrollTasks.map((t) => t.duration)),
+        tasks: scrollTasks.map((t) => ({
           duration: Math.round(t.duration),
           startTime: Math.round(t.startTime),
         })),
       };
-    });
+    }, { scrollStartedAt, scrollEndedAt });
 
     console.log(`[PERF] Scroll elapsed: ${elapsed.toLocaleString()} ms`);
     console.log(`[PERF] Long tasks (>50ms): ${longTaskData.count}`);
@@ -313,17 +322,15 @@ test.describe("Scroll performance", () => {
       console.log("[PERF] Long task breakdown:", JSON.stringify(longTaskData.tasks, null, 2));
     }
 
-    // Flag but don't fail: more than 5 long tasks during a scroll is a red alert.
-    if (longTaskData.count > 5) {
-      console.warn(`[PERF] WARNING: ${longTaskData.count} long tasks during scroll - investigate jank`);
-    }
+    expect(longTaskData.count).toBeLessThanOrEqual(SCROLL_LONG_TASK_COUNT_BUDGET);
+    expect(longTaskData.worstMs).toBeLessThan(SCROLL_LONG_TASK_WORST_MS_BUDGET);
   });
 });
 
-// ─── 3. Mark-as-read storm ────────────────────────────────────────────────────
+// ─── 3. Mark-as-read enqueue storm ────────────────────────────────────────────
 
-test.describe("Mark-as-read storm (hydrateFromDoc cost)", () => {
-  test("20 rapid mark-as-read mutations with 3k items", async ({ app, page }) => {
+test.describe("Mark-as-read enqueue storm", () => {
+  test("20 rapid mark-as-read enqueues with 3k items", async ({ app, page }) => {
     await app.goto();
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_LARGE);
@@ -359,10 +366,9 @@ test.describe("Mark-as-read storm (hydrateFromDoc cost)", () => {
       `[PERF] Per-call timings: [${timings.map((t) => t.toFixed(1)).join(", ")}]`,
     );
 
-    // Each mutation should resolve in a reasonable time. At 3k items,
-    // hydrateFromDoc (O(n) sort + rank) + A.change() WASM is the bottleneck.
-    // 500ms is the hard limit before it feels completely broken.
-    expect(worst).toBeLessThan(500);
+    // Single-item read marks should not wait for the durable Automerge batch.
+    // Scrolling and reader open both call markAsRead on the paint path.
+    expect(worst).toBeLessThan(50);
   });
 });
 
@@ -407,7 +413,7 @@ test.describe("Search input (async MiniSearch index preparation)", () => {
     console.log(`[PERF] Search long tasks: ${searchLongTasks.count}, worst: ${Math.round(searchLongTasks.worstMs)} ms`);
 
     // Typing should not wait on a synchronous full-corpus index build.
-    expect(searchLongTasks.worstMs).toBeLessThan(180);
+    expect(searchLongTasks.worstMs).toBeLessThan(120);
 
     // Verify search actually produces results (proves MiniSearch is working).
     await expect(page.locator(".feed-card")).not.toHaveCount(0, { timeout: 2_000 });
@@ -490,13 +496,14 @@ test.describe("Reader view open (the worst offender)", () => {
     expect(elapsed).toBeLessThan(2_000);
   });
 
-  test("measure hydrateFromDoc cost directly after reader click", async ({ app, page }) => {
+  test("measure markAsRead enqueue cost directly after reader click", async ({ app, page }) => {
     await app.goto();
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_LARGE);
 
-    // Time markAsRead in isolation (without the React re-render overhead)
-    // to isolate the Automerge + store cost from the UI paint cost.
+    // Time markAsRead in isolation without React re-render overhead.
+    // This should measure enqueue cost only. Durable Automerge writes flush in
+    // the shared read-state batch instead of blocking the paint path.
     const markAsReadMs = await page.evaluate(async () => {
       const w = window as Record<string, unknown>;
       const store = w.__FREED_STORE__ as {
@@ -513,14 +520,10 @@ test.describe("Reader view open (the worst offender)", () => {
       return performance.now() - t0;
     });
 
-    console.log(`[PERF] markAsRead (isolated, 3k items): ${markAsReadMs.toFixed(1)} ms`);
-    console.log(`[PERF] This includes: A.change() CRDT write + hydrateFromDoc O(n) sort/rank + subscriber notification`);
+    console.log(`[PERF] markAsRead enqueue (isolated, 3k items): ${markAsReadMs.toFixed(1)} ms`);
 
-    // At 3k items, hydrateFromDoc + A.change() takes ~300ms on this hardware.
-    // This SHOULD fail until we optimize hydrateFromDoc. Record it as a known regression.
-    // Target after optimization: < 50ms.
-    console.log(`[PERF] hydrateFromDoc regression threshold: ${markAsReadMs.toFixed(0)}ms (target: <50ms after optimization)`);
-    expect(markAsReadMs).toBeLessThan(1_000); // hard upper bound - anything above 1s is broken
+    console.log(`[PERF] markAsRead enqueue threshold: ${markAsReadMs.toFixed(0)}ms (target: <50ms)`);
+    expect(markAsReadMs).toBeLessThan(50);
   });
 });
 
@@ -659,9 +662,10 @@ test.describe("FPS harness (rAF-based frame measurement)", () => {
       },
     );
 
-    // Scroll should not produce p95 frame times above 33ms (30fps threshold)
+    // Keep this below obvious jank while leaving room for shared CI runners.
     console.log(`[PERF] fps harness scroll 3k items p95: ${fps.p95Ms} ms`);
-    expect(fps.p95Ms).toBeLessThan(100); // wide tolerance - informational until fix
+    expect(fps.p95Ms).toBeLessThan(SCROLL_FRAME_P95_MS_BUDGET);
+    expect(fps.droppedFrames).toBeLessThanOrEqual(SCROLL_DROPPED_FRAME_BUDGET);
   });
 });
 

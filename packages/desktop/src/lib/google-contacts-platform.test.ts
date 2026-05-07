@@ -42,4 +42,15 @@ describe("desktop Google Contacts platform fetch", () => {
       status: 403,
     });
   });
+
+  it("replaces WebKit load failures with an actionable Contacts error", async () => {
+    invokeMock.mockRejectedValueOnce("Load failed");
+
+    const { fetchGoogleContactsViaTauri } = await import("./google-contacts");
+
+    await expect(fetchGoogleContactsViaTauri("access-token", null)).rejects.toMatchObject({
+      message: "Google Contacts request failed before Google returned a response. Check your network connection and try again.",
+      rawMessage: "Load failed",
+    });
+  });
 });

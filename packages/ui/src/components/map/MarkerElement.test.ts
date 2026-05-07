@@ -94,4 +94,22 @@ describe("createMarkerElement", () => {
 
     expect(element.textContent).toContain((1234).toLocaleString());
   });
+
+  it("can skip avatar images for dense map marker sets", () => {
+    const element = createMarkerElement(marker(), palette, { showAvatar: false });
+
+    expect(element.querySelector("img")).toBeNull();
+    expect(element.querySelector("[data-avatar-fallback]")?.textContent).toBe("L");
+  });
+
+  it("labels decorative marker layers so map movement can suppress paint-heavy chrome", () => {
+    const element = createMarkerElement(marker({ groupCount: 1234 }), palette);
+
+    expect(element.querySelector(".freed-map-marker-body")).toBeInstanceOf(HTMLDivElement);
+    expect(element.querySelector(".freed-map-marker-glow")).toBeInstanceOf(HTMLDivElement);
+    expect(element.querySelector(".freed-map-marker-image")).toBeInstanceOf(HTMLImageElement);
+    expect(element.querySelector(".freed-map-marker-tint")).toBeInstanceOf(HTMLDivElement);
+    expect(element.querySelector(".freed-map-marker-halo")).toBeInstanceOf(HTMLDivElement);
+    expect(element.querySelector(".freed-map-marker-badge")).toBeInstanceOf(HTMLDivElement);
+  });
 });

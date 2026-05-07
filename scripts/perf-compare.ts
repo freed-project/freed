@@ -147,7 +147,11 @@ for (const metric of results.metrics) {
   let status = "✅";
   let isRegression = false;
 
-  if (baselineVal !== undefined && delta !== null) {
+  if (budget?.max !== undefined && current > budget.max) {
+    isRegression = true;
+    regressions++;
+    status = `❌ (${current.toFixed(1)} > budget ${budget.max} ${unit})`;
+  } else if (baselineVal !== undefined && delta !== null) {
     const tolerance = budget?.tolerance ?? DEFAULT_TOLERANCE;
     const threshold = baselineVal * (1 + tolerance);
     if (current > threshold) {
@@ -158,10 +162,6 @@ for (const metric of results.metrics) {
       const pct = ((delta / baselineVal) * 100).toFixed(0);
       status = `⚠️ (+${pct}% within tolerance)`;
     }
-  } else if (budget?.max !== undefined && current > budget.max) {
-    isRegression = true;
-    regressions++;
-    status = `❌ (${current.toFixed(1)} > budget ${budget.max} ${unit})`;
   }
 
   console.log(`| ${metric.name} | ${baselineStr} | ${currentStr} | ${deltaStr} | ${status} |`);
