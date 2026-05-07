@@ -1,0 +1,21 @@
+{
+  "channel": "production",
+  "dayKey": "26.5.6",
+  "date": "2026-05-06",
+  "preferredDeck": "Freed Desktop gets a broad stability pass across startup repair, WebKit memory pressure, dense Friends and Map rendering, Google Drive sync, and mobile PWA reading.",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes across reliability, performance, sync, and mobile PWA polish.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Mobile PWA polish balances the toolbar, settings, support, feed cards, and reader spacing.",
+    "Freed Desktop startup and renderer recovery are calmer under memory pressure and hidden-window states.",
+    "Dense Friends and Map surfaces now have explicit performance coverage and lighter rendering paths.",
+    "Google Drive sync, snapshots, RSS startup polling, and update state are more reliable."
+  ],
+  "editorialNotes": [
+    "Manual production daily rollup for the May 6 release train."
+  ],
+  "updatedAt": "2026-05-07T04:34:24.241Z"
+}
