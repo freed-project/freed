@@ -9,6 +9,7 @@
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Freed Desktop now keeps Friends detail rail resizing on the real pointer path, with a visible full-height resize handle and cleanup across pointerup, cancel, blur, and unmount",
     "Freed Desktop now uses macOS physical footprint for memory-pressure gates, so reclaimable WebKit RSS no longer blocks social scraping by itself",
     "Freed Desktop now caches hot-path time formatters and keeps the Friends graph layout worker alive across resizes, so dense graph views recover instead of staying stuck on Building graph",
     "Freed Desktop now virtualizes large settings lists and exports the shared date-format helper so dev release builds resolve the formatter cache correctly",
@@ -46,7 +47,9 @@
     "v26.5.620-dev adds proactive WebKit cache trimming during regular memory monitoring from PR #483.",
     "v26.5.621-dev adds macOS physical-footprint memory gating from PR #484.",
     "v26.5.622-dev was superseded before packaging because release validation caught a missing UI subpath export.",
-    "v26.5.623-dev adds cached hot-path time formatters and Friends graph layout worker recovery from PR #485, plus settings list virtualization and the missing date-format export from PR #486."
+    "v26.5.623-dev was prepared with cached hot-path time formatters and Friends graph layout worker recovery from PR #485, plus settings list virtualization and the missing date-format export from PR #486.",
+    "v26.5.623-dev was superseded before packaging because release validation caught the Friends detail rail resize regression check timing out.",
+    "v26.5.624-dev adds the Friends sidebar pointer resize stability fix from PR #487 and replaces failed v26.5.622-dev and v26.5.623-dev attempts."
   ],
-  "updatedAt": "2026-05-07T00:34:00.000Z"
+  "updatedAt": "2026-05-07T01:08:00.000Z"
 }
