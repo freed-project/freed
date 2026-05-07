@@ -1682,12 +1682,9 @@ export function FriendsView({
     : selectedPerson
       ? renderSelectedPersonSidebar()
       : renderOverviewSidebar();
-  const hasMobileDetailSelection = Boolean(selectedPerson || selectedAccount);
-  const effectiveMobileSurface =
-    isMobile && mobileSurface === "details" && !hasMobileDetailSelection ? "graph" : mobileSurface;
-  const showGraphSurface = !isMobile || effectiveMobileSurface === "graph";
+  const showGraphSurface = !isMobile || mobileSurface === "graph";
   const showDesktopSidebar = !isMobile && friendsSidebarOpen;
-  const showMobileSidebar = isMobile && effectiveMobileSurface === "details";
+  const showMobileSidebar = isMobile && mobileSurface === "details";
   const showCollapsedSelectionCard =
     !isMobile && !friendsSidebarOpen && (!!selectedPerson || !!selectedAccount);
 
