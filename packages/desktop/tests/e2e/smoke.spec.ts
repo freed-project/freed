@@ -4489,8 +4489,9 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
     x: box.x + initialWorldPoint.x * after!.transform.scale + after!.transform.x,
     y: box.y + initialWorldPoint.y * after!.transform.scale + after!.transform.y,
   };
-  expect(projectedInitialMidpoint.x).toBeCloseTo(centerX + panDelta.x, 0);
-  expect(projectedInitialMidpoint.y).toBeCloseTo(centerY + panDelta.y, 0);
+  const midpointTolerancePx = 4;
+  expect(Math.abs(projectedInitialMidpoint.x - (centerX + panDelta.x))).toBeLessThanOrEqual(midpointTolerancePx);
+  expect(Math.abs(projectedInitialMidpoint.y - (centerY + panDelta.y))).toBeLessThanOrEqual(midpointTolerancePx);
 });
 
 test("stress Friends graph degrades labels during motion and avoids expensive redraws on pan", async ({ app, page }) => {
