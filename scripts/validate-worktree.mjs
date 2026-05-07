@@ -156,6 +156,7 @@ export function isDesktopPerfSensitiveSurface(filePath) {
     filePath === "packages/desktop/tests/e2e/perf-feed.spec.ts" ||
     filePath === "packages/desktop/tests/e2e/perf-friends.spec.ts" ||
     filePath === "packages/desktop/tests/e2e/perf-map.spec.ts" ||
+    filePath === "packages/desktop/tests/e2e/perf-sidebar.spec.ts" ||
     filePath === "packages/desktop/tests/e2e/perf-budgets.json" ||
     filePath === "packages/desktop/tests/e2e/perf-baselines.json" ||
     filePath === "packages/desktop/tests/e2e/reporters/perf-reporter.ts" ||
@@ -171,6 +172,7 @@ export function isDesktopPerfSensitiveSurface(filePath) {
     filePath.startsWith("packages/desktop/src-tauri/src/") ||
     filePath.startsWith("packages/ui/src/components/feed/") ||
     filePath.startsWith("packages/ui/src/components/friends/") ||
+    filePath.startsWith("packages/ui/src/components/layout/") ||
     filePath.startsWith("packages/ui/src/components/map/") ||
     filePath === "packages/ui/src/lib/friends-workspace.ts" ||
     filePath === "packages/ui/src/lib/account-link-suggestions.ts" ||
