@@ -11,6 +11,7 @@
   "pinnedHighlights": [
     "Freed Desktop now uses macOS physical footprint for memory-pressure gates, so reclaimable WebKit RSS no longer blocks social scraping by itself",
     "Freed Desktop now caches hot-path time formatters and keeps the Friends graph layout worker alive across resizes, so dense graph views recover instead of staying stuck on Building graph",
+    "Freed Desktop now virtualizes large settings lists and exports the shared date-format helper so dev release builds resolve the formatter cache correctly",
     "Freed Desktop now trims oversized WebKit caches during normal memory monitoring, before social scrape preflight has to block work",
     "Dense Map views now suppress decorative marker chrome during movement and keep rendered marker data stable while panning",
     "Dense Friends graphs now use deterministic large-graph layout, virtualized sidebar rows, dense Pixi layers, and capped interaction redraws so 1,600-person views mount and zoom within the frame budget",
@@ -44,7 +45,8 @@
     "v26.5.619-dev adds the dense Friends graph mount and interaction fix from PR #482 and the dense Map interaction trim from PR #480.",
     "v26.5.620-dev adds proactive WebKit cache trimming during regular memory monitoring from PR #483.",
     "v26.5.621-dev adds macOS physical-footprint memory gating from PR #484.",
-    "v26.5.622-dev adds cached hot-path time formatters and Friends graph layout worker recovery from PR #485."
+    "v26.5.622-dev was superseded before packaging because release validation caught a missing UI subpath export.",
+    "v26.5.623-dev adds cached hot-path time formatters and Friends graph layout worker recovery from PR #485, plus settings list virtualization and the missing date-format export from PR #486."
   ],
-  "updatedAt": "2026-05-07T00:08:00.000Z"
+  "updatedAt": "2026-05-07T00:34:00.000Z"
 }
