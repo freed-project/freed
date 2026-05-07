@@ -229,6 +229,39 @@ async function graphNodeScreenPoint(
   }, matcher);
 }
 
+async function waitForGraphNodeScreenPoint(
+  page: Page,
+  matcher: { personId?: string; accountId?: string; kind?: string },
+  timeout = 10_000,
+) {
+  let point: { x: number; y: number } | null = null;
+
+  await expect
+    .poll(async () => {
+      const nextPoint = await graphNodeScreenPoint(page, matcher);
+      const viewportBox = await page.getByTestId("friend-graph-viewport").boundingBox();
+      if (!nextPoint || !viewportBox) {
+        point = null;
+        return false;
+      }
+
+      const isInsideViewport =
+        nextPoint.x >= viewportBox.x + 4 &&
+        nextPoint.x <= viewportBox.x + viewportBox.width - 4 &&
+        nextPoint.y >= viewportBox.y + 4 &&
+        nextPoint.y <= viewportBox.y + viewportBox.height - 4;
+      point = isInsideViewport ? nextPoint : null;
+      return isInsideViewport;
+    }, { timeout })
+    .toBe(true);
+
+  if (!point) {
+    throw new Error("Friends graph node did not settle inside the visible viewport");
+  }
+
+  return point;
+}
+
 async function readGraphDebug(page: Page) {
   return page.evaluate(() => {
     return (window as typeof window & {
@@ -3259,21 +3292,14 @@ test("selecting a graph node shows a compact detail card when the Friends detail
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   const viewport = page.getByTestId("friend-graph-viewport");
   await expect(viewport).toBeVisible({ timeout: 10_000 });
+  await page.getByRole("button", { name: "Fit all" }).click();
 
-  let friendPoint: { x: number; y: number } | null = null;
-  await expect
-    .poll(async () => {
-      friendPoint = await graphNodeScreenPoint(page, { personId: "friend-ada" });
-      return friendPoint !== null;
-    }, { timeout: 10_000 })
-    .toBe(true);
-
-  await page.waitForTimeout(600);
-  const beforeClick = await waitForGraphPerfToSettle(page);
-  expect(beforeClick).not.toBeNull();
-  friendPoint = await graphNodeScreenPoint(page, { personId: "friend-ada" });
+  const friendPoint = await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" });
+  await page.waitForTimeout(300);
+  const beforeClick = await readGraphSummary(page);
   expect(friendPoint).not.toBeNull();
-  await page.mouse.click(friendPoint!.x, friendPoint!.y);
+  expect(beforeClick).not.toBeNull();
+  await page.mouse.click(friendPoint.x, friendPoint.y);
 
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   const compactCard = page.getByTestId("friends-collapsed-selection-card");
@@ -3286,7 +3312,7 @@ test("selecting a graph node shows a compact detail card when the Friends detail
   expect(afterClick!.transform.scale).toBeCloseTo(beforeClick!.transform.scale, 3);
   expect(afterClick!.metrics.edgeRebuildCount).toBeLessThanOrEqual(beforeClick!.metrics.edgeRebuildCount + 2);
   expect(afterClick!.metrics.nodeRestyleCount).toBeLessThanOrEqual(beforeClick!.metrics.nodeRestyleCount + 2);
-  await page.mouse.dblclick(friendPoint!.x, friendPoint!.y);
+  await page.mouse.dblclick(friendPoint.x, friendPoint.y);
   const afterDoubleClick = await readGraphSummary(page);
   expect(afterDoubleClick).not.toBeNull();
   expect(afterDoubleClick!.transform.x).toBeCloseTo(beforeClick!.transform.x, 1);
@@ -4327,14 +4353,22 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(page);
 
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "all_content"; friendsSidebarOpen: boolean } }) => Promise<void>;
         setActiveView: (view: string) => void;
       };
     };
+    await store.getState().updatePreferences({
+      display: {
+        friendsMode: "all_content",
+        friendsSidebarOpen: true,
+      },
+    });
     store.getState().setActiveView("friends");
   });
 
@@ -4343,6 +4377,7 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
   await expect
     .poll(async () => (await readGraphDebug(page))?.nodes.length ?? 0, { timeout: 10_000 })
     .toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Fit all" }).click();
 
   const box = await viewport.boundingBox();
   if (!box) {
