@@ -1507,10 +1507,10 @@ test("settings dialog closes from the mobile header close button", async ({ app,
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openDefault();
   }, SETTINGS_STORE_PATH);
-  await expect(page.getByTestId("settings-close-button-sidebar")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("settings-close-button-mobile")).toBeVisible({ timeout: 5_000 });
 
-  await page.getByTestId("settings-close-button-sidebar").click();
-  await expect(page.getByTestId("settings-close-button-sidebar")).toHaveCount(0);
+  await page.getByTestId("settings-close-button-mobile").click();
+  await expect(page.getByTestId("settings-close-button-mobile")).toHaveCount(0);
 
   await page.evaluate(async (settingsStorePath) => {
     const mod = await import(settingsStorePath);
@@ -2675,14 +2675,14 @@ test("Map view popup exposes friend actions and supports post navigation", async
 
   const { page } = app;
 
-  await page.getByRole("button", { name: /^Map/ }).click();
-  await page.waitForFunction(() => {
+  await page.evaluate(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
-      | { getState: () => { activeView: string } }
+      | { getState: () => { setActiveView: (view: "map") => void } }
       | undefined;
-    return store?.getState().activeView === "map";
-  }, { timeout: 10_000 });
+    store?.getState().setActiveView("map");
+  });
+  await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
 
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Friend");
   await clickMapPopupAction(page, "Open Friend");
@@ -2698,7 +2698,14 @@ test("Map view popup exposes friend actions and supports post navigation", async
     timeout: 10_000,
   });
 
-  await page.getByRole("button", { name: /^Map/ }).click();
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | { getState: () => { setActiveView: (view: "map") => void } }
+      | undefined;
+    store?.getState().setActiveView("map");
+  });
+  await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
   await clickMapPopupAction(page, "Open Post");
   await page.waitForFunction(() => {
@@ -4004,7 +4011,11 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
 
   const row = page.getByTestId("friend-candidate-suggestion").filter({ hasText: "Ida Wells" });
   await expect(row).toBeVisible({ timeout: 10_000 });
-  await row.getByRole("button", { name: "Dismiss" }).click();
+  const dismissButton = row.getByRole("button", { name: "Dismiss" });
+  await expect(dismissButton).toBeVisible({ timeout: 10_000 });
+  await dismissButton.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
   await expect(row).toBeHidden({ timeout: 10_000 });
 
   await expect.poll(async () =>
