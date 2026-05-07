@@ -4329,7 +4329,14 @@ test("pinned person graph position survives reload", async ({ app, page }) => {
     return viewport.evaluate((element) => Number((element as HTMLElement).dataset.graphNodeCount ?? "0"));
   }).toBeGreaterThanOrEqual(3);
 
-  await waitForGraphNodeScreenPoint(page, { personId: "friend-pinned" });
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const debug = (window as Record<string, unknown>).__FREED_GRAPH_DEBUG__ as
+        | { nodes: Array<{ personId?: string }> }
+        | undefined;
+      return debug?.nodes.some((node) => node.personId === "friend-pinned") ?? false;
+    }),
+  { timeout: 10_000 }).toBe(true);
   const pinnedPosition = await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const debug = w.__FREED_GRAPH_DEBUG__ as
