@@ -1507,8 +1507,17 @@ test("settings dialog closes from the mobile header close button", async ({ app,
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openDefault();
   }, SETTINGS_STORE_PATH);
-  await expect(page.getByTestId("settings-close-button-mobile")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("settings-close-button-sidebar")).toBeVisible({ timeout: 5_000 });
 
+  await page.getByTestId("settings-close-button-sidebar").click();
+  await expect(page.getByTestId("settings-close-button-sidebar")).toHaveCount(0);
+
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openDefault();
+  }, SETTINGS_STORE_PATH);
+  await page.getByRole("button", { name: "Appearance" }).click();
+  await expect(page.getByTestId("settings-close-button-mobile")).toBeVisible({ timeout: 5_000 });
   await page.getByTestId("settings-close-button-mobile").click();
   await expect(page.getByTestId("settings-close-button-mobile")).toHaveCount(0);
 });
@@ -3440,13 +3449,22 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   const filterButton = page.getByTestId("mobile-toolbar-filter-button");
   await expect(filterButton).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("friends-toolbar-lens")).toBeHidden();
+  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 5_000 });
+  const friendPoint = await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" });
+  await page.mouse.click(friendPoint.x, friendPoint.y);
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { selectedPersonId: string | null; selectedAccountId: string | null } }
+      | undefined;
+    const state = store?.getState();
+    return state?.selectedPersonId === "friend-ada" && state.selectedAccountId === null;
+  }, { timeout: 5_000 });
   await filterButton.click();
 
   const lens = page.getByTestId("mobile-friends-toolbar-lens");
   await expect(lens.getByRole("button", { name: "Friends" })).toBeVisible({ timeout: 5_000 });
   await expect(lens.getByRole("button", { name: "All content" })).toBeVisible({ timeout: 5_000 });
   await expect(lens.getByRole("button", { name: "Details" })).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
 
   await lens.getByRole("button", { name: "Details" }).click();
