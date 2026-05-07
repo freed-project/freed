@@ -3499,6 +3499,8 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
           getState: () => {
             updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
+            setSelectedPerson: (personId: string | null) => void;
+            setSelectedAccount: (accountId: string | null) => void;
           };
         }
       | undefined;
@@ -3507,20 +3509,23 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
         friendsSidebarOpen: false,
       },
     });
+    store?.getState().setSelectedPerson(null);
+    store?.getState().setSelectedAccount(null);
     store?.getState().setActiveView("friends");
   });
 
   const viewport = page.getByTestId("friend-graph-viewport");
   await expect(viewport).toBeVisible({ timeout: 10_000 });
+  await page.getByRole("button", { name: "Fit all" }).click();
 
   const friendPoint = await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" });
-
   await page.mouse.click(friendPoint.x, friendPoint.y);
   await page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { selectedPersonId: string | null } }
+      | { getState: () => { selectedPersonId: string | null; selectedAccountId: string | null } }
       | undefined;
-    return store?.getState().selectedPersonId === "friend-ada";
+    const state = store?.getState();
+    return state?.selectedPersonId === "friend-ada" && state.selectedAccountId === null;
   }, undefined, { timeout: 10_000 });
 
   const compactCard = page.getByTestId("friends-collapsed-selection-card");
