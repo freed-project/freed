@@ -1449,7 +1449,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           >
             <h2 className="text-base font-semibold text-text-primary">Settings</h2>
             <CloseButton
-              testId={isMobile ? "settings-close-button-sidebar" : undefined}
+              testId={isMobile && mobileView === "nav" ? "settings-close-button-mobile" : undefined}
               className="-mr-1"
             />
           </div>
@@ -1523,7 +1523,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               </span>
             </button>
             <CloseButton
-              testId="settings-close-button-mobile"
+              testId={isMobile && mobileView === "section" ? "settings-close-button-mobile" : undefined}
               className="-mr-1 shrink-0"
             />
           </div>
