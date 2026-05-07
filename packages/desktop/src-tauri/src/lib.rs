@@ -1606,6 +1606,10 @@ fn renderer_stale_log_should_capture_deep_diagnostic(
     renderer_is_effectively_visible(is_visible, last_visibility)
 }
 
+fn renderer_stale_should_recover(is_visible: bool, last_visibility: &str) -> bool {
+    renderer_is_effectively_visible(is_visible, last_visibility)
+}
+
 fn format_bytes_for_log(bytes: u64) -> String {
     const KIB: f64 = 1024.0;
     const MIB: f64 = KIB * 1024.0;
@@ -1693,6 +1697,14 @@ mod renderer_watchdog_tests {
         assert!(!renderer_stale_log_should_capture_deep_diagnostic(
             false, "hidden"
         ));
+    }
+
+    #[test]
+    fn hidden_renderer_stale_skips_renderer_recovery() {
+        assert!(renderer_stale_should_recover(true, "visible"));
+        assert!(!renderer_stale_should_recover(true, "hidden"));
+        assert!(!renderer_stale_should_recover(false, "visible"));
+        assert!(!renderer_stale_should_recover(false, "hidden"));
     }
 
     #[test]
@@ -6538,7 +6550,12 @@ pub fn run() {
                             renderer_stale_log_after(is_main_visible, &health.last_visibility);
                         let should_log_stale =
                             age > stale_log_after && !health.stale_logged;
+                        let recovery_allowed = renderer_stale_should_recover(
+                            is_main_visible,
+                            &health.last_visibility,
+                        );
                         let should_recover =
+                            recovery_allowed &&
                             age > recovery_threshold &&
                             health
                                 .last_recovery_at
@@ -6564,10 +6581,11 @@ pub fn run() {
                                 })
                                 .unwrap_or_else(|| "webkit_rss=unavailable".to_string());
                             warn!(
-                                "[main-window] renderer heartbeat stale age_ms={} threshold_ms={} visible={} last_seq={} last_reason={} last_visibility={} href={} native_rss={} {}",
+                                "[main-window] renderer heartbeat stale age_ms={} threshold_ms={} visible={} recovery_allowed={} last_seq={} last_reason={} last_visibility={} href={} native_rss={} {}",
                                 age.as_millis(),
                                 recovery_threshold.as_millis(),
                                 is_main_visible,
+                                recovery_allowed,
                                 health.last_seq,
                                 health.last_reason,
                                 health.last_visibility,
@@ -6617,6 +6635,7 @@ pub fn run() {
                                     "lastInputAgeMs": health.last_input_age_ms,
                                     "settingsOpen": health.last_settings_open,
                                     "dialogOpen": health.last_dialog_open,
+                                    "rendererRecoveryAllowed": recovery_allowed,
                                     "backgroundWorkPaused": pause_background_work,
                                     "deepDiagnosticCaptured": capture_deep_diagnostic,
                                     "nativeResidentBytes": stats.process_resident_bytes,
@@ -6645,6 +6664,7 @@ pub fn run() {
                                     "rendererGeneration": health.renderer_generation,
                                     "ageMs": age.as_millis(),
                                     "thresholdMs": recovery_threshold.as_millis(),
+                                    "rendererRecoveryAllowed": recovery_allowed,
                                     "safeModeActive": safe_mode_active,
                                     "safeModeRemainingMs": safe_mode_remaining_ms,
                                     "recoveriesInShortWindow": recoveries_short,
@@ -6682,6 +6702,8 @@ pub fn run() {
                                     "ageMs": age.as_millis(),
                                     "thresholdMs": recovery_threshold.as_millis(),
                                     "visible": is_main_visible,
+                                    "lastVisibility": health.last_visibility.clone(),
+                                    "rendererRecoveryAllowed": recovery_allowed,
                                     "webkitResidentBytes": stats.webkit_total_resident_bytes,
                                     "webkitLargestProcessId": stats.webkit_largest_process_id,
                                     "webkitLargestResidentBytes": stats.webkit_largest_resident_bytes,
@@ -6708,6 +6730,8 @@ pub fn run() {
                                     "attempt": attempt,
                                     "ageMs": age.as_millis(),
                                     "thresholdMs": recovery_threshold.as_millis(),
+                                    "lastVisibility": health.last_visibility.clone(),
+                                    "rendererRecoveryAllowed": recovery_allowed,
                                     "safeModeActive": safe_mode_active,
                                     "safeModeRemainingMs": safe_mode_remaining_ms,
                                     "recoveriesInShortWindow": recoveries_short,
