@@ -118,6 +118,19 @@ describe("automerge worker memory routing", () => {
     expect(body).not.toContain("saveAndBroadcast");
   });
 
+  it("display preference updates avoid full feed hydration", () => {
+    const body = caseBody("UPDATE_PREFERENCES");
+    const applyBody = functionBody("applyPreferenceChange");
+    const requiresBody = functionBody("preferenceUpdateRequiresFullHydration");
+
+    expect(body).toContain("applyPreferenceChange");
+    expect(body).not.toContain("applyRequestChange");
+    expect(applyBody).toContain("persistAndBroadcastWithoutHydration");
+    expect(applyBody).toContain("PREFERENCES_PATCH");
+    expect(applyBody).toContain("saveAndBroadcast");
+    expect(requiresBody).toContain("updates.weights !== undefined");
+  });
+
   it.each(["HEAL_UNTITLED_FEEDS", "DEDUPLICATE_ITEMS", "PRUNE_ARCHIVED_ITEMS"])(
     "%s skips full hydration when no records change",
     (caseName) => {

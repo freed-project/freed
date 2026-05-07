@@ -181,6 +181,21 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     return;
   }
 
+  if (msg.type === "PREFERENCES_PATCH") {
+    if (!lastDocState) return;
+    publishState(
+      { ...lastDocState, preferences: msg.preferences },
+      {
+        source: "preferences_patch",
+        mutation: msg.mutation,
+        changedItemIds: null,
+        changedItems: [],
+        requiresFullScan: false,
+      },
+    );
+    return;
+  }
+
   if (msg.type === "ITEM_PATCH") {
     if (!lastDocState) return;
     const changedItems = msg.patches.map((patch) => patch.item);

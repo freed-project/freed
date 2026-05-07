@@ -473,6 +473,14 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   };
 }
 
+function hydratePreferencesFromDoc(doc: FreedDoc): UserPreferences {
+  return mergeDefaultPreferences(A.toJS(doc.preferences ?? {}) as Partial<UserPreferences>);
+}
+
+function preferenceUpdateRequiresFullHydration(updates: Partial<UserPreferences>): boolean {
+  return updates.weights !== undefined;
+}
+
 /**
  * Persist, hydrate, and broadcast state plus, if relay clients are connected,
  * request a broadcast_doc IPC call from the main thread. The Array.from(binary)
@@ -578,6 +586,26 @@ async function applyChange(
   if (searchCorpusChanged) bumpSearchCorpusVersion();
   send({ type: "DEBUG_EVENT", kind: "change", detail: message });
   await saveAndBroadcast(trace);
+}
+
+async function applyPreferenceChange(
+  updates: Partial<UserPreferences>,
+  trace?: RequestTrace,
+): Promise<void> {
+  if (!currentDoc) throw new Error("Document not initialized");
+  currentDoc = A.change(currentDoc, "Update preferences", (doc) => {
+    updatePreferences(doc, updates);
+  });
+  send({ type: "DEBUG_EVENT", kind: "change", detail: "Update preferences" });
+
+  if (preferenceUpdateRequiresFullHydration(updates)) {
+    await saveAndBroadcast(trace);
+    return;
+  }
+
+  const preferences = hydratePreferencesFromDoc(currentDoc);
+  await persistAndBroadcastWithoutHydration(trace);
+  send({ type: "PREFERENCES_PATCH", preferences, mutation: trace?.opType });
 }
 
 async function applyCountedChange(
@@ -950,10 +978,7 @@ async function handleRequest(
         break;
 
       case "UPDATE_PREFERENCES":
-        await applyRequestChange(
-          (doc) => updatePreferences(doc, req.updates),
-          "Update preferences",
-        );
+        await applyPreferenceChange(req.updates, trace);
         ack(req.reqId);
         break;
 
