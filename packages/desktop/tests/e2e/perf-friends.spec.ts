@@ -196,7 +196,7 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   await seedLargeFriendsWorkspace(page);
 
   const mountStartedAt = Date.now();
-  await page.evaluate(async () => {
+  const preferenceSavePromise = page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
@@ -204,13 +204,16 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
         setActiveView: (view: string) => void;
       };
     };
-    await store.getState().updatePreferences({
+    const preferenceSaveStartedAt = performance.now();
+    const savePromise = store.getState().updatePreferences({
       display: {
         friendsMode: "all_content",
         themeId: "scriptorium",
       },
     });
     store.getState().setActiveView("friends");
+    await savePromise;
+    return performance.now() - preferenceSaveStartedAt;
   });
 
   const viewport = page.getByTestId("friend-graph-viewport");
@@ -224,10 +227,12 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
 
   const mountedRows = await page.getByTestId("friend-overview-virtual-row").count();
   const mountElapsed = Date.now() - mountStartedAt;
+  const preferenceSaveMs = await preferenceSavePromise;
   const initialDebug = await readGraphDebug(page);
   expect(initialDebug).not.toBeNull();
 
   console.log(`[PERF] Friends mount: ${mountElapsed.toLocaleString()} ms`);
+  console.log(`[PERF] Friends preference save: ${Math.round(preferenceSaveMs).toLocaleString()} ms`);
   console.log(`[PERF] Friends mounted sidebar rows: ${mountedRows.toLocaleString()}`);
   console.log(`[PERF] Friends graph model build: ${initialDebug!.metrics.modelBuildMs.toFixed(1)} ms`);
   console.log(`[PERF] Friends graph layout: ${initialDebug!.metrics.layoutMs.toFixed(1)} ms`);
