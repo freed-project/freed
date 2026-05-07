@@ -98,12 +98,12 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     },
     [items, itemHeight, storyItemHeight],
   );
-  const readRows = useMemo(
-    () => items.map((item) => ({ type: "item" as const, item })),
-    [items],
-  );
   const readListKey = useMemo(
-    () => items.map((item) => item.globalId).join("|"),
+    () => {
+      const firstId = items[0]?.globalId ?? "";
+      const lastId = items[items.length - 1]?.globalId ?? "";
+      return `compact:${items.length}:${firstId}:${lastId}`;
+    },
     [items],
   );
   const getReadScrollMetrics = useCallback(() => ({
@@ -114,7 +114,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   const processReadOnScroll = useReadOnScrollTracker({
     surface: "compact-feed",
     listKey: readListKey,
-    rows: readRows,
+    rows: items,
     items,
     markReadOnScroll,
     getScrollMetrics: getReadScrollMetrics,

@@ -1,0 +1,38 @@
+{
+  "tag": "v26.5.600-dev",
+  "version": "26.5.600-dev",
+  "channel": "dev",
+  "dayKey": "26.5.6",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-06T07:32:01.426Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.517-dev",
+    "previousPublishedDayTag": "v26.5.517-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.600-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.600-dev"
+    ],
+    "prNumbers": [
+      458
+    ],
+    "commitSubjects": [
+      "perf: rebuild compacted feed documents (#458)"
+    ]
+  },
+  "release": {
+    "deck": "Freed Desktop rebuilds compacted feed documents to cut WebKit memory pressure",
+    "features": [],
+    "fixes": [
+      "Oversized feed text compaction now rebuilds a fresh Automerge document when the saved binary is already large, so old article text history does not keep WebKit memory high after relaunch"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.600-dev\n\nFreed Desktop rebuilds compacted feed documents to cut WebKit memory pressure\n\n### Fixes\n\n- Oversized feed text compaction now rebuilds a fresh Automerge document when the saved binary is already large, so old article text history does not keep WebKit memory high after relaunch\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

@@ -1,0 +1,84 @@
+{
+  "tag": "v26.5.405-dev",
+  "version": "26.5.405-dev",
+  "channel": "dev",
+  "dayKey": "26.5.4",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-05T05:29:47Z",
+  "model": "manual",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.404-dev",
+    "previousPublishedDayTag": "v26.5.308-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.402-dev",
+      "v26.5.404-dev",
+      "v26.5.405-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.402-dev",
+      "v26.5.404-dev",
+      "v26.5.405-dev"
+    ],
+    "prNumbers": [
+      408,
+      418,
+      419,
+      420,
+      424,
+      425,
+      426,
+      427,
+      431,
+      432
+    ],
+    "commitSubjects": [
+      "release: preserve 26.5.4 dev note rollup",
+      "fix: scope desktop WebKit memory pressure (#432)",
+      "release: approve v26.5.404-dev notes",
+      "release: v26.5.404-dev",
+      "fix: reduce social scraper frame drops (#431)",
+      "fix: restore native desktop toolbar dragging (#426)",
+      "release: approve v26.5.402-dev notes",
+      "release: v26.5.402-dev",
+      "fix: restore linux release compile (#427)",
+      "release: approve v26.5.401-dev notes",
+      "release: v26.5.401-dev",
+      "fix: stabilize renderer recovery under memory pressure (#425)",
+      "fix: retry deferred startup rss poll (#424)",
+      "fix: batch visible archive actions (#420)",
+      "fix: recover stale renderer without blocking main thread (#419)",
+      "fix: let startup recovery dialog scroll (#408)",
+      "chore: reverse integrate v26.5.309 production release (#418)"
+    ]
+  },
+  "release": {
+    "deck": "Freed Desktop is calmer during renderer memory spikes",
+    "features": [],
+    "fixes": [
+      "Social memory preflight now ignores WebKit processes left over from earlier Freed Desktop launches.",
+      "Social feed scraping now drops fewer frames under memory pressure.",
+      "Native desktop toolbar dragging restored.",
+      "Linux release compile restored.",
+      "Renderer recovery under memory pressure is now more stable.",
+      "Deferred startup RSS polling is now retried.",
+      "Reader, feed, and header polish.",
+      "Stale renderer recovery no longer blocks the main thread.",
+      "Freed Desktop now pauses heavy background work before high renderer memory can force repeated recovery.",
+      "Renderer health events now include generation, route, visibility, memory footprint, recovery state, and active background work.",
+      "Social sync memory preflights now defer the shared scheduler instead of cycling through providers.",
+      "Startup recovery now waits for stable renderer heartbeats before high-memory background jobs resume.",
+      "Startup recovery and Settings copy now distinguish high memory from critical memory.",
+      "Non-macOS release builds now compile the renderer memory diagnostics cleanly."
+    ],
+    "followUps": [
+      "Reverse integrate v26.5.309 production release.",
+      "Local diagnostics now write bounded runtime bundles for memory pressure, stale heartbeats, and pre-recovery samples.",
+      "Reader, sidebar, and settings UX work."
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.405-dev\n\nFreed Desktop is calmer during renderer memory spikes\n\n### Fixes\n\n- Social memory preflight now ignores WebKit processes left over from earlier Freed Desktop launches.\n- Social feed scraping now drops fewer frames under memory pressure.\n- Native desktop toolbar dragging restored.\n- Linux release compile restored.\n- Renderer recovery under memory pressure is now more stable.\n- Deferred startup RSS polling is now retried.\n- Reader, feed, and header polish.\n- Stale renderer recovery no longer blocks the main thread.\n- Freed Desktop now pauses heavy background work before high renderer memory can force repeated recovery.\n- Renderer health events now include generation, route, visibility, memory footprint, recovery state, and active background work.\n- Social sync memory preflights now defer the shared scheduler instead of cycling through providers.\n- Startup recovery now waits for stable renderer heartbeats before high-memory background jobs resume.\n- Startup recovery and Settings copy now distinguish high memory from critical memory.\n- Non-macOS release builds now compile the renderer memory diagnostics cleanly.\n\n### Follow-ups\n\n- Reverse integrate v26.5.309 production release.\n- Local diagnostics now write bounded runtime bundles for memory pressure, stale heartbeats, and pre-recovery samples.\n- Reader, sidebar, and settings UX work.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

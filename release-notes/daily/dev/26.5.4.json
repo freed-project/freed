@@ -12,8 +12,11 @@
     "Freed Desktop now pauses heavy background work before high renderer memory can force repeated recovery.",
     "Renderer diagnostics now record memory footprint, route, visibility, generation, recovery state, and active jobs.",
     "Social sync now defers shared scheduler work when memory preflight fails instead of cycling providers.",
-    "Non-macOS release builds now compile the renderer memory diagnostics cleanly."
+    "Non-macOS release builds now compile the renderer memory diagnostics cleanly.",
+    "Startup recovery UI can scroll when the dialog content is taller than the window.",
+    "Visible archive actions now batch state work more aggressively.",
+    "Social memory preflight now ignores WebKit processes left over from earlier Freed Desktop launches."
   ],
   "editorialNotes": [],
-  "updatedAt": "2026-05-04T21:23:46.867Z"
+  "updatedAt": "2026-05-05T06:37:36.352Z"
 }
