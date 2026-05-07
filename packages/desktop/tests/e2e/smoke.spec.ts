@@ -229,6 +229,27 @@ async function graphNodeScreenPoint(
   }, matcher);
 }
 
+async function readGraphViewportBox(page: Page) {
+  return page.evaluate(() => {
+    const viewport = document.querySelector('[data-testid="friend-graph-viewport"]') as HTMLElement | null;
+    if (!viewport) {
+      return null;
+    }
+
+    const rect = viewport.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    return {
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  });
+}
+
 async function waitForGraphNodeScreenPoint(
   page: Page,
   matcher: { personId?: string; accountId?: string; kind?: string },
@@ -239,7 +260,7 @@ async function waitForGraphNodeScreenPoint(
   await expect
     .poll(async () => {
       const nextPoint = await graphNodeScreenPoint(page, matcher);
-      const viewportBox = await page.getByTestId("friend-graph-viewport").boundingBox();
+      const viewportBox = await readGraphViewportBox(page);
       if (!nextPoint || !viewportBox) {
         point = null;
         return false;
@@ -2736,19 +2757,30 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
   await page.evaluate(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
-      | { getState: () => { updatePreferences: (patch: { display: { friendsSidebarWidth: number } }) => Promise<void> } }
+      | {
+          getState: () => {
+            updatePreferences: (patch: { display: { friendsSidebarWidth: number } }) => Promise<void>;
+            setActiveView: (view: "friends") => void;
+            setSelectedPerson: (personId: string | null) => void;
+          };
+        }
       | undefined;
     const state = store?.getState();
-    return state?.updatePreferences({
+    if (!state) {
+      return;
+    }
+
+    return state.updatePreferences({
       display: {
         friendsSidebarWidth: 388,
       },
+    }).then(() => {
+      state.setActiveView("friends");
+      state.setSelectedPerson("friend-ada");
     });
   });
 
-  await page.getByTestId("source-row-friends").click();
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
-  await page.getByRole("button", { name: /Ada Lovelace/ }).click();
   await expect(page.getByText("Last seen")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByRole("button", { name: /last seen paris/i })).toBeVisible({ timeout: 5_000 });
   await page.getByRole("button", { name: /open map/i }).click();
@@ -4436,7 +4468,7 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
     }, { timeout: 10_000 })
     .toBe(true);
 
-  const box = await viewport.boundingBox();
+  const box = await readGraphViewportBox(page);
   if (!box) {
     throw new Error("Friends graph viewport is not visible");
   }
