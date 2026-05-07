@@ -4616,7 +4616,7 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
   };
   const panDelta = { x: 48, y: 32 };
 
-  await viewport.evaluate((element, gesture) => {
+  await viewport.evaluate(async (element, gesture) => {
     const target = element as HTMLElement & {
       setPointerCapture: (pointerId: number) => void;
       releasePointerCapture: (pointerId: number) => void;
@@ -4644,13 +4644,17 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
         buttons: type === "pointerup" ? 0 : 1,
       }));
     };
+    const nextFrame = () => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
 
     dispatchTouchPointer("pointerdown", 11, gesture.centerX - 80, gesture.centerY, true);
     dispatchTouchPointer("pointerdown", 12, gesture.centerX + 80, gesture.centerY, false);
+    await nextFrame();
     dispatchTouchPointer("pointermove", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
+    await nextFrame();
     dispatchTouchPointer("pointermove", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
-    dispatchTouchPointer("pointerup", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
-    dispatchTouchPointer("pointerup", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
+    await nextFrame();
   }, { centerX, centerY, panDelta });
 
   await expect
@@ -4676,6 +4680,39 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
       );
     }, { timeout: 8_000 })
     .toBeLessThanOrEqual(midpointTolerancePx);
+
+  await viewport.evaluate((element, gesture) => {
+    const target = element as HTMLElement & {
+      setPointerCapture: (pointerId: number) => void;
+      releasePointerCapture: (pointerId: number) => void;
+    };
+    target.setPointerCapture = () => undefined;
+    target.releasePointerCapture = () => undefined;
+
+    const dispatchTouchPointer = (
+      type: "pointerup",
+      pointerId: number,
+      x: number,
+      y: number,
+      isPrimary: boolean,
+    ) => {
+      target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId,
+        pointerType: "touch",
+        isPrimary,
+        clientX: x,
+        clientY: y,
+        width: 12,
+        height: 12,
+        buttons: 0,
+      }));
+    };
+
+    dispatchTouchPointer("pointerup", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
+    dispatchTouchPointer("pointerup", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
+  }, { centerX, centerY, panDelta });
 });
 
 test("stress Friends graph degrades labels during motion and avoids expensive redraws on pan", async ({ app, page }) => {
