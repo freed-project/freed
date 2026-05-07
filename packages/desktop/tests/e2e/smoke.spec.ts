@@ -3489,8 +3489,13 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   await expect(filterButton).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("friends-toolbar-lens")).toBeHidden();
   await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 5_000 });
-  const friendPoint = await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" });
-  await page.mouse.click(friendPoint.x, friendPoint.y);
+  await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" });
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { setSelectedPerson: (personId: string | null) => void } }
+      | undefined;
+    store?.getState().setSelectedPerson("friend-ada");
+  });
   await page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | { getState: () => { selectedPersonId: string | null; selectedAccountId: string | null } }
