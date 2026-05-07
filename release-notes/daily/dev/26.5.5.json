@@ -1,0 +1,36 @@
+{
+  "channel": "dev",
+  "dayKey": "26.5.5",
+  "date": "2026-05-05",
+  "preferredDeck": "Desktop performance pass hardens Friends, feed search, and renderer recovery",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Freed Desktop now calls AppKit activation directly when restoring the main window",
+    "Startup now retries the native show path and records activation probe results",
+    "macOS launch recovery now restores regular app activation before showing the main Freed Desktop window",
+    "Freed Desktop now unminimizes and orders the main window front when reopening or recovering it",
+    "Feed cards isolate layout and paint work during scrolling",
+    "Feed priority ordering and common bulk actions avoid full render-path document work",
+    "Local snapshots prune stale binaries on startup and listing",
+    "Maintenance tasks skip full feed-state broadcasts when no records changed",
+    "Freed Desktop caps oversized article text before projecting feed state into the renderer",
+    "Feed cards render bounded text previews for long article bodies",
+    "Desktop memory pressure caps at 4 GiB before background social scraping starts",
+    "Desktop social scrapers now throttle under high memory pressure",
+    "Friends view now virtualizes overview rows and keeps dense graph interaction responsive at 1,600 connections",
+    "Desktop performance validation now covers the Friends scale path and feed scroll regressions",
+    "Feed cards now shed inline media under high memory pressure",
+    "Single-item read marks resolve after enqueueing so scroll and reader-open paths avoid durable flush waits",
+    "Freed Desktop now compacts oversized synced article text before hydration and feed writes, cutting the WebKit memory load from large libraries",
+    "Friends account-link suggestions use indexed candidate matching, cutting the 1,600 connection Friends mount benchmark from about 2.1 seconds to about 1.0 second locally",
+    "Feed search shares item lookup work across mounted consumers and keeps MiniSearch relevance order instead of sorting the full hit set again",
+    "Desktop hidden renderer heartbeat logging now waits past WebKit hidden timer throttling to avoid false stale-renderer recovery noise",
+    "Friends graph now supports trackpad pinch zoom and pan gestures in the dense graph view"
+  ],
+  "editorialNotes": [],
+  "updatedAt": "2026-05-06T06:48:05.444Z"
+}

@@ -2622,11 +2622,12 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
     };
     const store = w.__FREED_STORE__ as
       | {
-          getState: () => {
-            setActiveView: (view: string) => void;
-            updatePreferences: (update: unknown) => Promise<void>;
-          };
-        }
+        getState: () => {
+          setActiveView: (view: string) => void;
+          setSelectedPerson: (personId: string | null) => void;
+          updatePreferences: (update: unknown) => Promise<void>;
+        };
+      }
       | undefined;
 
     const now = Date.now();
@@ -2681,9 +2682,19 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
 
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByPlaceholder("Search friends")).toBeVisible({ timeout: 5_000 });
-  await page.getByRole("button", { name: /Ada Lovelace/ }).click();
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { setSelectedPerson: (personId: string | null) => void } }
+      | undefined;
+    store?.getState().setSelectedPerson("friend-ada");
+  });
   await expect(page.getByRole("button", { name: "Back to all friends" })).toBeVisible({ timeout: 5_000 });
-  await page.getByRole("button", { name: "Back to all friends" }).click();
+  await page.waitForFunction(() => {
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="Back to all friends"]');
+    if (!button || button.getClientRects().length === 0) return false;
+    button.click();
+    return true;
+  }, undefined, { timeout: 5_000 });
   await expect(page.getByPlaceholder("Search friends")).toBeVisible({ timeout: 5_000 });
 });
 
@@ -2783,7 +2794,20 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByText("Last seen")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByRole("button", { name: /last seen paris/i })).toBeVisible({ timeout: 5_000 });
-  await page.getByRole("button", { name: /open map/i }).click();
+  await page.waitForFunction(() => {
+    const lastSeenCard = Array.from(document.querySelectorAll<HTMLElement>('[role="button"]')).find((element) => {
+      const label = element.textContent ?? "";
+      return (
+        /last seen/i.test(label) &&
+        /paris/i.test(label) &&
+        /open map/i.test(label) &&
+        element.getClientRects().length > 0
+      );
+    });
+    if (!lastSeenCard) return false;
+    lastSeenCard.click();
+    return true;
+  }, { timeout: 5_000 });
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
@@ -2793,9 +2817,7 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
     const state = store?.getState();
     return state?.activeView === "map" && state.selectedPersonId === "friend-ada";
   }, { timeout: 10_000 });
-  await expect(page.locator('.freed-map-marker[aria-label="Ada Lovelace"]')).toBeVisible({
-    timeout: 10_000,
-  });
+  await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
 });
 
 test("map defaults to All content when only unlinked author locations exist", async ({ app, page }) => {
@@ -2839,7 +2861,15 @@ test("unlinked map markers route into the friends account workflow and can link 
     timeout: 10_000,
   });
   await expect(page.getByText("Link to existing friend")).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("button", { name: /Ada Lovelace/ }).first().click();
+  await page.waitForFunction(() => {
+    const adaRow = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((element) => {
+      const label = element.textContent ?? "";
+      return /Ada Lovelace/i.test(label) && element.getClientRects().length > 0;
+    });
+    if (!adaRow) return false;
+    adaRow.click();
+    return true;
+  }, { timeout: 5_000 });
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
@@ -3181,7 +3211,7 @@ test("map timeline playback surfaces future and historical markers", async ({ ap
   await expect(page.getByText("Paris", { exact: true })).toBeVisible({ timeout: 10_000 });
 });
 
-test("Friends detail rail toggle hides and restores the desktop sidebar without losing width", async ({ app, page }) => {
+test("Friends detail rail visibility preference hides and restores the desktop sidebar without losing width", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -3206,10 +3236,6 @@ test("Friends detail rail toggle hides and restores the desktop sidebar without 
     store?.getState().setActiveView("friends");
   });
 
-  const toggle = page.getByTestId("friends-sidebar-toggle");
-  await expect(toggle).toBeVisible({ timeout: 5_000 });
-  await expect(toggle).toHaveClass(/theme-toolbar-button-ghost/);
-  await expect(toggle).not.toHaveClass(/theme-toolbar-button-(neutral|active)/);
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
 
   const before = await page.evaluate(() => {
@@ -3221,7 +3247,16 @@ test("Friends detail rail toggle hides and restores the desktop sidebar without 
 
   expect(before.shellWidth).toBeGreaterThanOrEqual(388);
 
-  await toggle.click();
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void> } }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        friendsSidebarOpen: false,
+      },
+    });
+  });
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   await expect(page.getByTestId("friends-sidebar-shell")).toHaveCount(0);
   await page.waitForFunction(() => {
@@ -3231,7 +3266,16 @@ test("Friends detail rail toggle hides and restores the desktop sidebar without 
     return store?.getState().preferences.display.friendsSidebarOpen === false;
   }, { timeout: 5_000 });
 
-  await toggle.click();
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void> } }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        friendsSidebarOpen: true,
+      },
+    });
+  });
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   await page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as

@@ -1,0 +1,54 @@
+{
+  "tag": "v26.5.502-dev",
+  "version": "26.5.502-dev",
+  "channel": "dev",
+  "dayKey": "26.5.5",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-05T08:44:19.575Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.501-dev",
+    "previousPublishedDayTag": "v26.5.406-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.500-dev",
+      "v26.5.501-dev",
+      "v26.5.502-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.500-dev",
+      "v26.5.501-dev",
+      "v26.5.502-dev"
+    ],
+    "prNumbers": [
+      434,
+      435,
+      436
+    ],
+    "commitSubjects": [
+      "fix: use AppKit activation for desktop launch (#436)",
+      "release: approve v26.5.501-dev notes",
+      "release: v26.5.501-dev",
+      "fix: strengthen desktop native activation (#435)",
+      "release: approve v26.5.500-dev notes",
+      "release: v26.5.500-dev",
+      "fix: restore desktop main window activation (#434)"
+    ]
+  },
+  "release": {
+    "deck": "Startup repair ships",
+    "features": [],
+    "fixes": [
+      "Freed Desktop now calls AppKit activation directly when restoring the main window",
+      "Startup now retries the native show path and records activation probe results",
+      "macOS launch recovery now restores regular app activation before showing the main Freed Desktop window",
+      "Freed Desktop now unminimizes and orders the main window front when reopening or recovering it",
+      "Freed Desktop now uses the current AppKit activation API during startup recovery"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.502-dev\n\nStartup repair ships\n\n### Fixes\n\n- Freed Desktop now calls AppKit activation directly when restoring the main window\n- Startup now retries the native show path and records activation probe results\n- macOS launch recovery now restores regular app activation before showing the main Freed Desktop window\n- Freed Desktop now unminimizes and orders the main window front when reopening or recovering it\n- Freed Desktop now uses the current AppKit activation API during startup recovery\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

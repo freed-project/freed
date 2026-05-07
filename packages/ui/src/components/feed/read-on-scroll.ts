@@ -2,6 +2,10 @@ export type ReadTrackRow<TItem> =
   | { type: "item"; item: TItem }
   | { type: "stories"; items: TItem[] };
 
+export type ReadTrackSourceRow<TItem extends { globalId: string; userState: { readAt?: number } }> =
+  | ReadTrackRow<TItem>
+  | TItem;
+
 export interface VirtualRowRange {
   index: number;
   end: number;
@@ -13,7 +17,7 @@ export interface ListViewportMetrics {
 }
 
 export function collectUnreadIdsFromRows<TItem extends { globalId: string; userState: { readAt?: number } }>(
-  rows: Array<ReadTrackRow<TItem>>,
+  rows: Array<ReadTrackSourceRow<TItem>>,
   startIndex: number,
   endIndex: number,
 ): string[] {
@@ -22,7 +26,11 @@ export function collectUnreadIdsFromRows<TItem extends { globalId: string; userS
   for (let rowIndex = startIndex; rowIndex <= endIndex; rowIndex++) {
     const row = rows[rowIndex];
     if (!row) continue;
-    const rowItems = row.type === "item" ? [row.item] : row.items;
+    const rowItems = "type" in row
+      ? row.type === "item"
+        ? [row.item]
+        : row.items
+      : [row];
     for (const item of rowItems) {
       if (!item.userState.readAt) unreadIds.push(item.globalId);
     }

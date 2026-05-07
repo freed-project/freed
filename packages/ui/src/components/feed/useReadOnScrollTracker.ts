@@ -6,7 +6,7 @@ import {
   getNewlyPassedRowEnd,
   getRemainingUnreadIds,
   hasReachedListBottom,
-  type ReadTrackRow,
+  type ReadTrackSourceRow,
   type VirtualRowRange,
 } from "./read-on-scroll.js";
 
@@ -44,7 +44,7 @@ interface ReadListSession<TItem extends ReadTrackItem> {
 interface UseReadOnScrollTrackerOptions<TItem extends ReadTrackItem> {
   surface: ReadScrollSurface;
   listKey: string;
-  rows: Array<ReadTrackRow<TItem>>;
+  rows: Array<ReadTrackSourceRow<TItem>>;
   items: TItem[];
   markReadOnScroll: boolean;
   getScrollMetrics: (scrollSource: ReadScrollSource, virtualizer: ReadScrollVirtualizer) => ReadScrollMetrics;
