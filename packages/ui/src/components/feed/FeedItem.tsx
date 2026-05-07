@@ -3,7 +3,7 @@ import { formatDistanceToNow } from "date-fns";
 import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
 import { usePlatform } from "../../context/PlatformContext.js";
 import type { FeedCardDensity } from "../../lib/feed-card-density.js";
-import { useDebugStore } from "../../lib/debug-store.js";
+import { useDebugStore, type RuntimeMemorySnapshot } from "../../lib/debug-store.js";
 import { ChannelAvatar } from "../ChannelAvatar.js";
 import { Tooltip } from "../Tooltip.js";
 import {
@@ -63,6 +63,8 @@ const STORY_CARD_TEXT_LIMIT = 240;
 const COMPACT_CARD_TEXT_LIMIT = 500;
 const FIXED_CARD_TEXT_LIMIT = 900;
 const FULL_CARD_TEXT_LIMIT = 1_500;
+const FEED_IMAGE_SHED_APP_PRESSURE_BYTES = 2.25 * 1024 * 1024 * 1024;
+const FEED_IMAGE_SHED_WEBKIT_BYTES = 2 * 1024 * 1024 * 1024;
 const EVENT_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
@@ -136,9 +138,31 @@ const FEED_CARD_LAYOUT_CONTAINMENT_STYLE = {
   contain: "layout paint style",
 } satisfies React.CSSProperties;
 
-function useInlineFeedMediaEnabled(feedMediaPreviews: "inline" | "reader-only"): boolean {
-  const memoryPressure = useDebugStore((state) => state.runtimeMemory?.pressureLevel ?? "normal");
-  return feedMediaPreviews === "inline" && memoryPressure !== "high" && memoryPressure !== "critical";
+function shouldShedFeedImages(memory: RuntimeMemorySnapshot | null): boolean {
+  if (!memory) return false;
+  if (memory.pressureLevel === "high" || memory.pressureLevel === "critical") return true;
+  const appPressureBytes = memory.appMemoryPressureBytes ?? memory.appResidentBytes ?? memory.processResidentBytes;
+  if (appPressureBytes >= FEED_IMAGE_SHED_APP_PRESSURE_BYTES) return true;
+  const webkitBytes = Math.max(
+    memory.webkitTotalFootprintBytes ?? 0,
+    memory.webkitLargestFootprintBytes ?? 0,
+    memory.webkitFootprintBytes ?? 0,
+    memory.webkitTotalResidentBytes ?? 0,
+    memory.webkitLargestResidentBytes ?? 0,
+    memory.webkitResidentBytes ?? 0,
+  );
+  return webkitBytes >= FEED_IMAGE_SHED_WEBKIT_BYTES;
+}
+
+function useFeedImageBudget(feedMediaPreviews: "inline" | "reader-only"): {
+  showInlineMedia: boolean;
+  showAvatarImages: boolean;
+} {
+  const shedImages = useDebugStore((state) => shouldShedFeedImages(state.runtimeMemory));
+  return {
+    showInlineMedia: feedMediaPreviews === "inline" && !shedImages,
+    showAvatarImages: !shedImages,
+  };
 }
 
 function likeState(item: FeedItemType): "none" | "noted" | "synced" | "failed" {
@@ -193,7 +217,7 @@ export const FeedItem = memo(function FeedItem({
   fixedHeight,
 }: FeedItemProps) {
   const { feedMediaPreviews = "inline" } = usePlatform();
-  const showInlineMedia = useInlineFeedMediaEnabled(feedMediaPreviews);
+  const { showInlineMedia, showAvatarImages } = useFeedImageBudget(feedMediaPreviews);
   const sharedTransitionStyle = {
     viewTransitionName: feedCardTransitionName(item.globalId),
   } as React.CSSProperties;
@@ -420,7 +444,7 @@ export const FeedItem = memo(function FeedItem({
           <div className="absolute top-0 left-0 right-0 p-3 flex items-center gap-2">
             <ChannelAvatar
               name={item.author.displayName}
-              avatarUrl={item.author.avatarUrl}
+              avatarUrl={showAvatarImages ? item.author.avatarUrl : null}
               size={28}
               className={`bg-gradient-to-br ${gradientFallback} text-[11px] font-bold text-white ring-2 ring-white/50`}
               imageClassName="ring-0"
@@ -532,7 +556,7 @@ export const FeedItem = memo(function FeedItem({
             <div className="mb-2 flex min-w-0 items-center gap-2">
               <ChannelAvatar
                 name={item.author.displayName}
-                avatarUrl={item.author.avatarUrl}
+                avatarUrl={showAvatarImages ? item.author.avatarUrl : null}
                 size={28}
                 className={`text-xs ring-1 ${showCompactMedia ? "ring-white/40" : "ring-white/10"}`}
               />
@@ -638,7 +662,7 @@ export const FeedItem = memo(function FeedItem({
               <div className={`flex min-w-0 items-start ${fixedCardDensity.headerGap}`}>
                 <ChannelAvatar
                   name={item.author.displayName}
-                  avatarUrl={item.author.avatarUrl}
+                  avatarUrl={showAvatarImages ? item.author.avatarUrl : null}
                   size={fixedCardDensity.avatarSize}
                   className="text-lg ring-1 ring-white/10"
                 />
@@ -866,7 +890,7 @@ export const FeedItem = memo(function FeedItem({
         <div className={`flex min-w-0 items-center ${fullCardDensity.headerGap}`}>
           <ChannelAvatar
             name={item.author.displayName}
-            avatarUrl={item.author.avatarUrl}
+            avatarUrl={showAvatarImages ? item.author.avatarUrl : null}
             size={fullCardDensity.avatarSize}
             className="text-lg ring-1 ring-white/10"
           />
