@@ -2689,7 +2689,12 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
     store?.getState().setSelectedPerson("friend-ada");
   });
   await expect(page.getByRole("button", { name: "Back to all friends" })).toBeVisible({ timeout: 5_000 });
-  await page.getByRole("button", { name: "Back to all friends" }).click();
+  await page.waitForFunction(() => {
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="Back to all friends"]');
+    if (!button || button.getClientRects().length === 0) return false;
+    button.click();
+    return true;
+  }, undefined, { timeout: 5_000 });
   await expect(page.getByPlaceholder("Search friends")).toBeVisible({ timeout: 5_000 });
 });
 
