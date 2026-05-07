@@ -37,7 +37,10 @@
     "Feed-card regression coverage now protects that reader-only media policy so release validation catches accidental inline media work",
     "Freed Desktop improves dense Map rendering and keeps Google sync on native requests",
     "Freed Desktop trims renderer memory pressure and keeps dense Map rendering fast",
-    "Freed Desktop trims Friends graph allocations and keeps dense Map rendering fast"
+    "Freed Desktop trims Friends graph allocations and keeps dense Map rendering fast",
+    "Dense Map views now skip avatar image layers for large marker sets and hide grid and edge overlays while the map is moving, adding headroom for 1,600-author views",
+    "Mobile settings and Friends details now keep their visible controls wired in compact layouts, so release validation covers the real mobile surfaces",
+    "Freed Desktop keeps Friends graph pinch, compact-card, and promotion checks stable for release validation"
   ],
   "editorialNotes": [
     "v26.5.614-dev adds the measured 2.08 MB renderer item projection reduction from PR #475.",
@@ -51,7 +54,8 @@
     "v26.5.623-dev was prepared with cached hot-path time formatters and Friends graph layout worker recovery from PR #485, plus settings list virtualization and the missing date-format export from PR #486.",
     "v26.5.623-dev was superseded before packaging because release validation caught the Friends detail rail resize regression check timing out.",
     "v26.5.624-dev adds the Friends sidebar pointer resize stability fix from PR #487 and replaces failed v26.5.622-dev and v26.5.623-dev attempts.",
-    "v26.5.625-dev replaces superseded v26.5.622-dev through v26.5.624-dev attempts and adds PR #488 through PR #491, including Friends graph validation stability, Friends resize geometry hardening, display preference fast-path hydration avoidance, and exact preference patch state preservation."
+    "v26.5.625-dev replaces superseded v26.5.622-dev through v26.5.624-dev attempts and adds PR #488 through PR #491, including Friends graph validation stability, Friends resize geometry hardening, display preference fast-path hydration avoidance, and exact preference patch state preservation.",
+    "v26.5.628-dev replaces the failed v26.5.625-dev packaging attempt and adds dense Map movement headroom, Friends graph pinch validation stability, mobile validation repairs, and production release e2e stabilization from PR #492, PR #494, PR #495, PR #496, and PR #498."
   ],
-  "updatedAt": "2026-05-07T03:06:51.653Z"
+  "updatedAt": "2026-05-07T05:24:28.179Z"
 }
