@@ -3328,10 +3328,11 @@ test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   const handle = page.getByRole("separator", { name: "Resize friends sidebar" });
   await expect(handle).toBeVisible({ timeout: 5_000 });
-  let handleBox: { x: number; y: number; width: number; height: number } | null = null;
+  const sidebar = page.getByTestId("friends-sidebar");
+  let sidebarBox: { x: number; y: number; width: number; height: number } | null = null;
   await expect
     .poll(async () => {
-      handleBox = await handle.evaluate((element) => {
+      sidebarBox = await sidebar.evaluate((element) => {
         const rect = element.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) {
           return null;
@@ -3343,19 +3344,45 @@ test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
           height: rect.height,
         };
       }).catch(() => null);
-      return handleBox !== null;
+      return sidebarBox !== null;
     }, { timeout: 5_000 })
     .toBe(true);
-  if (!handleBox) {
-    throw new Error("Friends sidebar resize handle did not expose browser geometry");
+  if (!sidebarBox) {
+    throw new Error("Friends sidebar did not expose browser geometry");
   }
-  const startX = handleBox.x + handleBox.width / 2;
-  const pointerY = handleBox.y + Math.max(1, handleBox.height / 2);
+  const startX = sidebarBox.x - 6;
+  const pointerY = sidebarBox.y + Math.max(1, sidebarBox.height / 2);
 
-  await page.mouse.move(startX, pointerY);
-  await page.mouse.down();
-  await page.mouse.move(startX - 300, pointerY, { steps: 8 });
-  await page.mouse.up();
+  await handle.evaluate((element, gesture) => {
+    const target = element as HTMLElement & {
+      setPointerCapture: (pointerId: number) => void;
+      releasePointerCapture: (pointerId: number) => void;
+    };
+    target.setPointerCapture = () => undefined;
+    target.releasePointerCapture = () => undefined;
+
+    const dispatch = (
+      dispatchTarget: EventTarget,
+      type: "pointerdown" | "pointermove" | "pointerup",
+      clientX: number,
+    ) => {
+      dispatchTarget.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+        button: 0,
+        buttons: type === "pointerup" ? 0 : 1,
+        clientX,
+        clientY: gesture.pointerY,
+      }));
+    };
+
+    dispatch(target, "pointerdown", gesture.startX);
+    dispatch(window, "pointermove", gesture.startX - 300);
+    dispatch(window, "pointerup", gesture.startX - 300);
+  }, { startX, pointerY });
 
   await expect.poll(async () =>
     page.getByTestId("friends-sidebar").evaluate((element) =>
