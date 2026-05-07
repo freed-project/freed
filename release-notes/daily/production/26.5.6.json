@@ -15,7 +15,7 @@
     "Google Drive sync, snapshots, RSS startup polling, and update state are more reliable."
   ],
   "editorialNotes": [
-    "Manual production daily rollup for the May 6 replacement release train."
+    "Manual production daily rollup for the May 6 replacement release train, updated for v26.5.630 after mobile Friends graph selection stabilization."
   ],
-  "updatedAt": "2026-05-07T05:33:06.557Z"
+  "updatedAt": "2026-05-07T05:57:44.625Z"
 }
