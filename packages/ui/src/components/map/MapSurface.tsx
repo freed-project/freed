@@ -537,6 +537,7 @@ export function MapSurface({
   const mapRef = useRef<MapInstance | null>(null);
   const mapModuleRef = useRef<MapLibreModule | null>(null);
   const markersRef = useRef<MarkerInstance[]>([]);
+  const mapLifecycleRef = useRef(0);
   const [mapReady, setMapReady] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [selectedFallbackMarkerKey, setSelectedFallbackMarkerKey] = useState<string | null>(null);
@@ -602,6 +603,8 @@ export function MapSurface({
   useEffect(() => {
     if (!containerRef.current) return;
     const shell = containerRef.current.closest(".freed-map-shell") as HTMLElement | null;
+    const lifecycleId = mapLifecycleRef.current + 1;
+    mapLifecycleRef.current = lifecycleId;
     let cancelled = false;
     setMapReady(false);
     setLoadFailed(false);
@@ -661,6 +664,7 @@ export function MapSurface({
 
     return () => {
       cancelled = true;
+      mapLifecycleRef.current += 1;
       closeActivePopup();
       for (const marker of markersRef.current) marker.remove();
       markersRef.current = [];
@@ -679,10 +683,13 @@ export function MapSurface({
 
     const map = mapRef.current;
     const maplibre = mapModuleRef.current;
+    const lifecycleId = mapLifecycleRef.current;
     const handleMapClick = () => closeActivePopup();
     map.on("click", handleMapClick);
+    let stoppedEarly = false;
 
     for (const markerData of renderedMarkers) {
+      if (stoppedEarly) break;
       const element = createMarkerElement(markerData, avatarPalette, {
         showAvatar: showMarkerAvatars,
         simplified: useDenseMarkers,
@@ -731,8 +738,23 @@ export function MapSurface({
         });
       }
 
-      marker.addTo(map);
-      markersRef.current.push(marker);
+      if (mapRef.current !== map || mapLifecycleRef.current !== lifecycleId) {
+        marker.remove();
+        stoppedEarly = true;
+        break;
+      }
+
+      try {
+        marker.addTo(map);
+        markersRef.current.push(marker);
+      } catch (error) {
+        marker.remove();
+        if (mapRef.current === map && mapLifecycleRef.current === lifecycleId) {
+          console.error("[MapSurface] Failed to attach map marker", error);
+          setLoadFailed(true);
+        }
+        stoppedEarly = true;
+      }
     }
 
     return () => {
