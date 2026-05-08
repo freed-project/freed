@@ -6141,6 +6141,23 @@ fn build_primary_action_items<R: tauri::Runtime, M: Manager<R>>(
 }
 
 #[cfg(target_os = "macos")]
+fn should_show_primary_window_on_reopen(has_visible_windows: bool) -> bool {
+    !has_visible_windows
+}
+
+#[cfg(target_os = "macos")]
+fn handle_macos_reopen(app: &tauri::AppHandle, has_visible_windows: bool) {
+    info!(
+        "[main-window] macOS reopen event has_visible_windows={}",
+        has_visible_windows
+    );
+
+    if should_show_primary_window_on_reopen(has_visible_windows) {
+        show_primary_window(app);
+    }
+}
+
+#[cfg(target_os = "macos")]
 fn build_macos_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<R>> {
     let (show_item, quit_item) = build_primary_action_items(manager)?;
     let app_menu = Submenu::with_items(
@@ -6916,8 +6933,18 @@ pub fn run() {
             li_scrape_feed,
             li_disconnect,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Freed");
+        .build(tauri::generate_context!())
+        .expect("error while building Freed")
+        .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen {
+                has_visible_windows,
+                ..
+            } = event
+            {
+                handle_macos_reopen(app, has_visible_windows);
+            }
+        });
 }
 
 #[cfg(test)]
@@ -7405,5 +7432,12 @@ mod tests {
         assert_eq!(state.consecutive_failed_boots, 0);
         assert!(state.pending_boot_started_at_ms.is_none());
         assert!(state.last_successful_boot_at_ms.is_some());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_reopen_shows_primary_window_when_no_window_is_visible() {
+        assert!(should_show_primary_window_on_reopen(false));
+        assert!(!should_show_primary_window_on_reopen(true));
     }
 }
