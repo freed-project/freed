@@ -194,7 +194,7 @@ const FAST_LAYOUT_NODE_THRESHOLD = 1_600;
 const NODE_LAYER_TEXTURE_CACHE_MAX_NODES = 1_200;
 const INTERACTIVE_NODE_CULL_THRESHOLD = 1_200;
 const DENSE_GRAPH_SINGLE_LAYER_THRESHOLD = 1_200;
-const DENSE_INTERACTION_CULL_THRESHOLD = 4_800;
+const DENSE_INTERACTION_CULL_THRESHOLD = 1_600;
 const DENSE_INTERACTION_NODE_LIMIT = 900;
 const DENSE_INTERACTION_VIEWPORT_PADDING = 96;
 const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
@@ -240,6 +240,10 @@ interface GraphPerfSnapshot {
   visibleLabelCount: number;
   visibleNodeLabelCount: number;
   visibleProviderLabelCount: number;
+  denseRenderMode: "dense" | "containers";
+  denseInteractionEligible: boolean;
+  denseInteractionNodeCount: number;
+  denseInteractionCulled: boolean;
   qualityMode: GraphQualityMode;
 }
 
@@ -853,6 +857,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     visibleLabelCount: 0,
     visibleNodeLabelCount: 0,
     visibleProviderLabelCount: 0,
+    denseRenderMode: "containers",
+    denseInteractionEligible: false,
+    denseInteractionNodeCount: 0,
+    denseInteractionCulled: false,
     qualityMode: "settled",
   });
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: DEFAULT_HEIGHT });
@@ -945,12 +953,14 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       highlighted.size === 0
         ? "dense"
         : "containers";
-    const useDenseInteractionLayer =
+    const denseInteractionEligible =
       denseRenderMode === "dense" &&
       graphNodeCount >= DENSE_INTERACTION_CULL_THRESHOLD &&
-      qualityMode === "interactive" &&
       !accountDrag &&
       highlighted.size === 0;
+    const useDenseInteractionLayer =
+      denseInteractionEligible &&
+      qualityMode === "interactive";
     const queueAvatarRefresh = () => {
       lastStaticRenderKeyRef.current = "";
       requestAnimationFrame(() => syncSceneRef.current());
@@ -967,6 +977,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
     scene.world.position.set(transform.x, transform.y);
     scene.world.scale.set(transform.scale);
+    let denseInteractionNodeCount = 0;
+    let denseInteractionCulled = false;
     const isInteractivePaint = qualityMode === "interactive" && !accountDrag;
     const shouldCacheNodeLayer =
       isInteractivePaint &&
@@ -1249,9 +1261,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           drawDenseGraphNode(scene.denseInteractionNodeLayer, node, graphPalette);
           drawnVisibleNodes += 1;
           if (drawnVisibleNodes >= DENSE_INTERACTION_NODE_LIMIT) {
+            denseInteractionCulled = true;
             break;
           }
         }
+        denseInteractionNodeCount = drawnVisibleNodes;
       } else {
         scene.denseInteractionNodeLayer.clear();
       }
@@ -1575,6 +1589,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     perfSnapshotRef.current.visibleLabelCount = visibleLabelCount;
     perfSnapshotRef.current.visibleNodeLabelCount = visibleLabelIdsRef.current.length;
     perfSnapshotRef.current.visibleProviderLabelCount = visibleProviderLabelCount;
+    perfSnapshotRef.current.denseRenderMode = denseRenderMode;
+    perfSnapshotRef.current.denseInteractionEligible = denseInteractionEligible;
+    perfSnapshotRef.current.denseInteractionNodeCount = denseInteractionNodeCount;
+    perfSnapshotRef.current.denseInteractionCulled = denseInteractionCulled;
     let avatarDisplayCount = 0;
     for (const display of scene.nodeDisplays.values()) {
       if (display.avatarSprite) avatarDisplayCount += 1;
