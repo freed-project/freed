@@ -1,0 +1,50 @@
+{
+  "tag": "v26.5.802-dev",
+  "version": "26.5.802-dev",
+  "channel": "dev",
+  "dayKey": "26.5.8",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-08T19:24:54.305Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.801-dev",
+    "previousPublishedDayTag": "v26.5.705-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.800-dev",
+      "v26.5.801-dev",
+      "v26.5.802-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.800-dev",
+      "v26.5.801-dev",
+      "v26.5.802-dev"
+    ],
+    "prNumbers": [
+      531,
+      532,
+      533
+    ],
+    "commitSubjects": [
+      "perf: isolate dense map marker paint (#533)",
+      "release: approve v26.5.801-dev notes",
+      "release: v26.5.801-dev",
+      "perf: cull dense friends graph during interaction (#532)",
+      "release: approve v26.5.800-dev notes",
+      "release: v26.5.800-dev",
+      "perf: bound runtime health log retention (#531)"
+    ]
+  },
+  "release": {
+    "deck": "Bound runtime health log retention, keep runtime health telemetry bounded so renderer heartbeats, DOM counts, event-loop lag, and scrape memory preflight records remain useful without unbounded file growth, and runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit",
+    "features": [],
+    "fixes": [
+      "Cull the dense Friends graph interaction layer at the 1,600-person scale so active pan and zoom draws only the viewport-near capped set while the full dense graph returns after interaction settles"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.802-dev\n\nBound runtime health log retention, keep runtime health telemetry bounded so renderer heartbeats, DOM counts, event-loop lag, and scrape memory preflight records remain useful without unbounded file growth, and runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit\n\n### Fixes\n\n- Cull the dense Friends graph interaction layer at the 1,600-person scale so active pan and zoom draws only the viewport-near capped set while the full dense graph returns after interaction settles\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
