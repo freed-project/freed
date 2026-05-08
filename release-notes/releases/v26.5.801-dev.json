@@ -3,7 +3,7 @@
   "version": "26.5.801-dev",
   "channel": "dev",
   "dayKey": "26.5.8",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-08T17:57:18.310Z",
   "model": "heuristic",
@@ -33,10 +33,14 @@
     ]
   },
   "release": {
-    "deck": "Bound runtime health log retention and runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit",
+    "deck": "Friends graph interaction culling and Bound runtime health log retention",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Cull the dense Friends graph interaction layer at the 1,600-person scale so active pan and zoom draws only the viewport-near capped set while the full dense graph returns after interaction settles.",
+      "Runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit.",
+      "Keep runtime health telemetry bounded so renderer heartbeats, DOM counts, event-loop lag, and scrape memory preflight records remain useful without unbounded file growth."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.801-dev\n\nBound runtime health log retention and runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.801-dev\n\nFriends graph interaction culling and Bound runtime health log retention\n\n### Fixes\n\n- Cull the dense Friends graph interaction layer at the 1,600-person scale so active pan and zoom draws only the viewport-near capped set while the full dense graph returns after interaction settles.\n- Runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit.\n- Keep runtime health telemetry bounded so renderer heartbeats, DOM counts, event-loop lag, and scrape memory preflight records remain useful without unbounded file growth.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
