@@ -106,6 +106,7 @@ import {
   type PendingDesktopUpdate,
   resolveDesktopDownloadFallbackUrl,
 } from "./lib/desktop-updater";
+import { rendererHeartbeatTiming } from "./lib/renderer-heartbeat";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1";
@@ -315,16 +316,24 @@ function App() {
           totalJSHeapSize?: number;
         };
       };
+      const visibility = document.visibilityState;
+      const timing = rendererHeartbeatTiming(
+        visibility,
+        now,
+        expectedHeartbeatAt,
+        RENDERER_HEARTBEAT_INTERVAL_MS,
+      );
       const payload = {
         seq: heartbeatSeq,
         ts: Date.now(),
         reason,
-        visibility: document.visibilityState,
+        visibility,
         href: window.location.href,
         pageLoadId,
         uptimeMs: Math.max(0, Math.round(now - startedAt)),
         appPhase: legalAccepted ? "ready" : "legal",
-        eventLoopLagMs: Math.max(0, now - expectedHeartbeatAt),
+        eventLoopLagMs: timing.eventLoopLagMs,
+        hiddenTimerThrottled: timing.hiddenTimerThrottled,
         domNodeCount: document.getElementsByTagName("*").length,
         rendererHeapUsedBytes: perf.memory?.usedJSHeapSize,
         rendererHeapTotalBytes: perf.memory?.totalJSHeapSize,

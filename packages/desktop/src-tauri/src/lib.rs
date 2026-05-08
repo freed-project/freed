@@ -1420,6 +1420,7 @@ struct RendererHeartbeatPayload {
     uptime_ms: Option<u64>,
     app_phase: Option<String>,
     event_loop_lag_ms: Option<f64>,
+    hidden_timer_throttled: Option<bool>,
     dom_node_count: Option<u64>,
     renderer_heap_used_bytes: Option<u64>,
     renderer_heap_total_bytes: Option<u64>,
@@ -1439,6 +1440,7 @@ struct RendererHeartbeatStatus {
     last_uptime_ms: Option<u64>,
     last_app_phase: Option<String>,
     last_event_loop_lag_ms: Option<f64>,
+    last_hidden_timer_throttled: Option<bool>,
     last_dom_node_count: Option<u64>,
     last_renderer_heap_used_bytes: Option<u64>,
     last_renderer_heap_total_bytes: Option<u64>,
@@ -1465,6 +1467,7 @@ impl RendererHeartbeatStatus {
             last_uptime_ms: None,
             last_app_phase: None,
             last_event_loop_lag_ms: None,
+            last_hidden_timer_throttled: None,
             last_dom_node_count: None,
             last_renderer_heap_used_bytes: None,
             last_renderer_heap_total_bytes: None,
@@ -1500,6 +1503,7 @@ impl RendererHeartbeatStatus {
         self.last_uptime_ms = payload.uptime_ms;
         self.last_app_phase = payload.app_phase.clone();
         self.last_event_loop_lag_ms = payload.event_loop_lag_ms;
+        self.last_hidden_timer_throttled = payload.hidden_timer_throttled;
         self.last_dom_node_count = payload.dom_node_count;
         self.last_renderer_heap_used_bytes = payload.renderer_heap_used_bytes;
         self.last_renderer_heap_total_bytes = payload.renderer_heap_total_bytes;
@@ -1524,6 +1528,7 @@ impl RendererHeartbeatStatus {
         self.last_uptime_ms = None;
         self.last_app_phase = None;
         self.last_event_loop_lag_ms = None;
+        self.last_hidden_timer_throttled = None;
         self.last_dom_node_count = None;
         self.last_renderer_heap_used_bytes = None;
         self.last_renderer_heap_total_bytes = None;
@@ -1722,6 +1727,7 @@ mod renderer_watchdog_tests {
             uptime_ms: Some(1_000),
             app_phase: Some("ready".to_string()),
             event_loop_lag_ms: Some(4.0),
+            hidden_timer_throttled: Some(false),
             dom_node_count: Some(100),
             renderer_heap_used_bytes: Some(1024),
             renderer_heap_total_bytes: Some(2048),
@@ -1737,6 +1743,7 @@ mod renderer_watchdog_tests {
         assert!(status.last_recovery_at.is_none());
         assert_eq!(status.last_seq, 7);
         assert_eq!(status.last_page_load_id.as_deref(), Some("page-1"));
+        assert_eq!(status.last_hidden_timer_throttled, Some(false));
     }
 
     #[test]
@@ -6453,6 +6460,7 @@ pub fn run() {
                         "uptimeMs": payload.uptime_ms,
                         "appPhase": payload.app_phase.clone(),
                         "eventLoopLagMs": payload.event_loop_lag_ms,
+                        "hiddenTimerThrottled": payload.hidden_timer_throttled,
                         "domNodeCount": payload.dom_node_count,
                         "rendererHeapUsedBytes": payload.renderer_heap_used_bytes,
                         "rendererHeapTotalBytes": payload.renderer_heap_total_bytes,
@@ -6622,6 +6630,7 @@ pub fn run() {
                                     "uptimeMs": health.last_uptime_ms,
                                     "appPhase": health.last_app_phase.clone(),
                                     "eventLoopLagMs": health.last_event_loop_lag_ms,
+                                    "hiddenTimerThrottled": health.last_hidden_timer_throttled,
                                     "domNodeCount": health.last_dom_node_count,
                                     "rendererHeapUsedBytes": health.last_renderer_heap_used_bytes,
                                     "rendererHeapTotalBytes": health.last_renderer_heap_total_bytes,
