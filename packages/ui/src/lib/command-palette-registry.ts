@@ -14,6 +14,7 @@ interface TagFilter {
 interface FeedDestination {
   url: string;
   title: string;
+  searchText?: string;
 }
 
 interface SourceDestination {
@@ -241,14 +242,18 @@ export function buildCommandPaletteActions({
   }
 
   if (trimmedQuery) {
-    for (const feed of feeds
-      .map((feed) => ({
-        url: safeText(feed.url),
-        title: safeText(feed.title, safeText(feed.url)),
-      }))
-      .filter((feed) => feed.url)
-      .filter((feed) => candidateMatchesQuery([feed.title, feed.url, "feed", "rss"], normalizedQuery))
-      .slice(0, MAX_TYPED_FEED_ACTIONS)) {
+    const matchingFeeds: Array<{ url: string; title: string }> = [];
+    for (const feed of feeds) {
+      const url = safeText(feed.url);
+      if (!url) continue;
+      const title = safeText(feed.title, url);
+      const searchText = feed.searchText ?? `${title}\n${url}\nfeed\nrss`.toLocaleLowerCase();
+      if (!searchText.includes(normalizedQuery)) continue;
+      matchingFeeds.push({ url, title });
+      if (matchingFeeds.length >= MAX_TYPED_FEED_ACTIONS) break;
+    }
+
+    for (const feed of matchingFeeds) {
       actions.push({
         id: `go-feed-${feed.url}`,
         title: feed.title,

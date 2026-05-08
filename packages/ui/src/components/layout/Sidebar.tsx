@@ -194,25 +194,28 @@ function SidebarNavRow({
   );
 }
 
-function scoreFeedMatch(feed: RssFeed, queryTerms: string[]): number {
-  if (queryTerms.length === 0) return 0;
+interface SearchableFeed {
+  feed: RssFeed;
+  title: string;
+  siteUrl: string;
+  url: string;
+  folder: string;
+}
 
-  const title = feed.title.toLocaleLowerCase();
-  const siteUrl = feed.siteUrl?.toLocaleLowerCase() ?? "";
-  const url = feed.url.toLocaleLowerCase();
-  const folder = feed.folder?.toLocaleLowerCase() ?? "";
+function scoreFeedMatch(feed: SearchableFeed, queryTerms: string[]): number {
+  if (queryTerms.length === 0) return 0;
 
   let score = 0;
   for (const term of queryTerms) {
-    if (title === term) score += 120;
-    else if (title.startsWith(term)) score += 90;
-    else if (title.includes(term)) score += 60;
+    if (feed.title === term) score += 120;
+    else if (feed.title.startsWith(term)) score += 90;
+    else if (feed.title.includes(term)) score += 60;
 
-    if (folder.startsWith(term)) score += 40;
-    else if (folder.includes(term)) score += 24;
+    if (feed.folder.startsWith(term)) score += 40;
+    else if (feed.folder.includes(term)) score += 24;
 
-    if (siteUrl.startsWith(term) || url.startsWith(term)) score += 36;
-    else if (siteUrl.includes(term) || url.includes(term)) score += 18;
+    if (feed.siteUrl.startsWith(term) || feed.url.startsWith(term)) score += 36;
+    else if (feed.siteUrl.includes(term) || feed.url.includes(term)) score += 18;
   }
 
   return score;
@@ -582,6 +585,7 @@ export function Sidebar({
   const setSelectedFriend = useAppStore((s) => s.setSelectedPerson);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const searchQuery = useAppStore((s) => s.searchQuery);
+  const [sidebarSearchInput, setSidebarSearchInput] = useState(searchQuery);
   const feeds = useAppStore((s) => s.feeds);
   const friends = useAppStore((s) => s.persons);
   const feedUnreadCounts = useAppStore((s) => s.feedUnreadCounts);
@@ -929,7 +933,24 @@ export function Sidebar({
     () => Object.values(feeds).filter((feed) => feed.enabled),
     [feeds],
   );
-  const trimmedSearchQuery = searchQuery.trim().toLocaleLowerCase();
+  const searchableFeedList = useMemo(
+    () =>
+      feedList.map((feed) => ({
+        feed,
+        title: feed.title.toLocaleLowerCase(),
+        siteUrl: feed.siteUrl?.toLocaleLowerCase() ?? "",
+        url: feed.url.toLocaleLowerCase(),
+        folder: feed.folder?.toLocaleLowerCase() ?? "",
+      })),
+    [feedList],
+  );
+  useEffect(() => {
+    setSidebarSearchInput(searchQuery);
+  }, [searchQuery]);
+  const handleSidebarSearchInputChange = useCallback((value: string) => {
+    setSidebarSearchInput(value);
+  }, []);
+  const trimmedSearchQuery = sidebarSearchInput.trim().toLocaleLowerCase();
   const searchTerms = useMemo(
     () => trimmedSearchQuery.split(/\s+/).filter(Boolean),
     [trimmedSearchQuery],
@@ -937,17 +958,17 @@ export function Sidebar({
   const visibleFeedList = useMemo(() => {
     if (searchTerms.length === 0) return feedList;
 
-    return feedList
+    return searchableFeedList
       .map((feed) => ({ feed, score: scoreFeedMatch(feed, searchTerms) }))
       .filter(({ score }) => score > 0)
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
-        if (a.feed.url === activeFilter.feedUrl) return -1;
-        if (b.feed.url === activeFilter.feedUrl) return 1;
-        return a.feed.title.localeCompare(b.feed.title);
+        if (a.feed.feed.url === activeFilter.feedUrl) return -1;
+        if (b.feed.feed.url === activeFilter.feedUrl) return 1;
+        return a.feed.feed.title.localeCompare(b.feed.feed.title);
       })
-      .map(({ feed }) => feed);
-  }, [activeFilter.feedUrl, feedList, searchTerms]);
+      .map(({ feed }) => feed.feed);
+  }, [activeFilter.feedUrl, feedList, searchableFeedList, searchTerms]);
   const totalFeedPages = Math.max(1, Math.ceil(visibleFeedList.length / FEEDS_PAGE_SIZE));
   const pagedFeeds = useMemo(() => {
     const startIndex = rssFeedPage * FEEDS_PAGE_SIZE;
@@ -1317,6 +1338,7 @@ export function Sidebar({
             mobileSidebar={isMobileDevice}
             variant={searchVariant}
             inlineMarginBottomPx={inlineSearchGapPx}
+            onInputValueChange={handleSidebarSearchInputChange}
           />
 
           <ul className={`flex flex-col ${compactRail ? "gap-[2px]" : isMobileDevice ? "gap-1" : "gap-0.5"}`}>

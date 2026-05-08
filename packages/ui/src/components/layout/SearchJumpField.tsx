@@ -273,12 +273,14 @@ export function SearchJumpField({
   mobileSidebar = false,
   variant = "inline",
   inlineMarginBottomPx,
+  onInputValueChange,
 }: {
   compactSidebar?: boolean;
   narrowSidebar?: boolean;
   mobileSidebar?: boolean;
   variant?: "inline" | "trigger";
   inlineMarginBottomPx?: number;
+  onInputValueChange?: (value: string) => void;
 }) {
   const platform = usePlatform();
   const {
@@ -388,6 +390,18 @@ export function SearchJumpField({
         }),
     [feeds],
   );
+  const commandFeeds = useMemo(
+    () =>
+      enabledFeeds.map((feed) => {
+        const title = sortLabel(feed.title, feed.url);
+        return {
+          url: feed.url,
+          title,
+          searchText: `${title}\n${feed.url}\nfeed\nrss`.toLocaleLowerCase(),
+        };
+      }),
+    [enabledFeeds],
+  );
   const socialChannels = useMemo(
     () =>
       Object.values(accounts)
@@ -468,10 +482,7 @@ export function SearchJumpField({
           id: (source.id ?? undefined) as Platform | undefined,
           label: source.label,
         })),
-        feeds: enabledFeeds.map((feed) => ({
-          url: feed.url,
-          title: sortLabel(feed.title, feed.url),
-        })),
+        feeds: commandFeeds,
         socialChannels,
         tagFilters,
         currentSourceId,
@@ -594,7 +605,7 @@ export function SearchJumpField({
       checkForUpdates,
       currentSourceId,
       deleteAllArchived,
-      enabledFeeds,
+      commandFeeds,
       factoryReset,
       archiveItems,
       clearQueryForNavigation,
@@ -647,6 +658,10 @@ export function SearchJumpField({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    onInputValueChange?.(inputValue);
+  }, [inputValue, onInputValueChange]);
 
   useEffect(() => {
     debounceRef.current = setTimeout(() => {
