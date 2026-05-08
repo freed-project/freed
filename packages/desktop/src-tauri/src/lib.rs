@@ -85,6 +85,7 @@ const SCRAPE_MEMORY_HEADROOM_BYTES: u64 = 384 * 1024 * 1024;
 const WEBKIT_PROCESS_START_GRACE_SECONDS: u64 = 10;
 const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
 const RUNTIME_HEALTH_FILE: &str = "runtime-health.jsonl";
+const RUNTIME_HEALTH_MAX_BYTES: u64 = 5 * 1024 * 1024;
 const RUNTIME_DIAGNOSTICS_FILE: &str = "runtime-diagnostics.jsonl";
 const RUNTIME_DIAGNOSTICS_MAX_BYTES: u64 = 5 * 1024 * 1024;
 const RUNTIME_DIAGNOSTICS_COOLDOWN: Duration = Duration::from_secs(180);
@@ -634,20 +635,12 @@ fn append_runtime_health(app: &tauri::AppHandle, mut payload: serde_json::Value)
         return;
     };
     let path = runtime_health_path(&data_dir);
-    match std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-    {
-        Ok(mut file) => {
-            use std::io::Write;
-            let _ = writeln!(file, "{}", line);
-        }
-        Err(error) => warn!(
-            "[runtime-health] failed to open {}: {}",
+    if let Err(error) = append_bounded_jsonl(&path, &line, RUNTIME_HEALTH_MAX_BYTES) {
+        warn!(
+            "[runtime-health] failed to append {}: {}",
             path.display(),
             error
-        ),
+        );
     }
 }
 
@@ -7010,6 +7003,36 @@ mod tests {
         assert!(startup_requires_recovery(&state));
         assert_eq!(state.consecutive_failed_boots, 1);
         assert!(state.last_failed_boot_at_ms.is_some());
+    }
+
+    #[test]
+    fn bounded_jsonl_retains_tail_when_file_exceeds_budget() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("runtime-health.jsonl");
+        std::fs::write(
+            &path,
+            [
+                "old-0",
+                "old-1",
+                "old-2",
+                "old-3",
+                "old-4",
+                "old-5",
+                "old-6",
+                "old-7",
+                "old-8",
+                "old-9",
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+
+        append_bounded_jsonl(&path, "fresh", 24).unwrap();
+
+        let retained = std::fs::read_to_string(&path).unwrap();
+        assert!(!retained.contains("old-0"));
+        assert!(retained.contains("old-8"));
+        assert!(retained.ends_with("fresh\n"));
     }
 
     #[test]
