@@ -16,6 +16,12 @@ export interface ListViewportMetrics {
   viewportBottom: number;
 }
 
+export function buildReadTrackListKey<TItem extends { globalId: string }>(
+  items: TItem[],
+): string {
+  return items.map((item) => item.globalId).join("|");
+}
+
 export function collectUnreadIdsFromRows<TItem extends { globalId: string; userState: { readAt?: number } }>(
   rows: Array<ReadTrackSourceRow<TItem>>,
   startIndex: number,

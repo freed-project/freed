@@ -4,6 +4,7 @@ import { FeedList } from "./FeedList.js";
 import { ReaderView } from "./ReaderView.js";
 import { FeedItem as FeedItemCard } from "./FeedItem.js";
 import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
+import { buildReadTrackListKey } from "./read-on-scroll.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
@@ -99,11 +100,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     [items, itemHeight, storyItemHeight],
   );
   const readListKey = useMemo(
-    () => {
-      const firstId = items[0]?.globalId ?? "";
-      const lastId = items[items.length - 1]?.globalId ?? "";
-      return `compact:${items.length}:${firstId}:${lastId}`;
-    },
+    () => buildReadTrackListKey(items),
     [items],
   );
   const getReadScrollMetrics = useCallback(() => ({
