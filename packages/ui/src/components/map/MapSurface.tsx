@@ -356,6 +356,10 @@ function mapStyles(interactive: boolean) {
       filter: none;
     }
 
+    .freed-map-shell[data-map-moving="true"] .freed-map-marker {
+      will-change: transform;
+    }
+
     .freed-map-shell[data-map-moving="true"] .freed-map-marker-glow,
     .freed-map-shell[data-map-moving="true"] .freed-map-marker-tint,
     .freed-map-shell[data-map-moving="true"] .freed-map-marker-halo,
