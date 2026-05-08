@@ -14,6 +14,7 @@ const DROPPED_FRAME_BUDGET = 16;
 const CI_DROPPED_FRAME_BUDGET = 40;
 const LONG_TASK_COUNT_BUDGET = 2;
 const LONG_TASK_WORST_BUDGET_MS = 140;
+const DENSE_INTERACTION_NODE_BUDGET = 900;
 
 async function readGraphDebug(page: Page) {
   return page.evaluate(() => {
@@ -39,6 +40,10 @@ async function readGraphDebug(page: Page) {
           visibleLabelCount: number;
           visibleNodeLabelCount: number;
           transformOnlySyncCount: number;
+          denseRenderMode: "dense" | "containers";
+          denseInteractionEligible: boolean;
+          denseInteractionNodeCount: number;
+          denseInteractionCulled: boolean;
         };
       };
     }).__FREED_GRAPH_DEBUG__ ?? null;
@@ -241,6 +246,8 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
 
   expect(mountElapsed).toBeLessThan(MOUNT_BUDGET_MS);
   expect(mountedRows).toBeLessThanOrEqual(FRIEND_ROW_MOUNT_BUDGET);
+  expect(initialDebug!.metrics.denseRenderMode).toBe("dense");
+  expect(initialDebug!.metrics.denseInteractionEligible).toBe(true);
   expect(initialDebug!.metrics.layoutMs).toBeLessThan(GRAPH_LAYOUT_BUDGET_MS);
   expect(initialDebug!.metrics.sceneSyncMs).toBeLessThan(GRAPH_SCENE_SYNC_BUDGET_MS);
   expect(initialDebug!.metrics.avatarDisplayCount).toBeLessThanOrEqual(PERSON_COUNT);
@@ -251,6 +258,7 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
     await page.waitForTimeout(1_400);
   });
 
+  let denseInteractionNodeCount = 0;
   const interaction = await collectLongTasksDuring(page, () =>
     measureFps(page, async () => {
       for (let index = 0; index < 18; index += 1) {
@@ -267,6 +275,15 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
         });
         await page.waitForTimeout(16);
       }
+
+      await expect
+        .poll(async () => {
+          const debug = await readGraphDebug(page);
+          const nodeCount = debug?.metrics.denseInteractionNodeCount ?? 0;
+          denseInteractionNodeCount = Math.max(denseInteractionNodeCount, nodeCount);
+          return nodeCount;
+        }, { timeout: 5_000 })
+        .toBeGreaterThan(0);
 
       await page.mouse.move(box.x + box.width * 0.52, box.y + box.height * 0.46);
       await page.mouse.down();
@@ -297,9 +314,12 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   console.log(`[PERF] Friends interaction long tasks: ${interaction.count.toLocaleString()}`);
   console.log(`[PERF] Friends interaction worst long task: ${interaction.worstMs.toFixed(1)} ms`);
   console.log(`[PERF] Friends interaction scene sync: ${afterInteraction!.metrics.sceneSyncMs.toFixed(1)} ms`);
+  console.log(`[PERF] Friends dense interaction nodes: ${denseInteractionNodeCount.toLocaleString()}`);
 
   expect(afterInteraction!.transform.scale).toBeGreaterThan(initialDebug!.transform.scale);
   expect(interaction.result.sampleCount).toBeGreaterThan(0);
+  expect(denseInteractionNodeCount).toBeGreaterThan(0);
+  expect(denseInteractionNodeCount).toBeLessThanOrEqual(DENSE_INTERACTION_NODE_BUDGET);
   if (process.env.CI) {
     expect(afterInteraction!.metrics.sceneSyncMs).toBeLessThan(GRAPH_SCENE_SYNC_BUDGET_MS);
     return;
