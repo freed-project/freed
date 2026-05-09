@@ -195,8 +195,8 @@ const NODE_LAYER_TEXTURE_CACHE_MAX_NODES = 1_200;
 const INTERACTIVE_NODE_CULL_THRESHOLD = 1_200;
 const DENSE_GRAPH_SINGLE_LAYER_THRESHOLD = 1_200;
 const DENSE_INTERACTION_CULL_THRESHOLD = 1_600;
-const DENSE_INTERACTION_NODE_LIMIT = 900;
-const DENSE_INTERACTION_VIEWPORT_PADDING = 96;
+const DENSE_INTERACTION_NODE_LIMIT = 560;
+const DENSE_INTERACTION_VIEWPORT_PADDING = 72;
 const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
 const RELATIONSHIP_TIER_DROP_SELECTOR = "[data-friend-tier-drop-value]";
 
@@ -245,6 +245,38 @@ interface GraphPerfSnapshot {
   denseInteractionNodeCount: number;
   denseInteractionCulled: boolean;
   qualityMode: GraphQualityMode;
+}
+
+interface GraphLayoutCounts {
+  nodeCount: number;
+  linkCount: number;
+  personCount: number;
+  channelCount: number;
+}
+
+function shouldExposeGraphDebug(): boolean {
+  return typeof window !== "undefined" &&
+    (window as typeof window & { __FREED_GRAPH_DEBUG_ENABLED__?: boolean })
+      .__FREED_GRAPH_DEBUG_ENABLED__ === true;
+}
+
+function buildGraphLayoutCounts(layout: IdentityGraphLayout): GraphLayoutCounts {
+  let personCount = 0;
+  let channelCount = 0;
+  for (const node of layout.nodes) {
+    if (node.personId) {
+      personCount += 1;
+    }
+    if (node.accountId || node.feedUrl) {
+      channelCount += 1;
+    }
+  }
+  return {
+    nodeCount: layout.nodes.length,
+    linkCount: layout.edges.length,
+    personCount,
+    channelCount,
+  };
 }
 
 function relationshipTierDropLevelAt(clientX: number, clientY: number): 1 | 3 | 5 | null {
@@ -804,6 +836,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const pixiRef = useRef<PixiScene | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const layoutRef = useRef<IdentityGraphLayout>({ nodes: [], edges: [], regions: [] });
+  const layoutCountsRef = useRef<GraphLayoutCounts>({
+    nodeCount: 0,
+    linkCount: 0,
+    personCount: 0,
+    channelCount: 0,
+  });
   const layoutNodeByIdRef = useRef<Map<string, IdentityGraphLayoutNode>>(new Map());
   const layoutDebugNodesRef = useRef<GraphDebugNode[]>([]);
   const spatialIndexRef = useRef<SpatialIndex>({ cellSize: 96, buckets: new Map() });
@@ -1609,16 +1647,15 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     scene.app.render();
 
     if (containerRef.current) {
-      const personCount = layoutRef.current.nodes.filter((node) => !!node.personId).length;
-      const channelCount = layoutRef.current.nodes.filter((node) => !!node.accountId || !!node.feedUrl).length;
-      containerRef.current.dataset.graphNodeCount = String(layoutRef.current.nodes.length);
-      containerRef.current.dataset.graphLinkCount = String(layoutRef.current.edges.length);
-      containerRef.current.dataset.graphPersonCount = String(personCount);
-      containerRef.current.dataset.graphChannelCount = String(channelCount);
+      const counts = layoutCountsRef.current;
+      containerRef.current.dataset.graphNodeCount = String(counts.nodeCount);
+      containerRef.current.dataset.graphLinkCount = String(counts.linkCount);
+      containerRef.current.dataset.graphPersonCount = String(counts.personCount);
+      containerRef.current.dataset.graphChannelCount = String(counts.channelCount);
       containerRef.current.dataset.visibleLabelCount = String(visibleLabelCount);
       containerRef.current.dataset.graphQualityMode = qualityMode;
     }
-    if (typeof window !== "undefined") {
+    if (shouldExposeGraphDebug()) {
       const debugNodes = drag
         ? layoutRef.current.nodes.map((node) => ({
             id: node.id,
@@ -1868,6 +1905,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
     latestResolvedLayoutRequestIdRef.current = requestId;
     layoutRef.current = layout;
+    layoutCountsRef.current = buildGraphLayoutCounts(layout);
     layoutNodeByIdRef.current = buildNodeById(layout.nodes);
     layoutDebugNodesRef.current = buildGraphDebugNodes(layout.nodes);
     spatialIndexRef.current = buildSpatialIndex(layout.nodes);

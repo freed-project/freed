@@ -14,7 +14,7 @@ const DROPPED_FRAME_BUDGET = 16;
 const CI_DROPPED_FRAME_BUDGET = 40;
 const LONG_TASK_COUNT_BUDGET = 2;
 const LONG_TASK_WORST_BUDGET_MS = 140;
-const DENSE_INTERACTION_NODE_BUDGET = 900;
+const DENSE_INTERACTION_NODE_BUDGET = 560;
 
 async function readGraphDebug(page: Page) {
   return page.evaluate(() => {
