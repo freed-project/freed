@@ -2,13 +2,15 @@
   "channel": "dev",
   "dayKey": "26.5.9",
   "date": "2026-05-09",
-  "preferredDeck": "Reduces dense Map marker work, speeds Settings, and sheds feed media earlier under WebKit pressure.",
+  "preferredDeck": "Adds renderer surface metrics, reduces Settings frame drops, and keeps the same-day performance fixes together.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Renderer heartbeats now include the active surface plus Friends graph and Map counts, making installed build soaks attribute memory and frame issues to the visible product area.",
+    "Settings avoids repeated document style invalidation during scroll and search, keeps blur suppression through the interaction tail, and isolates its scrollport to reduce dropped frames.",
     "Dense Map views now mount 160 markers instead of 240 and only paint 80 while moving, giving the 1,600 author Map guard more frame headroom on loaded runners.",
     "Settings now lazy-mounts section bodies, suppresses expensive blur while actively scrolling or searching, and has a dedicated 1,600-source performance guard.",
     "Feed cards now shed inline media when aggregate WebKit RSS reaches 1.5 GB, which matches the pressure range seen in the live dev soak before the old 2 GB threshold fired.",
@@ -21,10 +23,12 @@
     "Show crash recovery when rendering fails",
     "Stabilize map markers across refreshes",
     "Relax hidden renderer watchdog",
-    "Keeps hidden sessions quieter and restores WebKit memory attribution"
+    "Keeps hidden sessions quieter and restores WebKit memory attribution",
+    "Reduces dense Map marker work, speeds Settings, and sheds feed media earlier under WebKit pressure",
+    "Reduce settings dialog frame work"
   ],
   "editorialNotes": [
     "Latest dev build replaces failed v26.5.904-dev and adds the Map marker cap fix on top of the earlier same-day performance work."
   ],
-  "updatedAt": "2026-05-09T23:52:30.715Z"
+  "updatedAt": "2026-05-09T23:53:17.415Z"
 }
