@@ -419,6 +419,71 @@ function mapMovingPriority(markerIndex: number, useDenseMarkers: boolean): "prim
     : "primary";
 }
 
+function markerFriendSignature(marker: LocationMarkerSummary): string {
+  const friend = marker.friend;
+  if (!friend) return "";
+  return [
+    friend.id,
+    friend.name,
+    friend.avatarUrl ?? "",
+    friend.relationshipStatus,
+  ].join("\u0001");
+}
+
+function markerItemSignature(marker: LocationMarkerSummary): string {
+  const item = marker.item;
+  return [
+    item.globalId,
+    item.platform,
+    item.contentType,
+    item.author.id,
+    item.author.displayName,
+    item.author.avatarUrl ?? "",
+    item.content.text ?? "",
+  ].join("\u0001");
+}
+
+function areLocationMarkersRenderEquivalent(
+  current: LocationMarkerSummary,
+  next: LocationMarkerSummary,
+): boolean {
+  return (
+    current.key === next.key &&
+    current.authorKey === next.authorKey &&
+    current.lat === next.lat &&
+    current.lng === next.lng &&
+    current.label === next.label &&
+    current.groupCount === next.groupCount &&
+    current.seenAt === next.seenAt &&
+    markerFriendSignature(current) === markerFriendSignature(next) &&
+    markerItemSignature(current) === markerItemSignature(next)
+  );
+}
+
+export function areLocationMarkerListsRenderEquivalent(
+  current: LocationMarkerSummary[],
+  next: LocationMarkerSummary[],
+): boolean {
+  if (current === next) return true;
+  if (current.length !== next.length) return false;
+
+  for (let index = 0; index < current.length; index += 1) {
+    if (!areLocationMarkersRenderEquivalent(current[index], next[index])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function useStableLocationMarkers(markers: LocationMarkerSummary[]): LocationMarkerSummary[] {
+  const stableMarkersRef = useRef(markers);
+  if (!areLocationMarkerListsRenderEquivalent(stableMarkersRef.current, markers)) {
+    stableMarkersRef.current = markers;
+  }
+  return stableMarkersRef.current;
+}
+
 function mapGridBackground(boundary: string) {
   return `
     linear-gradient(
@@ -565,10 +630,7 @@ export function MapSurface({
     onOpenPost,
   });
 
-  const stableMarkers = useMemo(
-    () => markers.map((marker) => ({ ...marker })),
-    [markers]
-  );
+  const stableMarkers = useStableLocationMarkers(markers);
   const baseRenderedMarkers = useMemo(
     () => stableMarkers.length <= MAP_DOM_MARKER_LIMIT
       ? stableMarkers

@@ -132,6 +132,13 @@ async function collectLongTasksDuring<T>(
 
 test("Map view handles 1,600 visible location authors within frame budget", async ({ app, page }) => {
   test.setTimeout(90_000);
+  await page.addInitScript(() => {
+    (
+      window as Window & {
+        __FREED_E2E_MAP_TIME_REFRESH_MS__?: number;
+      }
+    ).__FREED_E2E_MAP_TIME_REFRESH_MS__ = 120;
+  });
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -183,6 +190,13 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
   const totalMarkerCount = await page.getByTestId("map-surface").evaluate((element) =>
     Number.parseInt(element.getAttribute("data-map-total-markers") ?? "0", 10),
   );
+  await page.locator(".freed-map-marker").evaluateAll((elements) => {
+    elements.forEach((element, index) => {
+      element.setAttribute("data-marker-stability-token", `marker-${index}`);
+    });
+  });
+  await page.waitForTimeout(360);
+  const retainedMarkerCount = await page.locator(".freed-map-marker[data-marker-stability-token]").count();
   const domNodeCount = await page.evaluate(() => document.querySelectorAll("*").length);
 
   const interaction = await collectLongTasksDuring(page, () =>
@@ -201,6 +215,7 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
   console.log(`[PERF] Map marker DOM count: ${markerCount.toLocaleString()}`);
   console.log(`[PERF] Map moving primary markers: ${movingPrimaryMarkerCount.toLocaleString()}`);
   console.log(`[PERF] Map moving deferred markers: ${movingDeferredMarkerCount.toLocaleString()}`);
+  console.log(`[PERF] Map stable markers after timer refresh: ${retainedMarkerCount.toLocaleString()}`);
   console.log(`[PERF] Map total markers: ${totalMarkerCount.toLocaleString()}`);
   console.log(`[PERF] Map DOM nodes: ${domNodeCount.toLocaleString()}`);
   console.log(`[PERF] Map interaction FPS: ${interaction.result.fps.toLocaleString()}`);
@@ -212,6 +227,7 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
   expect(mountElapsed).toBeLessThan(MAP_MOUNT_BUDGET_MS);
   expect(totalMarkerCount).toBe(MAP_AUTHOR_COUNT);
   expect(markerCount).toBeLessThanOrEqual(MAP_MARKER_DOM_BUDGET);
+  expect(retainedMarkerCount).toBe(markerCount);
   expect(movingPrimaryMarkerCount).toBeLessThanOrEqual(MAP_MOVING_MARKER_PAINT_BUDGET);
   expect(movingPrimaryMarkerCount + movingDeferredMarkerCount).toBe(markerCount);
   expect(interaction.result.p95Ms).toBeLessThan(MAP_FRAME_P95_BUDGET_MS);

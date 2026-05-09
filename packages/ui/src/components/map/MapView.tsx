@@ -25,6 +25,18 @@ const DEFAULT_TIMELINE_INDEX: Record<Exclude<MapTimeMode, "current">, number> = 
   future: 0,
 };
 
+function getMapTimeRefreshMs(): number {
+  if (typeof window === "undefined") return MAP_TIME_REFRESH_MS;
+  const override = (
+    window as Window & {
+      __FREED_E2E_MAP_TIME_REFRESH_MS__?: number;
+    }
+  ).__FREED_E2E_MAP_TIME_REFRESH_MS__;
+  return typeof override === "number" && Number.isFinite(override) && override > 0
+    ? override
+    : MAP_TIME_REFRESH_MS;
+}
+
 function formatTimelineMoment(value: number): string {
   return timelineMomentFormatter.format(value);
 }
@@ -105,7 +117,7 @@ export function MapView() {
   useEffect(() => {
     const interval = window.setInterval(() => {
       setReferenceNow(Date.now());
-    }, MAP_TIME_REFRESH_MS);
+    }, getMapTimeRefreshMs());
     return () => {
       window.clearInterval(interval);
     };
