@@ -6142,13 +6142,14 @@ fn build_primary_action_items<R: tauri::Runtime, M: Manager<R>>(
 
 #[cfg(target_os = "macos")]
 fn should_show_primary_window_on_reopen(has_visible_windows: bool) -> bool {
-    !has_visible_windows
+    let _ = has_visible_windows;
+    true
 }
 
 #[cfg(target_os = "macos")]
 fn handle_macos_reopen(app: &tauri::AppHandle, has_visible_windows: bool) {
     info!(
-        "[main-window] macOS reopen event has_visible_windows={}",
+        "[main-window] macOS reopen event has_visible_windows={} forcing_primary_window_show=true",
         has_visible_windows
     );
 
@@ -7436,8 +7437,8 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn macos_reopen_shows_primary_window_when_no_window_is_visible() {
+    fn macos_reopen_always_reasserts_primary_window() {
         assert!(should_show_primary_window_on_reopen(false));
-        assert!(!should_show_primary_window_on_reopen(true));
+        assert!(should_show_primary_window_on_reopen(true));
     }
 }
