@@ -8,7 +8,7 @@
  * Mobile: single-column with stacked sections and compact spacing.
  */
 
-import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   formatReleaseVersion,
   RELEASE_CHANNEL_LABELS,
@@ -280,6 +280,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const themeBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const interactionBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const themeSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingThemeIdRef = useRef<ThemeId | null>(null);
   const pendingThemeSaveSeqRef = useRef(0);
@@ -287,44 +288,71 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
-  const allSections: Section[] = buildSettingsSectionMetas({
-    hasGoogleContacts: !!GoogleContactsSettingsContent,
-    hasX: !!XSettingsContent,
-    hasFacebook: !!FacebookSettingsContent,
-    hasInstagram: !!InstagramSettingsContent,
-    hasLinkedIn: !!LinkedInSettingsContent,
-    hasUpdateChecks: !!checkForUpdates,
-    hasFactoryReset: !!factoryReset,
-  }).map((section) => ({
-    ...section,
-    icon: ICONS[section.id],
-  }));
+  const allSections: Section[] = useMemo(
+    () =>
+      buildSettingsSectionMetas({
+        hasGoogleContacts: !!GoogleContactsSettingsContent,
+        hasX: !!XSettingsContent,
+        hasFacebook: !!FacebookSettingsContent,
+        hasInstagram: !!InstagramSettingsContent,
+        hasLinkedIn: !!LinkedInSettingsContent,
+        hasUpdateChecks: !!checkForUpdates,
+        hasFactoryReset: !!factoryReset,
+      }).map((section) => ({
+        ...section,
+        icon: ICONS[section.id],
+      })),
+    [
+      GoogleContactsSettingsContent,
+      XSettingsContent,
+      FacebookSettingsContent,
+      InstagramSettingsContent,
+      LinkedInSettingsContent,
+      checkForUpdates,
+      factoryReset,
+    ],
+  );
 
   // Hierarchical nav structure — drives left sidebar rendering only.
   // Re-use the Section objects already defined in allSections so keywords stay in sync.
-  const sectionById = Object.fromEntries(allSections.map((s) => [s.id, s])) as Record<SectionId, Section>;
-  const navStructure: NavStructureItem[] = [
-    sectionById.appearance,
-    sectionById.sync,
-    {
-      kind: "group",
-      label: "Sources",
-      icon: ICON_SOURCES,
-      children: [
-        sectionById.saved,
-        ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
-        ...(XSettingsContent ? [sectionById.x] : []),
-        ...(FacebookSettingsContent ? [sectionById.facebook] : []),
-        ...(InstagramSettingsContent ? [sectionById.instagram] : []),
-        ...(LinkedInSettingsContent ? [sectionById.linkedin] : []),
-        sectionById.feeds,
-      ],
-    },
-    sectionById.ai,
-    ...(checkForUpdates ? [sectionById.updates] : []),
-    sectionById.legal,
-    ...(factoryReset ? [sectionById.danger] : []),
-  ];
+  const sectionById = useMemo(
+    () => Object.fromEntries(allSections.map((s) => [s.id, s])) as Record<SectionId, Section>,
+    [allSections],
+  );
+  const navStructure: NavStructureItem[] = useMemo(
+    () => [
+      sectionById.appearance,
+      sectionById.sync,
+      {
+        kind: "group",
+        label: "Sources",
+        icon: ICON_SOURCES,
+        children: [
+          sectionById.saved,
+          ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
+          ...(XSettingsContent ? [sectionById.x] : []),
+          ...(FacebookSettingsContent ? [sectionById.facebook] : []),
+          ...(InstagramSettingsContent ? [sectionById.instagram] : []),
+          ...(LinkedInSettingsContent ? [sectionById.linkedin] : []),
+          sectionById.feeds,
+        ],
+      },
+      sectionById.ai,
+      ...(checkForUpdates ? [sectionById.updates] : []),
+      sectionById.legal,
+      ...(factoryReset ? [sectionById.danger] : []),
+    ],
+    [
+      FacebookSettingsContent,
+      GoogleContactsSettingsContent,
+      InstagramSettingsContent,
+      LinkedInSettingsContent,
+      XSettingsContent,
+      checkForUpdates,
+      factoryReset,
+      sectionById,
+    ],
+  );
 
   // ── Preferences state ────────────────────────────────────────────────────
   const [display, setDisplay] = useState(() => preferences.display);
@@ -412,9 +440,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (open) return;
     setThemePreviewHovering(false);
     setThemePreviewTouchActive(false);
+    delete document.documentElement.dataset.settingsDialogMoving;
     if (themeBlurRestoreTimerRef.current) {
       clearTimeout(themeBlurRestoreTimerRef.current);
       themeBlurRestoreTimerRef.current = null;
+    }
+    if (interactionBlurRestoreTimerRef.current) {
+      clearTimeout(interactionBlurRestoreTimerRef.current);
+      interactionBlurRestoreTimerRef.current = null;
     }
     flushPendingThemeSelectionNow();
   }, [flushPendingThemeSelectionNow, open]);
@@ -423,6 +456,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     return () => {
       if (themeBlurRestoreTimerRef.current) {
         clearTimeout(themeBlurRestoreTimerRef.current);
+      }
+      if (interactionBlurRestoreTimerRef.current) {
+        clearTimeout(interactionBlurRestoreTimerRef.current);
+        delete document.documentElement.dataset.settingsDialogMoving;
       }
       flushPendingThemeSelectionNow();
     };
@@ -439,6 +476,20 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       themeBlurRestoreTimerRef.current = null;
     }, 5000);
   }, [hasCoarsePointer]);
+
+  const suppressBackdropDuringInteraction = useCallback(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    document.documentElement.dataset.settingsDialogMoving = "true";
+    if (interactionBlurRestoreTimerRef.current) {
+      clearTimeout(interactionBlurRestoreTimerRef.current);
+    }
+    interactionBlurRestoreTimerRef.current = setTimeout(() => {
+      delete document.documentElement.dataset.settingsDialogMoving;
+      interactionBlurRestoreTimerRef.current = null;
+    }, 220);
+  }, []);
 
   const handleThemeCommit = useCallback((themeId: ThemeId) => {
     activateTouchThemePreview();
@@ -653,17 +704,34 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   // ── Search ────────────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
   const searchLower = search.toLowerCase().trim();
-  const visibleSections = searchLower
-    ? allSections.filter((s) =>
-        s.label.toLowerCase().includes(searchLower) ||
-        s.keywords.some((k) => k.includes(searchLower)),
-      )
-    : allSections;
+  const visibleSections = useMemo(
+    () =>
+      searchLower
+        ? allSections.filter((s) =>
+            s.label.toLowerCase().includes(searchLower) ||
+            s.keywords.some((k) => k.includes(searchLower)),
+          )
+        : allSections,
+    [allSections, searchLower],
+  );
 
   // ── Scrollspy ────────────────────────────────────────────────────────────
   const [activeSection, setActiveSection] = useState<SectionId>("appearance");
   const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeSectionRef = useRef(activeSection);
+  const renderedSectionIds = useMemo(() => {
+    if (isMobile || searchLower) {
+      return new Set(visibleSections.map((section) => section.id));
+    }
+
+    const activeIndex = Math.max(0, allSections.findIndex((section) => section.id === activeSection));
+    const ids = new Set<SectionId>();
+    for (let index = Math.max(0, activeIndex - 1); index <= Math.min(allSections.length - 1, activeIndex + 1); index += 1) {
+      ids.add(allSections[index].id);
+    }
+    return ids;
+  }, [activeSection, allSections, isMobile, searchLower, visibleSections]);
 
   // Keep a ref in sync with updateState.status so scroll/visibility callbacks
   // always read the current value without needing to be re-created.
@@ -677,6 +745,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const scrollContainerBottomPadding = isMobile
     ? "calc(2rem + env(safe-area-inset-bottom, 0px))"
     : "calc(8rem + env(safe-area-inset-bottom, 0px))";
+
+  useEffect(() => {
+    activeSectionRef.current = activeSection;
+  }, [activeSection]);
 
   // Auto-check when the button enters the scroll container's visible area.
   // Re-checks each time the button transitions from hidden → visible, so scrolling
@@ -712,7 +784,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       root.removeEventListener("scroll", check);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, checkForUpdates]);
+  }, [activeSection, open, checkForUpdates]);
   // While true, scroll-driven updates are suppressed so intermediate sections
   // that drift through the trigger zone during a smooth-scroll animation don't
   // cause nav items to flicker.
@@ -772,6 +844,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   useEffect(() => {
     const root = scrollRef.current;
     if (!root || searchLower || (isMobile && mobileView === "nav")) return;
+    let scrollIdleTimer: ReturnType<typeof setTimeout> | undefined;
 
     const updateActiveSectionFromScroll = () => {
       if (isScrollingProgrammatically.current) return;
@@ -794,18 +867,30 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         }
       }
 
-      setActiveSection(nextActive);
+      if (nextActive !== activeSectionRef.current) {
+        activeSectionRef.current = nextActive;
+        setActiveSection(nextActive);
+      }
+    };
+
+    const scheduleActiveSectionUpdate = () => {
+      suppressBackdropDuringInteraction();
+      clearTimeout(scrollIdleTimer);
+      scrollIdleTimer = setTimeout(() => {
+        updateActiveSectionFromScroll();
+      }, 140);
     };
 
     updateActiveSectionFromScroll();
-    root.addEventListener("scroll", updateActiveSectionFromScroll, { passive: true });
-    window.addEventListener("resize", updateActiveSectionFromScroll);
+    root.addEventListener("scroll", scheduleActiveSectionUpdate, { passive: true });
+    window.addEventListener("resize", scheduleActiveSectionUpdate);
 
     return () => {
-      root.removeEventListener("scroll", updateActiveSectionFromScroll);
-      window.removeEventListener("resize", updateActiveSectionFromScroll);
+      clearTimeout(scrollIdleTimer);
+      root.removeEventListener("scroll", scheduleActiveSectionUpdate);
+      window.removeEventListener("resize", scheduleActiveSectionUpdate);
     };
-  }, [isMobile, mobileView, open, searchLower]);
+  }, [isMobile, mobileView, open, searchLower, suppressBackdropDuringInteraction]);
 
   const scrollToSection = useCallback((id: SectionId) => {
     setActiveSection(id);
@@ -901,7 +986,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   function renderSectionBlock(id: SectionId) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
-    const sectionMinHeight = isMobile ? undefined : "calc(100% + 20rem)";
+    const sectionStyle: CSSProperties | undefined = isMobile
+      ? undefined
+      : {
+          minHeight: "calc(100% + 20rem)",
+        };
+    const shouldRenderContent = renderedSectionIds.has(id);
 
     // SectionContent and this wrapper both stay plain function calls because
     // they are defined inside SettingsDialog. Rendering either as JSX would
@@ -912,9 +1002,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       <section
         data-section={id}
         className={isMobile ? "flex flex-col pb-2" : "flex flex-col pb-8"}
-        style={{ minHeight: sectionMinHeight }}
+        style={sectionStyle}
       >
-        {SectionContent({ id })}
+        {shouldRenderContent ? SectionContent({ id }) : null}
       </section>
     );
   }
@@ -1458,8 +1548,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <div className="px-3 pb-2 pt-1 shrink-0 sm:pt-2">
             <SearchField
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onClear={() => setSearch("")}
+              onChange={(e) => {
+                suppressBackdropDuringInteraction();
+                setSearch(e.target.value);
+              }}
+              onClear={() => {
+                suppressBackdropDuringInteraction();
+                setSearch("");
+              }}
               placeholder="Search settings"
               aria-label="Search settings"
               density="compact"
@@ -1531,6 +1627,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <div
             ref={scrollRef}
             data-testid="settings-scroll-container"
+            onPointerEnter={suppressBackdropDuringInteraction}
+            onWheelCapture={suppressBackdropDuringInteraction}
             className="flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
             style={{ paddingBottom: scrollContainerBottomPadding }}
           >

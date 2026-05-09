@@ -116,10 +116,13 @@ test("feature plan for non-feed desktop changes skips desktop perf checks", () =
 test("desktop perf sensitivity is scoped to hot paths and perf harnesses", () => {
   assert.equal(isDesktopPerfSensitiveSurface("packages/desktop/src/lib/automerge.worker.ts"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/desktop/tests/e2e/perf-map.spec.ts"), true);
+  assert.equal(isDesktopPerfSensitiveSurface("packages/desktop/tests/e2e/perf-settings.spec.ts"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/components/feed/FeedList.tsx"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/components/friends/FriendGraph.tsx"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/components/layout/Sidebar.tsx"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/components/map/MapView.tsx"), true);
+  assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/components/SettingsDialog.tsx"), true);
+  assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/components/settings/FeedsSection.tsx"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/lib/friends-workspace.ts"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/ui/src/hooks/useResolvedLocations.ts"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/shared/src/location.ts"), true);
