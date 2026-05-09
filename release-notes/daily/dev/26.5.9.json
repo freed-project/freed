@@ -2,13 +2,15 @@
   "channel": "dev",
   "dayKey": "26.5.9",
   "date": "2026-05-09",
-  "preferredDeck": "Improves desktop recovery, dense Map stability, hidden renderer recovery, and WebKit memory attribution for today's dev builds.",
+  "preferredDeck": "Improves dense Friends graph recovery, Map interaction smoothness, desktop crash recovery, and WebKit memory attribution for today's dev builds.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Friends graph Fit all now waits for dense layout completion before applying.",
+    "Dense Map fallback rendering reduces visible marker paint work during wheel and pointer movement.",
     "Shows the fatal recovery screen instead of a blank shell when a React render error is caught.",
     "Keeps dense Map markers stable across timer refreshes so unchanged markers are retained during interaction.",
     "Restores WebKit WebContent memory attribution for current launch renderer processes.",
