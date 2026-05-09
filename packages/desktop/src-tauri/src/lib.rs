@@ -2536,6 +2536,21 @@ fn webkit_process_belongs_to_current_launch(webkit_age_seconds: u64, app_age_sec
     webkit_age_seconds <= app_age_seconds.saturating_add(WEBKIT_PROCESS_START_GRACE_SECONDS)
 }
 
+fn freed_webkit_process_role(
+    has_open_file_under_roots: bool,
+    webkit_age_seconds: u64,
+    app_age_seconds: u64,
+) -> Option<&'static str> {
+    if !webkit_process_belongs_to_current_launch(webkit_age_seconds, app_age_seconds) {
+        return None;
+    }
+    if has_open_file_under_roots {
+        Some("freed-webcontent")
+    } else {
+        Some("freed-webcontent-age-matched")
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn macos_process_physical_footprint_bytes(pid: u32) -> Option<u64> {
     let mut usage = MaybeUninit::<libc::rusage_info_v4>::uninit();
@@ -2577,13 +2592,14 @@ fn freed_webkit_memory_stats(
                 continue;
             }
             let pid_u32 = pid.as_u32();
-            if !macos_process_has_open_file_under_roots(pid_u32, roots) {
-                continue;
-            }
             let age_seconds = process.run_time();
-            if !webkit_process_belongs_to_current_launch(age_seconds, app_age_seconds) {
+            let Some(role) = freed_webkit_process_role(
+                macos_process_has_open_file_under_roots(pid_u32, roots),
+                age_seconds,
+                app_age_seconds,
+            ) else {
                 continue;
-            }
+            };
             let resident = process.memory();
             let footprint = macos_process_physical_footprint_bytes(pid_u32);
             let virtual_bytes = process.virtual_memory();
@@ -2600,7 +2616,7 @@ fn freed_webkit_memory_stats(
                 virtual_bytes,
                 cpu_usage: process.cpu_usage(),
                 age_seconds,
-                role: "freed-webcontent".to_string(),
+                role: role.to_string(),
             };
             if largest
                 .as_ref()
@@ -7051,15 +7067,7 @@ mod tests {
         std::fs::write(
             &path,
             [
-                "old-0",
-                "old-1",
-                "old-2",
-                "old-3",
-                "old-4",
-                "old-5",
-                "old-6",
-                "old-7",
-                "old-8",
+                "old-0", "old-1", "old-2", "old-3", "old-4", "old-5", "old-6", "old-7", "old-8",
                 "old-9",
             ]
             .join("\n"),
@@ -7136,6 +7144,28 @@ mod tests {
             app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
             app_age
         ));
+    }
+
+    #[test]
+    fn webkit_process_role_keeps_current_launch_after_root_files_close() {
+        let app_age = 60;
+
+        assert_eq!(
+            freed_webkit_process_role(false, app_age, app_age),
+            Some("freed-webcontent-age-matched")
+        );
+        assert_eq!(
+            freed_webkit_process_role(true, app_age, app_age),
+            Some("freed-webcontent")
+        );
+        assert_eq!(
+            freed_webkit_process_role(
+                false,
+                app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
+                app_age
+            ),
+            None
+        );
     }
 
     #[test]
