@@ -3,7 +3,7 @@
   "version": "26.5.901-dev",
   "channel": "dev",
   "dayKey": "26.5.9",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-09T18:46:37.981Z",
   "model": "heuristic",
@@ -31,10 +31,19 @@
     ]
   },
   "release": {
-    "deck": "Relax hidden renderer watchdog and restore WebKit memory attribution",
+    "deck": "Keeps hidden sessions quieter and restores WebKit memory attribution",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      {
+        "title": "Hidden renderer watchdogs now tolerate normal WebKit throttling",
+        "body": "Hidden or locked Freed Desktop sessions now wait longer before logging stale renderer heartbeats, which avoids noisy recovery work during expected WebKit timer throttling while preserving the existing foreground recovery path."
+      },
+      {
+        "title": "WebKit memory gates now count current-launch WebContent processes after cache files close",
+        "body": "Freed Desktop now attributes age-matched WebKit WebContent memory even after the process releases its Freed cache handles, so high WebKit RSS is visible to diagnostics and memory preflight checks."
+      }
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.901-dev\n\nRelax hidden renderer watchdog and restore WebKit memory attribution\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.901-dev\n\nKeeps hidden sessions quieter and restores WebKit memory attribution\n\n### Fixes\n\n- Hidden or locked Freed Desktop sessions now wait longer before logging stale renderer heartbeats, which avoids noisy recovery work during expected WebKit timer throttling while preserving the existing foreground recovery path.\n- Freed Desktop now attributes age-matched WebKit WebContent memory even after the process releases its Freed cache handles, so high WebKit RSS is visible to diagnostics and memory preflight checks.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
