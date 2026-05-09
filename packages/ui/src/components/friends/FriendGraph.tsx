@@ -247,6 +247,14 @@ interface GraphPerfSnapshot {
   qualityMode: GraphQualityMode;
 }
 
+interface GraphSurfacePerfSnapshot extends GraphPerfSnapshot {
+  nodeCount: number;
+  linkCount: number;
+  personCount: number;
+  channelCount: number;
+  transformScale: number;
+}
+
 interface GraphLayoutCounts {
   nodeCount: number;
   linkCount: number;
@@ -1656,6 +1664,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       containerRef.current.dataset.visibleLabelCount = String(visibleLabelCount);
       containerRef.current.dataset.graphQualityMode = qualityMode;
     }
+    (window as typeof window & {
+      __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot;
+    }).__FREED_GRAPH_PERF__ = {
+      ...perfSnapshotRef.current,
+      ...layoutCountsRef.current,
+      transformScale: transform.scale,
+    };
     if (shouldExposeGraphDebug()) {
       const debugNodes = drag
         ? layoutRef.current.nodes.map((node) => ({

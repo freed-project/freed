@@ -50,6 +50,25 @@ async function readGraphDebug(page: Page) {
   });
 }
 
+async function readLastRendererHeartbeat(page: Page) {
+  return page.evaluate(() => {
+    return (window as typeof window & {
+      __FREED_LAST_RENDERER_HEARTBEAT__?: {
+        surfacePerf?: {
+          activeSurface?: string;
+          friendsGraph?: {
+            nodeCount?: number;
+            sceneSyncMs?: number;
+            visibleLabelCount?: number;
+            denseRenderMode?: "dense" | "containers";
+            denseInteractionNodeCount?: number;
+          };
+        };
+      };
+    }).__FREED_LAST_RENDERER_HEARTBEAT__ ?? null;
+  });
+}
+
 async function seedLargeFriendsWorkspace(page: Page): Promise<void> {
   await page.evaluate(async ({ personCount, accountCount, itemCount }) => {
     const w = window as Record<string, unknown>;
@@ -235,6 +254,19 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   const preferenceSaveMs = await preferenceSavePromise;
   const initialDebug = await readGraphDebug(page);
   expect(initialDebug).not.toBeNull();
+  await page.evaluate(() => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect
+    .poll(async () => {
+      const heartbeat = await readLastRendererHeartbeat(page);
+      return heartbeat?.surfacePerf?.friendsGraph?.nodeCount ?? 0;
+    }, { timeout: 5_000 })
+    .toBeGreaterThanOrEqual(PERSON_COUNT);
+  const heartbeat = await readLastRendererHeartbeat(page);
+  expect(heartbeat?.surfacePerf?.activeSurface).toBe("friends_graph");
+  expect(heartbeat?.surfacePerf?.friendsGraph?.denseRenderMode).toBe("dense");
+  expect(heartbeat?.surfacePerf?.friendsGraph?.sceneSyncMs ?? -1).toBeGreaterThanOrEqual(0);
 
   console.log(`[PERF] Friends mount: ${mountElapsed.toLocaleString()} ms`);
   console.log(`[PERF] Friends preference save: ${Math.round(preferenceSaveMs).toLocaleString()} ms`);

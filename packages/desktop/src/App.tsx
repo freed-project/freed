@@ -113,6 +113,96 @@ const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI 
 const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
 const RENDERER_HEARTBEAT_INTERVAL_MS = 15 * 1000;
 
+type FriendGraphSurfacePerf = {
+  modelBuildMs?: number;
+  layoutMs?: number;
+  sceneSyncMs?: number;
+  labelPassMs?: number;
+  sceneSyncCount?: number;
+  contentSyncCount?: number;
+  transformOnlySyncCount?: number;
+  edgeRebuildCount?: number;
+  nodeRestyleCount?: number;
+  labelLayoutCount?: number;
+  avatarDisplayCount?: number;
+  visibleLabelCount?: number;
+  visibleNodeLabelCount?: number;
+  visibleProviderLabelCount?: number;
+  denseRenderMode?: "dense" | "containers";
+  denseInteractionEligible?: boolean;
+  denseInteractionNodeCount?: number;
+  denseInteractionCulled?: boolean;
+  qualityMode?: string;
+  nodeCount?: number;
+  linkCount?: number;
+  personCount?: number;
+  channelCount?: number;
+  transformScale?: number;
+};
+
+type SurfacePerfSnapshot = {
+  activeSurface: "feed" | "friends_graph" | "map" | "settings" | "dialog" | "unknown";
+  friendsGraph?: FriendGraphSurfacePerf;
+  map?: {
+    ready: boolean;
+    moving: boolean;
+    dense: boolean;
+    renderedMarkers: number;
+    totalMarkers: number;
+  };
+};
+
+function readNumberDatasetValue(element: HTMLElement, key: string): number | undefined {
+  const value = element.dataset[key];
+  if (value === undefined) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function collectSurfacePerf(): SurfacePerfSnapshot {
+  const settingsOpen = Boolean(document.querySelector(".theme-settings-shell"));
+  if (settingsOpen) return { activeSurface: "settings" };
+  const dialogOpen = Boolean(document.querySelector(".theme-dialog-shell"));
+  if (dialogOpen) return { activeSurface: "dialog" };
+
+  const friendGraph = document.querySelector<HTMLElement>('[data-testid="friend-graph-viewport"]');
+  if (friendGraph) {
+    const graphPerf = (window as typeof window & {
+      __FREED_GRAPH_PERF__?: FriendGraphSurfacePerf;
+    }).__FREED_GRAPH_PERF__;
+    return {
+      activeSurface: "friends_graph",
+      friendsGraph: graphPerf
+        ? { ...graphPerf }
+        : {
+            nodeCount: readNumberDatasetValue(friendGraph, "graphNodeCount"),
+            linkCount: readNumberDatasetValue(friendGraph, "graphLinkCount"),
+            personCount: readNumberDatasetValue(friendGraph, "graphPersonCount"),
+            channelCount: readNumberDatasetValue(friendGraph, "graphChannelCount"),
+            visibleLabelCount: readNumberDatasetValue(friendGraph, "visibleLabelCount"),
+            qualityMode: friendGraph.dataset.graphQualityMode,
+          },
+    };
+  }
+
+  const mapSurface = document.querySelector<HTMLElement>('[data-testid="map-surface"]');
+  if (mapSurface) {
+    return {
+      activeSurface: "map",
+      map: {
+        ready: mapSurface.dataset.mapReady === "true",
+        moving: mapSurface.dataset.mapMoving === "true",
+        dense: mapSurface.dataset.mapDense === "true",
+        renderedMarkers: readNumberDatasetValue(mapSurface, "mapRenderedMarkers") ?? 0,
+        totalMarkers: readNumberDatasetValue(mapSurface, "mapTotalMarkers") ?? 0,
+      },
+    };
+  }
+
+  if (document.querySelector("main")) return { activeSurface: "feed" };
+  return { activeSurface: "unknown" };
+}
+
 // Register the desktop log transport so addDebugEvent calls from ui/ flow
 // through the native logger in both local preview and release builds.
 setLogTransport((level, msg) => log[level](msg));
@@ -340,13 +430,18 @@ function App() {
         lastInputAgeMs: Math.max(0, Math.round(now - lastInputAt)),
         settingsOpen: Boolean(document.querySelector(".theme-settings-shell")),
         dialogOpen: Boolean(document.querySelector(".theme-dialog-shell")),
+        surfacePerf: collectSurfacePerf(),
       };
       expectedHeartbeatAt = now + RENDERER_HEARTBEAT_INTERVAL_MS;
       noteRendererHeartbeat(payload);
       if (import.meta.env.VITE_TEST_TAURI === "1") {
-        const testWindow = window as unknown as { __FREED_RENDERER_HEARTBEATS__?: number };
+        const testWindow = window as unknown as {
+          __FREED_RENDERER_HEARTBEATS__?: number;
+          __FREED_LAST_RENDERER_HEARTBEAT__?: typeof payload;
+        };
         testWindow.__FREED_RENDERER_HEARTBEATS__ =
           (testWindow.__FREED_RENDERER_HEARTBEATS__ ?? 0) + 1;
+        testWindow.__FREED_LAST_RENDERER_HEARTBEAT__ = payload;
       }
       void emit("renderer-heartbeat", payload).catch(() => {
         // If the renderer is already failing, heartbeat delivery may fail too.
