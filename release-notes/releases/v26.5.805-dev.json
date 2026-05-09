@@ -3,7 +3,7 @@
   "version": "26.5.805-dev",
   "channel": "dev",
   "dayKey": "26.5.8",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-09T00:47:26.089Z",
   "model": "heuristic",
@@ -61,20 +61,27 @@
     ]
   },
   "release": {
-    "deck": "Isolate dense Map marker paint so large Map views do less layout and paint work during active zoom and pan, guard the Friends last-seen to Map handoff so stale MapLibre marker work cannot crash the app during view changes, and map handoff crash guard, hidden renderer heartbeat telemetry, and dense Friends and Map performance fixes",
+    "deck": "This dev build keeps the overnight performance work moving with smoother dense Friends graph interaction, compact-feed read-state repair, and the full same-day performance rollup.",
     "features": [],
     "fixes": [
+      "Friends graph zoom and pan now do less per-frame work at the 1,600-person scale by capping the transient dense interaction layer and keeping production debug payloads out of the hot path",
+      "Compact feed read-on-scroll tracking now resets its session key correctly when the visible item set changes",
       "Runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit",
+      "Friends graph interaction culling and Bound runtime health log retention",
       "Cull the dense Friends graph interaction layer at the 1,600-person scale so active pan and zoom draws only the viewport-near capped set while the full dense graph returns after interaction settles",
       "Keep runtime health telemetry bounded so renderer heartbeats, DOM counts, event-loop lag, and scrape memory preflight records remain useful without unbounded file growth",
+      "Map handoff crash guard, hidden renderer heartbeat telemetry, and dense Friends and Map performance fixes",
+      "Guard the Friends last-seen to Map handoff so stale MapLibre marker work cannot crash the app during view changes",
       "Classify hidden renderer timer throttling separately from foreground event-loop lag so soak metrics stop blaming macOS background timer behavior for app jank",
-      "Friends graph interaction culling and Bound runtime health log retention",
+      "Isolate dense Map marker paint so large Map views do less layout and paint work during active zoom and pan",
+      "Keep runtime health telemetry bounded so renderer heartbeat and memory diagnostics stay useful without unbounded log growth",
       "Source sidebar search now filters sources immediately while the heavier feed search stays debounced",
       "Opening Freed from the dock or Finder now restores the primary window when macOS reports the app as running with no visible windows"
     ],
     "followUps": [
-      "This dev build keeps the desktop performance audit moving with faster source filtering, better window recovery, and today's Friends, Map, and runtime performance fixes"
+      "This dev build keeps the desktop performance audit moving with faster source filtering, better window recovery, and today's Friends, Map, and runtime performance fixes",
+      "Continue the installed soak and watch WebKit process pressure separately from foreground frame timing"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.805-dev\n\nIsolate dense Map marker paint so large Map views do less layout and paint work during active zoom and pan, guard the Friends last-seen to Map handoff so stale MapLibre marker work cannot crash the app during view changes, and map handoff crash guard, hidden renderer heartbeat telemetry, and dense Friends and Map performance fixes\n\n### Fixes\n\n- Runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit\n- Cull the dense Friends graph interaction layer at the 1,600-person scale so active pan and zoom draws only the viewport-near capped set while the full dense graph returns after interaction settles\n- Keep runtime health telemetry bounded so renderer heartbeats, DOM counts, event-loop lag, and scrape memory preflight records remain useful without unbounded file growth\n- Classify hidden renderer timer throttling separately from foreground event-loop lag so soak metrics stop blaming macOS background timer behavior for app jank\n- Friends graph interaction culling and Bound runtime health log retention\n- Source sidebar search now filters sources immediately while the heavier feed search stays debounced\n- Opening Freed from the dock or Finder now restores the primary window when macOS reports the app as running with no visible windows\n\n### Follow-ups\n\n- This dev build keeps the desktop performance audit moving with faster source filtering, better window recovery, and today's Friends, Map, and runtime performance fixes\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.805-dev\n\nThis dev build keeps the overnight performance work moving with smoother dense Friends graph interaction, compact-feed read-state repair, and the full same-day performance rollup.\n\n### Fixes\n\n- Friends graph zoom and pan now do less per-frame work at the 1,600-person scale by capping the transient dense interaction layer and keeping production debug payloads out of the hot path\n- Compact feed read-on-scroll tracking now resets its session key correctly when the visible item set changes\n- Runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit\n- Friends graph interaction culling and Bound runtime health log retention\n- Cull the dense Friends graph interaction layer at the 1,600-person scale so active pan and zoom draws only the viewport-near capped set while the full dense graph returns after interaction settles\n- Keep runtime health telemetry bounded so renderer heartbeats, DOM counts, event-loop lag, and scrape memory preflight records remain useful without unbounded file growth\n- Map handoff crash guard, hidden renderer heartbeat telemetry, and dense Friends and Map performance fixes\n- Guard the Friends last-seen to Map handoff so stale MapLibre marker work cannot crash the app during view changes\n- Classify hidden renderer timer throttling separately from foreground event-loop lag so soak metrics stop blaming macOS background timer behavior for app jank\n- Isolate dense Map marker paint so large Map views do less layout and paint work during active zoom and pan\n- Keep runtime health telemetry bounded so renderer heartbeat and memory diagnostics stay useful without unbounded log growth\n- Source sidebar search now filters sources immediately while the heavier feed search stays debounced\n- Opening Freed from the dock or Finder now restores the primary window when macOS reports the app as running with no visible windows\n\n### Follow-ups\n\n- This dev build keeps the desktop performance audit moving with faster source filtering, better window recovery, and today's Friends, Map, and runtime performance fixes\n- Continue the installed soak and watch WebKit process pressure separately from foreground frame timing\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
