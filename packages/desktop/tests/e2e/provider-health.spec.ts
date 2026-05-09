@@ -2299,6 +2299,8 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   await settingsBtn.click();
   await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
   const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  await settingsDialog.getByRole("button", { name: "Feeds", exact: true }).click();
+  await expect(settingsDialog.getByRole("heading", { name: "Feeds" })).toBeVisible();
 
   await expect(settingsDialog.getByRole("button", { name: "All (2)", exact: true })).toBeVisible();
   await expect(settingsDialog.getByTestId("feeds-manage-filter")).toBeVisible();
