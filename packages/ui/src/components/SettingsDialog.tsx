@@ -481,14 +481,16 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (typeof document === "undefined") {
       return;
     }
-    document.documentElement.dataset.settingsDialogMoving = "true";
+    if (document.documentElement.dataset.settingsDialogMoving !== "true") {
+      document.documentElement.dataset.settingsDialogMoving = "true";
+    }
     if (interactionBlurRestoreTimerRef.current) {
       clearTimeout(interactionBlurRestoreTimerRef.current);
     }
     interactionBlurRestoreTimerRef.current = setTimeout(() => {
       delete document.documentElement.dataset.settingsDialogMoving;
       interactionBlurRestoreTimerRef.current = null;
-    }, 220);
+    }, 380);
   }, []);
 
   const handleThemeCommit = useCallback((themeId: ThemeId) => {
@@ -1631,10 +1633,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             ref={scrollRef}
             data-testid="settings-scroll-container"
             onPointerEnter={suppressBackdropDuringInteraction}
-            onScrollCapture={suppressBackdropDuringInteraction}
-            onWheelCapture={suppressBackdropDuringInteraction}
             className="flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
-            style={{ paddingBottom: scrollContainerBottomPadding }}
+            style={{
+              paddingBottom: scrollContainerBottomPadding,
+              contain: "layout paint style",
+              transform: "translateZ(0)",
+              willChange: "scroll-position",
+            }}
           >
             {searchLower && visibleSections.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center gap-2 pb-16 text-center">
