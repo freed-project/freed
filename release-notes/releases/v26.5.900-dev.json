@@ -3,7 +3,7 @@
   "version": "26.5.900-dev",
   "channel": "dev",
   "dayKey": "26.5.9",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-09T18:25:07.560Z",
   "model": "heuristic",
@@ -27,10 +27,12 @@
     ]
   },
   "release": {
-    "deck": "Relax hidden renderer watchdog",
+    "deck": "Hidden sessions stay quieter",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Reduces hidden-window watchdog diagnostics during normal WebKit timer throttling, which cuts avoidable background work during locked or hidden sessions while keeping foreground renderer recovery unchanged."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.900-dev\n\nRelax hidden renderer watchdog\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.900-dev\n\nHidden sessions stay quieter\n\n### Fixes\n\n- Reduces hidden-window watchdog diagnostics during normal WebKit timer throttling, which cuts avoidable background work during locked or hidden sessions while keeping foreground renderer recovery unchanged.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
