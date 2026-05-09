@@ -3,8 +3,10 @@
   "version": "26.5.904-dev",
   "channel": "dev",
   "dayKey": "26.5.9",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed and approved after PRs 549, 550, and 551 landed on dev."
+  ],
   "generatedAt": "2026-05-09T22:08:09.098Z",
   "model": "heuristic",
   "source": {
@@ -51,23 +53,23 @@
     ]
   },
   "release": {
-    "deck": "Improves dense Friends graph recovery, Map interaction smoothness, desktop crash recovery, and WebKit memory attribution for today's dev builds",
+    "deck": "Reduces Settings work, sheds feed media earlier under WebKit pressure, and keeps today's Desktop performance fixes intact",
     "features": [],
     "fixes": [
-      "Open feeds settings before feed controls assertion",
-      "Apply pending friends graph fit all",
-      "Show crash recovery when rendering fails",
-      "Hidden or locked Freed Desktop sessions now wait longer before logging stale renderer heartbeats, which avoids noisy recovery work during expected WebKit timer throttling while preserving the existing foreground recovery path",
-      "Freed Desktop now attributes age-matched WebKit WebContent memory even after the process releases its Freed cache handles, so high WebKit RSS is visible to diagnostics and memory preflight checks",
-      "Dense Map fallback rendering now hides lower-priority markers during wheel and pointer movement, reducing paint work while keeping the primary markers reachable"
+      "Settings now lazy-mounts section bodies, suppresses expensive blur while actively scrolling or searching, and has a dedicated 1,600-source performance guard.",
+      "Feed cards now shed inline media when aggregate WebKit RSS reaches 1.5 GB, which matches the pressure range seen in the live dev soak before the old 2 GB threshold fired.",
+      "Feeds settings regression coverage now opens the Feeds section before asserting Feeds-only controls under lazy Settings section mounting.",
+      "Friends graph Fit all now waits for dense layout completion before applying.",
+      "Dense Map fallback rendering hides lower-priority markers during wheel and pointer movement while keeping primary markers reachable.",
+      "Crash recovery now shows the fatal recovery screen instead of a blank shell when a React render error is caught.",
+      "Hidden or locked Freed Desktop sessions wait longer before logging stale renderer heartbeats, reducing noisy recovery work during expected WebKit timer throttling.",
+      "Freed Desktop now attributes age-matched WebKit WebContent memory even after the process releases Freed cache handles, so high WebKit RSS stays visible to diagnostics."
     ],
     "followUps": [
-      "Reduce settings dialog frame work",
-      "Shed feed media under WebKit pressure",
-      "Stabilize map markers across refreshes",
-      "Relax hidden renderer watchdog",
-      "Keeps hidden sessions quieter and restores WebKit memory attribution"
+      "Install this build locally and compare the soak against v26.5.903, especially the WebKit RSS plateau that sat near 1.63 GB before the new feed media threshold shipped.",
+      "Keep the Settings perf guard in the dev validation lane so large source lists do not silently regress again.",
+      "Continue measuring Map and Friends under dense interaction because they remain the highest-risk visual surfaces."
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.904-dev\n\nImproves dense Friends graph recovery, Map interaction smoothness, desktop crash recovery, and WebKit memory attribution for today's dev builds\n\n### Fixes\n\n- Open feeds settings before feed controls assertion\n- Apply pending friends graph fit all\n- Show crash recovery when rendering fails\n- Hidden or locked Freed Desktop sessions now wait longer before logging stale renderer heartbeats, which avoids noisy recovery work during expected WebKit timer throttling while preserving the existing foreground recovery path\n- Freed Desktop now attributes age-matched WebKit WebContent memory even after the process releases its Freed cache handles, so high WebKit RSS is visible to diagnostics and memory preflight checks\n- Dense Map fallback rendering now hides lower-priority markers during wheel and pointer movement, reducing paint work while keeping the primary markers reachable\n\n### Follow-ups\n\n- Reduce settings dialog frame work\n- Shed feed media under WebKit pressure\n- Stabilize map markers across refreshes\n- Relax hidden renderer watchdog\n- Keeps hidden sessions quieter and restores WebKit memory attribution\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.904-dev\n\nReduces Settings work, sheds feed media earlier under WebKit pressure, and keeps today's Desktop performance fixes intact.\n\n### Fixes\n\n- Settings now lazy-mounts section bodies, suppresses expensive blur while actively scrolling or searching, and has a dedicated 1,600-source performance guard.\n- Feed cards now shed inline media when aggregate WebKit RSS reaches 1.5 GB, which matches the pressure range seen in the live dev soak before the old 2 GB threshold fired.\n- Feeds settings regression coverage now opens the Feeds section before asserting Feeds-only controls under lazy Settings section mounting.\n- Friends graph Fit all now waits for dense layout completion before applying.\n- Dense Map fallback rendering hides lower-priority markers during wheel and pointer movement while keeping primary markers reachable.\n- Crash recovery now shows the fatal recovery screen instead of a blank shell when a React render error is caught.\n- Hidden or locked Freed Desktop sessions wait longer before logging stale renderer heartbeats, reducing noisy recovery work during expected WebKit timer throttling.\n- Freed Desktop now attributes age-matched WebKit WebContent memory even after the process releases Freed cache handles, so high WebKit RSS stays visible to diagnostics.\n\n### Follow-ups\n\n- Install this build locally and compare the soak against v26.5.903, especially the WebKit RSS plateau that sat near 1.63 GB before the new feed media threshold shipped.\n- Keep the Settings perf guard in the dev validation lane so large source lists do not silently regress again.\n- Continue measuring Map and Friends under dense interaction because they remain the highest-risk visual surfaces.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
