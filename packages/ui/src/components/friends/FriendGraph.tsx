@@ -851,6 +851,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const hoveredNodeIdRef = useRef<string | null>(null);
   const transformRef = useRef<ViewTransform>({ ...FRIEND_GRAPH_DEFAULT_TRANSFORM });
   const hasFittedInitialLayoutRef = useRef(false);
+  const pendingFitAllRef = useRef(false);
   const hasUserAdjustedTransformRef = useRef(false);
   const latestLayoutRequestIdRef = useRef(0);
   const latestResolvedLayoutRequestIdRef = useRef(0);
@@ -1736,7 +1737,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   }, [scheduleSyncScene]);
 
   const fitAll = useCallback(() => {
-    if (layoutRef.current.nodes.length === 0) return;
+    if (layoutRef.current.nodes.length === 0) {
+      pendingFitAllRef.current = true;
+      return;
+    }
     transformRef.current = fitTransformToNodes(
       graphFitItems(layoutRef.current),
       canvasSize.width,
@@ -1910,7 +1914,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     layoutDebugNodesRef.current = buildGraphDebugNodes(layout.nodes);
     spatialIndexRef.current = buildSpatialIndex(layout.nodes);
     lastLayoutMsRef.current = durationMs;
-    if (!hasFittedInitialLayoutRef.current) {
+    if (!hasFittedInitialLayoutRef.current || pendingFitAllRef.current) {
       const latestCanvasSize = canvasSizeRef.current;
       transformRef.current = fitTransformToNodes(
         graphFitItems(layout),
@@ -1919,6 +1923,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         FIT_PADDING,
       );
       hasFittedInitialLayoutRef.current = true;
+      pendingFitAllRef.current = false;
     }
     setLayoutVersion((value) => value + 1);
     requestAnimationFrame(() => syncSceneRef.current());
