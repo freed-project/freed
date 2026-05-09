@@ -1,0 +1,36 @@
+{
+  "tag": "v26.5.900-dev",
+  "version": "26.5.900-dev",
+  "channel": "dev",
+  "dayKey": "26.5.9",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-09T18:25:07.560Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.807-dev",
+    "previousPublishedDayTag": "v26.5.807-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.900-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.900-dev"
+    ],
+    "prNumbers": [
+      543
+    ],
+    "commitSubjects": [
+      "perf: relax hidden renderer watchdog (#543)"
+    ]
+  },
+  "release": {
+    "deck": "Relax hidden renderer watchdog",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.900-dev\n\nRelax hidden renderer watchdog\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
