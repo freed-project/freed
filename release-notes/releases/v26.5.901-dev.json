@@ -1,0 +1,40 @@
+{
+  "tag": "v26.5.901-dev",
+  "version": "26.5.901-dev",
+  "channel": "dev",
+  "dayKey": "26.5.9",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-09T18:46:37.981Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.807-dev",
+    "previousPublishedDayTag": "v26.5.807-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.901-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.901-dev"
+    ],
+    "prNumbers": [
+      543,
+      544
+    ],
+    "commitSubjects": [
+      "perf: restore WebKit memory attribution (#544)",
+      "release: approve v26.5.900-dev notes",
+      "release: v26.5.900-dev",
+      "perf: relax hidden renderer watchdog (#543)"
+    ]
+  },
+  "release": {
+    "deck": "Relax hidden renderer watchdog and restore WebKit memory attribution",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.901-dev\n\nRelax hidden renderer watchdog and restore WebKit memory attribution\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
