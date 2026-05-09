@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent,
+  type WheelEvent,
+} from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { LocationMarkerSummary } from "@freed/shared";
 import { DEFAULT_THEME_ID, getThemeDefinition, type ThemeId } from "@freed/shared/themes";
@@ -345,6 +354,7 @@ function mapStyles(interactive: boolean) {
 
     .freed-map-shell .freed-map-marker {
       ${interactive ? "cursor:pointer;" : "cursor:default;"}
+      contain: layout style;
     }
 
     .freed-map-shell .freed-map-marker-body {
@@ -396,6 +406,7 @@ function mapStyles(interactive: boolean) {
 
     .freed-map-fallback-scan {
       background: var(--theme-shell-background);
+      contain: layout style;
     }
   `;
 }
@@ -617,6 +628,8 @@ export function MapSurface({
   const mapRef = useRef<MapInstance | null>(null);
   const mapModuleRef = useRef<MapLibreModule | null>(null);
   const markersRef = useRef<MarkerInstance[]>([]);
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const fallbackMovingTimeoutRef = useRef<number | null>(null);
   const mapLifecycleRef = useRef(0);
   const [mapReady, setMapReady] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -667,6 +680,40 @@ export function MapSurface({
     activePopupRef.current = null;
     activePopupKeyRef.current = null;
   }, []);
+  const clearFallbackMovingTimeout = useCallback(() => {
+    if (fallbackMovingTimeoutRef.current === null || typeof window === "undefined") return;
+    window.clearTimeout(fallbackMovingTimeoutRef.current);
+    fallbackMovingTimeoutRef.current = null;
+  }, []);
+  const setShellMoving = useCallback((moving: boolean) => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    shell.dataset.mapMoving = moving ? "true" : "false";
+  }, []);
+  const markFallbackMoving = useCallback(() => {
+    if (!showFallback || typeof window === "undefined") return;
+    setShellMoving(true);
+    clearFallbackMovingTimeout();
+    fallbackMovingTimeoutRef.current = window.setTimeout(() => {
+      fallbackMovingTimeoutRef.current = null;
+      setShellMoving(false);
+    }, 220);
+  }, [clearFallbackMovingTimeout, setShellMoving, showFallback]);
+  const handleFallbackWheel = useCallback((_event: WheelEvent<HTMLDivElement>) => {
+    markFallbackMoving();
+  }, [markFallbackMoving]);
+  const handleFallbackPointerDown = useCallback((_event: PointerEvent<HTMLDivElement>) => {
+    markFallbackMoving();
+  }, [markFallbackMoving]);
+  const handleFallbackPointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.buttons === 0) return;
+    markFallbackMoving();
+  }, [markFallbackMoving]);
+
+  useEffect(() => () => {
+    clearFallbackMovingTimeout();
+    setShellMoving(false);
+  }, [clearFallbackMovingTimeout, setShellMoving]);
 
   useEffect(() => {
     actionHandlersRef.current = {
@@ -679,10 +726,10 @@ export function MapSurface({
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const shell = containerRef.current.closest(".freed-map-shell") as HTMLElement | null;
     const lifecycleId = mapLifecycleRef.current + 1;
     mapLifecycleRef.current = lifecycleId;
     let cancelled = false;
+    setShellMoving(false);
     setMapReady(false);
     setLoadFailed(false);
 
@@ -717,10 +764,10 @@ export function MapSurface({
         });
         mapRef.current = map;
         const setMoving = () => {
-          if (shell) shell.dataset.mapMoving = "true";
+          setShellMoving(true);
         };
         const clearMoving = () => {
-          if (shell) shell.dataset.mapMoving = "false";
+          setShellMoving(false);
         };
         map.on("movestart", setMoving);
         map.on("zoomstart", setMoving);
@@ -747,9 +794,9 @@ export function MapSurface({
       markersRef.current = [];
       mapRef.current?.remove();
       mapRef.current = null;
-      if (shell) shell.dataset.mapMoving = "false";
+      setShellMoving(false);
     };
-  }, [closeActivePopup, interactive, resolvedThemeId]);
+  }, [closeActivePopup, interactive, resolvedThemeId, setShellMoving]);
 
   useEffect(() => {
     if (!mapReady || !mapRef.current || !mapModuleRef.current) return;
@@ -848,6 +895,7 @@ export function MapSurface({
 
   return (
     <div
+      ref={shellRef}
       data-testid="map-surface"
       data-map-theme={resolvedThemeId}
       data-map-rendered-markers={renderedMarkers.length}
@@ -857,6 +905,9 @@ export function MapSurface({
       data-map-moving="false"
       className="freed-map-shell theme-soft-viewport relative h-full w-full"
       style={MAP_VIEWPORT_MASK_STYLE}
+      onWheel={showFallback ? handleFallbackWheel : undefined}
+      onPointerDown={showFallback ? handleFallbackPointerDown : undefined}
+      onPointerMove={showFallback ? handleFallbackPointerMove : undefined}
     >
       <style>{mapStyles(interactive)}</style>
       <div className="theme-soft-viewport-content">
