@@ -2,13 +2,14 @@
   "channel": "dev",
   "dayKey": "26.5.9",
   "date": "2026-05-09",
-  "preferredDeck": "Reduces Settings work, sheds feed media earlier under WebKit pressure, and keeps today's Desktop performance fixes intact.",
+  "preferredDeck": "Reduces dense Map marker work, speeds Settings, and sheds feed media earlier under WebKit pressure.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Dense Map views now mount 160 markers instead of 240 and only paint 80 while moving, giving the 1,600 author Map guard more frame headroom on loaded runners.",
     "Settings now lazy-mounts section bodies, suppresses expensive blur while actively scrolling or searching, and has a dedicated 1,600-source performance guard.",
     "Feed cards now shed inline media when aggregate WebKit RSS reaches 1.5 GB, which matches the pressure range seen in the live dev soak before the old 2 GB threshold fired.",
     "Friends graph Fit all now waits for dense layout completion before applying.",
@@ -23,7 +24,7 @@
     "Keeps hidden sessions quieter and restores WebKit memory attribution"
   ],
   "editorialNotes": [
-    "Latest dev build adds Settings scale and feed media pressure fixes on top of the earlier same-day performance work."
+    "Latest dev build replaces failed v26.5.904-dev and adds the Map marker cap fix on top of the earlier same-day performance work."
   ],
-  "updatedAt": "2026-05-09T23:00:50.978Z"
+  "updatedAt": "2026-05-09T23:01:48.953Z"
 }

@@ -3,8 +3,10 @@
   "version": "26.5.905-dev",
   "channel": "dev",
   "dayKey": "26.5.9",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Replacement for failed v26.5.904-dev. Keeps the same-day performance rollup and adds the dense Map marker cap fix that made dev validation green again."
+  ],
   "generatedAt": "2026-05-09T23:00:50.977Z",
   "model": "heuristic",
   "source": {
@@ -56,9 +58,12 @@
     ]
   },
   "release": {
-    "deck": "Reduces Settings work, sheds feed media earlier under WebKit pressure, and keeps today's Desktop performance fixes intact",
+    "deck": "Reduces dense Map marker work, speeds Settings, and sheds feed media earlier under WebKit pressure",
     "features": [],
     "fixes": [
+      "Dense Map views now mount 160 markers instead of 240 and only paint 80 while moving, giving the 1,600 author Map guard more frame headroom on loaded runners",
+      "Settings now lazy-mounts section bodies and suppresses expensive blur while actively scrolling or searching",
+      "Feed cards now shed inline media when aggregate WebKit RSS reaches 1.5 GB, which matches the pressure range seen in the live dev soak before the old 2 GB threshold fired",
       "Open feeds settings before feed controls assertion",
       "Apply pending friends graph fit all",
       "Show crash recovery when rendering fails",
@@ -67,6 +72,8 @@
       "Dense Map fallback rendering now hides lower-priority markers during wheel and pointer movement, reducing paint work while keeping the primary markers reachable"
     ],
     "followUps": [
+      "Continue the installed dev build soak and compare WebKit RSS against the v26.5.903 baseline",
+      "Continue Map and Friends interaction monitoring under real desktop load",
       "Reduce settings dialog frame work",
       "Stabilize map markers across refreshes",
       "Relax hidden renderer watchdog",
@@ -74,5 +81,5 @@
       "Improves dense Friends graph recovery, Map interaction smoothness, desktop crash recovery, and WebKit memory attribution for today's dev builds"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.905-dev\n\nReduces Settings work, sheds feed media earlier under WebKit pressure, and keeps today's Desktop performance fixes intact\n\n### Fixes\n\n- Open feeds settings before feed controls assertion\n- Apply pending friends graph fit all\n- Show crash recovery when rendering fails\n- Hidden or locked Freed Desktop sessions now wait longer before logging stale renderer heartbeats, which avoids noisy recovery work during expected WebKit timer throttling while preserving the existing foreground recovery path\n- Freed Desktop now attributes age-matched WebKit WebContent memory even after the process releases its Freed cache handles, so high WebKit RSS is visible to diagnostics and memory preflight checks\n- Dense Map fallback rendering now hides lower-priority markers during wheel and pointer movement, reducing paint work while keeping the primary markers reachable\n\n### Follow-ups\n\n- Reduce settings dialog frame work\n- Stabilize map markers across refreshes\n- Relax hidden renderer watchdog\n- Keeps hidden sessions quieter and restores WebKit memory attribution\n- Improves dense Friends graph recovery, Map interaction smoothness, desktop crash recovery, and WebKit memory attribution for today's dev builds\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.905-dev\n\nReduces dense Map marker work, speeds Settings, and sheds feed media earlier under WebKit pressure\n\n### Fixes\n\n- Dense Map views now mount 160 markers instead of 240 and only paint 80 while moving, giving the 1,600 author Map guard more frame headroom on loaded runners\n- Settings now lazy-mounts section bodies and suppresses expensive blur while actively scrolling or searching\n- Feed cards now shed inline media when aggregate WebKit RSS reaches 1.5 GB, which matches the pressure range seen in the live dev soak before the old 2 GB threshold fired\n- Open feeds settings before feed controls assertion\n- Apply pending friends graph fit all\n- Show crash recovery when rendering fails\n- Hidden or locked Freed Desktop sessions now wait longer before logging stale renderer heartbeats, which avoids noisy recovery work during expected WebKit timer throttling while preserving the existing foreground recovery path\n- Freed Desktop now attributes age-matched WebKit WebContent memory even after the process releases its Freed cache handles, so high WebKit RSS is visible to diagnostics and memory preflight checks\n- Dense Map fallback rendering now hides lower-priority markers during wheel and pointer movement, reducing paint work while keeping the primary markers reachable\n\n### Follow-ups\n\n- Continue the installed dev build soak and compare WebKit RSS against the v26.5.903 baseline\n- Continue Map and Friends interaction monitoring under real desktop load\n- Reduce settings dialog frame work\n- Stabilize map markers across refreshes\n- Relax hidden renderer watchdog\n- Keeps hidden sessions quieter and restores WebKit memory attribution\n- Improves dense Friends graph recovery, Map interaction smoothness, desktop crash recovery, and WebKit memory attribution for today's dev builds\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
