@@ -8,6 +8,7 @@ const MAP_FRAME_P95_BUDGET_MS = process.env.CI ? 67 : 50;
 const MAP_DROPPED_FRAME_BUDGET = process.env.CI ? 40 : 12;
 const MAP_LONG_TASK_COUNT_BUDGET = process.env.CI ? 4 : 2;
 const MAP_MARKER_DOM_BUDGET = 240;
+const MAP_MOVING_MARKER_PAINT_BUDGET = 120;
 
 async function seedLargeMapWorkspace(page: Page): Promise<void> {
   await page.evaluate(async ({ authorCount, itemCount }) => {
@@ -177,6 +178,8 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
 
   const mountElapsed = Date.now() - mountStartedAt;
   const markerCount = await page.locator(".freed-map-marker").count();
+  const movingPrimaryMarkerCount = await page.locator('.freed-map-marker[data-map-moving-priority="primary"]').count();
+  const movingDeferredMarkerCount = await page.locator('.freed-map-marker[data-map-moving-priority="deferred"]').count();
   const totalMarkerCount = await page.getByTestId("map-surface").evaluate((element) =>
     Number.parseInt(element.getAttribute("data-map-total-markers") ?? "0", 10),
   );
@@ -196,6 +199,8 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
 
   console.log(`[PERF] Map mount: ${mountElapsed.toLocaleString()} ms`);
   console.log(`[PERF] Map marker DOM count: ${markerCount.toLocaleString()}`);
+  console.log(`[PERF] Map moving primary markers: ${movingPrimaryMarkerCount.toLocaleString()}`);
+  console.log(`[PERF] Map moving deferred markers: ${movingDeferredMarkerCount.toLocaleString()}`);
   console.log(`[PERF] Map total markers: ${totalMarkerCount.toLocaleString()}`);
   console.log(`[PERF] Map DOM nodes: ${domNodeCount.toLocaleString()}`);
   console.log(`[PERF] Map interaction FPS: ${interaction.result.fps.toLocaleString()}`);
@@ -207,6 +212,8 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
   expect(mountElapsed).toBeLessThan(MAP_MOUNT_BUDGET_MS);
   expect(totalMarkerCount).toBe(MAP_AUTHOR_COUNT);
   expect(markerCount).toBeLessThanOrEqual(MAP_MARKER_DOM_BUDGET);
+  expect(movingPrimaryMarkerCount).toBeLessThanOrEqual(MAP_MOVING_MARKER_PAINT_BUDGET);
+  expect(movingPrimaryMarkerCount + movingDeferredMarkerCount).toBe(markerCount);
   expect(interaction.result.p95Ms).toBeLessThan(MAP_FRAME_P95_BUDGET_MS);
   expect(interaction.result.droppedFrames).toBeLessThanOrEqual(MAP_DROPPED_FRAME_BUDGET);
   expect(interaction.count).toBeLessThanOrEqual(MAP_LONG_TASK_COUNT_BUDGET);

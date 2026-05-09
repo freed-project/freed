@@ -36,6 +36,7 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
 const MAP_POPUP_MAX_WIDTH = 560;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
 const MAP_DOM_MARKER_LIMIT = 240;
+const MAP_MOVING_MARKER_PAINT_LIMIT = 120;
 const MAP_VIEWPORT_MASK_STYLE = {
   "--theme-soft-viewport-mask-size": "20px",
 } as CSSProperties;
@@ -360,6 +361,14 @@ function mapStyles(interactive: boolean) {
       will-change: transform;
     }
 
+    .freed-map-shell[data-map-moving="true"] .freed-map-marker[data-map-moving-priority="deferred"] {
+      display: none;
+    }
+
+    .freed-map-shell[data-map-moving="true"] .freed-map-marker[data-map-marker-simplified="true"] [data-avatar-fallback] {
+      display: none;
+    }
+
     .freed-map-shell[data-map-moving="true"] .freed-map-marker-glow,
     .freed-map-shell[data-map-moving="true"] .freed-map-marker-tint,
     .freed-map-shell[data-map-moving="true"] .freed-map-marker-halo,
@@ -402,6 +411,12 @@ function fallbackPosition(marker: LocationMarkerSummary) {
 
 function fallbackLabel(marker: LocationMarkerSummary) {
   return marker.friend?.name ?? marker.item.author.displayName;
+}
+
+function mapMovingPriority(markerIndex: number, useDenseMarkers: boolean): "primary" | "deferred" {
+  return useDenseMarkers && markerIndex >= MAP_MOVING_MARKER_PAINT_LIMIT
+    ? "deferred"
+    : "primary";
 }
 
 function mapGridBackground(boundary: string) {
@@ -688,12 +703,13 @@ export function MapSurface({
     map.on("click", handleMapClick);
     let stoppedEarly = false;
 
-    for (const markerData of renderedMarkers) {
+    for (const [markerIndex, markerData] of renderedMarkers.entries()) {
       if (stoppedEarly) break;
       const element = createMarkerElement(markerData, avatarPalette, {
         showAvatar: showMarkerAvatars,
         simplified: useDenseMarkers,
       });
+      element.dataset.mapMovingPriority = mapMovingPriority(markerIndex, useDenseMarkers);
       const marker = new maplibre.Marker({ element }).setLngLat([
         markerData.lng,
         markerData.lat,
@@ -775,6 +791,7 @@ export function MapSurface({
       data-map-rendered-markers={renderedMarkers.length}
       data-map-total-markers={stableMarkers.length}
       data-map-dense={useDenseMarkers ? "true" : "false"}
+      data-map-ready={mapReady && !loadFailed ? "true" : "false"}
       data-map-moving="false"
       className="freed-map-shell theme-soft-viewport relative h-full w-full"
       style={MAP_VIEWPORT_MASK_STYLE}
@@ -833,12 +850,13 @@ export function MapSurface({
               )`,
             }}
           />
-          {renderedMarkers.map((marker) => {
+          {renderedMarkers.map((marker, markerIndex) => {
             const position = fallbackPosition(marker);
             return (
               <button
                 key={marker.key}
                 type="button"
+                data-map-moving-priority={mapMovingPriority(markerIndex, useDenseMarkers)}
                 className="freed-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full px-2.5 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]"
                 style={{
                   ...position,
