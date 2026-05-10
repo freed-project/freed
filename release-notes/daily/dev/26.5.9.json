@@ -9,6 +9,9 @@
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Friends Fit all now keeps sparse graph nodes visible instead of clamping zoom too high for far-apart people.",
+    "Settings avoids repeated scroll timer churn and uses visibility observation for the update auto-check, reducing interaction work while the dialog is moving.",
+    "Expected hidden-window WebKit timer throttling now records renderer_heartbeat_throttled instead of renderer_heartbeat_stale, so installed-build soaks stop reporting fake stale and recovered cycles.",
     "Renderer heartbeats now include the active surface plus Friends graph and Map counts, making installed build soaks attribute memory and frame issues to the visible product area.",
     "Settings avoids repeated document style invalidation during scroll and search, keeps blur suppression through the interaction tail, and isolates its scrollport to reduce dropped frames.",
     "Dense Map views now mount 160 markers instead of 240 and only paint 80 while moving, giving the 1,600 author Map guard more frame headroom on loaded runners.",
@@ -30,5 +33,5 @@
   "editorialNotes": [
     "Latest dev build replaces failed v26.5.904-dev and adds the Map marker cap fix on top of the earlier same-day performance work."
   ],
-  "updatedAt": "2026-05-10T00:52:48.197Z"
+  "updatedAt": "2026-05-10T00:54:28.799Z"
 }
