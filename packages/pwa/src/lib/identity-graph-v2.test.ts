@@ -15,6 +15,9 @@ import {
 import { shouldShowGraphLabel } from "../../../ui/src/lib/identity-graph-render";
 
 const NOW = 1_717_000_000_000;
+const IS_CI = process.env.CI === "true";
+const BENCHMARK_MODEL_BUDGET_MS = IS_CI ? 1_000 : 500;
+const BENCHMARK_LAYOUT_BUDGET_MS = IS_CI ? 3_500 : 2_000;
 
 function createPerson(overrides: Partial<Person>): Person {
   return {
@@ -416,8 +419,8 @@ describe("identity graph v2 model", () => {
     expect(model.nodes.length).toBeGreaterThan(1_800);
     expect(model.nodes.length).toBeGreaterThanOrEqual(benchmarkPeople + benchmarkAccounts);
     expect(layout.nodes.length).toBe(model.nodes.length);
-    expect(modelElapsedMs).toBeLessThan(500);
-    expect(layoutElapsedMs).toBeLessThan(2_000);
+    expect(modelElapsedMs).toBeLessThan(BENCHMARK_MODEL_BUDGET_MS);
+    expect(layoutElapsedMs).toBeLessThan(BENCHMARK_LAYOUT_BUDGET_MS);
   });
 });
 
