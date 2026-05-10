@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
   Account,
@@ -1435,7 +1436,9 @@ export function FriendsView({
             feedItems={feedItems}
             onLogReachOut={handleLogReachOut}
             onOpenMap={() => {
-              openMapForPerson(selectedPerson.id);
+              flushSync(() => {
+                openMapForPerson(selectedPerson.id);
+              });
             }}
           />
         </div>
