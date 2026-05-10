@@ -132,6 +132,7 @@ type FriendGraphSurfacePerf = {
   denseInteractionEligible?: boolean;
   denseInteractionNodeCount?: number;
   denseInteractionCulled?: boolean;
+  denseInteractionRebuildCount?: number;
   qualityMode?: string;
   nodeCount?: number;
   linkCount?: number;

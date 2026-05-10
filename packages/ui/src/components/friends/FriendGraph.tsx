@@ -197,6 +197,8 @@ const DENSE_GRAPH_SINGLE_LAYER_THRESHOLD = 1_200;
 const DENSE_INTERACTION_CULL_THRESHOLD = 1_600;
 const DENSE_INTERACTION_NODE_LIMIT = 560;
 const DENSE_INTERACTION_VIEWPORT_PADDING = 72;
+const DENSE_INTERACTION_TRANSFORM_BUCKET_PX = 360;
+const DENSE_INTERACTION_SCALE_BUCKET_FACTOR = 4;
 const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
 const RELATIONSHIP_TIER_DROP_SELECTOR = "[data-friend-tier-drop-value]";
 
@@ -244,6 +246,7 @@ interface GraphPerfSnapshot {
   denseInteractionEligible: boolean;
   denseInteractionNodeCount: number;
   denseInteractionCulled: boolean;
+  denseInteractionRebuildCount: number;
   qualityMode: GraphQualityMode;
 }
 
@@ -868,6 +871,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const drawRafPendingRef = useRef(false);
   const settleTimerRef = useRef<number | null>(null);
   const lastStaticRenderKeyRef = useRef("");
+  const lastDenseInteractionRenderKeyRef = useRef("");
+  const lastDenseInteractionStatsRef = useRef({
+    nodeCount: 0,
+    culled: false,
+  });
+  const denseInteractionRebuildCountRef = useRef(0);
   const lastSelectionStyleKeyRef = useRef("");
   const lastLabelLayoutKeyRef = useRef("");
   const visibleLabelIdsRef = useRef<string[]>([]);
@@ -908,6 +917,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     denseInteractionEligible: false,
     denseInteractionNodeCount: 0,
     denseInteractionCulled: false,
+    denseInteractionRebuildCount: 0,
     qualityMode: "settled",
   });
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: DEFAULT_HEIGHT });
@@ -1291,33 +1301,67 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       scene.denseNodeLayer.visible = !useDenseInteractionLayer;
       scene.denseInteractionNodeLayer.visible = useDenseInteractionLayer;
       if (useDenseInteractionLayer) {
-        let drawnVisibleNodes = 0;
-        scene.denseInteractionNodeLayer.clear();
-        for (const node of layoutRef.current.nodes) {
-          if (
-            !isNodeNearViewport(
-              node,
-              transform,
-              canvasSize.width,
-              canvasSize.height,
-              DENSE_INTERACTION_VIEWPORT_PADDING,
-            )
-          ) {
-            continue;
+        const denseInteractionRenderKey = [
+          layoutVersion,
+          themeId ?? "",
+          Math.round(transform.scale * DENSE_INTERACTION_SCALE_BUCKET_FACTOR),
+          Math.round(transform.x / DENSE_INTERACTION_TRANSFORM_BUCKET_PX),
+          Math.round(transform.y / DENSE_INTERACTION_TRANSFORM_BUCKET_PX),
+          canvasSize.width,
+          canvasSize.height,
+        ].join("|");
+        if (lastDenseInteractionRenderKeyRef.current !== denseInteractionRenderKey) {
+          let drawnVisibleNodes = 0;
+          let didCullDenseInteraction = false;
+          scene.denseInteractionNodeLayer.clear();
+          for (const node of layoutRef.current.nodes) {
+            if (
+              !isNodeNearViewport(
+                node,
+                transform,
+                canvasSize.width,
+                canvasSize.height,
+                DENSE_INTERACTION_VIEWPORT_PADDING,
+              )
+            ) {
+              continue;
+            }
+            drawDenseGraphNode(scene.denseInteractionNodeLayer, node, graphPalette);
+            drawnVisibleNodes += 1;
+            if (drawnVisibleNodes >= DENSE_INTERACTION_NODE_LIMIT) {
+              didCullDenseInteraction = true;
+              break;
+            }
           }
-          drawDenseGraphNode(scene.denseInteractionNodeLayer, node, graphPalette);
-          drawnVisibleNodes += 1;
-          if (drawnVisibleNodes >= DENSE_INTERACTION_NODE_LIMIT) {
-            denseInteractionCulled = true;
-            break;
-          }
+          lastDenseInteractionRenderKeyRef.current = denseInteractionRenderKey;
+          lastDenseInteractionStatsRef.current = {
+            nodeCount: drawnVisibleNodes,
+            culled: didCullDenseInteraction,
+          };
+          denseInteractionRebuildCountRef.current += 1;
         }
-        denseInteractionNodeCount = drawnVisibleNodes;
+        denseInteractionNodeCount = lastDenseInteractionStatsRef.current.nodeCount;
+        denseInteractionCulled = lastDenseInteractionStatsRef.current.culled;
       } else {
-        scene.denseInteractionNodeLayer.clear();
+        if (lastDenseInteractionRenderKeyRef.current) {
+          scene.denseInteractionNodeLayer.clear();
+          lastDenseInteractionRenderKeyRef.current = "";
+          lastDenseInteractionStatsRef.current = {
+            nodeCount: 0,
+            culled: false,
+          };
+        }
       }
     } else {
       scene.denseInteractionNodeLayer.visible = false;
+      if (lastDenseInteractionRenderKeyRef.current) {
+        scene.denseInteractionNodeLayer.clear();
+        lastDenseInteractionRenderKeyRef.current = "";
+        lastDenseInteractionStatsRef.current = {
+          nodeCount: 0,
+          culled: false,
+        };
+      }
     }
 
     if (lastSelectionStyleKeyRef.current !== selectionStyleKey || didStaticRender || !!accountDrag) {
@@ -1640,6 +1684,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     perfSnapshotRef.current.denseInteractionEligible = denseInteractionEligible;
     perfSnapshotRef.current.denseInteractionNodeCount = denseInteractionNodeCount;
     perfSnapshotRef.current.denseInteractionCulled = denseInteractionCulled;
+    perfSnapshotRef.current.denseInteractionRebuildCount = denseInteractionRebuildCountRef.current;
     let avatarDisplayCount = 0;
     for (const display of scene.nodeDisplays.values()) {
       if (display.avatarSprite) avatarDisplayCount += 1;
