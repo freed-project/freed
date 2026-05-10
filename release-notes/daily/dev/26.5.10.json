@@ -9,6 +9,8 @@
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [],
-  "editorialNotes": [],
-  "updatedAt": "2026-05-10T07:51:51.789Z"
+  "editorialNotes": [
+    "v26.5.1000-dev covers the Settings scroll containment and moving-state transition pause work landed after v26.5.914-dev."
+  ],
+  "updatedAt": "2026-05-10T07:52:52.286Z"
 }

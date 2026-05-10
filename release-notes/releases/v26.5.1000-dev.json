@@ -3,8 +3,10 @@
   "version": "26.5.1000-dev",
   "channel": "dev",
   "dayKey": "26.5.10",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Release notes narrowed to the actual diff since v26.5.914-dev: Settings scroll containment and moving-state transition pause."
+  ],
   "generatedAt": "2026-05-10T07:51:51.788Z",
   "model": "heuristic",
   "source": {
@@ -504,7 +506,26 @@
       "Recycle blocked scraper windows",
       "Reserve scraper memory headroom",
       "Slim desktop e2e gates"
+    ],
+    "title": "Settings scroll performance follow-up",
+    "summary": "Settings scroll performance follow-up.",
+    "sections": [
+      {
+        "title": "Performance",
+        "items": [
+          "Isolates the Settings shell and scrollport with CSS containment, which reduces paint spillover while the dialog is open.",
+          "Pauses descendant animations and transitions while Settings is actively moving, which trims extra frame work during scroll and interaction."
+        ]
+      },
+      {
+        "title": "Validation",
+        "items": [
+          "Focused Settings performance stayed inside guard with no long tasks.",
+          "Settings backdrop blur and scrollspy behavior checks passed.",
+          "Feature validation passed before release prep."
+        ]
+      }
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1000-dev\n\nAI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers\n\n### Features\n\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n- Friends relationship tiers\n\n### Fixes\n\n- Reader, feed, and header polish\n- Release build and type-safety cleanup\n- Test coverage and performance hardening\n- Route Google Drive through native sync requests\n- Optimized social scraper frame drops\n- Dedupe Instagram story captures\n\n### Follow-ups\n\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1000-dev\n\nSettings scroll performance follow-up.\n\n### Performance\n\n- Isolates the Settings shell and scrollport with CSS containment, which reduces paint spillover while the dialog is open.\n- Pauses descendant animations and transitions while Settings is actively moving, which trims extra frame work during scroll and interaction.\n\n### Validation\n\n- Focused Settings performance stayed inside guard with no long tasks.\n- Settings backdrop blur and scrollspy behavior checks passed.\n- Feature validation passed before release prep.\n\n### Downloads\n\n**macOS:** `.dmg` Apple Silicon or Intel, signed and notarized  \n**Windows:** `.exe` NSIS installer  \n**Linux:** `.AppImage`\n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
