@@ -3,8 +3,11 @@
   "version": "26.5.1006-dev",
   "channel": "dev",
   "dayKey": "26.5.10",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "v26.5.1006-dev replaces the failed v26.5.1005-dev tag after release validation exposed Vite reloads caused by Playwright output directory events.",
+    "Keep the same-day v26.5.1003-dev and v26.5.1004-dev rollup because this is the latest dev build for 2026-05-10."
+  ],
   "generatedAt": "2026-05-10T15:54:32.302Z",
   "model": "heuristic",
   "source": {
@@ -509,37 +512,25 @@
     ]
   },
   "release": {
-    "deck": "AI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers",
-    "features": [
-      "AI ranked friend suggestions",
-      "Support Friends graph pinch zoom",
-      "Friends relationship tiers"
-    ],
+    "deck": "Settings scroll, Friends graph, and renderer recovery stability.",
+    "features": [],
     "fixes": [
-      "Test coverage and performance hardening",
-      "Reader, feed, and header polish",
-      "Release build and type-safety cleanup",
-      "Route Google Drive through native sync requests",
-      "Optimized social scraper frame drops",
-      "Dedupe Instagram story captures",
       "Pause Settings descendant transitions while the dialog is moving",
       "Open the full Map from Friends detail with one atomic store update",
       "Flush the Friends to Map handoff at the click boundary",
-      "Flush mobile Friends toolbar switches between Details and graph modes"
+      "Flush mobile Friends toolbar switches between Details and graph modes",
+      "Friends graph pan and zoom now reuse the dense interaction layer across coarse viewport buckets instead of redrawing visible dense nodes every frame.",
+      "Friends graph perf telemetry now reports dense interaction rebuild count, with a release regression guard for the 1,600-person zoom and pan case.",
+      "Hidden WebKit timer gaps now stay classified as expected throttling instead of repeatedly logging false stale renderer cycles.",
+      "Desktop E2E output no longer causes the Vite test server to reload the app during release validation.",
+      "The legal gate accept helper is more stable on small viewports."
     ],
     "followUps": [
-      "Reader, sidebar, and settings UX work",
-      "Trim reader rail work and stabilize friends perf",
-      "Isolate social scraper webkit stores",
-      "Gate startup social scraper pressure",
-      "Recycle blocked scraper windows",
-      "Reserve scraper memory headroom",
-      "Slim desktop e2e gates",
       "Settings scrolling is lighter, and Friends view transitions are stable through the release regression gate",
-      "Continue passive soak metrics until Apple Events authorization is restored for active UI driving",
       "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss",
-      "Settings scroll and Friends graph stability"
+      "Install v26.5.1006-dev and confirm hidden renderer gaps report as throttled without recurring false stale cycles.",
+      "Keep installed-build soak driving passive until Apple Events authorization is restored."
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1006-dev\n\nAI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers\n\n### Features\n\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n- Friends relationship tiers\n\n### Fixes\n\n- Test coverage and performance hardening\n- Reader, feed, and header polish\n- Release build and type-safety cleanup\n- Route Google Drive through native sync requests\n- Optimized social scraper frame drops\n- Dedupe Instagram story captures\n- Pause Settings descendant transitions while the dialog is moving\n- Open the full Map from Friends detail with one atomic store update\n- Flush the Friends to Map handoff at the click boundary\n- Flush mobile Friends toolbar switches between Details and graph modes\n\n### Follow-ups\n\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n- Settings scrolling is lighter, and Friends view transitions are stable through the release regression gate\n- Continue passive soak metrics until Apple Events authorization is restored for active UI driving\n- Treat Settings scroll as the next measured performance surface because it remains the largest budget miss\n- Settings scroll and Friends graph stability\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1006-dev\n\nSettings scroll, Friends graph, and renderer recovery stability.\n\n### Fixes\n\n- Pause Settings descendant transitions while the dialog is moving\n- Open the full Map from Friends detail with one atomic store update\n- Flush the Friends to Map handoff at the click boundary\n- Flush mobile Friends toolbar switches between Details and graph modes\n- Friends graph pan and zoom now reuse the dense interaction layer across coarse viewport buckets instead of redrawing visible dense nodes every frame.\n- Friends graph perf telemetry now reports dense interaction rebuild count, with a release regression guard for the 1,600-person zoom and pan case.\n- Hidden WebKit timer gaps now stay classified as expected throttling instead of repeatedly logging false stale renderer cycles.\n- Desktop E2E output no longer causes the Vite test server to reload the app during release validation.\n- The legal gate accept helper is more stable on small viewports.\n\n### Follow-ups\n\n- Settings scrolling is lighter, and Friends view transitions are stable through the release regression gate\n- Treat Settings scroll as the next measured performance surface because it remains the largest budget miss\n- Install v26.5.1006-dev and confirm hidden renderer gaps report as throttled without recurring false stale cycles.\n- Keep installed-build soak driving passive until Apple Events authorization is restored.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

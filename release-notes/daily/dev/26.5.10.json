@@ -15,7 +15,8 @@
     "v26.5.1002-dev passed the Friends Map case, then failed the mobile Friends Details release regression and was replaced.",
     "v26.5.1003-dev covers Settings scroll containment, moving-state transition pause, the atomic Friends detail Map handoff, the synchronous Map commit, and the synchronous mobile Friends surface switch.",
     "v26.5.1004-dev adds the Friends dense interaction layer cache and rebuild-count regression telemetry.",
-    "v26.5.1005-dev adds the hidden WebKit timer gap fix so expected hidden renderer throttling does not keep producing false stale-renderer cycles."
+    "v26.5.1005-dev adds the hidden WebKit timer gap fix so expected hidden renderer throttling does not keep producing false stale-renderer cycles.",
+    "v26.5.1006-dev replaces the failed v26.5.1005-dev validation tag with the hidden heartbeat fix plus Desktop E2E server stability so Playwright output cannot reload the app during release validation."
   ],
   "updatedAt": "2026-05-10T15:54:32.304Z"
 }
