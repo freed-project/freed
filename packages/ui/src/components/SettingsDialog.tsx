@@ -887,6 +887,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     const root = scrollRef.current;
     if (!root || searchLower || (isMobile && mobileView === "nav")) return;
     let scrollIdleTimer: ReturnType<typeof setTimeout> | undefined;
+    const supportsScrollEnd = "onscrollend" in root;
 
     const updateActiveSectionFromScroll = () => {
       if (isScrollingProgrammatically.current) return;
@@ -917,6 +918,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
     const scheduleActiveSectionUpdate = () => {
       suppressBackdropDuringInteraction();
+      if (supportsScrollEnd) {
+        return;
+      }
       clearTimeout(scrollIdleTimer);
       scrollIdleTimer = setTimeout(() => {
         updateActiveSectionFromScroll();
@@ -925,11 +929,17 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
     updateActiveSectionFromScroll();
     root.addEventListener("scroll", scheduleActiveSectionUpdate, { passive: true });
+    if (supportsScrollEnd) {
+      root.addEventListener("scrollend", updateActiveSectionFromScroll);
+    }
     window.addEventListener("resize", scheduleActiveSectionUpdate);
 
     return () => {
       clearTimeout(scrollIdleTimer);
       root.removeEventListener("scroll", scheduleActiveSectionUpdate);
+      if (supportsScrollEnd) {
+        root.removeEventListener("scrollend", updateActiveSectionFromScroll);
+      }
       window.removeEventListener("resize", scheduleActiveSectionUpdate);
     };
   }, [isMobile, mobileView, open, searchLower, suppressBackdropDuringInteraction]);
