@@ -44,6 +44,7 @@ async function readGraphDebug(page: Page) {
           denseInteractionEligible: boolean;
           denseInteractionNodeCount: number;
           denseInteractionCulled: boolean;
+          denseInteractionRebuildCount: number;
         };
       };
     }).__FREED_GRAPH_DEBUG__ ?? null;
@@ -347,11 +348,13 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   console.log(`[PERF] Friends interaction worst long task: ${interaction.worstMs.toFixed(1)} ms`);
   console.log(`[PERF] Friends interaction scene sync: ${afterInteraction!.metrics.sceneSyncMs.toFixed(1)} ms`);
   console.log(`[PERF] Friends dense interaction nodes: ${denseInteractionNodeCount.toLocaleString()}`);
+  console.log(`[PERF] Friends dense interaction rebuilds: ${afterInteraction!.metrics.denseInteractionRebuildCount.toLocaleString()}`);
 
   expect(afterInteraction!.transform.scale).toBeGreaterThan(initialDebug!.transform.scale);
   expect(interaction.result.sampleCount).toBeGreaterThan(0);
   expect(denseInteractionNodeCount).toBeGreaterThan(0);
   expect(denseInteractionNodeCount).toBeLessThanOrEqual(DENSE_INTERACTION_NODE_BUDGET);
+  expect(afterInteraction!.metrics.denseInteractionRebuildCount).toBeLessThanOrEqual(16);
   if (process.env.CI) {
     expect(afterInteraction!.metrics.sceneSyncMs).toBeLessThan(GRAPH_SCENE_SYNC_BUDGET_MS);
     return;
