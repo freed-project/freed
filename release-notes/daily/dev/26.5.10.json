@@ -15,5 +15,5 @@
     "v26.5.1002-dev passed the Friends Map case, then failed the mobile Friends Details release regression and was replaced.",
     "v26.5.1003-dev covers Settings scroll containment, moving-state transition pause, the atomic Friends detail Map handoff, the synchronous Map commit, and the synchronous mobile Friends surface switch."
   ],
-  "updatedAt": "2026-05-10T09:35:04.837Z"
+  "updatedAt": "2026-05-10T10:36:56.692Z"
 }
