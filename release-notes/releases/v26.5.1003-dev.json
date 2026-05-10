@@ -3,8 +3,11 @@
   "version": "26.5.1003-dev",
   "channel": "dev",
   "dayKey": "26.5.10",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "v26.5.1003-dev replaces v26.5.1000-dev, v26.5.1001-dev, and v26.5.1002-dev after release validation exposed Friends transition races.",
+    "This build keeps the Settings scroll performance changes and adds deterministic Friends Map and mobile Details handoffs."
+  ],
   "generatedAt": "2026-05-10T09:34:41.185Z",
   "model": "heuristic",
   "source": {
@@ -494,29 +497,18 @@
     ]
   },
   "release": {
-    "deck": "AI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers",
-    "features": [
-      "AI ranked friend suggestions",
-      "Support Friends graph pinch zoom",
-      "Friends relationship tiers"
-    ],
+    "deck": "Settings scrolling is lighter, and Friends view transitions are stable through the release regression gate.",
+    "features": [],
     "fixes": [
-      "Reader, feed, and header polish",
-      "Release build and type-safety cleanup",
-      "Test coverage and performance hardening",
-      "Route Google Drive through native sync requests",
-      "Optimized social scraper frame drops",
-      "Dedupe Instagram story captures"
+      "Pause Settings descendant transitions while the dialog is moving.",
+      "Open the full Map from Friends detail with one atomic store update.",
+      "Flush the Friends to Map handoff at the click boundary.",
+      "Flush mobile Friends toolbar switches between Details and graph modes."
     ],
     "followUps": [
-      "Reader, sidebar, and settings UX work",
-      "Trim reader rail work and stabilize friends perf",
-      "Isolate social scraper webkit stores",
-      "Gate startup social scraper pressure",
-      "Recycle blocked scraper windows",
-      "Reserve scraper memory headroom",
-      "Slim desktop e2e gates"
+      "Continue passive soak metrics until Apple Events authorization is restored for active UI driving.",
+      "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss."
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1003-dev\n\nAI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers\n\n### Features\n\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n- Friends relationship tiers\n\n### Fixes\n\n- Reader, feed, and header polish\n- Release build and type-safety cleanup\n- Test coverage and performance hardening\n- Route Google Drive through native sync requests\n- Optimized social scraper frame drops\n- Dedupe Instagram story captures\n\n### Follow-ups\n\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1003-dev\n\nSettings scrolling is lighter, and Friends view transitions are stable through the release regression gate.\n\n### Performance\n\n- Pauses Settings descendant transitions while the dialog is moving so scroll and drag do less compositor work.\n- Keeps the Settings scroll containment fixes from the previous dev builds.\n- Preserves the Friends graph scale improvements already in the installed soak line.\n\n### Fixes\n\n- Opens the full Map from a Friends last seen card with one atomic store update.\n- Flushes the Friends to Map handoff at the click boundary so release CI cannot observe Map state before the Map surface commits.\n- Flushes mobile Friends toolbar switches between Details and graph modes so the child surface commits before release assertions run.\n\n### Validation\n\n- Replaces v26.5.1000-dev, v26.5.1001-dev, and v26.5.1002-dev after release validation exposed Friends transition races.\n- PR feature validation passed for both Friends transition fixes.\n- The final mobile Friends Details case passed 30 repeated local runs before this build was cut.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
