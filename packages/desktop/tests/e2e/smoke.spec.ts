@@ -47,9 +47,32 @@ async function openVisibleMapMarker(
   label = "Ada Lovelace",
   popupActionName?: "Open Friend" | "Open Post",
 ) {
+  const mapSurface = page.getByTestId("map-surface");
   const visibleMarker = page.locator(`.freed-map-marker[aria-label="${label}"]:visible`).first();
-  await expect(visibleMarker).toBeVisible({ timeout: 10_000 });
-  await visibleMarker.click({ force: true });
+
+  await expect(mapSurface).toBeVisible({ timeout: 10_000 });
+  await expect
+    .poll(async () => (await mapSurface.getAttribute("data-map-moving")) ?? "false", {
+      timeout: 10_000,
+    })
+    .toBe("false");
+
+  let lastClickError: unknown = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await expect(visibleMarker).toBeVisible({ timeout: 10_000 });
+    try {
+      await visibleMarker.click({ force: true });
+      lastClickError = null;
+      break;
+    } catch (error) {
+      lastClickError = error;
+      await page.waitForTimeout(150);
+    }
+  }
+
+  if (lastClickError) {
+    throw lastClickError;
+  }
 
   if (!popupActionName) {
     return;
@@ -61,6 +84,7 @@ async function openVisibleMapMarker(
       return;
     }
 
+    await expect(visibleMarker).toBeVisible({ timeout: 10_000 });
     await visibleMarker.click();
     await page.waitForTimeout(250);
   }
