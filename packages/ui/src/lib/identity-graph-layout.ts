@@ -72,10 +72,6 @@ function hashValue(value: string): number {
   return Math.abs(hash);
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
 function safeText(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
@@ -589,9 +585,10 @@ export function fitTransformToNodes(
   const bottom = Math.max(...nodes.map((node) => node.y + node.radius));
   const contentWidth = Math.max(1, right - left);
   const contentHeight = Math.max(1, bottom - top);
-  const scale = clamp(
-    Math.min((width - padding * 2) / contentWidth, (height - padding * 2) / contentHeight),
-    0.22,
+  const availableWidth = Math.max(1, width - padding * 2);
+  const availableHeight = Math.max(1, height - padding * 2);
+  const scale = Math.min(
+    Math.min(availableWidth / contentWidth, availableHeight / contentHeight),
     1.5,
   );
   return {

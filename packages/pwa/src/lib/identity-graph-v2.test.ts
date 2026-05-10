@@ -4,6 +4,7 @@ import { buildProvisionalPersonCandidates } from "@freed/shared";
 import {
   nudgeOverlapsBucketed,
   buildIdentityGraphLayout,
+  fitTransformToNodes,
   type IdentityGraphLayoutNode,
 } from "../../../ui/src/lib/identity-graph-layout";
 import {
@@ -476,6 +477,30 @@ describe("identity graph v2 layout", () => {
           left.radius + right.radius + 9.5,
         );
       }
+    }
+  });
+
+  it("fits far apart graph items inside the padded viewport", () => {
+    const nodes = [
+      { x: 1_020, y: 240, radius: 210 },
+      { x: 1_200, y: 3_420, radius: 58 },
+    ];
+
+    const viewportWidth = 1_176;
+    const viewportHeight = 850;
+    const padding = 80;
+    const transform = fitTransformToNodes(nodes, viewportWidth, viewportHeight, padding);
+
+    for (const node of nodes) {
+      const left = node.x * transform.scale + transform.x - node.radius * transform.scale;
+      const right = node.x * transform.scale + transform.x + node.radius * transform.scale;
+      const top = node.y * transform.scale + transform.y - node.radius * transform.scale;
+      const bottom = node.y * transform.scale + transform.y + node.radius * transform.scale;
+
+      expect(left).toBeGreaterThanOrEqual(padding - 0.1);
+      expect(right).toBeLessThanOrEqual(viewportWidth - padding + 0.1);
+      expect(top).toBeGreaterThanOrEqual(padding - 0.1);
+      expect(bottom).toBeLessThanOrEqual(viewportHeight - padding + 0.1);
     }
   });
 
