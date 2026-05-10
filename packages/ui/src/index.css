@@ -2160,6 +2160,7 @@ html[data-theme="scriptorium"] .theme-dialog-shell::before {
 }
 
 .theme-settings-shell {
+  contain: layout paint;
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.06),
     inset 0 0 0 0.5px rgb(255 255 255 / 0.028),
@@ -2167,6 +2168,11 @@ html[data-theme="scriptorium"] .theme-dialog-shell::before {
     0 88px 228px rgb(var(--theme-shell-rgb) / 0.7),
     0 0 72px rgb(0 0 0 / 0.1),
     0 0 0 1px rgb(255 255 255 / 0.025);
+}
+
+.theme-settings-scrollport {
+  contain: layout paint;
+  overscroll-behavior: contain;
 }
 
 html[data-theme="scriptorium"] .theme-settings-shell {

@@ -1683,7 +1683,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             ref={scrollRef}
             data-testid="settings-scroll-container"
             onPointerEnter={suppressBackdropDuringInteraction}
-            className="flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
+            className="theme-settings-scrollport flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
             style={{
               paddingBottom: scrollContainerBottomPadding,
             }}
