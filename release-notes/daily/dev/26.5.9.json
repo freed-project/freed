@@ -28,10 +28,11 @@
     "Relax hidden renderer watchdog",
     "Keeps hidden sessions quieter and restores WebKit memory attribution",
     "Reduces dense Map marker work, speeds Settings, and sheds feed media earlier under WebKit pressure",
-    "Reduce settings dialog frame work"
+    "Reduce settings dialog frame work",
+    "Friends graph Fit all now waits for the first dense layout to finish before applying, so large graphs no longer get stuck off-screen when the action fires early"
   ],
   "editorialNotes": [
     "Latest dev build replaces failed v26.5.904-dev and adds the Map marker cap fix on top of the earlier same-day performance work."
   ],
-  "updatedAt": "2026-05-10T00:54:28.799Z"
+  "updatedAt": "2026-05-10T00:55:05.360Z"
 }
