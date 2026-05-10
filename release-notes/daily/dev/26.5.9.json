@@ -2,13 +2,14 @@
   "channel": "dev",
   "dayKey": "26.5.9",
   "date": "2026-05-09",
-  "preferredDeck": "Faster Map pan and zoom, steadier Friends to Map navigation, and same-day desktop fixes",
+  "preferredDeck": "Faster Map pan and zoom, steadier Friends to Map navigation, and stable release validation",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Map marker smoke validation now waits for moving-state marker deferral to settle before clicking visible markers, preventing the loaded-runner race that blocked v26.5.913-dev.",
     "Friends detail last-seen cards now switch to Map before applying the selected friend, avoiding a loaded-runner transition stall where the store reached Map before the Map surface mounted.",
     "Dense Map views now avoid render comparison string allocation, compute fit bounds in one pass, and paint only 48 markers while moving, improving 1,600-author pan and zoom headroom.",
     "Settings feed management now precomputes normalized list search text and memoizes feed extraction, keeping 1,600-feed inner filters in single-digit milliseconds.",
@@ -45,7 +46,8 @@
     "v26.5.910-dev ships the Settings moving-state paint headroom from PR #561 on top of the v26.5.909-dev installed soak baseline.",
     "v26.5.911-dev ships the Settings inner-list filtering optimization from PR #562 on top of the v26.5.910-dev installed soak baseline.",
     "v26.5.912-dev failed release validation after PR #563 because the Friends detail last-seen Map navigation test stalled twice on the runner.",
-    "v26.5.913-dev replaces failed v26.5.912-dev and ships the Friends to Map transition ordering fix from PR #564 on top of the dense Map optimization."
+    "v26.5.913-dev replaces failed v26.5.912-dev and ships the Friends to Map transition ordering fix from PR #564 on top of the dense Map optimization.",
+    "v26.5.914-dev replaces failed v26.5.913-dev and ships the Map marker click stability fix from PR #565 on top of the dense Map optimization and Friends to Map transition fix."
   ],
-  "updatedAt": "2026-05-10T06:40:00.000Z"
+  "updatedAt": "2026-05-10T06:57:00.000Z"
 }
