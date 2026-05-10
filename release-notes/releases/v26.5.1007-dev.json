@@ -3,8 +3,11 @@
   "version": "26.5.1007-dev",
   "channel": "dev",
   "dayKey": "26.5.10",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "v26.5.1007-dev replaces the failed v26.5.1006-dev validation tag after the identity graph layout benchmark exceeded its local-only wall clock budget on GitHub hosted runners.",
+    "The shipped product changes are the accumulated same-day fixes from v26.5.1003-dev through v26.5.1007-dev."
+  ],
   "generatedAt": "2026-05-10T16:12:37.005Z",
   "model": "heuristic",
   "source": {
@@ -512,37 +515,23 @@
     ]
   },
   "release": {
-    "deck": "AI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers",
-    "features": [
-      "AI ranked friend suggestions",
-      "Support Friends graph pinch zoom",
-      "Friends relationship tiers"
-    ],
+    "deck": "Settings scroll, Friends graph, and renderer recovery stability.",
+    "features": [],
     "fixes": [
-      "Test coverage and performance hardening",
-      "Reader, feed, and header polish",
-      "Release build and type-safety cleanup",
-      "Route Google Drive through native sync requests",
-      "Optimized social scraper frame drops",
-      "Dedupe Instagram story captures",
-      "Pause Settings descendant transitions while the dialog is moving",
-      "Open the full Map from Friends detail with one atomic store update",
-      "Flush the Friends to Map handoff at the click boundary",
-      "Flush mobile Friends toolbar switches between Details and graph modes"
+      "Pause Settings descendant transitions while the dialog is moving.",
+      "Open the full Map from Friends detail with one atomic store update.",
+      "Flush the Friends to Map handoff at the click boundary.",
+      "Flush mobile Friends toolbar switches between Details and graph modes.",
+      "Cache the dense Friends graph interaction layer and add rebuild-count telemetry.",
+      "Keep hidden WebKit timer gaps classified as expected throttling instead of recurring false stale-renderer cycles.",
+      "Ignore Desktop Playwright output directory events so release E2E artifacts cannot reload the app under test.",
+      "Use a CI-specific identity graph benchmark budget while keeping the local 2,000 ms layout guard intact."
     ],
     "followUps": [
-      "Reader, sidebar, and settings UX work",
-      "Trim reader rail work and stabilize friends perf",
-      "Isolate social scraper webkit stores",
-      "Gate startup social scraper pressure",
-      "Recycle blocked scraper windows",
-      "Reserve scraper memory headroom",
-      "Slim desktop e2e gates",
-      "Settings scrolling is lighter, and Friends view transitions are stable through the release regression gate",
-      "Continue passive soak metrics until Apple Events authorization is restored for active UI driving",
-      "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss",
-      "Settings scroll and Friends graph stability"
+      "Install this replacement build locally and confirm hidden timer gaps report as renderer_heartbeat_throttled without recurring false renderer_heartbeat_stale cycles.",
+      "Continue passive soak metrics until Apple Events authorization is restored for active UI driving.",
+      "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss."
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1007-dev\n\nAI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers\n\n### Features\n\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n- Friends relationship tiers\n\n### Fixes\n\n- Test coverage and performance hardening\n- Reader, feed, and header polish\n- Release build and type-safety cleanup\n- Route Google Drive through native sync requests\n- Optimized social scraper frame drops\n- Dedupe Instagram story captures\n- Pause Settings descendant transitions while the dialog is moving\n- Open the full Map from Friends detail with one atomic store update\n- Flush the Friends to Map handoff at the click boundary\n- Flush mobile Friends toolbar switches between Details and graph modes\n\n### Follow-ups\n\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n- Settings scrolling is lighter, and Friends view transitions are stable through the release regression gate\n- Continue passive soak metrics until Apple Events authorization is restored for active UI driving\n- Treat Settings scroll as the next measured performance surface because it remains the largest budget miss\n- Settings scroll and Friends graph stability\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1007-dev\n\nSettings scroll, Friends graph, and renderer recovery stability.\n\n### Fixes\n\n- Pause Settings descendant transitions while the dialog is moving.\n- Open the full Map from Friends detail with one atomic store update.\n- Flush the Friends to Map handoff at the click boundary.\n- Flush mobile Friends toolbar switches between Details and graph modes.\n- Cache the dense Friends graph interaction layer and add rebuild-count telemetry.\n- Keep hidden WebKit timer gaps classified as expected throttling instead of recurring false stale-renderer cycles.\n- Ignore Desktop Playwright output directory events so release E2E artifacts cannot reload the app under test.\n- Use a CI-specific identity graph benchmark budget while keeping the local 2,000 ms layout guard intact.\n\n### Follow-ups\n\n- Install this replacement build locally and confirm hidden timer gaps report as renderer_heartbeat_throttled without recurring false renderer_heartbeat_stale cycles.\n- Continue passive soak metrics until Apple Events authorization is restored for active UI driving.\n- Treat Settings scroll as the next measured performance surface because it remains the largest budget miss.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
