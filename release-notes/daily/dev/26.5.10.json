@@ -16,5 +16,5 @@
     "v26.5.1003-dev covers Settings scroll containment, moving-state transition pause, the atomic Friends detail Map handoff, the synchronous Map commit, and the synchronous mobile Friends surface switch.",
     "v26.5.1004-dev adds the Friends dense interaction layer cache and rebuild-count regression telemetry."
   ],
-  "updatedAt": "2026-05-10T10:37:45.194Z"
+  "updatedAt": "2026-05-10T14:07:11.993Z"
 }
