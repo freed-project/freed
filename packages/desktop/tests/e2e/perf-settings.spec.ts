@@ -9,6 +9,7 @@ const SETTINGS_STORE_PATH = resolveViteFsModulePath(
 const SETTINGS_FEED_COUNT = 1_600;
 const SETTINGS_MOUNT_BUDGET_MS = process.env.CI ? 4_000 : 1_000;
 const SETTINGS_SEARCH_BUDGET_MS = process.env.CI ? 1_200 : 500;
+const SETTINGS_LIST_FILTER_BUDGET_MS = process.env.CI ? 1_200 : 500;
 const SETTINGS_FRAME_P95_BUDGET_MS = process.env.CI ? 125 : 75;
 const SETTINGS_DROPPED_FRAME_BUDGET = process.env.CI ? 48 : 24;
 const SETTINGS_LONG_TASK_COUNT_BUDGET = 2;
@@ -200,11 +201,30 @@ test("Settings dialog stays responsive with 1,600 RSS sources", async ({ app, pa
     (window as Record<string, unknown>).__SETTINGS_SEARCH_ELAPSED_MS__ as number,
   );
   const filteredDomNodes = await page.evaluate(() => document.querySelectorAll("*").length);
+  const feedFilterInput = page.getByTestId("feeds-manage-filter");
+  const listFilterInteraction = await collectLongTasksDuring(page, () =>
+    measureFps(page, async () => {
+      const listFilterStartedAt = Date.now();
+      await feedFilterInput.fill("feed-1599");
+      await expect(settingsDialog.getByText(/^1 of 1,600$/)).toBeVisible({ timeout: 10_000 });
+      const listFilterElapsed = Date.now() - listFilterStartedAt;
+      await page.evaluate((elapsed) => {
+        (window as Record<string, unknown>).__SETTINGS_LIST_FILTER_ELAPSED_MS__ = elapsed;
+      }, listFilterElapsed);
+      await page.waitForTimeout(240);
+    }),
+  );
+  const listFilterElapsed = await page.evaluate(() =>
+    (window as Record<string, unknown>).__SETTINGS_LIST_FILTER_ELAPSED_MS__ as number,
+  );
+  const listFilteredDomNodes = await page.evaluate(() => document.querySelectorAll("*").length);
 
   console.log(`[PERF] Settings mount: ${mountElapsed.toLocaleString()} ms`);
   console.log(`[PERF] Settings initial DOM nodes: ${initialDomNodes.toLocaleString()}`);
   console.log(`[PERF] Settings search: ${searchElapsed.toLocaleString()} ms`);
   console.log(`[PERF] Settings filtered DOM nodes: ${filteredDomNodes.toLocaleString()}`);
+  console.log(`[PERF] Settings inner list filter: ${listFilterElapsed.toLocaleString()} ms`);
+  console.log(`[PERF] Settings inner list filtered DOM nodes: ${listFilteredDomNodes.toLocaleString()}`);
   console.log(`[PERF] Settings scroll FPS: ${scrollInteraction.result.fps.toLocaleString()}`);
   console.log(`[PERF] Settings scroll p95 frame: ${scrollInteraction.result.p95Ms.toFixed(1)} ms`);
   console.log(`[PERF] Settings scroll dropped frames: ${scrollInteraction.result.droppedFrames.toLocaleString()}`);
@@ -215,11 +235,18 @@ test("Settings dialog stays responsive with 1,600 RSS sources", async ({ app, pa
   console.log(`[PERF] Settings search dropped frames: ${searchInteraction.result.droppedFrames.toLocaleString()}`);
   console.log(`[PERF] Settings search long tasks: ${searchInteraction.count.toLocaleString()}`);
   console.log(`[PERF] Settings search worst long task: ${searchInteraction.worstMs.toFixed(1)} ms`);
+  console.log(`[PERF] Settings inner list filter FPS: ${listFilterInteraction.result.fps.toLocaleString()}`);
+  console.log(`[PERF] Settings inner list filter p95 frame: ${listFilterInteraction.result.p95Ms.toFixed(1)} ms`);
+  console.log(`[PERF] Settings inner list filter dropped frames: ${listFilterInteraction.result.droppedFrames.toLocaleString()}`);
+  console.log(`[PERF] Settings inner list filter long tasks: ${listFilterInteraction.count.toLocaleString()}`);
+  console.log(`[PERF] Settings inner list filter worst long task: ${listFilterInteraction.worstMs.toFixed(1)} ms`);
 
   expect(mountElapsed).toBeLessThan(SETTINGS_MOUNT_BUDGET_MS);
   expect(searchElapsed).toBeLessThan(SETTINGS_SEARCH_BUDGET_MS);
+  expect(listFilterElapsed).toBeLessThan(SETTINGS_LIST_FILTER_BUDGET_MS);
   expect(initialDomNodes).toBeLessThan(SETTINGS_DOM_NODE_BUDGET);
   expect(filteredDomNodes).toBeLessThan(SETTINGS_DOM_NODE_BUDGET);
+  expect(listFilteredDomNodes).toBeLessThan(SETTINGS_DOM_NODE_BUDGET);
   expect(scrollInteraction.result.sampleCount).toBeGreaterThan(0);
   expect(scrollInteraction.result.p95Ms).toBeLessThan(SETTINGS_FRAME_P95_BUDGET_MS);
   expect(scrollInteraction.result.droppedFrames).toBeLessThanOrEqual(SETTINGS_DROPPED_FRAME_BUDGET);
@@ -228,4 +255,8 @@ test("Settings dialog stays responsive with 1,600 RSS sources", async ({ app, pa
   expect(searchInteraction.result.p95Ms).toBeLessThan(SETTINGS_FRAME_P95_BUDGET_MS);
   expect(searchInteraction.result.droppedFrames).toBeLessThanOrEqual(SETTINGS_DROPPED_FRAME_BUDGET);
   expect(searchInteraction.count).toBeLessThanOrEqual(SETTINGS_LONG_TASK_COUNT_BUDGET);
+  expect(listFilterInteraction.result.sampleCount).toBeGreaterThan(0);
+  expect(listFilterInteraction.result.p95Ms).toBeLessThan(SETTINGS_FRAME_P95_BUDGET_MS);
+  expect(listFilterInteraction.result.droppedFrames).toBeLessThanOrEqual(SETTINGS_DROPPED_FRAME_BUDGET);
+  expect(listFilterInteraction.count).toBeLessThanOrEqual(SETTINGS_LONG_TASK_COUNT_BUDGET);
 });
