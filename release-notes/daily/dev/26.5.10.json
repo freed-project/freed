@@ -14,5 +14,5 @@
     "v26.5.1001-dev also failed the same Friends Map release smoke case and was replaced.",
     "v26.5.1002-dev covers Settings scroll containment, moving-state transition pause, the atomic Friends detail Map handoff, and the synchronous handoff commit."
   ],
-  "updatedAt": "2026-05-10T09:09:06.590Z"
+  "updatedAt": "2026-05-10T09:34:41.186Z"
 }
