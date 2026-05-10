@@ -1435,8 +1435,8 @@ export function FriendsView({
             feedItems={feedItems}
             onLogReachOut={handleLogReachOut}
             onOpenMap={() => {
-              setSelectedPerson(selectedPerson.id);
               setActiveView("map");
+              setSelectedPerson(selectedPerson.id);
             }}
           />
         </div>
