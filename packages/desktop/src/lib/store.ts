@@ -206,6 +206,7 @@ interface AppState {
   // View navigation
   activeView: "feed" | "friends" | "map";
   setActiveView: (view: "feed" | "friends" | "map") => void;
+  openMapForPerson: (personId: string) => void;
   pendingMatchCount: number;
   setPendingMatchCount: (count: number) => void;
 }
@@ -796,6 +797,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   setError: (error) => set({ error }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setActiveView: (activeView) => set({ activeView }),
+  openMapForPerson: (personId) =>
+    set({
+      activeView: "map",
+      selectedPersonId: personId,
+      selectedAccountId: null,
+      selectedFriendId: personId,
+      selectedItemId: null,
+    }),
   setPendingMatchCount: (pendingMatchCount) => set({ pendingMatchCount }),
 }));
 

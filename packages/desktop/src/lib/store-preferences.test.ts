@@ -111,6 +111,26 @@ describe("store.updatePreferences", () => {
     });
   });
 
+  it("opens the full map for a person in one state transition", () => {
+    useAppStore.setState({
+      activeView: "friends",
+      selectedPersonId: null,
+      selectedAccountId: "account-ada",
+      selectedFriendId: null,
+      selectedItemId: "ig:ada:paris",
+    });
+
+    useAppStore.getState().openMapForPerson("friend-ada");
+
+    expect(useAppStore.getState()).toMatchObject({
+      activeView: "map",
+      selectedPersonId: "friend-ada",
+      selectedAccountId: null,
+      selectedFriendId: "friend-ada",
+      selectedItemId: null,
+    });
+  });
+
   it("records non-fatal diagnostics when persistence rejects", async () => {
     const error = new Error("[automerge-worker] request TIMEOUT op=UPDATE_PREFERENCES reqId=126");
     mockDocUpdatePreferences.mockRejectedValueOnce(error);

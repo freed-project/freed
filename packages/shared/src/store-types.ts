@@ -175,6 +175,8 @@ export interface BaseAppState {
   activeView: "feed" | "friends" | "map";
   /** Switch the top-level view. */
   setActiveView: (view: "feed" | "friends" | "map") => void;
+  /** Open the full Map view focused on one person. */
+  openMapForPerson: (personId: string) => void;
   /** Number of unreviewed Google Contacts match suggestions. */
   pendingMatchCount: number;
   /** Update the pending match count (set by useContactSync). */

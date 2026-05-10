@@ -2821,21 +2821,9 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
 
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByText("Last seen")).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByRole("button", { name: /last seen paris/i })).toBeVisible({ timeout: 5_000 });
-  await page.waitForFunction(() => {
-    const lastSeenCard = Array.from(document.querySelectorAll<HTMLElement>('[role="button"]')).find((element) => {
-      const label = element.textContent ?? "";
-      return (
-        /last seen/i.test(label) &&
-        /paris/i.test(label) &&
-        /open map/i.test(label) &&
-        element.getClientRects().length > 0
-      );
-    });
-    if (!lastSeenCard) return false;
-    lastSeenCard.click();
-    return true;
-  }, { timeout: 5_000 });
+  const lastSeenCard = page.getByRole("button", { name: /last seen paris/i });
+  await expect(lastSeenCard).toBeVisible({ timeout: 5_000 });
+  await lastSeenCard.click();
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
