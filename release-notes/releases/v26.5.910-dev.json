@@ -3,8 +3,10 @@
   "version": "26.5.910-dev",
   "channel": "dev",
   "dayKey": "26.5.9",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "v26.5.910-dev ships the Settings moving-state paint headroom from PR #561 on top of the v26.5.909-dev installed soak baseline."
+  ],
   "generatedAt": "2026-05-10T03:50:02.926Z",
   "model": "heuristic",
   "source": {
@@ -47,7 +49,8 @@
       557,
       558,
       559,
-      560
+      560,
+      561
     ],
     "commitSubjects": [
       "perf: reduce settings scroll paint work",
@@ -94,24 +97,34 @@
     ]
   },
   "release": {
-    "deck": "Adds renderer surface metrics, reduces Settings frame drops, and keeps the same-day performance fixes together",
+    "deck": "Improves Settings scroll paint headroom and keeps the same-day performance fixes together",
     "features": [],
     "fixes": [
+      "Settings scroll now uses scrollend for scrollspy updates and simplifies moving-state shadows, reducing paint work while preserving the blurred backdrop.",
+      "Large feed browsing now filters active scope and verifies priority order in one pass, reducing startup work for 5,000-item libraries while preserving feed URL source views.",
+      "Feed and Map location scans now prefilter text before running location regexes, avoiding needless regex work on ordinary article text.",
+      "Settings now avoids forcing its scroll container into a promoted compositor layer and keeps the dialog shell blur stable during movement, reducing compositor churn while preserving the blurred backdrop.",
+      "Settings avoids repeated scroll timer churn and uses visibility observation for update auto-checks, reducing interaction work while the dialog is moving.",
+      "Expected hidden-window WebKit timer throttling now records renderer_heartbeat_throttled instead of renderer_heartbeat_stale, so installed-build soaks stop reporting fake stale cycles.",
+      "Renderer heartbeats now include active surface plus Friends graph and Map counts, making installed build soaks attribute memory and frame issues to the visible product area.",
+      "Friends Fit all now keeps sparse graph nodes visible instead of clamping zoom too high for far-apart people.",
+      "Dense Map views now mount 160 markers instead of 240 and only paint 80 while moving, giving the 1,600-author Map guard more frame headroom.",
+      "Feed cards now shed inline media when aggregate WebKit RSS reaches 1.5 GB.",
+      "Shows the fatal recovery screen instead of a blank shell when a React render error is caught.",
+      "Restores WebKit WebContent memory attribution for current launch renderer processes.",
+      "Relaxes hidden renderer watchdog recovery so hidden or backgrounded windows are not recycled too aggressively.",
       "Reader, feed, and header polish",
-      "Release build and type-safety cleanup",
-      "Settings now avoids repeated scroll timer churn and uses visibility observation for the update auto-check, reducing interaction work while the dialog is moving"
+      "Release build and type-safety cleanup"
     ],
     "followUps": [
-      "Reduce feed browse filtering scans",
-      "Prefilter feed location text scans",
       "Stabilize map markers across refreshes",
-      "Relax hidden renderer watchdog",
-      "Continue the installed dev build soak and compare WebKit RSS against the v26.5.903 baseline",
-      "Continue Map and Friends interaction monitoring under real desktop load",
       "Keeps hidden sessions quieter and restores WebKit memory attribution",
       "Improves dense Friends graph recovery, Map interaction smoothness, desktop crash recovery, and WebKit memory attribution for today's dev builds",
-      "Reduces dense Map marker work, speeds Settings, and sheds feed media earlier under WebKit pressure"
+      "Reduces dense Map marker work, speeds Settings, and sheds feed media earlier under WebKit pressure",
+      "Continue the installed v26.5.910-dev soak and compare WebKit RSS against the v26.5.909 baseline.",
+      "Continue Map, Friends, and Settings interaction monitoring under real desktop load.",
+      "Investigate the remaining Settings scroll p95 noise, which still appears without JavaScript long tasks."
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.910-dev\n\nAdds renderer surface metrics, reduces Settings frame drops, and keeps the same-day performance fixes together\n\n### Fixes\n\n- Reader, feed, and header polish\n- Release build and type-safety cleanup\n- Settings now avoids repeated scroll timer churn and uses visibility observation for the update auto-check, reducing interaction work while the dialog is moving\n\n### Follow-ups\n\n- Reduce feed browse filtering scans\n- Prefilter feed location text scans\n- Stabilize map markers across refreshes\n- Relax hidden renderer watchdog\n- Continue the installed dev build soak and compare WebKit RSS against the v26.5.903 baseline\n- Continue Map and Friends interaction monitoring under real desktop load\n- Keeps hidden sessions quieter and restores WebKit memory attribution\n- Improves dense Friends graph recovery, Map interaction smoothness, desktop crash recovery, and WebKit memory attribution for today's dev builds\n- Reduces dense Map marker work, speeds Settings, and sheds feed media earlier under WebKit pressure\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.910-dev\n\nImproves Settings scroll paint headroom and keeps the same-day performance fixes together\n\n### Fixes\n\n- Settings scroll now uses scrollend for scrollspy updates and simplifies moving-state shadows, reducing paint work while preserving the blurred backdrop\n- Large feed browsing now filters active scope and verifies priority order in one pass, reducing startup work for 5,000-item libraries while preserving feed URL source views\n- Feed and Map location scans now prefilter text before running location regexes, avoiding needless regex work on ordinary article text\n- Settings now avoids forcing its scroll container into a promoted compositor layer and keeps the dialog shell blur stable during movement, reducing compositor churn while preserving the blurred backdrop\n- Settings avoids repeated scroll timer churn and uses visibility observation for update auto-checks, reducing interaction work while the dialog is moving\n- Expected hidden-window WebKit timer throttling now records renderer_heartbeat_throttled instead of renderer_heartbeat_stale, so installed-build soaks stop reporting fake stale cycles\n- Renderer heartbeats now include active surface plus Friends graph and Map counts, making installed build soaks attribute memory and frame issues to the visible product area\n- Friends Fit all now keeps sparse graph nodes visible instead of clamping zoom too high for far-apart people\n- Dense Map views now mount 160 markers instead of 240 and only paint 80 while moving, giving the 1,600-author Map guard more frame headroom\n- Feed cards now shed inline media when aggregate WebKit RSS reaches 1.5 GB\n- Shows the fatal recovery screen instead of a blank shell when a React render error is caught\n- Restores WebKit WebContent memory attribution for current launch renderer processes\n- Relaxes hidden renderer watchdog recovery so hidden or backgrounded windows are not recycled too aggressively\n- Reader, feed, and header polish\n- Release build and type-safety cleanup\n\n### Follow-ups\n\n- Stabilize map markers across refreshes\n- Keeps hidden sessions quieter and restores WebKit memory attribution\n- Improves dense Friends graph recovery, Map interaction smoothness, desktop crash recovery, and WebKit memory attribution for today's dev builds\n- Reduces dense Map marker work, speeds Settings, and sheds feed media earlier under WebKit pressure\n- Continue the installed v26.5.910-dev soak and compare WebKit RSS against the v26.5.909 baseline\n- Continue Map, Friends, and Settings interaction monitoring under real desktop load\n- Investigate the remaining Settings scroll p95 noise, which still appears without JavaScript long tasks\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

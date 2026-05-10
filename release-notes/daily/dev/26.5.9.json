@@ -2,13 +2,14 @@
   "channel": "dev",
   "dayKey": "26.5.9",
   "date": "2026-05-09",
-  "preferredDeck": "Adds renderer surface metrics, reduces Settings frame drops, and keeps the same-day performance fixes together.",
+  "preferredDeck": "Improves Settings scroll paint headroom and keeps the same-day performance fixes together.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Settings scroll now uses scrollend for scrollspy updates and simplifies moving-state shadows, reducing paint work while preserving the blurred backdrop.",
     "Large feed browsing now filters active scope and verifies priority order in one pass, reducing startup work for 5,000-item libraries while preserving feed URL source views.",
     "Feed and Map location scans now prefilter text before running location regexes, preserving supported text-location matches while avoiding needless regex work on ordinary article text.",
     "Settings now avoids forcing its scroll container into a promoted compositor layer and keeps the dialog shell blur stable during movement, reducing compositor churn while preserving the blurred backdrop.",
@@ -36,7 +37,8 @@
   ],
   "editorialNotes": [
     "Latest dev build replaces failed v26.5.904-dev and adds the Map marker cap fix on top of the earlier same-day performance work.",
-    "v26.5.909-dev ships the one-pass large-feed browse filter from PR #560 on top of the v26.5.908-dev installed soak baseline."
+    "v26.5.909-dev ships the one-pass large-feed browse filter from PR #560 on top of the v26.5.908-dev installed soak baseline.",
+    "v26.5.910-dev ships the Settings moving-state paint headroom from PR #561 on top of the v26.5.909-dev installed soak baseline."
   ],
-  "updatedAt": "2026-05-10T03:50:02.927Z"
+  "updatedAt": "2026-05-10T03:51:11.798Z"
 }
