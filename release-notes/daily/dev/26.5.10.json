@@ -13,7 +13,8 @@
     "v26.5.1000-dev failed release validation and was replaced.",
     "v26.5.1001-dev also failed the Friends Map release smoke case and was replaced.",
     "v26.5.1002-dev passed the Friends Map case, then failed the mobile Friends Details release regression and was replaced.",
-    "v26.5.1003-dev covers Settings scroll containment, moving-state transition pause, the atomic Friends detail Map handoff, the synchronous Map commit, and the synchronous mobile Friends surface switch."
+    "v26.5.1003-dev covers Settings scroll containment, moving-state transition pause, the atomic Friends detail Map handoff, the synchronous Map commit, and the synchronous mobile Friends surface switch.",
+    "v26.5.1004-dev adds the Friends dense interaction layer cache and rebuild-count regression telemetry."
   ],
-  "updatedAt": "2026-05-10T10:36:56.692Z"
+  "updatedAt": "2026-05-10T10:37:45.194Z"
 }
