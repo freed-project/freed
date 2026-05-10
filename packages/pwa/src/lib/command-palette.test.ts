@@ -248,6 +248,16 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
     setSearchQuery: overrides.setSearchQuery ?? ((query: string) => set({ searchQuery: query })),
     activeView: overrides.activeView ?? "feed",
     setActiveView: overrides.setActiveView ?? ((view: "feed" | "friends" | "map") => set({ activeView: view })),
+    openMapForPerson:
+      overrides.openMapForPerson
+      ?? ((personId: string) =>
+        set({
+          activeView: "map",
+          selectedPersonId: personId,
+          selectedAccountId: null,
+          selectedFriendId: personId,
+          selectedItemId: null,
+        })),
     pendingMatchCount: 0,
     setPendingMatchCount: noop,
   }));

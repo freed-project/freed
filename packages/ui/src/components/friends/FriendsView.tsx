@@ -549,7 +549,7 @@ export function FriendsView({
   const selectedAccountId = useAppStore((s) => s.selectedAccountId);
   const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
-  const setActiveView = useAppStore((s) => s.setActiveView);
+  const openMapForPerson = useAppStore((s) => s.openMapForPerson);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const display = useAppStore((s) => s.preferences.display);
   const friendSuggestionPreferences = useAppStore((s) => s.preferences.friendSuggestions);
@@ -1435,8 +1435,7 @@ export function FriendsView({
             feedItems={feedItems}
             onLogReachOut={handleLogReachOut}
             onOpenMap={() => {
-              setActiveView("map");
-              setSelectedPerson(selectedPerson.id);
+              openMapForPerson(selectedPerson.id);
             }}
           />
         </div>
