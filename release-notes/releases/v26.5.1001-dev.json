@@ -3,8 +3,10 @@
   "version": "26.5.1001-dev",
   "channel": "dev",
   "dayKey": "26.5.10",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Replacement dev build after v26.5.1000-dev failed release validation. Notes cover Settings scroll fixes and the Friends detail Map handoff fix."
+  ],
   "generatedAt": "2026-05-10T08:38:33.617Z",
   "model": "heuristic",
   "source": {
@@ -508,7 +510,33 @@
       "Recycle blocked scraper windows",
       "Reserve scraper memory headroom",
       "Slim desktop e2e gates"
+    ],
+    "title": "Settings scroll performance and Friends Map handoff stability",
+    "summary": "Settings scroll performance and Friends Map handoff stability.",
+    "sections": [
+      {
+        "title": "Performance",
+        "items": [
+          "Isolates the Settings shell and scrollport with CSS containment, which reduces paint spillover while the dialog is open.",
+          "Pauses descendant animations and transitions while Settings is actively moving, which trims extra frame work during scroll and interaction."
+        ]
+      },
+      {
+        "title": "Fixes",
+        "items": [
+          "Stabilizes the Friends detail last-seen Map handoff by switching to the full Map view and focused person in one store transition.",
+          "Updates the regression to click the last-seen card through Playwright actionability instead of firing a DOM click from a polling predicate."
+        ]
+      },
+      {
+        "title": "Validation",
+        "items": [
+          "Focused Settings performance stayed inside guard with no long tasks.",
+          "The Friends detail to Map smoke case passed 20 repeated focused runs after the handoff fix.",
+          "Feature validation passed before release prep."
+        ]
+      }
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1001-dev\n\nAI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers\n\n### Features\n\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n- Friends relationship tiers\n\n### Fixes\n\n- Reader, feed, and header polish\n- Release build and type-safety cleanup\n- Test coverage and performance hardening\n- Route Google Drive through native sync requests\n- Optimized social scraper frame drops\n- Dedupe Instagram story captures\n\n### Follow-ups\n\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1001-dev\n\nSettings scroll performance and Friends Map handoff stability.\n\n### Performance\n\n- Isolates the Settings shell and scrollport with CSS containment, which reduces paint spillover while the dialog is open.\n- Pauses descendant animations and transitions while Settings is actively moving, which trims extra frame work during scroll and interaction.\n\n### Fixes\n\n- Stabilizes the Friends detail last-seen Map handoff by switching to the full Map view and focused person in one store transition.\n- Updates the regression to click the last-seen card through Playwright actionability instead of firing a DOM click from a polling predicate.\n\n### Validation\n\n- Focused Settings performance stayed inside guard with no long tasks.\n- The Friends detail to Map smoke case passed 20 repeated focused runs after the handoff fix.\n- Feature validation passed before release prep.\n\n### Downloads\n\n**macOS:** `.dmg` Apple Silicon or Intel, signed and notarized  \n**Windows:** `.exe` NSIS installer  \n**Linux:** `.AppImage`\n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
