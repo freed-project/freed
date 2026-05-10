@@ -1615,11 +1615,11 @@ fn renderer_gap_is_expected_hidden_throttle(
     last_visibility: &str,
     last_hidden_timer_throttled: Option<bool>,
     age: Duration,
-    recovery_threshold: Duration,
+    _recovery_threshold: Duration,
 ) -> bool {
     !renderer_is_effectively_visible(is_visible, last_visibility)
-        && last_hidden_timer_throttled == Some(true)
-        && age < recovery_threshold
+        && (last_visibility == "hidden" || last_hidden_timer_throttled == Some(true))
+        && age >= WEBKIT_HIDDEN_TIMER_THROTTLE_AFTER
 }
 
 fn renderer_stale_should_recover(is_visible: bool, last_visibility: &str) -> bool {
@@ -1732,6 +1732,13 @@ mod renderer_watchdog_tests {
             RENDERER_HIDDEN_STALE_LOG_AFTER + Duration::from_secs(1),
             RENDERER_HIDDEN_RECOVERY_AFTER,
         ));
+        assert!(renderer_gap_is_expected_hidden_throttle(
+            true,
+            "hidden",
+            Some(false),
+            RENDERER_HIDDEN_STALE_LOG_AFTER + Duration::from_secs(1),
+            RENDERER_HIDDEN_RECOVERY_AFTER,
+        ));
         assert!(!renderer_gap_is_expected_hidden_throttle(
             true,
             "visible",
@@ -1739,7 +1746,7 @@ mod renderer_watchdog_tests {
             RENDERER_HIDDEN_STALE_LOG_AFTER + Duration::from_secs(1),
             RENDERER_HIDDEN_RECOVERY_AFTER,
         ));
-        assert!(!renderer_gap_is_expected_hidden_throttle(
+        assert!(renderer_gap_is_expected_hidden_throttle(
             false,
             "hidden",
             Some(false),
@@ -1747,6 +1754,13 @@ mod renderer_watchdog_tests {
             RENDERER_HIDDEN_RECOVERY_AFTER,
         ));
         assert!(!renderer_gap_is_expected_hidden_throttle(
+            false,
+            "hidden",
+            Some(true),
+            WEBKIT_HIDDEN_TIMER_THROTTLE_AFTER - Duration::from_secs(1),
+            RENDERER_HIDDEN_RECOVERY_AFTER,
+        ));
+        assert!(renderer_gap_is_expected_hidden_throttle(
             false,
             "hidden",
             Some(true),
