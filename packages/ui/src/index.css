@@ -2086,6 +2086,8 @@ html[data-settings-dialog-moving="true"] .theme-settings-shell {
     inset 0 1px 0 rgb(255 255 255 / 0.05),
     0 20px 56px rgb(0 0 0 / 0.24),
     0 0 0 1px rgb(255 255 255 / 0.025);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   transform: translateZ(0);
 }
 

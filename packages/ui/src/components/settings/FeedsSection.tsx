@@ -98,7 +98,7 @@ function ManagePane() {
   const removeFeed = useAppStore((s) => s.removeFeed);
   const { forgetRssFeedHealth } = usePlatform();
   const health = useDebugStore((s) => s.health);
-  const feedList = Object.values(feeds);
+  const feedList = useMemo(() => Object.values(feeds), [feeds]);
   const [removing, setRemoving] = useState<string | null>(null);
   const [showRemoveAll, setShowRemoveAll] = useState(false);
   const [includeItems, setIncludeItems] = useState(false);

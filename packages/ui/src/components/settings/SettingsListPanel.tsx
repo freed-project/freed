@@ -55,12 +55,21 @@ export function SettingsListPanel<T>({
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const normalizedQuery = normalizeSearchText(query);
 
+  const searchEntries = useMemo(
+    () =>
+      items.map((item) => ({
+        item,
+        searchText: normalizeSearchText(getSearchText(item)),
+      })),
+    [getSearchText, items],
+  );
+
   const filteredItems = useMemo(() => {
     if (!normalizedQuery) return items;
-    return items.filter((item) =>
-      normalizeSearchText(getSearchText(item)).includes(normalizedQuery),
-    );
-  }, [getSearchText, items, normalizedQuery]);
+    return searchEntries
+      .filter((entry) => entry.searchText.includes(normalizedQuery))
+      .map((entry) => entry.item);
+  }, [items, normalizedQuery, searchEntries]);
 
   const countLabel = normalizedQuery
     ? `${filteredItems.length.toLocaleString()} of ${items.length.toLocaleString()}`
