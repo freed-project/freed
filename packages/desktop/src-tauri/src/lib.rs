@@ -1450,6 +1450,7 @@ struct RendererHeartbeatStatus {
     last_settings_open: Option<bool>,
     last_dialog_open: Option<bool>,
     stale_logged: bool,
+    throttle_logged: bool,
     recovery_attempts: u64,
     last_recovery_at: Option<std::time::Instant>,
     renderer_generation: u64,
@@ -1477,6 +1478,7 @@ impl RendererHeartbeatStatus {
             last_settings_open: None,
             last_dialog_open: None,
             stale_logged: false,
+            throttle_logged: false,
             recovery_attempts: 0,
             last_recovery_at: None,
             renderer_generation: 1,
@@ -1513,6 +1515,7 @@ impl RendererHeartbeatStatus {
         self.last_settings_open = payload.settings_open;
         self.last_dialog_open = payload.dialog_open;
         self.stale_logged = false;
+        self.throttle_logged = false;
         self.recovery_attempts = 0;
         self.last_recovery_at = None;
 
@@ -1538,6 +1541,7 @@ impl RendererHeartbeatStatus {
         self.last_settings_open = None;
         self.last_dialog_open = None;
         self.stale_logged = false;
+        self.throttle_logged = false;
         self.recovery_attempts += 1;
         self.last_recovery_at = Some(now);
         self.renderer_generation = self.renderer_generation.saturating_add(1);
@@ -1604,6 +1608,18 @@ fn renderer_stale_log_should_capture_deep_diagnostic(
     last_visibility: &str,
 ) -> bool {
     renderer_is_effectively_visible(is_visible, last_visibility)
+}
+
+fn renderer_gap_is_expected_hidden_throttle(
+    is_visible: bool,
+    last_visibility: &str,
+    last_hidden_timer_throttled: Option<bool>,
+    age: Duration,
+    recovery_threshold: Duration,
+) -> bool {
+    !renderer_is_effectively_visible(is_visible, last_visibility)
+        && last_hidden_timer_throttled == Some(true)
+        && age < recovery_threshold
 }
 
 fn renderer_stale_should_recover(is_visible: bool, last_visibility: &str) -> bool {
@@ -1705,6 +1721,69 @@ mod renderer_watchdog_tests {
         assert!(!renderer_stale_should_recover(true, "hidden"));
         assert!(!renderer_stale_should_recover(false, "visible"));
         assert!(!renderer_stale_should_recover(false, "hidden"));
+    }
+
+    #[test]
+    fn hidden_timer_throttle_gap_is_not_a_stale_renderer() {
+        assert!(renderer_gap_is_expected_hidden_throttle(
+            false,
+            "hidden",
+            Some(true),
+            RENDERER_HIDDEN_STALE_LOG_AFTER + Duration::from_secs(1),
+            RENDERER_HIDDEN_RECOVERY_AFTER,
+        ));
+        assert!(!renderer_gap_is_expected_hidden_throttle(
+            true,
+            "visible",
+            Some(true),
+            RENDERER_HIDDEN_STALE_LOG_AFTER + Duration::from_secs(1),
+            RENDERER_HIDDEN_RECOVERY_AFTER,
+        ));
+        assert!(!renderer_gap_is_expected_hidden_throttle(
+            false,
+            "hidden",
+            Some(false),
+            RENDERER_HIDDEN_STALE_LOG_AFTER + Duration::from_secs(1),
+            RENDERER_HIDDEN_RECOVERY_AFTER,
+        ));
+        assert!(!renderer_gap_is_expected_hidden_throttle(
+            false,
+            "hidden",
+            Some(true),
+            RENDERER_HIDDEN_RECOVERY_AFTER + Duration::from_secs(1),
+            RENDERER_HIDDEN_RECOVERY_AFTER,
+        ));
+    }
+
+    #[test]
+    fn heartbeat_after_hidden_timer_throttle_does_not_report_recovered() {
+        let mut status = RendererHeartbeatStatus::new();
+        status.throttle_logged = true;
+
+        let payload = RendererHeartbeatPayload {
+            seq: 8,
+            ts: 1_777_000_000_000,
+            reason: "interval".to_string(),
+            visibility: "hidden".to_string(),
+            href: "tauri://localhost".to_string(),
+            page_load_id: Some("page-1".to_string()),
+            uptime_ms: Some(600_000),
+            app_phase: Some("ready".to_string()),
+            event_loop_lag_ms: None,
+            hidden_timer_throttled: Some(true),
+            dom_node_count: Some(100),
+            renderer_heap_used_bytes: Some(1024),
+            renderer_heap_total_bytes: Some(2048),
+            last_input_age_ms: Some(600_000),
+            settings_open: Some(false),
+            dialog_open: Some(false),
+        };
+        let (_first_heartbeat, _gap_ms, recovered) =
+            status.note_heartbeat(&payload, std::time::Instant::now());
+
+        assert!(!recovered);
+        assert!(!status.throttle_logged);
+        assert_eq!(status.last_hidden_timer_throttled, Some(true));
     }
 
     #[test]
@@ -6585,12 +6664,22 @@ pub fn run() {
                         );
                         let stale_log_after =
                             renderer_stale_log_after(is_main_visible, &health.last_visibility);
-                        let should_log_stale =
-                            age > stale_log_after && !health.stale_logged;
                         let recovery_allowed = renderer_stale_should_recover(
                             is_main_visible,
                             &health.last_visibility,
                         );
+                        let expected_hidden_throttle = renderer_gap_is_expected_hidden_throttle(
+                            is_main_visible,
+                            &health.last_visibility,
+                            health.last_hidden_timer_throttled,
+                            age,
+                            recovery_threshold,
+                        );
+                        let should_log_gap = age > stale_log_after
+                            && !health.stale_logged
+                            && (!health.throttle_logged || !expected_hidden_throttle);
+                        let should_log_throttle = should_log_gap && expected_hidden_throttle;
+                        let should_log_stale = should_log_gap && !expected_hidden_throttle;
                         let should_recover =
                             recovery_allowed &&
                             age > recovery_threshold &&
@@ -6599,6 +6688,55 @@ pub fn run() {
                                 .map(|last| last.elapsed() > recovery_threshold)
                                 .unwrap_or(true);
                         let mut should_recycle_background_scrapers = false;
+
+                        if should_log_throttle {
+                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
+                            info!(
+                                "[main-window] renderer heartbeat hidden-timer throttled age_ms={} threshold_ms={} visible={} last_seq={} last_reason={} last_visibility={} href={} native_rss={}",
+                                age.as_millis(),
+                                recovery_threshold.as_millis(),
+                                is_main_visible,
+                                health.last_seq,
+                                health.last_reason,
+                                health.last_visibility,
+                                truncate_for_log(&health.last_href, 120),
+                                format_bytes_for_log(stats.process_resident_bytes)
+                            );
+                            health.throttle_logged = true;
+                            let (active_job, active_job_age_ms) =
+                                background_runtime_for_watchdog.active_job_for_health();
+                            append_runtime_health(
+                                &app_for_renderer_watchdog,
+                                serde_json::json!({
+                                    "event": "renderer_heartbeat_throttled",
+                                    "rendererGeneration": health.renderer_generation,
+                                    "ageMs": age.as_millis(),
+                                    "thresholdMs": recovery_threshold.as_millis(),
+                                    "visible": is_main_visible,
+                                    "lastSeq": health.last_seq,
+                                    "lastReason": health.last_reason.clone(),
+                                    "lastVisibility": health.last_visibility.clone(),
+                                    "href": truncate_for_log(&health.last_href, 120),
+                                    "pageLoadId": health.last_page_load_id.clone(),
+                                    "uptimeMs": health.last_uptime_ms,
+                                    "appPhase": health.last_app_phase.clone(),
+                                    "hiddenTimerThrottled": health.last_hidden_timer_throttled,
+                                    "rendererRecoveryAllowed": recovery_allowed,
+                                    "backgroundWorkPaused": false,
+                                    "deepDiagnosticCaptured": false,
+                                    "nativeResidentBytes": stats.process_resident_bytes,
+                                    "webkitResidentBytes": stats.webkit_total_resident_bytes,
+                                    "webkitLargestProcessId": stats.webkit_largest_process_id,
+                                    "webkitLargestResidentBytes": stats.webkit_largest_resident_bytes,
+                                    "webkitLargestCpuUsage": stats.webkit_largest_cpu_usage,
+                                    "webkitLargestAgeSeconds": stats.webkit_largest_age_seconds,
+                                    "webkitLargestRole": stats.webkit_largest_role,
+                                    "webkitProcessCount": stats.webkit_process_count,
+                                    "activeBackgroundJob": active_job,
+                                    "activeBackgroundJobAgeMs": active_job_age_ms
+                                }),
+                            );
+                        }
 
                         if should_log_stale {
                             let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
