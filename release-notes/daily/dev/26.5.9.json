@@ -9,6 +9,8 @@
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Feed and Map location scans now prefilter text before running location regexes, preserving supported text-location matches while avoiding needless regex work on ordinary article text.",
+    "Settings now avoids forcing its scroll container into a promoted compositor layer and keeps the dialog shell blur stable during movement, reducing compositor churn while preserving the blurred backdrop.",
     "Friends Fit all now keeps sparse graph nodes visible instead of clamping zoom too high for far-apart people.",
     "Settings avoids repeated scroll timer churn and uses visibility observation for the update auto-check, reducing interaction work while the dialog is moving.",
     "Expected hidden-window WebKit timer throttling now records renderer_heartbeat_throttled instead of renderer_heartbeat_stale, so installed-build soaks stop reporting fake stale and recovered cycles.",
@@ -34,5 +36,5 @@
   "editorialNotes": [
     "Latest dev build replaces failed v26.5.904-dev and adds the Map marker cap fix on top of the earlier same-day performance work."
   ],
-  "updatedAt": "2026-05-10T02:01:22.912Z"
+  "updatedAt": "2026-05-10T02:02:17.287Z"
 }
