@@ -103,6 +103,7 @@ type ProviderAuthSlices = {
 const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
 const INSTALLED_BUILD_PRESENTATION = describeInstalledBuild(readBuildMetadata());
 const SETTINGS_OVERVIEW_ROW_TEXT = "text-base sm:text-xs";
+const SETTINGS_INTERACTION_BLUR_RESTORE_MS = 380;
 
 function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId {
   return (
@@ -281,6 +282,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const toggleDebug = useDebugStore((s) => s.toggle);
   const themeBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const interactionBlurLastAtRef = useRef(0);
   const themeSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingThemeIdRef = useRef<ThemeId | null>(null);
   const pendingThemeSaveSeqRef = useRef(0);
@@ -449,6 +451,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       clearTimeout(interactionBlurRestoreTimerRef.current);
       interactionBlurRestoreTimerRef.current = null;
     }
+    interactionBlurLastAtRef.current = 0;
     flushPendingThemeSelectionNow();
   }, [flushPendingThemeSelectionNow, open]);
 
@@ -461,6 +464,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         clearTimeout(interactionBlurRestoreTimerRef.current);
         delete document.documentElement.dataset.settingsDialogMoving;
       }
+      interactionBlurLastAtRef.current = 0;
       flushPendingThemeSelectionNow();
     };
   }, [flushPendingThemeSelectionNow]);
@@ -481,16 +485,34 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (typeof document === "undefined") {
       return;
     }
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    interactionBlurLastAtRef.current = now;
     if (document.documentElement.dataset.settingsDialogMoving !== "true") {
       document.documentElement.dataset.settingsDialogMoving = "true";
     }
+
     if (interactionBlurRestoreTimerRef.current) {
-      clearTimeout(interactionBlurRestoreTimerRef.current);
+      return;
     }
-    interactionBlurRestoreTimerRef.current = setTimeout(() => {
+
+    const restoreWhenIdle = () => {
+      const current = typeof performance !== "undefined" ? performance.now() : Date.now();
+      const elapsed = current - interactionBlurLastAtRef.current;
+      const remaining = SETTINGS_INTERACTION_BLUR_RESTORE_MS - elapsed;
+      if (remaining > 0) {
+        interactionBlurRestoreTimerRef.current = setTimeout(restoreWhenIdle, remaining);
+        return;
+      }
+
       delete document.documentElement.dataset.settingsDialogMoving;
       interactionBlurRestoreTimerRef.current = null;
-    }, 380);
+      interactionBlurLastAtRef.current = 0;
+    };
+
+    interactionBlurRestoreTimerRef.current = setTimeout(
+      restoreWhenIdle,
+      SETTINGS_INTERACTION_BLUR_RESTORE_MS,
+    );
   }, []);
 
   const handleThemeCommit = useCallback((themeId: ThemeId) => {
@@ -763,15 +785,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     let wasVisible = false;
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-    const check = () => {
+    const setVisible = (isVisible: boolean) => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        const btn = checkButtonRef.current;
-        if (!btn) return;
-        const rootRect = root.getBoundingClientRect();
-        const btnRect = btn.getBoundingClientRect();
-        const isVisible = btnRect.bottom > rootRect.top && btnRect.top < rootRect.bottom;
-
         if (isVisible && !wasVisible && updateStatusRef.current === "idle") {
           handleCheckForUpdates();
         }
@@ -779,14 +795,38 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       }, 120);
     };
 
-    check();
-    root.addEventListener("scroll", check, { passive: true });
+    const checkNow = () => {
+      const btn = checkButtonRef.current;
+      if (!btn) return;
+      const rootRect = root.getBoundingClientRect();
+      const btnRect = btn.getBoundingClientRect();
+      setVisible(btnRect.bottom > rootRect.top && btnRect.top < rootRect.bottom);
+    };
+
+    if (typeof IntersectionObserver === "undefined") {
+      checkNow();
+      root.addEventListener("scroll", checkNow, { passive: true });
+      return () => {
+        clearTimeout(debounceTimer);
+        root.removeEventListener("scroll", checkNow);
+      };
+    }
+
+    const btn = checkButtonRef.current;
+    if (!btn) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setVisible(entry?.isIntersecting === true);
+      },
+      { root, threshold: 0 },
+    );
+    observer.observe(btn);
     return () => {
       clearTimeout(debounceTimer);
-      root.removeEventListener("scroll", check);
+      observer.disconnect();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSection, open, checkForUpdates]);
+  }, [open, checkForUpdates]);
   // While true, scroll-driven updates are suppressed so intermediate sections
   // that drift through the trigger zone during a smooth-scroll animation don't
   // cause nav items to flicker.
