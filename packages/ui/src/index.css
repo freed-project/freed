@@ -2099,6 +2099,13 @@ html[data-settings-dialog-moving="true"] .theme-settings-shell .theme-dialog-sec
   box-shadow: none;
 }
 
+html[data-settings-dialog-moving="true"] .theme-settings-shell *,
+html[data-settings-dialog-moving="true"] .theme-settings-shell *::before,
+html[data-settings-dialog-moving="true"] .theme-settings-shell *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
 html[data-memory-pressure="critical"] .theme-settings-overlay,
 html[data-renderer-safe-mode="true"] .theme-settings-overlay {
   background: rgb(var(--theme-shell-rgb) / 0.18);
