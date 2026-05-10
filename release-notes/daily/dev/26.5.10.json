@@ -17,5 +17,5 @@
     "v26.5.1004-dev adds the Friends dense interaction layer cache and rebuild-count regression telemetry.",
     "v26.5.1005-dev adds the hidden WebKit timer gap fix so expected hidden renderer throttling does not keep producing false stale-renderer cycles."
   ],
-  "updatedAt": "2026-05-10T14:08:13.853Z"
+  "updatedAt": "2026-05-10T15:54:32.304Z"
 }
