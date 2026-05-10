@@ -93,7 +93,6 @@ const RECOVERY_WINDOW_LABEL: &str = "startup-recovery";
 const RECOVERY_WINDOW_ROUTE: &str = "startup-recovery.html";
 const RENDERER_HEARTBEAT_WATCHDOG_INTERVAL: Duration = Duration::from_secs(15);
 const RENDERER_STALE_LOG_AFTER: Duration = Duration::from_secs(45);
-#[cfg(test)]
 const WEBKIT_HIDDEN_TIMER_THROTTLE_AFTER: Duration = Duration::from_secs(480);
 const RENDERER_HIDDEN_STALE_LOG_AFTER: Duration = Duration::from_secs(570);
 const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(75);
