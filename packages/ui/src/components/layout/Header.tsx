@@ -10,6 +10,7 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   applyFeedSignalModesToFilter,
   FEED_SIGNAL_FILTER_PRESETS,
@@ -701,11 +702,15 @@ export function Header({
 
   const handleFriendsToolbarModeChange = useCallback((mode: FriendsToolbarMode) => {
     if (mode === "details") {
-      onFriendsMobileSurfaceChange("details");
+      flushSync(() => {
+        onFriendsMobileSurfaceChange("details");
+      });
       return;
     }
-    handleIdentityModeChange("friendsMode", mode);
-    onFriendsMobileSurfaceChange("graph");
+    flushSync(() => {
+      handleIdentityModeChange("friendsMode", mode);
+      onFriendsMobileSurfaceChange("graph");
+    });
   }, [handleIdentityModeChange, onFriendsMobileSurfaceChange]);
 
   const handleMapTimeModeChange = useCallback((mode: MapTimeMode) => {
