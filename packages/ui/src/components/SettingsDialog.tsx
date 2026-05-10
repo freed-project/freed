@@ -1676,9 +1676,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             className="flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
             style={{
               paddingBottom: scrollContainerBottomPadding,
-              contain: "layout paint style",
-              transform: "translateZ(0)",
-              willChange: "scroll-position",
             }}
           >
             {searchLower && visibleSections.length === 0 ? (

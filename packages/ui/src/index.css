@@ -2081,11 +2081,6 @@ html[data-settings-dialog-moving="true"] .theme-settings-overlay {
   transition: none;
 }
 
-html[data-settings-dialog-moving="true"] .theme-settings-shell {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
 html[data-memory-pressure="critical"] .theme-settings-overlay,
 html[data-renderer-safe-mode="true"] .theme-settings-overlay {
   background: rgb(var(--theme-shell-rgb) / 0.18);
