@@ -2,13 +2,15 @@
   "channel": "dev",
   "dayKey": "26.5.9",
   "date": "2026-05-09",
-  "preferredDeck": "Improves Settings scroll paint headroom and keeps the same-day performance fixes together.",
+  "preferredDeck": "Faster Settings feed filtering, relaxed hidden renderer watchdog, and same-day desktop fixes",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Settings feed management now precomputes normalized list search text and memoizes feed extraction, keeping 1,600-feed inner filters in single-digit milliseconds.",
+    "Settings drops shell backdrop filtering only while the dialog is moving, reducing interaction paint work while restoring the blurred background at rest.",
     "Settings scroll now uses scrollend for scrollspy updates and simplifies moving-state shadows, reducing paint work while preserving the blurred backdrop.",
     "Large feed browsing now filters active scope and verifies priority order in one pass, reducing startup work for 5,000-item libraries while preserving feed URL source views.",
     "Feed and Map location scans now prefilter text before running location regexes, preserving supported text-location matches while avoiding needless regex work on ordinary article text.",
@@ -38,7 +40,8 @@
   "editorialNotes": [
     "Latest dev build replaces failed v26.5.904-dev and adds the Map marker cap fix on top of the earlier same-day performance work.",
     "v26.5.909-dev ships the one-pass large-feed browse filter from PR #560 on top of the v26.5.908-dev installed soak baseline.",
-    "v26.5.910-dev ships the Settings moving-state paint headroom from PR #561 on top of the v26.5.909-dev installed soak baseline."
+    "v26.5.910-dev ships the Settings moving-state paint headroom from PR #561 on top of the v26.5.909-dev installed soak baseline.",
+    "v26.5.911-dev ships the Settings inner-list filtering optimization from PR #562 on top of the v26.5.910-dev installed soak baseline."
   ],
-  "updatedAt": "2026-05-10T03:51:11.798Z"
+  "updatedAt": "2026-05-10T04:44:00.897Z"
 }
