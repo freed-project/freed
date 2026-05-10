@@ -9,6 +9,7 @@
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Large feed browsing now filters active scope and verifies priority order in one pass, reducing startup work for 5,000-item libraries while preserving feed URL source views.",
     "Feed and Map location scans now prefilter text before running location regexes, preserving supported text-location matches while avoiding needless regex work on ordinary article text.",
     "Settings now avoids forcing its scroll container into a promoted compositor layer and keeps the dialog shell blur stable during movement, reducing compositor churn while preserving the blurred backdrop.",
     "Friends Fit all now keeps sparse graph nodes visible instead of clamping zoom too high for far-apart people.",
@@ -34,7 +35,8 @@
     "Friends graph Fit all now waits for the first dense layout to finish before applying, so large graphs no longer get stuck off-screen when the action fires early"
   ],
   "editorialNotes": [
-    "Latest dev build replaces failed v26.5.904-dev and adds the Map marker cap fix on top of the earlier same-day performance work."
+    "Latest dev build replaces failed v26.5.904-dev and adds the Map marker cap fix on top of the earlier same-day performance work.",
+    "v26.5.909-dev ships the one-pass large-feed browse filter from PR #560 on top of the v26.5.908-dev installed soak baseline."
   ],
-  "updatedAt": "2026-05-10T02:51:14.881Z"
+  "updatedAt": "2026-05-10T02:52:02.448Z"
 }
