@@ -2081,6 +2081,22 @@ html[data-settings-dialog-moving="true"] .theme-settings-overlay {
   transition: none;
 }
 
+html[data-settings-dialog-moving="true"] .theme-settings-shell {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 20px 56px rgb(0 0 0 / 0.24),
+    0 0 0 1px rgb(255 255 255 / 0.025);
+  transform: translateZ(0);
+}
+
+html[data-settings-dialog-moving="true"] .theme-settings-shell .theme-card-soft {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035);
+}
+
+html[data-settings-dialog-moving="true"] .theme-settings-shell .theme-dialog-section {
+  box-shadow: none;
+}
+
 html[data-memory-pressure="critical"] .theme-settings-overlay,
 html[data-renderer-safe-mode="true"] .theme-settings-overlay {
   background: rgb(var(--theme-shell-rgb) / 0.18);
