@@ -45,7 +45,7 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
 const MAP_POPUP_MAX_WIDTH = 560;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
 const MAP_DOM_MARKER_LIMIT = 160;
-const MAP_MOVING_MARKER_PAINT_LIMIT = 80;
+const MAP_MOVING_MARKER_PAINT_LIMIT = 48;
 const MAP_VIEWPORT_MASK_STYLE = {
   "--theme-soft-viewport-mask-size": "20px",
 } as CSSProperties;
@@ -430,34 +430,23 @@ function mapMovingPriority(markerIndex: number, useDenseMarkers: boolean): "prim
     : "primary";
 }
 
-function markerFriendSignature(marker: LocationMarkerSummary): string {
-  const friend = marker.friend;
-  if (!friend) return "";
-  return [
-    friend.id,
-    friend.name,
-    friend.avatarUrl ?? "",
-    friend.relationshipStatus,
-  ].join("\u0001");
-}
-
-function markerItemSignature(marker: LocationMarkerSummary): string {
-  const item = marker.item;
-  return [
-    item.globalId,
-    item.platform,
-    item.contentType,
-    item.author.id,
-    item.author.displayName,
-    item.author.avatarUrl ?? "",
-    item.content.text ?? "",
-  ].join("\u0001");
-}
-
 function areLocationMarkersRenderEquivalent(
   current: LocationMarkerSummary,
   next: LocationMarkerSummary,
 ): boolean {
+  const currentFriend = current.friend;
+  const nextFriend = next.friend;
+  if (
+    currentFriend?.id !== nextFriend?.id ||
+    currentFriend?.name !== nextFriend?.name ||
+    (currentFriend?.avatarUrl ?? null) !== (nextFriend?.avatarUrl ?? null) ||
+    currentFriend?.relationshipStatus !== nextFriend?.relationshipStatus
+  ) {
+    return false;
+  }
+
+  const currentItem = current.item;
+  const nextItem = next.item;
   return (
     current.key === next.key &&
     current.authorKey === next.authorKey &&
@@ -466,8 +455,13 @@ function areLocationMarkersRenderEquivalent(
     current.label === next.label &&
     current.groupCount === next.groupCount &&
     current.seenAt === next.seenAt &&
-    markerFriendSignature(current) === markerFriendSignature(next) &&
-    markerItemSignature(current) === markerItemSignature(next)
+    currentItem.globalId === nextItem.globalId &&
+    currentItem.platform === nextItem.platform &&
+    currentItem.contentType === nextItem.contentType &&
+    currentItem.author.id === nextItem.author.id &&
+    currentItem.author.displayName === nextItem.author.displayName &&
+    (currentItem.author.avatarUrl ?? null) === (nextItem.author.avatarUrl ?? null) &&
+    (currentItem.content.text ?? null) === (nextItem.content.text ?? null)
   );
 }
 
@@ -600,12 +594,23 @@ function fitMarkers(map: MapInstance, markers: LocationMarkerSummary[], focusedM
     return;
   }
 
-  const lats = markers.map((marker) => marker.lat);
-  const lngs = markers.map((marker) => marker.lng);
+  let minLat = markers[0].lat;
+  let maxLat = markers[0].lat;
+  let minLng = markers[0].lng;
+  let maxLng = markers[0].lng;
+
+  for (let index = 1; index < markers.length; index += 1) {
+    const marker = markers[index];
+    if (marker.lat < minLat) minLat = marker.lat;
+    if (marker.lat > maxLat) maxLat = marker.lat;
+    if (marker.lng < minLng) minLng = marker.lng;
+    if (marker.lng > maxLng) maxLng = marker.lng;
+  }
+
   map.fitBounds(
     [
-      [Math.min(...lngs), Math.min(...lats)],
-      [Math.max(...lngs), Math.max(...lats)],
+      [minLng, minLat],
+      [maxLng, maxLat],
     ],
     { padding: 72, duration: 600 }
   );
