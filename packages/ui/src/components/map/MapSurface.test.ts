@@ -90,6 +90,12 @@ describe("areLocationMarkerListsRenderEquivalent", () => {
 });
 
 describe("dense map marker prioritization", () => {
+  it("limits paint-active markers while dense maps are moving", () => {
+    expect(getMapMovingPriority(23, "friend:23", true, null)).toBe("primary");
+    expect(getMapMovingPriority(24, "friend:24", true, null)).toBe("deferred");
+    expect(getMapMovingPriority(80, "friend:80", false, null)).toBe("primary");
+  });
+
   it("keeps the focused marker visible during dense-map movement", () => {
     const markers = Array.from({ length: 161 }, (_, index) =>
       marker({
