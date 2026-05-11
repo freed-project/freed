@@ -2039,9 +2039,32 @@ async fn fetch_url(url: String) -> Result<String, String> {
     response.text().await.map_err(|e| e.to_string())
 }
 
-/// Fetch a Google API URL with a bearer token and return its body as text.
+#[derive(serde::Serialize)]
+struct NativeHttpResponse {
+    status: u16,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+fn response_headers(response: &reqwest::Response) -> Vec<(String, String)> {
+    response
+        .headers()
+        .iter()
+        .filter_map(|(key, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (key.as_str().to_string(), value.to_string()))
+        })
+        .collect()
+}
+
+/// Fetch a Google People API URL with a bearer token.
 #[tauri::command]
-async fn google_api_request(url: String, access_token: String) -> Result<String, String> {
+async fn google_api_request(
+    url: String,
+    access_token: String,
+) -> Result<NativeHttpResponse, String> {
     let parsed = url::Url::parse(&url).map_err(|e| format!("Invalid Google API URL: {}", e))?;
     if parsed.scheme() != "https" || parsed.host_str() != Some("people.googleapis.com") {
         return Err("Google API URL is not allowed".to_string());
@@ -2052,28 +2075,35 @@ async fn google_api_request(url: String, access_token: String) -> Result<String,
         .build()
         .map_err(|e| e.to_string())?;
 
-    let response = client
-        .get(parsed)
-        .bearer_auth(access_token)
-        .send()
-        .await
-        .map_err(|e| format!("Google API request failed: {}", e))?;
+    let response = client.get(parsed).bearer_auth(access_token).send().await;
 
-    let status = response.status();
-    let body = response.text().await.map_err(|e| e.to_string())?;
+    let response = match response {
+        Ok(response) => response,
+        Err(error) => {
+            warn!("[google/contacts] request failed: {}", error);
+            return Err(format!("Google Contacts request failed: {}", error));
+        }
+    };
 
-    if !status.is_success() {
-        return Err(format!("Google API error {}: {}", status.as_u16(), body));
+    let status = response.status().as_u16();
+    let headers = response_headers(&response);
+    let body = response.bytes().await.map_err(|e| e.to_string())?.to_vec();
+    if status >= 400 {
+        let body_preview = String::from_utf8_lossy(&body);
+        warn!(
+            "[google/contacts] People API returned status={} body={}",
+            status,
+            body_preview.chars().take(512).collect::<String>()
+        );
+    } else {
+        info!("[google/contacts] People API returned status={}", status);
     }
 
-    Ok(body)
-}
-
-#[derive(serde::Serialize)]
-struct GoogleDriveResponse {
-    status: u16,
-    headers: Vec<(String, String)>,
-    body: Vec<u8>,
+    Ok(NativeHttpResponse {
+        status,
+        headers,
+        body,
+    })
 }
 
 /// Make a Google Drive API request through the native networking stack.
@@ -2083,7 +2113,7 @@ async fn google_drive_request(
     method: Option<String>,
     headers: Option<Vec<(String, String)>>,
     body: Option<Vec<u8>>,
-) -> Result<GoogleDriveResponse, String> {
+) -> Result<NativeHttpResponse, String> {
     let parsed =
         url::Url::parse(&url).map_err(|e| format!("Invalid Google Drive API URL: {}", e))?;
     let allowed_path =
@@ -2127,19 +2157,73 @@ async fn google_drive_request(
         .await
         .map_err(|e| format!("Google Drive request failed: {}", e))?;
     let status = response.status().as_u16();
-    let headers = response
-        .headers()
-        .iter()
-        .filter_map(|(key, value)| {
-            value
-                .to_str()
-                .ok()
-                .map(|value| (key.as_str().to_string(), value.to_string()))
-        })
-        .collect();
+    let headers = response_headers(&response);
     let body = response.bytes().await.map_err(|e| e.to_string())?.to_vec();
 
-    Ok(GoogleDriveResponse {
+    Ok(NativeHttpResponse {
+        status,
+        headers,
+        body,
+    })
+}
+
+/// POST to Google OAuth endpoints through native networking.
+#[tauri::command]
+async fn google_oauth_proxy_request(
+    url: String,
+    body: String,
+    content_type: Option<String>,
+) -> Result<NativeHttpResponse, String> {
+    let parsed = url::Url::parse(&url).map_err(|e| format!("Invalid Google OAuth URL: {}", e))?;
+    let host = parsed.host_str().unwrap_or_default();
+    let allowed_proxy = (host == "app.freed.wtf" || host == "localhost" || host == "127.0.0.1")
+        && parsed.path() == "/api/oauth/google";
+    let allowed_google = host == "oauth2.googleapis.com" && parsed.path() == "/token";
+    if parsed.scheme() != "https" && host != "localhost" && host != "127.0.0.1" {
+        return Err("Google OAuth URL must use HTTPS".to_string());
+    }
+    if !allowed_proxy && !allowed_google {
+        return Err("Google OAuth URL is not allowed".to_string());
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent("Freed/1.0 (https://freed.wtf)")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let response = client
+        .post(parsed)
+        .header(
+            "Content-Type",
+            content_type.unwrap_or_else(|| "application/json".to_string()),
+        )
+        .body(body)
+        .send()
+        .await;
+
+    let response = match response {
+        Ok(response) => response,
+        Err(error) => {
+            warn!("[google/oauth] request failed: {}", error);
+            return Err(format!("Google OAuth request failed: {}", error));
+        }
+    };
+
+    let status = response.status().as_u16();
+    let headers = response_headers(&response);
+    let body = response.bytes().await.map_err(|e| e.to_string())?.to_vec();
+    if status >= 400 {
+        let body_preview = String::from_utf8_lossy(&body);
+        warn!(
+            "[google/oauth] request returned status={} body={}",
+            status,
+            body_preview.chars().take(512).collect::<String>()
+        );
+    } else {
+        info!("[google/oauth] request returned status={}", status);
+    }
+
+    Ok(NativeHttpResponse {
         status,
         headers,
         body,
@@ -7081,6 +7165,7 @@ pub fn run() {
             retry_startup_after_crash,
             fetch_url,
             google_api_request,
+            google_oauth_proxy_request,
             google_drive_request,
             fetch_binary_url,
             x_api_request,
