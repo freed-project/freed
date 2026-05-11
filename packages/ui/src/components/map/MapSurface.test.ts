@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { LocationMarkerSummary } from "@freed/shared";
-import { areLocationMarkerListsRenderEquivalent } from "./MapSurface";
+import {
+  areLocationMarkerListsRenderEquivalent,
+  getMapMovingPriority,
+  getRenderedMapMarkers,
+} from "./MapSurface";
 
 const NOW = Date.UTC(2026, 4, 9, 18, 0, 0);
 
@@ -82,5 +86,41 @@ describe("areLocationMarkerListsRenderEquivalent", () => {
     ];
 
     expect(areLocationMarkerListsRenderEquivalent(current, next)).toBe(false);
+  });
+});
+
+describe("dense map marker prioritization", () => {
+  it("keeps the focused marker visible during dense-map movement", () => {
+    const markers = Array.from({ length: 161 }, (_, index) =>
+      marker({
+        key: `friend:${index}`,
+        authorKey: `author:instagram:${index}`,
+        item: {
+          ...marker().item,
+          globalId: `instagram:${index}`,
+          author: {
+            ...marker().item.author,
+            id: `ada-ig-${index}`,
+            handle: `ada-${index}`,
+            displayName: `Ada ${index.toLocaleString()}`,
+          },
+        },
+      })
+    );
+    const focusedMarkerKey = "friend:160";
+
+    const renderedMarkers = getRenderedMapMarkers(markers, focusedMarkerKey);
+    const focusedMarkerIndex = renderedMarkers.findIndex((entry) => entry.key === focusedMarkerKey);
+
+    expect(renderedMarkers).toHaveLength(160);
+    expect(focusedMarkerIndex).toBe(159);
+    expect(
+      getMapMovingPriority(
+        focusedMarkerIndex,
+        focusedMarkerKey,
+        true,
+        focusedMarkerKey,
+      ),
+    ).toBe("primary");
   });
 });
