@@ -2088,7 +2088,6 @@ html.freed-mobile-sidebar-open body {
     0 0 0 1px rgb(255 255 255 / 0.025);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  transform: translateZ(0);
 }
 
 .theme-settings-shell[data-moving="true"] .theme-card-soft {
@@ -2098,8 +2097,7 @@ html.freed-mobile-sidebar-open body {
 }
 
 .theme-settings-shell[data-moving="true"] .theme-settings-scrollport {
-  transform: translateZ(0);
-  will-change: scroll-position;
+  will-change: auto;
 }
 
 .theme-settings-shell[data-moving="true"] .theme-dialog-section {
