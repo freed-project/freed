@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.5.11",
   "date": "2026-05-11",
-  "preferredDeck": "AI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers",
+  "preferredDeck": "Settings and Map stay smoother, with clearer renderer health telemetry",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -10,7 +10,7 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [
-    "Approved after v26.5.1016-dev failed before packaging, then refreshed for v26.5.1101-dev after the dense Map movement paint fix landed. The latest release preserves the v26.5.1100 and v26.5.1101 same-day rollup and adds the Settings moving chrome paint fix."
+    "Approved after v26.5.1016-dev failed before packaging, then refreshed for v26.5.1101-dev after the dense Map movement paint fix landed, v26.5.1102-dev after the Settings moving chrome paint fix landed, and v26.5.1103-dev after the renderer hidden timer telemetry cleanup landed."
   ],
-  "updatedAt": "2026-05-11T15:38:47.624Z"
+  "updatedAt": "2026-05-11T15:39:24.197Z"
 }

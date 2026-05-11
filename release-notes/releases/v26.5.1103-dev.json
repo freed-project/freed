@@ -3,8 +3,10 @@
   "version": "26.5.1103-dev",
   "channel": "dev",
   "dayKey": "26.5.11",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Approved after preserving the v26.5.1100, v26.5.1101, and v26.5.1102 same-day rollup, then adding the renderer hidden timer telemetry cleanup from PR #587."
+  ],
   "generatedAt": "2026-05-11T15:38:47.622Z",
   "model": "heuristic",
   "source": {
@@ -49,13 +51,14 @@
     ]
   },
   "release": {
-    "deck": "AI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers",
+    "deck": "Settings and Map stay smoother, with clearer renderer health telemetry",
     "features": [
       "AI ranked friend suggestions",
       "Support Friends graph pinch zoom",
       "Friends relationship tiers"
     ],
     "fixes": [
+      "Report hidden WebKit timer gaps clearly in renderer health telemetry",
       "Reader, feed, and header polish",
       "Test coverage and performance hardening",
       "Release build and type-safety cleanup",
@@ -75,9 +78,8 @@
       "Reserve scraper memory headroom",
       "Slim desktop e2e gates",
       "Continue passive soak metrics until Apple Events authorization is restored for active UI driving",
-      "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss",
       "Settings scroll and Friends graph stability"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1103-dev\n\nAI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers\n\n### Features\n\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n- Friends relationship tiers\n\n### Fixes\n\n- Reader, feed, and header polish\n- Test coverage and performance hardening\n- Release build and type-safety cleanup\n- Route Google Drive through native sync requests\n- Capture and scraper reliability fixes\n- Open the full Map from Friends detail with one atomic store update\n\n### Follow-ups\n\n- Lighten settings moving chrome\n- Reduce dense map movement paint\n- Reduce settings scroll overdraw\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n- Continue passive soak metrics until Apple Events authorization is restored for active UI driving\n- Treat Settings scroll as the next measured performance surface because it remains the largest budget miss\n- Settings scroll and Friends graph stability\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed 26.5.1103-dev\n\nSettings and Map stay smoother, with clearer renderer health telemetry\n\n### Features\n\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n- Friends relationship tiers\n\n### Fixes\n\n- Report hidden WebKit timer gaps clearly in renderer health telemetry\n- Reader, feed, and header polish\n- Test coverage and performance hardening\n- Release build and type-safety cleanup\n- Route Google Drive through native sync requests\n- Capture and scraper reliability fixes\n- Open the full Map from Friends detail with one atomic store update\n\n### Follow-ups\n\n- Lighten settings moving chrome\n- Reduce dense map movement paint\n- Reduce settings scroll overdraw\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n- Continue passive soak metrics until Apple Events authorization is restored for active UI driving\n- Settings scroll and Friends graph stability\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
