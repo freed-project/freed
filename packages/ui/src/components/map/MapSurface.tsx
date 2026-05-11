@@ -430,6 +430,33 @@ function mapMovingPriority(markerIndex: number, useDenseMarkers: boolean): "prim
     : "primary";
 }
 
+export function getRenderedMapMarkers(
+  markers: LocationMarkerSummary[],
+  focusedMarkerKey?: string | null,
+): LocationMarkerSummary[] {
+  const baseRenderedMarkers = markers.length <= MAP_DOM_MARKER_LIMIT
+    ? markers
+    : markers.slice(0, MAP_DOM_MARKER_LIMIT);
+  if (markers.length <= MAP_DOM_MARKER_LIMIT) return baseRenderedMarkers;
+  if (!focusedMarkerKey || baseRenderedMarkers.some((marker) => marker.key === focusedMarkerKey)) {
+    return baseRenderedMarkers;
+  }
+
+  const focusedMarker = markers.find((marker) => marker.key === focusedMarkerKey);
+  if (!focusedMarker) return baseRenderedMarkers;
+  return [...baseRenderedMarkers.slice(0, MAP_DOM_MARKER_LIMIT - 1), focusedMarker];
+}
+
+export function getMapMovingPriority(
+  markerIndex: number,
+  markerKey: string,
+  useDenseMarkers: boolean,
+  focusedMarkerKey?: string | null,
+): "primary" | "deferred" {
+  if (markerKey === focusedMarkerKey) return "primary";
+  return mapMovingPriority(markerIndex, useDenseMarkers);
+}
+
 function areLocationMarkersRenderEquivalent(
   current: LocationMarkerSummary,
   next: LocationMarkerSummary,
@@ -649,22 +676,9 @@ export function MapSurface({
   });
 
   const stableMarkers = useStableLocationMarkers(markers);
-  const baseRenderedMarkers = useMemo(
-    () => stableMarkers.length <= MAP_DOM_MARKER_LIMIT
-      ? stableMarkers
-      : stableMarkers.slice(0, MAP_DOM_MARKER_LIMIT),
-    [stableMarkers],
-  );
   const renderedMarkers = useMemo(() => {
-    if (stableMarkers.length <= MAP_DOM_MARKER_LIMIT) return baseRenderedMarkers;
-    if (!focusedMarkerKey || baseRenderedMarkers.some((marker) => marker.key === focusedMarkerKey)) {
-      return baseRenderedMarkers;
-    }
-
-    const focusedMarker = stableMarkers.find((marker) => marker.key === focusedMarkerKey);
-    if (!focusedMarker) return baseRenderedMarkers;
-    return [...baseRenderedMarkers.slice(0, MAP_DOM_MARKER_LIMIT - 1), focusedMarker];
-  }, [baseRenderedMarkers, focusedMarkerKey, stableMarkers]);
+    return getRenderedMapMarkers(stableMarkers, focusedMarkerKey);
+  }, [focusedMarkerKey, stableMarkers]);
   const useDenseMarkers = stableMarkers.length > MAP_DOM_MARKER_LIMIT;
   const showMarkerAvatars = !useDenseMarkers;
   const avatarPalette = useMemo(
@@ -823,7 +837,12 @@ export function MapSurface({
         showAvatar: showMarkerAvatars,
         simplified: useDenseMarkers,
       });
-      element.dataset.mapMovingPriority = mapMovingPriority(markerIndex, useDenseMarkers);
+      element.dataset.mapMovingPriority = getMapMovingPriority(
+        markerIndex,
+        markerData.key,
+        useDenseMarkers,
+        focusedMarkerKey,
+      );
       const marker = new maplibre.Marker({ element }).setLngLat([
         markerData.lng,
         markerData.lat,
@@ -974,7 +993,12 @@ export function MapSurface({
               <button
                 key={marker.key}
                 type="button"
-                data-map-moving-priority={mapMovingPriority(markerIndex, useDenseMarkers)}
+                data-map-moving-priority={getMapMovingPriority(
+                  markerIndex,
+                  marker.key,
+                  useDenseMarkers,
+                  focusedMarkerKey,
+                )}
                 className="freed-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full px-2.5 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]"
                 style={{
                   ...position,
