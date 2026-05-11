@@ -19,7 +19,8 @@
     "v26.5.1006-dev replaces the failed v26.5.1005-dev validation tag with the hidden heartbeat fix plus Desktop E2E server stability so Playwright output cannot reload the app during release validation.",
     "v26.5.1007-dev replaces the failed v26.5.1006-dev validation tag with a CI-specific identity graph benchmark budget while preserving the local layout guard.",
     "v26.5.1008-dev replaces the failed v26.5.1007-dev packaging tag by moving the hidden heartbeat timer threshold into production builds.",
-    "v26.5.1009-dev replaces the failed v26.5.1008-dev validation tag by hardening Tauri mock IPC logging and Friends smoke interactions."
+    "v26.5.1009-dev replaces the failed v26.5.1008-dev validation tag by hardening Tauri mock IPC logging and Friends smoke interactions.",
+    "v26.5.1010-dev replaces the failed v26.5.1009-dev validation tag by narrowing the collapsed Friends empty-space regression to its owned behavior."
   ],
-  "updatedAt": "2026-05-11T00:45:45.515Z"
+  "updatedAt": "2026-05-11T00:46:13.605Z"
 }
