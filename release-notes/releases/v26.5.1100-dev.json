@@ -1,0 +1,40 @@
+{
+  "tag": "v26.5.1100-dev",
+  "version": "26.5.1100-dev",
+  "channel": "dev",
+  "dayKey": "26.5.11",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-11T07:49:01.654Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.1015-dev",
+    "previousPublishedDayTag": "v26.5.1015-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.1100-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.1100-dev"
+    ],
+    "prNumbers": [
+      583,
+      584
+    ],
+    "commitSubjects": [
+      "fix: stabilize friends map handoff (#584)",
+      "release: approve v26.5.1016-dev notes",
+      "release: v26.5.1016-dev",
+      "perf: reduce settings scroll overdraw (#583)"
+    ]
+  },
+  "release": {
+    "deck": "Settings scroll overdraw and Friends map handoff are now more stable",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1100-dev\n\nSettings scroll overdraw and Friends map handoff are now more stable\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
