@@ -66,6 +66,7 @@ const SORT_OPTIONS: Array<{ id: FriendOverviewSort; label: string }> = [
 const BUTTON_CHROME = "btn-secondary rounded-lg px-3 py-1.5 text-xs";
 const FRIENDS_SIDEBAR_SECTION = "theme-dialog-divider border-b px-4 py-3";
 const FRIEND_OVERVIEW_ROW_ESTIMATE = 104;
+const MAP_SURFACE_COMMIT_RETRY_MS = 150;
 
 type RelationshipTierLevel = 1 | 3 | 5;
 
@@ -550,6 +551,7 @@ export function FriendsView({
   const selectedAccountId = useAppStore((s) => s.selectedAccountId);
   const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
+  const setActiveView = useAppStore((s) => s.setActiveView);
   const openMapForPerson = useAppStore((s) => s.openMapForPerson);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const display = useAppStore((s) => s.preferences.display);
@@ -788,6 +790,22 @@ export function FriendsView({
     setSelectedPerson(null);
     setSelectedAccount(null);
   }, [setSelectedAccount, setSelectedPerson]);
+
+  const handleOpenMapForPerson = useCallback((personId: string) => {
+    flushSync(() => {
+      openMapForPerson(personId);
+    });
+
+    window.setTimeout(() => {
+      if (document.querySelector('[data-testid="map-surface"]')) return;
+      if (!document.querySelector('[data-testid="friends-sidebar"]')) return;
+
+      setActiveView("friends");
+      window.requestAnimationFrame(() => {
+        openMapForPerson(personId);
+      });
+    }, MAP_SURFACE_COMMIT_RETRY_MS);
+  }, [openMapForPerson, setActiveView]);
 
   const handleLogReachOut = useCallback(
     async (entry: ReachOutLog) => {
@@ -1436,13 +1454,7 @@ export function FriendsView({
             feedItems={feedItems}
             onLogReachOut={handleLogReachOut}
             onOpenMap={() => {
-              const personId = selectedPerson.id;
-              flushSync(() => {
-                openMapForPerson(personId);
-              });
-              window.requestAnimationFrame(() => {
-                openMapForPerson(personId);
-              });
+              handleOpenMapForPerson(selectedPerson.id);
             }}
           />
         </div>
