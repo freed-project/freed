@@ -25,5 +25,5 @@
     "v26.5.1012-dev replaces the failed v26.5.1011-dev validation tag with a guarded Friends graph Pixi teardown so the Last seen to Map handoff cannot be replaced by the fatal error screen.",
     "v26.5.1013-dev replaces the failed v26.5.1012-dev validation tag by narrowing the collapsed Friends detail-card regression away from CI-sensitive graph point lookup while preserving selected-person behavior coverage."
   ],
-  "updatedAt": "2026-05-11T03:42:42.427Z"
+  "updatedAt": "2026-05-11T04:17:49.692Z"
 }

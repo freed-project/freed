@@ -1,7 +1,7 @@
 {
   "name": "@freed/pwa",
   "private": true,
-  "version": "26.5.1014",
+  "version": "26.5.1015",
   "type": "module",
   "scripts": {
     "dev": "vite",
