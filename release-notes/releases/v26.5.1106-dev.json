@@ -1,0 +1,105 @@
+{
+  "tag": "v26.5.1106-dev",
+  "version": "26.5.1106-dev",
+  "channel": "dev",
+  "dayKey": "26.5.11",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-11T18:06:12.356Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.1105-dev",
+    "previousPublishedDayTag": "v26.5.1015-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.1100-dev",
+      "v26.5.1101-dev",
+      "v26.5.1102-dev",
+      "v26.5.1104-dev",
+      "v26.5.1105-dev",
+      "v26.5.1106-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.1100-dev",
+      "v26.5.1101-dev",
+      "v26.5.1102-dev",
+      "v26.5.1104-dev",
+      "v26.5.1105-dev",
+      "v26.5.1106-dev"
+    ],
+    "prNumbers": [
+      591,
+      405,
+      583,
+      584,
+      585,
+      586,
+      587,
+      588,
+      589
+    ],
+    "commitSubjects": [
+      "perf: gate social scrapes on resident memory (#591)",
+      "fix: complete desktop google contacts sync",
+      "feat: add story wall publishing (#405)",
+      "fix: keep dense map focused marker visible (#589)",
+      "release: approve v26.5.1104-dev notes",
+      "release: v26.5.1104-dev",
+      "fix: keep friends graph sync errors recoverable (#588)",
+      "release: approve v26.5.1103-dev notes",
+      "release: v26.5.1103-dev",
+      "fix: report throttled renderer heartbeats clearly (#587)",
+      "release: approve v26.5.1102-dev notes",
+      "release: v26.5.1102-dev",
+      "perf: lighten settings moving chrome (#586)",
+      "release: approve v26.5.1101-dev notes",
+      "release: v26.5.1101-dev",
+      "perf: reduce dense map movement paint (#585)",
+      "release: approve v26.5.1100-dev notes",
+      "release: v26.5.1100-dev",
+      "fix: stabilize friends map handoff (#584)",
+      "release: approve v26.5.1016-dev notes",
+      "release: v26.5.1016-dev",
+      "perf: reduce settings scroll overdraw (#583)"
+    ]
+  },
+  "release": {
+    "deck": "Google OAuth now runs natively in Freed Desktop, Settings and Map stay smoother, Friends and Map handoffs stay recoverable, and AI ranked friend suggestions support Friends graph pinch zoom",
+    "features": [
+      "Story wall publishing",
+      "AI ranked friend suggestions",
+      "Support Friends graph pinch zoom"
+    ],
+    "fixes": [
+      "Gate social scrapes on resident WebKit memory",
+      "Complete Google Contacts sync in Freed Desktop",
+      "Share native Google OAuth credentials between Drive and Contacts refresh",
+      "Surface Google OAuth and People API failure details in Settings instead of generic load errors",
+      "Reader, feed, and header polish",
+      "Keep friends graph sync errors recoverable",
+      "Test coverage and performance hardening",
+      "Release build and type-safety cleanup",
+      "Route Google Drive through native sync requests",
+      "Capture and scraper reliability fixes",
+      "Open the full Map from Friends detail with one atomic store update"
+    ],
+    "followUps": [
+      "Lighten settings moving chrome",
+      "Reduce dense map movement paint",
+      "Reduce settings scroll overdraw",
+      "Friends relationship tiers",
+      "Reader, sidebar, and settings UX work",
+      "Trim reader rail work and stabilize friends perf",
+      "Isolate social scraper webkit stores",
+      "Gate startup social scraper pressure",
+      "Recycle blocked scraper windows",
+      "Reserve scraper memory headroom",
+      "Slim desktop e2e gates",
+      "Continue passive soak metrics until Apple Events authorization is restored for active UI driving",
+      "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1106-dev\n\nGoogle OAuth now runs natively in Freed Desktop, Settings and Map stay smoother, Friends and Map handoffs stay recoverable, and AI ranked friend suggestions support Friends graph pinch zoom\n\n### Features\n\n- Story wall publishing\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n\n### Fixes\n\n- Gate social scrapes on resident WebKit memory\n- Complete Google Contacts sync in Freed Desktop\n- Share native Google OAuth credentials between Drive and Contacts refresh\n- Surface Google OAuth and People API failure details in Settings instead of generic load errors\n- Reader, feed, and header polish\n- Keep friends graph sync errors recoverable\n- Test coverage and performance hardening\n- Release build and type-safety cleanup\n- Route Google Drive through native sync requests\n- Capture and scraper reliability fixes\n- Open the full Map from Friends detail with one atomic store update\n\n### Follow-ups\n\n- Lighten settings moving chrome\n- Reduce dense map movement paint\n- Reduce settings scroll overdraw\n- Friends relationship tiers\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n- Continue passive soak metrics until Apple Events authorization is restored for active UI driving\n- Treat Settings scroll as the next measured performance surface because it remains the largest budget miss\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
