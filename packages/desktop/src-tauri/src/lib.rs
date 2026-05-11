@@ -3007,8 +3007,29 @@ fn scrape_memory_start_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
         .saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES)
 }
 
+fn scrape_resident_start_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
+    stats
+        .memory_critical_bytes
+        .saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES)
+}
+
 fn scrape_memory_may_proceed(stats: &RuntimeMemoryStats) -> bool {
     stats.app_memory_pressure_bytes < scrape_memory_start_budget_bytes(stats)
+        && stats.app_resident_bytes < scrape_resident_start_budget_bytes(stats)
+}
+
+fn scrape_memory_pressure_level(stats: &RuntimeMemoryStats) -> &'static str {
+    if stats.app_memory_pressure_bytes >= stats.memory_critical_bytes
+        || stats.app_resident_bytes >= stats.memory_critical_bytes
+    {
+        "critical"
+    } else if stats.app_memory_pressure_bytes >= stats.memory_high_bytes
+        || stats.app_resident_bytes >= scrape_resident_start_budget_bytes(stats)
+    {
+        "high"
+    } else {
+        "normal"
+    }
 }
 
 fn optional_story_scrape_may_proceed(stats: &RuntimeMemoryStats) -> bool {
@@ -3061,6 +3082,7 @@ fn social_scrape_may_continue(
                 "webkitLargestFootprintBytes": stats.webkit_largest_footprint_bytes,
                 "webkitLargestResidentBytes": stats.webkit_largest_resident_bytes,
                 "scrapeStartBudgetBytes": scrape_memory_start_budget_bytes(&stats),
+                "scrapeResidentBudgetBytes": scrape_resident_start_budget_bytes(&stats),
                 "memoryHighBytes": stats.memory_high_bytes,
                 "memoryCriticalBytes": stats.memory_critical_bytes
             }),
@@ -3158,16 +3180,11 @@ async fn prepare_social_scrape_memory_internal(
 
     let after = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
     let scrape_start_budget_bytes = scrape_memory_start_budget_bytes(&after);
+    let scrape_resident_budget_bytes = scrape_resident_start_budget_bytes(&after);
     let may_proceed = scrape_memory_may_proceed(&after);
-    let pressure_level = if after.app_memory_pressure_bytes >= after.memory_critical_bytes {
-        "critical"
-    } else if after.app_memory_pressure_bytes >= after.memory_high_bytes {
-        "high"
-    } else {
-        "normal"
-    };
+    let pressure_level = scrape_memory_pressure_level(&after);
     info!(
-        "[memory] scrape preflight provider={} operation={} before_app_pressure={} before_app_rss={} before_webkit_pressure={} before_webkit_rss={} after_app_pressure={} after_app_rss={} after_webkit_pressure={} after_webkit_rss={} scrape_budget={} headroom_bytes={} high_bytes={} critical_bytes={} pressure={} recycled_scrapers={} cache_trimmed={} may_proceed={}",
+        "[memory] scrape preflight provider={} operation={} before_app_pressure={} before_app_rss={} before_webkit_pressure={} before_webkit_rss={} after_app_pressure={} after_app_rss={} after_webkit_pressure={} after_webkit_rss={} scrape_budget={} resident_budget={} headroom_bytes={} high_bytes={} critical_bytes={} pressure={} recycled_scrapers={} cache_trimmed={} may_proceed={}",
         provider,
         operation,
         before.app_memory_pressure_bytes,
@@ -3183,6 +3200,7 @@ async fn prepare_social_scrape_memory_internal(
             .unwrap_or(after.webkit_total_resident_bytes),
         after.webkit_total_resident_bytes,
         scrape_start_budget_bytes,
+        scrape_resident_budget_bytes,
         SCRAPE_MEMORY_HEADROOM_BYTES,
         after.memory_high_bytes,
         after.memory_critical_bytes,
@@ -3213,6 +3231,7 @@ async fn prepare_social_scrape_memory_internal(
             "webkitLargestRole": after.webkit_largest_role,
             "webkitProcessCount": after.webkit_process_count,
             "scrapeStartBudgetBytes": scrape_start_budget_bytes,
+            "scrapeResidentBudgetBytes": scrape_resident_budget_bytes,
             "scrapeHeadroomBytes": SCRAPE_MEMORY_HEADROOM_BYTES,
             "memoryHighBytes": after.memory_high_bytes,
             "memoryCriticalBytes": after.memory_critical_bytes,
@@ -3258,8 +3277,8 @@ async fn ensure_social_scrape_memory(
         return Ok(());
     }
 
-    let pressure_label = if prep.after.app_memory_pressure_bytes >= prep.after.memory_critical_bytes
-    {
+    let pressure_level = scrape_memory_pressure_level(&prep.after);
+    let pressure_label = if pressure_level == "critical" {
         "critically high"
     } else {
         "high"
@@ -3296,6 +3315,7 @@ async fn ensure_social_scrape_memory(
             "webkitLargestFootprintBytes": prep.after.webkit_largest_footprint_bytes,
             "webkitLargestResidentBytes": prep.after.webkit_largest_resident_bytes,
             "scrapeStartBudgetBytes": prep.scrape_start_budget_bytes,
+            "scrapeResidentBudgetBytes": scrape_resident_start_budget_bytes(&prep.after),
             "memoryHighBytes": prep.after.memory_high_bytes,
             "memoryCriticalBytes": prep.after.memory_critical_bytes,
             "recycledAllScraperWindows": critical,
@@ -7538,16 +7558,58 @@ mod tests {
     }
 
     #[test]
-    fn scrape_memory_uses_pressure_bytes_instead_of_rss_when_available() {
+    fn scrape_memory_allows_compressed_rss_below_resident_budget() {
         let budget =
             (MIN_CRITICAL_MEMORY_BYTES * 70 / 100).saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES);
+        let resident_budget =
+            MIN_CRITICAL_MEMORY_BYTES.saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES);
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
             process_footprint_bytes: Some(128),
             process_virtual_bytes: 256,
-            app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            app_resident_bytes: resident_budget - 1,
             app_memory_pressure_bytes: budget - 1,
+            webkit_resident_bytes: Some(resident_budget - 1),
+            webkit_footprint_bytes: Some(512 * 1024 * 1024),
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: resident_budget - 1,
+            webkit_total_footprint_bytes: Some(512 * 1024 * 1024),
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(resident_budget - 1),
+            webkit_largest_footprint_bytes: Some(512 * 1024 * 1024),
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(0.0),
+            webkit_largest_age_seconds: Some(10),
+            webkit_largest_role: Some("freed-webcontent".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert!(scrape_memory_may_proceed(&stats));
+        assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
+            app_memory_pressure_bytes: budget,
+            ..stats
+        }));
+    }
+
+    #[test]
+    fn scrape_memory_blocks_high_resident_bytes_even_when_footprint_is_low() {
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES
+                .saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES),
+            app_memory_pressure_bytes: 512 * 1024 * 1024,
             webkit_resident_bytes: Some(MIN_CRITICAL_MEMORY_BYTES),
             webkit_footprint_bytes: Some(512 * 1024 * 1024),
             webkit_virtual_bytes: None,
@@ -7571,11 +7633,15 @@ mod tests {
             relay_client_count: 0,
         };
 
-        assert!(scrape_memory_may_proceed(&stats));
-        assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
-            app_memory_pressure_bytes: budget,
-            ..stats
-        }));
+        assert!(!scrape_memory_may_proceed(&stats));
+        assert_eq!(scrape_memory_pressure_level(&stats), "high");
+        assert_eq!(
+            scrape_memory_pressure_level(&RuntimeMemoryStats {
+                app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES,
+                ..stats
+            }),
+            "critical"
+        );
     }
 
     #[test]

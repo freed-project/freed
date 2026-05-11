@@ -170,6 +170,20 @@ export function getMemoryPressureLevel(
   return "normal";
 }
 
+export function getEffectiveMemoryPressureBytes(native: {
+  processResidentBytes: number;
+  processFootprintBytes?: number;
+  appResidentBytes?: number;
+  appMemoryPressureBytes?: number;
+}): number {
+  const pressureBytes =
+    native.appMemoryPressureBytes ??
+    native.processFootprintBytes ??
+    native.processResidentBytes;
+  const residentBytes = native.appResidentBytes ?? native.processResidentBytes;
+  return Math.max(pressureBytes, residentBytes);
+}
+
 function emptyNativeRuntimeMemoryStats(): NativeRuntimeMemoryStats {
   const limits = getAdaptiveMemoryLimits(0);
   return {
@@ -222,8 +236,7 @@ async function sampleRuntimeMemory(
       native.memoryCriticalBytes ??
       getAdaptiveMemoryLimits(native.totalPhysicalMemoryBytes).criticalBytes,
   };
-  const pressureBytes =
-    native.appMemoryPressureBytes ?? native.appResidentBytes ?? native.processResidentBytes;
+  const pressureBytes = getEffectiveMemoryPressureBytes(native);
   const pressureLevel = getMemoryPressureLevel(pressureBytes, limits);
   currentPressureLevel = pressureLevel;
   currentPressureSampleAt = Date.now();
