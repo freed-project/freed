@@ -39,6 +39,7 @@ async function readGraphDebug(page: Page) {
           avatarDisplayCount: number;
           visibleLabelCount: number;
           visibleNodeLabelCount: number;
+          visibleProviderLabelCount: number;
           transformOnlySyncCount: number;
           denseRenderMode: "dense" | "containers";
           denseInteractionEligible: boolean;
@@ -292,6 +293,7 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   });
 
   let denseInteractionNodeCount = 0;
+  let maxInteractiveProviderLabelCount = 0;
   const interaction = await collectLongTasksDuring(page, () =>
     measureFps(page, async () => {
       for (let index = 0; index < 18; index += 1) {
@@ -314,6 +316,12 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
           const debug = await readGraphDebug(page);
           const nodeCount = debug?.metrics.denseInteractionNodeCount ?? 0;
           denseInteractionNodeCount = Math.max(denseInteractionNodeCount, nodeCount);
+          if (debug?.qualityMode === "interactive") {
+            maxInteractiveProviderLabelCount = Math.max(
+              maxInteractiveProviderLabelCount,
+              debug.metrics.visibleProviderLabelCount,
+            );
+          }
           return nodeCount;
         }, { timeout: 5_000 })
         .toBeGreaterThan(0);
@@ -354,6 +362,7 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   expect(interaction.result.sampleCount).toBeGreaterThan(0);
   expect(denseInteractionNodeCount).toBeGreaterThan(0);
   expect(denseInteractionNodeCount).toBeLessThanOrEqual(DENSE_INTERACTION_NODE_BUDGET);
+  expect(maxInteractiveProviderLabelCount).toBe(0);
   expect(afterInteraction!.metrics.denseInteractionRebuildCount).toBeLessThanOrEqual(16);
   if (process.env.CI) {
     expect(afterInteraction!.metrics.sceneSyncMs).toBeLessThan(GRAPH_SCENE_SYNC_BUDGET_MS);

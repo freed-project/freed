@@ -1475,58 +1475,60 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const providerMetrics = providerLabelMetrics(transform.scale);
     const providerLabelScale = 1 / transform.scale;
     let visibleProviderLabelCount = 0;
-    for (const region of layoutRef.current.regions) {
-      const display = scene.regionDisplays.get(region.id);
-      if (!display) continue;
-      const fill = providerColor(region.provider, graphPalette);
-      const point = screenPointForPosition({ x: region.x, y: region.y }, transform);
-      const onScreen =
-        point.x >= -160 &&
-        point.x <= canvasSize.width + 160 &&
-        point.y >= -160 &&
-        point.y <= canvasSize.height + 160;
-      display.container.visible = onScreen;
-      if (!onScreen) continue;
+    if (!isInteractivePaint) {
+      for (const region of layoutRef.current.regions) {
+        const display = scene.regionDisplays.get(region.id);
+        if (!display) continue;
+        const fill = providerColor(region.provider, graphPalette);
+        const point = screenPointForPosition({ x: region.x, y: region.y }, transform);
+        const onScreen =
+          point.x >= -160 &&
+          point.x <= canvasSize.width + 160 &&
+          point.y >= -160 &&
+          point.y <= canvasSize.height + 160;
+        display.container.visible = onScreen;
+        if (!onScreen) continue;
 
-      visibleProviderLabelCount += 1;
-      const label = `${region.label} ${region.count.toLocaleString()}`;
-      const labelWidth = estimateLabelWidth(label, providerMetrics.fontSize) +
-        providerMetrics.paddingX * 2;
-      display.container.position.set(
-        region.x,
-        region.y - region.radiusY - providerMetrics.gap / transform.scale,
-      );
-      display.container.scale.set(providerLabelScale);
-      display.container.alpha = highlighted.size > 0
-        ? providerMetrics.alpha * 0.52
-        : providerMetrics.alpha;
-      display.background.clear();
-      display.background.lineStyle(1.2, fill, 0.58);
-      display.background.beginFill(graphPalette.labelFill, 0.88);
-      display.background.drawRoundedRect(
-        -labelWidth / 2,
-        -providerMetrics.height / 2,
-        labelWidth,
-        providerMetrics.height,
-        providerMetrics.height / 2,
-      );
-      display.background.endFill();
-      display.text.text = label;
-      display.text.style = getCachedTextStyle(
-        [
-          "region",
-          themeId ?? "default",
-          region.provider,
-          providerMetrics.fontSize,
-        ].join(":"),
-        {
-          fill,
-          fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
-          fontSize: providerMetrics.fontSize,
-          fontWeight: "700",
-          letterSpacing: 1,
-        },
-      );
+        visibleProviderLabelCount += 1;
+        const label = `${region.label} ${region.count.toLocaleString()}`;
+        const labelWidth = estimateLabelWidth(label, providerMetrics.fontSize) +
+          providerMetrics.paddingX * 2;
+        display.container.position.set(
+          region.x,
+          region.y - region.radiusY - providerMetrics.gap / transform.scale,
+        );
+        display.container.scale.set(providerLabelScale);
+        display.container.alpha = highlighted.size > 0
+          ? providerMetrics.alpha * 0.52
+          : providerMetrics.alpha;
+        display.background.clear();
+        display.background.lineStyle(1.2, fill, 0.58);
+        display.background.beginFill(graphPalette.labelFill, 0.88);
+        display.background.drawRoundedRect(
+          -labelWidth / 2,
+          -providerMetrics.height / 2,
+          labelWidth,
+          providerMetrics.height,
+          providerMetrics.height / 2,
+        );
+        display.background.endFill();
+        display.text.text = label;
+        display.text.style = getCachedTextStyle(
+          [
+            "region",
+            themeId ?? "default",
+            region.provider,
+            providerMetrics.fontSize,
+          ].join(":"),
+          {
+            fill,
+            fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
+            fontSize: providerMetrics.fontSize,
+            fontWeight: "700",
+            letterSpacing: 1,
+          },
+        );
+      }
     }
 
     scene.hoverLayer.clear();
