@@ -20,5 +20,5 @@
     "v26.5.1007-dev replaces the failed v26.5.1006-dev validation tag with a CI-specific identity graph benchmark budget while preserving the local layout guard.",
     "v26.5.1008-dev replaces the failed v26.5.1007-dev packaging tag by moving the hidden heartbeat timer threshold into production builds."
   ],
-  "updatedAt": "2026-05-10T17:26:53.097Z"
+  "updatedAt": "2026-05-11T00:26:51.650Z"
 }
