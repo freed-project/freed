@@ -10,7 +10,7 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [
-    "Approved after v26.5.1016-dev failed before packaging, then refreshed for v26.5.1101-dev after the dense Map movement paint fix landed, v26.5.1102-dev after the Settings moving chrome paint fix landed, v26.5.1103-dev after the renderer hidden timer telemetry cleanup landed, v26.5.1104-dev after the Friends graph recovery fix landed, v26.5.1105-dev after native Google Contacts and Drive OAuth landed, and v26.5.1106-dev after resident WebKit memory was added to social scrape gating."
+    "Approved after v26.5.1016-dev failed before packaging, then refreshed for v26.5.1101-dev after the dense Map movement paint fix landed, v26.5.1102-dev after the Settings moving chrome paint fix landed, v26.5.1103-dev after the renderer hidden timer telemetry cleanup landed, v26.5.1104-dev after the Friends graph recovery fix landed, v26.5.1105-dev after native Google Contacts and Drive OAuth landed, v26.5.1106-dev after resident WebKit memory was added to social scrape gating, and v26.5.1107-dev after social scrape memory preflight moved before shared session acquisition."
   ],
-  "updatedAt": "2026-05-11T18:06:12.356Z"
+  "updatedAt": "2026-05-11T19:34:00.000Z"
 }
