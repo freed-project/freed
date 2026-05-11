@@ -10,7 +10,7 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [
-    "Approved after v26.5.1016-dev failed before packaging. This replacement preserves the v26.5.1016 daily rollup, keeps the Settings scroll overdraw fix, and adds the Friends last seen to Map handoff stabilization."
+    "Approved after v26.5.1016-dev failed before packaging, then refreshed for v26.5.1101-dev after the dense Map movement paint fix landed. The latest release preserves the v26.5.1100 same-day rollup and adds the Map 1,600-author perf guard improvement."
   ],
-  "updatedAt": "2026-05-11T10:27:25.709Z"
+  "updatedAt": "2026-05-11T10:27:55.304Z"
 }
