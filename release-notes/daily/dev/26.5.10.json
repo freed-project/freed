@@ -22,7 +22,8 @@
     "v26.5.1009-dev replaces the failed v26.5.1008-dev validation tag by hardening Tauri mock IPC logging and Friends smoke interactions.",
     "v26.5.1010-dev replaces the failed v26.5.1009-dev validation tag by narrowing the collapsed Friends empty-space regression to its owned behavior.",
     "v26.5.1011-dev ships the Settings interaction invalidation and large-feed search indexing follow-up on top of the v26.5.1010 release-gate fixes.",
-    "v26.5.1012-dev replaces the failed v26.5.1011-dev validation tag with a guarded Friends graph Pixi teardown so the Last seen to Map handoff cannot be replaced by the fatal error screen."
+    "v26.5.1012-dev replaces the failed v26.5.1011-dev validation tag with a guarded Friends graph Pixi teardown so the Last seen to Map handoff cannot be replaced by the fatal error screen.",
+    "v26.5.1013-dev replaces the failed v26.5.1012-dev validation tag by narrowing the collapsed Friends detail-card regression away from CI-sensitive graph point lookup while preserving selected-person behavior coverage."
   ],
-  "updatedAt": "2026-05-11T02:18:48.259Z"
+  "updatedAt": "2026-05-11T02:46:14.058Z"
 }
