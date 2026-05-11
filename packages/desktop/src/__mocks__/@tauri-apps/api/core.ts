@@ -117,14 +117,42 @@ async function proxyGoogleDriveRequest(args: Record<string, unknown>): Promise<{
   };
 }
 
+async function proxyNativeHttpRequest(args: Record<string, unknown>): Promise<{
+  status: number;
+  headers: Array<[string, string]>;
+  body: number[];
+}> {
+  const resp = await fetch("/api/proxy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: args.url,
+      headers: args.headers ?? {},
+      method: args.method ?? "GET",
+      body: args.body ?? "",
+    }),
+  });
+  return {
+    status: resp.status,
+    headers: Array.from(resp.headers.entries()),
+    body: Array.from(new Uint8Array(await resp.arrayBuffer())),
+  };
+}
+
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
   broadcast_doc: timedHandler("broadcast_doc", () => null),
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
-  google_api_request: (args: Record<string, unknown>) => proxyFetch({
+  google_api_request: (args: Record<string, unknown>) => proxyNativeHttpRequest({
     url: args.url,
     method: "GET",
     headers: { Authorization: `Bearer ${String(args.accessToken ?? "")}` },
+  }),
+  google_oauth_proxy_request: (args: Record<string, unknown>) => proxyNativeHttpRequest({
+    url: args.url,
+    method: "POST",
+    headers: { "Content-Type": String(args.contentType ?? "application/json") },
+    body: args.body,
   }),
   google_drive_request: (args: Record<string, unknown>) => proxyGoogleDriveRequest(args),
   fetch_binary_url: (args: Record<string, unknown>) => proxyFetchBinary({ url: args.url, method: "GET" }),

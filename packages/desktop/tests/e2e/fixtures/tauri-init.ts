@@ -33,7 +33,8 @@ export function tauriInitScript(): string {
     window.__TAURI_MOCK_HANDLERS__ = {
       broadcast_doc: timedHandler('broadcast_doc', function() { return null; }),
       fetch_url: () => '',
-      google_api_request: () => '{"connections":[],"nextSyncToken":"test-sync-token"}',
+      google_api_request: () => ({ status: 200, headers: [['content-type', 'application/json']], body: Array.from(new TextEncoder().encode('{"connections":[],"nextSyncToken":"test-sync-token"}')) }),
+      google_oauth_proxy_request: () => ({ status: 200, headers: [['content-type', 'application/json']], body: Array.from(new TextEncoder().encode('{"access_token":"test-access-token","refresh_token":"test-refresh-token","expires_in":3600}')) }),
       google_drive_request: () => ({ status: 200, headers: [['content-type', 'application/json']], body: Array.from(new TextEncoder().encode('{"files":[]}')) }),
       fetch_binary_url: () => [],
       get_local_ip: () => '127.0.0.1',
