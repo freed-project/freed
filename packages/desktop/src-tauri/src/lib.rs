@@ -92,6 +92,7 @@ const RUNTIME_DIAGNOSTICS_COOLDOWN: Duration = Duration::from_secs(180);
 const RECOVERY_WINDOW_LABEL: &str = "startup-recovery";
 const RECOVERY_WINDOW_ROUTE: &str = "startup-recovery.html";
 const RENDERER_HEARTBEAT_WATCHDOG_INTERVAL: Duration = Duration::from_secs(15);
+const RENDERER_HEARTBEAT_MEMORY_SAMPLE_INTERVAL: Duration = Duration::from_secs(60);
 const RENDERER_STALE_LOG_AFTER: Duration = Duration::from_secs(45);
 const WEBKIT_HIDDEN_TIMER_THROTTLE_AFTER: Duration = Duration::from_secs(480);
 const RENDERER_HIDDEN_STALE_LOG_AFTER: Duration = Duration::from_secs(570);
@@ -1007,7 +1008,7 @@ struct SyncRelayState {
 
 type RelayState = Arc<SyncRelayState>;
 
-#[derive(serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeMemoryStats {
     total_physical_memory_bytes: u64,
@@ -1454,6 +1455,145 @@ struct RendererHeartbeatStatus {
     last_recovery_at: Option<std::time::Instant>,
     renderer_generation: u64,
     recovery_history: VecDeque<std::time::Instant>,
+}
+
+#[derive(Debug, Clone)]
+struct RendererMemorySample {
+    sampled_at: std::time::Instant,
+    process_resident_bytes: u64,
+    process_footprint_bytes: Option<u64>,
+    app_resident_bytes: u64,
+    app_memory_pressure_bytes: u64,
+    webkit_resident_bytes: u64,
+    webkit_footprint_bytes: Option<u64>,
+    webkit_largest_process_id: Option<u32>,
+    webkit_largest_resident_bytes: Option<u64>,
+    webkit_largest_footprint_bytes: Option<u64>,
+    webkit_largest_cpu_usage: Option<f32>,
+    webkit_largest_age_seconds: Option<u64>,
+    webkit_largest_role: Option<String>,
+    webkit_process_count: u64,
+    webkit_telemetry_available: bool,
+    memory_high_bytes: u64,
+    memory_critical_bytes: u64,
+}
+
+impl RendererMemorySample {
+    fn from_stats(sampled_at: std::time::Instant, stats: RuntimeMemoryStats) -> Self {
+        Self {
+            sampled_at,
+            process_resident_bytes: stats.process_resident_bytes,
+            process_footprint_bytes: stats.process_footprint_bytes,
+            app_resident_bytes: stats.app_resident_bytes,
+            app_memory_pressure_bytes: stats.app_memory_pressure_bytes,
+            webkit_resident_bytes: stats.webkit_total_resident_bytes,
+            webkit_footprint_bytes: stats.webkit_total_footprint_bytes,
+            webkit_largest_process_id: stats.webkit_largest_process_id,
+            webkit_largest_resident_bytes: stats.webkit_largest_resident_bytes,
+            webkit_largest_footprint_bytes: stats.webkit_largest_footprint_bytes,
+            webkit_largest_cpu_usage: stats.webkit_largest_cpu_usage,
+            webkit_largest_age_seconds: stats.webkit_largest_age_seconds,
+            webkit_largest_role: stats.webkit_largest_role,
+            webkit_process_count: stats.webkit_process_count,
+            webkit_telemetry_available: stats.webkit_telemetry_available,
+            memory_high_bytes: stats.memory_high_bytes,
+            memory_critical_bytes: stats.memory_critical_bytes,
+        }
+    }
+}
+
+fn renderer_memory_sample_due(
+    last_sampled_at: Option<std::time::Instant>,
+    now: std::time::Instant,
+) -> bool {
+    last_sampled_at
+        .map(|last| now.duration_since(last) >= RENDERER_HEARTBEAT_MEMORY_SAMPLE_INTERVAL)
+        .unwrap_or(true)
+}
+
+fn renderer_memory_health_fields(
+    sample: Option<&RendererMemorySample>,
+    now: std::time::Instant,
+    refreshed: bool,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "nativeMemorySampleRefreshed".to_string(),
+        serde_json::json!(refreshed),
+    );
+
+    if let Some(sample) = sample {
+        fields.insert(
+            "nativeMemorySampleAgeMs".to_string(),
+            serde_json::json!(now.duration_since(sample.sampled_at).as_millis()),
+        );
+        fields.insert(
+            "nativeResidentBytes".to_string(),
+            serde_json::json!(sample.process_resident_bytes),
+        );
+        fields.insert(
+            "nativeFootprintBytes".to_string(),
+            serde_json::json!(sample.process_footprint_bytes),
+        );
+        fields.insert(
+            "appResidentBytes".to_string(),
+            serde_json::json!(sample.app_resident_bytes),
+        );
+        fields.insert(
+            "appMemoryPressureBytes".to_string(),
+            serde_json::json!(sample.app_memory_pressure_bytes),
+        );
+        fields.insert(
+            "webkitResidentBytes".to_string(),
+            serde_json::json!(sample.webkit_resident_bytes),
+        );
+        fields.insert(
+            "webkitFootprintBytes".to_string(),
+            serde_json::json!(sample.webkit_footprint_bytes),
+        );
+        fields.insert(
+            "webkitLargestProcessId".to_string(),
+            serde_json::json!(sample.webkit_largest_process_id),
+        );
+        fields.insert(
+            "webkitLargestResidentBytes".to_string(),
+            serde_json::json!(sample.webkit_largest_resident_bytes),
+        );
+        fields.insert(
+            "webkitLargestFootprintBytes".to_string(),
+            serde_json::json!(sample.webkit_largest_footprint_bytes),
+        );
+        fields.insert(
+            "webkitLargestCpuUsage".to_string(),
+            serde_json::json!(sample.webkit_largest_cpu_usage),
+        );
+        fields.insert(
+            "webkitLargestAgeSeconds".to_string(),
+            serde_json::json!(sample.webkit_largest_age_seconds),
+        );
+        fields.insert(
+            "webkitLargestRole".to_string(),
+            serde_json::json!(sample.webkit_largest_role),
+        );
+        fields.insert(
+            "webkitProcessCount".to_string(),
+            serde_json::json!(sample.webkit_process_count),
+        );
+        fields.insert(
+            "webkitTelemetryAvailable".to_string(),
+            serde_json::json!(sample.webkit_telemetry_available),
+        );
+        fields.insert(
+            "memoryHighBytes".to_string(),
+            serde_json::json!(sample.memory_high_bytes),
+        );
+        fields.insert(
+            "memoryCriticalBytes".to_string(),
+            serde_json::json!(sample.memory_critical_bytes),
+        );
+    }
+
+    fields
 }
 
 impl RendererHeartbeatStatus {
@@ -6681,7 +6821,10 @@ pub fn run() {
             });
 
             let renderer_health = Arc::new(StdRwLock::new(RendererHeartbeatStatus::new()));
+            let renderer_memory_sample: Arc<StdMutex<Option<RendererMemorySample>>> =
+                Arc::new(StdMutex::new(None));
             let renderer_health_for_listener = renderer_health.clone();
+            let renderer_memory_sample_for_listener = renderer_memory_sample.clone();
             let app_for_renderer = app.handle().clone();
             let app_for_renderer_listener = app_for_renderer.clone();
             let background_runtime_for_listener = app
@@ -6702,19 +6845,44 @@ pub fn run() {
                 };
 
                 let now = std::time::Instant::now();
-                let mut health = renderer_health_for_listener.write().unwrap();
-                let (first_heartbeat, gap_ms, recovered) =
-                    health.note_heartbeat(&payload, now);
+                let (first_heartbeat, gap_ms, recovered, renderer_generation) = {
+                    let mut health = renderer_health_for_listener.write().unwrap();
+                    let (first_heartbeat, gap_ms, recovered) =
+                        health.note_heartbeat(&payload, now);
+                    (
+                        first_heartbeat,
+                        gap_ms,
+                        recovered,
+                        health.renderer_generation,
+                    )
+                };
                 background_runtime_for_listener.note_renderer_heartbeat();
+
+                let should_refresh_memory_sample = {
+                    let sample = renderer_memory_sample_for_listener.lock().unwrap();
+                    renderer_memory_sample_due(sample.as_ref().map(|sample| sample.sampled_at), now)
+                };
+                let refreshed_memory_sample = should_refresh_memory_sample.then(|| {
+                    RendererMemorySample::from_stats(
+                        now,
+                        collect_runtime_memory_stats(&app_for_renderer_listener, 0, 0),
+                    )
+                });
+                let memory_sample_refreshed = refreshed_memory_sample.is_some();
+                let memory_health_fields = {
+                    let mut sample = renderer_memory_sample_for_listener.lock().unwrap();
+                    if let Some(refreshed_memory_sample) = refreshed_memory_sample {
+                        *sample = Some(refreshed_memory_sample);
+                    }
+                    renderer_memory_health_fields(sample.as_ref(), now, memory_sample_refreshed)
+                };
 
                 let href = truncate_for_log(&payload.href, 120);
                 let (active_job, active_job_age_ms) =
                     background_runtime_for_listener.active_job_for_health();
-                append_runtime_health(
-                    &app_for_renderer_listener,
-                    serde_json::json!({
+                let mut health_payload = serde_json::json!({
                         "event": "renderer_heartbeat",
-                        "rendererGeneration": health.renderer_generation,
+                        "rendererGeneration": renderer_generation,
                         "seq": payload.seq,
                         "reason": payload.reason.clone(),
                         "visibility": payload.visibility.clone(),
@@ -6734,15 +6902,18 @@ pub fn run() {
                         "recovered": recovered,
                         "activeBackgroundJob": active_job,
                         "activeBackgroundJobAgeMs": active_job_age_ms
-                    }),
-                );
+                });
+                if let Some(fields) = health_payload.as_object_mut() {
+                    fields.extend(memory_health_fields);
+                }
+                append_runtime_health(&app_for_renderer_listener, health_payload);
                 if recovered {
                     let _ = app_for_renderer_listener.emit(
                         "renderer-recovery-state",
                         serde_json::json!({
                             "phase": "recovered",
                             "reason": payload.reason.clone(),
-                            "rendererGeneration": health.renderer_generation,
+                            "rendererGeneration": renderer_generation,
                             "seq": payload.seq,
                             "gapMs": gap_ms
                         }),
@@ -7283,6 +7454,79 @@ mod tests {
                 MAX_CRITICAL_MEMORY_BYTES
             )
         );
+    }
+
+    #[test]
+    fn renderer_memory_sample_due_respects_throttle() {
+        let now = std::time::Instant::now();
+
+        assert!(renderer_memory_sample_due(None, now));
+        assert!(!renderer_memory_sample_due(
+            Some(now),
+            now + RENDERER_HEARTBEAT_MEMORY_SAMPLE_INTERVAL - Duration::from_secs(1)
+        ));
+        assert!(renderer_memory_sample_due(
+            Some(now),
+            now + RENDERER_HEARTBEAT_MEMORY_SAMPLE_INTERVAL
+        ));
+    }
+
+    #[test]
+    fn renderer_memory_health_fields_include_app_scoped_webkit_stats() {
+        let now = std::time::Instant::now();
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 101,
+            process_footprint_bytes: Some(102),
+            process_virtual_bytes: 103,
+            app_resident_bytes: 201,
+            app_memory_pressure_bytes: 202,
+            webkit_resident_bytes: Some(301),
+            webkit_footprint_bytes: Some(302),
+            webkit_virtual_bytes: Some(303),
+            webkit_process_id: Some(42),
+            webkit_total_resident_bytes: 401,
+            webkit_total_footprint_bytes: Some(402),
+            webkit_process_count: 2,
+            webkit_largest_resident_bytes: Some(501),
+            webkit_largest_footprint_bytes: Some(502),
+            webkit_largest_process_id: Some(43),
+            webkit_largest_cpu_usage: Some(1.5),
+            webkit_largest_age_seconds: Some(9),
+            webkit_largest_role: Some("freed-webcontent".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            memory_high_bytes: 601,
+            memory_critical_bytes: 602,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+        let sample = RendererMemorySample::from_stats(now - Duration::from_secs(2), stats);
+        let fields = renderer_memory_health_fields(Some(&sample), now, true);
+
+        assert_eq!(
+            fields["nativeMemorySampleRefreshed"],
+            serde_json::json!(true)
+        );
+        assert_eq!(fields["nativeMemorySampleAgeMs"].as_u64(), Some(2000));
+        assert_eq!(fields["nativeResidentBytes"], serde_json::json!(101));
+        assert_eq!(fields["nativeFootprintBytes"], serde_json::json!(102));
+        assert_eq!(fields["appResidentBytes"], serde_json::json!(201));
+        assert_eq!(fields["appMemoryPressureBytes"], serde_json::json!(202));
+        assert_eq!(fields["webkitResidentBytes"], serde_json::json!(401));
+        assert_eq!(fields["webkitFootprintBytes"], serde_json::json!(402));
+        assert_eq!(fields["webkitLargestProcessId"], serde_json::json!(43));
+        assert_eq!(fields["webkitLargestResidentBytes"], serde_json::json!(501));
+        assert_eq!(
+            fields["webkitLargestFootprintBytes"],
+            serde_json::json!(502)
+        );
+        assert_eq!(fields["webkitProcessCount"], serde_json::json!(2));
+        assert_eq!(fields["webkitTelemetryAvailable"], serde_json::json!(true));
+        assert_eq!(fields["memoryHighBytes"], serde_json::json!(601));
+        assert_eq!(fields["memoryCriticalBytes"], serde_json::json!(602));
     }
 
     #[test]
