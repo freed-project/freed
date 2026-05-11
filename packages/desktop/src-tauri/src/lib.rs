@@ -3033,12 +3033,17 @@ fn scrape_memory_pressure_level(stats: &RuntimeMemoryStats) -> &'static str {
     }
 }
 
+fn optional_story_memory_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
+    stats
+        .memory_high_bytes
+        .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
+        / 100
+}
+
 fn optional_story_scrape_may_proceed(stats: &RuntimeMemoryStats) -> bool {
-    stats.app_memory_pressure_bytes
-        < stats
-            .memory_high_bytes
-            .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
-            / 100
+    let story_budget_bytes = optional_story_memory_budget_bytes(stats);
+    stats.app_memory_pressure_bytes < story_budget_bytes
+        && stats.app_resident_bytes < story_budget_bytes
 }
 
 fn social_scrape_may_continue(
@@ -3110,7 +3115,7 @@ fn optional_story_scrape_may_continue(
                 .webkit_total_footprint_bytes
                 .unwrap_or(stats.webkit_total_resident_bytes),
             stats.webkit_total_resident_bytes,
-            stats.memory_high_bytes.saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT) / 100,
+            optional_story_memory_budget_bytes(&stats),
             stats.memory_high_bytes
         );
         append_runtime_health(
@@ -3123,7 +3128,8 @@ fn optional_story_scrape_may_continue(
                 "appResidentBytes": stats.app_resident_bytes,
                 "webkitFootprintBytes": stats.webkit_total_footprint_bytes,
                 "webkitResidentBytes": stats.webkit_total_resident_bytes,
-                "storyBudgetBytes": stats.memory_high_bytes.saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT) / 100,
+                "storyBudgetBytes": optional_story_memory_budget_bytes(&stats),
+                "storyResidentBudgetBytes": optional_story_memory_budget_bytes(&stats),
                 "memoryHighBytes": stats.memory_high_bytes
             }),
         );
@@ -7703,19 +7709,13 @@ mod tests {
 
     #[test]
     fn optional_story_scrape_uses_stricter_memory_budget() {
-        let stats = RuntimeMemoryStats {
+        let make_stats = |app_resident_bytes, app_memory_pressure_bytes| RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
             process_footprint_bytes: Some(128),
             process_virtual_bytes: 256,
-            app_resident_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
-                * OPTIONAL_STORY_MEMORY_BUDGET_PERCENT
-                / 100
-                - 1,
-            app_memory_pressure_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
-                * OPTIONAL_STORY_MEMORY_BUDGET_PERCENT
-                / 100
-                - 1,
+            app_resident_bytes,
+            app_memory_pressure_bytes,
             webkit_resident_bytes: None,
             webkit_footprint_bytes: None,
             webkit_virtual_bytes: None,
@@ -7738,19 +7738,21 @@ mod tests {
             relay_doc_bytes: 0,
             relay_client_count: 0,
         };
+        let story_budget_bytes = optional_story_memory_budget_bytes(&make_stats(0, 0));
+        let stats = make_stats(
+            story_budget_bytes.saturating_sub(1),
+            story_budget_bytes.saturating_sub(1),
+        );
 
         assert!(optional_story_scrape_may_proceed(&stats));
-        assert!(!optional_story_scrape_may_proceed(&RuntimeMemoryStats {
-            app_resident_bytes: stats
-                .memory_high_bytes
-                .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
-                / 100,
-            app_memory_pressure_bytes: stats
-                .memory_high_bytes
-                .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
-                / 100,
-            ..stats
-        }));
+        assert!(!optional_story_scrape_may_proceed(&make_stats(
+            story_budget_bytes,
+            story_budget_bytes,
+        )));
+        assert!(!optional_story_scrape_may_proceed(&make_stats(
+            story_budget_bytes,
+            story_budget_bytes.saturating_sub(1),
+        )));
     }
 
     #[test]
