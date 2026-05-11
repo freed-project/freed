@@ -85,6 +85,9 @@ import { clearContactSyncState, setContactSyncError } from "./lib/contact-sync-s
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
+import { importMetaExportFiles } from "./lib/meta-export-import";
+import { summarizeMediaVault } from "./lib/media-vault";
+import { publishStoryWallToGitHubPages } from "./lib/story-wall-publisher";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
 import { startMemoryMonitor, stopMemoryMonitor } from "./lib/memory-monitor";
 import {
@@ -890,6 +893,18 @@ function App() {
         clearApiKey: (provider: string) => Promise<void>;
       },
       localAIModels,
+      importInstagramStoryWallArchive: (files) => importMetaExportFiles("instagram", files),
+      getStoryWallArchiveSummaries: async () => {
+        const [facebook, instagram] = await Promise.all([
+          summarizeMediaVault("facebook"),
+          summarizeMediaVault("instagram"),
+        ]);
+        return [
+          { provider: "facebook", ...facebook },
+          { provider: "instagram", ...instagram },
+        ];
+      },
+      publishStoryWall: publishStoryWallToGitHubPages,
       openUrl: (url: string) => { void shellOpen(url); },
       pickContact: pickContactViaTauri,
       googleContacts: tauriRuntimeAvailable

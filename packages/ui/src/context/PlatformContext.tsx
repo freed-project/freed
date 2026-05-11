@@ -26,6 +26,7 @@ import type {
   LocalAIModelInstallState,
   LocalAIModelManifestEntry,
   ReportPrivacyTier,
+  StoryWallManifest,
 } from "@freed/shared";
 import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
 import type { GoogleContactsResult } from "@freed/shared/google-contacts";
@@ -73,6 +74,39 @@ export interface SidebarSourceStatusSummary {
   detail?: string;
   syncing?: boolean;
   paused?: boolean;
+}
+
+export interface StoryWallArchiveSummary {
+  provider: "facebook" | "instagram";
+  enabled: boolean;
+  fileCount: number;
+  byteSize: number;
+  ownerHandles: string[];
+}
+
+export interface StoryWallImportSummary {
+  provider: "facebook" | "instagram";
+  filesScanned: number;
+  mediaFilesFound: number;
+  imported: number;
+  skipped: number;
+  failed: number;
+  ownerHandles: string[];
+}
+
+export interface StoryWallPublishRequest {
+  token: string;
+  owner?: string;
+  repoName: string;
+  branch: string;
+  directory: string;
+  manifest: StoryWallManifest;
+}
+
+export interface StoryWallPublishResult {
+  pagesUrl: string;
+  commitSha: string;
+  repoFullName: string;
 }
 
 export interface BugReportingConfig {
@@ -366,6 +400,15 @@ export interface PlatformConfig {
 
   /** Device-local optional model downloads for offline AI. */
   localAIModels?: LocalAIModelControls;
+
+  /** Import an Instagram Accounts Center export into the device-local media vault. */
+  importInstagramStoryWallArchive?: (files: FileList) => Promise<StoryWallImportSummary>;
+
+  /** Return media vault summaries used by the Story Wall workspace. */
+  getStoryWallArchiveSummaries?: () => Promise<StoryWallArchiveSummary[]>;
+
+  /** Publish the generated Story Wall to a static host. */
+  publishStoryWall?: (request: StoryWallPublishRequest) => Promise<StoryWallPublishResult>;
 
   /**
    * Google Contacts API integration.

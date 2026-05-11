@@ -247,7 +247,7 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
     searchQuery: overrides.searchQuery ?? "",
     setSearchQuery: overrides.setSearchQuery ?? ((query: string) => set({ searchQuery: query })),
     activeView: overrides.activeView ?? "feed",
-    setActiveView: overrides.setActiveView ?? ((view: "feed" | "friends" | "map") => set({ activeView: view })),
+    setActiveView: overrides.setActiveView ?? ((view: "feed" | "friends" | "map" | "storyWall") => set({ activeView: view })),
     openMapForPerson:
       overrides.openMapForPerson
       ?? ((personId: string) =>

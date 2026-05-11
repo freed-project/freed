@@ -123,6 +123,12 @@ Recent coverage is continuous. After Facebook or Instagram sync stores captured 
 
 Profile backfill is user-started and visible in settings. The current implementation backfills media already captured from the user's own provider identity and marks those files with the profile-backfill import source. Direct historical own-profile DOM crawling remains selector-sensitive and should stay slower, resumable, and separately smoke-tested before we claim full coverage beyond Meta export import.
 
+### Story Wall
+
+Freed Desktop now has a Story Wall workspace for owner-controlled memory publishing. The wall starts from existing Freed history, can import Instagram Accounts Center ZIP exports into the local media vault, and keeps the synced wall config small in `preferences.storyWall`. Media binaries stay in the device-local vault until a publish run writes static assets to the target.
+
+The first publisher target is GitHub Pages. The desktop publisher creates or reuses a user-owned repo, writes a static site under `/docs`, includes `index.html`, `embed.js`, `data/story-wall.json`, `.nojekyll`, and vault assets, then commits through Git blobs, trees, commits, and refs. The UI exposes manual publish now with privacy review copy. GitHub OAuth and automatic settle-window publishing remain follow-up work.
+
 ---
 
 ## Rate Limiting
@@ -168,6 +174,7 @@ const RATE_LIMITS = {
 | 7.19 | Reader reply hydration for X posts          | ✓ Complete  |
 | 7.20 | Explicit reply links and opt-in beta inline hydration for reader posts | ✓ Complete |
 | 7.21 | Shared social memory-preflight backoff      | ✓ Complete  |
+| 7.22 | Story Wall workspace and GitHub Pages publisher | 🚧 In Progress |
 
 ---
 
@@ -207,6 +214,11 @@ const RATE_LIMITS = {
 - [x] Permanent media archive state stays outside Automerge and is not synced
 - [x] Continuous backup archives recent own-account media after provider sync when the account handle is known
 - [x] Facebook roster planning keeps group ID, name, and URL in the local archive manifest
+- [x] Story Wall preferences store selected years, source filters, layout, style, embed, publish target, hidden memories, and featured memories without syncing media binaries
+- [x] Story Wall workspace previews existing Freed history and imports Instagram archive ZIPs through the permanent media vault
+- [x] Story Wall GitHub Pages publisher generates a static destination with `index.html`, `embed.js`, static JSON, `.nojekyll`, and committed vault assets
+- [ ] Story Wall automatic publishing runs after capture settles with capped randomized backoff
+- [ ] Story Wall GitHub connector uses a GitHub App or scoped OAuth flow instead of manual token entry
 - [ ] Facebook feed posts validated against real account (selector tuning)
 - [ ] Instagram feed posts validated against real account (selector tuning)
 - [ ] Direct own-profile crawler validated against saved Facebook profile, Instagram grid, reels, albums, and media-page DOM fixtures

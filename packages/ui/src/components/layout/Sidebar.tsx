@@ -13,7 +13,7 @@ import { toast } from "../Toast.js";
 import { Tooltip } from "../Tooltip.js";
 import { useDebugStore } from "../../lib/debug-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
-import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
+import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon, StoryWallIcon } from "../icons.js";
 import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-navigation.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
@@ -616,6 +616,14 @@ export function Sidebar({
 
   const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
   const archivedCount = useMemo(() => items.filter((i) => i.userState.archived).length, [items]);
+  const storyWallCount = useMemo(
+    () => items.filter((item) =>
+      !item.userState.hidden &&
+      !item.userState.archived &&
+      (item.contentType === "story" || item.content.mediaUrls.length > 0)
+    ).length,
+    [items],
+  );
   const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
   const mapFriendCount = useAppStore((s) => s.mapFriendLocationCount);
   const mapAllContentCount = useAppStore((s) => s.mapAllContentLocationCount);
@@ -1520,6 +1528,46 @@ export function Sidebar({
                   rowTrailingPaddingClass={rowTrailingPaddingClass}
                   rowVerticalPaddingClass={rowVerticalPaddingClass}
                   testId="source-row-map"
+                />
+              )}
+            </li>
+            <li className="order-4">
+              {compactRail ? (
+                renderCompactRow({
+                  key: "story-wall",
+                  label: "Story Wall",
+                  active: activeView === "storyWall",
+                  onClick: () => {
+                    setActiveView("storyWall");
+                    setSelectedFriend(null);
+                    setSelectedItem(null);
+                    setSearchQuery("");
+                    onMobileClose();
+                  },
+                  icon: <StoryWallIcon />,
+                  testId: "source-row-story-wall",
+                })
+              ) : (
+                <SidebarNavRow
+                  active={activeView === "storyWall"}
+                  count={rowCountsVisible && storyWallCount > 0 ? renderSimpleCount(storyWallCount, activeView === "storyWall") : null}
+                  countTextClass={countTextClass}
+                  icon={renderSidebarRowIcon(<StoryWallIcon />)}
+                  label="Story Wall"
+                  labelClass={sidebarLabelClass}
+                  onClick={() => {
+                    setActiveView("storyWall");
+                    setSelectedFriend(null);
+                    setSelectedItem(null);
+                    setSearchQuery("");
+                    onMobileClose();
+                  }}
+                  rowGapClass={rowGapClass}
+                  rowLeadingPaddingClass={rowLeadingPaddingClass}
+                  rowTextClass={rowTextClass}
+                  rowTrailingPaddingClass={rowTrailingPaddingClass}
+                  rowVerticalPaddingClass={rowVerticalPaddingClass}
+                  testId="source-row-story-wall"
                 />
               )}
             </li>
