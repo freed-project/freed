@@ -26,6 +26,7 @@ import type {
   RssFeed,
 } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
+import { recordRuntimeError } from "../../lib/bug-report.js";
 import {
   buildIdentityGraphLayout,
   buildSpatialIndex,
@@ -174,6 +175,31 @@ interface RegionDisplay {
   container: Container;
   background: Graphics;
   text: Text;
+}
+
+function destroyPixiScene(scene: PixiScene): void {
+  for (const display of scene.nodeDisplays.values()) {
+    if (display.avatarSprite) {
+      display.avatarSprite.mask = null;
+    }
+  }
+  scene.nodeDisplays.clear();
+  scene.regionDisplays.clear();
+  scene.labelDisplays.clear();
+  scene.app.stop();
+  if (scene.app.canvas.isConnected) {
+    scene.app.canvas.remove();
+  }
+  try {
+    scene.app.destroy(true);
+  } catch (error) {
+    recordRuntimeError({
+      source: "friends:graph:pixi-destroy",
+      error,
+      fatal: false,
+    });
+    console.warn("[friends-graph] ignored Pixi teardown error", error);
+  }
 }
 
 type GraphDebugNode = Pick<
@@ -1849,7 +1875,15 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         autoStart: false,
       });
       if (cancelled) {
-        app.destroy(true);
+        try {
+          app.destroy(true);
+        } catch (error) {
+          recordRuntimeError({
+            source: "friends:graph:pixi-init-cancel",
+            error,
+            fatal: false,
+          });
+        }
         return;
       }
 
@@ -1908,8 +1942,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         window.clearTimeout(settleTimerRef.current);
         settleTimerRef.current = null;
       }
-      pixiRef.current?.app.destroy(true);
+      syncSceneRef.current = () => {};
+      const scene = pixiRef.current;
       pixiRef.current = null;
+      if (scene) {
+        destroyPixiScene(scene);
+      }
     };
   }, []);
 
