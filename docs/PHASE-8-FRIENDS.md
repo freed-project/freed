@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, server-proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry, the Friends workspace now defaults to `All content`, and the graph surface uses a WebGL-backed Pixi renderer with a bounded D3 Force worker solve, confirmed friend hubs near the center, provisional human identities in the middle field, linked channel satellites around people, unlinked provider islands around the edge, RSS treated as a normal provider island, drag-to-link reassignment, drag-to-pin placement, semantic zoom labels, AI-ranked suggestion-only friend candidates from local identity and content signals, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map plus Friends surfaces continue to share the unified top toolbar with current, future, and past map windows plus the quieter lower-left timeline scrubber
+> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, server-proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry, the Friends workspace now defaults to `All content`, and the graph surface uses a WebGL-backed Pixi renderer with a bounded D3 Force worker solve, confirmed friend hubs near the center, provisional human identities in the middle field, linked channel satellites around people, unlinked provider islands around the edge, RSS treated as a normal provider island, drag-to-link reassignment, drag-to-pin placement, semantic zoom labels, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map plus Friends surfaces continue to share the unified top toolbar with current, future, and past map windows plus the quieter lower-left timeline scrubber
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -117,11 +117,11 @@ Default nudge intervals by care level:
 
 | Level | Label | Default interval |
 |-------|-------|-----------------|
-| 5 | Closest | 7 days |
-| 4 | Close | 14 days |
-| 3 | Good friend | 30 days |
+| 5 | Fam | 7 days |
+| 4 | High friend | 14 days |
+| 3 | Friend | 30 days |
 | 2 | Acquaintance | 90 days |
-| 1 | Peripheral | Never |
+| 1 | Followed | Never |
 
 ### Device contact import
 
@@ -272,7 +272,11 @@ The layout worker now uses bounded D3 Force ticks for the people field, places c
 Dragging a person or channel now pins its graph position unless the channel is dropped onto a person, in which case the existing link flow wins.
 Sample data now defaults to a showcase graph with 250 friends and 1,250 connected social identities, while the stress fixture covers 1,000 friends and 5,000 connected social identities.
 Semantic zoom now promotes provider island labels at low zoom while delaying person and channel labels until the operator zooms in, so the graph reads as geography first and detail second.
-Suggested friends now appear in the Friends `All content` review flow when existing connection people or unlinked human-looking accounts have enough personal content, recent activity, linked-channel evidence, or Google Contacts overlap. Suggestions are ranked evidence only. Promotion and linking still require explicit operator action.
+Suggested friends now appear in the Friends sidebar for both `Friends` and `All content` review flows when existing connection people or unlinked human-looking accounts have enough personal content, recent activity, linked-channel evidence, or Google Contacts overlap. Suggestions are ranked evidence only. Promotion and linking still require explicit operator action.
+The Friends sidebar now exposes the relationship model as Followed, Friends, and Fam. Those stops map to care levels 1, 3, and 5 without adding a new schema field, leaving levels 2 and 4 available for later fine tuning. Fam content receives a stronger ranking boost, but it still respects the active feed filters.
+Typed social profile search results now expose the same person workflow from the search menu: open the matched profile in Friends, focus them on Map, or promote the linked profile to Friends or Fam without detouring through the graph sidebar.
+
+Reader author names now route directly into the matching Friends channel detail panel, using the existing captured-account workflow so a post can move from reading to identity review in one click.
 
 ---
 
@@ -325,8 +329,9 @@ Suggested friends now appear in the Friends `All content` review flow when exist
 | 8.39 | Persist optional graph placement and support drag-to-pin without breaking drag-to-link | Medium | Done |
 | 8.40 | Expand showcase and stress sample graph coverage to 250 friends plus 1,250 identities and 1,000 friends plus 5,000 identities | Medium | Done |
 | 8.41 | Add semantic zoom hierarchy so provider island labels dominate low zoom and person labels appear at closer zoom | Medium | Done |
-| 8.42 | Search and filter the primary feed by followed social channel names | Medium | Done |
+| 8.42 | Search and filter the primary feed by followed social channel names, with profile navigation and promotion commands | Medium | Done |
 | 8.43 | Add AI-ranked suggestion-only friend candidates from identity graph, contact, activity, and content signals | Medium | Done |
+| 8.44 | Open captured channel details in Friends from the reader author name | Low | Done |
 
 ---
 
@@ -337,7 +342,7 @@ Suggested friends now appear in the Friends `All content` review flow when exist
 - [x] CRM helpers: `isDue`, `effectiveInterval`, `nodeRadius`, `nodeOpacity`
 - [x] Device contact import injected via `PlatformContext`
 - [x] Force graph canvas renders friend nodes with recency + care encoding
-- [x] Reconnect ring attracts overdue close friends
+- [x] Reconnect ring attracts overdue Fam contacts
 - [x] Clicking a node opens a cross-platform timeline
 - [x] Reach-out can be logged and clears the Reconnect ring
 - [x] FriendEditor links social sources and imports contact info
@@ -383,8 +388,9 @@ Suggested friends now appear in the Friends `All content` review flow when exist
 - [x] Optional graph placement fields persist for persons and accounts
 - [x] Dragging a person or channel pins the graph position, while channel drops onto people still link accounts
 - [x] Stress coverage exercises 1,000 friends plus 5,000 connected social identities
-- [x] Primary search can find followed social channels by account name or handle and filter the feed to that exact channel
+- [x] Primary search can find followed social channels by account name or handle, filter the feed to that exact channel, open the profile in Friends or Map, and promote the profile to Friends or Fam
 - [x] Friends `All content` shows ranked suggested friends from connection people and unlinked human-looking accounts, with reasons, signal counts, sample item ids, dismissal, and explicit promotion only
+- [x] Reader author names open the matching captured channel details in Friends
 - [x] Graph benchmarks cover model build time, worker layout time, scene sync time, pan and zoom sync time, selection and hover sync time, visible label count, and quality mode transitions
 - [x] Desktop browser tests cover mixed-tier graph load, drag-to-link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map

@@ -70,12 +70,17 @@ const LOCATION_PATTERNS: RegExp[] = [
   /🌏\s*([^\n,]{2,60})/u,                               // 🌏 Tokyo
   /(?:^|\s)(?:in|at|from)\s+([A-Z][a-z]+(?: [A-Z][a-z]+)*)/u, // "in Paris"
 ];
+const LOCATION_TEXT_SIGNAL_PATTERN = /[📍🌍🌎🌏]|\b(?:in|at|from)\s+[A-Z]/u;
 
 /**
  * Try to extract a place name from free text.
  * Returns the first match or null.
  */
 export function extractLocationFromText(text: string): string | null {
+  if (!LOCATION_TEXT_SIGNAL_PATTERN.test(text)) {
+    return null;
+  }
+
   for (const pattern of LOCATION_PATTERNS) {
     const m = pattern.exec(text);
     if (m?.[1]) return m[1].trim();
@@ -210,6 +215,10 @@ function markerIdentityKey(resolved: ResolvedLocationItem): string {
 
 function coordinateKey(lat: number, lng: number): string {
   return `${lat.toFixed(4)}:${lng.toFixed(4)}`;
+}
+
+function locationGroupKey(identityKey: string, lat: number, lng: number): string {
+  return `${identityKey}:${coordinateKey(lat, lng)}`;
 }
 
 function locationSortTimestamp(
@@ -379,9 +388,12 @@ export function getLatestFriendLocationMarkers(
     (resolved) => resolved.friend?.relationshipStatus === "friend",
   );
   const latestByFriend = new Map<string, ResolvedLocationItem>();
+  const groupCounts = new Map<string, number>();
 
   for (const resolved of filteredItems) {
     if (!resolved.friend) continue;
+    const groupKey = locationGroupKey(resolved.friend.id, resolved.lat, resolved.lng);
+    groupCounts.set(groupKey, (groupCounts.get(groupKey) ?? 0) + 1);
 
     const existing = latestByFriend.get(resolved.friend.id);
     if (
@@ -394,12 +406,7 @@ export function getLatestFriendLocationMarkers(
 
   return Array.from(latestByFriend.values())
     .map((resolved) => {
-      const pointKey = coordinateKey(resolved.lat, resolved.lng);
-      const groupCount = filteredItems.filter(
-        (candidate) =>
-          candidate.friend?.id === resolved.friend?.id &&
-          coordinateKey(candidate.lat, candidate.lng) === pointKey
-      ).length;
+      const groupKey = locationGroupKey(resolved.friend!.id, resolved.lat, resolved.lng);
 
       return {
         key: `friend:${resolved.friend!.id}`,
@@ -409,7 +416,7 @@ export function getLatestFriendLocationMarkers(
         lat: resolved.lat,
         lng: resolved.lng,
         label: resolved.label,
-        groupCount,
+        groupCount: groupCounts.get(groupKey) ?? 1,
         seenAt: locationSortTimestamp(resolved.item, timeMode),
       };
     })
@@ -423,9 +430,13 @@ export function getLatestAuthorLocationMarkers(
   const timeMode = options.timeMode ?? "current";
   const filteredItems = filterResolvedLocationsByTime(resolvedItems, options);
   const latestByAuthor = new Map<string, ResolvedLocationItem>();
+  const groupCounts = new Map<string, number>();
 
   for (const resolved of filteredItems) {
     const authorKey = authorIdentityKey(resolved.item);
+    const groupKey = locationGroupKey(authorKey, resolved.lat, resolved.lng);
+    groupCounts.set(groupKey, (groupCounts.get(groupKey) ?? 0) + 1);
+
     const existing = latestByAuthor.get(authorKey);
     if (
       !existing ||
@@ -437,12 +448,7 @@ export function getLatestAuthorLocationMarkers(
 
   return Array.from(latestByAuthor.entries())
     .map(([authorKey, resolved]) => {
-      const pointKey = coordinateKey(resolved.lat, resolved.lng);
-      const groupCount = filteredItems.filter(
-        (candidate) =>
-          authorIdentityKey(candidate.item) === authorKey &&
-          coordinateKey(candidate.lat, candidate.lng) === pointKey
-      ).length;
+      const groupKey = locationGroupKey(authorKey, resolved.lat, resolved.lng);
 
       return {
         key: authorKey,
@@ -452,7 +458,7 @@ export function getLatestAuthorLocationMarkers(
         lat: resolved.lat,
         lng: resolved.lng,
         label: resolved.label,
-        groupCount,
+        groupCount: groupCounts.get(groupKey) ?? 1,
         seenAt: locationSortTimestamp(resolved.item, timeMode),
       };
     })

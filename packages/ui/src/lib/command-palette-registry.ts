@@ -1,4 +1,4 @@
-import type { Account, FilterOptions, FeedItem, Platform } from "@freed/shared";
+import type { Account, FilterOptions, FeedItem, Person, Platform } from "@freed/shared";
 import { PLATFORM_LABELS } from "@freed/shared";
 import { accountTitle, providerLabel } from "./account-labels.js";
 import { toast } from "../components/Toast.js";
@@ -14,6 +14,7 @@ interface TagFilter {
 interface FeedDestination {
   url: string;
   title: string;
+  searchText?: string;
 }
 
 interface SourceDestination {
@@ -23,6 +24,7 @@ interface SourceDestination {
 
 interface SocialChannelDestination {
   account: Account;
+  person?: Person;
   personName?: string;
 }
 
@@ -46,6 +48,9 @@ interface BuildCommandPaletteActionsOptions {
   navigateToFriends: () => void;
   navigateToMap: () => void;
   navigateToStoryWall?: () => void;
+  navigateToSocialProfileFriends?: ((account: Account, personId: string | null) => void) | null;
+  navigateToSocialProfileMap?: ((account: Account, personId: string | null) => void | Promise<void>) | null;
+  promoteSocialProfile?: ((account: Account, level: 3 | 5) => void | Promise<void>) | null;
   applyFeedSearch: (query: string) => void;
   openAddFeedDialog?: (() => void) | null;
   openSavedContentDialog?: (() => void) | null;
@@ -69,6 +74,10 @@ interface BuildCommandPaletteActionsOptions {
 
 const MAX_TYPED_FEED_ACTIONS = 25;
 const MAX_TYPED_CHANNEL_ACTIONS = 25;
+
+function safeText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
 
 async function runWithToast(
   runner: () => void | Promise<void>,
@@ -121,6 +130,9 @@ export function buildCommandPaletteActions({
   navigateToFriends,
   navigateToMap,
   navigateToStoryWall,
+  navigateToSocialProfileFriends,
+  navigateToSocialProfileMap,
+  promoteSocialProfile,
   applyFeedSearch,
   openAddFeedDialog,
   openSavedContentDialog,
@@ -226,6 +238,9 @@ export function buildCommandPaletteActions({
       : []),
   ];
 
+  const profileActionLabel = (account: Account, person?: Person, personName?: string): string =>
+    person?.name ?? personName ?? accountTitle(account);
+
   for (const source of topSources) {
     actions.push({
       id: `go-source-${source.id ?? "all"}`,
@@ -238,9 +253,18 @@ export function buildCommandPaletteActions({
   }
 
   if (trimmedQuery) {
-    for (const feed of feeds
-      .filter((feed) => candidateMatchesQuery([feed.title, feed.url, "feed", "rss"], normalizedQuery))
-      .slice(0, MAX_TYPED_FEED_ACTIONS)) {
+    const matchingFeeds: Array<{ url: string; title: string }> = [];
+    for (const feed of feeds) {
+      const url = safeText(feed.url);
+      if (!url) continue;
+      const title = safeText(feed.title, url);
+      const searchText = feed.searchText ?? `${title}\n${url}\nfeed\nrss`.toLocaleLowerCase();
+      if (!searchText.includes(normalizedQuery)) continue;
+      matchingFeeds.push({ url, title });
+      if (matchingFeeds.length >= MAX_TYPED_FEED_ACTIONS) break;
+    }
+
+    for (const feed of matchingFeeds) {
       actions.push({
         id: `go-feed-${feed.url}`,
         title: feed.title,
@@ -251,8 +275,9 @@ export function buildCommandPaletteActions({
       });
     }
 
-    for (const { account, personName } of socialChannels
-      .filter(({ account, personName }) =>
+    for (const { account, person, personName } of socialChannels
+      .filter(({ account }) => safeText(account.externalId))
+      .filter(({ account, person, personName }) =>
         candidateMatchesQuery(
           [
             accountTitle(account),
@@ -260,8 +285,9 @@ export function buildCommandPaletteActions({
             account.handle,
             withoutAtPrefix(account.handle),
             account.externalId,
-            account.externalId.slice(-8),
+            safeText(account.externalId).slice(-8),
             providerLabel(account.provider),
+            person?.name,
             personName,
             "channel",
             "social",
@@ -272,14 +298,15 @@ export function buildCommandPaletteActions({
       .slice(0, MAX_TYPED_CHANNEL_ACTIONS)) {
       const label = accountTitle(account);
       const provider = providerLabel(account.provider);
+      const externalId = safeText(account.externalId);
       actions.push({
-        id: `go-channel-${account.provider}-${account.externalId}`,
+        id: `go-channel-${account.provider}-${externalId}`,
         title: label,
         section: "Go to",
         keywords: [
           provider.toLocaleLowerCase(),
-          account.externalId.toLocaleLowerCase(),
-          account.externalId.slice(-8).toLocaleLowerCase(),
+          externalId.toLocaleLowerCase(),
+          externalId.slice(-8).toLocaleLowerCase(),
           account.handle?.toLocaleLowerCase() ?? "",
           withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
           personName?.toLocaleLowerCase() ?? "",
@@ -287,8 +314,100 @@ export function buildCommandPaletteActions({
           "social",
         ].filter(Boolean),
         entity: true,
-        run: () => navigateToFeed({ platform: account.provider as Platform, authorId: account.externalId }),
+        run: () => navigateToFeed({ platform: account.provider as Platform, authorId: externalId }),
       });
+
+      const profileLabel = profileActionLabel(account, person, personName);
+      const personId = person?.id ?? account.personId ?? null;
+
+      if (navigateToSocialProfileFriends) {
+        actions.push({
+          id: `go-profile-friends-${account.id}`,
+          title: `${profileLabel}'s Friends view`,
+          section: "Go to",
+          keywords: [
+            profileLabel.toLocaleLowerCase(),
+            externalId.toLocaleLowerCase(),
+            account.handle?.toLocaleLowerCase() ?? "",
+            withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
+            "friends",
+            "profile",
+            "person",
+            "relationship",
+          ].filter(Boolean),
+          entity: true,
+          run: () => navigateToSocialProfileFriends(account, personId),
+        });
+      }
+
+      if (navigateToSocialProfileMap) {
+        actions.push({
+          id: `go-profile-map-${account.id}`,
+          title: `${profileLabel} on Map`,
+          section: "Go to",
+          keywords: [
+            profileLabel.toLocaleLowerCase(),
+            externalId.toLocaleLowerCase(),
+            account.handle?.toLocaleLowerCase() ?? "",
+            withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
+            "map",
+            "location",
+            "person",
+          ].filter(Boolean),
+          entity: true,
+          run: () => navigateToSocialProfileMap(account, personId),
+        });
+      }
+
+      if (promoteSocialProfile) {
+        const alreadyFriend = person?.relationshipStatus === "friend";
+        const alreadyCloseFriend = alreadyFriend && person.careLevel >= 5;
+        if (!alreadyFriend) {
+          actions.push({
+            id: `promote-profile-friend-${account.id}`,
+            title: `Promote ${profileLabel} to friend`,
+            section: "People",
+            keywords: [
+              profileLabel.toLocaleLowerCase(),
+              externalId.toLocaleLowerCase(),
+              account.handle?.toLocaleLowerCase() ?? "",
+              withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
+              "friend",
+              "promote",
+              "relationship",
+            ].filter(Boolean),
+            entity: true,
+            run: () =>
+              runWithToast(
+                () => promoteSocialProfile(account, 3),
+                `${profileLabel} promoted to friend`,
+              ),
+          });
+        }
+        if (!alreadyCloseFriend) {
+          actions.push({
+            id: `promote-profile-close-friend-${account.id}`,
+            title: `Promote ${profileLabel} to close friend`,
+            section: "People",
+            keywords: [
+              profileLabel.toLocaleLowerCase(),
+              externalId.toLocaleLowerCase(),
+              account.handle?.toLocaleLowerCase() ?? "",
+              withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
+              "close friend",
+              "fam",
+              "promote",
+              "relationship",
+            ].filter(Boolean),
+            entity: true,
+            run: () =>
+              runWithToast(
+                () => promoteSocialProfile(account, 5),
+                `${profileLabel} promoted to close friend`,
+              ),
+          });
+        }
+      }
     }
   }
 

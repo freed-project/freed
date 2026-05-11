@@ -94,4 +94,38 @@ describe("createMarkerElement", () => {
 
     expect(element.textContent).toContain((1234).toLocaleString());
   });
+
+  it("can skip avatar images for dense map marker sets", () => {
+    const element = createMarkerElement(marker(), palette, { showAvatar: false });
+
+    expect(element.querySelector("img")).toBeNull();
+    expect(element.querySelector("[data-avatar-fallback]")?.textContent).toBe("L");
+  });
+
+  it("labels decorative marker layers so map movement can suppress paint-heavy chrome", () => {
+    const element = createMarkerElement(marker({ groupCount: 1234 }), palette);
+
+    expect(element.querySelector(".freed-map-marker-body")).toBeInstanceOf(HTMLDivElement);
+    expect(element.style.contain).toBe("layout paint style");
+    expect(element.querySelector(".freed-map-marker-glow")).toBeInstanceOf(HTMLDivElement);
+    expect(element.querySelector(".freed-map-marker-image")).toBeInstanceOf(HTMLImageElement);
+    expect(element.querySelector(".freed-map-marker-tint")).toBeInstanceOf(HTMLDivElement);
+    expect(element.querySelector(".freed-map-marker-halo")).toBeInstanceOf(HTMLDivElement);
+    expect(element.querySelector(".freed-map-marker-badge")).toBeInstanceOf(HTMLDivElement);
+  });
+
+  it("can simplify dense marker chrome", () => {
+    const element = createMarkerElement(marker({ groupCount: 1234 }), palette, {
+      showAvatar: false,
+      simplified: true,
+    });
+
+    expect(element.getAttribute("data-map-marker-simplified")).toBe("true");
+    expect(element.querySelector("img")).toBeNull();
+    expect(element.querySelector("[data-avatar-fallback]")?.textContent).toBe("L");
+    expect(element.querySelector(".freed-map-marker-glow")).toBeNull();
+    expect(element.querySelector(".freed-map-marker-tint")).toBeNull();
+    expect(element.querySelector(".freed-map-marker-halo")).toBeNull();
+    expect(element.querySelector(".freed-map-marker-badge")).toBeNull();
+  });
 });

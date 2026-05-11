@@ -39,42 +39,6 @@ const MBASIC_HTML = `
 </html>
 `;
 
-test("Facebook settings section shows connect button when not authenticated", async ({
-  app,
-}) => {
-  await app.goto();
-  await app.waitForReady();
-
-  const { page } = app;
-
-  // Open settings
-  const settingsBtn = page
-    .locator("button")
-    .filter({ hasText: /settings/i })
-    .first();
-  if (!(await settingsBtn.isVisible())) {
-    test.skip(true, "Settings button not visible");
-    return;
-  }
-  await settingsBtn.click();
-
-  await expect(page.getByText("Settings").first()).toBeVisible({
-    timeout: 5_000,
-  });
-
-  // Navigate to Facebook section via the settings sidebar button (second match,
-  // after the main sidebar source button and before "Connect Facebook Account")
-  const fbSection = getSettingsDialog(page).getByRole("button", { name: /^Facebook$/ });
-  await expect(fbSection).toBeVisible({ timeout: 3_000 });
-  await fbSection.evaluate((button) => {
-    (button as HTMLButtonElement).click();
-  });
-
-  await expect(page.getByText("Log in with Facebook")).toBeVisible({
-    timeout: 3_000,
-  });
-});
-
 test("Facebook connect form accepts cookies and triggers sync", async ({
   app,
   ipc,

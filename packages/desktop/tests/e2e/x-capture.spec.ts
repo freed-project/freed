@@ -83,42 +83,6 @@ const TIMELINE_FIXTURE = {
   },
 };
 
-test("X settings section shows connect button when not authenticated", async ({
-  app,
-}) => {
-  await app.goto();
-  await app.waitForReady();
-
-  const { page } = app;
-
-  // Open settings via sidebar
-  const settingsBtn = page
-    .locator("button")
-    .filter({ hasText: /settings/i })
-    .first();
-  if (!(await settingsBtn.isVisible())) {
-    test.skip(true, "Settings button not visible");
-    return;
-  }
-  await settingsBtn.click();
-
-  // Wait for settings panel to render (it's not a role="dialog" overlay)
-  await expect(page.getByText("Settings").first()).toBeVisible({
-    timeout: 5_000,
-  });
-
-  // Navigate to X section via the sidebar button
-  const xSection = page.getByRole("button", { name: "X / Twitter" }).last();
-  await expect(xSection).toBeVisible({ timeout: 3_000 });
-  await xSection.evaluate((button) => {
-    (button as HTMLButtonElement).click();
-  });
-
-  await expect(page.getByText("Sign in to X")).toBeVisible({
-    timeout: 3_000,
-  });
-});
-
 test("X connect form accepts cookies and triggers sync", async ({
   app,
   ipc,

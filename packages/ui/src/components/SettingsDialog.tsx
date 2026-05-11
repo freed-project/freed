@@ -5,11 +5,10 @@
  * sections stacked. Scroll position drives scrollspy so the nav always reflects
  * which section is currently in view.
  *
- * Mobile: single-column. The nav is a full-screen list; tapping any section
- * "pushes" to that section's content with a back button (iOS-style).
+ * Mobile: single-column with stacked sections and compact spacing.
  */
 
-import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   formatReleaseVersion,
   RELEASE_CHANNEL_LABELS,
@@ -103,6 +102,8 @@ type ProviderAuthSlices = {
 };
 const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
 const INSTALLED_BUILD_PRESENTATION = describeInstalledBuild(readBuildMetadata());
+const SETTINGS_OVERVIEW_ROW_TEXT = "text-base sm:text-xs";
+const SETTINGS_INTERACTION_BLUR_RESTORE_MS = 380;
 
 function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId {
   return (
@@ -180,11 +181,6 @@ const ICONS: Record<SectionId, ReactNode> = {
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3l7.5 3v6c0 5.25-3.34 9.922-7.5 11.25C7.84 21.922 4.5 17.25 4.5 12V6L12 3z" />
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 12.75l1.5 1.5 3-3.75" />
-    </svg>
-  ),
-  support: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 8h10M7 12h7m-5 8l-4-4H4a2 2 0 01-2-2V6a2 2 0 012-2h16a2 2 0 012 2v8a2 2 0 01-2 2h-7l-4 4z" />
     </svg>
   ),
   appearance: (
@@ -285,52 +281,82 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const themeBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const interactionBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const interactionBlurLastAtRef = useRef(0);
   const themeSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingThemeIdRef = useRef<ThemeId | null>(null);
   const pendingThemeSaveSeqRef = useRef(0);
   const committedThemeIdRef = useRef(preferences.display.themeId);
+  const settingsOverlayRef = useRef<HTMLDivElement>(null);
+  const settingsShellRef = useRef<HTMLDivElement>(null);
   const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
-  const allSections: Section[] = buildSettingsSectionMetas({
-    hasGoogleContacts: !!GoogleContactsSettingsContent,
-    hasX: !!XSettingsContent,
-    hasFacebook: !!FacebookSettingsContent,
-    hasInstagram: !!InstagramSettingsContent,
-    hasLinkedIn: !!LinkedInSettingsContent,
-    hasUpdateChecks: !!checkForUpdates,
-    hasFactoryReset: !!factoryReset,
-  }).map((section) => ({
-    ...section,
-    icon: ICONS[section.id],
-  }));
+  const allSections: Section[] = useMemo(
+    () =>
+      buildSettingsSectionMetas({
+        hasGoogleContacts: !!GoogleContactsSettingsContent,
+        hasX: !!XSettingsContent,
+        hasFacebook: !!FacebookSettingsContent,
+        hasInstagram: !!InstagramSettingsContent,
+        hasLinkedIn: !!LinkedInSettingsContent,
+        hasUpdateChecks: !!checkForUpdates,
+        hasFactoryReset: !!factoryReset,
+      }).map((section) => ({
+        ...section,
+        icon: ICONS[section.id],
+      })),
+    [
+      GoogleContactsSettingsContent,
+      XSettingsContent,
+      FacebookSettingsContent,
+      InstagramSettingsContent,
+      LinkedInSettingsContent,
+      checkForUpdates,
+      factoryReset,
+    ],
+  );
 
   // Hierarchical nav structure — drives left sidebar rendering only.
   // Re-use the Section objects already defined in allSections so keywords stay in sync.
-  const sectionById = Object.fromEntries(allSections.map((s) => [s.id, s])) as Record<SectionId, Section>;
-  const navStructure: NavStructureItem[] = [
-    sectionById.appearance,
-    sectionById.sync,
-    {
-      kind: "group",
-      label: "Sources",
-      icon: ICON_SOURCES,
-      children: [
-        sectionById.saved,
-        ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
-        ...(XSettingsContent ? [sectionById.x] : []),
-        ...(FacebookSettingsContent ? [sectionById.facebook] : []),
-        ...(InstagramSettingsContent ? [sectionById.instagram] : []),
-        ...(LinkedInSettingsContent ? [sectionById.linkedin] : []),
-        sectionById.feeds,
-      ],
-    },
-    sectionById.ai,
-    ...(checkForUpdates ? [sectionById.updates] : []),
-    sectionById.legal,
-    sectionById.support,
-    ...(factoryReset ? [sectionById.danger] : []),
-  ];
+  const sectionById = useMemo(
+    () => Object.fromEntries(allSections.map((s) => [s.id, s])) as Record<SectionId, Section>,
+    [allSections],
+  );
+  const navStructure: NavStructureItem[] = useMemo(
+    () => [
+      sectionById.appearance,
+      sectionById.sync,
+      {
+        kind: "group",
+        label: "Sources",
+        icon: ICON_SOURCES,
+        children: [
+          sectionById.saved,
+          ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
+          ...(XSettingsContent ? [sectionById.x] : []),
+          ...(FacebookSettingsContent ? [sectionById.facebook] : []),
+          ...(InstagramSettingsContent ? [sectionById.instagram] : []),
+          ...(LinkedInSettingsContent ? [sectionById.linkedin] : []),
+          sectionById.feeds,
+        ],
+      },
+      sectionById.ai,
+      ...(checkForUpdates ? [sectionById.updates] : []),
+      sectionById.legal,
+      ...(factoryReset ? [sectionById.danger] : []),
+    ],
+    [
+      FacebookSettingsContent,
+      GoogleContactsSettingsContent,
+      InstagramSettingsContent,
+      LinkedInSettingsContent,
+      XSettingsContent,
+      checkForUpdates,
+      factoryReset,
+      sectionById,
+    ],
+  );
 
   // ── Preferences state ────────────────────────────────────────────────────
   const [display, setDisplay] = useState(() => preferences.display);
@@ -418,10 +444,17 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (open) return;
     setThemePreviewHovering(false);
     setThemePreviewTouchActive(false);
+    delete settingsOverlayRef.current?.dataset.moving;
+    delete settingsShellRef.current?.dataset.moving;
     if (themeBlurRestoreTimerRef.current) {
       clearTimeout(themeBlurRestoreTimerRef.current);
       themeBlurRestoreTimerRef.current = null;
     }
+    if (interactionBlurRestoreTimerRef.current) {
+      clearTimeout(interactionBlurRestoreTimerRef.current);
+      interactionBlurRestoreTimerRef.current = null;
+    }
+    interactionBlurLastAtRef.current = 0;
     flushPendingThemeSelectionNow();
   }, [flushPendingThemeSelectionNow, open]);
 
@@ -430,6 +463,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       if (themeBlurRestoreTimerRef.current) {
         clearTimeout(themeBlurRestoreTimerRef.current);
       }
+      if (interactionBlurRestoreTimerRef.current) {
+        clearTimeout(interactionBlurRestoreTimerRef.current);
+        delete settingsOverlayRef.current?.dataset.moving;
+        delete settingsShellRef.current?.dataset.moving;
+      }
+      interactionBlurLastAtRef.current = 0;
       flushPendingThemeSelectionNow();
     };
   }, [flushPendingThemeSelectionNow]);
@@ -445,6 +484,43 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       themeBlurRestoreTimerRef.current = null;
     }, 5000);
   }, [hasCoarsePointer]);
+
+  const suppressBackdropDuringInteraction = useCallback(() => {
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    interactionBlurLastAtRef.current = now;
+    if (interactionBlurRestoreTimerRef.current) {
+      return;
+    }
+
+    const overlay = settingsOverlayRef.current;
+    const shell = settingsShellRef.current;
+    if (overlay && overlay.dataset.moving !== "true") {
+      overlay.dataset.moving = "true";
+    }
+    if (shell && shell.dataset.moving !== "true") {
+      shell.dataset.moving = "true";
+    }
+
+    const restoreWhenIdle = () => {
+      const current = typeof performance !== "undefined" ? performance.now() : Date.now();
+      const elapsed = current - interactionBlurLastAtRef.current;
+      const remaining = SETTINGS_INTERACTION_BLUR_RESTORE_MS - elapsed;
+      if (remaining > 0) {
+        interactionBlurRestoreTimerRef.current = setTimeout(restoreWhenIdle, remaining);
+        return;
+      }
+
+      delete settingsOverlayRef.current?.dataset.moving;
+      delete settingsShellRef.current?.dataset.moving;
+      interactionBlurRestoreTimerRef.current = null;
+      interactionBlurLastAtRef.current = 0;
+    };
+
+    interactionBlurRestoreTimerRef.current = setTimeout(
+      restoreWhenIdle,
+      SETTINGS_INTERACTION_BLUR_RESTORE_MS,
+    );
+  }, []);
 
   const handleThemeCommit = useCallback((themeId: ThemeId) => {
     activateTouchThemePreview();
@@ -588,6 +664,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [deleteFromCloud, setDeleteFromCloud] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [showSampleSeedConfirm, setShowSampleSeedConfirm] = useState(false);
+  const [supportModalOpen, setSupportModalOpen] = useState(false);
 
   const handleReset = useCallback(async () => {
     if (!factoryReset) return;
@@ -658,17 +735,34 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   // ── Search ────────────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
   const searchLower = search.toLowerCase().trim();
-  const visibleSections = searchLower
-    ? allSections.filter((s) =>
-        s.label.toLowerCase().includes(searchLower) ||
-        s.keywords.some((k) => k.includes(searchLower)),
-      )
-    : allSections;
+  const visibleSections = useMemo(
+    () =>
+      searchLower
+        ? allSections.filter((s) =>
+            s.label.toLowerCase().includes(searchLower) ||
+            s.keywords.some((k) => k.includes(searchLower)),
+          )
+        : allSections,
+    [allSections, searchLower],
+  );
 
   // ── Scrollspy ────────────────────────────────────────────────────────────
-  const [activeSection, setActiveSection] = useState<SectionId>("legal");
+  const [activeSection, setActiveSection] = useState<SectionId>("appearance");
   const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeSectionRef = useRef(activeSection);
+  const renderedSectionIds = useMemo(() => {
+    if (isMobile || searchLower) {
+      return new Set(visibleSections.map((section) => section.id));
+    }
+
+    const activeIndex = Math.max(0, allSections.findIndex((section) => section.id === activeSection));
+    const ids = new Set<SectionId>();
+    for (let index = Math.max(0, activeIndex - 1); index <= Math.min(allSections.length - 1, activeIndex + 1); index += 1) {
+      ids.add(allSections[index].id);
+    }
+    return ids;
+  }, [activeSection, allSections, isMobile, searchLower, visibleSections]);
 
   // Keep a ref in sync with updateState.status so scroll/visibility callbacks
   // always read the current value without needing to be re-created.
@@ -683,6 +777,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     ? "calc(2rem + env(safe-area-inset-bottom, 0px))"
     : "calc(8rem + env(safe-area-inset-bottom, 0px))";
 
+  useEffect(() => {
+    activeSectionRef.current = activeSection;
+  }, [activeSection]);
+
   // Auto-check when the button enters the scroll container's visible area.
   // Re-checks each time the button transitions from hidden → visible, so scrolling
   // away and back triggers a fresh check (once the previous check has settled).
@@ -694,15 +792,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     let wasVisible = false;
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-    const check = () => {
+    const setVisible = (isVisible: boolean) => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        const btn = checkButtonRef.current;
-        if (!btn) return;
-        const rootRect = root.getBoundingClientRect();
-        const btnRect = btn.getBoundingClientRect();
-        const isVisible = btnRect.bottom > rootRect.top && btnRect.top < rootRect.bottom;
-
         if (isVisible && !wasVisible && updateStatusRef.current === "idle") {
           handleCheckForUpdates();
         }
@@ -710,11 +802,35 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       }, 120);
     };
 
-    check();
-    root.addEventListener("scroll", check, { passive: true });
+    const checkNow = () => {
+      const btn = checkButtonRef.current;
+      if (!btn) return;
+      const rootRect = root.getBoundingClientRect();
+      const btnRect = btn.getBoundingClientRect();
+      setVisible(btnRect.bottom > rootRect.top && btnRect.top < rootRect.bottom);
+    };
+
+    if (typeof IntersectionObserver === "undefined") {
+      checkNow();
+      root.addEventListener("scroll", checkNow, { passive: true });
+      return () => {
+        clearTimeout(debounceTimer);
+        root.removeEventListener("scroll", checkNow);
+      };
+    }
+
+    const btn = checkButtonRef.current;
+    if (!btn) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setVisible(entry?.isIntersecting === true);
+      },
+      { root, threshold: 0 },
+    );
+    observer.observe(btn);
     return () => {
       clearTimeout(debounceTimer);
-      root.removeEventListener("scroll", check);
+      observer.disconnect();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, checkForUpdates]);
@@ -777,6 +893,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   useEffect(() => {
     const root = scrollRef.current;
     if (!root || searchLower || (isMobile && mobileView === "nav")) return;
+    let scrollIdleTimer: ReturnType<typeof setTimeout> | undefined;
+    const supportsScrollEnd = "onscrollend" in root;
 
     const updateActiveSectionFromScroll = () => {
       if (isScrollingProgrammatically.current) return;
@@ -799,18 +917,39 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         }
       }
 
-      setActiveSection(nextActive);
+      if (nextActive !== activeSectionRef.current) {
+        activeSectionRef.current = nextActive;
+        setActiveSection(nextActive);
+      }
+    };
+
+    const scheduleActiveSectionUpdate = () => {
+      suppressBackdropDuringInteraction();
+      if (supportsScrollEnd) {
+        return;
+      }
+      clearTimeout(scrollIdleTimer);
+      scrollIdleTimer = setTimeout(() => {
+        updateActiveSectionFromScroll();
+      }, 140);
     };
 
     updateActiveSectionFromScroll();
-    root.addEventListener("scroll", updateActiveSectionFromScroll, { passive: true });
-    window.addEventListener("resize", updateActiveSectionFromScroll);
+    root.addEventListener("scroll", scheduleActiveSectionUpdate, { passive: true });
+    if (supportsScrollEnd) {
+      root.addEventListener("scrollend", updateActiveSectionFromScroll);
+    }
+    window.addEventListener("resize", scheduleActiveSectionUpdate);
 
     return () => {
-      root.removeEventListener("scroll", updateActiveSectionFromScroll);
-      window.removeEventListener("resize", updateActiveSectionFromScroll);
+      clearTimeout(scrollIdleTimer);
+      root.removeEventListener("scroll", scheduleActiveSectionUpdate);
+      if (supportsScrollEnd) {
+        root.removeEventListener("scrollend", updateActiveSectionFromScroll);
+      }
+      window.removeEventListener("resize", scheduleActiveSectionUpdate);
     };
-  }, [isMobile, mobileView, open, searchLower]);
+  }, [isMobile, mobileView, open, searchLower, suppressBackdropDuringInteraction]);
 
   const scrollToSection = useCallback((id: SectionId) => {
     setActiveSection(id);
@@ -836,13 +975,23 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (!open) {
       setSearch("");
       setMobileView("nav");
+      setSupportModalOpen(false);
     }
   }, [open]);
 
-  // Scroll to a programmatically requested section (e.g. nudge → Sync)
+  // Scroll to a programmatically requested section.
   const { targetSection, clearTarget } = useSettingsStore();
   useEffect(() => {
     if (!open || !targetSection) return;
+    if (targetSection === "support") {
+      setSupportModalOpen(true);
+      clearTarget();
+      return;
+    }
+    if (!allSections.some((section) => section.id === targetSection)) {
+      clearTarget();
+      return;
+    }
     const rafId = requestAnimationFrame(() => {
       setActiveSection(targetSection as SectionId);
       isScrollingProgrammatically.current = true;
@@ -855,7 +1004,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       clearTarget();
     });
     return () => cancelAnimationFrame(rafId);
-  }, [clearTarget, open, scrollSectionIntoView, targetSection]);
+  }, [allSections, clearTarget, open, scrollSectionIntoView, targetSection]);
 
   // Body scroll lock
   useEffect(() => {
@@ -896,9 +1045,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   function renderSectionBlock(id: SectionId) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
-    const sectionMinHeight = isMobile && mobileView !== "section"
-      ? "100%"
-      : "calc(100% + 20rem)";
+    const sectionStyle: CSSProperties | undefined = isMobile
+      ? undefined
+      : {
+          minHeight: "calc(100% + 20rem)",
+          contain: "layout paint style",
+        };
+    const shouldRenderContent = renderedSectionIds.has(id);
 
     // SectionContent and this wrapper both stay plain function calls because
     // they are defined inside SettingsDialog. Rendering either as JSX would
@@ -908,10 +1061,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     return (
       <section
         data-section={id}
-        className="flex flex-col pb-8"
-        style={{ minHeight: sectionMinHeight }}
+        className={isMobile ? "flex flex-col pb-2" : "flex flex-col pb-8"}
+        style={sectionStyle}
       >
-        {SectionContent({ id })}
+        {shouldRenderContent ? SectionContent({ id }) : null}
       </section>
     );
   }
@@ -1065,14 +1218,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="Legal" />
             {LegalSettingsContent ? <LegalSettingsContent /> : null}
-          </>
-        );
-
-      case "support":
-        return (
-          <>
-            <SectionHeading label="Support" />
-            <ReportComposer />
           </>
         );
 
@@ -1250,7 +1395,16 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return factoryReset ? (
           <>
             <SectionHeading label="Danger Zone" danger />
-            <div className="space-y-6">
+            <div className="space-y-3 sm:space-y-6">
+              <button
+                onClick={() => setSupportModalOpen(true)}
+                className="w-full rounded-xl bg-[var(--theme-bg-muted)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--theme-bg-card-hover)]"
+              >
+                <div>
+                  <p className="text-sm text-[var(--theme-text-secondary)]">Submit support ticket</p>
+                  <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">Share diagnostics and describe what broke</p>
+                </div>
+              </button>
               <button
                 onClick={() => {
                   onClose();
@@ -1328,7 +1482,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         onClick={() => scrollToSection(section.id)}
         aria-current={isActive ? "location" : undefined}
         data-active={isActive ? "true" : "false"}
-        className={`w-full flex items-center gap-2 text-left text-xs transition-colors rounded-md ${
+        className={`w-full flex items-center gap-2 text-left ${SETTINGS_OVERVIEW_ROW_TEXT} transition-colors rounded-md ${
           indented ? "pl-7 pr-2 py-2" : "px-2 py-2"
         } ${
           isActive
@@ -1374,7 +1528,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   onClick={() => scrollToSection(item.children[0].id)}
                   aria-current={isGroupActive ? "location" : undefined}
                   data-active={isGroupActive ? "true" : "false"}
-                  className={`w-full flex items-center gap-2 px-2 py-2 text-left text-xs transition-colors rounded-md ${
+                  className={`w-full flex items-center gap-2 px-2 py-2 text-left ${SETTINGS_OVERVIEW_ROW_TEXT} transition-colors rounded-md ${
                     isGroupActive
                       ? "text-[var(--theme-accent-secondary)]"
                       : "text-text-secondary hover:text-text-primary hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)]"
@@ -1404,12 +1558,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
       {/* Backdrop */}
       <div
+        ref={settingsOverlayRef}
         className={`theme-settings-overlay absolute inset-0 ${themeBackdropSuppressed ? "theme-settings-overlay-preview-off" : ""}`}
         onClick={onClose}
       />
 
       {/* Panel */}
       <div
+        ref={settingsShellRef}
         className={`
           theme-dialog-shell theme-settings-shell relative z-10 flex w-full flex-col
           h-[100dvh] rounded-none
@@ -1443,9 +1599,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             className="flex shrink-0 items-center justify-between px-4 pb-1.5 pt-2 sm:hidden"
             style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
           >
-            <h2 className="text-sm font-semibold text-text-primary">Settings</h2>
+            <h2 className="text-base font-semibold text-text-primary">Settings</h2>
             <CloseButton
-              testId={isMobile ? "settings-close-button-sidebar" : undefined}
+              testId={isMobile && mobileView === "nav" ? "settings-close-button-mobile" : undefined}
               className="-mr-1"
             />
           </div>
@@ -1454,8 +1610,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <div className="px-3 pb-2 pt-1 shrink-0 sm:pt-2">
             <SearchField
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onClear={() => setSearch("")}
+              onChange={(e) => {
+                suppressBackdropDuringInteraction();
+                setSearch(e.target.value);
+              }}
+              onClear={() => {
+                suppressBackdropDuringInteraction();
+                setSearch("");
+              }}
               placeholder="Search settings"
               aria-label="Search settings"
               density="compact"
@@ -1499,7 +1661,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             ${mobileView === "nav" ? "hidden sm:flex" : "flex"}
           `}
         >
-          {/* Mobile back button + section title */}
           <div
             className="theme-dialog-divider sm:hidden flex shrink-0 items-center justify-between gap-3 border-b px-4 pb-2 pt-2"
             style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
@@ -1520,17 +1681,19 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               </span>
             </button>
             <CloseButton
-              testId="settings-close-button-mobile"
+              testId={isMobile && mobileView === "section" ? "settings-close-button-mobile" : undefined}
               className="-mr-1 shrink-0"
             />
           </div>
 
-          {/* Scrollable sections */}
           <div
             ref={scrollRef}
             data-testid="settings-scroll-container"
-            className="flex-1 overflow-y-auto px-6 pt-6 [&>section+section]:mt-24"
-            style={{ paddingBottom: scrollContainerBottomPadding }}
+            onPointerEnter={suppressBackdropDuringInteraction}
+            className="theme-settings-scrollport flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
+            style={{
+              paddingBottom: scrollContainerBottomPadding,
+            }}
           >
             {searchLower && visibleSections.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center gap-2 pb-16 text-center">
@@ -1677,6 +1840,29 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           </div>
         </div>
       )}
+
+      {supportModalOpen && (
+        <div className="theme-elevated-overlay absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 sm:items-center">
+          <div className="theme-dialog-shell theme-settings-shell my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden">
+            <div className="theme-dialog-divider flex shrink-0 items-center justify-between border-b px-4 py-3">
+              <h2 className="text-base font-semibold text-text-primary">Support</h2>
+              <button
+                type="button"
+                onClick={() => setSupportModalOpen(false)}
+                aria-label="Close support"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-[28px] text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="minimal-scroll flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+              <ReportComposer />
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body,
   );
@@ -1733,7 +1919,7 @@ function UpToDateBadge() {
 function SectionHeading({ label, danger }: { label: string; danger?: boolean }) {
   return (
     <h3
-      className={`text-sm font-semibold uppercase tracking-wide mb-5 ${
+      className={`mb-4 text-base font-semibold uppercase tracking-wide sm:mb-5 sm:text-sm ${
         danger ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.64)]" : "text-text-muted"
       }`}
     >

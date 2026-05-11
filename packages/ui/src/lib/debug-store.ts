@@ -52,15 +52,32 @@ export interface DocSnapshot {
 export interface RuntimeMemorySnapshot {
   totalPhysicalMemoryBytes?: number;
   processResidentBytes: number;
+  processFootprintBytes?: number;
   processVirtualBytes: number;
   appResidentBytes?: number;
+  appMemoryPressureBytes?: number;
   webkitResidentBytes?: number;
+  webkitFootprintBytes?: number;
   webkitVirtualBytes?: number;
   webkitProcessId?: number;
   webkitTotalResidentBytes?: number;
+  webkitTotalFootprintBytes?: number;
   webkitProcessCount?: number;
   webkitLargestResidentBytes?: number;
+  webkitLargestFootprintBytes?: number;
   webkitLargestProcessId?: number;
+  webkitLargestCpuUsage?: number;
+  webkitLargestAgeSeconds?: number;
+  webkitLargestRole?: string;
+  webkitProcesses?: Array<{
+    processId: number;
+    residentBytes: number;
+    footprintBytes?: number;
+    virtualBytes: number;
+    cpuUsage: number;
+    ageSeconds: number;
+    role: string;
+  }>;
   webkitTelemetryAvailable?: boolean;
   automergeBinaryBytes?: number;
   automergeItemCount?: number;

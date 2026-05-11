@@ -19,6 +19,7 @@ import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
   createEmptyDoc,
+  createDocFromData,
   addAccount,
   addAccounts,
   backfillContentSignals,
@@ -39,8 +40,7 @@ import {
   markItemsAsRead,
   toggleSaved,
   toggleArchived,
-  archiveAllReadUnsaved,
-  unarchiveSavedItems,
+  archiveItemsById,
   pruneArchivedItems,
   deleteAllArchivedItems,
   updatePreferences,
@@ -54,7 +54,13 @@ import {
   confirmLikedSynced,
   confirmSeenSynced,
 } from "@freed/shared/schema";
-import { mergeDefaultPreferences, rankFeedItems } from "@freed/shared";
+import {
+  countAuthorsWithRecentLocationUpdates,
+  countFriendsWithRecentLocationUpdates,
+  mergeDefaultPreferences,
+  rankFeedItems,
+  sortByPriority,
+} from "@freed/shared";
 import type { Account, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
 import {
@@ -62,6 +68,12 @@ import {
   persistDoc,
   type AutomergePersistenceState,
 } from "./automerge-persistence";
+import {
+  createFeedTextCompactionSummary,
+  compactFeedItemTextForSync,
+  compactFeedItemsTextForSync,
+  formatFeedTextCompactionSummary,
+} from "./feed-text-compaction";
 
 // ---------------------------------------------------------------------------
 // State
@@ -79,7 +91,12 @@ let searchCorpusVersion = 0;
 const SLOW_QUEUE_WAIT_MS = 1_000;
 const SLOW_REQUEST_PROCESS_MS = 5_000;
 const SLOW_SAVE_AND_BROADCAST_MS = 2_000;
-const DESKTOP_UI_PRESERVED_TEXT_LIMIT = 3_000;
+const DESKTOP_UI_PRESERVED_TEXT_LIMIT = 0;
+const DESKTOP_UI_CONTENT_TEXT_LIMIT = 280;
+const DESKTOP_UI_LINK_DESCRIPTION_LIMIT = 180;
+const FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES = 4 * 1024 * 1024;
+const FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES = 16 * 1024 * 1024;
+const FRESH_DOC_REBUILD_MIN_SAVINGS_RATIO = 0.1;
 
 interface RequestTrace {
   reqId: number;
@@ -183,6 +200,57 @@ function migrateLoadedIdentityGraph(message: string): void {
   });
 }
 
+function compactLoadedFeedText(
+  message: string,
+  options: { rebuildHistory?: boolean; previousBinaryBytes?: number } = {},
+): void {
+  if (!currentDoc) return;
+  let summary = createFeedTextCompactionSummary();
+  currentDoc = A.change(currentDoc, message, (doc) => {
+    summary = compactFeedItemsTextForSync(Object.values(doc.feedItems) as FeedItem[]);
+  });
+  if (summary.changed > 0) {
+    bumpSearchCorpusVersion();
+    emitWorkerTrace(
+      `[automerge-worker] ${message}: ${formatFeedTextCompactionSummary(summary)}`,
+      "change",
+    );
+  }
+
+  const previousBinaryBytes = options.previousBinaryBytes ?? currentBinary?.byteLength ?? 0;
+  if (!options.rebuildHistory) return;
+  const shouldRebuildForChangedText =
+    summary.changed > 0 && previousBinaryBytes >= FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES;
+  const shouldProbeLargeHistory = previousBinaryBytes >= FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES;
+  if (!shouldRebuildForChangedText && !shouldProbeLargeHistory) return;
+
+  const plain = A.toJS(currentDoc) as Partial<FreedDoc>;
+  const rebuiltDoc = createDocFromData(plain);
+  const rebuiltBinary = A.save(rebuiltDoc);
+  const bytesSaved = previousBinaryBytes - rebuiltBinary.byteLength;
+  const minHistorySavings = previousBinaryBytes * FRESH_DOC_REBUILD_MIN_SAVINGS_RATIO;
+  if (!shouldRebuildForChangedText && bytesSaved < minHistorySavings) {
+    emitWorkerTrace(
+      `[automerge-worker] kept existing compacted document history` +
+        ` previous_bytes=${previousBinaryBytes.toLocaleString()}` +
+        ` rebuilt_bytes=${rebuiltBinary.byteLength.toLocaleString()}`,
+      "change",
+    );
+    return;
+  }
+
+  currentDoc = rebuiltDoc;
+  currentBinary = rebuiltBinary;
+  persistenceState = createPersistenceState(rebuiltBinary);
+  emitWorkerTrace(
+    `[automerge-worker] rebuilt compacted document` +
+      ` previous_bytes=${previousBinaryBytes.toLocaleString()}` +
+      ` rebuilt_bytes=${rebuiltBinary.byteLength.toLocaleString()}` +
+      ` saved_bytes=${Math.max(0, bytesSaved).toLocaleString()}`,
+    "change",
+  );
+}
+
 function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean {
   if (
     "author" in updates ||
@@ -210,14 +278,118 @@ function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean 
 
 function cloneFeedItemForPatch(item: FeedItem): FeedItem {
   const cloned = JSON.parse(JSON.stringify(item)) as FeedItem;
-  const preservedText = cloned.preservedContent?.text;
-  if (cloned.preservedContent && preservedText && preservedText.length > DESKTOP_UI_PRESERVED_TEXT_LIMIT) {
-    cloned.preservedContent = {
-      ...cloned.preservedContent,
-      text: preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT),
+  return trimFeedItemForDesktopUi(cloned);
+}
+
+function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
+  let next: FeedItem = item;
+  const preservedContent = item.preservedContent;
+  const preservedText = preservedContent?.text;
+  if (preservedContent && preservedText && preservedText.length > DESKTOP_UI_PRESERVED_TEXT_LIMIT) {
+    // The reader asks the worker for full preserved text on demand. Keeping
+    // it in every renderer item makes all non-reader surfaces pay for it.
+    next = {
+      ...next,
+      preservedContent: {
+        ...preservedContent,
+        text: preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT),
+      },
     };
   }
-  return cloned;
+
+  const contentText = next.content.text;
+  if (contentText && contentText.length > DESKTOP_UI_CONTENT_TEXT_LIMIT) {
+    next = {
+      ...next,
+      content: {
+        ...next.content,
+        text: contentText.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT),
+      },
+    };
+  }
+
+  const linkPreview = next.content.linkPreview;
+  const linkDescription = linkPreview?.description;
+  if (linkDescription && linkDescription.length > DESKTOP_UI_LINK_DESCRIPTION_LIMIT) {
+    next = {
+      ...next,
+      content: {
+        ...next.content,
+        linkPreview: {
+          ...linkPreview,
+          description: linkDescription.slice(0, DESKTOP_UI_LINK_DESCRIPTION_LIMIT),
+        },
+      },
+    };
+  }
+
+  if (next.contentSignals) {
+    const tags = next.contentSignals.tags ?? [];
+    next = {
+      ...next,
+      contentSignals: tags.length > 0 ? ({ tags } as FeedItem["contentSignals"]) : undefined,
+    };
+  }
+
+  return next;
+}
+
+function markAllVisibleAsRead(doc: FreedDoc, platform?: string): string[] {
+  const now = Date.now();
+  const changedIds: string[] = [];
+  for (const item of Object.values(doc.feedItems) as FeedItem[]) {
+    if (item.userState.readAt) continue;
+    if (item.userState.hidden || item.userState.archived) continue;
+    if (platform && item.platform !== platform) continue;
+    item.userState.readAt = now;
+    changedIds.push(item.globalId);
+  }
+  return changedIds;
+}
+
+function archiveAllReadableUnsaved(doc: FreedDoc, platform?: string, feedUrl?: string): string[] {
+  const now = Date.now();
+  const changedIds: string[] = [];
+  for (const item of Object.values(doc.feedItems) as FeedItem[]) {
+    if (item.userState.archived) continue;
+    if (item.userState.hidden) continue;
+    if (item.userState.saved) continue;
+    if (!item.userState.readAt) continue;
+    if (platform && item.platform !== platform) continue;
+    if (feedUrl && item.rssSource?.feedUrl !== feedUrl) continue;
+    item.userState.archived = true;
+    item.userState.archivedAt = now;
+    changedIds.push(item.globalId);
+  }
+  return changedIds;
+}
+
+function unarchiveSavedItemIds(doc: FreedDoc): string[] {
+  const changedIds: string[] = [];
+  for (const item of Object.values(doc.feedItems) as FeedItem[]) {
+    if (!item.userState.saved) continue;
+    if (!item.userState.archived) continue;
+    item.userState.archived = false;
+    delete (item.userState as unknown as Record<string, unknown>).archivedAt;
+    changedIds.push(item.globalId);
+  }
+  return changedIds;
+}
+
+function healUntitledFeedTitles(doc: FreedDoc): number {
+  let changed = 0;
+  for (const feed of Object.values(doc.rssFeeds) as RssFeed[]) {
+    const isUntitled = feed.title === "Untitled Feed" || feed.title === feed.url;
+    if (!isUntitled) continue;
+    let healed: string | undefined;
+    try {
+      healed = new URL(feed.url).hostname.replace(/^(?:www|feeds?)\./, "");
+    } catch { /* non-fatal */ }
+    if (!healed || healed === feed.title) continue;
+    feed.title = healed;
+    changed++;
+  }
+  return changed;
 }
 
 /**
@@ -226,21 +398,7 @@ function cloneFeedItemForPatch(item: FeedItem): FeedItem {
  */
 function hydrateFromDoc(doc: FreedDoc): DocState {
   const plain = A.toJS(doc) as FreedDoc;
-  const plainItems = Object.values(plain.feedItems as Record<string, FeedItem>).map((item) => {
-    const preservedContent = item.preservedContent;
-    const preservedText = preservedContent?.text;
-    if (!preservedContent || !preservedText || preservedText.length <= DESKTOP_UI_PRESERVED_TEXT_LIMIT) {
-      return item;
-    }
-
-    return {
-      ...item,
-      preservedContent: {
-        ...preservedContent,
-        text: preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT),
-      },
-    } as FeedItem;
-  });
+  const plainItems = Object.values(plain.feedItems as Record<string, FeedItem>).map(trimFeedItemForDesktopUi);
   const feeds = plain.rssFeeds as Record<string, RssFeed>;
   const persons = (plain.persons ?? {}) as Record<string, Person>;
   const accounts = (plain.accounts ?? {}) as Record<string, Account>;
@@ -248,9 +406,12 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   const preferences = mergeDefaultPreferences(plain.preferences as Partial<UserPreferences> | undefined);
 
   const visibleItems = plainItems.filter((item) => !item.userState.hidden);
-  const rankedItems = rankFeedItems(
-    visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
-    preferences.weights,
+  const rankedItems = sortByPriority(
+    rankFeedItems(
+      visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
+      preferences.weights,
+      { persons, accounts },
+    ),
   );
 
   const feedUnreadCounts: Record<string, number> = {};
@@ -306,8 +467,14 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
     totalArchivableCount,
     archivableCountByPlatform,
     archivableFeedCounts,
+    mapFriendLocationCount: countFriendsWithRecentLocationUpdates(rankedItems, persons, accounts),
+    mapAllContentLocationCount: countAuthorsWithRecentLocationUpdates(rankedItems),
     docItemCount: Object.keys(plain.feedItems as Record<string, FeedItem>).length,
   };
+}
+
+function preferenceUpdateRequiresFullHydration(updates: Partial<UserPreferences>): boolean {
+  return updates.weights !== undefined;
 }
 
 /**
@@ -417,6 +584,55 @@ async function applyChange(
   await saveAndBroadcast(trace);
 }
 
+async function applyPreferenceChange(
+  updates: Partial<UserPreferences>,
+  trace?: RequestTrace,
+): Promise<void> {
+  if (!currentDoc) throw new Error("Document not initialized");
+  currentDoc = A.change(currentDoc, "Update preferences", (doc) => {
+    updatePreferences(doc, updates);
+  });
+  send({ type: "DEBUG_EVENT", kind: "change", detail: "Update preferences" });
+
+  if (preferenceUpdateRequiresFullHydration(updates)) {
+    await saveAndBroadcast(trace);
+    return;
+  }
+
+  await persistAndBroadcastWithoutHydration(trace);
+  send({ type: "PREFERENCES_PATCH", updates, mutation: trace?.opType });
+}
+
+async function applyCountedChange(
+  changeFn: (doc: FreedDoc) => number,
+  message: string,
+  trace?: RequestTrace,
+  searchCorpusChanged = false,
+): Promise<number> {
+  if (!currentDoc) throw new Error("Document not initialized");
+  let changedCount = 0;
+  currentDoc = A.change(currentDoc, message, (doc) => {
+    changedCount = changeFn(doc);
+  });
+
+  if (changedCount === 0) {
+    emitWorkerTrace(
+      `[automerge-worker] skip op=${trace?.opType ?? "unknown"} reason=no_changes`,
+      "change",
+    );
+    return changedCount;
+  }
+
+  if (searchCorpusChanged) bumpSearchCorpusVersion();
+  send({
+    type: "DEBUG_EVENT",
+    kind: "change",
+    detail: `${message}: ${changedCount.toLocaleString()} changed`,
+  });
+  await saveAndBroadcast(trace);
+  return changedCount;
+}
+
 async function applyItemPatchChange(
   changeFn: (doc: FreedDoc) => string[],
   message: string,
@@ -478,9 +694,13 @@ async function handleRequest(
         if (saved) {
           try {
             currentDoc = A.load<FreedDoc>(saved);
-            migrateLoadedIdentityGraph("Migrate legacy identity graph");
             currentBinary = saved;
             persistenceState = createPersistenceState(saved);
+            migrateLoadedIdentityGraph("Migrate legacy identity graph");
+            compactLoadedFeedText("Compact oversized synced feed text", {
+              rebuildHistory: true,
+              previousBinaryBytes: saved.byteLength,
+            });
           } catch {
             await storage.clear();
             persistenceState = createPersistenceState(null);
@@ -513,11 +733,14 @@ async function handleRequest(
 
       case "REPLACE_DOC":
         currentDoc = A.load<FreedDoc>(req.binary);
-        migrateLoadedIdentityGraph("Migrate legacy identity graph");
         currentBinary = req.binary;
         persistenceState = createPersistenceState(req.binary);
+        migrateLoadedIdentityGraph("Migrate legacy identity graph");
+        compactLoadedFeedText("Compact oversized synced feed text", {
+          rebuildHistory: true,
+          previousBinaryBytes: req.binary.byteLength,
+        });
         bumpSearchCorpusVersion();
-        await storage.save(req.binary);
         await saveAndBroadcast(trace);
         ack(req.reqId);
         break;
@@ -537,6 +760,10 @@ async function handleRequest(
         const incomingDoc = A.load<FreedDoc>(req.binary);
         currentDoc = A.merge(currentDoc, incomingDoc);
         migrateLoadedIdentityGraph("Migrate legacy identity graph");
+        compactLoadedFeedText("Compact oversized synced feed text after merge", {
+          rebuildHistory: true,
+          previousBinaryBytes: Math.max(currentBinary?.byteLength ?? 0, req.binary.byteLength),
+        });
         const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const delta = afterCount - beforeCount;
         send({
@@ -572,20 +799,19 @@ async function handleRequest(
         break;
 
       case "MARK_ALL_AS_READ":
-        await applyRequestChange((doc) => {
-          const now = Date.now();
-          for (const item of Object.values(doc.feedItems) as FeedItem[]) {
-            if (item.userState.readAt) continue;
-            if (item.userState.hidden || item.userState.archived) continue;
-            if (req.platform && item.platform !== req.platform) continue;
-            item.userState.readAt = now;
-          }
-        }, "Mark all as read");
+        await applyItemPatchChange(
+          (doc) => markAllVisibleAsRead(doc, req.platform),
+          "Mark all as read",
+          trace,
+        );
         ack(req.reqId);
         break;
 
       case "TOGGLE_SAVED":
-        await applyRequestChange((doc) => toggleSaved(doc, req.globalId), "Toggle saved");
+        await applyItemPatchChange((doc) => {
+          toggleSaved(doc, req.globalId);
+          return [req.globalId];
+        }, "Toggle saved", trace);
         ack(req.reqId);
         break;
 
@@ -594,6 +820,15 @@ async function handleRequest(
           toggleArchived(doc, req.globalId);
           return [req.globalId];
         }, "Toggle archived", trace);
+        ack(req.reqId);
+        break;
+
+      case "ARCHIVE_ITEMS":
+        await applyItemPatchChange(
+          (doc) => archiveItemsById(doc, req.globalIds),
+          `Archive ${req.globalIds.length.toLocaleString()} items`,
+          trace,
+        );
         ack(req.reqId);
         break;
 
@@ -631,6 +866,7 @@ async function handleRequest(
 
       case "ADD_FEED_ITEM":
         await applyRequestChange((doc) => {
+          compactFeedItemTextForSync(req.item);
           if (!doc.feedItems[req.item.globalId]) addFeedItem(doc, req.item);
         }, "Add feed item", true);
         ack(req.reqId);
@@ -639,6 +875,7 @@ async function handleRequest(
       case "ADD_FEED_ITEMS":
         await applyRequestChange((doc) => {
           for (const item of req.items) {
+            compactFeedItemTextForSync(item);
             if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
           }
           if (req.items.some((item) => item.platform === "facebook" || item.platform === "instagram")) {
@@ -655,7 +892,11 @@ async function handleRequest(
 
       case "UPDATE_FEED_ITEM":
         await applyRequestChange(
-          (doc) => updateFeedItem(doc, req.globalId, req.updates),
+          (doc) => {
+            updateFeedItem(doc, req.globalId, req.updates);
+            const item = doc.feedItems[req.globalId] as FeedItem | undefined;
+            if (item) compactFeedItemTextForSync(item);
+          },
           "Update feed item",
           feedItemUpdatesAffectSearchCorpus(req.updates),
         );
@@ -663,22 +904,28 @@ async function handleRequest(
         break;
 
       case "ARCHIVE_ALL_READ_UNSAVED":
-        await applyRequestChange(
-          (doc) => archiveAllReadUnsaved(doc, req.platform, req.feedUrl),
+        await applyItemPatchChange(
+          (doc) => archiveAllReadableUnsaved(doc, req.platform, req.feedUrl),
           "Archive all read",
+          trace,
         );
         ack(req.reqId);
         break;
 
       case "UNARCHIVE_SAVED_ITEMS":
-        await applyRequestChange((doc) => unarchiveSavedItems(doc), "Unarchive saved items");
+        await applyItemPatchChange(
+          (doc) => unarchiveSavedItemIds(doc),
+          "Unarchive saved items",
+          trace,
+        );
         ack(req.reqId);
         break;
 
       case "PRUNE_ARCHIVED_ITEMS":
-        await applyRequestChange(
+        await applyCountedChange(
           (doc) => pruneArchivedItems(doc, req.maxAgeMs),
           "Prune archived items",
+          trace,
           true,
         );
         ack(req.reqId);
@@ -726,15 +973,17 @@ async function handleRequest(
         break;
 
       case "UPDATE_PREFERENCES":
-        await applyRequestChange(
-          (doc) => updatePreferences(doc, req.updates),
-          "Update preferences",
-        );
+        await applyPreferenceChange(req.updates, trace);
         ack(req.reqId);
         break;
 
       case "UPDATE_LAST_SYNC":
-        await applyRequestChange((doc) => updateLastSync(doc), "Update last sync");
+        if (!currentDoc) throw new Error("Document not initialized");
+        currentDoc = A.change(currentDoc, "Update last sync", (doc) => {
+          updateLastSync(doc);
+        });
+        send({ type: "DEBUG_EVENT", kind: "change", detail: "Update last sync" });
+        await persistAndBroadcastWithoutHydration(trace);
         ack(req.reqId);
         break;
 
@@ -835,6 +1084,7 @@ async function handleRequest(
             if (url) existingLinkUrls.add(url);
           }
           for (const item of req.items) {
+            compactFeedItemTextForSync(item);
             if (doc.feedItems[item.globalId]) continue;
             const linkUrl = item.content.linkPreview?.url;
             if (linkUrl && existingLinkUrls.has(linkUrl)) continue;
@@ -854,6 +1104,7 @@ async function handleRequest(
           const chunk = items.slice(i, i + CHUNK);
           await applyRequestChange((doc) => {
             for (const item of chunk) {
+              compactFeedItemTextForSync(item);
               if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
             }
           }, `Batch import chunk ${chunkIndex + 1}/${totalChunks}`, true);
@@ -864,22 +1115,22 @@ async function handleRequest(
       }
 
       case "HEAL_UNTITLED_FEEDS":
-        await applyRequestChange((doc) => {
-          for (const feed of Object.values(doc.rssFeeds) as RssFeed[]) {
-            const isUntitled = feed.title === "Untitled Feed" || feed.title === feed.url;
-            if (!isUntitled) continue;
-            let healed: string | undefined;
-            try { healed = new URL(feed.url).hostname.replace(/^(?:www|feeds?)\./, ""); } catch { /* */ }
-            if (healed) feed.title = healed;
-          }
-        }, "Heal untitled feed titles from URL hostname", true);
+        await applyCountedChange(
+          healUntitledFeedTitles,
+          "Heal untitled feed titles from URL hostname",
+          trace,
+          true,
+        );
         ack(req.reqId);
         break;
 
       case "DEDUPLICATE_ITEMS":
-        await applyRequestChange((doc) => {
-          deduplicateDocFeedItems(doc);
-        }, "Deduplicate feed items by article link URL and linked social cross-posts", true);
+        await applyCountedChange(
+          deduplicateDocFeedItems,
+          "Deduplicate feed items by article link URL and linked social cross-posts",
+          trace,
+          true,
+        );
         ack(req.reqId);
         break;
 
@@ -920,7 +1171,10 @@ async function handleRequest(
           reqId: req.reqId,
           type: "ITEM_PRESERVED_TEXT",
           globalId: req.globalId,
-          text: currentDoc.feedItems[req.globalId]?.preservedContent?.text ?? null,
+          text:
+            currentDoc.feedItems[req.globalId]?.preservedContent?.text ??
+            currentDoc.feedItems[req.globalId]?.content.text ??
+            null,
         });
         break;
 

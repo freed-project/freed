@@ -57,6 +57,8 @@ function makeState(items: FeedItem[]): DocState {
     totalArchivableCount: 1,
     archivableCountByPlatform: { rss: 1 },
     archivableFeedCounts: { [FEED_URL]: 1 },
+    mapFriendLocationCount: 7,
+    mapAllContentLocationCount: 11,
     docItemCount: items.length,
   };
 }
@@ -80,6 +82,8 @@ describe("Automerge item patch state updates", () => {
     expect(result.state.totalArchivableCount).toBe(2);
     expect(result.state.archivableCountByPlatform).toEqual({ rss: 2 });
     expect(result.state.archivableFeedCounts).toEqual({ [FEED_URL]: 2 });
+    expect(result.state.mapFriendLocationCount).toBe(7);
+    expect(result.state.mapAllContentLocationCount).toBe(11);
   });
 
   it("removes archived items from aggregate counts while keeping them in the item list", () => {
@@ -134,5 +138,45 @@ describe("Automerge item patch state updates", () => {
     expect(result.state.totalUnreadCount).toBe(state.totalUnreadCount);
     expect(result.state.totalItemCount).toBe(state.totalItemCount);
     expect(result.state.totalArchivableCount).toBe(state.totalArchivableCount);
+  });
+
+  it("applies a large archive patch batch to aggregate counts", () => {
+    const items = Array.from({ length: 300 }, (_, index) =>
+      makeItem(`rss:read-${index}`, { readAt: 10 + index })
+    );
+    const state: DocState = {
+      ...makeState(items),
+      feedUnreadCounts: {},
+      totalUnreadCount: 0,
+      unreadCountByPlatform: {},
+      feedTotalCounts: { [FEED_URL]: 300 },
+      totalItemCount: 300,
+      itemCountByPlatform: { rss: 300 },
+      totalArchivableCount: 300,
+      archivableCountByPlatform: { rss: 300 },
+      archivableFeedCounts: { [FEED_URL]: 300 },
+    };
+    const index = createItemIndex(state.items);
+    const patches = items.map((item) => ({
+      item: {
+        ...item,
+        userState: {
+          ...item.userState,
+          archived: true,
+          archivedAt: 500,
+        },
+      },
+    }));
+
+    const result = applyItemPatchesToState(state, patches, index);
+
+    expect(result.state.items).toHaveLength(300);
+    expect(result.state.items.every((item) => item.userState.archived)).toBe(true);
+    expect(result.state.totalItemCount).toBe(0);
+    expect(result.state.itemCountByPlatform).toEqual({});
+    expect(result.state.feedTotalCounts).toEqual({});
+    expect(result.state.totalArchivableCount).toBe(0);
+    expect(result.state.archivableCountByPlatform).toEqual({});
+    expect(result.state.archivableFeedCounts).toEqual({});
   });
 });

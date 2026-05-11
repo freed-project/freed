@@ -12,6 +12,7 @@ import type {
   LocalAIModelDownloadProgress,
   LocalAIModelViewState,
 } from "../../context/PlatformContext.js";
+import { formatMediumDateShortTime } from "../../lib/date-format.js";
 import { SettingsToggle } from "../SettingsToggle.js";
 import { ExternalLinkIcon } from "../icons.js";
 
@@ -120,10 +121,7 @@ function formatBytes(bytes: number): string {
 
 function formatLocalTime(timestamp?: number): string {
   if (!timestamp) return "Never";
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(timestamp));
+  return formatMediumDateShortTime(timestamp);
 }
 
 function formatMemorySummary(profile: LocalAIHardwareProfile | null): string {

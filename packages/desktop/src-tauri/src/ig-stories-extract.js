@@ -33,75 +33,107 @@
     return Math.abs(hash).toString(36);
   }
 
-  // ── Extract story ID from current URL ────────────────────────────────────
-
   function isLikelyEphemeralStoryId(storyId) {
     return /^\d{13}$/.test(storyId || "");
   }
 
   function extractStoryId() {
     var href = window.location.href;
-    // /stories/username/<storyId>/
-    var m = href.match(/\/stories\/([^/]+)\/([^/?]+)/);
-    if (m) return { username: m[1], storyId: isLikelyEphemeralStoryId(m[2]) ? null : m[2] };
+    var m = href.match(/\/stories\/([^/?#]+)(?:\/([^/?#]+))?/);
+    if (m) {
+      return {
+        username: decodeURIComponent(m[1]),
+        storyId: m[2] && !isLikelyEphemeralStoryId(m[2]) ? decodeURIComponent(m[2]) : null,
+      };
+    }
     return { username: null, storyId: null };
   }
 
-  // ── Find the active story viewer overlay ─────────────────────────────────
-  // The story viewer is a full-screen overlay. Instagram uses several
-  // container strategies; we try the most reliable first.
+  function isStoryUrl(urlInfo) {
+    return !!(urlInfo && urlInfo.username);
+  }
 
-  function findStoryContainer() {
-    // Strategy 1: dialog or role="presentation" at the root level
+  function hasStoryControls(container) {
+    return !!(
+      container.querySelector('[aria-label*="Next"], [aria-label*="next"]') ||
+      container.querySelector('[aria-label*="Close"], [aria-label*="close"]') ||
+      container.querySelector('[role="progressbar"]') ||
+      container.querySelector('a[href*="/stories/"]')
+    );
+  }
+
+  function hasStoryMedia(container) {
+    return !!(
+      container.querySelector("video") ||
+      container.querySelector('img[src*="cdninstagram"], img[src*="scontent"], img[srcset]')
+    );
+  }
+
+  function findStoryContainer(urlInfo) {
+    var onStoryUrl = isStoryUrl(urlInfo);
     var dialog = document.querySelector('[role="dialog"]');
-    if (dialog && dialog.offsetHeight > 400) return dialog;
+    if (
+      dialog &&
+      dialog.offsetHeight > 400 &&
+      hasStoryMedia(dialog) &&
+      (onStoryUrl || hasStoryControls(dialog))
+    ) {
+      return dialog;
+    }
 
-    // Strategy 2: a div that fills the viewport and contains a video or
-    // a large full-bleed image (story media)
     var fullBleed = document.querySelector(
       'div[style*="position: fixed"], div[style*="position:fixed"]'
     );
-    if (fullBleed && fullBleed.offsetHeight > window.innerHeight * 0.8) {
+    if (
+      fullBleed &&
+      fullBleed.offsetHeight > window.innerHeight * 0.8 &&
+      hasStoryMedia(fullBleed) &&
+      (onStoryUrl || hasStoryControls(fullBleed))
+    ) {
       return fullBleed;
     }
 
-    // Strategy 3: the section containing the story controls bar
-    // (progress bars at the top, close button)
     var sections = document.querySelectorAll("section");
     for (var i = 0; i < sections.length; i++) {
       var s = sections[i];
-      // Story sections are tall and contain a video or large img
       if (
         s.offsetHeight > 400 &&
-        (s.querySelector("video") ||
-          s.querySelector('img[src*="cdninstagram"], img[src*="scontent"]'))
+        hasStoryMedia(s) &&
+        (onStoryUrl || hasStoryControls(s))
       ) {
         return s;
       }
     }
 
-    // Fallback: body (will extract whatever is visible)
-    return document.body;
+    return null;
   }
 
-  // ── Extract author ────────────────────────────────────────────────────────
-
   var IG_USERNAME_RE = /instagram\.com\/([A-Za-z0-9_.]+)\/?(?:\?|$|#)/;
-  var IG_SKIP_PATHS = /^(p|reel|stories|explore|accounts|direct|tv|ar|challenge|audio|location|tags)$/i;
+  var IG_SKIP_PATHS = /^(p|reel|reels|stories|explore|accounts|direct|tv|ar|challenge|audio|location|locations|tags|instagram)$/i;
 
-  function extractAuthor(container) {
+  function isGenericHandle(handle) {
+    return !handle || IG_SKIP_PATHS.test(handle);
+  }
+
+  function extractAuthor(container, urlInfo) {
     var handle = null;
     var displayName = null;
     var avatarUrl = null;
     var profileUrl = null;
 
-    // Look for header-area links near the top of the container
+    if (urlInfo.username && !isGenericHandle(urlInfo.username)) {
+      handle = urlInfo.username;
+      displayName = urlInfo.username;
+      profileUrl = "https://www.instagram.com/" + urlInfo.username + "/";
+    }
+
     var allLinks = container.querySelectorAll("a[href]");
     for (var i = 0; i < allLinks.length; i++) {
       var link = allLinks[i];
       var href = link.href || "";
       var m = href.match(IG_USERNAME_RE);
-      if (m && !IG_SKIP_PATHS.test(m[1])) {
+      if (m && !isGenericHandle(m[1])) {
+        if (handle && m[1] !== handle) continue;
         handle = m[1];
         profileUrl = href;
         var linkText = (link.textContent || "").trim();
@@ -112,7 +144,6 @@
       }
     }
 
-    // Avatar: small circular image at the very top (story author avatar)
     var imgs = container.querySelectorAll("img");
     for (var j = 0; j < Math.min(imgs.length, 10); j++) {
       var img = imgs[j];
@@ -122,15 +153,6 @@
       if (w > 20 && w < 90 && h > 20 && h < 90 && img.src) {
         avatarUrl = img.src;
         break;
-      }
-    }
-
-    // URL-based username extraction from /stories/<username>/
-    if (!handle) {
-      var urlInfo = extractStoryId();
-      if (urlInfo.username) {
-        handle = urlInfo.username;
-        displayName = urlInfo.username;
       }
     }
 
@@ -259,9 +281,33 @@
 
   try {
     var urlInfo = extractStoryId();
-    var container = findStoryContainer();
-    var author = extractAuthor(container);
+    var container = findStoryContainer(urlInfo);
+    if (!container) {
+      emit("ig-feed-data", {
+        posts: [],
+        extractedAt: Date.now(),
+        url: window.location.href,
+        candidateCount: 0,
+        scrollY: 0,
+        strategy: "story-viewer-skip",
+      });
+      return;
+    }
+
+    var author = extractAuthor(container, urlInfo);
     var media = extractMedia(container);
+    if (isGenericHandle(author.handle) || media.urls.length === 0) {
+      emit("ig-feed-data", {
+        posts: [],
+        extractedAt: Date.now(),
+        url: window.location.href,
+        candidateCount: 0,
+        scrollY: 0,
+        strategy: "story-viewer-skip",
+      });
+      return;
+    }
+
     var timestampIso = extractTimestamp(container);
     var location = extractLocation(container);
 

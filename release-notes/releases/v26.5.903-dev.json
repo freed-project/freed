@@ -1,0 +1,63 @@
+{
+  "tag": "v26.5.903-dev",
+  "version": "26.5.903-dev",
+  "channel": "dev",
+  "dayKey": "26.5.9",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-09T20:26:56.700Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.901-dev",
+    "previousPublishedDayTag": "v26.5.807-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.901-dev",
+      "v26.5.903-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.901-dev",
+      "v26.5.903-dev"
+    ],
+    "prNumbers": [
+      543,
+      544,
+      545,
+      546,
+      548
+    ],
+    "commitSubjects": [
+      "perf: reduce map fallback paint during movement",
+      "fix: apply pending friends graph fit all (#548)",
+      "release: approve v26.5.902-dev notes",
+      "release: v26.5.902-dev",
+      "fix: show crash recovery when rendering fails (#546)",
+      "perf: stabilize map markers across refreshes (#545)",
+      "release: approve v26.5.901-dev notes",
+      "release: v26.5.901-dev",
+      "perf: restore WebKit memory attribution (#544)",
+      "release: approve v26.5.900-dev notes",
+      "release: v26.5.900-dev",
+      "perf: relax hidden renderer watchdog (#543)"
+    ]
+  },
+  "release": {
+    "deck": "Improves dense Friends graph recovery, Map interaction smoothness, desktop crash recovery, and WebKit memory attribution for today's dev builds",
+    "features": [],
+    "fixes": [
+      "Friends graph Fit all now waits for the first dense layout to finish before applying, so large graphs no longer get stuck off-screen when the action fires early",
+      "Dense Map fallback rendering now hides lower-priority markers during wheel and pointer movement, reducing paint work while keeping the primary markers reachable",
+      "Show crash recovery when rendering fails",
+      "Hidden or locked Freed Desktop sessions now wait longer before logging stale renderer heartbeats, which avoids noisy recovery work during expected WebKit timer throttling while preserving the existing foreground recovery path",
+      "Freed Desktop now attributes age-matched WebKit WebContent memory even after the process releases its Freed cache handles, so high WebKit RSS is visible to diagnostics and memory preflight checks"
+    ],
+    "followUps": [
+      "Stabilize map markers across refreshes",
+      "Relax hidden renderer watchdog",
+      "Keeps hidden sessions quieter and restores WebKit memory attribution"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.903-dev\n\nImproves dense Friends graph recovery, Map interaction smoothness, desktop crash recovery, and WebKit memory attribution for today's dev builds\n\n### Fixes\n\n- Friends graph Fit all now waits for the first dense layout to finish before applying, so large graphs no longer get stuck off-screen when the action fires early\n- Dense Map fallback rendering now hides lower-priority markers during wheel and pointer movement, reducing paint work while keeping the primary markers reachable\n- Show crash recovery when rendering fails\n- Hidden or locked Freed Desktop sessions now wait longer before logging stale renderer heartbeats, which avoids noisy recovery work during expected WebKit timer throttling while preserving the existing foreground recovery path\n- Freed Desktop now attributes age-matched WebKit WebContent memory even after the process releases its Freed cache handles, so high WebKit RSS is visible to diagnostics and memory preflight checks\n\n### Follow-ups\n\n- Stabilize map markers across refreshes\n- Relax hidden renderer watchdog\n- Keeps hidden sessions quieter and restores WebKit memory attribution\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

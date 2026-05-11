@@ -8,7 +8,6 @@
 export type SectionId =
   | "legal"
   | "appearance"
-  | "support"
   | "feeds"
   | "saved"
   | "ai"
@@ -58,11 +57,6 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
     id: "legal",
     label: "Legal",
     keywords: ["terms", "privacy", "eula", "consent", "agreement", "risk", "experimental"],
-  },
-  {
-    id: "support",
-    label: "Support",
-    keywords: ["bug", "report", "problem", "issue", "diagnostics", "github", "logs", "crash"],
   },
   {
     id: "sync",
@@ -163,7 +157,6 @@ export function buildSettingsSectionMetas(
     AI_SECTION_META,
     ...(availability.hasUpdateChecks ? [UPDATES_SECTION_META] : []),
     baseSectionById.legal,
-    baseSectionById.support,
     ...(availability.hasFactoryReset ? [DANGER_SECTION_META] : []),
   ];
 }

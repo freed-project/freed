@@ -35,6 +35,7 @@ import {
   docToggleSaved,
   docRemoveFeedItem,
   docToggleArchived,
+  docArchiveItems,
   docToggleLiked,
   docArchiveAllReadUnsaved,
   docUnarchiveSavedItems,
@@ -139,6 +140,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   totalArchivableCount: 0,
   archivableCountByPlatform: {},
   archivableFeedCounts: {},
+  mapFriendLocationCount: 0,
+  mapAllContentLocationCount: 0,
   syncConnected: false,
   isLoading: true,
   isSyncing: false,
@@ -279,6 +282,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleArchived: async (id) => {
     await docToggleArchived(id);
+  },
+
+  archiveItems: async (ids) => {
+    await docArchiveItems(ids);
   },
 
   toggleLiked: async (id) => {
@@ -453,5 +460,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   setError: (error) => set({ error }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setActiveView: (activeView) => set({ activeView }),
+  openMapForPerson: (personId) =>
+    set({
+      activeView: "map",
+      selectedPersonId: personId,
+      selectedAccountId: null,
+      selectedFriendId: personId,
+      selectedItemId: null,
+    }),
   setPendingMatchCount: (pendingMatchCount) => set({ pendingMatchCount }),
 }));

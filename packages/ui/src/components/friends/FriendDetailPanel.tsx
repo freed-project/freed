@@ -47,6 +47,10 @@ const platformIcons: Record<string, ReactNode> = {
   saved: <BookmarkIcon className={cls} />,
 };
 
+function safeText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
 // ---------------------------------------------------------------------------
 // Care level indicator
 // ---------------------------------------------------------------------------
@@ -224,14 +228,14 @@ export function FriendDetailPanel({
         <div className="flex items-start gap-3">
           {/* Avatar */}
           <FriendAvatar
-            name={friend.name}
+            name={safeText(friend.name, "Unnamed friend")}
             avatarUrl={avatarUrl}
             size={56}
           />
 
           <div className="min-w-0 flex-1">
             <p className="text-base font-semibold text-text-primary truncate">
-              {friend.name}
+              {safeText(friend.name, "Unnamed friend")}
             </p>
             <CareStars level={friend.careLevel} />
             {friend.bio && (

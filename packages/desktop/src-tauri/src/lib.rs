@@ -7,15 +7,18 @@ use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
+#[cfg(target_os = "macos")]
+use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-#[cfg(target_os = "macos")]
 use std::process::Command;
-use std::sync::{Arc, RwLock as StdRwLock};
+use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use sysinfo::{Disks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-use tauri::menu::{Menu, MenuItem, Submenu};
+#[cfg(target_os = "macos")]
+use tauri::menu::Submenu;
+use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -34,6 +37,11 @@ use tokio_tungstenite::{
 use objc2::rc::Retained;
 #[cfg(target_os = "macos")]
 use objc2::{msg_send, runtime::AnyObject};
+#[cfg(target_os = "macos")]
+use objc2_app_kit::{
+    NSApplication, NSApplicationActivationOptions, NSApplicationActivationPolicy,
+    NSRunningApplication,
+};
 #[cfg(target_os = "macos")]
 use objc2_foundation::{ns_string, MainThreadMarker, NSObjectNSKeyValueCoding, NSString};
 #[cfg(target_os = "macos")]
@@ -58,25 +66,51 @@ fn sync_relay_port() -> u16 {
 const DEFAULT_WEBKIT_SAFARI_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
 const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 3] = ["fb-scraper", "ig-scraper", "li-scraper"];
+const FB_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0xfb, 0x00, 0x01, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0xfb, 0x00, 0x01,
+];
+const IG_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0x1a, 0x00, 0x02, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x1a, 0x00, 0x02,
+];
+const LI_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0x1d, 0x00, 0x03, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x1d, 0x00, 0x03,
+];
 const BYTES_PER_GIB: u64 = 1024 * 1024 * 1024;
 const MIN_CRITICAL_MEMORY_BYTES: u64 = 7 * BYTES_PER_GIB / 2;
-const MAX_CRITICAL_MEMORY_BYTES: u64 = 8 * BYTES_PER_GIB;
+const MAX_CRITICAL_MEMORY_BYTES: u64 = 4 * BYTES_PER_GIB;
 const WEBKIT_CACHE_TRIM_AT_BYTES: u64 = 768 * 1024 * 1024;
 const WEBKIT_CACHE_TRIM_TARGET_BYTES: u64 = 512 * 1024 * 1024;
+const OPTIONAL_STORY_MEMORY_BUDGET_PERCENT: u64 = 85;
+const SCRAPE_MEMORY_HEADROOM_BYTES: u64 = 384 * 1024 * 1024;
+const WEBKIT_PROCESS_START_GRACE_SECONDS: u64 = 10;
 const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
 const RUNTIME_HEALTH_FILE: &str = "runtime-health.jsonl";
+const RUNTIME_HEALTH_MAX_BYTES: u64 = 5 * 1024 * 1024;
+const RUNTIME_DIAGNOSTICS_FILE: &str = "runtime-diagnostics.jsonl";
+const RUNTIME_DIAGNOSTICS_MAX_BYTES: u64 = 5 * 1024 * 1024;
+const RUNTIME_DIAGNOSTICS_COOLDOWN: Duration = Duration::from_secs(180);
 const RECOVERY_WINDOW_LABEL: &str = "startup-recovery";
 const RECOVERY_WINDOW_ROUTE: &str = "startup-recovery.html";
 const RENDERER_HEARTBEAT_WATCHDOG_INTERVAL: Duration = Duration::from_secs(15);
 const RENDERER_STALE_LOG_AFTER: Duration = Duration::from_secs(45);
+const WEBKIT_HIDDEN_TIMER_THROTTLE_AFTER: Duration = Duration::from_secs(480);
+const RENDERER_HIDDEN_STALE_LOG_AFTER: Duration = Duration::from_secs(570);
 const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(75);
-const RENDERER_HIDDEN_RECOVERY_AFTER: Duration = Duration::from_secs(600);
+const RENDERER_HIDDEN_RECOVERY_AFTER: Duration = Duration::from_secs(900);
 const BACKGROUND_REQUIRED_HEALTHY_HEARTBEATS: u64 = 2;
 const BACKGROUND_RECOVERY_COOLDOWN: Duration = Duration::from_secs(120);
+const BACKGROUND_MEMORY_HIGH_COOLDOWN: Duration = Duration::from_secs(120);
+const BACKGROUND_MEMORY_CRITICAL_COOLDOWN: Duration = Duration::from_secs(10 * 60);
+const BACKGROUND_SAFE_MODE_RECOVERY_WINDOW_SHORT: Duration = Duration::from_secs(10 * 60);
+const BACKGROUND_SAFE_MODE_RECOVERY_WINDOW_LONG: Duration = Duration::from_secs(30 * 60);
+const BACKGROUND_SAFE_MODE_DURATION: Duration = Duration::from_secs(10 * 60);
+const BACKGROUND_SAFE_MODE_SHORT_LIMIT: usize = 2;
+const BACKGROUND_SAFE_MODE_LONG_LIMIT: usize = 3;
 const BACKGROUND_JOB_MAX_HELD: Duration = Duration::from_secs(120);
 const FORCE_EXIT_AFTER_RESTART_REQUEST: Duration = Duration::from_secs(8);
 const MAIN_WINDOW_RELEASE_POLL_INTERVAL: Duration = Duration::from_millis(50);
-const MAIN_WINDOW_RELEASE_POLL_ATTEMPTS: usize = 20;
+const MAIN_WINDOW_RELEASE_POLL_ATTEMPTS: usize = 100;
+const MAIN_THREAD_WINDOW_STEP_TIMEOUT: Duration = Duration::from_secs(5);
 const LOCAL_AI_DOWNLOAD_PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
     (function() {
@@ -211,6 +245,15 @@ fn stored_or_default_user_agent(agent: &std::sync::Mutex<String>) -> String {
     }
 }
 
+fn social_scraper_data_store_identifier(label: &str) -> Option<[u8; 16]> {
+    match label {
+        "fb-scraper" => Some(FB_SCRAPER_DATA_STORE_IDENTIFIER),
+        "ig-scraper" => Some(IG_SCRAPER_DATA_STORE_IDENTIFIER),
+        "li-scraper" => Some(LI_SCRAPER_DATA_STORE_IDENTIFIER),
+        _ => None,
+    }
+}
+
 fn recycle_webview_window(app: &tauri::AppHandle, label: &str, reason: &str) {
     if let Some(window) = app.get_webview_window(label) {
         scrub_webview_before_destroy(&window);
@@ -298,6 +341,10 @@ fn build_hidden_scraper_window(
         app,
         label,
         tauri::WebviewUrl::External(url.parse().map_err(|e: url::ParseError| e.to_string())?),
+    )
+    .data_store_identifier(
+        social_scraper_data_store_identifier(label)
+            .expect("hidden scraper window labels must use isolated data stores"),
     )
     .user_agent(user_agent)
     .initialization_script(include_str!("webkit-mask.js"))
@@ -550,6 +597,31 @@ fn runtime_health_path(data_dir: &Path) -> PathBuf {
     data_dir.join(RUNTIME_HEALTH_FILE)
 }
 
+fn runtime_diagnostics_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(RUNTIME_DIAGNOSTICS_FILE)
+}
+
+fn append_bounded_jsonl(path: &Path, line: &str, max_bytes: u64) -> std::io::Result<()> {
+    if let Ok(metadata) = std::fs::metadata(path) {
+        if metadata.len() > max_bytes {
+            let existing = std::fs::read_to_string(path).unwrap_or_default();
+            let keep_from = existing.len().saturating_sub((max_bytes / 2) as usize);
+            let keep = existing
+                .get(keep_from..)
+                .and_then(|tail| tail.find('\n').map(|offset| &tail[offset + 1..]))
+                .unwrap_or("");
+            std::fs::write(path, keep)?;
+        }
+    }
+
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
+    use std::io::Write;
+    writeln!(file, "{}", line)
+}
+
 fn append_runtime_health(app: &tauri::AppHandle, mut payload: serde_json::Value) {
     let Ok(data_dir) = app.path().app_data_dir() else {
         return;
@@ -564,20 +636,129 @@ fn append_runtime_health(app: &tauri::AppHandle, mut payload: serde_json::Value)
         return;
     };
     let path = runtime_health_path(&data_dir);
-    match std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-    {
-        Ok(mut file) => {
-            use std::io::Write;
-            let _ = writeln!(file, "{}", line);
-        }
-        Err(error) => warn!(
-            "[runtime-health] failed to open {}: {}",
+    if let Err(error) = append_bounded_jsonl(&path, &line, RUNTIME_HEALTH_MAX_BYTES) {
+        warn!(
+            "[runtime-health] failed to append {}: {}",
             path.display(),
             error
-        ),
+        );
+    }
+}
+
+static LAST_DEEP_DIAGNOSTIC_AT: StdMutex<Option<Instant>> = StdMutex::new(None);
+
+fn command_output_truncated(command: &str, args: &[String], max_chars: usize) -> Option<String> {
+    let output = Command::new(command).args(args).output().ok()?;
+    let combined = if output.status.success() {
+        output.stdout
+    } else {
+        [output.stdout, output.stderr].concat()
+    };
+    let raw = String::from_utf8_lossy(&combined);
+    Some(truncate_for_log(&raw, max_chars))
+}
+
+fn capture_deep_runtime_diagnostic(
+    app: &tauri::AppHandle,
+    trigger: &str,
+    reason: &str,
+    stats: &RuntimeMemoryStats,
+    active_background_job: Option<&'static str>,
+    active_background_job_age_ms: Option<u128>,
+    force: bool,
+) {
+    let now = Instant::now();
+    {
+        let mut last = LAST_DEEP_DIAGNOSTIC_AT.lock().unwrap();
+        if !force
+            && last
+                .map(|last| now.duration_since(last) < RUNTIME_DIAGNOSTICS_COOLDOWN)
+                .unwrap_or(false)
+        {
+            return;
+        }
+        *last = Some(now);
+    }
+
+    let Ok(data_dir) = app.path().app_data_dir() else {
+        return;
+    };
+    std::fs::create_dir_all(&data_dir).ok();
+
+    let labels = serde_json::json!({
+        "main": app.get_webview_window(MAIN_WINDOW_LABEL).is_some(),
+        "recoveryKeepalive": app.get_webview_window(MAIN_WINDOW_RECOVERY_KEEPALIVE_LABEL).is_some(),
+        "facebookScraper": app.get_webview_window("fb-scraper").is_some(),
+        "instagramScraper": app.get_webview_window("ig-scraper").is_some(),
+        "linkedinScraper": app.get_webview_window("li-scraper").is_some()
+    });
+    #[cfg(target_os = "macos")]
+    let vmmap_summary = stats.webkit_largest_process_id.and_then(|pid| {
+        command_output_truncated(
+            "/usr/bin/vmmap",
+            &["-summary".to_string(), pid.to_string()],
+            24_000,
+        )
+    });
+    #[cfg(not(target_os = "macos"))]
+    let vmmap_summary: Option<String> = None;
+
+    #[cfg(target_os = "macos")]
+    let sample_summary = stats.webkit_largest_process_id.and_then(|pid| {
+        command_output_truncated(
+            "/usr/bin/sample",
+            &[pid.to_string(), "1".to_string()],
+            24_000,
+        )
+    });
+    #[cfg(not(target_os = "macos"))]
+    let sample_summary: Option<String> = None;
+
+    let mut payload = serde_json::json!({
+        "tsMs": now_unix_ms(),
+        "trigger": trigger,
+        "reason": reason,
+        "activeBackgroundJob": active_background_job,
+        "activeBackgroundJobAgeMs": active_background_job_age_ms,
+        "webviewLabels": labels,
+        "memory": stats,
+        "vmmapSummary": vmmap_summary,
+        "sampleSummary": sample_summary
+    });
+
+    if let serde_json::Value::Object(fields) = &mut payload {
+        if let Ok(cache_dir) = app.path().app_cache_dir() {
+            fields.insert(
+                "cacheDirBytes".to_string(),
+                serde_json::json!(dir_size_bytes(&cache_dir)),
+            );
+        }
+        if let Ok(app_data_dir) = app.path().app_data_dir() {
+            fields.insert(
+                "snapshotsBytes".to_string(),
+                serde_json::json!(dir_size_bytes(&app_data_dir.join("snapshots"))),
+            );
+            fields.insert(
+                "contentBytes".to_string(),
+                serde_json::json!(dir_size_bytes(&app_data_dir.join("content"))),
+            );
+            fields.insert(
+                "localAiModelsBytes".to_string(),
+                serde_json::json!(dir_size_bytes(&app_data_dir.join("local-ai-models"))),
+            );
+        }
+    }
+
+    let Ok(line) = serde_json::to_string(&payload) else {
+        return;
+    };
+    let path = runtime_diagnostics_path(&data_dir);
+    if let Err(error) = append_bounded_jsonl(&path, &line, RUNTIME_DIAGNOSTICS_MAX_BYTES) {
+        warn!(
+            "[runtime-diagnostics] failed to append {}: {}",
+            path.display(),
+            error
+        );
     }
 }
 
@@ -831,15 +1012,24 @@ type RelayState = Arc<SyncRelayState>;
 struct RuntimeMemoryStats {
     total_physical_memory_bytes: u64,
     process_resident_bytes: u64,
+    process_footprint_bytes: Option<u64>,
     process_virtual_bytes: u64,
     app_resident_bytes: u64,
+    app_memory_pressure_bytes: u64,
     webkit_resident_bytes: Option<u64>,
+    webkit_footprint_bytes: Option<u64>,
     webkit_virtual_bytes: Option<u64>,
     webkit_process_id: Option<u32>,
     webkit_total_resident_bytes: u64,
+    webkit_total_footprint_bytes: Option<u64>,
     webkit_process_count: u64,
     webkit_largest_resident_bytes: Option<u64>,
+    webkit_largest_footprint_bytes: Option<u64>,
     webkit_largest_process_id: Option<u32>,
+    webkit_largest_cpu_usage: Option<f32>,
+    webkit_largest_age_seconds: Option<u64>,
+    webkit_largest_role: Option<String>,
+    webkit_processes: Vec<WebkitProcessRuntimeStats>,
     webkit_telemetry_available: bool,
     indexed_db_bytes: Option<u64>,
     webkit_cache_bytes: Option<u64>,
@@ -847,6 +1037,18 @@ struct RuntimeMemoryStats {
     memory_critical_bytes: u64,
     relay_doc_bytes: u64,
     relay_client_count: u64,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct WebkitProcessRuntimeStats {
+    process_id: u32,
+    resident_bytes: u64,
+    footprint_bytes: Option<u64>,
+    virtual_bytes: u64,
+    cpu_usage: f32,
+    age_seconds: u64,
+    role: String,
 }
 
 #[derive(serde::Serialize)]
@@ -867,15 +1069,30 @@ struct ScrapeMemoryPreparation {
     after: RuntimeMemoryStats,
     recycled_scraper_windows: bool,
     cache_trimmed: bool,
+    scrape_start_budget_bytes: u64,
     may_proceed: bool,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebkitCacheTrimResult {
+    before_bytes: u64,
+    after_bytes: u64,
+    cache_trimmed: bool,
 }
 
 struct WebkitMemoryStats {
     total_resident_bytes: u64,
+    total_footprint_bytes: Option<u64>,
     process_count: u64,
     largest_resident_bytes: Option<u64>,
+    largest_footprint_bytes: Option<u64>,
     largest_virtual_bytes: Option<u64>,
     largest_process_id: Option<u32>,
+    largest_cpu_usage: Option<f32>,
+    largest_age_seconds: Option<u64>,
+    largest_role: Option<String>,
+    processes: Vec<WebkitProcessRuntimeStats>,
 }
 
 #[derive(Debug, Clone)]
@@ -889,8 +1106,12 @@ struct BackgroundRuntimeState {
     healthy_heartbeats: u64,
     renderer_stale: bool,
     cooldown_until: Option<Instant>,
+    memory_cooldown_until: Option<Instant>,
+    safe_mode_until: Option<Instant>,
+    recovery_history: VecDeque<Instant>,
     active_job: Option<ActiveBackgroundJob>,
     last_recovery_reason: Option<String>,
+    last_memory_pressure_reason: Option<String>,
 }
 
 impl BackgroundRuntimeState {
@@ -899,8 +1120,12 @@ impl BackgroundRuntimeState {
             healthy_heartbeats: 0,
             renderer_stale: true,
             cooldown_until: None,
+            memory_cooldown_until: None,
+            safe_mode_until: None,
+            recovery_history: VecDeque::new(),
             active_job: None,
             last_recovery_reason: None,
+            last_memory_pressure_reason: None,
         }
     }
 }
@@ -933,11 +1158,68 @@ impl BackgroundRuntimeCoordinator {
     }
 
     fn note_renderer_recovery_attempt(&self, reason: &str) {
+        let now = Instant::now();
         let mut state = self.state.write().unwrap();
         state.healthy_heartbeats = 0;
         state.renderer_stale = true;
-        state.cooldown_until = Some(Instant::now() + BACKGROUND_RECOVERY_COOLDOWN);
+        state.cooldown_until = Some(now + BACKGROUND_RECOVERY_COOLDOWN);
         state.last_recovery_reason = Some(reason.to_string());
+        state.recovery_history.push_back(now);
+        while state
+            .recovery_history
+            .front()
+            .map(|oldest| now.duration_since(*oldest) > BACKGROUND_SAFE_MODE_RECOVERY_WINDOW_LONG)
+            .unwrap_or(false)
+        {
+            state.recovery_history.pop_front();
+        }
+
+        let recoveries_in_short_window = state
+            .recovery_history
+            .iter()
+            .filter(|recovery_at| {
+                now.duration_since(**recovery_at) <= BACKGROUND_SAFE_MODE_RECOVERY_WINDOW_SHORT
+            })
+            .count();
+        if recoveries_in_short_window >= BACKGROUND_SAFE_MODE_SHORT_LIMIT
+            || state.recovery_history.len() >= BACKGROUND_SAFE_MODE_LONG_LIMIT
+        {
+            state.safe_mode_until = Some(now + BACKGROUND_SAFE_MODE_DURATION);
+        }
+    }
+
+    fn note_memory_pressure(&self, provider: &str, operation: &str, critical: bool) -> u128 {
+        let now = Instant::now();
+        let cooldown = if critical {
+            BACKGROUND_MEMORY_CRITICAL_COOLDOWN
+        } else {
+            BACKGROUND_MEMORY_HIGH_COOLDOWN
+        };
+        let mut state = self.state.write().unwrap();
+        let until = now + cooldown;
+        if state
+            .memory_cooldown_until
+            .map(|current| current < until)
+            .unwrap_or(true)
+        {
+            state.memory_cooldown_until = Some(until);
+        }
+        state.last_memory_pressure_reason = Some(format!(
+            "{} {} memory pressure {}",
+            provider,
+            operation,
+            if critical { "critical" } else { "high" }
+        ));
+        state
+            .memory_cooldown_until
+            .and_then(|until| {
+                if until > now {
+                    Some(until.duration_since(now).as_millis())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0)
     }
 
     fn begin_job(&self, operation: &'static str) -> Result<(), String> {
@@ -964,6 +1246,33 @@ impl BackgroundRuntimeCoordinator {
                 ));
             }
             state.cooldown_until = None;
+        }
+
+        if let Some(memory_cooldown_until) = state.memory_cooldown_until {
+            if memory_cooldown_until > now {
+                let wait_ms = memory_cooldown_until.duration_since(now).as_millis();
+                let reason = state
+                    .last_memory_pressure_reason
+                    .as_deref()
+                    .unwrap_or("recent memory pressure");
+                return Err(format!(
+                    "background work is cooling down for {} ms after {}",
+                    wait_ms, reason
+                ));
+            }
+            state.memory_cooldown_until = None;
+            state.last_memory_pressure_reason = None;
+        }
+
+        if let Some(safe_mode_until) = state.safe_mode_until {
+            if safe_mode_until > now {
+                let wait_ms = safe_mode_until.duration_since(now).as_millis();
+                return Err(format!(
+                    "background work is paused for {} ms while renderer safe mode is active",
+                    wait_ms
+                ));
+            }
+            state.safe_mode_until = None;
         }
 
         if let Some(active) = &state.active_job {
@@ -999,8 +1308,39 @@ impl BackgroundRuntimeCoordinator {
         state
             .active_job
             .as_ref()
-            .map(|job| (Some(job.operation), Some(job.started_at.elapsed().as_millis())))
+            .map(|job| {
+                (
+                    Some(job.operation),
+                    Some(job.started_at.elapsed().as_millis()),
+                )
+            })
             .unwrap_or((None, None))
+    }
+
+    fn recovery_status_for_health(&self) -> (bool, Option<u128>, usize, usize) {
+        let now = Instant::now();
+        let state = self.state.read().unwrap();
+        let safe_mode_remaining_ms = state.safe_mode_until.and_then(|until| {
+            if until > now {
+                Some(until.duration_since(now).as_millis())
+            } else {
+                None
+            }
+        });
+        let recoveries_in_short_window = state
+            .recovery_history
+            .iter()
+            .filter(|recovery_at| {
+                now.duration_since(**recovery_at) <= BACKGROUND_SAFE_MODE_RECOVERY_WINDOW_SHORT
+            })
+            .count();
+
+        (
+            safe_mode_remaining_ms.is_some(),
+            safe_mode_remaining_ms,
+            recoveries_in_short_window,
+            state.recovery_history.len(),
+        )
     }
 }
 
@@ -1070,12 +1410,24 @@ impl Drop for ActiveScraperSession {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RendererHeartbeatPayload {
     seq: u64,
     ts: u64,
     reason: String,
     visibility: String,
     href: String,
+    page_load_id: Option<String>,
+    uptime_ms: Option<u64>,
+    app_phase: Option<String>,
+    event_loop_lag_ms: Option<f64>,
+    hidden_timer_throttled: Option<bool>,
+    dom_node_count: Option<u64>,
+    renderer_heap_used_bytes: Option<u64>,
+    renderer_heap_total_bytes: Option<u64>,
+    last_input_age_ms: Option<u64>,
+    settings_open: Option<bool>,
+    dialog_open: Option<bool>,
 }
 
 struct RendererHeartbeatStatus {
@@ -1085,9 +1437,23 @@ struct RendererHeartbeatStatus {
     last_reason: String,
     last_visibility: String,
     last_href: String,
+    last_page_load_id: Option<String>,
+    last_uptime_ms: Option<u64>,
+    last_app_phase: Option<String>,
+    last_event_loop_lag_ms: Option<f64>,
+    last_hidden_timer_throttled: Option<bool>,
+    last_dom_node_count: Option<u64>,
+    last_renderer_heap_used_bytes: Option<u64>,
+    last_renderer_heap_total_bytes: Option<u64>,
+    last_input_age_ms: Option<u64>,
+    last_settings_open: Option<bool>,
+    last_dialog_open: Option<bool>,
     stale_logged: bool,
+    throttle_logged: bool,
     recovery_attempts: u64,
     last_recovery_at: Option<std::time::Instant>,
+    renderer_generation: u64,
+    recovery_history: VecDeque<std::time::Instant>,
 }
 
 impl RendererHeartbeatStatus {
@@ -1099,9 +1465,23 @@ impl RendererHeartbeatStatus {
             last_reason: "startup".to_string(),
             last_visibility: "unknown".to_string(),
             last_href: String::new(),
+            last_page_load_id: None,
+            last_uptime_ms: None,
+            last_app_phase: None,
+            last_event_loop_lag_ms: None,
+            last_hidden_timer_throttled: None,
+            last_dom_node_count: None,
+            last_renderer_heap_used_bytes: None,
+            last_renderer_heap_total_bytes: None,
+            last_input_age_ms: None,
+            last_settings_open: None,
+            last_dialog_open: None,
             stale_logged: false,
+            throttle_logged: false,
             recovery_attempts: 0,
             last_recovery_at: None,
+            renderer_generation: 1,
+            recovery_history: VecDeque::new(),
         }
     }
 
@@ -1122,7 +1502,19 @@ impl RendererHeartbeatStatus {
         self.last_reason = payload.reason.clone();
         self.last_visibility = payload.visibility.clone();
         self.last_href = payload.href.clone();
+        self.last_page_load_id = payload.page_load_id.clone();
+        self.last_uptime_ms = payload.uptime_ms;
+        self.last_app_phase = payload.app_phase.clone();
+        self.last_event_loop_lag_ms = payload.event_loop_lag_ms;
+        self.last_hidden_timer_throttled = payload.hidden_timer_throttled;
+        self.last_dom_node_count = payload.dom_node_count;
+        self.last_renderer_heap_used_bytes = payload.renderer_heap_used_bytes;
+        self.last_renderer_heap_total_bytes = payload.renderer_heap_total_bytes;
+        self.last_input_age_ms = payload.last_input_age_ms;
+        self.last_settings_open = payload.settings_open;
+        self.last_dialog_open = payload.dialog_open;
         self.stale_logged = false;
+        self.throttle_logged = false;
         self.recovery_attempts = 0;
         self.last_recovery_at = None;
 
@@ -1136,30 +1528,112 @@ impl RendererHeartbeatStatus {
         self.last_reason = "native-recovery".to_string();
         self.last_visibility = "unknown".to_string();
         self.last_href = String::new();
+        self.last_page_load_id = None;
+        self.last_uptime_ms = None;
+        self.last_app_phase = None;
+        self.last_event_loop_lag_ms = None;
+        self.last_hidden_timer_throttled = None;
+        self.last_dom_node_count = None;
+        self.last_renderer_heap_used_bytes = None;
+        self.last_renderer_heap_total_bytes = None;
+        self.last_input_age_ms = None;
+        self.last_settings_open = None;
+        self.last_dialog_open = None;
         self.stale_logged = false;
+        self.throttle_logged = false;
         self.recovery_attempts += 1;
         self.last_recovery_at = Some(now);
+        self.renderer_generation = self.renderer_generation.saturating_add(1);
+        self.recovery_history.push_back(now);
+        while self
+            .recovery_history
+            .front()
+            .map(|oldest| now.duration_since(*oldest) > BACKGROUND_SAFE_MODE_RECOVERY_WINDOW_LONG)
+            .unwrap_or(false)
+        {
+            self.recovery_history.pop_front();
+        }
         self.recovery_attempts
+    }
+
+    fn recent_recovery_count(&self, window: Duration) -> usize {
+        let now = Instant::now();
+        self.recovery_history
+            .iter()
+            .filter(|recovery_at| now.duration_since(**recovery_at) <= window)
+            .count()
     }
 }
 
+#[cfg(test)]
 fn renderer_recovery_threshold(is_visible: bool, last_visibility: &str) -> Duration {
-    if is_visible || last_visibility == "visible" {
-        RENDERER_VISIBLE_RECOVERY_AFTER
+    renderer_recovery_threshold_for_count(is_visible, last_visibility, 0)
+}
+
+fn renderer_recovery_threshold_for_count(
+    is_visible: bool,
+    last_visibility: &str,
+    recent_recovery_count: usize,
+) -> Duration {
+    if renderer_is_effectively_visible(is_visible, last_visibility) {
+        match recent_recovery_count {
+            0 | 1 => RENDERER_VISIBLE_RECOVERY_AFTER,
+            2 => Duration::from_secs(120),
+            _ => Duration::from_secs(300),
+        }
     } else {
         RENDERER_HIDDEN_RECOVERY_AFTER
     }
 }
 
-fn runtime_memory_snapshot_for_log(app: &tauri::AppHandle) -> (u64, Option<(u32, u64, u64)>) {
-    let snapshot = collect_runtime_memory_stats(app, 0, 0);
-    let webkit = snapshot
-        .webkit_largest_process_id
-        .zip(snapshot.webkit_largest_resident_bytes)
-        .zip(snapshot.webkit_virtual_bytes)
-        .map(|((pid, resident), virtual_bytes)| (pid, resident, virtual_bytes));
+fn renderer_is_effectively_visible(is_visible: bool, last_visibility: &str) -> bool {
+    is_visible && last_visibility == "visible"
+}
 
-    (snapshot.process_resident_bytes, webkit)
+fn renderer_stale_log_after(is_visible: bool, last_visibility: &str) -> Duration {
+    if renderer_is_effectively_visible(is_visible, last_visibility) {
+        RENDERER_STALE_LOG_AFTER
+    } else {
+        RENDERER_HIDDEN_STALE_LOG_AFTER
+    }
+}
+
+fn renderer_stale_log_should_pause_background(is_visible: bool, last_visibility: &str) -> bool {
+    renderer_is_effectively_visible(is_visible, last_visibility)
+}
+
+fn renderer_stale_log_should_capture_deep_diagnostic(
+    is_visible: bool,
+    last_visibility: &str,
+) -> bool {
+    renderer_is_effectively_visible(is_visible, last_visibility)
+}
+
+fn renderer_gap_is_expected_hidden_throttle(
+    is_visible: bool,
+    last_visibility: &str,
+    last_hidden_timer_throttled: Option<bool>,
+    age: Duration,
+    _recovery_threshold: Duration,
+) -> bool {
+    !renderer_is_effectively_visible(is_visible, last_visibility)
+        && (last_visibility == "hidden" || last_hidden_timer_throttled == Some(true))
+        && age >= WEBKIT_HIDDEN_TIMER_THROTTLE_AFTER
+}
+
+fn renderer_health_hidden_timer_throttled(
+    expected_hidden_throttle: bool,
+    last_hidden_timer_throttled: Option<bool>,
+) -> Option<bool> {
+    if expected_hidden_throttle {
+        Some(true)
+    } else {
+        last_hidden_timer_throttled
+    }
+}
+
+fn renderer_stale_should_recover(is_visible: bool, last_visibility: &str) -> bool {
+    renderer_is_effectively_visible(is_visible, last_visibility)
 }
 
 fn format_bytes_for_log(bytes: u64) -> String {
@@ -1187,16 +1661,171 @@ mod renderer_watchdog_tests {
     fn renderer_recovery_threshold_prefers_visible_windows() {
         assert_eq!(
             renderer_recovery_threshold(true, "hidden"),
-            RENDERER_VISIBLE_RECOVERY_AFTER
+            RENDERER_HIDDEN_RECOVERY_AFTER
         );
         assert_eq!(
             renderer_recovery_threshold(false, "visible"),
-            RENDERER_VISIBLE_RECOVERY_AFTER
+            RENDERER_HIDDEN_RECOVERY_AFTER
         );
         assert_eq!(
             renderer_recovery_threshold(false, "hidden"),
             RENDERER_HIDDEN_RECOVERY_AFTER
         );
+        assert_eq!(
+            renderer_recovery_threshold(true, "visible"),
+            RENDERER_VISIBLE_RECOVERY_AFTER
+        );
+    }
+
+    #[test]
+    fn renderer_stale_log_threshold_uses_hidden_timer_slack() {
+        assert_eq!(
+            renderer_stale_log_after(true, "visible"),
+            RENDERER_STALE_LOG_AFTER
+        );
+        assert_eq!(
+            renderer_stale_log_after(true, "hidden"),
+            RENDERER_HIDDEN_STALE_LOG_AFTER
+        );
+        assert_eq!(
+            renderer_stale_log_after(false, "visible"),
+            RENDERER_HIDDEN_STALE_LOG_AFTER
+        );
+    }
+
+    #[test]
+    fn hidden_renderer_stale_log_waits_past_webkit_timer_throttling() {
+        assert!(RENDERER_HIDDEN_STALE_LOG_AFTER > WEBKIT_HIDDEN_TIMER_THROTTLE_AFTER);
+        assert!(RENDERER_HIDDEN_STALE_LOG_AFTER < RENDERER_HIDDEN_RECOVERY_AFTER);
+    }
+
+    #[test]
+    fn hidden_renderer_stale_log_keeps_background_work_eligible() {
+        assert!(renderer_stale_log_should_pause_background(true, "visible"));
+        assert!(!renderer_stale_log_should_pause_background(true, "hidden"));
+        assert!(!renderer_stale_log_should_pause_background(
+            false, "visible"
+        ));
+        assert!(!renderer_stale_log_should_pause_background(false, "hidden"));
+    }
+
+    #[test]
+    fn hidden_renderer_stale_log_skips_deep_diagnostics() {
+        assert!(renderer_stale_log_should_capture_deep_diagnostic(
+            true, "visible"
+        ));
+        assert!(!renderer_stale_log_should_capture_deep_diagnostic(
+            true, "hidden"
+        ));
+        assert!(!renderer_stale_log_should_capture_deep_diagnostic(
+            false, "visible"
+        ));
+        assert!(!renderer_stale_log_should_capture_deep_diagnostic(
+            false, "hidden"
+        ));
+    }
+
+    #[test]
+    fn hidden_renderer_stale_skips_renderer_recovery() {
+        assert!(renderer_stale_should_recover(true, "visible"));
+        assert!(!renderer_stale_should_recover(true, "hidden"));
+        assert!(!renderer_stale_should_recover(false, "visible"));
+        assert!(!renderer_stale_should_recover(false, "hidden"));
+    }
+
+    #[test]
+    fn hidden_timer_throttle_gap_is_not_a_stale_renderer() {
+        assert!(renderer_gap_is_expected_hidden_throttle(
+            false,
+            "hidden",
+            Some(true),
+            RENDERER_HIDDEN_STALE_LOG_AFTER + Duration::from_secs(1),
+            RENDERER_HIDDEN_RECOVERY_AFTER,
+        ));
+        assert!(renderer_gap_is_expected_hidden_throttle(
+            true,
+            "hidden",
+            Some(false),
+            RENDERER_HIDDEN_STALE_LOG_AFTER + Duration::from_secs(1),
+            RENDERER_HIDDEN_RECOVERY_AFTER,
+        ));
+        assert!(!renderer_gap_is_expected_hidden_throttle(
+            true,
+            "visible",
+            Some(true),
+            RENDERER_HIDDEN_STALE_LOG_AFTER + Duration::from_secs(1),
+            RENDERER_HIDDEN_RECOVERY_AFTER,
+        ));
+        assert!(renderer_gap_is_expected_hidden_throttle(
+            false,
+            "hidden",
+            Some(false),
+            RENDERER_HIDDEN_STALE_LOG_AFTER + Duration::from_secs(1),
+            RENDERER_HIDDEN_RECOVERY_AFTER,
+        ));
+        assert!(!renderer_gap_is_expected_hidden_throttle(
+            false,
+            "hidden",
+            Some(true),
+            WEBKIT_HIDDEN_TIMER_THROTTLE_AFTER - Duration::from_secs(1),
+            RENDERER_HIDDEN_RECOVERY_AFTER,
+        ));
+        assert!(renderer_gap_is_expected_hidden_throttle(
+            false,
+            "hidden",
+            Some(true),
+            RENDERER_HIDDEN_RECOVERY_AFTER + Duration::from_secs(1),
+            RENDERER_HIDDEN_RECOVERY_AFTER,
+        ));
+    }
+
+    #[test]
+    fn heartbeat_after_hidden_timer_throttle_does_not_report_recovered() {
+        let mut status = RendererHeartbeatStatus::new();
+        status.throttle_logged = true;
+
+        let payload = RendererHeartbeatPayload {
+            seq: 8,
+            ts: 1_777_000_000_000,
+            reason: "interval".to_string(),
+            visibility: "hidden".to_string(),
+            href: "tauri://localhost".to_string(),
+            page_load_id: Some("page-1".to_string()),
+            uptime_ms: Some(600_000),
+            app_phase: Some("ready".to_string()),
+            event_loop_lag_ms: None,
+            hidden_timer_throttled: Some(true),
+            dom_node_count: Some(100),
+            renderer_heap_used_bytes: Some(1024),
+            renderer_heap_total_bytes: Some(2048),
+            last_input_age_ms: Some(600_000),
+            settings_open: Some(false),
+            dialog_open: Some(false),
+        };
+        let (_first_heartbeat, _gap_ms, recovered) =
+            status.note_heartbeat(&payload, std::time::Instant::now());
+
+        assert!(!recovered);
+        assert!(!status.throttle_logged);
+        assert_eq!(status.last_hidden_timer_throttled, Some(true));
+    }
+
+    #[test]
+    fn native_hidden_timer_classification_is_reported_in_health_payloads() {
+        assert_eq!(
+            renderer_health_hidden_timer_throttled(true, Some(false)),
+            Some(true)
+        );
+        assert_eq!(
+            renderer_health_hidden_timer_throttled(false, Some(false)),
+            Some(false)
+        );
+        assert_eq!(renderer_health_hidden_timer_throttled(false, None), None);
+    }
+
+    #[test]
+    fn main_window_release_timeout_allows_main_loop_to_unregister_label() {
+        assert_eq!(main_window_release_timeout_ms(), 5_000);
     }
 
     #[test]
@@ -1212,6 +1841,17 @@ mod renderer_watchdog_tests {
             reason: "startup".to_string(),
             visibility: "visible".to_string(),
             href: "tauri://localhost".to_string(),
+            page_load_id: Some("page-1".to_string()),
+            uptime_ms: Some(1_000),
+            app_phase: Some("ready".to_string()),
+            event_loop_lag_ms: Some(4.0),
+            hidden_timer_throttled: Some(false),
+            dom_node_count: Some(100),
+            renderer_heap_used_bytes: Some(1024),
+            renderer_heap_total_bytes: Some(2048),
+            last_input_age_ms: Some(50),
+            settings_open: Some(false),
+            dialog_open: Some(false),
         };
         let (_first_heartbeat, _gap_ms, recovered) =
             status.note_heartbeat(&payload, std::time::Instant::now());
@@ -1220,6 +1860,42 @@ mod renderer_watchdog_tests {
         assert_eq!(status.recovery_attempts, 0);
         assert!(status.last_recovery_at.is_none());
         assert_eq!(status.last_seq, 7);
+        assert_eq!(status.last_page_load_id.as_deref(), Some("page-1"));
+        assert_eq!(status.last_hidden_timer_throttled, Some(false));
+    }
+
+    #[test]
+    fn visible_renderer_recovery_backs_off_after_repeated_recoveries() {
+        assert_eq!(
+            renderer_recovery_threshold_for_count(true, "visible", 0),
+            RENDERER_VISIBLE_RECOVERY_AFTER
+        );
+        assert_eq!(
+            renderer_recovery_threshold_for_count(true, "visible", 2),
+            Duration::from_secs(120)
+        );
+        assert_eq!(
+            renderer_recovery_threshold_for_count(true, "visible", 3),
+            Duration::from_secs(300)
+        );
+    }
+
+    #[test]
+    fn background_runtime_enters_safe_mode_after_repeated_recoveries() {
+        let runtime = BackgroundRuntimeCoordinator::new();
+        runtime.note_renderer_heartbeat();
+        runtime.note_renderer_heartbeat();
+
+        runtime.note_renderer_recovery_attempt("renderer heartbeat stale");
+        runtime.note_renderer_recovery_attempt("renderer heartbeat stale");
+
+        let (safe_mode_active, safe_mode_remaining_ms, recoveries_short, recoveries_long) =
+            runtime.recovery_status_for_health();
+        assert!(safe_mode_active);
+        assert!(safe_mode_remaining_ms.unwrap_or(0) > 0);
+        assert_eq!(recoveries_short, 2);
+        assert_eq!(recoveries_long, 2);
+        assert!(runtime.begin_job("fb_scrape_feed").is_err());
     }
 }
 
@@ -1391,6 +2067,83 @@ async fn google_api_request(url: String, access_token: String) -> Result<String,
     }
 
     Ok(body)
+}
+
+#[derive(serde::Serialize)]
+struct GoogleDriveResponse {
+    status: u16,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+/// Make a Google Drive API request through the native networking stack.
+#[tauri::command]
+async fn google_drive_request(
+    url: String,
+    method: Option<String>,
+    headers: Option<Vec<(String, String)>>,
+    body: Option<Vec<u8>>,
+) -> Result<GoogleDriveResponse, String> {
+    let parsed =
+        url::Url::parse(&url).map_err(|e| format!("Invalid Google Drive API URL: {}", e))?;
+    let allowed_path =
+        parsed.path().starts_with("/drive/v3/") || parsed.path().starts_with("/upload/drive/v3/");
+    if parsed.scheme() != "https"
+        || parsed.host_str() != Some("www.googleapis.com")
+        || !allowed_path
+    {
+        return Err("Google Drive API URL is not allowed".to_string());
+    }
+
+    let method_name = method.unwrap_or_else(|| "GET".to_string()).to_uppercase();
+    let method = match method_name.as_str() {
+        "GET" => reqwest::Method::GET,
+        "POST" => reqwest::Method::POST,
+        "PATCH" => reqwest::Method::PATCH,
+        "DELETE" => reqwest::Method::DELETE,
+        _ => {
+            return Err(format!(
+                "Google Drive API method is not allowed: {}",
+                method_name
+            ))
+        }
+    };
+
+    let client = reqwest::Client::builder()
+        .user_agent("Freed/1.0 (https://freed.wtf)")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut builder = client.request(method, parsed);
+    for (key, value) in headers.unwrap_or_default() {
+        builder = builder.header(&key, &value);
+    }
+    if let Some(body) = body {
+        builder = builder.body(body);
+    }
+
+    let response = builder
+        .send()
+        .await
+        .map_err(|e| format!("Google Drive request failed: {}", e))?;
+    let status = response.status().as_u16();
+    let headers = response
+        .headers()
+        .iter()
+        .filter_map(|(key, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (key.as_str().to_string(), value.to_string()))
+        })
+        .collect();
+    let body = response.bytes().await.map_err(|e| e.to_string())?.to_vec();
+
+    Ok(GoogleDriveResponse {
+        status,
+        headers,
+        body,
+    })
 }
 
 /// Fetch any URL and return its body as bytes for permanent local media archive.
@@ -1895,10 +2648,57 @@ fn macos_process_has_open_file_under_roots(pid: u32, roots: &[PathBuf]) -> bool 
         .any(|path| path_is_under_any_root(Path::new(path), roots))
 }
 
-fn freed_webkit_memory_stats(system: &System, roots: &[PathBuf]) -> WebkitMemoryStats {
+fn webkit_process_belongs_to_current_launch(webkit_age_seconds: u64, app_age_seconds: u64) -> bool {
+    webkit_age_seconds <= app_age_seconds.saturating_add(WEBKIT_PROCESS_START_GRACE_SECONDS)
+}
+
+fn freed_webkit_process_role(
+    has_open_file_under_roots: bool,
+    webkit_age_seconds: u64,
+    app_age_seconds: u64,
+) -> Option<&'static str> {
+    if !webkit_process_belongs_to_current_launch(webkit_age_seconds, app_age_seconds) {
+        return None;
+    }
+    if has_open_file_under_roots {
+        Some("freed-webcontent")
+    } else {
+        Some("freed-webcontent-age-matched")
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_process_physical_footprint_bytes(pid: u32) -> Option<u64> {
+    let mut usage = MaybeUninit::<libc::rusage_info_v4>::uninit();
+    let result = unsafe {
+        libc::proc_pid_rusage(
+            pid as libc::c_int,
+            libc::RUSAGE_INFO_V4,
+            usage.as_mut_ptr().cast(),
+        )
+    };
+    if result != 0 {
+        return None;
+    }
+    Some(unsafe { usage.assume_init() }.ri_phys_footprint)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn macos_process_physical_footprint_bytes(_pid: u32) -> Option<u64> {
+    None
+}
+
+fn freed_webkit_memory_stats(
+    system: &System,
+    roots: &[PathBuf],
+    app_age_seconds: u64,
+) -> WebkitMemoryStats {
     let mut total_resident_bytes = 0u64;
+    let mut total_footprint_bytes = 0u64;
+    let mut has_footprint = false;
     let mut process_count = 0u64;
-    let mut largest: Option<(u32, u64, u64)> = None;
+    let mut largest: Option<WebkitProcessRuntimeStats> = None;
+    let mut processes: Vec<WebkitProcessRuntimeStats> = Vec::new();
 
     #[cfg(target_os = "macos")]
     {
@@ -1908,32 +2708,57 @@ fn freed_webkit_memory_stats(system: &System, roots: &[PathBuf]) -> WebkitMemory
                 continue;
             }
             let pid_u32 = pid.as_u32();
-            if !macos_process_has_open_file_under_roots(pid_u32, roots) {
+            let age_seconds = process.run_time();
+            let Some(role) = freed_webkit_process_role(
+                macos_process_has_open_file_under_roots(pid_u32, roots),
+                age_seconds,
+                app_age_seconds,
+            ) else {
                 continue;
-            }
+            };
             let resident = process.memory();
+            let footprint = macos_process_physical_footprint_bytes(pid_u32);
             let virtual_bytes = process.virtual_memory();
             total_resident_bytes = total_resident_bytes.saturating_add(resident);
+            if let Some(footprint) = footprint {
+                total_footprint_bytes = total_footprint_bytes.saturating_add(footprint);
+                has_footprint = true;
+            }
             process_count += 1;
+            let stats = WebkitProcessRuntimeStats {
+                process_id: pid_u32,
+                resident_bytes: resident,
+                footprint_bytes: footprint,
+                virtual_bytes,
+                cpu_usage: process.cpu_usage(),
+                age_seconds,
+                role: role.to_string(),
+            };
             if largest
-                .map(|(_, best_resident, _)| resident > best_resident)
+                .as_ref()
+                .map(|best| resident > best.resident_bytes)
                 .unwrap_or(true)
             {
-                largest = Some((pid_u32, resident, virtual_bytes));
+                largest = Some(stats.clone());
             }
+            processes.push(stats);
         }
     }
 
-    let (largest_process_id, largest_resident_bytes, largest_virtual_bytes) = largest
-        .map(|(pid, resident, virtual_bytes)| (Some(pid), Some(resident), Some(virtual_bytes)))
-        .unwrap_or((None, None, None));
+    processes.sort_by(|a, b| b.resident_bytes.cmp(&a.resident_bytes));
 
     WebkitMemoryStats {
         total_resident_bytes,
+        total_footprint_bytes: has_footprint.then_some(total_footprint_bytes),
         process_count,
-        largest_resident_bytes,
-        largest_virtual_bytes,
-        largest_process_id,
+        largest_resident_bytes: largest.as_ref().map(|stats| stats.resident_bytes),
+        largest_footprint_bytes: largest.as_ref().and_then(|stats| stats.footprint_bytes),
+        largest_virtual_bytes: largest.as_ref().map(|stats| stats.virtual_bytes),
+        largest_process_id: largest.as_ref().map(|stats| stats.process_id),
+        largest_cpu_usage: largest.as_ref().map(|stats| stats.cpu_usage),
+        largest_age_seconds: largest.as_ref().map(|stats| stats.age_seconds),
+        largest_role: largest.as_ref().map(|stats| stats.role.clone()),
+        processes,
     }
 }
 
@@ -1951,17 +2776,24 @@ fn collect_runtime_memory_stats(
         ProcessRefreshKind::nothing().with_memory(),
     );
 
-    let (process_resident_bytes, process_virtual_bytes) = system
+    let (process_resident_bytes, process_virtual_bytes, process_age_seconds) = system
         .process(pid)
-        .map(|process| (process.memory(), process.virtual_memory()))
-        .unwrap_or((0, 0));
+        .map(|process| {
+            (
+                process.memory(),
+                process.virtual_memory(),
+                process.run_time(),
+            )
+        })
+        .unwrap_or((0, 0, 0));
+    let process_footprint_bytes = macos_process_physical_footprint_bytes(std::process::id());
     system.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
         ProcessRefreshKind::nothing().with_memory(),
     );
 
-    let webkit = freed_webkit_memory_stats(&system, &app_storage_roots(app));
+    let webkit = freed_webkit_memory_stats(&system, &app_storage_roots(app), process_age_seconds);
     let total_physical_memory_bytes = system.total_memory();
     let (memory_high_bytes, memory_critical_bytes) =
         memory_pressure_limits(total_physical_memory_bytes);
@@ -1976,19 +2808,34 @@ fn collect_runtime_memory_stats(
         .ok()
         .and_then(|path| dir_size_bytes(&path.join("WebKit")));
     let app_resident_bytes = process_resident_bytes.saturating_add(webkit.total_resident_bytes);
+    let webkit_pressure_bytes = webkit
+        .total_footprint_bytes
+        .unwrap_or(webkit.total_resident_bytes);
+    let app_memory_pressure_bytes = process_footprint_bytes
+        .unwrap_or(process_resident_bytes)
+        .saturating_add(webkit_pressure_bytes);
 
     RuntimeMemoryStats {
         total_physical_memory_bytes,
         process_resident_bytes,
+        process_footprint_bytes,
         process_virtual_bytes,
         app_resident_bytes,
+        app_memory_pressure_bytes,
         webkit_resident_bytes: webkit.largest_resident_bytes,
+        webkit_footprint_bytes: webkit.largest_footprint_bytes,
         webkit_virtual_bytes: webkit.largest_virtual_bytes,
         webkit_process_id: webkit.largest_process_id,
         webkit_total_resident_bytes: webkit.total_resident_bytes,
+        webkit_total_footprint_bytes: webkit.total_footprint_bytes,
         webkit_process_count: webkit.process_count,
         webkit_largest_resident_bytes: webkit.largest_resident_bytes,
+        webkit_largest_footprint_bytes: webkit.largest_footprint_bytes,
         webkit_largest_process_id: webkit.largest_process_id,
+        webkit_largest_cpu_usage: webkit.largest_cpu_usage,
+        webkit_largest_age_seconds: webkit.largest_age_seconds,
+        webkit_largest_role: webkit.largest_role,
+        webkit_processes: webkit.processes,
         webkit_telemetry_available: webkit.process_count > 0,
         indexed_db_bytes,
         webkit_cache_bytes,
@@ -1999,7 +2846,7 @@ fn collect_runtime_memory_stats(
     }
 }
 
-fn collect_network_cache_blob_files(root: &Path, files: &mut Vec<(PathBuf, u64, SystemTime)>) {
+fn collect_webkit_network_cache_files(root: &Path, files: &mut Vec<(PathBuf, u64, SystemTime)>) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
@@ -2010,42 +2857,34 @@ fn collect_network_cache_blob_files(root: &Path, files: &mut Vec<(PathBuf, u64, 
             continue;
         };
         if metadata.is_dir() {
-            collect_network_cache_blob_files(&path, files);
+            collect_webkit_network_cache_files(&path, files);
             continue;
         }
         if !metadata.is_file() {
             continue;
         }
 
-        let is_blob = path.components().any(|component| {
-            component
-                .as_os_str()
-                .to_string_lossy()
-                .eq_ignore_ascii_case("Blobs")
-        });
-        if is_blob {
-            files.push((
-                path,
-                metadata.len(),
-                metadata.modified().unwrap_or(UNIX_EPOCH),
-            ));
-        }
+        files.push((
+            path,
+            metadata.len(),
+            metadata.modified().unwrap_or(UNIX_EPOCH),
+        ));
     }
 }
 
-fn trim_webkit_network_cache(app: &tauri::AppHandle) -> bool {
-    let Ok(cache_root) = app.path().app_cache_dir() else {
-        return false;
-    };
-    let webkit_root = cache_root.join("WebKit");
+fn trim_webkit_network_cache_root_with_result(webkit_root: &Path) -> WebkitCacheTrimResult {
     let webkit_bytes = dir_size_bytes(&webkit_root).unwrap_or(0);
     if webkit_bytes <= WEBKIT_CACHE_TRIM_AT_BYTES {
-        return false;
+        return WebkitCacheTrimResult {
+            before_bytes: webkit_bytes,
+            after_bytes: webkit_bytes,
+            cache_trimmed: false,
+        };
     }
 
     let network_cache_root = webkit_root.join("NetworkCache");
     let mut files = Vec::new();
-    collect_network_cache_blob_files(&network_cache_root, &mut files);
+    collect_webkit_network_cache_files(&network_cache_root, &mut files);
     files.sort_by_key(|(_, _, modified)| *modified);
 
     let mut current_bytes = webkit_bytes;
@@ -2060,11 +2899,129 @@ fn trim_webkit_network_cache(app: &tauri::AppHandle) -> bool {
         }
     }
 
-    trimmed
+    WebkitCacheTrimResult {
+        before_bytes: webkit_bytes,
+        after_bytes: current_bytes,
+        cache_trimmed: trimmed,
+    }
+}
+
+fn trim_webkit_network_cache(app: &tauri::AppHandle) -> WebkitCacheTrimResult {
+    let Ok(cache_root) = app.path().app_cache_dir() else {
+        return WebkitCacheTrimResult {
+            before_bytes: 0,
+            after_bytes: 0,
+            cache_trimmed: false,
+        };
+    };
+    trim_webkit_network_cache_root_with_result(&cache_root.join("WebKit"))
+}
+
+fn scrape_memory_start_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
+    stats
+        .memory_high_bytes
+        .saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES)
 }
 
 fn scrape_memory_may_proceed(stats: &RuntimeMemoryStats) -> bool {
-    stats.app_resident_bytes < stats.memory_high_bytes
+    stats.app_memory_pressure_bytes < scrape_memory_start_budget_bytes(stats)
+}
+
+fn optional_story_scrape_may_proceed(stats: &RuntimeMemoryStats) -> bool {
+    stats.app_memory_pressure_bytes
+        < stats
+            .memory_high_bytes
+            .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
+            / 100
+}
+
+fn social_scrape_may_continue(
+    app: &tauri::AppHandle,
+    provider: &str,
+    operation: &str,
+    pass_index: usize,
+    total_passes: usize,
+) -> bool {
+    let stats = collect_runtime_memory_stats(app, 0, 0);
+    let may_continue = scrape_memory_may_proceed(&stats);
+    if !may_continue {
+        warn!(
+            "[memory] ending scrape early provider={} operation={} pass={}/{} app_pressure={} app_rss={} webkit_pressure={} webkit_rss={} scrape_budget={} high_bytes={} critical_bytes={}",
+            provider,
+            operation,
+            pass_index,
+            total_passes,
+            stats.app_memory_pressure_bytes,
+            stats.app_resident_bytes,
+            stats
+                .webkit_total_footprint_bytes
+                .unwrap_or(stats.webkit_total_resident_bytes),
+            stats.webkit_total_resident_bytes,
+            scrape_memory_start_budget_bytes(&stats),
+            stats.memory_high_bytes,
+            stats.memory_critical_bytes
+        );
+        append_runtime_health(
+            app,
+            serde_json::json!({
+                "event": "social_scrape_stopped_for_memory",
+                "provider": provider,
+                "operation": operation,
+                "passIndex": pass_index,
+                "totalPasses": total_passes,
+                "appMemoryPressureBytes": stats.app_memory_pressure_bytes,
+                "appResidentBytes": stats.app_resident_bytes,
+                "webkitFootprintBytes": stats.webkit_total_footprint_bytes,
+                "webkitResidentBytes": stats.webkit_total_resident_bytes,
+                "webkitLargestProcessId": stats.webkit_largest_process_id,
+                "webkitLargestFootprintBytes": stats.webkit_largest_footprint_bytes,
+                "webkitLargestResidentBytes": stats.webkit_largest_resident_bytes,
+                "scrapeStartBudgetBytes": scrape_memory_start_budget_bytes(&stats),
+                "memoryHighBytes": stats.memory_high_bytes,
+                "memoryCriticalBytes": stats.memory_critical_bytes
+            }),
+        );
+    }
+    may_continue
+}
+
+fn optional_story_scrape_may_continue(
+    app: &tauri::AppHandle,
+    provider: &str,
+    operation: &str,
+) -> bool {
+    let stats = collect_runtime_memory_stats(app, 0, 0);
+    let may_continue = optional_story_scrape_may_proceed(&stats);
+    if !may_continue {
+        info!(
+            "[memory] skipping optional story scrape provider={} operation={} app_pressure={} app_rss={} webkit_pressure={} webkit_rss={} story_budget={} high_bytes={}",
+            provider,
+            operation,
+            stats.app_memory_pressure_bytes,
+            stats.app_resident_bytes,
+            stats
+                .webkit_total_footprint_bytes
+                .unwrap_or(stats.webkit_total_resident_bytes),
+            stats.webkit_total_resident_bytes,
+            stats.memory_high_bytes.saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT) / 100,
+            stats.memory_high_bytes
+        );
+        append_runtime_health(
+            app,
+            serde_json::json!({
+                "event": "optional_story_scrape_skipped_for_memory",
+                "provider": provider,
+                "operation": operation,
+                "appMemoryPressureBytes": stats.app_memory_pressure_bytes,
+                "appResidentBytes": stats.app_resident_bytes,
+                "webkitFootprintBytes": stats.webkit_total_footprint_bytes,
+                "webkitResidentBytes": stats.webkit_total_resident_bytes,
+                "storyBudgetBytes": stats.memory_high_bytes.saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT) / 100,
+                "memoryHighBytes": stats.memory_high_bytes
+            }),
+        );
+    }
+    may_continue
 }
 
 fn recycle_social_scraper_windows_except(
@@ -2085,6 +3042,17 @@ fn recycle_social_scraper_windows_except(
     recycled
 }
 
+fn blocked_preflight_preserved_scraper_label<'a>(
+    preserve_label: Option<&'a str>,
+    critical: bool,
+) -> Option<&'a str> {
+    if critical {
+        None
+    } else {
+        preserve_label
+    }
+}
+
 async fn prepare_social_scrape_memory_internal(
     app: &tauri::AppHandle,
     provider: &str,
@@ -2097,24 +3065,44 @@ async fn prepare_social_scrape_memory_internal(
     let reason = format!("{} {} memory preflight", provider, operation);
     let recycled_scraper_windows =
         recycle_social_scraper_windows_except(app, preserve_label, &reason);
-    let cache_trimmed = trim_webkit_network_cache(app);
+    let cache_trim_result = trim_webkit_network_cache(app);
+    let cache_trimmed = cache_trim_result.cache_trimmed;
 
     if recycled_scraper_windows || cache_trimmed {
         tokio::time::sleep(Duration::from_millis(700)).await;
     }
 
     let after = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
+    let scrape_start_budget_bytes = scrape_memory_start_budget_bytes(&after);
     let may_proceed = scrape_memory_may_proceed(&after);
+    let pressure_level = if after.app_memory_pressure_bytes >= after.memory_critical_bytes {
+        "critical"
+    } else if after.app_memory_pressure_bytes >= after.memory_high_bytes {
+        "high"
+    } else {
+        "normal"
+    };
     info!(
-        "[memory] scrape preflight provider={} operation={} before_app_rss={} before_webkit_rss={} after_app_rss={} after_webkit_rss={} high_bytes={} critical_bytes={} recycled_scrapers={} cache_trimmed={} may_proceed={}",
+        "[memory] scrape preflight provider={} operation={} before_app_pressure={} before_app_rss={} before_webkit_pressure={} before_webkit_rss={} after_app_pressure={} after_app_rss={} after_webkit_pressure={} after_webkit_rss={} scrape_budget={} headroom_bytes={} high_bytes={} critical_bytes={} pressure={} recycled_scrapers={} cache_trimmed={} may_proceed={}",
         provider,
         operation,
+        before.app_memory_pressure_bytes,
         before.app_resident_bytes,
+        before
+            .webkit_total_footprint_bytes
+            .unwrap_or(before.webkit_total_resident_bytes),
         before.webkit_total_resident_bytes,
+        after.app_memory_pressure_bytes,
         after.app_resident_bytes,
+        after
+            .webkit_total_footprint_bytes
+            .unwrap_or(after.webkit_total_resident_bytes),
         after.webkit_total_resident_bytes,
+        scrape_start_budget_bytes,
+        SCRAPE_MEMORY_HEADROOM_BYTES,
         after.memory_high_bytes,
         after.memory_critical_bytes,
+        pressure_level,
         recycled_scraper_windows,
         cache_trimmed,
         may_proceed
@@ -2125,29 +3113,57 @@ async fn prepare_social_scrape_memory_internal(
             "event": "scrape_memory_preflight",
             "provider": provider,
             "operation": operation,
+            "beforeAppMemoryPressureBytes": before.app_memory_pressure_bytes,
             "beforeAppResidentBytes": before.app_resident_bytes,
+            "beforeWebkitFootprintBytes": before.webkit_total_footprint_bytes,
             "beforeWebkitResidentBytes": before.webkit_total_resident_bytes,
+            "afterAppMemoryPressureBytes": after.app_memory_pressure_bytes,
             "afterAppResidentBytes": after.app_resident_bytes,
+            "afterWebkitFootprintBytes": after.webkit_total_footprint_bytes,
             "afterWebkitResidentBytes": after.webkit_total_resident_bytes,
+            "webkitLargestProcessId": after.webkit_largest_process_id,
+            "webkitLargestFootprintBytes": after.webkit_largest_footprint_bytes,
+            "webkitLargestResidentBytes": after.webkit_largest_resident_bytes,
+            "webkitLargestCpuUsage": after.webkit_largest_cpu_usage,
+            "webkitLargestAgeSeconds": after.webkit_largest_age_seconds,
+            "webkitLargestRole": after.webkit_largest_role,
+            "webkitProcessCount": after.webkit_process_count,
+            "scrapeStartBudgetBytes": scrape_start_budget_bytes,
+            "scrapeHeadroomBytes": SCRAPE_MEMORY_HEADROOM_BYTES,
             "memoryHighBytes": after.memory_high_bytes,
             "memoryCriticalBytes": after.memory_critical_bytes,
+            "pressureLevel": pressure_level,
             "recycledScraperWindows": recycled_scraper_windows,
             "cacheTrimmed": cache_trimmed,
             "mayProceed": may_proceed
         }),
     );
 
+    if !may_proceed {
+        capture_deep_runtime_diagnostic(
+            app,
+            "scrape_memory_preflight_blocked",
+            &reason,
+            &after,
+            None,
+            None,
+            false,
+        );
+    }
+
     ScrapeMemoryPreparation {
         before,
         after,
         recycled_scraper_windows,
         cache_trimmed,
+        scrape_start_budget_bytes,
         may_proceed,
     }
 }
 
 async fn ensure_social_scrape_memory(
     app: &tauri::AppHandle,
+    background_runtime: &BackgroundRuntimeCoordinator,
     provider: &str,
     operation: &str,
     preserve_label: Option<&str>,
@@ -2158,9 +3174,54 @@ async fn ensure_social_scrape_memory(
         return Ok(());
     }
 
+    let pressure_label = if prep.after.app_memory_pressure_bytes >= prep.after.memory_critical_bytes
+    {
+        "critically high"
+    } else {
+        "high"
+    };
+    let critical = pressure_label == "critically high";
+    if critical {
+        let reason = format!("{} {} critical memory preflight", provider, operation);
+        recycle_social_scraper_windows(app, &reason);
+    }
+    let mut recycled_preserved_scraper_window = false;
+    if let Some(label) = blocked_preflight_preserved_scraper_label(preserve_label, critical) {
+        let reason = format!("{} {} blocked memory preflight", provider, operation);
+        recycled_preserved_scraper_window = app.get_webview_window(label).is_some();
+        recycle_webview_window(app, label, &reason);
+    }
+    let cooldown_ms = background_runtime.note_memory_pressure(provider, operation, critical);
+    warn!(
+        "[memory] pausing background scraper work provider={} operation={} pressure={} cooldown_ms={} recycled_preserved_scraper={}",
+        provider, operation, pressure_label, cooldown_ms, recycled_preserved_scraper_window
+    );
+    append_runtime_health(
+        app,
+        serde_json::json!({
+            "event": "background_scraper_memory_cooldown",
+            "provider": provider,
+            "operation": operation,
+            "pressureLevel": if critical { "critical" } else { "high" },
+            "cooldownMs": cooldown_ms,
+            "appMemoryPressureBytes": prep.after.app_memory_pressure_bytes,
+            "appResidentBytes": prep.after.app_resident_bytes,
+            "webkitFootprintBytes": prep.after.webkit_total_footprint_bytes,
+            "webkitResidentBytes": prep.after.webkit_total_resident_bytes,
+            "webkitLargestProcessId": prep.after.webkit_largest_process_id,
+            "webkitLargestFootprintBytes": prep.after.webkit_largest_footprint_bytes,
+            "webkitLargestResidentBytes": prep.after.webkit_largest_resident_bytes,
+            "scrapeStartBudgetBytes": prep.scrape_start_budget_bytes,
+            "memoryHighBytes": prep.after.memory_high_bytes,
+            "memoryCriticalBytes": prep.after.memory_critical_bytes,
+            "recycledAllScraperWindows": critical,
+            "recycledPreservedScraperWindow": recycled_preserved_scraper_window,
+            "preservedScraperLabel": preserve_label
+        }),
+    );
     Err(format!(
-        "{} sync paused because Freed Desktop memory remains critically high after cleanup.",
-        provider
+        "{} sync paused because Freed Desktop memory remains {} after cleanup.",
+        provider, pressure_label
     ))
 }
 
@@ -2183,6 +3244,20 @@ async fn get_runtime_memory_stats(
         relay_doc_bytes,
         relay_client_count,
     ))
+}
+
+#[tauri::command]
+async fn trim_webkit_network_cache_now(
+    app: tauri::AppHandle,
+) -> Result<WebkitCacheTrimResult, String> {
+    let result = trim_webkit_network_cache(&app);
+    if result.cache_trimmed {
+        info!(
+            "[memory] webkit cache trimmed during monitor sample before_bytes={} after_bytes={}",
+            result.before_bytes, result.after_bytes
+        );
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -2649,6 +3724,7 @@ async fn fb_show_login(
         "fb-scraper",
         tauri::WebviewUrl::External("https://www.facebook.com/login".parse().unwrap()),
     )
+    .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
     .user_agent(&user_agent)
     .initialization_script(include_str!("webkit-mask.js"))
     .title("Connect Facebook — Freed")
@@ -2717,7 +3793,14 @@ async fn fb_check_auth(
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_check_auth").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "auth check", Some("fb-scraper")).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Facebook",
+        "auth check",
+        Some("fb-scraper"),
+    )
+    .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "auth check");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(w) => w,
@@ -2726,6 +3809,7 @@ async fn fb_check_auth(
             "fb-scraper",
             tauri::WebviewUrl::External("https://www.facebook.com/".parse().unwrap()),
         )
+        .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
         .user_agent(&scraper_user_agent)
         .initialization_script(include_str!("webkit-mask.js"))
         .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -3008,7 +4092,14 @@ async fn fb_scrape_feed(
     let fb_feed_url = "https://www.facebook.com/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_feed").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "feed scrape", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Facebook",
+        "feed scrape",
+        None,
+    )
+    .await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "feed scrape complete");
 
@@ -3026,6 +4117,7 @@ async fn fb_scrape_feed(
                 "fb-scraper",
                 tauri::WebviewUrl::External(fb_feed_url.parse().unwrap()),
             )
+            .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
             .user_agent(&scraper_user_agent)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -3095,7 +4187,7 @@ async fn fb_scrape_feed(
 
     // Randomized ordering: ~50% stories-first, ~50% feed-first.
     // ~15% chance to skip story scraping entirely (real users don't always check stories).
-    let skip_stories = {
+    let skip_stories = !optional_story_scrape_may_continue(&app, "Facebook", "feed scrape") || {
         use rand::Rng;
         rand::thread_rng().gen_bool(0.15)
     };
@@ -3105,7 +4197,7 @@ async fn fb_scrape_feed(
     };
     let story_frame_cap = {
         use rand::Rng;
-        rand::thread_rng().gen_range(4usize..=8)
+        rand::thread_rng().gen_range(2usize..=4)
     };
 
     if stories_first {
@@ -3123,7 +4215,7 @@ async fn fb_scrape_feed(
     // We must scroll incrementally, extracting at each position.
     let num_passes = {
         use rand::Rng;
-        rand::thread_rng().gen_range(8usize..=18)
+        rand::thread_rng().gen_range(6usize..=10)
     };
     // If doing feed-first, split the passes: 2-4 passes before stories, rest after.
     let early_passes = if !stories_first && !skip_stories {
@@ -3141,6 +4233,9 @@ async fn fb_scrape_feed(
 
         tokio::time::sleep(Duration::from_millis(300)).await;
         cleanup_background_scraper_media(&wv);
+        if !social_scrape_may_continue(&app, "Facebook", "feed scrape", i + 1, num_passes) {
+            break;
+        }
 
         let scroll_amount = {
             use rand::Rng;
@@ -3238,7 +4333,14 @@ async fn fb_scrape_groups(
     let fb_groups_url = "https://www.facebook.com/groups/?category=joined";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_groups").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "groups scrape", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Facebook",
+        "groups scrape",
+        None,
+    )
+    .await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "groups scrape complete");
 
@@ -3256,6 +4358,7 @@ async fn fb_scrape_groups(
                 "fb-scraper",
                 tauri::WebviewUrl::External(fb_groups_url.parse().unwrap()),
             )
+            .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
             .user_agent(&scraper_user_agent)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -3341,7 +4444,8 @@ async fn fb_scrape_comments(
     window_mode: ScraperWindowMode,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_comments").await?;
+    let _scraper_session =
+        acquire_background_scraper_session(&capture, "fb_scrape_comments").await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "comments scrape complete");
     let wv = match app.get_webview_window("fb-scraper") {
@@ -3432,6 +4536,7 @@ async fn ig_show_login(
         "ig-scraper",
         tauri::WebviewUrl::External("https://www.instagram.com/accounts/login/".parse().unwrap()),
     )
+    .data_store_identifier(IG_SCRAPER_DATA_STORE_IDENTIFIER)
     .user_agent(&user_agent)
     .initialization_script(include_str!("webkit-mask.js"))
     .title("Connect Instagram — Freed")
@@ -3510,7 +4615,14 @@ async fn ig_check_auth(
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_check_auth").await?;
-    ensure_social_scrape_memory(&app, "Instagram", "auth check", Some("ig-scraper")).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Instagram",
+        "auth check",
+        Some("ig-scraper"),
+    )
+    .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "auth check");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => w,
@@ -3519,6 +4631,7 @@ async fn ig_check_auth(
             "ig-scraper",
             tauri::WebviewUrl::External("https://www.instagram.com/".parse().unwrap()),
         )
+        .data_store_identifier(IG_SCRAPER_DATA_STORE_IDENTIFIER)
         .user_agent(&scraper_user_agent)
         .initialization_script(include_str!("webkit-mask.js"))
         .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -3572,7 +4685,14 @@ async fn ig_scrape_feed(
     let ig_feed_url = "https://www.instagram.com/?variant=following";
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await?;
-    ensure_social_scrape_memory(&app, "Instagram", "feed scrape", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Instagram",
+        "feed scrape",
+        None,
+    )
+    .await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "ig-scraper", "feed scrape complete");
 
@@ -3597,6 +4717,7 @@ async fn ig_scrape_feed(
                 "ig-scraper",
                 tauri::WebviewUrl::External(ig_feed_url.parse().unwrap()),
             )
+            .data_store_identifier(IG_SCRAPER_DATA_STORE_IDENTIFIER)
             .user_agent(&scraper_user_agent)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -3659,7 +4780,7 @@ async fn ig_scrape_feed(
 
     // Randomized ordering: ~50% stories-first, ~50% feed-first.
     // ~15% chance to skip story scraping entirely.
-    let skip_stories = {
+    let skip_stories = !optional_story_scrape_may_continue(&app, "Instagram", "feed scrape") || {
         use rand::Rng;
         rand::thread_rng().gen_bool(0.15)
     };
@@ -3669,7 +4790,7 @@ async fn ig_scrape_feed(
     };
     let story_frame_cap = {
         use rand::Rng;
-        rand::thread_rng().gen_range(4usize..=8)
+        rand::thread_rng().gen_range(2usize..=4)
     };
 
     if stories_first {
@@ -3686,7 +4807,7 @@ async fn ig_scrape_feed(
     // incrementally, extracting at each position.
     let num_passes = {
         use rand::Rng;
-        rand::thread_rng().gen_range(7usize..=14)
+        rand::thread_rng().gen_range(5usize..=9)
     };
     // Feed-first: scrape stories after the first 2-4 passes
     let early_passes = if !stories_first && !skip_stories {
@@ -3704,6 +4825,9 @@ async fn ig_scrape_feed(
 
         tokio::time::sleep(Duration::from_millis(300)).await;
         cleanup_background_scraper_media(&wv);
+        if !social_scrape_may_continue(&app, "Instagram", "feed scrape", i + 1, num_passes) {
+            break;
+        }
 
         let scroll_amount = {
             use rand::Rng;
@@ -3821,7 +4945,8 @@ async fn ig_scrape_comments(
     window_mode: ScraperWindowMode,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_comments").await?;
+    let _scraper_session =
+        acquire_background_scraper_session(&capture, "ig_scrape_comments").await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "ig-scraper", "comments scrape complete");
     let wv = match app.get_webview_window("ig-scraper") {
@@ -3884,7 +5009,8 @@ async fn fb_visit_url(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_visit_url").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "visit", None).await?;
+    ensure_social_scrape_memory(&app, &capture.background_runtime, "Facebook", "visit", None)
+        .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "visit complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -3916,7 +5042,14 @@ async fn ig_visit_url(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_visit_url").await?;
-    ensure_social_scrape_memory(&app, "Instagram", "visit", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Instagram",
+        "visit",
+        None,
+    )
+    .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "visit complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -3954,7 +5087,8 @@ async fn fb_like_post(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_like_post").await?;
-    ensure_social_scrape_memory(&app, "Facebook", "like", None).await?;
+    ensure_social_scrape_memory(&app, &capture.background_runtime, "Facebook", "like", None)
+        .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "like complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -4004,7 +5138,8 @@ async fn ig_like_post(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_like_post").await?;
-    ensure_social_scrape_memory(&app, "Instagram", "like", None).await?;
+    ensure_social_scrape_memory(&app, &capture.background_runtime, "Instagram", "like", None)
+        .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "like complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -4085,6 +5220,7 @@ async fn li_show_login(
         "li-scraper",
         tauri::WebviewUrl::External("https://www.linkedin.com/login".parse().unwrap()),
     )
+    .data_store_identifier(LI_SCRAPER_DATA_STORE_IDENTIFIER)
     .user_agent(&user_agent)
     .initialization_script(include_str!("webkit-mask.js"))
     .title("Connect LinkedIn with Freed")
@@ -4148,7 +5284,14 @@ async fn li_check_auth(
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "li_check_auth").await?;
-    ensure_social_scrape_memory(&app, "LinkedIn", "auth check", Some("li-scraper")).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "LinkedIn",
+        "auth check",
+        Some("li-scraper"),
+    )
+    .await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "li-scraper", "auth check");
     let wv = match app.get_webview_window("li-scraper") {
         Some(w) => {
@@ -4162,6 +5305,7 @@ async fn li_check_auth(
             "li-scraper",
             tauri::WebviewUrl::External("https://www.linkedin.com/feed/".parse().unwrap()),
         )
+        .data_store_identifier(LI_SCRAPER_DATA_STORE_IDENTIFIER)
         .user_agent(&scraper_user_agent)
         .initialization_script(include_str!("webkit-mask.js"))
         .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -4222,7 +5366,14 @@ async fn li_scrape_feed(
     let li_feed_url = "https://www.linkedin.com/feed/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "li_scrape_feed").await?;
-    ensure_social_scrape_memory(&app, "LinkedIn", "feed scrape", None).await?;
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "LinkedIn",
+        "feed scrape",
+        None,
+    )
+    .await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "li-scraper", "feed scrape complete");
 
@@ -4240,6 +5391,7 @@ async fn li_scrape_feed(
                 "li-scraper",
                 tauri::WebviewUrl::External(li_feed_url.parse().unwrap()),
             )
+            .data_store_identifier(LI_SCRAPER_DATA_STORE_IDENTIFIER)
             .user_agent(&scraper_user_agent)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
@@ -4299,7 +5451,7 @@ async fn li_scrape_feed(
     // position. Fewer passes than FB (LinkedIn loads fewer posts per scroll).
     let num_passes = {
         use rand::Rng;
-        rand::thread_rng().gen_range(6usize..=12)
+        rand::thread_rng().gen_range(4usize..=8)
     };
 
     // Inject the extract script as a const so we can append done=true on last pass.
@@ -4332,6 +5484,9 @@ async fn li_scrape_feed(
         inject_script(&wv, is_last)?;
         tokio::time::sleep(Duration::from_millis(300)).await;
         cleanup_background_scraper_media(&wv);
+        if !social_scrape_may_continue(&app, "LinkedIn", "feed scrape", i + 1, num_passes) {
+            break;
+        }
 
         let scroll_amount = {
             use rand::Rng;
@@ -4407,6 +5562,18 @@ async fn li_scrape_feed(
         );
     }
 
+    let _ = wv.eval(
+        r#"
+        (function() {
+            if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {
+                window.__TAURI__.event.emit("li-feed-data", {
+                    posts: [], done: true, extractedAt: Date.now(),
+                    url: window.location.href, candidateCount: 0, scrollY: window.scrollY
+                });
+            }
+        })();
+    "#,
+    );
     tokio::time::sleep(Duration::from_millis(500)).await;
     println!(
         "[LI] scrape complete, {} extraction passes emitted",
@@ -4657,8 +5824,12 @@ fn wait_for_main_window_release(app: &tauri::AppHandle, reason: &str) -> Result<
 
     Err(format!(
         "main window label stayed registered for {} ms after destroy",
-        MAIN_WINDOW_RELEASE_POLL_INTERVAL.as_millis() * MAIN_WINDOW_RELEASE_POLL_ATTEMPTS as u128
+        main_window_release_timeout_ms()
     ))
+}
+
+fn main_window_release_timeout_ms() -> u128 {
+    MAIN_WINDOW_RELEASE_POLL_INTERVAL.as_millis() * MAIN_WINDOW_RELEASE_POLL_ATTEMPTS as u128
 }
 
 #[cfg(target_os = "macos")]
@@ -4686,8 +5857,132 @@ fn apply_main_window_vibrancy(_window: &tauri::WebviewWindow, _context: &str) ->
 }
 
 fn show_webview_window(window: &tauri::WebviewWindow) {
+    show_app_for_main_window(window, "show");
     let _ = window.show();
+    let _ = window.unminimize();
     let _ = window.set_focus();
+    force_show_webview_window(window, "show");
+}
+
+#[cfg(target_os = "macos")]
+fn show_app_for_main_window(window: &tauri::WebviewWindow, context: &str) {
+    let app = window.app_handle();
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+    let _ = app.show();
+    force_activate_ns_app(context);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn show_app_for_main_window(_window: &tauri::WebviewWindow, _context: &str) {}
+
+#[cfg(target_os = "macos")]
+fn force_activate_ns_app(context: &str) {
+    let Some(mtm) = MainThreadMarker::new() else {
+        warn!(
+            "[main-window] forced app activation skipped off main thread context={}",
+            context
+        );
+        return;
+    };
+
+    let ns_app = NSApplication::sharedApplication(mtm);
+    let policy_before = ns_app.activationPolicy();
+    let policy_changed = ns_app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+    let policy_after = ns_app.activationPolicy();
+    ns_app.unhide(None);
+    ns_app.activate();
+
+    let running_app = NSRunningApplication::currentApplication();
+    let running_unhidden = running_app.unhide();
+    #[allow(deprecated)]
+    let running_activation_requested = running_app.activateWithOptions(
+        NSApplicationActivationOptions::ActivateAllWindows
+            | NSApplicationActivationOptions::ActivateIgnoringOtherApps,
+    );
+
+    info!(
+        "[main-window] forced app activation context={} policy_before={} policy_after={} policy_changed={} running_unhidden={} running_activation_requested={}",
+        context,
+        policy_before.0,
+        policy_after.0,
+        policy_changed,
+        running_unhidden,
+        running_activation_requested
+    );
+}
+
+#[cfg(not(target_os = "macos"))]
+fn force_activate_ns_app(_context: &str) {}
+
+#[cfg(target_os = "macos")]
+fn force_show_webview_window(window: &tauri::WebviewWindow, context: &str) {
+    let Ok(ns_window) = window.ns_window() else {
+        warn!(
+            "[main-window] NSWindow unavailable during forced show context={}",
+            context
+        );
+        return;
+    };
+
+    let was_visible = window.is_visible().ok();
+    let was_focused = window.is_focused().ok();
+    let ns_window = ns_window.cast::<AnyObject>();
+    unsafe {
+        let nil: *mut AnyObject = std::ptr::null_mut();
+        let _: () = msg_send![ns_window, setIsVisible: true];
+        let _: () = msg_send![ns_window, setReleasedWhenClosed: false];
+        let _: () = msg_send![ns_window, deminiaturize: nil];
+        let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
+        let _: () = msg_send![ns_window, orderFrontRegardless];
+    }
+    info!(
+        "[main-window] forced native window show context={} was_visible={:?} was_focused={:?} now_visible={:?} now_focused={:?}",
+        context,
+        was_visible,
+        was_focused,
+        window.is_visible().ok(),
+        window.is_focused().ok()
+    );
+}
+
+#[cfg(not(target_os = "macos"))]
+fn force_show_webview_window(_window: &tauri::WebviewWindow, _context: &str) {}
+
+fn schedule_main_window_visibility_probe(
+    app: &tauri::AppHandle,
+    delay: Duration,
+    context: &'static str,
+) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(delay).await;
+        let app_for_main = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let Some(window) = live_main_window(&app_for_main) else {
+                warn!(
+                    "[main-window] visibility probe found no live main window context={}",
+                    context
+                );
+                return;
+            };
+
+            let before_visible = window.is_visible().ok();
+            let before_focused = window.is_focused().ok();
+            show_app_for_main_window(&window, context);
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+            force_show_webview_window(&window, context);
+            info!(
+                "[main-window] visibility probe context={} before_visible={:?} before_focused={:?} after_visible={:?} after_focused={:?}",
+                context,
+                before_visible,
+                before_focused,
+                window.is_visible().ok(),
+                window.is_focused().ok()
+            );
+        });
+    });
 }
 
 fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
@@ -4789,6 +6084,9 @@ fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tau
 
     let window = create_main_window(app)?;
     show_webview_window(&window);
+    schedule_main_window_visibility_probe(app, Duration::from_millis(250), "startup-250ms");
+    schedule_main_window_visibility_probe(app, Duration::from_secs(1), "startup-1s");
+    schedule_main_window_visibility_probe(app, Duration::from_secs(3), "startup-3s");
     let vibrancy_applied = apply_main_window_vibrancy(&window, "startup");
     info!(
         "[main-window] startup window ready vibrancy_applied={}",
@@ -4797,31 +6095,27 @@ fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tau
     Ok(window)
 }
 
-fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
-    let app_for_recovery = app.clone();
-    let reason_for_recovery = reason.to_string();
+fn run_main_window_step_on_main_thread<F, T>(
+    app: &tauri::AppHandle,
+    context: &'static str,
+    step: F,
+) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
     let (tx, rx) = std::sync::mpsc::channel();
 
     app.run_on_main_thread(move || {
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            recover_main_window_on_main_thread(&app_for_recovery, &reason_for_recovery)
-        }))
-        .unwrap_or_else(|_| Err("renderer recovery panicked on main thread".to_string()));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(step))
+            .unwrap_or_else(|_| Err(format!("{context} panicked on main thread")));
         let _ = tx.send(outcome);
     })
-    .map_err(|error| format!("failed to schedule renderer recovery on main thread: {error}"))?;
+    .map_err(|error| format!("failed to schedule {context} on main thread: {error}"))?;
 
-    match rx.recv_timeout(Duration::from_secs(15)) {
+    match rx.recv_timeout(MAIN_THREAD_WINDOW_STEP_TIMEOUT) {
         Ok(outcome) => outcome,
-        Err(error) => {
-            let message = format!("timed out waiting for main-thread renderer recovery: {error}");
-            error!(
-                "[main-window] {}; requesting app restart reason={}",
-                message, reason
-            );
-            request_restart_after_recovery_failure(app, reason, &message);
-            Err(message)
-        }
+        Err(error) => Err(format!("timed out waiting for {context}: {error}")),
     }
 }
 
@@ -4851,9 +6145,23 @@ fn request_restart_after_recovery_failure(app: &tauri::AppHandle, reason: &str, 
     });
 }
 
-fn recover_main_window_on_main_thread(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
-    let _keepalive = open_main_window_recovery_keepalive(app, reason)?;
-    let outcome = recover_main_window_with_keepalive(app, reason);
+fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
+    let app_for_destroy = app.clone();
+    let reason_for_destroy = reason.to_string();
+    let outcome =
+        run_main_window_step_on_main_thread(app, "renderer recovery destroy", move || {
+            open_main_window_recovery_keepalive(&app_for_destroy, &reason_for_destroy)?;
+            destroy_main_window_for_recovery(&app_for_destroy, &reason_for_destroy)
+        })
+        .and_then(|was_visible| {
+            wait_for_main_window_release(app, reason)?;
+
+            let app_for_create = app.clone();
+            let reason_for_create = reason.to_string();
+            run_main_window_step_on_main_thread(app, "renderer recovery rebuild", move || {
+                rebuild_main_window_after_recovery(&app_for_create, &reason_for_create, was_visible)
+            })
+        });
 
     if outcome.is_ok() {
         close_main_window_recovery_keepalive(app, reason);
@@ -4863,17 +6171,13 @@ fn recover_main_window_on_main_thread(app: &tauri::AppHandle, reason: &str) -> R
             reason, error
         );
         request_restart_after_recovery_failure(app, reason, error);
-
-        if let Ok(window) = open_or_focus_recovery_window(app) {
-            show_webview_window(&window);
-            close_main_window_recovery_keepalive(app, reason);
-        }
+        close_main_window_recovery_keepalive(app, reason);
     }
 
     outcome
 }
 
-fn recover_main_window_with_keepalive(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
+fn destroy_main_window_for_recovery(app: &tauri::AppHandle, reason: &str) -> Result<bool, String> {
     let was_visible = app
         .get_webview_window(MAIN_WINDOW_LABEL)
         .and_then(|window| window.is_visible().ok())
@@ -4885,9 +6189,16 @@ fn recover_main_window_with_keepalive(app: &tauri::AppHandle, reason: &str) -> R
             .destroy()
             .map_err(|error| format!("destroy failed: {}", error))?;
         info!("[main-window] destroyed stale renderer ({})", reason);
-        wait_for_main_window_release(app, reason)?;
     }
 
+    Ok(was_visible)
+}
+
+fn rebuild_main_window_after_recovery(
+    app: &tauri::AppHandle,
+    reason: &str,
+    was_visible: bool,
+) -> Result<(), String> {
     let window = create_main_window(app).map_err(|error| error.to_string())?;
 
     if was_visible {
@@ -4961,6 +6272,24 @@ fn build_primary_action_items<R: tauri::Runtime, M: Manager<R>>(
             None::<&str>,
         )?,
     ))
+}
+
+#[cfg(target_os = "macos")]
+fn should_show_primary_window_on_reopen(has_visible_windows: bool) -> bool {
+    let _ = has_visible_windows;
+    true
+}
+
+#[cfg(target_os = "macos")]
+fn handle_macos_reopen(app: &tauri::AppHandle, has_visible_windows: bool) {
+    info!(
+        "[main-window] macOS reopen event has_visible_windows={} forcing_primary_window_show=true",
+        has_visible_windows
+    );
+
+    if should_show_primary_window_on_reopen(has_visible_windows) {
+        show_primary_window(app);
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -5274,16 +6603,40 @@ pub fn run() {
                     &app_for_renderer_listener,
                     serde_json::json!({
                         "event": "renderer_heartbeat",
+                        "rendererGeneration": health.renderer_generation,
                         "seq": payload.seq,
                         "reason": payload.reason.clone(),
                         "visibility": payload.visibility.clone(),
                         "href": href.clone(),
+                        "pageLoadId": payload.page_load_id.clone(),
+                        "uptimeMs": payload.uptime_ms,
+                        "appPhase": payload.app_phase.clone(),
+                        "eventLoopLagMs": payload.event_loop_lag_ms,
+                        "hiddenTimerThrottled": payload.hidden_timer_throttled,
+                        "domNodeCount": payload.dom_node_count,
+                        "rendererHeapUsedBytes": payload.renderer_heap_used_bytes,
+                        "rendererHeapTotalBytes": payload.renderer_heap_total_bytes,
+                        "lastInputAgeMs": payload.last_input_age_ms,
+                        "settingsOpen": payload.settings_open,
+                        "dialogOpen": payload.dialog_open,
                         "gapMs": gap_ms,
                         "recovered": recovered,
                         "activeBackgroundJob": active_job,
                         "activeBackgroundJobAgeMs": active_job_age_ms
                     }),
                 );
+                if recovered {
+                    let _ = app_for_renderer_listener.emit(
+                        "renderer-recovery-state",
+                        serde_json::json!({
+                            "phase": "recovered",
+                            "reason": payload.reason.clone(),
+                            "rendererGeneration": health.renderer_generation,
+                            "seq": payload.seq,
+                            "gapMs": gap_ms
+                        }),
+                    );
+                }
                 if recovered {
                     warn!(
                         "[main-window] renderer heartbeat recovered seq={} gap_ms={} reason={} visibility={} href={} ts={}",
@@ -5339,20 +6692,99 @@ pub fn run() {
                             .map(|last| last.elapsed())
                             .unwrap_or_else(|| health.started_at.elapsed());
 
-                        let recovery_threshold =
-                            renderer_recovery_threshold(is_main_visible, &health.last_visibility);
-                        let should_log_stale =
-                            age > RENDERER_STALE_LOG_AFTER && !health.stale_logged;
+                        let recent_recovery_count =
+                            health.recent_recovery_count(BACKGROUND_SAFE_MODE_RECOVERY_WINDOW_SHORT);
+                        let recovery_threshold = renderer_recovery_threshold_for_count(
+                            is_main_visible,
+                            &health.last_visibility,
+                            recent_recovery_count,
+                        );
+                        let stale_log_after =
+                            renderer_stale_log_after(is_main_visible, &health.last_visibility);
+                        let recovery_allowed = renderer_stale_should_recover(
+                            is_main_visible,
+                            &health.last_visibility,
+                        );
+                        let expected_hidden_throttle = renderer_gap_is_expected_hidden_throttle(
+                            is_main_visible,
+                            &health.last_visibility,
+                            health.last_hidden_timer_throttled,
+                            age,
+                            recovery_threshold,
+                        );
+                        let should_log_gap = age > stale_log_after
+                            && !health.stale_logged
+                            && (!health.throttle_logged || !expected_hidden_throttle);
+                        let should_log_throttle = should_log_gap && expected_hidden_throttle;
+                        let should_log_stale = should_log_gap && !expected_hidden_throttle;
                         let should_recover =
+                            recovery_allowed &&
                             age > recovery_threshold &&
                             health
                                 .last_recovery_at
                                 .map(|last| last.elapsed() > recovery_threshold)
                                 .unwrap_or(true);
+                        let mut should_recycle_background_scrapers = false;
+
+                        if should_log_throttle {
+                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
+                            info!(
+                                "[main-window] renderer heartbeat hidden-timer throttled age_ms={} threshold_ms={} visible={} last_seq={} last_reason={} last_visibility={} href={} native_rss={}",
+                                age.as_millis(),
+                                recovery_threshold.as_millis(),
+                                is_main_visible,
+                                health.last_seq,
+                                health.last_reason,
+                                health.last_visibility,
+                                truncate_for_log(&health.last_href, 120),
+                                format_bytes_for_log(stats.process_resident_bytes)
+                            );
+                            health.throttle_logged = true;
+                            let (active_job, active_job_age_ms) =
+                                background_runtime_for_watchdog.active_job_for_health();
+                            append_runtime_health(
+                                &app_for_renderer_watchdog,
+                                serde_json::json!({
+                                    "event": "renderer_heartbeat_throttled",
+                                    "rendererGeneration": health.renderer_generation,
+                                    "ageMs": age.as_millis(),
+                                    "thresholdMs": recovery_threshold.as_millis(),
+                                    "visible": is_main_visible,
+                                    "lastSeq": health.last_seq,
+                                    "lastReason": health.last_reason.clone(),
+                                    "lastVisibility": health.last_visibility.clone(),
+                                    "href": truncate_for_log(&health.last_href, 120),
+                                    "pageLoadId": health.last_page_load_id.clone(),
+                                    "uptimeMs": health.last_uptime_ms,
+                                    "appPhase": health.last_app_phase.clone(),
+                                    "hiddenTimerThrottled": renderer_health_hidden_timer_throttled(
+                                        expected_hidden_throttle,
+                                        health.last_hidden_timer_throttled,
+                                    ),
+                                    "rendererRecoveryAllowed": recovery_allowed,
+                                    "backgroundWorkPaused": false,
+                                    "deepDiagnosticCaptured": false,
+                                    "nativeResidentBytes": stats.process_resident_bytes,
+                                    "webkitResidentBytes": stats.webkit_total_resident_bytes,
+                                    "webkitLargestProcessId": stats.webkit_largest_process_id,
+                                    "webkitLargestResidentBytes": stats.webkit_largest_resident_bytes,
+                                    "webkitLargestCpuUsage": stats.webkit_largest_cpu_usage,
+                                    "webkitLargestAgeSeconds": stats.webkit_largest_age_seconds,
+                                    "webkitLargestRole": stats.webkit_largest_role,
+                                    "webkitProcessCount": stats.webkit_process_count,
+                                    "activeBackgroundJob": active_job,
+                                    "activeBackgroundJobAgeMs": active_job_age_ms
+                                }),
+                            );
+                        }
 
                         if should_log_stale {
-                            let (native_rss, webkit) =
-                                runtime_memory_snapshot_for_log(&app_for_renderer_watchdog);
+                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
+                            let webkit = stats
+                                .webkit_largest_process_id
+                                .zip(stats.webkit_largest_resident_bytes)
+                                .zip(stats.webkit_virtual_bytes)
+                                .map(|((pid, resident), virtual_bytes)| (pid, resident, virtual_bytes));
                             let webkit_details = webkit
                                 .map(|(pid, resident, virtual_bytes)| {
                                     format!(
@@ -5364,26 +6796,43 @@ pub fn run() {
                                 })
                                 .unwrap_or_else(|| "webkit_rss=unavailable".to_string());
                             warn!(
-                                "[main-window] renderer heartbeat stale age_ms={} threshold_ms={} visible={} last_seq={} last_reason={} last_visibility={} href={} native_rss={} {}",
+                                "[main-window] renderer heartbeat stale age_ms={} threshold_ms={} visible={} recovery_allowed={} last_seq={} last_reason={} last_visibility={} href={} native_rss={} {}",
                                 age.as_millis(),
                                 recovery_threshold.as_millis(),
                                 is_main_visible,
+                                recovery_allowed,
                                 health.last_seq,
                                 health.last_reason,
                                 health.last_visibility,
                                 truncate_for_log(&health.last_href, 120),
-                                format_bytes_for_log(native_rss),
+                                format_bytes_for_log(stats.process_resident_bytes),
                                 webkit_details
                             );
                             health.stale_logged = true;
-                            background_runtime_for_watchdog
-                                .note_renderer_stale("renderer heartbeat stale");
+                            let pause_background_work =
+                                renderer_stale_log_should_pause_background(
+                                    is_main_visible,
+                                    &health.last_visibility,
+                                );
+                            let capture_deep_diagnostic =
+                                renderer_stale_log_should_capture_deep_diagnostic(
+                                    is_main_visible,
+                                    &health.last_visibility,
+                                );
+                            if pause_background_work {
+                                background_runtime_for_watchdog
+                                    .note_renderer_stale("renderer heartbeat stale");
+                                should_recycle_background_scrapers = true;
+                            }
                             let (active_job, active_job_age_ms) =
                                 background_runtime_for_watchdog.active_job_for_health();
+                            let (safe_mode_active, safe_mode_remaining_ms, recoveries_short, recoveries_long) =
+                                background_runtime_for_watchdog.recovery_status_for_health();
                             append_runtime_health(
                                 &app_for_renderer_watchdog,
                                 serde_json::json!({
                                     "event": "renderer_heartbeat_stale",
+                                    "rendererGeneration": health.renderer_generation,
                                     "ageMs": age.as_millis(),
                                     "thresholdMs": recovery_threshold.as_millis(),
                                     "visible": is_main_visible,
@@ -5391,37 +6840,140 @@ pub fn run() {
                                     "lastReason": health.last_reason.clone(),
                                     "lastVisibility": health.last_visibility.clone(),
                                     "href": truncate_for_log(&health.last_href, 120),
-                                    "nativeResidentBytes": native_rss,
+                                    "pageLoadId": health.last_page_load_id.clone(),
+                                    "uptimeMs": health.last_uptime_ms,
+                                    "appPhase": health.last_app_phase.clone(),
+                                    "eventLoopLagMs": health.last_event_loop_lag_ms,
+                                    "hiddenTimerThrottled": health.last_hidden_timer_throttled,
+                                    "domNodeCount": health.last_dom_node_count,
+                                    "rendererHeapUsedBytes": health.last_renderer_heap_used_bytes,
+                                    "rendererHeapTotalBytes": health.last_renderer_heap_total_bytes,
+                                    "lastInputAgeMs": health.last_input_age_ms,
+                                    "settingsOpen": health.last_settings_open,
+                                    "dialogOpen": health.last_dialog_open,
+                                    "rendererRecoveryAllowed": recovery_allowed,
+                                    "backgroundWorkPaused": pause_background_work,
+                                    "deepDiagnosticCaptured": capture_deep_diagnostic,
+                                    "nativeResidentBytes": stats.process_resident_bytes,
+                                    "webkitResidentBytes": stats.webkit_total_resident_bytes,
+                                    "webkitLargestProcessId": stats.webkit_largest_process_id,
+                                    "webkitLargestResidentBytes": stats.webkit_largest_resident_bytes,
+                                    "webkitLargestCpuUsage": stats.webkit_largest_cpu_usage,
+                                    "webkitLargestAgeSeconds": stats.webkit_largest_age_seconds,
+                                    "webkitLargestRole": stats.webkit_largest_role,
+                                    "webkitProcessCount": stats.webkit_process_count,
+                                    "memoryHighBytes": stats.memory_high_bytes,
+                                    "memoryCriticalBytes": stats.memory_critical_bytes,
+                                    "safeModeActive": safe_mode_active,
+                                    "safeModeRemainingMs": safe_mode_remaining_ms,
+                                    "recoveriesInShortWindow": recoveries_short,
+                                    "recoveriesInLongWindow": recoveries_long,
                                     "activeBackgroundJob": active_job,
                                     "activeBackgroundJobAgeMs": active_job_age_ms
                                 }),
                             );
+                            let _ = app_for_renderer_watchdog.emit(
+                                "renderer-recovery-state",
+                                serde_json::json!({
+                                    "phase": "stale",
+                                    "reason": "renderer heartbeat stale",
+                                    "rendererGeneration": health.renderer_generation,
+                                    "ageMs": age.as_millis(),
+                                    "thresholdMs": recovery_threshold.as_millis(),
+                                    "rendererRecoveryAllowed": recovery_allowed,
+                                    "safeModeActive": safe_mode_active,
+                                    "safeModeRemainingMs": safe_mode_remaining_ms,
+                                    "recoveriesInShortWindow": recoveries_short,
+                                    "recoveriesInLongWindow": recoveries_long
+                                }),
+                            );
+                            if capture_deep_diagnostic {
+                                capture_deep_runtime_diagnostic(
+                                    &app_for_renderer_watchdog,
+                                    "renderer_heartbeat_stale",
+                                    "renderer heartbeat stale",
+                                    &stats,
+                                    active_job,
+                                    active_job_age_ms,
+                                    false,
+                                );
+                            }
                         }
 
                         if should_recover {
                             let attempt = health.note_recovery_attempt(std::time::Instant::now());
                             background_runtime_for_watchdog
                                 .note_renderer_recovery_attempt("renderer heartbeat stale");
+                            let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
+                            let (active_job, active_job_age_ms) =
+                                background_runtime_for_watchdog.active_job_for_health();
+                            let (safe_mode_active, safe_mode_remaining_ms, recoveries_short, recoveries_long) =
+                                background_runtime_for_watchdog.recovery_status_for_health();
                             append_runtime_health(
                                 &app_for_renderer_watchdog,
                                 serde_json::json!({
                                     "event": "renderer_recovery_attempt",
+                                    "rendererGeneration": health.renderer_generation,
                                     "attempt": attempt,
                                     "ageMs": age.as_millis(),
                                     "thresholdMs": recovery_threshold.as_millis(),
-                                    "visible": is_main_visible
+                                    "visible": is_main_visible,
+                                    "lastVisibility": health.last_visibility.clone(),
+                                    "rendererRecoveryAllowed": recovery_allowed,
+                                    "webkitResidentBytes": stats.webkit_total_resident_bytes,
+                                    "webkitLargestProcessId": stats.webkit_largest_process_id,
+                                    "webkitLargestResidentBytes": stats.webkit_largest_resident_bytes,
+                                    "webkitLargestCpuUsage": stats.webkit_largest_cpu_usage,
+                                    "webkitLargestAgeSeconds": stats.webkit_largest_age_seconds,
+                                    "webkitLargestRole": stats.webkit_largest_role,
+                                    "webkitProcessCount": stats.webkit_process_count,
+                                    "memoryHighBytes": stats.memory_high_bytes,
+                                    "memoryCriticalBytes": stats.memory_critical_bytes,
+                                    "safeModeActive": safe_mode_active,
+                                    "safeModeRemainingMs": safe_mode_remaining_ms,
+                                    "recoveriesInShortWindow": recoveries_short,
+                                    "recoveriesInLongWindow": recoveries_long,
+                                    "activeBackgroundJob": active_job,
+                                    "activeBackgroundJobAgeMs": active_job_age_ms
                                 }),
                             );
+                            let _ = app_for_renderer_watchdog.emit(
+                                "renderer-recovery-state",
+                                serde_json::json!({
+                                    "phase": if safe_mode_active { "safe_mode" } else { "recovery_attempt" },
+                                    "reason": "renderer heartbeat stale",
+                                    "rendererGeneration": health.renderer_generation,
+                                    "attempt": attempt,
+                                    "ageMs": age.as_millis(),
+                                    "thresholdMs": recovery_threshold.as_millis(),
+                                    "lastVisibility": health.last_visibility.clone(),
+                                    "rendererRecoveryAllowed": recovery_allowed,
+                                    "safeModeActive": safe_mode_active,
+                                    "safeModeRemainingMs": safe_mode_remaining_ms,
+                                    "recoveriesInShortWindow": recoveries_short,
+                                    "recoveriesInLongWindow": recoveries_long
+                                }),
+                            );
+                            capture_deep_runtime_diagnostic(
+                                &app_for_renderer_watchdog,
+                                "renderer_recovery_attempt",
+                                "renderer heartbeat stale",
+                                &stats,
+                                active_job,
+                                active_job_age_ms,
+                                true,
+                            );
                             warn!(
-                                "[main-window] recovering stale renderer attempt={} age_ms={} threshold_ms={} visible={}",
+                                "[main-window] recovering stale renderer attempt={} age_ms={} threshold_ms={} visible={} safe_mode={}",
                                 attempt,
                                 age.as_millis(),
                                 recovery_threshold.as_millis(),
-                                is_main_visible
+                                is_main_visible,
+                                safe_mode_active
                             );
                         }
 
-                        (should_log_stale, should_recover)
+                        (should_recycle_background_scrapers || should_recover, should_recover)
                     };
 
                     if should_recycle_scrapers {
@@ -5441,6 +6993,13 @@ pub fn run() {
                                 error
                             );
                         } else {
+                            let _ = app_for_renderer_watchdog.emit(
+                                "renderer-recovery-state",
+                                serde_json::json!({
+                                    "phase": "rebuilt",
+                                    "reason": "renderer heartbeat stale"
+                                }),
+                            );
                             recycle_social_scraper_windows(
                                 &app_for_renderer_watchdog,
                                 "main renderer recovered",
@@ -5522,6 +7081,7 @@ pub fn run() {
             retry_startup_after_crash,
             fetch_url,
             google_api_request,
+            google_drive_request,
             fetch_binary_url,
             x_api_request,
             get_local_ip,
@@ -5532,6 +7092,7 @@ pub fn run() {
             cancel_local_ai_model_download,
             get_sync_client_count,
             get_runtime_memory_stats,
+            trim_webkit_network_cache_now,
             get_recent_runtime_health,
             get_ai_hardware_profile,
             prepare_social_scrape_memory,
@@ -5569,8 +7130,18 @@ pub fn run() {
             li_scrape_feed,
             li_disconnect,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Freed");
+        .build(tauri::generate_context!())
+        .expect("error while building Freed")
+        .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen {
+                has_visible_windows,
+                ..
+            } = event
+            {
+                handle_macos_reopen(app, has_visible_windows);
+            }
+        });
 }
 
 #[cfg(test)]
@@ -5635,6 +7206,27 @@ mod tests {
     }
 
     #[test]
+    fn background_runtime_blocks_after_memory_pressure() {
+        let runtime = BackgroundRuntimeCoordinator::new();
+        runtime.note_renderer_heartbeat();
+        runtime.note_renderer_heartbeat();
+        assert!(runtime.begin_job("fb_scrape_feed").is_ok());
+        assert!(runtime.finish_job("fb_scrape_feed").is_some());
+
+        let high_cooldown = runtime.note_memory_pressure("Facebook", "visit", false);
+        assert!(high_cooldown > 0);
+        let high_err = runtime.begin_job("ig_visit_url").unwrap_err();
+        assert!(high_err.contains("cooling down"));
+        assert!(high_err.contains("memory pressure high"));
+
+        let critical_cooldown = runtime.note_memory_pressure("Facebook", "feed scrape", true);
+        assert!(critical_cooldown >= high_cooldown);
+        let critical_err = runtime.begin_job("fb_visit_url").unwrap_err();
+        assert!(critical_err.contains("cooling down"));
+        assert!(critical_err.contains("memory pressure critical"));
+    }
+
+    #[test]
     fn mark_startup_failed_forces_recovery_on_next_launch() {
         let temp = tempfile::tempdir().unwrap();
         mark_startup_success(temp.path());
@@ -5644,6 +7236,28 @@ mod tests {
         assert!(startup_requires_recovery(&state));
         assert_eq!(state.consecutive_failed_boots, 1);
         assert!(state.last_failed_boot_at_ms.is_some());
+    }
+
+    #[test]
+    fn bounded_jsonl_retains_tail_when_file_exceeds_budget() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("runtime-health.jsonl");
+        std::fs::write(
+            &path,
+            [
+                "old-0", "old-1", "old-2", "old-3", "old-4", "old-5", "old-6", "old-7", "old-8",
+                "old-9",
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+
+        append_bounded_jsonl(&path, "fresh", 24).unwrap();
+
+        let retained = std::fs::read_to_string(&path).unwrap();
+        assert!(!retained.contains("old-0"));
+        assert!(retained.contains("old-8"));
+        assert!(retained.ends_with("fresh\n"));
     }
 
     #[test]
@@ -5669,6 +7283,107 @@ mod tests {
             ),
             &roots,
         ));
+    }
+
+    #[test]
+    fn social_scraper_data_stores_are_provider_specific() {
+        assert_eq!(
+            social_scraper_data_store_identifier("fb-scraper"),
+            Some(FB_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("ig-scraper"),
+            Some(IG_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("li-scraper"),
+            Some(LI_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(social_scraper_data_store_identifier("main"), None);
+
+        let unique = HashSet::from([
+            FB_SCRAPER_DATA_STORE_IDENTIFIER,
+            IG_SCRAPER_DATA_STORE_IDENTIFIER,
+            LI_SCRAPER_DATA_STORE_IDENTIFIER,
+        ]);
+        assert_eq!(unique.len(), 3);
+    }
+
+    #[test]
+    fn webkit_process_filter_excludes_prior_launches() {
+        let app_age = 60;
+
+        assert!(webkit_process_belongs_to_current_launch(0, app_age));
+        assert!(webkit_process_belongs_to_current_launch(
+            app_age + WEBKIT_PROCESS_START_GRACE_SECONDS,
+            app_age
+        ));
+        assert!(!webkit_process_belongs_to_current_launch(
+            app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
+            app_age
+        ));
+    }
+
+    #[test]
+    fn webkit_process_role_keeps_current_launch_after_root_files_close() {
+        let app_age = 60;
+
+        assert_eq!(
+            freed_webkit_process_role(false, app_age, app_age),
+            Some("freed-webcontent-age-matched")
+        );
+        assert_eq!(
+            freed_webkit_process_role(true, app_age, app_age),
+            Some("freed-webcontent")
+        );
+        assert_eq!(
+            freed_webkit_process_role(
+                false,
+                app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
+                app_age
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn webkit_network_cache_collection_includes_record_resources() {
+        let temp = tempfile::tempdir().unwrap();
+        let network_cache_root = temp
+            .path()
+            .join("WebKit/NetworkCache/Version 17/Records/hash/Resource");
+        std::fs::create_dir_all(&network_cache_root).unwrap();
+        let record_file = network_cache_root.join("resource-blob");
+        std::fs::write(&record_file, b"record").unwrap();
+
+        let mut files = Vec::new();
+        collect_webkit_network_cache_files(&temp.path().join("WebKit/NetworkCache"), &mut files);
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].0, record_file);
+    }
+
+    #[test]
+    fn webkit_network_cache_trimmer_removes_large_records_cache() {
+        let temp = tempfile::tempdir().unwrap();
+        let record_root = temp
+            .path()
+            .join("WebKit/NetworkCache/Version 17/Records/hash/Resource");
+        std::fs::create_dir_all(&record_root).unwrap();
+        let record_file = record_root.join("large-resource");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&record_file)
+            .unwrap();
+        file.set_len(WEBKIT_CACHE_TRIM_AT_BYTES + 1).unwrap();
+
+        let result = trim_webkit_network_cache_root_with_result(&temp.path().join("WebKit"));
+
+        assert!(result.cache_trimmed);
+        assert!(result.before_bytes > WEBKIT_CACHE_TRIM_AT_BYTES);
+        assert!(result.after_bytes <= WEBKIT_CACHE_TRIM_TARGET_BYTES);
+        assert!(!record_file.exists());
     }
 
     #[test]
@@ -5698,15 +7413,28 @@ mod tests {
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
             process_virtual_bytes: 256,
-            app_resident_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100) - 1,
+            app_resident_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
+                - SCRAPE_MEMORY_HEADROOM_BYTES
+                - 1,
+            app_memory_pressure_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
+                - SCRAPE_MEMORY_HEADROOM_BYTES
+                - 1,
             webkit_resident_bytes: None,
+            webkit_footprint_bytes: None,
             webkit_virtual_bytes: None,
             webkit_process_id: None,
             webkit_total_resident_bytes: 0,
+            webkit_total_footprint_bytes: None,
             webkit_process_count: 0,
             webkit_largest_resident_bytes: None,
+            webkit_largest_footprint_bytes: None,
             webkit_largest_process_id: None,
+            webkit_largest_cpu_usage: None,
+            webkit_largest_age_seconds: None,
+            webkit_largest_role: None,
+            webkit_processes: Vec::new(),
             webkit_telemetry_available: false,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
@@ -5719,6 +7447,157 @@ mod tests {
         assert!(scrape_memory_may_proceed(&stats));
         assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
             app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            app_memory_pressure_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            ..stats
+        }));
+    }
+
+    #[test]
+    fn scrape_memory_uses_pressure_bytes_instead_of_rss_when_available() {
+        let budget =
+            (MIN_CRITICAL_MEMORY_BYTES * 70 / 100).saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES);
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            app_memory_pressure_bytes: budget - 1,
+            webkit_resident_bytes: Some(MIN_CRITICAL_MEMORY_BYTES),
+            webkit_footprint_bytes: Some(512 * 1024 * 1024),
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            webkit_total_footprint_bytes: Some(512 * 1024 * 1024),
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(MIN_CRITICAL_MEMORY_BYTES),
+            webkit_largest_footprint_bytes: Some(512 * 1024 * 1024),
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(0.0),
+            webkit_largest_age_seconds: Some(10),
+            webkit_largest_role: Some("freed-webcontent".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert!(scrape_memory_may_proceed(&stats));
+        assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
+            app_memory_pressure_bytes: budget,
+            ..stats
+        }));
+    }
+
+    #[test]
+    fn scrape_memory_reserves_startup_headroom_below_high_pressure() {
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: 0,
+            app_memory_pressure_bytes: 0,
+            webkit_resident_bytes: None,
+            webkit_footprint_bytes: None,
+            webkit_virtual_bytes: None,
+            webkit_process_id: None,
+            webkit_total_resident_bytes: 0,
+            webkit_total_footprint_bytes: None,
+            webkit_process_count: 0,
+            webkit_largest_resident_bytes: None,
+            webkit_largest_footprint_bytes: None,
+            webkit_largest_process_id: None,
+            webkit_largest_cpu_usage: None,
+            webkit_largest_age_seconds: None,
+            webkit_largest_role: None,
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: false,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+        let budget = scrape_memory_start_budget_bytes(&stats);
+
+        assert_eq!(
+            budget,
+            stats.memory_high_bytes - SCRAPE_MEMORY_HEADROOM_BYTES
+        );
+        assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
+            app_resident_bytes: budget,
+            app_memory_pressure_bytes: budget,
+            ..stats
+        }));
+    }
+
+    #[test]
+    fn scrape_memory_recycles_preserved_window_under_high_pressure() {
+        assert_eq!(
+            blocked_preflight_preserved_scraper_label(Some("ig-scraper"), false),
+            Some("ig-scraper")
+        );
+        assert_eq!(
+            blocked_preflight_preserved_scraper_label(Some("ig-scraper"), true),
+            None
+        );
+        assert_eq!(blocked_preflight_preserved_scraper_label(None, false), None);
+    }
+
+    #[test]
+    fn optional_story_scrape_uses_stricter_memory_budget() {
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
+                * OPTIONAL_STORY_MEMORY_BUDGET_PERCENT
+                / 100
+                - 1,
+            app_memory_pressure_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100)
+                * OPTIONAL_STORY_MEMORY_BUDGET_PERCENT
+                / 100
+                - 1,
+            webkit_resident_bytes: None,
+            webkit_footprint_bytes: None,
+            webkit_virtual_bytes: None,
+            webkit_process_id: None,
+            webkit_total_resident_bytes: 0,
+            webkit_total_footprint_bytes: None,
+            webkit_process_count: 0,
+            webkit_largest_resident_bytes: None,
+            webkit_largest_footprint_bytes: None,
+            webkit_largest_process_id: None,
+            webkit_largest_cpu_usage: None,
+            webkit_largest_age_seconds: None,
+            webkit_largest_role: None,
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: false,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert!(optional_story_scrape_may_proceed(&stats));
+        assert!(!optional_story_scrape_may_proceed(&RuntimeMemoryStats {
+            app_resident_bytes: stats
+                .memory_high_bytes
+                .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
+                / 100,
+            app_memory_pressure_bytes: stats
+                .memory_high_bytes
+                .saturating_mul(OPTIONAL_STORY_MEMORY_BUDGET_PERCENT)
+                / 100,
             ..stats
         }));
     }
@@ -5764,5 +7643,12 @@ mod tests {
         assert_eq!(state.consecutive_failed_boots, 0);
         assert!(state.pending_boot_started_at_ms.is_none());
         assert!(state.last_successful_boot_at_ms.is_some());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_reopen_always_reasserts_primary_window() {
+        assert!(should_show_primary_window_on_reopen(false));
+        assert!(should_show_primary_window_on_reopen(true));
     }
 }

@@ -31,6 +31,16 @@ describe("read-on-scroll helpers", () => {
     expect(collectUnreadIdsFromRows(rows, 2, 1)).toEqual([]);
   });
 
+  it("collects unread ids from direct item rows", () => {
+    const rows = [
+      item("a"),
+      item("b", 1),
+      item("c"),
+    ];
+
+    expect(collectUnreadIdsFromRows(rows, 0, 2)).toEqual(["a", "c"]);
+  });
+
   it("advances the passed-row boundary when the first visible row moves down", () => {
     const virtualRows = [
       { index: 2, end: 660 },

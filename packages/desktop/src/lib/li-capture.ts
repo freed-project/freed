@@ -14,6 +14,7 @@ import {
   liPostsToFeedItems,
   deduplicateFeedItems,
 } from "@freed/capture-linkedin/browser";
+import { formatClockTime } from "@freed/ui/lib/date-format";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getLiScraperWindowMode } from "./scraper-prefs";
@@ -109,53 +110,15 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
     return { items: [], diag };
   }
 
-  return new Promise<LiSyncResult>((resolve) => {
-    let unlisten: UnlistenFn | null = null;
-    const allRawPosts: RawLiPost[] = [];
-    const seenUrns = new Set<string>();
+  let unlisten: UnlistenFn | null = null;
+  const allRawPosts: RawLiPost[] = [];
+  const seenUrns = new Set<string>();
+
+  try {
     attachScraperMediaDiagListener("LI", "linkedin");
 
-    // Timeout if the WebView takes too long
-    const timeout = setTimeout(() => {
-      unlisten?.();
-      if (allRawPosts.length > 0) {
-        // We have partial results — return them rather than nothing
-        finalize(allRawPosts);
-      } else {
-        diag.errorStage = "timeout";
-        diag.errorMessage = "Scrape timed out after 60 seconds";
-        resolve({ items: [], diag });
-      }
-    }, 60_000);
-
-    function finalize(posts: RawLiPost[]) {
-      clearTimeout(timeout);
-      unlisten?.();
-
-      diag.postsExtracted = posts.length;
-
-      if (posts.length === 0) {
-        resolve({ items: [], diag });
-        return;
-      }
-
-      try {
-        const normalized = liPostsToFeedItems(posts);
-        diag.itemsNormalized = normalized.length;
-
-        const items = deduplicateFeedItems(normalized);
-        diag.itemsDeduplicated = items.length;
-
-        resolve({ items, diag });
-      } catch (err) {
-        diag.errorStage = "normalize";
-        diag.errorMessage = err instanceof Error ? err.message : String(err);
-        resolve({ items: [], diag });
-      }
-    }
-
-    // Listen for extraction events (multiple per scrape — one per scroll pass)
-    listen<{
+    // Listen for extraction events from each scroll pass.
+    unlisten = await listen<{
       posts: RawLiPost[];
       error?: string;
       extractedAt: number;
@@ -174,11 +137,8 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
         );
 
         if (error) {
-          clearTimeout(timeout);
-          unlisten?.();
           diag.errorStage = "extract";
           diag.errorMessage = error;
-          resolve({ items: [], diag });
           return;
         }
 
@@ -191,25 +151,45 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
           }
         }
 
-        if (done) {
-          finalize(allRawPosts);
-        }
-      },
-    ).then((fn) => {
-      unlisten = fn;
-    });
-
-    // Trigger the Rust command
-    invoke("li_scrape_feed", { windowMode: getLiScraperWindowMode() }).catch(
-      (err) => {
-        clearTimeout(timeout);
-        unlisten?.();
-        diag.errorStage = "invoke";
-        diag.errorMessage = err instanceof Error ? err.message : String(err);
-        resolve({ items: [], diag });
+        if (done) return;
       },
     );
-  });
+
+    await invoke("li_scrape_feed", { windowMode: getLiScraperWindowMode() });
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+  } catch (err) {
+    if (!diag.errorStage) {
+      diag.errorStage = "invoke";
+      diag.errorMessage = err instanceof Error ? err.message : String(err);
+    }
+    return { items: [], diag };
+  } finally {
+    unlisten?.();
+  }
+
+  if (diag.errorStage) {
+    return { items: [], diag };
+  }
+
+  diag.postsExtracted = allRawPosts.length;
+
+  if (allRawPosts.length === 0) {
+    return { items: [], diag };
+  }
+
+  try {
+    const normalized = liPostsToFeedItems(allRawPosts);
+    diag.itemsNormalized = normalized.length;
+
+    const items = deduplicateFeedItems(normalized);
+    diag.itemsDeduplicated = items.length;
+
+    return { items, diag };
+  } catch (err) {
+    diag.errorStage = "normalize";
+    diag.errorMessage = err instanceof Error ? err.message : String(err);
+    return { items: [], diag };
+  }
 }
 
 // =============================================================================
@@ -229,7 +209,7 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
   const startedAt = Date.now();
   const providerPause = getProviderPause("linkedin");
   if (providerPause) {
-    addDebugEvent("change", `[LI] paused until ${new Date(providerPause.pausedUntil).toLocaleTimeString()}`);
+    addDebugEvent("change", `[LI] paused until ${formatClockTime(providerPause.pausedUntil)}`);
     return {
       items: [],
       diag: {

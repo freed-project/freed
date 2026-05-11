@@ -141,6 +141,29 @@ export function subscribe(callback: Subscriber): () => void {
   return () => subscribers.delete(callback);
 }
 
+function isMergeablePreferenceObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergePreferencePatch<T extends object>(
+  current: T,
+  update: Partial<T>,
+): T {
+  const next = { ...current };
+
+  for (const key of Object.keys(update) as Array<keyof T>) {
+    const currentValue = current[key];
+    const updateValue = update[key];
+    next[key] = (
+      isMergeablePreferenceObject(currentValue) && isMergeablePreferenceObject(updateValue)
+        ? mergePreferencePatch<Record<string, unknown>>(currentValue, updateValue)
+        : updateValue
+    ) as T[typeof key];
+  }
+
+  return next;
+}
+
 function publishState(state: DocState, event: DocChangeEvent): void {
   lastDocState = state;
   if (event.requiresFullScan) {
@@ -178,6 +201,22 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
       changedItemIds: null,
       requiresFullScan: true,
     });
+    return;
+  }
+
+  if (msg.type === "PREFERENCES_PATCH") {
+    if (!lastDocState) return;
+    const preferences = mergePreferencePatch(lastDocState.preferences, msg.updates);
+    publishState(
+      { ...lastDocState, preferences },
+      {
+        source: "preferences_patch",
+        mutation: msg.mutation,
+        changedItemIds: null,
+        changedItems: [],
+        requiresFullScan: false,
+      },
+    );
     return;
   }
 
@@ -489,6 +528,12 @@ export async function docToggleSaved(globalId: string): Promise<void> {
 export async function docToggleArchived(globalId: string): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "TOGGLE_ARCHIVED", globalId });
+}
+
+export async function docArchiveItems(globalIds: string[]): Promise<void> {
+  if (globalIds.length === 0) return;
+  const reqId = nextReqId++;
+  return request({ reqId, type: "ARCHIVE_ITEMS", globalIds });
 }
 
 export async function docToggleLiked(globalId: string): Promise<void> {

@@ -15,12 +15,18 @@ export function tauriInitScript(): string {
     // Handler map - tests override individual entries after page.addInitScript.
     // The broadcast_doc handler wraps the real call to capture IPC timing data
     // consumed by the IPC latency harness in perf-feed.spec.ts.
+    function mockArray(name) {
+      if (!Array.isArray(window[name])) {
+        window[name] = [];
+      }
+      return window[name];
+    }
     window.__TAURI_MOCK_IPC_TIMINGS__ = [];
     function timedHandler(cmd, fn) {
       return function(args) {
         var start = performance.now();
         var result = fn(args);
-        window.__TAURI_MOCK_IPC_TIMINGS__.push({ cmd: cmd, startMs: start, endMs: performance.now(), args: args });
+        mockArray('__TAURI_MOCK_IPC_TIMINGS__').push({ cmd: cmd, startMs: start, endMs: performance.now(), args: args });
         return result;
       };
     }
@@ -28,6 +34,7 @@ export function tauriInitScript(): string {
       broadcast_doc: timedHandler('broadcast_doc', function() { return null; }),
       fetch_url: () => '',
       google_api_request: () => '{"connections":[],"nextSyncToken":"test-sync-token"}',
+      google_drive_request: () => ({ status: 200, headers: [['content-type', 'application/json']], body: Array.from(new TextEncoder().encode('{"files":[]}')) }),
       fetch_binary_url: () => [],
       get_local_ip: () => '127.0.0.1',
       get_all_local_ips: () => [],
@@ -39,15 +46,32 @@ export function tauriInitScript(): string {
       get_runtime_memory_stats: () => ({
         totalPhysicalMemoryBytes: 16 * 1024 * 1024 * 1024,
         processResidentBytes: 64 * 1024 * 1024,
+        processFootprintBytes: 64 * 1024 * 1024,
         processVirtualBytes: 256 * 1024 * 1024,
         appResidentBytes: 160 * 1024 * 1024,
+        appMemoryPressureBytes: 160 * 1024 * 1024,
         webkitResidentBytes: 96 * 1024 * 1024,
+        webkitFootprintBytes: 96 * 1024 * 1024,
         webkitVirtualBytes: 512 * 1024 * 1024,
         webkitProcessId: 12345,
         webkitTotalResidentBytes: 96 * 1024 * 1024,
+        webkitTotalFootprintBytes: 96 * 1024 * 1024,
         webkitProcessCount: 1,
         webkitLargestResidentBytes: 96 * 1024 * 1024,
+        webkitLargestFootprintBytes: 96 * 1024 * 1024,
         webkitLargestProcessId: 12345,
+        webkitLargestCpuUsage: 0,
+        webkitLargestAgeSeconds: 10,
+        webkitLargestRole: 'freed-webcontent',
+        webkitProcesses: [{
+          processId: 12345,
+          residentBytes: 96 * 1024 * 1024,
+          footprintBytes: 96 * 1024 * 1024,
+          virtualBytes: 512 * 1024 * 1024,
+          cpuUsage: 0,
+          ageSeconds: 10,
+          role: 'freed-webcontent',
+        }],
         webkitTelemetryAvailable: true,
         indexedDbBytes: 8 * 1024 * 1024,
         webkitCacheBytes: 16 * 1024 * 1024,
@@ -55,6 +79,11 @@ export function tauriInitScript(): string {
         memoryCriticalBytes: 3584 * 1024 * 1024,
         relayDocBytes: 0,
         relayClientCount: 0,
+      }),
+      trim_webkit_network_cache_now: () => ({
+        beforeBytes: 16 * 1024 * 1024,
+        afterBytes: 16 * 1024 * 1024,
+        cacheTrimmed: false,
       }),
       get_ai_hardware_profile: (args) => ({
         totalMemoryBytes: 16 * 1024 * 1024 * 1024,
@@ -77,6 +106,17 @@ export function tauriInitScript(): string {
           webkitProcessCount: 1,
           webkitLargestResidentBytes: 96 * 1024 * 1024,
           webkitLargestProcessId: 12345,
+          webkitLargestCpuUsage: 0,
+          webkitLargestAgeSeconds: 10,
+          webkitLargestRole: 'freed-webcontent',
+          webkitProcesses: [{
+            processId: 12345,
+            residentBytes: 96 * 1024 * 1024,
+            virtualBytes: 512 * 1024 * 1024,
+            cpuUsage: 0,
+            ageSeconds: 10,
+            role: 'freed-webcontent',
+          }],
           webkitTelemetryAvailable: true,
           indexedDbBytes: 8 * 1024 * 1024,
           webkitCacheBytes: 16 * 1024 * 1024,
@@ -145,7 +185,7 @@ export function tauriInitScript(): string {
       }
     };
     window.__TAURI_INTERNALS__.invoke = function(cmd, args) {
-      window.__TAURI_MOCK_INVOCATIONS__.push({ cmd: cmd, args: args });
+      mockArray('__TAURI_MOCK_INVOCATIONS__').push({ cmd: cmd, args: args });
       if (cmd === 'plugin:event|listen') {
         var eventId = nextPluginEventId++;
         window.__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__[eventId] = {

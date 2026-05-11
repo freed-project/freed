@@ -32,6 +32,34 @@ type PluginEventRecord = {
   callbackId: number;
 };
 
+type IpcTiming = {
+  cmd: string;
+  startMs: number;
+  endMs: number;
+  args: Record<string, unknown>;
+};
+
+function mockArray<T>(name: string): T[] {
+  const w = window as unknown as Record<string, unknown>;
+  if (!Array.isArray(w[name])) {
+    w[name] = [] as T[];
+  }
+  return w[name] as T[];
+}
+
+function ipcTimings(): IpcTiming[] {
+  return mockArray<IpcTiming>("__TAURI_MOCK_IPC_TIMINGS__");
+}
+
+function timedHandler(cmd: string, handler: Handler): Handler {
+  return (args: Record<string, unknown>) => {
+    const startMs = performance.now();
+    const result = handler(args);
+    ipcTimings().push({ cmd, startMs, endMs: performance.now(), args });
+    return result;
+  };
+}
+
 /**
  * Route an HTTP request through the Vite dev server proxy so it can make
  * real network calls server-side, bypassing CORS. Mirrors what the Rust
@@ -67,15 +95,38 @@ async function proxyFetchBinary(args: Record<string, unknown>): Promise<number[]
   return Array.from(new Uint8Array(await resp.arrayBuffer()));
 }
 
+async function proxyGoogleDriveRequest(args: Record<string, unknown>): Promise<{
+  status: number;
+  headers: Array<[string, string]>;
+  body: number[];
+}> {
+  const resp = await fetch("/api/proxy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: args.url,
+      headers: args.headers ?? [],
+      method: args.method ?? "GET",
+      body: args.body ?? [],
+    }),
+  });
+  return {
+    status: resp.status,
+    headers: Array.from(resp.headers.entries()),
+    body: Array.from(new Uint8Array(await resp.arrayBuffer())),
+  };
+}
+
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
-  broadcast_doc: () => null,
+  broadcast_doc: timedHandler("broadcast_doc", () => null),
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
   google_api_request: (args: Record<string, unknown>) => proxyFetch({
     url: args.url,
     method: "GET",
     headers: { Authorization: `Bearer ${String(args.accessToken ?? "")}` },
   }),
+  google_drive_request: (args: Record<string, unknown>) => proxyGoogleDriveRequest(args),
   fetch_binary_url: (args: Record<string, unknown>) => proxyFetchBinary({ url: args.url, method: "GET" }),
   x_api_request: (args: Record<string, unknown>) => proxyFetch(args),
   get_local_ip: () => "127.0.0.1",
@@ -91,15 +142,32 @@ const handlers: Record<string, Handler> = {
   get_runtime_memory_stats: () => ({
     totalPhysicalMemoryBytes: 16 * 1024 * 1024 * 1024,
     processResidentBytes: 64 * 1024 * 1024,
+    processFootprintBytes: 64 * 1024 * 1024,
     processVirtualBytes: 256 * 1024 * 1024,
     appResidentBytes: 160 * 1024 * 1024,
+    appMemoryPressureBytes: 160 * 1024 * 1024,
     webkitResidentBytes: 96 * 1024 * 1024,
+    webkitFootprintBytes: 96 * 1024 * 1024,
     webkitVirtualBytes: 512 * 1024 * 1024,
     webkitProcessId: 12345,
     webkitTotalResidentBytes: 96 * 1024 * 1024,
+    webkitTotalFootprintBytes: 96 * 1024 * 1024,
     webkitProcessCount: 1,
     webkitLargestResidentBytes: 96 * 1024 * 1024,
+    webkitLargestFootprintBytes: 96 * 1024 * 1024,
     webkitLargestProcessId: 12345,
+    webkitLargestCpuUsage: 0,
+    webkitLargestAgeSeconds: 10,
+    webkitLargestRole: "freed-webcontent",
+    webkitProcesses: [{
+      processId: 12345,
+      residentBytes: 96 * 1024 * 1024,
+      footprintBytes: 96 * 1024 * 1024,
+      virtualBytes: 512 * 1024 * 1024,
+      cpuUsage: 0,
+      ageSeconds: 10,
+      role: "freed-webcontent",
+    }],
     webkitTelemetryAvailable: true,
     indexedDbBytes: 8 * 1024 * 1024,
     webkitCacheBytes: 16 * 1024 * 1024,
@@ -107,6 +175,11 @@ const handlers: Record<string, Handler> = {
     memoryCriticalBytes: 3584 * 1024 * 1024,
     relayDocBytes: 0,
     relayClientCount: 0,
+  }),
+  trim_webkit_network_cache_now: () => ({
+    beforeBytes: 16 * 1024 * 1024,
+    afterBytes: 16 * 1024 * 1024,
+    cacheTrimmed: false,
   }),
   get_ai_hardware_profile: (args: Record<string, unknown>) => ({
     totalMemoryBytes: 16 * 1024 * 1024 * 1024,
@@ -185,12 +258,7 @@ export async function invoke<T = unknown>(
   cmd: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
-  (
-    (window as unknown as Record<string, unknown>).__TAURI_MOCK_INVOCATIONS__ as Array<{
-      cmd: string;
-      args: typeof args;
-    }>
-  ).push({ cmd, args });
+  mockArray<{ cmd: string; args: typeof args }>("__TAURI_MOCK_INVOCATIONS__").push({ cmd, args });
   const handler =
     (
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ as Record<

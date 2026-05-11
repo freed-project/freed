@@ -1,0 +1,50 @@
+{
+  "tag": "v26.5.602-dev",
+  "version": "26.5.602-dev",
+  "channel": "dev",
+  "dayKey": "26.5.6",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-06T08:49:04.192Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.601-dev",
+    "previousPublishedDayTag": "v26.5.517-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.600-dev",
+      "v26.5.601-dev",
+      "v26.5.602-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.600-dev",
+      "v26.5.601-dev",
+      "v26.5.602-dev"
+    ],
+    "prNumbers": [
+      458,
+      459,
+      460
+    ],
+    "commitSubjects": [
+      "perf: reserve scraper memory headroom (#460)",
+      "release: approve v26.5.601-dev notes",
+      "release: v26.5.601-dev",
+      "perf: rebuild large compacted feed history (#459)",
+      "release: approve v26.5.600-dev notes",
+      "release: v26.5.600-dev",
+      "perf: rebuild compacted feed documents (#458)"
+    ]
+  },
+  "release": {
+    "deck": "Freed Desktop rebuilds compacted feed documents to cut WebKit memory pressure",
+    "features": [],
+    "fixes": [
+      "Oversized feed text compaction now rebuilds a fresh Automerge document when the saved binary is already large, so old article text history does not keep WebKit memory high after relaunch",
+      "Social scraper startup now reserves memory headroom before opening background WebKit work, reducing the chance that Facebook, Instagram, or LinkedIn scraping pushes an already heavy renderer into high pressure"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.602-dev\n\nFreed Desktop rebuilds compacted feed documents to cut WebKit memory pressure\n\n### Fixes\n\n- Oversized feed text compaction now rebuilds a fresh Automerge document when the saved binary is already large, so old article text history does not keep WebKit memory high after relaunch\n- Social scraper startup now reserves memory headroom before opening background WebKit work, reducing the chance that Facebook, Instagram, or LinkedIn scraping pushes an already heavy renderer into high pressure\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

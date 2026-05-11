@@ -1,0 +1,88 @@
+{
+  "tag": "v26.5.1104-dev",
+  "version": "26.5.1104-dev",
+  "channel": "dev",
+  "dayKey": "26.5.11",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-11T16:34:04.537Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.1102-dev",
+    "previousPublishedDayTag": "v26.5.1015-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.1100-dev",
+      "v26.5.1101-dev",
+      "v26.5.1102-dev",
+      "v26.5.1104-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.1100-dev",
+      "v26.5.1101-dev",
+      "v26.5.1102-dev",
+      "v26.5.1104-dev"
+    ],
+    "prNumbers": [
+      583,
+      584,
+      585,
+      586,
+      587,
+      588
+    ],
+    "commitSubjects": [
+      "fix: keep friends graph sync errors recoverable (#588)",
+      "release: approve v26.5.1103-dev notes",
+      "release: v26.5.1103-dev",
+      "fix: report throttled renderer heartbeats clearly (#587)",
+      "release: approve v26.5.1102-dev notes",
+      "release: v26.5.1102-dev",
+      "perf: lighten settings moving chrome (#586)",
+      "release: approve v26.5.1101-dev notes",
+      "release: v26.5.1101-dev",
+      "perf: reduce dense map movement paint (#585)",
+      "release: approve v26.5.1100-dev notes",
+      "release: v26.5.1100-dev",
+      "fix: stabilize friends map handoff (#584)",
+      "release: approve v26.5.1016-dev notes",
+      "release: v26.5.1016-dev",
+      "perf: reduce settings scroll overdraw (#583)"
+    ]
+  },
+  "release": {
+    "deck": "Friends and Map handoffs stay recoverable, with clearer renderer health telemetry",
+    "features": [
+      "AI ranked friend suggestions",
+      "Support Friends graph pinch zoom",
+      "Friends relationship tiers"
+    ],
+    "fixes": [
+      "Keep friends graph sync errors recoverable",
+      "Reader, feed, and header polish",
+      "Test coverage and performance hardening",
+      "Release build and type-safety cleanup",
+      "Route Google Drive through native sync requests",
+      "Capture and scraper reliability fixes",
+      "Open the full Map from Friends detail with one atomic store update"
+    ],
+    "followUps": [
+      "Lighten settings moving chrome",
+      "Reduce dense map movement paint",
+      "Reduce settings scroll overdraw",
+      "Reader, sidebar, and settings UX work",
+      "Trim reader rail work and stabilize friends perf",
+      "Isolate social scraper webkit stores",
+      "Gate startup social scraper pressure",
+      "Recycle blocked scraper windows",
+      "Reserve scraper memory headroom",
+      "Slim desktop e2e gates",
+      "Continue passive soak metrics while active UI driving is available",
+      "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss",
+      "Settings scroll and Friends graph stability"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1104-dev\n\nFriends and Map handoffs stay recoverable, with clearer renderer health telemetry\n\n### Features\n\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n- Friends relationship tiers\n\n### Fixes\n\n- Keep friends graph sync errors recoverable\n- Reader, feed, and header polish\n- Test coverage and performance hardening\n- Release build and type-safety cleanup\n- Route Google Drive through native sync requests\n- Capture and scraper reliability fixes\n- Open the full Map from Friends detail with one atomic store update\n\n### Follow-ups\n\n- Lighten settings moving chrome\n- Reduce dense map movement paint\n- Reduce settings scroll overdraw\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n- Continue passive soak metrics while active UI driving is available\n- Treat Settings scroll as the next measured performance surface because it remains the largest budget miss\n- Settings scroll and Friends graph stability\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

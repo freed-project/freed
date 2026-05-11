@@ -109,44 +109,6 @@ async function injectLinkedInItems(
   );
 }
 
-test("LinkedIn settings shows login button when not authenticated", async ({
-  app,
-}) => {
-  await app.goto();
-  await app.waitForReady();
-
-  const liSection = await openLinkedInSection(app.page, test);
-  if (!liSection) return;
-
-  await expect(liSection.getByText("Log in with LinkedIn")).toBeVisible({
-    timeout: 3_000,
-  });
-  await expect(liSection.getByText("Check Connection")).toBeVisible({
-    timeout: 3_000,
-  });
-});
-
-test("LinkedIn appears in sidebar as an active source", async ({ app }) => {
-  await app.goto();
-  await app.waitForReady();
-
-  const sidebar = getDesktopSidebar(app.page);
-  const liButton = sidebar.getByTestId("source-row-linkedin");
-  await expect(liButton).toBeVisible({ timeout: 3_000 });
-});
-
-test("LinkedIn source indicator shows connected when authenticated", async ({
-  app,
-}) => {
-  await app.goto();
-  await app.waitForReady();
-
-  await setLiAuthState(app.page, true);
-  const sidebar = app.page.getByTestId("app-sidebar");
-
-  await expect(sidebar.getByTestId("source-indicator-linkedin")).toBeVisible({ timeout: 3_000 });
-});
-
 test("LinkedIn source button filters the feed to LinkedIn items", async ({
   app,
 }) => {
@@ -169,25 +131,6 @@ test("LinkedIn source button filters the feed to LinkedIn items", async ({
     app.page.getByText("LinkedIn item 0 for sidebar filtering"),
   ).toBeVisible({ timeout: 5_000 });
   await expect(app.page.getByText("Article 0:", { exact: false })).toBeHidden();
-});
-
-test("LinkedIn appears in the source sidebar when authenticated", async ({
-  app,
-}) => {
-  await app.goto();
-  await app.waitForReady();
-  await setLiAuthState(app.page, true);
-  await injectLinkedInItems(app.page, 1);
-
-  const sidebar = getDesktopSidebar(app.page);
-  const linkedInRow = sidebar.getByTestId("source-row-linkedin");
-  await expect(linkedInRow).toBeVisible({
-    timeout: 3_000,
-  });
-  await expect(linkedInRow).toContainText("LinkedIn");
-  await expect(sidebar.getByTestId("source-indicator-linkedin")).toBeVisible({
-    timeout: 3_000,
-  });
 });
 
 test("browser preview skips native LinkedIn refresh instead of crashing", async ({

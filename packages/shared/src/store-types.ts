@@ -78,6 +78,10 @@ export interface BaseAppState {
   archivableCountByPlatform: Record<string, number>;
   /** Archivable count bucketed by RSS feed URL. */
   archivableFeedCounts: Record<string, number>;
+  /** Friends with recent mapped content. Derived off the render path. */
+  mapFriendLocationCount: number;
+  /** Authors with recent mapped content. Derived off the render path. */
+  mapAllContentLocationCount: number;
 
   // UI state
   isLoading: boolean;
@@ -102,6 +106,7 @@ export interface BaseAppState {
   markAllAsRead: (platform?: string) => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
   toggleArchived: (id: string) => Promise<void>;
+  archiveItems: (ids: string[]) => Promise<void>;
   /** Archive all read, non-saved items in the current view. */
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
   /** Repair legacy states where saved items are also marked archived. */
@@ -170,6 +175,8 @@ export interface BaseAppState {
   activeView: "feed" | "friends" | "map" | "storyWall";
   /** Switch the top-level view. */
   setActiveView: (view: "feed" | "friends" | "map" | "storyWall") => void;
+  /** Open the full Map view focused on one person. */
+  openMapForPerson: (personId: string) => void;
   /** Number of unreviewed Google Contacts match suggestions. */
   pendingMatchCount: number;
   /** Update the pending match count (set by useContactSync). */

@@ -51,7 +51,11 @@ export class AppFixture {
     for (let index = 0; index < checkboxCount; index += 1) {
       await checkboxes.nth(index).check();
     }
-    await expect(acceptButton).toBeEnabled({ timeout });
+    await acceptButton.waitFor({ state: "attached", timeout });
+    await this.page.waitForFunction(() => {
+      const button = document.querySelector<HTMLButtonElement>('[data-testid="legal-gate-accept"]');
+      return !!button && !button.disabled;
+    }, { timeout });
     await acceptButton.evaluate((element) => {
       (element as HTMLButtonElement).click();
     });
@@ -133,6 +137,17 @@ export class AppFixture {
       { timeout },
     );
     await this.page.locator("main").waitFor({ state: "visible", timeout });
+    await this.page.evaluate(() => {
+      const w = window as Window & {
+        __freed?: {
+          debug?: () => { setVisible: (visible: boolean) => void };
+        };
+      };
+      w.__freed?.debug?.()?.setVisible(false);
+    });
+    await expect(this.page.getByTestId("debug-panel-drawer")).toHaveCSS("width", "0px", {
+      timeout,
+    });
   }
 
   /**

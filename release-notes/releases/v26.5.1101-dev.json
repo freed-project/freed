@@ -1,0 +1,81 @@
+{
+  "tag": "v26.5.1101-dev",
+  "version": "26.5.1101-dev",
+  "channel": "dev",
+  "dayKey": "26.5.11",
+  "approved": true,
+  "editorialNotes": [
+    "Approved after the dense Map movement paint fix landed. This replacement preserves the v26.5.1100 same-day rollup and adds the Map 1,600-author perf guard improvement."
+  ],
+  "generatedAt": "2026-05-11T10:27:25.706Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.1100-dev",
+    "previousPublishedDayTag": "v26.5.1015-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.1100-dev",
+      "v26.5.1101-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.1100-dev",
+      "v26.5.1101-dev"
+    ],
+    "prNumbers": [
+      583,
+      584,
+      585
+    ],
+    "commitSubjects": [
+      "perf: reduce dense map movement paint (#585)",
+      "release: approve v26.5.1100-dev notes",
+      "release: v26.5.1100-dev",
+      "fix: stabilize friends map handoff (#584)",
+      "release: approve v26.5.1016-dev notes",
+      "release: v26.5.1016-dev",
+      "perf: reduce settings scroll overdraw (#583)"
+    ]
+  },
+  "release": {
+    "deck": "AI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers",
+    "features": [
+      "AI ranked friend suggestions",
+      "Support Friends graph pinch zoom",
+      "Friends relationship tiers"
+    ],
+    "fixes": [
+      "Dense Map pan and zoom movement now paints fewer primary markers, keeping the 1,600-author perf gate within budget",
+      "Friends map handoff is now more stable",
+      "Reader, feed, and header polish",
+      "Test coverage and performance hardening",
+      "Release build and type-safety cleanup",
+      "Route Google Drive through native sync requests",
+      "Optimized social scraper frame drops",
+      "Dedupe Instagram story captures",
+      "Pause Settings descendant transitions while the dialog is moving",
+      "Open the full Map from Friends detail with one atomic store update",
+      "Friends last seen cards now retry the route commit if the store reaches Map before the full Map surface mounts",
+      "Flush mobile Friends toolbar switches between Details and graph modes",
+      "Settings scrolling is lighter, and Friends view transitions are stable through the release regression gate",
+      "Guarded Friends graph Pixi teardown so the Last seen to Map handoff cannot be replaced by the fatal error screen",
+      "Kept the collapsed Friends detail-card regression focused on selected-person behavior instead of a CI-sensitive graph node point lookup",
+      "V26.5.1013-dev replaces the failed v26.5.1012-dev validation tag, which produced no installable artifacts"
+    ],
+    "followUps": [
+      "Reduce settings scroll overdraw",
+      "Reader, sidebar, and settings UX work",
+      "Trim reader rail work and stabilize friends perf",
+      "Isolate social scraper webkit stores",
+      "Gate startup social scraper pressure",
+      "Recycle blocked scraper windows",
+      "Reserve scraper memory headroom",
+      "Slim desktop e2e gates",
+      "Continue passive soak metrics until Apple Events authorization is restored for active UI driving",
+      "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss",
+      "Settings scroll and Friends graph stability"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1101-dev\n\nAI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers\n\n### Features\n\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n- Friends relationship tiers\n\n### Fixes\n\n- Dense Map pan and zoom movement now paints fewer primary markers, keeping the 1,600-author perf gate within budget\n- Friends map handoff is now more stable\n- Reader, feed, and header polish\n- Test coverage and performance hardening\n- Release build and type-safety cleanup\n- Route Google Drive through native sync requests\n- Optimized social scraper frame drops\n- Dedupe Instagram story captures\n- Pause Settings descendant transitions while the dialog is moving\n- Open the full Map from Friends detail with one atomic store update\n- Friends last seen cards now retry the route commit if the store reaches Map before the full Map surface mounts\n- Flush mobile Friends toolbar switches between Details and graph modes\n- Settings scrolling is lighter, and Friends view transitions are stable through the release regression gate\n- Guarded Friends graph Pixi teardown so the Last seen to Map handoff cannot be replaced by the fatal error screen\n- Kept the collapsed Friends detail-card regression focused on selected-person behavior instead of a CI-sensitive graph node point lookup\n- V26.5.1013-dev replaces the failed v26.5.1012-dev validation tag, which produced no installable artifacts\n\n### Follow-ups\n\n- Reduce settings scroll overdraw\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n- Continue passive soak metrics until Apple Events authorization is restored for active UI driving\n- Treat Settings scroll as the next measured performance surface because it remains the largest budget miss\n- Settings scroll and Friends graph stability\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

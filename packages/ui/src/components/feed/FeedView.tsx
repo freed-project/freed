@@ -4,12 +4,18 @@ import { FeedList } from "./FeedList.js";
 import { ReaderView } from "./ReaderView.js";
 import { FeedItem as FeedItemCard } from "./FeedItem.js";
 import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
+import { buildReadTrackListKey } from "./read-on-scroll.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
-import type { FeedItem } from "@freed/shared";
+import {
+  buildDiscoveredAccountsFromItems,
+  socialAccountForAuthor,
+  type Account,
+  type FeedItem,
+} from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import { animationAwareScrollBehavior, resolveAnimationIntensity } from "../../lib/animation-preferences.js";
 
@@ -93,12 +99,8 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     },
     [items, itemHeight, storyItemHeight],
   );
-  const readRows = useMemo(
-    () => items.map((item) => ({ type: "item" as const, item })),
-    [items],
-  );
   const readListKey = useMemo(
-    () => items.map((item) => item.globalId).join("|"),
+    () => buildReadTrackListKey(items),
     [items],
   );
   const getReadScrollMetrics = useCallback(() => ({
@@ -109,7 +111,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   const processReadOnScroll = useReadOnScrollTracker({
     surface: "compact-feed",
     listKey: readListKey,
-    rows: readRows,
+    rows: items,
     items,
     markReadOnScroll,
     getScrollMetrics: getReadScrollMetrics,
@@ -255,6 +257,9 @@ export function FeedView() {
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
+  const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
+  const setActiveView = useAppStore((s) => s.setActiveView);
+  const addAccount = useAppStore((s) => s.addAccount);
   const markAsRead = useAppStore((s) => s.markAsRead);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
@@ -283,6 +288,25 @@ export function FeedView() {
       window.open(url, "_blank", "noopener,noreferrer");
     }
   }, [openUrl]);
+  const openAuthorInFriends = useCallback(async (item: FeedItem) => {
+    let account: Account | null = socialAccountForAuthor(accounts, item.platform, item.author.id);
+    if (!account) {
+      const draft = buildDiscoveredAccountsFromItems([item], accounts)[0];
+      if (!draft) return;
+      await addAccount(draft);
+      account = draft;
+    }
+
+    setSelectedItem(null);
+    setSelectedAccount(account.id);
+    setActiveView("friends");
+  }, [
+    accounts,
+    addAccount,
+    setActiveView,
+    setSelectedAccount,
+    setSelectedItem,
+  ]);
 
   const [addFeedOpen, setAddFeedOpen] = useState(false);
   const [readerOrderIds, setReaderOrderIds] = useState<string[] | null>(null);
@@ -592,6 +616,7 @@ export function FeedView() {
             dualColumn={showDualColumn}
             inline
             onOpenUrl={handleOpenCommentUrl}
+            onOpenAuthorInFriends={openAuthorInFriends}
           />
         </div>
         <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
@@ -618,7 +643,12 @@ export function FeedView() {
       />
 
       {selectedItem && (
-        <ReaderView item={selectedItem} onClose={closeItem} onOpenUrl={handleOpenCommentUrl} />
+        <ReaderView
+          item={selectedItem}
+          onClose={closeItem}
+          onOpenUrl={handleOpenCommentUrl}
+          onOpenAuthorInFriends={openAuthorInFriends}
+        />
       )}
 
       <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
