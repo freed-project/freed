@@ -923,6 +923,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const graphQualityModeRef = useRef<GraphQualityMode>("settled");
   const layoutReadyRef = useRef(false);
   const syncSceneRef = useRef<() => void>(() => {});
+  const syncSceneErrorLoggedRef = useRef(false);
   const canvasSizeRef = useRef({ width: 900, height: DEFAULT_HEIGHT });
   const perfSnapshotRef = useRef<GraphPerfSnapshot>({
     modelBuildMs: 0,
@@ -997,6 +998,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const scene = pixiRef.current;
     if (!scene) return;
 
+    try {
     const sceneStart = nowMs();
     const drag = dragStateRef.current;
     const transform = transformRef.current;
@@ -1771,6 +1773,18 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         qualityMode,
         metrics: { ...perfSnapshotRef.current },
       };
+    }
+    syncSceneErrorLoggedRef.current = false;
+    } catch (error) {
+      if (!syncSceneErrorLoggedRef.current) {
+        syncSceneErrorLoggedRef.current = true;
+        recordRuntimeError({
+          source: "friends:graph:pixi-sync",
+          error,
+          fatal: false,
+        });
+        console.warn("[friends-graph] ignored Pixi scene sync error", error);
+      }
     }
   }, [
     canvasSize.height,
