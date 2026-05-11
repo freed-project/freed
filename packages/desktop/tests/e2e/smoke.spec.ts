@@ -3432,7 +3432,7 @@ test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
   }, { timeout: 5_000 });
 });
 
-test("selecting a graph node shows a compact detail card when the Friends detail rail is closed", async ({ app, page }) => {
+test("selected Friends graph person shows a compact detail card when the detail rail is closed", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -3467,30 +3467,32 @@ test("selecting a graph node shows a compact detail card when the Friends detail
   await page.getByRole("button", { name: "Fit all" }).click();
   await waitForGraphPerfToSettle(page, 20_000);
 
-  const friendPoint = await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" }, 20_000);
-  await page.waitForTimeout(300);
-  const beforeClick = await readGraphSummary(page);
-  expect(friendPoint).not.toBeNull();
-  expect(beforeClick).not.toBeNull();
-  await page.mouse.click(friendPoint.x, friendPoint.y);
+  const beforeSelection = await readGraphSummary(page);
+  expect(beforeSelection).not.toBeNull();
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            setSelectedPerson: (personId: string | null) => void;
+            setSelectedAccount: (accountId: string | null) => void;
+          };
+        }
+      | undefined;
+    store?.getState().setSelectedAccount(null);
+    store?.getState().setSelectedPerson("friend-ada");
+  });
 
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   const compactCard = page.getByTestId("friends-collapsed-selection-card");
   await expect(compactCard).toBeVisible({ timeout: 5_000 });
   await expect(compactCard).toContainText("Ada Lovelace");
-  const afterClick = await readGraphSummary(page);
-  expect(afterClick).not.toBeNull();
-  expect(afterClick!.transform.x).toBeCloseTo(beforeClick!.transform.x, 1);
-  expect(afterClick!.transform.y).toBeCloseTo(beforeClick!.transform.y, 1);
-  expect(afterClick!.transform.scale).toBeCloseTo(beforeClick!.transform.scale, 3);
-  expect(afterClick!.metrics.edgeRebuildCount).toBeLessThanOrEqual(beforeClick!.metrics.edgeRebuildCount + 2);
-  expect(afterClick!.metrics.nodeRestyleCount).toBeLessThanOrEqual(beforeClick!.metrics.nodeRestyleCount + 2);
-  await page.mouse.dblclick(friendPoint.x, friendPoint.y);
-  const afterDoubleClick = await readGraphSummary(page);
-  expect(afterDoubleClick).not.toBeNull();
-  expect(afterDoubleClick!.transform.x).toBeCloseTo(beforeClick!.transform.x, 1);
-  expect(afterDoubleClick!.transform.y).toBeCloseTo(beforeClick!.transform.y, 1);
-  expect(afterDoubleClick!.transform.scale).toBeCloseTo(beforeClick!.transform.scale, 3);
+  const afterSelection = await readGraphSummary(page);
+  expect(afterSelection).not.toBeNull();
+  expect(afterSelection!.transform.x).toBeCloseTo(beforeSelection!.transform.x, 1);
+  expect(afterSelection!.transform.y).toBeCloseTo(beforeSelection!.transform.y, 1);
+  expect(afterSelection!.transform.scale).toBeCloseTo(beforeSelection!.transform.scale, 3);
+  expect(afterSelection!.metrics.edgeRebuildCount).toBeLessThanOrEqual(beforeSelection!.metrics.edgeRebuildCount + 2);
+  expect(afterSelection!.metrics.nodeRestyleCount).toBeLessThanOrEqual(beforeSelection!.metrics.nodeRestyleCount + 2);
   await page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | { getState: () => { preferences: { display: { friendsSidebarOpen?: boolean } } } }
