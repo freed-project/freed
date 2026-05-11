@@ -3,8 +3,10 @@
   "version": "26.5.1016-dev",
   "channel": "dev",
   "dayKey": "26.5.10",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Approved after preserving the v26.5.1015 same-day rollup and adding the Settings scroll overdraw fix from PR #583."
+  ],
   "generatedAt": "2026-05-11T06:07:23.184Z",
   "model": "heuristic",
   "source": {
