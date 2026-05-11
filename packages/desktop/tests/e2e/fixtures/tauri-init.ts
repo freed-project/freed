@@ -15,12 +15,18 @@ export function tauriInitScript(): string {
     // Handler map - tests override individual entries after page.addInitScript.
     // The broadcast_doc handler wraps the real call to capture IPC timing data
     // consumed by the IPC latency harness in perf-feed.spec.ts.
+    function mockArray(name) {
+      if (!Array.isArray(window[name])) {
+        window[name] = [];
+      }
+      return window[name];
+    }
     window.__TAURI_MOCK_IPC_TIMINGS__ = [];
     function timedHandler(cmd, fn) {
       return function(args) {
         var start = performance.now();
         var result = fn(args);
-        window.__TAURI_MOCK_IPC_TIMINGS__.push({ cmd: cmd, startMs: start, endMs: performance.now(), args: args });
+        mockArray('__TAURI_MOCK_IPC_TIMINGS__').push({ cmd: cmd, startMs: start, endMs: performance.now(), args: args });
         return result;
       };
     }
@@ -179,7 +185,7 @@ export function tauriInitScript(): string {
       }
     };
     window.__TAURI_INTERNALS__.invoke = function(cmd, args) {
-      window.__TAURI_MOCK_INVOCATIONS__.push({ cmd: cmd, args: args });
+      mockArray('__TAURI_MOCK_INVOCATIONS__').push({ cmd: cmd, args: args });
       if (cmd === 'plugin:event|listen') {
         var eventId = nextPluginEventId++;
         window.__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__[eventId] = {

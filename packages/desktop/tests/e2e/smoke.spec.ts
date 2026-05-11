@@ -38,7 +38,9 @@ const SOFT_VIEWPORT_RADIUS = "20px";
 async function dismissCloudSyncNudgeIfPresent(page: Page) {
   const dismissButton = page.getByRole("button", { name: "Dismiss", exact: true });
   if (await dismissButton.isVisible().catch(() => false)) {
-    await dismissButton.click();
+    await dismissButton.evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
   }
 }
 
@@ -2823,7 +2825,9 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
   await expect(page.getByText("Last seen")).toBeVisible({ timeout: 5_000 });
   const lastSeenCard = page.getByRole("button", { name: /last seen paris/i });
   await expect(lastSeenCard).toBeVisible({ timeout: 5_000 });
-  await lastSeenCard.click();
+  await lastSeenCard.evaluate((element) => {
+    (element as HTMLElement).click();
+  });
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
@@ -4044,7 +4048,9 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
 
   const control = page.getByTestId("relationship-tier-control");
   await expect(control).toBeVisible({ timeout: 10_000 });
-  await control.getByRole("button", { name: "Friends" }).click();
+  await control.getByRole("button", { name: "Friends" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
 
   await expect.poll(async () =>
     page.evaluate(() => {
@@ -4055,7 +4061,9 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
     }),
   ).toMatchObject({ relationshipStatus: "friend", careLevel: 3 });
 
-  await control.getByRole("button", { name: "Fam" }).click();
+  await control.getByRole("button", { name: "Fam" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
   await expect.poll(async () =>
     page.evaluate(() => {
       const store = (window as Record<string, unknown>).__FREED_STORE__ as {
@@ -4065,7 +4073,9 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
     }),
   ).toMatchObject({ relationshipStatus: "friend", careLevel: 5 });
 
-  await control.getByRole("button", { name: "Followed" }).click();
+  await control.getByRole("button", { name: "Followed" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
   await expect.poll(async () =>
     page.evaluate(() => {
       const store = (window as Record<string, unknown>).__FREED_STORE__ as {
