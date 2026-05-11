@@ -3,8 +3,10 @@
   "version": "26.5.1011-dev",
   "channel": "dev",
   "dayKey": "26.5.10",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Approved after preserving the same-day performance rollup and adding the v26.5.1011 Settings follow-up."
+  ],
   "generatedAt": "2026-05-11T01:41:26.196Z",
   "model": "heuristic",
   "source": {
@@ -530,13 +532,18 @@
     ]
   },
   "release": {
-    "deck": "AI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers",
+    "deck": "Settings interactions are lighter, hidden WebKit timer gaps stay quiet, and Friends performance remains guarded",
     "features": [
       "AI ranked friend suggestions",
       "Support Friends graph pinch zoom",
       "Friends relationship tiers"
     ],
     "fixes": [
+      "Settings dialog movement now scopes paint-shedding state to the dialog instead of the whole app.",
+      "RSS Feeds settings keeps stable search indexing for large libraries, avoiding repeated 1,600-feed search text rebuilds after parent renders.",
+      "Hidden WebKit timer gaps stay in the throttled health state instead of producing recurring false stale-renderer cycles.",
+      "Friends view transitions, Map handoff, mobile mode switches, and collapsed-card empty-space dismissal are stable through the release regression gate.",
+      "Desktop release validation is hardened against Playwright output reloads, Tauri mock IPC timing gaps, and CI graph benchmark variance.",
       "Test coverage and performance hardening",
       "Release build and type-safety cleanup",
       "Reader, feed, and header polish",
@@ -546,10 +553,11 @@
       "Pause Settings descendant transitions while the dialog is moving",
       "Open the full Map from Friends detail with one atomic store update",
       "Flush the Friends to Map handoff at the click boundary",
-      "Flush mobile Friends toolbar switches between Details and graph modes",
-      "The collapsed Friends detail card empty-space regression are now more stable"
+      "Flush mobile Friends toolbar switches between Details and graph modes"
     ],
     "followUps": [
+      "Continue passive installed-build soak metrics until Apple Events authorization is restored for active UI driving.",
+      "Use the perf sweep to pick the next surface by measured budget miss, with Settings scroll still watched closely.",
       "Reader, sidebar, and settings UX work",
       "Trim reader rail work and stabilize friends perf",
       "Isolate social scraper webkit stores",
@@ -557,11 +565,9 @@
       "Recycle blocked scraper windows",
       "Reserve scraper memory headroom",
       "Slim desktop e2e gates",
-      "Settings scrolling is lighter, and Friends view transitions are stable through the release regression gate",
-      "Continue passive soak metrics until Apple Events authorization is restored for active UI driving",
       "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss",
       "Settings scroll and Friends graph stability"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1011-dev\n\nAI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers\n\n### Features\n\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n- Friends relationship tiers\n\n### Fixes\n\n- Test coverage and performance hardening\n- Release build and type-safety cleanup\n- Reader, feed, and header polish\n- Route Google Drive through native sync requests\n- Optimized social scraper frame drops\n- Dedupe Instagram story captures\n- Pause Settings descendant transitions while the dialog is moving\n- Open the full Map from Friends detail with one atomic store update\n- Flush the Friends to Map handoff at the click boundary\n- Flush mobile Friends toolbar switches between Details and graph modes\n- The collapsed Friends detail card empty-space regression are now more stable\n\n### Follow-ups\n\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n- Settings scrolling is lighter, and Friends view transitions are stable through the release regression gate\n- Continue passive soak metrics until Apple Events authorization is restored for active UI driving\n- Treat Settings scroll as the next measured performance surface because it remains the largest budget miss\n- Settings scroll and Friends graph stability\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1011-dev\n\nSettings interactions are lighter, hidden WebKit timer gaps stay quiet, and Friends performance remains guarded\n\n### Features\n\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n- Friends relationship tiers\n\n### Fixes\n\n- Settings dialog movement now scopes paint-shedding state to the dialog instead of the whole app.\n- RSS Feeds settings keeps stable search indexing for large libraries, avoiding repeated 1,600-feed search text rebuilds after parent renders.\n- Hidden WebKit timer gaps stay in the throttled health state instead of producing recurring false stale-renderer cycles.\n- Friends view transitions, Map handoff, mobile mode switches, and collapsed-card empty-space dismissal are stable through the release regression gate.\n- Desktop release validation is hardened against Playwright output reloads, Tauri mock IPC timing gaps, and CI graph benchmark variance.\n- Test coverage and performance hardening\n- Release build and type-safety cleanup\n- Reader, feed, and header polish\n- Route Google Drive through native sync requests\n- Optimized social scraper frame drops\n- Dedupe Instagram story captures\n- Pause Settings descendant transitions while the dialog is moving\n- Open the full Map from Friends detail with one atomic store update\n- Flush the Friends to Map handoff at the click boundary\n- Flush mobile Friends toolbar switches between Details and graph modes\n\n### Follow-ups\n\n- Continue passive installed-build soak metrics until Apple Events authorization is restored for active UI driving.\n- Use the perf sweep to pick the next surface by measured budget miss, with Settings scroll still watched closely.\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n- Treat Settings scroll as the next measured performance surface because it remains the largest budget miss\n- Settings scroll and Friends graph stability\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
