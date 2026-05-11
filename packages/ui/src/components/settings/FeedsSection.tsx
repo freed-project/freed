@@ -121,7 +121,7 @@ function ManagePane() {
     });
   }, [failingFeedByUrl, feedFilter, feedList]);
 
-  const handleRemove = async (url: string) => {
+  const handleRemove = useCallback(async (url: string) => {
     setRemoving(url);
     try {
       await removeFeed(url);
@@ -131,7 +131,7 @@ function ManagePane() {
     } finally {
       setRemoving(null);
     }
-  };
+  }, [forgetRssFeedHealth, removeFeed]);
 
   const handleRemoveAll = async () => {
     setRemovingAll(true);
@@ -165,6 +165,98 @@ function ManagePane() {
 
   const bulkUnsubscribeTitle =
     feedFilter === "all" ? "Unsubscribe from all feeds?" : "Unsubscribe from shown feeds?";
+
+  const manageFeedSearchTextByUrl = useMemo(
+    () =>
+      new Map(
+        filteredFeedList.map((feed) => {
+          const failingFeed = failingFeedByUrl.get(feed.url);
+          const status = failingFeed
+            ? isLikelyDeadFeed(failingFeed.lastError)
+              ? "Likely dead"
+              : "Failing"
+            : "";
+          return [
+            feed.url,
+            getFeedSearchText(feed, [status, failingFeed?.lastError].filter(Boolean).join(" ")),
+          ] as const;
+        }),
+      ),
+    [failingFeedByUrl, filteredFeedList],
+  );
+
+  const getManageFeedSearchText = useCallback(
+    (feed: (typeof filteredFeedList)[number]) =>
+      manageFeedSearchTextByUrl.get(feed.url) ?? getFeedSearchText(feed),
+    [manageFeedSearchTextByUrl],
+  );
+
+  const getManageFeedKey = useCallback(
+    (feed: (typeof filteredFeedList)[number]) => feed.url,
+    [],
+  );
+
+  const renderManageFeedItem = useCallback(
+    (feed: (typeof filteredFeedList)[number]) => {
+      const failingFeed = failingFeedByUrl.get(feed.url);
+      const showLikelyDead = !!failingFeed && isLikelyDeadFeed(failingFeed.lastError);
+      return (
+        <div
+          key={feed.url}
+          className="flex items-center gap-3 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] px-3 py-2.5"
+        >
+          {feed.imageUrl ? (
+            <img src={feed.imageUrl} alt="" className="w-8 h-8 rounded-md flex-shrink-0 object-cover" />
+          ) : (
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-[rgb(var(--theme-accent-secondary-rgb)/0.1)]">
+              <svg className="h-4 w-4 text-[rgb(var(--theme-accent-secondary-rgb)/0.75)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110-2 1 1 0 010 2z" />
+              </svg>
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <p className="truncate text-sm text-[var(--theme-text-primary)]">{feed.title}</p>
+              {failingFeed ? (
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${
+                    showLikelyDead
+                      ? "bg-red-500/15 text-red-400"
+                      : "bg-amber-500/15 text-amber-400"
+                  }`}
+                >
+                  {showLikelyDead ? "Likely dead" : "Failing"}
+                </span>
+              ) : null}
+            </div>
+            <p className="truncate text-xs text-[var(--theme-text-soft)]">{feed.url}</p>
+            {failingFeed?.lastError ? (
+              <p className="mt-1 text-xs text-amber-300 truncate">
+                {failingFeed.lastError}
+              </p>
+            ) : null}
+          </div>
+          <button
+            onClick={() => handleRemove(feed.url)}
+            disabled={removing === feed.url}
+            className="flex-shrink-0 rounded-lg p-1.5 text-[var(--theme-text-muted)] transition-colors hover:bg-red-500/20 hover:text-red-400 disabled:opacity-50"
+            aria-label={`Remove ${feed.title}`}
+          >
+            {removing === feed.url ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            )}
+          </button>
+        </div>
+      );
+    },
+    [failingFeedByUrl, handleRemove, removing],
+  );
 
   return (
     <>
@@ -210,74 +302,9 @@ function ManagePane() {
         dataTestId="feeds-manage-list"
         searchDataTestId="feeds-manage-filter"
         scrollDataTestId="feeds-manage-list-scroll"
-        itemKey={(feed) => feed.url}
-        getSearchText={(feed) => {
-          const failingFeed = failingFeedByUrl.get(feed.url);
-          const status = failingFeed
-            ? isLikelyDeadFeed(failingFeed.lastError)
-              ? "Likely dead"
-              : "Failing"
-            : "";
-          return getFeedSearchText(feed, [status, failingFeed?.lastError].filter(Boolean).join(" "));
-        }}
-        renderItem={(feed) => {
-          const failingFeed = failingFeedByUrl.get(feed.url);
-          const showLikelyDead = !!failingFeed && isLikelyDeadFeed(failingFeed.lastError);
-          return (
-            <div
-              key={feed.url}
-              className="flex items-center gap-3 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] px-3 py-2.5"
-            >
-              {feed.imageUrl ? (
-                <img src={feed.imageUrl} alt="" className="w-8 h-8 rounded-md flex-shrink-0 object-cover" />
-              ) : (
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-[rgb(var(--theme-accent-secondary-rgb)/0.1)]">
-                  <svg className="h-4 w-4 text-[rgb(var(--theme-accent-secondary-rgb)/0.75)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110-2 1 1 0 010 2z" />
-                  </svg>
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  <p className="truncate text-sm text-[var(--theme-text-primary)]">{feed.title}</p>
-                  {failingFeed ? (
-                    <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${
-                        showLikelyDead
-                          ? "bg-red-500/15 text-red-400"
-                          : "bg-amber-500/15 text-amber-400"
-                      }`}
-                    >
-                      {showLikelyDead ? "Likely dead" : "Failing"}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="truncate text-xs text-[var(--theme-text-soft)]">{feed.url}</p>
-                {failingFeed?.lastError ? (
-                  <p className="mt-1 text-xs text-amber-300 truncate">
-                    {failingFeed.lastError}
-                  </p>
-                ) : null}
-              </div>
-              <button
-                onClick={() => handleRemove(feed.url)}
-                disabled={removing === feed.url}
-                className="flex-shrink-0 rounded-lg p-1.5 text-[var(--theme-text-muted)] transition-colors hover:bg-red-500/20 hover:text-red-400 disabled:opacity-50"
-                aria-label={`Remove ${feed.title}`}
-              >
-                {removing === feed.url ? (
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                )}
-              </button>
-            </div>
-          );
-        }}
+        itemKey={getManageFeedKey}
+        getSearchText={getManageFeedSearchText}
+        renderItem={renderManageFeedItem}
       />
 
       {showRemoveAll && (

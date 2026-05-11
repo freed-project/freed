@@ -2074,14 +2074,14 @@ html.freed-mobile-sidebar-open body {
   -webkit-backdrop-filter: blur(0px) saturate(100%);
 }
 
-html[data-settings-dialog-moving="true"] .theme-settings-overlay {
+.theme-settings-overlay[data-moving="true"] {
   background: rgb(var(--theme-shell-rgb) / 0);
   backdrop-filter: blur(0px) saturate(100%);
   -webkit-backdrop-filter: blur(0px) saturate(100%);
   transition: none;
 }
 
-html[data-settings-dialog-moving="true"] .theme-settings-shell {
+.theme-settings-shell[data-moving="true"] {
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.05),
     0 20px 56px rgb(0 0 0 / 0.24),
@@ -2091,17 +2091,17 @@ html[data-settings-dialog-moving="true"] .theme-settings-shell {
   transform: translateZ(0);
 }
 
-html[data-settings-dialog-moving="true"] .theme-settings-shell .theme-card-soft {
+.theme-settings-shell[data-moving="true"] .theme-card-soft {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035);
 }
 
-html[data-settings-dialog-moving="true"] .theme-settings-shell .theme-dialog-section {
+.theme-settings-shell[data-moving="true"] .theme-dialog-section {
   box-shadow: none;
 }
 
-html[data-settings-dialog-moving="true"] .theme-settings-shell *,
-html[data-settings-dialog-moving="true"] .theme-settings-shell *::before,
-html[data-settings-dialog-moving="true"] .theme-settings-shell *::after {
+.theme-settings-shell[data-moving="true"] *,
+.theme-settings-shell[data-moving="true"] *::before,
+.theme-settings-shell[data-moving="true"] *::after {
   animation: none !important;
   transition: none !important;
 }
