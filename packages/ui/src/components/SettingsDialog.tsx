@@ -287,6 +287,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const pendingThemeIdRef = useRef<ThemeId | null>(null);
   const pendingThemeSaveSeqRef = useRef(0);
   const committedThemeIdRef = useRef(preferences.display.themeId);
+  const settingsOverlayRef = useRef<HTMLDivElement>(null);
+  const settingsShellRef = useRef<HTMLDivElement>(null);
   const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
@@ -442,7 +444,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (open) return;
     setThemePreviewHovering(false);
     setThemePreviewTouchActive(false);
-    delete document.documentElement.dataset.settingsDialogMoving;
+    delete settingsOverlayRef.current?.dataset.moving;
+    delete settingsShellRef.current?.dataset.moving;
     if (themeBlurRestoreTimerRef.current) {
       clearTimeout(themeBlurRestoreTimerRef.current);
       themeBlurRestoreTimerRef.current = null;
@@ -462,7 +465,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       }
       if (interactionBlurRestoreTimerRef.current) {
         clearTimeout(interactionBlurRestoreTimerRef.current);
-        delete document.documentElement.dataset.settingsDialogMoving;
+        delete settingsOverlayRef.current?.dataset.moving;
+        delete settingsShellRef.current?.dataset.moving;
       }
       interactionBlurLastAtRef.current = 0;
       flushPendingThemeSelectionNow();
@@ -482,13 +486,15 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   }, [hasCoarsePointer]);
 
   const suppressBackdropDuringInteraction = useCallback(() => {
-    if (typeof document === "undefined") {
-      return;
-    }
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
     interactionBlurLastAtRef.current = now;
-    if (document.documentElement.dataset.settingsDialogMoving !== "true") {
-      document.documentElement.dataset.settingsDialogMoving = "true";
+    const overlay = settingsOverlayRef.current;
+    const shell = settingsShellRef.current;
+    if (overlay && overlay.dataset.moving !== "true") {
+      overlay.dataset.moving = "true";
+    }
+    if (shell && shell.dataset.moving !== "true") {
+      shell.dataset.moving = "true";
     }
 
     if (interactionBlurRestoreTimerRef.current) {
@@ -504,7 +510,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return;
       }
 
-      delete document.documentElement.dataset.settingsDialogMoving;
+      delete settingsOverlayRef.current?.dataset.moving;
+      delete settingsShellRef.current?.dataset.moving;
       interactionBlurRestoreTimerRef.current = null;
       interactionBlurLastAtRef.current = 0;
     };
@@ -1553,12 +1560,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
       {/* Backdrop */}
       <div
+        ref={settingsOverlayRef}
         className={`theme-settings-overlay absolute inset-0 ${themeBackdropSuppressed ? "theme-settings-overlay-preview-off" : ""}`}
         onClick={onClose}
       />
 
       {/* Panel */}
       <div
+        ref={settingsShellRef}
         className={`
           theme-dialog-shell theme-settings-shell relative z-10 flex w-full flex-col
           h-[100dvh] rounded-none
