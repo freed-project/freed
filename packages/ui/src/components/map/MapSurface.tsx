@@ -45,7 +45,7 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
 const MAP_POPUP_MAX_WIDTH = 560;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
 const MAP_DOM_MARKER_LIMIT = 160;
-const MAP_MOVING_MARKER_PAINT_LIMIT = 48;
+const MAP_MOVING_MARKER_PAINT_LIMIT = 32;
 const MAP_VIEWPORT_MASK_STYLE = {
   "--theme-soft-viewport-mask-size": "20px",
 } as CSSProperties;
@@ -367,7 +367,7 @@ function mapStyles(interactive: boolean) {
       filter: none;
     }
 
-    .freed-map-shell[data-map-moving="true"] .freed-map-marker {
+    .freed-map-shell[data-map-moving="true"] .freed-map-marker[data-map-moving-priority="primary"] {
       will-change: transform;
     }
 
