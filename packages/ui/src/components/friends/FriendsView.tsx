@@ -1436,8 +1436,12 @@ export function FriendsView({
             feedItems={feedItems}
             onLogReachOut={handleLogReachOut}
             onOpenMap={() => {
+              const personId = selectedPerson.id;
               flushSync(() => {
-                openMapForPerson(selectedPerson.id);
+                openMapForPerson(personId);
+              });
+              window.requestAnimationFrame(() => {
+                openMapForPerson(personId);
               });
             }}
           />
