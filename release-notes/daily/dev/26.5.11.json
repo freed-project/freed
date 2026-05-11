@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.5.11",
   "date": "2026-05-11",
-  "preferredDeck": "Google OAuth now runs natively in Freed Desktop, Friends graph motion stays lighter, Settings and Map stay smoother, and social scraping respects tighter memory backpressure",
+  "preferredDeck": "Google OAuth now runs natively in Freed Desktop, Friends graph motion stays lighter, Settings and Map stay smoother, and social scraping uses stricter resident memory backpressure",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -10,7 +10,7 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [
-    "Approved after v26.5.1016-dev failed before packaging, then refreshed for v26.5.1101-dev after the dense Map movement paint fix landed, v26.5.1102-dev after the Settings moving chrome paint fix landed, v26.5.1103-dev after the renderer hidden timer telemetry cleanup landed, v26.5.1104-dev after the Friends graph recovery fix landed, v26.5.1105-dev after native Google Contacts and Drive OAuth landed, v26.5.1106-dev after resident WebKit memory was added to social scrape gating, v26.5.1107-dev after social scrape memory preflight moved before shared session acquisition, and v26.5.1108-dev after hidden Friends provider labels stopped repainting during graph motion."
+    "Approved after v26.5.1016-dev failed before packaging, then refreshed for v26.5.1101-dev after the dense Map movement paint fix landed, v26.5.1102-dev after the Settings moving chrome paint fix landed, v26.5.1103-dev after the renderer hidden timer telemetry cleanup landed, v26.5.1104-dev after the Friends graph recovery fix landed, v26.5.1105-dev after native Google Contacts and Drive OAuth landed, v26.5.1106-dev after resident WebKit memory was added to social scrape gating, v26.5.1107-dev after social scrape memory preflight moved before shared session acquisition, v26.5.1108-dev after hidden Friends provider labels stopped repainting during graph motion, and v26.5.1109-dev after social scraper resident RSS started using the high-memory budget."
   ],
-  "updatedAt": "2026-05-11T20:22:00.000Z"
+  "updatedAt": "2026-05-11T21:38:00.000Z"
 }
