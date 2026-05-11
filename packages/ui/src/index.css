@@ -2093,6 +2093,13 @@ html.freed-mobile-sidebar-open body {
 
 .theme-settings-shell[data-moving="true"] .theme-card-soft {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.theme-settings-shell[data-moving="true"] .theme-settings-scrollport {
+  transform: translateZ(0);
+  will-change: scroll-position;
 }
 
 .theme-settings-shell[data-moving="true"] .theme-dialog-section {

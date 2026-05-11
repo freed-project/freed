@@ -488,6 +488,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const suppressBackdropDuringInteraction = useCallback(() => {
     const now = typeof performance !== "undefined" ? performance.now() : Date.now();
     interactionBlurLastAtRef.current = now;
+    if (interactionBlurRestoreTimerRef.current) {
+      return;
+    }
+
     const overlay = settingsOverlayRef.current;
     const shell = settingsShellRef.current;
     if (overlay && overlay.dataset.moving !== "true") {
@@ -495,10 +499,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
     if (shell && shell.dataset.moving !== "true") {
       shell.dataset.moving = "true";
-    }
-
-    if (interactionBlurRestoreTimerRef.current) {
-      return;
     }
 
     const restoreWhenIdle = () => {
