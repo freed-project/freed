@@ -32,6 +32,34 @@ type PluginEventRecord = {
   callbackId: number;
 };
 
+type IpcTiming = {
+  cmd: string;
+  startMs: number;
+  endMs: number;
+  args: Record<string, unknown>;
+};
+
+function mockArray<T>(name: string): T[] {
+  const w = window as unknown as Record<string, unknown>;
+  if (!Array.isArray(w[name])) {
+    w[name] = [] as T[];
+  }
+  return w[name] as T[];
+}
+
+function ipcTimings(): IpcTiming[] {
+  return mockArray<IpcTiming>("__TAURI_MOCK_IPC_TIMINGS__");
+}
+
+function timedHandler(cmd: string, handler: Handler): Handler {
+  return (args: Record<string, unknown>) => {
+    const startMs = performance.now();
+    const result = handler(args);
+    ipcTimings().push({ cmd, startMs, endMs: performance.now(), args });
+    return result;
+  };
+}
+
 /**
  * Route an HTTP request through the Vite dev server proxy so it can make
  * real network calls server-side, bypassing CORS. Mirrors what the Rust
@@ -91,7 +119,7 @@ async function proxyGoogleDriveRequest(args: Record<string, unknown>): Promise<{
 
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
-  broadcast_doc: () => null,
+  broadcast_doc: timedHandler("broadcast_doc", () => null),
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
   google_api_request: (args: Record<string, unknown>) => proxyFetch({
     url: args.url,
@@ -230,12 +258,7 @@ export async function invoke<T = unknown>(
   cmd: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
-  (
-    (window as unknown as Record<string, unknown>).__TAURI_MOCK_INVOCATIONS__ as Array<{
-      cmd: string;
-      args: typeof args;
-    }>
-  ).push({ cmd, args });
+  mockArray<{ cmd: string; args: typeof args }>("__TAURI_MOCK_INVOCATIONS__").push({ cmd, args });
   const handler =
     (
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ as Record<
