@@ -1050,8 +1050,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       : {
           minHeight: "calc(100% + 20rem)",
           contain: "layout paint style",
-          contentVisibility: "auto",
-          containIntrinsicSize: "54rem",
         };
     const shouldRenderContent = renderedSectionIds.has(id);
 

@@ -163,6 +163,8 @@ test("Settings dialog stays responsive with 1,600 RSS sources", async ({ app, pa
   await scrollContainer.hover();
   const settingsShell = settingsDialog.locator(".theme-settings-shell");
   await expect(settingsShell).toHaveAttribute("data-moving", "true");
+  await expect(settingsShell).toHaveCSS("transform", "none");
+  await expect(scrollContainer).toHaveCSS("will-change", "auto");
   await expect(settingsDialog.locator(".theme-card-soft").first()).toHaveCSS("backdrop-filter", "none");
   const scrollInteraction = await collectLongTasksDuring(page, () =>
     measureFps(page, async () => {
