@@ -3009,7 +3009,8 @@ fn scrape_memory_start_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
 
 fn scrape_resident_start_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
     stats
-        .memory_critical_bytes
+        .memory_high_bytes
+        .min(stats.memory_critical_bytes)
         .saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES)
 }
 
@@ -7558,26 +7559,24 @@ mod tests {
     }
 
     #[test]
-    fn scrape_memory_allows_compressed_rss_below_resident_budget() {
+    fn scrape_memory_blocks_resident_rss_at_high_budget_even_when_footprint_is_low() {
         let budget =
             (MIN_CRITICAL_MEMORY_BYTES * 70 / 100).saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES);
-        let resident_budget =
-            MIN_CRITICAL_MEMORY_BYTES.saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES);
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
             process_footprint_bytes: Some(128),
             process_virtual_bytes: 256,
-            app_resident_bytes: resident_budget - 1,
+            app_resident_bytes: budget - 1,
             app_memory_pressure_bytes: budget - 1,
-            webkit_resident_bytes: Some(resident_budget - 1),
+            webkit_resident_bytes: Some(budget - 1),
             webkit_footprint_bytes: Some(512 * 1024 * 1024),
             webkit_virtual_bytes: None,
             webkit_process_id: Some(123),
-            webkit_total_resident_bytes: resident_budget - 1,
+            webkit_total_resident_bytes: budget - 1,
             webkit_total_footprint_bytes: Some(512 * 1024 * 1024),
             webkit_process_count: 1,
-            webkit_largest_resident_bytes: Some(resident_budget - 1),
+            webkit_largest_resident_bytes: Some(budget - 1),
             webkit_largest_footprint_bytes: Some(512 * 1024 * 1024),
             webkit_largest_process_id: Some(123),
             webkit_largest_cpu_usage: Some(0.0),
@@ -7595,7 +7594,8 @@ mod tests {
 
         assert!(scrape_memory_may_proceed(&stats));
         assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
-            app_memory_pressure_bytes: budget,
+            app_resident_bytes: budget,
+            app_memory_pressure_bytes: budget - 1,
             ..stats
         }));
     }
