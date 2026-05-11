@@ -2081,15 +2081,6 @@ html.freed-mobile-sidebar-open body {
   transition: none;
 }
 
-.theme-settings-shell[data-moving="true"] {
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.05),
-    0 20px 56px rgb(0 0 0 / 0.24),
-    0 0 0 1px rgb(255 255 255 / 0.025);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
 .theme-settings-shell[data-moving="true"] .theme-card-soft {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035);
   backdrop-filter: none;
@@ -2187,7 +2178,7 @@ html[data-theme="scriptorium"] .theme-dialog-shell::before {
   overscroll-behavior: contain;
 }
 
-html[data-theme="scriptorium"] .theme-settings-shell {
+html[data-theme="scriptorium"] .theme-settings-shell:not([data-moving="true"]) {
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.032),
     inset 0 0 0 0.5px rgb(255 255 255 / 0.018),
@@ -2195,6 +2186,12 @@ html[data-theme="scriptorium"] .theme-settings-shell {
     0 72px 188px rgb(84 58 35 / 0.34),
     0 0 56px rgb(84 58 35 / 0.08),
     0 0 0 1px rgb(255 255 255 / 0.04);
+}
+
+.theme-dialog-shell.theme-settings-shell[data-moving="true"] {
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .theme-dialog-divider {
