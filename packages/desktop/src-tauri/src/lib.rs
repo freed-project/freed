@@ -3896,7 +3896,6 @@ async fn fb_check_auth(
     use tauri::WebviewWindowBuilder;
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_check_auth").await?;
     ensure_social_scrape_memory(
         &app,
         &capture.background_runtime,
@@ -3905,6 +3904,7 @@ async fn fb_check_auth(
         Some("fb-scraper"),
     )
     .await?;
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_check_auth").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "auth check");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(w) => w,
@@ -4195,7 +4195,6 @@ async fn fb_scrape_feed(
 
     let fb_feed_url = "https://www.facebook.com/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_feed").await?;
     ensure_social_scrape_memory(
         &app,
         &capture.background_runtime,
@@ -4204,6 +4203,7 @@ async fn fb_scrape_feed(
         None,
     )
     .await?;
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_feed").await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "feed scrape complete");
 
@@ -4436,7 +4436,6 @@ async fn fb_scrape_groups(
 
     let fb_groups_url = "https://www.facebook.com/groups/?category=joined";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_groups").await?;
     ensure_social_scrape_memory(
         &app,
         &capture.background_runtime,
@@ -4445,6 +4444,7 @@ async fn fb_scrape_groups(
         None,
     )
     .await?;
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_groups").await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "groups scrape complete");
 
@@ -4718,7 +4718,6 @@ async fn ig_check_auth(
     use tauri::WebviewWindowBuilder;
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "ig_check_auth").await?;
     ensure_social_scrape_memory(
         &app,
         &capture.background_runtime,
@@ -4727,6 +4726,7 @@ async fn ig_check_auth(
         Some("ig-scraper"),
     )
     .await?;
+    let _scraper_session = acquire_background_scraper_session(&capture, "ig_check_auth").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "auth check");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => w,
@@ -4788,7 +4788,6 @@ async fn ig_scrape_feed(
 
     let ig_feed_url = "https://www.instagram.com/?variant=following";
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await?;
     ensure_social_scrape_memory(
         &app,
         &capture.background_runtime,
@@ -4797,6 +4796,7 @@ async fn ig_scrape_feed(
         None,
     )
     .await?;
+    let _scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "ig-scraper", "feed scrape complete");
 
@@ -5112,9 +5112,9 @@ async fn fb_visit_url(
     url: String,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_visit_url").await?;
     ensure_social_scrape_memory(&app, &capture.background_runtime, "Facebook", "visit", None)
         .await?;
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_visit_url").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "visit complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -5145,7 +5145,6 @@ async fn ig_visit_url(
     url: String,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "ig_visit_url").await?;
     ensure_social_scrape_memory(
         &app,
         &capture.background_runtime,
@@ -5154,6 +5153,7 @@ async fn ig_visit_url(
         None,
     )
     .await?;
+    let _scraper_session = acquire_background_scraper_session(&capture, "ig_visit_url").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "visit complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -5190,9 +5190,9 @@ async fn fb_like_post(
     url: String,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_like_post").await?;
     ensure_social_scrape_memory(&app, &capture.background_runtime, "Facebook", "like", None)
         .await?;
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_like_post").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "like complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -5241,9 +5241,9 @@ async fn ig_like_post(
     url: String,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "ig_like_post").await?;
     ensure_social_scrape_memory(&app, &capture.background_runtime, "Instagram", "like", None)
         .await?;
+    let _scraper_session = acquire_background_scraper_session(&capture, "ig_like_post").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "like complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -5387,7 +5387,6 @@ async fn li_check_auth(
     use tauri::WebviewWindowBuilder;
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "li_check_auth").await?;
     ensure_social_scrape_memory(
         &app,
         &capture.background_runtime,
@@ -5396,6 +5395,7 @@ async fn li_check_auth(
         Some("li-scraper"),
     )
     .await?;
+    let _scraper_session = acquire_background_scraper_session(&capture, "li_check_auth").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "li-scraper", "auth check");
     let wv = match app.get_webview_window("li-scraper") {
         Some(w) => {
@@ -5469,7 +5469,6 @@ async fn li_scrape_feed(
 
     let li_feed_url = "https://www.linkedin.com/feed/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "li_scrape_feed").await?;
     ensure_social_scrape_memory(
         &app,
         &capture.background_runtime,
@@ -5478,6 +5477,7 @@ async fn li_scrape_feed(
         None,
     )
     .await?;
+    let _scraper_session = acquire_background_scraper_session(&capture, "li_scrape_feed").await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "li-scraper", "feed scrape complete");
 
