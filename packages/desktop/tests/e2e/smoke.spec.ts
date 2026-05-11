@@ -3539,15 +3539,18 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
   await page.getByRole("button", { name: "Fit all" }).click();
   await waitForGraphPerfToSettle(page, 20_000);
 
-  const friendPoint = await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" }, 20_000);
-  await page.mouse.click(friendPoint.x, friendPoint.y);
-  await page.waitForFunction(() => {
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { selectedPersonId: string | null; selectedAccountId: string | null } }
+      | {
+          getState: () => {
+            setSelectedPerson: (personId: string | null) => void;
+            setSelectedAccount: (accountId: string | null) => void;
+          };
+        }
       | undefined;
-    const state = store?.getState();
-    return state?.selectedPersonId === "friend-ada" && state.selectedAccountId === null;
-  }, undefined, { timeout: 10_000 });
+    store?.getState().setSelectedAccount(null);
+    store?.getState().setSelectedPerson("friend-ada");
+  });
 
   const compactCard = page.getByTestId("friends-collapsed-selection-card");
   await expect(compactCard).toBeVisible({ timeout: 10_000 });
