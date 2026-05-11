@@ -2,13 +2,15 @@
   "channel": "dev",
   "dayKey": "26.5.11",
   "date": "2026-05-11",
-  "preferredDeck": null,
+  "preferredDeck": "AI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [],
-  "editorialNotes": [],
-  "updatedAt": "2026-05-11T07:49:01.654Z"
+  "editorialNotes": [
+    "Approved after v26.5.1016-dev failed before packaging. This replacement preserves the v26.5.1016 daily rollup, keeps the Settings scroll overdraw fix, and adds the Friends last seen to Map handoff stabilization."
+  ],
+  "updatedAt": "2026-05-11T07:50:41.233Z"
 }
