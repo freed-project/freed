@@ -1621,6 +1621,17 @@ fn renderer_gap_is_expected_hidden_throttle(
         && age >= WEBKIT_HIDDEN_TIMER_THROTTLE_AFTER
 }
 
+fn renderer_health_hidden_timer_throttled(
+    expected_hidden_throttle: bool,
+    last_hidden_timer_throttled: Option<bool>,
+) -> Option<bool> {
+    if expected_hidden_throttle {
+        Some(true)
+    } else {
+        last_hidden_timer_throttled
+    }
+}
+
 fn renderer_stale_should_recover(is_visible: bool, last_visibility: &str) -> bool {
     renderer_is_effectively_visible(is_visible, last_visibility)
 }
@@ -1797,6 +1808,19 @@ mod renderer_watchdog_tests {
         assert!(!recovered);
         assert!(!status.throttle_logged);
         assert_eq!(status.last_hidden_timer_throttled, Some(true));
+    }
+
+    #[test]
+    fn native_hidden_timer_classification_is_reported_in_health_payloads() {
+        assert_eq!(
+            renderer_health_hidden_timer_throttled(true, Some(false)),
+            Some(true)
+        );
+        assert_eq!(
+            renderer_health_hidden_timer_throttled(false, Some(false)),
+            Some(false)
+        );
+        assert_eq!(renderer_health_hidden_timer_throttled(false, None), None);
     }
 
     #[test]
@@ -6733,7 +6757,10 @@ pub fn run() {
                                     "pageLoadId": health.last_page_load_id.clone(),
                                     "uptimeMs": health.last_uptime_ms,
                                     "appPhase": health.last_app_phase.clone(),
-                                    "hiddenTimerThrottled": health.last_hidden_timer_throttled,
+                                    "hiddenTimerThrottled": renderer_health_hidden_timer_throttled(
+                                        expected_hidden_throttle,
+                                        health.last_hidden_timer_throttled,
+                                    ),
                                     "rendererRecoveryAllowed": recovery_allowed,
                                     "backgroundWorkPaused": false,
                                     "deepDiagnosticCaptured": false,
