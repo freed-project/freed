@@ -22,5 +22,5 @@
     "v26.5.1009-dev replaces the failed v26.5.1008-dev validation tag by hardening Tauri mock IPC logging and Friends smoke interactions.",
     "v26.5.1010-dev replaces the failed v26.5.1009-dev validation tag by narrowing the collapsed Friends empty-space regression to its owned behavior."
   ],
-  "updatedAt": "2026-05-11T00:46:13.605Z"
+  "updatedAt": "2026-05-11T01:41:26.198Z"
 }
