@@ -3,8 +3,10 @@
   "version": "26.5.1102-dev",
   "channel": "dev",
   "dayKey": "26.5.11",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Approved after PR #586 landed. This preserves the v26.5.1100 and v26.5.1101 same-day rollup and adds the Settings moving chrome paint fix."
+  ],
   "generatedAt": "2026-05-11T14:05:02.016Z",
   "model": "heuristic",
   "source": {
