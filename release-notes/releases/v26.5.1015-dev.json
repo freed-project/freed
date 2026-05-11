@@ -3,8 +3,10 @@
   "version": "26.5.1015-dev",
   "channel": "dev",
   "dayKey": "26.5.10",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Approved after preserving the v26.5.1013 same-day rollup, the Settings render-scope fix, and the Friends to Map handoff guard from PR #582."
+  ],
   "generatedAt": "2026-05-11T04:17:49.689Z",
   "model": "heuristic",
   "source": {
