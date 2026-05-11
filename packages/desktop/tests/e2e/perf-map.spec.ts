@@ -8,7 +8,7 @@ const MAP_FRAME_P95_BUDGET_MS = process.env.CI ? 67 : 50;
 const MAP_DROPPED_FRAME_BUDGET = process.env.CI ? 40 : 12;
 const MAP_LONG_TASK_COUNT_BUDGET = process.env.CI ? 4 : 2;
 const MAP_MARKER_DOM_BUDGET = 160;
-const MAP_MOVING_MARKER_PAINT_BUDGET = 48;
+const MAP_MOVING_MARKER_PAINT_BUDGET = 32;
 
 async function seedLargeMapWorkspace(page: Page): Promise<void> {
   await page.evaluate(async ({ authorCount, itemCount }) => {
