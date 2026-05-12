@@ -966,16 +966,22 @@ export function Sidebar({
   const visibleFeedList = useMemo(() => {
     if (searchTerms.length === 0) return feedList;
 
-    return searchableFeedList
-      .map((feed) => ({ feed, score: scoreFeedMatch(feed, searchTerms) }))
-      .filter(({ score }) => score > 0)
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        if (a.feed.feed.url === activeFilter.feedUrl) return -1;
-        if (b.feed.feed.url === activeFilter.feedUrl) return 1;
-        return a.feed.feed.title.localeCompare(b.feed.feed.title);
-      })
-      .map(({ feed }) => feed.feed);
+    const matches: Array<{ feed: SearchableFeed; score: number }> = [];
+    for (const feed of searchableFeedList) {
+      const score = scoreFeedMatch(feed, searchTerms);
+      if (score > 0) {
+        matches.push({ feed, score });
+      }
+    }
+
+    matches.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (a.feed.feed.url === activeFilter.feedUrl) return -1;
+      if (b.feed.feed.url === activeFilter.feedUrl) return 1;
+      return a.feed.feed.title.localeCompare(b.feed.feed.title);
+    });
+
+    return matches.map(({ feed }) => feed.feed);
   }, [activeFilter.feedUrl, feedList, searchableFeedList, searchTerms]);
   const totalFeedPages = Math.max(1, Math.ceil(visibleFeedList.length / FEEDS_PAGE_SIZE));
   const pagedFeeds = useMemo(() => {
