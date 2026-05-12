@@ -1,0 +1,40 @@
+{
+  "tag": "v26.5.1201-dev",
+  "version": "26.5.1201-dev",
+  "channel": "dev",
+  "dayKey": "26.5.12",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-12T19:49:15.886Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.1112-dev",
+    "previousPublishedDayTag": "v26.5.1112-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.1201-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.1201-dev"
+    ],
+    "prNumbers": [
+      598,
+      599
+    ],
+    "commitSubjects": [
+      "perf: steady dense graph and sidebar interactions (#599)",
+      "release: approve v26.5.1200-dev notes",
+      "release: v26.5.1200-dev",
+      "perf: smooth dense friends graph interactions (#598)"
+    ]
+  },
+  "release": {
+    "deck": "Steady dense graph and sidebar interactions",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1201-dev\n\nSteady dense graph and sidebar interactions\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
