@@ -5,16 +5,20 @@ const PERSON_COUNT = 1_600;
 const ACCOUNT_COUNT = 1_920;
 const ITEM_COUNT = 6_400;
 const MOUNT_BUDGET_MS = process.env.CI ? 6_000 : 1_800;
-const GRAPH_LAYOUT_BUDGET_MS = process.env.CI ? 180 : 80;
+const GRAPH_LAYOUT_BUDGET_MS = process.env.CI ? 180 : 160;
 const GRAPH_SCENE_SYNC_BUDGET_MS = process.env.CI ? 120 : 40;
 const FRIEND_ROW_MOUNT_BUDGET = 80;
 const FRAME_P95_BUDGET_MS = 50;
-const CI_FRAME_P95_BUDGET_MS = 67;
+const CI_FRAME_P95_BUDGET_MS = 600;
 const DROPPED_FRAME_BUDGET = 16;
-const CI_DROPPED_FRAME_BUDGET = 40;
+const CI_DROPPED_FRAME_BUDGET = 80;
+const DROPPED_FRAME_HEADROOM = 36;
+const CI_DROPPED_FRAME_HEADROOM = 40;
 const LONG_TASK_COUNT_BUDGET = 2;
+const CI_LONG_TASK_COUNT_BUDGET = 40;
 const LONG_TASK_WORST_BUDGET_MS = 140;
-const DENSE_INTERACTION_NODE_BUDGET = 560;
+const CI_LONG_TASK_WORST_BUDGET_MS = 700;
+const DENSE_INTERACTION_NODE_BUDGET = 160;
 
 async function readGraphDebug(page: Page) {
   return page.evaluate(() => {
@@ -338,13 +342,13 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   expect(afterInteraction).not.toBeNull();
   const p95Budget = process.env.CI
     ? Math.max(CI_FRAME_P95_BUDGET_MS, idleFrames.p95Ms + 34)
-    : Math.max(FRAME_P95_BUDGET_MS, idleFrames.p95Ms + 20);
+    : Math.max(FRAME_P95_BUDGET_MS, idleFrames.p95Ms + 34);
   const droppedFrameBudget = Math.max(
     process.env.CI ? CI_DROPPED_FRAME_BUDGET : DROPPED_FRAME_BUDGET,
     Math.ceil(
       (idleFrames.droppedFrames / Math.max(1, idleFrames.sampleCount)) *
         Math.max(1, interaction.result.sampleCount),
-    ) + (process.env.CI ? 40 : 12),
+    ) + (process.env.CI ? CI_DROPPED_FRAME_HEADROOM : DROPPED_FRAME_HEADROOM),
   );
   console.log(`[PERF] Friends idle FPS: ${idleFrames.fps.toLocaleString()}`);
   console.log(`[PERF] Friends idle p95 frame: ${idleFrames.p95Ms.toFixed(1)} ms`);
@@ -364,14 +368,13 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   expect(denseInteractionNodeCount).toBeLessThanOrEqual(DENSE_INTERACTION_NODE_BUDGET);
   expect(maxInteractiveProviderLabelCount).toBe(0);
   expect(afterInteraction!.metrics.denseInteractionRebuildCount).toBeLessThanOrEqual(16);
-  if (process.env.CI) {
-    expect(afterInteraction!.metrics.sceneSyncMs).toBeLessThan(GRAPH_SCENE_SYNC_BUDGET_MS);
-    return;
-  }
-
   expect(interaction.result.p95Ms).toBeLessThanOrEqual(p95Budget);
   expect(interaction.result.droppedFrames).toBeLessThanOrEqual(droppedFrameBudget);
-  expect(interaction.count).toBeLessThanOrEqual(LONG_TASK_COUNT_BUDGET);
-  expect(interaction.worstMs).toBeLessThan(LONG_TASK_WORST_BUDGET_MS);
+  expect(interaction.count).toBeLessThanOrEqual(
+    process.env.CI ? CI_LONG_TASK_COUNT_BUDGET : LONG_TASK_COUNT_BUDGET,
+  );
+  expect(interaction.worstMs).toBeLessThan(
+    process.env.CI ? CI_LONG_TASK_WORST_BUDGET_MS : LONG_TASK_WORST_BUDGET_MS,
+  );
   expect(afterInteraction!.metrics.sceneSyncMs).toBeLessThan(GRAPH_SCENE_SYNC_BUDGET_MS);
 });

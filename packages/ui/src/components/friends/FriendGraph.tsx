@@ -213,6 +213,7 @@ const MIN_SCALE = 0.2;
 const MAX_SCALE = 2.8;
 const TRACKPAD_PINCH_ZOOM_SPEED = 0.005;
 const GRAPH_INTERACTION_SETTLE_DELAY_MS = 140;
+const DENSE_GRAPH_INTERACTION_SETTLE_DELAY_MS = 320;
 const GRAPH_LAYOUT_WORKER_TIMEOUT_MS = 4_000;
 const INTERACTIVE_LABEL_LIMIT = 16;
 const SETTLED_LABEL_LIMIT = 32;
@@ -221,10 +222,12 @@ const NODE_LAYER_TEXTURE_CACHE_MAX_NODES = 1_200;
 const INTERACTIVE_NODE_CULL_THRESHOLD = 1_200;
 const DENSE_GRAPH_SINGLE_LAYER_THRESHOLD = 1_200;
 const DENSE_INTERACTION_CULL_THRESHOLD = 1_600;
-const DENSE_INTERACTION_NODE_LIMIT = 560;
+const DENSE_INTERACTION_NODE_LIMIT = 160;
+const DENSE_SETTLED_VIEWPORT_NODE_LIMIT = 560;
 const DENSE_INTERACTION_VIEWPORT_PADDING = 72;
-const DENSE_INTERACTION_TRANSFORM_BUCKET_PX = 360;
-const DENSE_INTERACTION_SCALE_BUCKET_FACTOR = 4;
+const DENSE_INTERACTION_TRANSFORM_BUCKET_PX = 900;
+const DENSE_INTERACTION_SCALE_BUCKET_FACTOR = 2;
+const DENSE_SETTLED_VIEWPORT_SCALE_THRESHOLD = 0.55;
 const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
 const RELATIONSHIP_TIER_DROP_SELECTOR = "[data-friend-tier-drop-value]";
 
@@ -1045,7 +1048,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       highlighted.size === 0;
     const useDenseInteractionLayer =
       denseInteractionEligible &&
-      qualityMode === "interactive";
+      (qualityMode === "interactive" ||
+        transform.scale >= DENSE_SETTLED_VIEWPORT_SCALE_THRESHOLD);
     const queueAvatarRefresh = () => {
       lastStaticRenderKeyRef.current = "";
       requestAnimationFrame(() => syncSceneRef.current());
@@ -1329,12 +1333,25 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       scene.denseNodeLayer.visible = !useDenseInteractionLayer;
       scene.denseInteractionNodeLayer.visible = useDenseInteractionLayer;
       if (useDenseInteractionLayer) {
+        const denseNodeLimit =
+          qualityMode === "interactive"
+            ? DENSE_INTERACTION_NODE_LIMIT
+            : DENSE_SETTLED_VIEWPORT_NODE_LIMIT;
+        const transformBucketSize =
+          qualityMode === "interactive"
+            ? DENSE_INTERACTION_TRANSFORM_BUCKET_PX
+            : Math.max(220, DENSE_INTERACTION_TRANSFORM_BUCKET_PX / 2);
+        const scaleBucketFactor =
+          qualityMode === "interactive"
+            ? DENSE_INTERACTION_SCALE_BUCKET_FACTOR
+            : DENSE_INTERACTION_SCALE_BUCKET_FACTOR * 2;
         const denseInteractionRenderKey = [
           layoutVersion,
           themeId ?? "",
-          Math.round(transform.scale * DENSE_INTERACTION_SCALE_BUCKET_FACTOR),
-          Math.round(transform.x / DENSE_INTERACTION_TRANSFORM_BUCKET_PX),
-          Math.round(transform.y / DENSE_INTERACTION_TRANSFORM_BUCKET_PX),
+          qualityMode,
+          qualityMode === "interactive" ? "stable" : Math.round(transform.scale * scaleBucketFactor),
+          qualityMode === "interactive" ? "stable" : Math.round(transform.x / transformBucketSize),
+          qualityMode === "interactive" ? "stable" : Math.round(transform.y / transformBucketSize),
           canvasSize.width,
           canvasSize.height,
         ].join("|");
@@ -1356,7 +1373,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
             }
             drawDenseGraphNode(scene.denseInteractionNodeLayer, node, graphPalette);
             drawnVisibleNodes += 1;
-            if (drawnVisibleNodes >= DENSE_INTERACTION_NODE_LIMIT) {
+            if (drawnVisibleNodes >= denseNodeLimit) {
               didCullDenseInteraction = true;
               break;
             }
@@ -1816,6 +1833,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (settleTimerRef.current !== null) {
       window.clearTimeout(settleTimerRef.current);
     }
+    const settleDelay =
+      layoutRef.current.nodes.length >= DENSE_INTERACTION_CULL_THRESHOLD
+        ? DENSE_GRAPH_INTERACTION_SETTLE_DELAY_MS
+        : GRAPH_INTERACTION_SETTLE_DELAY_MS;
     const settleWhenIdle = () => {
       if (
         dragStateRef.current ||
@@ -1824,7 +1845,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       ) {
         settleTimerRef.current = window.setTimeout(
           settleWhenIdle,
-          GRAPH_INTERACTION_SETTLE_DELAY_MS,
+          settleDelay,
         );
         return;
       }
@@ -1834,7 +1855,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     };
     settleTimerRef.current = window.setTimeout(
       settleWhenIdle,
-      GRAPH_INTERACTION_SETTLE_DELAY_MS,
+      settleDelay,
     );
   }, [scheduleSyncScene]);
 
