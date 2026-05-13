@@ -208,9 +208,11 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
       .filter((marker) => window.getComputedStyle(marker).display !== "none")
       .length,
   );
+  const movingAttachedMarkerCount = await page.locator(".freed-map-marker").count();
   await expect
     .poll(async () => page.getByTestId("map-surface").getAttribute("data-map-moving"), { timeout: 2_000 })
     .toBe("false");
+  const restoredMarkerCount = await page.locator(".freed-map-marker").count();
 
   const interaction = await collectLongTasksDuring(page, () =>
     measureFps(page, async () => {
@@ -229,6 +231,8 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
   console.log(`[PERF] Map moving primary markers: ${movingPrimaryMarkerCount.toLocaleString()}`);
   console.log(`[PERF] Map moving deferred markers: ${movingDeferredMarkerCount.toLocaleString()}`);
   console.log(`[PERF] Map visible markers while moving: ${movingVisibleMarkerCount.toLocaleString()}`);
+  console.log(`[PERF] Map attached markers while moving: ${movingAttachedMarkerCount.toLocaleString()}`);
+  console.log(`[PERF] Map restored markers after moving: ${restoredMarkerCount.toLocaleString()}`);
   console.log(`[PERF] Map stable markers after timer refresh: ${retainedMarkerCount.toLocaleString()}`);
   console.log(`[PERF] Map total markers: ${totalMarkerCount.toLocaleString()}`);
   console.log(`[PERF] Map DOM nodes: ${domNodeCount.toLocaleString()}`);
@@ -245,6 +249,8 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
   expect(movingPrimaryMarkerCount).toBeLessThanOrEqual(MAP_MOVING_MARKER_PAINT_BUDGET);
   expect(movingPrimaryMarkerCount + movingDeferredMarkerCount).toBe(markerCount);
   expect(movingVisibleMarkerCount).toBeLessThanOrEqual(MAP_MOVING_MARKER_PAINT_BUDGET);
+  expect(movingAttachedMarkerCount).toBeLessThanOrEqual(MAP_MOVING_MARKER_PAINT_BUDGET);
+  expect(restoredMarkerCount).toBe(markerCount);
   expect(interaction.result.p95Ms).toBeLessThan(MAP_FRAME_P95_BUDGET_MS);
   expect(interaction.result.droppedFrames).toBeLessThanOrEqual(MAP_DROPPED_FRAME_BUDGET);
   expect(interaction.count).toBeLessThanOrEqual(MAP_LONG_TASK_COUNT_BUDGET);

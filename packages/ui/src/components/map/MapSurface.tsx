@@ -19,6 +19,12 @@ import { buildThemedMapStyle } from "../../lib/map-style.js";
 type PopupInstance = MapLibrePopup;
 type MarkerInstance = MapLibreMarker;
 type MapInstance = MapLibreMap;
+type MapMarkerMovingPriority = "primary" | "deferred";
+interface MapMarkerRecord {
+  marker: MarkerInstance;
+  priority: MapMarkerMovingPriority;
+  attached: boolean;
+}
 
 type MapLibreModule = typeof import("maplibre-gl");
 
@@ -46,6 +52,7 @@ const MAP_POPUP_MAX_WIDTH = 560;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
 const MAP_DOM_MARKER_LIMIT = 160;
 const MAP_MOVING_MARKER_PAINT_LIMIT = 24;
+const MAP_DENSE_MARKER_RESTORE_DELAY_MS = 420;
 const MAP_VIEWPORT_MASK_STYLE = {
   "--theme-soft-viewport-mask-size": "20px",
 } as CSSProperties;
@@ -424,7 +431,7 @@ function fallbackLabel(marker: LocationMarkerSummary) {
   return marker.friend?.name ?? marker.item.author.displayName;
 }
 
-function mapMovingPriority(markerIndex: number, useDenseMarkers: boolean): "primary" | "deferred" {
+function mapMovingPriority(markerIndex: number, useDenseMarkers: boolean): MapMarkerMovingPriority {
   return useDenseMarkers && markerIndex >= MAP_MOVING_MARKER_PAINT_LIMIT
     ? "deferred"
     : "primary";
@@ -452,7 +459,7 @@ export function getMapMovingPriority(
   markerKey: string,
   useDenseMarkers: boolean,
   focusedMarkerKey?: string | null,
-): "primary" | "deferred" {
+): MapMarkerMovingPriority {
   if (markerKey === focusedMarkerKey) return "primary";
   return mapMovingPriority(markerIndex, useDenseMarkers);
 }
@@ -659,12 +666,15 @@ export function MapSurface({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapInstance | null>(null);
   const mapModuleRef = useRef<MapLibreModule | null>(null);
-  const markersRef = useRef<MarkerInstance[]>([]);
+  const markersRef = useRef<MapMarkerRecord[]>([]);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const fallbackMovingTimeoutRef = useRef<number | null>(null);
+  const nativeMarkerRestoreTimeoutRef = useRef<number | null>(null);
   const mapLifecycleRef = useRef(0);
+  const useDenseMarkersRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [fallbackMoving, setFallbackMoving] = useState(false);
   const [selectedFallbackMarkerKey, setSelectedFallbackMarkerKey] = useState<string | null>(null);
   const activePopupRef = useRef<PopupInstance | null>(null);
   const activePopupKeyRef = useRef<string | null>(null);
@@ -694,6 +704,17 @@ export function MapSurface({
     [renderedMarkers, selectedFallbackMarkerKey]
   );
   const showFallback = loadFailed || !mapReady;
+  const fallbackRenderedMarkers = useMemo(() => {
+    if (!showFallback || !fallbackMoving || !useDenseMarkers) return renderedMarkers;
+    return renderedMarkers.filter((marker, markerIndex) => {
+      return getMapMovingPriority(
+        markerIndex,
+        marker.key,
+        true,
+        focusedMarkerKey,
+      ) === "primary";
+    });
+  }, [fallbackMoving, focusedMarkerKey, renderedMarkers, showFallback, useDenseMarkers]);
   const closeActivePopup = useCallback(() => {
     activePopupRef.current?.remove();
     activePopupRef.current = null;
@@ -704,6 +725,35 @@ export function MapSurface({
     window.clearTimeout(fallbackMovingTimeoutRef.current);
     fallbackMovingTimeoutRef.current = null;
   }, []);
+  const clearNativeMarkerRestoreTimeout = useCallback(() => {
+    if (nativeMarkerRestoreTimeoutRef.current === null || typeof window === "undefined") return;
+    window.clearTimeout(nativeMarkerRestoreTimeoutRef.current);
+    nativeMarkerRestoreTimeoutRef.current = null;
+  }, []);
+  const syncNativeMarkerMotionLayer = useCallback((moving: boolean) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const shouldCullDeferredMarkers = moving && useDenseMarkersRef.current;
+    for (const record of markersRef.current) {
+      const shouldAttach = !shouldCullDeferredMarkers || record.priority === "primary";
+      if (shouldAttach === record.attached) continue;
+
+      if (shouldAttach) {
+        try {
+          record.marker.addTo(map);
+          record.attached = true;
+        } catch (error) {
+          record.attached = false;
+          console.error("[MapSurface] Failed to restore map marker", error);
+        }
+        continue;
+      }
+
+      record.marker.remove();
+      record.attached = false;
+    }
+  }, []);
   const setShellMoving = useCallback((moving: boolean) => {
     const shell = shellRef.current;
     if (!shell) return;
@@ -711,10 +761,12 @@ export function MapSurface({
   }, []);
   const markFallbackMoving = useCallback(() => {
     if (!showFallback || typeof window === "undefined") return;
+    setFallbackMoving(true);
     setShellMoving(true);
     clearFallbackMovingTimeout();
     fallbackMovingTimeoutRef.current = window.setTimeout(() => {
       fallbackMovingTimeoutRef.current = null;
+      setFallbackMoving(false);
       setShellMoving(false);
     }, 220);
   }, [clearFallbackMovingTimeout, setShellMoving, showFallback]);
@@ -729,10 +781,24 @@ export function MapSurface({
     markFallbackMoving();
   }, [markFallbackMoving]);
 
+  useEffect(() => {
+    useDenseMarkersRef.current = useDenseMarkers;
+    if (!useDenseMarkers) {
+      syncNativeMarkerMotionLayer(false);
+    }
+  }, [syncNativeMarkerMotionLayer, useDenseMarkers]);
+
   useEffect(() => () => {
     clearFallbackMovingTimeout();
+    clearNativeMarkerRestoreTimeout();
     setShellMoving(false);
-  }, [clearFallbackMovingTimeout, setShellMoving]);
+  }, [clearFallbackMovingTimeout, clearNativeMarkerRestoreTimeout, setShellMoving]);
+
+  useEffect(() => {
+    if (showFallback) return;
+    clearFallbackMovingTimeout();
+    setFallbackMoving(false);
+  }, [clearFallbackMovingTimeout, showFallback]);
 
   useEffect(() => {
     actionHandlersRef.current = {
@@ -757,7 +823,8 @@ export function MapSurface({
       return () => {
         cancelled = true;
         closeActivePopup();
-        for (const marker of markersRef.current) marker.remove();
+        clearNativeMarkerRestoreTimeout();
+        for (const { marker } of markersRef.current) marker.remove();
         markersRef.current = [];
         mapRef.current?.remove();
         mapRef.current = null;
@@ -783,10 +850,17 @@ export function MapSurface({
         });
         mapRef.current = map;
         const setMoving = () => {
+          clearNativeMarkerRestoreTimeout();
+          syncNativeMarkerMotionLayer(true);
           setShellMoving(true);
         };
         const clearMoving = () => {
-          setShellMoving(false);
+          clearNativeMarkerRestoreTimeout();
+          nativeMarkerRestoreTimeoutRef.current = window.setTimeout(() => {
+            nativeMarkerRestoreTimeoutRef.current = null;
+            syncNativeMarkerMotionLayer(false);
+            setShellMoving(false);
+          }, MAP_DENSE_MARKER_RESTORE_DELAY_MS);
         };
         map.on("movestart", setMoving);
         map.on("zoomstart", setMoving);
@@ -809,20 +883,23 @@ export function MapSurface({
       cancelled = true;
       mapLifecycleRef.current += 1;
       closeActivePopup();
-      for (const marker of markersRef.current) marker.remove();
+      clearNativeMarkerRestoreTimeout();
+      for (const { marker } of markersRef.current) marker.remove();
       markersRef.current = [];
       mapRef.current?.remove();
       mapRef.current = null;
       setShellMoving(false);
     };
-  }, [closeActivePopup, interactive, resolvedThemeId, setShellMoving]);
+  }, [clearNativeMarkerRestoreTimeout, closeActivePopup, interactive, resolvedThemeId, setShellMoving, syncNativeMarkerMotionLayer]);
 
   useEffect(() => {
     if (!mapReady || !mapRef.current || !mapModuleRef.current) return;
 
     closeActivePopup();
-    for (const marker of markersRef.current) marker.remove();
+    clearNativeMarkerRestoreTimeout();
+    for (const { marker } of markersRef.current) marker.remove();
     markersRef.current = [];
+    setShellMoving(false);
 
     const map = mapRef.current;
     const maplibre = mapModuleRef.current;
@@ -833,16 +910,17 @@ export function MapSurface({
 
     for (const [markerIndex, markerData] of renderedMarkers.entries()) {
       if (stoppedEarly) break;
-      const element = createMarkerElement(markerData, avatarPalette, {
-        showAvatar: showMarkerAvatars,
-        simplified: useDenseMarkers,
-      });
-      element.dataset.mapMovingPriority = getMapMovingPriority(
+      const priority = getMapMovingPriority(
         markerIndex,
         markerData.key,
         useDenseMarkers,
         focusedMarkerKey,
       );
+      const element = createMarkerElement(markerData, avatarPalette, {
+        showAvatar: showMarkerAvatars,
+        simplified: useDenseMarkers,
+      });
+      element.dataset.mapMovingPriority = priority;
       const marker = new maplibre.Marker({ element }).setLngLat([
         markerData.lng,
         markerData.lat,
@@ -895,7 +973,7 @@ export function MapSurface({
 
       try {
         marker.addTo(map);
-        markersRef.current.push(marker);
+        markersRef.current.push({ marker, priority, attached: true });
       } catch (error) {
         marker.remove();
         if (mapRef.current === map && mapLifecycleRef.current === lifecycleId) {
@@ -910,7 +988,18 @@ export function MapSurface({
       map.off("click", handleMapClick);
       closeActivePopup();
     };
-  }, [avatarPalette, closeActivePopup, interactive, mapReady, renderedMarkers, showMarkerAvatars, useDenseMarkers]);
+  }, [
+    avatarPalette,
+    clearNativeMarkerRestoreTimeout,
+    closeActivePopup,
+    focusedMarkerKey,
+    interactive,
+    mapReady,
+    renderedMarkers,
+    setShellMoving,
+    showMarkerAvatars,
+    useDenseMarkers,
+  ]);
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
@@ -987,14 +1076,15 @@ export function MapSurface({
               )`,
             }}
           />
-          {renderedMarkers.map((marker, markerIndex) => {
+          {fallbackRenderedMarkers.map((marker) => {
             const position = fallbackPosition(marker);
+            const renderedMarkerIndex = renderedMarkers.findIndex((entry) => entry.key === marker.key);
             return (
               <button
                 key={marker.key}
                 type="button"
                 data-map-moving-priority={getMapMovingPriority(
-                  markerIndex,
+                  renderedMarkerIndex,
                   marker.key,
                   useDenseMarkers,
                   focusedMarkerKey,
