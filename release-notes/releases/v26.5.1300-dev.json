@@ -3,8 +3,10 @@
   "version": "26.5.1300-dev",
   "channel": "dev",
   "dayKey": "26.5.13",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed after PR #600 merged into dev."
+  ],
   "generatedAt": "2026-05-13T15:48:02.373Z",
   "model": "heuristic",
   "source": {
@@ -25,10 +27,16 @@
     ]
   },
   "release": {
-    "deck": "Cull dense map markers during motion",
+    "deck": "Lighter location rendering",
     "features": [],
-    "fixes": [],
-    "followUps": []
+    "fixes": [
+      "Dense Map movement now keeps only the active marker budget attached while pan or zoom is in progress, then restores the full capped marker set after motion settles.",
+      "The fallback Map renderer now uses the same active-marker cull, which protects the headless performance guard and lower-power render paths from carrying all dense marker nodes during motion.",
+      "The 1,600-author Map performance check now verifies attached marker count during movement, not just visible marker count."
+    ],
+    "followUps": [
+      "Continue monitoring installed-build WebKit RSS and windowless app state during scraper-heavy soaks."
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1300-dev\n\nCull dense map markers during motion\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1300-dev\n\nLighter location rendering.\n\n### Fixes\n\n- Dense Map movement now keeps only the active marker budget attached while pan or zoom is in progress, then restores the full capped marker set after motion settles.\n- The fallback Map renderer now uses the same active-marker cull, which protects the headless performance guard and lower-power render paths from carrying all dense marker nodes during motion.\n- The 1,600-author Map performance check now verifies attached marker count during movement, not just visible marker count.\n\n### Follow-ups\n\n- Continue monitoring installed-build WebKit RSS and windowless app state during scraper-heavy soaks.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
