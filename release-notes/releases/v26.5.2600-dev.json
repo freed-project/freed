@@ -1,0 +1,39 @@
+{
+  "tag": "v26.5.2600-dev",
+  "version": "26.5.2600-dev",
+  "channel": "dev",
+  "dayKey": "26.5.26",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-26T18:01:04.808Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.1201-dev",
+    "previousPublishedDayTag": "v26.5.1201-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.2600-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.2600-dev"
+    ],
+    "prNumbers": [
+      601
+    ],
+    "commitSubjects": [
+      "perf: settle dense map marker restoration (#601)",
+      "release: approve v26.5.1300-dev notes",
+      "release: v26.5.1300-dev",
+      "perf: cull dense map markers during motion"
+    ]
+  },
+  "release": {
+    "deck": "Settle dense map marker restoration and cull dense map markers during motion",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2600-dev\n\nSettle dense map marker restoration and cull dense map markers during motion\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
