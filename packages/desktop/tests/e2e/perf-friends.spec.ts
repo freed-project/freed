@@ -75,6 +75,20 @@ async function readLastRendererHeartbeat(page: Page) {
   });
 }
 
+async function readGraphPerf(page: Page) {
+  return page.evaluate(() => {
+    return (window as typeof window & {
+      __FREED_GRAPH_PERF__?: {
+        nodeCount?: number;
+        qualityMode?: "interactive" | "settled";
+        visibleProviderLabelCount?: number;
+        denseInteractionNodeCount?: number;
+        denseInteractionRebuildCount?: number;
+      };
+    }).__FREED_GRAPH_PERF__ ?? null;
+  });
+}
+
 async function seedLargeFriendsWorkspace(page: Page): Promise<void> {
   await page.evaluate(async ({ personCount, accountCount, itemCount }) => {
     const w = window as Record<string, unknown>;
@@ -186,7 +200,13 @@ async function measureFps(
 async function collectLongTasksDuring<T>(
   page: Page,
   fn: () => Promise<T>,
-): Promise<{ result: T; count: number; worstMs: number }> {
+): Promise<{
+  result: T;
+  count: number;
+  worstMs: number;
+  marks: Array<{ name: string; startTime: number }>;
+  tasks: Array<{ startTime: number; duration: number }>;
+}> {
   await page.evaluate(() => {
     const w = window as Record<string, unknown>;
     w.__FRIENDS_PERF_LONG_TASKS__ = [] as PerformanceEntry[];
@@ -208,6 +228,16 @@ async function collectLongTasksDuring<T>(
     return {
       count: tasks.length,
       worstMs: Math.max(0, ...tasks.map((task) => task.duration)),
+      tasks: tasks.map((task) => ({
+        startTime: Math.round(task.startTime * 10) / 10,
+        duration: Math.round(task.duration * 10) / 10,
+      })),
+      marks: performance.getEntriesByType("mark")
+        .filter((entry) => entry.name.startsWith("friends-"))
+        .map((entry) => ({
+          name: entry.name,
+          startTime: Math.round(entry.startTime * 10) / 10,
+        })),
     };
   });
 
@@ -215,6 +245,8 @@ async function collectLongTasksDuring<T>(
     result,
     count: taskData.count,
     worstMs: Math.round(taskData.worstMs * 10) / 10,
+    marks: taskData.marks,
+    tasks: taskData.tasks,
   };
 }
 
@@ -250,8 +282,8 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   await expect(viewport).toBeVisible({ timeout: 30_000 });
   await expect
     .poll(async () => {
-      const debug = await readGraphDebug(page);
-      return debug?.nodes.length ?? 0;
+      const perf = await readGraphPerf(page);
+      return perf?.nodeCount ?? 0;
     }, { timeout: 60_000 })
     .toBeGreaterThanOrEqual(PERSON_COUNT);
 
@@ -300,6 +332,7 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   let maxInteractiveProviderLabelCount = 0;
   const interaction = await collectLongTasksDuring(page, () =>
     measureFps(page, async () => {
+      await page.evaluate(() => performance.mark("friends-wheel-start"));
       for (let index = 0; index < 18; index += 1) {
         await viewport.evaluate((element) => {
           const rect = element.getBoundingClientRect();
@@ -314,26 +347,29 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
         });
         await page.waitForTimeout(16);
       }
+      await page.evaluate(() => performance.mark("friends-wheel-end"));
 
       await expect
         .poll(async () => {
-          const debug = await readGraphDebug(page);
-          const nodeCount = debug?.metrics.denseInteractionNodeCount ?? 0;
+          const perf = await readGraphPerf(page);
+          const nodeCount = perf?.denseInteractionNodeCount ?? 0;
           denseInteractionNodeCount = Math.max(denseInteractionNodeCount, nodeCount);
-          if (debug?.qualityMode === "interactive") {
+          if (perf?.qualityMode === "interactive") {
             maxInteractiveProviderLabelCount = Math.max(
               maxInteractiveProviderLabelCount,
-              debug.metrics.visibleProviderLabelCount,
+              perf.visibleProviderLabelCount ?? 0,
             );
           }
           return nodeCount;
         }, { timeout: 5_000 })
         .toBeGreaterThan(0);
 
+      await page.evaluate(() => performance.mark("friends-drag-start"));
       await page.mouse.move(box.x + box.width * 0.52, box.y + box.height * 0.46);
       await page.mouse.down();
       await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.58, { steps: 24 });
       await page.mouse.up();
+      await page.evaluate(() => performance.mark("friends-drag-end"));
       await page.waitForTimeout(180);
     }),
   );
@@ -358,6 +394,8 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   console.log(`[PERF] Friends interaction dropped frames: ${interaction.result.droppedFrames.toLocaleString()}`);
   console.log(`[PERF] Friends interaction long tasks: ${interaction.count.toLocaleString()}`);
   console.log(`[PERF] Friends interaction worst long task: ${interaction.worstMs.toFixed(1)} ms`);
+  console.log(`[PERF] Friends interaction marks: ${JSON.stringify(interaction.marks)}`);
+  console.log(`[PERF] Friends interaction long task entries: ${JSON.stringify(interaction.tasks)}`);
   console.log(`[PERF] Friends interaction scene sync: ${afterInteraction!.metrics.sceneSyncMs.toFixed(1)} ms`);
   console.log(`[PERF] Friends dense interaction nodes: ${denseInteractionNodeCount.toLocaleString()}`);
   console.log(`[PERF] Friends dense interaction rebuilds: ${afterInteraction!.metrics.denseInteractionRebuildCount.toLocaleString()}`);

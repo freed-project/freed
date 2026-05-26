@@ -281,6 +281,29 @@ function cloneFeedItemForPatch(item: FeedItem): FeedItem {
   return trimFeedItemForDesktopUi(cloned);
 }
 
+function cloneRecordValues<T>(record: Record<string, T> | undefined): Record<string, T> {
+  const cloned: Record<string, T> = {};
+  for (const [key, value] of Object.entries(record ?? {})) {
+    cloned[key] = JSON.parse(JSON.stringify(value)) as T;
+  }
+  return cloned;
+}
+
+function cloneFeedItemsForDesktopUi(record: Record<string, FeedItem> | undefined): {
+  items: FeedItem[];
+  totalCount: number;
+} {
+  const items: FeedItem[] = [];
+  let totalCount = 0;
+
+  for (const item of Object.values(record ?? {})) {
+    totalCount++;
+    items.push(cloneFeedItemForPatch(item));
+  }
+
+  return { items, totalCount };
+}
+
 function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
   let next: FeedItem = item;
   const preservedContent = item.preservedContent;
@@ -394,16 +417,18 @@ function healUntitledFeedTitles(doc: FreedDoc): number {
 
 /**
  * Convert the Automerge proxy document to a plain-JS DocState for postMessage.
- * Identical to the PWA worker — runs entirely off the main thread.
+ * Build the projection incrementally so large synced article bodies are
+ * trimmed before we hold a full deep clone of the document in worker memory.
  */
 function hydrateFromDoc(doc: FreedDoc): DocState {
-  const plain = A.toJS(doc) as FreedDoc;
-  const plainItems = Object.values(plain.feedItems as Record<string, FeedItem>).map(trimFeedItemForDesktopUi);
-  const feeds = plain.rssFeeds as Record<string, RssFeed>;
-  const persons = (plain.persons ?? {}) as Record<string, Person>;
-  const accounts = (plain.accounts ?? {}) as Record<string, Account>;
+  const { items: plainItems, totalCount: docItemCount } = cloneFeedItemsForDesktopUi(
+    doc.feedItems as Record<string, FeedItem> | undefined,
+  );
+  const feeds = cloneRecordValues(doc.rssFeeds as Record<string, RssFeed> | undefined);
+  const persons = cloneRecordValues(doc.persons as Record<string, Person> | undefined);
+  const accounts = cloneRecordValues(doc.accounts as Record<string, Account> | undefined);
   const friends = projectLegacyFriends(persons, accounts);
-  const preferences = mergeDefaultPreferences(plain.preferences as Partial<UserPreferences> | undefined);
+  const preferences = mergeDefaultPreferences(doc.preferences as Partial<UserPreferences> | undefined);
 
   const visibleItems = plainItems.filter((item) => !item.userState.hidden);
   const rankedItems = sortByPriority(
@@ -469,7 +494,7 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
     archivableFeedCounts,
     mapFriendLocationCount: countFriendsWithRecentLocationUpdates(rankedItems, persons, accounts),
     mapAllContentLocationCount: countAuthorsWithRecentLocationUpdates(rankedItems),
-    docItemCount: Object.keys(plain.feedItems as Record<string, FeedItem>).length,
+    docItemCount,
   };
 }
 
