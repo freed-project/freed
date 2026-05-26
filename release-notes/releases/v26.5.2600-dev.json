@@ -3,7 +3,7 @@
   "version": "26.5.2600-dev",
   "channel": "dev",
   "dayKey": "26.5.26",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-26T18:01:04.808Z",
   "model": "heuristic",
@@ -30,10 +30,10 @@
     ]
   },
   "release": {
-    "deck": "Settle dense map marker restoration and cull dense map markers during motion",
+    "deck": "Keeps dense Map interactions responsive while panning and zooming large location sets.",
     "features": [],
     "fixes": [],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2600-dev\n\nSettle dense map marker restoration and cull dense map markers during motion\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2600-dev\n\nKeeps dense Map interactions responsive while panning and zooming large location sets.\n\n### Fixes\n\n- Keeps the fallback Map view from restoring all dense markers too early during motion, which was pushing frame times over budget in release validation.\n- Includes the dense marker culling fix from the earlier failed dev build, so Map keeps only the highest-priority visible markers attached while the view is moving.\n- Pins the event metadata unit test clock so release validation stays deterministic after the real calendar moves past a fixture date.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
