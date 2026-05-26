@@ -63,8 +63,17 @@ describe("automerge worker memory routing", () => {
     expect(workerSource).toContain("linkDescription.slice(0, DESKTOP_UI_LINK_DESCRIPTION_LIMIT)");
     expect(workerSource).toContain("const tags = next.contentSignals.tags ?? []");
     expect(workerSource).toContain("contentSignals: tags.length > 0 ? ({ tags } as FeedItem[\"contentSignals\"]) : undefined");
-    expect(workerSource).toContain(".map(trimFeedItemForDesktopUi)");
+    expect(workerSource).toContain("cloneFeedItemsForDesktopUi");
     expect(patchBody).toContain("trimFeedItemForDesktopUi(cloned)");
+  });
+
+  it("hydrates desktop UI state without deep cloning the whole document first", () => {
+    const body = functionBody("hydrateFromDoc");
+
+    expect(body).not.toContain("A.toJS(doc)");
+    expect(body).toContain("cloneFeedItemsForDesktopUi");
+    expect(body).toContain("cloneRecordValues(doc.rssFeeds");
+    expect(body).toContain("docItemCount");
   });
 
   it("reader text requests fall back to full synced feed text", () => {
