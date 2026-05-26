@@ -768,7 +768,7 @@ export function MapSurface({
       fallbackMovingTimeoutRef.current = null;
       setFallbackMoving(false);
       setShellMoving(false);
-    }, 220);
+    }, MAP_DENSE_MARKER_RESTORE_DELAY_MS);
   }, [clearFallbackMovingTimeout, setShellMoving, showFallback]);
   const handleFallbackWheel = useCallback((_event: WheelEvent<HTMLDivElement>) => {
     markFallbackMoving();

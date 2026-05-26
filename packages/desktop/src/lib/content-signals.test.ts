@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
 import {
   applyFeedSignalModeToFilter,
@@ -49,6 +49,10 @@ function makeItem(overrides: Partial<FeedItem> = {}): FeedItem {
 }
 
 describe("content signals", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("infers multiple signals for promoted events", () => {
     const signals = inferContentSignals(
       makeItem({
@@ -227,6 +231,9 @@ describe("content signals", () => {
   });
 
   it("stores compact event metadata during schema insertion", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-25T12:00:00Z"));
+
     const doc = plainDoc();
     addFeedItem(doc, makeItem({
       content: {
@@ -245,6 +252,9 @@ describe("content signals", () => {
   });
 
   it("does not overwrite stronger existing locations", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-25T12:00:00Z"));
+
     const doc = plainDoc();
     addFeedItem(doc, makeItem({
       location: {
