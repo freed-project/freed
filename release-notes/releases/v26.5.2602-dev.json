@@ -3,7 +3,7 @@
   "version": "26.5.2602-dev",
   "channel": "dev",
   "dayKey": "26.5.26",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-26T20:25:27.523Z",
   "model": "heuristic",
@@ -42,12 +42,13 @@
     ]
   },
   "release": {
-    "deck": "Reduces large-library hydration memory and smooths dense Friends graph interaction, keeps dense Map interactions responsive while panning and zooming large location sets, and keeps 1,600 connection Friends graph pan and zoom work inside the frame budget with less debug snapshot cloning, less React drag-path work, and lighter Pixi traversal during dense interaction",
+    "deck": "Reduces large-library hydration memory, keeps 1,600 connection Friends graph pan and zoom work inside the frame budget, keeps dense Map interactions responsive, and trims oversized event evidence from Freed Desktop renderer state",
     "features": [],
     "fixes": [
-      "Builds the Freed Desktop Automerge UI projection incrementally, so large synced article bodies are trimmed before renderer state hydration"
+      "Builds the Freed Desktop Automerge UI projection incrementally, so large synced article bodies are trimmed before renderer state hydration",
+      "Caps oversized event evidence in Freed Desktop feed-item projection, reducing retained renderer text without changing provider scrape behavior"
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2602-dev\n\nReduces large-library hydration memory and smooths dense Friends graph interaction, keeps dense Map interactions responsive while panning and zooming large location sets, and keeps 1,600 connection Friends graph pan and zoom work inside the frame budget with less debug snapshot cloning, less React drag-path work, and lighter Pixi traversal during dense interaction\n\n### Fixes\n\n- Builds the Freed Desktop Automerge UI projection incrementally, so large synced article bodies are trimmed before renderer state hydration\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2602-dev\n\nReduces large-library hydration memory, keeps 1,600 connection Friends graph pan and zoom work inside the frame budget, keeps dense Map interactions responsive, and trims oversized event evidence from Freed Desktop renderer state.\n\n### Fixes\n\n- Builds the Freed Desktop Automerge UI projection incrementally, so large synced article bodies are trimmed before renderer state hydration\n- Caps oversized event evidence in Freed Desktop feed-item projection, reducing retained renderer text without changing provider scrape behavior\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
