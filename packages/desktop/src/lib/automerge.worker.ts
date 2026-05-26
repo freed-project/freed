@@ -94,6 +94,7 @@ const SLOW_SAVE_AND_BROADCAST_MS = 2_000;
 const DESKTOP_UI_PRESERVED_TEXT_LIMIT = 0;
 const DESKTOP_UI_CONTENT_TEXT_LIMIT = 280;
 const DESKTOP_UI_LINK_DESCRIPTION_LIMIT = 180;
+const DESKTOP_UI_EVENT_EVIDENCE_LIMIT = 220;
 const FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES = 4 * 1024 * 1024;
 const FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES = 16 * 1024 * 1024;
 const FRESH_DOC_REBUILD_MIN_SAVINGS_RATIO = 0.1;
@@ -351,6 +352,17 @@ function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
     next = {
       ...next,
       contentSignals: tags.length > 0 ? ({ tags } as FeedItem["contentSignals"]) : undefined,
+    };
+  }
+
+  const eventEvidence = next.eventCandidate?.evidence;
+  if (eventEvidence && eventEvidence.length > DESKTOP_UI_EVENT_EVIDENCE_LIMIT) {
+    next = {
+      ...next,
+      eventCandidate: {
+        ...next.eventCandidate,
+        evidence: eventEvidence.slice(0, DESKTOP_UI_EVENT_EVIDENCE_LIMIT),
+      },
     };
   }
 
