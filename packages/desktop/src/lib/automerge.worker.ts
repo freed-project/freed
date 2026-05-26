@@ -355,12 +355,13 @@ function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
     };
   }
 
-  const eventEvidence = next.eventCandidate?.evidence;
-  if (eventEvidence && eventEvidence.length > DESKTOP_UI_EVENT_EVIDENCE_LIMIT) {
+  const eventCandidate = next.eventCandidate;
+  const eventEvidence = eventCandidate?.evidence;
+  if (eventCandidate && eventEvidence && eventEvidence.length > DESKTOP_UI_EVENT_EVIDENCE_LIMIT) {
     next = {
       ...next,
       eventCandidate: {
-        ...next.eventCandidate,
+        ...eventCandidate,
         evidence: eventEvidence.slice(0, DESKTOP_UI_EVENT_EVIDENCE_LIMIT),
       },
     };
