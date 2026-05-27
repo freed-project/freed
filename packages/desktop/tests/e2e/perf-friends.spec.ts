@@ -18,7 +18,7 @@ const LONG_TASK_COUNT_BUDGET = 2;
 const CI_LONG_TASK_COUNT_BUDGET = 40;
 const LONG_TASK_WORST_BUDGET_MS = 140;
 const CI_LONG_TASK_WORST_BUDGET_MS = 700;
-const DENSE_INTERACTION_NODE_BUDGET = 96;
+const DENSE_INTERACTION_NODE_BUDGET = 72;
 
 async function readGraphDebug(page: Page) {
   return page.evaluate(() => {
@@ -376,6 +376,19 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
 
   const afterInteraction = await readGraphDebug(page);
   expect(afterInteraction).not.toBeNull();
+  const pinnedNodeCount = await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => {
+        persons: Record<string, { graphPinned?: boolean }>;
+        accounts: Record<string, { graphPinned?: boolean }>;
+      };
+    };
+    const state = store.getState();
+    return [
+      ...Object.values(state.persons),
+      ...Object.values(state.accounts),
+    ].filter((node) => node.graphPinned === true).length;
+  });
   const p95Budget = process.env.CI
     ? Math.max(CI_FRAME_P95_BUDGET_MS, idleFrames.p95Ms + 34)
     : Math.max(FRAME_P95_BUDGET_MS, idleFrames.p95Ms + 34);
@@ -399,6 +412,7 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   console.log(`[PERF] Friends interaction scene sync: ${afterInteraction!.metrics.sceneSyncMs.toFixed(1)} ms`);
   console.log(`[PERF] Friends dense interaction nodes: ${denseInteractionNodeCount.toLocaleString()}`);
   console.log(`[PERF] Friends dense interaction rebuilds: ${afterInteraction!.metrics.denseInteractionRebuildCount.toLocaleString()}`);
+  console.log(`[PERF] Friends accidental pinned nodes after pan: ${pinnedNodeCount.toLocaleString()}`);
 
   expect(afterInteraction!.transform.scale).toBeGreaterThan(initialDebug!.transform.scale);
   expect(interaction.result.sampleCount).toBeGreaterThan(0);
@@ -406,6 +420,7 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   expect(denseInteractionNodeCount).toBeLessThanOrEqual(DENSE_INTERACTION_NODE_BUDGET);
   expect(maxInteractiveProviderLabelCount).toBe(0);
   expect(afterInteraction!.metrics.denseInteractionRebuildCount).toBeLessThanOrEqual(16);
+  expect(pinnedNodeCount).toBe(0);
   expect(interaction.result.p95Ms).toBeLessThanOrEqual(p95Budget);
   expect(interaction.result.droppedFrames).toBeLessThanOrEqual(droppedFrameBudget);
   expect(interaction.count).toBeLessThanOrEqual(
