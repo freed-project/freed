@@ -222,7 +222,7 @@ const NODE_LAYER_TEXTURE_CACHE_MAX_NODES = 1_200;
 const INTERACTIVE_NODE_CULL_THRESHOLD = 1_200;
 const DENSE_GRAPH_SINGLE_LAYER_THRESHOLD = 1_200;
 const DENSE_INTERACTION_CULL_THRESHOLD = 1_600;
-const DENSE_INTERACTION_NODE_LIMIT = 96;
+const DENSE_INTERACTION_NODE_LIMIT = 64;
 const DENSE_SETTLED_VIEWPORT_NODE_LIMIT = 560;
 const DENSE_INTERACTION_VIEWPORT_PADDING = 72;
 const DENSE_INTERACTION_TRANSFORM_BUCKET_PX = 900;
@@ -2274,8 +2274,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
 
     const hit = hitNodeAt(event.clientX, event.clientY);
+    const shouldStartNodeDrag = !!hit && (
+      layoutRef.current.nodes.length < DENSE_INTERACTION_CULL_THRESHOLD ||
+      isSelectedGraphNode(hit, selectedPersonId, selectedAccountId)
+    );
 
-    if (hit?.accountId) {
+    if (shouldStartNodeDrag && hit?.accountId) {
       const point = viewportToWorld(event.clientX, event.clientY);
       dragStateRef.current = {
         kind: "account-drag",
@@ -2289,7 +2293,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         currentWorldX: point.x,
         currentWorldY: point.y,
       };
-    } else if (hit?.personId) {
+    } else if (shouldStartNodeDrag && hit?.personId) {
       const point = viewportToWorld(event.clientX, event.clientY);
       dragStateRef.current = {
         kind: "person-drag",
@@ -2315,7 +2319,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
     setInteractionCursor(true);
     markInteractive();
-  }, [hitNodeAt, markInteractive, setInteractionCursor, viewportToWorld]);
+  }, [hitNodeAt, markInteractive, selectedAccountId, selectedPersonId, setInteractionCursor, viewportToWorld]);
 
   const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch") {
