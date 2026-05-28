@@ -3,7 +3,7 @@
   "version": "26.5.2700-dev",
   "channel": "dev",
   "dayKey": "26.5.27",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-28T00:39:04.883Z",
   "model": "heuristic",
@@ -27,10 +27,12 @@
     ]
   },
   "release": {
-    "deck": "Prevent accidental dense friends graph pins",
+    "deck": "Friends graph pinning stays intentional",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Dense friends graph interactions no longer create accidental pinned states when the graph is already heavily populated."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2700-dev\n\nPrevent accidental dense friends graph pins\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2700-dev\n\nFriends graph pinning stays intentional\n\n### Fixes\n\n- Dense friends graph interactions no longer create accidental pinned states when the graph is already heavily populated.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
