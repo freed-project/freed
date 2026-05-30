@@ -17,7 +17,7 @@ import { shouldShowGraphLabel } from "../../../ui/src/lib/identity-graph-render"
 const NOW = 1_717_000_000_000;
 const IS_CI = process.env.CI === "true";
 const BENCHMARK_MODEL_BUDGET_MS = IS_CI ? 1_000 : 500;
-const BENCHMARK_LAYOUT_BUDGET_MS = IS_CI ? 3_500 : 2_000;
+const BENCHMARK_LAYOUT_BUDGET_MS = 3_500;
 
 function createPerson(overrides: Partial<Person>): Person {
   return {

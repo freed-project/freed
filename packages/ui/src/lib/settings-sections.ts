@@ -10,6 +10,7 @@ export type SectionId =
   | "appearance"
   | "feeds"
   | "saved"
+  | "storyWall"
   | "ai"
   | "sync"
   | "updates"
@@ -67,6 +68,14 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
     id: "saved",
     label: "Saved",
     keywords: ["bookmark", "save url", "reading list", "markdown", "import", "export", "manage", "articles", "sources"],
+  },
+  {
+    id: "storyWall",
+    label: "Story Wall",
+    keywords: [
+      "storywall", "story wall", "stories", "memory", "memories", "year",
+      "collage", "instagram archive", "instagram export", "github pages", "publish", "embed",
+    ],
   },
   {
     id: "feeds",
@@ -155,6 +164,7 @@ export function buildSettingsSectionMetas(
     ...(availability.hasLinkedIn ? [LI_SECTION_META] : []),
     baseSectionById.feeds,
     AI_SECTION_META,
+    baseSectionById.storyWall,
     ...(availability.hasUpdateChecks ? [UPDATES_SECTION_META] : []),
     baseSectionById.legal,
     ...(availability.hasFactoryReset ? [DANGER_SECTION_META] : []),

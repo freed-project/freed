@@ -32,7 +32,6 @@ import {
   resolveAnimationIntensity,
 } from "../../lib/animation-preferences.js";
 import { MapView } from "../map/MapView.js";
-import { StoryWallView } from "../story-wall/StoryWallView.js";
 import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
 import {
   AUXILIARY_DRAWER_GAP_WIDTH_PX,
@@ -60,6 +59,7 @@ export function AppShell({ children }: AppShellProps) {
   const debugVisible = useDebugStore((s) => s.visible);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
+  const setActiveView = useAppStore((s) => s.setActiveView);
   const items = useAppStore((s) => s.items);
   const accounts = useAppStore((s) => s.accounts);
   const persons = useAppStore((s) => s.persons);
@@ -72,8 +72,9 @@ export function AppShell({ children }: AppShellProps) {
   const animationIntensity = useAppStore((s) =>
     resolveAnimationIntensity(s.preferences.display.animationIntensity),
   );
-  const showAtmosphere = activeView !== "friends" && activeView !== "map" && activeView !== "storyWall";
+  const showAtmosphere = activeView !== "friends" && activeView !== "map";
   const settingsOpen = useSettingsStore((s) => s.open);
+  const openSettingsTo = useSettingsStore((s) => s.openTo);
   const requestSearchPalette = useCommandSurfaceStore((s) => s.requestSearchPalette);
   const addFeedOpen = useCommandSurfaceStore((s) => s.addFeedOpen);
   const closeAddFeedDialog = useCommandSurfaceStore((s) => s.closeAddFeedDialog);
@@ -113,6 +114,12 @@ export function AppShell({ children }: AppShellProps) {
     savedContentOpen ||
     libraryDialogOpen ||
     showContactReview;
+
+  useEffect(() => {
+    if (activeView !== "storyWall") return;
+    setActiveView("feed");
+    openSettingsTo("storyWall");
+  }, [activeView, openSettingsTo, setActiveView]);
   const forceCompactDesktopSidebar = !isMobileDevice && isMobileViewport;
   const effectiveDesktopSidebarDisplayMode =
     forceCompactDesktopSidebar && desktopSidebarMode !== "closed"
@@ -420,8 +427,6 @@ export function AppShell({ children }: AppShellProps) {
               )
               : activeView === "map"
                 ? <MapView />
-                : activeView === "storyWall"
-                  ? <StoryWallView />
                 : children}
           </main>
 

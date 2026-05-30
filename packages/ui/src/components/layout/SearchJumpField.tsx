@@ -47,6 +47,7 @@ import {
   LinkedInIcon,
   MapPinIcon,
   RssIcon,
+  StoryWallIcon,
   TrashIcon,
   UsersIcon,
   XIcon,
@@ -158,6 +159,9 @@ function getCommandPaletteIcon(action: CommandPaletteAction): ReactNode {
   }
   if (action.id === "go-settings-googleContacts") {
     return <GoogleContactsIcon className={iconClass} />;
+  }
+  if (action.id === "go-settings-storyWall") {
+    return <StoryWallIcon className={iconClass} />;
   }
   if (action.id === "go-settings-danger" || action.id.startsWith("danger-")) {
     return <TrashIcon className={iconClass} />;
@@ -514,11 +518,6 @@ export function SearchJumpField({
           setSelectedItem(null);
           setSelectedPerson(null);
           setActiveView("map");
-        },
-        navigateToStoryWall: () => {
-          setSelectedItem(null);
-          setSelectedPerson(null);
-          setActiveView("storyWall");
         },
         navigateToSocialProfileFriends: (account, personId) => {
           clearQueryForNavigation();
