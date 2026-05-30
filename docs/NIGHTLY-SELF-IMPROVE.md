@@ -13,6 +13,7 @@ The first rule is simple: evidence first, code second. If a target has weak evid
 - Hourly dev bot memory as a roadmap fallback
 - Git state for the current checkout
 - Local git worktrees with unmerged or uncommitted changes
+- Duplicate peer work indicators such as shared changed files, shared package surfaces, and shared provider-visible risk
 - Prior outcome ledger at `/tmp/freed-nightly-self-improve/outcomes.jsonl`
 - Preflight risks such as dirty worktrees, generated artifacts, stale soak samples, missing dependencies, missing evidence files, and paused automations
 
@@ -69,6 +70,7 @@ The generated run directory contains:
 - `report.md`: morning-readable summary
 - `targets.json`: full machine-readable candidate list
 - `risk-snapshot.md` and `risk-snapshot.json`: preflight blockers, warnings, evidence, and remediation steps
+- `duplicate-work.md` and `duplicate-work.json`: peer worktree overlap by file and surface
 - `tasks/*.md`: one implementation prompt per selected target
 - `execution-plan.md` and `execution-plan.json`: ordered phases, command hints, and stop gates
 - `outcome-closeout.md`: one ready-to-run ledger command per selected target
@@ -89,6 +91,6 @@ Every execution phase has a stop gate. The runner should stop rather than freest
 - Compare each recorded outcome to the prior target score so repeated misses automatically lower future priority.
 - Compare every morning report against the previous installed build, especially WebKit RSS and frame budget deltas.
 - Let a run split itself into phases: plan, fix, validate, publish PR, merge when green, ship dev build, install, then soak.
-- Add a duplicate-work detector that notices when two night agents are chasing the same bottleneck.
+- Let duplicate-work findings assign an owner automatically when one branch already has passing validation.
 - Promote preflight risk fixes into automatic cleanup steps when the remediation is unambiguous and local only.
 - Turn recurring failure signatures into reusable focused test recipes.
