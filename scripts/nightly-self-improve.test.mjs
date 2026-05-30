@@ -677,6 +677,7 @@ test("risk snapshot reports dirty worktrees, generated artifacts, stale soak, an
     crashAutomation: automationPath,
     dailyBugMemory: path.join(dir, "missing-memory.md"),
     devBotMemory: path.join(dir, "missing-dev-bot.md"),
+    expectedBranch: "",
     nowMs,
   });
 
@@ -696,6 +697,54 @@ test("risk snapshot reports dirty worktrees, generated artifacts, stale soak, an
       .find((risk) => risk.id === "paused-crash-watch")
       ?.actions.some((action) => action.kind === "automation-update"),
   );
+});
+
+test("risk snapshot blocks nightly planning from the wrong branch", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-branch-risk-"));
+  mkdirSync(path.join(dir, "node_modules"), { recursive: true });
+  const snapshot = collectRiskSnapshot({
+    repoPath: dir,
+    repo: {
+      branch: "main",
+      head: "abc1234",
+      originDev: "def5678",
+      status: "",
+    },
+    soak: { exists: false },
+    crashAutomation: "",
+    dailyBugMemory: "",
+    devBotMemory: "",
+    expectedBranch: "dev",
+  });
+
+  const risk = snapshot.risks.find((item) => item.id === "unexpected-repo-branch");
+  assert.ok(snapshot.blockerCount >= 1);
+  assert.equal(risk?.severity, "blocker");
+  assert.ok(risk?.actions.some((action) => action.id === "rerun-from-dev-worktree"));
+});
+
+test("risk snapshot warns when the dev worktree is stale", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-stale-dev-risk-"));
+  mkdirSync(path.join(dir, "node_modules"), { recursive: true });
+  const snapshot = collectRiskSnapshot({
+    repoPath: dir,
+    repo: {
+      branch: "dev",
+      head: "abc1234",
+      originDev: "def5678",
+      status: "",
+    },
+    soak: { exists: false },
+    crashAutomation: "",
+    dailyBugMemory: "",
+    devBotMemory: "",
+    expectedBranch: "dev",
+  });
+
+  const risk = snapshot.risks.find((item) => item.id === "stale-dev-worktree");
+  assert.equal(snapshot.risks.some((item) => item.id === "unexpected-repo-branch"), false);
+  assert.equal(risk?.severity, "warning");
+  assert.ok(risk?.actions.some((action) => action.id === "refresh-dev-worktree"));
 });
 
 test("writeRunPlan emits report, targets, and task prompts", () => {
@@ -778,6 +827,10 @@ test("argument parsing validates numeric budgets", () => {
     /record-status/,
   );
   assert.equal(parseArgs(["--memory-gib", "3"]).memoryGib, 3);
+  assert.equal(parseArgs([]).expectedBranch, "dev");
+  assert.equal(parseArgs(["--expected-branch", "release"]).expectedBranch, "release");
+  assert.equal(parseArgs(["--no-expected-branch"]).expectedBranch, "");
+  assert.throws(() => parseArgs(["--expected-branch", "bad branch"]), /expected-branch/);
   assert.equal(parseArgs(["--soak-pointer", "/tmp/pointer"]).soakPointer, "/tmp/pointer");
   assert.equal(parseArgs(["--repair-soak-pointer"]).repairSoakPointer, true);
   assert.throws(
