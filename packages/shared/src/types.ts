@@ -480,6 +480,25 @@ export interface Highlight {
 }
 
 /**
+ * Internal provenance marker for generated sample data.
+ * Deletion tools must use this marker instead of ids, URLs, or copy patterns.
+ */
+export interface SampleDataFingerprint {
+  marker: "freed.sample-data.v1";
+  batchId: string;
+  generatedAt: number;
+  generatorVersion: number;
+}
+
+export interface SampleDataClearSummary {
+  feeds: number;
+  items: number;
+  persons: number;
+  accounts: number;
+  total: number;
+}
+
+/**
  * Core feed item - represents any captured content
  */
 export interface FeedItem {
@@ -542,6 +561,9 @@ export interface FeedItem {
 
   /** Original URL on the source platform (for linking + seen-sync via WebView) */
   sourceUrl?: string;
+
+  /** Internal marker for generated sample data. */
+  sampleDataFingerprint?: SampleDataFingerprint;
 }
 
 // =============================================================================
@@ -650,6 +672,9 @@ export interface RssFeed {
 
   /** User-assigned folder/category */
   folder?: string;
+
+  /** Internal marker for generated sample data. */
+  sampleDataFingerprint?: SampleDataFingerprint;
 }
 
 // =============================================================================
@@ -910,6 +935,8 @@ export interface Person {
   graphY?: number;
   graphPinned?: boolean;
   graphUpdatedAt?: number;
+  /** Internal marker for generated sample data. */
+  sampleDataFingerprint?: SampleDataFingerprint;
   createdAt: number;
   updatedAt: number;
 }
@@ -939,6 +966,8 @@ export interface Account {
   graphY?: number;
   graphPinned?: boolean;
   graphUpdatedAt?: number;
+  /** Internal marker for generated sample data. */
+  sampleDataFingerprint?: SampleDataFingerprint;
   createdAt: number;
   updatedAt: number;
 }

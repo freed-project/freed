@@ -309,6 +309,7 @@ export const personFromLegacyFriend = (friend: Friend): Person => ({
   reachOutLog: friend.reachOutLog,
   tags: friend.tags,
   notes: friend.notes,
+  sampleDataFingerprint: friend.sampleDataFingerprint,
   createdAt: friend.createdAt,
   updatedAt: friend.updatedAt,
 });
@@ -324,6 +325,7 @@ export function accountsFromLegacyFriend(friend: Friend): Account[] {
     displayName: source.displayName,
     avatarUrl: source.avatarUrl,
     profileUrl: source.profileUrl,
+    sampleDataFingerprint: friend.sampleDataFingerprint,
     firstSeenAt: friend.createdAt,
     lastSeenAt: friend.updatedAt,
     discoveredFrom: "captured_item",
@@ -355,6 +357,7 @@ export function accountsFromLegacyFriend(friend: Friend): Account[] {
     phone: friend.contact.phone,
     address: friend.contact.address,
     importedAt: friend.contact.importedAt,
+    sampleDataFingerprint: friend.sampleDataFingerprint,
     firstSeenAt: friend.contact.importedAt,
     lastSeenAt: friend.updatedAt,
     discoveredFrom: "contact_import",

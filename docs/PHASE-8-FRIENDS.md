@@ -234,12 +234,13 @@ Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare),
 - `packages/ui/src/components/map/MiniFriendMapCard.tsx` — friend detail last-seen mini map card
 - `packages/ui/src/components/map/MarkerElement.ts` — avatar bubble HTMLElement for MapLibre markers
 - `packages/ui/src/components/map/MapSurface.tsx` — shared themed map surface, glass popups, and fallback renderer
-- `packages/ui/src/lib/sample-library-seed.ts` — append-only sample batch seeding for friend-linked map previews
+- `packages/ui/src/lib/sample-library-seed.ts` - append-only sample batch seeding and fingerprinted sample cleanup for friend-linked map previews
 - `packages/ui/src/components/layout/Sidebar.tsx` — live Friends and Map counts in the primary nav
 - `packages/ui/src/components/Toast.tsx` — shared success/error feedback for sample refresh and other cross-shell actions
 
 `maplibre-gl` now lives in `@freed/ui` so both PWA and Freed Desktop use the same map runtime. The shared surface now uses theme-native cartography, not a one-size-fits-none filter pass, so each theme gets its own land, water, boundary, and label palette while the avatars stay readable.
 Sample data batches now append friend-linked LinkedIn posts too, so repeated populates keep expanding the social graph instead of reseeding the same tiny cast.
+New sample data batches now carry an internal cleanup marker on generated feeds, items, people, and accounts, so the app can clear sample records without guessing from names or URLs.
 Friends and Map now use the same shared content header pattern as the rest of the app, instead of shipping bespoke top bars that wander off into their own little kingdoms.
 Map popovers now include the time of each location update and behave like a sane interface, with only one popup open at a time.
 Friends now behaves like a proper workspace: the graph settles once and freezes, supports pan and zoom, and uses a permanent resizable right sidebar for reconnect, search, filters, overview, and selected-friend detail.
@@ -362,6 +363,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Shared map surface uses theme-native palettes across live and fallback rendering
 - [x] Friends and Map inherit the shared multi-theme design system instead of hardcoded one-off gradients
 - [x] Sample data refresh rebuilds a 250-friend showcase graph with 1,250 social identities and recent map activity
+- [x] Sample data cleanup removes only records with the internal sample marker
 - [x] Sidebar shows live counts for Friends and recent friend location updates on Map
 - [x] Map supports persisted `Friends` and `All content` modes
 - [x] Feed views share the same persisted `Friends` and `All content` toolbar lens

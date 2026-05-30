@@ -16,6 +16,7 @@ import type {
   Person,
   ReachOutLog,
   RssFeed,
+  SampleDataClearSummary,
   UserPreferences,
 } from "@freed/shared";
 
@@ -63,6 +64,7 @@ export type WorkerRequest =
   | { reqId: number; type: "ADD_FEED_ITEM"; item: FeedItem }
   | { reqId: number; type: "ADD_FEED_ITEMS"; items: FeedItem[] }
   | { reqId: number; type: "REMOVE_FEED_ITEM"; globalId: string }
+  | { reqId: number; type: "CLEAR_SAMPLE_DATA" }
   | { reqId: number; type: "UPDATE_FEED_ITEM"; globalId: string; updates: Partial<FeedItem> }
   | { reqId: number; type: "ARCHIVE_ALL_READ_UNSAVED"; platform?: string; feedUrl?: string }
   | { reqId: number; type: "UNARCHIVE_SAVED_ITEMS" }
@@ -104,5 +106,6 @@ export type WorkerResponse =
   | { type: "DEBUG_SNAPSHOT"; deviceId: string; itemCount: number; feedCount: number; binarySize: number }
   /** One-batch content signal backfill summary. */
   | { reqId: number; type: "CONTENT_SIGNAL_BACKFILL_RESULT"; summary: ContentSignalBackfillSummary }
+  | { reqId: number; type: "SAMPLE_DATA_CLEAR_RESULT"; summary: SampleDataClearSummary }
   /** Sent once when the worker module finishes loading and is ready for messages */
   | { type: "READY" };

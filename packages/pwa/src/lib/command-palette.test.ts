@@ -200,6 +200,9 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
         }));
       }),
     removeItem: overrides.removeItem ?? noopAsync,
+    clearSampleData:
+      overrides.clearSampleData
+      ?? (async () => ({ feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 })),
     toggleLiked:
       overrides.toggleLiked
       ?? (async (id: string) => {

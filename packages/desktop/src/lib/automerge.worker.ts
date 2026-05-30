@@ -23,6 +23,7 @@ import {
   addAccount,
   addAccounts,
   backfillContentSignals,
+  clearSampleData,
   countContentSignalBackfillItems,
   addFeedItem,
   deduplicateDocFeedItems,
@@ -959,6 +960,15 @@ async function handleRequest(
         await applyRequestChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item", true);
         ack(req.reqId);
         break;
+
+      case "CLEAR_SAMPLE_DATA": {
+        let summary = { feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 };
+        await applyRequestChange((doc) => {
+          summary = clearSampleData(doc);
+        }, "Clear sample data", true);
+        send({ reqId: req.reqId, type: "SAMPLE_DATA_CLEAR_RESULT", summary });
+        break;
+      }
 
       case "UPDATE_FEED_ITEM":
         await applyRequestChange(
