@@ -126,7 +126,7 @@ The shared extension points now live in `packages/ui/src/lib/command-palette.ts`
 
 Freed now has a local nightly improvement planner in `scripts/nightly-self-improve.mjs`. It folds the installed-build soak, daily bug scan memory, crash-watch state, roadmap fallback memory, peer worktrees, prior outcome history, and current git state into a ranked queue of work that can run overnight.
 
-The runner can choose multiple targets in one night. Bug fixes are first-class targets through the existing daily bug scan memory, while peer worktree integration, duplicate-work detection, performance, stability, release readiness, and roadmap work compete by score and machine-time budget. Each run now writes a preflight risk snapshot plus an execution plan with stop gates, command hints, task prompts, outcome templates, and ready-to-run ledger closeout commands so overnight automation has a clear path from clean evidence to validation, dev build shipping, installed-build soak, learned scoring, and morning closeout. When the active soak pointer has no samples, the runner falls back to the newest readable soak and records that fallback as preflight evidence. It can also repair the pointer to that readable soak when the remediation is unambiguous and local only. Performance targets require enough fresh soak samples before WebKit RSS or heartbeat evidence can win the queue. Provider-visible ideas stay blocked unless a human explicitly approves the fingerprinting risk.
+The runner can choose multiple targets in one night. Bug fixes are first-class targets through the existing daily bug scan memory, while peer worktree integration, duplicate-work detection, performance, stability, release readiness, and roadmap work compete by score and machine-time budget. Each run now writes a preflight risk snapshot plus an execution plan with stop gates, command hints, task prompts, outcome templates, and ready-to-run ledger closeout commands so overnight automation has a clear path from clean evidence to validation, dev build shipping, installed-build soak, learned scoring, and morning closeout. When the active soak pointer has no samples, the runner falls back to the newest readable soak and records that fallback as preflight evidence. It can also repair the pointer to that readable soak when the remediation is unambiguous and local only. Performance targets require enough fresh soak samples before WebKit RSS or heartbeat evidence can win the queue. Preflight actions now label each remediation as a safe local command, manual review, or automation-tool action. Provider-visible ideas stay blocked unless a human explicitly approves the fingerprinting risk.
 
 ### Keyboard Shortcuts
 
@@ -472,7 +472,7 @@ Reward security researchers for responsible disclosure.
 - [ ] Discord server active
 - [ ] Bug bounty program published
 - [ ] Regular release schedule established
-- [x] Local nightly improvement runner ranks preflight risks, duplicate peer work, peer worktree, bug fix, performance, stability, release, and roadmap targets before autonomous work begins, with local soak pointer repair when active evidence is unreadable
+- [x] Local nightly improvement runner ranks preflight risks, duplicate peer work, peer worktree, bug fix, performance, stability, release, and roadmap targets before autonomous work begins, with local soak pointer repair and typed preflight actions
 - [ ] Documentation site live
 
 ### Resilience
