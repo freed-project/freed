@@ -914,6 +914,9 @@ export function validateReleaseShape(release, options = {}) {
   const normalized = sanitizeReleaseShape(release);
   const rawNormalized = coerceReleaseShape(release);
   const rawComparable = rawComparableReleaseShape(release);
+  const previousDayFeatures = options.previousDayRelease
+    ? dedupeSimilarStrings(coerceReleaseShape(options.previousDayRelease).features)
+    : [];
 
   if (!normalized.deck) {
     errors.push("Deck is required.");
@@ -1010,12 +1013,37 @@ export function validateReleaseShape(release, options = {}) {
 
   for (const priorRelease of options.earlierReleases ?? []) {
     for (const priorEntry of releaseVisibleEntries(priorRelease)) {
+      if (priorEntry.kind === "deck") {
+        continue;
+      }
+
+      const repeatsPreviousDayFeature = previousDayFeatures.some((feature) =>
+        areNearDuplicates(feature, priorEntry.text),
+      );
+      if (repeatsPreviousDayFeature) {
+        continue;
+      }
+
       const isPresent = releaseVisibleItems(normalized).some((item) =>
         areNearDuplicates(item, priorEntry.text),
       );
 
       if (!isPresent && !isCoveredByConsolidation(priorEntry, normalized)) {
         errors.push(`Latest-of-day release is missing earlier same-day item: ${priorEntry.text}`);
+      }
+    }
+  }
+
+  if (options.previousDayRelease) {
+    const currentVisibleItems = releaseVisibleItems(normalized);
+
+    for (const feature of previousDayFeatures) {
+      const isRepeated = currentVisibleItems.some((item) =>
+        areNearDuplicates(item, feature),
+      );
+
+      if (isRepeated) {
+        errors.push(`Latest-of-day release repeats previous-day feature: ${feature}`);
       }
     }
   }

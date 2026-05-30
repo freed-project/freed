@@ -125,6 +125,56 @@ test("validateReleaseShape allows same-day consolidation for follow-ups", () => 
   assert.equal(result.errors.length, 0);
 });
 
+test("validateReleaseShape rejects previous-day feature repeats", () => {
+  const result = validateReleaseShape(
+    {
+      deck: "Story wall publishing and smoother dense graph motion",
+      features: ["Story wall publishing"],
+      fixes: ["Dense Friends graph motion paints fewer nodes while panning"],
+      followUps: [],
+    },
+    {
+      previousDayRelease: {
+        deck: "Story wall publishing",
+        features: ["Story wall publishing"],
+        fixes: ["Google Contacts sync in Freed Desktop"],
+        followUps: [],
+      },
+    },
+  );
+
+  assert.match(result.errors.join("\n"), /repeats previous-day feature/i);
+});
+
+test("validateReleaseShape does not force stale previous-day features forward", () => {
+  const result = validateReleaseShape(
+    {
+      deck: "Google OAuth and dense Map motion",
+      features: ["Story wall publishing"],
+      fixes: ["Complete Google Contacts sync in Freed Desktop"],
+      followUps: [],
+    },
+    {
+      previousDayRelease: {
+        deck: "AI ranked friend suggestions",
+        features: ["AI ranked friend suggestions"],
+        fixes: [],
+        followUps: [],
+      },
+      earlierReleases: [
+        {
+          deck: "AI ranked friend suggestions and Friends graph pinch zoom",
+          features: ["AI ranked friend suggestions"],
+          fixes: ["Complete Google Contacts sync in Freed Desktop"],
+          followUps: [],
+        },
+      ],
+    },
+  );
+
+  assert.equal(result.errors.length, 0);
+});
+
 test("renderReleaseBody uses the new headings", () => {
   const body = renderReleaseBody("v26.4.108", {
     deck: "Native macOS code signing for effortless installs",

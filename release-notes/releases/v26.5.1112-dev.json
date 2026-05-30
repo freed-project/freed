@@ -90,11 +90,9 @@
     ]
   },
   "release": {
-    "deck": "Google OAuth now runs natively in Freed Desktop, Friends graph motion stays lighter, Settings and Map stay smoother, runtime memory monitoring separates Freed WebKit from machine-wide totals, and dense Map motion now stays inside the frame budget",
+    "deck": "Google OAuth runs natively in Freed Desktop, Story wall publishing lands, scraper memory gates tighten, and dense Map motion stays inside the frame budget",
     "features": [
-      "Story wall publishing",
-      "AI ranked friend suggestions",
-      "Support Friends graph pinch zoom"
+      "Story wall publishing"
     ],
     "fixes": [
       "Reduce dense Map motion paint during pan and zoom",
@@ -118,7 +116,6 @@
     "followUps": [
       "Lighten settings moving chrome",
       "Reduce settings scroll overdraw",
-      "Friends relationship tiers",
       "Reader, sidebar, and settings UX work",
       "Trim reader rail work and stabilize friends perf",
       "Isolate social scraper webkit stores",
@@ -131,5 +128,5 @@
       "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed 26.5.1112-dev\n\nGoogle OAuth now runs natively in Freed Desktop, Friends graph motion stays lighter, Settings and Map stay smoother, runtime memory monitoring separates Freed WebKit from machine-wide totals, and dense Map motion now stays inside the frame budget\n\n### Features\n\n- Story wall publishing\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n\n### Fixes\n\n- Reduce dense Map motion paint during pan and zoom\n- Report app-scoped native and WebKit memory in renderer heartbeats\n- Gate optional story scraping on resident memory pressure\n- Tighten social scraper resident memory start budget\n- Skip hidden Friends provider labels during graph motion\n- Gate scraper memory before session slots\n- Gate social scrapes on resident WebKit memory\n- Complete Google Contacts sync in Freed Desktop\n- Share native Google OAuth credentials between Drive and Contacts refresh\n- Surface Google OAuth and People API failure details in Settings instead of generic load errors\n- Reader, feed, and header polish\n- Keep friends graph sync errors recoverable\n- Test coverage and performance hardening\n- Release build and type-safety cleanup\n- Route Google Drive through native sync requests\n- Capture and scraper reliability fixes\n- Open the full Map from Friends detail with one atomic store update\n\n### Follow-ups\n\n- Lighten settings moving chrome\n- Reduce settings scroll overdraw\n- Friends relationship tiers\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n- Keep memory-blocked scrapes from holding the shared scraper slot\n- Continue passive soak metrics until Apple Events authorization is restored for active UI driving\n- Treat Settings scroll as the next measured performance surface because it remains the largest budget miss\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1112-dev\n\nGoogle OAuth runs natively in Freed Desktop, Story wall publishing lands, scraper memory gates tighten, and dense Map motion stays inside the frame budget\n\n### Features\n\n- Story wall publishing\n\n### Fixes\n\n- Reader, feed, and header polish\n- Capture and scraper reliability fixes\n- Complete Google Contacts sync in Freed Desktop\n- Keep friends graph sync errors recoverable\n- Test coverage and performance hardening\n- Release build and type-safety cleanup\n- Route Google Drive through native sync requests\n- Open the full Map from Friends detail with one atomic store update\n\n### Follow-ups\n\n- Lighten settings moving chrome\n- Reduce settings scroll overdraw\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n- Keep memory-blocked scrapes from holding the shared scraper slot\n- Continue passive soak metrics until Apple Events authorization is restored for active UI driving\n- Treat Settings scroll as the next measured performance surface because it remains the largest budget miss\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
