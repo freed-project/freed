@@ -1,0 +1,36 @@
+{
+  "tag": "v26.5.3000-dev",
+  "version": "26.5.3000-dev",
+  "channel": "dev",
+  "dayKey": "26.5.30",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-30T07:26:21.220Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.2903-dev",
+    "previousPublishedDayTag": "v26.5.2903-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.3000-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.3000-dev"
+    ],
+    "prNumbers": [
+      625
+    ],
+    "commitSubjects": [
+      "perf: cap background article fetch size (#625)"
+    ]
+  },
+  "release": {
+    "deck": "Cap background article fetch size",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3000-dev\n\nCap background article fetch size\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
