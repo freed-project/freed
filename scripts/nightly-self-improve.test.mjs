@@ -5,12 +5,14 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  applyOutcomeFeedback,
   buildCandidates,
   formatBytes,
   parseArgs,
   parseGitWorktreePorcelain,
   parseTsv,
   selectTargets,
+  summarizeOutcomeLedger,
   summarizeDailyBugMemory,
   summarizeSoak,
   writeRunPlan,
@@ -214,6 +216,33 @@ test("peer worktree candidates outrank generic roadmap work", () => {
   assert.equal(selected[0].providerVisible, false);
 });
 
+test("outcome feedback raises shipped target kinds and lowers failed ones", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-outcomes-"));
+  const ledgerPath = path.join(dir, "outcomes.jsonl");
+  writeFileSync(
+    ledgerPath,
+    [
+      JSON.stringify({ id: "webkit-memory-pressure", kind: "performance", outcome: "shipped" }),
+      JSON.stringify({ id: "daily-bug-fix-scan", kind: "bug-fix", outcome: "failed" }),
+      "",
+    ].join("\n"),
+  );
+
+  const ledger = summarizeOutcomeLedger(ledgerPath);
+  const adjusted = applyOutcomeFeedback(
+    [
+      { id: "webkit-memory-pressure", kind: "performance", score: 80 },
+      { id: "daily-bug-fix-scan", kind: "bug-fix", score: 80 },
+    ],
+    ledger,
+  );
+
+  assert.equal(ledger.entries.length, 2);
+  assert.equal(adjusted[0].id, "webkit-memory-pressure");
+  assert.ok(adjusted[0].score > adjusted[1].score);
+  assert.equal(adjusted[1].outcomeFeedback.failed, 2);
+});
+
 test("writeRunPlan emits report, targets, and task prompts", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-nightly-plan-"));
   const selected = [
@@ -251,6 +280,7 @@ test("writeRunPlan emits report, targets, and task prompts", () => {
 
   assert.equal(path.basename(result.reportPath), "report.md");
   assert.equal(path.basename(result.tasksDir), "tasks");
+  assert.equal(path.basename(result.outcomeTemplatePath), "outcome-template.jsonl");
 });
 
 test("argument parsing validates numeric budgets", () => {

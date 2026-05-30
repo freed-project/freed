@@ -24,6 +24,7 @@ const DEFAULT_CRASH_AUTOMATION =
 const DEFAULT_DEV_BOT_MEMORY =
   "/Users/aubreyfalconer/.codex/automations/hourly-dev-bot/memory.md";
 const DEFAULT_SOAK_POINTER = "/tmp/freed-perf-soak/current-soak-dir";
+const DEFAULT_OUTCOME_LEDGER = "/tmp/freed-nightly-self-improve/outcomes.jsonl";
 const MAX_PEER_EVIDENCE_FILES = 12;
 
 const GIB = 1024 * 1024 * 1024;
@@ -42,6 +43,7 @@ Options:
   --daily-bug-memory <path>     Daily bug scan memory file to fold into target selection.
   --peer-worktree <path>        Extra local worktree to compare and rank as a peer target.
   --no-peer-scan                Skip automatic git worktree discovery.
+  --outcome-ledger <path>       JSONL file with prior target outcomes.
   --max-targets <count>         Maximum targets to select. Defaults to 3.
   --duration-minutes <count>    Planning budget for one night. Defaults to 480.
   --memory-gib <count>          WebKit RSS budget before memory work wins. Defaults to 2.5.
@@ -60,6 +62,7 @@ export function parseArgs(argv) {
     dailyBugMemory: DEFAULT_DAILY_BUG_MEMORY,
     crashAutomation: DEFAULT_CRASH_AUTOMATION,
     devBotMemory: DEFAULT_DEV_BOT_MEMORY,
+    outcomeLedger: DEFAULT_OUTCOME_LEDGER,
     peerWorktrees: [],
     peerScan: true,
     maxTargets: 3,
@@ -96,6 +99,10 @@ export function parseArgs(argv) {
         break;
       case "--no-peer-scan":
         args.peerScan = false;
+        break;
+      case "--outcome-ledger":
+        args.outcomeLedger = argv[index + 1] ?? "";
+        index += 1;
         break;
       case "--max-targets":
         args.maxTargets = Number.parseInt(argv[index + 1] ?? "", 10);
@@ -145,6 +152,7 @@ export function parseArgs(argv) {
   }
 
   args.repo = path.resolve(args.repo);
+  args.outcomeLedger = path.resolve(args.outcomeLedger);
   args.peerWorktrees = args.peerWorktrees.filter(Boolean).map((item) => path.resolve(item));
   args.runDir =
     args.runDir ||
@@ -175,6 +183,50 @@ function readJsonLines(filePath) {
         return [];
       }
     });
+}
+
+export function summarizeOutcomeLedger(filePath) {
+  const entries = readJsonLines(filePath);
+  const byKind = new Map();
+  const byId = new Map();
+
+  for (const entry of entries) {
+    const kind = String(entry.kind ?? "");
+    const id = String(entry.id ?? "");
+    const outcome = String(entry.outcome ?? "");
+    if (!kind || !id) {
+      continue;
+    }
+    for (const [key, map] of [
+      [kind, byKind],
+      [id, byId],
+    ]) {
+      const current = map.get(key) ?? {
+        key,
+        attempts: 0,
+        shipped: 0,
+        validated: 0,
+        failed: 0,
+      };
+      current.attempts += 1;
+      if (outcome === "shipped") {
+        current.shipped += 1;
+      } else if (outcome === "validated") {
+        current.validated += 1;
+      } else if (outcome === "failed" || outcome === "blocked") {
+        current.failed += 1;
+      }
+      map.set(key, current);
+    }
+  }
+
+  return {
+    path: filePath,
+    exists: entries.length > 0,
+    entries,
+    byKind: Object.fromEntries(byKind),
+    byId: Object.fromEntries(byId),
+  };
 }
 
 export function parseTsv(text) {
@@ -783,6 +835,29 @@ export function buildCandidates({
   return candidates.sort((left, right) => right.score - left.score);
 }
 
+export function applyOutcomeFeedback(candidates, outcomeLedger) {
+  return candidates
+    .map((candidate) => {
+      const kindStats = outcomeLedger.byKind?.[candidate.kind];
+      const idStats = outcomeLedger.byId?.[candidate.id];
+      const shipped = (kindStats?.shipped ?? 0) + (idStats?.shipped ?? 0);
+      const validated = (kindStats?.validated ?? 0) + (idStats?.validated ?? 0);
+      const failed = (kindStats?.failed ?? 0) + (idStats?.failed ?? 0);
+      const adjustment = Math.max(-12, Math.min(12, shipped * 3 + validated * 1.5 - failed * 4));
+      return {
+        ...candidate,
+        score: Math.max(1, Math.min(99, candidate.score + adjustment)),
+        outcomeFeedback: {
+          shipped,
+          validated,
+          failed,
+          adjustment,
+        },
+      };
+    })
+    .sort((left, right) => right.score - left.score);
+}
+
 export function selectTargets(candidates, options) {
   const budget = options.durationMinutes;
   const selected = [];
@@ -841,7 +916,7 @@ function formatCandidate(candidate, index) {
   ].join("\n");
 }
 
-export function buildReport({ repo, soak, candidates, selected, options }) {
+export function buildReport({ repo, soak, outcomeLedger, candidates, selected, options }) {
   const blockedProvider = candidates.filter((candidate) => candidate.providerVisible);
   const phases = buildNightlyPhases(selected);
   return [
@@ -861,6 +936,11 @@ export function buildReport({ repo, soak, candidates, selected, options }) {
     `- Max DOM nodes: ${numberFormatter.format(soak.maxDomNodes ?? 0)}`,
     `- Stale heartbeat events: ${numberFormatter.format(soak.staleHeartbeatCount)}`,
     `- Hidden timer throttled events: ${numberFormatter.format(soak.throttledHeartbeatCount)}`,
+    "",
+    "## Learning Signals",
+    "",
+    `- Outcome ledger: ${outcomeLedger?.path ?? "none"}`,
+    `- Prior outcomes loaded: ${numberFormatter.format(outcomeLedger?.entries?.length ?? 0)}`,
     "",
     "## Selected Queue",
     "",
@@ -913,16 +993,36 @@ export function writeRunPlan({ runDir, repo, soak, peerWorktrees = [], candidate
   const tasksDir = path.join(runDir, "tasks");
   mkdirSync(tasksDir, { recursive: true });
 
-  const report = buildReport({ repo, soak, candidates, selected, options });
+  const outcomeLedger = options.outcomeLedgerSummary ?? { path: options.outcomeLedger, entries: [] };
+  const report = buildReport({ repo, soak, outcomeLedger, candidates, selected, options });
   writeFileSync(path.join(runDir, "report.md"), report);
-  writeFileSync(path.join(runDir, "targets.json"), `${JSON.stringify({ repo, soak, peerWorktrees, candidates, selected }, null, 2)}\n`);
+  writeFileSync(path.join(runDir, "targets.json"), `${JSON.stringify({ repo, soak, peerWorktrees, outcomeLedger, candidates, selected }, null, 2)}\n`);
+  writeFileSync(
+    path.join(runDir, "outcome-template.jsonl"),
+    selected
+      .map((candidate) =>
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          id: candidate.id,
+          kind: candidate.kind,
+          outcome: "validated",
+          notes: "Replace outcome with shipped, validated, blocked, or failed after the run.",
+        }),
+      )
+      .join("\n") + "\n",
+  );
 
   selected.forEach((candidate, index) => {
     const name = `${String(index + 1).padStart(2, "0")}-${candidate.id}.md`;
     writeFileSync(path.join(tasksDir, name), formatCandidate(candidate, index));
   });
 
-  return { runDir, reportPath: path.join(runDir, "report.md"), tasksDir };
+  return {
+    runDir,
+    reportPath: path.join(runDir, "report.md"),
+    tasksDir,
+    outcomeTemplatePath: path.join(runDir, "outcome-template.jsonl"),
+  };
 }
 
 export function planNightlyRun(args) {
@@ -931,7 +1031,8 @@ export function planNightlyRun(args) {
   const dailyBug = summarizeDailyBugMemory(args.dailyBugMemory);
   const repo = collectRepoSnapshot(args.repo);
   const peerWorktrees = collectPeerWorktrees(args.repo, args.peerWorktrees, args.peerScan);
-  const candidates = buildCandidates({
+  const outcomeLedger = summarizeOutcomeLedger(args.outcomeLedger);
+  const baseCandidates = buildCandidates({
     soak,
     dailyBug,
     repo,
@@ -940,8 +1041,9 @@ export function planNightlyRun(args) {
     devBotMemoryExists: existsSync(args.devBotMemory),
     memoryBudgetBytes: args.memoryGib * GIB,
   });
+  const candidates = applyOutcomeFeedback(baseCandidates, outcomeLedger);
   const selected = selectTargets(candidates, args);
-  return { repo, soak, dailyBug, peerWorktrees, candidates, selected };
+  return { repo, soak, dailyBug, peerWorktrees, outcomeLedger, candidates, selected };
 }
 
 function textSummary(plan, writeResult, args) {
@@ -950,6 +1052,7 @@ function textSummary(plan, writeResult, args) {
     `Max WebKit RSS: ${formatBytes(plan.soak.maxWebKitResidentBytes)}.`,
     `Stale heartbeat events: ${numberFormatter.format(plan.soak.staleHeartbeatCount)}.`,
     `Peer worktrees with changes: ${numberFormatter.format(plan.peerWorktrees.length)}.`,
+    `Prior outcomes loaded: ${numberFormatter.format(plan.outcomeLedger.entries.length)}.`,
   ];
 
   for (const [index, selected] of plan.selected.entries()) {
@@ -959,6 +1062,7 @@ function textSummary(plan, writeResult, args) {
   if (writeResult) {
     lines.push(`Report: ${writeResult.reportPath}`);
     lines.push(`Tasks: ${writeResult.tasksDir}`);
+    lines.push(`Outcome template: ${writeResult.outcomeTemplatePath}`);
   }
 
   if (args.dryRun) {
@@ -989,7 +1093,7 @@ export function main(argv = process.argv.slice(2)) {
         peerWorktrees: plan.peerWorktrees,
         candidates: plan.candidates,
         selected: plan.selected,
-        options: args,
+        options: { ...args, outcomeLedgerSummary: plan.outcomeLedger },
       });
 
   if (args.json) {

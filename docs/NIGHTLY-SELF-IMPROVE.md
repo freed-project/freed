@@ -13,6 +13,7 @@ The first rule is simple: evidence first, code second. If a target has weak evid
 - Hourly dev bot memory as a roadmap fallback
 - Git state for the current checkout
 - Local git worktrees with unmerged or uncommitted changes
+- Prior outcome ledger at `/tmp/freed-nightly-self-improve/outcomes.jsonl`
 
 ## Target Types
 
@@ -50,11 +51,18 @@ Dry run:
 node scripts/nightly-self-improve.mjs --dry-run --json
 ```
 
+Use a custom outcome ledger:
+
+```bash
+node scripts/nightly-self-improve.mjs --outcome-ledger /tmp/freed-nightly-self-improve/outcomes.jsonl
+```
+
 The generated run directory contains:
 
 - `report.md`: morning-readable summary
 - `targets.json`: full machine-readable candidate list
 - `tasks/*.md`: one implementation prompt per selected target
+- `outcome-template.jsonl`: lines to append back into the outcome ledger after the run
 
 Reports include an execution phase list so the night can move from evidence, to peer comparison, to implementation, validation, dev build shipping, installed-build soak, and the morning digest.
 
@@ -66,7 +74,7 @@ Release work is also gated. A dev build should ship only after actual fixes merg
 
 ## Next Improvements
 
-- Add a score feedback file so the runner learns which target types produced shipped fixes.
+- Wire the generated outcome template into the actual overnight closeout so target scoring learns without manual copying.
 - Compare every morning report against the previous installed build, especially WebKit RSS and frame budget deltas.
 - Let a run split itself into phases: plan, fix, validate, publish PR, merge when green, ship dev build, install, then soak.
 - Add a duplicate-work detector that notices when two night agents are chasing the same bottleneck.
