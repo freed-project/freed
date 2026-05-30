@@ -22,6 +22,7 @@ import {
   repairSoakPointer,
   resolveReadableSoak,
   selectTargets,
+  shouldRetainPeerWorktree,
   summarizeOutcomeLedger,
   summarizeDailyBugMemory,
   summarizeSoak,
@@ -419,6 +420,102 @@ test("peer worktree candidates outrank generic roadmap work", () => {
 
   assert.equal(selected[0].kind, "peer-worktree");
   assert.equal(selected[0].providerVisible, false);
+});
+
+test("provider-visible peer worktrees are retained and reported as preflight risks", () => {
+  const peerWorktrees = [
+    {
+      path: "/peer-facebook",
+      branch: "fix/facebook-ui-chrome-authors",
+      head: "abc1234",
+      status: "",
+      aheadCount: 1,
+      behindCount: 0,
+      changedFileCount: 2,
+      changedFiles: [
+        "packages/desktop/src-tauri/src/fb-extract.js",
+        "packages/shared/src/social-account-validity.ts",
+      ],
+      touchesNightlyRunner: false,
+      touchesMemoryTelemetry: false,
+      providerVisible: true,
+      score: 35,
+    },
+  ];
+  const candidates = buildCandidates({
+    soak: {
+      exists: false,
+      soakDir: "",
+      sampleCount: 0,
+      maxWebKitResidentBytes: null,
+      maxEventLoopLagMs: null,
+      maxDomNodes: null,
+      staleHeartbeatCount: 0,
+      throttledHeartbeatCount: 0,
+      lastEvent: "",
+    },
+    dailyBug: { exists: false },
+    repo: { branch: "feature", head: "abc1234", status: "" },
+    peerWorktrees,
+    crashAutomationExists: false,
+    devBotMemoryExists: false,
+    memoryBudgetBytes: 2.5 * GIB,
+  });
+  const riskSnapshot = collectRiskSnapshot({
+    repoPath: "/repo",
+    repo: { status: "" },
+    soak: { exists: false },
+    peerWorktrees,
+    crashAutomation: "",
+    dailyBugMemory: "",
+    devBotMemory: "",
+  });
+  const selected = selectTargets(candidates, {
+    maxTargets: 3,
+    durationMinutes: 480,
+    allowProviderVisible: false,
+  });
+
+  assert.ok(candidates.some((candidate) => candidate.providerVisible));
+  assert.ok(!selected.some((candidate) => candidate.providerVisible));
+  assert.ok(
+    riskSnapshot.risks.some(
+      (risk) =>
+        risk.id === "provider-visible-peer-fix-facebook-ui-chrome-authors" &&
+        risk.evidence.includes("packages/desktop/src-tauri/src/fb-extract.js") &&
+        risk.actions.some((action) => action.id === "request-provider-visible-approval"),
+    ),
+  );
+});
+
+test("stale provider-visible peer worktrees are skipped unless explicitly listed", () => {
+  assert.equal(
+    shouldRetainPeerWorktree({
+      branch: "fix/old-provider-branch",
+      providerVisible: true,
+      behindCount: 240,
+      explicit: false,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldRetainPeerWorktree({
+      branch: "fix/facebook-ui-chrome-authors",
+      providerVisible: true,
+      behindCount: 1,
+      explicit: false,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldRetainPeerWorktree({
+      branch: "fix/old-provider-branch",
+      providerVisible: true,
+      behindCount: 240,
+      explicit: true,
+    }),
+    true,
+  );
 });
 
 test("duplicate work detector reports file and surface overlap", () => {
