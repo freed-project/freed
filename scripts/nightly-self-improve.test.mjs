@@ -13,10 +13,12 @@ import {
   collectDuplicateWork,
   collectRepoSnapshot,
   collectRiskSnapshot,
+  findLatestReadableSoakDir,
   formatBytes,
   parseArgs,
   parseGitWorktreePorcelain,
   parseTsv,
+  resolveReadableSoak,
   selectTargets,
   summarizeOutcomeLedger,
   summarizeDailyBugMemory,
@@ -58,6 +60,44 @@ test("summarizeSoak reads WebKit memory, heartbeat, and DOM evidence", () => {
   assert.equal(summary.maxDomNodes, 900);
   assert.equal(summary.staleHeartbeatCount, 1);
   assert.equal(summary.throttledHeartbeatCount, 1);
+});
+
+test("resolveReadableSoak falls back from an empty current soak to the newest readable soak", () => {
+  const rootDir = mkdtempSync(path.join(os.tmpdir(), "freed-soak-root-"));
+  const emptyDir = path.join(rootDir, "empty");
+  const oldReadableDir = path.join(rootDir, "old-readable");
+  const readableDir = path.join(rootDir, "new-readable");
+  mkdirSync(emptyDir);
+  mkdirSync(oldReadableDir);
+  mkdirSync(readableDir);
+  writeFileSync(
+    path.join(oldReadableDir, "metrics.tsv"),
+    [
+      "ts\thealth_event\thealth_webkit_rss_bytes",
+      `2026-05-29T01:00:00Z\trenderer_heartbeat\t${2 * GIB}`,
+      "",
+    ].join("\n"),
+  );
+  writeFileSync(
+    path.join(readableDir, "runtime-health.jsonl"),
+    `${JSON.stringify({
+      tsMs: Date.parse("2026-05-29T02:00:00Z"),
+      event: "renderer_heartbeat",
+      webkitResidentBytes: 3 * GIB,
+    })}\n`,
+  );
+  const newer = new Date("2026-05-29T03:00:00Z");
+  const older = new Date("2026-05-29T01:00:00Z");
+  execFileSync("touch", ["-t", "202605290100", oldReadableDir]);
+  execFileSync("touch", ["-t", "202605290300", readableDir]);
+
+  assert.equal(findLatestReadableSoakDir(rootDir, emptyDir), readableDir);
+  const summary = resolveReadableSoak(emptyDir);
+  assert.equal(summary.soakDir, readableDir);
+  assert.equal(summary.fallbackFrom, emptyDir);
+  assert.equal(summary.sampleCount, 1);
+  assert.ok(summary.maxWebKitResidentBytes >= 3 * GIB);
+  assert.equal(newer > older, true);
 });
 
 test("daily bug memory summary keeps the latest dated scan", () => {

@@ -454,6 +454,7 @@ export function summarizeSoak(soakDir) {
     return {
       exists: false,
       soakDir,
+      fallbackFrom: "",
       sampleCount: 0,
       maxWebKitResidentBytes: null,
       maxEventLoopLagMs: null,
@@ -500,6 +501,7 @@ export function summarizeSoak(soakDir) {
   return {
     exists: true,
     soakDir,
+    fallbackFrom: "",
     sampleCount: Math.max(rows.length, healthRows.length),
     maxWebKitResidentBytes: Math.max(
       healthMaxWebKit ?? 0,
@@ -520,6 +522,80 @@ export function summarizeSoak(soakDir) {
       String(healthRows.at(-1)?.event ?? ""),
     firstTimestamp: rows[0]?.ts ?? String(healthRows[0]?.tsMs ?? ""),
     lastTimestamp: rows.at(-1)?.ts ?? String(healthRows.at(-1)?.tsMs ?? ""),
+  };
+}
+
+export function findLatestReadableSoakDir(rootDir, ignoredDir = "") {
+  if (!rootDir || !existsSync(rootDir)) {
+    return "";
+  }
+
+  let ignored = ignoredDir;
+  try {
+    ignored = ignoredDir ? realpathSync(ignoredDir) : "";
+  } catch {
+    ignored = ignoredDir;
+  }
+
+  let entries = [];
+  try {
+    entries = readdirSync(rootDir, { withFileTypes: true });
+  } catch {
+    return "";
+  }
+
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const candidatePath = path.join(rootDir, entry.name);
+      let resolved = candidatePath;
+      try {
+        resolved = realpathSync(candidatePath);
+      } catch {
+        resolved = candidatePath;
+      }
+      if (ignored && resolved === ignored) {
+        return null;
+      }
+      const summary = summarizeSoak(candidatePath);
+      if (summary.sampleCount <= 0) {
+        return null;
+      }
+      let mtimeMs = 0;
+      try {
+        mtimeMs = statSync(candidatePath).mtimeMs;
+      } catch {
+        mtimeMs = 0;
+      }
+      return {
+        path: candidatePath,
+        mtimeMs,
+        sampleCount: summary.sampleCount,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => {
+      if (right.mtimeMs !== left.mtimeMs) {
+        return right.mtimeMs - left.mtimeMs;
+      }
+      return right.sampleCount - left.sampleCount;
+    })[0]?.path ?? "";
+}
+
+export function resolveReadableSoak(soakDir = "", pointerPath = DEFAULT_SOAK_POINTER) {
+  const preferredDir = soakDir || resolveCurrentSoakDir(pointerPath);
+  const preferred = summarizeSoak(preferredDir);
+  if (preferred.sampleCount > 0) {
+    return preferred;
+  }
+
+  const fallbackDir = findLatestReadableSoakDir(path.dirname(preferredDir || DEFAULT_SOAK_POINTER), preferredDir);
+  if (!fallbackDir) {
+    return preferred;
+  }
+  return {
+    ...summarizeSoak(fallbackDir),
+    fallbackFrom: preferredDir,
   };
 }
 
@@ -913,6 +989,23 @@ export function collectRiskSnapshot({
         evidence: [soak.soakDir],
         remediation:
           "Inspect the soak loop and restart it before treating soak-backed performance targets as measured evidence.",
+      }),
+    );
+  }
+
+  if (soak.exists && soak.fallbackFrom) {
+    risks.push(
+      riskItem({
+        id: "soak-fallback-evidence",
+        severity: "info",
+        title: "Planner used the newest readable soak instead of the current pointer",
+        evidence: [
+          `Pointer ${soak.fallbackFrom}`,
+          `Readable soak ${soak.soakDir}`,
+          `${numberFormatter.format(soak.sampleCount)} samples`,
+        ],
+        remediation:
+          "Refresh the current soak pointer after the soak loop restarts so future runs use the active installed-build evidence directly.",
       }),
     );
   }
@@ -1411,6 +1504,7 @@ export function buildReport({ repo, soak, riskSnapshot, duplicateWork, outcomeLe
     "## Current Evidence",
     "",
     `- Soak directory: ${soak.soakDir || "none"}`,
+    `- Soak fallback from: ${soak.fallbackFrom || "none"}`,
     `- Soak samples: ${numberFormatter.format(soak.sampleCount)}`,
     `- Max WebKit RSS: ${formatBytes(soak.maxWebKitResidentBytes)}`,
     `- Max event loop lag: ${numberFormatter.format(soak.maxEventLoopLagMs ?? 0)} ms`,
@@ -1761,8 +1855,7 @@ export function writeRunPlan({ runDir, repo, soak, riskSnapshot, duplicateWork, 
 }
 
 export function planNightlyRun(args) {
-  const soakDir = args.soakDir || resolveCurrentSoakDir();
-  const soak = summarizeSoak(soakDir);
+  const soak = resolveReadableSoak(args.soakDir);
   const dailyBug = summarizeDailyBugMemory(args.dailyBugMemory);
   const repo = collectRepoSnapshot(args.repo);
   const peerWorktrees = collectPeerWorktrees(args.repo, args.peerWorktrees, args.peerScan);
