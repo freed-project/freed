@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 import {
   applyOutcomeFeedback,
+  appendOutcomeLedger,
   buildCandidates,
   buildExecutionPlan,
   collectRepoSnapshot,
@@ -303,6 +304,31 @@ test("outcome feedback raises shipped target kinds and lowers failed ones", () =
   assert.equal(adjusted[1].outcomeFeedback.failed, 2);
 });
 
+test("appendOutcomeLedger records closeout entries for future scoring", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-outcome-append-"));
+  const ledgerPath = path.join(dir, "outcomes.jsonl");
+  const entry = appendOutcomeLedger(
+    ledgerPath,
+    {
+      id: "webkit-memory-pressure",
+      kind: "performance",
+      outcome: "shipped",
+      notes: "Merged and soaked.",
+      pr: "617",
+      build: "v26.5.2900-dev",
+      runDir: "/tmp/nightly-run",
+    },
+    new Date("2026-05-29T12:00:00Z"),
+  );
+
+  assert.equal(entry.ts, "2026-05-29T12:00:00.000Z");
+  const lines = readFileSync(ledgerPath, "utf8").trim().split("\n");
+  assert.equal(lines.length, 1);
+  const ledger = summarizeOutcomeLedger(ledgerPath);
+  assert.equal(ledger.byKind.performance.shipped, 1);
+  assert.equal(ledger.byId["webkit-memory-pressure"].shipped, 1);
+});
+
 test("risk snapshot reports dirty worktrees, generated artifacts, stale soak, and paused automation", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-risk-snapshot-"));
   const reportDir = path.join(dir, "packages/desktop/playwright-report");
@@ -384,6 +410,7 @@ test("writeRunPlan emits report, targets, and task prompts", () => {
   assert.equal(path.basename(result.tasksDir), "tasks");
   assert.equal(path.basename(result.riskSnapshotPath), "risk-snapshot.md");
   assert.equal(path.basename(result.executionPlanPath), "execution-plan.md");
+  assert.equal(path.basename(result.outcomeCloseoutPath), "outcome-closeout.md");
   assert.equal(path.basename(result.outcomeTemplatePath), "outcome-template.jsonl");
 });
 
@@ -408,7 +435,31 @@ test("execution plan includes peer review and release soak gates", () => {
 
 test("argument parsing validates numeric budgets", () => {
   assert.throws(() => parseArgs(["--max-targets", "0"]), /maxTargets/);
+  assert.throws(() => parseArgs(["--record-outcome", "target"]), /record-kind/);
+  assert.throws(
+    () =>
+      parseArgs([
+        "--record-outcome",
+        "target",
+        "--record-kind",
+        "performance",
+        "--record-status",
+        "maybe",
+      ]),
+    /record-status/,
+  );
   assert.equal(parseArgs(["--memory-gib", "3"]).memoryGib, 3);
+  assert.equal(
+    parseArgs([
+      "--record-outcome",
+      "target",
+      "--record-kind",
+      "performance",
+      "--record-status",
+      "shipped",
+    ]).recordStatus,
+    "shipped",
+  );
   assert.equal(parseArgs(["--peer-worktree", "/tmp/peer", "--no-peer-scan"]).peerScan, false);
 });
 

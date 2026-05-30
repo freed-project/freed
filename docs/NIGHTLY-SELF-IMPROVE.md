@@ -58,6 +58,12 @@ Use a custom outcome ledger:
 node scripts/nightly-self-improve.mjs --outcome-ledger /tmp/freed-nightly-self-improve/outcomes.jsonl
 ```
 
+Record a finished target directly into the ledger:
+
+```bash
+node scripts/nightly-self-improve.mjs --outcome-ledger /tmp/freed-nightly-self-improve/outcomes.jsonl --record-outcome webkit-memory-pressure --record-kind performance --record-status shipped --record-pr 617 --record-build v26.5.2900-dev --record-notes "Merged, installed, and soaked."
+```
+
 The generated run directory contains:
 
 - `report.md`: morning-readable summary
@@ -65,9 +71,10 @@ The generated run directory contains:
 - `risk-snapshot.md` and `risk-snapshot.json`: preflight blockers, warnings, evidence, and remediation steps
 - `tasks/*.md`: one implementation prompt per selected target
 - `execution-plan.md` and `execution-plan.json`: ordered phases, command hints, and stop gates
+- `outcome-closeout.md`: one ready-to-run ledger command per selected target
 - `outcome-template.jsonl`: lines to append back into the outcome ledger after the run
 
-Reports include an execution phase list so the night can move from evidence, to peer comparison, to implementation, validation, dev build shipping, installed-build soak, and the morning digest.
+Reports include an execution phase list so the night can move from evidence, to peer comparison, to implementation, validation, dev build shipping, installed-build soak, ledger closeout, and the morning digest.
 
 ## Safety Gates
 
@@ -79,7 +86,7 @@ Every execution phase has a stop gate. The runner should stop rather than freest
 
 ## Next Improvements
 
-- Wire the generated outcome template into the actual overnight closeout so target scoring learns without manual copying.
+- Compare each recorded outcome to the prior target score so repeated misses automatically lower future priority.
 - Compare every morning report against the previous installed build, especially WebKit RSS and frame budget deltas.
 - Let a run split itself into phases: plan, fix, validate, publish PR, merge when green, ship dev build, install, then soak.
 - Add a duplicate-work detector that notices when two night agents are chasing the same bottleneck.

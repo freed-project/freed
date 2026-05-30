@@ -2,6 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -46,6 +47,12 @@ Options:
   --peer-worktree <path>        Extra local worktree to compare and rank as a peer target.
   --no-peer-scan                Skip automatic git worktree discovery.
   --outcome-ledger <path>       JSONL file with prior target outcomes.
+  --record-outcome <id>         Append a finished target outcome to the outcome ledger.
+  --record-kind <kind>          Target kind for --record-outcome.
+  --record-status <status>      Outcome status: shipped, validated, blocked, or failed.
+  --record-notes <text>         Notes for --record-outcome.
+  --record-pr <number>          Pull request number or URL for --record-outcome.
+  --record-build <version>      Dev build version for --record-outcome.
   --max-targets <count>         Maximum targets to select. Defaults to 3.
   --duration-minutes <count>    Planning budget for one night. Defaults to 480.
   --memory-gib <count>          WebKit RSS budget before memory work wins. Defaults to 2.5.
@@ -60,11 +67,18 @@ export function parseArgs(argv) {
   const args = {
     repo: process.cwd(),
     runDir: "",
+    runDirProvided: false,
     soakDir: "",
     dailyBugMemory: DEFAULT_DAILY_BUG_MEMORY,
     crashAutomation: DEFAULT_CRASH_AUTOMATION,
     devBotMemory: DEFAULT_DEV_BOT_MEMORY,
     outcomeLedger: DEFAULT_OUTCOME_LEDGER,
+    recordOutcome: "",
+    recordKind: "",
+    recordStatus: "validated",
+    recordNotes: "",
+    recordPr: "",
+    recordBuild: "",
     peerWorktrees: [],
     peerScan: true,
     maxTargets: 3,
@@ -85,6 +99,7 @@ export function parseArgs(argv) {
         break;
       case "--run-dir":
         args.runDir = argv[index + 1] ?? "";
+        args.runDirProvided = true;
         index += 1;
         break;
       case "--soak-dir":
@@ -104,6 +119,30 @@ export function parseArgs(argv) {
         break;
       case "--outcome-ledger":
         args.outcomeLedger = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-outcome":
+        args.recordOutcome = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-kind":
+        args.recordKind = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-status":
+        args.recordStatus = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-notes":
+        args.recordNotes = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-pr":
+        args.recordPr = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-build":
+        args.recordBuild = argv[index + 1] ?? "";
         index += 1;
         break;
       case "--max-targets":
@@ -142,6 +181,14 @@ export function parseArgs(argv) {
 
   if (!args.repo) {
     throw new Error("A repo path is required.");
+  }
+  if (args.recordOutcome) {
+    if (!args.recordKind) {
+      throw new Error("record-kind is required when record-outcome is set.");
+    }
+    if (!["shipped", "validated", "blocked", "failed"].includes(args.recordStatus)) {
+      throw new Error("record-status must be shipped, validated, blocked, or failed.");
+    }
   }
   if (!Number.isFinite(args.maxTargets) || args.maxTargets < 1) {
     throw new Error("maxTargets must be at least 1.");
@@ -279,6 +326,36 @@ export function summarizeOutcomeLedger(filePath) {
     byKind: Object.fromEntries(byKind),
     byId: Object.fromEntries(byId),
   };
+}
+
+export function appendOutcomeLedger(filePath, entry, now = new Date()) {
+  if (!entry?.id || !entry?.kind || !entry?.outcome) {
+    throw new Error("Outcome ledger entries require id, kind, and outcome.");
+  }
+  if (!["shipped", "validated", "blocked", "failed"].includes(entry.outcome)) {
+    throw new Error("Outcome must be shipped, validated, blocked, or failed.");
+  }
+
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  const cleanEntry = {
+    ts: now.toISOString(),
+    id: String(entry.id),
+    kind: String(entry.kind),
+    outcome: String(entry.outcome),
+    notes: String(entry.notes ?? ""),
+  };
+  if (entry.pr) {
+    cleanEntry.pr = String(entry.pr);
+  }
+  if (entry.build) {
+    cleanEntry.build = String(entry.build);
+  }
+  if (entry.runDir) {
+    cleanEntry.runDir = String(entry.runDir);
+  }
+
+  appendFileSync(filePath, `${JSON.stringify(cleanEntry)}\n`);
+  return cleanEntry;
 }
 
 export function parseTsv(text) {
@@ -1389,12 +1466,46 @@ function renderExecutionPlanMarkdown(phases) {
   ].join("\n");
 }
 
+function buildOutcomeCommand(candidate, outcomeLedger) {
+  return [
+    "node scripts/nightly-self-improve.mjs",
+    `--outcome-ledger ${JSON.stringify(outcomeLedger)}`,
+    `--record-outcome ${JSON.stringify(candidate.id)}`,
+    `--record-kind ${JSON.stringify(candidate.kind)}`,
+    "--record-status validated",
+    "--record-notes \"replace with closeout notes\"",
+  ].join(" ");
+}
+
+function renderOutcomeCloseoutMarkdown({ selected, outcomeLedger }) {
+  return [
+    "# Nightly Outcome Closeout",
+    "",
+    `Outcome ledger: ${outcomeLedger}`,
+    "",
+    "Run one command per selected target after the target finishes. Use `shipped` only after the fix is merged, released when applicable, installed, and soaked enough to compare evidence.",
+    "",
+    ...selected.flatMap((candidate, index) => [
+      `## ${index + 1}. ${candidate.title}`,
+      "",
+      `Target: ${candidate.id}`,
+      `Kind: ${candidate.kind}`,
+      "",
+      "Command:",
+      "",
+      `\`${buildOutcomeCommand(candidate, outcomeLedger)}\``,
+      "",
+    ]),
+  ].join("\n");
+}
+
 export function writeRunPlan({ runDir, repo, soak, riskSnapshot, peerWorktrees = [], candidates, selected, options }) {
   mkdirSync(runDir, { recursive: true });
   const tasksDir = path.join(runDir, "tasks");
   mkdirSync(tasksDir, { recursive: true });
 
-  const outcomeLedger = options.outcomeLedgerSummary ?? { path: options.outcomeLedger, entries: [] };
+  const outcomeLedgerPath = options.outcomeLedger ?? DEFAULT_OUTCOME_LEDGER;
+  const outcomeLedger = options.outcomeLedgerSummary ?? { path: outcomeLedgerPath, entries: [] };
   const safeRiskSnapshot =
     riskSnapshot ??
     {
@@ -1408,12 +1519,17 @@ export function writeRunPlan({ runDir, repo, soak, riskSnapshot, peerWorktrees =
     };
   const executionPlan = buildExecutionPlan(selected);
   const report = buildReport({ repo, soak, riskSnapshot: safeRiskSnapshot, outcomeLedger, candidates, selected, options });
+  const outcomeCloseout = renderOutcomeCloseoutMarkdown({
+    selected,
+    outcomeLedger: outcomeLedgerPath,
+  });
   writeFileSync(path.join(runDir, "report.md"), report);
   writeFileSync(path.join(runDir, "targets.json"), `${JSON.stringify({ repo, soak, riskSnapshot: safeRiskSnapshot, peerWorktrees, outcomeLedger, executionPlan, candidates, selected }, null, 2)}\n`);
   writeFileSync(path.join(runDir, "risk-snapshot.json"), `${JSON.stringify(safeRiskSnapshot, null, 2)}\n`);
   writeFileSync(path.join(runDir, "risk-snapshot.md"), renderRiskSnapshotMarkdown(safeRiskSnapshot));
   writeFileSync(path.join(runDir, "execution-plan.json"), `${JSON.stringify(executionPlan, null, 2)}\n`);
   writeFileSync(path.join(runDir, "execution-plan.md"), renderExecutionPlanMarkdown(executionPlan));
+  writeFileSync(path.join(runDir, "outcome-closeout.md"), outcomeCloseout);
   writeFileSync(
     path.join(runDir, "outcome-template.jsonl"),
     selected
@@ -1424,6 +1540,7 @@ export function writeRunPlan({ runDir, repo, soak, riskSnapshot, peerWorktrees =
           kind: candidate.kind,
           outcome: "validated",
           notes: "Replace outcome with shipped, validated, blocked, or failed after the run.",
+          command: buildOutcomeCommand(candidate, outcomeLedgerPath),
         }),
       )
       .join("\n") + "\n",
@@ -1440,6 +1557,7 @@ export function writeRunPlan({ runDir, repo, soak, riskSnapshot, peerWorktrees =
     tasksDir,
     riskSnapshotPath: path.join(runDir, "risk-snapshot.md"),
     executionPlanPath: path.join(runDir, "execution-plan.md"),
+    outcomeCloseoutPath: path.join(runDir, "outcome-closeout.md"),
     outcomeTemplatePath: path.join(runDir, "outcome-template.jsonl"),
   };
 }
@@ -1494,6 +1612,7 @@ function textSummary(plan, writeResult, args) {
     lines.push(`Tasks: ${writeResult.tasksDir}`);
     lines.push(`Risk snapshot: ${writeResult.riskSnapshotPath}`);
     lines.push(`Execution plan: ${writeResult.executionPlanPath}`);
+    lines.push(`Outcome closeout: ${writeResult.outcomeCloseoutPath}`);
     lines.push(`Outcome template: ${writeResult.outcomeTemplatePath}`);
   }
 
@@ -1508,6 +1627,26 @@ export function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
     process.stdout.write(usage());
+    return;
+  }
+
+  if (args.recordOutcome) {
+    const entry = appendOutcomeLedger(args.outcomeLedger, {
+      id: args.recordOutcome,
+      kind: args.recordKind,
+      outcome: args.recordStatus,
+      notes: args.recordNotes,
+      pr: args.recordPr,
+      build: args.recordBuild,
+      runDir: args.runDirProvided ? args.runDir : "",
+    });
+    if (args.json) {
+      process.stdout.write(`${JSON.stringify(entry, null, 2)}\n`);
+    } else {
+      process.stdout.write(
+        `Recorded ${entry.outcome} outcome for ${entry.id} in ${args.outcomeLedger}.\n`,
+      );
+    }
     return;
   }
 
