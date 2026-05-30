@@ -43,6 +43,8 @@ Options:
   --repo <path>                 Repo to inspect. Defaults to the current Freed checkout.
   --run-dir <path>              Directory for generated nightly plan files.
   --soak-dir <path>             Installed-build soak directory to inspect.
+  --soak-pointer <path>         Pointer file for the active installed-build soak.
+  --repair-soak-pointer         Point an empty or unreadable active soak at the newest readable soak.
   --daily-bug-memory <path>     Daily bug scan memory file to fold into target selection.
   --peer-worktree <path>        Extra local worktree to compare and rank as a peer target.
   --no-peer-scan                Skip automatic git worktree discovery.
@@ -69,6 +71,8 @@ export function parseArgs(argv) {
     runDir: "",
     runDirProvided: false,
     soakDir: "",
+    soakPointer: DEFAULT_SOAK_POINTER,
+    repairSoakPointer: false,
     dailyBugMemory: DEFAULT_DAILY_BUG_MEMORY,
     crashAutomation: DEFAULT_CRASH_AUTOMATION,
     devBotMemory: DEFAULT_DEV_BOT_MEMORY,
@@ -105,6 +109,13 @@ export function parseArgs(argv) {
       case "--soak-dir":
         args.soakDir = argv[index + 1] ?? "";
         index += 1;
+        break;
+      case "--soak-pointer":
+        args.soakPointer = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--repair-soak-pointer":
+        args.repairSoakPointer = true;
         break;
       case "--daily-bug-memory":
         args.dailyBugMemory = argv[index + 1] ?? "";
@@ -182,6 +193,12 @@ export function parseArgs(argv) {
   if (!args.repo) {
     throw new Error("A repo path is required.");
   }
+  if (!args.soakPointer) {
+    throw new Error("A soak pointer path is required.");
+  }
+  if (args.repairSoakPointer && args.soakDir) {
+    throw new Error("repair-soak-pointer cannot be combined with an explicit soak-dir.");
+  }
   if (args.recordOutcome) {
     if (!args.recordKind) {
       throw new Error("record-kind is required when record-outcome is set.");
@@ -201,6 +218,7 @@ export function parseArgs(argv) {
   }
 
   args.repo = path.resolve(args.repo);
+  args.soakPointer = path.resolve(args.soakPointer);
   args.outcomeLedger = path.resolve(args.outcomeLedger);
   args.peerWorktrees = args.peerWorktrees.filter(Boolean).map((item) => path.resolve(item));
   args.runDir =
@@ -596,6 +614,52 @@ export function resolveReadableSoak(soakDir = "", pointerPath = DEFAULT_SOAK_POI
   return {
     ...summarizeSoak(fallbackDir),
     fallbackFrom: preferredDir,
+  };
+}
+
+export function repairSoakPointer(pointerPath = DEFAULT_SOAK_POINTER, options = {}) {
+  const currentDir = resolveCurrentSoakDir(pointerPath);
+  const current = summarizeSoak(currentDir);
+  if (current.sampleCount > 0) {
+    return {
+      repaired: false,
+      reason: "current-readable",
+      pointerPath,
+      previousDir: currentDir,
+      readableDir: currentDir,
+      sampleCount: current.sampleCount,
+      dryRun: Boolean(options.dryRun),
+    };
+  }
+
+  const rootDir = path.dirname(currentDir || pointerPath);
+  const readableDir = findLatestReadableSoakDir(rootDir, currentDir);
+  if (!readableDir) {
+    return {
+      repaired: false,
+      reason: "no-readable-soak",
+      pointerPath,
+      previousDir: currentDir,
+      readableDir: "",
+      sampleCount: 0,
+      dryRun: Boolean(options.dryRun),
+    };
+  }
+
+  const readable = summarizeSoak(readableDir);
+  if (!options.dryRun) {
+    mkdirSync(path.dirname(pointerPath), { recursive: true });
+    writeFileSync(pointerPath, `${readableDir}\n`);
+  }
+
+  return {
+    repaired: !options.dryRun,
+    reason: options.dryRun ? "dry-run" : "repaired",
+    pointerPath,
+    previousDir: currentDir,
+    readableDir,
+    sampleCount: readable.sampleCount,
+    dryRun: Boolean(options.dryRun),
   };
 }
 
@@ -1855,7 +1919,7 @@ export function writeRunPlan({ runDir, repo, soak, riskSnapshot, duplicateWork, 
 }
 
 export function planNightlyRun(args) {
-  const soak = resolveReadableSoak(args.soakDir);
+  const soak = resolveReadableSoak(args.soakDir, args.soakPointer);
   const dailyBug = summarizeDailyBugMemory(args.dailyBugMemory);
   const repo = collectRepoSnapshot(args.repo);
   const peerWorktrees = collectPeerWorktrees(args.repo, args.peerWorktrees, args.peerScan);
@@ -1941,6 +2005,22 @@ export function main(argv = process.argv.slice(2)) {
     } else {
       process.stdout.write(
         `Recorded ${entry.outcome} outcome for ${entry.id} in ${args.outcomeLedger}.\n`,
+      );
+    }
+    return;
+  }
+
+  if (args.repairSoakPointer) {
+    const repair = repairSoakPointer(args.soakPointer, { dryRun: args.dryRun });
+    if (args.json) {
+      process.stdout.write(`${JSON.stringify(repair, null, 2)}\n`);
+    } else if (repair.repaired) {
+      process.stdout.write(
+        `Repaired soak pointer ${repair.pointerPath} from ${repair.previousDir || "none"} to ${repair.readableDir} with ${numberFormatter.format(repair.sampleCount)} samples.\n`,
+      );
+    } else {
+      process.stdout.write(
+        `Did not repair soak pointer ${repair.pointerPath}: ${repair.reason}.\n`,
       );
     }
     return;

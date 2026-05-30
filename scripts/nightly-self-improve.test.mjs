@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -18,6 +18,7 @@ import {
   parseArgs,
   parseGitWorktreePorcelain,
   parseTsv,
+  repairSoakPointer,
   resolveReadableSoak,
   selectTargets,
   summarizeOutcomeLedger,
@@ -98,6 +99,56 @@ test("resolveReadableSoak falls back from an empty current soak to the newest re
   assert.equal(summary.sampleCount, 1);
   assert.ok(summary.maxWebKitResidentBytes >= 3 * GIB);
   assert.equal(newer > older, true);
+});
+
+test("repairSoakPointer rewrites an unreadable pointer to the newest readable soak", () => {
+  const rootDir = mkdtempSync(path.join(os.tmpdir(), "freed-soak-repair-"));
+  const pointerPath = path.join(rootDir, "current-soak-dir");
+  const emptyDir = path.join(rootDir, "empty");
+  const readableDir = path.join(rootDir, "readable");
+  mkdirSync(emptyDir);
+  mkdirSync(readableDir);
+  writeFileSync(pointerPath, `${emptyDir}\n`);
+  writeFileSync(
+    path.join(readableDir, "metrics.tsv"),
+    [
+      "ts\thealth_event\thealth_webkit_rss_bytes",
+      `2026-05-29T01:00:00Z\trenderer_heartbeat\t${2 * GIB}`,
+      "",
+    ].join("\n"),
+  );
+
+  const repair = repairSoakPointer(pointerPath);
+  assert.equal(repair.repaired, true);
+  assert.equal(repair.reason, "repaired");
+  assert.equal(repair.previousDir, realpathSync(emptyDir));
+  assert.equal(repair.readableDir, realpathSync(readableDir));
+  assert.equal(repair.sampleCount, 1);
+  assert.equal(readFileSync(pointerPath, "utf8").trim(), realpathSync(readableDir));
+});
+
+test("repairSoakPointer dry run reports the target without changing the pointer", () => {
+  const rootDir = mkdtempSync(path.join(os.tmpdir(), "freed-soak-repair-dry-"));
+  const pointerPath = path.join(rootDir, "current-soak-dir");
+  const emptyDir = path.join(rootDir, "empty");
+  const readableDir = path.join(rootDir, "readable");
+  mkdirSync(emptyDir);
+  mkdirSync(readableDir);
+  writeFileSync(pointerPath, `${emptyDir}\n`);
+  writeFileSync(
+    path.join(readableDir, "runtime-health.jsonl"),
+    `${JSON.stringify({
+      tsMs: Date.parse("2026-05-29T02:00:00Z"),
+      event: "renderer_heartbeat",
+      webkitResidentBytes: 3 * GIB,
+    })}\n`,
+  );
+
+  const repair = repairSoakPointer(pointerPath, { dryRun: true });
+  assert.equal(repair.repaired, false);
+  assert.equal(repair.reason, "dry-run");
+  assert.equal(repair.readableDir, realpathSync(readableDir));
+  assert.equal(readFileSync(pointerPath, "utf8").trim(), emptyDir);
 });
 
 test("daily bug memory summary keeps the latest dated scan", () => {
@@ -566,6 +617,12 @@ test("argument parsing validates numeric budgets", () => {
     /record-status/,
   );
   assert.equal(parseArgs(["--memory-gib", "3"]).memoryGib, 3);
+  assert.equal(parseArgs(["--soak-pointer", "/tmp/pointer"]).soakPointer, "/tmp/pointer");
+  assert.equal(parseArgs(["--repair-soak-pointer"]).repairSoakPointer, true);
+  assert.throws(
+    () => parseArgs(["--repair-soak-pointer", "--soak-dir", "/tmp/soak"]),
+    /repair-soak-pointer/,
+  );
   assert.equal(
     parseArgs([
       "--record-outcome",
