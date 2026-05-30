@@ -504,7 +504,7 @@ export function countFriendsWithRecentLocationUpdates(
           item.platform,
           item.author.id,
         );
-    if (friend && (!accounts || friend.relationshipStatus === "friend")) {
+    if (friend?.relationshipStatus === "friend") {
       friendIds.add(friend.id);
     }
   }
@@ -545,12 +545,6 @@ export function resolveMapMode(
 ): MapMode {
   if (!preferredMode) {
     return getDefaultMapMode(friendMarkerCount, allContentMarkerCount);
-  }
-  if (preferredMode === "friends" && friendMarkerCount === 0 && allContentMarkerCount > 0) {
-    return "all_content";
-  }
-  if (preferredMode === "all_content" && allContentMarkerCount === 0 && friendMarkerCount > 0) {
-    return "friends";
   }
   return preferredMode;
 }
