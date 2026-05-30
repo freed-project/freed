@@ -3,7 +3,7 @@
 > **Status:** 🚧 In Progress
 > **Dependencies:** Phase 1-2 (Capture layers ✓)
 >
-> Local relay, GDrive/Dropbox cloud sync, desktop local snapshot rotation, "Sync Now" button, "Last synced" indicator, native Google token exchange for Freed Desktop, durable Google OAuth refresh, appDataFolder Drive polling, cloud sync health diagnostics, and the no-cloud-sync launch banner are all working. iCloud sync is the remaining open item.
+> Local relay, GDrive/Dropbox cloud sync, desktop local snapshot rotation, "Sync Now" button, "Last synced" indicator, proxied Google token exchange for Freed Desktop, durable Google OAuth refresh, appDataFolder Drive polling, cloud sync health diagnostics, and the no-cloud-sync launch banner are all working. iCloud sync is the remaining open item.
 
 ---
 
@@ -290,7 +290,7 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] QR code or manual pairing connects PWA to Desktop (SyncConnectDialog with QR scanner)
 - [x] Sync connection status observable (`onStatusChange` listener in sync.ts)
 - [x] PWA falls back to cloud sync when away from home (GDrive + Dropbox PKCE OAuth, Automerge merge-upload)
-- [x] Google Drive uses native Google token exchange in Freed Desktop, keeps the proxy path opt-in for hosted web OAuth, watches appDataFolder changes, and refreshes stored OAuth credentials before Drive or Contacts calls
+- [x] Google Drive uses the server token proxy in Freed Desktop so the Google client secret stays out of the app bundle, watches appDataFolder changes, and refreshes stored OAuth credentials before Drive or Contacts calls
 - [x] At least one cloud provider works: GDrive and Dropbox both confirmed working on app.freed.wtf
 - [x] Desktop surfaces cloud sync health with retry/reconnect actions, recent failures, and debug charts
 - [x] Desktop no-cloud-sync launch banner self-dismisses after 15 seconds with a gentle countdown ring

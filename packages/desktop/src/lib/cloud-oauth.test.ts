@@ -107,7 +107,7 @@ describe("desktop Google OAuth", () => {
     localStorage.clear();
   });
 
-  it("exchanges Google desktop callbacks directly through native Google OAuth", async () => {
+  it("exchanges Google desktop callbacks through the configured token proxy", async () => {
     const oauthCalls = await completeGoogleOAuth();
 
     const openedAuthUrl = shellOpenMock.mock.calls[0]?.[0] as string;
@@ -117,9 +117,23 @@ describe("desktop Google OAuth", () => {
 
     expect(oauthCalls).toHaveLength(1);
     const request = oauthCalls[0]!;
-    expect(request.url).toBe("https://oauth2.googleapis.com/token");
-    expect(request.contentType).toBe("application/x-www-form-urlencoded");
-    const body = new URLSearchParams(request.body);
+    expect(request.url).toBe("https://app.freed.wtf/api/oauth/google");
+    expect(request.contentType).toBe("application/json");
+    expect(JSON.parse(request.body)).toMatchObject({
+      code: "auth-code",
+      verifier: expect.any(String),
+      redirectUri: "http://localhost:45555/callback",
+      clientId: "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com",
+    });
+  });
+
+  it("uses native Google token exchange when no proxy URL is configured", async () => {
+    vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "");
+    const oauthCalls = await completeGoogleOAuth();
+
+    expect(oauthCalls[0]?.url).toBe("https://oauth2.googleapis.com/token");
+    expect(oauthCalls[0]?.contentType).toBe("application/x-www-form-urlencoded");
+    const body = new URLSearchParams(oauthCalls[0]!.body);
     expect(body.get("code")).toBe("auth-code");
     expect(body.get("code_verifier")).toEqual(expect.any(String));
     expect(body.get("redirect_uri")).toBe("http://localhost:45555/callback");
@@ -150,29 +164,18 @@ describe("desktop Google OAuth", () => {
     expect(new URL(openedAuthUrl).searchParams.get("client_id"))
       .toBe("304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com");
 
-    const body = new URLSearchParams(oauthCalls[0]!.body);
-    expect(body.get("client_id")).toBe("304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com");
+    expect(JSON.parse(oauthCalls[0]!.body)).toMatchObject({
+      clientId: "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com",
+    });
   });
 
-  it("exchanges non-default Google desktop clients directly unless proxy is forced", async () => {
+  it("exchanges non-default Google desktop clients through the proxy when no secret is bundled", async () => {
     vi.stubEnv("VITE_GDRIVE_DESKTOP_CLIENT_ID", "custom-web-client.apps.googleusercontent.com");
     const oauthCalls = await completeGoogleOAuth();
 
     const openedAuthUrl = shellOpenMock.mock.calls[0]?.[0] as string;
     expect(new URL(openedAuthUrl).searchParams.get("client_id"))
       .toBe("custom-web-client.apps.googleusercontent.com");
-
-    expect(oauthCalls[0]?.url).toBe("https://oauth2.googleapis.com/token");
-    expect(oauthCalls[0]?.contentType).toBe("application/x-www-form-urlencoded");
-    const body = new URLSearchParams(oauthCalls[0]!.body);
-    expect(body.get("client_id")).toBe("custom-web-client.apps.googleusercontent.com");
-    expect(body.get("redirect_uri")).toBe("http://localhost:45555/callback");
-  });
-
-  it("keeps the token proxy path only when explicitly forced", async () => {
-    vi.stubEnv("VITE_GDRIVE_DESKTOP_CLIENT_ID", "custom-web-client.apps.googleusercontent.com");
-    vi.stubEnv("VITE_GDRIVE_FORCE_TOKEN_PROXY", "1");
-    const oauthCalls = await completeGoogleOAuth();
 
     expect(oauthCalls[0]?.url).toBe("https://app.freed.wtf/api/oauth/google");
     expect(oauthCalls[0]?.contentType).toBe("application/json");
@@ -182,7 +185,30 @@ describe("desktop Google OAuth", () => {
     });
   });
 
-  it("refreshes Google desktop tokens through native Google OAuth", async () => {
+  it("uses direct Google token exchange with a configured secret unless proxy is forced", async () => {
+    vi.stubEnv("VITE_GDRIVE_DESKTOP_CLIENT_ID", "custom-web-client.apps.googleusercontent.com");
+    vi.stubEnv("VITE_GDRIVE_CLIENT_SECRET", "desktop-secret");
+    const oauthCalls = await completeGoogleOAuth();
+
+    expect(oauthCalls[0]?.url).toBe("https://oauth2.googleapis.com/token");
+    expect(oauthCalls[0]?.contentType).toBe("application/x-www-form-urlencoded");
+    const body = new URLSearchParams(oauthCalls[0]!.body);
+    expect(body.get("client_id")).toBe("custom-web-client.apps.googleusercontent.com");
+    expect(body.get("client_secret")).toBe("desktop-secret");
+  });
+
+  it("forces the token proxy even when a direct Google secret is configured", async () => {
+    vi.stubEnv("VITE_GDRIVE_DESKTOP_CLIENT_ID", "custom-web-client.apps.googleusercontent.com");
+    vi.stubEnv("VITE_GDRIVE_CLIENT_SECRET", "desktop-secret");
+    vi.stubEnv("VITE_GDRIVE_FORCE_TOKEN_PROXY", "1");
+    const oauthCalls = await completeGoogleOAuth();
+
+    expect(oauthCalls[0]?.url).toBe("https://app.freed.wtf/api/oauth/google");
+    expect(oauthCalls[0]?.contentType).toBe("application/json");
+    expect(JSON.parse(oauthCalls[0]!.body)).toMatchObject({ clientId: "custom-web-client.apps.googleusercontent.com" });
+  });
+
+  it("refreshes Google desktop tokens through the configured token proxy", async () => {
     const oauthCalls: Array<{ url: string; body: string; contentType: string }> = [];
     invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
       if (cmd === "google_oauth_proxy_request") {
@@ -211,12 +237,13 @@ describe("desktop Google OAuth", () => {
     const { getValidCloudToken } = await import("./sync");
 
     await expect(getValidCloudToken("gdrive")).resolves.toBe("refreshed-access-token");
-    expect(oauthCalls[0]?.url).toBe("https://oauth2.googleapis.com/token");
-    expect(oauthCalls[0]?.contentType).toBe("application/x-www-form-urlencoded");
-    const body = new URLSearchParams(oauthCalls[0]!.body);
-    expect(body.get("grant_type")).toBe("refresh_token");
-    expect(body.get("refresh_token")).toBe("refresh-token");
-    expect(body.get("client_id")).toBe("304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com");
+    expect(oauthCalls[0]?.url).toBe("https://app.freed.wtf/api/oauth/google");
+    expect(oauthCalls[0]?.contentType).toBe("application/json");
+    expect(JSON.parse(oauthCalls[0]!.body)).toMatchObject({
+      grantType: "refresh_token",
+      refreshToken: "refresh-token",
+      clientId: "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com",
+    });
   });
 
   it("cancels a pending Google desktop callback wait", async () => {
@@ -238,6 +265,7 @@ describe("desktop Google OAuth", () => {
   });
 
   it("surfaces Google token response bodies from native exchange failures", async () => {
+    vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "");
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "start_oauth_server") return 45555;
       if (cmd === "google_oauth_proxy_request") {
@@ -268,6 +296,7 @@ describe("desktop Google OAuth", () => {
   });
 
   it("keeps non-JSON Google token failures actionable", async () => {
+    vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "");
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "start_oauth_server") return 45555;
       if (cmd === "google_oauth_proxy_request") {
@@ -291,6 +320,37 @@ describe("desktop Google OAuth", () => {
 
     await expect(initiateDesktopOAuth("gdrive")).rejects.toThrow(
       "Google token exchange failed (502): <html>bad gateway</html>",
+    );
+  });
+
+  it("explains direct Google client secret failures", async () => {
+    vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "");
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "start_oauth_server") return 45555;
+      if (cmd === "google_oauth_proxy_request") {
+        return {
+          status: 400,
+          headers: [["content-type", "application/json"]],
+          body: Array.from(new TextEncoder().encode(JSON.stringify({
+            error: "invalid_request",
+            error_description: "client_secret is missing.",
+          }))),
+        };
+      }
+      return null;
+    });
+    shellOpenMock.mockImplementation(async (authUrl: string) => {
+      const state = new URL(authUrl).searchParams.get("state");
+      if (!state) throw new Error("Missing OAuth state");
+      queueMicrotask(() => {
+        oauthListener?.({ payload: { code: "auth-code", state } });
+      });
+    });
+
+    const { initiateDesktopOAuth } = await import("./sync");
+
+    await expect(initiateDesktopOAuth("gdrive")).rejects.toThrow(
+      "Freed Desktop is using direct Google token exchange for an OAuth client that requires a secret.",
     );
   });
 });

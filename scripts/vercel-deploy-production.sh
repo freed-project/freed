@@ -37,6 +37,7 @@ case "$TARGET" in
     APP_DIR="packages/pwa"
     STAGE_AT_ROOT="false"
     DEPENDENCY_DIRS=(
+      "packages/capture-save"
       "packages/shared"
       "packages/sync"
       "packages/ui"
@@ -48,9 +49,11 @@ case "$TARGET" in
     ;;
 esac
 
-mkdir -p "$TEMP_DIR/scripts" "$TEMP_DIR/.vercel"
+mkdir -p "$TEMP_DIR/scripts/lib" "$TEMP_DIR/.vercel"
 
 cp "$ROOT_DIR/scripts/patch-automerge.mjs" "$TEMP_DIR/scripts/patch-automerge.mjs"
+cp "$ROOT_DIR/scripts/lib/build-metadata.mjs" "$TEMP_DIR/scripts/lib/build-metadata.mjs"
+cp "$ROOT_DIR/scripts/lib/build-metadata.d.mts" "$TEMP_DIR/scripts/lib/build-metadata.d.mts"
 
 if [[ "$STAGE_AT_ROOT" == "true" ]]; then
   cp "$ROOT_DIR/package.json" "$TEMP_DIR/package.json"
@@ -74,8 +77,8 @@ else
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "buildCommand": "cd packages/pwa && PATH=../../node_modules/.bin:$PATH npm run build",
-  "outputDirectory": "packages/pwa/dist",
+  "buildCommand": "PATH=../../node_modules/.bin:$PATH npm run build",
+  "outputDirectory": "dist",
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }
 EOF
