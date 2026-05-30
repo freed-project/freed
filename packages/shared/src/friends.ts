@@ -6,6 +6,7 @@
  */
 
 import type { Account, FeedItem, Friend, Person, Platform } from "./types.js";
+import { isValidDiscoveredSocialFeedAuthor } from "./social-account-validity.js";
 
 const DEFAULT_INTERVALS: Record<1 | 2 | 3 | 4 | 5, number | null> = {
   5: 7,
@@ -106,6 +107,7 @@ export function buildDiscoveredAccountsFromItems(
 
   for (const item of items) {
     if (!SOCIAL_PLATFORMS.has(item.platform)) continue;
+    if (!isValidDiscoveredSocialFeedAuthor(item)) continue;
     const key = `${item.platform}:${item.author.id}`;
     if (seen.has(key)) continue;
     seen.add(key);

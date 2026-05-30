@@ -17,6 +17,7 @@ import { useSettingsStore } from "../../lib/settings-store.js";
 import {
   buildProvisionalPersonCandidates,
   buildDiscoveredAccountsFromItems,
+  isPrunableInvalidDiscoveredSocialAccount,
   type GoogleContact,
   type IdentitySuggestion,
   type SidebarMode,
@@ -64,6 +65,7 @@ export function AppShell({ children }: AppShellProps) {
   const persons = useAppStore((s) => s.persons);
   const addPerson = useAppStore((s) => s.addPerson);
   const addAccounts = useAppStore((s) => s.addAccounts);
+  const removeAccount = useAppStore((s) => s.removeAccount);
   const createConnectionPersonsFromCandidates = useAppStore((s) => s.createConnectionPersonsFromCandidates);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const themeId = useAppStore((s) => s.preferences.display.themeId);
@@ -104,6 +106,7 @@ export function AppShell({ children }: AppShellProps) {
   );
   const discoveredAccountScanRef = useRef({ itemCount: 0, accountCount: 0 });
   const provisionalPersonScanRef = useRef({ personCount: 0, accountCount: 0 });
+  const invalidAccountCleanupRef = useRef("");
   const blockingModalOpen =
     settingsOpen ||
     addFeedOpen ||
@@ -259,6 +262,28 @@ export function AppShell({ children }: AppShellProps) {
     if (activeView === "friends" && isMobileViewport) return;
     setFriendsMobileSurface("graph");
   }, [activeView, isMobileViewport]);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+    const prunableAccounts = Object.values(accounts).filter(isPrunableInvalidDiscoveredSocialAccount);
+    if (prunableAccounts.length === 0) return;
+    const cleanupSignature = prunableAccounts.map((account) => account.id).sort().join("|");
+    if (cleanupSignature === invalidAccountCleanupRef.current) return;
+    invalidAccountCleanupRef.current = cleanupSignature;
+    void Promise.all(prunableAccounts.map((account) => removeAccount(account.id)))
+      .then(() => {
+        invalidAccountCleanupRef.current = "";
+        addDebugEvent(
+          "change",
+          `[Identity] removed ${prunableAccounts.length.toLocaleString()} invalid Facebook account${prunableAccounts.length === 1 ? "" : "s"}`,
+        );
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        addDebugEvent("error", `[Identity] invalid Facebook account cleanup failed: ${message}`);
+        invalidAccountCleanupRef.current = "";
+      });
+  }, [accounts, isInitialized, removeAccount]);
 
   useEffect(() => {
     const itemCount = items.length;

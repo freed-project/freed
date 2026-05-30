@@ -117,6 +117,29 @@ describe("buildFriendCandidateSuggestions", () => {
     expect(suggestions).toEqual([]);
   });
 
+  it("hides Facebook UI chrome accounts", () => {
+    const suggestions = buildFriendCandidateSuggestions({
+      persons: [],
+      accounts: {
+        "social:facebook:unknown": {
+          ...account("social:facebook:unknown", "Create New Account", "unknown", undefined, "facebook"),
+          profileUrl: "https://www.facebook.com/r.php",
+        },
+        "social:facebook:bookmarks": {
+          ...account("social:facebook:bookmarks", "Your Shortcuts", "bookmarks", undefined, "facebook"),
+          profileUrl: "https://www.facebook.com/bookmarks",
+        },
+      },
+      feedItems: [
+        { ...item("facebook:unknown:1", "unknown", ["life_update", "moment"]), platform: "facebook" },
+        { ...item("facebook:bookmarks:1", "bookmarks", ["life_update", "place"]), platform: "facebook" },
+      ],
+      now: NOW,
+    });
+
+    expect(suggestions).toEqual([]);
+  });
+
   it("orders deterministically and keeps ids stable", () => {
     const input = {
       persons: [

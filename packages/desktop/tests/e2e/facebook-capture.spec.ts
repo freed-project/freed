@@ -189,6 +189,48 @@ test("Facebook sync excludes posts from filtered groups", async ({
             sharedFrom: null,
             group: null,
           },
+          {
+            id: "create-account-post",
+            url: "https://www.facebook.com/story.php?story_fbid=4&id=5",
+            authorName: "Create New Account",
+            authorProfileUrl: "https://www.facebook.com/r.php",
+            authorAvatarUrl: null,
+            text: "This is Facebook registration chrome and should be ignored",
+            timestampSeconds: 1709640002,
+            timestampIso: null,
+            mediaUrls: [],
+            hasVideo: false,
+            likeCount: null,
+            commentCount: null,
+            shareCount: null,
+            postType: "post",
+            location: null,
+            hashtags: [],
+            isShare: false,
+            sharedFrom: null,
+            group: null,
+          },
+          {
+            id: "shortcuts-post",
+            url: "https://www.facebook.com/story.php?story_fbid=6&id=7",
+            authorName: "Your Shortcuts",
+            authorProfileUrl: "https://www.facebook.com/bookmarks",
+            authorAvatarUrl: null,
+            text: "This is Facebook shortcut chrome and should be ignored",
+            timestampSeconds: 1709640003,
+            timestampIso: null,
+            mediaUrls: [],
+            hasVideo: false,
+            likeCount: null,
+            commentCount: null,
+            shareCount: null,
+            postType: "post",
+            location: null,
+            hashtags: [],
+            isShare: false,
+            sharedFrom: null,
+            group: null,
+          },
         ],
         extractedAt: Date.now(),
         url: "https://www.facebook.com/",
@@ -258,4 +300,26 @@ test("Facebook sync excludes posts from filtered groups", async ({
 
   expect(itemIds).toContain("fb:feed-post-2");
   expect(itemIds).not.toContain("fb:group-post-1");
+  expect(itemIds).not.toContain("fb:create-account-post");
+  expect(itemIds).not.toContain("fb:shortcuts-post");
+
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => { accounts: Record<string, { displayName?: string }> };
+    };
+    return Object.values(store.getState().accounts).some((account) => account.displayName === "Bob Builder");
+  });
+
+  const accountNames = await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => { accounts: Record<string, { displayName?: string }> };
+    };
+    return Object.values(store.getState().accounts).map((account) => account.displayName);
+  });
+
+  expect(accountNames).toContain("Bob Builder");
+  expect(accountNames).not.toContain("Create New Account");
+  expect(accountNames).not.toContain("Your Shortcuts");
 });
