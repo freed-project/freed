@@ -8,6 +8,7 @@ import {
   areNearDuplicates,
   buildReleaseDeck,
   compareTags,
+  compareVersionDays,
   dedupeSimilarStrings,
   dayDateFromVersion,
   MAX_FEATURES,
@@ -547,10 +548,8 @@ function parseArguments(argv) {
 }
 
 function previousPublishedDayRelease(version, publishedReleases) {
-  const dayKey = versionDayKey(version);
-
   return [...publishedReleases]
-    .filter((release) => versionDayKey(release.tag_name.replace(/^v/, "")) < dayKey)
+    .filter((release) => compareVersionDays(release.tag_name, version) < 0)
     .pop() ?? null;
 }
 

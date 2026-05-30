@@ -111,6 +111,23 @@ export function compareTags(a, b) {
   return left.channel === "dev" ? -1 : 1;
 }
 
+export function compareVersionDays(a, b) {
+  const left = parseComparableVersion(a);
+  const right = parseComparableVersion(b);
+  const leftDay = Math.floor(left.patch / 100);
+  const rightDay = Math.floor(right.patch / 100);
+
+  if (left.yy !== right.yy) {
+    return left.yy - right.yy;
+  }
+
+  if (left.month !== right.month) {
+    return left.month - right.month;
+  }
+
+  return leftDay - rightDay;
+}
+
 export function versionDayKey(version) {
   const parts = String(version ?? "")
     .replace(DEV_SUFFIX, "")

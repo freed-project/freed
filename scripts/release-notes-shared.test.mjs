@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildReleaseDeck,
   compareTags,
+  compareVersionDays,
   coerceReleaseShape,
   dayDateFromVersion,
   renderReleaseBody,
@@ -224,6 +225,14 @@ test("compareTags sorts dev releases before production for the same base version
   assert.equal(compareTags("v26.4.1200-dev", "v26.4.1200"), -1);
   assert.equal(compareTags("v26.4.1200", "v26.4.1200-dev"), 1);
   assert.equal(compareTags("v26.4.1201-dev", "v26.4.1200"), 1);
+});
+
+test("compareVersionDays sorts CalVer days numerically", () => {
+  assert.ok(compareVersionDays("v26.5.914-dev", "v26.5.1000-dev") < 0);
+  assert.ok(compareVersionDays("v26.5.1016-dev", "v26.5.1100-dev") < 0);
+  assert.ok(compareVersionDays("v26.5.1300-dev", "v26.5.2600-dev") < 0);
+  assert.ok(compareVersionDays("v26.5.1000-dev", "v26.5.914-dev") > 0);
+  assert.ok(compareVersionDays("v26.4.3006-dev", "v26.5.100-dev") < 0);
 });
 
 test("day helpers ignore the dev suffix", () => {
