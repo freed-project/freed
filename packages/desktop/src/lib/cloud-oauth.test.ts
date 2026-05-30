@@ -246,6 +246,87 @@ describe("desktop Google OAuth", () => {
     });
   });
 
+  it("coalesces concurrent Google desktop token refreshes", async () => {
+    const oauthCalls: Array<{ url: string; body: string; contentType: string }> = [];
+    invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "google_oauth_proxy_request") {
+        oauthCalls.push({
+          url: String(args?.url ?? ""),
+          body: String(args?.body ?? ""),
+          contentType: String(args?.contentType ?? ""),
+        });
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return {
+          status: 200,
+          headers: [["content-type", "application/json"]],
+          body: Array.from(new TextEncoder().encode(JSON.stringify({
+            access_token: "shared-refreshed-access-token",
+            expires_in: 3600,
+          }))),
+        };
+      }
+      return null;
+    });
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "expired-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() - 1,
+    }));
+
+    const { getValidCloudToken } = await import("./sync");
+
+    await expect(Promise.all([
+      getValidCloudToken("gdrive"),
+      getValidCloudToken("gdrive"),
+      getValidCloudToken("gdrive"),
+    ])).resolves.toEqual([
+      "shared-refreshed-access-token",
+      "shared-refreshed-access-token",
+      "shared-refreshed-access-token",
+    ]);
+    expect(oauthCalls).toHaveLength(1);
+  });
+
+  it("does not immediately refresh again when the token proxy omits expires_in", async () => {
+    const oauthCalls: Array<{ url: string; body: string; contentType: string }> = [];
+    invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "google_oauth_proxy_request") {
+        oauthCalls.push({
+          url: String(args?.url ?? ""),
+          body: String(args?.body ?? ""),
+          contentType: String(args?.contentType ?? ""),
+        });
+        return {
+          status: 200,
+          headers: [["content-type", "application/json"]],
+          body: Array.from(new TextEncoder().encode(JSON.stringify({
+            access_token: "fallback-expiring-access-token",
+          }))),
+        };
+      }
+      return null;
+    });
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "expired-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() - 1,
+    }));
+
+    const { getValidCloudToken } = await import("./sync");
+
+    await expect(getValidCloudToken("gdrive")).resolves.toBe("fallback-expiring-access-token");
+    await expect(getValidCloudToken("gdrive")).resolves.toBe("fallback-expiring-access-token");
+    expect(oauthCalls).toHaveLength(1);
+
+    const stored = JSON.parse(localStorage.getItem("freed_cloud_token_meta_gdrive") ?? "{}") as {
+      expiresAt?: number;
+      refreshToken?: string;
+    };
+    expect(stored.refreshToken).toBe("refresh-token");
+    expect(typeof stored.expiresAt).toBe("number");
+    expect(stored.expiresAt).toBeGreaterThan(Date.now() + 50 * 60 * 1000);
+  });
+
   it("cancels a pending Google desktop callback wait", async () => {
     shellOpenMock.mockResolvedValue(undefined);
 
