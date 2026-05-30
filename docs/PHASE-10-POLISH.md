@@ -122,6 +122,12 @@ Blank suggestions now stay compact. Individual RSS feeds and danger actions are 
 
 The shared extension points now live in `packages/ui/src/lib/command-palette.ts`, `packages/ui/src/lib/command-palette-registry.ts`, and `packages/ui/src/lib/command-surface-store.ts`.
 
+### Nightly Improvement Runner
+
+Freed now has a local nightly improvement planner in `scripts/nightly-self-improve.mjs`. It folds the installed-build soak, daily bug scan memory, crash-watch state, roadmap fallback memory, and current git state into a ranked queue of work that can run overnight.
+
+The runner can choose multiple targets in one night. Bug fixes are first-class targets through the existing daily bug scan memory, while performance, stability, release readiness, and roadmap work compete by score and machine-time budget. Provider-visible ideas stay blocked unless a human explicitly approves the fingerprinting risk.
+
 ### Keyboard Shortcuts
 
 ```typescript
@@ -466,6 +472,7 @@ Reward security researchers for responsible disclosure.
 - [ ] Discord server active
 - [ ] Bug bounty program published
 - [ ] Regular release schedule established
+- [x] Local nightly improvement runner ranks bug fix, performance, stability, release, and roadmap targets before autonomous work begins
 - [ ] Documentation site live
 
 ### Resilience
