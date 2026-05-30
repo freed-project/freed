@@ -31,7 +31,11 @@ import {
 import { describeInstalledBuild, readBuildMetadata } from "../lib/build-info.js";
 import { useDebugStore } from "../lib/debug-store.js";
 import { useSettingsStore } from "../lib/settings-store.js";
-import { refreshSampleLibraryData } from "../lib/sample-library-seed.js";
+import {
+  formatSampleDataSummary,
+  refreshSampleLibraryData,
+  summarizeSampleData,
+} from "../lib/sample-library-seed.js";
 import {
   applyThemeToDocument,
   persistTheme,
@@ -812,6 +816,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [deleteFromCloud, setDeleteFromCloud] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [showSampleSeedConfirm, setShowSampleSeedConfirm] = useState(false);
+  const [showSampleClearConfirm, setShowSampleClearConfirm] = useState(false);
   const [supportModalOpen, setSupportModalOpen] = useState(false);
 
   const handleReset = useCallback(async () => {
@@ -833,12 +838,21 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
   const friends = useAppStore((s) => s.friends);
+  const persons = useAppStore((s) => s.persons);
+  const accounts = useAppStore((s) => s.accounts);
   const addFeed = useAppStore((s) => s.addFeed);
   const addItems = useAppStore((s) => s.addItems);
   const addFriends = useAppStore((s) => s.addFriends);
+  const clearSampleData = useAppStore((s) => s.clearSampleData);
+  const [clearingSampleData, setClearingSampleData] = useState(false);
   const existingFeedCount = Object.keys(feeds).length;
   const existingFriendCount = Object.keys(friends).length;
   const existingItemCount = items.length;
+  const sampleDataSummary = useMemo(
+    () => summarizeSampleData({ items, feeds, persons, accounts }),
+    [accounts, feeds, items, persons],
+  );
+  const hasSampleData = sampleDataSummary.total > 0;
   const hasExistingLibraryData =
     existingFeedCount > 0 || existingFriendCount > 0 || existingItemCount > 0;
 
@@ -879,6 +893,21 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
     void handleSeedSampleData();
   }, [handleSeedSampleData, hasExistingLibraryData]);
+
+  const handleClearSampleData = useCallback(async () => {
+    setClearingSampleData(true);
+    toast.info("Clearing sample data...");
+    try {
+      const summary = await clearSampleData();
+      setSeedDone(false);
+      setShowSampleClearConfirm(false);
+      toast.success(`Sample data cleared: ${formatSampleDataSummary(summary)}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to clear sample data");
+    } finally {
+      setClearingSampleData(false);
+    }
+  }, [clearSampleData]);
 
   // ── Search ────────────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
@@ -1752,6 +1781,25 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   </svg>
                 )}
               </button>
+              {hasSampleData && (
+                <button
+                  onClick={() => setShowSampleClearConfirm(true)}
+                  disabled={clearingSampleData}
+                  className="theme-feedback-panel-danger w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <div>
+                    <p className="theme-feedback-text-danger text-sm">
+                      {clearingSampleData ? "Clearing sample data..." : "Clear sample data"}
+                    </p>
+                    <p className="mt-0.5 text-xs text-[rgb(var(--theme-feedback-danger-rgb)/0.72)]">
+                      Removes only internally marked sample records: {formatSampleDataSummary(sampleDataSummary)}
+                    </p>
+                  </div>
+                  <svg className="ml-3 h-4 w-4 shrink-0 text-[rgb(var(--theme-feedback-danger-rgb)/0.56)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m-8 0h10" />
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={() => setShowResetConfirm(true)}
                 className="theme-feedback-panel-danger w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors"
@@ -2129,6 +2177,56 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 className="theme-feedback-button-warning flex-1 px-4 py-2.5"
               >
                 Populate anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSampleClearConfirm && (
+        <div className="theme-elevated-overlay absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 sm:items-center">
+          <div className="theme-dialog-shell my-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[rgb(var(--theme-feedback-danger-rgb)/0.15)]">
+                <svg className="h-5 w-5 theme-feedback-text-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 4h.01m-7.938 4h15.876c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L2.33 17c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-text-primary">Clear sample data?</p>
+                <p className="mt-0.5 text-xs text-text-secondary">
+                  Only records with Freed's internal sample-data marker will be removed. Real library data is ignored.
+                </p>
+              </div>
+            </div>
+
+            <div className="theme-feedback-panel-danger mb-5 rounded-xl px-4 py-3">
+              <p className="theme-feedback-text-danger text-xs leading-5">
+                Ready to remove {formatSampleDataSummary(sampleDataSummary)}.
+              </p>
+              <p className="mt-2 text-xs leading-5 text-[rgb(var(--theme-feedback-danger-rgb)/0.72)]">
+                Older unmarked sample data will stay in place.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSampleClearConfirm(false)}
+                disabled={clearingSampleData}
+                className="flex-1 rounded-xl border border-[color:var(--theme-border)] px-4 py-2.5 text-text-secondary transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] hover:text-text-primary disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleClearSampleData();
+                }}
+                disabled={clearingSampleData}
+                className="theme-feedback-button-danger flex-1 px-4 py-2.5 disabled:opacity-50"
+              >
+                {clearingSampleData ? "Clearing..." : "Clear sample data"}
               </button>
             </div>
           </div>

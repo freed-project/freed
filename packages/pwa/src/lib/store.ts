@@ -34,6 +34,7 @@ import {
   docMarkAllAsRead,
   docToggleSaved,
   docRemoveFeedItem,
+  docClearSampleData,
   docToggleArchived,
   docArchiveItems,
   docToggleLiked,
@@ -306,6 +307,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeItem: async (id) => {
     await docRemoveFeedItem(id);
+  },
+
+  clearSampleData: async () => {
+    return docClearSampleData();
   },
 
   // Feed actions

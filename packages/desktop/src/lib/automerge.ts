@@ -28,6 +28,7 @@ import type {
   Person,
   ReachOutLog,
   RssFeed,
+  SampleDataClearSummary,
   UserPreferences,
 } from "@freed/shared";
 import type { DocChangeEvent, DocState, DocStats, WorkerRequest, WorkerResponse } from "./automerge-types";
@@ -99,6 +100,14 @@ const pendingContentSignalBackfill = new Map<
   number,
   {
     resolve: (summary: ContentSignalBackfillSummary) => void;
+    reject: (err: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }
+>();
+const pendingSampleDataClear = new Map<
+  number,
+  {
+    resolve: (summary: SampleDataClearSummary) => void;
     reject: (err: Error) => void;
     timer: ReturnType<typeof setTimeout>;
   }
@@ -304,12 +313,29 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     return;
   }
 
+  if (msg.type === "SAMPLE_DATA_CLEAR_RESULT") {
+    const pendingClear = pendingSampleDataClear.get(msg.reqId);
+    if (!pendingClear) return;
+    clearTimeout(pendingClear.timer);
+    pendingSampleDataClear.delete(msg.reqId);
+    pendingClear.resolve(msg.summary);
+    return;
+  }
+
   // ACK
   const pendingBackfill = pendingContentSignalBackfill.get(msg.reqId);
   if (pendingBackfill && msg.error) {
     clearTimeout(pendingBackfill.timer);
     pendingContentSignalBackfill.delete(msg.reqId);
     pendingBackfill.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingClear = pendingSampleDataClear.get(msg.reqId);
+  if (pendingClear && msg.error) {
+    clearTimeout(pendingClear.timer);
+    pendingSampleDataClear.delete(msg.reqId);
+    pendingClear.reject(new Error(msg.error));
     return;
   }
 
@@ -494,6 +520,25 @@ export async function docAddFeedItems(items: FeedItem[]): Promise<void> {
 export async function docRemoveFeedItem(globalId: string): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "REMOVE_FEED_ITEM", globalId });
+}
+
+export async function docClearSampleData(): Promise<SampleDataClearSummary> {
+  await workerReady;
+  return new Promise((resolve, reject) => {
+    const reqId = nextReqId++;
+    const timer = setTimeout(() => {
+      if (!pendingSampleDataClear.has(reqId)) return;
+      pendingSampleDataClear.delete(reqId);
+      reject(
+        new Error(
+          `[automerge-worker] request TIMEOUT op=CLEAR_SAMPLE_DATA reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
+        ),
+      );
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pendingSampleDataClear.set(reqId, { resolve, reject, timer });
+    worker.postMessage({ reqId, type: "CLEAR_SAMPLE_DATA" } satisfies WorkerRequest);
+  });
 }
 
 export async function docUpdateFeedItem(

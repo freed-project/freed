@@ -12,6 +12,7 @@ import type {
   Friend,
   Person,
   ReachOutLog,
+  SampleDataClearSummary,
   UserPreferences,
   RssFeed,
 } from "./types.js";
@@ -115,6 +116,8 @@ export interface BaseAppState {
   deleteAllArchived: () => Promise<void>;
   /** Permanently remove a single feed item from the library. */
   removeItem: (id: string) => Promise<void>;
+  /** Permanently remove generated sample data that carries the internal fingerprint. */
+  clearSampleData: () => Promise<SampleDataClearSummary>;
   /**
    * Record like intent in Automerge. On the desktop, the outbox processor
    * drains this to the source platform. On the PWA, it syncs to desktop first.

@@ -9,7 +9,7 @@
  */
 
 import { create } from "zustand";
-import type { Account, FeedItem, FilterOptions, Friend, Person, ReachOutLog, UserPreferences, RssFeed, RemoveFeedOptions } from "@freed/shared";
+import type { Account, FeedItem, FilterOptions, Friend, Person, ReachOutLog, SampleDataClearSummary, UserPreferences, RssFeed, RemoveFeedOptions } from "@freed/shared";
 import {
   applyFeedSignalModesToFilter,
   accountsFromLegacyFriend,
@@ -33,6 +33,7 @@ import {
   docMarkAllAsRead,
   docToggleSaved,
   docRemoveFeedItem,
+  docClearSampleData,
   docToggleArchived,
   docArchiveItems,
   docArchiveAllReadUnsaved,
@@ -153,6 +154,7 @@ interface AppState {
   markAllAsRead: (platform?: string) => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
+  clearSampleData: () => Promise<SampleDataClearSummary>;
   toggleArchived: (id: string) => Promise<void>;
   archiveItems: (ids: string[]) => Promise<void>;
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
@@ -650,6 +652,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeItem: async (id) => {
     await docRemoveFeedItem(id);
+  },
+
+  clearSampleData: async () => {
+    return docClearSampleData();
   },
 
   // Feed actions

@@ -22,9 +22,11 @@ import type {
   ContentSignals,
   EventCandidate,
   LocationSource,
+  SampleDataClearSummary,
 } from "./types.js";
 import { createDefaultPreferences, createDefaultMeta } from "./types.js";
 import { friendForAuthor, personForAuthor } from "./friends.js";
+import { hasSampleDataFingerprint } from "./sample-data.js";
 import {
   CONTENT_SIGNAL_KEYS,
   CONTENT_SIGNAL_VERSION,
@@ -1097,9 +1099,60 @@ function normalizePerson(person: Person): Person {
     graphY: person.graphY,
     graphPinned: person.graphPinned,
     graphUpdatedAt: person.graphUpdatedAt,
+    sampleDataFingerprint: person.sampleDataFingerprint,
     createdAt: person.createdAt,
     updatedAt: person.updatedAt,
   });
+}
+
+export function clearSampleData(doc: FreedDoc): SampleDataClearSummary {
+  ensureIdentityGraphRoots(doc);
+  const summary: SampleDataClearSummary = {
+    feeds: 0,
+    items: 0,
+    persons: 0,
+    accounts: 0,
+    total: 0,
+  };
+
+  for (const [id, item] of Object.entries(doc.feedItems)) {
+    if (!hasSampleDataFingerprint(item)) continue;
+    delete doc.feedItems[id];
+    summary.items += 1;
+  }
+
+  for (const [url, feed] of Object.entries(doc.rssFeeds)) {
+    if (!hasSampleDataFingerprint(feed)) continue;
+    delete doc.rssFeeds[url];
+    summary.feeds += 1;
+  }
+
+  const samplePersonIds = new Set<string>();
+  for (const [personId, person] of Object.entries(doc.persons)) {
+    if (!hasSampleDataFingerprint(person)) continue;
+    samplePersonIds.add(personId);
+  }
+
+  const now = Date.now();
+  for (const [accountId, account] of Object.entries(doc.accounts)) {
+    if (hasSampleDataFingerprint(account)) {
+      delete doc.accounts[accountId];
+      summary.accounts += 1;
+      continue;
+    }
+    if (account.personId && samplePersonIds.has(account.personId)) {
+      delete account.personId;
+      account.updatedAt = now;
+    }
+  }
+
+  for (const personId of samplePersonIds) {
+    delete doc.persons[personId];
+    summary.persons += 1;
+  }
+
+  summary.total = summary.feeds + summary.items + summary.persons + summary.accounts;
+  return summary;
 }
 
 /**
