@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useState, useRef, useCallback, type ReactNode } from "react";
 import { Sidebar } from "./Sidebar.js";
 import { Header } from "./Header.js";
 import { DebugPanel } from "../DebugPanel.js";
@@ -8,7 +8,6 @@ import { LibraryDialog } from "../LibraryDialog.js";
 import { addDebugEvent, useDebugStore } from "../../lib/debug-store.js";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
-import { FriendsView } from "../friends/FriendsView.js";
 import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
 import { ContactSyncContext } from "../../context/ContactSyncContext.js";
@@ -41,6 +40,9 @@ import {
 const DEFAULT_DEBUG_WIDTH = 320;
 const MIN_DEBUG_WIDTH = 280;
 const MAX_DEBUG_WIDTH = 600;
+const LazyFriendsView = lazy(() =>
+  import("../friends/FriendsView.js").then((module) => ({ default: module.FriendsView })),
+);
 
 interface AppShellProps {
   children: ReactNode;
@@ -383,11 +385,13 @@ export function AppShell({ children }: AppShellProps) {
           >
             {activeView === "friends"
               ? (
-                <FriendsView
-                  friendsSidebarOpen={friendsSidebarOpen}
-                  onFriendsSidebarOpenChange={handleFriendsSidebarOpenChange}
-                  mobileSurface={friendsMobileSurface}
-                />
+                <Suspense fallback={<div className="h-full min-h-0" data-testid="friends-view-loading" />}>
+                  <LazyFriendsView
+                    friendsSidebarOpen={friendsSidebarOpen}
+                    onFriendsSidebarOpenChange={handleFriendsSidebarOpenChange}
+                    mobileSurface={friendsMobileSurface}
+                  />
+                </Suspense>
               )
               : activeView === "map"
                 ? <MapView />
