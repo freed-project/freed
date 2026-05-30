@@ -8,6 +8,7 @@ export function createEmptyContactSyncState(): ContactSyncState {
   return {
     authStatus: "reconnect_required",
     syncStatus: "idle",
+    syncStartedAt: null,
     syncToken: null,
     lastSyncedAt: null,
     lastErrorCode: undefined,
@@ -36,6 +37,7 @@ export function parseContactSyncState(raw: string | null | undefined): ContactSy
     return {
       authStatus: parsed.authStatus ?? "reconnect_required",
       syncStatus: parsed.syncStatus ?? "idle",
+      syncStartedAt: parsed.syncStartedAt ?? null,
       syncToken: parsed.syncToken ?? null,
       lastSyncedAt: parsed.lastSyncedAt ?? null,
       lastErrorCode: parsed.lastErrorCode,

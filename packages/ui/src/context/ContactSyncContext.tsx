@@ -12,7 +12,7 @@ import type { ContactMatch, ContactSyncState } from "@freed/shared";
 export interface ContactSyncContextValue {
   syncState: ContactSyncState;
   getSyncState: () => ContactSyncState;
-  syncNow: () => Promise<ContactSyncState>;
+  syncNow: (options?: { force?: boolean }) => Promise<ContactSyncState>;
   dismissSuggestion: (suggestionId: string) => void;
   getMatchForSuggestion: (suggestionId: string) => ContactMatch | null;
   openReview: () => Promise<void>;

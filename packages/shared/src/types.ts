@@ -1279,6 +1279,7 @@ export interface IdentitySuggestion {
 export interface ContactSyncState {
   authStatus: "connected" | "reconnect_required";
   syncStatus: "idle" | "syncing" | "error";
+  syncStartedAt?: number | null;
   syncToken: string | null;
   lastSyncedAt: number | null;
   lastErrorCode?: "missing_token" | "auth" | "network" | "unknown";
