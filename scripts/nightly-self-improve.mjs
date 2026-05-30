@@ -24,6 +24,7 @@ const DEFAULT_CRASH_AUTOMATION =
 const DEFAULT_DEV_BOT_MEMORY =
   "/Users/aubreyfalconer/.codex/automations/hourly-dev-bot/memory.md";
 const DEFAULT_SOAK_POINTER = "/tmp/freed-perf-soak/current-soak-dir";
+const MAX_PEER_EVIDENCE_FILES = 12;
 
 const GIB = 1024 * 1024 * 1024;
 const numberFormatter = new Intl.NumberFormat("en-US", {
@@ -39,6 +40,8 @@ Options:
   --run-dir <path>              Directory for generated nightly plan files.
   --soak-dir <path>             Installed-build soak directory to inspect.
   --daily-bug-memory <path>     Daily bug scan memory file to fold into target selection.
+  --peer-worktree <path>        Extra local worktree to compare and rank as a peer target.
+  --no-peer-scan                Skip automatic git worktree discovery.
   --max-targets <count>         Maximum targets to select. Defaults to 3.
   --duration-minutes <count>    Planning budget for one night. Defaults to 480.
   --memory-gib <count>          WebKit RSS budget before memory work wins. Defaults to 2.5.
@@ -57,6 +60,8 @@ export function parseArgs(argv) {
     dailyBugMemory: DEFAULT_DAILY_BUG_MEMORY,
     crashAutomation: DEFAULT_CRASH_AUTOMATION,
     devBotMemory: DEFAULT_DEV_BOT_MEMORY,
+    peerWorktrees: [],
+    peerScan: true,
     maxTargets: 3,
     durationMinutes: 480,
     memoryGib: 2.5,
@@ -84,6 +89,13 @@ export function parseArgs(argv) {
       case "--daily-bug-memory":
         args.dailyBugMemory = argv[index + 1] ?? "";
         index += 1;
+        break;
+      case "--peer-worktree":
+        args.peerWorktrees.push(argv[index + 1] ?? "");
+        index += 1;
+        break;
+      case "--no-peer-scan":
+        args.peerScan = false;
         break;
       case "--max-targets":
         args.maxTargets = Number.parseInt(argv[index + 1] ?? "", 10);
@@ -133,6 +145,7 @@ export function parseArgs(argv) {
   }
 
   args.repo = path.resolve(args.repo);
+  args.peerWorktrees = args.peerWorktrees.filter(Boolean).map((item) => path.resolve(item));
   args.runDir =
     args.runDir ||
     path.join(
@@ -171,6 +184,49 @@ export function parseTsv(text) {
     const values = line.split("\t");
     return Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
   });
+}
+
+export function parseGitWorktreePorcelain(text) {
+  const entries = [];
+  let current = null;
+
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) {
+      if (current) {
+        entries.push(current);
+        current = null;
+      }
+      continue;
+    }
+
+    const [key, ...rest] = line.split(" ");
+    const value = rest.join(" ");
+    if (key === "worktree") {
+      if (current) {
+        entries.push(current);
+      }
+      current = { path: value, head: "", branch: "", detached: false };
+      continue;
+    }
+
+    if (!current) {
+      continue;
+    }
+
+    if (key === "HEAD") {
+      current.head = value;
+    } else if (key === "branch") {
+      current.branch = value.replace(/^refs\/heads\//, "");
+    } else if (key === "detached") {
+      current.detached = true;
+    }
+  }
+
+  if (current) {
+    entries.push(current);
+  }
+
+  return entries;
 }
 
 function numeric(value) {
@@ -324,6 +380,158 @@ function git(repo, args) {
   }
 }
 
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function shortStatusPaths(statusText) {
+  return statusText
+    .split(/\r?\n/)
+    .map((line) => line.slice(3).trim())
+    .map((filePath) => filePath.replace(/^.* -> /, ""))
+    .filter(Boolean);
+}
+
+function providerVisiblePath(filePath) {
+  return (
+    filePath.startsWith("packages/capture-") ||
+    filePath.includes("/capture-") ||
+    filePath.includes("facebook") ||
+    filePath.includes("instagram") ||
+    filePath.includes("linkedin") ||
+    filePath.includes("x-capture") ||
+    filePath.includes("li-capture") ||
+    filePath.includes("scraper-prefs") ||
+    filePath.includes("scraper-window")
+  );
+}
+
+function peerWorktreeScore(peer) {
+  let score = 46;
+  if (peer.explicit) {
+    score += 12;
+  }
+  if (peer.branch.includes("scraper-recycle-verification")) {
+    score += 42;
+  }
+  if (peer.touchesNightlyRunner) {
+    score += 48;
+  }
+  if (peer.touchesMemoryTelemetry) {
+    score += 28;
+  }
+  if (peer.changedFileCount >= 6) {
+    score += 8;
+  }
+  if (peer.providerVisible) {
+    score -= 15;
+  }
+  return Math.min(99, Math.max(1, score));
+}
+
+export function summarizePeerWorktree(worktreePath, currentRepo) {
+  if (!worktreePath || !existsSync(worktreePath)) {
+    return null;
+  }
+
+  let resolved = worktreePath;
+  let current = currentRepo;
+  try {
+    resolved = realpathSync(worktreePath);
+    current = realpathSync(currentRepo);
+  } catch {
+    return null;
+  }
+
+  if (resolved === current) {
+    return null;
+  }
+
+  const branch =
+    git(resolved, ["branch", "--show-current"]) ||
+    git(resolved, ["rev-parse", "--abbrev-ref", "HEAD"]) ||
+    "unknown";
+  const head = git(resolved, ["rev-parse", "--short", "HEAD"]);
+  const status = git(resolved, ["status", "--short"]);
+  const committedFiles = git(resolved, [
+    "diff",
+    "--name-only",
+    "--diff-filter=ACDMRTUXB",
+    "origin/dev",
+    "HEAD",
+  ]);
+  const workingFiles = unique([
+    ...shortStatusPaths(status),
+    ...committedFiles.split(/\r?\n/),
+  ]).sort();
+  const aheadCount = Number.parseInt(git(resolved, ["rev-list", "--count", "origin/dev..HEAD"]) || "0", 10);
+  const behindCount = Number.parseInt(git(resolved, ["rev-list", "--count", "HEAD..origin/dev"]) || "0", 10);
+
+  const touchesMemoryTelemetry = workingFiles.some(
+    (filePath) =>
+      filePath.includes("memory-monitor") ||
+      filePath.includes("runtime-health") ||
+      filePath.includes("src-tauri/src/lib.rs") ||
+      filePath.includes("perf-") ||
+      filePath.includes("playwright.config"),
+  );
+  const touchesNightlyRunner = workingFiles.some(
+    (filePath) =>
+      filePath.includes("nightly-self-improve") ||
+      filePath.includes("automation") ||
+      filePath.includes("self-improve"),
+  );
+  const providerVisible = workingFiles.some(providerVisiblePath);
+
+  return {
+    path: resolved,
+    branch,
+    head,
+    status,
+    aheadCount: Number.isFinite(aheadCount) ? aheadCount : 0,
+    behindCount: Number.isFinite(behindCount) ? behindCount : 0,
+    changedFiles: workingFiles,
+    changedFileCount: workingFiles.length,
+    touchesMemoryTelemetry,
+    touchesNightlyRunner,
+    providerVisible,
+    explicit: false,
+    score: 0,
+  };
+}
+
+export function collectPeerWorktrees(repo, explicitWorktrees = [], scan = true) {
+  const explicitPaths = new Set(
+    explicitWorktrees.flatMap((worktreePath) => {
+      try {
+        return [realpathSync(worktreePath)];
+      } catch {
+        return [];
+      }
+    }),
+  );
+  const worktreePaths = [...explicitWorktrees];
+  if (scan) {
+    const worktreeList = git(repo, ["worktree", "list", "--porcelain"]);
+    for (const entry of parseGitWorktreePorcelain(worktreeList)) {
+      worktreePaths.push(entry.path);
+    }
+  }
+
+  return unique(worktreePaths)
+    .map((worktreePath) => summarizePeerWorktree(worktreePath, repo))
+    .filter(Boolean)
+    .map((peer) => ({ ...peer, explicit: explicitPaths.has(peer.path) }))
+    .filter(
+      (peer) =>
+        peer.explicit ||
+        /nightly|self|runner|automation|scraper-recycle/i.test(peer.branch),
+    )
+    .filter((peer) => peer.changedFileCount > 0 || peer.aheadCount > 0)
+    .map((peer) => ({ ...peer, score: peerWorktreeScore(peer) }))
+    .sort((left, right) => right.score - left.score);
+}
+
 export function collectRepoSnapshot(repo) {
   return {
     branch: git(repo, ["branch", "--show-current"]) || git(repo, ["rev-parse", "--abbrev-ref", "HEAD"]),
@@ -368,11 +576,43 @@ export function buildCandidates({
   soak,
   dailyBug,
   repo,
+  peerWorktrees = [],
   crashAutomationExists,
   devBotMemoryExists,
   memoryBudgetBytes,
 }) {
   const candidates = [];
+
+  for (const peer of peerWorktrees) {
+    candidates.push(
+      target({
+        id: `peer-${peer.branch.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase()}`,
+        kind: "peer-worktree",
+        title: `Review and incorporate peer worktree ${peer.branch}`,
+        score: peer.score,
+        confidence: peer.branch.includes("scraper-recycle-verification") ? 0.88 : 0.72,
+        estimatedMinutes: peer.touchesNightlyRunner ? 75 : 55,
+        providerVisible: peer.providerVisible,
+        rationale: peer.touchesMemoryTelemetry
+          ? "A local peer worktree has memory or performance diagnostics changes that should be compared before selecting overnight fixes."
+          : "A local peer worktree has unmerged changes that may overlap the nightly improvement path.",
+        evidence: [
+          peer.path,
+          `Branch ${peer.branch}`,
+          `Changed files ${numberFormatter.format(peer.changedFileCount)}`,
+          `Ahead ${numberFormatter.format(peer.aheadCount)}, behind ${numberFormatter.format(peer.behindCount)}`,
+          ...peer.changedFiles.slice(0, MAX_PEER_EVIDENCE_FILES),
+        ],
+        prompt:
+          "Compare the peer worktree diff against this runner branch. Reimplement or cherry-pick safe measurement and orchestration ideas only after checking for active work, validation coverage, and provider-visible behavior. Do not modify the peer worktree.",
+        validation: [
+          "Run focused tests for any imported script, native, or desktop changes.",
+          "Run validate:feature before publishing.",
+          "Call out any peer changes that were intentionally not absorbed.",
+        ],
+      }),
+    );
+  }
 
   if (soak.exists && (soak.maxWebKitResidentBytes ?? 0) > memoryBudgetBytes) {
     candidates.push(
@@ -603,6 +843,7 @@ function formatCandidate(candidate, index) {
 
 export function buildReport({ repo, soak, candidates, selected, options }) {
   const blockedProvider = candidates.filter((candidate) => candidate.providerVisible);
+  const phases = buildNightlyPhases(selected);
   return [
     "# Freed Nightly Improvement Plan",
     "",
@@ -628,6 +869,10 @@ export function buildReport({ repo, soak, candidates, selected, options }) {
       `   Kind: ${candidate.kind}. Score: ${numberFormatter.format(candidate.score)}. Machine time: ${numberFormatter.format(candidate.estimatedMinutes)} min.`,
     ]),
     "",
+    "## Execution Phases",
+    "",
+    ...phases.map((phase, index) => `${index + 1}. ${phase}`),
+    "",
     "## Provider Visibility Gate",
     "",
     blockedProvider.length > 0
@@ -641,20 +886,36 @@ export function buildReport({ repo, soak, candidates, selected, options }) {
     "- Add a learned target scorer that compares each night's fix outcome against the previous run budget.",
     "- Keep a small local knowledge base of recurring failure signatures and the focused tests that proved prior fixes.",
     "- Teach the runner to split one night into planning, fix, validation, dev build, install, and soak phases with stop conditions.",
+    "- Promote peer worktree comparison into an automatic import step before any new task starts.",
     "- Require evidence snapshots before every rare crash or memory fix so the next failure has better diagnostics.",
     "- Add a morning digest that ranks shipped value, residual risk, and the single next highest leverage bottleneck.",
     "",
   ].join("\n");
 }
 
-export function writeRunPlan({ runDir, repo, soak, candidates, selected, options }) {
+function buildNightlyPhases(selected) {
+  const phases = [
+    "Snapshot evidence from soak, logs, automations, git state, and peer worktrees.",
+  ];
+  if (selected.some((candidate) => candidate.kind === "peer-worktree")) {
+    phases.push("Compare peer worktrees and import safe measurement improvements.");
+  }
+  phases.push("Execute selected targets in score order while respecting provider visibility gates.");
+  phases.push("Run focused validation for each changed surface.");
+  phases.push("Run validate:feature before publishing or updating a PR.");
+  phases.push("Ship a dev build only if real product fixes landed and checks are green.");
+  phases.push("Install the new build, restart the soak, and write the morning digest.");
+  return phases;
+}
+
+export function writeRunPlan({ runDir, repo, soak, peerWorktrees = [], candidates, selected, options }) {
   mkdirSync(runDir, { recursive: true });
   const tasksDir = path.join(runDir, "tasks");
   mkdirSync(tasksDir, { recursive: true });
 
   const report = buildReport({ repo, soak, candidates, selected, options });
   writeFileSync(path.join(runDir, "report.md"), report);
-  writeFileSync(path.join(runDir, "targets.json"), `${JSON.stringify({ repo, soak, candidates, selected }, null, 2)}\n`);
+  writeFileSync(path.join(runDir, "targets.json"), `${JSON.stringify({ repo, soak, peerWorktrees, candidates, selected }, null, 2)}\n`);
 
   selected.forEach((candidate, index) => {
     const name = `${String(index + 1).padStart(2, "0")}-${candidate.id}.md`;
@@ -669,16 +930,18 @@ export function planNightlyRun(args) {
   const soak = summarizeSoak(soakDir);
   const dailyBug = summarizeDailyBugMemory(args.dailyBugMemory);
   const repo = collectRepoSnapshot(args.repo);
+  const peerWorktrees = collectPeerWorktrees(args.repo, args.peerWorktrees, args.peerScan);
   const candidates = buildCandidates({
     soak,
     dailyBug,
     repo,
+    peerWorktrees,
     crashAutomationExists: existsSync(args.crashAutomation),
     devBotMemoryExists: existsSync(args.devBotMemory),
     memoryBudgetBytes: args.memoryGib * GIB,
   });
   const selected = selectTargets(candidates, args);
-  return { repo, soak, dailyBug, candidates, selected };
+  return { repo, soak, dailyBug, peerWorktrees, candidates, selected };
 }
 
 function textSummary(plan, writeResult, args) {
@@ -686,6 +949,7 @@ function textSummary(plan, writeResult, args) {
     `Selected ${numberFormatter.format(plan.selected.length)} targets from ${numberFormatter.format(plan.candidates.length)} candidates.`,
     `Max WebKit RSS: ${formatBytes(plan.soak.maxWebKitResidentBytes)}.`,
     `Stale heartbeat events: ${numberFormatter.format(plan.soak.staleHeartbeatCount)}.`,
+    `Peer worktrees with changes: ${numberFormatter.format(plan.peerWorktrees.length)}.`,
   ];
 
   for (const [index, selected] of plan.selected.entries()) {
@@ -722,6 +986,7 @@ export function main(argv = process.argv.slice(2)) {
         runDir: args.runDir,
         repo: plan.repo,
         soak: plan.soak,
+        peerWorktrees: plan.peerWorktrees,
         candidates: plan.candidates,
         selected: plan.selected,
         options: args,

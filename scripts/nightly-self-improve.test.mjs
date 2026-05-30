@@ -8,6 +8,7 @@ import {
   buildCandidates,
   formatBytes,
   parseArgs,
+  parseGitWorktreePorcelain,
   parseTsv,
   selectTargets,
   summarizeDailyBugMemory,
@@ -122,6 +123,7 @@ test("candidate selection prioritizes memory work while preserving bug scans", (
       originMain: "0000000",
       status: "",
     },
+    peerWorktrees: [],
     crashAutomationExists: true,
     devBotMemoryExists: true,
     memoryBudgetBytes: 2.5 * GIB,
@@ -136,6 +138,80 @@ test("candidate selection prioritizes memory work while preserving bug scans", (
   assert.equal(selected[0].id, "webkit-memory-pressure");
   assert.ok(selected.some((candidate) => candidate.id === "daily-bug-fix-scan"));
   assert.ok(!selected.some((candidate) => candidate.providerVisible));
+});
+
+test("parseGitWorktreePorcelain reads branch entries", () => {
+  const entries = parseGitWorktreePorcelain(
+    [
+      "worktree /repo/main",
+      "HEAD abc",
+      "branch refs/heads/main",
+      "",
+      "worktree /repo/peer",
+      "HEAD def",
+      "branch refs/heads/perf/scraper-recycle-verification",
+      "",
+    ].join("\n"),
+  );
+
+  assert.deepEqual(entries, [
+    { path: "/repo/main", head: "abc", branch: "main", detached: false },
+    {
+      path: "/repo/peer",
+      head: "def",
+      branch: "perf/scraper-recycle-verification",
+      detached: false,
+    },
+  ]);
+});
+
+test("peer worktree candidates outrank generic roadmap work", () => {
+  const candidates = buildCandidates({
+    soak: {
+      exists: false,
+      soakDir: "",
+      sampleCount: 0,
+      maxWebKitResidentBytes: null,
+      maxEventLoopLagMs: null,
+      maxDomNodes: null,
+      staleHeartbeatCount: 0,
+      throttledHeartbeatCount: 0,
+      lastEvent: "",
+    },
+    dailyBug: { exists: false },
+    repo: { branch: "feature", head: "abc1234", status: " M script" },
+    peerWorktrees: [
+      {
+        path: "/peer",
+        branch: "perf/scraper-recycle-verification",
+        head: "def5678",
+        aheadCount: 0,
+        behindCount: 1,
+        changedFileCount: 3,
+        changedFiles: [
+          "packages/desktop/src-tauri/src/lib.rs",
+          "packages/desktop/src/lib/memory-monitor.ts",
+          "packages/desktop/tests/e2e/smoke.spec.ts",
+        ],
+        touchesMemoryTelemetry: true,
+        touchesNightlyRunner: false,
+        providerVisible: false,
+        score: 99,
+      },
+    ],
+    crashAutomationExists: false,
+    devBotMemoryExists: true,
+    memoryBudgetBytes: 2.5 * GIB,
+  });
+
+  const selected = selectTargets(candidates, {
+    maxTargets: 2,
+    durationMinutes: 480,
+    allowProviderVisible: false,
+  });
+
+  assert.equal(selected[0].kind, "peer-worktree");
+  assert.equal(selected[0].providerVisible, false);
 });
 
 test("writeRunPlan emits report, targets, and task prompts", () => {
@@ -180,6 +256,7 @@ test("writeRunPlan emits report, targets, and task prompts", () => {
 test("argument parsing validates numeric budgets", () => {
   assert.throws(() => parseArgs(["--max-targets", "0"]), /maxTargets/);
   assert.equal(parseArgs(["--memory-gib", "3"]).memoryGib, 3);
+  assert.equal(parseArgs(["--peer-worktree", "/tmp/peer", "--no-peer-scan"]).peerScan, false);
 });
 
 test("formatBytes uses GiB with grouped decimal output", () => {
