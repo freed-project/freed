@@ -25,8 +25,13 @@ import {
   disconnectFb,
   storeFbAuthState,
 } from "../lib/fb-auth";
-import { captureFbFeed, captureFbGroups } from "../lib/fb-capture";
+import {
+  captureFbFeed,
+  captureFbGroups,
+  repairStoredFacebookGroupNamesFromItems,
+} from "../lib/fb-capture";
 import type { FbSyncDiag } from "../lib/fb-capture";
+import { getFacebookGroupDisplayName } from "../lib/facebook-groups";
 import {
   getFbScraperWindowMode,
   setFbScraperWindowMode,
@@ -212,7 +217,7 @@ export function FacebookSettingsSection({
   const knownGroups = fbCapture?.knownGroups ?? {};
   const excludedGroupIds = fbCapture?.excludedGroupIds ?? {};
   const groups = Object.values(knownGroups).sort((a, b) =>
-    a.name.localeCompare(b.name),
+    getFacebookGroupDisplayName(a).localeCompare(getFacebookGroupDisplayName(b)),
   );
   const activeGroupCount = groups.filter((group) => !excludedGroupIds[group.id]).length;
 
@@ -229,6 +234,11 @@ export function FacebookSettingsSection({
     });
     return () => { unlisten.then((fn) => fn()); };
   }, [setFbAuth]);
+
+  useEffect(() => {
+    if (!fbAuth.isAuthenticated || items.length === 0) return;
+    void repairStoredFacebookGroupNamesFromItems(items);
+  }, [fbAuth.isAuthenticated, items]);
 
   const handleLogin = useCallback(async () => {
     await confirm(async () => {
@@ -497,7 +507,9 @@ export function FacebookSettingsSection({
             reserveScrollHeight
             itemKey={(group) => group.id}
             getSearchText={(group) => {
-              const { title, lastActiveText } = splitFacebookGroupName(group.name);
+              const { title, lastActiveText } = splitFacebookGroupName(
+                getFacebookGroupDisplayName(group),
+              );
               return [title, lastActiveText, group.id, group.url, group.name].filter(Boolean).join(" ");
             }}
             actions={(shownGroups, query) => {
@@ -533,7 +545,9 @@ export function FacebookSettingsSection({
             }}
             renderItem={(group) => {
               const included = !excludedGroupIds[group.id];
-              const { title, lastActiveText } = splitFacebookGroupName(group.name);
+              const { title, lastActiveText } = splitFacebookGroupName(
+                getFacebookGroupDisplayName(group),
+              );
               return (
                 <Toggle
                   testId={`facebook-group-${group.id}`}

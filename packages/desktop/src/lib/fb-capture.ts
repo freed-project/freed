@@ -30,6 +30,10 @@ import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-mon
 import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
 import { socialProviderCopy } from "./social-provider-copy";
 import { runBackgroundJob } from "./background-runtime-coordinator";
+import {
+  facebookGroupsFromFeedItems,
+  mergeFacebookGroupRecords,
+} from "./facebook-groups";
 
 // =============================================================================
 // Rate Limiting
@@ -69,17 +73,6 @@ export interface FbSyncResult {
   diag: FbSyncDiag;
 }
 
-function mergeKnownGroups(
-  existingGroups: Record<string, FbGroupInfo>,
-  groups: FbGroupInfo[],
-): Record<string, FbGroupInfo> {
-  const nextGroups = { ...existingGroups };
-  for (const group of groups) {
-    nextGroups[group.id] = group;
-  }
-  return nextGroups;
-}
-
 function filterExcludedGroups(
   items: FeedItem[],
   excludedGroupIds: Record<string, true>,
@@ -88,6 +81,44 @@ function filterExcludedGroups(
     const groupId = item.fbGroup?.id;
     return !groupId || !excludedGroupIds[groupId];
   });
+}
+
+async function updateKnownFacebookGroups(
+  groups: readonly FbGroupInfo[],
+): Promise<ReturnType<typeof mergeFacebookGroupRecords>> {
+  const store = useAppStore.getState();
+  const merge = mergeFacebookGroupRecords(
+    store.preferences.fbCapture?.knownGroups ?? {},
+    groups,
+  );
+
+  if (merge.changedCount > 0) {
+    await store.updatePreferences({
+      fbCapture: {
+        knownGroups: merge.knownGroups,
+        excludedGroupIds: store.preferences.fbCapture?.excludedGroupIds ?? {},
+      },
+    });
+  }
+
+  return merge;
+}
+
+export async function repairStoredFacebookGroupNamesFromItems(
+  items: readonly FeedItem[] = useAppStore.getState().items,
+): Promise<number> {
+  const groups = facebookGroupsFromFeedItems(items);
+  if (groups.length === 0) return 0;
+
+  const merge = await updateKnownFacebookGroups(groups);
+  if (merge.repairedNameCount > 0) {
+    addDebugEvent(
+      "change",
+      `[FB] repaired ${merge.repairedNameCount.toLocaleString()} stored group name${merge.repairedNameCount === 1 ? "" : "s"} from captured posts`,
+    );
+  }
+
+  return merge.repairedNameCount;
 }
 
 // =============================================================================
@@ -207,7 +238,6 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
 }
 
 export async function captureFbGroups(): Promise<FbGroupInfo[]> {
-  const store = useAppStore.getState();
   const memoryPrep = await prepareSocialScrapeMemory("facebook", "groups scrape");
   if (!memoryPrep.mayProceed) {
     addDebugEvent(
@@ -223,21 +253,11 @@ export async function captureFbGroups(): Promise<FbGroupInfo[]> {
 
   if (groups.length === 0) return groups;
 
-  const nextKnownGroups = mergeKnownGroups(
-    store.preferences.fbCapture?.knownGroups ?? {},
-    groups,
-  );
-
-  await store.updatePreferences({
-    fbCapture: {
-      knownGroups: nextKnownGroups,
-      excludedGroupIds: store.preferences.fbCapture?.excludedGroupIds ?? {},
-    },
-  });
+  const merge = await updateKnownFacebookGroups(groups);
 
   addDebugEvent(
     "change",
-    `[FB] groups refreshed: ${groups.length.toLocaleString()} group${groups.length === 1 ? "" : "s"}`,
+    `[FB] groups refreshed: ${groups.length.toLocaleString()} group${groups.length === 1 ? "" : "s"}${merge.repairedNameCount > 0 ? `, repaired ${merge.repairedNameCount.toLocaleString()} stored name${merge.repairedNameCount === 1 ? "" : "s"}` : ""}`,
   );
 
   return groups;
@@ -337,6 +357,7 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
     }
 
     if (result.items.length > 0) {
+      await repairStoredFacebookGroupNamesFromItems(result.items);
       const excludedGroupIds =
         useAppStore.getState().preferences.fbCapture?.excludedGroupIds ?? {};
       const filteredItems = filterExcludedGroups(result.items, excludedGroupIds);
