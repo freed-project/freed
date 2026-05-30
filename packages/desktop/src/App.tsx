@@ -22,7 +22,7 @@ import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { UpdateNotification, type UpdateState } from "./components/UpdateNotification";
 import { CloudSyncNudge } from "./components/CloudSyncNudge";
 import { useAppStore } from "./lib/store";
-import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML, refreshAllFeeds, refreshRssFeeds } from "./lib/capture";
+import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML, refreshRssFeeds } from "./lib/capture";
 import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
 import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
