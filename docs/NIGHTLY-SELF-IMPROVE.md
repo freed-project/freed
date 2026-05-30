@@ -16,7 +16,7 @@ The first rule is simple: evidence first, code second. If a target has weak evid
 - Local git worktrees with unmerged or uncommitted changes
 - Duplicate peer work indicators such as shared changed files, shared package surfaces, and shared provider-visible risk
 - Prior outcome ledger at `/tmp/freed-nightly-self-improve/outcomes.jsonl`
-- Preflight risks such as dirty worktrees, generated artifacts, stale soak samples, missing dependencies, missing evidence files, and paused automations
+- Preflight risks such as dirty worktrees, generated artifacts, stale or thin soak samples, missing dependencies, missing evidence files, and paused automations
 
 ## Target Types
 
@@ -28,7 +28,7 @@ The first rule is simple: evidence first, code second. If a target has weak evid
 - Roadmap: small autonomous product work after evidence-backed targets are exhausted
 - Blocked: provider-visible ideas that need explicit approval before execution
 
-The runner can select more than one target when the night has enough budget. A typical run should first compare peer worktrees, then pick WebKit memory when it is over budget, then a bug scan, then crash-watch triage or release readiness.
+The runner can select more than one target when the night has enough budget. A typical run should first compare peer worktrees, then pick WebKit memory when it is over budget and backed by enough fresh soak samples, then a bug scan, then crash-watch triage or release readiness.
 
 ## Usage
 
@@ -91,7 +91,7 @@ The runner excludes provider-visible tasks by default. Do not allow autonomous c
 
 Release work is also gated. A dev build should ship only after actual fixes merge into `dev`, not after planning artifacts alone.
 
-Every execution phase has a stop gate. The runner should stop rather than freestyle when evidence is missing, a peer branch is still changing, a provider-visible change needs approval, focused validation fails, or no real fix landed. The preflight risk snapshot is now also a selectable target, so blocker risks like a dirty current worktree or missing dependencies can win the queue before the runner starts editing. If the active soak pointer is empty, the runner falls back to the newest readable soak and records that fallback in the risk snapshot. When the fix is purely local, `--repair-soak-pointer` can update the active pointer to that readable soak so later runs no longer start from a dead evidence path.
+Every execution phase has a stop gate. The runner should stop rather than freestyle when evidence is missing, a peer branch is still changing, a provider-visible change needs approval, focused validation fails, or no real fix landed. The preflight risk snapshot is now also a selectable target, so blocker risks like a dirty current worktree or missing dependencies can win the queue before the runner starts editing. If the active soak pointer is empty, the runner falls back to the newest readable soak and records that fallback in the risk snapshot. When the fix is purely local, `--repair-soak-pointer` can update the active pointer to that readable soak so later runs no longer start from a dead evidence path. Performance targets need at least three fresh soak samples, so a single stale heartbeat can inform the report without pretending to be a real budget miss.
 
 ## Next Improvements
 
