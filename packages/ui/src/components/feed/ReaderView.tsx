@@ -295,6 +295,7 @@ export function ReaderView({
       const cacheMode = getReaderOfflineCacheMode();
       const shouldPin = item.userState.saved || shouldPinOpenedReaderItem(cacheMode);
       let hasReaderContent = false;
+      let readerContentSource: ContentSource = null;
 
       setIsLoading(true);
       setIsCaching(false);
@@ -320,6 +321,7 @@ export function ReaderView({
           setContentSource("cache");
           setIsLoading(false);
           hasReaderContent = true;
+          readerContentSource = "cache";
         }
       } else if (articleUrl && "caches" in window) {
         try {
@@ -332,6 +334,7 @@ export function ReaderView({
               setContentSource("cache");
               setIsLoading(false);
               hasReaderContent = true;
+              readerContentSource = "cache";
             }
           }
         } catch {
@@ -356,12 +359,18 @@ export function ReaderView({
           setContentSource("text");
           setIsLoading(false);
           hasReaderContent = true;
+          readerContentSource = "text";
         }
       }
 
       // Layer 3: platform hydration. Desktop uses native fetch or authenticated
       // provider paths here, so reader failures are not confused with CORS.
-      if (hydrateReaderItem && navigator.onLine) {
+      const shouldHydrateLive =
+        Boolean(hydrateReaderItem) &&
+        navigator.onLine &&
+        (!hasReaderContent || (readerContentSource !== "cache" && shouldPin));
+
+      if (shouldHydrateLive && hydrateReaderItem) {
         setIsCaching(true);
         try {
           const hydrated = await hydrateReaderItem(item, { cacheMode, pin: shouldPin });
