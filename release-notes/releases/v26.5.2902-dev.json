@@ -1,0 +1,87 @@
+{
+  "tag": "v26.5.2902-dev",
+  "version": "26.5.2902-dev",
+  "channel": "dev",
+  "dayKey": "26.5.29",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-30T06:32:04.377Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.2901-dev",
+    "previousPublishedDayTag": "v26.5.2700-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.2900-dev",
+      "v26.5.2901-dev",
+      "v26.5.2902-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.2900-dev",
+      "v26.5.2901-dev",
+      "v26.5.2902-dev"
+    ],
+    "prNumbers": [
+      379,
+      606,
+      607,
+      611,
+      612,
+      613,
+      615,
+      616,
+      617,
+      619,
+      621,
+      622,
+      623
+    ],
+    "commitSubjects": [
+      "perf: keep RSS polling out of social scraping (#623)",
+      "release: approve v26.5.2901-dev notes",
+      "release: v26.5.2901-dev",
+      "perf: lazy load friends graph (#621)",
+      "feat: add nightly runner duplicate detection (#622)",
+      "feat: add nightly runner outcome closeout (#619)",
+      "perf: defer sidebar feed search (#616)",
+      "feat: add nightly runner risk snapshot (#617)",
+      "perf: defer settings list filtering (#615)",
+      "feat: add nightly runner execution plan (#613)",
+      "perf: avoid redundant reader hydration (#612)",
+      "feat: add nightly improvement runner (#607)",
+      "perf: verify scraper WebKit recycling (#611)",
+      "release: approve v26.5.2900-dev notes",
+      "release: v26.5.2900-dev",
+      "fix: route desktop Google OAuth through proxy (#606)",
+      "fix: lighten focus mode emphasis (#379)"
+    ]
+  },
+  "release": {
+    "deck": "Nightly runner duplicate detection, nightly runner outcome closeout, and nightly runner risk snapshot",
+    "features": [
+      "Nightly runner duplicate detection",
+      "Nightly runner outcome closeout",
+      "Nightly runner risk snapshot"
+    ],
+    "fixes": [
+      "Route desktop Google OAuth through proxy",
+      "Lighten focus mode emphasis",
+      "The dev release workflow now forces the Google proxy path and includes a guard that prevents direct Google token exchange from shipping again",
+      "Friends graph pinning stays intentional: dense friends graph interactions no longer create accidental pinned states when the graph is already heavily populated"
+    ],
+    "followUps": [
+      "Keep RSS polling out of social scraping",
+      "Lazy load friends graph",
+      "Defer sidebar feed search",
+      "Defer settings list filtering",
+      "Nightly runner execution plan",
+      "Avoid redundant reader hydration",
+      "Verify scraper WebKit recycling",
+      "Google sign-in and interaction polish",
+      "Faster dense views with safer nightly tuning"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2902-dev\n\nNightly runner duplicate detection, nightly runner outcome closeout, and nightly runner risk snapshot\n\n### Features\n\n- Nightly runner duplicate detection\n- Nightly runner outcome closeout\n- Nightly runner risk snapshot\n\n### Fixes\n\n- Route desktop Google OAuth through proxy\n- Lighten focus mode emphasis\n- The dev release workflow now forces the Google proxy path and includes a guard that prevents direct Google token exchange from shipping again\n- Friends graph pinning stays intentional: dense friends graph interactions no longer create accidental pinned states when the graph is already heavily populated\n\n### Follow-ups\n\n- Keep RSS polling out of social scraping\n- Lazy load friends graph\n- Defer sidebar feed search\n- Defer settings list filtering\n- Nightly runner execution plan\n- Avoid redundant reader hydration\n- Verify scraper WebKit recycling\n- Google sign-in and interaction polish\n- Faster dense views with safer nightly tuning\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
