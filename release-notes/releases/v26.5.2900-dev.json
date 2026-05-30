@@ -1,0 +1,38 @@
+{
+  "tag": "v26.5.2900-dev",
+  "version": "26.5.2900-dev",
+  "channel": "dev",
+  "dayKey": "26.5.29",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-30T04:47:42.424Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.2700-dev",
+    "previousPublishedDayTag": "v26.5.2700-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.2900-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.2900-dev"
+    ],
+    "prNumbers": [
+      379,
+      606
+    ],
+    "commitSubjects": [
+      "fix: route desktop Google OAuth through proxy (#606)",
+      "fix: lighten focus mode emphasis (#379)"
+    ]
+  },
+  "release": {
+    "deck": "Route desktop Google OAuth through proxy and lighten focus mode emphasis",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2900-dev\n\nRoute desktop Google OAuth through proxy and lighten focus mode emphasis\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
