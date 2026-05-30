@@ -14,6 +14,7 @@ The first rule is simple: evidence first, code second. If a target has weak evid
 - Git state for the current checkout
 - Local git worktrees with unmerged or uncommitted changes
 - Prior outcome ledger at `/tmp/freed-nightly-self-improve/outcomes.jsonl`
+- Preflight risks such as dirty worktrees, generated artifacts, stale soak samples, missing dependencies, missing evidence files, and paused automations
 
 ## Target Types
 
@@ -61,6 +62,7 @@ The generated run directory contains:
 
 - `report.md`: morning-readable summary
 - `targets.json`: full machine-readable candidate list
+- `risk-snapshot.md` and `risk-snapshot.json`: preflight blockers, warnings, evidence, and remediation steps
 - `tasks/*.md`: one implementation prompt per selected target
 - `execution-plan.md` and `execution-plan.json`: ordered phases, command hints, and stop gates
 - `outcome-template.jsonl`: lines to append back into the outcome ledger after the run
@@ -73,7 +75,7 @@ The runner excludes provider-visible tasks by default. Do not allow autonomous c
 
 Release work is also gated. A dev build should ship only after actual fixes merge into `dev`, not after planning artifacts alone.
 
-Every execution phase has a stop gate. The runner should stop rather than freestyle when evidence is missing, a peer branch is still changing, a provider-visible change needs approval, focused validation fails, or no real fix landed.
+Every execution phase has a stop gate. The runner should stop rather than freestyle when evidence is missing, a peer branch is still changing, a provider-visible change needs approval, focused validation fails, or no real fix landed. The preflight risk snapshot is now also a selectable target, so blocker risks like a dirty current worktree or missing dependencies can win the queue before the runner starts editing.
 
 ## Next Improvements
 
@@ -81,5 +83,5 @@ Every execution phase has a stop gate. The runner should stop rather than freest
 - Compare every morning report against the previous installed build, especially WebKit RSS and frame budget deltas.
 - Let a run split itself into phases: plan, fix, validate, publish PR, merge when green, ship dev build, install, then soak.
 - Add a duplicate-work detector that notices when two night agents are chasing the same bottleneck.
-- Add a stale-risk detector for generated artifacts, dirty worktrees, missing dependencies, and paused automations.
+- Promote preflight risk fixes into automatic cleanup steps when the remediation is unambiguous and local only.
 - Turn recurring failure signatures into reusable focused test recipes.
