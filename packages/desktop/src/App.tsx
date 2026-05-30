@@ -22,7 +22,7 @@ import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { UpdateNotification, type UpdateState } from "./components/UpdateNotification";
 import { CloudSyncNudge } from "./components/CloudSyncNudge";
 import { useAppStore } from "./lib/store";
-import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML, refreshAllFeeds } from "./lib/capture";
+import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML, refreshAllFeeds, refreshRssFeeds } from "./lib/capture";
 import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
 import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
@@ -829,7 +829,7 @@ function App() {
       retryCloudProvider,
       reconnectCloudProvider,
       forgetRssFeedHealth,
-      syncRssNow: refreshAllFeeds,
+      syncRssNow: refreshRssFeeds,
       syncSourceNow: async (sourceId) => {
         const state = useDesktopStore.getState();
         const health = useDebugStore.getState().health;
@@ -841,7 +841,7 @@ function App() {
           health?.providers[sourceId]?.status === "paused";
 
         if (sourceId === "rss") {
-          await refreshAllFeeds();
+          await refreshRssFeeds();
           return;
         }
 

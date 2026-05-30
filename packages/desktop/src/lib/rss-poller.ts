@@ -5,7 +5,7 @@
  * Runs in the JavaScript layer so it works regardless of Tauri's background state.
  */
 
-import { refreshAllFeeds } from "./capture";
+import { refreshRssFeeds } from "./capture";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import {
   isBackgroundRuntimeDeferredError,
@@ -77,7 +77,7 @@ async function triggerPoll(): Promise<void> {
       kind: "rss-poll",
       source: "rss-poller",
       timeoutMs: 180_000,
-      run: refreshAllFeeds,
+      run: refreshRssFeeds,
     });
     clearDeferredRetry();
   } catch (err) {
