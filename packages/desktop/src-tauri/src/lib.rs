@@ -1052,6 +1052,20 @@ struct WebkitProcessRuntimeStats {
     role: String,
 }
 
+#[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ScraperRecycleVerification {
+    elapsed_ms: u64,
+    before_process_ids: Vec<u32>,
+    after_process_ids: Vec<u32>,
+    exited_process_ids: Vec<u32>,
+    retained_process_ids: Vec<u32>,
+    new_process_ids: Vec<u32>,
+    before_webkit_resident_bytes: u64,
+    after_webkit_resident_bytes: u64,
+    webkit_resident_delta_bytes: i64,
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AIHardwareProfile {
@@ -1070,6 +1084,7 @@ struct ScrapeMemoryPreparation {
     after: RuntimeMemoryStats,
     recycled_scraper_windows: bool,
     cache_trimmed: bool,
+    scraper_recycle_verification: Option<ScraperRecycleVerification>,
     scrape_start_budget_bytes: u64,
     may_proceed: bool,
 }
@@ -3070,6 +3085,80 @@ fn collect_runtime_memory_stats(
     }
 }
 
+fn webkit_resident_delta_bytes(before: u64, after: u64) -> i64 {
+    if before >= after {
+        before.saturating_sub(after).min(i64::MAX as u64) as i64
+    } else {
+        -(after.saturating_sub(before).min(i64::MAX as u64) as i64)
+    }
+}
+
+fn scraper_recycle_verification_from_processes(
+    before_processes: &[WebkitProcessRuntimeStats],
+    before_webkit_resident_bytes: u64,
+    after_processes: &[WebkitProcessRuntimeStats],
+    after_webkit_resident_bytes: u64,
+    elapsed_ms: u128,
+) -> ScraperRecycleVerification {
+    let before_process_ids: Vec<u32> = before_processes
+        .iter()
+        .map(|process| process.process_id)
+        .collect();
+    let after_process_ids: Vec<u32> = after_processes
+        .iter()
+        .map(|process| process.process_id)
+        .collect();
+    let after_set: HashSet<u32> = after_process_ids.iter().copied().collect();
+    let before_set: HashSet<u32> = before_process_ids.iter().copied().collect();
+    let exited_process_ids: Vec<u32> = before_process_ids
+        .iter()
+        .copied()
+        .filter(|process_id| !after_set.contains(process_id))
+        .collect();
+    let retained_process_ids: Vec<u32> = before_process_ids
+        .iter()
+        .copied()
+        .filter(|process_id| after_set.contains(process_id))
+        .collect();
+    let new_process_ids: Vec<u32> = after_process_ids
+        .iter()
+        .copied()
+        .filter(|process_id| !before_set.contains(process_id))
+        .collect();
+
+    ScraperRecycleVerification {
+        elapsed_ms: elapsed_ms.min(u64::MAX as u128) as u64,
+        before_process_ids,
+        after_process_ids,
+        exited_process_ids,
+        retained_process_ids,
+        new_process_ids,
+        before_webkit_resident_bytes,
+        after_webkit_resident_bytes,
+        webkit_resident_delta_bytes: webkit_resident_delta_bytes(
+            before_webkit_resident_bytes,
+            after_webkit_resident_bytes,
+        ),
+    }
+}
+
+fn build_scraper_recycle_verification(
+    recycled_scraper_windows: bool,
+    before: &RuntimeMemoryStats,
+    after: &RuntimeMemoryStats,
+    elapsed_ms: u128,
+) -> Option<ScraperRecycleVerification> {
+    recycled_scraper_windows.then(|| {
+        scraper_recycle_verification_from_processes(
+            &before.webkit_processes,
+            before.webkit_total_resident_bytes,
+            &after.webkit_processes,
+            after.webkit_total_resident_bytes,
+            elapsed_ms,
+        )
+    })
+}
+
 fn collect_webkit_network_cache_files(root: &Path, files: &mut Vec<(PathBuf, u64, SystemTime)>) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
@@ -3316,6 +3405,7 @@ async fn prepare_social_scrape_memory_internal(
 ) -> ScrapeMemoryPreparation {
     let before = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
     let reason = format!("{} {} memory preflight", provider, operation);
+    let recycle_started_at = Instant::now();
     let recycled_scraper_windows =
         recycle_social_scraper_windows_except(app, preserve_label, &reason);
     let cache_trim_result = trim_webkit_network_cache(app);
@@ -3326,12 +3416,18 @@ async fn prepare_social_scrape_memory_internal(
     }
 
     let after = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
+    let scraper_recycle_verification = build_scraper_recycle_verification(
+        recycled_scraper_windows,
+        &before,
+        &after,
+        recycle_started_at.elapsed().as_millis(),
+    );
     let scrape_start_budget_bytes = scrape_memory_start_budget_bytes(&after);
     let scrape_resident_budget_bytes = scrape_resident_start_budget_bytes(&after);
     let may_proceed = scrape_memory_may_proceed(&after);
     let pressure_level = scrape_memory_pressure_level(&after);
     info!(
-        "[memory] scrape preflight provider={} operation={} before_app_pressure={} before_app_rss={} before_webkit_pressure={} before_webkit_rss={} after_app_pressure={} after_app_rss={} after_webkit_pressure={} after_webkit_rss={} scrape_budget={} resident_budget={} headroom_bytes={} high_bytes={} critical_bytes={} pressure={} recycled_scrapers={} cache_trimmed={} may_proceed={}",
+        "[memory] scrape preflight provider={} operation={} before_app_pressure={} before_app_rss={} before_webkit_pressure={} before_webkit_rss={} after_app_pressure={} after_app_rss={} after_webkit_pressure={} after_webkit_rss={} recycle_exited_pids={} recycle_retained_pids={} recycle_new_pids={} recycle_webkit_delta_bytes={} recycle_elapsed_ms={} scrape_budget={} resident_budget={} headroom_bytes={} high_bytes={} critical_bytes={} pressure={} recycled_scrapers={} cache_trimmed={} may_proceed={}",
         provider,
         operation,
         before.app_memory_pressure_bytes,
@@ -3346,6 +3442,26 @@ async fn prepare_social_scrape_memory_internal(
             .webkit_total_footprint_bytes
             .unwrap_or(after.webkit_total_resident_bytes),
         after.webkit_total_resident_bytes,
+        scraper_recycle_verification
+            .as_ref()
+            .map(|verification| verification.exited_process_ids.len())
+            .unwrap_or(0),
+        scraper_recycle_verification
+            .as_ref()
+            .map(|verification| verification.retained_process_ids.len())
+            .unwrap_or(0),
+        scraper_recycle_verification
+            .as_ref()
+            .map(|verification| verification.new_process_ids.len())
+            .unwrap_or(0),
+        scraper_recycle_verification
+            .as_ref()
+            .map(|verification| verification.webkit_resident_delta_bytes)
+            .unwrap_or(0),
+        scraper_recycle_verification
+            .as_ref()
+            .map(|verification| verification.elapsed_ms)
+            .unwrap_or(0),
         scrape_start_budget_bytes,
         scrape_resident_budget_bytes,
         SCRAPE_MEMORY_HEADROOM_BYTES,
@@ -3384,6 +3500,7 @@ async fn prepare_social_scrape_memory_internal(
             "memoryCriticalBytes": after.memory_critical_bytes,
             "pressureLevel": pressure_level,
             "recycledScraperWindows": recycled_scraper_windows,
+            "scraperRecycleVerification": &scraper_recycle_verification,
             "cacheTrimmed": cache_trimmed,
             "mayProceed": may_proceed
         }),
@@ -3406,6 +3523,7 @@ async fn prepare_social_scrape_memory_internal(
         after,
         recycled_scraper_windows,
         cache_trimmed,
+        scraper_recycle_verification,
         scrape_start_budget_bytes,
         may_proceed,
     }
@@ -7700,6 +7818,39 @@ mod tests {
             ),
             None
         );
+    }
+
+    fn webkit_process_stats(process_id: u32, resident_bytes: u64) -> WebkitProcessRuntimeStats {
+        WebkitProcessRuntimeStats {
+            process_id,
+            resident_bytes,
+            footprint_bytes: Some(resident_bytes),
+            virtual_bytes: resident_bytes.saturating_mul(2),
+            cpu_usage: 0.0,
+            age_seconds: 10,
+            role: "freed-webcontent".to_string(),
+        }
+    }
+
+    #[test]
+    fn scraper_recycle_verification_records_exited_retained_and_new_webkit_pids() {
+        let before = vec![
+            webkit_process_stats(10, 900),
+            webkit_process_stats(20, 700),
+            webkit_process_stats(30, 500),
+        ];
+        let after = vec![webkit_process_stats(20, 650), webkit_process_stats(40, 200)];
+
+        let verification =
+            scraper_recycle_verification_from_processes(&before, 2_100, &after, 850, 742);
+
+        assert_eq!(verification.before_process_ids, vec![10, 20, 30]);
+        assert_eq!(verification.after_process_ids, vec![20, 40]);
+        assert_eq!(verification.exited_process_ids, vec![10, 30]);
+        assert_eq!(verification.retained_process_ids, vec![20]);
+        assert_eq!(verification.new_process_ids, vec![40]);
+        assert_eq!(verification.webkit_resident_delta_bytes, 1_250);
+        assert_eq!(verification.elapsed_ms, 742);
     }
 
     #[test]
