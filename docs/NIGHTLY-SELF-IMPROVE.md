@@ -8,6 +8,7 @@ The first rule is simple: evidence first, code second. If a target has weak evid
 
 - Active soak pointer at `/tmp/freed-perf-soak/current-soak-dir`
 - Soak files such as `metrics.tsv` and `runtime-health.jsonl`
+- The newest readable soak under `/tmp/freed-perf-soak` when the active pointer has no samples
 - Daily bug scan memory at `/Users/aubreyfalconer/.codex/automations/daily-bug-scan/memory.md`
 - Crash-watch automation state
 - Hourly dev bot memory as a roadmap fallback
@@ -84,7 +85,7 @@ The runner excludes provider-visible tasks by default. Do not allow autonomous c
 
 Release work is also gated. A dev build should ship only after actual fixes merge into `dev`, not after planning artifacts alone.
 
-Every execution phase has a stop gate. The runner should stop rather than freestyle when evidence is missing, a peer branch is still changing, a provider-visible change needs approval, focused validation fails, or no real fix landed. The preflight risk snapshot is now also a selectable target, so blocker risks like a dirty current worktree or missing dependencies can win the queue before the runner starts editing.
+Every execution phase has a stop gate. The runner should stop rather than freestyle when evidence is missing, a peer branch is still changing, a provider-visible change needs approval, focused validation fails, or no real fix landed. The preflight risk snapshot is now also a selectable target, so blocker risks like a dirty current worktree or missing dependencies can win the queue before the runner starts editing. If the active soak pointer is empty, the runner falls back to the newest readable soak and records that fallback in the risk snapshot.
 
 ## Next Improvements
 
@@ -92,5 +93,5 @@ Every execution phase has a stop gate. The runner should stop rather than freest
 - Compare every morning report against the previous installed build, especially WebKit RSS and frame budget deltas.
 - Let a run split itself into phases: plan, fix, validate, publish PR, merge when green, ship dev build, install, then soak.
 - Let duplicate-work findings assign an owner automatically when one branch already has passing validation.
-- Promote preflight risk fixes into automatic cleanup steps when the remediation is unambiguous and local only.
+- Promote more preflight risk fixes into automatic cleanup steps when the remediation is unambiguous and local only.
 - Turn recurring failure signatures into reusable focused test recipes.
