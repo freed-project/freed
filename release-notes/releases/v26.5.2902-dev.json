@@ -3,7 +3,7 @@
   "version": "26.5.2902-dev",
   "channel": "dev",
   "dayKey": "26.5.29",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-30T06:32:04.377Z",
   "model": "heuristic",
@@ -59,7 +59,7 @@
     ]
   },
   "release": {
-    "deck": "Nightly runner duplicate detection, nightly runner outcome closeout, and nightly runner risk snapshot",
+    "deck": "Safer startup refreshes and nightly runner guardrails",
     "features": [
       "Nightly runner duplicate detection",
       "Nightly runner outcome closeout",
@@ -72,7 +72,7 @@
       "Friends graph pinning stays intentional: dense friends graph interactions no longer create accidental pinned states when the graph is already heavily populated"
     ],
     "followUps": [
-      "Keep RSS polling out of social scraping",
+      "RSS polling now stays RSS-only, so routine background feed checks no longer wake authenticated social scraping paths",
       "Lazy load friends graph",
       "Defer sidebar feed search",
       "Defer settings list filtering",
@@ -83,5 +83,5 @@
       "Faster dense views with safer nightly tuning"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2902-dev\n\nNightly runner duplicate detection, nightly runner outcome closeout, and nightly runner risk snapshot\n\n### Features\n\n- Nightly runner duplicate detection\n- Nightly runner outcome closeout\n- Nightly runner risk snapshot\n\n### Fixes\n\n- Route desktop Google OAuth through proxy\n- Lighten focus mode emphasis\n- The dev release workflow now forces the Google proxy path and includes a guard that prevents direct Google token exchange from shipping again\n- Friends graph pinning stays intentional: dense friends graph interactions no longer create accidental pinned states when the graph is already heavily populated\n\n### Follow-ups\n\n- Keep RSS polling out of social scraping\n- Lazy load friends graph\n- Defer sidebar feed search\n- Defer settings list filtering\n- Nightly runner execution plan\n- Avoid redundant reader hydration\n- Verify scraper WebKit recycling\n- Google sign-in and interaction polish\n- Faster dense views with safer nightly tuning\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2902-dev\n\nSafer startup refreshes and nightly runner guardrails\n\n### Features\n\n- Nightly runner duplicate detection\n- Nightly runner outcome closeout\n- Nightly runner risk snapshot\n\n### Fixes\n\n- Route desktop Google OAuth through proxy\n- Lighten focus mode emphasis\n- The dev release workflow now forces the Google proxy path and includes a guard that prevents direct Google token exchange from shipping again\n- Friends graph pinning stays intentional: dense friends graph interactions no longer create accidental pinned states when the graph is already heavily populated\n\n### Follow-ups\n\n- RSS polling now stays RSS-only, so routine background feed checks no longer wake authenticated social scraping paths\n- Lazy load friends graph\n- Defer sidebar feed search\n- Defer settings list filtering\n- Nightly runner execution plan\n- Avoid redundant reader hydration\n- Verify scraper WebKit recycling\n- Google sign-in and interaction polish\n- Faster dense views with safer nightly tuning\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
