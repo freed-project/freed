@@ -55,6 +55,8 @@ function createPlatform(): PlatformConfig {
     FacebookSettingsContent: PwaFacebookSettings,
     InstagramSettingsContent: null,
     LinkedInSettingsContent: null,
+    SubstackSettingsContent: null,
+    MediumSettingsContent: null,
     YouTubeSettingsContent: PwaYouTubeSettings,
     GoogleContactsSettingsContent: PwaGoogleContactsSettings,
     releaseChannel: "production",

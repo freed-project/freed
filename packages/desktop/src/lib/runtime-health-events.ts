@@ -43,7 +43,14 @@ export type SocialScrapeTrigger =
   | "post_login"
   | "unknown";
 
-export type ScrapeOutcomeProvider = "facebook" | "instagram" | "linkedin" | "youtube" | "x";
+export type ScrapeOutcomeProvider =
+  | "facebook"
+  | "instagram"
+  | "linkedin"
+  | "substack"
+  | "medium"
+  | "youtube"
+  | "x";
 
 export function recordRuntimeHealthEvent(
   payload: { event: string } & Record<string, unknown>,

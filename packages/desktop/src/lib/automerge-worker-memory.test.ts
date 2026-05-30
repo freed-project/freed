@@ -199,6 +199,7 @@ describe("automerge worker memory routing", () => {
     expect(helperBody).toContain("persistAndBroadcastWithoutHydration");
     expect(helperBody).toContain("type: \"FEEDS_PATCH\"");
     expect(helperBody).toContain("type: \"ITEM_PATCH\"");
+    expect(helperBody).toContain("removedItemIds: removedEssayDuplicateIds");
     expect(helperBody).toContain("hasKnownLinkPreviewUrl");
     expect(helperBody).not.toContain("Object.values(doc.feedItems");
     expect(helperBody).not.toContain("saveAndBroadcast");

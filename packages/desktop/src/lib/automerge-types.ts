@@ -92,6 +92,13 @@ export type WorkerRequest =
     }
   | {
       reqId: number;
+      type: "RECONCILE_FOLLOW_ROSTER_CAPTURE";
+      accounts: Account[];
+      items: FeedItem[];
+      options: { provider: "substack" | "medium"; capturedAt: number };
+    }
+  | {
+      reqId: number;
       type: "ADD_SAMPLE_LIBRARY_DATA";
       feeds: RssFeed[];
       items: FeedItem[];
@@ -182,6 +189,7 @@ export type WorkerResponse =
       type: "ITEM_PATCH";
       patches: FeedItemPatch[];
       changedItemIds: string[];
+      removedItemIds?: string[];
       mutation?: WorkerRequest["type"];
       orderedItemIds?: string[];
       preservePriorityOrder?: boolean;

@@ -2,12 +2,15 @@
  * RSS/Atom item normalization to FeedItem
  */
 
-import type {
-  FeedItem,
-  Platform,
-  ContentType,
-  MediaType,
-  RssFeed,
+import {
+  canonicalEssayProviderProfileUrl,
+  canonicalEssayProviderUrl,
+  essayProviderGlobalId,
+  type FeedItem,
+  type Platform,
+  type ContentType,
+  type MediaType,
+  type RssFeed,
 } from "@freed/shared";
 import type { ParsedFeed, ParsedFeedItem } from "./types.js";
 import { detectPlatform } from "./discovery.js";
@@ -17,10 +20,15 @@ import { detectPlatform } from "./discovery.js";
 // =============================================================================
 
 /**
- * Detect the platform from a feed URL
+ * Detect the platform from feed metadata and its URL.
  */
-function getPlatform(feedUrl: string): Platform {
-  const platform = detectPlatform(feedUrl);
+function getPlatform(feed: ParsedFeed): Platform {
+  const generator = feed.generator?.trim().toLowerCase() ?? "";
+  const platform = /^medium\b/.test(generator)
+    ? "medium"
+    : /^substack\b/.test(generator)
+      ? "substack"
+      : detectPlatform(feed.feedUrl);
 
   // Map to valid Platform type
   switch (platform) {
@@ -32,6 +40,10 @@ function getPlatform(feedUrl: string): Platform {
       return "github";
     case "mastodon":
       return "mastodon";
+    case "medium":
+      return "medium";
+    case "substack":
+      return "substack";
     default:
       return "rss";
   }
@@ -46,6 +58,9 @@ function getContentType(item: ParsedFeedItem, platform: Platform): ContentType {
 
   // Check for podcast enclosure
   if (item.enclosure?.type?.includes("audio")) return "podcast";
+
+  // Publication feeds are the body-bearing path for authenticated essay sources.
+  if (platform === "substack" || platform === "medium") return "article";
 
   // Long-form content indicators
   const text = item.content || item.contentSnippet || "";
@@ -62,12 +77,38 @@ function getContentType(item: ParsedFeedItem, platform: Platform): ContentType {
 /**
  * Extract media URLs from an RSS item
  */
-function extractMediaUrls(item: ParsedFeedItem): string[] {
-  const urls: string[] = [];
+function extractMedia(item: ParsedFeedItem): {
+  mediaUrls: string[];
+  mediaTypes: MediaType[];
+} {
+  const mediaUrls: string[] = [];
+  const mediaTypes: MediaType[] = [];
+  const indexByUrl = new Map<string, number>();
+
+  const addMedia = (url: string | undefined, type: MediaType): void => {
+    const normalized = url?.trim();
+    if (!normalized) return;
+    const existingIndex = indexByUrl.get(normalized);
+    if (existingIndex !== undefined) {
+      if (type === "video" && mediaTypes[existingIndex] !== "video") {
+        mediaTypes[existingIndex] = "video";
+      }
+      return;
+    }
+    indexByUrl.set(normalized, mediaUrls.length);
+    mediaUrls.push(normalized);
+    mediaTypes.push(type);
+  };
 
   // Check enclosure
   if (item.enclosure?.url) {
-    urls.push(item.enclosure.url);
+    const enclosureType = item.enclosure.type?.toLowerCase() ?? "";
+    addMedia(
+      item.enclosure.url,
+      enclosureType.includes("video") || enclosureType.includes("audio")
+        ? "video"
+        : "image",
+    );
   }
 
   // Check media:content
@@ -78,73 +119,28 @@ function extractMediaUrls(item: ParsedFeedItem): string[] {
 
     for (const media of mediaContent) {
       if (media.$?.url) {
-        urls.push(media.$.url);
+        const type = (media.$.type ?? media.$.medium ?? "").toLowerCase();
+        addMedia(
+          media.$.url,
+          type.includes("video") || type.includes("audio") ? "video" : "image",
+        );
       }
     }
   }
 
   // Check media:thumbnail
   if (item["media:thumbnail"]?.$?.url) {
-    urls.push(item["media:thumbnail"].$.url);
+    addMedia(item["media:thumbnail"].$.url, "image");
   }
 
   // Extract images from content HTML
   const content = item.content || "";
   const imgMatches = content.matchAll(/<img[^>]+src=["']([^"']+)["']/gi);
   for (const match of imgMatches) {
-    if (match[1] && !urls.includes(match[1])) {
-      urls.push(match[1]);
-    }
+    addMedia(match[1], "image");
   }
 
-  return urls;
-}
-
-/**
- * Extract media types from an RSS item
- */
-function extractMediaTypes(item: ParsedFeedItem): MediaType[] {
-  const types: MediaType[] = [];
-
-  // Check enclosure type
-  if (item.enclosure?.type) {
-    if (item.enclosure.type.includes("video")) {
-      types.push("video");
-    } else if (item.enclosure.type.includes("audio")) {
-      types.push("video"); // Treat audio as video for now
-    } else if (item.enclosure.type.includes("image")) {
-      types.push("image");
-    }
-  }
-
-  // Check media:content
-  if (item["media:content"]) {
-    const mediaContent = Array.isArray(item["media:content"])
-      ? item["media:content"]
-      : [item["media:content"]];
-
-    for (const media of mediaContent) {
-      const type = media.$?.type || media.$?.medium;
-      if (type?.includes("video")) {
-        if (!types.includes("video")) types.push("video");
-      } else if (type?.includes("image")) {
-        if (!types.includes("image")) types.push("image");
-      }
-    }
-  }
-
-  // Check for images in content
-  const content = item.content || "";
-  if (content.includes("<img")) {
-    if (!types.includes("image")) types.push("image");
-  }
-
-  // Check for links
-  if (item.link) {
-    if (!types.includes("link")) types.push("link");
-  }
-
-  return types;
+  return { mediaUrls, mediaTypes };
 }
 
 // =============================================================================
@@ -156,6 +152,8 @@ function extractMediaTypes(item: ParsedFeedItem): MediaType[] {
  */
 function stripHtml(html: string): string {
   return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:p|div|h[1-6]|li|blockquote|pre|section|article)>/gi, "\n\n")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
@@ -163,14 +161,21 @@ function stripHtml(html: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
+    .replace(/[\t\f\v ]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
 /**
  * Get clean text content from item
  */
-function getTextContent(item: ParsedFeedItem): string | undefined {
+function getTextContent(item: ParsedFeedItem, platform: Platform): string | undefined {
+  // For essay providers, prefer the body carried by RSS over a shorter excerpt.
+  if ((platform === "substack" || platform === "medium") && item.content) {
+    return stripHtml(item.content);
+  }
+
   // Prefer content snippet (already stripped)
   if (item.contentSnippet) {
     return item.contentSnippet;
@@ -189,23 +194,45 @@ function getTextContent(item: ParsedFeedItem): string | undefined {
   return undefined;
 }
 
+function globalIdForItem(
+  item: ParsedFeedItem,
+  feed: ParsedFeed,
+  platform: Platform,
+): string {
+  if (platform === "substack" || platform === "medium") {
+    const articleId =
+      essayProviderGlobalId(platform, item.link) ??
+      essayProviderGlobalId(platform, item.guid);
+    if (articleId) return articleId;
+  }
+
+  const itemId = item.guid || item.link || `${feed.feedUrl}:${item.title}`;
+  return `${platform}:${itemId}`;
+}
+
 /**
  * Extract author handle from feed/item
  */
 function extractHandle(feed: ParsedFeed, item: ParsedFeedItem): string {
-  // Use creator if available
-  if (item.creator) return item.creator;
-
-  // Try to extract from feed URL
   const url = feed.feedUrl;
 
-  // Medium: @username
-  const mediumMatch = url.match(/medium\.com\/feed\/@([^\/]+)/);
-  if (mediumMatch) return `@${mediumMatch[1]}`;
+  // Provider handles must match the authenticated roster identity shape.
+  const mediumMatch =
+    url.match(/medium\.com\/feed\/@([^/]+)/) ??
+    item.link?.match(/medium\.com\/@([^/]+)/);
+  if (mediumMatch) return decodeURIComponent(mediumMatch[1]).toLowerCase();
 
-  // Substack: publication name
-  const substackMatch = url.match(/([^.]+)\.substack\.com/);
-  if (substackMatch) return substackMatch[1];
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    if (hostname.endsWith(".substack.com")) {
+      const publication = hostname.slice(0, -".substack.com".length).split(".").pop();
+      if (publication) return publication;
+    }
+  } catch {
+    // Continue through the generic feed fallbacks.
+  }
+
+  if (item.creator) return item.creator;
 
   // YouTube: channel name from feed title
   if (url.includes("youtube.com")) {
@@ -222,6 +249,66 @@ function extractHandle(feed: ParsedFeed, item: ParsedFeedItem): string {
   return feed.title;
 }
 
+function extractAuthorId(
+  feed: ParsedFeed,
+  item: ParsedFeedItem,
+  platform: Platform,
+): string {
+  if (platform === "substack") {
+    for (const value of [feed.feedUrl, feed.link, item.link]) {
+      try {
+        const url = new URL(value ?? "");
+        if (url.hostname === "substack.com" || url.hostname.endsWith(".substack.com")) {
+          return `${url.origin}/`;
+        }
+      } catch {
+        // Continue through the remaining publication URLs.
+      }
+    }
+    const customPublicationUrl = canonicalEssayProviderUrl(feed.link);
+    if (customPublicationUrl) {
+      try {
+        return `${new URL(customPublicationUrl).origin}/`;
+      } catch {
+        // Fall back to the feed identity below.
+      }
+    }
+  }
+
+  if (platform === "medium") {
+    const mediumMatch =
+      feed.feedUrl.match(/medium\.com\/feed\/@([^/]+)/) ??
+      item.link?.match(/medium\.com\/@([^/]+)/);
+    if (mediumMatch) {
+      return canonicalEssayProviderProfileUrl(
+        "medium",
+        `https://medium.com/@${decodeURIComponent(mediumMatch[1])}`,
+      ) ?? feed.feedUrl;
+    }
+
+    const publicationMatch = feed.feedUrl.match(
+      /^https?:\/\/(?:www\.)?medium\.com\/feed\/([^/?#]+)\/?(?:[?#].*)?$/i,
+    );
+    if (publicationMatch && !publicationMatch[1].startsWith("@")) {
+      return `https://medium.com/${decodeURIComponent(publicationMatch[1]).toLowerCase()}`;
+    }
+
+    const publicationUrl = canonicalEssayProviderUrl(feed.link);
+    if (publicationUrl) return publicationUrl;
+
+    try {
+      const storyUrl = new URL(item.link ?? "");
+      if (storyUrl.hostname !== "medium.com" && !storyUrl.hostname.endsWith(".medium.com")) {
+        return `${storyUrl.origin}/`;
+      }
+    } catch {
+      // Fall back to the feed identity below.
+    }
+  }
+
+  return feed.feedUrl;
+}
+
 // =============================================================================
 // Main Normalization
 // =============================================================================
@@ -233,17 +320,17 @@ export function rssItemToFeedItem(
   item: ParsedFeedItem,
   feed: ParsedFeed
 ): FeedItem {
-  const platform = getPlatform(feed.feedUrl);
+  const platform = getPlatform(feed);
   const contentType = getContentType(item, platform);
 
-  // Generate global ID
-  const itemId = item.guid || item.link || `${feed.feedUrl}:${item.title}`;
-  const globalId = `${platform}:${itemId}`;
+  const globalId = globalIdForItem(item, feed, platform);
 
   // Parse publication date
   const pubDate = item.pubDate ? new Date(item.pubDate) : new Date();
   const publishedAt = isNaN(pubDate.getTime()) ? Date.now() : pubDate.getTime();
-  const textContent = getTextContent(item);
+  const textContent = getTextContent(item, platform);
+  const authorHandle = extractHandle(feed, item);
+  const media = extractMedia(item);
 
   return {
     globalId,
@@ -252,15 +339,15 @@ export function rssItemToFeedItem(
     capturedAt: Date.now(),
     publishedAt,
     author: {
-      id: feed.feedUrl,
-      handle: extractHandle(feed, item),
+      id: extractAuthorId(feed, item, platform),
+      handle: authorHandle,
       displayName: feed.title,
       ...(feed.image?.url ? { avatarUrl: feed.image.url } : {}),
     },
     content: {
       ...(textContent !== undefined ? { text: textContent } : {}),
-      mediaUrls: extractMediaUrls(item),
-      mediaTypes: extractMediaTypes(item),
+      mediaUrls: media.mediaUrls,
+      mediaTypes: media.mediaTypes,
       ...(item.link
         ? {
             linkPreview: {

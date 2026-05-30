@@ -533,6 +533,12 @@ export function Header({
       return feedTotalCounts[activeFilter.feedUrl] ?? null;
     }
     if (activeFilter.platform) {
+      if (activeFilter.platform === "rss") {
+        return Object.values(feedTotalCounts).reduce(
+          (total, count) => total + count,
+          0,
+        );
+      }
       return itemCountByPlatform[activeFilter.platform] ?? null;
     }
     return totalItemCount;

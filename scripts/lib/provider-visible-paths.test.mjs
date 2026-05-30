@@ -57,6 +57,32 @@ test("desktop capture, auth, and extractor files are provider-visible", () => {
     true,
   );
   assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src/lib/authenticated-essay-capture.ts",
+    ),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src/lib/authenticated-essay-auth.ts",
+    ),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src/lib/authenticated-essay-poller.ts",
+    ),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath("packages/desktop/src/lib/substack-auth.ts"),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath("packages/desktop/src-tauri/src/medium-extract.js"),
+    true,
+  );
+  assert.equal(
     isProviderVisiblePath("packages/desktop/src/lib/legal-consent.ts"),
     true,
   );
@@ -101,6 +127,30 @@ test("risk-only provider surfaces are provider-visible even without a focused te
   assert.equal(
     isProviderVisiblePath(
       "packages/desktop/src-tauri/capabilities/ig-scraper.json",
+    ),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src-tauri/capabilities/substack-session.json",
+    ),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src-tauri/capabilities/medium-session.json",
+    ),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src-tauri/capabilities/future-provider.json",
+    ),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src-tauri/gen/schemas/capabilities.json",
     ),
     true,
   );
@@ -211,7 +261,7 @@ test("provider UI entry points and automatic hydration callers are provider-visi
   );
 });
 
-test("provider capture packages are provider-visible, including linkedin and youtube", () => {
+test("provider capture packages are provider-visible", () => {
   assert.equal(
     isProviderVisiblePath("packages/capture-facebook/src/selectors.ts"),
     true,
@@ -234,6 +284,14 @@ test("provider capture packages are provider-visible, including linkedin and you
   );
   assert.equal(
     isProviderVisiblePath("packages/capture-youtube/src/browser.ts"),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath("packages/capture-substack/src/normalize.ts"),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath("packages/capture-medium/src/normalize.ts"),
     true,
   );
 });
@@ -708,10 +766,64 @@ test("provider-specific paths infer the provider used to validate approval scope
     ),
     ["youtube"],
   );
+  assert.deepEqual(
+    providerIdsForPath("packages/capture-substack/src/normalize.ts"),
+    ["substack"],
+  );
+  assert.deepEqual(
+    providerIdsForPath("packages/desktop/src/lib/medium-capture.ts"),
+    ["medium"],
+  );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src-tauri/capabilities/substack-session.json",
+    ),
+    ["substack"],
+  );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src-tauri/capabilities/medium-session.json",
+    ),
+    ["medium"],
+  );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src-tauri/gen/schemas/capabilities.json",
+    ),
+    [
+      "facebook",
+      "instagram",
+      "linkedin",
+      "medium",
+      "substack",
+      "x",
+      "youtube",
+    ],
+  );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src/lib/authenticated-essay-capture.ts",
+    ),
+    ["medium", "substack"],
+  );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src/lib/authenticated-essay-auth.ts",
+    ),
+    ["medium", "substack"],
+  );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src/lib/authenticated-essay-poller.ts",
+    ),
+    ["medium", "substack"],
+  );
   assert.deepEqual(providerIdsForPath("packages/shared/src/legal.ts"), [
     "facebook",
     "instagram",
     "linkedin",
+    "medium",
+    "substack",
     "x",
     "youtube",
   ]);
@@ -725,6 +837,31 @@ test("provider-specific paths infer the provider used to validate approval scope
   assert.deepEqual(
     providerIdsForPath("packages/desktop/src-tauri/src/lib.rs"),
     [],
+  );
+});
+
+test("multi-provider inferred scopes validate after canonical normalization", () => {
+  const path = "packages/desktop/src/lib/authenticated-essay-capture.ts";
+  const providers = providerIdsForPath(path);
+  const packet = validApproval({
+    approvalSource: {
+      kind: "owner-confirmation",
+      reference: "task-019f-provider-diff-confirmation",
+    },
+    providers,
+    paths: [path],
+    pathScopes: [{ path, providers }],
+  });
+  const record = {
+    ...packet,
+    authorizationDigest: providerApprovalAuthorizationDigest(packet),
+  };
+
+  assert.doesNotThrow(() =>
+    validateProviderRiskApproval(record, record.paths, {
+      now: Date.parse("2026-07-11T00:00:00.000Z"),
+      diffSha: record.diffSha,
+    }),
   );
 });
 
@@ -835,7 +972,7 @@ test("structured provider approval rejects provider names that contradict the pa
           diffSha: "a".repeat(40),
         },
       ),
-    /must equal inferred provider scope: facebook, instagram, linkedin, x, youtube/,
+    /must equal inferred provider scope: facebook, instagram, linkedin, medium, substack, x, youtube/,
   );
 });
 

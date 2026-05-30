@@ -21,11 +21,14 @@ export type SectionId =
   | "facebook"
   | "instagram"
   | "linkedin"
+  | "substack"
+  | "medium"
   | "youtube";
 
 export interface SectionMeta {
   id: SectionId;
   label: string;
+  stage?: "beta";
   /** Lowercase keywords matched against search queries. */
   keywords: string[];
 }
@@ -40,6 +43,8 @@ export interface SettingsSectionAvailability {
   hasFacebook: boolean;
   hasInstagram: boolean;
   hasLinkedIn: boolean;
+  hasSubstack: boolean;
+  hasMedium: boolean;
   hasYouTube?: boolean;
   hasUpdateChecks: boolean;
   hasFactoryReset: boolean;
@@ -136,6 +141,20 @@ export const LI_SECTION_META: SectionMeta = {
   keywords: ["linkedin", "li", "professional", "feed", "connect", "network", "jobs", "posts"],
 };
 
+export const SUBSTACK_SECTION_META: SectionMeta = {
+  id: "substack",
+  label: "Substack",
+  stage: "beta",
+  keywords: ["substack", "essay", "notes", "publication", "subscriptions", "followers", "following"],
+};
+
+export const MEDIUM_SECTION_META: SectionMeta = {
+  id: "medium",
+  label: "Medium",
+  stage: "beta",
+  keywords: ["medium", "story", "essay", "responses", "claps", "followers", "following"],
+};
+
 /** Shown when this surface can manage or report YouTube integration state. */
 export const YOUTUBE_SECTION_META: SectionMeta = {
   id: "youtube",
@@ -180,7 +199,7 @@ export function buildSettingsSectionMetas(
   const baseSectionById = Object.fromEntries(
     BASE_SECTION_METAS.map((section) => [section.id, section]),
   ) as Record<
-    Exclude<SectionId, "ai" | "shortcuts" | "updates" | "danger" | "googleContacts" | "x" | "facebook" | "instagram" | "linkedin" | "youtube">,
+    Exclude<SectionId, "ai" | "shortcuts" | "updates" | "danger" | "googleContacts" | "x" | "facebook" | "instagram" | "linkedin" | "substack" | "medium" | "youtube">,
     SectionMeta
   >;
 
@@ -194,6 +213,8 @@ export function buildSettingsSectionMetas(
     ...(availability.hasFacebook ? [FB_SECTION_META] : []),
     ...(availability.hasInstagram ? [IG_SECTION_META] : []),
     ...(availability.hasLinkedIn ? [LI_SECTION_META] : []),
+    ...(availability.hasSubstack ? [SUBSTACK_SECTION_META] : []),
+    ...(availability.hasMedium ? [MEDIUM_SECTION_META] : []),
     ...(availability.hasYouTube ? [YOUTUBE_SECTION_META] : []),
     baseSectionById.feeds,
     baseSectionById.storyWall,

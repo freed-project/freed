@@ -29,6 +29,8 @@ describe("social scraper session backpressure", () => {
       "ig_like_post",
       "li_check_auth",
       "li_scrape_feed",
+      "check_essay_provider_auth",
+      "scrape_essay_provider",
     ];
 
     for (const command of guardedCommands) {

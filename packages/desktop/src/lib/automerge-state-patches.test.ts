@@ -119,6 +119,51 @@ describe("Automerge item patch state updates", () => {
     expect(result.state.totalUnreadCount).toBe(0);
   });
 
+  it("removes duplicate records and updates counts without hydrating full state", () => {
+    const unread = makeItem("rss:unread");
+    const read = makeItem("rss:read", { readAt: 10 });
+    const state = makeState([unread, read]);
+    const index = createItemIndex(state.items);
+    const patchedRead = makeItem("rss:read", { readAt: 10, saved: true });
+
+    const result = applyItemPatchesToState(state, [{ item: patchedRead }], index, {
+      removedItemIds: ["rss:unread"],
+      searchCorpusVersion: 2,
+    });
+
+    expect(result.state.items).toEqual([patchedRead]);
+    expect(result.itemIndex.has("rss:unread")).toBe(false);
+    expect(result.itemIndex.get("rss:read")).toBe(0);
+    expect(result.state.searchCorpusVersion).toBe(2);
+    expect(result.state.docItemCount).toBe(1);
+    expect(result.state.totalItemCount).toBe(1);
+    expect(result.state.totalUnreadCount).toBe(0);
+    expect(result.state.itemCountByPlatform).toEqual({ rss: 1 });
+    expect(result.state.feedTotalCounts).toEqual({ [FEED_URL]: 1 });
+    expect(result.state.feedUnreadCounts).toEqual({});
+  });
+
+  it("decrements the document count for removed records outside the UI projection", () => {
+    const unread = makeItem("rss:unread");
+    const state = {
+      ...makeState([unread]),
+      docItemCount: 2,
+      totalItemCount: 1,
+      itemCountByPlatform: { rss: 1 },
+      feedTotalCounts: { [FEED_URL]: 1 },
+    };
+    const index = createItemIndex(state.items);
+
+    const result = applyItemPatchesToState(state, [], index, {
+      removedItemIds: ["rss:hidden-duplicate"],
+    });
+
+    expect(result.state.items).toBe(state.items);
+    expect(result.itemIndex).toBe(index);
+    expect(result.state.docItemCount).toBe(1);
+    expect(result.state.totalItemCount).toBe(1);
+  });
+
   it("preserves count map identity for count-neutral item patches", () => {
     const unread = makeItem("rss:unread");
     const read = makeItem("rss:read", { readAt: 10 });

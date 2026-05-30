@@ -6,6 +6,8 @@ export type BackgroundActivityChannelId =
   | "facebook"
   | "instagram"
   | "linkedin"
+  | "substack"
+  | "medium"
   | "youtube"
   | "googleContacts"
   | "gdrive"
@@ -103,6 +105,8 @@ export const BACKGROUND_CHANNEL_LABELS: Record<BackgroundActivityChannelId, stri
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+  substack: "Substack",
+  medium: "Medium",
   youtube: "YouTube",
   googleContacts: "Google Contacts",
   gdrive: "Google Drive",
@@ -130,6 +134,8 @@ const DEBUG_PREFIX_CHANNELS: Array<[RegExp, BackgroundActivityChannelId]> = [
   [/^\[FB\]/, "facebook"],
   [/^\[IG\]/, "instagram"],
   [/^\[LI\]/, "linkedin"],
+  [/^\[Substack\]/, "substack"],
+  [/^\[Medium\]/, "medium"],
   [/^\[YT\]/, "youtube"],
   [/^\[Contacts\]/, "googleContacts"],
   [/^\[Cloud\/gdrive\]/, "gdrive"],

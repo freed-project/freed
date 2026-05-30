@@ -146,9 +146,12 @@ export function applyItemPatchesToState(
     preservePriorityOrder?: boolean;
     searchCorpusVersion?: number;
     docItemCount?: number;
+    removedItemIds?: string[];
   } = {},
 ): { state: DocState; itemIndex: ItemIndex } {
-  if (patches.length === 0 && !options.orderedItemIds) {
+  const removedItemIds = options.removedItemIds ?? [];
+  const removedItemIdSet = new Set(removedItemIds);
+  if (patches.length === 0 && removedItemIds.length === 0 && !options.orderedItemIds) {
     const metadataChanged =
       options.searchCorpusVersion !== undefined || options.docItemCount !== undefined;
     return metadataChanged
@@ -178,8 +181,33 @@ export function applyItemPatchesToState(
     return counts;
   };
 
+  if (removedItemIds.length > 0) {
+    const visibleRemovals = removedItemIds
+      .map((globalId) => {
+        const index = itemIndex.get(globalId);
+        return index === undefined ? null : { globalId, index };
+      })
+      .filter((entry): entry is { globalId: string; index: number } => entry !== null)
+      .sort((left, right) => right.index - left.index);
+
+    for (const removal of visibleRemovals) {
+      const items = ensureItems();
+      const previous = items[removal.index];
+      if (!previous) continue;
+      applyItemContribution(ensureCounts(), previous, -1);
+      items.splice(removal.index, 1);
+      itemIndex.delete(removal.globalId);
+      indexNeedsRebuild = true;
+    }
+    if (indexNeedsRebuild) {
+      itemIndex = createItemIndex(ensureItems());
+      indexNeedsRebuild = false;
+    }
+  }
+
   for (const patch of patches) {
     const item = patch.item;
+    if (removedItemIdSet.has(item.globalId)) continue;
     const existingIndex = itemIndex.get(item.globalId);
 
     if (existingIndex === undefined) {
@@ -245,7 +273,7 @@ export function applyItemPatchesToState(
 
   if (!nextItems) {
     const docItemCount = options.docItemCount ??
-      (addedDocItemCount > 0 ? state.docItemCount + addedDocItemCount : state.docItemCount);
+      Math.max(0, state.docItemCount + addedDocItemCount - removedItemIds.length);
     return {
       state: {
         ...state,
@@ -257,7 +285,7 @@ export function applyItemPatchesToState(
   }
   const nextIndex = indexNeedsRebuild ? createItemIndex(nextItems) : itemIndex;
   const docItemCount = options.docItemCount ??
-    (addedDocItemCount > 0 ? state.docItemCount + addedDocItemCount : state.docItemCount);
+    Math.max(0, state.docItemCount + addedDocItemCount - removedItemIds.length);
   const metadataState = {
     searchCorpusVersion: options.searchCorpusVersion ?? state.searchCorpusVersion,
     docItemCount,

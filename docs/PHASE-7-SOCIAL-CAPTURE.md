@@ -187,6 +187,7 @@ const RATE_LIMITS = {
 | 7.21 | Shared social memory-preflight backoff      | ✓ Complete  |
 | 7.22 | Story Wall grouped settings section and GitHub Pages publisher | 🚧 In Progress |
 | 7.23 | Local social scrape optimization loop       | ✓ Complete  |
+| 7.24 | Shared safety runtime for authenticated Substack and Medium beta capture | ✓ Complete |
 
 ---
 
@@ -221,6 +222,10 @@ const RATE_LIMITS = {
 - [x] Facebook and Instagram feed scrapes now register with the shared background runtime so cloud sync, content fetches, RSS polls, snapshots, outbox drains, and semantic classifiers do not compete with active WebKit scraping
 - [x] Social scrape memory preflight uses adaptive high-memory budgets, native hidden-window runtime samples, and launch-delayed semantic enrichment so provider WebKit sessions get priority during long background runs
 - [x] Local social scrape optimization loop ranks runtime-log evidence into safe local next actions and explicit provider-visible risk decisions
+- [x] Authenticated Substack and Medium beta capture serializes behind the same
+      native social session lock, runs memory preflight before provider loads,
+      registers with the background runtime coordinator, records provider
+      health and scrape outcomes, and uses bounded randomized pacing
 - [x] Facebook, Instagram, and LinkedIn extractors expand common long-text controls before normalization
 - [x] Social provider source menus surface a quick status explanation for warning or reconnect states before routing into full settings
 - [x] Captured social authors can backfill the Phase 8 account catalog so followed accounts exist before identity confirmation
