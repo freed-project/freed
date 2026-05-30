@@ -96,7 +96,23 @@ describe("automerge worker memory routing", () => {
     expect(initBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text\",");
     expect(replaceBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text\",");
     expect(mergeBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text after merge\",");
-    expect(initBody.indexOf("compactLoadedFeedText")).toBeLessThan(initBody.indexOf("saveAndBroadcast"));
+    expect(initBody.indexOf("compactLoadedFeedText")).toBeLessThan(initBody.indexOf("hydrateAndBroadcastWithoutPersist"));
+  });
+
+  it("clean startup hydration avoids serializing and rewriting the loaded document", () => {
+    const helperBody = workerSource.match(
+      /async function hydrateAndBroadcastWithoutPersist[\s\S]*?\n}/,
+    )?.[0] ?? "";
+    const initBody = caseBody("INIT");
+
+    expect(workerSource).toContain("hydrateAndBroadcastWithoutPersist");
+    expect(helperBody).toContain("hydrateFromDoc");
+    expect(helperBody).toContain("STATE_UPDATE");
+    expect(helperBody).not.toContain("persistDoc");
+    expect(helperBody).not.toContain("storage.save");
+    expect(helperBody).not.toContain("A.save");
+    expect(initBody).toContain("loadedDocNeedsPersist");
+    expect(initBody).toContain("hydrateAndBroadcastWithoutPersist(trace)");
   });
 
   it("rebuilds a fresh Automerge document only after compacting oversized text", () => {

@@ -192,18 +192,19 @@ function bumpSearchCorpusVersion(): void {
   searchCorpusVersion += 1;
 }
 
-function migrateLoadedIdentityGraph(message: string): void {
-  if (!currentDoc || !hasLegacyIdentityGraphData(currentDoc)) return;
+function migrateLoadedIdentityGraph(message: string): boolean {
+  if (!currentDoc || !hasLegacyIdentityGraphData(currentDoc)) return false;
   currentDoc = A.change(currentDoc, message, (doc) => {
     migrateLegacyIdentityGraph(doc);
   });
+  return true;
 }
 
 function compactLoadedFeedText(
   message: string,
   options: { rebuildHistory?: boolean; previousBinaryBytes?: number } = {},
-): void {
-  if (!currentDoc) return;
+): boolean {
+  if (!currentDoc) return false;
   let summary = createFeedTextCompactionSummary();
   currentDoc = A.change(currentDoc, message, (doc) => {
     summary = compactFeedItemsTextForSync(Object.values(doc.feedItems) as FeedItem[]);
@@ -217,10 +218,10 @@ function compactLoadedFeedText(
   }
 
   const previousBinaryBytes = options.previousBinaryBytes ?? currentBinary?.byteLength ?? 0;
-  if (!options.rebuildHistory) return;
+  if (!options.rebuildHistory) return summary.changed > 0;
   const shouldRebuildForChangedText =
     summary.changed > 0 && previousBinaryBytes >= FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES;
-  if (!shouldRebuildForChangedText) return;
+  if (!shouldRebuildForChangedText) return summary.changed > 0;
 
   const plain = A.toJS(currentDoc) as Partial<FreedDoc>;
   const rebuiltDoc = createDocFromData(plain);
@@ -236,6 +237,7 @@ function compactLoadedFeedText(
       ` saved_bytes=${Math.max(0, bytesSaved).toLocaleString()}`,
     "change",
   );
+  return true;
 }
 
 function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean {
@@ -561,6 +563,35 @@ async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
   }
 }
 
+async function hydrateAndBroadcastWithoutPersist(trace?: RequestTrace): Promise<void> {
+  const doc = currentDoc;
+  if (!doc) return;
+
+  const startedAt = performance.now();
+  const state = hydrateFromDoc(doc);
+  const afterHydrateAt = performance.now();
+
+  send({
+    type: "DEBUG_SNAPSHOT",
+    deviceId: (doc.meta?.deviceId as string | undefined) ?? "unknown",
+    itemCount: Object.keys(doc.feedItems ?? {}).length,
+    feedCount: Object.keys(doc.rssFeeds ?? {}).length,
+    binarySize: currentBinary?.byteLength ?? 0,
+  });
+  send({ type: "STATE_UPDATE", state, mutation: trace?.opType });
+
+  const totalMs = performance.now() - startedAt;
+  if (trace && totalMs >= SLOW_SAVE_AND_BROADCAST_MS) {
+    emitWorkerTrace(
+      `[automerge-worker] clean-hydrate op=${trace.opType} reqId=${trace.reqId}` +
+        ` hydrate_ms=${formatMs(afterHydrateAt - startedAt)}` +
+        ` emit_ms=${formatMs(totalMs - (afterHydrateAt - startedAt))}` +
+        ` total_ms=${formatMs(totalMs)}` +
+        ` bytes=${(currentBinary?.byteLength ?? 0).toLocaleString()}`,
+    );
+  }
+}
+
 async function persistAndBroadcastWithoutHydration(trace?: RequestTrace): Promise<void> {
   const doc = currentDoc;
   if (!doc) return;
@@ -718,19 +749,24 @@ async function handleRequest(
   try {
     switch (req.type) {
       case "INIT": {
+        let loadedDocNeedsPersist = false;
         const saved = await storage.load();
         if (saved) {
           try {
             currentDoc = A.load<FreedDoc>(saved);
             currentBinary = saved;
             persistenceState = createPersistenceState(saved);
-            migrateLoadedIdentityGraph("Migrate legacy identity graph");
-            compactLoadedFeedText("Compact oversized synced feed text", {
-              rebuildHistory: true,
-              previousBinaryBytes: saved.byteLength,
-            });
+            loadedDocNeedsPersist =
+              migrateLoadedIdentityGraph("Migrate legacy identity graph") || loadedDocNeedsPersist;
+            loadedDocNeedsPersist =
+              compactLoadedFeedText("Compact oversized synced feed text", {
+                rebuildHistory: true,
+                previousBinaryBytes: saved.byteLength,
+              }) || loadedDocNeedsPersist;
           } catch {
             await storage.clear();
+            currentDoc = null;
+            currentBinary = null;
             persistenceState = createPersistenceState(null);
             send({ type: "DEBUG_EVENT", kind: "init", detail: "corrupt doc cleared, creating fresh" });
           }
@@ -743,9 +779,15 @@ async function handleRequest(
           await storage.save(binary);
         }
         searchCorpusVersion = 1;
-        const deviceId = (currentDoc.meta?.deviceId as string | undefined) ?? "unknown";
+        const initializedDoc = currentDoc;
+        if (!initializedDoc) throw new Error("Document not initialized");
+        const deviceId = (initializedDoc.meta?.deviceId as string | undefined) ?? "unknown";
         send({ type: "DEBUG_EVENT", kind: "init", detail: `device ...${deviceId.slice(-8)}` });
-        await saveAndBroadcast(trace);
+        if (loadedDocNeedsPersist) {
+          await saveAndBroadcast(trace);
+        } else {
+          await hydrateAndBroadcastWithoutPersist(trace);
+        }
         ack(req.reqId);
         break;
       }
