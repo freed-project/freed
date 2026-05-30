@@ -5,6 +5,7 @@ import { log } from "./logger";
 export type BackgroundJobKind =
   | "cloud-sync"
   | "content-fetch"
+  | "content-signal-backfill"
   | "outbox"
   | "rss-poll"
   | "semantic-classifier"

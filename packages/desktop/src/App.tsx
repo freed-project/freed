@@ -318,6 +318,7 @@ function App() {
       void startSnapshotManager();
     }
     // Start background content fetcher, which processes the article HTML queue.
+    void contentCache.pruneOversized();
     startContentFetcher();
     startSemanticClassifier({
       isEnabled: () => {

@@ -18,10 +18,12 @@ import {
   exists,
   mkdir,
   readDir,
+  size,
 } from "@tauri-apps/plugin-fs";
 
 // Cached base directory path to avoid repeated IPC calls
 let _contentDir: string | null = null;
+export const MAX_CONTENT_CACHE_HTML_BYTES = 2 * 1024 * 1024;
 
 /** Return the content cache directory, creating it on first use */
 async function getContentDir(): Promise<string> {
@@ -42,6 +44,15 @@ function idToFilename(globalId: string): string {
   return globalId.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_") + ".html";
 }
 
+function htmlByteLength(html: string): number {
+  return new TextEncoder().encode(html).byteLength;
+}
+
+async function contentPathForId(globalId: string): Promise<string> {
+  const dir = await getContentDir();
+  return `${dir}/${idToFilename(globalId)}`;
+}
+
 export const contentCache = {
   /**
    * Retrieve cached HTML for a globalId.
@@ -49,8 +60,16 @@ export const contentCache = {
    */
   async get(globalId: string): Promise<string | null> {
     try {
-      const dir = await getContentDir();
-      return await readTextFile(`${dir}/${idToFilename(globalId)}`);
+      const path = await contentPathForId(globalId);
+      const bytes = await size(path);
+      if (bytes > MAX_CONTENT_CACHE_HTML_BYTES) {
+        await remove(path).catch(() => {});
+        console.warn(
+          `[content-cache] skipped oversized cached HTML id=${globalId} size_bytes=${bytes.toLocaleString()} limit_bytes=${MAX_CONTENT_CACHE_HTML_BYTES.toLocaleString()}`,
+        );
+        return null;
+      }
+      return await readTextFile(path);
     } catch {
       return null;
     }
@@ -61,8 +80,16 @@ export const contentCache = {
    * Creates or overwrites the file.
    */
   async set(globalId: string, html: string): Promise<void> {
-    const dir = await getContentDir();
-    await writeTextFile(`${dir}/${idToFilename(globalId)}`, html);
+    const path = await contentPathForId(globalId);
+    const bytes = htmlByteLength(html);
+    if (bytes > MAX_CONTENT_CACHE_HTML_BYTES) {
+      await remove(path).catch(() => {});
+      console.warn(
+        `[content-cache] skipped oversized HTML write id=${globalId} size_bytes=${bytes.toLocaleString()} limit_bytes=${MAX_CONTENT_CACHE_HTML_BYTES.toLocaleString()}`,
+      );
+      return;
+    }
+    await writeTextFile(path, html);
   },
 
   /**
@@ -70,8 +97,7 @@ export const contentCache = {
    */
   async has(globalId: string): Promise<boolean> {
     try {
-      const dir = await getContentDir();
-      return await exists(`${dir}/${idToFilename(globalId)}`);
+      return await exists(await contentPathForId(globalId));
     } catch {
       return false;
     }
@@ -83,8 +109,7 @@ export const contentCache = {
    */
   async delete(globalId: string): Promise<void> {
     try {
-      const dir = await getContentDir();
-      await remove(`${dir}/${idToFilename(globalId)}`);
+      await remove(await contentPathForId(globalId));
     } catch {
       // Already gone
     }
@@ -103,6 +128,35 @@ export const contentCache = {
         .map((e) => e.name!.slice(0, -5)); // strip ".html"
     } catch {
       return [];
+    }
+  },
+
+  /**
+   * Delete legacy cache files that are too large to safely hand to the renderer.
+   */
+  async pruneOversized(): Promise<number> {
+    try {
+      const dir = await getContentDir();
+      const entries = await readDir(dir);
+      let removed = 0;
+      for (const entry of entries) {
+        if (!entry.name?.endsWith(".html")) continue;
+        const path = `${dir}/${entry.name}`;
+        try {
+          const bytes = await size(path);
+          if (bytes <= MAX_CONTENT_CACHE_HTML_BYTES) continue;
+          await remove(path);
+          removed += 1;
+          console.warn(
+            `[content-cache] pruned oversized cached HTML file=${entry.name} size_bytes=${bytes.toLocaleString()} limit_bytes=${MAX_CONTENT_CACHE_HTML_BYTES.toLocaleString()}`,
+          );
+        } catch {
+          // Ignore individual files that disappear or cannot be inspected.
+        }
+      }
+      return removed;
+    } catch {
+      return 0;
     }
   },
 };
