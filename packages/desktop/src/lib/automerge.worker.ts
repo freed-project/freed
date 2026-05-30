@@ -96,8 +96,6 @@ const DESKTOP_UI_CONTENT_TEXT_LIMIT = 280;
 const DESKTOP_UI_LINK_DESCRIPTION_LIMIT = 180;
 const DESKTOP_UI_EVENT_EVIDENCE_LIMIT = 220;
 const FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES = 4 * 1024 * 1024;
-const FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES = 16 * 1024 * 1024;
-const FRESH_DOC_REBUILD_MIN_SAVINGS_RATIO = 0.1;
 
 interface RequestTrace {
   reqId: number;
@@ -222,24 +220,12 @@ function compactLoadedFeedText(
   if (!options.rebuildHistory) return;
   const shouldRebuildForChangedText =
     summary.changed > 0 && previousBinaryBytes >= FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES;
-  const shouldProbeLargeHistory = previousBinaryBytes >= FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES;
-  if (!shouldRebuildForChangedText && !shouldProbeLargeHistory) return;
+  if (!shouldRebuildForChangedText) return;
 
   const plain = A.toJS(currentDoc) as Partial<FreedDoc>;
   const rebuiltDoc = createDocFromData(plain);
   const rebuiltBinary = A.save(rebuiltDoc);
   const bytesSaved = previousBinaryBytes - rebuiltBinary.byteLength;
-  const minHistorySavings = previousBinaryBytes * FRESH_DOC_REBUILD_MIN_SAVINGS_RATIO;
-  if (!shouldRebuildForChangedText && bytesSaved < minHistorySavings) {
-    emitWorkerTrace(
-      `[automerge-worker] kept existing compacted document history` +
-        ` previous_bytes=${previousBinaryBytes.toLocaleString()}` +
-        ` rebuilt_bytes=${rebuiltBinary.byteLength.toLocaleString()}`,
-      "change",
-    );
-    return;
-  }
-
   currentDoc = rebuiltDoc;
   currentBinary = rebuiltBinary;
   persistenceState = createPersistenceState(rebuiltBinary);

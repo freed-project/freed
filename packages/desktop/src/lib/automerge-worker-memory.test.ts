@@ -93,14 +93,13 @@ describe("automerge worker memory routing", () => {
 
     expect(workerSource).toContain("compactLoadedFeedText");
     expect(workerSource).toContain("FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES = 4 * 1024 * 1024");
-    expect(workerSource).toContain("FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES = 16 * 1024 * 1024");
     expect(initBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text\",");
     expect(replaceBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text\",");
     expect(mergeBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text after merge\",");
     expect(initBody.indexOf("compactLoadedFeedText")).toBeLessThan(initBody.indexOf("saveAndBroadcast"));
   });
 
-  it("rebuilds a fresh Automerge document after compacting oversized loaded history", () => {
+  it("rebuilds a fresh Automerge document only after compacting oversized text", () => {
     const compactBody = functionBody("compactLoadedFeedText");
     const initBody = caseBody("INIT");
     const replaceBody = caseBody("REPLACE_DOC");
@@ -108,8 +107,10 @@ describe("automerge worker memory routing", () => {
     expect(workerSource).toContain("createDocFromData");
     expect(compactBody).toContain("createDocFromData(plain)");
     expect(compactBody).toContain("rebuilt compacted document");
-    expect(compactBody).toContain("shouldProbeLargeHistory");
-    expect(compactBody).toContain("kept existing compacted document history");
+    expect(compactBody).toContain("summary.changed > 0");
+    expect(compactBody).not.toContain("shouldProbeLargeHistory");
+    expect(compactBody).not.toContain("kept existing compacted document history");
+    expect(workerSource).not.toContain("FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES");
     expect(initBody.indexOf("currentBinary = saved")).toBeLessThan(initBody.indexOf("compactLoadedFeedText"));
     expect(replaceBody.indexOf("currentBinary = req.binary")).toBeLessThan(replaceBody.indexOf("compactLoadedFeedText"));
     expect(replaceBody).not.toContain("await storage.save(req.binary)");
