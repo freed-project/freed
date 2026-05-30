@@ -7,7 +7,7 @@
 
 ## Overview
 
-Final polish, accessibility, UX refinements, global animation controls, Integrated AI pack selection, and community infrastructure.
+Final polish, accessibility, UX refinements, global animation controls, Integrated AI pack selection, local semantic enrichment for friend suggestions, and community infrastructure.
 
 ---
 
@@ -115,7 +115,7 @@ The command palette now covers:
 - **Navigation**: Unified Feed, Saved, Archived, Friends, Map, every top source, typed RSS feed matches, followed social channel matches, top-level tag scopes, and every visible settings section
 - **Create flows**: Add RSS Feed, Save URL, import Freed Markdown, export Freed Markdown
 - **Current item actions**: Open original URL, close reader, save or unsave, archive or unarchive, like or unlike when supported
-- **Current scope actions**: Mark current scope read, archive current scope read items, unarchive saved items, sync RSS, sync the current provider, and check for updates when supported
+- **Current scope actions**: Mark current scope read, archive visible read items in one batch, unarchive saved items, sync RSS, sync the current provider, and check for updates when supported
 - **Danger actions**: Delete all archived items plus local or cloud-backed factory reset, guarded by typed confirmation
 
 Blank suggestions now stay compact. Individual RSS feeds and danger actions are hidden until the operator starts typing, and broad matches are capped so a large feed list cannot turn the command surface into a scroll chore.
@@ -409,8 +409,9 @@ Reward security researchers for responsible disclosure.
 | 10.13 | Sentiment analysis       | Medium     | ✓ Complete (AISummary.sentiment field)
 | 10.14 | Smart notifications      | High       |
 | 10.15 | AI settings UI           | Medium     | ✓ Complete (unified provider selector for Integrated AI, Ollama, OpenAI, Anthropic, and Gemini with provider-scoped sharing tags, optimistic selection, and default workflows when AI is enabled)
-| 10.25 | Local content signals    | Medium     | ✓ Complete (rule-based contentSignals metadata, automatic ingestion inference, resumable desktop semantic backfill, inclusive saved toolbar filter presets, expanded signal taxonomy, and compact event candidate extraction)
+| 10.25 | Local content signals    | Medium     | ✓ Complete (rule-based contentSignals metadata, automatic ingestion inference, resumable desktop and PWA semantic backfill, inclusive saved toolbar filter presets, expanded signal taxonomy, and compact event candidate extraction)
 | 10.26 | Optional local AI packs  | High       | ✓ Complete (disabled-by-default Light, Balanced, and Pro Integrated AI packs, hardware-based recommendations, pinned download manifests, semantic scan health, source links, resumable desktop downloads, raw-file checksum verification, and removal controls)
+| 10.27 | Local AI signal consumers | Medium | ✓ Complete (Friends suggestions improve from Integrated AI `Topics and ranking` contentSignals while still working deterministically when AI is off)
 
 ### Extensibility
 
@@ -455,8 +456,9 @@ Reward security researchers for responsible disclosure.
 - [ ] Topic extraction works (at least one method)
 - [ ] Summarization available for long content
 - [x] AI settings start with a single provider choice that determines whether content stays local, goes to Ollama, or goes to a selected API provider, without selection flicker while preferences persist
-- [x] Local content signals classify existing and newly ingested items without cloud AI, with inclusive saved feed filter presets, expanded semantic signals, and compact event metadata for high-confidence upcoming items
+- [x] Local content signals classify existing and newly ingested items without cloud AI on Desktop and PWA, with inclusive saved feed filter presets, expanded semantic signals, and compact event metadata for high-confidence upcoming items
 - [x] Optional local AI stays out of the installer, remains off by default, recommends Light, Balanced, or Pro from local hardware, stores pack selection plus model files in device-local state, and refreshes semantic scan health while settings is open
+- [x] Friend suggestions consume local `contentSignals` and optional Integrated AI enrichment without adding a cloud prompt path or automatic friend promotion
 - [ ] Smart notifications reduce noise
 
 ### Community
@@ -471,6 +473,7 @@ Reward security researchers for responsible disclosure.
 - [x] On hard crash or unreachable JSON update bundle, a friendly recovery dialog is shown outside the React tree, auto-checks for updates immediately, offers in-place install and restart when available, and keeps a channel-aware browser download fallback for the latest installer
 - [x] Desktop and PWA expose a shared bug report flow with public-safe bundles by default and private diagnostics as an explicit opt-in path
 - [x] Shared bug report actions now reflect the selected bundle privacy tier, bulk-toggle private diagnostics, and disable public GitHub issue drafts while private artifacts are selected
+- [x] Settings keeps Support out of the primary section list and opens the existing report composer from a dedicated Support modal launched at the top of Danger Zone
 
 ---
 

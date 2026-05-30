@@ -60,17 +60,27 @@ describe("desktop Google OAuth", () => {
   });
 
   async function completeGoogleOAuth() {
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      new Response(JSON.stringify({
-        access_token: "access-token",
-        refresh_token: "refresh-token",
-        expires_in: 3600,
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    const oauthCalls: Array<{ url: string; body: string; contentType: string }> = [];
+    invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "start_oauth_server") return 45555;
+      if (cmd === "google_oauth_proxy_request") {
+        oauthCalls.push({
+          url: String(args?.url ?? ""),
+          body: String(args?.body ?? ""),
+          contentType: String(args?.contentType ?? ""),
+        });
+        return {
+          status: 200,
+          headers: [["content-type", "application/json"]],
+          body: Array.from(new TextEncoder().encode(JSON.stringify({
+            access_token: "access-token",
+            refresh_token: "refresh-token",
+            expires_in: 3600,
+          }))),
+        };
+      }
+      return null;
+    });
 
     shellOpenMock.mockImplementation(async (authUrl: string) => {
       const state = new URL(authUrl).searchParams.get("state");
@@ -88,7 +98,7 @@ describe("desktop Google OAuth", () => {
       refreshToken: "refresh-token",
     });
 
-    return fetchMock;
+    return oauthCalls;
   }
 
   afterEach(() => {
@@ -97,29 +107,29 @@ describe("desktop Google OAuth", () => {
     localStorage.clear();
   });
 
-  it("exchanges Google desktop callbacks through the token proxy using the desktop client", async () => {
-    const fetchMock = await completeGoogleOAuth();
+  it("exchanges Google desktop callbacks directly through native Google OAuth", async () => {
+    const oauthCalls = await completeGoogleOAuth();
 
     const openedAuthUrl = shellOpenMock.mock.calls[0]?.[0] as string;
     expect(openedAuthUrl).toContain("accounts.google.com/o/oauth2/v2/auth");
     expect(new URL(openedAuthUrl).searchParams.get("client_id"))
       .toBe("304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com");
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [proxyUrl, request] = fetchMock.mock.calls[0]!;
-    expect(proxyUrl).toBe("https://app.freed.wtf/api/oauth/google");
-    expect(request?.method).toBe("POST");
-    expect(JSON.parse(String(request?.body))).toMatchObject({
-      code: "auth-code",
-      verifier: expect.any(String),
-      redirectUri: "http://localhost:45555/callback",
-      clientId: "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com",
-    });
+    expect(oauthCalls).toHaveLength(1);
+    const request = oauthCalls[0]!;
+    expect(request.url).toBe("https://oauth2.googleapis.com/token");
+    expect(request.contentType).toBe("application/x-www-form-urlencoded");
+    const body = new URLSearchParams(request.body);
+    expect(body.get("code")).toBe("auth-code");
+    expect(body.get("code_verifier")).toEqual(expect.any(String));
+    expect(body.get("redirect_uri")).toBe("http://localhost:45555/callback");
+    expect(body.get("client_id")).toBe("304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com");
+    expect(body.has("client_secret")).toBe(false);
   });
 
   it("falls back to the public Google desktop client when local preview env is absent", async () => {
     vi.unstubAllEnvs();
-    const fetchMock = await completeGoogleOAuth();
+    const oauthCalls = await completeGoogleOAuth();
 
     const openedAuthUrl = shellOpenMock.mock.calls[0]?.[0] as string;
     const openedParams = new URL(openedAuthUrl).searchParams;
@@ -127,30 +137,89 @@ describe("desktop Google OAuth", () => {
       .toBe("304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com");
     expect(openedParams.get("redirect_uri")).toBe("http://localhost:45555/callback");
 
-    const [, request] = fetchMock.mock.calls[0]!;
-    expect(JSON.parse(String(request?.body))).toMatchObject({
-      redirectUri: "http://localhost:45555/callback",
-      clientId: "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com",
-    });
+    const body = new URLSearchParams(oauthCalls[0]!.body);
+    expect(body.get("redirect_uri")).toBe("http://localhost:45555/callback");
+    expect(body.get("client_id")).toBe("304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com");
   });
 
   it("falls back to the public Google desktop client when local preview env is empty", async () => {
     vi.stubEnv("VITE_GDRIVE_DESKTOP_CLIENT_ID", "");
-    const fetchMock = await completeGoogleOAuth();
+    const oauthCalls = await completeGoogleOAuth();
 
     const openedAuthUrl = shellOpenMock.mock.calls[0]?.[0] as string;
     expect(new URL(openedAuthUrl).searchParams.get("client_id"))
       .toBe("304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com");
 
-    const [, request] = fetchMock.mock.calls[0]!;
-    expect(JSON.parse(String(request?.body))).toMatchObject({
-      clientId: "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com",
+    const body = new URLSearchParams(oauthCalls[0]!.body);
+    expect(body.get("client_id")).toBe("304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com");
+  });
+
+  it("exchanges non-default Google desktop clients directly unless proxy is forced", async () => {
+    vi.stubEnv("VITE_GDRIVE_DESKTOP_CLIENT_ID", "custom-web-client.apps.googleusercontent.com");
+    const oauthCalls = await completeGoogleOAuth();
+
+    const openedAuthUrl = shellOpenMock.mock.calls[0]?.[0] as string;
+    expect(new URL(openedAuthUrl).searchParams.get("client_id"))
+      .toBe("custom-web-client.apps.googleusercontent.com");
+
+    expect(oauthCalls[0]?.url).toBe("https://oauth2.googleapis.com/token");
+    expect(oauthCalls[0]?.contentType).toBe("application/x-www-form-urlencoded");
+    const body = new URLSearchParams(oauthCalls[0]!.body);
+    expect(body.get("client_id")).toBe("custom-web-client.apps.googleusercontent.com");
+    expect(body.get("redirect_uri")).toBe("http://localhost:45555/callback");
+  });
+
+  it("keeps the token proxy path only when explicitly forced", async () => {
+    vi.stubEnv("VITE_GDRIVE_DESKTOP_CLIENT_ID", "custom-web-client.apps.googleusercontent.com");
+    vi.stubEnv("VITE_GDRIVE_FORCE_TOKEN_PROXY", "1");
+    const oauthCalls = await completeGoogleOAuth();
+
+    expect(oauthCalls[0]?.url).toBe("https://app.freed.wtf/api/oauth/google");
+    expect(oauthCalls[0]?.contentType).toBe("application/json");
+    expect(JSON.parse(oauthCalls[0]!.body)).toMatchObject({
+      clientId: "custom-web-client.apps.googleusercontent.com",
+      redirectUri: "http://localhost:45555/callback",
     });
   });
 
+  it("refreshes Google desktop tokens through native Google OAuth", async () => {
+    const oauthCalls: Array<{ url: string; body: string; contentType: string }> = [];
+    invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "google_oauth_proxy_request") {
+        oauthCalls.push({
+          url: String(args?.url ?? ""),
+          body: String(args?.body ?? ""),
+          contentType: String(args?.contentType ?? ""),
+        });
+        return {
+          status: 200,
+          headers: [["content-type", "application/json"]],
+          body: Array.from(new TextEncoder().encode(JSON.stringify({
+            access_token: "refreshed-access-token",
+            expires_in: 3600,
+          }))),
+        };
+      }
+      return null;
+    });
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "expired-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() - 1,
+    }));
+
+    const { getValidCloudToken } = await import("./sync");
+
+    await expect(getValidCloudToken("gdrive")).resolves.toBe("refreshed-access-token");
+    expect(oauthCalls[0]?.url).toBe("https://oauth2.googleapis.com/token");
+    expect(oauthCalls[0]?.contentType).toBe("application/x-www-form-urlencoded");
+    const body = new URLSearchParams(oauthCalls[0]!.body);
+    expect(body.get("grant_type")).toBe("refresh_token");
+    expect(body.get("refresh_token")).toBe("refresh-token");
+    expect(body.get("client_id")).toBe("304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com");
+  });
+
   it("cancels a pending Google desktop callback wait", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
     shellOpenMock.mockResolvedValue(undefined);
 
     const { initiateDesktopOAuth } = await import("./sync");
@@ -165,6 +234,63 @@ describe("desktop Google OAuth", () => {
 
     await expect(promise).rejects.toMatchObject({ name: "AbortError" });
     expect(unlistenMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(invokeMock).not.toHaveBeenCalledWith("google_oauth_proxy_request", expect.anything());
+  });
+
+  it("surfaces Google token response bodies from native exchange failures", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "start_oauth_server") return 45555;
+      if (cmd === "google_oauth_proxy_request") {
+        return {
+          status: 400,
+          headers: [["content-type", "application/json"]],
+          body: Array.from(new TextEncoder().encode(JSON.stringify({
+            error: "invalid_scope",
+            error_description: "Contacts API has not been enabled.",
+          }))),
+        };
+      }
+      return null;
+    });
+    shellOpenMock.mockImplementation(async (authUrl: string) => {
+      const state = new URL(authUrl).searchParams.get("state");
+      if (!state) throw new Error("Missing OAuth state");
+      queueMicrotask(() => {
+        oauthListener?.({ payload: { code: "auth-code", state } });
+      });
+    });
+
+    const { initiateDesktopOAuth } = await import("./sync");
+
+    await expect(initiateDesktopOAuth("gdrive")).rejects.toThrow(
+      "Google token exchange failed (400): Contacts API has not been enabled.",
+    );
+  });
+
+  it("keeps non-JSON Google token failures actionable", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "start_oauth_server") return 45555;
+      if (cmd === "google_oauth_proxy_request") {
+        return {
+          status: 502,
+          headers: [["content-type", "text/html"]],
+          body: Array.from(new TextEncoder().encode("<html>bad gateway</html>")),
+        };
+      }
+      return null;
+    });
+    shellOpenMock.mockImplementation(async (authUrl: string) => {
+      const state = new URL(authUrl).searchParams.get("state");
+      if (!state) throw new Error("Missing OAuth state");
+      queueMicrotask(() => {
+        oauthListener?.({ payload: { code: "auth-code", state } });
+      });
+    });
+
+    const { initiateDesktopOAuth } = await import("./sync");
+
+    await expect(initiateDesktopOAuth("gdrive")).rejects.toThrow(
+      "Google token exchange failed (502): <html>bad gateway</html>",
+    );
   });
 });

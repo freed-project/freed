@@ -1,0 +1,29 @@
+{
+  "channel": "dev",
+  "dayKey": "26.5.10",
+  "date": "2026-05-10",
+  "preferredDeck": null,
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [],
+  "editorialNotes": [
+    "v26.5.1000-dev failed release validation and was replaced.",
+    "v26.5.1001-dev also failed the Friends Map release smoke case and was replaced.",
+    "v26.5.1002-dev passed the Friends Map case, then failed the mobile Friends Details release regression and was replaced.",
+    "v26.5.1003-dev covers Settings scroll containment, moving-state transition pause, the atomic Friends detail Map handoff, the synchronous Map commit, and the synchronous mobile Friends surface switch.",
+    "v26.5.1004-dev adds the Friends dense interaction layer cache and rebuild-count regression telemetry.",
+    "v26.5.1005-dev adds the hidden WebKit timer gap fix so expected hidden renderer throttling does not keep producing false stale-renderer cycles.",
+    "v26.5.1006-dev replaces the failed v26.5.1005-dev validation tag with the hidden heartbeat fix plus Desktop E2E server stability so Playwright output cannot reload the app during release validation.",
+    "v26.5.1007-dev replaces the failed v26.5.1006-dev validation tag with a CI-specific identity graph benchmark budget while preserving the local layout guard.",
+    "v26.5.1008-dev replaces the failed v26.5.1007-dev packaging tag by moving the hidden heartbeat timer threshold into production builds.",
+    "v26.5.1009-dev replaces the failed v26.5.1008-dev validation tag by hardening Tauri mock IPC logging and Friends smoke interactions.",
+    "v26.5.1010-dev replaces the failed v26.5.1009-dev validation tag by narrowing the collapsed Friends empty-space regression to its owned behavior.",
+    "v26.5.1011-dev ships the Settings interaction invalidation and large-feed search indexing follow-up on top of the v26.5.1010 release-gate fixes.",
+    "v26.5.1012-dev replaces the failed v26.5.1011-dev validation tag with a guarded Friends graph Pixi teardown so the Last seen to Map handoff cannot be replaced by the fatal error screen.",
+    "v26.5.1013-dev replaces the failed v26.5.1012-dev validation tag by narrowing the collapsed Friends detail-card regression away from CI-sensitive graph point lookup while preserving selected-person behavior coverage."
+  ],
+  "updatedAt": "2026-05-11T06:07:23.187Z"
+}

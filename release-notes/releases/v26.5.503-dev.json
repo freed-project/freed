@@ -1,0 +1,62 @@
+{
+  "tag": "v26.5.503-dev",
+  "version": "26.5.503-dev",
+  "channel": "dev",
+  "dayKey": "26.5.5",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-05T09:20:12.332Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.502-dev",
+    "previousPublishedDayTag": "v26.5.406-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.500-dev",
+      "v26.5.501-dev",
+      "v26.5.502-dev",
+      "v26.5.503-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.500-dev",
+      "v26.5.501-dev",
+      "v26.5.502-dev",
+      "v26.5.503-dev"
+    ],
+    "prNumbers": [
+      434,
+      435,
+      436,
+      437
+    ],
+    "commitSubjects": [
+      "perf: contain feed card layout work (#437)",
+      "release: approve v26.5.502-dev notes",
+      "release: v26.5.502-dev",
+      "fix: use AppKit activation for desktop launch (#436)",
+      "release: approve v26.5.501-dev notes",
+      "release: v26.5.501-dev",
+      "fix: strengthen desktop native activation (#435)",
+      "release: approve v26.5.500-dev notes",
+      "release: v26.5.500-dev",
+      "fix: restore desktop main window activation (#434)"
+    ]
+  },
+  "release": {
+    "deck": "Startup repair ships",
+    "features": [],
+    "fixes": [
+      "AppKit activation for desktop launch now uses the correct path",
+      "Strengthen desktop native activation",
+      "Desktop main window activation restored",
+      "Startup now retries the native show path and records activation probe results",
+      "Feed cards now isolate layout and paint work so long content does less damage while scrolling",
+      "Feed resizing now observes the active scroll container without reconnecting on every render",
+      "Read-on-scroll tracking now skips a per-row diagnostic event on the active scroll path"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.503-dev\n\nStartup repair ships\n\n### Fixes\n\n- Feed cards now isolate layout and paint work so long content does less damage while scrolling\n- Feed resizing now observes the active scroll container without reconnecting on every render\n- Read-on-scroll tracking now skips a per-row diagnostic event on the active scroll path\n- AppKit activation for desktop launch now uses the correct path\n- Strengthen desktop native activation\n- Desktop main window activation restored\n- Startup now retries the native show path and records activation probe results\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

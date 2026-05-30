@@ -18,6 +18,12 @@
         }
       : function () {};
 
+  function textValue(node, maxChars) {
+    var value = node && node.textContent ? node.textContent : "";
+    if (maxChars && value.length > maxChars) value = value.slice(0, maxChars);
+    return value.trim();
+  }
+
   function parseEngagement(text) {
     if (!text) return null;
     var cleaned = text.replace(/[^0-9.KMkm]/g, "").trim();
@@ -111,14 +117,14 @@
       // - Contain some text or images
       // - NOT be the entire feed container itself
       if (h >= 150 && h <= 2000 && node !== container) {
-        var innerText = (node.innerText || "").trim();
+        var nodeText = textValue(node, 4000);
         var hasScontent =
           node.querySelector('img[src*="scontent"], img[src*="fbcdn"]') !==
           null;
         var hasVideo = node.querySelector("video") !== null;
 
         // Post-like: has substantial text or media
-        if (innerText.length > 40 || hasScontent || hasVideo) {
+        if (nodeText.length > 40 || hasScontent || hasVideo) {
           // Check if this is a profile/author link area (h3/h4 with name + text below)
           var hasAuthorArea =
             node.querySelector("h3 a, h4 a") !== null ||
@@ -128,7 +134,7 @@
           // or if it has media + some text
           if (hasAuthorArea || hasScontent || hasVideo) {
             var id =
-              node.offsetTop + ":" + h + ":" + innerText.length;
+              node.offsetTop + ":" + h + ":" + nodeText.length;
             if (!seen.has(id)) {
               seen.add(id);
               posts.push(node);
@@ -252,13 +258,13 @@
     var textEl = el.querySelector(
       '[data-ad-comet-preview="message"], [data-ad-preview="message"]'
     );
-    if (textEl) return (textEl.innerText || "").trim();
+    if (textEl) return textValue(textEl, 4000);
 
     // Find the largest dir="auto" block that looks like post content
     var dirAutos = el.querySelectorAll('[dir="auto"]');
     var best = "";
     for (var t = 0; t < dirAutos.length; t++) {
-      var candidate = (dirAutos[t].innerText || "").trim();
+      var candidate = textValue(dirAutos[t], 4000);
       if (candidate.length > best.length && candidate.length > 15) {
         // Skip if it's just a heading (same text as an h3/h4)
         var heading = el.querySelector("h3, h4");
@@ -346,7 +352,7 @@
     if (el.querySelector('[data-testid="sponsored_label"]')) return true;
     if (el.querySelector('[aria-label="Sponsored"]')) return true;
 
-    var fullText = (el.innerText || "").trim();
+    var fullText = textValue(el, 2000);
     if (/suggested for you|people you may know|recommended for you|recommended/i.test(fullText)) {
       return true;
     }

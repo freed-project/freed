@@ -30,9 +30,10 @@ import type {
   RssFeed,
   UserPreferences,
 } from "@freed/shared";
-import type { DocState, DocStats, FeedItemPatch, WorkerRequest, WorkerResponse } from "./automerge-types";
+import type { DocChangeEvent, DocState, DocStats, WorkerRequest, WorkerResponse } from "./automerge-types";
+import { applyItemPatchesToState, createItemIndex, type ItemIndex } from "./automerge-state-patches";
 import { log } from "./logger.js";
-export type { DocState } from "./automerge-types";
+export type { DocChangeEvent, DocState } from "./automerge-types";
 
 /**
  * Whole-document save, hydrate, and broadcast work can take well over a
@@ -126,12 +127,13 @@ async function request(msg: WorkerRequest): Promise<void> {
 // Latest hydrated state - updated on every STATE_UPDATE, exposed as getDocState()
 let lastDocState: DocState | null = null;
 let lastDocStats: DocStats | null = null;
+let lastItemIndexById: ItemIndex = new Map();
 
 // ---------------------------------------------------------------------------
 // Subscriber model
 // ---------------------------------------------------------------------------
 
-type Subscriber = (state: DocState) => void;
+type Subscriber = (state: DocState, event: DocChangeEvent) => void;
 const subscribers = new Set<Subscriber>();
 
 export function subscribe(callback: Subscriber): () => void {
@@ -139,82 +141,35 @@ export function subscribe(callback: Subscriber): () => void {
   return () => subscribers.delete(callback);
 }
 
-function recomputeCounts(state: DocState): DocState {
-  const feedUnreadCounts: Record<string, number> = {};
-  const feedTotalCounts: Record<string, number> = {};
-  const unreadCountByPlatform: Record<string, number> = {};
-  const itemCountByPlatform: Record<string, number> = {};
-  const archivableCountByPlatform: Record<string, number> = {};
-  const archivableFeedCounts: Record<string, number> = {};
-  let totalUnreadCount = 0;
-  let totalItemCount = 0;
-  let totalArchivableCount = 0;
-
-  for (const item of state.items) {
-    if (item.userState.hidden || item.userState.archived) continue;
-    totalItemCount += 1;
-    itemCountByPlatform[item.platform] = (itemCountByPlatform[item.platform] ?? 0) + 1;
-    if (item.rssSource) {
-      const url = item.rssSource.feedUrl;
-      feedTotalCounts[url] = (feedTotalCounts[url] ?? 0) + 1;
-    }
-    if (!item.userState.readAt) {
-      totalUnreadCount += 1;
-      unreadCountByPlatform[item.platform] = (unreadCountByPlatform[item.platform] ?? 0) + 1;
-      if (item.rssSource) {
-        const url = item.rssSource.feedUrl;
-        feedUnreadCounts[url] = (feedUnreadCounts[url] ?? 0) + 1;
-      }
-    } else if (!item.userState.saved) {
-      totalArchivableCount += 1;
-      archivableCountByPlatform[item.platform] = (archivableCountByPlatform[item.platform] ?? 0) + 1;
-      if (item.rssSource) {
-        const url = item.rssSource.feedUrl;
-        archivableFeedCounts[url] = (archivableFeedCounts[url] ?? 0) + 1;
-      }
-    }
-  }
-
-  return {
-    ...state,
-    feedUnreadCounts,
-    feedTotalCounts,
-    totalUnreadCount,
-    unreadCountByPlatform,
-    totalItemCount,
-    itemCountByPlatform,
-    totalArchivableCount,
-    archivableCountByPlatform,
-    archivableFeedCounts,
-  };
+function isMergeablePreferenceObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function applyItemPatches(state: DocState, patches: FeedItemPatch[]): DocState {
-  if (patches.length === 0) return state;
-  const patchById = new Map(patches.map((patch) => [patch.item.globalId, patch.item]));
-  let changed = false;
-  const nextItems = state.items.map((item) => {
-    const patch = patchById.get(item.globalId);
-    if (!patch) return item;
-    changed = true;
-    patchById.delete(item.globalId);
-    return patch;
-  });
+function mergePreferencePatch<T extends object>(
+  current: T,
+  update: Partial<T>,
+): T {
+  const next = { ...current };
 
-  for (const item of patchById.values()) {
-    if (!item.userState.hidden) {
-      changed = true;
-      nextItems.push(item);
-    }
+  for (const key of Object.keys(update) as Array<keyof T>) {
+    const currentValue = current[key];
+    const updateValue = update[key];
+    next[key] = (
+      isMergeablePreferenceObject(currentValue) && isMergeablePreferenceObject(updateValue)
+        ? mergePreferencePatch<Record<string, unknown>>(currentValue, updateValue)
+        : updateValue
+    ) as T[typeof key];
   }
 
-  if (!changed) return state;
-  return recomputeCounts({ ...state, items: nextItems });
+  return next;
 }
 
-function publishState(state: DocState): void {
+function publishState(state: DocState, event: DocChangeEvent): void {
   lastDocState = state;
-  for (const sub of subscribers) sub(state);
+  if (event.requiresFullScan) {
+    lastItemIndexById = createItemIndex(state.items);
+  }
+  for (const sub of subscribers) sub(state, event);
 }
 
 // ---------------------------------------------------------------------------
@@ -240,13 +195,43 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   if (msg.type === "READY") return;
 
   if (msg.type === "STATE_UPDATE") {
-    publishState(msg.state);
+    publishState(msg.state, {
+      source: "state_update",
+      mutation: msg.mutation,
+      changedItemIds: null,
+      requiresFullScan: true,
+    });
+    return;
+  }
+
+  if (msg.type === "PREFERENCES_PATCH") {
+    if (!lastDocState) return;
+    const preferences = mergePreferencePatch(lastDocState.preferences, msg.updates);
+    publishState(
+      { ...lastDocState, preferences },
+      {
+        source: "preferences_patch",
+        mutation: msg.mutation,
+        changedItemIds: null,
+        changedItems: [],
+        requiresFullScan: false,
+      },
+    );
     return;
   }
 
   if (msg.type === "ITEM_PATCH") {
     if (!lastDocState) return;
-    publishState(applyItemPatches(lastDocState, msg.patches));
+    const changedItems = msg.patches.map((patch) => patch.item);
+    const patched = applyItemPatchesToState(lastDocState, msg.patches, lastItemIndexById);
+    lastItemIndexById = patched.itemIndex;
+    publishState(patched.state, {
+      source: "item_patch",
+      mutation: msg.mutation,
+      changedItemIds: msg.changedItemIds,
+      changedItems,
+      requiresFullScan: false,
+    });
     return;
   }
 
@@ -377,6 +362,7 @@ function sendInit(): Promise<DocState> {
       const msg = event.data;
       if (msg.type === "STATE_UPDATE" && !initialState) {
         lastDocState = msg.state;
+        lastItemIndexById = createItemIndex(msg.state.items);
         initialState = msg.state;
         tryResolve();
       } else if (msg.type === "ACK" && msg.reqId === reqId) {
@@ -542,6 +528,12 @@ export async function docToggleSaved(globalId: string): Promise<void> {
 export async function docToggleArchived(globalId: string): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "TOGGLE_ARCHIVED", globalId });
+}
+
+export async function docArchiveItems(globalIds: string[]): Promise<void> {
+  if (globalIds.length === 0) return;
+  const reqId = nextReqId++;
+  return request({ reqId, type: "ARCHIVE_ITEMS", globalIds });
 }
 
 export async function docToggleLiked(globalId: string): Promise<void> {

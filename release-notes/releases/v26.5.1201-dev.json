@@ -1,0 +1,80 @@
+{
+  "tag": "v26.5.1201-dev",
+  "version": "26.5.1201-dev",
+  "channel": "dev",
+  "dayKey": "26.5.12",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-12T19:49:15.886Z",
+  "model": "manual",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.1112-dev",
+    "previousPublishedDayTag": "v26.5.1112-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.1201-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.1201-dev"
+    ],
+    "prNumbers": [
+      598,
+      599
+    ],
+    "commitSubjects": [
+      "perf: steady dense graph and sidebar interactions (#599)",
+      "release: approve v26.5.1200-dev notes",
+      "release: v26.5.1200-dev",
+      "perf: smooth dense friends graph interactions (#598)"
+    ]
+  },
+  "release": {
+    "deck": "Google OAuth now runs natively in Freed Desktop, large relationship graphs stay lighter during motion, source filtering allocates less work, Map stays smoother, and runtime memory monitoring separates Freed WebKit from machine-wide totals",
+    "features": [
+      "Story wall publishing",
+      "AI ranked friend suggestions",
+      "Support Friends graph pinch zoom"
+    ],
+    "fixes": [
+      "Keep large Friends graphs responsive by holding active pan and zoom to a stable 160-node paint layer, then refreshing viewport detail after motion settles",
+      "Add regression coverage for 1,600-person Friends graphs, including mount time, zoom, pan, scene sync, long tasks, dropped frames, and sidebar row virtualization",
+      "Reduce dense Map motion paint during pan and zoom",
+      "Report app-scoped native and WebKit memory in renderer heartbeats",
+      "Gate optional story scraping on resident memory pressure",
+      "Tighten social scraper resident memory start budget",
+      "Skip hidden Friends provider labels during graph motion",
+      "Gate scraper memory before session slots",
+      "Gate social scrapes on resident WebKit memory",
+      "Complete Google Contacts sync in Freed Desktop",
+      "Share native Google OAuth credentials between Drive and Contacts refresh",
+      "Surface Google OAuth and People API failure details in Settings instead of generic load errors",
+      "Reader, feed, and header polish",
+      "Keep friends graph sync errors recoverable",
+      "Test coverage and performance hardening",
+      "Release build and type-safety cleanup",
+      "Route Google Drive through native sync requests",
+      "Capture and scraper reliability fixes",
+      "Open the full Map from Friends detail with one atomic store update",
+      "Keep large relationship graphs on a smaller 96-node paint layer during active motion before refreshing viewport detail",
+      "Reduce Source sidebar feed search allocation churn for large RSS collections"
+    ],
+    "followUps": [
+      "Lighten settings moving chrome",
+      "Reduce settings scroll overdraw",
+      "Friends relationship tiers",
+      "Reader, sidebar, and settings UX work",
+      "Trim reader rail work and stabilize friends perf",
+      "Isolate social scraper webkit stores",
+      "Gate startup social scraper pressure",
+      "Recycle blocked scraper windows",
+      "Reserve scraper memory headroom",
+      "Slim desktop e2e gates",
+      "Keep memory-blocked scrapes from holding the shared scraper slot",
+      "Continue passive soak metrics until Apple Events authorization is restored for active UI driving",
+      "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1201-dev\n\nGoogle OAuth now runs natively in Freed Desktop, large relationship graphs stay lighter during motion, source filtering allocates less work, Map stays smoother, and runtime memory monitoring separates Freed WebKit from machine-wide totals\n\n### Features\n\n- Story wall publishing\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n\n### Fixes\n\n- Keep large Friends graphs responsive by holding active pan and zoom to a stable 160-node paint layer, then refreshing viewport detail after motion settles\n- Add regression coverage for 1,600-person Friends graphs, including mount time, zoom, pan, scene sync, long tasks, dropped frames, and sidebar row virtualization\n- Reduce dense Map motion paint during pan and zoom\n- Report app-scoped native and WebKit memory in renderer heartbeats\n- Gate optional story scraping on resident memory pressure\n- Tighten social scraper resident memory start budget\n- Skip hidden Friends provider labels during graph motion\n- Gate scraper memory before session slots\n- Gate social scrapes on resident WebKit memory\n- Complete Google Contacts sync in Freed Desktop\n- Share native Google OAuth credentials between Drive and Contacts refresh\n- Surface Google OAuth and People API failure details in Settings instead of generic load errors\n- Reader, feed, and header polish\n- Keep friends graph sync errors recoverable\n- Test coverage and performance hardening\n- Release build and type-safety cleanup\n- Route Google Drive through native sync requests\n- Capture and scraper reliability fixes\n- Open the full Map from Friends detail with one atomic store update\n- Keep large relationship graphs on a smaller 96-node paint layer during active motion before refreshing viewport detail\n- Reduce Source sidebar feed search allocation churn for large RSS collections\n\n### Follow-ups\n\n- Lighten settings moving chrome\n- Reduce settings scroll overdraw\n- Friends relationship tiers\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n- Keep memory-blocked scrapes from holding the shared scraper slot\n- Continue passive soak metrics until Apple Events authorization is restored for active UI driving\n- Treat Settings scroll as the next measured performance surface because it remains the largest budget miss\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

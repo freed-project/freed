@@ -1,4 +1,4 @@
-import type { Account, FeedItem, Person, RssFeed } from "@freed/shared";
+import type { Account, FeedItem, FriendCandidateConfidence, Person, RssFeed } from "@freed/shared";
 import { channelInitialForName, personInitialsForName } from "./friend-avatar.js";
 
 export type IdentityGraphMode = "friends" | "all_content";
@@ -30,6 +30,7 @@ export interface IdentityGraphNode {
   graphPinned?: boolean;
   activityCount?: number;
   lastActivityAt?: number;
+  friendSuggestionConfidence?: FriendCandidateConfidence;
 }
 
 export interface IdentityGraphEdge {
@@ -61,6 +62,8 @@ interface BuildIdentityGraphModelArgs {
   feeds: Record<string, RssFeed>;
   feedItems: Record<string, FeedItem>;
   mode: IdentityGraphMode;
+  friendSuggestionStrengthByPerson?: Map<string, FriendCandidateConfidence>;
+  friendSuggestionStrengthByAccount?: Map<string, FriendCandidateConfidence>;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -178,7 +181,11 @@ export function buildIdentityGraphActivityIndex(
 }
 
 function accountLabel(account: Account): string {
-  return account.displayName?.trim() || account.handle?.trim() || account.externalId;
+  return account.displayName?.trim() || account.handle?.trim() || account.externalId?.trim() || account.provider || "Account";
+}
+
+function safeText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
 function personRadius(person: Person, linkedAccountCount: number): number {
@@ -203,6 +210,8 @@ export function buildIdentityGraphModel({
   feeds,
   feedItems,
   mode,
+  friendSuggestionStrengthByPerson,
+  friendSuggestionStrengthByAccount,
 }: BuildIdentityGraphModelArgs): IdentityGraphModel {
   const buildStart = nowMs();
   const nodes: IdentityGraphNode[] = [];
@@ -214,8 +223,8 @@ export function buildIdentityGraphModel({
     .filter((person) => mode === "all_content" || person.relationshipStatus === "friend")
     .sort((left, right) =>
       right.careLevel - left.careLevel ||
-      left.relationshipStatus.localeCompare(right.relationshipStatus) ||
-      left.name.localeCompare(right.name),
+      safeText(left.relationshipStatus).localeCompare(safeText(right.relationshipStatus)) ||
+      safeText(left.name).localeCompare(safeText(right.name)),
     );
   const visiblePersonIds = new Set(visiblePersons.map((person) => person.id));
 
@@ -227,13 +236,13 @@ export function buildIdentityGraphModel({
     const node: IdentityGraphNode = {
       id: `person:${person.id}`,
       kind: isFriend ? "friend_person" : "connection_person",
-      label: person.name,
+      label: safeText(person.name, "Unnamed friend"),
       radius: personRadius(person, linkedCount),
       labelPriority: isFriend ? 100 : 82,
       personId: person.id,
       ring: isFriend ? 0 : 1,
       weight: isFriend ? 100 + person.careLevel * 10 + linkedCount * 2 : 60 + linkedCount * 3,
-      initials: personInitialsForName(person.name),
+      initials: personInitialsForName(safeText(person.name, "Unnamed friend")),
       avatarUrl: person.avatarUrl ?? null,
       interactive: true,
       graphX: person.graphX,
@@ -241,6 +250,7 @@ export function buildIdentityGraphModel({
       graphPinned: person.graphPinned,
       activityCount,
       lastActivityAt: lastActivityAt > 0 ? lastActivityAt : undefined,
+      friendSuggestionConfidence: friendSuggestionStrengthByPerson?.get(person.id),
     };
     nodes.push(node);
     signatureHash = mixHash(signatureHash, node.id);
@@ -249,6 +259,7 @@ export function buildIdentityGraphModel({
     signatureHash = mixHash(signatureHash, Math.round(node.radius * 10));
     signatureHash = mixHash(signatureHash, node.weight);
     signatureHash = mixHash(signatureHash, node.avatarUrl ?? "");
+    signatureHash = mixHash(signatureHash, node.friendSuggestionConfidence ?? "");
     signatureHash = mixHash(signatureHash, person.graphPinned ? 1 : 0);
     if (person.graphPinned && typeof person.graphX === "number" && typeof person.graphY === "number") {
       signatureHash = mixHash(signatureHash, Math.round(person.graphX));
@@ -264,8 +275,8 @@ export function buildIdentityGraphModel({
     })
     .sort((left, right) =>
       (left.personId ? 0 : 1) - (right.personId ? 0 : 1) ||
-      (left.personId ?? "").localeCompare(right.personId ?? "") ||
-      left.provider.localeCompare(right.provider) ||
+      safeText(left.personId).localeCompare(safeText(right.personId)) ||
+      safeText(left.provider).localeCompare(safeText(right.provider)) ||
       accountLabel(left).localeCompare(accountLabel(right)),
     );
 
@@ -299,6 +310,7 @@ export function buildIdentityGraphModel({
       graphPinned: account.graphPinned,
       activityCount: itemCount,
       lastActivityAt: lastActivityAt > 0 ? lastActivityAt : undefined,
+      friendSuggestionConfidence: friendSuggestionStrengthByAccount?.get(account.id),
     };
     nodes.push(node);
     signatureHash = mixHash(signatureHash, node.id);
@@ -307,6 +319,7 @@ export function buildIdentityGraphModel({
     signatureHash = mixHash(signatureHash, Math.round(node.radius * 10));
     signatureHash = mixHash(signatureHash, node.weight);
     signatureHash = mixHash(signatureHash, node.avatarUrl ?? "");
+    signatureHash = mixHash(signatureHash, node.friendSuggestionConfidence ?? "");
     signatureHash = mixHash(signatureHash, account.graphPinned ? 1 : 0);
     if (account.graphPinned && typeof account.graphX === "number" && typeof account.graphY === "number") {
       signatureHash = mixHash(signatureHash, Math.round(account.graphX));

@@ -42,8 +42,8 @@ export function SettingsToggle({
         />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm text-[var(--theme-text-secondary)] transition-colors group-hover:text-[var(--theme-text-primary)]">{label}</p>
-        {description ? <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">{description}</p> : null}
+        <p className="text-base text-[var(--theme-text-secondary)] transition-colors group-hover:text-[var(--theme-text-primary)] sm:text-sm">{label}</p>
+        {description ? <p className="mt-0.5 text-sm text-[var(--theme-text-soft)] sm:text-xs">{description}</p> : null}
       </div>
     </button>
   );

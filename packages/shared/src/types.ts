@@ -261,6 +261,85 @@ export interface AIPreferences {
   extractTopics: boolean;
 }
 
+export type StoryWallLayoutPreset = "mosaic" | "timeline" | "magazine" | "map_year" | "filmstrip";
+export type StoryWallPublishProvider = "none" | "github_pages";
+export type StoryWallPublishStatus = "idle" | "queued" | "publishing" | "published" | "error";
+export type StoryWallVisibilityDefault = "private_review" | "public";
+export type StoryWallMotionLevel = "none" | "light" | "full";
+
+export interface StoryWallStylePreferences {
+  palette: string;
+  typographyScale: number;
+  mediaDensity: number;
+  captionsEnabled: boolean;
+  locationGroupingEnabled: boolean;
+  dateGroupingEnabled: boolean;
+  motionLevel: StoryWallMotionLevel;
+}
+
+export interface StoryWallPublishTarget {
+  provider: StoryWallPublishProvider;
+  repoName: string;
+  branch: string;
+  directory: string;
+  pagesUrl?: string;
+  lastPublishedAt?: number;
+  lastError?: string;
+  status: StoryWallPublishStatus;
+}
+
+export interface StoryWallPreferences {
+  enabled: boolean;
+  selectedYears: number[];
+  includedPlatforms: Platform[];
+  includedAccountIds: string[];
+  visibilityDefault: StoryWallVisibilityDefault;
+  layoutPreset: StoryWallLayoutPreset;
+  style: StoryWallStylePreferences;
+  embedModeEnabled: boolean;
+  publishTarget: StoryWallPublishTarget;
+  featuredItemIds: string[];
+  hiddenItemIds: string[];
+  lastReviewedAt?: number;
+}
+
+export type FriendCandidateSuggestionKind = "connection_person" | "unlinked_account";
+
+export type FriendCandidateConfidence = "high" | "medium";
+
+export type FriendCandidateReasonCode =
+  | "personal_updates"
+  | "life_events"
+  | "direct_requests"
+  | "places_and_moments"
+  | "multi_channel_identity"
+  | "recent_activity"
+  | "contact_overlap";
+
+export interface FriendCandidateReason {
+  code: FriendCandidateReasonCode;
+  label: string;
+  score: number;
+}
+
+export interface FriendCandidateSuggestion {
+  id: string;
+  kind: FriendCandidateSuggestionKind;
+  personId?: string;
+  accountIds: string[];
+  displayName: string;
+  score: number;
+  confidence: FriendCandidateConfidence;
+  reasons: FriendCandidateReason[];
+  signalCounts: Partial<Record<ContentSignal, number>>;
+  lastActivityAt?: number;
+  sampleItemIds: string[];
+}
+
+export interface FriendSuggestionPreferences {
+  dismissedSuggestionIds: string[];
+}
+
 export type LocalAIModelId =
   | "integrated-light"
   | "integrated-balanced"
@@ -739,8 +818,12 @@ export interface UserPreferences {
   display: DisplayPreferences;
   xCapture: XCapturePreferences;
   fbCapture: FacebookCapturePreferences;
+  /** Review-only friend candidate preferences. Suggestions never auto-promote. */
+  friendSuggestions: FriendSuggestionPreferences;
   /** AI summarization + topic extraction preferences (no API keys here) */
   ai: AIPreferences;
+  /** Owner-controlled public memory wall preferences. Media files stay device-local until publish. */
+  storyWall: StoryWallPreferences;
 }
 
 // =============================================================================
@@ -948,11 +1031,41 @@ export function createDefaultPreferences(): UserPreferences {
       knownGroups: {},
       excludedGroupIds: {},
     },
+    friendSuggestions: {
+      dismissedSuggestionIds: [],
+    },
     ai: {
       provider: "none",
       model: "",
       autoSummarize: false,
       extractTopics: false,
+    },
+    storyWall: {
+      enabled: false,
+      selectedYears: [],
+      includedPlatforms: ["instagram", "facebook", "x", "rss", "saved"],
+      includedAccountIds: [],
+      visibilityDefault: "private_review",
+      layoutPreset: "mosaic",
+      style: {
+        palette: "paper",
+        typographyScale: 1,
+        mediaDensity: 0.7,
+        captionsEnabled: true,
+        locationGroupingEnabled: true,
+        dateGroupingEnabled: true,
+        motionLevel: "light",
+      },
+      embedModeEnabled: true,
+      publishTarget: {
+        provider: "github_pages",
+        repoName: "freed-story-wall",
+        branch: "main",
+        directory: "docs",
+        status: "idle",
+      },
+      featuredItemIds: [],
+      hiddenItemIds: [],
     },
   };
 }
@@ -975,7 +1088,11 @@ export function mergeDefaultPreferences(
   const sync = preferences.sync as Partial<SyncPreferences> | undefined;
   const xCapture = preferences.xCapture as Partial<XCapturePreferences> | undefined;
   const fbCapture = preferences.fbCapture as Partial<FacebookCapturePreferences> | undefined;
+  const friendSuggestions = preferences.friendSuggestions as Partial<FriendSuggestionPreferences> | undefined;
   const ai = preferences.ai as Partial<AIPreferences> | undefined;
+  const storyWall = preferences.storyWall as Partial<StoryWallPreferences> | undefined;
+  const storyWallStyle = storyWall?.style as Partial<StoryWallStylePreferences> | undefined;
+  const storyWallPublishTarget = storyWall?.publishTarget as Partial<StoryWallPublishTarget> | undefined;
 
   return {
     ...defaults,
@@ -1040,9 +1157,43 @@ export function mergeDefaultPreferences(
         ...(fbCapture?.excludedGroupIds ?? {}),
       },
     },
+    friendSuggestions: {
+      ...defaults.friendSuggestions,
+      ...friendSuggestions,
+      dismissedSuggestionIds: [
+        ...(friendSuggestions?.dismissedSuggestionIds ?? defaults.friendSuggestions.dismissedSuggestionIds),
+      ],
+    },
     ai: {
       ...defaults.ai,
       ...ai,
+    },
+    storyWall: {
+      ...defaults.storyWall,
+      ...storyWall,
+      selectedYears: [
+        ...(storyWall?.selectedYears ?? defaults.storyWall.selectedYears),
+      ],
+      includedPlatforms: [
+        ...(storyWall?.includedPlatforms ?? defaults.storyWall.includedPlatforms),
+      ],
+      includedAccountIds: [
+        ...(storyWall?.includedAccountIds ?? defaults.storyWall.includedAccountIds),
+      ],
+      style: {
+        ...defaults.storyWall.style,
+        ...storyWallStyle,
+      },
+      publishTarget: {
+        ...defaults.storyWall.publishTarget,
+        ...storyWallPublishTarget,
+      },
+      featuredItemIds: [
+        ...(storyWall?.featuredItemIds ?? defaults.storyWall.featuredItemIds),
+      ],
+      hiddenItemIds: [
+        ...(storyWall?.hiddenItemIds ?? defaults.storyWall.hiddenItemIds),
+      ],
     },
   };
 }

@@ -19,11 +19,23 @@ import {
   dropboxDownloadLatest,
   dropboxDeleteFile,
   type CloudProvider,
+  type GoogleDriveFetch,
 } from "@freed/sync/cloud";
 import { getDocBinary, mergeDoc, subscribe, setRelayClientCount } from "./automerge";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { log } from "./logger.js";
 import { recordProviderHealthEvent } from "./provider-health";
+import { scheduleSideEffect } from "./side-effect-scheduler";
+import {
+  isBackgroundRuntimeDeferredError,
+  runBackgroundJob,
+} from "./background-runtime-coordinator";
+
+let googleDriveFetch: GoogleDriveFetch | undefined;
+
+export function setGoogleDriveFetch(fetcher: GoogleDriveFetch | undefined): void {
+  googleDriveFetch = fetcher;
+}
 
 const FALLBACK_SYNC_PORT = import.meta.env.VITE_FREED_SYNC_PORT || "8765";
 const RELAY_POLL_TIMEOUT_MS = 5_000;
@@ -299,8 +311,10 @@ const GDRIVE_CLIENT_ID =
 // client_secret; web app clients require it.
 const GDRIVE_CLIENT_SECRET = import.meta.env.VITE_GDRIVE_CLIENT_SECRET ?? "";
 const GDRIVE_TOKEN_PROXY_URL =
-  import.meta.env.VITE_GDRIVE_TOKEN_PROXY_URL ?? "https://app.freed.wtf/api/oauth/google";
+  import.meta.env.VITE_GDRIVE_TOKEN_PROXY_URL ?? "";
+const GDRIVE_FORCE_TOKEN_PROXY = import.meta.env.VITE_GDRIVE_FORCE_TOKEN_PROXY === "1";
 const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 export interface CloudTokenBundle {
   accessToken: string;
@@ -316,6 +330,12 @@ interface TokenExchangeResponse {
   access_token?: string;
   refresh_token?: string;
   expires_in?: number;
+}
+
+interface NativeGoogleOAuthResponse {
+  status: number;
+  headers: Array<[string, string]>;
+  body: number[];
 }
 
 function createOAuthCanceledError(): Error {
@@ -394,7 +414,13 @@ async function refreshCloudToken(provider: CloudProvider, bundle: CloudTokenBund
     if (GDRIVE_CLIENT_SECRET) {
       params.set("client_secret", GDRIVE_CLIENT_SECRET);
     }
-    tokenUrl = "https://oauth2.googleapis.com/token";
+    const refreshed = tokenBundleFromResponse(await postGoogleToken(params, "Google token refresh failed"));
+    const nextBundle = {
+      ...refreshed,
+      refreshToken: refreshed.refreshToken ?? bundle.refreshToken,
+    };
+    storeCloudToken(provider, nextBundle);
+    return nextBundle.accessToken;
   } else {
     params.set("client_id", DROPBOX_CLIENT_ID);
     tokenUrl = "https://api.dropboxapi.com/oauth2/token";
@@ -421,11 +447,74 @@ async function refreshCloudToken(provider: CloudProvider, bundle: CloudTokenBund
 }
 
 function shouldUseGoogleTokenProxy(): boolean {
-  return !!GDRIVE_TOKEN_PROXY_URL && !!GDRIVE_CLIENT_ID && !GDRIVE_CLIENT_SECRET;
+  return GDRIVE_FORCE_TOKEN_PROXY && !!GDRIVE_TOKEN_PROXY_URL && !!GDRIVE_CLIENT_ID;
 }
 
 function tokenBundleFromProxyResponse(data: TokenExchangeResponse): CloudTokenBundle {
   return tokenBundleFromResponse(data);
+}
+
+function decodeNativeBody(body: number[]): string {
+  return new TextDecoder().decode(new Uint8Array(body));
+}
+
+function googleOAuthError(prefix: string, status: number, body: string): Error {
+  const trimmed = body.trim();
+  if (!trimmed) return new Error(`${prefix} (${status})`);
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      error?: string;
+      error_description?: string;
+      message?: string;
+    };
+    const detail = parsed.error_description ?? parsed.message ?? parsed.error;
+    if (detail) return new Error(`${prefix} (${status}): ${detail}`);
+  } catch {
+    // Use the raw body below.
+  }
+  return new Error(`${prefix} (${status}): ${trimmed.slice(0, 500)}`);
+}
+
+async function postNativeGoogleOAuth(
+  url: string,
+  requestBody: string,
+  contentType: string,
+  errorPrefix: string,
+): Promise<TokenExchangeResponse> {
+  const response = await invoke<NativeGoogleOAuthResponse>("google_oauth_proxy_request", {
+    url,
+    body: requestBody,
+    contentType,
+  });
+  const body = decodeNativeBody(response.body);
+  if (response.status < 200 || response.status >= 300) {
+    throw googleOAuthError(errorPrefix, response.status, body);
+  }
+  let data: TokenExchangeResponse;
+  try {
+    data = JSON.parse(body || "{}") as TokenExchangeResponse;
+  } catch {
+    throw new Error(`${errorPrefix}: invalid JSON response.`);
+  }
+  return data;
+}
+
+async function postGoogleTokenProxy(payload: Record<string, unknown>): Promise<TokenExchangeResponse> {
+  return postNativeGoogleOAuth(
+    GDRIVE_TOKEN_PROXY_URL,
+    JSON.stringify(payload),
+    "application/json",
+    "Google token proxy failed",
+  );
+}
+
+async function postGoogleToken(params: URLSearchParams, errorPrefix: string): Promise<TokenExchangeResponse> {
+  return postNativeGoogleOAuth(
+    GOOGLE_TOKEN_URL,
+    params.toString(),
+    "application/x-www-form-urlencoded",
+    errorPrefix,
+  );
 }
 
 async function exchangeGoogleCodeViaProxy(
@@ -433,45 +522,21 @@ async function exchangeGoogleCodeViaProxy(
   codeVerifier: string,
   redirectUri: string,
 ): Promise<CloudTokenBundle> {
-  const res = await fetch(GDRIVE_TOKEN_PROXY_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      code,
-      verifier: codeVerifier,
-      redirectUri,
-      clientId: GDRIVE_CLIENT_ID,
-    }),
+  const data = await postGoogleTokenProxy({
+    code,
+    verifier: codeVerifier,
+    redirectUri,
+    clientId: GDRIVE_CLIENT_ID,
   });
-
-  const data = (await res.json().catch(() => ({ error: "invalid JSON from Google token proxy" }))) as
-    TokenExchangeResponse & { error?: string };
-
-  if (!res.ok) {
-    throw new Error(`Google token proxy failed (${res.status}): ${data.error ?? "token exchange failed"}`);
-  }
-
   return tokenBundleFromProxyResponse(data);
 }
 
 async function refreshGoogleTokenViaProxy(refreshToken: string): Promise<string | null> {
-  const res = await fetch(GDRIVE_TOKEN_PROXY_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grantType: "refresh_token",
-      refreshToken,
-      clientId: GDRIVE_CLIENT_ID,
-    }),
+  const data = await postGoogleTokenProxy({
+    grantType: "refresh_token",
+    refreshToken,
+    clientId: GDRIVE_CLIENT_ID,
   });
-
-  const data = (await res.json().catch(() => ({ error: "invalid JSON from Google token proxy" }))) as
-    TokenExchangeResponse & { error?: string };
-
-  if (!res.ok) {
-    throw new Error(`Google token proxy refresh failed (${res.status}): ${data.error ?? "token refresh failed"}`);
-  }
-
   const refreshed = tokenBundleFromProxyResponse(data);
   const nextBundle = {
     ...refreshed,
@@ -668,7 +733,7 @@ async function exchangeCode(
     if (GDRIVE_CLIENT_SECRET) {
       params.set("client_secret", GDRIVE_CLIENT_SECRET);
     }
-    tokenUrl = "https://oauth2.googleapis.com/token";
+    return tokenBundleFromResponse(await postGoogleToken(params, "Google token exchange failed"));
   } else {
     params.set("client_id", DROPBOX_CLIENT_ID);
     tokenUrl = "https://api.dropboxapi.com/oauth2/token";
@@ -705,8 +770,9 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
 
   // Immediate pull to catch up on any changes since last session.
   try {
-    const download = provider === "gdrive" ? gdriveDownloadLatest : dropboxDownloadLatest;
-    const remote = await download(await resolveToken(), signal);
+    const remote = provider === "gdrive"
+      ? await gdriveDownloadLatest(await resolveToken(), signal, googleDriveFetch)
+      : await dropboxDownloadLatest(await resolveToken(), signal);
     if (remote) {
       await mergeDoc(remote);
       console.log("[CloudSync/%s] Initial merge (%d bytes)", provider, remote.length);
@@ -784,7 +850,7 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
       while (!signal.aborted) {
         const pollToken = await resolveToken();
         try {
-          await gdriveStartPollLoop(pollToken, onRemoteChange, signal, cloudLog);
+          await gdriveStartPollLoop(pollToken, onRemoteChange, signal, cloudLog, googleDriveFetch);
           return;
         } catch (error) {
           if (signal.aborted) return;
@@ -870,7 +936,7 @@ export function stopAllCloudSyncs(): void {
 export async function deleteCloudFile(provider: CloudProvider, token: string): Promise<void> {
   stopCloudSync(provider);
   if (provider === "gdrive") {
-    await gdriveDeleteFile(token);
+    await gdriveDeleteFile(token, googleDriveFetch);
   } else {
     await dropboxDeleteFile(token);
   }
@@ -888,39 +954,63 @@ export function scheduleCloudUpload(provider: CloudProvider, token?: string): vo
 
   const timer = setTimeout(async () => {
     uploadTimers.delete(provider);
-    const binary = await getDocBinary();
-    const startedAt = Date.now();
-    try {
-      const uploadToken = token ?? await getValidCloudToken(provider);
-      if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
-      if (provider === "gdrive") {
-        await gdriveUploadSafe(uploadToken, binary);
-      } else {
-        await dropboxUploadSafe(uploadToken, binary);
-      }
-      console.log("[CloudSync/%s] Uploaded (%d bytes)", provider, binary.byteLength);
-      await recordProviderHealthEvent({
-        provider,
-        outcome: "success",
-        stage: "upload",
-        startedAt,
-        finishedAt: Date.now(),
-        bytesMoved: binary.byteLength,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[CloudSync/${provider}] Upload failed:`, err);
-      addDebugEvent("error", `[Cloud/${provider}] upload failed: ${msg}`);
-      await recordProviderHealthEvent({
-        provider,
-        outcome: "error",
-        stage: "upload",
-        reason: msg,
-        startedAt,
-        finishedAt: Date.now(),
-        bytesMoved: binary.byteLength,
-      });
-    }
+    void scheduleSideEffect({
+      queue: "sync",
+      source: `cloud:${provider}`,
+      kind: "upload",
+      timeoutMs: 180_000,
+      slowMs: 2_000,
+      run: () =>
+        runBackgroundJob({
+          kind: "cloud-sync",
+          source: `cloud:${provider}`,
+          timeoutMs: 180_000,
+          run: async () => {
+            const startedAt = Date.now();
+            let byteLength = 0;
+            try {
+              const binary = await getDocBinary();
+              byteLength = binary.byteLength;
+              const uploadToken = token ?? await getValidCloudToken(provider);
+              if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
+              if (provider === "gdrive") {
+                await gdriveUploadSafe(uploadToken, binary, googleDriveFetch);
+              } else {
+                await dropboxUploadSafe(uploadToken, binary);
+              }
+              console.log("[CloudSync/%s] Uploaded (%d bytes)", provider, binary.byteLength);
+              await recordProviderHealthEvent({
+                provider,
+                outcome: "success",
+                stage: "upload",
+                startedAt,
+                finishedAt: Date.now(),
+                bytesMoved: byteLength,
+              });
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              console.error(`[CloudSync/${provider}] Upload failed:`, err);
+              addDebugEvent("error", `[Cloud/${provider}] upload failed: ${msg}`);
+              await recordProviderHealthEvent({
+                provider,
+                outcome: "error",
+                stage: "upload",
+                reason: msg,
+                startedAt,
+                finishedAt: Date.now(),
+                bytesMoved: byteLength,
+              });
+            }
+          },
+        }).catch((error) => {
+          if (isBackgroundRuntimeDeferredError(error)) {
+            addDebugEvent("change", `[Cloud/${provider}] upload deferred: ${error.reason}`);
+            scheduleCloudUpload(provider, token);
+            return;
+          }
+          throw error;
+        }),
+    });
   }, UPLOAD_DEBOUNCE_MS);
 
   uploadTimers.set(provider, timer);

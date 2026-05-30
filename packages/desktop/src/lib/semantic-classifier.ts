@@ -2,11 +2,20 @@ import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { docBackfillContentSignals, subscribe } from "./automerge.js";
 import { localAIModels, subscribeToLocalAIModelState } from "./local-ai-models.js";
 import { log } from "./logger.js";
+import {
+  isBackgroundRuntimeDeferredError,
+  runBackgroundJob,
+} from "./background-runtime-coordinator.js";
 
 const BATCH_SIZE = 100;
 const PROCESS_INTERVAL_MS = 5_000;
 const RETRY_COOLDOWN_MS = 60_000;
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
+
+type SemanticClassifierOptions = {
+  isEnabled?: () => boolean;
+  subscribeToPreferenceChanges?: (callback: () => void) => () => void;
+};
 
 let running = false;
 let scheduled = false;
@@ -20,14 +29,22 @@ let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
 let unsubscribeDoc: (() => void) | null = null;
 let unsubscribeLocalAIModelState: (() => void) | null = null;
+let unsubscribePreferenceChanges: (() => void) | null = null;
 let pending = 0;
+let isEnabled: () => boolean = () => false;
 
 function scheduleBackfill(): void {
+  if (!isEnabled()) {
+    scheduled = false;
+    pending = 0;
+    return;
+  }
   scheduled = true;
   pending = Math.max(pending, 1);
 }
 
 async function recordSemanticHealth(summary: Awaited<ReturnType<typeof docBackfillContentSignals>>): Promise<void> {
+  if (!isEnabled()) return;
   try {
     const models = await localAIModels.listModels();
     const semanticModel =
@@ -47,12 +64,22 @@ async function recordSemanticHealth(summary: Awaited<ReturnType<typeof docBackfi
 
 async function processNextBatch(): Promise<void> {
   if (!running || processing || !scheduled) return;
+  if (!isEnabled()) {
+    scheduled = false;
+    pending = 0;
+    return;
+  }
   const now = Date.now();
   if (lastFailureAt && now - lastFailureAt < RETRY_COOLDOWN_MS) return;
 
   processing = true;
   try {
-    const summary = await docBackfillContentSignals(BATCH_SIZE);
+    const summary = await runBackgroundJob({
+      kind: "semantic-classifier",
+      source: "content-signals",
+      timeoutMs: 120_000,
+      run: () => docBackfillContentSignals(BATCH_SIZE),
+    });
     lastRunAt = Date.now();
     completed += summary.updated;
     pending = summary.remaining;
@@ -65,6 +92,10 @@ async function processNextBatch(): Promise<void> {
       );
     }
   } catch (error) {
+    if (isBackgroundRuntimeDeferredError(error)) {
+      log.info(`[semantic-classifier] deferred reason=${error.reason}`);
+      return;
+    }
     failedCount += 1;
     lastFailureAt = Date.now();
     const message = error instanceof Error ? error.message : String(error);
@@ -75,11 +106,12 @@ async function processNextBatch(): Promise<void> {
   }
 }
 
-export function start(): void {
+export function start(options: SemanticClassifierOptions = {}): void {
   if (running) return;
+  isEnabled = options.isEnabled ?? (() => false);
   running = true;
-  scheduled = true;
-  pending = 1;
+  scheduled = isEnabled();
+  pending = scheduled ? 1 : 0;
   lastScannedDocItemCount = null;
 
   unsubscribeDoc = subscribe((state) => {
@@ -90,6 +122,9 @@ export function start(): void {
   unsubscribeLocalAIModelState = subscribeToLocalAIModelState(() => {
     scheduleBackfill();
   });
+  unsubscribePreferenceChanges = options.subscribeToPreferenceChanges?.(() => {
+    scheduleBackfill();
+  }) ?? null;
 
   log.info("[semantic-classifier] started");
 
@@ -133,6 +168,11 @@ export function stop(): void {
     unsubscribeLocalAIModelState();
     unsubscribeLocalAIModelState = null;
   }
+  if (unsubscribePreferenceChanges) {
+    unsubscribePreferenceChanges();
+    unsubscribePreferenceChanges = null;
+  }
+  isEnabled = () => false;
 
   log.info("[semantic-classifier] stopped");
 }

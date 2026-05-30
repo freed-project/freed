@@ -1,0 +1,46 @@
+{
+  "tag": "v26.5.300-dev",
+  "version": "26.5.300-dev",
+  "channel": "dev",
+  "dayKey": "26.5.3",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-03T19:29:32.964Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.201-dev",
+    "previousPublishedDayTag": "v26.5.201-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.300-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.300-dev"
+    ],
+    "prNumbers": [
+      399,
+      401,
+      403
+    ],
+    "commitSubjects": [
+      "fix: harden desktop background runtime recovery (#403)",
+      "feat: refine sidebar rows and card density (#399)",
+      "fix: promote linked accounts without duplicate drafts (#401)"
+    ]
+  },
+  "release": {
+    "deck": "Harden startup recovery and refine feed layout",
+    "features": [
+      "Refined sidebar rows, header spacing, and feed card density for a steadier reading layout."
+    ],
+    "fixes": [
+      "Hardened Freed Desktop startup recovery so background work waits for healthy renderer heartbeats before running high-risk jobs.",
+      "Added runtime-health diagnostics for blank renderer reports, including active background work, memory pressure, and recovery attempts.",
+      "Fixed linked account promotion so captured social accounts do not create duplicate drafts."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.300-dev\n\nHarden startup recovery and refine feed layout\n\n### Fixes\n\n- Hardened Freed Desktop startup recovery so background work waits for healthy renderer heartbeats before running high-risk jobs.\n- Added runtime-health diagnostics for blank renderer reports, including active background work, memory pressure, and recovery attempts.\n- Fixed linked account promotion so captured social accounts do not create duplicate drafts.\n\n### Improvements\n\n- Refined sidebar rows, header spacing, and feed card density for a steadier reading layout.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

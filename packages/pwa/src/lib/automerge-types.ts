@@ -8,7 +8,16 @@
  * postMessage boundary without serialization loss.
  */
 
-import type { Account, FeedItem, Friend, Person, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
+import type {
+  Account,
+  ContentSignalBackfillSummary,
+  FeedItem,
+  Friend,
+  Person,
+  ReachOutLog,
+  RssFeed,
+  UserPreferences,
+} from "@freed/shared";
 
 // ---------------------------------------------------------------------------
 // Hydrated state posted to the main thread after every doc mutation.
@@ -32,6 +41,8 @@ export interface DocState {
   totalArchivableCount: number;
   archivableCountByPlatform: Record<string, number>;
   archivableFeedCounts: Record<string, number>;
+  mapFriendLocationCount: number;
+  mapAllContentLocationCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,6 +56,7 @@ export type WorkerRequest =
   | { reqId: number; type: "MARK_ALL_AS_READ"; platform?: string }
   | { reqId: number; type: "TOGGLE_SAVED"; globalId: string }
   | { reqId: number; type: "TOGGLE_ARCHIVED"; globalId: string }
+  | { reqId: number; type: "ARCHIVE_ITEMS"; globalIds: string[] }
   | { reqId: number; type: "TOGGLE_LIKED"; globalId: string }
   | { reqId: number; type: "CONFIRM_LIKED_SYNCED"; globalId: string; syncedAt?: number }
   | { reqId: number; type: "CONFIRM_SEEN_SYNCED"; globalId: string; syncedAt?: number }
@@ -73,6 +85,7 @@ export type WorkerRequest =
   | { reqId: number; type: "UPDATE_ACCOUNT"; accountId: string; updates: Partial<Account> }
   | { reqId: number; type: "REMOVE_ACCOUNT"; accountId: string }
   | { reqId: number; type: "ADD_STUB_ITEM"; url: string; tags: string[] }
+  | { reqId: number; type: "BACKFILL_CONTENT_SIGNALS"; batchSize?: number }
   | { reqId: number; type: "MERGE_DOC"; binary: Uint8Array }
   | { reqId: number; type: "CLEAR_LOCAL" };
 
@@ -89,5 +102,7 @@ export type WorkerResponse =
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
   /** Doc size snapshot for the debug panel */
   | { type: "DEBUG_SNAPSHOT"; deviceId: string; itemCount: number; feedCount: number; binarySize: number }
+  /** One-batch content signal backfill summary. */
+  | { reqId: number; type: "CONTENT_SIGNAL_BACKFILL_RESULT"; summary: ContentSignalBackfillSummary }
   /** Sent once when the worker module finishes loading and is ready for messages */
   | { type: "READY" };

@@ -13,6 +13,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useDebugStore, type SyncEvent, type SyncEventKind, type CloudSyncStatus, type FpsSnapshot, type HealthProviderId, type RssFeedHealthSnapshot } from "../lib/debug-store";
 import { useFpsMonitor } from "../lib/perf-monitor";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
+import { formatClockTime, formatDebugClockTime } from "../lib/date-format.js";
 import {
   ProviderHealthSummary,
   VolumeBars,
@@ -26,8 +27,7 @@ import {
 // ---------------------------------------------------------------------------
 
 function formatTs(ts: number): string {
-  const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return formatDebugClockTime(ts);
 }
 
 function formatBytes(bytes: number): string {
@@ -364,6 +364,25 @@ function ConnectionTab() {
             </div>
 
             <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Fetcher Active</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {runtimeMemory.contentActive
+                  ? `${(runtimeMemory.contentActiveAgeMs ?? 0).toLocaleString()} ms`
+                  : "No"}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Fetcher Backoff</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {runtimeMemory.contentBackoffLevel.toLocaleString()}
+                {runtimeMemory.contentNextDelayMs !== undefined
+                  ? `, ${(runtimeMemory.contentNextDelayMs).toLocaleString()} ms`
+                  : ""}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
               <p className={DEBUG_LABEL_CLASS}>Renderer Heap</p>
               <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
                 {formatOptionalBytes(runtimeMemory.rendererHeapUsedBytes)}
@@ -506,7 +525,7 @@ function DocumentTab() {
 
       <div className={DEBUG_CARD_CLASS}>
         <p className={DEBUG_LABEL_CLASS}>Snapshot Taken</p>
-        <p className="font-mono text-xs text-[var(--theme-text-muted)]">{new Date(docSnapshot.savedAt).toLocaleTimeString()}</p>
+        <p className="font-mono text-xs text-[var(--theme-text-muted)]">{formatClockTime(docSnapshot.savedAt)}</p>
       </div>
 
       {/* Actions */}

@@ -8,6 +8,11 @@ import type { FriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 
 export type MarkerSize = "large" | "medium" | "small";
 
+interface MarkerElementOptions {
+  showAvatar?: boolean;
+  simplified?: boolean;
+}
+
 const SIZE_PX: Record<MarkerSize, number> = {
   large: 40,
   medium: 32,
@@ -45,13 +50,17 @@ function appendFallbackLabel(
 
 export function createMarkerElement(
   marker: LocationMarkerSummary,
-  avatarPalette: FriendAvatarPalette
+  avatarPalette: FriendAvatarPalette,
+  options: MarkerElementOptions = {},
 ): HTMLElement {
   const size = markerSize(marker.seenAt);
   const px = SIZE_PX[size];
   const friend = marker.friend;
   const item = marker.item;
-  const avatarUrl = resolveFriendAvatarUrl(friend, item.author.avatarUrl);
+  const simplified = options.simplified === true;
+  const avatarUrl = options.showAvatar === false
+    ? null
+    : resolveFriendAvatarUrl(friend, item.author.avatarUrl);
 
   const el = document.createElement("div");
   el.className = `freed-map-marker freed-map-marker--${size}`;
@@ -59,8 +68,12 @@ export function createMarkerElement(
   el.setAttribute("aria-label", displayName(item, friend));
   el.setAttribute("data-avatar-url", avatarUrl ?? "");
   el.setAttribute("data-avatar-name", displayName(item, friend));
+  if (simplified) {
+    el.setAttribute("data-map-marker-simplified", "true");
+  }
   el.style.cssText = [
     "position:absolute",
+    "contain:layout paint style",
     "transform-origin:center center",
   ].join(";");
 
@@ -72,13 +85,17 @@ export function createMarkerElement(
     "position:relative",
     "border-radius:999px",
     `border:1px solid ${avatarPalette.borderStrong}`,
-    `box-shadow:0 0 0 1px ${avatarPalette.borderSoft},0 0 18px ${avatarPalette.glow},var(--theme-marker-shadow)`,
+    simplified
+      ? `box-shadow:0 0 0 1px ${avatarPalette.borderSoft}`
+      : `box-shadow:0 0 0 1px ${avatarPalette.borderSoft},0 0 18px ${avatarPalette.glow},var(--theme-marker-shadow)`,
     "overflow:hidden",
     "display:flex",
     "align-items:center",
     "justify-content:center",
     "cursor:pointer",
-    `background:radial-gradient(circle at 30% 28%,${avatarPalette.gradientStart},${avatarPalette.gradientMid} 34%,${avatarPalette.gradientEnd} 100%)`,
+    simplified
+      ? `background:${avatarPalette.gradientMid}`
+      : `background:radial-gradient(circle at 30% 28%,${avatarPalette.gradientStart},${avatarPalette.gradientMid} 34%,${avatarPalette.gradientEnd} 100%)`,
     `font-size:${Math.max(8, px * 0.35)}px`,
     "font-weight:700",
     `color:${avatarPalette.text}`,
@@ -87,22 +104,26 @@ export function createMarkerElement(
   ].join(";");
   el.appendChild(body);
 
-  const glowRing = document.createElement("div");
-  glowRing.style.cssText = [
-    "position:absolute",
-    "inset:-6px",
-    "border-radius:999px",
-    `border:1px solid ${avatarPalette.ring}`,
-    `background:radial-gradient(circle,${avatarPalette.glowSoft},transparent 72%)`,
-    "pointer-events:none",
-    "z-index:0",
-  ].join(";");
-  body.appendChild(glowRing);
+  if (!simplified) {
+    const glowRing = document.createElement("div");
+    glowRing.className = "freed-map-marker-glow";
+    glowRing.style.cssText = [
+      "position:absolute",
+      "inset:-6px",
+      "border-radius:999px",
+      `border:1px solid ${avatarPalette.ring}`,
+      `background:radial-gradient(circle,${avatarPalette.glowSoft},transparent 72%)`,
+      "pointer-events:none",
+      "z-index:0",
+    ].join(";");
+    body.appendChild(glowRing);
+  }
 
   const initials = markerInitials(item, friend);
 
   if (avatarUrl) {
     const img = document.createElement("img");
+    img.className = "freed-map-marker-image";
     img.src = avatarUrl;
     img.alt = "";
     img.style.cssText = "width:100%;height:100%;object-fit:cover;position:relative;z-index:1;opacity:0.94;filter:saturate(0.9) contrast(1.02) brightness(0.92);";
@@ -112,34 +133,39 @@ export function createMarkerElement(
     };
     body.appendChild(img);
 
-    const tintOverlay = document.createElement("div");
-    tintOverlay.style.cssText = [
-      "position:absolute",
-      "inset:0",
-      "border-radius:999px",
-      `background:${avatarPalette.imageOverlay}`,
-      "pointer-events:none",
-      "z-index:2",
-    ].join(";");
-    body.appendChild(tintOverlay);
+    if (!simplified) {
+      const tintOverlay = document.createElement("div");
+      tintOverlay.className = "freed-map-marker-tint";
+      tintOverlay.style.cssText = [
+        "position:absolute",
+        "inset:0",
+        "border-radius:999px",
+        `background:${avatarPalette.imageOverlay}`,
+        "pointer-events:none",
+        "z-index:2",
+      ].join(";");
+      body.appendChild(tintOverlay);
 
-    const halo = document.createElement("div");
-    halo.style.cssText = [
-      "position:absolute",
-      "inset:4px",
-      "border-radius:999px",
-      `border:1px solid ${avatarPalette.ring}`,
-      `background:radial-gradient(circle at 30% 30%, ${avatarPalette.imageHighlight}, transparent 65%)`,
-      "pointer-events:none",
-      "z-index:3",
-    ].join(";");
-    body.appendChild(halo);
+      const halo = document.createElement("div");
+      halo.className = "freed-map-marker-halo";
+      halo.style.cssText = [
+        "position:absolute",
+        "inset:4px",
+        "border-radius:999px",
+        `border:1px solid ${avatarPalette.ring}`,
+        `background:radial-gradient(circle at 30% 30%, ${avatarPalette.imageHighlight}, transparent 65%)`,
+        "pointer-events:none",
+        "z-index:3",
+      ].join(";");
+      body.appendChild(halo);
+    }
   } else {
     appendFallbackLabel(body, initials, avatarPalette);
   }
 
-  if (marker.groupCount > 1) {
+  if (marker.groupCount > 1 && !simplified) {
     const badge = document.createElement("div");
+    badge.className = "freed-map-marker-badge";
     badge.textContent = marker.groupCount.toLocaleString();
     badge.style.cssText = [
       "position:absolute",

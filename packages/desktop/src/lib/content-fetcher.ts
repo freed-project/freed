@@ -2,8 +2,8 @@
  * Background content fetcher for desktop
  *
  * Maintains an in-memory queue of FeedItems that need their HTML fetched,
- * extracted, and cached. Processes one item every 2 seconds to be polite to
- * remote servers.
+ * extracted, and cached. Runs one item at a time with randomized pacing and
+ * adaptive backoff to stay polite to remote servers.
  *
  * Responsibilities:
  *  1. Fetch raw HTML via the `fetchUrl` Tauri IPC command (bypasses CORS)
@@ -29,8 +29,17 @@ import { secureStorage } from "./secure-storage.js";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { log } from "./logger.js";
 import { toSyncedPreservedText } from "./preserved-text.js";
+import {
+  isBackgroundRuntimeDeferredError,
+  runBackgroundJob,
+} from "./background-runtime-coordinator.js";
 
 const FETCH_TIMEOUT_MS = 30_000;
+const AI_SUMMARY_TIMEOUT_MS = 60_000;
+const AI_SUMMARY_TIMEOUT_MESSAGE = "ai_summarize TIMEOUT";
+const BASE_DELAY_MIN_MS = 2_500;
+const BASE_DELAY_MAX_MS = 7_500;
+const MAX_BACKOFF_LEVEL = 5;
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const FAILED_RETRY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const MAX_FAILED_TRACKED = 2_000;
@@ -39,6 +48,10 @@ export interface FetcherStatus {
   pending: number;
   completed: number;
   failedCount: number;
+  active: boolean;
+  activeAgeMs?: number;
+  nextDelayMs?: number;
+  backoffLevel: number;
 }
 
 interface QueueEntry {
@@ -52,10 +65,13 @@ const inFlight = new Set<string>();
 const failed = new Map<string, number>();
 let completed = 0;
 let running = false;
-let intervalHandle: ReturnType<typeof setInterval> | null = null;
+let workerTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
 let unsubscribeDoc: (() => void) | null = null;
 let lastScannedDocItemCount: number | null = null;
+let activeStartedAt: number | null = null;
+let nextDelayMs: number | undefined;
+let backoffLevel = 0;
 
 // Status subscribers
 type StatusSubscriber = (status: FetcherStatus) => void;
@@ -67,6 +83,10 @@ function notifyStatus(): void {
     pending: queue.length,
     completed,
     failedCount: failed.size,
+    active: activeStartedAt !== null,
+    activeAgeMs: activeStartedAt === null ? undefined : Date.now() - activeStartedAt,
+    nextDelayMs,
+    backoffLevel,
   };
   for (const sub of statusSubscribers) sub(status);
 }
@@ -165,7 +185,12 @@ export function enqueue(items: FeedItem[], options: { priority?: boolean; force?
   } else {
     queue.push(...newEntries);
   }
-  if (newEntries.length > 0) notifyStatus();
+  if (newEntries.length > 0) {
+    notifyStatus();
+    if (running && activeStartedAt === null && workerTimer === null) {
+      scheduleWorker(0);
+    }
+  }
 }
 
 export async function pinReaderItem(item: FeedItem): Promise<void> {
@@ -182,13 +207,118 @@ function maybeScanVisibleItems(items: FeedItem[], docItemCount: number): void {
   enqueue(items);
 }
 
+type ProcessOutcome = "success" | "backoff" | "deferred" | "idle";
+
+function randomDelayForBackoff(level: number): number {
+  const multiplier = 2 ** Math.min(level, MAX_BACKOFF_LEVEL);
+  const min = BASE_DELAY_MIN_MS * multiplier;
+  const max = BASE_DELAY_MAX_MS * multiplier;
+  return Math.round(min + Math.random() * (max - min));
+}
+
+function increaseBackoff(reason: string): void {
+  const previous = backoffLevel;
+  backoffLevel = Math.min(MAX_BACKOFF_LEVEL, backoffLevel + 1);
+  if (backoffLevel !== previous) {
+    log.warn(`[content-fetcher] backoff increased reason=${reason} level=${backoffLevel.toLocaleString()}`);
+  }
+}
+
+function decayBackoff(): void {
+  if (backoffLevel === 0) return;
+  backoffLevel -= 1;
+  log.info(`[content-fetcher] backoff decayed level=${backoffLevel.toLocaleString()}`);
+}
+
+async function withAiTimeout<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      run(controller.signal),
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          controller.abort();
+          reject(new Error(AI_SUMMARY_TIMEOUT_MESSAGE));
+        }, AI_SUMMARY_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+  }
+}
+
+function isAiTimeoutError(error: unknown): boolean {
+  return error instanceof Error && error.message === AI_SUMMARY_TIMEOUT_MESSAGE;
+}
+
+function scheduleWorker(delayMs: number): void {
+  if (!running || workerTimer !== null) return;
+  nextDelayMs = delayMs;
+  workerTimer = setTimeout(() => {
+    workerTimer = null;
+    nextDelayMs = undefined;
+    void runWorkerOnce();
+  }, delayMs);
+  notifyStatus();
+}
+
+async function runWorkerOnce(): Promise<void> {
+  if (!running || activeStartedAt !== null) return;
+  if (queue.length === 0) {
+    notifyStatus();
+    return;
+  }
+
+  activeStartedAt = Date.now();
+  notifyStatus();
+
+  let outcome: ProcessOutcome = "idle";
+  try {
+    outcome = await runBackgroundJob({
+      kind: "content-fetch",
+      source: "content-fetcher",
+      timeoutMs: 180_000,
+      run: processNext,
+    });
+  } catch (err) {
+    if (isBackgroundRuntimeDeferredError(err)) {
+      log.info(`[content-fetcher] deferred by background runtime reason=${err.reason}`);
+      outcome = "deferred";
+    } else {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error(`[content-fetcher] unexpected error in processNext: ${msg}`);
+      addDebugEvent("error", `[Fetcher] unexpected error in processNext: ${msg}`);
+      outcome = "backoff";
+    }
+  } finally {
+    activeStartedAt = null;
+  }
+
+  if (outcome === "success") {
+    decayBackoff();
+  } else if (outcome === "backoff") {
+    increaseBackoff("job_error");
+  }
+
+  notifyStatus();
+
+  if (running && queue.length > 0) {
+    const delayBackoffLevel = outcome === "deferred" ? Math.max(1, backoffLevel) : backoffLevel;
+    scheduleWorker(randomDelayForBackoff(delayBackoffLevel));
+  }
+}
+
 /** Process one item from the front of the queue */
-async function processNext(): Promise<void> {
-  if (queue.length === 0) return;
+async function processNext(): Promise<ProcessOutcome> {
+  if (queue.length === 0) return "idle";
 
   const entry = queue.shift()!;
   inFlight.add(entry.globalId);
   notifyStatus();
+  let outcome: ProcessOutcome = "success";
 
   try {
     // Fetch HTML via Tauri IPC (bypasses CORS, uses native HTTP).
@@ -226,10 +356,24 @@ async function processNext(): Promise<void> {
         ? prefs.provider
         : null;
       const apiKey = cloudProvider ? await secureStorage.getApiKey(cloudProvider) : null;
-      const aiResult = await summarize(content.text, prefs, apiKey);
-      if (aiResult) {
-        summaryText = toSyncedPreservedText(aiResult.summary);
-        extraTopics = prefs.extractTopics ? aiResult.topics : [];
+      try {
+        const aiResult = await withAiTimeout((signal) =>
+          summarize(content.text, prefs, apiKey, { signal, throwOnError: true })
+        );
+        if (aiResult) {
+          summaryText = toSyncedPreservedText(aiResult.summary);
+          extraTopics = prefs.extractTopics ? aiResult.topics : [];
+        }
+      } catch (err) {
+        outcome = "backoff";
+        if (isAiTimeoutError(err)) {
+          log.warn(`[content-fetcher] ai_summarize TIMEOUT url=${entry.url}`);
+          addDebugEvent("error", `[Fetcher] ai_summarize TIMEOUT: ${entry.url}`);
+        } else {
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn(`[content-fetcher] ai summarize failed url=${entry.url} err=${msg}`);
+          addDebugEvent("error", `[Fetcher] AI summarize failed for ${entry.url}: ${msg}`);
+        }
       }
     }
 
@@ -258,17 +402,20 @@ async function processNext(): Promise<void> {
       addDebugEvent("error", `[Fetcher] fetch_url TIMEOUT: ${entry.url}`);
       // Re-enqueue so the item is retried next cycle rather than permanently failed.
       queue.push(entry);
+      outcome = "backoff";
     } else {
       log.warn(`[content-fetcher] fetch failed url=${entry.url} err=${msg}`);
       failed.set(entry.globalId, Date.now());
       pruneFailed();
       addDebugEvent("error", `[Fetcher] failed to fetch ${entry.url}: ${msg}`);
+      outcome = "backoff";
     }
   } finally {
     inFlight.delete(entry.globalId);
   }
 
   notifyStatus();
+  return outcome;
 }
 
 /**
@@ -297,19 +444,15 @@ export function start(): void {
 
   log.info("[content-fetcher] started");
 
-  // Process one item every 2 seconds -- polite to remote servers
-  intervalHandle = setInterval(() => {
-    processNext().catch((err) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      log.error(`[content-fetcher] unexpected error in processNext: ${msg}`);
-      addDebugEvent("error", `[Fetcher] unexpected error in processNext: ${msg}`);
-    });
-  }, 2_000);
+  scheduleWorker(0);
 
   // Periodic heartbeat so logs show the fetcher is still alive overnight.
   heartbeatHandle = setInterval(() => {
     log.info(
-      `[content-fetcher] heartbeat items_queued=${queue.length} completed=${completed} failed=${failed.size}`,
+      `[content-fetcher] heartbeat items_queued=${queue.length.toLocaleString()} ` +
+        `active=${String(activeStartedAt !== null)} backoff_level=${backoffLevel.toLocaleString()} ` +
+        `next_delay_ms=${(nextDelayMs ?? 0).toLocaleString()} ` +
+        `completed=${completed.toLocaleString()} failed=${failed.size.toLocaleString()}`,
     );
   }, HEARTBEAT_INTERVAL_MS);
 }
@@ -321,10 +464,12 @@ export function stop(): void {
   if (!running) return;
   running = false;
 
-  if (intervalHandle !== null) {
-    clearInterval(intervalHandle);
-    intervalHandle = null;
+  if (workerTimer !== null) {
+    clearTimeout(workerTimer);
+    workerTimer = null;
   }
+  nextDelayMs = undefined;
+  activeStartedAt = null;
 
   if (heartbeatHandle !== null) {
     clearInterval(heartbeatHandle);
@@ -342,5 +487,13 @@ export function stop(): void {
 /** Get current fetcher status without subscribing */
 export function getStatus(): FetcherStatus {
   pruneFailed();
-  return { pending: queue.length, completed, failedCount: failed.size };
+  return {
+    pending: queue.length,
+    completed,
+    failedCount: failed.size,
+    active: activeStartedAt !== null,
+    activeAgeMs: activeStartedAt === null ? undefined : Date.now() - activeStartedAt,
+    nextDelayMs,
+    backoffLevel,
+  };
 }

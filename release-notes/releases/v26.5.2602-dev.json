@@ -1,0 +1,54 @@
+{
+  "tag": "v26.5.2602-dev",
+  "version": "26.5.2602-dev",
+  "channel": "dev",
+  "dayKey": "26.5.26",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-26T20:25:27.523Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.2601-dev",
+    "previousPublishedDayTag": "v26.5.1201-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.2600-dev",
+      "v26.5.2601-dev",
+      "v26.5.2602-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.2600-dev",
+      "v26.5.2601-dev",
+      "v26.5.2602-dev"
+    ],
+    "prNumbers": [
+      601,
+      602,
+      603
+    ],
+    "commitSubjects": [
+      "perf: slim desktop feed item projection (#603)",
+      "release: approve v26.5.2601-dev notes",
+      "release: v26.5.2601-dev",
+      "perf: reduce desktop hydration and friends graph work (#602)",
+      "release: approve v26.5.2600-dev notes",
+      "release: v26.5.2600-dev",
+      "perf: settle dense map marker restoration (#601)",
+      "release: approve v26.5.1300-dev notes",
+      "release: v26.5.1300-dev",
+      "perf: cull dense map markers during motion"
+    ]
+  },
+  "release": {
+    "deck": "Reduces large-library hydration memory, keeps 1,600 connection Friends graph pan and zoom work inside the frame budget, keeps dense Map interactions responsive, and trims oversized event evidence from Freed Desktop renderer state",
+    "features": [],
+    "fixes": [
+      "Builds the Freed Desktop Automerge UI projection incrementally, so large synced article bodies are trimmed before renderer state hydration",
+      "Caps oversized event evidence in Freed Desktop feed-item projection, reducing retained renderer text without changing provider scrape behavior"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2602-dev\n\nReduces large-library hydration memory, keeps 1,600 connection Friends graph pan and zoom work inside the frame budget, keeps dense Map interactions responsive, and trims oversized event evidence from Freed Desktop renderer state.\n\n### Fixes\n\n- Builds the Freed Desktop Automerge UI projection incrementally, so large synced article bodies are trimmed before renderer state hydration\n- Caps oversized event evidence in Freed Desktop feed-item projection, reducing retained renderer text without changing provider scrape behavior\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

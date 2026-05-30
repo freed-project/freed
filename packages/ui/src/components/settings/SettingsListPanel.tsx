@@ -1,4 +1,5 @@
-import { useMemo, useState, type Key, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type Key, type ReactNode } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { SearchField } from "../SearchField.js";
 
 export interface SettingsListPanelProps<T> {
@@ -19,6 +20,7 @@ export interface SettingsListPanelProps<T> {
   dataTestId?: string;
   searchDataTestId?: string;
   scrollDataTestId?: string;
+  estimateItemSize?: number;
 }
 
 function joinClasses(...classes: Array<string | false | null | undefined>) {
@@ -47,16 +49,27 @@ export function SettingsListPanel<T>({
   dataTestId,
   searchDataTestId,
   scrollDataTestId,
+  estimateItemSize = 72,
 }: SettingsListPanelProps<T>) {
   const [query, setQuery] = useState("");
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const normalizedQuery = normalizeSearchText(query);
+
+  const searchEntries = useMemo(
+    () =>
+      items.map((item) => ({
+        item,
+        searchText: normalizeSearchText(getSearchText(item)),
+      })),
+    [getSearchText, items],
+  );
 
   const filteredItems = useMemo(() => {
     if (!normalizedQuery) return items;
-    return items.filter((item) =>
-      normalizeSearchText(getSearchText(item)).includes(normalizedQuery),
-    );
-  }, [getSearchText, items, normalizedQuery]);
+    return searchEntries
+      .filter((entry) => entry.searchText.includes(normalizedQuery))
+      .map((entry) => entry.item);
+  }, [items, normalizedQuery, searchEntries]);
 
   const countLabel = normalizedQuery
     ? `${filteredItems.length.toLocaleString()} of ${items.length.toLocaleString()}`
@@ -64,6 +77,31 @@ export function SettingsListPanel<T>({
 
   const contentLabel =
     items.length === 0 ? emptyLabel : filteredItems.length === 0 ? noMatchesLabel : null;
+  const virtualizer = useVirtualizer({
+    count: contentLabel ? 0 : filteredItems.length,
+    getScrollElement: () => scrollElement,
+    estimateSize: () => estimateItemSize,
+    initialRect: { width: 0, height: estimateItemSize * 8 },
+    overscan: 6,
+    getItemKey: (index) => itemKey(filteredItems[index] as T, index),
+  });
+
+  useEffect(() => {
+    virtualizer.measure();
+  }, [filteredItems.length, normalizedQuery, virtualizer]);
+
+  const measuredVirtualItems = virtualizer.getVirtualItems();
+  const virtualRows = measuredVirtualItems.length > 0
+    ? measuredVirtualItems
+    : filteredItems.slice(0, Math.min(filteredItems.length, 12)).map((_, index) => ({
+        index,
+        key: itemKey(filteredItems[index] as T, index),
+        start: index * estimateItemSize,
+      }));
+  const totalVirtualSize = Math.max(
+    virtualizer.getTotalSize(),
+    filteredItems.length * estimateItemSize,
+  );
 
   return (
     <div
@@ -105,9 +143,9 @@ export function SettingsListPanel<T>({
       ) : null}
 
       <div
+        ref={setScrollElement}
         className={joinClasses(
           "settings-list-panel-scroll min-h-0 overflow-y-auto pr-1",
-          filteredItems.length > 0 ? "space-y-2" : "",
           listClassName,
         )}
         style={{
@@ -123,9 +161,27 @@ export function SettingsListPanel<T>({
             {contentLabel}
           </div>
         ) : (
-          filteredItems.map((item, index) => (
-            <div key={itemKey(item, index)}>{renderItem(item, index)}</div>
-          ))
+          <div
+            className="relative"
+            style={{ height: totalVirtualSize }}
+          >
+            {virtualRows.map((virtualItem) => {
+              const item = filteredItems[virtualItem.index];
+              if (!item) return null;
+              return (
+                <div
+                  key={virtualItem.key}
+                  ref={virtualizer.measureElement}
+                  data-index={virtualItem.index}
+                  data-testid="settings-list-virtual-row"
+                  className="absolute left-0 top-0 w-full pb-2"
+                  style={{ transform: `translateY(${virtualItem.start}px)` }}
+                >
+                  {renderItem(item, virtualItem.index)}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

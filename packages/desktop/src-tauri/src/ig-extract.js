@@ -17,6 +17,12 @@
         }
       : function () {};
 
+  function textValue(node, maxChars) {
+    var value = node && node.textContent ? node.textContent : "";
+    if (maxChars && value.length > maxChars) value = value.slice(0, maxChars);
+    return value.trim();
+  }
+
   function parseEngagement(text) {
     if (!text) return null;
     var cleaned = text.replace(/[^0-9.,KMkm]/g, "").replace(",", "");
@@ -159,7 +165,7 @@
       var spans = captionEl.querySelectorAll("span");
       var texts = [];
       for (var i = 0; i < spans.length; i++) {
-        var t = (spans[i].innerText || "").trim();
+        var t = textValue(spans[i], 2000);
         if (t.length > 0) texts.push(t);
       }
       if (texts.length > 0) return texts.join(" ");
@@ -168,7 +174,7 @@
     // Fallback: h1 with spans (common in single-post views)
     var h1 = article.querySelector("h1");
     if (h1) {
-      var h1text = (h1.innerText || "").trim();
+      var h1text = textValue(h1, 4000);
       if (h1text.length > 10) return h1text;
     }
 
@@ -176,7 +182,7 @@
     var dirAutos = article.querySelectorAll('[dir="auto"]');
     var best = "";
     for (var d = 0; d < dirAutos.length; d++) {
-      var candidate = (dirAutos[d].innerText || "").trim();
+      var candidate = textValue(dirAutos[d], 4000);
       if (candidate.length > best.length && candidate.length > 15) {
         // Skip if it looks like the author name
         var header = article.querySelector("header");
@@ -240,7 +246,7 @@
     // Like count: button or span with "like" text patterns
     var sections = article.querySelectorAll("section");
     for (var s = 0; s < sections.length; s++) {
-      var text = (sections[s].innerText || "").toLowerCase();
+      var text = textValue(sections[s], 2000).toLowerCase();
       // "1,234 likes" or "Liked by X and 1,234 others"
       var likeMatch = text.match(/([\d,]+)\s*like/);
       if (likeMatch) {
@@ -291,7 +297,7 @@
 
   function isSuggestedOrSponsored(article) {
     // "Suggested for you" / "Suggested Posts" label anywhere in article
-    var fullText = (article.innerText || "");
+    var fullText = textValue(article, 2000);
     if (/suggested|reels you might like/i.test(fullText)) {
       return true;
     }

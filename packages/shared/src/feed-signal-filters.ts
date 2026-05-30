@@ -12,37 +12,37 @@ export const FEED_SIGNAL_FILTER_PRESETS: readonly FeedSignalFilterPreset[] = [
   {
     mode: "all",
     label: "Everything",
-    description: "Show every visible item.",
+    description: "All visible items.",
     signals: [],
   },
   {
     mode: "inspiring",
     label: "Inspiring",
-    description: "Essays, guides, references, recommendations, and memorable moments.",
+    description: "Essays, guides, and references.",
     signals: ["essay", "how_to", "reference", "recommendation", "moment"],
   },
   {
     mode: "events",
     label: "Events",
-    description: "Events, deadlines, opportunities, and time-bound offers.",
+    description: "Events, deadlines, and offers.",
     signals: ["event", "deadline", "opportunity", "deal", "promotion"],
   },
   {
     mode: "personal",
     label: "Personal",
-    description: "Life updates and social moments.",
+    description: "Life updates and moments.",
     signals: ["life_update", "moment"],
   },
   {
     mode: "conversation",
     label: "Conversation",
-    description: "Requests, questions, and discussion threads.",
+    description: "Requests and discussions.",
     signals: ["request", "discussion"],
   },
   {
     mode: "news",
     label: "News",
-    description: "Reported stories, alerts, product updates, and news analysis.",
+    description: "News, alerts, and product updates.",
     signals: ["news", "alert", "product_update"],
   },
 ] as const;

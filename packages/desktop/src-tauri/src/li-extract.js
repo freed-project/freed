@@ -218,7 +218,7 @@
       ".feed-shared-update-v2__description",
       ".update-components-text",
     ]);
-    var text = textNode ? textNode.innerText.trim() : null;
+    var text = textNode ? textNode.textContent.trim() : null;
 
     // ── Timestamp ────────────────────────────────────────────────────────────
     var timestampIso = null;

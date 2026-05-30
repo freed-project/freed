@@ -21,6 +21,7 @@ if (import.meta.env.VITE_TEST_TAURI) {
   const w = window as unknown as Record<string, unknown>;
   w.__FREED_STORE__ = useAppStore;
   w.__FREED_AUTOMERGE__ = automerge;
+  w.__FREED_GRAPH_DEBUG_ENABLED__ = true;
 }
 
 installGlobalBugReportCapture("desktop");

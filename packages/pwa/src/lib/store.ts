@@ -28,12 +28,14 @@ import {
   docRemoveAllFeeds,
   docUpdateRssFeed,
   docUpdateFeedItem,
+  docBackfillContentSignals,
   docMarkAsRead,
   docMarkItemsAsRead,
   docMarkAllAsRead,
   docToggleSaved,
   docRemoveFeedItem,
   docToggleArchived,
+  docArchiveItems,
   docToggleLiked,
   docArchiveAllReadUnsaved,
   docUnarchiveSavedItems,
@@ -100,6 +102,26 @@ async function pruneConnectionPersonIfNeeded(
   await docRemovePerson(personId!);
 }
 
+async function runStartupMigrations(archivePruneDays: number): Promise<void> {
+  try {
+    if (archivePruneDays > 0) {
+      await docPruneArchivedItems(archivePruneDays * 24 * 60 * 60 * 1000);
+    }
+  } catch {
+    // non-fatal
+  }
+
+  try {
+    for (;;) {
+      const summary = await docBackfillContentSignals(200);
+      if (summary.updated === 0 || summary.remaining === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  } catch {
+    // non-fatal
+  }
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   items: [],
@@ -118,6 +140,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   totalArchivableCount: 0,
   archivableCountByPlatform: {},
   archivableFeedCounts: {},
+  mapFriendLocationCount: 0,
+  mapAllContentLocationCount: 0,
   syncConnected: false,
   isLoading: true,
   isSyncing: false,
@@ -175,14 +199,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         isLoading: false,
       });
 
-      // Prune archived items in the background. Idempotent; failure is non-fatal.
-      // The subscriber above propagates the doc change to the UI automatically.
+      // Run idempotent maintenance in the background. The subscriber above
+      // propagates doc changes to the UI automatically.
       const pruneDays = state.preferences.display.archivePruneDays ?? 30;
-      if (pruneDays > 0) {
-        void docPruneArchivedItems(pruneDays * 24 * 60 * 60 * 1000).catch(() => {
-          // non-fatal
-        });
-      }
+      void runStartupMigrations(pruneDays);
     } catch (error) {
       recordRuntimeError({ source: "pwa:initialize", error, fatal: false });
       recordBugReportEvent("pwa:initialize", "error", "Initialization failed");
@@ -262,6 +282,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleArchived: async (id) => {
     await docToggleArchived(id);
+  },
+
+  archiveItems: async (ids) => {
+    await docArchiveItems(ids);
   },
 
   toggleLiked: async (id) => {
@@ -436,5 +460,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   setError: (error) => set({ error }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setActiveView: (activeView) => set({ activeView }),
+  openMapForPerson: (personId) =>
+    set({
+      activeView: "map",
+      selectedPersonId: personId,
+      selectedAccountId: null,
+      selectedFriendId: personId,
+      selectedItemId: null,
+    }),
   setPendingMatchCount: (pendingMatchCount) => set({ pendingMatchCount }),
 }));

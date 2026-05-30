@@ -18,11 +18,14 @@ import {
   createEmptyDoc,
   addAccount,
   addAccounts,
+  backfillContentSignals,
+  countContentSignalBackfillItems,
   addFeedItem,
   hasLegacyIdentityGraphData,
   migrateLegacyIdentityGraph,
   addPerson,
   addRssFeed,
+  summarizeDocContentSignals,
   removeRssFeed,
   removeAllFeeds,
   updateRssFeed,
@@ -32,6 +35,7 @@ import {
   markItemsAsRead,
   toggleSaved,
   toggleArchived,
+  archiveItemsById,
   archiveAllReadUnsaved,
   unarchiveSavedItems,
   pruneArchivedItems,
@@ -47,7 +51,13 @@ import {
   confirmLikedSynced,
   confirmSeenSynced,
 } from "@freed/shared/schema";
-import { mergeDefaultPreferences, rankFeedItems } from "@freed/shared";
+import {
+  countAuthorsWithRecentLocationUpdates,
+  countFriendsWithRecentLocationUpdates,
+  mergeDefaultPreferences,
+  rankFeedItems,
+  sortByPriority,
+} from "@freed/shared";
 import type { Account, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
 
@@ -179,9 +189,12 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   const preferences = mergeDefaultPreferences(plain.preferences as Partial<UserPreferences> | undefined);
 
   const visibleItems = plainItems.filter((item) => !item.userState.hidden);
-  const rankedItems = rankFeedItems(
-    visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
-    preferences.weights,
+  const rankedItems = sortByPriority(
+    rankFeedItems(
+      visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
+      preferences.weights,
+      { persons, accounts },
+    ),
   );
 
   const feedUnreadCounts: Record<string, number> = {};
@@ -236,6 +249,8 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
     totalArchivableCount,
     archivableCountByPlatform,
     archivableFeedCounts,
+    mapFriendLocationCount: countFriendsWithRecentLocationUpdates(rankedItems, persons, accounts),
+    mapAllContentLocationCount: countAuthorsWithRecentLocationUpdates(rankedItems),
   };
 }
 
@@ -346,6 +361,16 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
       case "TOGGLE_ARCHIVED":
         await applyChange((doc) => toggleArchived(doc, req.globalId), "Toggle archived");
+        ack(req.reqId);
+        break;
+
+      case "ARCHIVE_ITEMS":
+        await applyChange(
+          (doc) => {
+            archiveItemsById(doc, req.globalIds);
+          },
+          `Archive ${req.globalIds.length.toLocaleString()} items`,
+        );
         ack(req.reqId);
         break;
 
@@ -564,6 +589,28 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           if (!doc.feedItems[stub.globalId]) addFeedItem(doc, stub);
         }, `Add stub item for ${req.url}`, true);
         ack(req.reqId);
+        break;
+      }
+
+      case "BACKFILL_CONTENT_SIGNALS": {
+        if (!currentDoc) throw new Error("Document not initialized");
+        let summary = summarizeDocContentSignals(currentDoc);
+        const pendingCount = countContentSignalBackfillItems(currentDoc);
+        if (pendingCount > 0) {
+          currentDoc = A.change(currentDoc, "Backfill content signals", (doc) => {
+            summary = backfillContentSignals(doc, req.batchSize);
+          });
+          bumpSearchCorpusVersion();
+          send({
+            type: "DEBUG_EVENT",
+            kind: "change",
+            detail:
+              `[content-signals] backfilled ${summary.updated.toLocaleString()} items, ` +
+              `${summary.remaining.toLocaleString()} remaining`,
+          });
+          await saveAndBroadcast();
+        }
+        send({ reqId: req.reqId, type: "CONTENT_SIGNAL_BACKFILL_RESULT", summary });
         break;
       }
 

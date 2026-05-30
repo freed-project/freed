@@ -239,23 +239,16 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(facebookCard).toContainText("45");
   await expect(facebookCard).toHaveClass(/grayscale/);
   await expect(facebookCard.locator('button[aria-label="Archive"]').first()).toBeVisible();
-  const facebookImage = facebookCard.locator("img").first();
-  await expect(facebookImage).toBeVisible();
-  await expect(facebookImage).toHaveAttribute("src", /\/freed\.svg\?feed-card$/);
+  const facebookImage = facebookCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
+  await expect(facebookImage).toHaveCount(0);
 
   const storyTile = app.page.locator('[data-feed-item-id="test-instagram-story-thumbnail"]');
   const storyImage = storyTile.locator("img").first();
-  await expect(storyImage).toBeVisible();
-  await expect(storyImage).toHaveAttribute("src", /\/freed\.svg\?story-tile$/);
+  await expect(storyImage).toHaveCount(0);
 
   const brokenCard = app.page.locator('[data-feed-item-id="test-broken-thumbnail-fallback"]');
   const brokenImage = brokenCard.locator("img").first();
-  await expect(brokenImage).toBeVisible();
-  await expect(brokenImage).toHaveAttribute("src", /\/freed\.svg\?fallback$/);
-  await brokenImage.evaluate((image) => {
-    image.dispatchEvent(new Event("error"));
-  });
-  await expect(brokenCard.locator("img")).toHaveCount(0);
+  await expect(brokenImage).toHaveCount(0);
   await expect(brokenCard).toContainText(BROKEN_TITLE);
 
   await facebookCard.hover();
@@ -280,12 +273,99 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(readerHeading).toBeVisible();
   await expect(app.page.getByLabel("Archive").first()).toBeVisible();
   const compactRailCard = app.page.locator('[data-testid="compact-feed-panel-scroll-container"] [data-feed-item-id="test-facebook-card-ui-overhaul"]');
-  const compactRailImage = compactRailCard.locator("img").first();
-  await expect(compactRailImage).toBeVisible();
-  await expect(compactRailImage).toHaveAttribute("src", /\/freed\.svg\?feed-card$/);
+  const compactRailImage = compactRailCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
+  await expect(compactRailImage).toHaveCount(0);
 
   const openReaderButton = app.page.getByRole("button", { name: "Open", exact: true }).first();
   await expect(openReaderButton).toBeVisible();
+});
+
+test("top toolbar card density slider persists locally", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    if (window.sessionStorage.getItem("feed-card-density-test-started") === "1") return;
+    window.sessionStorage.setItem("feed-card-density-test-started", "1");
+    window.localStorage.removeItem("freed-feed-card-density");
+  });
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(page);
+
+  const slider = page.getByTestId("feed-card-density-slider");
+  const card = page.locator('[data-feed-item-id="test-facebook-card-ui-overhaul"]').first();
+
+  await expect(slider).toBeVisible();
+  await expect(card).toHaveAttribute("data-feed-card-density", "comfortable");
+  const comfortableHeight = await card.evaluate((element) => element.getBoundingClientRect().height);
+
+  await slider.focus();
+  await slider.press("ArrowLeft");
+  await expect(card).toHaveAttribute("data-feed-card-density", "compact");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-feed-card-density"))).toBe("compact");
+  const compactHeight = await card.evaluate((element) => element.getBoundingClientRect().height);
+
+  await slider.press("ArrowRight");
+  await slider.press("ArrowRight");
+  await expect(card).toHaveAttribute("data-feed-card-density", "expansive");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-feed-card-density"))).toBe("expansive");
+  const expansiveHeight = await card.evaluate((element) => element.getBoundingClientRect().height);
+
+  expect(compactHeight).toBeLessThan(comfortableHeight);
+  expect(expansiveHeight).toBeGreaterThan(comfortableHeight);
+
+  await page.reload();
+  await app.waitForReady();
+  await expect(page.getByTestId("feed-card-density-slider")).toHaveValue("2");
+});
+
+test("narrow desktop toolbar exposes card density slider in overflow", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await page.addInitScript(() => {
+    window.localStorage.removeItem("freed-feed-card-density");
+  });
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(page);
+
+  const card = page.locator('[data-feed-item-id="test-facebook-card-ui-overhaul"]').first();
+  await expect(card).toHaveAttribute("data-feed-card-density", "comfortable");
+  await expect(page.getByTestId("feed-card-density-slider")).toHaveCount(0);
+
+  const overflowButton = page.getByTestId("toolbar-overflow-button");
+  await expect(overflowButton).toBeVisible({ timeout: 5_000 });
+  await overflowButton.click();
+
+  const overflowMenu = page.getByTestId("toolbar-overflow-menu");
+  const densitySection = overflowMenu.getByTestId("toolbar-overflow-density-section");
+  const actionsSection = overflowMenu.getByTestId("toolbar-overflow-actions-section");
+  const densityControl = overflowMenu.getByTestId("feed-card-density-control");
+  const slider = overflowMenu.getByTestId("feed-card-density-slider");
+  await expect(slider).toBeVisible();
+  await expect(densitySection.getByText("Card density", { exact: true })).toBeVisible();
+  await expect(actionsSection.getByText("Actions", { exact: true })).toBeVisible();
+
+  const menuGeometry = await densitySection.evaluate((section) => {
+    const control = section.querySelector('[data-testid="feed-card-density-control"]') as HTMLElement | null;
+    if (!control) throw new Error("Density control is missing");
+    const controlRect = control.getBoundingClientRect();
+    const sectionRect = section.getBoundingClientRect();
+    const sectionStyle = window.getComputedStyle(section);
+    const horizontalPadding =
+      Number.parseFloat(sectionStyle.paddingLeft) +
+      Number.parseFloat(sectionStyle.paddingRight);
+    return {
+      controlWidth: Math.round(controlRect.width),
+      contentWidth: Math.round(sectionRect.width - horizontalPadding),
+    };
+  });
+  expect(menuGeometry.controlWidth).toBe(menuGeometry.contentWidth);
+
+  await slider.focus();
+  await slider.press("ArrowLeft");
+
+  await expect(densityControl).toBeVisible();
+  await expect(card).toHaveAttribute("data-feed-card-density", "compact");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-feed-card-density"))).toBe("compact");
 });
 
 test("story cards participate in feed layout transitions", async ({ app }) => {

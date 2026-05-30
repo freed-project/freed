@@ -11,7 +11,15 @@
  */
 
 import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
-import type { Account, FeedItem, Person, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
+import type {
+  Account,
+  ContentSignalBackfillSummary,
+  FeedItem,
+  Person,
+  ReachOutLog,
+  RssFeed,
+  UserPreferences,
+} from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
 export type { DocState } from "./automerge-types";
 
@@ -47,6 +55,13 @@ const workerReady = new Promise<void>((resolve, reject) => {
 
 let nextReqId = 1;
 const pending = new Map<number, { resolve: () => void; reject: (err: Error) => void }>();
+const pendingContentSignalBackfill = new Map<
+  number,
+  {
+    resolve: (summary: ContentSignalBackfillSummary) => void;
+    reject: (err: Error) => void;
+  }
+>();
 
 async function request(msg: WorkerRequest): Promise<void> {
   await workerReady;
@@ -103,7 +118,22 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     return;
   }
 
+  if (msg.type === "CONTENT_SIGNAL_BACKFILL_RESULT") {
+    const pendingBackfill = pendingContentSignalBackfill.get(msg.reqId);
+    if (!pendingBackfill) return;
+    pendingContentSignalBackfill.delete(msg.reqId);
+    pendingBackfill.resolve(msg.summary);
+    return;
+  }
+
   // ACK — resolve or reject the pending promise
+  const pendingBackfill = pendingContentSignalBackfill.get(msg.reqId);
+  if (pendingBackfill && msg.error) {
+    pendingContentSignalBackfill.delete(msg.reqId);
+    pendingBackfill.reject(new Error(msg.error));
+    return;
+  }
+
   const p = pending.get(msg.reqId);
   if (!p) return;
   pending.delete(msg.reqId);
@@ -218,6 +248,17 @@ export async function docUpdateFeedItem(globalId: string, updates: Partial<FeedI
   return request({ reqId, type: "UPDATE_FEED_ITEM", globalId, updates });
 }
 
+export async function docBackfillContentSignals(
+  batchSize: number = 200,
+): Promise<ContentSignalBackfillSummary> {
+  await workerReady;
+  return new Promise((resolve, reject) => {
+    const reqId = nextReqId++;
+    pendingContentSignalBackfill.set(reqId, { resolve, reject });
+    worker.postMessage({ reqId, type: "BACKFILL_CONTENT_SIGNALS", batchSize } satisfies WorkerRequest);
+  });
+}
+
 export async function docMarkAsRead(globalId: string): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "MARK_AS_READ", globalId });
@@ -242,6 +283,12 @@ export async function docToggleSaved(globalId: string): Promise<void> {
 export async function docToggleArchived(globalId: string): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "TOGGLE_ARCHIVED", globalId });
+}
+
+export async function docArchiveItems(globalIds: string[]): Promise<void> {
+  if (globalIds.length === 0) return;
+  const reqId = nextReqId++;
+  return request({ reqId, type: "ARCHIVE_ITEMS", globalIds });
 }
 
 export async function docToggleLiked(globalId: string): Promise<void> {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   extractLocationFromItem,
+  extractLocationFromText,
   filterResolvedLocationsByTime,
   getDefaultMapMode,
   getLatestAuthorLocationMarkers,
@@ -71,6 +72,12 @@ function markerFromResolved(resolved: ResolvedLocationItem[]): LocationMarkerSum
 }
 
 describe("location grouping", () => {
+  it("extracts text locations after a cheap signal prefilter", () => {
+    expect(extractLocationFromText("Article body without a place hint.")).toBeNull();
+    expect(extractLocationFromText("Bonjour from Paris")).toBe("Paris");
+    expect(extractLocationFromText("📍 New York")).toBe("New York");
+  });
+
   it("collapses repeated friend posts at the same coordinates into one marker", () => {
     const friend = makeFriend({ id: "friend-1" });
     const resolved: ResolvedLocationItem[] = [

@@ -73,6 +73,25 @@ export function FilterIcon({ className = "w-4 h-4", style }: IconProps) {
   );
 }
 
+export function MenuIcon({ className = "w-5 h-5", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+      <path d="M2 6h20" />
+      <path d="M2 12h20" />
+      <path d="M2 18h20" />
+    </svg>
+  );
+}
+
+export function CloseIcon({ className = "w-5 h-5", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+      <path d="M6 6l12 12" />
+      <path d="M18 6L6 18" />
+    </svg>
+  );
+}
+
 export function AnimatedMenuIcon({
   open = false,
   className = "w-5 h-5",
@@ -85,18 +104,18 @@ export function AnimatedMenuIcon({
       aria-hidden="true"
     >
       <span
-        className={`absolute left-[3px] h-[2px] rounded-full bg-current transition-all duration-200 ease-out ${
-          open ? "top-1/2 w-[18px] -translate-y-1/2 rotate-45" : "top-[5px] w-[18px]"
+        className={`absolute left-1/2 h-[2px] w-[18px] -translate-x-1/2 rounded-full bg-current transition-all duration-200 ease-out ${
+          open ? "top-1/2 -translate-y-1/2 rotate-45" : "top-[5px]"
         }`}
       />
       <span
-        className={`absolute left-[3px] top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-current transition-all duration-200 ease-out ${
-          open ? "w-0 opacity-0" : "w-[14px] opacity-100"
+        className={`absolute left-1/2 top-1/2 h-[2px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-current transition-all duration-200 ease-out ${
+          open ? "w-0 opacity-0" : "w-[18px] opacity-100"
         }`}
       />
       <span
-        className={`absolute left-[3px] h-[2px] rounded-full bg-current transition-all duration-200 ease-out ${
-          open ? "top-1/2 w-[18px] -translate-y-1/2 -rotate-45" : "top-[15px] w-[10px]"
+        className={`absolute left-1/2 h-[2px] w-[18px] -translate-x-1/2 rounded-full bg-current transition-all duration-200 ease-out ${
+          open ? "top-1/2 -translate-y-1/2 -rotate-45" : "top-[15px]"
         }`}
       />
     </span>
@@ -109,6 +128,19 @@ export function MapPinIcon({ className = "w-4 h-4", style }: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
       <circle cx="12" cy="10" r="3" />
+    </svg>
+  );
+}
+
+export function StoryWallIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+      <rect x="4" y="4" width="6" height="7" rx="1.5" />
+      <rect x="14" y="4" width="6" height="5" rx="1.5" />
+      <rect x="14" y="13" width="6" height="7" rx="1.5" />
+      <rect x="4" y="15" width="6" height="5" rx="1.5" />
+      <path d="M10 18h4" />
+      <path d="M12 11v4" />
     </svg>
   );
 }

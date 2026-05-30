@@ -5,7 +5,7 @@
  * Runs on Desktop/OpenClaw, results synced to edge devices.
  */
 
-import type { ContentSignal, FeedItem, WeightPreferences } from "./types.js";
+import type { Account, ContentSignal, FeedItem, Person, WeightPreferences } from "./types.js";
 import type { SocialContentFilter } from "./store-types.js";
 
 /**
@@ -15,9 +15,44 @@ const DEFAULT_WEIGHTS = {
   recency: 50,
   engagement: 10,
   author: 20,
+  relationship: 18,
   topic: 15,
   platform: 5,
 };
+
+interface RelationshipPriorityContext {
+  persons?: Record<string, Person>;
+  accounts?: Record<string, Account>;
+  personByAuthorKey?: Map<string, Person | null>;
+}
+
+function authorKey(item: Pick<FeedItem, "platform" | "author">): string {
+  return `${item.platform}:${item.author.id}`;
+}
+
+function buildPersonByAuthorKey(context?: RelationshipPriorityContext): Map<string, Person | null> | null {
+  if (!context?.persons || !context.accounts) return null;
+  const map = new Map<string, Person | null>();
+  for (const account of Object.values(context.accounts)) {
+    if (account.kind !== "social") continue;
+    map.set(`${account.provider}:${account.externalId}`, account.personId ? context.persons[account.personId] ?? null : null);
+  }
+  return map;
+}
+
+function relationshipPriorityBoost(
+  item: FeedItem,
+  context?: RelationshipPriorityContext,
+): { score: number; weight: number } | null {
+  if (!context?.persons || !context.accounts) return null;
+  const personMap = context.personByAuthorKey ?? buildPersonByAuthorKey(context);
+  const person = personMap?.get(authorKey(item)) ?? null;
+  if (!person || person.relationshipStatus !== "friend") return null;
+  if (person.careLevel >= 5) return { score: 100, weight: 28 };
+  if (person.careLevel >= 4) return { score: 100, weight: 22 };
+  if (person.careLevel >= 3) return { score: 100, weight: 14 };
+  return { score: 80, weight: 8 };
+}
 
 /**
  * Calculate a priority score (0-100) for a feed item
@@ -26,6 +61,7 @@ export function calculatePriority(
   item: FeedItem,
   preferences: WeightPreferences,
   now = Date.now(),
+  context?: RelationshipPriorityContext,
 ): number {
   const scores: number[] = [];
   const weights: number[] = [];
@@ -41,6 +77,12 @@ export function calculatePriority(
   const authorWeight = preferences.authors[item.author.id] ?? 50;
   scores.push(authorWeight);
   weights.push(DEFAULT_WEIGHTS.author);
+
+  const relationshipBoost = relationshipPriorityBoost(item, context);
+  if (relationshipBoost) {
+    scores.push(relationshipBoost.score);
+    weights.push(relationshipBoost.weight || DEFAULT_WEIGHTS.relationship);
+  }
 
   // 3. Platform boost (0-100)
   const platformWeight = preferences.platforms[item.platform] ?? 50;
@@ -118,11 +160,15 @@ export function sortByPriority(items: FeedItem[]): FeedItem[] {
 export function rankFeedItems(
   items: FeedItem[],
   preferences: WeightPreferences,
+  context?: RelationshipPriorityContext,
 ): FeedItem[] {
   const now = Date.now();
+  const rankingContext = context
+    ? { ...context, personByAuthorKey: context.personByAuthorKey ?? buildPersonByAuthorKey(context) ?? undefined }
+    : undefined;
 
   return items.map((item) => {
-    const newPriority = calculatePriority(item, preferences, now);
+    const newPriority = calculatePriority(item, preferences, now, rankingContext);
     if (item.priority === newPriority) return item;
     return { ...item, priority: newPriority, priorityComputedAt: now };
   });
@@ -139,47 +185,65 @@ export function filterFeedItems(
     archivedOnly?: boolean;
     platform?: string;
     authorId?: string;
+    feedUrl?: string;
     socialContentFilter?: SocialContentFilter;
     tags?: string[];
     signals?: ContentSignal[];
     savedOnly?: boolean;
   } = {},
 ): FeedItem[] {
-  return items.filter((item) => {
-    // Filter hidden unless explicitly showing
-    if (!options.showHidden && item.userState.hidden) return false;
+  return items.filter((item) => matchesFeedFilter(item, options));
+}
 
-    // Archived view shows only archived; normal feed excludes archived
-    if (options.archivedOnly) {
-      if (!item.userState.archived) return false;
-    } else {
-      if (item.userState.archived) return false;
-    }
+export function matchesFeedFilter(
+  item: FeedItem,
+  options: {
+    showHidden?: boolean;
+    /** Show only archived items (the Archived view). Mutually exclusive with normal feed. */
+    archivedOnly?: boolean;
+    platform?: string;
+    authorId?: string;
+    feedUrl?: string;
+    socialContentFilter?: SocialContentFilter;
+    tags?: string[];
+    signals?: ContentSignal[];
+    savedOnly?: boolean;
+  } = {},
+): boolean {
+  // Filter hidden unless explicitly showing
+  if (!options.showHidden && item.userState.hidden) return false;
 
-    // Filter by platform
-    if (options.platform && item.platform !== options.platform) return false;
-    if (options.authorId && item.author.id !== options.authorId) return false;
+  // Archived view shows only archived; normal feed excludes archived
+  if (options.archivedOnly) {
+    if (!item.userState.archived) return false;
+  } else {
+    if (item.userState.archived) return false;
+  }
 
-    if (options.socialContentFilter && options.socialContentFilter !== "all") {
-      if (options.socialContentFilter === "stories" && item.contentType !== "story") return false;
-      if (options.socialContentFilter === "posts" && item.contentType === "story") return false;
-    }
+  // Filter by platform
+  if (options.platform && item.platform !== options.platform) return false;
+  if (options.authorId && item.author.id !== options.authorId) return false;
+  if (options.feedUrl && item.rssSource?.feedUrl !== options.feedUrl) return false;
 
-    // Filter by saved status
-    if (options.savedOnly && !item.userState.saved) return false;
+  if (options.socialContentFilter && options.socialContentFilter !== "all") {
+    if (options.socialContentFilter === "stories" && item.contentType !== "story") return false;
+    if (options.socialContentFilter === "posts" && item.contentType === "story") return false;
+  }
 
-    // Filter by tags (any match)
-    if (options.tags?.length) {
-      const hasTag = options.tags.some((t) => item.userState.tags.includes(t));
-      if (!hasTag) return false;
-    }
+  // Filter by saved status
+  if (options.savedOnly && !item.userState.saved) return false;
 
-    if (options.signals?.length) {
-      const itemSignals = item.contentSignals?.tags ?? [];
-      const hasSignal = options.signals.some((signal) => itemSignals.includes(signal));
-      if (!hasSignal) return false;
-    }
+  // Filter by tags (any match)
+  if (options.tags?.length) {
+    const hasTag = options.tags.some((t) => item.userState.tags.includes(t));
+    if (!hasTag) return false;
+  }
 
-    return true;
-  });
+  if (options.signals?.length) {
+    const itemSignals = item.contentSignals?.tags ?? [];
+    const hasSignal = options.signals.some((signal) => itemSignals.includes(signal));
+    if (!hasSignal) return false;
+  }
+
+  return true;
 }

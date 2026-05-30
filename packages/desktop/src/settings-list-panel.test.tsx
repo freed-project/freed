@@ -3,7 +3,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsListPanel } from "@freed/ui/components/settings/SettingsListPanel";
 
 function setInputValue(input: HTMLInputElement, value: string) {
@@ -28,10 +28,40 @@ describe("SettingsListPanel", () => {
       root.unmount();
     });
     container.remove();
+    vi.restoreAllMocks();
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
   });
 
   it("caps the inner scroller and filters with locale formatted counts", async () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getBoundingClientRect(
+      this: HTMLElement,
+    ) {
+      if (this.dataset.testid === "demo-scroll") {
+        return {
+          x: 0,
+          y: 0,
+          width: 360,
+          height: 480,
+          top: 0,
+          right: 360,
+          bottom: 480,
+          left: 0,
+          toJSON: () => ({}),
+        };
+      }
+      return {
+        x: 0,
+        y: 0,
+        width: 360,
+        height: 72,
+        top: 0,
+        right: 360,
+        bottom: 72,
+        left: 0,
+        toJSON: () => ({}),
+      };
+    });
+
     const items = Array.from({ length: 1_001 }, (_, index) => ({
       id: `item-${index.toLocaleString()}`,
       label: index === 734 ? "Beta item" : `Alpha ${index.toLocaleString()}`,
@@ -55,10 +85,15 @@ describe("SettingsListPanel", () => {
         />,
       );
     });
+    await act(async () => {});
 
     expect(container.textContent).toContain("1,001 total");
     const scroll = container.querySelector<HTMLElement>("[data-testid='demo-scroll']");
     expect(scroll?.style.maxHeight).toBe("var(--settings-inner-list-max-height)");
+    const mountedRows = container.querySelectorAll("[data-testid='settings-list-virtual-row']").length;
+    expect(mountedRows).toBeGreaterThan(0);
+    expect(mountedRows).toBeLessThan(100);
+    expect(container.textContent).not.toContain("Alpha 1,000");
 
     const input = container.querySelector<HTMLInputElement>("[data-testid='demo-filter']");
     expect(input).toBeInstanceOf(HTMLInputElement);

@@ -10,6 +10,7 @@
  */
 
 import { Store, load } from "@tauri-apps/plugin-store";
+import { scheduleSideEffect } from "./side-effect-scheduler";
 
 type ApiKeyProvider = "openai" | "anthropic" | "gemini";
 
@@ -31,8 +32,15 @@ export const secureStorage = {
    * Returns null when no key has been set.
    */
   async getApiKey(provider: ApiKeyProvider): Promise<string | null> {
-    const store = await getStore();
-    return (await store.get<string>(`apiKey.${provider}`)) ?? null;
+    return scheduleSideEffect({
+      queue: "nativeStore",
+      source: "secure-storage",
+      kind: "getApiKey",
+      run: async () => {
+        const store = await getStore();
+        return (await store.get<string>(`apiKey.${provider}`)) ?? null;
+      },
+    });
   },
 
   /**
@@ -40,15 +48,29 @@ export const secureStorage = {
    * The key is encrypted at rest by tauri-plugin-store.
    */
   async setApiKey(provider: ApiKeyProvider, key: string): Promise<void> {
-    const store = await getStore();
-    await store.set(`apiKey.${provider}`, key);
+    await scheduleSideEffect({
+      queue: "nativeStore",
+      source: "secure-storage",
+      kind: "setApiKey",
+      run: async () => {
+        const store = await getStore();
+        await store.set(`apiKey.${provider}`, key);
+      },
+    });
   },
 
   /**
    * Remove the stored API key for the given provider.
    */
   async clearApiKey(provider: ApiKeyProvider): Promise<void> {
-    const store = await getStore();
-    await store.delete(`apiKey.${provider}`);
+    await scheduleSideEffect({
+      queue: "nativeStore",
+      source: "secure-storage",
+      kind: "clearApiKey",
+      run: async () => {
+        const store = await getStore();
+        await store.delete(`apiKey.${provider}`);
+      },
+    });
   },
 };

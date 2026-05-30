@@ -41,6 +41,8 @@ export interface DocState {
   totalArchivableCount: number;
   archivableCountByPlatform: Record<string, number>;
   archivableFeedCounts: Record<string, number>;
+  mapFriendLocationCount: number;
+  mapAllContentLocationCount: number;
   /** Total feed-item records in the CRDT, including hidden and archived items. */
   docItemCount: number;
 }
@@ -69,6 +71,7 @@ export type WorkerRequest =
   | { reqId: number; type: "MARK_ALL_AS_READ"; platform?: string }
   | { reqId: number; type: "TOGGLE_SAVED"; globalId: string }
   | { reqId: number; type: "TOGGLE_ARCHIVED"; globalId: string }
+  | { reqId: number; type: "ARCHIVE_ITEMS"; globalIds: string[] }
   | { reqId: number; type: "TOGGLE_LIKED"; globalId: string }
   | { reqId: number; type: "CONFIRM_LIKED_SYNCED"; globalId: string; syncedAt?: number }
   | { reqId: number; type: "CONFIRM_SEEN_SYNCED"; globalId: string; syncedAt?: number }
@@ -109,6 +112,29 @@ export type WorkerRequest =
   // Relay management (fire-and-forget, reqId ignored)
   | { reqId: number; type: "UPDATE_RELAY_CLIENT_COUNT"; count: number };
 
+export type DocChangeEvent =
+  | {
+      source: "state_update";
+      mutation?: WorkerRequest["type"];
+      changedItemIds: null;
+      changedItems?: undefined;
+      requiresFullScan: true;
+    }
+  | {
+      source: "preferences_patch";
+      mutation?: WorkerRequest["type"];
+      changedItemIds: null;
+      changedItems: [];
+      requiresFullScan: false;
+    }
+  | {
+      source: "item_patch";
+      mutation?: WorkerRequest["type"];
+      changedItemIds: string[];
+      changedItems: FeedItem[];
+      requiresFullScan: false;
+    };
+
 // ---------------------------------------------------------------------------
 // Worker → main thread
 // ---------------------------------------------------------------------------
@@ -117,9 +143,11 @@ export type WorkerResponse =
   /** Simple acknowledgement for mutations that return void */
   | { reqId: number; type: "ACK"; error?: string }
   /** Broadcast on every doc mutation - main thread uses this to update UI */
-  | { type: "STATE_UPDATE"; state: DocState }
+  | { type: "STATE_UPDATE"; state: DocState; mutation?: WorkerRequest["type"] }
+  /** Preference-only mutation that avoids cloning, ranking, and hydrating every feed item. */
+  | { type: "PREFERENCES_PATCH"; updates: Partial<UserPreferences>; mutation?: WorkerRequest["type"] }
   /** Small mutation update that avoids cloning and hydrating the full document. */
-  | { type: "ITEM_PATCH"; patches: FeedItemPatch[] }
+  | { type: "ITEM_PATCH"; patches: FeedItemPatch[]; changedItemIds: string[]; mutation?: WorkerRequest["type"] }
   /** Debug panel event forwarding */
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
   /** Doc size snapshot for the debug panel */

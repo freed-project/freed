@@ -34,6 +34,7 @@ import {
   docToggleSaved,
   docRemoveFeedItem,
   docToggleArchived,
+  docArchiveItems,
   docArchiveAllReadUnsaved,
   docUnarchiveSavedItems,
   docDeleteAllArchived,
@@ -108,6 +109,8 @@ interface AppState {
   totalArchivableCount: number;
   archivableCountByPlatform: Record<string, number>;
   archivableFeedCounts: Record<string, number>;
+  mapFriendLocationCount: number;
+  mapAllContentLocationCount: number;
   /** Total feed-item records including hidden and archived items. */
   docItemCount: number;
 
@@ -144,6 +147,7 @@ interface AppState {
   toggleSaved: (id: string) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
   toggleArchived: (id: string) => Promise<void>;
+  archiveItems: (ids: string[]) => Promise<void>;
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
   /** Record like intent in Automerge. Outbox processor drains to platform. */
   toggleLiked: (id: string) => Promise<void>;
@@ -200,8 +204,9 @@ interface AppState {
   setSearchQuery: (query: string) => void;
 
   // View navigation
-  activeView: "feed" | "friends" | "map";
-  setActiveView: (view: "feed" | "friends" | "map") => void;
+  activeView: "feed" | "friends" | "map" | "storyWall";
+  setActiveView: (view: "feed" | "friends" | "map" | "storyWall") => void;
+  openMapForPerson: (personId: string) => void;
   pendingMatchCount: number;
   setPendingMatchCount: (count: number) => void;
 }
@@ -357,17 +362,21 @@ async function flushPendingReadMarks(): Promise<void> {
   }
 }
 
-function queueReadMarks(ids: readonly string[]): Promise<void> {
+function queueReadMarks(ids: readonly string[], options: { waitForFlush?: boolean } = {}): Promise<void> {
   const nextIds = ids.filter(Boolean);
   if (nextIds.length === 0) return Promise.resolve();
 
   for (const id of nextIds) pendingReadIds.add(id);
+  scheduleReadMarkBatchFlush();
+
+  if (options.waitForFlush === false) {
+    return Promise.resolve();
+  }
 
   const promise = new Promise<void>((resolve) => {
     readMarkBatchWaiters.push(resolve);
   });
 
-  scheduleReadMarkBatchFlush();
   return promise;
 }
 
@@ -389,6 +398,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   totalArchivableCount: 0,
   archivableCountByPlatform: {},
   archivableFeedCounts: {},
+  mapFriendLocationCount: 0,
+  mapAllContentLocationCount: 0,
   docItemCount: 0,
   xAuth: { isAuthenticated: false },
   fbAuth: { isAuthenticated: false },
@@ -480,7 +491,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const platformActionsRegistry = buildPlatformActionsRegistry(xCookiesFn);
       outboxTeardown = startOutboxProcessor(
         () => getDocState()?.items ?? null,
-        (cb) => subscribe(() => cb()),
+        (cb) => subscribe((_state, event) => cb(event)),
         platformActionsRegistry,
         async (id, syncedAt) => { await docConfirmLikedSynced(id, syncedAt); },
         async (id, syncedAt) => { await docConfirmSeenSynced(id, syncedAt); },
@@ -508,7 +519,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markAsRead: async (id) => {
-    await queueReadMarks([id]);
+    await queueReadMarks([id], { waitForFlush: false });
   },
 
   markItemsAsRead: async (ids) => {
@@ -565,6 +576,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleArchived: async (id) => {
     await docToggleArchived(id);
+  },
+
+  archiveItems: async (ids) => {
+    await docArchiveItems(ids);
   },
 
   toggleLiked: async (id) => {
@@ -782,6 +797,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   setError: (error) => set({ error }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setActiveView: (activeView) => set({ activeView }),
+  openMapForPerson: (personId) =>
+    set({
+      activeView: "map",
+      selectedPersonId: personId,
+      selectedAccountId: null,
+      selectedFriendId: personId,
+      selectedItemId: null,
+    }),
   setPendingMatchCount: (pendingMatchCount) => set({ pendingMatchCount }),
 }));
 

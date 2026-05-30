@@ -27,6 +27,7 @@ export * from "./navigation-state";
 
 // Re-export friends identity resolution and CRM utilities (browser-safe, no deps)
 export * from "./friends";
+export * from "./friend-suggestions";
 export * from "./identity-graph";
 export * from "./contact-sync-state";
 
@@ -44,6 +45,7 @@ export * from "./release-channel";
 export * from "./legal";
 export * from "./legal-storage";
 export * from "./bug-report";
+export * from "./story-wall";
 
 // Note: schema.js is NOT re-exported here because it imports Automerge
 // which uses WebAssembly and requires special bundler configuration.

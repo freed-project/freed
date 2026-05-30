@@ -4,14 +4,20 @@ import { FeedList } from "./FeedList.js";
 import { ReaderView } from "./ReaderView.js";
 import { FeedItem as FeedItemCard } from "./FeedItem.js";
 import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
+import { buildReadTrackListKey } from "./read-on-scroll.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
-import type { FeedItem } from "@freed/shared";
+import {
+  buildDiscoveredAccountsFromItems,
+  socialAccountForAuthor,
+  type Account,
+  type FeedItem,
+} from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
-import { animationAwareScrollBehavior } from "../../lib/animation-preferences.js";
+import { animationAwareScrollBehavior, resolveAnimationIntensity } from "../../lib/animation-preferences.js";
 
 // ─── Compact sidebar panel for dual-column mode ────────────────────────────
 
@@ -22,6 +28,7 @@ const NARROW_THRESHOLD = 150;
 const COMPACT_CARD_GAP = 8;
 const COMPACT_CARD_LEFT_PAD = 8;
 const COMPACT_CARD_RIGHT_PAD = 4;
+const COMPACT_PANEL_RESIZE_HANDLE_WIDTH = 16;
 
 // Card geometry: all cards are square (width × width), including story tiles.
 // Wrapper padding and row spacing match the nav-button radius token at 10px.
@@ -92,12 +99,8 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     },
     [items, itemHeight, storyItemHeight],
   );
-  const readRows = useMemo(
-    () => items.map((item) => ({ type: "item" as const, item })),
-    [items],
-  );
   const readListKey = useMemo(
-    () => items.map((item) => item.globalId).join("|"),
+    () => buildReadTrackListKey(items),
     [items],
   );
   const getReadScrollMetrics = useCallback(() => ({
@@ -108,7 +111,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   const processReadOnScroll = useReadOnScrollTracker({
     surface: "compact-feed",
     listKey: readListKey,
-    rows: readRows,
+    rows: items,
     items,
     markReadOnScroll,
     getScrollMetrics: getReadScrollMetrics,
@@ -254,6 +257,9 @@ export function FeedView() {
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
+  const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
+  const setActiveView = useAppStore((s) => s.setActiveView);
+  const addAccount = useAppStore((s) => s.addAccount);
   const markAsRead = useAppStore((s) => s.markAsRead);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
@@ -282,6 +288,25 @@ export function FeedView() {
       window.open(url, "_blank", "noopener,noreferrer");
     }
   }, [openUrl]);
+  const openAuthorInFriends = useCallback(async (item: FeedItem) => {
+    let account: Account | null = socialAccountForAuthor(accounts, item.platform, item.author.id);
+    if (!account) {
+      const draft = buildDiscoveredAccountsFromItems([item], accounts)[0];
+      if (!draft) return;
+      await addAccount(draft);
+      account = draft;
+    }
+
+    setSelectedItem(null);
+    setSelectedAccount(account.id);
+    setActiveView("friends");
+  }, [
+    accounts,
+    addAccount,
+    setActiveView,
+    setSelectedAccount,
+    setSelectedItem,
+  ]);
 
   const [addFeedOpen, setAddFeedOpen] = useState(false);
   const [readerOrderIds, setReaderOrderIds] = useState<string[] | null>(null);
@@ -302,6 +327,9 @@ export function FeedView() {
   const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
   const markReadOnScroll = useAppStore((s) => s.preferences.display.reading.markReadOnScroll);
   const showReadInGrayscale = useAppStore((s) => s.preferences.display.reading.showReadInGrayscale);
+  const animationIntensity = useAppStore((s) =>
+    resolveAnimationIntensity(s.preferences.display.animationIntensity),
+  );
   const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const isMobileViewport = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
@@ -445,9 +473,40 @@ export function FeedView() {
   // ─── Dual-column drag-resize ───────────────────────────────────────────────
 
   const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH);
+  const [railMounted, setRailMounted] = useState(showDualColumn);
+  const [railExpanded, setRailExpanded] = useState(showDualColumn);
   const isDraggingRef = useRef(false);
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(0);
+  const previousShowDualColumnRef = useRef(showDualColumn);
+  const railMotionDisabled = animationIntensity === "none";
+
+  useEffect(() => {
+    const wasShowingDualColumn = previousShowDualColumnRef.current;
+    previousShowDualColumnRef.current = showDualColumn;
+
+    if (showDualColumn) {
+      setRailMounted(true);
+
+      if (railMotionDisabled || wasShowingDualColumn || typeof window === "undefined") {
+        setRailExpanded(true);
+        return;
+      }
+
+      setRailExpanded(false);
+      const frameId = window.requestAnimationFrame(() => {
+        setRailExpanded(true);
+      });
+
+      return () => window.cancelAnimationFrame(frameId);
+    }
+
+    setRailExpanded(false);
+
+    if (railMotionDisabled) {
+      setRailMounted(false);
+    }
+  }, [railMotionDisabled, showDualColumn]);
 
   useLayoutEffect(() => {
     if (typeof document === "undefined") return;
@@ -456,6 +515,33 @@ export function FeedView() {
       showDualColumn ? `${panelWidth}px` : "0px",
     );
   }, [panelWidth, showDualColumn]);
+
+  const railTransition = railMotionDisabled || isDraggingRef.current
+    ? "none"
+    : animationIntensity === "light"
+      ? "width 140ms ease-out, margin-inline-start 140ms ease-out, opacity 120ms ease-out"
+      : "width 220ms ease, margin-inline-start 220ms ease, opacity 180ms ease";
+  const railWidth = railExpanded ? panelWidth + COMPACT_PANEL_RESIZE_HANDLE_WIDTH : 0;
+  const railSlotStyle = {
+    width: `${railWidth}px`,
+    marginInlineStart: railExpanded ? compactRailLeadingOffset : undefined,
+    opacity: railExpanded ? 1 : 0,
+    pointerEvents: railExpanded ? undefined : "none",
+    transition: railTransition,
+  } satisfies React.CSSProperties;
+  const railContentStyle = {
+    width: `${panelWidth + COMPACT_PANEL_RESIZE_HANDLE_WIDTH}px`,
+  } satisfies React.CSSProperties;
+
+  const handleRailTransitionEnd = useCallback(
+    (e: React.TransitionEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget || e.propertyName !== "width") return;
+      if (!showDualColumn && !railExpanded) {
+        setRailMounted(false);
+      }
+    },
+    [railExpanded, showDualColumn],
+  );
 
   const handleDragStart = useCallback(
     (e: React.PointerEvent) => {
@@ -490,33 +576,39 @@ export function FeedView() {
     return (
       <div className="h-full flex flex-col overflow-hidden">
         <div className="flex-1 flex overflow-y-hidden overflow-x-visible">
-          {showDualColumn ? (
-            <>
-              <CompactFeedPanel
-                items={readerItems}
-                selectedId={selectedItem.globalId}
-                selectionMoveDirection={compactSelectionDirection}
-                onItemClick={openItemDirect}
-                markReadOnScroll={markReadOnScroll}
-                showReadInGrayscale={showReadInGrayscale}
-                markItemsAsRead={markItemsAsRead}
-                width={panelWidth}
-                leadingOffset={compactRailLeadingOffset}
-              />
-              <div
-                className="theme-resize-gap-handle w-4 shrink-0 self-stretch"
-                style={{
-                  marginTop: "var(--feed-card-gap, 8px)",
-                }}
-                onPointerDown={handleDragStart}
-                onPointerMove={handleDragMove}
-                onPointerUp={handleDragEnd}
-                onPointerCancel={handleDragEnd}
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize sidebar"
-              />
-            </>
+          {railMounted ? (
+            <div
+              data-testid="compact-feed-panel-rail"
+              className="flex-none overflow-hidden"
+              style={railSlotStyle}
+              onTransitionEnd={handleRailTransitionEnd}
+            >
+              <div className="flex h-full" style={railContentStyle}>
+                <CompactFeedPanel
+                  items={readerItems}
+                  selectedId={selectedItem.globalId}
+                  selectionMoveDirection={compactSelectionDirection}
+                  onItemClick={openItemDirect}
+                  markReadOnScroll={markReadOnScroll}
+                  showReadInGrayscale={showReadInGrayscale}
+                  markItemsAsRead={markItemsAsRead}
+                  width={panelWidth}
+                />
+                <div
+                  className="theme-resize-gap-handle w-4 shrink-0 self-stretch"
+                  style={{
+                    marginTop: "var(--feed-card-gap, 8px)",
+                  }}
+                  onPointerDown={handleDragStart}
+                  onPointerMove={handleDragMove}
+                  onPointerUp={handleDragEnd}
+                  onPointerCancel={handleDragEnd}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize sidebar"
+                />
+              </div>
+            </div>
           ) : null}
           <ReaderView
             item={selectedItem}
@@ -524,6 +616,7 @@ export function FeedView() {
             dualColumn={showDualColumn}
             inline
             onOpenUrl={handleOpenCommentUrl}
+            onOpenAuthorInFriends={openAuthorInFriends}
           />
         </div>
         <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
@@ -550,7 +643,12 @@ export function FeedView() {
       />
 
       {selectedItem && (
-        <ReaderView item={selectedItem} onClose={closeItem} onOpenUrl={handleOpenCommentUrl} />
+        <ReaderView
+          item={selectedItem}
+          onClose={closeItem}
+          onOpenUrl={handleOpenCommentUrl}
+          onOpenAuthorInFriends={openAuthorInFriends}
+        />
       )}
 
       <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />

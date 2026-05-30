@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { appDataDir } from "@tauri-apps/api/path";
 import {
   exists,
@@ -36,6 +37,20 @@ const MIN_PROGRESS_INTERVAL_MS = 250;
 const LEGACY_LOCAL_AI_MODEL_ID: LocalAIModelId = "integrated-local-ai";
 type LocalAIModelStateSubscriber = () => void;
 const localAIModelStateSubscribers = new Set<LocalAIModelStateSubscriber>();
+
+type NativeDownloadProgressPayload = {
+  downloadId: string;
+  downloadedBytes: number;
+};
+
+type ModelFileDownloadInput = {
+  downloadId: string;
+  url: string;
+  targetPath: string;
+  partialPath: string;
+  expectedSizeBytes: number;
+  signal: AbortSignal;
+};
 
 export function subscribeToLocalAIModelState(callback: LocalAIModelStateSubscriber): () => void {
   localAIModelStateSubscribers.add(callback);
@@ -168,6 +183,11 @@ export interface LocalAIModelServiceDeps {
   size: (path: string) => Promise<number>;
   writeTextFile: (path: string, text: string) => Promise<void>;
   fetch: typeof fetch;
+  downloadModelFile?: (
+    input: ModelFileDownloadInput,
+    onProgress: (downloadedBytes: number) => void,
+  ) => Promise<number>;
+  cancelModelFileDownload?: (downloadId: string) => Promise<void>;
   now: () => number;
   sha256File: (path: string) => Promise<string>;
   webGPUAvailable: () => boolean;
@@ -186,6 +206,35 @@ const defaultDeps: LocalAIModelServiceDeps = {
   size: fsSize,
   writeTextFile,
   fetch: (...args) => fetch(...args),
+  downloadModelFile: async (input, onProgress) => {
+    const progressEvent = `local-ai-model-download-${input.downloadId}`;
+    const unlisten = await listen<NativeDownloadProgressPayload>(progressEvent, (event) => {
+      if (event.payload.downloadId !== input.downloadId) return;
+      onProgress(event.payload.downloadedBytes);
+    });
+    const abort = () => {
+      void invoke("cancel_local_ai_model_download", { downloadId: input.downloadId });
+    };
+
+    input.signal.addEventListener("abort", abort, { once: true });
+    try {
+      return await invoke<number>("download_local_ai_model_file", {
+        request: {
+          downloadId: input.downloadId,
+          url: input.url,
+          targetPath: input.targetPath,
+          partialPath: input.partialPath,
+          expectedSizeBytes: input.expectedSizeBytes,
+          progressEvent,
+        },
+      });
+    } finally {
+      input.signal.removeEventListener("abort", abort);
+      unlisten();
+    }
+  },
+  cancelModelFileDownload: (downloadId) =>
+    invoke("cancel_local_ai_model_download", { downloadId }),
   now: () => Date.now(),
   sha256File: (path) => invoke<string>("sha256_file", { path }),
   webGPUAvailable: () =>
@@ -487,12 +536,16 @@ export function createLocalAIModelService(
   async function downloadFile(input: {
     model: LocalAIModelManifestEntry;
     file: LocalAIModelManifestEntry["files"][number];
+    downloadId: string;
     signal: AbortSignal;
     completedBeforeFile: number;
     totalBytes: number;
     onProgress?: (progress: LocalAIModelDownloadProgress) => void;
   }): Promise<number> {
-    const { model, file, signal, completedBeforeFile, totalBytes, onProgress } = input;
+    const { model, file, downloadId, signal, completedBeforeFile, totalBytes, onProgress } = input;
+    if (signal.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
     const target = await filePath(model, file.path);
     const partial = `${target}.partial`;
     const parent = dirname(target);
@@ -527,6 +580,37 @@ export function createLocalAIModelService(
     const fileRevision = file.revision ?? model.revision;
     const sourcePath = file.sourcePath ?? file.path;
     const url = `https://huggingface.co/${fileRepo}/resolve/${fileRevision}/${sourcePath}`;
+
+    if (deps.downloadModelFile) {
+      let lastProgressAt = 0;
+      const emitProgress = (writtenForFile: number, force = false) => {
+        const now = deps.now();
+        if (!force && now - lastProgressAt < MIN_PROGRESS_INTERVAL_MS) return;
+        lastProgressAt = now;
+        onProgress?.({
+          id: model.id,
+          currentFile: file.path,
+          downloadedBytes: completedBeforeFile + writtenForFile,
+          totalBytes,
+        });
+      };
+
+      const downloaded = await deps.downloadModelFile(
+        {
+          downloadId,
+          url,
+          targetPath: target,
+          partialPath: partial,
+          expectedSizeBytes: file.sizeBytes,
+          signal,
+        },
+        (writtenForFile) => emitProgress(writtenForFile),
+      );
+      emitProgress(downloaded, true);
+      await verifyFile(target, file);
+      return file.sizeBytes;
+    }
+
     let response = await deps.fetch(url, { headers, signal });
     if (response.status === 416 && existingPartialBytes > 0) {
       await deps.remove(partial);
@@ -620,6 +704,7 @@ export function createLocalAIModelService(
         const downloaded = await downloadFile({
           model,
           file,
+          downloadId: id,
           signal: controller.signal,
           completedBeforeFile: completedBytes,
           totalBytes,
@@ -634,8 +719,14 @@ export function createLocalAIModelService(
         }));
       }
 
+      if (controller.signal.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
       const dir = await modelDir(model);
       const storageBytes = await deps.size(dir).catch(() => completedBytes);
+      if (controller.signal.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
       await updateModelState(id, (current) => ({
         ...current,
         status: "available",
@@ -674,6 +765,7 @@ export function createLocalAIModelService(
 
   async function pauseDownload(id: LocalAIModelId): Promise<LocalAIModelViewState[]> {
     activeDownloads.get(id)?.abort();
+    await deps.cancelModelFileDownload?.(id);
     await updateModelState(id, (current) => ({
       ...current,
       status: current.status === "downloading" ? "paused" : current.status,

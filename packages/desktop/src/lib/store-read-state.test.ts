@@ -94,6 +94,19 @@ describe("store read-state batching", () => {
     ]);
   });
 
+  it("does not make single-item read updates wait for the batch flush", async () => {
+    const useAppStore = await loadStore();
+
+    const markAsReadPromise = useAppStore.getState().markAsRead("item-a");
+
+    await expect(markAsReadPromise).resolves.toBeUndefined();
+    expect(mockDocMarkItemsAsRead).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(READ_MARK_BATCH_DELAY_MS_FOR_TESTS);
+
+    expect(mockDocMarkItemsAsRead).toHaveBeenCalledWith(["item-a"]);
+  });
+
   it("records non-fatal diagnostics when a batched read update rejects", async () => {
     const useAppStore = await loadStore();
     const error = new Error("[automerge-worker] request TIMEOUT op=MARK_AS_READ reqId=305 pending=93");

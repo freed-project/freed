@@ -7,13 +7,11 @@ import {
   useCallback,
   type CSSProperties,
   type ButtonHTMLAttributes,
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
+  type ChangeEvent,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import {
-  countAuthorsWithRecentLocationUpdates,
-  countFriendsWithRecentLocationUpdates,
   applyFeedSignalModesToFilter,
   FEED_SIGNAL_FILTER_PRESETS,
   filterFeedItems,
@@ -29,8 +27,9 @@ import {
 import { Tooltip } from "../Tooltip.js";
 import {
   ArchiveIcon,
-  AnimatedMenuIcon,
+  CloseIcon,
   FilterIcon,
+  MenuIcon,
   ReaderRailHideIcon,
   ReaderRailShowIcon,
   SidebarCollapseIcon,
@@ -47,6 +46,22 @@ import {
   usePlatform,
 } from "../../context/PlatformContext.js";
 import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
+import {
+  FEED_CARD_DENSITY_LABELS,
+  FEED_CARD_DENSITY_OPTIONS,
+  useFeedCardDensity,
+  type FeedCardDensity,
+} from "../../lib/feed-card-density.js";
+import {
+  collectArchivableFeedActionIds,
+  collectUnreadFeedActionIds,
+  getFeedActionCounts,
+} from "../../lib/feed-action-scope.js";
+import {
+  dragRegionStyle as dragStyle,
+  getPassiveDragRegionProps,
+  noDragRegionStyle as noDrag,
+} from "../../lib/native-drag-region.js";
 import {
   COMPACT_PRIMARY_SIDEBAR_WIDTH_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
@@ -76,10 +91,7 @@ interface ToolbarOverflowAction {
   danger?: boolean;
 }
 
-const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
-const dragStyle = { WebkitAppRegion: "drag" } as CSSProperties;
 const toolbarControlStyle = { ...noDrag, userSelect: "none" } as CSSProperties;
-const TOOLBAR_DRAG_THRESHOLD_PX = 6;
 const TOP_TOOLBAR_HEIGHT_PX =
   COMPACT_PRIMARY_SIDEBAR_WIDTH_PX + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
 const TOOLBAR_ICON_BUTTON_CLASS =
@@ -90,6 +102,7 @@ const READER_LAYOUT_CONTROL_BUTTON_SIZE_PX = 32;
 const READER_LAYOUT_CONTROL_ICON_SIZE_PX = 20;
 const READER_LAYOUT_CONTROL_BUTTON_GAP_PX = 0;
 const LAYOUT_CONTROL_SAFE_GAP_PX = 8;
+const MENU_VIEWPORT_MARGIN_PX = 8;
 const CLOSED_SIDEBAR_TOGGLE_LEFT_PX = 12;
 const DEFAULT_LAYOUT_CONTROL_SAFE_LEFT_PX = 180;
 const DEFAULT_LAYOUT_CONTROL_RESERVED_WIDTH_PX = 280;
@@ -192,6 +205,64 @@ function ToolbarOverflowIcon({ className = "h-5 w-5" }: { className?: string }) 
   );
 }
 
+function FeedCardDensitySlider({
+  value,
+  onChange,
+  fullWidth = false,
+  style,
+}: {
+  value: FeedCardDensity;
+  onChange: (value: FeedCardDensity) => void;
+  fullWidth?: boolean;
+  style?: CSSProperties;
+}) {
+  const valueIndex = Math.max(0, FEED_CARD_DENSITY_OPTIONS.indexOf(value));
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const next = FEED_CARD_DENSITY_OPTIONS[Number(event.target.value)] ?? "comfortable";
+    onChange(next);
+  };
+
+  return (
+    <Tooltip
+      label={FEED_CARD_DENSITY_LABELS[value]}
+      className={fullWidth ? "w-full" : undefined}
+    >
+      <div
+        data-testid="feed-card-density-control"
+        className="theme-toolbar-density-control"
+        style={{
+          ...(fullWidth ? { width: "100%" } : {}),
+          ...style,
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <span className="theme-toolbar-density-icon theme-toolbar-density-icon-compact" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </span>
+        <input
+          data-testid="feed-card-density-slider"
+          className="theme-toolbar-density-slider"
+          type="range"
+          min={0}
+          max={2}
+          step={1}
+          value={valueIndex}
+          onChange={handleChange}
+          aria-label="Card density"
+          aria-valuetext={FEED_CARD_DENSITY_LABELS[value]}
+        />
+        <span className="theme-toolbar-density-icon theme-toolbar-density-icon-expansive" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </span>
+      </div>
+    </Tooltip>
+  );
+}
+
 function joinTitleParts(parts: readonly string[]): string {
   if (parts.length <= 1) return parts[0] ?? "";
   if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
@@ -255,7 +326,6 @@ export function Header({
   const {
     HeaderSyncIndicator,
     headerDragRegion,
-    startWindowDrag,
     addRssFeed,
     saveUrl,
     importMarkdown,
@@ -295,11 +365,13 @@ export function Header({
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
+  const archiveItems = useAppStore((s) => s.archiveItems);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setFilter = useAppStore((s) => s.setFilter);
   const display = useAppStore((s) => s.preferences.display);
   const activeSearchQuery = searchQuery.trim();
+  const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
 
   const { filteredItems, isSearching, resultCount } = useSearchResults(
     items,
@@ -318,14 +390,8 @@ export function Header({
 
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds, accounts), [accounts, activeFilter, feeds]);
   const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
-  const mappedFriendCount = useMemo(
-    () => countFriendsWithRecentLocationUpdates(items, friends),
-    [friends, items],
-  );
-  const mappedAllContentCount = useMemo(
-    () => countAuthorsWithRecentLocationUpdates(items),
-    [items],
-  );
+  const mappedFriendCount = useAppStore((s) => s.mapFriendLocationCount);
+  const mappedAllContentCount = useAppStore((s) => s.mapAllContentLocationCount);
   const socialAccountCount = useMemo(
     () => Object.values(accounts).filter((account) => account.kind === "social").length,
     [accounts],
@@ -346,7 +412,10 @@ export function Header({
   const [isBelowReaderBookmarkToolbar, setIsBelowReaderBookmarkToolbar] = useState(
     () => typeof window !== "undefined" && window.innerWidth < READER_BOOKMARK_INLINE_MIN_WIDTH_PX,
   );
-  const showWorkspaceIdentityControls = activeView === "friends" || activeView === "map";
+  const showWorkspaceIdentityControls =
+    activeView === "friends" ||
+    activeView === "map" ||
+    (activeView === "feed" && !selectedItem);
   const showMapTimeControls = activeView === "map";
   const showFeedBulkActions = activeView === "feed";
   const showFeedSignalFilter = activeView === "feed" && !selectedItem;
@@ -383,6 +452,14 @@ export function Header({
     );
   const showInlineFeedSignalFilter =
     showFeedSignalFilter && !showCollapsedToolbarFilterMenu;
+  const showFeedCardDensityControl =
+    activeView === "feed" &&
+    !selectedItem &&
+    !isMobile;
+  const showInlineFeedCardDensityControl =
+    showFeedCardDensityControl && !isBelowLargeToolbar;
+  const showOverflowFeedCardDensityControl =
+    showFeedCardDensityControl && isBelowLargeToolbar;
   const showInlineReaderBookmark =
     !!selectedItem && !isBelowReaderBookmarkToolbar;
   const collapsedReaderTitlePaddingClass = selectedItem?.sourceUrl
@@ -392,25 +469,10 @@ export function Header({
     ? showInlineReaderBookmark ? "w-[11rem]" : "w-[8.5rem]"
     : showInlineReaderBookmark ? "w-[6.5rem]" : "w-14";
 
-  const filteredUnreadItemIds = useMemo(
-    () => filteredItems
-      .filter((item) => !item.userState.readAt && !item.userState.hidden && !item.userState.archived)
-      .map((item) => item.globalId),
-    [filteredItems],
-  );
-  const filteredArchivableItemIds = useMemo(
-    () => filteredItems
-      .filter((item) =>
-        !!item.userState.readAt &&
-        !item.userState.hidden &&
-        !item.userState.archived &&
-        !item.userState.saved
-      )
-      .map((item) => item.globalId),
-    [filteredItems],
-  );
-  const unreadCount = filteredUnreadItemIds.length;
-  const archivableCount = filteredArchivableItemIds.length;
+  const {
+    unreadCount,
+    archivableCount,
+  } = useMemo(() => getFeedActionCounts(filteredItems), [filteredItems]);
 
   const handleSocialContentFilterChange = useCallback(
     (value: SocialContentFilter) => {
@@ -640,11 +702,15 @@ export function Header({
 
   const handleFriendsToolbarModeChange = useCallback((mode: FriendsToolbarMode) => {
     if (mode === "details") {
-      onFriendsMobileSurfaceChange("details");
+      flushSync(() => {
+        onFriendsMobileSurfaceChange("details");
+      });
       return;
     }
-    handleIdentityModeChange("friendsMode", mode);
-    onFriendsMobileSurfaceChange("graph");
+    flushSync(() => {
+      handleIdentityModeChange("friendsMode", mode);
+      onFriendsMobileSurfaceChange("graph");
+    });
   }, [handleIdentityModeChange, onFriendsMobileSurfaceChange]);
 
   const handleMapTimeModeChange = useCallback((mode: MapTimeMode) => {
@@ -738,12 +804,12 @@ export function Header({
   }, [unarchiveSavedItems]);
 
   const handleMarkFilteredUnreadAsRead = useCallback(() => {
-    void markItemsAsRead(filteredUnreadItemIds);
-  }, [filteredUnreadItemIds, markItemsAsRead]);
+    void markItemsAsRead(collectUnreadFeedActionIds(filteredItems));
+  }, [filteredItems, markItemsAsRead]);
 
   const handleArchiveFilteredRead = useCallback(() => {
-    void Promise.all(filteredArchivableItemIds.map((id) => toggleArchived(id)));
-  }, [filteredArchivableItemIds, toggleArchived]);
+    void archiveItems(collectArchivableFeedActionIds(filteredItems));
+  }, [archiveItems, filteredItems]);
 
   const toolbarOverflowActions = useMemo<ToolbarOverflowAction[]>(() => {
     const actions: ToolbarOverflowAction[] = [];
@@ -864,7 +930,9 @@ export function Header({
     showFeedBulkActions,
     unreadCount,
   ]);
-  const showToolbarOverflowMenuButton = toolbarOverflowActions.length > 0;
+  const showToolbarOverflowMenuButton =
+    toolbarOverflowActions.length > 0 ||
+    showOverflowFeedCardDensityControl;
 
   const showReaderLayoutToggle =
     !isMobile &&
@@ -882,7 +950,45 @@ export function Header({
     isMobile && activeView === "friends" && friendsMobileSurface === "details"
       ? "details"
       : effectiveFriendsMode;
-  const canManuallyDragToolbarControls = !!(headerDragRegion && startWindowDrag);
+  const identityToolbarDataTestId =
+    activeView === "map"
+      ? "map-toolbar-scope"
+      : activeView === "feed"
+        ? "feed-toolbar-lens"
+        : "friends-toolbar-lens";
+  const mobileIdentityToolbarDataTestId =
+    activeView === "map"
+      ? "mobile-map-toolbar-scope"
+      : activeView === "feed"
+        ? "mobile-feed-toolbar-lens"
+        : "mobile-friends-toolbar-lens";
+  const identityToolbarOptions =
+    activeView === "friends" && isMobile
+      ? [
+          { value: "friends", label: "Friends" },
+          { value: "all_content", label: "All content" },
+          { value: "details", label: "Details" },
+        ]
+      : [
+          { value: "friends", label: "Friends" },
+          { value: "all_content", label: "All content" },
+        ];
+  const identityToolbarValue = activeView === "map" ? effectiveMapMode : friendsToolbarValue;
+  const handleToolbarIdentityModeChange = useCallback((mode: FriendsToolbarMode) => {
+    if (activeView === "map") {
+      handleIdentityModeChange("mapMode", mode as MapMode);
+      return;
+    }
+    if (activeView === "friends") {
+      handleFriendsToolbarModeChange(mode);
+      return;
+    }
+    handleIdentityModeChange("friendsMode", mode as MapMode);
+  }, [
+    activeView,
+    handleFriendsToolbarModeChange,
+    handleIdentityModeChange,
+  ]);
   const macosTrafficLightInsetStyle = headerDragRegion
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
@@ -911,14 +1017,17 @@ export function Header({
   const layoutControlClusterStyle = {
     left: 0,
     width: px(layoutControlMetrics.reservedWidthPx),
+    pointerEvents: "none",
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
   const sidebarTogglePositionStyle = {
     left: px(layoutControlMetrics.sidebarToggleLeftPx),
+    pointerEvents: "auto",
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
   const previewTogglePositionStyle = {
     left: px(layoutControlMetrics.previewToggleLeftPx),
+    pointerEvents: "auto",
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
   const toolbarContainerStyle = {
@@ -936,88 +1045,6 @@ export function Header({
   const previewToggleButtonRef = useRef<HTMLButtonElement | null>(null);
   const wordmarkRef = useRef<HTMLSpanElement | null>(null);
   const sidebarHandleCenterlineStyleRef = useRef<string | null>(null);
-  const toolbarDragGestureRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    target: HTMLElement;
-  } | null>(null);
-  const suppressedToolbarClickRef = useRef<EventTarget | null>(null);
-  const suppressedToolbarClickTimeoutRef = useRef<number | null>(null);
-
-  const clearSuppressedToolbarClick = useCallback(() => {
-    suppressedToolbarClickRef.current = null;
-    if (suppressedToolbarClickTimeoutRef.current !== null) {
-      window.clearTimeout(suppressedToolbarClickTimeoutRef.current);
-      suppressedToolbarClickTimeoutRef.current = null;
-    }
-  }, []);
-
-  const scheduleSuppressedToolbarClickClear = useCallback(() => {
-    if (suppressedToolbarClickTimeoutRef.current !== null) {
-      window.clearTimeout(suppressedToolbarClickTimeoutRef.current);
-    }
-    suppressedToolbarClickTimeoutRef.current = window.setTimeout(() => {
-      suppressedToolbarClickRef.current = null;
-      suppressedToolbarClickTimeoutRef.current = null;
-    }, 250);
-  }, []);
-
-  const finishToolbarDragGesture = useCallback((pointerId?: number) => {
-    const gesture = toolbarDragGestureRef.current;
-    if (!gesture) return;
-    if (pointerId !== undefined && gesture.pointerId !== pointerId) return;
-    toolbarDragGestureRef.current = null;
-  }, []);
-
-  const handleToolbarControlPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (!canManuallyDragToolbarControls) return;
-    if (event.button !== 0 || !event.isPrimary || event.pointerType === "touch") return;
-
-    clearSuppressedToolbarClick();
-    toolbarDragGestureRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      target: event.currentTarget,
-    };
-  }, [canManuallyDragToolbarControls, clearSuppressedToolbarClick]);
-
-  const handleWindowToolbarPointerMove = useCallback((event: PointerEvent) => {
-    const gesture = toolbarDragGestureRef.current;
-    if (!gesture || !startWindowDrag) return;
-    if (gesture.pointerId !== event.pointerId) return;
-
-    const travelDistance = Math.hypot(
-      event.clientX - gesture.startX,
-      event.clientY - gesture.startY,
-    );
-
-    if (travelDistance <= TOOLBAR_DRAG_THRESHOLD_PX) return;
-
-    suppressedToolbarClickRef.current = gesture.target;
-    scheduleSuppressedToolbarClickClear();
-    finishToolbarDragGesture(gesture.pointerId);
-    void startWindowDrag().catch(() => {
-      clearSuppressedToolbarClick();
-    });
-  }, [
-    clearSuppressedToolbarClick,
-    finishToolbarDragGesture,
-    scheduleSuppressedToolbarClickClear,
-    startWindowDrag,
-  ]);
-
-  const handleWindowToolbarPointerEnd = useCallback((event: PointerEvent) => {
-    finishToolbarDragGesture(event.pointerId);
-  }, [finishToolbarDragGesture]);
-
-  const handleToolbarControlClickCapture = useCallback((event: ReactMouseEvent<HTMLElement>) => {
-    if (suppressedToolbarClickRef.current !== event.currentTarget) return;
-    clearSuppressedToolbarClick();
-    event.preventDefault();
-    event.stopPropagation();
-  }, [clearSuppressedToolbarClick]);
 
   const handlePreviewToggleButtonRef = useCallback((node: HTMLButtonElement | null) => {
     previewToggleButtonRef.current = node;
@@ -1025,19 +1052,10 @@ export function Header({
   }, []);
 
   const getToolbarControlProps = useCallback((style?: CSSProperties) => ({
-    ...(canManuallyDragToolbarControls
-      ? {
-          onPointerDown: handleToolbarControlPointerDown,
-          onClickCapture: handleToolbarControlClickCapture,
-        }
-      : {}),
     style: headerDragRegion
       ? ({ ...style, ...toolbarControlStyle } as CSSProperties)
       : style,
   }), [
-    canManuallyDragToolbarControls,
-    handleToolbarControlClickCapture,
-    handleToolbarControlPointerDown,
     headerDragRegion,
   ]);
 
@@ -1118,19 +1136,18 @@ export function Header({
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
     window.addEventListener("resize", updateToolbarOverflowMenuPosition);
-    window.addEventListener("scroll", updateToolbarOverflowMenuPosition, true);
     return () => {
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKey);
       window.removeEventListener("resize", updateToolbarOverflowMenuPosition);
-      window.removeEventListener("scroll", updateToolbarOverflowMenuPosition, true);
     };
   }, [toolbarOverflowMenuOpen, updateToolbarOverflowMenuPosition]);
 
   useEffect(() => {
     if (toolbarOverflowActions.length > 0) return;
+    if (showOverflowFeedCardDensityControl) return;
     setToolbarOverflowMenuOpen(false);
-  }, [toolbarOverflowActions.length]);
+  }, [showOverflowFeedCardDensityControl, toolbarOverflowActions.length]);
 
   useLayoutEffect(() => {
     if (isMobileDevice) return undefined;
@@ -1276,31 +1293,32 @@ export function Header({
   }, [activeFilter.archivedOnly]);
 
   useEffect(() => () => {
-    finishToolbarDragGesture();
-    clearSuppressedToolbarClick();
     if (deleteConfirmTimerRef.current) {
       window.clearTimeout(deleteConfirmTimerRef.current);
       deleteConfirmTimerRef.current = null;
     }
-  }, [clearSuppressedToolbarClick, finishToolbarDragGesture]);
+  }, []);
 
-  useEffect(() => {
-    if (!canManuallyDragToolbarControls) return;
-
-    window.addEventListener("pointermove", handleWindowToolbarPointerMove);
-    window.addEventListener("pointerup", handleWindowToolbarPointerEnd);
-    window.addEventListener("pointercancel", handleWindowToolbarPointerEnd);
-
-    return () => {
-      window.removeEventListener("pointermove", handleWindowToolbarPointerMove);
-      window.removeEventListener("pointerup", handleWindowToolbarPointerEnd);
-      window.removeEventListener("pointercancel", handleWindowToolbarPointerEnd);
-    };
-  }, [
-    canManuallyDragToolbarControls,
-    handleWindowToolbarPointerEnd,
-    handleWindowToolbarPointerMove,
-  ]);
+  const toolbarOverflowMenuTop = toolbarOverflowMenuPosition?.top ?? 60;
+  const signalFilterMenuTop = signalFilterMenuPosition?.top ?? 60;
+  const toolbarOverflowMenuStyle = {
+    top: toolbarOverflowMenuTop,
+    right: toolbarOverflowMenuPosition?.right ?? 8,
+    ["--theme-menu-top" as string]: `${toolbarOverflowMenuTop}px`,
+    ["--theme-menu-viewport-margin" as string]: `${MENU_VIEWPORT_MARGIN_PX}px`,
+    ...(headerDragRegion ? noDrag : {}),
+  } as CSSProperties;
+  const signalFilterMenuStyle = {
+    top: signalFilterMenuTop,
+    right: signalFilterMenuPosition?.right ?? 8,
+    ["--theme-menu-top" as string]: `${signalFilterMenuTop}px`,
+    ["--theme-menu-viewport-margin" as string]: `${MENU_VIEWPORT_MARGIN_PX}px`,
+    ...(headerDragRegion ? noDrag : {}),
+  } as CSSProperties;
+  const newMenuStyle = {
+    ["--theme-menu-max-height" as string]: "calc(100dvh - 2rem)",
+    ...(headerDragRegion ? noDrag : {}),
+  } as CSSProperties;
 
   return (
     <>
@@ -1328,24 +1346,29 @@ export function Header({
               style={leftToolbarStyle}
             >
               {isMobileDevice ? (
-              <Tooltip label="Menu">
-                <button
-                  onClick={onMobileMenuToggle}
-                  {...getToolbarControlProps()}
-                  className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-ghost`}
-                  aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
-                  aria-pressed={mobileSidebarOpen}
-                >
-                  <AnimatedMenuIcon open={mobileSidebarOpen} className="h-5 w-5" />
-                </button>
-              </Tooltip>
+                <Tooltip label="Menu">
+                  <button
+                    onClick={onMobileMenuToggle}
+                    {...getToolbarControlProps()}
+                    className={`${TOOLBAR_ICON_BUTTON_CLASS} ${mobileSidebarOpen ? "theme-toolbar-button-neutral" : "theme-toolbar-button-ghost"}`}
+                    aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
+                    aria-pressed={mobileSidebarOpen}
+                  >
+                    {mobileSidebarOpen ? <CloseIcon className="h-5 w-5" /> : <MenuIcon className="h-5 w-5" />}
+                  </button>
+                </Tooltip>
               ) : null}
 
-              <div className="flex h-full items-center pl-3 sm:pl-4" style={toolbarLogoRowStyle}>
+              <div
+                data-testid="workspace-toolbar-logo-drag-region"
+                className="flex h-full min-w-0 flex-1 items-center pl-3 sm:pl-4"
+                {...getPassiveDragRegionProps(headerDragRegion, toolbarLogoRowStyle)}
+              >
                 <span
                   ref={wordmarkRef}
                   data-testid="workspace-toolbar-wordmark"
                   className="cursor-default select-none text-lg font-bold gradient-text font-logo"
+                  {...getPassiveDragRegionProps(headerDragRegion)}
                 >
                   FREED
                 </span>
@@ -1423,7 +1446,8 @@ export function Header({
               >
                 <div
                   data-testid="workspace-toolbar-reader-title-block"
-                  className="pointer-events-none flex min-w-0 max-w-full cursor-default select-none items-center justify-center gap-2 text-center"
+                  className="flex min-w-0 max-w-full cursor-default select-none items-center justify-center gap-2 text-center"
+                  {...getPassiveDragRegionProps(headerDragRegion)}
                 >
                   <span className="flex h-8 w-5 shrink-0 items-center justify-center rounded-lg">
                     <svg
@@ -1436,10 +1460,23 @@ export function Header({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
                   </span>
-                  <p className="truncate text-sm font-medium text-[var(--theme-text-secondary)]">
+                  <p
+                    className="truncate text-sm font-medium text-[var(--theme-text-secondary)]"
+                    {...getPassiveDragRegionProps(headerDragRegion)}
+                  >
                     {contextualListTitle}
-                    <span className="mx-1.5 font-normal text-[var(--theme-text-muted)]">•</span>
-                    <span className="font-normal text-[var(--theme-text-muted)]">{currentListSubtitle}</span>
+                    <span
+                      className="mx-1.5 font-normal text-[var(--theme-text-muted)]"
+                      {...getPassiveDragRegionProps(headerDragRegion)}
+                    >
+                      •
+                    </span>
+                    <span
+                      className="font-normal text-[var(--theme-text-muted)]"
+                      {...getPassiveDragRegionProps(headerDragRegion)}
+                    >
+                      {currentListSubtitle}
+                    </span>
                   </p>
                 </div>
               </button>
@@ -1447,11 +1484,25 @@ export function Header({
               <div
                 data-testid="workspace-toolbar-title-block"
                 className="flex min-w-0 cursor-default select-none justify-center px-1 text-center"
+                {...getPassiveDragRegionProps(headerDragRegion)}
               >
-                <p className="truncate text-center text-sm font-semibold text-[var(--theme-text-secondary)]">
+                <p
+                  className="truncate text-center text-sm font-semibold text-[var(--theme-text-secondary)]"
+                  {...getPassiveDragRegionProps(headerDragRegion)}
+                >
                   {currentTitle}
-                  <span className="mx-1.5 font-normal text-[var(--theme-text-muted)]">•</span>
-                  <span className="font-normal text-[var(--theme-text-muted)]">{currentSubtitle}</span>
+                  <span
+                    className="mx-1.5 font-normal text-[var(--theme-text-muted)]"
+                    {...getPassiveDragRegionProps(headerDragRegion)}
+                  >
+                    •
+                  </span>
+                  <span
+                    className="font-normal text-[var(--theme-text-muted)]"
+                    {...getPassiveDragRegionProps(headerDragRegion)}
+                  >
+                    {currentSubtitle}
+                  </span>
                 </p>
               </div>
             )}
@@ -1597,27 +1648,10 @@ export function Header({
                 >
                   {showInlineWorkspaceIdentityControls ? (
                     <ToolbarToggleGroup
-                      dataTestId={activeView === "map" ? "map-toolbar-scope" : "friends-toolbar-lens"}
-                      options={
-                        activeView === "friends" && isMobile
-                          ? [
-                              { value: "friends", label: "Friends" },
-                              { value: "all_content", label: "All content" },
-                              { value: "details", label: "Details" },
-                            ]
-                          : [
-                              { value: "friends", label: "Friends" },
-                              { value: "all_content", label: "All content" },
-                            ]
-                      }
-                      value={activeView === "map" ? effectiveMapMode : friendsToolbarValue}
-                      onChange={(mode) => {
-                        if (activeView === "map") {
-                          handleIdentityModeChange("mapMode", mode as MapMode);
-                          return;
-                        }
-                        handleFriendsToolbarModeChange(mode as FriendsToolbarMode);
-                      }}
+                      dataTestId={identityToolbarDataTestId}
+                      options={identityToolbarOptions}
+                      value={identityToolbarValue}
+                      onChange={(mode) => handleToolbarIdentityModeChange(mode as FriendsToolbarMode)}
                       compact={activeView === "friends" && isMobile}
                       getButtonProps={getToolbarControlProps}
                     />
@@ -1698,6 +1732,16 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
+                <ToolbarAnimatedSlot visible={showInlineFeedCardDensityControl} width="7.25rem" className="hidden lg:flex">
+                  {showInlineFeedCardDensityControl ? (
+                    <FeedCardDensitySlider
+                      value={feedCardDensity}
+                      onChange={setFeedCardDensity}
+                      style={headerDragRegion ? toolbarControlStyle : undefined}
+                    />
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
                 <ToolbarAnimatedSlot visible={showInlineFeedSignalFilter} width={TOOLBAR_SLOT_WIDTH_CONTENT}>
                   {showInlineFeedSignalFilter ? (
                     <div className="relative flex">
@@ -1744,29 +1788,10 @@ export function Header({
 
                 <ToolbarAnimatedSlot
                   visible={showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu}
-                  width={showToolbarOverflowMenuButton && showCollapsedToolbarFilterMenu ? "5.375rem" : "2.5rem"}
+                  width={showToolbarOverflowMenuButton && showCollapsedToolbarFilterMenu ? "5rem" : "2.5rem"}
                 >
                   {showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu ? (
-                    <div className="flex items-center gap-2">
-                      {showCollapsedToolbarFilterMenu ? (
-                        <Tooltip label="Filter view">
-                          <button
-                            ref={signalFilterButtonRef}
-                            type="button"
-                            onClick={toggleSignalFilterMenu}
-                            {...getToolbarControlProps()}
-                            data-testid="mobile-toolbar-filter-button"
-                            className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                              isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
-                            }`}
-                            aria-haspopup="menu"
-                            aria-expanded={signalFilterMenuOpen}
-                            aria-label="Filter view"
-                          >
-                            <FilterIcon className="h-5 w-5" />
-                          </button>
-                        </Tooltip>
-                      ) : null}
+                    <div className="flex items-center gap-0">
                       {showToolbarOverflowMenuButton ? (
                         <Tooltip label="More actions">
                           <button
@@ -1786,6 +1811,25 @@ export function Header({
                           </button>
                         </Tooltip>
                       ) : null}
+                      {showCollapsedToolbarFilterMenu ? (
+                        <Tooltip label="Filter view">
+                          <button
+                            ref={signalFilterButtonRef}
+                            type="button"
+                            onClick={toggleSignalFilterMenu}
+                            {...getToolbarControlProps()}
+                            data-testid="mobile-toolbar-filter-button"
+                            className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                              isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
+                            }`}
+                            aria-haspopup="menu"
+                            aria-expanded={signalFilterMenuOpen}
+                            aria-label="Filter view"
+                          >
+                            <FilterIcon className="h-5 w-5" />
+                          </button>
+                        </Tooltip>
+                      ) : null}
                     </div>
                   ) : null}
                 </ToolbarAnimatedSlot>
@@ -1801,36 +1845,55 @@ export function Header({
           ref={toolbarOverflowMenuRef}
           data-testid="toolbar-overflow-menu"
           role="menu"
-          className="theme-dialog-shell fixed z-[300] w-[16rem] max-w-[calc(100vw-1rem)] overflow-hidden py-1.5 shadow-2xl shadow-black/35"
-          style={{
-            top: toolbarOverflowMenuPosition?.top ?? 60,
-            right: toolbarOverflowMenuPosition?.right ?? 8,
-            ...(headerDragRegion ? noDrag : {}),
-          }}
+          className="theme-dialog-shell theme-menu-shell fixed z-[300] w-[16rem] max-w-[calc(100vw-1rem)] py-1.5 shadow-2xl shadow-black/35"
+          style={toolbarOverflowMenuStyle}
         >
-          {toolbarOverflowActions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                action.onClick();
-                if (action.id !== "delete-archived" || action.danger) {
-                  setToolbarOverflowMenuOpen(false);
-                }
-              }}
-              className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--theme-bg-muted)] ${
-                action.danger
-                  ? "text-red-400"
-                  : action.active
-                    ? "text-[var(--theme-text-primary)]"
-                    : "text-[var(--theme-text-secondary)]"
-              }`}
+          {showOverflowFeedCardDensityControl ? (
+            <div
+              data-testid="toolbar-overflow-density-section"
+              className={`${toolbarOverflowActions.length > 0 ? "border-b border-[var(--theme-border-subtle)]" : ""} px-4 pb-3 pt-2`}
             >
-              <span className="shrink-0 text-current">{action.icon}</span>
-              <span className="min-w-0 flex-1 truncate">{action.label}</span>
-            </button>
-          ))}
+              <p className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Card density
+              </p>
+              <FeedCardDensitySlider
+                value={feedCardDensity}
+                onChange={setFeedCardDensity}
+                fullWidth
+                style={headerDragRegion ? toolbarControlStyle : undefined}
+              />
+            </div>
+          ) : null}
+          {toolbarOverflowActions.length > 0 ? (
+            <div data-testid="toolbar-overflow-actions-section" className="pt-2">
+              <p className="px-4 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Actions
+              </p>
+              {toolbarOverflowActions.map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    action.onClick();
+                    if (action.id !== "delete-archived" || action.danger) {
+                      setToolbarOverflowMenuOpen(false);
+                    }
+                  }}
+                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--theme-bg-muted)] ${
+                    action.danger
+                      ? "text-red-400"
+                      : action.active
+                        ? "text-[var(--theme-text-primary)]"
+                        : "text-[var(--theme-text-secondary)]"
+                  }`}
+                >
+                  <span className="shrink-0 text-current">{action.icon}</span>
+                  <span className="min-w-0 flex-1 truncate">{action.label}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -1839,15 +1902,14 @@ export function Header({
           ref={signalFilterMenuRef}
           data-testid="feed-signal-filter-menu"
           role="menu"
-          className="theme-dialog-shell fixed z-[300] w-[20rem] max-w-[calc(100vw-1rem)] overflow-hidden py-2 shadow-2xl shadow-black/35"
-          style={{
-            top: signalFilterMenuPosition?.top ?? 60,
-            right: signalFilterMenuPosition?.right ?? 8,
-            ...(headerDragRegion ? noDrag : {}),
-          }}
+          className="theme-dialog-shell theme-menu-shell fixed z-[300] w-[20rem] max-w-[calc(100vw-1rem)] py-2 shadow-2xl shadow-black/35"
+          style={signalFilterMenuStyle}
         >
           {showCollapsedToolbarFilterMenu && showSocialContentControls ? (
             <div className={`${showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 pb-3 pt-1`}>
+              <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Format
+              </p>
               <ToolbarToggleGroup
                 dataTestId="mobile-social-content-toolbar-filter"
                 options={[
@@ -1866,30 +1928,13 @@ export function Header({
           {showCollapsedToolbarFilterMenu && showWorkspaceIdentityControls ? (
             <div className={`${showMapTimeControls || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
               <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
-                View
+                Connections
               </p>
               <ToolbarToggleGroup
-                dataTestId={activeView === "map" ? "mobile-map-toolbar-scope" : "mobile-friends-toolbar-lens"}
-                options={
-                  activeView === "friends"
-                    ? [
-                        { value: "friends", label: "Friends" },
-                        { value: "all_content", label: "All content" },
-                        { value: "details", label: "Details" },
-                      ]
-                    : [
-                        { value: "friends", label: "Friends" },
-                        { value: "all_content", label: "All content" },
-                      ]
-                }
-                value={activeView === "map" ? effectiveMapMode : friendsToolbarValue}
-                onChange={(mode) => {
-                  if (activeView === "map") {
-                    handleIdentityModeChange("mapMode", mode as MapMode);
-                    return;
-                  }
-                  handleFriendsToolbarModeChange(mode as FriendsToolbarMode);
-                }}
+                dataTestId={mobileIdentityToolbarDataTestId}
+                options={identityToolbarOptions}
+                value={identityToolbarValue}
+                onChange={(mode) => handleToolbarIdentityModeChange(mode as FriendsToolbarMode)}
                 compact
                 fullWidth
               />
@@ -1916,49 +1961,58 @@ export function Header({
             </div>
           ) : null}
 
-          {showFeedSignalFilter ? [everythingSignalPreset, ...selectableFeedSignalPresets].map((preset) => {
-            const selected = preset.mode === "all"
-              ? allFeedSignalsSelected
-              : allFeedSignalsSelected || activeFeedSignalModeSet.has(preset.mode);
-            const feedbackKey = signalFilterFeedback?.mode === preset.mode
-              ? signalFilterFeedback.tick
-              : 0;
-            return (
-              <button
-                key={preset.mode}
-                type="button"
-                role="menuitemcheckbox"
-                aria-checked={selected}
-                onClick={() => handleFeedSignalModeChange(preset.mode)}
-                className={`flex w-full items-start gap-4 py-3.5 pl-7 pr-6 text-left transition-colors hover:bg-[var(--theme-bg-muted)] ${
-                  selected ? "text-[var(--theme-text-primary)]" : "text-[var(--theme-text-secondary)]"
-                }`}
-              >
-                <span
-                  key={`${preset.mode}-${selected ? "checked" : "empty"}-${feedbackKey}`}
-                  className={`feed-signal-checkbox mt-0.5 ${selected ? "feed-signal-checkbox-checked" : ""} ${
-                    feedbackKey ? "feed-signal-checkbox-feedback" : ""
-                  }`}
-                  aria-hidden="true"
-                >
-                  {selected ? (
-                    <svg className="feed-signal-check-icon h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : null}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium">{preset.label}</span>
-                  <span className="block text-xs leading-5 text-[var(--theme-text-muted)]">
-                    {preset.description}
-                  </span>
-                </span>
-                <span className="mt-0.5 shrink-0 text-xs tabular-nums text-[var(--theme-text-muted)]">
-                  {feedSignalCounts[preset.mode].toLocaleString()}
-                </span>
-              </button>
-            );
-          }) : null}
+          {showFeedSignalFilter ? (
+            <div>
+              <div className="px-3 pt-3">
+                <p className="px-1 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                  Classification
+                </p>
+              </div>
+              {[everythingSignalPreset, ...selectableFeedSignalPresets].map((preset) => {
+                const selected = preset.mode === "all"
+                  ? allFeedSignalsSelected
+                  : allFeedSignalsSelected || activeFeedSignalModeSet.has(preset.mode);
+                const feedbackKey = signalFilterFeedback?.mode === preset.mode
+                  ? signalFilterFeedback.tick
+                  : 0;
+                return (
+                  <button
+                    key={preset.mode}
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={selected}
+                    onClick={() => handleFeedSignalModeChange(preset.mode)}
+                    className={`flex w-full items-start gap-3 py-2.5 pl-7 pr-6 text-left transition-colors hover:bg-[var(--theme-bg-muted)] ${
+                      selected ? "text-[var(--theme-text-primary)]" : "text-[var(--theme-text-secondary)]"
+                    }`}
+                  >
+                    <span
+                      key={`${preset.mode}-${selected ? "checked" : "empty"}-${feedbackKey}`}
+                      className={`feed-signal-checkbox mt-0.5 ${selected ? "feed-signal-checkbox-checked" : ""} ${
+                        feedbackKey ? "feed-signal-checkbox-feedback" : ""
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {selected ? (
+                        <svg className="feed-signal-check-icon h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : null}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium">{preset.label}</span>
+                      <span className="block text-xs leading-4 text-[var(--theme-text-muted)]">
+                        {preset.description}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 shrink-0 text-xs tabular-nums text-[var(--theme-text-muted)]">
+                      {feedSignalCounts[preset.mode].toLocaleString()}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -1969,7 +2023,10 @@ export function Header({
           style={headerDragRegion ? noDrag : undefined}
         >
           {dropdownOpen && (
-            <div className="theme-floating-panel absolute bottom-[calc(100%+0.875rem)] right-0 flex min-w-[12rem] flex-col overflow-hidden py-1 shadow-2xl shadow-black/40">
+            <div
+              className="theme-floating-panel theme-menu-shell absolute bottom-[calc(100%+0.875rem)] right-0 flex min-w-[12rem] flex-col py-1 shadow-2xl shadow-black/40"
+              style={newMenuStyle}
+            >
               {canAddRss && (
                 <button
                   onClick={() => {

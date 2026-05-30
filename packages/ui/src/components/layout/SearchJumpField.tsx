@@ -10,14 +10,12 @@ import {
   type ReactNode,
 } from "react";
 import {
-  filterFeedItems,
-  isFriendAuthoredItem,
   type FilterOptions,
   type Platform,
 } from "@freed/shared";
 
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
-import { prepareSearchIndex } from "../../hooks/useSearchResults.js";
+import { prepareSearchIndex, useSearchResults } from "../../hooks/useSearchResults.js";
 import { buildCommandPaletteActions } from "../../lib/command-palette-registry.js";
 import {
   filterCommandPaletteActions,
@@ -26,6 +24,12 @@ import {
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import { buildSettingsSectionMetas } from "../../lib/settings-sections.js";
+import {
+  collectArchivableFeedActionIds,
+  collectUnreadFeedActionIds,
+  getFeedActionCounts,
+  getFeedArchiveCounts,
+} from "../../lib/feed-action-scope.js";
 import { buildTopLevelTagFilters, collectAllTags } from "../../lib/tag-navigation.js";
 import { applyFeedSearch, navigateToFeedView } from "../../lib/workspace-navigation.js";
 import { SearchField } from "../SearchField.js";
@@ -59,6 +63,21 @@ function groupActionsBySection(actions: readonly CommandPaletteAction[]) {
     sections.push({ section: action.section, actions: [action] });
   }
   return sections;
+}
+
+function sortLabel(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function accountSortLabel(account: {
+  displayName?: string;
+  handle?: string;
+  externalId?: string;
+}): string {
+  return sortLabel(account.displayName)
+    || sortLabel(account.handle)
+    || sortLabel(account.externalId)
+    || "";
 }
 
 function PaletteLineIcon({ children }: { children: ReactNode }) {
@@ -114,6 +133,12 @@ function getCommandPaletteIcon(action: CommandPaletteAction): ReactNode {
     return <UsersIcon className={iconClass} />;
   }
   if (action.id === "go-map") {
+    return <MapPinIcon className={iconClass} />;
+  }
+  if (action.id.startsWith("go-profile-friends-") || action.id.startsWith("promote-profile-")) {
+    return <UsersIcon className={iconClass} />;
+  }
+  if (action.id.startsWith("go-profile-map-")) {
     return <MapPinIcon className={iconClass} />;
   }
   if (action.id === "go-source-rss" || action.id.startsWith("go-feed-") || action.id === "go-settings-feeds" || action.id === "scope-sync-rss") {
@@ -248,12 +273,14 @@ export function SearchJumpField({
   mobileSidebar = false,
   variant = "inline",
   inlineMarginBottomPx,
+  onInputValueChange,
 }: {
   compactSidebar?: boolean;
   narrowSidebar?: boolean;
   mobileSidebar?: boolean;
   variant?: "inline" | "trigger";
   inlineMarginBottomPx?: number;
+  onInputValueChange?: (value: string) => void;
 }) {
   const platform = usePlatform();
   const {
@@ -292,8 +319,12 @@ export function SearchJumpField({
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
+  const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
+  const updatePerson = useAppStore((s) => s.updatePerson);
+  const createConnectionPersonFromAccounts = useAppStore((s) => s.createConnectionPersonFromAccounts);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
+  const archiveItems = useAppStore((s) => s.archiveItems);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
   const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
@@ -332,41 +363,44 @@ export function SearchJumpField({
     [items, selectedItemId],
   );
 
-  const commandScopeItems = useMemo(() => {
-    const identityItems = display.friendsMode === "friends"
-      ? items.filter((item) => isFriendAuthoredItem(item, persons, accounts, friends))
-      : items;
-    const filtered = filterFeedItems(identityItems, activeFilter);
-    return activeFilter.feedUrl
-      ? filtered.filter((item) => item.rssSource?.feedUrl === activeFilter.feedUrl)
-      : filtered;
-  }, [accounts, activeFilter, display.friendsMode, friends, items, persons]);
+  const { filteredItems: commandScopeItems } = useSearchResults(
+    items,
+    searchQuery,
+    activeFilter,
+    searchCorpusVersion,
+    display.friendsMode ?? "all_content",
+    persons,
+    accounts,
+    friends,
+  );
 
-  const unreadScopeIds = useMemo(
-    () => commandScopeItems.filter((item) => !item.userState.readAt).map((item) => item.globalId),
-    [commandScopeItems],
-  );
-  const archivableScopeItems = useMemo(
-    () =>
-      commandScopeItems.filter(
-        (item) => !!item.userState.readAt && !item.userState.saved && !item.userState.archived,
-      ),
-    [commandScopeItems],
-  );
-  const savedArchivedCount = useMemo(
-    () => items.filter((item) => item.userState.saved && item.userState.archived).length,
-    [items],
-  );
-  const archivedCount = useMemo(
-    () => items.filter((item) => item.userState.archived && !item.userState.saved).length,
-    [items],
-  );
+  const {
+    unreadCount: unreadScopeCount,
+    archivableCount: archivableScopeCount,
+  } = useMemo(() => getFeedActionCounts(commandScopeItems), [commandScopeItems]);
+  const { archivedCount, savedArchivedCount } = useMemo(() => getFeedArchiveCounts(items), [items]);
   const enabledFeeds = useMemo(
     () =>
       Object.values(feeds)
-        .filter((feed) => feed.enabled)
-        .sort((left, right) => left.title.localeCompare(right.title)),
+        .filter((feed) => feed.enabled && typeof feed.url === "string" && feed.url.trim())
+        .sort((left, right) => {
+          const leftTitle = sortLabel(left.title, left.url);
+          const rightTitle = sortLabel(right.title, right.url);
+          return leftTitle.localeCompare(rightTitle);
+        }),
     [feeds],
+  );
+  const commandFeeds = useMemo(
+    () =>
+      enabledFeeds.map((feed) => {
+        const title = sortLabel(feed.title, feed.url);
+        return {
+          url: feed.url,
+          title,
+          searchText: `${title}\n${feed.url}\nfeed\nrss`.toLocaleLowerCase(),
+        };
+      }),
+    [enabledFeeds],
   );
   const socialChannels = useMemo(
     () =>
@@ -374,15 +408,18 @@ export function SearchJumpField({
         .filter((account) =>
           account.kind === "social" &&
           account.provider !== "rss" &&
-          account.provider !== "saved"
+          account.provider !== "saved" &&
+          typeof account.externalId === "string" &&
+          account.externalId.trim()
         )
         .map((account) => ({
           account,
+          person: account.personId ? persons[account.personId] : undefined,
           personName: account.personId ? persons[account.personId]?.name : undefined,
         }))
         .sort((left, right) => {
-          const leftTitle = left.account.displayName ?? left.account.handle ?? left.account.externalId;
-          const rightTitle = right.account.displayName ?? right.account.handle ?? right.account.externalId;
+          const leftTitle = accountSortLabel(left.account);
+          const rightTitle = accountSortLabel(right.account);
           return leftTitle.localeCompare(rightTitle);
         }),
     [accounts, persons],
@@ -425,6 +462,14 @@ export function SearchJumpField({
   const prepareSearch = useCallback(() => {
     void prepareSearchIndex(items, searchCorpusVersion, accounts);
   }, [accounts, items, searchCorpusVersion]);
+  const clearQueryForNavigation = useCallback(() => {
+    setSearchQuery("");
+    setInputValue("");
+  }, [setSearchQuery]);
+  const ensurePersonForAccount = useCallback(async (accountId: string, personId: string | null) => {
+    if (personId && persons[personId]) return personId;
+    return await createConnectionPersonFromAccounts([accountId]);
+  }, [createConnectionPersonFromAccounts, persons]);
 
   const actions = useMemo(
     () =>
@@ -437,16 +482,13 @@ export function SearchJumpField({
           id: (source.id ?? undefined) as Platform | undefined,
           label: source.label,
         })),
-        feeds: enabledFeeds.map((feed) => ({
-          url: feed.url,
-          title: feed.title,
-        })),
+        feeds: commandFeeds,
         socialChannels,
         tagFilters,
         currentSourceId,
         selectedItem,
-        unreadScopeCount: activeView === "feed" ? unreadScopeIds.length : 0,
-        archivableScopeCount: activeView === "feed" ? archivableScopeItems.length : 0,
+        unreadScopeCount: activeView === "feed" ? unreadScopeCount : 0,
+        archivableScopeCount: activeView === "feed" ? archivableScopeCount : 0,
         savedArchivedCount,
         archivedCount,
         openSettingsTo,
@@ -472,6 +514,37 @@ export function SearchJumpField({
           setSelectedItem(null);
           setSelectedPerson(null);
           setActiveView("map");
+        },
+        navigateToStoryWall: () => {
+          setSelectedItem(null);
+          setSelectedPerson(null);
+          setActiveView("storyWall");
+        },
+        navigateToSocialProfileFriends: (account, personId) => {
+          clearQueryForNavigation();
+          setSelectedItem(null);
+          if (personId && persons[personId]) {
+            setSelectedPerson(personId);
+          } else {
+            setSelectedAccount(account.id);
+          }
+          setActiveView("friends");
+        },
+        navigateToSocialProfileMap: async (account, personId) => {
+          const resolvedPersonId = await ensurePersonForAccount(account.id, personId);
+          clearQueryForNavigation();
+          setSelectedItem(null);
+          setSelectedPerson(resolvedPersonId);
+          setActiveView("map");
+        },
+        promoteSocialProfile: async (account, level) => {
+          const resolvedPersonId = await ensurePersonForAccount(account.id, account.personId ?? null);
+          await updatePerson(resolvedPersonId, {
+            relationshipStatus: "friend",
+            careLevel: level,
+            updatedAt: Date.now(),
+          });
+          setSelectedPerson(resolvedPersonId);
         },
         applyFeedSearch: (nextQuery: string) =>
           applyFeedSearch(
@@ -512,16 +585,12 @@ export function SearchJumpField({
         toggleCurrentItemLiked:
           selectedItem && toggleLiked ? () => toggleLiked(selectedItem.globalId) : null,
         markScopeRead:
-          activeView === "feed" && unreadScopeIds.length > 0
-            ? () => markItemsAsRead(unreadScopeIds)
+          activeView === "feed" && unreadScopeCount > 0
+            ? () => markItemsAsRead(collectUnreadFeedActionIds(commandScopeItems))
             : null,
         archiveScopeRead:
-          activeView === "feed" && archivableScopeItems.length > 0
-            ? async () => {
-                for (const item of archivableScopeItems) {
-                  await toggleArchived(item.globalId);
-                }
-              }
+          activeView === "feed" && archivableScopeCount > 0
+            ? () => archiveItems(collectArchivableFeedActionIds(commandScopeItems))
             : null,
         unarchiveSavedItems,
         syncRssNow,
@@ -536,14 +605,19 @@ export function SearchJumpField({
       activeFilter,
       activeView,
       addRssFeed,
-      archivableScopeItems,
+      archivableScopeCount,
       archivedCount,
       checkForUpdates,
       currentSourceId,
       deleteAllArchived,
-      enabledFeeds,
+      commandFeeds,
       factoryReset,
+      archiveItems,
+      clearQueryForNavigation,
+      commandScopeItems,
+      createConnectionPersonFromAccounts,
       inputValue,
+      ensurePersonForAccount,
       markItemsAsRead,
       openAddFeedDialog,
       openSavedContentDialog,
@@ -558,6 +632,7 @@ export function SearchJumpField({
       setActiveView,
       setFilter,
       setSearchQuery,
+      setSelectedAccount,
       setSelectedItem,
       setSelectedPerson,
       socialChannels,
@@ -568,8 +643,9 @@ export function SearchJumpField({
       toggleArchived,
       toggleLiked,
       toggleSaved,
-      unreadScopeIds,
+      unreadScopeCount,
       unarchiveSavedItems,
+      updatePerson,
       openLibraryDialog,
     ],
   );
@@ -587,6 +663,10 @@ export function SearchJumpField({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    onInputValueChange?.(inputValue);
+  }, [inputValue, onInputValueChange]);
 
   useEffect(() => {
     debounceRef.current = setTimeout(() => {
@@ -682,8 +762,10 @@ export function SearchJumpField({
       setPalettePosition({
         left: Math.min(anchorRect.right + gap, maxLeft),
         top,
+        ["--theme-menu-top" as string]: `${top}px`,
+        ["--theme-menu-viewport-margin" as string]: `${viewportPadding}px`,
         visibility: "visible",
-      });
+      } as CSSProperties);
     };
 
     const handlePointerDown = (event: MouseEvent) => {
@@ -946,7 +1028,7 @@ export function SearchJumpField({
         <div
           ref={triggerPaletteRef}
           data-testid={usesFloatingTrigger ? "compact-sidebar-search-palette" : "sidebar-search-command-palette"}
-          className="theme-dialog-shell fixed z-[320] w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-[var(--card-radius)] border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-2 shadow-2xl shadow-black/50"
+          className="theme-dialog-shell theme-menu-shell fixed z-[320] w-[min(20rem,calc(100vw-1.5rem))] rounded-[var(--card-radius)] border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-2 shadow-2xl shadow-black/50"
           style={palettePosition}
         >
           {renderActionSurface(usesFloatingTrigger)}

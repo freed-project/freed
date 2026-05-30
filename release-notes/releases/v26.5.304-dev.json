@@ -1,0 +1,82 @@
+{
+  "tag": "v26.5.304-dev",
+  "version": "26.5.304-dev",
+  "channel": "dev",
+  "dayKey": "26.5.3",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-04T03:04:19.294Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.302-dev",
+    "previousPublishedDayTag": "v26.5.201-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.300-dev",
+      "v26.5.301-dev",
+      "v26.5.302-dev",
+      "v26.5.304-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.300-dev",
+      "v26.5.301-dev",
+      "v26.5.302-dev",
+      "v26.5.304-dev"
+    ],
+    "prNumbers": [
+      399,
+      401,
+      402,
+      403,
+      404,
+      406,
+      407,
+      409,
+      410
+    ],
+    "commitSubjects": [
+      "fix: relax graph zoom perf budget (#410)",
+      "feat: add search profile actions (#409)",
+      "release: approve v26.5.303-dev notes",
+      "release: v26.5.303-dev",
+      "fix: dedupe Instagram story captures (#407)",
+      "release: approve v26.5.302-dev notes",
+      "release: v26.5.302-dev",
+      "feat: add friends relationship tiers (#404)",
+      "chore: slim desktop e2e gates (#406)",
+      "release: approve v26.5.301-dev notes",
+      "release: v26.5.301-dev",
+      "fix: stabilize desktop feed scroll layout (#402)",
+      "release: approve v26.5.300-dev notes",
+      "release: v26.5.300-dev",
+      "fix: harden desktop background runtime recovery (#403)",
+      "feat: refine sidebar rows and card density (#399)",
+      "fix: promote linked accounts without duplicate drafts (#401)"
+    ]
+  },
+  "release": {
+    "deck": "Harden startup recovery and refine feed layout",
+    "features": [
+      "Friends relationship tiers",
+      "Refine sidebar rows and card density",
+      "Search profile actions"
+    ],
+    "fixes": [
+      "Deduped duplicate Instagram story captures",
+      "Desktop feed scroll layout is now more stable",
+      "Harden desktop background runtime recovery",
+      "Promote linked accounts without duplicate drafts",
+      "Tightened collapsed feed filter menu headings, copy, spacing, and classification selection animation",
+      "Floating menus now stay inside the viewport and scroll internally"
+    ],
+    "followUps": [
+      "Slim desktop e2e gates",
+      "Friends graph zoom validation now allows normal CI timing variance",
+      "Added fixed-height desktop feed cards and story rows so media loading no longer changes scroll position",
+      "Added compact, comfortable, and expansive feed card density controls with matching skeleton heights and bounded internal scrolling for floating menus"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.304-dev\n\nHarden startup recovery and refine feed layout\n\n### Features\n\n- Friends relationship tiers\n- Refine sidebar rows and card density\n- Search profile actions\n\n### Fixes\n\n- Deduped duplicate Instagram story captures\n- Desktop feed scroll layout is now more stable\n- Harden desktop background runtime recovery\n- Promote linked accounts without duplicate drafts\n- Tightened collapsed feed filter menu headings, copy, spacing, and classification selection animation\n- Floating menus now stay inside the viewport and scroll internally\n\n### Follow-ups\n\n- Slim desktop e2e gates\n- Friends graph zoom validation now allows normal CI timing variance\n- Added fixed-height desktop feed cards and story rows so media loading no longer changes scroll position\n- Added compact, comfortable, and expansive feed card density controls with matching skeleton heights and bounded internal scrolling for floating menus\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

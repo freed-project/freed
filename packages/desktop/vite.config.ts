@@ -101,7 +101,13 @@ export default defineConfig({
       allow: fsAllow,
     },
     watch: {
-      ignored: ["**/src-tauri/**"],
+      ignored: [
+        "**/src-tauri/**",
+        "**/playwright-report",
+        "**/playwright-report/**",
+        "**/test-results",
+        "**/test-results/**",
+      ],
     },
   },
 

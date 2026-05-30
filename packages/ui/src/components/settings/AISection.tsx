@@ -12,6 +12,7 @@ import type {
   LocalAIModelDownloadProgress,
   LocalAIModelViewState,
 } from "../../context/PlatformContext.js";
+import { formatMediumDateShortTime } from "../../lib/date-format.js";
 import { SettingsToggle } from "../SettingsToggle.js";
 import { ExternalLinkIcon } from "../icons.js";
 
@@ -120,10 +121,7 @@ function formatBytes(bytes: number): string {
 
 function formatLocalTime(timestamp?: number): string {
   if (!timestamp) return "Never";
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(timestamp));
+  return formatMediumDateShortTime(timestamp);
 }
 
 function formatMemorySummary(profile: LocalAIHardwareProfile | null): string {
@@ -265,6 +263,7 @@ function LocalModelCard({
   onPause,
   onRemove,
   onOpenSource,
+  classificationEnabled,
 }: {
   model: LocalAIModelViewState;
   recommended: boolean;
@@ -274,6 +273,7 @@ function LocalModelCard({
   onPause: (id: LocalAIModelId) => void;
   onRemove: (id: LocalAIModelId) => void;
   onOpenSource: (url: string) => void;
+  classificationEnabled: boolean;
 }) {
   const progressTotal = model.state.totalBytes || model.manifest.estimatedDownloadBytes;
   const progress = progressTotal > 0
@@ -323,8 +323,18 @@ function LocalModelCard({
       <div className="mt-3 grid gap-2 text-xs text-[var(--theme-text-muted)] sm:grid-cols-2">
         <p>Download: <span className="text-[var(--theme-text-secondary)]">{formatBytes(model.manifest.estimatedDownloadBytes)}</span></p>
         <p>Storage: <span className="text-[var(--theme-text-secondary)]">{formatBytes(model.state.storageBytes || model.manifest.estimatedStorageBytes)}</span></p>
-        <p>Classified: <span className="text-[var(--theme-text-secondary)]">{NUMBER_FORMAT.format(model.state.health?.lastIndexedItemCount ?? 0)} items</span></p>
-        <p>Last scan: <span className="text-[var(--theme-text-secondary)]">{formatLocalTime(model.state.health?.lastRunAt)}</span></p>
+        <p>
+          Classified: <span className="text-[var(--theme-text-secondary)]">
+            {classificationEnabled
+              ? `${NUMBER_FORMAT.format(model.state.health?.lastIndexedItemCount ?? 0)} items`
+              : "Off"}
+          </span>
+        </p>
+        <p>
+          Last scan: <span className="text-[var(--theme-text-secondary)]">
+            {classificationEnabled ? formatLocalTime(model.state.health?.lastRunAt) : "Not enabled"}
+          </span>
+        </p>
       </div>
 
       <p className="mt-2 text-xs leading-5 text-[var(--theme-text-soft)]">{model.manifest.hardwareNote}</p>
@@ -555,6 +565,12 @@ export function AISection() {
     [localModels, recommendedModelId],
   );
   const selectedLocalModelReady = selectedLocalModel?.state.status === "available";
+  const integratedClassificationEnabled = Boolean(
+    displayedAI.provider === "integrated" &&
+    displayedAI.extractTopics &&
+    selectedLocalModelReady &&
+    selectedLocalModel?.manifest.supportsSemanticSearch,
+  );
   const integratedSummariesEnabled =
     displayedAI.provider !== "integrated" ||
     Boolean(selectedLocalModelReady && selectedLocalModel?.manifest.supportsSummaries);
@@ -619,8 +635,8 @@ export function AISection() {
     update({
       provider,
       model: DEFAULT_MODELS[provider],
-      autoSummarize: disabling ? false : enablingFromOff ? true : displayedAI.autoSummarize,
-      extractTopics: disabling ? false : enablingFromOff ? true : displayedAI.extractTopics,
+      autoSummarize: disabling || enablingFromOff ? false : displayedAI.autoSummarize,
+      extractTopics: disabling || enablingFromOff ? false : displayedAI.extractTopics,
     });
   };
 
@@ -714,7 +730,7 @@ export function AISection() {
             </h3>
             <p className="mt-1 text-xs leading-5 text-[var(--theme-text-muted)]">
               Freed Desktop does not ship model weights. Choose one local pack for this device.
-              Semantic scans run on startup, after new content arrives, and when local pack state changes.
+              Local classification runs only when Topics and ranking is enabled.
             </p>
           </div>
           {!localAIModels ? (
@@ -744,6 +760,10 @@ export function AISection() {
                   onPause={handlePauseLocalModel}
                   onRemove={handleRemoveLocalModel}
                   onOpenSource={handleOpenSource}
+                  classificationEnabled={
+                    integratedClassificationEnabled &&
+                    selectedLocalModel?.manifest.id === model.manifest.id
+                  }
                 />
               ))}
             </div>

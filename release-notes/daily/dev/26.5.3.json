@@ -1,0 +1,22 @@
+{
+  "channel": "dev",
+  "dayKey": "26.5.3",
+  "date": "2026-05-03",
+  "preferredDeck": "Harden startup recovery and refine feed layout",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Refined sidebar rows, header spacing, and feed card density for a steadier reading layout.",
+    "Hardened Freed Desktop startup recovery so background work waits for healthy renderer heartbeats before running high-risk jobs.",
+    "Search can now jump directly into profile actions from the shared command surfaces.",
+    "Deduped duplicate Instagram story captures by tightening story viewer validation and repairing media-key matches.",
+    "Fixed-height desktop feed cards and story rows keep media loads from moving scroll position.",
+    "Card density controls now drive compact, comfortable, and expansive feed layouts.",
+    "Floating menus now stay inside the viewport and scroll internally."
+  ],
+  "editorialNotes": [],
+  "updatedAt": "2026-05-04T04:16:38.826Z"
+}

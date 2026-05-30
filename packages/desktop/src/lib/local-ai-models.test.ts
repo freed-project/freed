@@ -208,6 +208,47 @@ describe("local AI model manager", () => {
     expect(models[0].state.storageBytes).toBe(10);
   });
 
+  it("uses the native model downloader when available", async () => {
+    const { deps, files, requests } = createDeps();
+    const nativeDownloads: Array<{
+      url: string;
+      targetPath: string;
+      partialPath: string;
+      expectedSizeBytes: number;
+    }> = [];
+    deps.downloadModelFile = async (input, onProgress) => {
+      nativeDownloads.push({
+        url: input.url,
+        targetPath: input.targetPath,
+        partialPath: input.partialPath,
+        expectedSizeBytes: input.expectedSizeBytes,
+      });
+      files.set(input.targetPath, TEXT.encode("hello"));
+      onProgress(input.expectedSizeBytes);
+      return input.expectedSizeBytes;
+    };
+    const service = createLocalAIModelService(deps, TEST_MANIFEST);
+
+    const models = await service.downloadModel("integrated-balanced");
+
+    expect(models[0].state.status).toBe("available");
+    expect(requests).toEqual([]);
+    expect(nativeDownloads).toEqual([
+      {
+        url: "https://huggingface.co/test/model/resolve/abc123/model.bin",
+        targetPath: modelPath("model.bin"),
+        partialPath: `${modelPath("model.bin")}.partial`,
+        expectedSizeBytes: 5,
+      },
+      {
+        url: "https://huggingface.co/test/model/resolve/abc123/metadata.json",
+        targetPath: modelPath("metadata.json"),
+        partialPath: `${modelPath("metadata.json")}.partial`,
+        expectedSizeBytes: 5,
+      },
+    ]);
+  });
+
   it("treats Hugging Face etags as metadata, not raw file checksums", async () => {
     const { deps } = createDeps();
     const service = createLocalAIModelService(deps, TEST_MANIFEST);
@@ -333,6 +374,55 @@ describe("local AI model manager", () => {
 
     expect(paused[0].state.status).toBe("paused");
     expect(paused[0].state.downloadedBytes).toBe(1_048_576);
+  });
+
+  it("keeps a native download paused if pause lands during final bookkeeping", async () => {
+    const nativeManifest: readonly LocalAIModelManifestEntry[] = [
+      {
+        ...TEST_MANIFEST[0],
+        estimatedDownloadBytes: 5,
+        estimatedStorageBytes: 5,
+        files: [{ path: "model.bin", sizeBytes: 5, sha1: HELLO_SHA1 }],
+      },
+    ];
+    let markSizeStarted: (() => void) | null = null;
+    const sizeStarted = new Promise<void>((resolve) => {
+      markSizeStarted = resolve;
+    });
+    let releaseSize: () => void = () => {
+      throw new Error("releaseSize resolver was not initialized");
+    };
+    const allowSizeToFinish = new Promise<void>((resolve) => {
+      releaseSize = resolve;
+    });
+    const { deps, files } = createDeps();
+    deps.downloadModelFile = async (input) => {
+      files.set(input.targetPath, TEXT.encode("hello"));
+      return input.expectedSizeBytes;
+    };
+    deps.size = async (path) => {
+      if (path === "/app/local-ai-models/integrated-balanced/abc123") {
+        markSizeStarted?.();
+        await allowSizeToFinish;
+      }
+      const file = files.get(path);
+      if (file) return file.byteLength;
+      const prefix = path.endsWith("/") ? path : `${path}/`;
+      return Array.from(files.entries()).reduce(
+        (sum, [key, value]) => sum + (key.startsWith(prefix) ? value.byteLength : 0),
+        0,
+      );
+    };
+    const service = createLocalAIModelService(deps, nativeManifest);
+
+    const pending = service.downloadModel("integrated-balanced");
+    await sizeStarted;
+    await service.pauseDownload("integrated-balanced");
+    releaseSize();
+    const paused = await pending;
+
+    expect(paused[0].state.status).toBe("paused");
+    expect(paused[0].state.downloadedBytes).toBe(5);
   });
 
   it("removes downloaded model files and resets state", async () => {

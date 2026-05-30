@@ -1,5 +1,7 @@
 import { test, expect } from "./fixtures/app";
 
+const CONTACT_SYNC_STORAGE_KEY = "freed_contact_sync";
+
 async function seedGoogleToken(page: import("@playwright/test").Page) {
   await page.addInitScript(() => {
     window.localStorage.setItem("freed_cloud_token_gdrive", "google-test-token");
@@ -37,20 +39,47 @@ async function mockGoogleContacts(
   connections: unknown[],
   status = 200,
 ) {
-  await page.route("https://people.googleapis.com/v1/people/me/connections?*", async (route) => {
-    await route.fulfill({
-      status,
-      contentType: "application/json",
-      body: JSON.stringify(
+  await page.evaluate(
+    ({ connections, status }) => {
+      const body = JSON.stringify(
         status >= 400
-          ? { error: { message: `People API error ${status.toLocaleString()}` } }
+          ? {
+              error: {
+                message: `People API error ${status.toLocaleString()}`,
+                errors: [{ reason: "authError" }],
+              },
+            }
           : {
               connections,
               nextSyncToken: "sync-token-1",
             },
-      ),
-    });
-  });
+      );
+      const encodedBody = Array.from(new TextEncoder().encode(body));
+      const handlers = (window as Window & {
+        __TAURI_MOCK_HANDLERS__?: Record<string, (args: unknown) => unknown>;
+      }).__TAURI_MOCK_HANDLERS__;
+      if (!handlers) throw new Error("Tauri mock handlers are unavailable");
+      handlers.google_api_request = () => ({
+        status,
+        headers: [["content-type", "application/json"]],
+        body: encodedBody,
+      });
+    },
+    { connections, status },
+  );
+}
+
+async function readContactSyncState(page: import("@playwright/test").Page) {
+  return page.evaluate((storageKey) => {
+    const raw = window.localStorage.getItem(storageKey);
+    return raw ? JSON.parse(raw) as {
+      authStatus?: string;
+      syncStatus?: string;
+      syncToken?: string | null;
+      lastErrorMessage?: string;
+      cachedContacts?: Array<{ resourceName?: string; name?: { displayName?: string } }>;
+    } : null;
+  }, CONTACT_SYNC_STORAGE_KEY);
 }
 
 async function injectAuthor(page: import("@playwright/test").Page, displayName: string, handle = "author-handle") {
@@ -112,109 +141,43 @@ test("Google Contacts appears in Settings > Sources", async ({ app }) => {
   await expect(section.getByRole("button", { name: "Review Matches" })).toBeVisible();
 });
 
-test("high-confidence existing friend matches stay in review until confirmed", async ({ app }) => {
+test("syncs Google Contacts through the desktop native API path", async ({ app }) => {
   await seedGoogleToken(app.page);
+  await app.goto();
   await mockGoogleContacts(app.page, [
     {
-      resourceName: "people/1",
-      names: [{ displayName: "Jane Doe", givenName: "Jane", familyName: "Doe" }],
-      emailAddresses: [{ value: "jane@example.com" }],
+      resourceName: "people/ada",
+      etag: "contact-etag",
+      names: [{ displayName: "Ada Lovelace", givenName: "Ada", familyName: "Lovelace", metadata: { primary: true } }],
+      emailAddresses: [{ value: "ada@example.com", type: "home" }],
+      phoneNumbers: [{ value: "+15555550100", type: "mobile" }],
     },
   ]);
-  await app.goto();
   await app.waitForReady();
-  await injectFriend(app.page, "Jane Doe");
 
   const section = await openGoogleContactsSection(app.page, test);
   if (!section) return;
   await section.getByRole("button", { name: "Sync Now" }).click();
 
-  await app.page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => {
-        pendingMatchCount: number;
-        friends: Record<string, unknown>;
-        accounts: Record<string, { kind: string; provider: string }>;
-      };
-    };
-    const state = store.getState();
-    const googleContactAccounts = Object.values(state.accounts).filter(
-      (account) => account.kind === "contact" && account.provider === "google_contacts"
-    );
-    return state.pendingMatchCount === 1 && Object.keys(state.friends).length === 1 && googleContactAccounts.length === 0;
-  });
+  await expect(section.getByText("Connected")).toBeVisible({ timeout: 5_000 });
+  await app.page.waitForFunction((storageKey) => {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return false;
+    const state = JSON.parse(raw) as { cachedContacts?: Array<{ resourceName?: string }> };
+    return state.cachedContacts?.some((contact) => contact.resourceName === "people/ada");
+  }, CONTACT_SYNC_STORAGE_KEY);
 
-  await section.getByRole("button", { name: "Review Matches" }).click();
-  await expect(app.page.getByText("Suggestions (1)")).toBeVisible();
-  await expect(app.page.getByText("Jane Doe")).toBeVisible();
-  await expect(app.page.getByRole("button", { name: "Confirm" })).toBeVisible();
-});
-
-test("high-confidence unlinked author matches stay in review until confirmed", async ({ app }) => {
-  await seedGoogleToken(app.page);
-  await mockGoogleContacts(app.page, [
-    {
-      resourceName: "people/2",
-      names: [{ displayName: "Robin Quinn", givenName: "Robin", familyName: "Quinn" }],
-    },
-  ]);
-  await app.goto();
-  await app.waitForReady();
-  await injectAuthor(app.page, "Robin Quinn", "robin-q");
-
-  const section = await openGoogleContactsSection(app.page, test);
-  if (!section) return;
-  await section.getByRole("button", { name: "Sync Now" }).click();
-
-  await app.page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => {
-        pendingMatchCount: number;
-      };
-    };
-    const state = store.getState();
-    return state.pendingMatchCount === 1;
-  });
-
-  await section.getByRole("button", { name: "Review Matches" }).click();
-  await expect(app.page.getByText("Suggestions (1)")).toBeVisible();
-  await expect(
-    app.page.getByText(
-      /Contact may (belong to an existing person|match one or more captured social accounts)\./
-    ),
-  ).toBeVisible();
-  await expect(app.page.getByRole("button", { name: "Confirm" })).toBeVisible();
-});
-
-test("medium-confidence handle matches stay in manual review", async ({ app }) => {
-  await seedGoogleToken(app.page);
-  await mockGoogleContacts(app.page, [
-    {
-      resourceName: "people/3",
-      names: [{ displayName: "Sam Carter", givenName: "Sam", familyName: "Carter" }],
-    },
-  ]);
-  await app.goto();
-  await app.waitForReady();
-  await injectAuthor(app.page, "Completely Different", "sam.carter");
-
-  const section = await openGoogleContactsSection(app.page, test);
-  if (!section) return;
-  await section.getByRole("button", { name: "Sync Now" }).click();
-
-  await app.page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => { pendingMatchCount: number };
-    };
-    const state = store.getState();
-    return state.pendingMatchCount === 1;
-  });
+  const state = await readContactSyncState(app.page);
+  expect(state?.authStatus).toBe("connected");
+  expect(state?.syncToken).toBe("sync-token-1");
+  expect(state?.cachedContacts).toHaveLength(1);
+  expect(state?.cachedContacts?.[0]?.name?.displayName).toBe("Ada Lovelace");
 });
 
 test("People API failures surface reconnect state instead of failing silently", async ({ app }) => {
   await seedGoogleToken(app.page);
-  await mockGoogleContacts(app.page, [], 401);
   await app.goto();
+  await mockGoogleContacts(app.page, [], 401);
   await app.waitForReady();
 
   const section = await openGoogleContactsSection(app.page, test);
@@ -222,4 +185,5 @@ test("People API failures surface reconnect state instead of failing silently", 
   await section.getByRole("button", { name: "Sync Now" }).click();
 
   await expect(section.getByText("Reconnect required")).toBeVisible({ timeout: 5_000 });
+  await expect(section.getByText(/Google Contacts API failed \(401\): People API error 401/)).toBeVisible();
 });

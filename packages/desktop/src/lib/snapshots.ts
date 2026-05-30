@@ -13,6 +13,10 @@ import {
 import { getDocBinary, getDocState, replaceLocalDoc, subscribe } from "./automerge";
 import { log } from "./logger.js";
 import { readContactSyncState, readContactSyncStateJson, writeContactSyncStateJson } from "./contact-sync-storage.js";
+import {
+  isBackgroundRuntimeDeferredError,
+  runBackgroundJob,
+} from "./background-runtime-coordinator.js";
 
 export type SnapshotReason = "auto" | "manual";
 
@@ -134,6 +138,16 @@ function snapshotContactsPath(root: string, id: string): string {
   return joinPath(root, `${id}.contacts.json`);
 }
 
+function snapshotIdFromFileName(name: string): string | null {
+  if (name.endsWith(".automerge")) {
+    return name.slice(0, -".automerge".length);
+  }
+  if (name.endsWith(".contacts.json")) {
+    return name.slice(0, -".contacts.json".length);
+  }
+  return null;
+}
+
 function normalizeSnapshotList(snapshots: SnapshotSummary[]): SnapshotSummary[] {
   return snapshots
     .slice()
@@ -180,16 +194,27 @@ async function pruneSnapshots(
 ): Promise<SnapshotSummary[]> {
   const keep = normalizeSnapshotList(snapshots);
   const keepIds = new Set(keep.map((snapshot) => snapshot.id));
+  const removals: Promise<unknown>[] = [];
 
   for (const snapshot of snapshots) {
     if (keepIds.has(snapshot.id)) continue;
 
-    await Promise.allSettled([
+    removals.push(
       remove(snapshotBinaryPath(root, snapshot.id)),
       remove(snapshotContactsPath(root, snapshot.id)),
-    ]);
+    );
   }
 
+  const files = await readDir(root).catch(() => []);
+  for (const entry of files) {
+    const name = entry.name;
+    if (!name) continue;
+    const id = snapshotIdFromFileName(name);
+    if (!id || keepIds.has(id)) continue;
+    removals.push(remove(joinPath(root, name)));
+  }
+
+  await Promise.allSettled(removals);
   return keep;
 }
 
@@ -202,15 +227,16 @@ export async function listSnapshots(): Promise<SnapshotSummary[]> {
 
   const root = await ensureSnapshotDir();
   const indexed = await readSnapshotIndex();
+  const pruned = await pruneSnapshots(root, indexed);
   const filtered: SnapshotSummary[] = [];
 
-  for (const snapshot of indexed) {
+  for (const snapshot of pruned) {
     if (await exists(snapshotBinaryPath(root, snapshot.id))) {
       filtered.push(snapshot);
     }
   }
 
-  if (filtered.length !== indexed.length) {
+  if (filtered.length !== indexed.length || filtered.length !== pruned.length) {
     await writeSnapshotIndex(filtered);
   }
 
@@ -294,7 +320,16 @@ function scheduleAutoSnapshot(): void {
       return;
     }
 
-    createSnapshot("auto").catch((error) => {
+    runBackgroundJob({
+      kind: "snapshot",
+      source: "auto-snapshot",
+      timeoutMs: 180_000,
+      run: () => createSnapshot("auto"),
+    }).catch((error) => {
+      if (isBackgroundRuntimeDeferredError(error)) {
+        log.info(`[snapshots] auto snapshot deferred: ${error.reason}`);
+        return;
+      }
       log.error(
         `[snapshots] auto snapshot failed: ${
           error instanceof Error ? error.message : String(error)

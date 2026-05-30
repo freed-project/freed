@@ -52,3 +52,35 @@ test("startup recovery installs pending updates in place and surfaces install er
   await expect(page.getByText("Synthetic install failure")).toBeVisible();
   await expect(page.getByRole("button", { name: "Install update and restart" })).toBeVisible();
 });
+
+test("startup recovery scrolls vertically when content exceeds the window", async ({
+  app,
+  page,
+}) => {
+  await page.setViewportSize({ width: 760, height: 420 });
+  await page.addInitScript(() => {
+    (window as Record<string, unknown>).__TAURI_MOCK_UPDATE__ = {
+      version: "26.5.302-dev",
+      body: "Harden startup recovery and refine feed layout",
+      downloadAndInstall: async () => undefined,
+    };
+  });
+
+  await app.page.goto("/startup-recovery.html?releaseChannel=dev");
+  await expect(page.getByText("Freed did not finish loading last time.")).toBeVisible();
+
+  const scrollMetrics = await page.locator("main").evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    const style = window.getComputedStyle(element);
+    return {
+      overflowY: style.overflowY,
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      scrollTop: element.scrollTop,
+    };
+  });
+
+  expect(scrollMetrics.overflowY).toBe("auto");
+  expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight);
+  expect(scrollMetrics.scrollTop).toBeGreaterThan(0);
+});

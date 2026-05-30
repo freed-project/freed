@@ -28,11 +28,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import MiniSearch from "minisearch";
-import { filterFeedItems, isFriendAuthoredItem, sortByPriority } from "@freed/shared";
+import { isFriendAuthoredItem, matchesFeedFilter, sortByPriority } from "@freed/shared";
 import type { Account, FeedItem, FilterOptions, Friend, Person } from "@freed/shared";
 
 const SEARCH_PRESERVED_TEXT_LIMIT = 1_200;
-const SEARCH_INDEX_CHUNK_SIZE = 250;
+const SEARCH_INDEX_CHUNK_SIZE = 100;
 const SEARCH_INDEX_RELEASE_DELAY_MS = 75;
 
 /** Flat document shape fed to MiniSearch (one per FeedItem). */
@@ -56,28 +56,34 @@ function accountKey(platform: string, authorId: string): string {
   return `${platform}:${authorId}`;
 }
 
+function searchText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
 function buildAccountAliasMap(accounts: Record<string, Account>): Map<string, string> {
   const aliases = new Map<string, string>();
   for (const account of Object.values(accounts)) {
     if (account.kind !== "social") continue;
+    const externalId = searchText(account.externalId);
+    if (!externalId) continue;
     const values = [
       account.displayName,
       account.handle,
       account.handle?.startsWith("@") ? account.handle.slice(1) : undefined,
-      account.externalId,
-      account.externalId.slice(-8),
+      externalId,
+      externalId.slice(-8),
     ].filter((value): value is string => Boolean(value?.trim()));
-    aliases.set(accountKey(account.provider, account.externalId), values.join(" "));
+    aliases.set(accountKey(account.provider, externalId), values.join(" "));
   }
   return aliases;
 }
 
 function accountSignature(accounts: Record<string, Account>): string {
   return Object.values(accounts)
-    .filter((account) => account.kind === "social")
+    .filter((account) => account.kind === "social" && searchText(account.externalId))
     .map((account) => [
       account.provider,
-      account.externalId,
+      searchText(account.externalId),
       account.displayName ?? "",
       account.handle ?? "",
     ].join(":"))
@@ -189,6 +195,7 @@ interface SharedSearchIndexCache {
 
 let sharedSearchIndexCache: SharedSearchIndexCache | null = null;
 let releaseSearchIndexTimer: ReturnType<typeof setTimeout> | null = null;
+const searchItemByIdCache = new WeakMap<FeedItem[], Map<string, FeedItem>>();
 
 function searchIndexKey(
   items: FeedItem[],
@@ -246,6 +253,20 @@ function getPreparedSearchIndex(
   return sharedSearchIndexCache?.key === key ? sharedSearchIndexCache.index : null;
 }
 
+function getSearchItemById(
+  items: FeedItem[],
+  trimmedQuery: string,
+): Map<string, FeedItem> | null {
+  if (!trimmedQuery) return null;
+
+  let cached = searchItemByIdCache.get(items);
+  if (!cached) {
+    cached = new Map(items.map((item) => [item.globalId, item]));
+    searchItemByIdCache.set(items, cached);
+  }
+  return cached;
+}
+
 function searchOptionsForQuery(query: string) {
   const longestTermLength = Math.max(0, ...query.split(/\s+/).map((term) => term.length));
   return {
@@ -253,6 +274,45 @@ function searchOptionsForQuery(query: string) {
     fuzzy: longestTermLength >= 4 ? 0.2 : false,
     prefix: true,
   };
+}
+
+function priorityValue(item: FeedItem): number {
+  return item.priority ?? 0;
+}
+
+function filterBrowseItems(args: {
+  items: FeedItem[];
+  activeFilter: FilterOptions;
+  identityMode: "friends" | "all_content";
+  persons: Record<string, Person>;
+  accounts: Record<string, Account>;
+  friends: Record<string, Friend>;
+}): FeedItem[] {
+  let filtered: FeedItem[] | null = null;
+  let ordered = true;
+  let previousPriority = Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index < args.items.length; index += 1) {
+    const item = args.items[index];
+    const passesIdentity =
+      args.identityMode !== "friends" ||
+      isFriendAuthoredItem(item, args.persons, args.accounts, args.friends);
+    const passesFilter = passesIdentity && matchesFeedFilter(item, args.activeFilter);
+
+    if (!passesFilter) {
+      if (!filtered) filtered = args.items.slice(0, index);
+      continue;
+    }
+
+    const priority = priorityValue(item);
+    if (priority > previousPriority) ordered = false;
+    previousPriority = priority;
+
+    filtered?.push(item);
+  }
+
+  const result = filtered ?? args.items;
+  return ordered ? result : sortByPriority(result);
 }
 
 function buildEmptyIndex(): MiniSearch<SearchDoc> {
@@ -271,6 +331,92 @@ export interface SearchResults {
   isSearching: boolean;
   /** Number of items matching the query after applying the active filter. */
   resultCount: number;
+}
+
+interface SearchResultCache {
+  items: FeedItem[];
+  trimmedQuery: string;
+  activeFilter: FilterOptions;
+  identityMode: "friends" | "all_content";
+  persons: Record<string, Person>;
+  accounts: Record<string, Account>;
+  friends: Record<string, Friend>;
+  index: MiniSearch<SearchDoc> | null;
+  itemById: Map<string, FeedItem> | null;
+  result: SearchResults;
+}
+
+let lastSearchResultCache: SearchResultCache | null = null;
+
+function computeSearchResults(args: {
+  items: FeedItem[];
+  trimmedQuery: string;
+  activeFilter: FilterOptions;
+  identityMode: "friends" | "all_content";
+  persons: Record<string, Person>;
+  accounts: Record<string, Account>;
+  friends: Record<string, Friend>;
+  index: MiniSearch<SearchDoc> | null;
+  itemById: Map<string, FeedItem> | null;
+}): SearchResults {
+  const cached = lastSearchResultCache;
+  if (
+    cached &&
+    cached.items === args.items &&
+    cached.trimmedQuery === args.trimmedQuery &&
+    cached.activeFilter === args.activeFilter &&
+    cached.identityMode === args.identityMode &&
+    cached.persons === args.persons &&
+    cached.accounts === args.accounts &&
+    cached.friends === args.friends &&
+    cached.index === args.index &&
+    cached.itemById === args.itemById
+  ) {
+    return cached.result;
+  }
+
+  let result: SearchResults;
+  if (!args.trimmedQuery) {
+    // Normal feed: filter and check worker-provided priority order in one pass.
+    // This avoids an extra full-corpus scan during cold load for large libraries.
+    result = {
+      filteredItems: filterBrowseItems({
+        items: args.items,
+        activeFilter: args.activeFilter,
+        identityMode: args.identityMode,
+        persons: args.persons,
+        accounts: args.accounts,
+        friends: args.friends,
+      }),
+      isSearching: false,
+      resultCount: 0,
+    };
+  } else if (!args.index || !args.itemById) {
+    result = { filteredItems: [], isSearching: true, resultCount: 0 };
+  } else {
+    // Search then filter, preserving MiniSearch's relevance ordering.
+    const hits = args.index.search(args.trimmedQuery, searchOptionsForQuery(args.trimmedQuery));
+
+    const matchingItems: FeedItem[] = [];
+    for (const hit of hits) {
+      const item = args.itemById.get(hit.id as string);
+      if (item) matchingItems.push(item);
+    }
+
+    const byFeed = filterBrowseItems({
+      items: matchingItems,
+      activeFilter: args.activeFilter,
+      identityMode: args.identityMode,
+      persons: args.persons,
+      accounts: args.accounts,
+      friends: args.friends,
+    });
+
+    result = { filteredItems: byFeed, isSearching: true, resultCount: byFeed.length };
+  }
+
+  lastSearchResultCache = { ...args, result };
+  return result;
 }
 
 /**
@@ -296,7 +442,10 @@ export function useSearchResults(
   const [index, setIndex] = useState<MiniSearch<SearchDoc> | null>(() =>
     getPreparedSearchIndex(items, searchCorpusVersion, accounts),
   );
-  const itemById = useMemo(() => new Map(items.map((item) => [item.globalId, item])), [items]);
+  const itemById = useMemo(
+    () => getSearchItemById(items, trimmedQuery),
+    [items, trimmedQuery],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -330,46 +479,19 @@ export function useSearchResults(
     };
   }, [accounts, items, searchCorpusVersion, trimmedQuery]);
 
-  return useMemo(() => {
-    const filterIdentityMode = (candidateItems: FeedItem[]): FeedItem[] =>
-      identityMode === "friends"
-        ? candidateItems.filter((item) => isFriendAuthoredItem(item, persons, accounts, friends))
-        : candidateItems;
-
-    if (!trimmedQuery) {
-      // Normal feed: apply active filter then sort by priority. No MiniSearch work.
-      const filtered = filterFeedItems(filterIdentityMode(items), activeFilter);
-      const byFeed = activeFilter.feedUrl
-        ? filtered.filter((item) => item.rssSource?.feedUrl === activeFilter.feedUrl)
-        : filtered;
-      return { filteredItems: sortByPriority(byFeed), isSearching: false, resultCount: 0 };
-    }
-
-    // Search then filter — preserving MiniSearch's relevance ordering.
-    if (!index) {
-      return { filteredItems: [], isSearching: true, resultCount: 0 };
-    }
-
-    const hits = index.search(trimmedQuery, searchOptionsForQuery(trimmedQuery));
-
-    const scoreById = new Map(hits.map((r) => [r.id as string, r.score]));
-
-    // Map results back to FeedItems, preserving MiniSearch order.
-    const matchingItems = hits
-      .map((r) => itemById.get(r.id as string))
-      .filter((item): item is FeedItem => item !== undefined);
-
-    const filtered = filterFeedItems(filterIdentityMode(matchingItems), activeFilter);
-    const byFeed = activeFilter.feedUrl
-      ? filtered.filter((item) => item.rssSource?.feedUrl === activeFilter.feedUrl)
-      : filtered;
-
-    // Sort by relevance score (MiniSearch already orders hits, but filterFeedItems
-    // may reorder, so we re-sort explicitly).
-    const sorted = [...byFeed].sort(
-      (a, b) => (scoreById.get(b.globalId) ?? 0) - (scoreById.get(a.globalId) ?? 0),
-    );
-
-    return { filteredItems: sorted, isSearching: true, resultCount: sorted.length };
-  }, [accounts, activeFilter, friends, identityMode, index, itemById, items, persons, trimmedQuery]);
+  return useMemo(
+    () =>
+      computeSearchResults({
+        items,
+        trimmedQuery,
+        activeFilter,
+        identityMode,
+        persons,
+        accounts,
+        friends,
+        index,
+        itemById,
+      }),
+    [accounts, activeFilter, friends, identityMode, index, itemById, items, persons, trimmedQuery],
+  );
 }

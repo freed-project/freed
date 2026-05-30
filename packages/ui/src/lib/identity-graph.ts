@@ -84,7 +84,11 @@ function truncateLabel(value: string, max: number): string {
 function accountDisplayLabel(account: Account): string {
   if (account.displayName?.trim()) return truncateLabel(account.displayName.trim(), 16);
   if (account.handle?.trim()) return truncateLabel(account.handle.trim(), 16);
-  return truncateLabel(account.externalId, 16);
+  return truncateLabel(account.externalId?.trim() || account.provider || "Account", 16);
+}
+
+function safeText(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
 function accountAvatarUrl(account: Account): string | null {
@@ -141,7 +145,7 @@ function comparePersons(
   return (left: Person, right: Person) =>
     right.careLevel - left.careLevel ||
     recentPostCount(feedItems, accounts, right) - recentPostCount(feedItems, accounts, left) ||
-    left.name.localeCompare(right.name);
+    safeText(left.name).localeCompare(safeText(right.name));
 }
 
 function providerLabelOrder(provider: Account["provider"]): number {
@@ -185,7 +189,7 @@ function layoutPersonHubs(
     return {
       id: `person:${person.id}`,
       kind: "person" as const,
-      label: truncateLabel(person.name, 18),
+      label: truncateLabel(safeText(person.name, "Unnamed friend"), 18),
       radius: nodeRadius(person, feedItems, accounts) + 4,
       x,
       y,
@@ -258,7 +262,7 @@ function layoutUnlinkedAccounts(
   }
 
   const providers = Array.from(grouped.keys()).sort((left, right) =>
-    providerLabelOrder(left) - providerLabelOrder(right) || left.localeCompare(right)
+    providerLabelOrder(left) - providerLabelOrder(right) || safeText(left).localeCompare(safeText(right))
   );
   const centers = providerRegionCenters(width, height, providers);
   const nodes: IdentityGraphNode[] = [];
