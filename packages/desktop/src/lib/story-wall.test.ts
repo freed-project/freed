@@ -71,6 +71,13 @@ describe("story wall selection", () => {
   it("filters by year, platform, hidden item, and archive state", () => {
     const selected = selectStoryWallItems([
       item("instagram:one", "instagram", Date.UTC(2024, 3, 2)),
+      item("instagram:no-media", "instagram", Date.UTC(2024, 3, 3), {
+        content: {
+          text: "Only text",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+      }),
       item("facebook:hidden", "facebook", Date.UTC(2024, 4, 2)),
       item("x:wrong-platform", "x", Date.UTC(2024, 5, 2)),
       item("instagram:old", "instagram", Date.UTC(2023, 5, 2)),

@@ -63,12 +63,13 @@ import {
 import { FeedsSection } from "./settings/FeedsSection.js";
 import { SavedSection } from "./settings/SavedSection.js";
 import { AISection } from "./settings/AISection.js";
+import { StoryWallView } from "./story-wall/StoryWallView.js";
 import { SettingsToggle } from "./SettingsToggle.js";
 import { ReportComposer } from "./report/ReportComposer.js";
 import { SearchField } from "./SearchField.js";
 import { ThemePreviewButton } from "./ThemePreviewButton.js";
 import { Tooltip } from "./Tooltip.js";
-import { ExternalLinkIcon, GoogleContactsIcon } from "./icons.js";
+import { ExternalLinkIcon, GoogleContactsIcon, StoryWallIcon } from "./icons.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -327,6 +328,13 @@ const ICON_SOURCES = (
   </svg>
 );
 
+/** Icon for the Beta nav group (not a section itself). */
+const ICON_BETA = (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3.5l1.6 4.9 5.1 1.1-3.5 3.7.5 5.2-4.7-2.2-4.7 2.2.5-5.2-3.5-3.7 5.1-1.1L12 3.5z" />
+  </svg>
+);
+
 const ICONS: Record<SectionId, ReactNode> = {
   legal: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -353,6 +361,9 @@ const ICONS: Record<SectionId, ReactNode> = {
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
     </svg>
+  ),
+  storyWall: (
+    <StoryWallIcon />
   ),
   sync: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -492,7 +503,15 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           sectionById.feeds,
         ],
       },
-      sectionById.ai,
+      {
+        kind: "group",
+        label: "Beta",
+        icon: ICON_BETA,
+        children: [
+          sectionById.ai,
+          sectionById.storyWall,
+        ],
+      },
       ...(checkForUpdates ? [sectionById.updates] : []),
       sectionById.legal,
       ...(factoryReset ? [sectionById.danger] : []),
@@ -1610,6 +1629,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="Saved Content" />
             <SavedSection />
+          </>
+        );
+
+      case "storyWall":
+        return (
+          <>
+            <SectionHeading label="Story Wall" />
+            <StoryWallView variant="settings" />
           </>
         );
 

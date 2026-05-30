@@ -415,10 +415,10 @@ export interface PlatformConfig {
   /** Import an Instagram Accounts Center export into the device-local media vault. */
   importInstagramStoryWallArchive?: (files: FileList) => Promise<StoryWallImportSummary>;
 
-  /** Return media vault summaries used by the Story Wall workspace. */
+  /** Return media vault summaries used by StoryWall (beta). */
   getStoryWallArchiveSummaries?: () => Promise<StoryWallArchiveSummary[]>;
 
-  /** Publish the generated Story Wall to a static host. */
+  /** Publish the generated StoryWall (beta) site to a static host. */
   publishStoryWall?: (request: StoryWallPublishRequest) => Promise<StoryWallPublishResult>;
 
   /**

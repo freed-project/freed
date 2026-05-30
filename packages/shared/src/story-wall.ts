@@ -86,10 +86,14 @@ export function storyWallYearForItem(item: FeedItem): number {
   return new Date(itemTimestamp(item)).getFullYear();
 }
 
+export function itemHasStoryWallMedia(item: FeedItem): boolean {
+  return item.content.mediaUrls.some((url) => typeof url === "string" && url.trim().length > 0);
+}
+
 export function selectableStoryWallYears(items: readonly FeedItem[]): number[] {
   return uniqueSortedNumbers(
     items
-      .filter((item) => !item.userState.hidden && !item.userState.archived)
+      .filter((item) => !item.userState.hidden && !item.userState.archived && itemHasStoryWallMedia(item))
       .map(storyWallYearForItem),
   );
 }
@@ -108,6 +112,7 @@ export function selectStoryWallItems(
     .filter((item) => {
       if (hiddenIds.has(item.globalId)) return false;
       if (item.userState.hidden || item.userState.archived) return false;
+      if (!itemHasStoryWallMedia(item)) return false;
       if (!includedPlatforms.has(item.platform)) return false;
       if (selectedYears.size > 0 && !selectedYears.has(storyWallYearForItem(item))) return false;
       if (includedAccountIds.size === 0) return true;

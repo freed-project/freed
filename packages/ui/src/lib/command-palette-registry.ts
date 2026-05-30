@@ -47,7 +47,6 @@ interface BuildCommandPaletteActionsOptions {
   navigateToFeed: (filter: FilterOptions) => void;
   navigateToFriends: () => void;
   navigateToMap: () => void;
-  navigateToStoryWall?: () => void;
   navigateToSocialProfileFriends?: ((account: Account, personId: string | null) => void) | null;
   navigateToSocialProfileMap?: ((account: Account, personId: string | null) => void | Promise<void>) | null;
   promoteSocialProfile?: ((account: Account, level: 3 | 5) => void | Promise<void>) | null;
@@ -129,7 +128,6 @@ export function buildCommandPaletteActions({
   navigateToFeed,
   navigateToFriends,
   navigateToMap,
-  navigateToStoryWall,
   navigateToSocialProfileFriends,
   navigateToSocialProfileMap,
   promoteSocialProfile,
@@ -191,15 +189,6 @@ export function buildCommandPaletteActions({
       keywords: ["locations", "places", "travel"],
       run: navigateToMap,
     },
-    ...(navigateToStoryWall
-      ? [{
-      id: "go-story-wall",
-      title: "Story Wall",
-      section: "Go to",
-      keywords: ["stories", "memories", "year", "publish"],
-      run: navigateToStoryWall,
-    }]
-      : []),
     ...(openAddFeedDialog
       ? [{
       id: "create-add-rss",

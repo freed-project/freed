@@ -1494,9 +1494,6 @@ test("settings dialog closes from the desktop sidebar close button", async ({ ap
 
   const { page } = app;
   await page.evaluate(async (settingsStorePath) => {
-    const response = await fetch(settingsStorePath);
-    if (!response.ok) throw new Error(`Failed to load settings store: ${response.status}`);
-    await response.text();
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openDefault();
   }, SETTINGS_STORE_PATH);
@@ -1511,10 +1508,11 @@ test("settings backdrop stays blurred during high memory pressure", async ({ app
   await app.waitForReady();
 
   const { page } = app;
-  await page.evaluate(() => {
+  await page.evaluate(async (settingsStorePath) => {
     document.documentElement.dataset.memoryPressure = "high";
-  });
-  await page.getByRole("button", { name: "Settings" }).click();
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openDefault();
+  }, SETTINGS_STORE_PATH);
   await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
 
   const styles = await page.evaluate(() => {
@@ -1544,9 +1542,6 @@ test("settings dialog closes from the mobile header close button", async ({ app,
   await app.waitForReady();
 
   await page.evaluate(async (settingsStorePath) => {
-    const response = await fetch(settingsStorePath);
-    if (!response.ok) throw new Error(`Failed to load settings store: ${response.status}`);
-    await response.text();
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openDefault();
   }, SETTINGS_STORE_PATH);
@@ -1733,9 +1728,6 @@ test("provider risk dialog scrolls vertically on tiny mobile screens", async ({ 
   await app.waitForReady();
 
   await page.evaluate(async (settingsStorePath) => {
-    const response = await fetch(settingsStorePath);
-    if (!response.ok) throw new Error(`Failed to load settings store: ${response.status}`);
-    await response.text();
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openTo("facebook");
   }, SETTINGS_STORE_PATH);
