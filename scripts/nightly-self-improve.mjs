@@ -49,6 +49,8 @@ Options:
   --daily-bug-memory <path>     Daily bug scan memory file to fold into target selection.
   --peer-worktree <path>        Extra local worktree to compare and rank as a peer target.
   --no-peer-scan                Skip automatic git worktree discovery.
+  --expected-branch <name>      Branch expected for nightly planning. Defaults to dev.
+  --no-expected-branch          Disable branch expectation checks for deliberate diagnostics.
   --outcome-ledger <path>       JSONL file with prior target outcomes.
   --record-outcome <id>         Append a finished target outcome to the outcome ledger.
   --record-kind <kind>          Target kind for --record-outcome.
@@ -86,6 +88,7 @@ export function parseArgs(argv) {
     recordBuild: "",
     peerWorktrees: [],
     peerScan: true,
+    expectedBranch: "dev",
     maxTargets: 3,
     durationMinutes: 480,
     memoryGib: 2.5,
@@ -128,6 +131,13 @@ export function parseArgs(argv) {
         break;
       case "--no-peer-scan":
         args.peerScan = false;
+        break;
+      case "--expected-branch":
+        args.expectedBranch = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--no-expected-branch":
+        args.expectedBranch = "";
         break;
       case "--outcome-ledger":
         args.outcomeLedger = argv[index + 1] ?? "";
@@ -196,6 +206,9 @@ export function parseArgs(argv) {
   }
   if (!args.soakPointer) {
     throw new Error("A soak pointer path is required.");
+  }
+  if (args.expectedBranch && /\s/.test(args.expectedBranch)) {
+    throw new Error("expected-branch must not contain whitespace.");
   }
   if (args.repairSoakPointer && args.soakDir) {
     throw new Error("repair-soak-pointer cannot be combined with an explicit soak-dir.");
@@ -1019,9 +1032,61 @@ export function collectRiskSnapshot({
   crashAutomation,
   dailyBugMemory,
   devBotMemory,
+  expectedBranch = "dev",
   nowMs = Date.now(),
 }) {
   const risks = [];
+  if (expectedBranch && repo.branch !== expectedBranch) {
+    risks.push(
+      riskItem({
+        id: "unexpected-repo-branch",
+        severity: "blocker",
+        title: `Nightly planning is running from ${repo.branch || "an unknown branch"} instead of ${expectedBranch}`,
+        evidence: [
+          repoPath,
+          `branch ${repo.branch || "unknown"}`,
+          `HEAD ${repo.head || "unknown"}`,
+          `origin/dev ${repo.originDev || "unknown"}`,
+        ],
+        remediation:
+          "Run the nightly planner from a current dev worktree or pass --repo with the intended dev checkout. Use --no-expected-branch only for deliberate diagnostics.",
+        actions: [
+          riskAction({
+            id: "rerun-from-dev-worktree",
+            kind: "manual",
+            title: "Rerun the nightly planner from dev",
+            notes:
+              "The all-night runner targets dev product work, so running it from main can distort release and target selection.",
+          }),
+        ],
+      }),
+    );
+  } else if (expectedBranch === "dev" && repo.head && repo.originDev && repo.head !== repo.originDev) {
+    risks.push(
+      riskItem({
+        id: "stale-dev-worktree",
+        severity: "warning",
+        title: "Nightly planning dev worktree is not at origin/dev",
+        evidence: [
+          repoPath,
+          `HEAD ${repo.head}`,
+          `origin/dev ${repo.originDev}`,
+        ],
+        remediation:
+          "Refresh the dev worktree before choosing overnight work so target selection uses the current branch tip.",
+        actions: [
+          riskAction({
+            id: "refresh-dev-worktree",
+            kind: "manual",
+            title: "Refresh the dev worktree",
+            notes:
+              "Use the repo worktree flow to create or update a clean dev-based checkout before planning.",
+          }),
+        ],
+      }),
+    );
+  }
+
   const repoStatusPaths = shortStatusPaths(repo.status ?? "");
   if (repoStatusPaths.length > 0) {
     risks.push(
@@ -2196,6 +2261,7 @@ export function planNightlyRun(args) {
     crashAutomation: args.crashAutomation,
     dailyBugMemory: args.dailyBugMemory,
     devBotMemory: args.devBotMemory,
+    expectedBranch: args.expectedBranch,
   });
   const baseCandidates = buildCandidates({
     soak,
