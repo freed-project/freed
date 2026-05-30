@@ -70,42 +70,30 @@
     ]
   },
   "release": {
-    "deck": "Google OAuth now runs natively in Freed Desktop, Settings and Map stay smoother, Friends and Map handoffs stay recoverable, and social scraping respects tighter memory backpressure",
+    "deck": "Google sync, Story wall, and scraper session pressure improve",
     "features": [
-      "Story wall publishing",
-      "AI ranked friend suggestions",
-      "Support Friends graph pinch zoom"
+      "Story wall publishing"
     ],
     "fixes": [
-      "Gate scraper memory before session slots",
-      "Gate social scrapes on resident WebKit memory",
-      "Complete Google Contacts sync in Freed Desktop",
-      "Share native Google OAuth credentials between Drive and Contacts refresh",
-      "Surface Google OAuth and People API failure details in Settings instead of generic load errors",
-      "Reader, feed, and header polish",
-      "Keep friends graph sync errors recoverable",
-      "Test coverage and performance hardening",
-      "Release build and type-safety cleanup",
-      "Route Google Drive through native sync requests",
-      "Capture and scraper reliability fixes",
-      "Open the full Map from Friends detail with one atomic store update"
+      "Completes Google Contacts sync in Freed Desktop",
+      "Shares native Google OAuth credentials between Drive and Contacts refresh",
+      "Gates social scrapes before session slots are reserved",
+      "Gates social scrapes on resident WebKit memory pressure",
+      "Keeps dense Map focused markers visible during movement",
+      "Keeps Friends graph sync errors recoverable",
+      "Retries the Friends last-seen route commit when the store reaches Map before the full Map surface mounts",
+      "Lightens Settings moving chrome while the dialog is in motion",
+      "Reports throttled renderer heartbeats with clearer context",
+      "Surfaces Google OAuth and People API failure details in Settings instead of generic load errors"
     ],
     "followUps": [
-      "Lighten settings moving chrome",
-      "Reduce dense map movement paint",
-      "Reduce settings scroll overdraw",
-      "Friends relationship tiers",
-      "Reader, sidebar, and settings UX work",
-      "Trim reader rail work and stabilize friends perf",
-      "Isolate social scraper webkit stores",
-      "Gate startup social scraper pressure",
-      "Recycle blocked scraper windows",
-      "Reserve scraper memory headroom",
-      "Slim desktop e2e gates",
       "Keep memory-blocked scrapes from holding the shared scraper slot",
-      "Continue passive soak metrics until Apple Events authorization is restored for active UI driving",
-      "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss"
+      "Friends navigation recovers from late Map mounting",
+      "Continue monitoring Friends to Map handoffs under installed dev builds",
+      "Friends navigation and dense Map movement get steadier",
+      "Continue reducing Settings scroll overdraw in installed dev builds",
+      "Friends recovery and renderer health reporting improve"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1107-dev\n\nGoogle OAuth now runs natively in Freed Desktop, Settings and Map stay smoother, Friends and Map handoffs stay recoverable, and social scraping respects tighter memory backpressure\n\n### Features\n\n- Story wall publishing\n- AI ranked friend suggestions\n- Support Friends graph pinch zoom\n\n### Fixes\n\n- Gate scraper memory before session slots\n- Gate social scrapes on resident WebKit memory\n- Complete Google Contacts sync in Freed Desktop\n- Share native Google OAuth credentials between Drive and Contacts refresh\n- Surface Google OAuth and People API failure details in Settings instead of generic load errors\n- Reader, feed, and header polish\n- Keep friends graph sync errors recoverable\n- Test coverage and performance hardening\n- Release build and type-safety cleanup\n- Route Google Drive through native sync requests\n- Capture and scraper reliability fixes\n- Open the full Map from Friends detail with one atomic store update\n\n### Follow-ups\n\n- Lighten settings moving chrome\n- Reduce dense map movement paint\n- Reduce settings scroll overdraw\n- Friends relationship tiers\n- Reader, sidebar, and settings UX work\n- Trim reader rail work and stabilize friends perf\n- Isolate social scraper webkit stores\n- Gate startup social scraper pressure\n- Recycle blocked scraper windows\n- Reserve scraper memory headroom\n- Slim desktop e2e gates\n- Keep memory-blocked scrapes from holding the shared scraper slot\n- Continue passive soak metrics until Apple Events authorization is restored for active UI driving\n- Treat Settings scroll as the next measured performance surface because it remains the largest budget miss\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1107-dev\n\nGoogle sync, Story wall, and scraper session pressure improve\n\n### Features\n\n- Story wall publishing\n\n### Fixes\n\n- Completes Google Contacts sync in Freed Desktop\n- Shares native Google OAuth credentials between Drive and Contacts refresh\n- Gates social scrapes before session slots are reserved\n- Gates social scrapes on resident WebKit memory pressure\n- Keeps dense Map focused markers visible during movement\n- Keeps Friends graph sync errors recoverable\n- Retries the Friends last-seen route commit when the store reaches Map before the full Map surface mounts\n- Lightens Settings moving chrome while the dialog is in motion\n- Reports throttled renderer heartbeats with clearer context\n- Surfaces Google OAuth and People API failure details in Settings instead of generic load errors\n\n### Follow-ups\n\n- Keep memory-blocked scrapes from holding the shared scraper slot\n- Friends navigation recovers from late Map mounting\n- Continue monitoring Friends to Map handoffs under installed dev builds\n- Friends navigation and dense Map movement get steadier\n- Continue reducing Settings scroll overdraw in installed dev builds\n- Friends recovery and renderer health reporting improve\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
