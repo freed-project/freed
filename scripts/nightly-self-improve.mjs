@@ -29,6 +29,7 @@ const DEFAULT_SOAK_POINTER = "/tmp/freed-perf-soak/current-soak-dir";
 const DEFAULT_OUTCOME_LEDGER = "/tmp/freed-nightly-self-improve/outcomes.jsonl";
 const MAX_PEER_EVIDENCE_FILES = 12;
 const STALE_SOAK_MS = 2 * 60 * 60 * 1000;
+const MIN_PERFORMANCE_SOAK_SAMPLES = 3;
 
 const GIB = 1024 * 1024 * 1024;
 const numberFormatter = new Intl.NumberFormat("en-US", {
@@ -540,6 +541,29 @@ export function summarizeSoak(soakDir) {
       String(healthRows.at(-1)?.event ?? ""),
     firstTimestamp: rows[0]?.ts ?? String(healthRows[0]?.tsMs ?? ""),
     lastTimestamp: rows.at(-1)?.ts ?? String(healthRows.at(-1)?.tsMs ?? ""),
+  };
+}
+
+export function assessSoakEvidenceQuality(soak, nowMs = Date.now()) {
+  const reasons = [];
+  if (!soak.exists) {
+    reasons.push("missing");
+  }
+  if ((soak.sampleCount ?? 0) <= 0) {
+    reasons.push("empty");
+  } else if ((soak.sampleCount ?? 0) < MIN_PERFORMANCE_SOAK_SAMPLES) {
+    reasons.push("insufficient-samples");
+  }
+
+  const lastSoakMs = parseTimestampMs(soak.lastTimestamp);
+  if (lastSoakMs !== null && nowMs - lastSoakMs > STALE_SOAK_MS) {
+    reasons.push("stale");
+  }
+
+  return {
+    ready: reasons.length === 0,
+    reasons,
+    minSamples: MIN_PERFORMANCE_SOAK_SAMPLES,
   };
 }
 
@@ -1057,6 +1081,23 @@ export function collectRiskSnapshot({
     );
   }
 
+  if (soak.exists && soak.sampleCount > 0 && soak.sampleCount < MIN_PERFORMANCE_SOAK_SAMPLES) {
+    risks.push(
+      riskItem({
+        id: "thin-soak-evidence",
+        severity: "warning",
+        title: "Installed-build soak has too few samples for performance targeting",
+        evidence: [
+          soak.soakDir,
+          `${numberFormatter.format(soak.sampleCount)} samples`,
+          `Need at least ${numberFormatter.format(MIN_PERFORMANCE_SOAK_SAMPLES)} samples`,
+        ],
+        remediation:
+          "Restart or continue the installed-build soak before using memory, lag, or heartbeat data to select a performance fix.",
+      }),
+    );
+  }
+
   if (soak.exists && soak.fallbackFrom) {
     risks.push(
       riskItem({
@@ -1212,6 +1253,7 @@ export function buildCandidates({
   memoryBudgetBytes,
 }) {
   const candidates = [];
+  const soakEvidenceQuality = assessSoakEvidenceQuality(soak);
 
   if ((riskSnapshot?.blockerCount ?? 0) > 0 || (riskSnapshot?.warningCount ?? 0) > 0) {
     candidates.push(
@@ -1304,7 +1346,11 @@ export function buildCandidates({
     );
   }
 
-  if (soak.exists && (soak.maxWebKitResidentBytes ?? 0) > memoryBudgetBytes) {
+  if (
+    soakEvidenceQuality.ready &&
+    soak.exists &&
+    (soak.maxWebKitResidentBytes ?? 0) > memoryBudgetBytes
+  ) {
     candidates.push(
       target({
         id: "webkit-memory-pressure",
@@ -1331,7 +1377,7 @@ export function buildCandidates({
     );
   }
 
-  if (soak.exists && soak.staleHeartbeatCount > 0) {
+  if (soakEvidenceQuality.ready && soak.exists && soak.staleHeartbeatCount > 0) {
     candidates.push(
       target({
         id: "renderer-heartbeat-stale",

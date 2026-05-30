@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  assessSoakEvidenceQuality,
   applyOutcomeFeedback,
   appendOutcomeLedger,
   buildCandidates,
@@ -237,6 +238,57 @@ test("candidate selection prioritizes memory work while preserving bug scans", (
   assert.equal(selected[0].id, "webkit-memory-pressure");
   assert.ok(selected.some((candidate) => candidate.id === "daily-bug-fix-scan"));
   assert.ok(!selected.some((candidate) => candidate.providerVisible));
+});
+
+test("candidate selection skips performance work when soak evidence is too thin", () => {
+  const candidates = buildCandidates({
+    soak: {
+      exists: true,
+      soakDir: "/tmp/freed-perf-soak/thin",
+      sampleCount: 1,
+      maxWebKitResidentBytes: 4 * GIB,
+      maxEventLoopLagMs: 9,
+      maxDomNodes: 600,
+      staleHeartbeatCount: 0,
+      throttledHeartbeatCount: 0,
+      lastEvent: "renderer_heartbeat",
+      lastTimestamp: "2026-05-29T01:00:00Z",
+    },
+    dailyBug: { exists: false },
+    repo: { branch: "feature", head: "abc1234", status: "" },
+    peerWorktrees: [],
+    crashAutomationExists: false,
+    devBotMemoryExists: false,
+    memoryBudgetBytes: 2.5 * GIB,
+  });
+
+  assert.ok(!candidates.some((candidate) => candidate.id === "webkit-memory-pressure"));
+});
+
+test("assessSoakEvidenceQuality requires enough fresh samples", () => {
+  const nowMs = Date.parse("2026-05-29T04:00:00Z");
+  assert.deepEqual(
+    assessSoakEvidenceQuality(
+      {
+        exists: true,
+        sampleCount: 1,
+        lastTimestamp: "2026-05-29T01:00:00Z",
+      },
+      nowMs,
+    ).reasons,
+    ["insufficient-samples", "stale"],
+  );
+  assert.equal(
+    assessSoakEvidenceQuality(
+      {
+        exists: true,
+        sampleCount: 3,
+        lastTimestamp: "2026-05-29T03:30:00Z",
+      },
+      nowMs,
+    ).ready,
+    true,
+  );
 });
 
 test("preflight blockers outrank measured performance work", () => {
