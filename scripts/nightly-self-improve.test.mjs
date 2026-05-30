@@ -585,9 +585,20 @@ test("risk snapshot reports dirty worktrees, generated artifacts, stale soak, an
 
   assert.equal(snapshot.blockerCount, 1);
   assert.ok(snapshot.warningCount >= 4);
+  assert.ok(snapshot.actionCount >= 4);
   assert.ok(snapshot.risks.some((risk) => risk.id === "dirty-current-worktree"));
   assert.ok(snapshot.risks.some((risk) => risk.id === "stale-soak-evidence"));
   assert.ok(snapshot.risks.some((risk) => risk.id === "paused-crash-watch"));
+  assert.ok(
+    snapshot.risks
+      .find((risk) => risk.id === "generated-artifacts-packages-desktop-playwright-report")
+      ?.actions.some((action) => action.kind === "local-command"),
+  );
+  assert.ok(
+    snapshot.risks
+      .find((risk) => risk.id === "paused-crash-watch")
+      ?.actions.some((action) => action.kind === "automation-update"),
+  );
 });
 
 test("writeRunPlan emits report, targets, and task prompts", () => {
@@ -628,6 +639,7 @@ test("writeRunPlan emits report, targets, and task prompts", () => {
   assert.equal(path.basename(result.reportPath), "report.md");
   assert.equal(path.basename(result.tasksDir), "tasks");
   assert.equal(path.basename(result.riskSnapshotPath), "risk-snapshot.md");
+  assert.equal(path.basename(result.preflightActionsPath), "preflight-actions.md");
   assert.equal(path.basename(result.duplicateWorkPath), "duplicate-work.md");
   assert.equal(path.basename(result.executionPlanPath), "execution-plan.md");
   assert.equal(path.basename(result.outcomeCloseoutPath), "outcome-closeout.md");

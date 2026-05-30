@@ -17,6 +17,7 @@ The first rule is simple: evidence first, code second. If a target has weak evid
 - Duplicate peer work indicators such as shared changed files, shared package surfaces, and shared provider-visible risk
 - Prior outcome ledger at `/tmp/freed-nightly-self-improve/outcomes.jsonl`
 - Preflight risks such as dirty worktrees, generated artifacts, stale or thin soak samples, missing dependencies, missing evidence files, and paused automations
+- Preflight actions that separate safe local commands from manual or agent-tool-only remediation
 
 ## Target Types
 
@@ -77,6 +78,7 @@ The generated run directory contains:
 - `report.md`: morning-readable summary
 - `targets.json`: full machine-readable candidate list
 - `risk-snapshot.md` and `risk-snapshot.json`: preflight blockers, warnings, evidence, and remediation steps
+- `preflight-actions.md` and `preflight-actions.json`: machine-readable local, manual, and automation-tool risk actions
 - `duplicate-work.md` and `duplicate-work.json`: peer worktree overlap by file and surface
 - `tasks/*.md`: one implementation prompt per selected target
 - `execution-plan.md` and `execution-plan.json`: ordered phases, command hints, and stop gates
@@ -91,7 +93,7 @@ The runner excludes provider-visible tasks by default. Do not allow autonomous c
 
 Release work is also gated. A dev build should ship only after actual fixes merge into `dev`, not after planning artifacts alone.
 
-Every execution phase has a stop gate. The runner should stop rather than freestyle when evidence is missing, a peer branch is still changing, a provider-visible change needs approval, focused validation fails, or no real fix landed. The preflight risk snapshot is now also a selectable target, so blocker risks like a dirty current worktree or missing dependencies can win the queue before the runner starts editing. If the active soak pointer is empty, the runner falls back to the newest readable soak and records that fallback in the risk snapshot. When the fix is purely local, `--repair-soak-pointer` can update the active pointer to that readable soak so later runs no longer start from a dead evidence path. Performance targets need at least three fresh soak samples, so a single stale heartbeat can inform the report without pretending to be a real budget miss.
+Every execution phase has a stop gate. The runner should stop rather than freestyle when evidence is missing, a peer branch is still changing, a provider-visible change needs approval, focused validation fails, or no real fix landed. The preflight risk snapshot is now also a selectable target, so blocker risks like a dirty current worktree or missing dependencies can win the queue before the runner starts editing. If the active soak pointer is empty, the runner falls back to the newest readable soak and records that fallback in the risk snapshot. When the fix is purely local, `--repair-soak-pointer` can update the active pointer to that readable soak so later runs no longer start from a dead evidence path. Performance targets need at least three fresh soak samples, so a single stale heartbeat can inform the report without pretending to be a real budget miss. Preflight actions label each remediation as a safe local command, manual review, or automation-tool action before an overnight agent touches it.
 
 ## Next Improvements
 

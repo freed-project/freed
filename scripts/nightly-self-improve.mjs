@@ -984,8 +984,20 @@ export function collectRepoSnapshot(repo) {
   };
 }
 
-function riskItem({ id, severity, title, evidence, remediation }) {
-  return { id, severity, title, evidence, remediation };
+function riskAction({
+  id,
+  kind,
+  title,
+  safety = "manual",
+  command = "",
+  automationId = "",
+  notes = "",
+}) {
+  return { id, kind, title, safety, command, automationId, notes };
+}
+
+function riskItem({ id, severity, title, evidence, remediation, actions = [] }) {
+  return { id, severity, title, evidence, remediation, actions };
 }
 
 export function collectRiskSnapshot({
@@ -1010,6 +1022,15 @@ export function collectRiskSnapshot({
         evidence: repoStatusPaths.slice(0, 12),
         remediation:
           "Inspect the current worktree before starting autonomous edits so generated files or user changes do not get mixed into the next fix.",
+        actions: [
+          riskAction({
+            id: "inspect-current-worktree",
+            kind: "manual",
+            title: "Inspect current worktree changes before editing",
+            notes:
+              "Do not auto-clean a dirty worktree because the changes may belong to another agent or the user.",
+          }),
+        ],
       }),
     );
   }
@@ -1030,6 +1051,17 @@ export function collectRiskSnapshot({
           evidence: [absolutePath, `${numberFormatter.format(fileCount)} files`],
           remediation:
             "Remove generated reports or intentionally stage them before publishing so validation leftovers do not pollute the branch.",
+          actions: [
+            riskAction({
+              id: `remove-generated-${relativePath.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
+              kind: "local-command",
+              title: `Remove generated artifacts from ${relativePath}`,
+              safety: "safe-local",
+              command: `rm -rf ${JSON.stringify(relativePath)}`,
+              notes:
+                "Only removes known generated validation artifacts inside the current worktree.",
+            }),
+          ],
         }),
       );
     }
@@ -1044,6 +1076,15 @@ export function collectRiskSnapshot({
         evidence: [path.join(repoPath, "node_modules")],
         remediation:
           "Bootstrap the worktree before running validation or planning work that depends on repo scripts.",
+        actions: [
+          riskAction({
+            id: "bootstrap-root-dependencies",
+            kind: "local-command",
+            title: "Install root dependencies",
+            safety: "safe-local",
+            command: "corepack npm ci",
+          }),
+        ],
       }),
     );
   }
@@ -1063,6 +1104,15 @@ export function collectRiskSnapshot({
           ],
           remediation:
             "Restart the installed-build soak before using its memory, lag, or heartbeat data to pick the next performance fix.",
+          actions: [
+            riskAction({
+              id: "restart-installed-build-soak",
+              kind: "manual",
+              title: "Restart the installed-build soak",
+              notes:
+                "This runner can identify stale soak evidence, but the soak loop itself is environment-specific and should be restarted by the active soak workflow.",
+            }),
+          ],
         }),
       );
     }
@@ -1077,6 +1127,17 @@ export function collectRiskSnapshot({
         evidence: [soak.soakDir],
         remediation:
           "Inspect the soak loop and restart it before treating soak-backed performance targets as measured evidence.",
+        actions: [
+          riskAction({
+            id: "repair-soak-pointer",
+            kind: "local-command",
+            title: "Try repairing the active soak pointer",
+            safety: "safe-local",
+            command: "node scripts/nightly-self-improve.mjs --repair-soak-pointer",
+            notes:
+              "Repairs only when a newer readable soak exists under the same soak root.",
+          }),
+        ],
       }),
     );
   }
@@ -1094,6 +1155,15 @@ export function collectRiskSnapshot({
         ],
         remediation:
           "Restart or continue the installed-build soak before using memory, lag, or heartbeat data to select a performance fix.",
+        actions: [
+          riskAction({
+            id: "continue-installed-build-soak",
+            kind: "manual",
+            title: "Continue or restart the installed-build soak",
+            notes:
+              "The runner needs more fresh samples before treating performance evidence as a target.",
+          }),
+        ],
       }),
     );
   }
@@ -1111,6 +1181,17 @@ export function collectRiskSnapshot({
         ],
         remediation:
           "Refresh the current soak pointer after the soak loop restarts so future runs use the active installed-build evidence directly.",
+        actions: [
+          riskAction({
+            id: "repair-soak-pointer",
+            kind: "local-command",
+            title: "Repair the active soak pointer",
+            safety: "safe-local",
+            command: "node scripts/nightly-self-improve.mjs --repair-soak-pointer",
+            notes:
+              "Updates the pointer to the newest readable soak without contacting providers or launching the app.",
+          }),
+        ],
       }),
     );
   }
@@ -1125,6 +1206,15 @@ export function collectRiskSnapshot({
           evidence: [peer.path, ...shortStatusPaths(peer.status).slice(0, 8)],
           remediation:
             "Treat the peer as active work. Compare it read-only and do not cherry-pick from it until its state is understood.",
+          actions: [
+            riskAction({
+              id: "inspect-dirty-peer",
+              kind: "manual",
+              title: "Inspect dirty peer worktree",
+              notes:
+                "Peer changes may belong to another active agent, so the runner should not auto-clean them.",
+            }),
+          ],
         }),
       );
     }
@@ -1140,6 +1230,15 @@ export function collectRiskSnapshot({
           ],
           remediation:
             "Prefer reimplementing the useful idea on current dev over merging or cherry-picking stale work directly.",
+          actions: [
+            riskAction({
+              id: "review-stale-peer",
+              kind: "manual",
+              title: "Review stale peer worktree before reuse",
+              notes:
+                "Use the peer only as read-only evidence unless it is rebased and revalidated.",
+            }),
+          ],
         }),
       );
     }
@@ -1157,6 +1256,15 @@ export function collectRiskSnapshot({
         ]),
         remediation:
           "Pick one owner or merge the safer subset before continuing so parallel agents do not publish competing fixes for the same surface.",
+        actions: [
+          riskAction({
+            id: "dedupe-peer-work",
+            kind: "manual",
+            title: "Assign a single owner for overlapping peer work",
+            notes:
+              "Duplicate code ownership needs a human or active agent decision before publishing.",
+          }),
+        ],
       }),
     );
   }
@@ -1184,6 +1292,15 @@ export function collectRiskSnapshot({
           evidence: [automation.path],
           remediation:
             "Continue only if this evidence source is optional for the selected target, otherwise recreate or refresh it first.",
+          actions: [
+            riskAction({
+              id: `refresh-${automation.name}`,
+              kind: "manual",
+              title: `Refresh ${automation.name} evidence`,
+              notes:
+                "The runner records the missing evidence but does not guess how to recreate this source.",
+            }),
+          ],
         }),
       );
     } else if (/paused/i.test(automation.status)) {
@@ -1195,6 +1312,17 @@ export function collectRiskSnapshot({
           evidence: [automation.path, `status ${automation.status}`],
           remediation:
             "Resume or account for the paused automation before trusting overnight health or bug-scan coverage.",
+          actions: [
+            riskAction({
+              id: `resume-${automation.name}`,
+              kind: "automation-update",
+              title: `Resume ${automation.name} automation`,
+              safety: "agent-tool",
+              automationId: automation.name,
+              notes:
+                "Requires the Codex automation tool because this is not a repo-local file edit.",
+            }),
+          ],
         }),
       );
     }
@@ -1207,6 +1335,7 @@ export function collectRiskSnapshot({
     warningCount: risks.filter((risk) => risk.severity === "warning").length,
     infoCount: risks.filter((risk) => risk.severity === "info").length,
     automationStatuses,
+    actionCount: risks.reduce((count, risk) => count + (risk.actions?.length ?? 0), 0),
     risks,
   };
 }
@@ -1627,6 +1756,7 @@ export function buildReport({ repo, soak, riskSnapshot, duplicateWork, outcomeLe
     `- Blockers: ${numberFormatter.format(riskSnapshot?.blockerCount ?? 0)}`,
     `- Warnings: ${numberFormatter.format(riskSnapshot?.warningCount ?? 0)}`,
     `- Info: ${numberFormatter.format(riskSnapshot?.infoCount ?? 0)}`,
+    `- Actions: ${numberFormatter.format(riskSnapshot?.actionCount ?? 0)}`,
     "",
     ...(riskSnapshot?.risks ?? []).slice(0, 8).map(
       (risk) => `- ${risk.severity}: ${risk.title}`,
@@ -1731,6 +1861,18 @@ function renderRiskSnapshotMarkdown(riskSnapshot) {
           "",
           risk.remediation,
           "",
+          ...(risk.actions?.length
+            ? [
+                "Actions:",
+                "",
+                ...risk.actions.map((action) =>
+                  `- ${action.title} (${action.kind}, ${action.safety})${
+                    action.command ? `: \`${action.command}\`` : ""
+                  }`,
+                ),
+                "",
+              ]
+            : []),
         ])
       : ["No preflight risks detected.", ""]),
     "## Automation Statuses",
@@ -1742,6 +1884,41 @@ function renderRiskSnapshotMarkdown(riskSnapshot) {
         )
       : ["- No automation status files checked."]),
     "",
+  ].join("\n");
+}
+
+function flattenRiskActions(riskSnapshot) {
+  return (riskSnapshot.risks ?? []).flatMap((risk) =>
+    (risk.actions ?? []).map((action) => ({
+      ...action,
+      riskId: risk.id,
+      riskTitle: risk.title,
+      severity: risk.severity,
+    })),
+  );
+}
+
+function renderPreflightActionsMarkdown(riskSnapshot) {
+  const actions = flattenRiskActions(riskSnapshot);
+  return [
+    "# Nightly Preflight Actions",
+    "",
+    `Actions: ${numberFormatter.format(actions.length)}`,
+    "",
+    ...(actions.length > 0
+      ? actions.flatMap((action) => [
+          `## ${action.title}`,
+          "",
+          `Risk: ${action.riskTitle}`,
+          `Severity: ${action.severity}`,
+          `Kind: ${action.kind}`,
+          `Safety: ${action.safety}`,
+          ...(action.command ? [`Command: \`${action.command}\``] : []),
+          ...(action.automationId ? [`Automation: ${action.automationId}`] : []),
+          ...(action.notes ? ["", action.notes] : []),
+          "",
+        ])
+      : ["No preflight actions available.", ""]),
   ].join("\n");
 }
 
@@ -1770,6 +1947,7 @@ export function buildExecutionPlan(selected) {
         "git fetch --all --prune",
         "git status --short",
         "node scripts/nightly-self-improve.mjs --dry-run --json",
+        "# Read preflight-actions.md before manually fixing risk-snapshot warnings.",
       ],
     },
   ];
@@ -1896,6 +2074,7 @@ export function writeRunPlan({ runDir, repo, soak, riskSnapshot, duplicateWork, 
       blockerCount: 0,
       warningCount: 0,
       infoCount: 0,
+      actionCount: 0,
       automationStatuses: [],
       risks: [],
     };
@@ -1926,6 +2105,8 @@ export function writeRunPlan({ runDir, repo, soak, riskSnapshot, duplicateWork, 
   writeFileSync(path.join(runDir, "targets.json"), `${JSON.stringify({ repo, soak, riskSnapshot: safeRiskSnapshot, duplicateWork: safeDuplicateWork, peerWorktrees, outcomeLedger, executionPlan, candidates, selected }, null, 2)}\n`);
   writeFileSync(path.join(runDir, "risk-snapshot.json"), `${JSON.stringify(safeRiskSnapshot, null, 2)}\n`);
   writeFileSync(path.join(runDir, "risk-snapshot.md"), renderRiskSnapshotMarkdown(safeRiskSnapshot));
+  writeFileSync(path.join(runDir, "preflight-actions.json"), `${JSON.stringify(flattenRiskActions(safeRiskSnapshot), null, 2)}\n`);
+  writeFileSync(path.join(runDir, "preflight-actions.md"), renderPreflightActionsMarkdown(safeRiskSnapshot));
   writeFileSync(path.join(runDir, "duplicate-work.json"), `${JSON.stringify(safeDuplicateWork, null, 2)}\n`);
   writeFileSync(path.join(runDir, "duplicate-work.md"), renderDuplicateWorkMarkdown(safeDuplicateWork));
   writeFileSync(path.join(runDir, "execution-plan.json"), `${JSON.stringify(executionPlan, null, 2)}\n`);
@@ -1957,6 +2138,7 @@ export function writeRunPlan({ runDir, repo, soak, riskSnapshot, duplicateWork, 
     reportPath: path.join(runDir, "report.md"),
     tasksDir,
     riskSnapshotPath: path.join(runDir, "risk-snapshot.md"),
+    preflightActionsPath: path.join(runDir, "preflight-actions.md"),
     duplicateWorkPath: path.join(runDir, "duplicate-work.md"),
     executionPlanPath: path.join(runDir, "execution-plan.md"),
     outcomeCloseoutPath: path.join(runDir, "outcome-closeout.md"),
@@ -2016,6 +2198,7 @@ function textSummary(plan, writeResult, args) {
     lines.push(`Report: ${writeResult.reportPath}`);
     lines.push(`Tasks: ${writeResult.tasksDir}`);
     lines.push(`Risk snapshot: ${writeResult.riskSnapshotPath}`);
+    lines.push(`Preflight actions: ${writeResult.preflightActionsPath}`);
     lines.push(`Duplicate work: ${writeResult.duplicateWorkPath}`);
     lines.push(`Execution plan: ${writeResult.executionPlanPath}`);
     lines.push(`Outcome closeout: ${writeResult.outcomeCloseoutPath}`);
