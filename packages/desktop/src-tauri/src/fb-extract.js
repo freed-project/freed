@@ -35,6 +35,107 @@
     return Math.round(num);
   }
 
+  var FACEBOOK_UI_LABELS = new Set([
+    "account",
+    "ads manager",
+    "create new account",
+    "events",
+    "facebook",
+    "feeds",
+    "friends",
+    "gaming",
+    "groups",
+    "home",
+    "log in",
+    "marketplace",
+    "memories",
+    "menu",
+    "messenger",
+    "meta",
+    "notifications",
+    "pages",
+    "profile",
+    "reels",
+    "saved",
+    "search facebook",
+    "see less",
+    "see more",
+    "sign up",
+    "video",
+    "watch",
+    "your shortcuts",
+  ]);
+
+  var FACEBOOK_BLOCKED_PATHS = new Set([
+    "ads",
+    "bookmarks",
+    "events",
+    "friends",
+    "gaming",
+    "groups",
+    "help",
+    "home",
+    "login",
+    "marketplace",
+    "me",
+    "memories",
+    "messages",
+    "notifications",
+    "pages",
+    "privacy",
+    "recover",
+    "reg",
+    "reel",
+    "reels",
+    "saved",
+    "settings",
+    "stories",
+    "watch",
+  ]);
+
+  function normalizeLabel(value) {
+    return (value || "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  }
+
+  function isFacebookUiChromeLabel(value) {
+    var normalized = normalizeLabel(value);
+    if (!normalized) return true;
+    if (FACEBOOK_UI_LABELS.has(normalized)) return true;
+    if (/^(create|log in|sign up|search|switch|manage)\b/.test(normalized)) return true;
+    if (/\b(shortcuts|notifications|messenger|marketplace)\b/.test(normalized)) return true;
+    return false;
+  }
+
+  function isValidFacebookActorUrl(value) {
+    if (!value) return false;
+    try {
+      var url = new URL(value, "https://www.facebook.com/");
+      var host = url.hostname.toLowerCase();
+      if (host !== "facebook.com" && !host.endsWith(".facebook.com")) return false;
+
+      var parts = url.pathname.split("/").filter(Boolean);
+      var first = parts[0] ? parts[0].toLowerCase() : "";
+      if (!first || FACEBOOK_BLOCKED_PATHS.has(first)) return false;
+
+      if (first === "profile.php") {
+        return /^\d+$/.test(url.searchParams.get("id") || "");
+      }
+
+      return /^[a-z0-9][a-z0-9._-]{1,79}$/i.test(parts[0]);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function isValidFacebookAuthor(name, profileUrl) {
+    return !isFacebookUiChromeLabel(name) && isValidFacebookActorUrl(profileUrl);
+  }
+
   function extractHashtags(text) {
     return (text.match(/#(\w+)/g) || []).map(function (h) {
       return h.slice(1).toLowerCase();
@@ -176,7 +277,7 @@
       var h3link = h3.querySelector("a[href]");
       if (h3link) {
         var h3text = (h3link.textContent || "").trim();
-        if (h3text.length > 1 && h3text.length < 80) {
+        if (h3text.length > 1 && h3text.length < 80 && isValidFacebookAuthor(h3text, h3link.href)) {
           name = h3text;
           profileUrl = h3link.href;
         }
@@ -191,8 +292,11 @@
     if (!name) {
       var h4 = el.querySelector("h4 a[href]");
       if (h4) {
-        name = (h4.textContent || "").trim();
-        profileUrl = h4.href;
+        var h4text = (h4.textContent || "").trim();
+        if (isValidFacebookAuthor(h4text, h4.href)) {
+          name = h4text;
+          profileUrl = h4.href;
+        }
       }
     }
 
@@ -204,6 +308,7 @@
         if (
           label.length > 2 &&
           label.length < 80 &&
+          isValidFacebookAuthor(label, ariaLinks[i].href) &&
           !/^(Like|Comment|Share|Reply|More|See|View|Photo|Video|Haha|Wow|Sad|Angry|Love|Care|Open|Close|Play|Mute)/i.test(
             label
           )
@@ -225,10 +330,11 @@
           !href.includes("/groups/") &&
           !href.includes("/pages/") &&
           !href.includes("/settings") &&
-          !href.includes("/marketplace")
+          !href.includes("/marketplace") &&
+          isValidFacebookActorUrl(href)
         ) {
           var lt = (links[j].textContent || "").trim();
-          if (lt.length > 1 && lt.length < 80) {
+          if (lt.length > 1 && lt.length < 80 && !isFacebookUiChromeLabel(lt)) {
             name = lt;
             profileUrl = href;
             break;
@@ -246,6 +352,10 @@
         avatarUrl = imgs[m].src;
         break;
       }
+    }
+
+    if (!isValidFacebookAuthor(name, profileUrl)) {
+      return { name: null, profileUrl: null, avatarUrl: null };
     }
 
     return { name: name, profileUrl: profileUrl, avatarUrl: avatarUrl };
@@ -428,6 +538,8 @@
       var ts = extractTimestamp(el);
       var postRef = extractPostId(el);
       var group = extractGroup(el);
+
+      if (!author.name || !author.profileUrl) continue;
 
       // Extract media
       var imgEls = el.querySelectorAll(

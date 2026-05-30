@@ -30,6 +30,7 @@ export * from "./friends";
 export * from "./friend-suggestions";
 export * from "./identity-graph";
 export * from "./contact-sync-state";
+export * from "./social-account-validity";
 
 // Re-export location extraction utilities (browser-safe, no deps)
 export * from "./location";
