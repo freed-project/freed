@@ -296,12 +296,14 @@ const CLOUD_TOKEN_META_KEY = (p: CloudProvider) => `freed_cloud_token_meta_${p}`
 const UPLOAD_DEBOUNCE_MS = 2_000;
 const TOKEN_REFRESH_SKEW_MS = 60_000;
 const GOOGLE_TOKEN_REFRESH_FALLBACK_TTL_MS = 55 * 60 * 1000;
+const AUTH_FAILURE_REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
 
 /** Per-provider abort controllers, upload timers, and doc-change unsubscribers. */
 const cloudAborts = new Map<CloudProvider, AbortController>();
 const uploadTimers = new Map<CloudProvider, ReturnType<typeof setTimeout>>();
 const cloudChangeUnsubscribes = new Map<CloudProvider, () => void>();
 const cloudTokenRefreshes = new Map<CloudProvider, Promise<string | null>>();
+const cloudAuthFailureRefreshes = new Map<CloudProvider, number>();
 
 // Desktop OAuth client IDs. These are public and embedded in the app bundle.
 const DEFAULT_GDRIVE_DESKTOP_CLIENT_ID =
@@ -398,9 +400,14 @@ function readCloudTokenBundle(provider: CloudProvider): CloudTokenBundle | null 
 
 /** Persist OAuth credentials for a cloud provider. */
 export function storeCloudToken(provider: CloudProvider, token: string | CloudTokenBundle): void {
+  const previous = readCloudTokenBundle(provider);
   const bundle = typeof token === "string" ? { accessToken: token } : token;
-  localStorage.setItem(CLOUD_TOKEN_KEY(provider), bundle.accessToken);
-  localStorage.setItem(CLOUD_TOKEN_META_KEY(provider), JSON.stringify(bundle));
+  const storedBundle: CloudTokenBundle = {
+    ...bundle,
+    refreshToken: bundle.refreshToken ?? previous?.refreshToken,
+  };
+  localStorage.setItem(CLOUD_TOKEN_KEY(provider), storedBundle.accessToken);
+  localStorage.setItem(CLOUD_TOKEN_META_KEY(provider), JSON.stringify(storedBundle));
 }
 
 /** Retrieve the stored OAuth access token for a cloud provider. */
@@ -412,6 +419,51 @@ function shouldRefreshCloudToken(bundle: CloudTokenBundle, now = Date.now()): bo
   return typeof bundle.expiresAt === "number"
     && Number.isFinite(bundle.expiresAt)
     && bundle.expiresAt - now <= TOKEN_REFRESH_SKEW_MS;
+}
+
+function cloudTokenExpiresInMs(bundle: CloudTokenBundle, now = Date.now()): number | null {
+  return typeof bundle.expiresAt === "number" && Number.isFinite(bundle.expiresAt)
+    ? bundle.expiresAt - now
+    : null;
+}
+
+function authFailureStatus(error: unknown): number | undefined {
+  return typeof error === "object" && error !== null && "status" in error
+    ? (error as { status?: number }).status
+    : undefined;
+}
+
+async function refreshCloudTokenAfterAuthFailure(
+  provider: CloudProvider,
+  bundle: CloudTokenBundle,
+  error: unknown,
+): Promise<string | null> {
+  const status = authFailureStatus(error);
+  if (status !== 401) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn(`[cloud/${provider}] auth failure is not refreshable status=${status ?? "unknown"} reason=${message}`);
+    throw error;
+  }
+
+  if (!bundle.refreshToken) {
+    log.warn(`[cloud/${provider}] auth failure cannot refresh because no refresh token is stored`);
+    throw error;
+  }
+
+  const now = Date.now();
+  const lastRefreshAt = cloudAuthFailureRefreshes.get(provider);
+  if (typeof lastRefreshAt === "number" && now - lastRefreshAt < AUTH_FAILURE_REFRESH_COOLDOWN_MS) {
+    const ageMs = now - lastRefreshAt;
+    log.warn(`[cloud/${provider}] auth failure refresh suppressed age_ms=${ageMs.toLocaleString()}`);
+    throw error;
+  }
+
+  cloudAuthFailureRefreshes.set(provider, now);
+  const expiresInMs = cloudTokenExpiresInMs(bundle, now);
+  log.info(
+    `[cloud/${provider}] refreshing token after auth failure status=${status} expires_in_ms=${expiresInMs?.toLocaleString() ?? "unknown"}`,
+  );
+  return refreshCloudToken(provider, bundle);
 }
 
 async function refreshCloudToken(provider: CloudProvider, bundle: CloudTokenBundle): Promise<string | null> {
@@ -610,6 +662,7 @@ export function getActiveProviders(): CloudProvider[] {
 export function clearCloudProvider(provider: CloudProvider): void {
   localStorage.removeItem(CLOUD_TOKEN_KEY(provider));
   localStorage.removeItem(CLOUD_TOKEN_META_KEY(provider));
+  cloudAuthFailureRefreshes.delete(provider);
   stopCloudSync(provider);
 }
 
@@ -898,11 +951,13 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
           return;
         } catch (error) {
           if (signal.aborted) return;
-          const status = typeof error === "object" && error !== null && "status" in error
-            ? (error as { status?: number }).status
-            : undefined;
+          const status = authFailureStatus(error);
           if (status !== 401 && status !== 403) throw error;
-          await refreshCloudToken("gdrive", readCloudTokenBundle("gdrive") ?? { accessToken: pollToken });
+          await refreshCloudTokenAfterAuthFailure(
+            "gdrive",
+            readCloudTokenBundle("gdrive") ?? { accessToken: pollToken },
+            error,
+          );
         }
       }
     };
