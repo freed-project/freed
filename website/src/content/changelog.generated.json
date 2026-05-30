@@ -1,5 +1,40 @@
 [
   {
+    "version": "26.5.2900-dev",
+    "tagName": "v26.5.2900-dev",
+    "channel": "dev",
+    "date": "2026-05-30T05:19:01Z",
+    "deck": "Google sign-in and interaction polish",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Freed Desktop now routes Google Drive and Google Contacts token exchange through the server proxy, keeping the Google client secret out of the app bundle while allowing the desktop OAuth client to connect."
+      },
+      {
+        "text": "The dev release workflow now forces the Google proxy path and includes a guard that prevents direct Google token exchange from shipping again."
+      },
+      {
+        "text": "Focus mode now uses lighter emphasis so the active reading surface feels calmer."
+      },
+      {
+        "text": "Friends graph pinning stays intentional: dense friends graph interactions no longer create accidental pinned states when the graph is already heavily populated."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2900-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.5.2900-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.5.2900-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2900-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
     "version": "26.5.2700-dev",
     "tagName": "v26.5.2700-dev",
     "channel": "dev",
@@ -109,7 +144,7 @@
     "tagName": "v26.5.1112-dev",
     "channel": "dev",
     "date": "2026-05-12T00:39:08Z",
-    "deck": "Google OAuth runs natively in Freed Desktop, Story wall publishing lands, scraper memory gates tighten, and dense Map motion stays inside the frame budget",
+    "deck": "Google sync, Story wall, scraper gates, and dense Map movement improve",
     "features": [
       {
         "text": "Story wall publishing"
@@ -117,66 +152,60 @@
     ],
     "fixes": [
       {
-        "text": "Reader, feed, and header polish"
+        "text": "Completes Google Contacts sync in Freed Desktop"
       },
       {
-        "text": "Capture and scraper reliability fixes"
+        "text": "Shares native Google OAuth credentials between Drive and Contacts refresh"
       },
       {
-        "text": "Complete Google Contacts sync in Freed Desktop"
+        "text": "Surfaces Google OAuth and People API failure details in Settings instead of generic load errors"
       },
       {
-        "text": "Keep friends graph sync errors recoverable"
+        "text": "Keeps dense Map focused markers visible during movement"
       },
       {
-        "text": "Test coverage and performance hardening"
+        "text": "Keeps Friends graph sync errors recoverable"
       },
       {
-        "text": "Release build and type-safety cleanup"
+        "text": "Reports throttled renderer heartbeats clearly and separates Freed WebKit memory from machine-wide totals"
       },
       {
-        "text": "Route Google Drive through native sync requests"
+        "text": "Gates social scrapes, session slots, and optional story checks on resident memory pressure"
       },
       {
-        "text": "Open the full Map from Friends detail with one atomic store update"
+        "text": "Keeps dense Map motion inside the frame budget"
+      },
+      {
+        "text": "Skips hidden Friends provider labels during graph motion"
+      },
+      {
+        "text": "Retries the Friends last-seen route commit when the store reaches Map before the full Map surface mounts"
+      },
+      {
+        "text": "Lightens Settings moving chrome while the dialog is in motion"
+      },
+      {
+        "text": "Tightens the social scraper resident memory start budget"
       }
     ],
     "followUps": [
       {
-        "text": "Lighten settings moving chrome"
+        "text": "Continue monitoring Settings scroll and scraper memory pressure under installed dev builds"
       },
       {
-        "text": "Reduce settings scroll overdraw"
+        "text": "Friends navigation recovers from late Map mounting"
       },
       {
-        "text": "Reader, sidebar, and settings UX work"
+        "text": "Friends navigation and dense Map movement get steadier"
       },
       {
-        "text": "Trim reader rail work and stabilize friends perf"
+        "text": "Continue monitoring Friends to Map handoffs and dense Map movement under installed dev builds"
       },
       {
-        "text": "Isolate social scraper webkit stores"
-      },
-      {
-        "text": "Gate startup social scraper pressure"
-      },
-      {
-        "text": "Recycle blocked scraper windows"
-      },
-      {
-        "text": "Reserve scraper memory headroom"
-      },
-      {
-        "text": "Slim desktop e2e gates"
+        "text": "Friends recovery and renderer health reporting improve"
       },
       {
         "text": "Keep memory-blocked scrapes from holding the shared scraper slot"
-      },
-      {
-        "text": "Continue passive soak metrics until Apple Events authorization is restored for active UI driving"
-      },
-      {
-        "text": "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss"
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1112-dev",
@@ -257,39 +286,32 @@
     "tagName": "v26.5.1015-dev",
     "channel": "dev",
     "date": "2026-05-11T04:47:52Z",
-    "deck": "AI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers",
-    "features": [
-      {
-        "text": "AI ranked friend suggestions"
-      },
-      {
-        "text": "Support Friends graph pinch zoom"
-      },
-      {
-        "text": "Friends relationship tiers"
-      }
-    ],
+    "deck": "Settings, Friends graph, and Map handoffs stay stable through release validation",
+    "features": [],
     "fixes": [
       {
-        "text": "Reader, feed, and header polish"
+        "text": "Pauses Settings descendant transitions while the dialog is moving"
       },
       {
-        "text": "Test coverage and performance hardening"
+        "text": "Reduces Settings scroll paint work and interaction invalidation"
       },
       {
-        "text": "Release build and type-safety cleanup"
+        "text": "Flushes Friends detail to Map handoffs before selection changes"
       },
       {
-        "text": "Route Google Drive through native sync requests"
+        "text": "Flushes mobile Friends toolbar switches between Details and graph modes"
       },
       {
-        "text": "Optimized social scraper frame drops"
+        "text": "Caches the Friends graph interaction layer during dense interaction"
       },
       {
-        "text": "Dedupe Instagram story captures"
+        "text": "Guards Friends graph Pixi teardown so the last-seen Map handoff cannot show the fatal error screen"
       },
       {
-        "text": "Pause Settings descendant transitions while the dialog is moving"
+        "text": "Keeps the collapsed Friends detail-card regression focused on selected-person behavior"
+      },
+      {
+        "text": "Guards the Friends Map surface handoff during route changes"
       },
       {
         "text": "Open the full Map from Friends detail with one atomic store update"
@@ -298,54 +320,27 @@
         "text": "Flush the Friends to Map handoff at the click boundary"
       },
       {
-        "text": "Flush mobile Friends toolbar switches between Details and graph modes"
+        "text": "Friends graph perf telemetry now reports dense interaction rebuild count, with a release regression guard for the 1,600-person zoom and pan case"
       },
       {
-        "text": "The collapsed Friends detail card empty-space regression are now more stable"
-      },
-      {
-        "text": "Settings scrolling is lighter, and Friends view transitions are stable through the release regression gate"
-      },
-      {
-        "text": "Guarded Friends graph Pixi teardown so the Last seen to Map handoff cannot be replaced by the fatal error screen"
-      },
-      {
-        "text": "Kept the collapsed Friends detail-card regression focused on selected-person behavior instead of a CI-sensitive graph node point lookup"
-      },
-      {
-        "text": "V26.5.1013-dev replaces the failed v26.5.1012-dev validation tag, which produced no installable artifacts"
+        "text": "Stabilizes Friends empty graph, Tauri mock, and collapsed detail-card validation"
       }
     ],
     "followUps": [
       {
-        "text": "Reader, sidebar, and settings UX work"
-      },
-      {
-        "text": "Trim reader rail work and stabilize friends perf"
-      },
-      {
-        "text": "Isolate social scraper webkit stores"
-      },
-      {
-        "text": "Gate startup social scraper pressure"
-      },
-      {
-        "text": "Recycle blocked scraper windows"
-      },
-      {
-        "text": "Reserve scraper memory headroom"
-      },
-      {
-        "text": "Slim desktop e2e gates"
+        "text": "Continue the installed dev build soak while Settings scroll and Friends graph performance settle"
       },
       {
         "text": "Continue passive soak metrics until Apple Events authorization is restored for active UI driving"
       },
       {
+        "text": "Settings scrolling is lighter, and Friends view transitions are stable through the release regression gate"
+      },
+      {
         "text": "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss"
       },
       {
-        "text": "Settings scroll and Friends graph stability"
+        "text": "Settings interaction work, Friends graph crash protection, and the collapsed Friends detail card stay stable"
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1015-dev",
@@ -1778,16 +1773,10 @@
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2904-dev",
     "prNumbers": [],
     "builds": [
-      "26.4.2902-dev",
       "26.4.2903-dev",
       "26.4.2904-dev"
     ],
     "buildLinks": [
-      {
-        "version": "26.4.2902-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2902-dev",
-        "channel": "dev"
-      },
       {
         "version": "26.4.2903-dev",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2903-dev",
