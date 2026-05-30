@@ -783,7 +783,7 @@ const phases: Phase[] = [
     number: 10,
     title: "Polish",
     description:
-      "Onboarding, statistics, global animation controls, expanded local content signals with Desktop and PWA backfill, inclusive saved feed filter presets, compact event extraction, local semantic enrichment for friend suggestions, unified AI provider settings, Light, Balanced, and Pro Integrated AI packs with semantic scan health, plugin API, community infrastructure, peer-aware nightly improvement planning, and deeper crash recovery hardening.",
+      "Onboarding, statistics, global animation controls, expanded local content signals with Desktop and PWA backfill, inclusive saved feed filter presets, compact event extraction, local semantic enrichment for friend suggestions, unified AI provider settings, Light, Balanced, and Pro Integrated AI packs with semantic scan health, plugin API, community infrastructure, preflight-aware nightly improvement planning, and deeper crash recovery hardening.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-10-POLISH.md",

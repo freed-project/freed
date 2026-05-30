@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   statSync,
@@ -26,6 +27,7 @@ const DEFAULT_DEV_BOT_MEMORY =
 const DEFAULT_SOAK_POINTER = "/tmp/freed-perf-soak/current-soak-dir";
 const DEFAULT_OUTCOME_LEDGER = "/tmp/freed-nightly-self-improve/outcomes.jsonl";
 const MAX_PEER_EVIDENCE_FILES = 12;
+const STALE_SOAK_MS = 2 * 60 * 60 * 1000;
 
 const GIB = 1024 * 1024 * 1024;
 const numberFormatter = new Intl.NumberFormat("en-US", {
@@ -183,6 +185,56 @@ function readJsonLines(filePath) {
         return [];
       }
     });
+}
+
+function countFiles(dirPath, limit = 500) {
+  if (!dirPath || !existsSync(dirPath)) {
+    return 0;
+  }
+
+  let count = 0;
+  const pending = [dirPath];
+  while (pending.length > 0 && count < limit) {
+    const current = pending.pop();
+    if (!current) {
+      continue;
+    }
+    let entries = [];
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        pending.push(path.join(current, entry.name));
+      } else if (entry.isFile()) {
+        count += 1;
+      }
+      if (count >= limit) {
+        break;
+      }
+    }
+  }
+  return count;
+}
+
+function parseTimestampMs(value) {
+  if (!value) {
+    return null;
+  }
+  const numericValue = Number(value);
+  if (Number.isFinite(numericValue) && numericValue > 0) {
+    return numericValue;
+  }
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readAutomationStatus(filePath) {
+  const text = readText(filePath);
+  const match = text.match(/^\s*status\s*=\s*"([^"]+)"/m);
+  return match?.[1] ?? "";
 }
 
 export function summarizeOutcomeLedger(filePath) {
@@ -426,7 +478,11 @@ export function summarizeDailyBugMemory(memoryPath) {
 
 function git(repo, args) {
   try {
-    return execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+    return execFileSync("git", args, {
+      cwd: repo,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trimEnd();
   } catch {
     return "";
   }
@@ -594,6 +650,182 @@ export function collectRepoSnapshot(repo) {
   };
 }
 
+function riskItem({ id, severity, title, evidence, remediation }) {
+  return { id, severity, title, evidence, remediation };
+}
+
+export function collectRiskSnapshot({
+  repoPath,
+  repo,
+  soak,
+  peerWorktrees = [],
+  crashAutomation,
+  dailyBugMemory,
+  devBotMemory,
+  nowMs = Date.now(),
+}) {
+  const risks = [];
+  const repoStatusPaths = shortStatusPaths(repo.status ?? "");
+  if (repoStatusPaths.length > 0) {
+    risks.push(
+      riskItem({
+        id: "dirty-current-worktree",
+        severity: "blocker",
+        title: "Current worktree has uncommitted changes",
+        evidence: repoStatusPaths.slice(0, 12),
+        remediation:
+          "Inspect the current worktree before starting autonomous edits so generated files or user changes do not get mixed into the next fix.",
+      }),
+    );
+  }
+
+  for (const relativePath of [
+    "packages/desktop/playwright-report",
+    "packages/desktop/test-results",
+    "packages/desktop/.playwright-mcp",
+  ]) {
+    const absolutePath = path.join(repoPath, relativePath);
+    const fileCount = countFiles(absolutePath);
+    if (fileCount > 0) {
+      risks.push(
+        riskItem({
+          id: `generated-artifacts-${relativePath.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
+          severity: "warning",
+          title: `Generated artifacts exist in ${relativePath}`,
+          evidence: [absolutePath, `${numberFormatter.format(fileCount)} files`],
+          remediation:
+            "Remove generated reports or intentionally stage them before publishing so validation leftovers do not pollute the branch.",
+        }),
+      );
+    }
+  }
+
+  if (!existsSync(path.join(repoPath, "node_modules"))) {
+    risks.push(
+      riskItem({
+        id: "missing-root-node-modules",
+        severity: "blocker",
+        title: "Root dependencies are not installed",
+        evidence: [path.join(repoPath, "node_modules")],
+        remediation:
+          "Bootstrap the worktree before running validation or planning work that depends on repo scripts.",
+      }),
+    );
+  }
+
+  if (soak.exists && soak.lastTimestamp) {
+    const lastSoakMs = parseTimestampMs(soak.lastTimestamp);
+    if (lastSoakMs !== null && nowMs - lastSoakMs > STALE_SOAK_MS) {
+      risks.push(
+        riskItem({
+          id: "stale-soak-evidence",
+          severity: "warning",
+          title: "Installed-build soak evidence is stale",
+          evidence: [
+            soak.soakDir,
+            `Last sample ${soak.lastTimestamp}`,
+            `Age ${numberFormatter.format(Math.round((nowMs - lastSoakMs) / 60000))} min`,
+          ],
+          remediation:
+            "Restart the installed-build soak before using its memory, lag, or heartbeat data to pick the next performance fix.",
+        }),
+      );
+    }
+  }
+
+  if (soak.exists && soak.sampleCount === 0) {
+    risks.push(
+      riskItem({
+        id: "empty-soak-evidence",
+        severity: "warning",
+        title: "Installed-build soak directory has no readable samples",
+        evidence: [soak.soakDir],
+        remediation:
+          "Inspect the soak loop and restart it before treating soak-backed performance targets as measured evidence.",
+      }),
+    );
+  }
+
+  for (const peer of peerWorktrees) {
+    if (peer.status) {
+      risks.push(
+        riskItem({
+          id: `dirty-peer-${peer.branch.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
+          severity: "warning",
+          title: `Peer worktree ${peer.branch} has uncommitted changes`,
+          evidence: [peer.path, ...shortStatusPaths(peer.status).slice(0, 8)],
+          remediation:
+            "Treat the peer as active work. Compare it read-only and do not cherry-pick from it until its state is understood.",
+        }),
+      );
+    }
+    if (peer.behindCount > 25) {
+      risks.push(
+        riskItem({
+          id: `stale-peer-${peer.branch.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
+          severity: "warning",
+          title: `Peer worktree ${peer.branch} is far behind origin/dev`,
+          evidence: [
+            peer.path,
+            `Behind ${numberFormatter.format(peer.behindCount)} commits`,
+          ],
+          remediation:
+            "Prefer reimplementing the useful idea on current dev over merging or cherry-picking stale work directly.",
+        }),
+      );
+    }
+  }
+
+  const automationStatuses = [
+    ["crash-watch", crashAutomation],
+    ["daily-bug-memory", dailyBugMemory],
+    ["hourly-dev-bot-memory", devBotMemory],
+  ]
+    .filter(([, filePath]) => filePath)
+    .map(([name, filePath]) => ({
+      name,
+      path: filePath,
+      exists: existsSync(filePath),
+      status: readAutomationStatus(filePath),
+    }));
+
+  for (const automation of automationStatuses) {
+    if (!automation.exists) {
+      risks.push(
+        riskItem({
+          id: `missing-${automation.name}`,
+          severity: automation.name === "crash-watch" ? "warning" : "info",
+          title: `${automation.name} evidence file is missing`,
+          evidence: [automation.path],
+          remediation:
+            "Continue only if this evidence source is optional for the selected target, otherwise recreate or refresh it first.",
+        }),
+      );
+    } else if (/paused/i.test(automation.status)) {
+      risks.push(
+        riskItem({
+          id: `paused-${automation.name}`,
+          severity: "warning",
+          title: `${automation.name} automation is paused`,
+          evidence: [automation.path, `status ${automation.status}`],
+          remediation:
+            "Resume or account for the paused automation before trusting overnight health or bug-scan coverage.",
+        }),
+      );
+    }
+  }
+
+  return {
+    generatedAt: new Date(nowMs).toISOString(),
+    repoPath,
+    blockerCount: risks.filter((risk) => risk.severity === "blocker").length,
+    warningCount: risks.filter((risk) => risk.severity === "warning").length,
+    infoCount: risks.filter((risk) => risk.severity === "info").length,
+    automationStatuses,
+    risks,
+  };
+}
+
 function target({
   id,
   kind,
@@ -628,12 +860,43 @@ export function buildCandidates({
   soak,
   dailyBug,
   repo,
+  riskSnapshot,
   peerWorktrees = [],
   crashAutomationExists,
   devBotMemoryExists,
   memoryBudgetBytes,
 }) {
   const candidates = [];
+
+  if ((riskSnapshot?.blockerCount ?? 0) > 0 || (riskSnapshot?.warningCount ?? 0) > 0) {
+    candidates.push(
+      target({
+        id: "nightly-preflight-risk",
+        kind: "stability",
+        title: "Resolve nightly preflight risks before autonomous work",
+        score: (riskSnapshot?.blockerCount ?? 0) > 0 ? 99 : 73,
+        confidence: (riskSnapshot?.blockerCount ?? 0) > 0 ? 0.94 : 0.78,
+        estimatedMinutes: (riskSnapshot?.blockerCount ?? 0) > 0 ? 45 : 25,
+        rationale:
+          (riskSnapshot?.blockerCount ?? 0) > 0
+            ? `Preflight found ${numberFormatter.format(riskSnapshot.blockerCount)} blocker risk before the run can safely edit or ship.`
+            : `Preflight found ${numberFormatter.format(riskSnapshot.warningCount)} warning risks that may make overnight evidence stale or noisy.`,
+        evidence: (riskSnapshot?.risks ?? [])
+          .slice(0, 8)
+          .flatMap((risk) => [
+            `${risk.severity}: ${risk.title}`,
+            ...risk.evidence.slice(0, 3),
+          ]),
+        prompt:
+          "Read risk-snapshot.md first. Clear blocker risks before editing, refresh stale evidence when the selected target depends on it, and keep unrelated user changes out of the branch. If a risk is informational only, record why it is safe to proceed.",
+        validation: [
+          "Regenerate the nightly plan and confirm blockerCount is 0 before publishing.",
+          "Run the focused validation for any cleanup or script change.",
+          "Run validate:feature before publishing code changes.",
+        ],
+      }),
+    );
+  }
 
   for (const peer of peerWorktrees) {
     candidates.push(
@@ -916,7 +1179,7 @@ function formatCandidate(candidate, index) {
   ].join("\n");
 }
 
-export function buildReport({ repo, soak, outcomeLedger, candidates, selected, options }) {
+export function buildReport({ repo, soak, riskSnapshot, outcomeLedger, candidates, selected, options }) {
   const blockedProvider = candidates.filter((candidate) => candidate.providerVisible);
   const phases = buildNightlyPhases(selected);
   return [
@@ -936,6 +1199,16 @@ export function buildReport({ repo, soak, outcomeLedger, candidates, selected, o
     `- Max DOM nodes: ${numberFormatter.format(soak.maxDomNodes ?? 0)}`,
     `- Stale heartbeat events: ${numberFormatter.format(soak.staleHeartbeatCount)}`,
     `- Hidden timer throttled events: ${numberFormatter.format(soak.throttledHeartbeatCount)}`,
+    "",
+    "## Preflight Risks",
+    "",
+    `- Blockers: ${numberFormatter.format(riskSnapshot?.blockerCount ?? 0)}`,
+    `- Warnings: ${numberFormatter.format(riskSnapshot?.warningCount ?? 0)}`,
+    `- Info: ${numberFormatter.format(riskSnapshot?.infoCount ?? 0)}`,
+    "",
+    ...(riskSnapshot?.risks ?? []).slice(0, 8).map(
+      (risk) => `- ${risk.severity}: ${risk.title}`,
+    ),
     "",
     "## Learning Signals",
     "",
@@ -969,6 +1242,46 @@ export function buildReport({ repo, soak, outcomeLedger, candidates, selected, o
     "- Promote peer worktree comparison into an automatic import step before any new task starts.",
     "- Require evidence snapshots before every rare crash or memory fix so the next failure has better diagnostics.",
     "- Add a morning digest that ranks shipped value, residual risk, and the single next highest leverage bottleneck.",
+    "",
+  ].join("\n");
+}
+
+function renderRiskSnapshotMarkdown(riskSnapshot) {
+  return [
+    "# Nightly Preflight Risk Snapshot",
+    "",
+    `Generated: ${riskSnapshot.generatedAt}`,
+    `Repo: ${riskSnapshot.repoPath}`,
+    `Blockers: ${numberFormatter.format(riskSnapshot.blockerCount)}`,
+    `Warnings: ${numberFormatter.format(riskSnapshot.warningCount)}`,
+    `Info: ${numberFormatter.format(riskSnapshot.infoCount)}`,
+    "",
+    "## Risks",
+    "",
+    ...(riskSnapshot.risks.length > 0
+      ? riskSnapshot.risks.flatMap((risk) => [
+          `### ${risk.title}`,
+          "",
+          `Severity: ${risk.severity}`,
+          "",
+          "Evidence:",
+          "",
+          ...risk.evidence.map((item) => `- ${item}`),
+          "",
+          "Remediation:",
+          "",
+          risk.remediation,
+          "",
+        ])
+      : ["No preflight risks detected.", ""]),
+    "## Automation Statuses",
+    "",
+    ...(riskSnapshot.automationStatuses.length > 0
+      ? riskSnapshot.automationStatuses.map(
+          (automation) =>
+            `- ${automation.name}: ${automation.exists ? automation.status || "present" : "missing"} (${automation.path})`,
+        )
+      : ["- No automation status files checked."]),
     "",
   ].join("\n");
 }
@@ -1076,16 +1389,29 @@ function renderExecutionPlanMarkdown(phases) {
   ].join("\n");
 }
 
-export function writeRunPlan({ runDir, repo, soak, peerWorktrees = [], candidates, selected, options }) {
+export function writeRunPlan({ runDir, repo, soak, riskSnapshot, peerWorktrees = [], candidates, selected, options }) {
   mkdirSync(runDir, { recursive: true });
   const tasksDir = path.join(runDir, "tasks");
   mkdirSync(tasksDir, { recursive: true });
 
   const outcomeLedger = options.outcomeLedgerSummary ?? { path: options.outcomeLedger, entries: [] };
+  const safeRiskSnapshot =
+    riskSnapshot ??
+    {
+      generatedAt: new Date().toISOString(),
+      repoPath: "",
+      blockerCount: 0,
+      warningCount: 0,
+      infoCount: 0,
+      automationStatuses: [],
+      risks: [],
+    };
   const executionPlan = buildExecutionPlan(selected);
-  const report = buildReport({ repo, soak, outcomeLedger, candidates, selected, options });
+  const report = buildReport({ repo, soak, riskSnapshot: safeRiskSnapshot, outcomeLedger, candidates, selected, options });
   writeFileSync(path.join(runDir, "report.md"), report);
-  writeFileSync(path.join(runDir, "targets.json"), `${JSON.stringify({ repo, soak, peerWorktrees, outcomeLedger, executionPlan, candidates, selected }, null, 2)}\n`);
+  writeFileSync(path.join(runDir, "targets.json"), `${JSON.stringify({ repo, soak, riskSnapshot: safeRiskSnapshot, peerWorktrees, outcomeLedger, executionPlan, candidates, selected }, null, 2)}\n`);
+  writeFileSync(path.join(runDir, "risk-snapshot.json"), `${JSON.stringify(safeRiskSnapshot, null, 2)}\n`);
+  writeFileSync(path.join(runDir, "risk-snapshot.md"), renderRiskSnapshotMarkdown(safeRiskSnapshot));
   writeFileSync(path.join(runDir, "execution-plan.json"), `${JSON.stringify(executionPlan, null, 2)}\n`);
   writeFileSync(path.join(runDir, "execution-plan.md"), renderExecutionPlanMarkdown(executionPlan));
   writeFileSync(
@@ -1112,6 +1438,7 @@ export function writeRunPlan({ runDir, repo, soak, peerWorktrees = [], candidate
     runDir,
     reportPath: path.join(runDir, "report.md"),
     tasksDir,
+    riskSnapshotPath: path.join(runDir, "risk-snapshot.md"),
     executionPlanPath: path.join(runDir, "execution-plan.md"),
     outcomeTemplatePath: path.join(runDir, "outcome-template.jsonl"),
   };
@@ -1124,10 +1451,20 @@ export function planNightlyRun(args) {
   const repo = collectRepoSnapshot(args.repo);
   const peerWorktrees = collectPeerWorktrees(args.repo, args.peerWorktrees, args.peerScan);
   const outcomeLedger = summarizeOutcomeLedger(args.outcomeLedger);
+  const riskSnapshot = collectRiskSnapshot({
+    repoPath: args.repo,
+    repo,
+    soak,
+    peerWorktrees,
+    crashAutomation: args.crashAutomation,
+    dailyBugMemory: args.dailyBugMemory,
+    devBotMemory: args.devBotMemory,
+  });
   const baseCandidates = buildCandidates({
     soak,
     dailyBug,
     repo,
+    riskSnapshot,
     peerWorktrees,
     crashAutomationExists: existsSync(args.crashAutomation),
     devBotMemoryExists: existsSync(args.devBotMemory),
@@ -1135,7 +1472,7 @@ export function planNightlyRun(args) {
   });
   const candidates = applyOutcomeFeedback(baseCandidates, outcomeLedger);
   const selected = selectTargets(candidates, args);
-  return { repo, soak, dailyBug, peerWorktrees, outcomeLedger, candidates, selected };
+  return { repo, soak, dailyBug, riskSnapshot, peerWorktrees, outcomeLedger, candidates, selected };
 }
 
 function textSummary(plan, writeResult, args) {
@@ -1143,6 +1480,7 @@ function textSummary(plan, writeResult, args) {
     `Selected ${numberFormatter.format(plan.selected.length)} targets from ${numberFormatter.format(plan.candidates.length)} candidates.`,
     `Max WebKit RSS: ${formatBytes(plan.soak.maxWebKitResidentBytes)}.`,
     `Stale heartbeat events: ${numberFormatter.format(plan.soak.staleHeartbeatCount)}.`,
+    `Preflight risks: ${numberFormatter.format(plan.riskSnapshot.blockerCount)} blockers, ${numberFormatter.format(plan.riskSnapshot.warningCount)} warnings.`,
     `Peer worktrees with changes: ${numberFormatter.format(plan.peerWorktrees.length)}.`,
     `Prior outcomes loaded: ${numberFormatter.format(plan.outcomeLedger.entries.length)}.`,
   ];
@@ -1154,6 +1492,7 @@ function textSummary(plan, writeResult, args) {
   if (writeResult) {
     lines.push(`Report: ${writeResult.reportPath}`);
     lines.push(`Tasks: ${writeResult.tasksDir}`);
+    lines.push(`Risk snapshot: ${writeResult.riskSnapshotPath}`);
     lines.push(`Execution plan: ${writeResult.executionPlanPath}`);
     lines.push(`Outcome template: ${writeResult.outcomeTemplatePath}`);
   }
@@ -1183,6 +1522,7 @@ export function main(argv = process.argv.slice(2)) {
         runDir: args.runDir,
         repo: plan.repo,
         soak: plan.soak,
+        riskSnapshot: plan.riskSnapshot,
         peerWorktrees: plan.peerWorktrees,
         candidates: plan.candidates,
         selected: plan.selected,

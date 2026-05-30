@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,6 +9,8 @@ import {
   applyOutcomeFeedback,
   buildCandidates,
   buildExecutionPlan,
+  collectRepoSnapshot,
+  collectRiskSnapshot,
   formatBytes,
   parseArgs,
   parseGitWorktreePorcelain,
@@ -143,6 +146,47 @@ test("candidate selection prioritizes memory work while preserving bug scans", (
   assert.ok(!selected.some((candidate) => candidate.providerVisible));
 });
 
+test("preflight blockers outrank measured performance work", () => {
+  const candidates = buildCandidates({
+    soak: {
+      exists: true,
+      soakDir: "/tmp/freed-perf-soak/example",
+      sampleCount: 20,
+      maxWebKitResidentBytes: 4 * GIB,
+      maxEventLoopLagMs: 9,
+      maxDomNodes: 600,
+      staleHeartbeatCount: 0,
+      throttledHeartbeatCount: 0,
+      lastEvent: "renderer_heartbeat",
+    },
+    dailyBug: { exists: false },
+    repo: { branch: "feature", head: "abc1234", status: "" },
+    riskSnapshot: {
+      blockerCount: 1,
+      warningCount: 0,
+      risks: [
+        {
+          severity: "blocker",
+          title: "Current worktree has uncommitted changes",
+          evidence: ["scripts/nightly-self-improve.mjs"],
+        },
+      ],
+    },
+    peerWorktrees: [],
+    crashAutomationExists: false,
+    devBotMemoryExists: false,
+    memoryBudgetBytes: 2.5 * GIB,
+  });
+
+  const selected = selectTargets(candidates, {
+    maxTargets: 2,
+    durationMinutes: 480,
+    allowProviderVisible: false,
+  });
+
+  assert.equal(selected[0].id, "nightly-preflight-risk");
+});
+
 test("parseGitWorktreePorcelain reads branch entries", () => {
   const entries = parseGitWorktreePorcelain(
     [
@@ -166,6 +210,21 @@ test("parseGitWorktreePorcelain reads branch entries", () => {
       detached: false,
     },
   ]);
+});
+
+test("repo snapshot preserves leading status columns for changed paths", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-repo-status-"));
+  execFileSync("git", ["init"], { cwd: dir });
+  execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir });
+  execFileSync("git", ["config", "user.name", "Test"], { cwd: dir });
+  mkdirSync(path.join(dir, "docs"), { recursive: true });
+  writeFileSync(path.join(dir, "docs/example.md"), "one\n");
+  execFileSync("git", ["add", "docs/example.md"], { cwd: dir });
+  execFileSync("git", ["commit", "-m", "test"], { cwd: dir });
+  writeFileSync(path.join(dir, "docs/example.md"), "two\n");
+
+  const snapshot = collectRepoSnapshot(dir);
+  assert.match(snapshot.status, /^ M docs\/example\.md$/);
 });
 
 test("peer worktree candidates outrank generic roadmap work", () => {
@@ -244,6 +303,48 @@ test("outcome feedback raises shipped target kinds and lowers failed ones", () =
   assert.equal(adjusted[1].outcomeFeedback.failed, 2);
 });
 
+test("risk snapshot reports dirty worktrees, generated artifacts, stale soak, and paused automation", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-risk-snapshot-"));
+  const reportDir = path.join(dir, "packages/desktop/playwright-report");
+  mkdirSync(reportDir, { recursive: true });
+  writeFileSync(path.join(reportDir, "index.html"), "<html></html>");
+  mkdirSync(path.join(dir, "node_modules"), { recursive: true });
+  const automationPath = path.join(dir, "automation.toml");
+  writeFileSync(automationPath, 'status = "PAUSED"\n');
+  const nowMs = Date.parse("2026-05-29T12:00:00Z");
+
+  const snapshot = collectRiskSnapshot({
+    repoPath: dir,
+    repo: {
+      status: " M scripts/nightly-self-improve.mjs\n?? packages/desktop/test-results/out.txt",
+    },
+    soak: {
+      exists: true,
+      soakDir: "/tmp/freed-soak",
+      sampleCount: 10,
+      lastTimestamp: "2026-05-29T09:00:00Z",
+    },
+    peerWorktrees: [
+      {
+        branch: "perf/nightly-peer",
+        path: "/tmp/peer",
+        status: " M scripts/nightly-self-improve.mjs",
+        behindCount: 40,
+      },
+    ],
+    crashAutomation: automationPath,
+    dailyBugMemory: path.join(dir, "missing-memory.md"),
+    devBotMemory: path.join(dir, "missing-dev-bot.md"),
+    nowMs,
+  });
+
+  assert.equal(snapshot.blockerCount, 1);
+  assert.ok(snapshot.warningCount >= 4);
+  assert.ok(snapshot.risks.some((risk) => risk.id === "dirty-current-worktree"));
+  assert.ok(snapshot.risks.some((risk) => risk.id === "stale-soak-evidence"));
+  assert.ok(snapshot.risks.some((risk) => risk.id === "paused-crash-watch"));
+});
+
 test("writeRunPlan emits report, targets, and task prompts", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-nightly-plan-"));
   const selected = [
@@ -281,6 +382,7 @@ test("writeRunPlan emits report, targets, and task prompts", () => {
 
   assert.equal(path.basename(result.reportPath), "report.md");
   assert.equal(path.basename(result.tasksDir), "tasks");
+  assert.equal(path.basename(result.riskSnapshotPath), "risk-snapshot.md");
   assert.equal(path.basename(result.executionPlanPath), "execution-plan.md");
   assert.equal(path.basename(result.outcomeTemplatePath), "outcome-template.jsonl");
 });
