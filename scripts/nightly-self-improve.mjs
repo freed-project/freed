@@ -988,15 +988,106 @@ function buildNightlyPhases(selected) {
   return phases;
 }
 
+export function buildExecutionPlan(selected) {
+  const phases = [
+    {
+      id: "evidence-snapshot",
+      title: "Snapshot evidence",
+      stopGate: "Stop if the repo is dirty with unrelated user changes or required evidence files cannot be read.",
+      commands: [
+        "git fetch --all --prune",
+        "git status --short",
+        "node scripts/nightly-self-improve.mjs --dry-run --json",
+      ],
+    },
+  ];
+
+  if (selected.some((candidate) => candidate.kind === "peer-worktree")) {
+    phases.push({
+      id: "peer-review",
+      title: "Review peer worktrees",
+      stopGate: "Stop before editing if the peer branch is still changing or the useful change is provider-visible.",
+      commands: [
+        "git worktree list --porcelain",
+        "git diff --stat origin/dev HEAD",
+        "git diff --name-only origin/dev HEAD",
+      ],
+    });
+  }
+
+  phases.push(
+    {
+      id: "implementation",
+      title: "Implement selected targets",
+      stopGate: "Stop if a target requires provider-visible behavior changes without explicit approval.",
+      commands: selected.map((candidate) => `# ${candidate.id}: ${candidate.prompt}`),
+    },
+    {
+      id: "focused-validation",
+      title: "Run focused validation",
+      stopGate: "Stop if the focused test for the touched code path fails.",
+      commands: [
+        "node --test scripts/nightly-self-improve.test.mjs",
+        "# Add the focused product test for any non-runner changes.",
+      ],
+    },
+    {
+      id: "feature-validation",
+      title: "Run feature validation",
+      stopGate: "Stop if validate:feature fails.",
+      commands: ["corepack npm run validate:feature"],
+    },
+    {
+      id: "publish",
+      title: "Publish or update draft PR",
+      stopGate: "Stop if the branch has no product or tooling improvement beyond generated run artifacts.",
+      commands: [
+        './scripts/worktree-publish.sh --title "feat: improve nightly runner" --summary "<summary>" --test "<tests>"',
+      ],
+    },
+    {
+      id: "release-and-soak",
+      title: "Ship and soak only after real fixes",
+      stopGate: "Skip this phase when only planning artifacts changed.",
+      commands: [
+        "# Use freed-ship-build dev after fixes merge into dev.",
+        "# Install the new dev build, restart the installed-build soak, and append outcome-template.jsonl to the outcome ledger.",
+      ],
+    },
+  );
+
+  return phases;
+}
+
+function renderExecutionPlanMarkdown(phases) {
+  return [
+    "# Nightly Execution Plan",
+    "",
+    ...phases.flatMap((phase, index) => [
+      `## ${index + 1}. ${phase.title}`,
+      "",
+      `Stop gate: ${phase.stopGate}`,
+      "",
+      "Commands:",
+      "",
+      ...phase.commands.map((command) => `- \`${command}\``),
+      "",
+    ]),
+  ].join("\n");
+}
+
 export function writeRunPlan({ runDir, repo, soak, peerWorktrees = [], candidates, selected, options }) {
   mkdirSync(runDir, { recursive: true });
   const tasksDir = path.join(runDir, "tasks");
   mkdirSync(tasksDir, { recursive: true });
 
   const outcomeLedger = options.outcomeLedgerSummary ?? { path: options.outcomeLedger, entries: [] };
+  const executionPlan = buildExecutionPlan(selected);
   const report = buildReport({ repo, soak, outcomeLedger, candidates, selected, options });
   writeFileSync(path.join(runDir, "report.md"), report);
-  writeFileSync(path.join(runDir, "targets.json"), `${JSON.stringify({ repo, soak, peerWorktrees, outcomeLedger, candidates, selected }, null, 2)}\n`);
+  writeFileSync(path.join(runDir, "targets.json"), `${JSON.stringify({ repo, soak, peerWorktrees, outcomeLedger, executionPlan, candidates, selected }, null, 2)}\n`);
+  writeFileSync(path.join(runDir, "execution-plan.json"), `${JSON.stringify(executionPlan, null, 2)}\n`);
+  writeFileSync(path.join(runDir, "execution-plan.md"), renderExecutionPlanMarkdown(executionPlan));
   writeFileSync(
     path.join(runDir, "outcome-template.jsonl"),
     selected
@@ -1021,6 +1112,7 @@ export function writeRunPlan({ runDir, repo, soak, peerWorktrees = [], candidate
     runDir,
     reportPath: path.join(runDir, "report.md"),
     tasksDir,
+    executionPlanPath: path.join(runDir, "execution-plan.md"),
     outcomeTemplatePath: path.join(runDir, "outcome-template.jsonl"),
   };
 }
@@ -1062,6 +1154,7 @@ function textSummary(plan, writeResult, args) {
   if (writeResult) {
     lines.push(`Report: ${writeResult.reportPath}`);
     lines.push(`Tasks: ${writeResult.tasksDir}`);
+    lines.push(`Execution plan: ${writeResult.executionPlanPath}`);
     lines.push(`Outcome template: ${writeResult.outcomeTemplatePath}`);
   }
 
