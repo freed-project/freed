@@ -3,7 +3,7 @@
   "version": "26.5.3005-dev",
   "channel": "dev",
   "dayKey": "26.5.30",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-30T18:57:28.507Z",
   "model": "heuristic",
