@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo, cloneElement, isValidElement, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useDeferredValue, useState, useCallback, useEffect, useRef, useMemo, cloneElement, isValidElement, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import {
   resolveMapMode,
@@ -958,7 +958,8 @@ export function Sidebar({
   const handleSidebarSearchInputChange = useCallback((value: string) => {
     setSidebarSearchInput(value);
   }, []);
-  const trimmedSearchQuery = sidebarSearchInput.trim().toLocaleLowerCase();
+  const deferredSidebarSearchInput = useDeferredValue(sidebarSearchInput);
+  const trimmedSearchQuery = deferredSidebarSearchInput.trim().toLocaleLowerCase();
   const searchTerms = useMemo(
     () => trimmedSearchQuery.split(/\s+/).filter(Boolean),
     [trimmedSearchQuery],
