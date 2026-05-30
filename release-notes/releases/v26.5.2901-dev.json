@@ -3,7 +3,7 @@
   "version": "26.5.2901-dev",
   "channel": "dev",
   "dayKey": "26.5.29",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-30T05:38:17.517Z",
   "model": "heuristic",
@@ -53,7 +53,7 @@
     ]
   },
   "release": {
-    "deck": "Nightly runner duplicate detection, nightly runner outcome closeout, and nightly runner risk snapshot",
+    "deck": "Faster dense views with safer nightly tuning",
     "features": [
       "Nightly runner duplicate detection",
       "Nightly runner outcome closeout",
@@ -75,5 +75,5 @@
       "Google sign-in and interaction polish"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2901-dev\n\nNightly runner duplicate detection, nightly runner outcome closeout, and nightly runner risk snapshot\n\n### Features\n\n- Nightly runner duplicate detection\n- Nightly runner outcome closeout\n- Nightly runner risk snapshot\n\n### Fixes\n\n- Route desktop Google OAuth through proxy\n- Lighten focus mode emphasis\n- The dev release workflow now forces the Google proxy path and includes a guard that prevents direct Google token exchange from shipping again\n- Friends graph pinning stays intentional: dense friends graph interactions no longer create accidental pinned states when the graph is already heavily populated\n\n### Follow-ups\n\n- Lazy load friends graph\n- Defer sidebar feed search\n- Defer settings list filtering\n- Nightly runner execution plan\n- Avoid redundant reader hydration\n- Verify scraper WebKit recycling\n- Google sign-in and interaction polish\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2901-dev\n\nFaster dense views with safer nightly tuning\n\n### Features\n\n- Nightly runner duplicate detection\n- Nightly runner outcome closeout\n- Nightly runner risk snapshot\n\n### Fixes\n\n- Route desktop Google OAuth through proxy\n- Lighten focus mode emphasis\n- The dev release workflow now forces the Google proxy path and includes a guard that prevents direct Google token exchange from shipping again\n- Friends graph pinning stays intentional: dense friends graph interactions no longer create accidental pinned states when the graph is already heavily populated\n\n### Follow-ups\n\n- Lazy load friends graph\n- Defer sidebar feed search\n- Defer settings list filtering\n- Nightly runner execution plan\n- Avoid redundant reader hydration\n- Verify scraper WebKit recycling\n- Google sign-in and interaction polish\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
