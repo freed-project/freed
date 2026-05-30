@@ -1,0 +1,193 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const invokeMock = vi.fn();
+const gdriveDownloadLatestMock = vi.fn();
+const gdriveStartPollLoopMock = vi.fn();
+const subscribeMock = vi.fn(() => vi.fn());
+const recordProviderHealthEventMock = vi.fn();
+const logInfoMock = vi.fn();
+const logWarnMock = vi.fn();
+const logErrorMock = vi.fn();
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: invokeMock,
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/plugin-shell", () => ({
+  open: vi.fn(),
+}));
+
+vi.mock("@freed/sync/cloud", () => ({
+  gdriveDownloadLatest: gdriveDownloadLatestMock,
+  gdriveStartPollLoop: gdriveStartPollLoopMock,
+  gdriveUploadSafe: vi.fn(),
+  gdriveDeleteFile: vi.fn(),
+  dropboxDownloadLatest: vi.fn(),
+  dropboxStartLongpollLoop: vi.fn(),
+  dropboxUploadSafe: vi.fn(),
+  dropboxDeleteFile: vi.fn(),
+}));
+
+vi.mock("./automerge", () => ({
+  getDocBinary: vi.fn(async () => new Uint8Array()),
+  mergeDoc: vi.fn(),
+  setRelayClientCount: vi.fn(),
+  subscribe: subscribeMock,
+}));
+
+vi.mock("@freed/ui/lib/debug-store", () => ({
+  addDebugEvent: vi.fn(),
+}));
+
+vi.mock("./logger.js", () => ({
+  log: {
+    info: logInfoMock,
+    warn: logWarnMock,
+    error: logErrorMock,
+  },
+}));
+
+vi.mock("./provider-health", () => ({
+  recordProviderHealthEvent: recordProviderHealthEventMock,
+}));
+
+describe("desktop cloud sync auth refresh", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.useRealTimers();
+    vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "https://app.freed.wtf/api/oauth/google");
+    vi.stubEnv(
+      "VITE_GDRIVE_DESKTOP_CLIENT_ID",
+      "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com",
+    );
+    invokeMock.mockReset();
+    gdriveDownloadLatestMock.mockReset();
+    gdriveStartPollLoopMock.mockReset();
+    subscribeMock.mockClear();
+    recordProviderHealthEventMock.mockReset();
+    logInfoMock.mockReset();
+    logWarnMock.mockReset();
+    logErrorMock.mockReset();
+    localStorage.clear();
+  });
+
+  afterEach(async () => {
+    const sync = await import("./sync");
+    sync.stopAllCloudSyncs();
+    vi.unstubAllEnvs();
+    localStorage.clear();
+  });
+
+  it("preserves the existing Google refresh token when reconnect only returns an access token", async () => {
+    const { storeCloudToken } = await import("./sync");
+
+    storeCloudToken("gdrive", {
+      accessToken: "old-access-token",
+      refreshToken: "existing-refresh-token",
+      expiresAt: Date.now() + 3_600_000,
+    });
+    storeCloudToken("gdrive", {
+      accessToken: "new-access-token",
+      expiresAt: Date.now() + 3_600_000,
+    });
+
+    const stored = JSON.parse(localStorage.getItem("freed_cloud_token_meta_gdrive") ?? "{}") as {
+      accessToken?: string;
+      refreshToken?: string;
+    };
+    expect(stored.accessToken).toBe("new-access-token");
+    expect(stored.refreshToken).toBe("existing-refresh-token");
+  });
+
+  it("does not refresh a valid Google token after a non-refreshable Drive 403", async () => {
+    const oauthCalls: string[] = [];
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "google_oauth_proxy_request") {
+        oauthCalls.push(cmd);
+        return {
+          status: 200,
+          headers: [["content-type", "application/json"]],
+          body: Array.from(new TextEncoder().encode(JSON.stringify({
+            access_token: "unexpected-refresh",
+            expires_in: 3600,
+          }))),
+        };
+      }
+      return null;
+    });
+    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveStartPollLoopMock.mockRejectedValue(
+      Object.assign(new Error("GDrive changes failed: 403 Forbidden - insufficientPermissions"), {
+        status: 403,
+      }),
+    );
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "valid-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 3_600_000,
+    }));
+
+    const { startCloudSync } = await import("./sync");
+    await startCloudSync("gdrive", "valid-access-token");
+
+    await vi.waitFor(() => {
+      expect(recordProviderHealthEventMock).toHaveBeenCalledWith(expect.objectContaining({
+        provider: "gdrive",
+        outcome: "error",
+        stage: "poll",
+      }));
+    });
+
+    expect(oauthCalls).toHaveLength(0);
+    expect(gdriveStartPollLoopMock).toHaveBeenCalledTimes(1);
+    expect(logWarnMock).toHaveBeenCalledWith(expect.stringContaining("auth failure is not refreshable status=403"));
+  });
+
+  it("refreshes only once when Drive keeps rejecting a token with 401", async () => {
+    const oauthCalls: string[] = [];
+    invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "google_oauth_proxy_request") {
+        oauthCalls.push(String(args?.body ?? ""));
+        return {
+          status: 200,
+          headers: [["content-type", "application/json"]],
+          body: Array.from(new TextEncoder().encode(JSON.stringify({
+            access_token: "refreshed-access-token",
+            expires_in: 3600,
+          }))),
+        };
+      }
+      return null;
+    });
+    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveStartPollLoopMock.mockRejectedValue(
+      Object.assign(new Error("GDrive changes failed: 401 Unauthorized"), {
+        status: 401,
+      }),
+    );
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "expired-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 3_600_000,
+    }));
+
+    const { startCloudSync } = await import("./sync");
+    await startCloudSync("gdrive", "expired-access-token");
+
+    await vi.waitFor(() => {
+      expect(recordProviderHealthEventMock).toHaveBeenCalledWith(expect.objectContaining({
+        provider: "gdrive",
+        outcome: "error",
+        stage: "poll",
+      }));
+    });
+
+    expect(oauthCalls).toHaveLength(1);
+    expect(gdriveStartPollLoopMock).toHaveBeenCalledTimes(2);
+    expect(logWarnMock).toHaveBeenCalledWith(expect.stringContaining("auth failure refresh suppressed"));
+  });
+});
