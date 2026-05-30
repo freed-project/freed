@@ -10,6 +10,7 @@ import {
   appendOutcomeLedger,
   buildCandidates,
   buildExecutionPlan,
+  collectDuplicateWork,
   collectRepoSnapshot,
   collectRiskSnapshot,
   formatBytes,
@@ -277,6 +278,81 @@ test("peer worktree candidates outrank generic roadmap work", () => {
   assert.equal(selected[0].providerVisible, false);
 });
 
+test("duplicate work detector reports file and surface overlap", () => {
+  const duplicateWork = collectDuplicateWork([
+    {
+      branch: "feat/nightly-one",
+      path: "/tmp/one",
+      head: "abc1234",
+      changedFiles: [
+        "scripts/nightly-self-improve.mjs",
+        "docs/NIGHTLY-SELF-IMPROVE.md",
+      ],
+      touchesNightlyRunner: true,
+      touchesMemoryTelemetry: false,
+      providerVisible: false,
+    },
+    {
+      branch: "feat/nightly-two",
+      path: "/tmp/two",
+      head: "def5678",
+      changedFiles: [
+        "scripts/nightly-self-improve.mjs",
+        "scripts/nightly-self-improve.test.mjs",
+      ],
+      touchesNightlyRunner: true,
+      touchesMemoryTelemetry: false,
+      providerVisible: false,
+    },
+  ]);
+
+  assert.ok(duplicateWork.findingCount >= 2);
+  assert.ok(duplicateWork.findings.some((finding) => finding.kind === "file-overlap"));
+  assert.ok(duplicateWork.findings.some((finding) => finding.key === "nightly-runner"));
+  assert.equal(duplicateWork.blockerCount, 1);
+});
+
+test("duplicate work candidates are selected before generic roadmap fallback", () => {
+  const duplicateWork = {
+    findingCount: 1,
+    blockerCount: 0,
+    warningCount: 1,
+    findings: [
+      {
+        severity: "warning",
+        title: "Multiple peer worktrees are touching scripts",
+        peers: [{ branch: "feat/nightly-one", path: "/tmp/one" }],
+      },
+    ],
+  };
+  const candidates = buildCandidates({
+    soak: {
+      exists: false,
+      soakDir: "",
+      sampleCount: 0,
+      maxWebKitResidentBytes: null,
+      maxEventLoopLagMs: null,
+      maxDomNodes: null,
+      staleHeartbeatCount: 0,
+      throttledHeartbeatCount: 0,
+      lastEvent: "",
+    },
+    dailyBug: { exists: false },
+    repo: { branch: "feature", head: "abc1234", status: "" },
+    duplicateWork,
+    peerWorktrees: [],
+    crashAutomationExists: false,
+    devBotMemoryExists: true,
+    memoryBudgetBytes: 2.5 * GIB,
+  });
+
+  assert.ok(candidates.findIndex((candidate) => candidate.id === "nightly-duplicate-work") >= 0);
+  assert.ok(
+    candidates.findIndex((candidate) => candidate.id === "nightly-duplicate-work") <
+      candidates.findIndex((candidate) => candidate.id === "roadmap-autonomous-task"),
+  );
+});
+
 test("outcome feedback raises shipped target kinds and lowers failed ones", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-outcomes-"));
   const ledgerPath = path.join(dir, "outcomes.jsonl");
@@ -409,6 +485,7 @@ test("writeRunPlan emits report, targets, and task prompts", () => {
   assert.equal(path.basename(result.reportPath), "report.md");
   assert.equal(path.basename(result.tasksDir), "tasks");
   assert.equal(path.basename(result.riskSnapshotPath), "risk-snapshot.md");
+  assert.equal(path.basename(result.duplicateWorkPath), "duplicate-work.md");
   assert.equal(path.basename(result.executionPlanPath), "execution-plan.md");
   assert.equal(path.basename(result.outcomeCloseoutPath), "outcome-closeout.md");
   assert.equal(path.basename(result.outcomeTemplatePath), "outcome-template.jsonl");

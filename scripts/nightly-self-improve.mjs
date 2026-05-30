@@ -717,6 +717,99 @@ export function collectPeerWorktrees(repo, explicitWorktrees = [], scan = true) 
     .sort((left, right) => right.score - left.score);
 }
 
+function peerWorkTags(peer) {
+  const tags = [];
+  if (peer.touchesNightlyRunner) {
+    tags.push("nightly-runner");
+  }
+  if (peer.touchesMemoryTelemetry) {
+    tags.push("memory-telemetry");
+  }
+  if (peer.providerVisible) {
+    tags.push("provider-visible");
+  }
+  for (const filePath of peer.changedFiles ?? []) {
+    if (filePath.startsWith("packages/desktop/")) {
+      tags.push("desktop");
+    } else if (filePath.startsWith("packages/ui/")) {
+      tags.push("ui");
+    } else if (filePath.startsWith("packages/shared/")) {
+      tags.push("shared");
+    } else if (filePath.startsWith("website/")) {
+      tags.push("website");
+    } else if (filePath.startsWith("scripts/")) {
+      tags.push("scripts");
+    }
+  }
+  return unique(tags);
+}
+
+export function collectDuplicateWork(peerWorktrees = []) {
+  const findings = [];
+  const peers = peerWorktrees.map((peer) => ({
+    ...peer,
+    tags: peerWorkTags(peer),
+  }));
+  const fileOwners = new Map();
+  const tagOwners = new Map();
+
+  for (const peer of peers) {
+    for (const filePath of peer.changedFiles ?? []) {
+      const owners = fileOwners.get(filePath) ?? [];
+      owners.push(peer);
+      fileOwners.set(filePath, owners);
+    }
+    for (const tag of peer.tags) {
+      const owners = tagOwners.get(tag) ?? [];
+      owners.push(peer);
+      tagOwners.set(tag, owners);
+    }
+  }
+
+  for (const [filePath, owners] of fileOwners) {
+    if (owners.length < 2) {
+      continue;
+    }
+    findings.push({
+      id: `file-${filePath.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase()}`,
+      kind: "file-overlap",
+      severity: "blocker",
+      title: `Multiple peer worktrees changed ${filePath}`,
+      key: filePath,
+      peers: owners.map((peer) => ({
+        branch: peer.branch,
+        path: peer.path,
+        head: peer.head,
+      })),
+    });
+  }
+
+  for (const [tag, owners] of tagOwners) {
+    if (owners.length < 2) {
+      continue;
+    }
+    findings.push({
+      id: `tag-${tag}`,
+      kind: "surface-overlap",
+      severity: tag === "provider-visible" ? "blocker" : "warning",
+      title: `Multiple peer worktrees are touching ${tag}`,
+      key: tag,
+      peers: owners.map((peer) => ({
+        branch: peer.branch,
+        path: peer.path,
+        head: peer.head,
+      })),
+    });
+  }
+
+  return {
+    findingCount: findings.length,
+    blockerCount: findings.filter((finding) => finding.severity === "blocker").length,
+    warningCount: findings.filter((finding) => finding.severity === "warning").length,
+    findings,
+  };
+}
+
 export function collectRepoSnapshot(repo) {
   return {
     branch: git(repo, ["branch", "--show-current"]) || git(repo, ["rev-parse", "--abbrev-ref", "HEAD"]),
@@ -736,6 +829,7 @@ export function collectRiskSnapshot({
   repo,
   soak,
   peerWorktrees = [],
+  duplicateWork,
   crashAutomation,
   dailyBugMemory,
   devBotMemory,
@@ -853,6 +947,22 @@ export function collectRiskSnapshot({
     }
   }
 
+  for (const finding of duplicateWork?.findings ?? []) {
+    risks.push(
+      riskItem({
+        id: `duplicate-work-${finding.id}`,
+        severity: finding.severity,
+        title: finding.title,
+        evidence: finding.peers.flatMap((peer) => [
+          `Branch ${peer.branch}`,
+          peer.path,
+        ]),
+        remediation:
+          "Pick one owner or merge the safer subset before continuing so parallel agents do not publish competing fixes for the same surface.",
+      }),
+    );
+  }
+
   const automationStatuses = [
     ["crash-watch", crashAutomation],
     ["daily-bug-memory", dailyBugMemory],
@@ -938,6 +1048,7 @@ export function buildCandidates({
   dailyBug,
   repo,
   riskSnapshot,
+  duplicateWork,
   peerWorktrees = [],
   crashAutomationExists,
   devBotMemoryExists,
@@ -970,6 +1081,36 @@ export function buildCandidates({
           "Regenerate the nightly plan and confirm blockerCount is 0 before publishing.",
           "Run the focused validation for any cleanup or script change.",
           "Run validate:feature before publishing code changes.",
+        ],
+      }),
+    );
+  }
+
+  if ((duplicateWork?.findingCount ?? 0) > 0) {
+    candidates.push(
+      target({
+        id: "nightly-duplicate-work",
+        kind: "stability",
+        title: "Deduplicate overlapping overnight work before publishing",
+        score: (duplicateWork?.blockerCount ?? 0) > 0 ? 96 : 76,
+        confidence: (duplicateWork?.blockerCount ?? 0) > 0 ? 0.88 : 0.74,
+        estimatedMinutes: 35,
+        rationale:
+          (duplicateWork?.blockerCount ?? 0) > 0
+            ? `Duplicate work detection found ${numberFormatter.format(duplicateWork.blockerCount)} blocker overlap across peer worktrees.`
+            : `Duplicate work detection found ${numberFormatter.format(duplicateWork.warningCount)} warning overlap across peer worktrees.`,
+        evidence: (duplicateWork?.findings ?? [])
+          .slice(0, 6)
+          .flatMap((finding) => [
+            `${finding.severity}: ${finding.title}`,
+            ...finding.peers.map((peer) => `${peer.branch} at ${peer.path}`),
+          ]),
+        prompt:
+          "Read duplicate-work.md before publishing. Decide which branch owns each overlapped file or surface, absorb only the safer validated subset, and record skipped duplicate work in the morning report.",
+        validation: [
+          "Regenerate duplicate-work.md after any peer branch changes.",
+          "Run focused validation for whichever branch absorbs the overlap.",
+          "Run validate:feature before publishing.",
         ],
       }),
     );
@@ -1256,7 +1397,7 @@ function formatCandidate(candidate, index) {
   ].join("\n");
 }
 
-export function buildReport({ repo, soak, riskSnapshot, outcomeLedger, candidates, selected, options }) {
+export function buildReport({ repo, soak, riskSnapshot, duplicateWork, outcomeLedger, candidates, selected, options }) {
   const blockedProvider = candidates.filter((candidate) => candidate.providerVisible);
   const phases = buildNightlyPhases(selected);
   return [
@@ -1285,6 +1426,16 @@ export function buildReport({ repo, soak, riskSnapshot, outcomeLedger, candidate
     "",
     ...(riskSnapshot?.risks ?? []).slice(0, 8).map(
       (risk) => `- ${risk.severity}: ${risk.title}`,
+    ),
+    "",
+    "## Duplicate Work",
+    "",
+    `- Findings: ${numberFormatter.format(duplicateWork?.findingCount ?? 0)}`,
+    `- Blockers: ${numberFormatter.format(duplicateWork?.blockerCount ?? 0)}`,
+    `- Warnings: ${numberFormatter.format(duplicateWork?.warningCount ?? 0)}`,
+    "",
+    ...(duplicateWork?.findings ?? []).slice(0, 8).map(
+      (finding) => `- ${finding.severity}: ${finding.title}`,
     ),
     "",
     "## Learning Signals",
@@ -1320,6 +1471,33 @@ export function buildReport({ repo, soak, riskSnapshot, outcomeLedger, candidate
     "- Require evidence snapshots before every rare crash or memory fix so the next failure has better diagnostics.",
     "- Add a morning digest that ranks shipped value, residual risk, and the single next highest leverage bottleneck.",
     "",
+  ].join("\n");
+}
+
+function renderDuplicateWorkMarkdown(duplicateWork) {
+  return [
+    "# Nightly Duplicate Work",
+    "",
+    `Findings: ${numberFormatter.format(duplicateWork.findingCount)}`,
+    `Blockers: ${numberFormatter.format(duplicateWork.blockerCount)}`,
+    `Warnings: ${numberFormatter.format(duplicateWork.warningCount)}`,
+    "",
+    ...(duplicateWork.findings.length > 0
+      ? duplicateWork.findings.flatMap((finding) => [
+          `## ${finding.title}`,
+          "",
+          `Severity: ${finding.severity}`,
+          `Kind: ${finding.kind}`,
+          `Key: ${finding.key}`,
+          "",
+          "Peer worktrees:",
+          "",
+          ...finding.peers.map(
+            (peer) => `- ${peer.branch} at ${peer.path} (${peer.head || "unknown"})`,
+          ),
+          "",
+        ])
+      : ["No duplicate peer work detected.", ""]),
   ].join("\n");
 }
 
@@ -1499,7 +1677,7 @@ function renderOutcomeCloseoutMarkdown({ selected, outcomeLedger }) {
   ].join("\n");
 }
 
-export function writeRunPlan({ runDir, repo, soak, riskSnapshot, peerWorktrees = [], candidates, selected, options }) {
+export function writeRunPlan({ runDir, repo, soak, riskSnapshot, duplicateWork, peerWorktrees = [], candidates, selected, options }) {
   mkdirSync(runDir, { recursive: true });
   const tasksDir = path.join(runDir, "tasks");
   mkdirSync(tasksDir, { recursive: true });
@@ -1517,16 +1695,35 @@ export function writeRunPlan({ runDir, repo, soak, riskSnapshot, peerWorktrees =
       automationStatuses: [],
       risks: [],
     };
+  const safeDuplicateWork =
+    duplicateWork ??
+    {
+      findingCount: 0,
+      blockerCount: 0,
+      warningCount: 0,
+      findings: [],
+    };
   const executionPlan = buildExecutionPlan(selected);
-  const report = buildReport({ repo, soak, riskSnapshot: safeRiskSnapshot, outcomeLedger, candidates, selected, options });
+  const report = buildReport({
+    repo,
+    soak,
+    riskSnapshot: safeRiskSnapshot,
+    duplicateWork: safeDuplicateWork,
+    outcomeLedger,
+    candidates,
+    selected,
+    options,
+  });
   const outcomeCloseout = renderOutcomeCloseoutMarkdown({
     selected,
     outcomeLedger: outcomeLedgerPath,
   });
   writeFileSync(path.join(runDir, "report.md"), report);
-  writeFileSync(path.join(runDir, "targets.json"), `${JSON.stringify({ repo, soak, riskSnapshot: safeRiskSnapshot, peerWorktrees, outcomeLedger, executionPlan, candidates, selected }, null, 2)}\n`);
+  writeFileSync(path.join(runDir, "targets.json"), `${JSON.stringify({ repo, soak, riskSnapshot: safeRiskSnapshot, duplicateWork: safeDuplicateWork, peerWorktrees, outcomeLedger, executionPlan, candidates, selected }, null, 2)}\n`);
   writeFileSync(path.join(runDir, "risk-snapshot.json"), `${JSON.stringify(safeRiskSnapshot, null, 2)}\n`);
   writeFileSync(path.join(runDir, "risk-snapshot.md"), renderRiskSnapshotMarkdown(safeRiskSnapshot));
+  writeFileSync(path.join(runDir, "duplicate-work.json"), `${JSON.stringify(safeDuplicateWork, null, 2)}\n`);
+  writeFileSync(path.join(runDir, "duplicate-work.md"), renderDuplicateWorkMarkdown(safeDuplicateWork));
   writeFileSync(path.join(runDir, "execution-plan.json"), `${JSON.stringify(executionPlan, null, 2)}\n`);
   writeFileSync(path.join(runDir, "execution-plan.md"), renderExecutionPlanMarkdown(executionPlan));
   writeFileSync(path.join(runDir, "outcome-closeout.md"), outcomeCloseout);
@@ -1556,6 +1753,7 @@ export function writeRunPlan({ runDir, repo, soak, riskSnapshot, peerWorktrees =
     reportPath: path.join(runDir, "report.md"),
     tasksDir,
     riskSnapshotPath: path.join(runDir, "risk-snapshot.md"),
+    duplicateWorkPath: path.join(runDir, "duplicate-work.md"),
     executionPlanPath: path.join(runDir, "execution-plan.md"),
     outcomeCloseoutPath: path.join(runDir, "outcome-closeout.md"),
     outcomeTemplatePath: path.join(runDir, "outcome-template.jsonl"),
@@ -1569,11 +1767,13 @@ export function planNightlyRun(args) {
   const repo = collectRepoSnapshot(args.repo);
   const peerWorktrees = collectPeerWorktrees(args.repo, args.peerWorktrees, args.peerScan);
   const outcomeLedger = summarizeOutcomeLedger(args.outcomeLedger);
+  const duplicateWork = collectDuplicateWork(peerWorktrees);
   const riskSnapshot = collectRiskSnapshot({
     repoPath: args.repo,
     repo,
     soak,
     peerWorktrees,
+    duplicateWork,
     crashAutomation: args.crashAutomation,
     dailyBugMemory: args.dailyBugMemory,
     devBotMemory: args.devBotMemory,
@@ -1583,6 +1783,7 @@ export function planNightlyRun(args) {
     dailyBug,
     repo,
     riskSnapshot,
+    duplicateWork,
     peerWorktrees,
     crashAutomationExists: existsSync(args.crashAutomation),
     devBotMemoryExists: existsSync(args.devBotMemory),
@@ -1590,7 +1791,7 @@ export function planNightlyRun(args) {
   });
   const candidates = applyOutcomeFeedback(baseCandidates, outcomeLedger);
   const selected = selectTargets(candidates, args);
-  return { repo, soak, dailyBug, riskSnapshot, peerWorktrees, outcomeLedger, candidates, selected };
+  return { repo, soak, dailyBug, riskSnapshot, duplicateWork, peerWorktrees, outcomeLedger, candidates, selected };
 }
 
 function textSummary(plan, writeResult, args) {
@@ -1599,6 +1800,7 @@ function textSummary(plan, writeResult, args) {
     `Max WebKit RSS: ${formatBytes(plan.soak.maxWebKitResidentBytes)}.`,
     `Stale heartbeat events: ${numberFormatter.format(plan.soak.staleHeartbeatCount)}.`,
     `Preflight risks: ${numberFormatter.format(plan.riskSnapshot.blockerCount)} blockers, ${numberFormatter.format(plan.riskSnapshot.warningCount)} warnings.`,
+    `Duplicate work: ${numberFormatter.format(plan.duplicateWork.findingCount)} findings.`,
     `Peer worktrees with changes: ${numberFormatter.format(plan.peerWorktrees.length)}.`,
     `Prior outcomes loaded: ${numberFormatter.format(plan.outcomeLedger.entries.length)}.`,
   ];
@@ -1611,6 +1813,7 @@ function textSummary(plan, writeResult, args) {
     lines.push(`Report: ${writeResult.reportPath}`);
     lines.push(`Tasks: ${writeResult.tasksDir}`);
     lines.push(`Risk snapshot: ${writeResult.riskSnapshotPath}`);
+    lines.push(`Duplicate work: ${writeResult.duplicateWorkPath}`);
     lines.push(`Execution plan: ${writeResult.executionPlanPath}`);
     lines.push(`Outcome closeout: ${writeResult.outcomeCloseoutPath}`);
     lines.push(`Outcome template: ${writeResult.outcomeTemplatePath}`);
@@ -1662,6 +1865,7 @@ export function main(argv = process.argv.slice(2)) {
         repo: plan.repo,
         soak: plan.soak,
         riskSnapshot: plan.riskSnapshot,
+        duplicateWork: plan.duplicateWork,
         peerWorktrees: plan.peerWorktrees,
         candidates: plan.candidates,
         selected: plan.selected,
