@@ -59,14 +59,15 @@ describe("automerge worker memory routing", () => {
     expect(workerSource).toContain("DESKTOP_UI_PRESERVED_TEXT_LIMIT = 0");
     expect(workerSource).toContain("DESKTOP_UI_LINK_DESCRIPTION_LIMIT = 180");
     expect(workerSource).toContain("DESKTOP_UI_EVENT_EVIDENCE_LIMIT = 220");
-    expect(body).toContain("contentText.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT)");
-    expect(body).toContain("preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT)");
-    expect(workerSource).toContain("linkDescription.slice(0, DESKTOP_UI_LINK_DESCRIPTION_LIMIT)");
-    expect(workerSource).toContain("eventEvidence.slice(0, DESKTOP_UI_EVENT_EVIDENCE_LIMIT)");
-    expect(workerSource).toContain("const tags = next.contentSignals.tags ?? []");
-    expect(workerSource).toContain("contentSignals: tags.length > 0 ? ({ tags } as FeedItem[\"contentSignals\"]) : undefined");
+    expect(body).toContain("contentText?.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT)");
+    expect(body).toContain("preservedText?.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT)");
+    expect(workerSource).toContain("linkDescription?.slice(0, DESKTOP_UI_LINK_DESCRIPTION_LIMIT)");
+    expect(workerSource).toContain("eventEvidence?.slice(0, DESKTOP_UI_EVENT_EVIDENCE_LIMIT)");
+    expect(workerSource).toContain("const tags = item.contentSignals?.tags ?? []");
+    expect(workerSource).toContain("contentSignals: tags.length > 0 ? ({ tags: [...tags] } as FeedItem[\"contentSignals\"]) : undefined");
     expect(workerSource).toContain("cloneFeedItemsForDesktopUi");
-    expect(patchBody).toContain("trimFeedItemForDesktopUi(cloned)");
+    expect(patchBody).toContain("trimFeedItemForDesktopUi(item)");
+    expect(patchBody).not.toContain("JSON.parse(JSON.stringify(item))");
   });
 
   it("hydrates desktop UI state without deep cloning the whole document first", () => {

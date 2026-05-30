@@ -278,8 +278,7 @@ function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean 
 }
 
 function cloneFeedItemForPatch(item: FeedItem): FeedItem {
-  const cloned = JSON.parse(JSON.stringify(item)) as FeedItem;
-  return trimFeedItemForDesktopUi(cloned);
+  return trimFeedItemForDesktopUi(item);
 }
 
 function cloneRecordValues<T>(record: Record<string, T> | undefined): Record<string, T> {
@@ -306,68 +305,73 @@ function cloneFeedItemsForDesktopUi(record: Record<string, FeedItem> | undefined
 }
 
 function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
-  let next: FeedItem = item;
+  const contentText = item.content.text;
+  const linkPreview = item.content.linkPreview;
+  const linkDescription = linkPreview?.description;
   const preservedContent = item.preservedContent;
   const preservedText = preservedContent?.text;
-  if (preservedContent && preservedText && preservedText.length > DESKTOP_UI_PRESERVED_TEXT_LIMIT) {
+  const eventCandidate = item.eventCandidate;
+  const eventEvidence = eventCandidate?.evidence;
+  const tags = item.contentSignals?.tags ?? [];
+
+  return {
+    globalId: item.globalId,
+    platform: item.platform,
+    contentType: item.contentType,
+    capturedAt: item.capturedAt,
+    publishedAt: item.publishedAt,
+    author: { ...item.author },
+    content: {
+      text: contentText?.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT),
+      mediaUrls: [...item.content.mediaUrls],
+      mediaTypes: [...item.content.mediaTypes],
+      linkPreview: linkPreview
+        ? {
+            url: linkPreview.url,
+            title: linkPreview.title,
+            description: linkDescription?.slice(0, DESKTOP_UI_LINK_DESCRIPTION_LIMIT),
+          }
+        : undefined,
+    },
+    engagement: item.engagement ? { ...item.engagement } : undefined,
+    location: item.location
+      ? {
+          ...item.location,
+          coordinates: item.location.coordinates ? { ...item.location.coordinates } : undefined,
+        }
+      : undefined,
+    timeRange: item.timeRange ? { ...item.timeRange } : undefined,
+    rssSource: item.rssSource ? { ...item.rssSource } : undefined,
+    fbGroup: item.fbGroup ? { ...item.fbGroup } : undefined,
     // The reader asks the worker for full preserved text on demand. Keeping
     // it in every renderer item makes all non-reader surfaces pay for it.
-    next = {
-      ...next,
-      preservedContent: {
-        ...preservedContent,
-        text: preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT),
-      },
-    };
-  }
-
-  const contentText = next.content.text;
-  if (contentText && contentText.length > DESKTOP_UI_CONTENT_TEXT_LIMIT) {
-    next = {
-      ...next,
-      content: {
-        ...next.content,
-        text: contentText.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT),
-      },
-    };
-  }
-
-  const linkPreview = next.content.linkPreview;
-  const linkDescription = linkPreview?.description;
-  if (linkDescription && linkDescription.length > DESKTOP_UI_LINK_DESCRIPTION_LIMIT) {
-    next = {
-      ...next,
-      content: {
-        ...next.content,
-        linkPreview: {
-          ...linkPreview,
-          description: linkDescription.slice(0, DESKTOP_UI_LINK_DESCRIPTION_LIMIT),
-        },
-      },
-    };
-  }
-
-  if (next.contentSignals) {
-    const tags = next.contentSignals.tags ?? [];
-    next = {
-      ...next,
-      contentSignals: tags.length > 0 ? ({ tags } as FeedItem["contentSignals"]) : undefined,
-    };
-  }
-
-  const eventCandidate = next.eventCandidate;
-  const eventEvidence = eventCandidate?.evidence;
-  if (eventCandidate && eventEvidence && eventEvidence.length > DESKTOP_UI_EVENT_EVIDENCE_LIMIT) {
-    next = {
-      ...next,
-      eventCandidate: {
-        ...eventCandidate,
-        evidence: eventEvidence.slice(0, DESKTOP_UI_EVENT_EVIDENCE_LIMIT),
-      },
-    };
-  }
-
-  return next;
+    preservedContent: preservedContent
+      ? {
+          author: preservedContent.author,
+          publishedAt: preservedContent.publishedAt,
+          wordCount: preservedContent.wordCount,
+          readingTime: preservedContent.readingTime,
+          preservedAt: preservedContent.preservedAt,
+          text: preservedText?.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT) ?? "",
+        }
+      : undefined,
+    userState: {
+      ...item.userState,
+      tags: [...item.userState.tags],
+      highlights: item.userState.highlights?.map((highlight) => ({ ...highlight })),
+    },
+    topics: [...item.topics],
+    contentSignals: tags.length > 0 ? ({ tags: [...tags] } as FeedItem["contentSignals"]) : undefined,
+    eventCandidate: eventCandidate
+      ? {
+          ...eventCandidate,
+          evidence: eventEvidence?.slice(0, DESKTOP_UI_EVENT_EVIDENCE_LIMIT),
+        }
+      : undefined,
+    priority: item.priority,
+    priorityComputedAt: item.priorityComputedAt,
+    sourceUrl: item.sourceUrl,
+  };
 }
 
 function markAllVisibleAsRead(doc: FreedDoc, platform?: string): string[] {
