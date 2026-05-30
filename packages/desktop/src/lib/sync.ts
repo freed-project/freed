@@ -295,11 +295,13 @@ const CLOUD_TOKEN_KEY = (p: CloudProvider) => `freed_cloud_token_${p}`;
 const CLOUD_TOKEN_META_KEY = (p: CloudProvider) => `freed_cloud_token_meta_${p}`;
 const UPLOAD_DEBOUNCE_MS = 2_000;
 const TOKEN_REFRESH_SKEW_MS = 60_000;
+const GOOGLE_TOKEN_REFRESH_FALLBACK_TTL_MS = 55 * 60 * 1000;
 
 /** Per-provider abort controllers, upload timers, and doc-change unsubscribers. */
 const cloudAborts = new Map<CloudProvider, AbortController>();
 const uploadTimers = new Map<CloudProvider, ReturnType<typeof setTimeout>>();
 const cloudChangeUnsubscribes = new Map<CloudProvider, () => void>();
+const cloudTokenRefreshes = new Map<CloudProvider, Promise<string | null>>();
 
 // Desktop OAuth client IDs. These are public and embedded in the app bundle.
 const DEFAULT_GDRIVE_DESKTOP_CLIENT_ID =
@@ -354,12 +356,20 @@ function throwIfOAuthCanceled(signal?: AbortSignal): void {
   }
 }
 
-function tokenBundleFromResponse(data: TokenExchangeResponse): CloudTokenBundle {
+function tokenBundleFromResponse(
+  data: TokenExchangeResponse,
+  options: { fallbackTtlMs?: number } = {},
+): CloudTokenBundle {
   if (!data.access_token) throw new Error("Token exchange returned no access_token");
+  const expiresAt = typeof data.expires_in === "number" && Number.isFinite(data.expires_in) && data.expires_in > 0
+    ? Date.now() + data.expires_in * 1000
+    : options.fallbackTtlMs
+      ? Date.now() + options.fallbackTtlMs
+      : undefined;
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
-    expiresAt: data.expires_in ? Date.now() + data.expires_in * 1000 : undefined,
+    expiresAt,
   };
 }
 
@@ -372,7 +382,9 @@ function readCloudTokenBundle(provider: CloudProvider): CloudTokenBundle | null 
         return {
           accessToken: parsed.accessToken,
           refreshToken: typeof parsed.refreshToken === "string" ? parsed.refreshToken : undefined,
-          expiresAt: typeof parsed.expiresAt === "number" ? parsed.expiresAt : undefined,
+          expiresAt: typeof parsed.expiresAt === "number" && Number.isFinite(parsed.expiresAt)
+            ? parsed.expiresAt
+            : undefined,
         };
       }
     } catch {
@@ -396,16 +408,38 @@ export function getCloudToken(provider: CloudProvider): string | null {
   return readCloudTokenBundle(provider)?.accessToken ?? null;
 }
 
+function shouldRefreshCloudToken(bundle: CloudTokenBundle, now = Date.now()): boolean {
+  return typeof bundle.expiresAt === "number"
+    && Number.isFinite(bundle.expiresAt)
+    && bundle.expiresAt - now <= TOKEN_REFRESH_SKEW_MS;
+}
+
 async function refreshCloudToken(provider: CloudProvider, bundle: CloudTokenBundle): Promise<string | null> {
   if (!bundle.refreshToken) return bundle.accessToken;
+  const existingRefresh = cloudTokenRefreshes.get(provider);
+  if (existingRefresh) return existingRefresh;
+
+  let refreshPromise!: Promise<string | null>;
+  refreshPromise = refreshCloudTokenInner(provider, bundle).finally(() => {
+    if (cloudTokenRefreshes.get(provider) === refreshPromise) {
+      cloudTokenRefreshes.delete(provider);
+    }
+  });
+  cloudTokenRefreshes.set(provider, refreshPromise);
+  return refreshPromise;
+}
+
+async function refreshCloudTokenInner(provider: CloudProvider, bundle: CloudTokenBundle): Promise<string | null> {
+  const refreshToken = bundle.refreshToken;
+  if (!refreshToken) return bundle.accessToken;
 
   if (provider === "gdrive" && shouldUseGoogleTokenProxy()) {
-    return refreshGoogleTokenViaProxy(bundle.refreshToken);
+    return refreshGoogleTokenViaProxy(refreshToken);
   }
 
   const params = new URLSearchParams({
     grant_type: "refresh_token",
-    refresh_token: bundle.refreshToken,
+    refresh_token: refreshToken,
   });
 
   let tokenUrl: string;
@@ -414,7 +448,10 @@ async function refreshCloudToken(provider: CloudProvider, bundle: CloudTokenBund
     if (GDRIVE_CLIENT_SECRET) {
       params.set("client_secret", GDRIVE_CLIENT_SECRET);
     }
-    const refreshed = tokenBundleFromResponse(await postGoogleToken(params, "Google token refresh failed"));
+    const refreshed = tokenBundleFromResponse(
+      await postGoogleToken(params, "Google token refresh failed"),
+      { fallbackTtlMs: GOOGLE_TOKEN_REFRESH_FALLBACK_TTL_MS },
+    );
     const nextBundle = {
       ...refreshed,
       refreshToken: refreshed.refreshToken ?? bundle.refreshToken,
@@ -451,7 +488,7 @@ function shouldUseGoogleTokenProxy(): boolean {
 }
 
 function tokenBundleFromProxyResponse(data: TokenExchangeResponse): CloudTokenBundle {
-  return tokenBundleFromResponse(data);
+  return tokenBundleFromResponse(data, { fallbackTtlMs: GOOGLE_TOKEN_REFRESH_FALLBACK_TTL_MS });
 }
 
 function decodeNativeBody(body: number[]): string {
@@ -557,7 +594,7 @@ async function refreshGoogleTokenViaProxy(refreshToken: string): Promise<string 
 export async function getValidCloudToken(provider: CloudProvider): Promise<string | null> {
   const bundle = readCloudTokenBundle(provider);
   if (!bundle) return null;
-  if (bundle.expiresAt && bundle.expiresAt - Date.now() <= TOKEN_REFRESH_SKEW_MS) {
+  if (shouldRefreshCloudToken(bundle)) {
     return refreshCloudToken(provider, bundle);
   }
   return bundle.accessToken;

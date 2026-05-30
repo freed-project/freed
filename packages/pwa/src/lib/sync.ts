@@ -210,9 +210,11 @@ const CLOUD_TOKEN_META_KEY = (provider: CloudProvider) => `freed_cloud_token_met
 const CLOUD_PROVIDER_KEY = "freed_cloud_provider";
 const UPLOAD_DEBOUNCE_MS = 2_000;
 const TOKEN_REFRESH_SKEW_MS = 60_000;
+const GOOGLE_TOKEN_REFRESH_FALLBACK_TTL_MS = 55 * 60 * 1000;
 
 let cloudAbort: AbortController | null = null;
 let uploadTimer: ReturnType<typeof setTimeout> | null = null;
+const cloudTokenRefreshes = new Map<CloudProvider, Promise<string | null>>();
 
 export interface CloudTokenBundle {
   accessToken: string;
@@ -229,7 +231,9 @@ function readCloudTokenBundle(provider: CloudProvider): CloudTokenBundle | null 
         return {
           accessToken: parsed.accessToken,
           refreshToken: typeof parsed.refreshToken === "string" ? parsed.refreshToken : undefined,
-          expiresAt: typeof parsed.expiresAt === "number" ? parsed.expiresAt : undefined,
+          expiresAt: typeof parsed.expiresAt === "number" && Number.isFinite(parsed.expiresAt)
+            ? parsed.expiresAt
+            : undefined,
         };
       }
     } catch {
@@ -254,21 +258,45 @@ export function getCloudToken(provider: CloudProvider): string | null {
   return readCloudTokenBundle(provider)?.accessToken ?? null;
 }
 
+function shouldRefreshCloudToken(bundle: CloudTokenBundle, now = Date.now()): boolean {
+  return typeof bundle.expiresAt === "number"
+    && Number.isFinite(bundle.expiresAt)
+    && bundle.expiresAt - now <= TOKEN_REFRESH_SKEW_MS;
+}
+
 async function refreshCloudToken(provider: CloudProvider, bundle: CloudTokenBundle): Promise<string | null> {
   if (!bundle.refreshToken) return bundle.accessToken;
+  const existingRefresh = cloudTokenRefreshes.get(provider);
+  if (existingRefresh) return existingRefresh;
+
+  let refreshPromise!: Promise<string | null>;
+  refreshPromise = refreshCloudTokenInner(provider, bundle).finally(() => {
+    if (cloudTokenRefreshes.get(provider) === refreshPromise) {
+      cloudTokenRefreshes.delete(provider);
+    }
+  });
+  cloudTokenRefreshes.set(provider, refreshPromise);
+  return refreshPromise;
+}
+
+async function refreshCloudTokenInner(provider: CloudProvider, bundle: CloudTokenBundle): Promise<string | null> {
+  const refreshToken = bundle.refreshToken;
+  if (!refreshToken) return bundle.accessToken;
 
   if (provider === "gdrive") {
     const res = await fetch("/api/oauth/google", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ grantType: "refresh_token", refreshToken: bundle.refreshToken }),
+      body: JSON.stringify({ grantType: "refresh_token", refreshToken }),
     });
     const data = await res.json().catch(() => ({ error: "invalid JSON from proxy" }));
     if (!res.ok) throw new Error(`GDrive token refresh failed: ${data.error ?? res.status}`);
     const nextBundle = {
       accessToken: data.access_token as string,
-      refreshToken: (data.refresh_token as string | undefined) ?? bundle.refreshToken,
-      expiresAt: typeof data.expires_in === "number" ? Date.now() + data.expires_in * 1000 : undefined,
+      refreshToken: (data.refresh_token as string | undefined) ?? refreshToken,
+      expiresAt: typeof data.expires_in === "number" && Number.isFinite(data.expires_in) && data.expires_in > 0
+        ? Date.now() + data.expires_in * 1000
+        : Date.now() + GOOGLE_TOKEN_REFRESH_FALLBACK_TTL_MS,
     };
     if (!nextBundle.accessToken) throw new Error("GDrive proxy returned no access_token");
     storeCloudToken(provider, nextBundle);
@@ -282,7 +310,7 @@ async function refreshCloudToken(provider: CloudProvider, bundle: CloudTokenBund
 export async function getValidCloudToken(provider: CloudProvider): Promise<string | null> {
   const bundle = readCloudTokenBundle(provider);
   if (!bundle) return null;
-  if (bundle.expiresAt && bundle.expiresAt - Date.now() <= TOKEN_REFRESH_SKEW_MS) {
+  if (shouldRefreshCloudToken(bundle)) {
     return refreshCloudToken(provider, bundle);
   }
   return bundle.accessToken;
