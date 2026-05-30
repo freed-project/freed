@@ -18,7 +18,9 @@ export type SectionId =
   | "x"
   | "facebook"
   | "instagram"
-  | "linkedin";
+  | "linkedin"
+  | "substack"
+  | "medium";
 
 export interface SectionMeta {
   id: SectionId;
@@ -33,6 +35,8 @@ export interface SettingsSectionAvailability {
   hasFacebook: boolean;
   hasInstagram: boolean;
   hasLinkedIn: boolean;
+  hasSubstack: boolean;
+  hasMedium: boolean;
   hasUpdateChecks: boolean;
   hasFactoryReset: boolean;
 }
@@ -110,6 +114,18 @@ export const LI_SECTION_META: SectionMeta = {
   keywords: ["linkedin", "li", "professional", "feed", "connect", "network", "jobs", "posts"],
 };
 
+export const SUBSTACK_SECTION_META: SectionMeta = {
+  id: "substack",
+  label: "Substack",
+  keywords: ["substack", "essay", "newsletter", "notes", "restack", "subscribe", "followers", "connect"],
+};
+
+export const MEDIUM_SECTION_META: SectionMeta = {
+  id: "medium",
+  label: "Medium",
+  keywords: ["medium", "essay", "story", "responses", "claps", "publication", "followers", "connect"],
+};
+
 /** Shown only when the platform provides a Google Contacts settings component. */
 export const GOOGLE_CONTACTS_SECTION_META: SectionMeta = {
   id: "googleContacts",
@@ -140,7 +156,7 @@ export function buildSettingsSectionMetas(
   const baseSectionById = Object.fromEntries(
     BASE_SECTION_METAS.map((section) => [section.id, section]),
   ) as Record<
-    Exclude<SectionId, "ai" | "updates" | "danger" | "googleContacts" | "x" | "facebook" | "instagram" | "linkedin">,
+    Exclude<SectionId, "ai" | "updates" | "danger" | "googleContacts" | "x" | "facebook" | "instagram" | "linkedin" | "substack" | "medium">,
     SectionMeta
   >;
 
@@ -153,6 +169,8 @@ export function buildSettingsSectionMetas(
     ...(availability.hasFacebook ? [FB_SECTION_META] : []),
     ...(availability.hasInstagram ? [IG_SECTION_META] : []),
     ...(availability.hasLinkedIn ? [LI_SECTION_META] : []),
+    ...(availability.hasSubstack ? [SUBSTACK_SECTION_META] : []),
+    ...(availability.hasMedium ? [MEDIUM_SECTION_META] : []),
     baseSectionById.feeds,
     AI_SECTION_META,
     ...(availability.hasUpdateChecks ? [UPDATES_SECTION_META] : []),

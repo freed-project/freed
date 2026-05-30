@@ -65,7 +65,13 @@ fn sync_relay_port() -> u16 {
 
 const DEFAULT_WEBKIT_SAFARI_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
-const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 3] = ["fb-scraper", "ig-scraper", "li-scraper"];
+const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 5] = [
+    "fb-scraper",
+    "ig-scraper",
+    "li-scraper",
+    "substack-scraper",
+    "medium-scraper",
+];
 const FB_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
     0x66, 0x72, 0x65, 0x65, 0x64, 0xfb, 0x00, 0x01, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0xfb, 0x00, 0x01,
 ];
@@ -74,6 +80,12 @@ const IG_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
 ];
 const LI_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
     0x66, 0x72, 0x65, 0x65, 0x64, 0x1d, 0x00, 0x03, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x1d, 0x00, 0x03,
+];
+const SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0x5b, 0x00, 0x04, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x5b, 0x00, 0x04,
+];
+const MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0x6d, 0x00, 0x05, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x6d, 0x00, 0x05,
 ];
 const BYTES_PER_GIB: u64 = 1024 * 1024 * 1024;
 const MIN_CRITICAL_MEMORY_BYTES: u64 = 7 * BYTES_PER_GIB / 2;
@@ -251,6 +263,8 @@ fn social_scraper_data_store_identifier(label: &str) -> Option<[u8; 16]> {
         "fb-scraper" => Some(FB_SCRAPER_DATA_STORE_IDENTIFIER),
         "ig-scraper" => Some(IG_SCRAPER_DATA_STORE_IDENTIFIER),
         "li-scraper" => Some(LI_SCRAPER_DATA_STORE_IDENTIFIER),
+        "substack-scraper" => Some(SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER),
+        "medium-scraper" => Some(MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER),
         _ => None,
     }
 }
@@ -1370,6 +1384,8 @@ struct CaptureState {
     fb_user_agent: std::sync::Mutex<String>,
     ig_user_agent: std::sync::Mutex<String>,
     li_user_agent: std::sync::Mutex<String>,
+    substack_user_agent: std::sync::Mutex<String>,
+    medium_user_agent: std::sync::Mutex<String>,
     scraper_session: Arc<tokio::sync::Mutex<()>>,
     background_runtime: Arc<BackgroundRuntimeCoordinator>,
     x_client: rquest::Client,
@@ -1389,6 +1405,8 @@ impl CaptureState {
             fb_user_agent: std::sync::Mutex::new(String::new()),
             ig_user_agent: std::sync::Mutex::new(String::new()),
             li_user_agent: std::sync::Mutex::new(String::new()),
+            substack_user_agent: std::sync::Mutex::new(String::new()),
+            medium_user_agent: std::sync::Mutex::new(String::new()),
             scraper_session: Arc::new(tokio::sync::Mutex::new(())),
             background_runtime: Arc::new(BackgroundRuntimeCoordinator::new()),
             x_client,
@@ -5580,6 +5598,8 @@ async fn ig_like_post(
 /// The extraction script injected into the LinkedIn WebView after page load.
 /// Reads posts from the rendered DOM and emits them via Tauri event IPC.
 const LI_EXTRACT_SCRIPT: &str = include_str!("li-extract.js");
+const SUBSTACK_EXTRACT_SCRIPT: &str = include_str!("substack-extract.js");
+const MEDIUM_EXTRACT_SCRIPT: &str = include_str!("medium-extract.js");
 
 /// Show a visible WebView window navigated to linkedin.com/login so the
 /// user can authenticate through the real LinkedIn login flow.
@@ -5986,6 +6006,374 @@ async fn li_disconnect(app: tauri::AppHandle) -> Result<(), String> {
         let _ = wv.destroy();
     }
     Ok(())
+}
+
+async fn show_essay_provider_login(
+    app: tauri::AppHandle,
+    user_agent_store: &std::sync::Mutex<String>,
+    user_agent: String,
+    window_label: &'static str,
+    data_store_identifier: [u8; 16],
+    login_url: &'static str,
+    auth_event: &'static str,
+    host_marker: &'static str,
+    title: &'static str,
+) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+
+    if let Some(existing) = app.get_webview_window(window_label) {
+        existing.navigate(login_url.parse().unwrap()).map_err(|e| e.to_string())?;
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        *user_agent_store.lock().unwrap() = user_agent;
+        return Ok(());
+    }
+
+    let app_handle = app.clone();
+    let auth_emitted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    WebviewWindowBuilder::new(
+        &app,
+        window_label,
+        tauri::WebviewUrl::External(login_url.parse().unwrap()),
+    )
+    .data_store_identifier(data_store_identifier)
+    .user_agent(&user_agent)
+    .initialization_script(include_str!("webkit-mask.js"))
+    .title(title)
+    .inner_size(500.0, 720.0)
+    .center()
+    .visible(true)
+    .on_navigation(move |url| {
+        let host = url.host_str().unwrap_or("");
+        let path = url.path();
+        if host.contains(host_marker)
+            && !path.contains("login")
+            && !path.contains("signin")
+            && !auth_emitted.swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            if let Some(w) = app_handle.get_webview_window(window_label) {
+                let _ = w.hide();
+            }
+            let _ = app_handle.emit(auth_event, serde_json::json!({ "loggedIn": true }));
+        }
+        true
+    })
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    *user_agent_store.lock().unwrap() = user_agent;
+    Ok(())
+}
+
+async fn check_essay_provider_auth(
+    app: tauri::AppHandle,
+    capture: &CaptureState,
+    user_agent_store: &std::sync::Mutex<String>,
+    provider_label: &'static str,
+    window_label: &'static str,
+    data_store_identifier: [u8; 16],
+    check_url: &'static str,
+    auth_event: &'static str,
+    logged_in_script: &'static str,
+) -> Result<bool, String> {
+    use tauri::WebviewWindowBuilder;
+
+    let scraper_user_agent = stored_or_default_user_agent(user_agent_store);
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        provider_label,
+        "auth check",
+        Some(window_label),
+    )
+    .await?;
+    let _scraper_session = acquire_background_scraper_session(capture, "essay_provider_check_auth").await?;
+    let _recycle_guard = WebviewRecycleGuard::new(app.clone(), window_label, "auth check");
+    let wv = match app.get_webview_window(window_label) {
+        Some(w) => {
+            let _ = set_background_scraper_media_guard(&w, true);
+            w.navigate(check_url.parse().unwrap()).map_err(|e| e.to_string())?;
+            w
+        }
+        None => WebviewWindowBuilder::new(
+            &app,
+            window_label,
+            tauri::WebviewUrl::External(check_url.parse().unwrap()),
+        )
+        .data_store_identifier(data_store_identifier)
+        .user_agent(&scraper_user_agent)
+        .initialization_script(include_str!("webkit-mask.js"))
+        .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
+        .title(format!("Freed {}", provider_label))
+        .inner_size(500.0, 720.0)
+        .visible(false)
+        .build()
+        .map_err(|e| e.to_string())?,
+    };
+    set_background_scraper_media_guard(&wv, true)?;
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    wv.eval(&format!(
+        r#"
+        (function() {{
+            try {{
+                var loggedIn = Boolean((function() {{ {} }})());
+                window.__TAURI__.event.emit("{}", {{ loggedIn: loggedIn }});
+            }} catch(e) {{
+                window.__TAURI__.event.emit("{}", {{ loggedIn: false, error: e.message }});
+            }}
+        }})();
+        "#,
+        logged_in_script, auth_event, auth_event
+    ))
+    .map_err(|e| e.to_string())?;
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    Ok(true)
+}
+
+async fn scrape_essay_provider(
+    app: tauri::AppHandle,
+    capture: &CaptureState,
+    user_agent_store: &std::sync::Mutex<String>,
+    provider_label: &'static str,
+    command_label: &'static str,
+    window_label: &'static str,
+    data_store_identifier: [u8; 16],
+    scrape_url: &'static str,
+    event_name: &'static str,
+    extract_script: &'static str,
+    window_mode: ScraperWindowMode,
+) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+
+    let scraper_user_agent = stored_or_default_user_agent(user_agent_store);
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        provider_label,
+        "feed scrape",
+        None,
+    )
+    .await?;
+    let _scraper_session = acquire_background_scraper_session(capture, command_label).await?;
+    let _recycle_guard = WebviewRecycleGuard::new(app.clone(), window_label, "feed scrape complete");
+
+    let wv = match app.get_webview_window(window_label) {
+        Some(w) => {
+            prepare_background_scraper_window(&w, window_mode)?;
+            w.navigate(scrape_url.parse().unwrap()).map_err(|e| e.to_string())?;
+            w
+        }
+        None => {
+            let mut builder = WebviewWindowBuilder::new(
+                &app,
+                window_label,
+                tauri::WebviewUrl::External(scrape_url.parse().unwrap()),
+            )
+            .data_store_identifier(data_store_identifier)
+            .user_agent(&scraper_user_agent)
+            .initialization_script(include_str!("webkit-mask.js"))
+            .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
+            .title(format!("Freed {}", provider_label))
+            .inner_size(1280.0, 900.0);
+
+            if window_mode == ScraperWindowMode::Shown {
+                builder = builder.center().visible(true);
+            } else if window_mode == ScraperWindowMode::Cloaked {
+                builder = builder
+                    .transparent(true)
+                    .focused(false)
+                    .focusable(false)
+                    .decorations(false)
+                    .always_on_bottom(true)
+                    .skip_taskbar(true)
+                    .shadow(false)
+                    .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_CLOAK_JS)
+                    .visible(true);
+            } else {
+                builder = builder
+                    .focused(false)
+                    .focusable(false)
+                    .decorations(false)
+                    .always_on_bottom(true)
+                    .skip_taskbar(true)
+                    .shadow(false)
+                    .visible(false);
+            }
+
+            builder.build().map_err(|e| e.to_string())?
+        }
+    };
+
+    tokio::time::sleep(Duration::from_millis(gaussian_ms(7000.0, 1200.0))).await;
+    prepare_background_scraper_window(&wv, window_mode)?;
+    wv.eval(extract_script)
+        .map_err(|e| format!("Failed to inject {} extraction script: {}", provider_label, e))?;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let done_js = format!(
+        r#"
+        (function() {{
+            if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {{
+                window.__TAURI__.event.emit("{}", {{
+                    entries: [], profiles: [], done: true, extractedAt: Date.now(),
+                    url: window.location.href, candidateCount: 0
+                }});
+            }}
+        }})();
+        "#,
+        event_name
+    );
+    let _ = wv.eval(&done_js);
+    Ok(())
+}
+
+#[tauri::command]
+async fn substack_show_login(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    user_agent: String,
+) -> Result<(), String> {
+    show_essay_provider_login(
+        app,
+        &capture.substack_user_agent,
+        user_agent,
+        "substack-scraper",
+        SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER,
+        "https://substack.com/sign-in",
+        "substack-auth-result",
+        "substack.com",
+        "Connect Substack with Freed",
+    )
+    .await
+}
+
+#[tauri::command]
+async fn substack_check_auth(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+) -> Result<bool, String> {
+    check_essay_provider_auth(
+        app,
+        &capture,
+        &capture.substack_user_agent,
+        "Substack",
+        "substack-scraper",
+        SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER,
+        "https://substack.com/home",
+        "substack-auth-result",
+        "return document.cookie.indexOf('substack.sid=') !== -1 || !/sign-?in|login/.test(window.location.pathname);",
+    )
+    .await
+}
+
+#[tauri::command]
+async fn substack_disconnect(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(wv) = app.get_webview_window("substack-scraper") {
+        wv.clear_all_browsing_data().map_err(|e| e.to_string())?;
+        let _ = wv.destroy();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn substack_scrape_graph(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+) -> Result<(), String> {
+    scrape_essay_provider(app, &capture, &capture.substack_user_agent, "Substack", "substack_scrape_graph", "substack-scraper", SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER, "https://substack.com/home", "substack-feed-data", SUBSTACK_EXTRACT_SCRIPT, window_mode).await
+}
+
+#[tauri::command]
+async fn substack_scrape_activity(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+) -> Result<(), String> {
+    scrape_essay_provider(app, &capture, &capture.substack_user_agent, "Substack", "substack_scrape_activity", "substack-scraper", SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER, "https://substack.com/notes", "substack-feed-data", SUBSTACK_EXTRACT_SCRIPT, window_mode).await
+}
+
+#[tauri::command]
+async fn substack_scrape_essays(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+) -> Result<(), String> {
+    scrape_essay_provider(app, &capture, &capture.substack_user_agent, "Substack", "substack_scrape_essays", "substack-scraper", SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER, "https://substack.com/home", "substack-feed-data", SUBSTACK_EXTRACT_SCRIPT, window_mode).await
+}
+
+#[tauri::command]
+async fn medium_show_login(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    user_agent: String,
+) -> Result<(), String> {
+    show_essay_provider_login(
+        app,
+        &capture.medium_user_agent,
+        user_agent,
+        "medium-scraper",
+        MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER,
+        "https://medium.com/m/signin",
+        "medium-auth-result",
+        "medium.com",
+        "Connect Medium with Freed",
+    )
+    .await
+}
+
+#[tauri::command]
+async fn medium_check_auth(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+) -> Result<bool, String> {
+    check_essay_provider_auth(
+        app,
+        &capture,
+        &capture.medium_user_agent,
+        "Medium",
+        "medium-scraper",
+        MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER,
+        "https://medium.com/",
+        "medium-auth-result",
+        "return document.cookie.indexOf('uid=') !== -1 || !/signin|login/.test(window.location.pathname);",
+    )
+    .await
+}
+
+#[tauri::command]
+async fn medium_disconnect(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(wv) = app.get_webview_window("medium-scraper") {
+        wv.clear_all_browsing_data().map_err(|e| e.to_string())?;
+        let _ = wv.destroy();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn medium_scrape_graph(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+) -> Result<(), String> {
+    scrape_essay_provider(app, &capture, &capture.medium_user_agent, "Medium", "medium_scrape_graph", "medium-scraper", MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER, "https://medium.com/me/following", "medium-feed-data", MEDIUM_EXTRACT_SCRIPT, window_mode).await
+}
+
+#[tauri::command]
+async fn medium_scrape_activity(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+) -> Result<(), String> {
+    scrape_essay_provider(app, &capture, &capture.medium_user_agent, "Medium", "medium_scrape_activity", "medium-scraper", MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER, "https://medium.com/", "medium-feed-data", MEDIUM_EXTRACT_SCRIPT, window_mode).await
+}
+
+#[tauri::command]
+async fn medium_scrape_essays(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+) -> Result<(), String> {
+    scrape_essay_provider(app, &capture, &capture.medium_user_agent, "Medium", "medium_scrape_essays", "medium-scraper", MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER, "https://medium.com/me/stories/public", "medium-feed-data", MEDIUM_EXTRACT_SCRIPT, window_mode).await
 }
 
 // ---------------------------------------------------------------------------
@@ -7556,6 +7944,18 @@ pub fn run() {
             li_check_auth,
             li_scrape_feed,
             li_disconnect,
+            substack_show_login,
+            substack_check_auth,
+            substack_disconnect,
+            substack_scrape_graph,
+            substack_scrape_activity,
+            substack_scrape_essays,
+            medium_show_login,
+            medium_check_auth,
+            medium_disconnect,
+            medium_scrape_graph,
+            medium_scrape_activity,
+            medium_scrape_essays,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Freed")
@@ -7799,14 +8199,24 @@ mod tests {
             social_scraper_data_store_identifier("li-scraper"),
             Some(LI_SCRAPER_DATA_STORE_IDENTIFIER)
         );
+        assert_eq!(
+            social_scraper_data_store_identifier("substack-scraper"),
+            Some(SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("medium-scraper"),
+            Some(MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
         assert_eq!(social_scraper_data_store_identifier("main"), None);
 
         let unique = HashSet::from([
             FB_SCRAPER_DATA_STORE_IDENTIFIER,
             IG_SCRAPER_DATA_STORE_IDENTIFIER,
             LI_SCRAPER_DATA_STORE_IDENTIFIER,
+            SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER,
+            MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER,
         ]);
-        assert_eq!(unique.len(), 3);
+        assert_eq!(unique.len(), 5);
     }
 
     #[test]

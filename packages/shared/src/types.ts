@@ -21,6 +21,8 @@ export type Platform =
   | "facebook" // Facebook (DOM capture)
   | "instagram" // Instagram (DOM capture)
   | "linkedin" // LinkedIn (DOM capture)
+  | "substack" // Substack (authenticated WebView + RSS)
+  | "medium" // Medium (authenticated WebView + RSS)
   | "saved"; // Manually saved URLs (bookmarks)
 
 /** User-facing display names for each platform. */
@@ -34,6 +36,8 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+  substack: "Substack",
+  medium: "Medium",
   saved: "Saved",
 };
 

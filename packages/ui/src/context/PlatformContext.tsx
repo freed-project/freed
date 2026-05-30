@@ -270,6 +270,18 @@ export interface PlatformConfig {
   LinkedInSettingsContent: ComponentType<SyncProviderSectionProps> | null;
 
   /**
+   * Content rendered in the Settings > Sources > Substack section.
+   * When null, the Substack section is omitted from settings entirely.
+   */
+  SubstackSettingsContent?: ComponentType<SyncProviderSectionProps> | null;
+
+  /**
+   * Content rendered in the Settings > Sources > Medium section.
+   * When null, the Medium section is omitted from settings entirely.
+   */
+  MediumSettingsContent?: ComponentType<SyncProviderSectionProps> | null;
+
+  /**
    * Content rendered in the Settings > Sources > Google Contacts section.
    * When null, the Google Contacts section is omitted from settings entirely.
    */

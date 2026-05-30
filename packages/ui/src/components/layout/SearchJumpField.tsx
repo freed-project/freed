@@ -46,7 +46,9 @@ import {
   InstagramIcon,
   LinkedInIcon,
   MapPinIcon,
+  MediumIcon,
   RssIcon,
+  SubstackIcon,
   TrashIcon,
   UsersIcon,
   XIcon,
@@ -155,6 +157,12 @@ function getCommandPaletteIcon(action: CommandPaletteAction): ReactNode {
   }
   if (action.id === "go-source-linkedin" || action.id === "go-settings-linkedin" || action.id.startsWith("go-channel-linkedin-")) {
     return <LinkedInIcon className={iconClass} />;
+  }
+  if (action.id === "go-source-substack" || action.id === "go-settings-substack" || action.id.startsWith("go-channel-substack-")) {
+    return <SubstackIcon className={iconClass} />;
+  }
+  if (action.id === "go-source-medium" || action.id === "go-settings-medium" || action.id.startsWith("go-channel-medium-")) {
+    return <MediumIcon className={iconClass} />;
   }
   if (action.id === "go-settings-googleContacts") {
     return <GoogleContactsIcon className={iconClass} />;
@@ -298,6 +306,8 @@ export function SearchJumpField({
     FacebookSettingsContent,
     InstagramSettingsContent,
     LinkedInSettingsContent,
+    SubstackSettingsContent,
+    MediumSettingsContent,
     GoogleContactsSettingsContent,
   } = platform;
   const searchPaletteRequestId = useCommandSurfaceStore((s) => s.searchPaletteRequestId);
@@ -434,6 +444,8 @@ export function SearchJumpField({
         hasFacebook: !!FacebookSettingsContent,
         hasInstagram: !!InstagramSettingsContent,
         hasLinkedIn: !!LinkedInSettingsContent,
+        hasSubstack: !!SubstackSettingsContent,
+        hasMedium: !!MediumSettingsContent,
         hasUpdateChecks: !!checkForUpdates,
         hasFactoryReset: !!factoryReset,
       }),
@@ -442,6 +454,8 @@ export function SearchJumpField({
       GoogleContactsSettingsContent,
       InstagramSettingsContent,
       LinkedInSettingsContent,
+      SubstackSettingsContent,
+      MediumSettingsContent,
       XSettingsContent,
       checkForUpdates,
       factoryReset,

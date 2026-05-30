@@ -506,6 +506,8 @@ function readGraphThemePalette(element: HTMLElement | null): GraphThemePalette {
       facebook: rgbToNumber(mixColor(primary, tertiary, 0.18)),
       x: rgbToNumber(mixColor(mutedText, primary, 0.16)),
       linkedin: rgbToNumber(mixColor(primary, secondary, 0.16)),
+      substack: rgbToNumber(mixColor(warning, primary, 0.2)),
+      medium: rgbToNumber(mixColor(text, secondary, 0.18)),
       rss: rgbToNumber(mixColor(warning, secondary, 0.2)),
       other: rgbToNumber(mixColor(tertiary, mutedText, 0.28)),
     },

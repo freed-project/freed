@@ -13,6 +13,8 @@ const DEFAULT_SCRAPER_WINDOW_MODE: ScraperWindowMode = "hidden";
 const IG_KEY = "ig_scraper_debug_window";
 const FB_KEY = "fb_scraper_debug_window";
 const LI_KEY = "li_scraper_debug_window";
+const SUBSTACK_KEY = "substack_scraper_debug_window";
+const MEDIUM_KEY = "medium_scraper_debug_window";
 
 function readMode(key: string): ScraperWindowMode {
   const stored = localStorage.getItem(key);
@@ -60,4 +62,20 @@ export function getLiScraperWindowMode(): ScraperWindowMode {
 
 export function setLiScraperWindowMode(mode: ScraperWindowMode): void {
   writeMode(LI_KEY, mode);
+}
+
+export function getSubstackScraperWindowMode(): ScraperWindowMode {
+  return readMode(SUBSTACK_KEY);
+}
+
+export function setSubstackScraperWindowMode(mode: ScraperWindowMode): void {
+  writeMode(SUBSTACK_KEY, mode);
+}
+
+export function getMediumScraperWindowMode(): ScraperWindowMode {
+  return readMode(MEDIUM_KEY);
+}
+
+export function setMediumScraperWindowMode(mode: ScraperWindowMode): void {
+  writeMode(MEDIUM_KEY, mode);
 }

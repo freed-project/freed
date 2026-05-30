@@ -99,7 +99,7 @@ const ANIMATION_OPTIONS: ReadonlyArray<{ value: AnimationIntensity; label: strin
   { value: "detailed", label: "Detailed" },
 ];
 
-type ProviderSectionId = Extract<SectionId, "x" | "facebook" | "instagram" | "linkedin">;
+type ProviderSectionId = Extract<SectionId, "x" | "facebook" | "instagram" | "linkedin" | "substack" | "medium">;
 type ProviderAuthState = {
   isAuthenticated?: boolean;
   lastCaptureError?: string;
@@ -109,6 +109,8 @@ type ProviderAuthSlices = {
   fbAuth?: ProviderAuthState;
   igAuth?: ProviderAuthState;
   liAuth?: ProviderAuthState;
+  substackAuth?: ProviderAuthState;
+  mediumAuth?: ProviderAuthState;
 };
 const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
 const INSTALLED_BUILD_PRESENTATION = describeInstalledBuild(readBuildMetadata());
@@ -174,7 +176,9 @@ function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId
     sectionId === "x" ||
     sectionId === "facebook" ||
     sectionId === "instagram" ||
-    sectionId === "linkedin"
+    sectionId === "linkedin" ||
+    sectionId === "substack" ||
+    sectionId === "medium"
   );
 }
 
@@ -189,6 +193,8 @@ function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
   const fbAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).fbAuth);
   const igAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).igAuth);
   const liAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).liAuth);
+  const substackAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).substackAuth);
+  const mediumAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).mediumAuth);
 
   const authState =
     sectionId === "x"
@@ -197,7 +203,11 @@ function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
         ? fbAuth
         : sectionId === "instagram"
           ? igAuth
-          : liAuth;
+          : sectionId === "linkedin"
+            ? liAuth
+            : sectionId === "substack"
+              ? substackAuth
+              : mediumAuth;
 
   const snapshot = health?.providers[sectionId];
   const isConnected = authState?.isAuthenticated === true;
@@ -387,6 +397,16 @@ const ICONS: Record<SectionId, ReactNode> = {
       <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
     </svg>
   ),
+  substack: (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M5 3h14v2.7H5V3zm0 4.8h14v2.7H5V7.8zm0 4.8h14V21l-7-3.9L5 21v-8.4z" />
+    </svg>
+  ),
+  medium: (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M4.2 7.1c.1-.7-.2-1.4-.8-1.9V4.9h5.5l4.3 9.4 3.8-9.4h5.2v.3c-.5.3-.7.6-.7 1.2v11.2c0 .6.2.9.7 1.2v.3h-7.4v-.3c.6-.3.8-.6.8-1.2V8.3l-4.7 10.8h-.6L5.1 8.5v7.8c0 1 .3 1.8 1.1 2.5v.3H2v-.3c.8-.7 1.2-1.5 1.2-2.5V7.1z" />
+    </svg>
+  ),
   googleContacts: (
     <GoogleContactsIcon />
   ),
@@ -412,6 +432,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     FacebookSettingsContent,
     InstagramSettingsContent,
     LinkedInSettingsContent,
+    SubstackSettingsContent,
+    MediumSettingsContent,
     GoogleContactsSettingsContent,
     checkForUpdates,
     changelogPreview,
@@ -447,6 +469,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         hasFacebook: !!FacebookSettingsContent,
         hasInstagram: !!InstagramSettingsContent,
         hasLinkedIn: !!LinkedInSettingsContent,
+        hasSubstack: !!SubstackSettingsContent,
+        hasMedium: !!MediumSettingsContent,
         hasUpdateChecks: !!checkForUpdates,
         hasFactoryReset: !!factoryReset,
       }).map((section) => ({
@@ -459,6 +483,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       FacebookSettingsContent,
       InstagramSettingsContent,
       LinkedInSettingsContent,
+      SubstackSettingsContent,
+      MediumSettingsContent,
       checkForUpdates,
       factoryReset,
     ],
@@ -485,6 +511,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           ...(FacebookSettingsContent ? [sectionById.facebook] : []),
           ...(InstagramSettingsContent ? [sectionById.instagram] : []),
           ...(LinkedInSettingsContent ? [sectionById.linkedin] : []),
+          ...(SubstackSettingsContent ? [sectionById.substack] : []),
+          ...(MediumSettingsContent ? [sectionById.medium] : []),
           sectionById.feeds,
         ],
       },
@@ -498,6 +526,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       GoogleContactsSettingsContent,
       InstagramSettingsContent,
       LinkedInSettingsContent,
+      SubstackSettingsContent,
+      MediumSettingsContent,
       XSettingsContent,
       checkForUpdates,
       factoryReset,
@@ -1550,6 +1580,22 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="LinkedIn" />
             <LinkedInSettingsContent surface="settings" />
+          </>
+        ) : null;
+
+      case "substack":
+        return SubstackSettingsContent ? (
+          <>
+            <SectionHeading label="Substack" />
+            <SubstackSettingsContent surface="settings" />
+          </>
+        ) : null;
+
+      case "medium":
+        return MediumSettingsContent ? (
+          <>
+            <SectionHeading label="Medium" />
+            <MediumSettingsContent surface="settings" />
           </>
         ) : null;
 

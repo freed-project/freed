@@ -32,6 +32,10 @@ function getPlatform(feedUrl: string): Platform {
       return "github";
     case "mastodon":
       return "mastodon";
+    case "medium":
+      return "medium";
+    case "substack":
+      return "substack";
     default:
       return "rss";
   }

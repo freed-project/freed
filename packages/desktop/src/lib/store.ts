@@ -71,6 +71,8 @@ import { log } from "./logger";
 import { initFbAuth, type FbAuthState } from "./fb-auth";
 import { initIgAuth, type IgAuthState } from "./instagram-auth";
 import { initLiAuth, type LiAuthState } from "./li-auth";
+import { initSubstackAuth, type SubstackAuthState } from "./substack-auth";
+import { initMediumAuth, type MediumAuthState } from "./medium-auth";
 
 let outboxTeardown: (() => void) | null = null;
 let startupContentSignalTimer: ReturnType<typeof setTimeout> | null = null;
@@ -82,6 +84,8 @@ export type SyncProviderId =
   | "facebook"
   | "instagram"
   | "linkedin"
+  | "substack"
+  | "medium"
   | "gdrive"
   | "dropbox";
 
@@ -93,6 +97,8 @@ const EMPTY_PROVIDER_SYNC_COUNTS: ProviderSyncCounts = {
   facebook: 0,
   instagram: 0,
   linkedin: 0,
+  substack: 0,
+  medium: 0,
   gdrive: 0,
   dropbox: 0,
 };
@@ -129,6 +135,10 @@ interface AppState {
   igAuth: IgAuthState;
   // LinkedIn auth state
   liAuth: LiAuthState;
+  // Substack auth state
+  substackAuth: SubstackAuthState;
+  // Medium auth state
+  mediumAuth: MediumAuthState;
 
   // UI state
   isLoading: boolean;
@@ -196,6 +206,10 @@ interface AppState {
   setIgAuth: (auth: IgAuthState) => void;
   // LinkedIn auth actions
   setLiAuth: (auth: LiAuthState) => void;
+  // Substack auth actions
+  setSubstackAuth: (auth: SubstackAuthState) => void;
+  // Medium auth actions
+  setMediumAuth: (auth: MediumAuthState) => void;
 
   // UI actions (not persisted)
   setFilter: (filter: FilterOptions) => void;
@@ -454,6 +468,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   fbAuth: { isAuthenticated: false },
   igAuth: { isAuthenticated: false },
   liAuth: { isAuthenticated: false },
+  substackAuth: { isAuthenticated: false },
+  mediumAuth: { isAuthenticated: false },
   isLoading: true,
   isSyncing: false,
   providerSyncCounts: { ...EMPTY_PROVIDER_SYNC_COUNTS },
@@ -513,6 +529,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const fbAuth = initFbAuth();
       const igAuth = initIgAuth();
       const liAuth = initLiAuth();
+      const substackAuth = initSubstackAuth();
+      const mediumAuth = initMediumAuth();
 
       // Hydrate immediately from the initial DocState returned by the worker.
       set({
@@ -525,6 +543,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         fbAuth,
         igAuth,
         liAuth,
+        substackAuth,
+        mediumAuth,
         isInitialized: true,
         isLoading: false,
       });
@@ -824,6 +844,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   setIgAuth: (auth) => set({ igAuth: auth }),
   // LinkedIn auth actions
   setLiAuth: (auth) => set({ liAuth: auth }),
+  // Substack auth actions
+  setSubstackAuth: (auth) => set({ substackAuth: auth }),
+  // Medium auth actions
+  setMediumAuth: (auth) => set({ mediumAuth: auth }),
 
   // UI actions
   setFilter: (filter) => set({ activeFilter: filter }),

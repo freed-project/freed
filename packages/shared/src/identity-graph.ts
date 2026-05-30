@@ -25,6 +25,8 @@ const SOCIAL_GRAPH_PROVIDERS = new Set<Account["provider"]>([
   "facebook",
   "x",
   "linkedin",
+  "substack",
+  "medium",
 ]);
 
 const ORGANIZATION_KEYWORDS = new Set([

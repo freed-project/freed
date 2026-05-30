@@ -1060,8 +1060,12 @@ export function Sidebar({
         return "order-8";
       case "linkedin":
         return "order-9";
-      case "rss":
+      case "substack":
         return "order-10";
+      case "medium":
+        return "order-11";
+      case "rss":
+        return "order-12";
       default:
         return "";
     }
@@ -1074,6 +1078,8 @@ export function Sidebar({
     if (source.id === "facebook") return "facebook";
     if (source.id === "instagram") return "instagram";
     if (source.id === "linkedin") return "linkedin";
+    if (source.id === "substack") return "substack";
+    if (source.id === "medium") return "medium";
     return "sync";
   };
 
@@ -1082,7 +1088,9 @@ export function Sidebar({
     source.id === "x" ||
     source.id === "facebook" ||
     source.id === "instagram" ||
-    source.id === "linkedin";
+    source.id === "linkedin" ||
+    source.id === "substack" ||
+    source.id === "medium";
   const sourceMenuTriggerBaseClass = rowCountsVisible
     ? "absolute right-0 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]"
     : "absolute top-[-1px] bottom-[-1px] right-0 flex items-center justify-center rounded-md px-1 transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]";

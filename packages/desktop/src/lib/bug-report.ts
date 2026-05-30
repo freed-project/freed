@@ -110,6 +110,8 @@ function createStateSummary() {
       facebook: state.fbAuth.isAuthenticated,
       instagram: state.igAuth.isAuthenticated,
       linkedin: state.liAuth.isAuthenticated,
+      substack: state.substackAuth.isAuthenticated,
+      medium: state.mediumAuth.isAuthenticated,
     },
     cloudProviders: cloudProviders
       ? {

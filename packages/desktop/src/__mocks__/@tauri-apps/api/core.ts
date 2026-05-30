@@ -259,6 +259,18 @@ const handlers: Record<string, Handler> = {
   li_check_auth: () => true,
   li_scrape_feed: () => null,
   li_disconnect: () => null,
+  substack_show_login: () => null,
+  substack_check_auth: () => true,
+  substack_disconnect: () => null,
+  substack_scrape_graph: () => null,
+  substack_scrape_activity: () => null,
+  substack_scrape_essays: () => null,
+  medium_show_login: () => null,
+  medium_check_auth: () => true,
+  medium_disconnect: () => null,
+  medium_scrape_graph: () => null,
+  medium_scrape_activity: () => null,
+  medium_scrape_essays: () => null,
 };
 
 // Expose handler map so tests and tauri-init.ts can override defaults.

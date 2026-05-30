@@ -64,7 +64,7 @@ export function canonicalizeFilterOptions(filter: FilterOptions): FilterOptions 
   const platform = feedUrl ? "rss" : normalizeText(filter.platform) ?? undefined;
   const authorId = feedUrl ? null : normalizeText(filter.authorId);
   const socialContentFilter =
-    platform === "facebook" || platform === "instagram"
+    platform === "facebook" || platform === "instagram" || platform === "substack" || platform === "medium"
       ? normalizeSocialContentFilter(filter.socialContentFilter)
       : undefined;
   const next: FilterOptions = {};

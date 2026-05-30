@@ -12,6 +12,8 @@ import {
   FacebookIcon,
   InstagramIcon,
   LinkedInIcon,
+  MediumIcon,
+  SubstackIcon,
   YoutubeIcon,
   RedditIcon,
   GithubIcon,
@@ -93,6 +95,8 @@ const platformIcons: Record<string, ReactNode> = {
   facebook: <FacebookIcon className={cls} />,
   instagram: <InstagramIcon className={cls} />,
   linkedin: <LinkedInIcon className={cls} />,
+  substack: <SubstackIcon className={cls} />,
+  medium: <MediumIcon className={cls} />,
   saved: <BookmarkIcon className={cls} />,
 };
 

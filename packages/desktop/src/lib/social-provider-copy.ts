@@ -1,4 +1,4 @@
-export type SocialProviderId = "x" | "facebook" | "instagram" | "linkedin";
+export type SocialProviderId = "x" | "facebook" | "instagram" | "linkedin" | "substack" | "medium";
 
 export interface SocialProviderCopy {
   label: string;
@@ -79,6 +79,40 @@ export const SOCIAL_PROVIDER_COPY = {
       "Freed reads your LinkedIn feed through a native browser session. Your traffic looks identical to normal browsing.",
     memoryPressure:
       "LinkedIn sync did not start because Freed Desktop memory is high.",
+  },
+  substack: {
+    label: "Substack",
+    settingsTitle: "Substack",
+    connectedEmptyState: "Your Substack essays and notes are up to date.",
+    disconnectedSettings:
+      "Pull Substack essays, notes, public follows, and visible subscriptions into Freed. Log in through a native browser window.",
+    disconnectedEmptyState:
+      "Pull Substack essays and notes into Freed. Set it up in Sources settings.",
+    feedReturnedEmpty:
+      "Substack returned no visible essays or activity. It may need a moment to load.",
+    timeout:
+      "Scrape timed out. Substack may be slow to load. Try again.",
+    connectedInfo:
+      "Freed reads visible Substack pages through a native browser session. RSS is used for essay bodies when it is available.",
+    memoryPressure:
+      "Substack sync did not start because Freed Desktop memory is high.",
+  },
+  medium: {
+    label: "Medium",
+    settingsTitle: "Medium",
+    connectedEmptyState: "Your Medium stories and responses are up to date.",
+    disconnectedSettings:
+      "Pull Medium stories, responses, public follows, and visible activity into Freed. Log in through a native browser window.",
+    disconnectedEmptyState:
+      "Pull Medium stories and responses into Freed. Set it up in Sources settings.",
+    feedReturnedEmpty:
+      "Medium returned no visible stories or activity. It may need a moment to load.",
+    timeout:
+      "Scrape timed out. Medium may be slow to load. Try again.",
+    connectedInfo:
+      "Freed reads visible Medium pages through a native browser session. RSS is used for essay bodies when it is available.",
+    memoryPressure:
+      "Medium sync did not start because Freed Desktop memory is high.",
   },
 } satisfies Record<SocialProviderId, SocialProviderCopy>;
 

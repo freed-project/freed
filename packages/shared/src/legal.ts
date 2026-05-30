@@ -1,6 +1,6 @@
 export type LegalDocId = "terms" | "eula" | "privacy";
 
-export type ProviderRiskId = "x" | "facebook" | "instagram" | "linkedin";
+export type ProviderRiskId = "x" | "facebook" | "instagram" | "linkedin" | "substack" | "medium";
 
 export type LegalSurface =
   | "website-download"
@@ -9,7 +9,9 @@ export type LegalSurface =
   | "desktop-provider-x"
   | "desktop-provider-facebook"
   | "desktop-provider-instagram"
-  | "desktop-provider-linkedin";
+  | "desktop-provider-linkedin"
+  | "desktop-provider-substack"
+  | "desktop-provider-medium";
 
 export interface LegalDocMeta {
   id: LegalDocId;
@@ -52,6 +54,8 @@ export const PROVIDER_RISK_VERSIONS: Record<ProviderRiskId, string> = {
   facebook: "2026-03-31-facebook",
   instagram: "2026-03-31-instagram",
   linkedin: "2026-03-31-linkedin",
+  substack: "2026-05-30-substack",
+  medium: "2026-05-30-medium",
 };
 
 export function isLegalAcceptanceRecord(
@@ -101,5 +105,9 @@ export function providerSurface(provider: ProviderRiskId): LegalSurface {
       return "desktop-provider-instagram";
     case "linkedin":
       return "desktop-provider-linkedin";
+    case "substack":
+      return "desktop-provider-substack";
+    case "medium":
+      return "desktop-provider-medium";
   }
 }

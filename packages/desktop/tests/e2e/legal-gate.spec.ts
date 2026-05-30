@@ -31,7 +31,7 @@ async function openSettingsSection(
 
 async function cancelProviderRiskDialog(
   page: import("@playwright/test").Page,
-  provider: "x" | "facebook" | "instagram" | "linkedin",
+  provider: "x" | "facebook" | "instagram" | "linkedin" | "substack" | "medium",
 ): Promise<void> {
   const dialog = page.getByTestId(`provider-risk-dialog-${provider}`);
   await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -164,4 +164,50 @@ test("LinkedIn login requires provider consent", async ({ app }) => {
   });
 
   await cancelProviderRiskDialog(page, "linkedin");
+});
+
+test("authenticated essay logins require provider consent", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  const { page } = app;
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    store.setState({
+      substackAuth: { isAuthenticated: false },
+      mediumAuth: { isAuthenticated: false },
+    });
+    const storeKey = "__TAURI_MOCK_STORE__:legal.json";
+    const raw = window.localStorage.getItem(storeKey);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    delete parsed["legal.provider.substack"];
+    delete parsed["legal.provider.medium"];
+    window.localStorage.setItem(storeKey, JSON.stringify(parsed));
+    window.localStorage.removeItem("freed.legal.legal.provider.substack");
+    window.localStorage.removeItem("freed.legal.legal.provider.medium");
+  });
+
+  await openSettingsSection(page, "Substack");
+  await page.getByTestId("provider-connect-substack").click();
+  await expect(page.getByTestId("provider-risk-accept-substack")).toBeVisible({
+    timeout: 5_000,
+  });
+  await cancelProviderRiskDialog(page, "substack");
+
+  const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  const mediumSection = settingsDialog
+    .locator("button")
+    .filter({ hasText: "Medium" })
+    .first();
+  await expect(mediumSection).toBeVisible({ timeout: 3_000 });
+  await mediumSection.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
+  await page.getByTestId("provider-connect-medium").click();
+  await expect(page.getByTestId("provider-risk-accept-medium")).toBeVisible({
+    timeout: 5_000,
+  });
 });

@@ -716,6 +716,8 @@ function HealthTab() {
     FacebookSettingsContent,
     InstagramSettingsContent,
     LinkedInSettingsContent,
+    SubstackSettingsContent,
+    MediumSettingsContent,
   } = usePlatform();
   const [feedRangeByUrl, setFeedRangeByUrl] = useState<Record<string, HealthChartRange>>({});
   const [pendingRemoval, setPendingRemoval] = useState<RssFeedHealthSnapshot | null>(null);
@@ -739,6 +741,8 @@ function HealthTab() {
     "facebook",
     "instagram",
     "linkedin",
+    "substack",
+    "medium",
     "gdrive",
     "dropbox",
   ];
@@ -749,6 +753,8 @@ function HealthTab() {
     facebook: FacebookSettingsContent,
     instagram: InstagramSettingsContent,
     linkedin: LinkedInSettingsContent,
+    substack: SubstackSettingsContent,
+    medium: MediumSettingsContent,
   };
 
   const copySnapshot = async () => {

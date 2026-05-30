@@ -8,7 +8,7 @@ import {
 } from "@freed/ui/lib/provider-status";
 
 type ProviderSyncCountsShape = Partial<Record<
-  "rss" | "x" | "facebook" | "instagram" | "linkedin",
+  "rss" | "x" | "facebook" | "instagram" | "linkedin" | "substack" | "medium",
   number
 >>;
 
@@ -25,6 +25,8 @@ export interface SourceStatusInput {
   fbAuth?: ProviderAuthState;
   igAuth?: ProviderAuthState;
   liAuth?: ProviderAuthState;
+  substackAuth?: ProviderAuthState;
+  mediumAuth?: ProviderAuthState;
 }
 
 function formatFeedHealthDetail(
@@ -78,12 +80,18 @@ export function getDesktopSourceStatus(
           ? desktopState.igAuth
           : sourceId === "linkedin"
             ? desktopState.liAuth
-            : null;
+            : sourceId === "substack"
+              ? desktopState.substackAuth
+              : sourceId === "medium"
+                ? desktopState.mediumAuth
+                : null;
   const sourceItemCount =
     sourceId === "x" ||
     sourceId === "facebook" ||
     sourceId === "instagram" ||
-    sourceId === "linkedin"
+    sourceId === "linkedin" ||
+    sourceId === "substack" ||
+    sourceId === "medium"
       ? (desktopState.itemCountByPlatform[sourceId] ?? 0)
       : 0;
 
@@ -91,7 +99,9 @@ export function getDesktopSourceStatus(
     sourceId === "x" ||
     sourceId === "facebook" ||
     sourceId === "instagram" ||
-    sourceId === "linkedin"
+    sourceId === "linkedin" ||
+    sourceId === "substack" ||
+    sourceId === "medium"
       ? health?.providers[sourceId]
       : undefined;
   const authError =
@@ -124,7 +134,9 @@ export function getDesktopSourceStatus(
       sourceId === "x" ||
       sourceId === "facebook" ||
       sourceId === "instagram" ||
-      sourceId === "linkedin"
+      sourceId === "linkedin" ||
+      sourceId === "substack" ||
+      sourceId === "medium"
         ? (desktopState.providerSyncCounts[sourceId] ?? 0) > 0
         : false,
   };

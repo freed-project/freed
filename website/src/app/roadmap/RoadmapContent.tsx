@@ -801,7 +801,7 @@ const phases: Phase[] = [
     number: 12,
     title: "Additional Platforms",
     description:
-      "LinkedIn is in, including matching desktop scraper window controls, silent background media guarding, and the shared provider health and pause-state surfaces. Next up: Mozi for social planning, then TikTok, Threads, Bluesky, Reddit, and YouTube.",
+      "LinkedIn, Substack, and Medium are in, including desktop scraper window controls, RSS-first essay capture, visible follow roster ingestion, and the shared provider health and pause-state surfaces. Next up: Mozi for social planning, then TikTok, Threads, Bluesky, Reddit, and YouTube.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-12-ADDITIONAL-PLATFORMS.md",

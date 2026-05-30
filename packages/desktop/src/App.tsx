@@ -53,10 +53,14 @@ import { clearStoredCookies, storeCookies } from "./lib/x-auth";
 import { disconnectIg, storeIgAuthState } from "./lib/instagram-auth";
 import { disconnectFb, storeFbAuthState } from "./lib/fb-auth";
 import { disconnectLi, storeLiAuthState } from "./lib/li-auth";
+import { disconnectSubstack, storeSubstackAuthState } from "./lib/substack-auth";
+import { disconnectMedium, storeMediumAuthState } from "./lib/medium-auth";
 import { captureXTimeline } from "./lib/x-capture";
 import { captureFbFeed } from "./lib/fb-capture";
 import { captureIgFeed } from "./lib/instagram-capture";
 import { captureLiFeed } from "./lib/li-capture";
+import { captureSubstackFeed } from "./lib/substack-capture";
+import { captureMediumFeed } from "./lib/medium-capture";
 import { contentCache } from "./lib/content-cache";
 import { saveUrlInDesktop } from "./lib/save-url";
 import { hydrateReaderItem as hydrateReaderItemForDesktop } from "./lib/reader-hydration";
@@ -74,6 +78,8 @@ import { XSettingsSection } from "./components/XSettingsSection";
 import { FacebookSettingsSection } from "./components/FacebookSettingsSection";
 import { InstagramSettingsSection } from "./components/InstagramSettingsSection";
 import { LinkedInSettingsSection } from "./components/LinkedInSettingsSection";
+import { SubstackSettingsSection } from "./components/SubstackSettingsSection";
+import { MediumSettingsSection } from "./components/MediumSettingsSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
 import { DesktopLegalSettingsSection } from "./components/DesktopLegalSettingsSection";
@@ -671,6 +677,8 @@ function App() {
     await disconnectFb().catch(() => {});
     await disconnectIg().catch(() => {});
     await disconnectLi().catch(() => {});
+    await disconnectSubstack().catch(() => {});
+    await disconnectMedium().catch(() => {});
     for (const provider of providers) clearCloudProvider(provider);
     clearContactSyncState();
     await clearSnapshots();
@@ -746,7 +754,7 @@ function App() {
   // credentials to localStorage (matching the real auth persistence format)
   // and updates Zustand state so the sidebar dots light up without a real login.
   const seedSocialConnections = useCallback(() => {
-    const { setXAuth, setFbAuth, setIgAuth, setLiAuth } = useAppStore.getState();
+    const { setXAuth, setFbAuth, setIgAuth, setLiAuth, setSubstackAuth, setMediumAuth } = useAppStore.getState();
     const now = Date.now();
 
     const xCookies = { ct0: "sample-ct0-token", authToken: "sample-auth-token" };
@@ -764,6 +772,14 @@ function App() {
     const liState = { isAuthenticated: true, lastCheckedAt: now };
     storeLiAuthState(liState);
     setLiAuth(liState);
+
+    const substackState = { isAuthenticated: true, lastCheckedAt: now };
+    storeSubstackAuthState(substackState);
+    setSubstackAuth(substackState);
+
+    const mediumState = { isAuthenticated: true, lastCheckedAt: now };
+    storeMediumAuthState(mediumState);
+    setMediumAuth(mediumState);
   }, []);
 
   // In dev mode, auto-seed sample data on first page load of each browser
@@ -804,6 +820,8 @@ function App() {
       FacebookSettingsContent: FacebookSettingsSection,
       InstagramSettingsContent: InstagramSettingsSection,
       LinkedInSettingsContent: LinkedInSettingsSection,
+      SubstackSettingsContent: SubstackSettingsSection,
+      MediumSettingsContent: MediumSettingsSection,
       GoogleContactsSettingsContent: tauriRuntimeAvailable ? GoogleContactsSection : null,
       checkForUpdates: IS_LOCAL_PREVIEW ? undefined : checkForUpdates,
       changelogPreview: DESKTOP_CHANGELOG_PREVIEW,
@@ -840,7 +858,9 @@ function App() {
           (sourceId === "x" ||
             sourceId === "facebook" ||
             sourceId === "instagram" ||
-            sourceId === "linkedin") &&
+            sourceId === "linkedin" ||
+            sourceId === "substack" ||
+            sourceId === "medium") &&
           health?.providers[sourceId]?.status === "paused";
 
         if (sourceId === "rss") {
@@ -877,6 +897,22 @@ function App() {
             await clearProviderPause("linkedin");
           }
           await withProviderSyncing("linkedin", () => captureLiFeed());
+          return;
+        }
+
+        if (sourceId === "substack" && state.substackAuth.isAuthenticated) {
+          if (isPaused) {
+            await clearProviderPause("substack");
+          }
+          await withProviderSyncing("substack", () => captureSubstackFeed());
+          return;
+        }
+
+        if (sourceId === "medium" && state.mediumAuth.isAuthenticated) {
+          if (isPaused) {
+            await clearProviderPause("medium");
+          }
+          await withProviderSyncing("medium", () => captureMediumFeed());
         }
       },
       getSourceStatus: (sourceId) => {

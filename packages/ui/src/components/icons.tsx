@@ -272,6 +272,22 @@ export function LinkedInIcon({ className = "w-4 h-4", style }: IconProps) {
   );
 }
 
+export function SubstackIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style} aria-hidden="true">
+      <path d="M5 3h14v2.7H5V3zm0 4.8h14v2.7H5V7.8zm0 4.8h14V21l-7-3.9L5 21v-8.4z" />
+    </svg>
+  );
+}
+
+export function MediumIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style} aria-hidden="true">
+      <path d="M4.2 7.1c.1-.7-.2-1.4-.8-1.9V4.9h5.5l4.3 9.4 3.8-9.4h5.2v.3c-.5.3-.7.6-.7 1.2v11.2c0 .6.2.9.7 1.2v.3h-7.4v-.3c.6-.3.8-.6.8-1.2V8.3l-4.7 10.8h-.6L5.1 8.5v7.8c0 1 .3 1.8 1.1 2.5v.3H2v-.3c.8-.7 1.2-1.5 1.2-2.5V7.1z" />
+    </svg>
+  );
+}
+
 /** YouTube play-button shield. */
 export function YoutubeIcon({ className = "w-4 h-4", style }: IconProps) {
   return (

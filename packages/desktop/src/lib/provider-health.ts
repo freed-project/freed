@@ -18,6 +18,8 @@ import { useAppStore } from "./store";
 import { storeFbAuthState } from "./fb-auth";
 import { storeIgAuthState } from "./instagram-auth";
 import { storeLiAuthState } from "./li-auth";
+import { storeSubstackAuthState } from "./substack-auth";
+import { storeMediumAuthState } from "./medium-auth";
 import { readNativeJsonFile, writeNativeJsonValue } from "./native-json-store";
 
 const HEALTH_STORE_FILE = "sync-health.json";
@@ -32,6 +34,8 @@ const PROVIDERS: HealthProviderId[] = [
   "facebook",
   "instagram",
   "linkedin",
+  "substack",
+  "medium",
   "gdrive",
   "dropbox",
 ];
@@ -40,6 +44,8 @@ const SOCIAL_PROVIDERS = new Set<HealthProviderId>([
   "facebook",
   "instagram",
   "linkedin",
+  "substack",
+  "medium",
 ]);
 const DEFAULT_DAILY_BUCKETS = 7;
 const DEFAULT_HOURLY_BUCKETS = 24;
@@ -163,6 +169,8 @@ function createEmptyState(now = Date.now()): PersistedHealthState {
       facebook: emptyProviderState("facebook", now),
       instagram: emptyProviderState("instagram", now),
       linkedin: emptyProviderState("linkedin", now),
+      substack: emptyProviderState("substack", now),
+      medium: emptyProviderState("medium", now),
       gdrive: emptyProviderState("gdrive", now),
       dropbox: emptyProviderState("dropbox", now),
     },
@@ -716,6 +724,8 @@ function formatPauseToast(provider: HealthProviderId, pause: ProviderPauseState)
     facebook: "Facebook",
     instagram: "Instagram",
     linkedin: "LinkedIn",
+    substack: "Substack",
+    medium: "Medium",
     rss: "RSS",
     gdrive: "Google Drive",
     dropbox: "Dropbox",
@@ -769,6 +779,28 @@ function syncPauseToAuth(provider: HealthProviderId, pause: ProviderPauseState |
     };
     store.setLiAuth(next);
     storeLiAuthState(next);
+    return;
+  }
+  if (provider === "substack") {
+    const next = {
+      ...store.substackAuth,
+      pausedUntil: pause?.pausedUntil,
+      pauseReason: pause?.pauseReason,
+      pauseLevel: pause?.pauseLevel,
+    };
+    store.setSubstackAuth(next);
+    storeSubstackAuthState(next);
+    return;
+  }
+  if (provider === "medium") {
+    const next = {
+      ...store.mediumAuth,
+      pausedUntil: pause?.pausedUntil,
+      pauseReason: pause?.pauseReason,
+      pauseLevel: pause?.pauseLevel,
+    };
+    store.setMediumAuth(next);
+    storeMediumAuthState(next);
   }
 }
 

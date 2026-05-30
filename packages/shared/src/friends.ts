@@ -21,6 +21,8 @@ const SOCIAL_PLATFORMS = new Set<Platform>([
   "facebook",
   "instagram",
   "linkedin",
+  "substack",
+  "medium",
 ]);
 
 function inferredSocialProfileUrl(item: FeedItem): string | undefined {
@@ -36,6 +38,14 @@ function inferredSocialProfileUrl(item: FeedItem): string | undefined {
     return facebookHandle && facebookHandle !== "unknown"
       ? `https://www.facebook.com/${facebookHandle}`
       : undefined;
+  }
+
+  if (item.platform === "substack") {
+    return `https://substack.com/@${handle}`;
+  }
+
+  if (item.platform === "medium") {
+    return `https://medium.com/@${handle}`;
   }
 
   return undefined;

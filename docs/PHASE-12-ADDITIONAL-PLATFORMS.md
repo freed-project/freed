@@ -35,6 +35,46 @@ packages/capture-linkedin/
 - Session management more complex than other platforms
 - May require browser profile approach rather than cookies
 
+### `@freed/capture-substack`
+
+Authenticated Substack essays, notes, visible follows, public followers, and visible subscriptions. Essay bodies prefer RSS feeds at `/feed`; WebView extraction fills graph and visible activity gaps.
+
+```
+packages/capture-substack/
+├── src/
+│   ├── browser.ts
+│   ├── normalize.ts
+│   └── types.ts
+├── package.json
+└── tsconfig.json
+```
+
+**Boundaries:**
+
+- Imports connection identities as `Account` records with `discoveredFrom: "follow_roster"`
+- Does not scrape subscriber dashboards, subscriber email, paid status, DMs, private chats, or private audience tools
+- Uses provider risk consent, shared session locking, memory preflight, provider health, and cooldowns before WebView scraping
+
+### `@freed/capture-medium`
+
+Authenticated Medium stories, responses, claps or highlights where visible, visible follows, followers, and profile activity. Essay bodies prefer Medium RSS feeds; WebView extraction fills graph and activity gaps because new official integration tokens are not available.
+
+```
+packages/capture-medium/
+├── src/
+│   ├── browser.ts
+│   ├── normalize.ts
+│   └── types.ts
+├── package.json
+└── tsconfig.json
+```
+
+**Boundaries:**
+
+- Imports connection identities as `Account` records with `discoveredFrom: "follow_roster"`
+- Treats stories as `contentType: "article"` and visible activity as `contentType: "post"`
+- Uses provider risk consent, shared session locking, memory preflight, provider health, and cooldowns before WebView scraping
+
 ---
 
 ### `@freed/capture-mozi`
@@ -236,24 +276,31 @@ packages/capture-youtube/
 | 12.3  | LinkedIn session management                | High       | ✓ Done |
 | 12.4  | LinkedIn desktop source integration        | Medium     | ✓ Done |
 | 12.5  | LinkedIn regression test coverage          | Medium     | ✓ Done |
-| 12.6  | `@freed/capture-mozi` package scaffold     | Low        |        |
-| 12.7  | Mozi auth and session flow research        | High       |        |
-| 12.8  | Mozi extraction strategy: payload first    | High       |        |
-| 12.9  | Mozi desktop source integration            | Medium     |        |
-| 12.10 | Mozi regression test coverage              | Medium     |        |
-| 12.11 | `@freed/capture-tiktok` package scaffold   | Low        |        |
-| 12.12 | TikTok capture strategy research           | High       |        |
-| 12.13 | `@freed/capture-threads` package scaffold  | Low        |        |
-| 12.14 | Threads capture (similar to Instagram)     | Medium     |        |
-| 12.15 | `@freed/capture-bluesky` package scaffold  | Low        |        |
-| 12.16 | Bluesky AT Protocol client                 | Medium     |        |
-| 12.17 | Bluesky authentication flow                | Medium     |        |
-| 12.18 | `@freed/capture-reddit` package scaffold   | Low        |        |
-| 12.19 | Reddit OAuth setup                         | Medium     |        |
-| 12.20 | Reddit home feed capture                   | Medium     |        |
-| 12.21 | `@freed/capture-youtube` package scaffold  | Low        |        |
-| 12.22 | YouTube Data API integration               | Medium     |        |
-| 12.23 | YouTube subscriptions feed                 | Medium     |        |
+| 12.6  | `@freed/capture-substack` package scaffold | Low        | ✓ Done |
+| 12.7  | Substack authenticated WebView session flow | High      | ✓ Done |
+| 12.8  | Substack graph, activity, and essay normalization | High | ✓ Done |
+| 12.9  | Substack desktop source integration        | Medium     | ✓ Done |
+| 12.10 | `@freed/capture-medium` package scaffold   | Low        | ✓ Done |
+| 12.11 | Medium authenticated WebView session flow  | High       | ✓ Done |
+| 12.12 | Medium graph, activity, and story normalization | High   | ✓ Done |
+| 12.13 | Medium desktop source integration          | Medium     | ✓ Done |
+| 12.14 | Mozi auth and session flow research        | High       |        |
+| 12.15 | Mozi extraction strategy: payload first    | High       |        |
+| 12.16 | Mozi desktop source integration            | Medium     |        |
+| 12.17 | Mozi regression test coverage              | Medium     |        |
+| 12.18 | `@freed/capture-tiktok` package scaffold   | Low        |        |
+| 12.19 | TikTok capture strategy research           | High       |        |
+| 12.20 | `@freed/capture-threads` package scaffold  | Low        |        |
+| 12.21 | Threads capture (similar to Instagram)     | Medium     |        |
+| 12.22 | `@freed/capture-bluesky` package scaffold  | Low        |        |
+| 12.23 | Bluesky AT Protocol client                 | Medium     |        |
+| 12.24 | Bluesky authentication flow                | Medium     |        |
+| 12.25 | `@freed/capture-reddit` package scaffold   | Low        |        |
+| 12.26 | Reddit OAuth setup                         | Medium     |        |
+| 12.27 | Reddit home feed capture                   | Medium     |        |
+| 12.28 | `@freed/capture-youtube` package scaffold  | Low        |        |
+| 12.29 | YouTube Data API integration               | Medium     |        |
+| 12.30 | YouTube subscriptions feed                 | Medium     |        |
 
 ---
 
@@ -266,6 +313,10 @@ packages/capture-youtube/
 - [x] LinkedIn desktop flows have regression coverage in Playwright
 - [x] LinkedIn shares the desktop provider health summaries, rate-limit pause state, resume controls, and the unified provider section used in Settings and Debug panel cards
 - [x] LinkedIn shares the same provider severity colors and per-provider sync spinner behavior as the other social sources
+- [x] Substack and Medium normalize visible essays or stories as articles, visible activity as posts, and follow rosters as connection accounts
+- [x] Substack and Medium are visible in desktop Sources navigation, source status UI, Settings source sections, Debug health cards, and provider risk records
+- [x] Substack and Medium WebView jobs share the native session lock, memory preflight, randomized cooldowns, provider health, and disconnect data clearing
+- [x] Substack and Medium RSS feeds classify imported essay bodies under their provider IDs instead of generic RSS
 - [ ] Mozi activity captured to FeedItem with plans, trips, attendance, or overlap-adjacent events
 - [ ] Mozi is visible in desktop Sources navigation and source status UI
 - [ ] Mozi desktop flows have regression coverage in Playwright

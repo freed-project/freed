@@ -18,6 +18,8 @@ import { captureXTimeline } from "./x-capture";
 import { captureFbFeed } from "./fb-capture";
 import { captureIgFeed } from "./instagram-capture";
 import { captureLiFeed } from "./li-capture";
+import { captureSubstackFeed } from "./substack-capture";
+import { captureMediumFeed } from "./medium-capture";
 import { docBatchRefreshFeeds } from "./automerge";
 import { useAppStore, withProviderSyncing } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
@@ -389,6 +391,48 @@ export async function refreshAllFeeds(): Promise<void> {
             : "LinkedIn feed sync failed";
         console.error("[Refresh] LinkedIn feed failed:", liError);
         addDebugEvent("error", `[LI] feed sync threw: ${msg}`);
+        if (!useAppStore.getState().error) {
+          store.setError(msg);
+        }
+      }
+    }
+
+    const { substackAuth } = useAppStore.getState();
+    if (
+      tauriAvailable &&
+      substackAuth.isAuthenticated &&
+      !isProviderPaused("substack")
+    ) {
+      try {
+        await withProviderSyncing("substack", () => captureSubstackFeed());
+      } catch (substackError) {
+        const msg =
+          substackError instanceof Error
+            ? substackError.message
+            : "Substack sync failed";
+        console.error("[Refresh] Substack sync failed:", substackError);
+        addDebugEvent("error", `[Substack] sync threw: ${msg}`);
+        if (!useAppStore.getState().error) {
+          store.setError(msg);
+        }
+      }
+    }
+
+    const { mediumAuth } = useAppStore.getState();
+    if (
+      tauriAvailable &&
+      mediumAuth.isAuthenticated &&
+      !isProviderPaused("medium")
+    ) {
+      try {
+        await withProviderSyncing("medium", () => captureMediumFeed());
+      } catch (mediumError) {
+        const msg =
+          mediumError instanceof Error
+            ? mediumError.message
+            : "Medium sync failed";
+        console.error("[Refresh] Medium sync failed:", mediumError);
+        addDebugEvent("error", `[Medium] sync threw: ${msg}`);
         if (!useAppStore.getState().error) {
           store.setError(msg);
         }
