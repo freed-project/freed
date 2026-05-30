@@ -746,6 +746,7 @@ function providerVisiblePath(filePath) {
     filePath.startsWith("packages/capture-") ||
     filePath.includes("/capture-") ||
     filePath.includes("facebook") ||
+    filePath.includes("fb-extract") ||
     filePath.includes("instagram") ||
     filePath.includes("linkedin") ||
     filePath.includes("x-capture") ||
@@ -776,6 +777,19 @@ function peerWorktreeScore(peer) {
     score -= 15;
   }
   return Math.min(99, Math.max(1, score));
+}
+
+export function shouldRetainPeerWorktree(peer) {
+  if (peer.explicit) {
+    return true;
+  }
+  if (/nightly|self|runner|automation|scraper-recycle/i.test(peer.branch)) {
+    return true;
+  }
+  if (peer.providerVisible && peer.behindCount <= 25) {
+    return true;
+  }
+  return false;
 }
 
 export function summarizePeerWorktree(worktreePath, currentRepo) {
@@ -871,11 +885,7 @@ export function collectPeerWorktrees(repo, explicitWorktrees = [], scan = true) 
     .map((worktreePath) => summarizePeerWorktree(worktreePath, repo))
     .filter(Boolean)
     .map((peer) => ({ ...peer, explicit: explicitPaths.has(peer.path) }))
-    .filter(
-      (peer) =>
-        peer.explicit ||
-        /nightly|self|runner|automation|scraper-recycle/i.test(peer.branch),
-    )
+    .filter(shouldRetainPeerWorktree)
     .filter((peer) => peer.changedFileCount > 0 || peer.aheadCount > 0)
     .map((peer) => ({ ...peer, score: peerWorktreeScore(peer) }))
     .sort((left, right) => right.score - left.score);
@@ -1197,6 +1207,30 @@ export function collectRiskSnapshot({
   }
 
   for (const peer of peerWorktrees) {
+    if (peer.providerVisible) {
+      risks.push(
+        riskItem({
+          id: `provider-visible-peer-${peer.branch.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
+          severity: "warning",
+          title: `Peer worktree ${peer.branch} touches provider-visible code`,
+          evidence: [
+            peer.path,
+            ...peer.changedFiles.filter(providerVisiblePath).slice(0, 8),
+          ],
+          remediation:
+            "Do not merge, cherry-pick, or reimplement this peer work unless the provider fingerprinting risk has explicit approval.",
+          actions: [
+            riskAction({
+              id: "request-provider-visible-approval",
+              kind: "manual",
+              title: "Request explicit provider-visible approval",
+              notes:
+                "Name the provider, describe the observable behavior change, explain the fingerprinting risk, and offer a lower-profile alternative before continuing.",
+            }),
+          ],
+        }),
+      );
+    }
     if (peer.status) {
       risks.push(
         riskItem({

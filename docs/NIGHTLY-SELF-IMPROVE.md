@@ -15,6 +15,7 @@ The first rule is simple: evidence first, code second. If a target has weak evid
 - Git state for the current checkout
 - Local git worktrees with unmerged or uncommitted changes
 - Duplicate peer work indicators such as shared changed files, shared package surfaces, and shared provider-visible risk
+- Provider-visible peer worktrees, even when they are not runner branches
 - Prior outcome ledger at `/tmp/freed-nightly-self-improve/outcomes.jsonl`
 - Preflight risks such as dirty worktrees, generated artifacts, stale or thin soak samples, missing dependencies, missing evidence files, and paused automations
 - Preflight actions that separate safe local commands from manual or agent-tool-only remediation
@@ -89,7 +90,7 @@ Reports include an execution phase list so the night can move from evidence, to 
 
 ## Safety Gates
 
-The runner excludes provider-visible tasks by default. Do not allow autonomous changes that alter authenticated WebView loads, provider navigation, provider API call frequency, scripted scrolling, cookies, headers, or scraping timing without explicit approval.
+The runner excludes provider-visible tasks by default. Provider-visible peer worktrees are still pulled into the evidence queue so they cannot hide in the local swarm. Do not allow autonomous changes that alter authenticated WebView loads, provider navigation, provider API call frequency, scripted scrolling, cookies, headers, or scraping timing without explicit approval.
 
 Release work is also gated. A dev build should ship only after actual fixes merge into `dev`, not after planning artifacts alone.
 
