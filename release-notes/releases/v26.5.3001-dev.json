@@ -37,12 +37,15 @@
     "features": [],
     "fixes": [
       "Freed Desktop now rejects oversized cached reader HTML before loading it into WebKit and prunes legacy oversized cache files at startup",
-      "Startup content-signal backfill now waits until after launch, runs through the background runtime gate, and continues in smaller paced batches"
+      "Startup content-signal backfill now waits until after launch, runs through the background runtime gate, and continues in smaller paced batches",
+      "Background article backfill now skips oversized pages before they enter WebKit, reducing the chance that one huge HTML page inflates Freed Desktop memory"
     ],
     "followUps": [
+      "Safer overnight article backfill",
       "Shared content-signal backfill now scans feed items in one pass instead of building stale item arrays for every batch",
-      "The previous background article fetch size cap remains in place so oversized pages are stopped before they enter the renderer"
+      "The previous background article fetch size cap remains in place so oversized pages are stopped before they enter the renderer",
+      "Keeps explicit reader loads available while the lower-priority background path stays under a native response-size budget"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3001-dev\n\nLower startup memory pressure\n\n### Fixes\n\n- Freed Desktop now rejects oversized cached reader HTML before loading it into WebKit and prunes legacy oversized cache files at startup\n- Startup content-signal backfill now waits until after launch, runs through the background runtime gate, and continues in smaller paced batches\n\n### Follow-ups\n\n- Shared content-signal backfill now scans feed items in one pass instead of building stale item arrays for every batch\n- The previous background article fetch size cap remains in place so oversized pages are stopped before they enter the renderer\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3001-dev\n\nLower startup memory pressure\n\n### Fixes\n\n- Freed Desktop now rejects oversized cached reader HTML before loading it into WebKit and prunes legacy oversized cache files at startup\n- Startup content-signal backfill now waits until after launch, runs through the background runtime gate, and continues in smaller paced batches\n- Background article backfill now skips oversized pages before they enter WebKit, reducing the chance that one huge HTML page inflates Freed Desktop memory\n\n### Follow-ups\n\n- Safer overnight article backfill\n- Shared content-signal backfill now scans feed items in one pass instead of building stale item arrays for every batch\n- The previous background article fetch size cap remains in place so oversized pages are stopped before they enter the renderer\n- Keeps explicit reader loads available while the lower-priority background path stays under a native response-size budget\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
