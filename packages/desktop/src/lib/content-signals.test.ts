@@ -235,20 +235,24 @@ describe("content signals", () => {
     vi.setSystemTime(new Date("2026-04-25T12:00:00Z"));
 
     const doc = plainDoc();
-    addFeedItem(doc, makeItem({
-      content: {
-        text: "Join us at Civic Hall on May 12 at 7pm for a live event. RSVP now.",
-        mediaUrls: [],
-        mediaTypes: [],
-      },
-    }));
+    try {
+      addFeedItem(doc, makeItem({
+        content: {
+          text: "Join us at Civic Hall on May 12 at 7pm for a live event. RSVP now.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+      }));
 
-    const item = doc.feedItems["x:item-1"];
-    expect(item?.eventCandidate?.startsAt).toBe(Date.parse("2026-05-12T19:00:00Z"));
-    expect(item?.timeRange?.kind).toBe("event");
-    expect(item?.location?.source).toBe("text_extraction");
-    expect(item?.eventCandidate).not.toHaveProperty("vector");
-    expect(item?.eventCandidate).not.toHaveProperty("html");
+      const item = doc.feedItems["x:item-1"];
+      expect(item?.eventCandidate?.startsAt).toBe(Date.parse("2026-05-12T19:00:00Z"));
+      expect(item?.timeRange?.kind).toBe("event");
+      expect(item?.location?.source).toBe("text_extraction");
+      expect(item?.eventCandidate).not.toHaveProperty("vector");
+      expect(item?.eventCandidate).not.toHaveProperty("html");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not overwrite stronger existing locations", () => {
