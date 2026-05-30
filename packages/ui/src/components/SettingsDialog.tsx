@@ -8,7 +8,7 @@
  * Mobile: single-column with stacked sections and compact spacing.
  */
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   formatReleaseVersion,
   RELEASE_CHANNEL_LABELS,
@@ -88,6 +88,11 @@ interface SettingsDialogProps {
   onClose: () => void;
 }
 
+type SettingsScrollAnchor = {
+  sectionId: SectionId;
+  offset: number;
+};
+
 const ANIMATION_OPTIONS: ReadonlyArray<{ value: AnimationIntensity; label: string }> = [
   { value: "none", label: "None" },
   { value: "light", label: "Light" },
@@ -108,7 +113,7 @@ type ProviderAuthSlices = {
 const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
 const INSTALLED_BUILD_PRESENTATION = describeInstalledBuild(readBuildMetadata());
 const SETTINGS_OVERVIEW_ROW_TEXT = "text-base sm:text-xs";
-const SETTINGS_INTERACTION_BLUR_RESTORE_MS = 380;
+const SETTINGS_SCROLL_OPTIMIZATION_RESTORE_MS = 380;
 const CHANGELOG_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
@@ -425,13 +430,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const themeBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const interactionBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const interactionBlurLastAtRef = useRef(0);
+  const scrollOptimizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const themeSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingThemeIdRef = useRef<ThemeId | null>(null);
   const pendingThemeSaveSeqRef = useRef(0);
   const committedThemeIdRef = useRef(preferences.display.themeId);
-  const settingsOverlayRef = useRef<HTMLDivElement>(null);
   const settingsShellRef = useRef<HTMLDivElement>(null);
   const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
   // Flat section list — drives scrollspy and right-pane rendering.
@@ -588,17 +591,15 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (open) return;
     setThemePreviewHovering(false);
     setThemePreviewTouchActive(false);
-    delete settingsOverlayRef.current?.dataset.moving;
     delete settingsShellRef.current?.dataset.moving;
     if (themeBlurRestoreTimerRef.current) {
       clearTimeout(themeBlurRestoreTimerRef.current);
       themeBlurRestoreTimerRef.current = null;
     }
-    if (interactionBlurRestoreTimerRef.current) {
-      clearTimeout(interactionBlurRestoreTimerRef.current);
-      interactionBlurRestoreTimerRef.current = null;
+    if (scrollOptimizationTimerRef.current) {
+      clearTimeout(scrollOptimizationTimerRef.current);
+      scrollOptimizationTimerRef.current = null;
     }
-    interactionBlurLastAtRef.current = 0;
     flushPendingThemeSelectionNow();
   }, [flushPendingThemeSelectionNow, open]);
 
@@ -607,12 +608,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       if (themeBlurRestoreTimerRef.current) {
         clearTimeout(themeBlurRestoreTimerRef.current);
       }
-      if (interactionBlurRestoreTimerRef.current) {
-        clearTimeout(interactionBlurRestoreTimerRef.current);
-        delete settingsOverlayRef.current?.dataset.moving;
-        delete settingsShellRef.current?.dataset.moving;
+      if (scrollOptimizationTimerRef.current) {
+        clearTimeout(scrollOptimizationTimerRef.current);
       }
-      interactionBlurLastAtRef.current = 0;
+      delete settingsShellRef.current?.dataset.moving;
       flushPendingThemeSelectionNow();
     };
   }, [flushPendingThemeSelectionNow]);
@@ -629,41 +628,19 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }, 5000);
   }, [hasCoarsePointer]);
 
-  const suppressBackdropDuringInteraction = useCallback(() => {
-    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    interactionBlurLastAtRef.current = now;
-    if (interactionBlurRestoreTimerRef.current) {
-      return;
-    }
-
-    const overlay = settingsOverlayRef.current;
+  const suppressSettingsChromeDuringScroll = useCallback(() => {
     const shell = settingsShellRef.current;
-    if (overlay && overlay.dataset.moving !== "true") {
-      overlay.dataset.moving = "true";
-    }
     if (shell && shell.dataset.moving !== "true") {
       shell.dataset.moving = "true";
     }
 
-    const restoreWhenIdle = () => {
-      const current = typeof performance !== "undefined" ? performance.now() : Date.now();
-      const elapsed = current - interactionBlurLastAtRef.current;
-      const remaining = SETTINGS_INTERACTION_BLUR_RESTORE_MS - elapsed;
-      if (remaining > 0) {
-        interactionBlurRestoreTimerRef.current = setTimeout(restoreWhenIdle, remaining);
-        return;
-      }
-
-      delete settingsOverlayRef.current?.dataset.moving;
+    if (scrollOptimizationTimerRef.current) {
+      clearTimeout(scrollOptimizationTimerRef.current);
+    }
+    scrollOptimizationTimerRef.current = setTimeout(() => {
       delete settingsShellRef.current?.dataset.moving;
-      interactionBlurRestoreTimerRef.current = null;
-      interactionBlurLastAtRef.current = 0;
-    };
-
-    interactionBlurRestoreTimerRef.current = setTimeout(
-      restoreWhenIdle,
-      SETTINGS_INTERACTION_BLUR_RESTORE_MS,
-    );
+      scrollOptimizationTimerRef.current = null;
+    }, SETTINGS_SCROLL_OPTIMIZATION_RESTORE_MS);
   }, []);
 
   const handleThemeCommit = useCallback((themeId: ThemeId) => {
@@ -755,6 +732,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // ── Update check ─────────────────────────────────────────────────────────
   const [updateState, setUpdateState] = useState<UpdateCheckState>({ status: "idle" });
+  // Keep a ref in sync with updateState.status so scroll/visibility callbacks
+  // always read the current value without needing to be re-created.
+  const updateStatusRef = useRef(updateState.status);
+  updateStatusRef.current = updateState.status;
   const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const shouldRecheckAfterChannelChangeRef = useRef(false);
   const inferredInstalledReleaseChannel = inferInstalledReleaseChannelFromChangelog(
@@ -774,30 +755,44 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const runUpdateCheck = useCallback(async () => {
     if (!checkForUpdates) return;
 
+    updateStatusRef.current = "checking";
     setUpdateState({ status: "checking" });
     try {
       const update = await checkForUpdates();
       const next: UpdateCheckState = update
         ? { status: "available", version: update.version, channel: update.channel }
         : { status: "up-to-date" };
+      updateStatusRef.current = next.status;
       setUpdateState(next);
       if (next.status === "up-to-date") {
         clearTimeout(fadeTimer.current);
-        fadeTimer.current = setTimeout(() => setUpdateState({ status: "idle" }), 4000);
+        fadeTimer.current = setTimeout(() => {
+          updateStatusRef.current = "idle";
+          setUpdateState({ status: "idle" });
+        }, 4000);
       }
     } catch {
+      updateStatusRef.current = "error";
       setUpdateState({ status: "error" });
       clearTimeout(fadeTimer.current);
-      fadeTimer.current = setTimeout(() => setUpdateState({ status: "idle" }), 4000);
+      fadeTimer.current = setTimeout(() => {
+        updateStatusRef.current = "idle";
+        setUpdateState({ status: "idle" });
+      }, 4000);
     }
   }, [checkForUpdates]);
 
   const handleCheckForUpdates = useCallback(async () => {
+    if (updateStatusRef.current !== "idle") {
+      return;
+    }
+
     await runUpdateCheck();
   }, [runUpdateCheck]);
 
   useEffect(() => {
     clearTimeout(fadeTimer.current);
+    updateStatusRef.current = "idle";
     setUpdateState({ status: "idle" });
 
     if (!shouldRecheckAfterChannelChangeRef.current || !checkForUpdates) {
@@ -902,8 +897,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   // ── Scrollspy ────────────────────────────────────────────────────────────
   const [activeSection, setActiveSection] = useState<SectionId>("appearance");
   const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
+  const [scrollportHeight, setScrollportHeight] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeSectionRef = useRef(activeSection);
+  const scrollAnchorRef = useRef<SettingsScrollAnchor>({ sectionId: "appearance", offset: 0 });
   const renderedSectionIds = useMemo(() => {
     if (isMobile || searchLower) {
       return new Set(visibleSections.map((section) => section.id));
@@ -917,11 +914,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     return ids;
   }, [activeSection, allSections, isMobile, searchLower, visibleSections]);
 
-  // Keep a ref in sync with updateState.status so scroll/visibility callbacks
-  // always read the current value without needing to be re-created.
-  const updateStatusRef = useRef(updateState.status);
-  updateStatusRef.current = updateState.status;
-
   // Ref for the "Check for updates" button element.
   const checkButtonRef = useRef<HTMLDivElement>(null);
   const MOBILE_CONTENT_TOP_INSET = 20;
@@ -929,6 +921,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const scrollContainerBottomPadding = isMobile
     ? "calc(2rem + env(safe-area-inset-bottom, 0px))"
     : "calc(8rem + env(safe-area-inset-bottom, 0px))";
+  const desktopSectionMinHeight = scrollportHeight > 0
+    ? `${scrollportHeight}px`
+    : "calc(100dvh - 8rem)";
 
   useEffect(() => {
     activeSectionRef.current = activeSection;
@@ -985,13 +980,84 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       clearTimeout(debounceTimer);
       observer.disconnect();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, checkForUpdates]);
+  }, [activeSection, checkForUpdates, handleCheckForUpdates, open, renderedSectionIds]);
   // While true, scroll-driven updates are suppressed so intermediate sections
   // that drift through the trigger zone during a smooth-scroll animation don't
   // cause nav items to flicker.
   const isScrollingProgrammatically = useRef(false);
   const scrollEndTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const updateScrollAnchorFromPosition = useCallback((): SectionId | null => {
+    const container = scrollRef.current;
+    if (!container) {
+      return null;
+    }
+
+    const sections = Array.from(container.querySelectorAll<HTMLElement>("[data-section]"));
+    if (sections.length === 0) {
+      return null;
+    }
+
+    const scrollPosition = container.scrollTop + 56;
+    let anchorSection = sections[0];
+    for (const section of sections) {
+      if (section.offsetTop <= scrollPosition) {
+        anchorSection = section;
+      } else {
+        break;
+      }
+    }
+
+    const sectionId = anchorSection.dataset.section as SectionId;
+    scrollAnchorRef.current = {
+      sectionId,
+      offset: container.scrollTop - anchorSection.offsetTop,
+    };
+    return sectionId;
+  }, []);
+
+  const setScrollAnchorForSection = useCallback((id: SectionId, scrollTop?: number) => {
+    const container = scrollRef.current;
+    if (!container) {
+      scrollAnchorRef.current = { sectionId: id, offset: 0 };
+      return;
+    }
+
+    const section = container.querySelector<HTMLElement>(`[data-section="${id}"]`);
+    scrollAnchorRef.current = {
+      sectionId: id,
+      offset: section ? (scrollTop ?? container.scrollTop) - section.offsetTop : 0,
+    };
+  }, []);
+
+  const restoreScrollAnchor = useCallback(() => {
+    if (isMobile || searchLower) {
+      return;
+    }
+
+    const container = scrollRef.current;
+    if (!container) {
+      return;
+    }
+
+    const { sectionId, offset } = scrollAnchorRef.current;
+    const section = container.querySelector<HTMLElement>(`[data-section="${sectionId}"]`);
+    if (!section) {
+      return;
+    }
+
+    const nextScrollTop = Math.max(0, section.offsetTop + offset);
+    if (Math.abs(container.scrollTop - nextScrollTop) < 1) {
+      return;
+    }
+
+    isScrollingProgrammatically.current = true;
+    clearTimeout(scrollEndTimerRef.current);
+    container.scrollTop = nextScrollTop;
+    scrollEndTimerRef.current = setTimeout(() => {
+      isScrollingProgrammatically.current = false;
+    }, 120);
+  }, [isMobile, searchLower]);
 
   // When search is cleared, restore scroll-driven active section detection.
   // When searching, highlight the first visible match.
@@ -1033,6 +1099,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
     const { container, targetTop } = target;
 
+    setScrollAnchorForSection(id, targetTop);
     isScrollingProgrammatically.current = true;
     clearTimeout(scrollEndTimerRef.current);
 
@@ -1060,7 +1127,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     scrollEndTimerRef.current = setTimeout(clearScrolling, 800);
 
     container.scrollTo({ top: targetTop, behavior: animationAwareScrollBehavior(behavior) });
-  }, [resolveSectionScrollTarget]);
+  }, [resolveSectionScrollTarget, setScrollAnchorForSection]);
 
   useEffect(() => {
     const root = scrollRef.current;
@@ -1071,23 +1138,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     const updateActiveSectionFromScroll = () => {
       if (isScrollingProgrammatically.current) return;
 
-      const sections = Array.from(
-        root.querySelectorAll<HTMLElement>("[data-section]")
-      );
-      if (sections.length === 0) return;
-
-      const activationOffset = 56;
-      const scrollPosition = root.scrollTop + activationOffset;
-      let nextActive = sections[0].dataset.section as SectionId;
-
-      for (const section of sections) {
-        const id = section.dataset.section as SectionId;
-        if (section.offsetTop <= scrollPosition) {
-          nextActive = id;
-        } else {
-          break;
-        }
-      }
+      const nextActive = updateScrollAnchorFromPosition();
+      if (!nextActive) return;
 
       if (nextActive !== activeSectionRef.current) {
         activeSectionRef.current = nextActive;
@@ -1096,7 +1148,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     };
 
     const scheduleActiveSectionUpdate = () => {
-      suppressBackdropDuringInteraction();
+      suppressSettingsChromeDuringScroll();
+      if (!isScrollingProgrammatically.current) {
+        updateScrollAnchorFromPosition();
+      }
       if (supportsScrollEnd) {
         return;
       }
@@ -1111,7 +1166,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (supportsScrollEnd) {
       root.addEventListener("scrollend", updateActiveSectionFromScroll);
     }
-    window.addEventListener("resize", scheduleActiveSectionUpdate);
 
     return () => {
       clearTimeout(scrollIdleTimer);
@@ -1119,12 +1173,62 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       if (supportsScrollEnd) {
         root.removeEventListener("scrollend", updateActiveSectionFromScroll);
       }
-      window.removeEventListener("resize", scheduleActiveSectionUpdate);
     };
-  }, [isMobile, mobileView, open, searchLower, suppressBackdropDuringInteraction]);
+  }, [isMobile, mobileView, open, searchLower, suppressSettingsChromeDuringScroll, updateScrollAnchorFromPosition]);
+
+  useEffect(() => {
+    if (!open || isMobile || searchLower) {
+      return;
+    }
+
+    const container = scrollRef.current;
+    if (!container) {
+      return;
+    }
+
+    const updateMeasuredHeight = (height: number) => {
+      setScrollportHeight((currentHeight) =>
+        Math.abs(currentHeight - height) < 1 ? currentHeight : height,
+      );
+    };
+
+    let previousHeight = container.clientHeight;
+    updateMeasuredHeight(previousHeight);
+
+    const scheduleRestore = () => {
+      const nextHeight = container.clientHeight;
+      if (Math.abs(nextHeight - previousHeight) < 1) {
+        return;
+      }
+      previousHeight = nextHeight;
+      updateMeasuredHeight(nextHeight);
+
+      restoreScrollAnchor();
+    };
+
+    const observer = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(scheduleRestore);
+    observer?.observe(container);
+    window.addEventListener("resize", scheduleRestore);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", scheduleRestore);
+    };
+  }, [isMobile, open, restoreScrollAnchor, searchLower]);
+
+  useLayoutEffect(() => {
+    if (!open || isMobile || searchLower || scrollportHeight <= 0) {
+      return;
+    }
+
+    restoreScrollAnchor();
+  }, [isMobile, open, restoreScrollAnchor, scrollportHeight, searchLower]);
 
   const scrollToSection = useCallback((id: SectionId) => {
     setActiveSection(id);
+    activeSectionRef.current = id;
     if (isMobile && mobileView === "nav") {
       isScrollingProgrammatically.current = true;
       clearTimeout(scrollEndTimerRef.current);
@@ -1142,12 +1246,35 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     setMobileView("section");
   }, [isMobile, mobileView, scrollSectionIntoView]);
 
+  const jumpToUpdatesFromVersion = useCallback(() => {
+    if (!checkForUpdates) {
+      return;
+    }
+
+    setSearch("");
+    void handleCheckForUpdates();
+    if (!searchLower) {
+      scrollToSection("updates");
+      return;
+    }
+
+    setActiveSection("updates");
+    activeSectionRef.current = "updates";
+    setMobileView("section");
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        scrollSectionIntoView("updates", "smooth");
+      });
+    });
+  }, [checkForUpdates, handleCheckForUpdates, scrollSectionIntoView, scrollToSection, searchLower]);
+
   // Reset state on close
   useEffect(() => {
     if (!open) {
       setSearch("");
       setMobileView("nav");
       setSupportModalOpen(false);
+      scrollAnchorRef.current = { sectionId: "appearance", offset: 0 };
     }
   }, [open]);
 
@@ -1166,6 +1293,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
     const rafId = requestAnimationFrame(() => {
       setActiveSection(targetSection as SectionId);
+      activeSectionRef.current = targetSection as SectionId;
       isScrollingProgrammatically.current = true;
       clearTimeout(scrollEndTimerRef.current);
       setMobileView("section");
@@ -1220,7 +1348,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     const sectionStyle: CSSProperties | undefined = isMobile
       ? undefined
       : {
-          minHeight: "calc(100% + 20rem)",
+          minHeight: desktopSectionMinHeight,
           contain: "layout paint style",
         };
     const shouldRenderContent = renderedSectionIds.has(id);
@@ -1735,7 +1863,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
       {/* Backdrop */}
       <div
-        ref={settingsOverlayRef}
         className={`theme-settings-overlay absolute inset-0 ${themeBackdropSuppressed ? "theme-settings-overlay-preview-off" : ""}`}
         onClick={onClose}
       />
@@ -1787,14 +1914,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <div className="px-3 pb-2 pt-1 shrink-0 sm:pt-2">
             <SearchField
               value={search}
-              onChange={(e) => {
-                suppressBackdropDuringInteraction();
-                setSearch(e.target.value);
-              }}
-              onClear={() => {
-                suppressBackdropDuringInteraction();
-                setSearch("");
-              }}
+              onChange={(e) => setSearch(e.target.value)}
+              onClear={() => setSearch("")}
               placeholder="Search settings"
               aria-label="Search settings"
               density="compact"
@@ -1807,10 +1928,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <div className="theme-dialog-divider hidden shrink-0 items-center justify-between border-t px-4 py-3 sm:flex">
             {checkForUpdates ? (
               <button
-                onClick={() => {
-                  setSearch("");
-                  scrollToSection("updates");
-                }}
+                onClick={jumpToUpdatesFromVersion}
                 className="text-xs font-mono text-text-muted transition-colors tabular-nums hover:text-text-secondary"
               >
                 v{displayVersion}
@@ -1866,7 +1984,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <div
             ref={scrollRef}
             data-testid="settings-scroll-container"
-            onPointerEnter={suppressBackdropDuringInteraction}
             className="theme-settings-scrollport flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
             style={{
               paddingBottom: scrollContainerBottomPadding,
