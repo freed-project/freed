@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   applyOutcomeFeedback,
   buildCandidates,
+  buildExecutionPlan,
   formatBytes,
   parseArgs,
   parseGitWorktreePorcelain,
@@ -280,7 +281,27 @@ test("writeRunPlan emits report, targets, and task prompts", () => {
 
   assert.equal(path.basename(result.reportPath), "report.md");
   assert.equal(path.basename(result.tasksDir), "tasks");
+  assert.equal(path.basename(result.executionPlanPath), "execution-plan.md");
   assert.equal(path.basename(result.outcomeTemplatePath), "outcome-template.jsonl");
+});
+
+test("execution plan includes peer review and release soak gates", () => {
+  const phases = buildExecutionPlan([
+    {
+      id: "peer-perf-scraper-recycle-verification",
+      kind: "peer-worktree",
+      prompt: "Review peer work.",
+    },
+    {
+      id: "webkit-memory-pressure",
+      kind: "performance",
+      prompt: "Reduce WebKit memory.",
+    },
+  ]);
+
+  assert.ok(phases.some((phase) => phase.id === "peer-review"));
+  assert.ok(phases.some((phase) => phase.id === "release-and-soak"));
+  assert.ok(phases.every((phase) => phase.stopGate));
 });
 
 test("argument parsing validates numeric budgets", () => {

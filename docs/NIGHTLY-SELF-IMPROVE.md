@@ -62,6 +62,7 @@ The generated run directory contains:
 - `report.md`: morning-readable summary
 - `targets.json`: full machine-readable candidate list
 - `tasks/*.md`: one implementation prompt per selected target
+- `execution-plan.md` and `execution-plan.json`: ordered phases, command hints, and stop gates
 - `outcome-template.jsonl`: lines to append back into the outcome ledger after the run
 
 Reports include an execution phase list so the night can move from evidence, to peer comparison, to implementation, validation, dev build shipping, installed-build soak, and the morning digest.
@@ -71,6 +72,8 @@ Reports include an execution phase list so the night can move from evidence, to 
 The runner excludes provider-visible tasks by default. Do not allow autonomous changes that alter authenticated WebView loads, provider navigation, provider API call frequency, scripted scrolling, cookies, headers, or scraping timing without explicit approval.
 
 Release work is also gated. A dev build should ship only after actual fixes merge into `dev`, not after planning artifacts alone.
+
+Every execution phase has a stop gate. The runner should stop rather than freestyle when evidence is missing, a peer branch is still changing, a provider-visible change needs approval, focused validation fails, or no real fix landed.
 
 ## Next Improvements
 
