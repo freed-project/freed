@@ -1,5 +1,38 @@
 import { test, expect } from "./fixtures/app";
 
+async function measureButtonTextPosition(
+  page: import("@playwright/test").Page,
+  buttonText: string,
+) {
+  return page.evaluate((text) => {
+    const button = Array.from(document.querySelectorAll("button")).find(
+      (candidate) => candidate.textContent?.trim() === text,
+    );
+    if (!button) {
+      return null;
+    }
+
+    const textNode = Array.from(button.childNodes).find(
+      (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.includes(text),
+    );
+    const range = document.createRange();
+    if (textNode) {
+      range.selectNodeContents(textNode);
+    } else {
+      range.selectNodeContents(button);
+    }
+    const textRect = range.getBoundingClientRect();
+    const buttonStyle = getComputedStyle(button);
+
+    return {
+      x: textRect.x,
+      y: textRect.y,
+      transform: buttonStyle.transform,
+      matchesHover: button.matches(":hover"),
+    };
+  }, buttonText);
+}
+
 test("launch-time auto-check runs once after legal acceptance", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
@@ -92,6 +125,186 @@ test("switching release channels clears stale update state and rechecks the new 
   await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toBe(
     "https://dev.freed.wtf/api/downloads/mac-arm",
   );
+});
+
+test("updates settings shows recent changelog entries and opens the full changelog", async ({
+  app,
+  page,
+  ipc,
+}) => {
+  await app.goto();
+  await app.waitForReady();
+
+  const settingsButton = page.locator("button").filter({ hasText: /settings/i }).first();
+  await expect(settingsButton).toBeVisible({ timeout: 5_000 });
+  await settingsButton.click();
+
+  const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  await settingsDialog.getByRole("button", { name: /^Updates$/ }).click();
+
+  const preview = settingsDialog.getByTestId("settings-changelog-preview");
+  await expect(preview).toBeVisible({ timeout: 5_000 });
+  await expect(settingsDialog.getByText(/Installed version:\s*v\d+\.\d+\.\d+-dev/)).toBeVisible();
+  await expect(preview.getByRole("article")).toHaveCount(5);
+  await expect(preview.getByText("v26.5.702")).toBeVisible();
+  await expect(preview.getByText(/-dev/)).toHaveCount(0);
+
+  await preview.getByRole("button", { name: "Show full changelog" }).click();
+  await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toBe(
+    "https://freed.wtf/changelog",
+  );
+
+  await page.getByTestId("settings-release-channel-select").selectOption("dev");
+  await expect(preview.getByRole("article")).toHaveCount(5);
+  await expect(preview.getByText(/v26\.5\.\d+-dev/).first()).toBeVisible();
+  await page.evaluate(() => {
+    const store = window as unknown as Record<string, unknown>;
+    delete store.__FREED_E2E_FORCE_MAP_FALLBACK__;
+    store.__FREED_TEST_WINDOW_OPEN_CALLS__ = [];
+    window.open = ((url: string | URL | undefined, target?: string, features?: string) => {
+      (store.__FREED_TEST_WINDOW_OPEN_CALLS__ as Array<{
+        url: string;
+        target?: string;
+        features?: string;
+      }>).push({
+        url: String(url),
+        target,
+        features,
+      });
+      return null;
+    }) as typeof window.open;
+  });
+  await preview.getByRole("button", { name: "Show full changelog" }).click();
+  await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toBe(
+    "https://freed.wtf/changelog/all",
+  );
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      return (window as unknown as Record<string, unknown>)
+        .__FREED_TEST_WINDOW_OPEN_CALLS__ as Array<{ url: string }> | undefined;
+    });
+  }).toEqual([
+    {
+      url: "https://freed.wtf/changelog/all",
+      target: "_blank",
+      features: "noopener,noreferrer",
+    },
+  ]);
+});
+
+test("updates settings buttons do not move text on hover", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  const settingsButton = page.locator("button").filter({ hasText: /settings/i }).first();
+  await expect(settingsButton).toBeVisible({ timeout: 5_000 });
+  await settingsButton.click();
+
+  const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  const nav = settingsDialog.locator("nav").first();
+  await nav.getByRole("button", { name: "Updates", exact: true }).click();
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const container = document.querySelector<HTMLElement>(
+        '[data-testid="settings-scroll-container"]',
+      );
+      const section = document.querySelector<HTMLElement>('[data-section="updates"]');
+      const heading = section?.querySelector<HTMLElement>("h3");
+      if (!container || !heading) {
+        return null;
+      }
+
+      return Math.round(
+        heading.getBoundingClientRect().top - container.getBoundingClientRect().top,
+      );
+    });
+  }).toBeLessThanOrEqual(32);
+  await expect(settingsDialog.getByTestId("settings-changelog-preview")).toBeVisible({
+    timeout: 5_000,
+  });
+
+  const buttons = ["Check for updates", "Show full changelog"];
+
+  for (const buttonName of buttons) {
+    const button = settingsDialog.getByRole("button", { name: buttonName });
+    await expect(button).toBeVisible({ timeout: 5_000 });
+
+    const before = await measureButtonTextPosition(page, buttonName);
+    expect(before).not.toBeNull();
+
+    await button.hover();
+    await expect.poll(async () => {
+      return (await measureButtonTextPosition(page, buttonName))?.matchesHover ?? false;
+    }).toBe(true);
+
+    const hover = await measureButtonTextPosition(page, buttonName);
+    expect(hover).not.toBeNull();
+    expect(hover?.transform).toBe("none");
+    expect(Math.abs((hover?.x ?? 0) - (before?.x ?? 0))).toBeLessThanOrEqual(0.01);
+    expect(Math.abs((hover?.y ?? 0) - (before?.y ?? 0))).toBeLessThanOrEqual(0.01);
+  }
+});
+
+test("settings nav clicks keep destination headings visible", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  const settingsButton = page.locator("button").filter({ hasText: /settings/i }).first();
+  await expect(settingsButton).toBeVisible({ timeout: 5_000 });
+  await settingsButton.click();
+
+  const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  const nav = settingsDialog.locator("nav").first();
+  await expect(nav).toBeVisible({ timeout: 5_000 });
+
+  const destinations = [
+    { label: "Updates", sectionId: "updates" },
+    { label: "Legal", sectionId: "legal" },
+    { label: "Appearance", sectionId: "appearance" },
+    { label: "Sync", sectionId: "sync" },
+  ] as const;
+
+  for (const destination of destinations) {
+    await nav.getByRole("button", { name: destination.label, exact: true }).click();
+
+    await expect.poll(async () => {
+      return page.evaluate((sectionId) => {
+        const container = document.querySelector<HTMLElement>(
+          '[data-testid="settings-scroll-container"]',
+        );
+        const section = document.querySelector<HTMLElement>(`[data-section="${sectionId}"]`);
+        const heading = section?.querySelector<HTMLElement>("h3");
+        if (!container || !heading) {
+          return null;
+        }
+
+        return Math.round(
+          heading.getBoundingClientRect().top - container.getBoundingClientRect().top,
+        );
+      }, destination.sectionId);
+    }, {
+      message: `${destination.label} heading should settle near the top of the settings pane`,
+    }).toBeGreaterThanOrEqual(0);
+
+    await expect.poll(async () => {
+      return page.evaluate((sectionId) => {
+        const container = document.querySelector<HTMLElement>(
+          '[data-testid="settings-scroll-container"]',
+        );
+        const section = document.querySelector<HTMLElement>(`[data-section="${sectionId}"]`);
+        const heading = section?.querySelector<HTMLElement>("h3");
+        if (!container || !heading) {
+          return null;
+        }
+
+        return Math.round(
+          heading.getBoundingClientRect().top - container.getBoundingClientRect().top,
+        );
+      }, destination.sectionId);
+    }, {
+      message: `${destination.label} heading should not scroll past the top of the settings pane`,
+    }).toBeLessThanOrEqual(32);
+  }
 });
 
 test("selected release channel survives when browser storage is missing after relaunch", async ({

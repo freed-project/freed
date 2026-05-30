@@ -11,4 +11,8 @@ export async function open(url: string): Promise<void> {
     store.__TAURI_MOCK_OPENED_URLS__ = [] as string[];
   }
   (store.__TAURI_MOCK_OPENED_URLS__ as string[]).push(url);
+
+  if (!store.__FREED_E2E_FORCE_MAP_FALLBACK__) {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 }
