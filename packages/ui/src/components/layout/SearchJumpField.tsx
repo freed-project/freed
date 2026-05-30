@@ -289,6 +289,8 @@ export function SearchJumpField({
   const platform = usePlatform();
   const {
     addRssFeed,
+    importOPMLFeeds,
+    exportFeedsAsOPML,
     saveUrl,
     importMarkdown,
     exportMarkdown,
@@ -303,6 +305,9 @@ export function SearchJumpField({
     InstagramSettingsContent,
     LinkedInSettingsContent,
     GoogleContactsSettingsContent,
+    googleContacts,
+    secureStorage,
+    localAIModels,
   } = platform;
   const searchPaletteRequestId = useCommandSurfaceStore((s) => s.searchPaletteRequestId);
   const openAddFeedDialog = useCommandSurfaceStore((s) => s.openAddFeedDialog);
@@ -433,7 +438,10 @@ export function SearchJumpField({
   const settingsSections = useMemo(
     () =>
       buildSettingsSectionMetas({
+        hasFeedManagement: !!(addRssFeed || importOPMLFeeds || exportFeedsAsOPML),
         hasGoogleContacts: !!GoogleContactsSettingsContent,
+        hasGoogleContactsManagement: !!googleContacts,
+        hasAISettings: !!(secureStorage || localAIModels),
         hasX: !!XSettingsContent,
         hasFacebook: !!FacebookSettingsContent,
         hasInstagram: !!InstagramSettingsContent,
@@ -449,6 +457,11 @@ export function SearchJumpField({
       XSettingsContent,
       checkForUpdates,
       factoryReset,
+      googleContacts,
+      importOPMLFeeds,
+      localAIModels,
+      secureStorage,
+      exportFeedsAsOPML,
     ],
   );
   const currentSourceId = useMemo<Platform | null>(() => {

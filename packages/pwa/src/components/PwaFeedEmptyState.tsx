@@ -10,8 +10,7 @@ export function PwaFeedEmptyState() {
   const feeds = useAppStore((s) => s.feeds);
 
   // Per-feed view: a specific feed is selected but has no items yet.
-  // `lastFetched` is absent on stub entries added from the PWA — a reliable
-  // signal that the desktop hasn't polled this feed yet.
+  // `lastFetched` is absent until Freed Desktop polls the feed.
   const activeFeed = activeFilter.feedUrl ? feeds[activeFilter.feedUrl] : null;
   const isPendingSync = activeFeed != null && !activeFeed.lastFetched;
 
@@ -27,17 +26,16 @@ export function PwaFeedEmptyState() {
         <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--theme-border-subtle)] bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,rgb(var(--theme-accent-primary-rgb)/0.16),rgb(var(--theme-accent-secondary-rgb)/0.14))]">
           <span className="text-2xl">📡</span>
         </div>
-        <p className="text-lg font-medium mb-2">Subscribed!</p>
+        <p className="text-lg font-medium mb-2">Waiting for Freed Desktop</p>
         <p className="max-w-xs text-sm leading-relaxed text-[var(--theme-text-muted)]">
           Items from{" "}
           <span className="font-medium text-[var(--theme-text-primary)]">{displayName}</span> will
-          appear here after your desktop app syncs and fetches the feed.
+          appear here after Freed Desktop syncs and fetches the feed.
         </p>
         {!syncConnected && (
           <>
             <p className="mt-3 max-w-xs text-xs text-[var(--theme-text-soft)]">
-              Open your desktop app and make sure it's connected to start
-              receiving content.
+              Open Freed Desktop and make sure it's connected to start receiving content.
             </p>
             <button
               onClick={openSyncSettings}
@@ -56,7 +54,7 @@ export function PwaFeedEmptyState() {
                   d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
                 />
               </svg>
-              Connect desktop
+              Connect Freed Desktop
             </button>
           </>
         )}
@@ -72,8 +70,8 @@ export function PwaFeedEmptyState() {
       </p>
       <p className="max-w-xs text-sm text-[var(--theme-text-muted)]">
         {syncConnected
-          ? "Your desktop app is connected. New feed content will appear here once fetched."
-          : "Connect to your desktop app to sync your feeds."}
+          ? "Freed Desktop is connected. New feed content will appear here once fetched."
+          : "Connect to Freed Desktop to sync your feeds."}
       </p>
       {!syncConnected && (
       <button

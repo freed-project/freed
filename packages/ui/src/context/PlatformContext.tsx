@@ -233,6 +233,9 @@ export interface PlatformConfig {
   /** Rendered inline per source button for status indicators (e.g. X auth dot) */
   SourceIndicator: ComponentType<{ sourceId: string }> | null;
 
+  /** Optional replacement for the shared RSS feed settings section. */
+  FeedsSettingsContent?: ComponentType | null;
+
   /** Rendered in Header actions area (e.g. sync panel, refresh button) */
   HeaderSyncIndicator: ComponentType | null;
 

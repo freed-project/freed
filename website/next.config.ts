@@ -5,8 +5,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   transpilePackages: ["@freed/shared", "@freed/ui"],
   webpack(config) {
+    config.resolve = config.resolve ?? {};
     config.resolve.extensionAlias = {
-      ...config.resolve.extensionAlias,
+      ...(config.resolve.extensionAlias ?? {}),
       ".js": [".ts", ".tsx", ".js"],
       ".mjs": [".mts", ".mjs"],
     };

@@ -14,7 +14,7 @@ import type {
 } from "@freed/shared";
 import { formatDistanceToNow } from "date-fns";
 import { buildFriendCandidateSuggestions, isInReconnectZone } from "@freed/shared";
-import { useAppStore } from "../../context/PlatformContext.js";
+import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import type { FriendGraphHandle } from "./FriendGraph.js";
@@ -579,6 +579,7 @@ export function FriendsView({
   const pendingPersistedSidebarWidth = useRef<number | null>(null);
   const isMobile = useIsMobile();
 
+  const { googleContacts } = usePlatform();
   const contactSync = useContactSyncContext();
 
   const feedItems = useMemo(() => {
@@ -1191,19 +1192,25 @@ export function FriendsView({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleOpenSyncModal}
-              disabled={openingSyncModal}
-              className={BUTTON_CHROME}
-            >
-              {openingSyncModal ? "Syncing..." : "Import Contacts"}
-              {pendingMatchCount > 0 && (
-                <span className="ml-2 rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.24)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
-                  {pendingMatchCount.toLocaleString()}
-                </span>
-              )}
-            </button>
+            {googleContacts ? (
+              <button
+                type="button"
+                onClick={handleOpenSyncModal}
+                disabled={openingSyncModal}
+                className={BUTTON_CHROME}
+              >
+                {openingSyncModal ? "Syncing..." : "Import Contacts"}
+                {pendingMatchCount > 0 && (
+                  <span className="ml-2 rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.24)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
+                    {pendingMatchCount.toLocaleString()}
+                  </span>
+                )}
+              </button>
+            ) : pendingMatchCount > 0 ? (
+              <span className="rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.18)] px-2 py-1 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
+                {pendingMatchCount.toLocaleString()} contact review
+              </span>
+            ) : null}
             <button
               type="button"
               onClick={() => setEditorState({ kind: "new" })}
