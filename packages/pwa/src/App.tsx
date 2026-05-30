@@ -6,7 +6,6 @@ import {
 import { AppShell } from "@freed/ui/components/layout";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
 import { FeedView } from "@freed/ui/components/feed";
-import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
 import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
 import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
 import { ToastContainer, toast } from "@freed/ui/components/Toast";
@@ -18,7 +17,6 @@ import {
   type PlatformConfig,
 } from "@freed/ui/context";
 import { useAppStore } from "./lib/store";
-import { exportFeedsAsOPML, subscribeToFeed } from "./lib/capture";
 import {
   connect,
   disconnect,
@@ -29,7 +27,6 @@ import {
   stopCloudSync,
   getCloudProvider,
   getCloudToken,
-  getValidCloudToken,
   clearCloudSync,
   deleteCloudFile,
 } from "./lib/sync";
@@ -40,12 +37,13 @@ import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
 import { PwaSyncSettings } from "./components/PwaSyncSettings";
 import {
   PwaFacebookSettings,
+  PwaFeedsSettings,
+  PwaGoogleContactsSettings,
   PwaInstagramSettings,
   PwaLinkedInSettings,
   PwaXSettings,
 } from "./components/PwaSocialProviderSettings";
 import { PwaLegalSettingsSection } from "./components/PwaLegalSettingsSection";
-import { initiateGDriveOAuth } from "./lib/cloud-oauth";
 import { acceptPwaBundle, hasAcceptedPwaBundle } from "./lib/legal-consent";
 import { useBrowserNavigationHistory } from "./lib/navigation-history";
 import { pwaBugReporting } from "./lib/bug-report";
@@ -267,10 +265,9 @@ function App() {
     () => ({
       store: useAppStore,
       feedMediaPreviews: "inline",
-      addRssFeed: subscribeToFeed,
-      exportFeedsAsOPML,
       SourceIndicator: null,
       HeaderSyncIndicator: null,
+      FeedsSettingsContent: PwaFeedsSettings,
       SettingsExtraSections: PwaSyncSettings,
       LegalSettingsContent: PwaLegalSettingsSection,
       FeedEmptyState: PwaFeedEmptyState,
@@ -278,7 +275,7 @@ function App() {
       FacebookSettingsContent: PwaFacebookSettings,
       InstagramSettingsContent: PwaInstagramSettings,
       LinkedInSettingsContent: PwaLinkedInSettings,
-      GoogleContactsSettingsContent: GoogleContactsSection,
+      GoogleContactsSettingsContent: PwaGoogleContactsSettings,
       checkForUpdates,
       applyUpdate: applyPwaUpdate,
       releaseChannel,
@@ -308,10 +305,6 @@ function App() {
       // Web Contact Picker API — available on iOS/Android, absent on desktop browsers.
       // FriendEditor falls back to manual entry when this is undefined at runtime.
       pickContact: pickContactViaWebApi,
-      googleContacts: {
-        getToken: () => getValidCloudToken("gdrive"),
-        connect: initiateGDriveOAuth,
-      },
       openUrl: (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); },
       bugReporting: pwaBugReporting,
     }),

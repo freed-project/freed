@@ -17,7 +17,8 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 - **Offline-first:** Service worker caches feed data, saved reader HTML, and images for offline reading
 - **Versioned first-run consent** — PWA startup is blocked until the current legal bundle is accepted locally in the browser
 - **URL-driven navigation** — Active view, feed scope, and open reader state serialize into the URL so browser back and forward behave naturally
-- **Desktop handoff in source settings** — PWA Settings exposes X / Twitter, Facebook, Instagram, and LinkedIn with clear Freed Desktop sync and download handoff states
+- **Desktop handoff in source settings:** PWA Settings exposes Feeds, X / Twitter, Facebook, Instagram, LinkedIn, and Google Contacts as sync status dashboards with clear Freed Desktop management handoff states
+- **Mobile settings scope:** PWA Settings hides AI controls and source connection controls that only Freed Desktop can run
 - **Blank-state testing escape hatch** — PWA empty states now include a secondary sample-data section below the main handoff prompt for quick local testing
 - **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
 - **Mobile chrome polish:** The PWA mobile toolbar uses balanced menu and format controls, the mobile drawer starts with search, Settings stacks compact sections, and the reader keeps fixed menus plus sane article spacing
@@ -207,7 +208,7 @@ export function filterByAuthor(
 | 6.6  | Feed ranking algorithm                 | Medium     |
 | 6.7  | Platform/author filters                | Low        |
 | 6.8  | Settings panel                         | Medium     |
-| 6.9  | RSS subscription management            | Medium     |
+| 6.9  | RSS sync status dashboard              | Medium     | ✓ Complete (PWA browses synced RSS while Freed Desktop manages subscriptions, polling, and OPML)
 | 6.10 | Connect to sync layer                  | Medium     |
 | 6.11 | PWA manifest + service worker          | Medium     |
 | 6.12 | Offline support + image caching        | High       |
@@ -243,12 +244,13 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Ranking weights affect item order
 - [x] Platform/author filters work (sidebar filter by platform/feed)
 - [x] RSS source accordion pages subscriptions in the sidebar and top search moves matching feeds into the first page
-- [x] RSS subscription management functional (add/remove/OPML import-export)
+- [x] RSS subscriptions, polling, and OPML management stay in Freed Desktop while the PWA shows synced feed and item status
 - [x] First launch is blocked behind a local-only legal clickwrap gate
 - [x] Active view, feed filters, and reader selection round-trip through the URL for browser back/forward navigation
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Bug report actions now label whether they download a public-safe or private bundle, and private diagnostics can be toggled as one group before emailing a report
-- [x] PWA Settings surfaces X / Twitter, Facebook, Instagram, and LinkedIn with Freed Desktop sync and download handoff states
+- [x] PWA Settings surfaces Feeds, X / Twitter, Facebook, Instagram, LinkedIn, and Google Contacts as status-only sections with Freed Desktop sync and download handoff states
+- [x] PWA Settings omits AI controls and provider management controls that only Freed Desktop can run
 - [x] Theme changes in Settings temporarily clear the frosted backdrop on touch devices so the active page treatment stays visible while previewing themes
 - [x] Mobile Settings now open as a full-height sheet with a persistent close button, larger back target, and reliable section jumps instead of snapping back to the last scrolled provider section
 - [x] Mobile Settings use full-size shared settings typography, compact stacked sections, and a dedicated Support modal launched from Danger Zone

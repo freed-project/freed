@@ -428,6 +428,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     InstagramSettingsContent,
     LinkedInSettingsContent,
     GoogleContactsSettingsContent,
+    FeedsSettingsContent,
+    addRssFeed,
+    importOPMLFeeds,
+    exportFeedsAsOPML,
+    googleContacts,
+    secureStorage,
+    localAIModels,
     checkForUpdates,
     changelogPreview,
     applyUpdate,
@@ -457,7 +464,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const allSections: Section[] = useMemo(
     () =>
       buildSettingsSectionMetas({
+        hasFeedManagement: !!(addRssFeed || importOPMLFeeds || exportFeedsAsOPML),
         hasGoogleContacts: !!GoogleContactsSettingsContent,
+        hasGoogleContactsManagement: !!googleContacts,
+        hasAISettings: !!(secureStorage || localAIModels),
         hasX: !!XSettingsContent,
         hasFacebook: !!FacebookSettingsContent,
         hasInstagram: !!InstagramSettingsContent,
@@ -469,6 +479,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         icon: ICONS[section.id],
       })),
     [
+      addRssFeed,
+      importOPMLFeeds,
+      exportFeedsAsOPML,
       GoogleContactsSettingsContent,
       XSettingsContent,
       FacebookSettingsContent,
@@ -476,31 +489,34 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       LinkedInSettingsContent,
       checkForUpdates,
       factoryReset,
+      googleContacts,
+      localAIModels,
+      secureStorage,
     ],
   );
 
   // Hierarchical nav structure — drives left sidebar rendering only.
   // Re-use the Section objects already defined in allSections so keywords stay in sync.
   const sectionById = useMemo(
-    () => Object.fromEntries(allSections.map((s) => [s.id, s])) as Record<SectionId, Section>,
+    () => Object.fromEntries(allSections.map((s) => [s.id, s])) as Partial<Record<SectionId, Section>>,
     [allSections],
   );
   const navStructure: NavStructureItem[] = useMemo(
     () => [
-      sectionById.appearance,
-      sectionById.sync,
+      sectionById.appearance!,
+      sectionById.sync!,
       {
         kind: "group",
         label: "Sources",
         icon: ICON_SOURCES,
         children: [
-          sectionById.saved,
-          ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
-          ...(XSettingsContent ? [sectionById.x] : []),
-          ...(FacebookSettingsContent ? [sectionById.facebook] : []),
-          ...(InstagramSettingsContent ? [sectionById.instagram] : []),
-          ...(LinkedInSettingsContent ? [sectionById.linkedin] : []),
-          sectionById.feeds,
+          sectionById.saved!,
+          ...(sectionById.googleContacts ? [sectionById.googleContacts] : []),
+          ...(sectionById.x ? [sectionById.x] : []),
+          ...(sectionById.facebook ? [sectionById.facebook] : []),
+          ...(sectionById.instagram ? [sectionById.instagram] : []),
+          ...(sectionById.linkedin ? [sectionById.linkedin] : []),
+          sectionById.feeds!,
         ],
       },
       {
@@ -508,22 +524,15 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         label: "Beta",
         icon: ICON_BETA,
         children: [
-          sectionById.ai,
-          sectionById.storyWall,
+          ...(sectionById.ai ? [sectionById.ai] : []),
+          ...(sectionById.storyWall ? [sectionById.storyWall] : []),
         ],
       },
-      ...(checkForUpdates ? [sectionById.updates] : []),
-      sectionById.legal,
-      ...(factoryReset ? [sectionById.danger] : []),
+      ...(sectionById.updates ? [sectionById.updates] : []),
+      sectionById.legal!,
+      ...(sectionById.danger ? [sectionById.danger] : []),
     ],
     [
-      FacebookSettingsContent,
-      GoogleContactsSettingsContent,
-      InstagramSettingsContent,
-      LinkedInSettingsContent,
-      XSettingsContent,
-      checkForUpdates,
-      factoryReset,
       sectionById,
     ],
   );
@@ -1620,7 +1629,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return (
           <>
             <SectionHeading label="Feeds" />
-            <FeedsSection />
+            {FeedsSettingsContent ? <FeedsSettingsContent /> : <FeedsSection />}
           </>
         );
 

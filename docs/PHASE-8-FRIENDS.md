@@ -130,7 +130,7 @@ Default nudge intervals by care level:
 - **Desktop**: Tauri `pick_contact` command (scaffolded, requires `objc2-contacts` crate + `com.apple.security.personal-information.addressbook` entitlement)
 - **PWA (iOS/Android)**: Web Contact Picker API (`navigator.contacts.select`)
 - **PWA (desktop browser)**: absent, `FriendEditor` falls back to manual form
-- **Google Contacts**: optional People API import in Friends view. Imports create `Person` records as `friend` by default, attach a contact `Account`, and surface suggestion-only merges for matching social accounts
+- **Google Contacts**: optional People API import managed in Freed Desktop. Imports create `Person` records as `friend` by default, attach a contact `Account`, and surface suggestion-only merges for matching social accounts. The PWA shows synced contact status and synced Friends data, but does not start Contacts OAuth or People API sync.
 
 ---
 
@@ -351,7 +351,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Google Contacts import creates friend persons by default and suggests same-person matches without auto-linking
 - [x] Google Contacts sync reuses native, refreshable Google credentials in Freed Desktop so reconnect is not required after normal access-token expiry
 - [x] Desktop snapshot restore preserves cached Google contacts and pending match suggestions
-- [x] Google Contacts appears as a first-class source in Settings and Friends
+- [x] Google Contacts appears as a first-class source in Settings and Friends, with full management in Freed Desktop and status-only visibility in the PWA
 - [x] Captured social authors can backfill orphan followed-account records before the operator confirms identity
 - [x] Match review is suggestion-only. Contact-to-social and social-to-social merges require explicit confirmation
 - [x] Location extraction from geo-tags and text patterns
