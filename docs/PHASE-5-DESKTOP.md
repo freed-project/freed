@@ -38,7 +38,7 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Local card density control:** The feed toolbar now exposes a three-stop card density slider that persists on the current device, with compact, comfortable, and expansive vertical card spacing
 - **Hot-path side-effect scheduling:** Desktop routes native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains through typed queues so clicks, scroll callbacks, and document subscriptions do not directly run slow native I/O or large scans
 - **Background runtime coordination:** Desktop gates high-risk background work behind healthy renderer startup, shared memory pressure cooldowns, renderer recovery safe mode, and a native social-scrape lease so WebKit pressure cannot keep blanking the main window
-- **Deep local WebKit diagnostics:** Renderer stalls, memory preflight blocks, and recovery attempts write bounded local diagnostics with WebKit process identity, RSS, CPU, process age, WebView labels, cache sizes, vmmap summaries, and short process samples
+- **Deep local WebKit diagnostics:** Renderer stalls, memory preflight blocks, and recovery attempts write bounded local diagnostics with WebKit process identity, RSS, CPU, process age, WebView labels, cache sizes, vmmap summaries, short process samples, and scraper recycle PID verification
 
 ---
 
@@ -315,6 +315,7 @@ export async function captureDomFeed(
 - [x] Desktop debug tooling now samples runtime memory, relay document size, relay client count, and content-fetcher queue depth so long-run RAM growth can be correlated without attaching Instruments first
 - [x] Desktop diagnostics now also sample renderer JS heap and DOM node counts so overnight RAM growth can be split between native process pressure and WebView pressure
 - [x] Desktop diagnostics now include Freed-owned WebKit renderer RSS, Automerge binary size, IndexedDB size, WebKit cache size, and adaptive memory guardrails that reclaim scraper windows and network-cache blobs before pausing social capture
+- [x] Social scrape memory preflight now records whether recycled WebKit process IDs exited, were retained, or were replaced, plus the RSS delta after cleanup
 - [x] Desktop now records rotating runtime-health diagnostics with renderer heartbeat state, memory preflight results, recovery attempts, and active background work so blank-renderer reports include the last bad minute of runtime context
 - [x] High-risk background work now waits for healthy renderer startup and memory pressure cooldowns before running content fetches, RSS polls, automatic snapshots, cloud uploads, outbox drains, or native social scrapes
 - [x] Native renderer recovery now marks failed recovery state, requests relaunch, and forces the old process to exit if the main WebView label stays stuck after a destroyed renderer
@@ -365,9 +366,10 @@ export async function captureDomFeed(
 > main thread on every state update. Desktop memory telemetry now also samples
 > Freed-owned WebKit renderer RSS, Automerge binary size, IndexedDB storage,
 > WebKit cache size, and adaptive high and critical memory limits. Social
-> capture now runs a native preflight that recycles stale scraper windows and
-> trims only Freed WebKit network-cache blobs before it decides a scrape must
-> pause. The background runtime now also gates content fetches, RSS polls,
+> capture now runs a native preflight that recycles stale scraper windows,
+> records which WebKit process IDs exited or survived the recycle, and trims
+> only Freed WebKit network-cache blobs before it decides a scrape must pause.
+> The background runtime now also gates content fetches, RSS polls,
 > automatic snapshots, cloud uploads, outbox drains, and social scrapes behind
 > healthy renderer startup and shared pressure cooldowns, while native recovery
 > writes runtime-health records and relaunches if the old renderer label stays

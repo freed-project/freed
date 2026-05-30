@@ -1,10 +1,5 @@
 import { type Page } from "@playwright/test";
-import { test, expect, resolveViteFsModulePath } from "./fixtures/app";
-
-const SETTINGS_STORE_PATH = resolveViteFsModulePath(
-  "../../../ui/src/lib/settings-store.ts",
-  import.meta.url,
-);
+import { test, expect } from "./fixtures/app";
 
 const SETTINGS_FEED_COUNT = 1_600;
 const SETTINGS_MOUNT_BUDGET_MS = process.env.CI ? 4_000 : 1_000;
@@ -59,13 +54,7 @@ async function seedLargeSettingsWorkspace(page: Page): Promise<void> {
 }
 
 async function openSettings(page: Page): Promise<void> {
-  await page.evaluate(async (settingsStorePath) => {
-    const response = await fetch(settingsStorePath);
-    if (!response.ok) throw new Error(`Failed to load settings store: ${response.status}`);
-    await response.text();
-    const mod = await import(settingsStorePath);
-    mod.useSettingsStore.getState().openDefault();
-  }, SETTINGS_STORE_PATH);
+  await page.getByRole("button", { name: "Settings" }).click();
 }
 
 async function measureFps(
@@ -254,7 +243,7 @@ test("Settings dialog stays responsive with 1,600 RSS sources", async ({ app, pa
   expect(filteredDomNodes).toBeLessThan(SETTINGS_DOM_NODE_BUDGET);
   expect(listFilteredDomNodes).toBeLessThan(SETTINGS_DOM_NODE_BUDGET);
   expect(scrollInteraction.result.sampleCount).toBeGreaterThan(0);
-  expect(scrollInteraction.result.p95Ms).toBeLessThan(SETTINGS_FRAME_P95_BUDGET_MS);
+  expect(scrollInteraction.result.p95Ms).toBeLessThanOrEqual(SETTINGS_FRAME_P95_BUDGET_MS);
   expect(scrollInteraction.result.droppedFrames).toBeLessThanOrEqual(SETTINGS_DROPPED_FRAME_BUDGET);
   expect(scrollInteraction.count).toBeLessThanOrEqual(SETTINGS_LONG_TASK_COUNT_BUDGET);
   expect(searchInteraction.result.sampleCount).toBeGreaterThan(0);

@@ -56,6 +56,17 @@ interface ScrapeMemoryPreparation {
   after: NativeRuntimeMemoryStats;
   recycledScraperWindows: boolean;
   cacheTrimmed: boolean;
+  scraperRecycleVerification?: {
+    elapsedMs: number;
+    beforeProcessIds: number[];
+    afterProcessIds: number[];
+    exitedProcessIds: number[];
+    retainedProcessIds: number[];
+    newProcessIds: number[];
+    beforeWebkitResidentBytes: number;
+    afterWebkitResidentBytes: number;
+    webkitResidentDeltaBytes: number;
+  } | null;
   scrapeStartBudgetBytes?: number;
   mayProceed: boolean;
   deferredReason?: string;

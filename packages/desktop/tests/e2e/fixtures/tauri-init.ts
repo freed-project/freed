@@ -131,6 +131,7 @@ export function tauriInitScript(): string {
           after,
           recycledScraperWindows: false,
           cacheTrimmed: false,
+          scraperRecycleVerification: null,
           mayProceed: true,
         };
       },

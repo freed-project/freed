@@ -224,6 +224,7 @@ const handlers: Record<string, Handler> = {
       after,
       recycledScraperWindows: false,
       cacheTrimmed: false,
+      scraperRecycleVerification: null,
       mayProceed: true,
     };
   },
