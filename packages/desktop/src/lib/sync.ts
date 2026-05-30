@@ -306,9 +306,9 @@ const DEFAULT_GDRIVE_DESKTOP_CLIENT_ID =
   "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com";
 const GDRIVE_CLIENT_ID =
   import.meta.env.VITE_GDRIVE_DESKTOP_CLIENT_ID || DEFAULT_GDRIVE_DESKTOP_CLIENT_ID;
-// Only needed when using a "Web application" OAuth client type for GDrive instead
-// of the correct "Desktop app" type. Desktop app clients support PKCE without a
-// client_secret; web app clients require it.
+// Only needed when using direct token exchange for a Google OAuth client that
+// requires a secret. Prefer the server token proxy when it is configured so the
+// secret never ships in the Freed Desktop bundle.
 const GDRIVE_CLIENT_SECRET = import.meta.env.VITE_GDRIVE_CLIENT_SECRET ?? "";
 const GDRIVE_TOKEN_PROXY_URL =
   import.meta.env.VITE_GDRIVE_TOKEN_PROXY_URL ?? "";
@@ -447,7 +447,7 @@ async function refreshCloudToken(provider: CloudProvider, bundle: CloudTokenBund
 }
 
 function shouldUseGoogleTokenProxy(): boolean {
-  return GDRIVE_FORCE_TOKEN_PROXY && !!GDRIVE_TOKEN_PROXY_URL && !!GDRIVE_CLIENT_ID;
+  return !!GDRIVE_TOKEN_PROXY_URL && !!GDRIVE_CLIENT_ID && (GDRIVE_FORCE_TOKEN_PROXY || !GDRIVE_CLIENT_SECRET);
 }
 
 function tokenBundleFromProxyResponse(data: TokenExchangeResponse): CloudTokenBundle {
@@ -468,7 +468,14 @@ function googleOAuthError(prefix: string, status: number, body: string): Error {
       message?: string;
     };
     const detail = parsed.error_description ?? parsed.message ?? parsed.error;
-    if (detail) return new Error(`${prefix} (${status}): ${detail}`);
+    if (detail) {
+      if (detail === "client_secret is missing.") {
+        return new Error(
+          `${prefix} (${status}): client_secret is missing. Freed Desktop is using direct Google token exchange for an OAuth client that requires a secret. Configure the Google token proxy or provide VITE_GDRIVE_CLIENT_SECRET.`,
+        );
+      }
+      return new Error(`${prefix} (${status}): ${detail}`);
+    }
   } catch {
     // Use the raw body below.
   }
@@ -727,9 +734,9 @@ async function exchangeCode(
     }
 
     params.set("client_id", GDRIVE_CLIENT_ID);
-    // Desktop app OAuth clients use PKCE without a secret. If the console client
-    // is a "Web application" type, VITE_GDRIVE_CLIENT_SECRET must be set or
-    // Google returns 400 "client_secret is missing".
+    // Direct token exchange only works without a secret for native desktop
+    // OAuth clients. Web clients must use the server token proxy or include the
+    // secret in the build environment.
     if (GDRIVE_CLIENT_SECRET) {
       params.set("client_secret", GDRIVE_CLIENT_SECRET);
     }

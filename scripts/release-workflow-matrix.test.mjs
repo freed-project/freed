@@ -52,3 +52,28 @@ test("dev and production releases use the same primary platform matrix", () => {
     },
   ]);
 });
+
+test("desktop releases force Google token exchange through the server proxy", () => {
+  const workflow = readFileSync(releaseWorkflowPath, "utf8");
+
+  assert.match(
+    workflow,
+    /VITE_GDRIVE_DESKTOP_CLIENT_ID:\s*304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1\.apps\.googleusercontent\.com/,
+    "release workflow should build with the desktop Google OAuth client",
+  );
+  assert.match(
+    workflow,
+    /VITE_GDRIVE_TOKEN_PROXY_URL:\s*https:\/\/app\.freed\.wtf\/api\/oauth\/google/,
+    "release workflow should point Google token exchange at the server proxy",
+  );
+  assert.match(
+    workflow,
+    /VITE_GDRIVE_FORCE_TOKEN_PROXY:\s*"1"/,
+    "release workflow should not fall back to direct Google token exchange",
+  );
+  assert.doesNotMatch(
+    workflow,
+    /VITE_GDRIVE_CLIENT_SECRET:/,
+    "release workflow should not embed a Google client secret in the desktop app bundle",
+  );
+});
