@@ -269,8 +269,7 @@ async function refreshCloudToken(provider: CloudProvider, bundle: CloudTokenBund
   const existingRefresh = cloudTokenRefreshes.get(provider);
   if (existingRefresh) return existingRefresh;
 
-  let refreshPromise!: Promise<string | null>;
-  refreshPromise = refreshCloudTokenInner(provider, bundle).finally(() => {
+  const refreshPromise = refreshCloudTokenInner(provider, bundle).finally(() => {
     if (cloudTokenRefreshes.get(provider) === refreshPromise) {
       cloudTokenRefreshes.delete(provider);
     }
