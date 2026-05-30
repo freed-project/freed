@@ -2175,7 +2175,7 @@ async fn pick_contact() -> Result<Option<ContactResult>, String> {
 
 /// Fetch any URL and return its body as text (bypasses browser CORS).
 #[tauri::command]
-async fn fetch_url(url: String) -> Result<String, String> {
+async fn fetch_url(url: String, max_bytes: Option<usize>) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .user_agent("Freed/1.0 (https://freed.wtf)")
         .build()
@@ -2191,7 +2191,33 @@ async fn fetch_url(url: String) -> Result<String, String> {
         return Err(format!("HTTP {}: {}", response.status(), url));
     }
 
-    response.text().await.map_err(|e| e.to_string())
+    let Some(limit) = max_bytes else {
+        return response.text().await.map_err(|e| e.to_string());
+    };
+
+    if let Some(content_length) = response.content_length() {
+        if content_length > limit as u64 {
+            return Err(format!(
+                "response_too_large content_length={} limit={} url={}",
+                content_length, limit, url
+            ));
+        }
+    }
+
+    let mut body: Vec<u8> = Vec::new();
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| e.to_string())?;
+        if body.len().saturating_add(chunk.len()) > limit {
+            return Err(format!(
+                "response_too_large bytes_exceeded limit={} url={}",
+                limit, url
+            ));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok(String::from_utf8_lossy(&body).into_owned())
 }
 
 #[derive(serde::Serialize)]
