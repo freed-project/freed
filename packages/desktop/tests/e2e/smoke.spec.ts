@@ -2061,7 +2061,12 @@ test("desktop hide previews button collapses the compact reader rail", async ({ 
     });
   }).toBe(false);
 
-  await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeHidden({ timeout: 5_000 });
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const rail = document.querySelector('[data-testid="compact-feed-panel-rail"]') as HTMLElement | null;
+      return rail?.getBoundingClientRect().width ?? 0;
+    }),
+  ).toBeLessThanOrEqual(1);
 });
 
 test("desktop hide previews skips the compact reader rail transition when animations are none", async ({ app, page }) => {
