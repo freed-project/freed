@@ -283,6 +283,38 @@ describe("provider health", () => {
     expect(toastInfo).not.toHaveBeenCalled();
   });
 
+  it("keeps old memory-pressure deferrals out of current provider status", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, debugStore } = await loadProviderHealthModule();
+
+    await mod.recordProviderHealthEvent({
+      provider: "facebook",
+      outcome: "success",
+      finishedAt: now.getTime() - 60 * 60 * 1000,
+      itemsSeen: 12,
+      itemsAdded: 8,
+    });
+
+    await mod.recordProviderHealthEvent({
+      provider: "facebook",
+      outcome: "error",
+      stage: "memory_pressure",
+      reason: "Facebook sync did not start because Freed Desktop memory is high. App RSS is 2.62 GB after cleanup.",
+      finishedAt: now.getTime() - 20 * 60 * 1000,
+    });
+
+    const provider = debugStore.useDebugStore.getState().health?.providers.facebook;
+
+    expect(provider?.status).toBe("healthy");
+    expect(provider?.lastOutcome).toBe("success");
+    expect(provider?.lastError).toBeUndefined();
+    expect(provider?.currentMessage).toBeUndefined();
+    expect(provider?.latestAttempts[0]?.stage).toBe("memory_pressure");
+  });
+
   it("auto-pauses on explicit provider rate limits and exposes the toast action", async () => {
     vi.useFakeTimers();
     const now = new Date("2026-04-02T19:15:00.000Z");

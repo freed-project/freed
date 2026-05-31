@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, shared memory-preflight backoff, memory-aware scrape pass planning, cloud-sync exclusion while social scrapes are active, Facebook group controls with stored-name repair, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, explicit reply links with opt-in beta inline hydration for X, Facebook, and Instagram reader posts, captured authors now feeding the Phase 8 account catalog for identity review, and a local permanent media vault for a user's own Meta media
+> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, shared memory-preflight backoff, transient memory-pressure health recovery, memory-aware scrape pass planning, cloud-sync exclusion while social scrapes are active, Facebook group controls with stored-name repair, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, explicit reply links with opt-in beta inline hydration for X, Facebook, and Instagram reader posts, captured authors now feeding the Phase 8 account catalog for identity review, and a local permanent media vault for a user's own Meta media
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -111,6 +111,8 @@ Background scrape and auth-check sessions now force provider media elements sile
 
 Social memory preflight now has shared backoff across Facebook, Instagram, and LinkedIn. When one provider cannot start because Freed Desktop memory is high after cleanup, the next providers reuse that deferred result instead of immediately opening more WebKit work. High-memory Freed Desktop installs now get larger adaptive scrape budgets, and low-priority semantic enrichment waits through launch so Facebook and Instagram scraping does not lose the first background window to Automerge maintenance.
 
+Provider health now treats memory-pressure preflight blocks as transient deferrals instead of durable provider failures. The attempts stay in local diagnostics for review, but after the recovery window they stop driving sidebar warnings or stale source-menu copy.
+
 Facebook and Instagram feed scrapes now build a memory-aware pass plan after the WebView has loaded. When memory is healthy they keep the normal randomized session. When Freed Desktop is close to the scrape budget, they skip story collection and reduce scroll passes instead of opening a full story-plus-feed session that is likely to pause or trigger memory recovery. Each plan is written to runtime health diagnostics with the provider, pass range, story decision, margin, and memory budgets.
 
 ### Permanent Media Archive
@@ -205,6 +207,7 @@ const RATE_LIMITS = {
 - [x] Social provider sections include a filtered line-by-line scrape log so users can see what the scraper is doing in real time without expanding the outer Settings view
 - [x] Desktop social scraper commands serialize behind a shared native session lock so background WebKit jobs cannot overlap and starve the main renderer
 - [x] Social memory preflight blocks fan-out across providers when Freed Desktop memory remains high after cleanup
+- [x] Memory-pressure preflight deferrals stay in diagnostics but age out of the current sidebar and source-menu warning state
 - [x] Facebook and Instagram feed scrapes now register with the shared background runtime so cloud sync, content fetches, RSS polls, snapshots, outbox drains, and semantic classifiers do not compete with active WebKit scraping
 - [x] Social scrape memory preflight uses adaptive high-memory budgets, native hidden-window runtime samples, and launch-delayed semantic enrichment so provider WebKit sessions get priority during long background runs
 - [x] Facebook, Instagram, and LinkedIn extractors expand common long-text controls before normalization
