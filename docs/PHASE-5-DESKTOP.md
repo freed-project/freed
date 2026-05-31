@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, density-aware fixed-height unified feed rows shipped, settings changelog preview shipped, fingerprinted sample-data cleanup shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, idle Automerge worker recycling shipped, density-aware fixed-height unified feed rows shipped, settings changelog preview shipped, fingerprinted sample-data cleanup shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -40,6 +40,7 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Hot-path side-effect scheduling:** Desktop routes native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains through typed queues so clicks, scroll callbacks, and document subscriptions do not directly run slow native I/O or large scans
 - **Background runtime coordination:** Desktop gates high-risk background work behind healthy renderer startup, shared memory pressure cooldowns, renderer recovery safe mode, and a native social-scrape lease so WebKit pressure cannot keep blanking the main window
 - **Deep local WebKit diagnostics:** Renderer stalls, memory preflight blocks, and recovery attempts write bounded local diagnostics with WebKit process identity, RSS, CPU, process age, WebView labels, cache sizes, vmmap summaries, short process samples, and scraper recycle PID verification
+- **Adaptive social memory budgets:** Freed Desktop now scales high and critical scrape guardrails on high-memory machines, records native memory samples even when the renderer is hidden, and keeps low-priority semantic enrichment out of the launch path so Facebook and Instagram get memory first
 
 ---
 
@@ -329,6 +330,9 @@ export async function captureDomFeed(
 - [x] Outbox retry bookkeeping now drops completed and terminally failed IDs instead of keeping a session-long retry map for every action it has ever seen
 - [x] Removing RSS feeds now also drops their retained provider-health diagnostics instead of keeping dead feed histories in memory and storage forever
 - [x] Provider-health persistence now compacts RSS feed attempt history, derives per-feed charts from retained attempts, trims oversized error reasons, updates failing-feed diagnostics incrementally, and batches hot RSS writes so renderer memory is not burned repeatedly on `sync-health.json` parse and stringify cycles
+- [x] Native runtime-health sampling continues while the renderer is hidden, including background pause state, active job age, safe-mode state, WebKit RSS, and adaptive memory limits
+- [x] Desktop social scrape guardrails now scale beyond the old 4 GB ceiling on high-memory machines, while low-priority semantic enrichment and startup content-signal backfill wait through the launch quiet period
+- [x] Desktop releases idle Automerge worker documents after the request queue drains and terminates the worker until the next document operation, reducing retained renderer work during long background sessions
 - [x] Desktop live UI state now caps preserved article text previews and fetches full preserved text on demand for the active reader item, instead of cloning entire article bodies through every feed-state update
 - [x] Desktop native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains now run through typed side-effect queues with slow-task diagnostics, so common UI actions do not directly wait on native storage or broad outbox scans
 - [x] Desktop Automerge subscriptions now carry change metadata, so item-patch mutations let the outbox drain only changed items while startup and full document updates keep the full scan path
@@ -369,10 +373,15 @@ export async function captureDomFeed(
 > backup, and snapshots, rather than shipping those payloads back to the
 > main thread on every state update. Desktop memory telemetry now also samples
 > Freed-owned WebKit renderer RSS, Automerge binary size, IndexedDB storage,
-> WebKit cache size, and adaptive high and critical memory limits. Social
-> capture now runs a native preflight that recycles stale scraper windows,
+> WebKit cache size, and adaptive high and critical memory limits. Native
+> runtime-health sampling now continues even while the renderer is hidden, so
+> overnight reports still show memory, pause, safe-mode, and active background
+> job state. Social capture now runs a native preflight that recycles stale scraper windows,
 > records which WebKit process IDs exited or survived the recycle, and trims
 > only Freed WebKit network-cache blobs before it decides a scrape must pause.
+> On high-memory machines, scrape guardrails now scale beyond the old 4 GB
+> critical cap, and low-priority semantic enrichment waits through launch so it
+> does not spend the first Automerge-heavy background slot before provider sync.
 > The background runtime now also gates content fetches, RSS polls,
 > automatic snapshots, cloud uploads, outbox drains, and social scrapes behind
 > healthy renderer startup and shared pressure cooldowns, while native recovery

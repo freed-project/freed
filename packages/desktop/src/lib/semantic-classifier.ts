@@ -9,6 +9,7 @@ import {
 
 const BATCH_SIZE = 100;
 const PROCESS_INTERVAL_MS = 5_000;
+const STARTUP_DELAY_MS = 10 * 60 * 1000;
 const RETRY_COOLDOWN_MS = 60_000;
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -32,6 +33,7 @@ let unsubscribeLocalAIModelState: (() => void) | null = null;
 let unsubscribePreferenceChanges: (() => void) | null = null;
 let pending = 0;
 let isEnabled: () => boolean = () => false;
+let startedAt = 0;
 
 function scheduleBackfill(): void {
   if (!isEnabled()) {
@@ -70,6 +72,14 @@ async function processNextBatch(): Promise<void> {
     return;
   }
   const now = Date.now();
+  const startupDelayRemainingMs = startedAt + STARTUP_DELAY_MS - now;
+  if (startupDelayRemainingMs > 0) return;
+  if (
+    typeof document !== "undefined" &&
+    document.visibilityState !== "visible"
+  ) {
+    return;
+  }
   if (lastFailureAt && now - lastFailureAt < RETRY_COOLDOWN_MS) return;
 
   processing = true;
@@ -113,6 +123,7 @@ export function start(options: SemanticClassifierOptions = {}): void {
   scheduled = isEnabled();
   pending = scheduled ? 1 : 0;
   lastScannedDocItemCount = null;
+  startedAt = Date.now();
 
   unsubscribeDoc = subscribe((state) => {
     if (lastScannedDocItemCount === state.docItemCount) return;
@@ -135,8 +146,6 @@ export function start(options: SemanticClassifierOptions = {}): void {
       addDebugEvent("error", `[Semantic classifier] unexpected error: ${message}`);
     });
   }, PROCESS_INTERVAL_MS);
-
-  void processNextBatch();
 
   heartbeatHandle = setInterval(() => {
     log.info(
@@ -173,6 +182,7 @@ export function stop(): void {
     unsubscribePreferenceChanges = null;
   }
   isEnabled = () => false;
+  startedAt = 0;
 
   log.info("[semantic-classifier] stopped");
 }

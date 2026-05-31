@@ -193,6 +193,36 @@ function bumpSearchCorpusVersion(): void {
   searchCorpusVersion += 1;
 }
 
+function cancelDocIdleUnload(): void {
+  // Kept as a named lifecycle hook so request startup documents the intent.
+}
+
+function scheduleDocIdleUnload(): void {
+  if (!currentDoc || !currentBinary || queuedRequestCount > 0) return;
+  currentDoc = null;
+  persistenceState = createPersistenceState(currentBinary);
+  emitWorkerTrace(
+    "[automerge-worker] released idle document after request queue drained",
+    "change",
+  );
+}
+
+function ensureCurrentDocLoaded(reason: WorkerRequest["type"]): FreedDoc {
+  if (currentDoc) return currentDoc;
+  if (!currentBinary) throw new Error("Document not initialized");
+
+  const startedAt = performance.now();
+  currentDoc = A.load<FreedDoc>(currentBinary);
+  persistenceState = createPersistenceState(currentBinary);
+  emitWorkerTrace(
+    `[automerge-worker] reloaded idle document op=${reason}` +
+      ` load_ms=${formatMs(performance.now() - startedAt)}` +
+      ` bytes=${currentBinary.byteLength.toLocaleString()}`,
+    "change",
+  );
+  return currentDoc;
+}
+
 function migrateLoadedIdentityGraph(message: string): boolean {
   if (!currentDoc || !hasLegacyIdentityGraphData(currentDoc)) return false;
   currentDoc = A.change(currentDoc, message, (doc) => {
@@ -740,6 +770,16 @@ async function handleRequest(
         ` queued=${trace.queuedBeforeStart.toLocaleString()}`,
     );
   }
+  cancelDocIdleUnload();
+
+  if (
+    req.type !== "INIT" &&
+    req.type !== "CLEAR_LOCAL" &&
+    req.type !== "REPLACE_DOC" &&
+    req.type !== "GET_DOC_BINARY"
+  ) {
+    ensureCurrentDocLoaded(req.type);
+  }
 
   const applyRequestChange = (
     changeFn: (doc: FreedDoc) => void,
@@ -794,6 +834,7 @@ async function handleRequest(
       }
 
       case "CLEAR_LOCAL":
+        cancelDocIdleUnload();
         await storage.clear();
         currentDoc = null;
         currentBinary = null;
@@ -817,9 +858,9 @@ async function handleRequest(
         break;
 
       case "GET_DOC_BINARY":
-        if (!currentDoc) throw new Error("Document not initialized");
         if (!currentBinary) {
-          currentBinary = A.save(currentDoc);
+          const doc = ensureCurrentDocLoaded(req.type);
+          currentBinary = A.save(doc);
           persistenceState = createPersistenceState(currentBinary);
         }
         send({ reqId: req.reqId, type: "DOC_BINARY", binary: currentBinary });
@@ -1312,6 +1353,7 @@ function enqueueRequest(req: WorkerRequest): void {
     })
     .finally(() => {
       queuedRequestCount = Math.max(0, queuedRequestCount - 1);
+      scheduleDocIdleUnload();
     });
 }
 

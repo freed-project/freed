@@ -341,7 +341,7 @@ function recordReadStateInfo(message: string, detail: Record<string, unknown>): 
   );
 }
 
-const STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS = 2 * 60 * 1000;
+const STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS = 10 * 60 * 1000;
 const STARTUP_CONTENT_SIGNAL_RETRY_DELAY_MS = 30 * 1000;
 const STARTUP_CONTENT_SIGNAL_INTERVAL_MS = 60 * 1000;
 const STARTUP_CONTENT_SIGNAL_BATCH_SIZE = 50;
