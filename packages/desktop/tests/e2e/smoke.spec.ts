@@ -473,7 +473,7 @@ async function waitForGraphSceneSyncAfter(page: Page, previousSceneSyncCount: nu
 }
 
 async function seedStressIdentityGraph(page: Page) {
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
