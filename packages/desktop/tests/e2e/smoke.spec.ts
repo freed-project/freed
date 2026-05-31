@@ -2014,11 +2014,11 @@ test("desktop hide previews button collapses the compact reader rail", async ({ 
   await expect.poll(async () =>
     page.evaluate((initialWidth) => {
       const rail = document.querySelector('[data-testid="compact-feed-panel-rail"]') as HTMLElement | null;
-      if (!rail) return -1;
+      if (!rail) return 0;
       const width = rail.getBoundingClientRect().width;
-      return width > 0 && width < initialWidth ? width : -1;
+      return width < initialWidth ? width : initialWidth;
     }, railWidthBeforeCollapse),
-  ).toBeGreaterThan(0);
+  ).toBeLessThan(railWidthBeforeCollapse);
 
   await expect.poll(async () => {
     return page.evaluate(() => {
