@@ -99,3 +99,26 @@ export async function writeNativeJsonValue(
     },
   });
 }
+
+export async function writeNativeJsonFile(
+  file: string,
+  contents: Record<string, unknown>,
+  source: string,
+): Promise<void> {
+  if (!isTauri()) {
+    writeMockStoreFile(file, contents);
+    return;
+  }
+  await scheduleSideEffect({
+    queue: "nativeStore",
+    source,
+    kind: `write:${file}`,
+    run: async () => {
+      const path = await nativeJsonPath(file);
+      const tempPath = `${path}.tmp`;
+      await writeTextFile(tempPath, JSON.stringify(contents));
+      await rename(tempPath, path);
+      writeMockStoreFile(file, contents);
+    },
+  });
+}

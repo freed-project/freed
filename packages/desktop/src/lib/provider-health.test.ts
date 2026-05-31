@@ -137,12 +137,14 @@ describe("provider health", () => {
     ).toBe(12);
   });
 
-  it("persists native health state through the filesystem instead of Tauri store", async () => {
+  it("persists native health state through the filesystem and debounces RSS feed writes", async () => {
     vi.useFakeTimers();
     const now = new Date("2026-04-02T19:15:00.000Z");
     vi.setSystemTime(now);
 
     const { mod, nativeFiles, nativeWrites } = await loadProviderHealthModule({ native: true });
+    await mod.initProviderHealth();
+    const writesAfterInit = nativeWrites.length;
 
     await mod.recordProviderHealthEvent({
       provider: "rss",
@@ -154,6 +156,10 @@ describe("provider health", () => {
       itemsSeen: 42,
       itemsAdded: 5,
     });
+
+    expect(nativeWrites).toHaveLength(writesAfterInit);
+
+    await vi.advanceTimersByTimeAsync(5_000);
 
     const stored = JSON.parse(
       nativeFiles.get("/mock/app-data/sync-health.json") ?? "{}",
@@ -217,6 +223,44 @@ describe("provider health", () => {
     const provider = debugStore.useDebugStore.getState().health?.providers.x;
     expect(provider?.lastOutcome).toBe("error");
     expect(provider?.lastError).toBe("Rate limit exceeded");
+  });
+
+  it("compacts retained RSS feed attempts before writing diagnostics", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, nativeFiles } = await loadProviderHealthModule({ native: true });
+    const feedUrl = "https://example.com/rss.xml";
+    const longReason = "Connection refused while loading ".repeat(20);
+
+    for (let index = 0; index < 8; index += 1) {
+      await mod.recordProviderHealthEvent({
+        provider: "rss",
+        scope: "rss_feed",
+        feedUrl,
+        feedTitle: "Example Feed",
+        outcome: "error",
+        stage: "fetch",
+        reason: longReason,
+        finishedAt: now.getTime() + index * 1_000,
+      });
+    }
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    const stored = JSON.parse(
+      nativeFiles.get("/mock/app-data/sync-health.json") ?? "{}",
+    ) as {
+      "provider-health"?: {
+        rssFeeds?: Record<string, { latestAttempts?: Array<{ reason?: string }> }>;
+      };
+    };
+    const attempts = stored["provider-health"]?.rssFeeds?.[feedUrl]?.latestAttempts ?? [];
+
+    expect(attempts).toHaveLength(5);
+    expect(attempts[0]?.reason?.length).toBeLessThanOrEqual(240);
+    expect(attempts[0]?.reason?.endsWith("...")).toBe(true);
   });
 
   it("does not auto-pause on cooldown outcomes", async () => {

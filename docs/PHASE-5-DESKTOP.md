@@ -328,6 +328,7 @@ export async function captureDomFeed(
 - [x] Background fetch no longer rescans the entire visible feed on every document mutation, it only rescans when the document item count changes, which cuts repeated O(n) churn during read toggles and preference writes
 - [x] Outbox retry bookkeeping now drops completed and terminally failed IDs instead of keeping a session-long retry map for every action it has ever seen
 - [x] Removing RSS feeds now also drops their retained provider-health diagnostics instead of keeping dead feed histories in memory and storage forever
+- [x] Provider-health persistence now compacts RSS feed attempt history, derives per-feed charts from retained attempts, trims oversized error reasons, updates failing-feed diagnostics incrementally, and batches hot RSS writes so renderer memory is not burned repeatedly on `sync-health.json` parse and stringify cycles
 - [x] Desktop live UI state now caps preserved article text previews and fetches full preserved text on demand for the active reader item, instead of cloning entire article bodies through every feed-state update
 - [x] Desktop native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains now run through typed side-effect queues with slow-task diagnostics, so common UI actions do not directly wait on native storage or broad outbox scans
 - [x] Desktop Automerge subscriptions now carry change metadata, so item-patch mutations let the outbox drain only changed items while startup and full document updates keep the full scan path
