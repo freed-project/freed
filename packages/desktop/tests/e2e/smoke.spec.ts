@@ -473,7 +473,7 @@ async function waitForGraphSceneSyncAfter(page: Page, previousSceneSyncCount: nu
 }
 
 async function seedStressIdentityGraph(page: Page) {
-  await page.evaluate(async () => {
+  await page.evaluate(() => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
@@ -1334,14 +1334,36 @@ test("primary sidebar resize caps at 400 pixels", async ({ app, page }) => {
   const resizeHandle = page.getByTestId("app-sidebar-resize-handle");
   await expect(resizeHandle).toBeVisible();
 
-  await dragElementBy(page, resizeHandle, 300);
-  await page.waitForTimeout(250);
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
 
+    await store?.getState().updatePreferences({
+      display: {
+        sidebarMode: "expanded",
+        sidebarWidth: 256,
+      },
+    });
+  });
+  await expect(page.getByTestId("desktop-sidebar-toggle")).toHaveAttribute("aria-label", "Minimal sidebar");
+
+  await dragElementBy(page, resizeHandle, 300);
+  await expect
+    .poll(async () =>
+      page.getByTestId("app-sidebar").evaluate((element) =>
+        Math.round(element.getBoundingClientRect().width),
+      ),
+    )
+    .toBeGreaterThanOrEqual(396);
   const sidebarWidth = await page.getByTestId("app-sidebar").evaluate((element) =>
     Math.round(element.getBoundingClientRect().width),
   );
   expect(sidebarWidth).toBeLessThanOrEqual(400);
-  expect(sidebarWidth).toBeGreaterThanOrEqual(396);
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
@@ -1885,7 +1907,7 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
   await app.waitForReady();
   await app.injectRssItems(12);
 
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
@@ -2048,7 +2070,7 @@ test("desktop hide previews skips the compact reader rail transition when animat
   await app.waitForReady();
   await app.injectRssItems(8);
 
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
@@ -2057,7 +2079,7 @@ test("desktop hide previews skips the compact reader rail transition when animat
         }
       | undefined;
 
-    void store?.getState().updatePreferences({
+    await store?.getState().updatePreferences({
       display: {
         animationIntensity: "none",
         reading: {
@@ -2073,7 +2095,9 @@ test("desktop hide previews skips the compact reader rail transition when animat
   await page.getByText("Article 0:", { exact: false }).click();
   const rail = page.getByTestId("compact-feed-panel-rail");
   await expect(rail).toBeVisible({ timeout: 5_000 });
-  await expect(await rail.evaluate((element) => (element as HTMLElement).style.transition)).toBe("none");
+  await expect.poll(async () =>
+    rail.evaluate((element) => (element as HTMLElement).style.transition),
+  ).toBe("none");
 
   await page.getByLabel("Hide Previews").click();
 
