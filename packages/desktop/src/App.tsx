@@ -34,6 +34,7 @@ import {
   getActiveProviders,
   getCloudToken,
   getValidCloudToken,
+  forceRefreshCloudToken,
   clearCloudProvider,
   deleteCloudFile,
   startCloudSync,
@@ -736,6 +737,20 @@ function App() {
       );
       return result;
     } catch (error) {
+      const status = typeof error === "object" && error !== null && "status" in error
+        ? (error as { status?: number }).status
+        : undefined;
+      if (status === 401) {
+        const refreshedToken = await forceRefreshCloudToken("gdrive");
+        if (refreshedToken && refreshedToken !== accessToken) {
+          log.info("[contacts] Google sync retrying after token refresh");
+          const result = await fetchGoogleContactsViaTauri(refreshedToken, syncToken);
+          log.info(
+            `[contacts] Google sync fetched contacts=${result.contacts.length.toLocaleString()} deleted=${result.deleted.length.toLocaleString()} next_sync_token=${result.nextSyncToken ? "yes" : "no"}`,
+          );
+          return result;
+        }
+      }
       const message = error instanceof Error ? error.message : String(error);
       log.warn(`[contacts] Google sync failed: ${message}`);
       throw error;

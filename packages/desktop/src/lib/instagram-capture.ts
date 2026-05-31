@@ -28,6 +28,7 @@ import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
 import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-monitor";
 import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
 import { socialProviderCopy } from "./social-provider-copy";
+import { runBackgroundJob } from "./background-runtime-coordinator";
 
 // =============================================================================
 // Rate Limiting
@@ -138,7 +139,12 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
       }
     });
 
-    await invoke("ig_scrape_feed", { windowMode: getIgScraperWindowMode() });
+    await runBackgroundJob({
+      kind: "social-scrape",
+      source: "instagram:feed",
+      timeoutMs: 600_000,
+      run: () => invoke("ig_scrape_feed", { windowMode: getIgScraperWindowMode() }),
+    });
 
     // Brief wait for any in-flight events to arrive after invoke resolves
     await new Promise<void>((r) => setTimeout(r, 500));

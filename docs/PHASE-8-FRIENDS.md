@@ -349,7 +349,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] FriendEditor links social sources and imports contact info
 - [x] Friends shown in Sidebar as a live navigation destination
 - [x] Google Contacts import creates friend persons by default and suggests same-person matches without auto-linking
-- [x] Google Contacts sync reuses native, refreshable Google credentials in Freed Desktop so reconnect is not required after normal access-token expiry
+- [x] Google Contacts sync reuses native, refreshable Google credentials in Freed Desktop, retries once after an API 401 with a forced refresh, and streams People API pages into normalized results without retaining duplicate raw page arrays
 - [x] Desktop snapshot restore preserves cached Google contacts and pending match suggestions
 - [x] Google Contacts appears as a first-class source in Settings and Friends, with full management in Freed Desktop and status-only visibility in the PWA
 - [x] Captured social authors can backfill orphan followed-account records before the operator confirms identity

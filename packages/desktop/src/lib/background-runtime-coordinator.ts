@@ -9,6 +9,7 @@ export type BackgroundJobKind =
   | "outbox"
   | "rss-poll"
   | "semantic-classifier"
+  | "social-scrape"
   | "snapshot";
 
 export interface RendererHeartbeatNote {

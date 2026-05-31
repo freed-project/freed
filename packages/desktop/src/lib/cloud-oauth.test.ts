@@ -287,6 +287,55 @@ describe("desktop Google OAuth", () => {
     expect(oauthCalls).toHaveLength(1);
   });
 
+  it("force refreshes Google tokens for API 401 recovery even when expiry is valid", async () => {
+    const oauthCalls: Array<{ url: string; body: string; contentType: string }> = [];
+    invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "google_oauth_proxy_request") {
+        oauthCalls.push({
+          url: String(args?.url ?? ""),
+          body: String(args?.body ?? ""),
+          contentType: String(args?.contentType ?? ""),
+        });
+        return {
+          status: 200,
+          headers: [["content-type", "application/json"]],
+          body: Array.from(new TextEncoder().encode(JSON.stringify({
+            access_token: "forced-refreshed-access-token",
+            expires_in: 3600,
+          }))),
+        };
+      }
+      return null;
+    });
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "still-valid-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 3_600_000,
+    }));
+
+    const { forceRefreshCloudToken } = await import("./sync");
+
+    await expect(forceRefreshCloudToken("gdrive")).resolves.toBe("forced-refreshed-access-token");
+    expect(oauthCalls).toHaveLength(1);
+    expect(JSON.parse(oauthCalls[0]!.body)).toMatchObject({
+      grantType: "refresh_token",
+      refreshToken: "refresh-token",
+    });
+  });
+
+  it("does not auto resume unsupported cloud providers with stored tokens", async () => {
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "google-token",
+    }));
+    localStorage.setItem("freed_cloud_token_meta_dropbox", JSON.stringify({
+      accessToken: "dropbox-token",
+    }));
+
+    const { getActiveProviders } = await import("./sync");
+
+    expect(getActiveProviders()).toEqual(["gdrive"]);
+  });
+
   it("does not immediately refresh again when the token proxy omits expires_in", async () => {
     const oauthCalls: Array<{ url: string; body: string; contentType: string }> = [];
     invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {

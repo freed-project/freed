@@ -29,6 +29,7 @@ import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
 import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-monitor";
 import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
 import { socialProviderCopy } from "./social-provider-copy";
+import { runBackgroundJob } from "./background-runtime-coordinator";
 
 // =============================================================================
 // Rate Limiting
@@ -162,7 +163,12 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
       },
     );
 
-    await invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() });
+    await runBackgroundJob({
+      kind: "social-scrape",
+      source: "facebook:feed",
+      timeoutMs: 600_000,
+      run: () => invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() }),
+    });
     await new Promise<void>((resolve) => setTimeout(resolve, 500));
   } catch (err) {
     if (!diag.errorStage) {
