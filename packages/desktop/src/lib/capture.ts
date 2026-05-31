@@ -22,6 +22,10 @@ import { docBatchRefreshFeeds } from "./automerge";
 import { useAppStore, withProviderSyncing } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { isProviderPaused, recordProviderHealthEvent } from "./provider-health";
+import {
+  selectRssFeedsForRefresh,
+  type RssRefreshPlanOptions,
+} from "./rss-refresh-plan";
 
 /**
  * Fetch URL via Tauri backend (bypasses CORS)
@@ -252,7 +256,9 @@ async function refreshEnabledRssFeeds(
   }
 }
 
-export async function refreshRssFeeds(): Promise<void> {
+export async function refreshRssFeeds(
+  options: RssRefreshPlanOptions = {},
+): Promise<void> {
   if (!isTauri()) {
     addDebugEvent(
       "change",
@@ -261,7 +267,8 @@ export async function refreshRssFeeds(): Promise<void> {
     return;
   }
   const store = useAppStore.getState();
-  const feeds = Object.values(store.feeds).filter((f) => f.enabled);
+  const enabledFeeds = Object.values(store.feeds).filter((f) => f.enabled);
+  const feeds = selectRssFeedsForRefresh(enabledFeeds, options);
   if (feeds.length === 0) return;
 
   store.setSyncing(true);

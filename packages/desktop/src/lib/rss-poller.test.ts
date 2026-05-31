@@ -54,9 +54,15 @@ describe("rss poller", () => {
     expect(runBackgroundJob).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "rss-poll",
-        run: refreshRssFeeds,
+        run: expect.any(Function),
       }),
     );
+    const task = runBackgroundJob.mock.calls[0]?.[0];
+    await task.run();
+    expect(refreshRssFeeds).toHaveBeenCalledWith({
+      maxFeeds: 80,
+      staleAfterMs: 2 * 60 * 60 * 1000,
+    });
 
     await vi.advanceTimersByTimeAsync(14_999);
     expect(runBackgroundJob).toHaveBeenCalledTimes(1);
