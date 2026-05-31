@@ -350,16 +350,18 @@ export function FacebookSettingsSection({
   );
 
   const handleRefreshGroups = useCallback(async () => {
-    setRefreshingGroups(true);
-    setActionError(null);
-    try {
-      await captureFbGroups();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to refresh Facebook groups");
-    } finally {
-      setRefreshingGroups(false);
-    }
-  }, []);
+    await confirm(async () => {
+      setRefreshingGroups(true);
+      setActionError(null);
+      try {
+        await captureFbGroups();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "Failed to refresh Facebook groups");
+      } finally {
+        setRefreshingGroups(false);
+      }
+    });
+  }, [confirm]);
 
   const handleDisconnect = useCallback(async () => {
     try {

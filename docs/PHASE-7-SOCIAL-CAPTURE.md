@@ -193,7 +193,7 @@ const RATE_LIMITS = {
 - [x] Settings UI for both platforms (login, check connection, sync, disconnect), with the same provider section also reused inside Debug panel health cards
 - [x] Feed pollution filtering blocks promoted X entries and suggested FB/IG posts
 - [x] Facebook Settings includes per-group include/exclude controls for joined groups inside a filtered inner scroller that prevents late group loads from shifting the outer Settings view
-- [x] Facebook group discovery rejects activity-only labels and numeric ID fallbacks, preserves good stored names, and repairs missing stored names from refreshed group data or already captured group posts
+- [x] Facebook group discovery rejects activity-only labels and numeric ID fallbacks, preserves good stored names, repairs missing stored names from already captured group posts during normal sync, and keeps joined-groups refresh behind explicit provider-risk confirmation
 - [x] Desktop Sources settings expose per-source scraper window modes: shown, cloaked, hidden
 - [x] Background FB and IG scraper WebViews force provider media silent during scrape and auth-check flows
 - [x] Social providers surface paused/degraded health summaries in settings and the sidebar source surfaces

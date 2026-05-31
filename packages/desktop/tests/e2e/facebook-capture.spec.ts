@@ -322,4 +322,8 @@ test("Facebook sync excludes posts from filtered groups", async ({
   expect(accountNames).toContain("Bob Builder");
   expect(accountNames).not.toContain("Create New Account");
   expect(accountNames).not.toContain("Your Shortcuts");
+
+  const invocations = await ipc.invocations();
+  expect(invocations.some((call) => call.cmd === "fb_scrape_feed")).toBe(true);
+  expect(invocations.some((call) => call.cmd === "fb_scrape_groups")).toBe(false);
 });
