@@ -1,0 +1,40 @@
+{
+  "tag": "v26.5.3102-dev",
+  "version": "26.5.3102-dev",
+  "channel": "dev",
+  "dayKey": "26.5.31",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-31T08:25:18.433Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.3011-dev",
+    "previousPublishedDayTag": "v26.5.3011-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.3102-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.3102-dev"
+    ],
+    "prNumbers": [],
+    "commitSubjects": [
+      "fix: stabilize reader rail regression test",
+      "release: approve v26.5.3101-dev",
+      "release: v26.5.3101-dev",
+      "fix: stabilize desktop release regression tests",
+      "release: approve v26.5.3100-dev",
+      "release: v26.5.3100-dev",
+      "perf: reduce desktop sync memory pressure"
+    ]
+  },
+  "release": {
+    "deck": "Reader rail regression test are now more stable and desktop sync memory pressure",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3102-dev\n\nReader rail regression test are now more stable and desktop sync memory pressure\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
