@@ -82,6 +82,8 @@ const WEBKIT_CACHE_TRIM_AT_BYTES: u64 = 768 * 1024 * 1024;
 const WEBKIT_CACHE_TRIM_TARGET_BYTES: u64 = 512 * 1024 * 1024;
 const OPTIONAL_STORY_MEMORY_BUDGET_PERCENT: u64 = 85;
 const SCRAPE_MEMORY_HEADROOM_BYTES: u64 = 384 * 1024 * 1024;
+const SCRAPE_REDUCED_PASS_MARGIN_BYTES: u64 = 1536 * 1024 * 1024;
+const SCRAPE_MINIMAL_PASS_MARGIN_BYTES: u64 = 768 * 1024 * 1024;
 const WEBKIT_PROCESS_START_GRACE_SECONDS: u64 = 10;
 const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
 const RUNTIME_HEALTH_FILE: &str = "runtime-health.jsonl";
@@ -1087,6 +1089,15 @@ struct ScrapeMemoryPreparation {
     scraper_recycle_verification: Option<ScraperRecycleVerification>,
     scrape_start_budget_bytes: u64,
     may_proceed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SocialScrapePlan {
+    min_passes: usize,
+    max_passes: usize,
+    skip_stories: bool,
+    reason: &'static str,
 }
 
 #[derive(serde::Serialize)]
@@ -3352,6 +3363,122 @@ fn optional_story_scrape_may_proceed(stats: &RuntimeMemoryStats) -> bool {
         && stats.app_resident_bytes < story_budget_bytes
 }
 
+fn scrape_memory_available_margin_bytes(stats: &RuntimeMemoryStats) -> u64 {
+    let pressure_margin =
+        scrape_memory_start_budget_bytes(stats).saturating_sub(stats.app_memory_pressure_bytes);
+    let resident_margin =
+        scrape_resident_start_budget_bytes(stats).saturating_sub(stats.app_resident_bytes);
+    pressure_margin.min(resident_margin)
+}
+
+fn capped_scrape_passes(
+    default_max_passes: usize,
+    target_min: usize,
+    target_max: usize,
+) -> (usize, usize) {
+    let max_passes = default_max_passes.min(target_max).max(1);
+    let min_passes = target_min.min(max_passes).max(1);
+    (min_passes, max_passes)
+}
+
+fn social_scrape_plan_for_memory(
+    stats: &RuntimeMemoryStats,
+    default_min_passes: usize,
+    default_max_passes: usize,
+) -> SocialScrapePlan {
+    if !scrape_memory_may_proceed(stats) {
+        return SocialScrapePlan {
+            min_passes: 0,
+            max_passes: 0,
+            skip_stories: true,
+            reason: "blocked",
+        };
+    }
+
+    let margin_bytes = scrape_memory_available_margin_bytes(stats);
+    if margin_bytes <= SCRAPE_MINIMAL_PASS_MARGIN_BYTES {
+        let (min_passes, max_passes) = capped_scrape_passes(default_max_passes, 2, 3);
+        return SocialScrapePlan {
+            min_passes,
+            max_passes,
+            skip_stories: true,
+            reason: "minimal-memory-margin",
+        };
+    }
+
+    if !optional_story_scrape_may_proceed(stats) {
+        let (min_passes, max_passes) = capped_scrape_passes(default_max_passes, 3, 5);
+        return SocialScrapePlan {
+            min_passes,
+            max_passes,
+            skip_stories: true,
+            reason: "feed-only-memory-budget",
+        };
+    }
+
+    if margin_bytes <= SCRAPE_REDUCED_PASS_MARGIN_BYTES {
+        let (min_passes, max_passes) = capped_scrape_passes(default_max_passes, 3, 5);
+        return SocialScrapePlan {
+            min_passes,
+            max_passes,
+            skip_stories: true,
+            reason: "reduced-memory-margin",
+        };
+    }
+
+    SocialScrapePlan {
+        min_passes: default_min_passes,
+        max_passes: default_max_passes,
+        skip_stories: false,
+        reason: "full",
+    }
+}
+
+fn emit_social_scrape_plan(
+    app: &tauri::AppHandle,
+    provider: &str,
+    operation: &str,
+    plan: &SocialScrapePlan,
+    stats: &RuntimeMemoryStats,
+) {
+    let margin_bytes = scrape_memory_available_margin_bytes(stats);
+    info!(
+        "[memory] scrape plan provider={} operation={} reason={} min_passes={} max_passes={} skip_stories={} app_pressure={} app_rss={} margin_bytes={} story_budget={} scrape_budget={} resident_budget={}",
+        provider,
+        operation,
+        plan.reason,
+        plan.min_passes,
+        plan.max_passes,
+        plan.skip_stories,
+        stats.app_memory_pressure_bytes,
+        stats.app_resident_bytes,
+        margin_bytes,
+        optional_story_memory_budget_bytes(stats),
+        scrape_memory_start_budget_bytes(stats),
+        scrape_resident_start_budget_bytes(stats)
+    );
+    append_runtime_health(
+        app,
+        serde_json::json!({
+            "event": "social_scrape_plan",
+            "provider": provider,
+            "operation": operation,
+            "reason": plan.reason,
+            "minPasses": plan.min_passes,
+            "maxPasses": plan.max_passes,
+            "skipStories": plan.skip_stories,
+            "appMemoryPressureBytes": stats.app_memory_pressure_bytes,
+            "appResidentBytes": stats.app_resident_bytes,
+            "memoryMarginBytes": margin_bytes,
+            "storyBudgetBytes": optional_story_memory_budget_bytes(stats),
+            "scrapeStartBudgetBytes": scrape_memory_start_budget_bytes(stats),
+            "scrapeResidentBudgetBytes": scrape_resident_start_budget_bytes(stats),
+            "memoryHighBytes": stats.memory_high_bytes,
+            "memoryCriticalBytes": stats.memory_critical_bytes
+        }),
+    );
+}
+
 fn social_scrape_may_continue(
     app: &tauri::AppHandle,
     provider: &str,
@@ -4631,12 +4758,24 @@ async fn fb_scrape_feed(
     .map_err(|e| e.to_string())?;
     tokio::time::sleep(Duration::from_millis(300)).await;
 
+    let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
+    let scrape_plan = social_scrape_plan_for_memory(&scrape_plan_stats, 6, 10);
+    emit_social_scrape_plan(
+        &app,
+        "Facebook",
+        "feed scrape",
+        &scrape_plan,
+        &scrape_plan_stats,
+    );
+
     // Randomized ordering: ~50% stories-first, ~50% feed-first.
     // ~15% chance to skip story scraping entirely (real users don't always check stories).
-    let skip_stories = !optional_story_scrape_may_continue(&app, "Facebook", "feed scrape") || {
-        use rand::Rng;
-        rand::thread_rng().gen_bool(0.15)
-    };
+    let skip_stories = scrape_plan.skip_stories
+        || !optional_story_scrape_may_continue(&app, "Facebook", "feed scrape")
+        || {
+            use rand::Rng;
+            rand::thread_rng().gen_bool(0.15)
+        };
     let stories_first = !skip_stories && {
         use rand::Rng;
         rand::thread_rng().gen_bool(0.50)
@@ -4661,16 +4800,19 @@ async fn fb_scrape_feed(
     // We must scroll incrementally, extracting at each position.
     let num_passes = {
         use rand::Rng;
-        rand::thread_rng().gen_range(6usize..=10)
+        rand::thread_rng().gen_range(scrape_plan.min_passes.max(1)..=scrape_plan.max_passes.max(1))
     };
     // If doing feed-first, split the passes: 2-4 passes before stories, rest after.
     let early_passes = if !stories_first && !skip_stories {
         use rand::Rng;
-        rand::thread_rng().gen_range(2usize..=4)
+        let upper = 4usize.min(num_passes.saturating_sub(1).max(1));
+        let lower = 2usize.min(upper);
+        rand::thread_rng().gen_range(lower..=upper)
     } else {
         num_passes // all passes in one go
     };
 
+    let mut completed_passes = 0usize;
     for i in 0..num_passes {
         prepare_background_scraper_window(&wv, window_mode)?;
 
@@ -4679,6 +4821,7 @@ async fn fb_scrape_feed(
 
         tokio::time::sleep(Duration::from_millis(300)).await;
         cleanup_background_scraper_media(&wv);
+        completed_passes = i + 1;
         if !social_scrape_may_continue(&app, "Facebook", "feed scrape", i + 1, num_passes) {
             break;
         }
@@ -4762,7 +4905,7 @@ async fn fb_scrape_feed(
     cleanup_background_scraper_media(&wv);
     info!(
         "[FB] scrape complete, {} extraction passes emitted",
-        num_passes + 1
+        completed_passes + 1
     );
 
     Ok(())
@@ -5224,12 +5367,24 @@ async fn ig_scrape_feed(
     let _ = wv.eval(r#"document.querySelector('a[href="/?variant=following"]')?.click();"#);
     tokio::time::sleep(Duration::from_millis(2000)).await;
 
+    let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
+    let scrape_plan = social_scrape_plan_for_memory(&scrape_plan_stats, 5, 9);
+    emit_social_scrape_plan(
+        &app,
+        "Instagram",
+        "feed scrape",
+        &scrape_plan,
+        &scrape_plan_stats,
+    );
+
     // Randomized ordering: ~50% stories-first, ~50% feed-first.
     // ~15% chance to skip story scraping entirely.
-    let skip_stories = !optional_story_scrape_may_continue(&app, "Instagram", "feed scrape") || {
-        use rand::Rng;
-        rand::thread_rng().gen_bool(0.15)
-    };
+    let skip_stories = scrape_plan.skip_stories
+        || !optional_story_scrape_may_continue(&app, "Instagram", "feed scrape")
+        || {
+            use rand::Rng;
+            rand::thread_rng().gen_bool(0.15)
+        };
     let stories_first = !skip_stories && {
         use rand::Rng;
         rand::thread_rng().gen_bool(0.50)
@@ -5253,16 +5408,19 @@ async fn ig_scrape_feed(
     // incrementally, extracting at each position.
     let num_passes = {
         use rand::Rng;
-        rand::thread_rng().gen_range(5usize..=9)
+        rand::thread_rng().gen_range(scrape_plan.min_passes.max(1)..=scrape_plan.max_passes.max(1))
     };
     // Feed-first: scrape stories after the first 2-4 passes
     let early_passes = if !stories_first && !skip_stories {
         use rand::Rng;
-        rand::thread_rng().gen_range(2usize..=4)
+        let upper = 4usize.min(num_passes.saturating_sub(1).max(1));
+        let lower = 2usize.min(upper);
+        rand::thread_rng().gen_range(lower..=upper)
     } else {
         num_passes
     };
 
+    let mut completed_passes = 0usize;
     for i in 0..num_passes {
         prepare_background_scraper_window(&wv, window_mode)?;
 
@@ -5271,6 +5429,7 @@ async fn ig_scrape_feed(
 
         tokio::time::sleep(Duration::from_millis(300)).await;
         cleanup_background_scraper_media(&wv);
+        completed_passes = i + 1;
         if !social_scrape_may_continue(&app, "Instagram", "feed scrape", i + 1, num_passes) {
             break;
         }
@@ -5377,7 +5536,7 @@ async fn ig_scrape_feed(
     cleanup_background_scraper_media(&wv);
     info!(
         "[IG] scrape complete, {} extraction passes emitted",
-        num_passes + 1
+        completed_passes + 1
     );
 
     Ok(())
@@ -7705,6 +7864,41 @@ pub fn run() {
 mod tests {
     use super::*;
 
+    fn make_runtime_memory_stats_for_test(
+        app_resident_bytes: u64,
+        app_memory_pressure_bytes: u64,
+    ) -> RuntimeMemoryStats {
+        RuntimeMemoryStats {
+            total_physical_memory_bytes: 64 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes,
+            app_memory_pressure_bytes,
+            webkit_resident_bytes: None,
+            webkit_footprint_bytes: None,
+            webkit_virtual_bytes: None,
+            webkit_process_id: None,
+            webkit_total_resident_bytes: 0,
+            webkit_total_footprint_bytes: None,
+            webkit_process_count: 0,
+            webkit_largest_resident_bytes: None,
+            webkit_largest_footprint_bytes: None,
+            webkit_largest_process_id: None,
+            webkit_largest_cpu_usage: None,
+            webkit_largest_age_seconds: None,
+            webkit_largest_role: None,
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: false,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            memory_high_bytes: MAX_CRITICAL_MEMORY_BYTES * 70 / 100,
+            memory_critical_bytes: MAX_CRITICAL_MEMORY_BYTES,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        }
+    }
+
     #[test]
     fn memory_pressure_limits_are_adaptive() {
         assert_eq!(
@@ -8328,6 +8522,84 @@ mod tests {
             story_budget_bytes,
             story_budget_bytes.saturating_sub(1),
         )));
+    }
+
+    #[test]
+    fn social_scrape_plan_keeps_full_passes_when_memory_has_room() {
+        let stats = make_runtime_memory_stats_for_test(512 * 1024 * 1024, 512 * 1024 * 1024);
+        let plan = social_scrape_plan_for_memory(&stats, 6, 10);
+
+        assert_eq!(
+            plan,
+            SocialScrapePlan {
+                min_passes: 6,
+                max_passes: 10,
+                skip_stories: false,
+                reason: "full",
+            }
+        );
+    }
+
+    #[test]
+    fn social_scrape_plan_skips_stories_when_story_budget_is_tight() {
+        let mut stats = make_runtime_memory_stats_for_test(0, 0);
+        let story_budget_bytes = optional_story_memory_budget_bytes(&stats);
+        stats.app_resident_bytes = story_budget_bytes;
+        stats.app_memory_pressure_bytes = story_budget_bytes;
+
+        let plan = social_scrape_plan_for_memory(&stats, 6, 10);
+
+        assert_eq!(
+            plan,
+            SocialScrapePlan {
+                min_passes: 3,
+                max_passes: 5,
+                skip_stories: true,
+                reason: "feed-only-memory-budget",
+            }
+        );
+    }
+
+    #[test]
+    fn social_scrape_plan_reduces_passes_near_start_budget() {
+        let mut stats = make_runtime_memory_stats_for_test(0, 0);
+        let near_budget = scrape_memory_start_budget_bytes(&stats)
+            .saturating_sub(SCRAPE_REDUCED_PASS_MARGIN_BYTES);
+        stats.app_resident_bytes = near_budget;
+        stats.app_memory_pressure_bytes = near_budget;
+
+        let plan = social_scrape_plan_for_memory(&stats, 6, 10);
+
+        assert_eq!(
+            plan,
+            SocialScrapePlan {
+                min_passes: 3,
+                max_passes: 5,
+                skip_stories: true,
+                reason: "reduced-memory-margin",
+            }
+        );
+    }
+
+    #[test]
+    fn social_scrape_plan_uses_minimal_passes_at_low_margin() {
+        let mut stats = make_runtime_memory_stats_for_test(0, 0);
+        let near_budget = scrape_memory_start_budget_bytes(&stats)
+            .saturating_sub(SCRAPE_MINIMAL_PASS_MARGIN_BYTES);
+        stats.app_resident_bytes = near_budget;
+        stats.app_memory_pressure_bytes = near_budget;
+
+        let plan = social_scrape_plan_for_memory(&stats, 5, 9);
+
+        assert_eq!(
+            plan,
+            SocialScrapePlan {
+                min_passes: 2,
+                max_passes: 3,
+                skip_stories: true,
+                reason: "minimal-memory-margin",
+            }
+        );
     }
 
     #[test]
