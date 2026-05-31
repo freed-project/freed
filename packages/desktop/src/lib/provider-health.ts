@@ -18,14 +18,17 @@ import { useAppStore } from "./store";
 import { storeFbAuthState } from "./fb-auth";
 import { storeIgAuthState } from "./instagram-auth";
 import { storeLiAuthState } from "./li-auth";
-import { readNativeJsonFile, writeNativeJsonValue } from "./native-json-store";
+import { readNativeJsonFile, writeNativeJsonFile } from "./native-json-store";
 
 const HEALTH_STORE_FILE = "sync-health.json";
 const HEALTH_STORE_KEY = "provider-health";
 const FALLBACK_STORAGE_KEY = "freed.provider-health";
 const MOCK_STORE_STORAGE_KEY = `__TAURI_MOCK_STORE__:${HEALTH_STORE_FILE}`;
 const MAX_PROVIDER_ATTEMPTS = 20;
-const MAX_FEED_ATTEMPTS = 20;
+const MAX_FEED_ATTEMPTS = 5;
+const MAX_ATTEMPT_REASON_CHARS = 240;
+const MAX_FEED_TITLE_CHARS = 180;
+const RSS_HEALTH_PERSIST_DEBOUNCE_MS = 5_000;
 const PROVIDERS: HealthProviderId[] = [
   "rss",
   "x",
@@ -109,6 +112,9 @@ interface PersistedHealthState {
 
 let currentState: PersistedHealthState | null = null;
 let initPromise: Promise<void> | null = null;
+let pendingPersistState: PersistedHealthState | null = null;
+let pendingPersistTimer: ReturnType<typeof setTimeout> | null = null;
+let latestFailingRssFeeds: RssFeedHealthSnapshot[] = [];
 
 function defaultDailyBuckets(now = Date.now()): HealthDailyBucket[] {
   return Array.from({ length: DEFAULT_DAILY_BUCKETS }, (_unused, index) => {
@@ -253,6 +259,20 @@ function coerceAttempts(
     .slice(0, max);
 }
 
+function compactText(value: string | undefined, max: number): string | undefined {
+  if (!value) return undefined;
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 3)}...`;
+}
+
+function compactAttempt(attempt: ProviderHealthAttempt): ProviderHealthAttempt {
+  return {
+    ...attempt,
+    feedTitle: compactText(attempt.feedTitle, MAX_FEED_TITLE_CHARS),
+    reason: compactText(attempt.reason, MAX_ATTEMPT_REASON_CHARS),
+  };
+}
+
 function coerceAttempt(value: unknown): ProviderHealthAttempt | null {
   if (!value || typeof value !== "object") return null;
   const attempt = value as Partial<ProviderHealthAttempt>;
@@ -264,10 +284,16 @@ function coerceAttempt(value: unknown): ProviderHealthAttempt | null {
     provider: attempt.provider as HealthProviderId,
     scope: attempt.scope === "rss_feed" ? "rss_feed" : "provider",
     feedUrl: typeof attempt.feedUrl === "string" ? attempt.feedUrl : undefined,
-    feedTitle: typeof attempt.feedTitle === "string" ? attempt.feedTitle : undefined,
+    feedTitle: compactText(
+      typeof attempt.feedTitle === "string" ? attempt.feedTitle : undefined,
+      MAX_FEED_TITLE_CHARS,
+    ),
     outcome: attempt.outcome as HealthOutcome,
     stage: typeof attempt.stage === "string" ? attempt.stage : undefined,
-    reason: typeof attempt.reason === "string" ? attempt.reason : undefined,
+    reason: compactText(
+      typeof attempt.reason === "string" ? attempt.reason : undefined,
+      MAX_ATTEMPT_REASON_CHARS,
+    ),
     startedAt: Number(attempt.startedAt ?? Date.now()),
     finishedAt: Number(attempt.finishedAt ?? Date.now()),
     durationMs: Number(attempt.durationMs ?? 0),
@@ -499,8 +525,8 @@ function coercePersistedHealthState(value: unknown): PersistedHealthState {
       ),
       latestAttempts:
         latestAttempts.length > 0
-          ? latestAttempts
-          : synthesizeProviderAttempts(provider, next),
+          ? latestAttempts.map(compactAttempt)
+          : synthesizeProviderAttempts(provider, next).map(compactAttempt),
       pause: coercePause(next.pause),
       lastPauseLevel:
         next.lastPauseLevel === 2 || next.lastPauseLevel === 3
@@ -522,22 +548,17 @@ function coercePersistedHealthState(value: unknown): PersistedHealthState {
     const next = feedState as Partial<PersistedFeedHealth>;
     rssFeeds[feedUrl] = {
       feedUrl,
-      feedTitle: typeof next.feedTitle === "string" && next.feedTitle.length > 0 ? next.feedTitle : feedUrl,
-      dailyBuckets: coerceBuckets(
-        next.dailyBuckets,
-        defaultDailyBuckets(now),
-        "dateKey",
-      ),
-      hourlyBuckets: coerceBuckets(
-        next.hourlyBuckets,
-        defaultHourlyBuckets(now),
-        "hourKey",
-      ),
+      feedTitle: compactText(
+        typeof next.feedTitle === "string" && next.feedTitle.length > 0 ? next.feedTitle : feedUrl,
+        MAX_FEED_TITLE_CHARS,
+      ) ?? feedUrl,
+      dailyBuckets: [],
+      hourlyBuckets: [],
       latestAttempts: (() => {
         const latestAttempts = coerceAttempts(next.latestAttempts, MAX_FEED_ATTEMPTS);
         return latestAttempts.length > 0
-          ? latestAttempts
-          : synthesizeFeedAttempts(feedUrl, next);
+          ? latestAttempts.map(compactAttempt)
+          : synthesizeFeedAttempts(feedUrl, next).map(compactAttempt);
       })(),
     };
   }
@@ -550,25 +571,19 @@ function coercePersistedHealthState(value: unknown): PersistedHealthState {
       }
       rssFeeds[feedState.feedUrl] = {
         feedUrl: feedState.feedUrl,
-        feedTitle:
+        feedTitle: compactText(
           typeof feedState.feedTitle === "string" && feedState.feedTitle.length > 0
             ? feedState.feedTitle
             : feedState.feedUrl,
-        dailyBuckets: coerceBuckets(
-          feedState.dailyBuckets,
-          defaultDailyBuckets(now),
-          "dateKey",
-        ),
-        hourlyBuckets: coerceBuckets(
-          feedState.hourlyBuckets,
-          defaultHourlyBuckets(now),
-          "hourKey",
-        ),
+          MAX_FEED_TITLE_CHARS,
+        ) ?? feedState.feedUrl,
+        dailyBuckets: [],
+        hourlyBuckets: [],
         latestAttempts: (() => {
           const latestAttempts = coerceAttempts(feedState.latestAttempts, MAX_FEED_ATTEMPTS);
           return latestAttempts.length > 0
-            ? latestAttempts
-            : synthesizeFeedAttempts(feedState.feedUrl, feedState);
+            ? latestAttempts.map(compactAttempt)
+            : synthesizeFeedAttempts(feedState.feedUrl, feedState).map(compactAttempt);
         })(),
       };
     }
@@ -580,6 +595,31 @@ function coercePersistedHealthState(value: unknown): PersistedHealthState {
     rssFeeds,
     updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : now,
   };
+}
+
+function compactPersistedHealthState(state: PersistedHealthState): PersistedHealthState {
+  for (const provider of PROVIDERS) {
+    state.providers[provider] = {
+      ...state.providers[provider],
+      latestAttempts: state.providers[provider].latestAttempts
+        .map(compactAttempt)
+        .slice(0, MAX_PROVIDER_ATTEMPTS),
+    };
+  }
+
+  for (const [feedUrl, feedState] of Object.entries(state.rssFeeds)) {
+    state.rssFeeds[feedUrl] = {
+      ...feedState,
+      feedTitle: compactText(feedState.feedTitle, MAX_FEED_TITLE_CHARS) ?? feedUrl,
+      dailyBuckets: [],
+      hourlyBuckets: [],
+      latestAttempts: feedState.latestAttempts
+        .map(compactAttempt)
+        .slice(0, MAX_FEED_ATTEMPTS),
+    };
+  }
+
+  return state;
 }
 
 function bucketSuccess(outcome: HealthOutcome): boolean {
@@ -649,7 +689,13 @@ function upsertAttempt(
   attempt: ProviderHealthAttempt,
   max: number,
 ): ProviderHealthAttempt[] {
-  return [attempt, ...attempts].slice(0, max);
+  const compactedAttempt = compactAttempt(attempt);
+  return [
+    compactedAttempt,
+    ...attempts
+      .filter((existing) => existing.id !== compactedAttempt.id)
+      .map(compactAttempt),
+  ].slice(0, max);
 }
 
 function clearExpiredPause(providerState: PersistedProviderHealth, now = Date.now()): PersistedProviderHealth {
@@ -825,6 +871,40 @@ function snapshotForProvider(providerState: PersistedProviderHealth): ProviderHe
   };
 }
 
+function dailyBucketsForFeed(feedState: PersistedFeedHealth): HealthDailyBucket[] {
+  return [...feedState.latestAttempts]
+    .sort((a, b) => a.finishedAt - b.finishedAt)
+    .reduce(
+      (buckets, attempt) =>
+        bumpDailyBuckets(
+          buckets,
+          attempt.finishedAt,
+          attempt.outcome,
+          attempt.itemsSeen,
+          attempt.itemsAdded,
+          attempt.bytesMoved,
+        ),
+      defaultDailyBuckets(),
+    );
+}
+
+function hourlyBucketsForFeed(feedState: PersistedFeedHealth): HealthHourlyBucket[] {
+  return [...feedState.latestAttempts]
+    .sort((a, b) => a.finishedAt - b.finishedAt)
+    .reduce(
+      (buckets, attempt) =>
+        bumpHourlyBuckets(
+          buckets,
+          attempt.finishedAt,
+          attempt.outcome,
+          attempt.itemsSeen,
+          attempt.itemsAdded,
+          attempt.bytesMoved,
+        ),
+      defaultHourlyBuckets(),
+    );
+}
+
 function snapshotForFeed(feedState: PersistedFeedHealth): RssFeedHealthSnapshot {
   const lastSuccess = feedState.latestAttempts.find((attempt) => bucketSuccess(attempt.outcome));
   const failedSinceSuccess = feedState.latestAttempts.filter((attempt) => {
@@ -851,17 +931,18 @@ function snapshotForFeed(feedState: PersistedFeedHealth): RssFeedHealthSnapshot 
     lastError: feedState.latestAttempts.find(
       (attempt) => !bucketSuccess(attempt.outcome) && attempt.reason,
     )?.reason,
-    dailyBuckets: feedState.dailyBuckets,
-    hourlyBuckets: feedState.hourlyBuckets,
+    dailyBuckets: feedState.dailyBuckets.length > 0
+      ? feedState.dailyBuckets
+      : dailyBucketsForFeed(feedState),
+    hourlyBuckets: feedState.hourlyBuckets.length > 0
+      ? feedState.hourlyBuckets
+      : hourlyBucketsForFeed(feedState),
     latestAttempts: feedState.latestAttempts,
   };
 }
 
-function publishState(state: PersistedHealthState): void {
-  const providers = Object.fromEntries(
-    PROVIDERS.map((provider) => [provider, snapshotForProvider(state.providers[provider])]),
-  ) as Record<HealthProviderId, ProviderHealthSnapshot>;
-  const failingRssFeeds = Object.values(state.rssFeeds)
+function computeFailingRssFeeds(state: PersistedHealthState): RssFeedHealthSnapshot[] {
+  return Object.values(state.rssFeeds)
     .map(snapshotForFeed)
     .filter((feed) => feed.status === "failing")
     .sort((a, b) => {
@@ -869,20 +950,49 @@ function publishState(state: PersistedHealthState): void {
       const bOutage = b.outageSince ?? 0;
       return aOutage - bOutage;
     });
+}
+
+function updateFailingRssFeed(
+  state: PersistedHealthState,
+  feedUrl: string,
+): RssFeedHealthSnapshot[] {
+  const next = latestFailingRssFeeds.filter((feed) => feed.feedUrl !== feedUrl);
+  const feedState = state.rssFeeds[feedUrl];
+  if (feedState) {
+    const feedSnapshot = snapshotForFeed(feedState);
+    if (feedSnapshot.status === "failing") {
+      next.push(feedSnapshot);
+    }
+  }
+  return next.sort((a, b) => {
+    const aOutage = a.outageSince ?? 0;
+    const bOutage = b.outageSince ?? 0;
+    return aOutage - bOutage;
+  });
+}
+
+function publishState(state: PersistedHealthState, changedFeedUrl?: string): void {
+  const providers = Object.fromEntries(
+    PROVIDERS.map((provider) => [provider, snapshotForProvider(state.providers[provider])]),
+  ) as Record<HealthProviderId, ProviderHealthSnapshot>;
+  latestFailingRssFeeds = changedFeedUrl
+    ? updateFailingRssFeed(state, changedFeedUrl)
+    : computeFailingRssFeeds(state);
 
   setProviderHealth({
     providers,
-    failingRssFeeds,
+    failingRssFeeds: latestFailingRssFeeds,
     updatedAt: state.updatedAt,
   });
 }
 
 async function persistState(state: PersistedHealthState): Promise<void> {
+  const compactedState = compactPersistedHealthState(state);
   if (!isTauri()) {
-    fallbackWrite(state);
+    fallbackWrite(compactedState);
     return;
   }
-  await persistNativeState(state);
+  await persistNativeState(compactedState);
 }
 
 async function readState(): Promise<PersistedHealthState> {
@@ -905,12 +1015,7 @@ async function readState(): Promise<PersistedHealthState> {
 
 async function persistNativeState(state: PersistedHealthState): Promise<void> {
   try {
-    await writeNativeJsonValue(
-      HEALTH_STORE_FILE,
-      HEALTH_STORE_KEY,
-      state,
-      "provider-health",
-    );
+    await writeNativeJsonFile(HEALTH_STORE_FILE, { [HEALTH_STORE_KEY]: state }, "provider-health");
   } catch (error) {
     log.error(
       `[provider-health] failed to persist health file, falling back: ${
@@ -919,6 +1024,38 @@ async function persistNativeState(state: PersistedHealthState): Promise<void> {
     );
     fallbackWrite(state);
   }
+}
+
+function persistStateAndLog(state: PersistedHealthState): void {
+  void persistState(state).catch((error) => {
+    log.error(
+      `[provider-health] failed to persist deferred health state: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  });
+}
+
+function schedulePersistState(state: PersistedHealthState): void {
+  pendingPersistState = state;
+  if (pendingPersistTimer) return;
+  pendingPersistTimer = setTimeout(() => {
+    pendingPersistTimer = null;
+    const stateToPersist = pendingPersistState;
+    pendingPersistState = null;
+    if (stateToPersist) {
+      persistStateAndLog(stateToPersist);
+    }
+  }, RSS_HEALTH_PERSIST_DEBOUNCE_MS);
+}
+
+async function persistStateNow(state: PersistedHealthState): Promise<void> {
+  if (pendingPersistTimer) {
+    clearTimeout(pendingPersistTimer);
+    pendingPersistTimer = null;
+  }
+  pendingPersistState = null;
+  await persistState(state);
 }
 
 function assertState(): PersistedHealthState {
@@ -1011,14 +1148,14 @@ function normalizeAttempt(input: ProviderHealthEventInput): ProviderHealthAttemp
 export async function initProviderHealth(): Promise<void> {
   if (!initPromise) {
     initPromise = (async () => {
-      currentState = await readState();
+      currentState = compactPersistedHealthState(await readState());
       for (const provider of PROVIDERS) {
         currentState.providers[provider] = clearExpiredPause(
           currentState.providers[provider],
         );
       }
       publishState(currentState);
-      await persistState(currentState);
+      await persistStateNow(currentState);
     })();
   }
   await initPromise;
@@ -1048,7 +1185,7 @@ export async function clearProviderPause(provider: HealthProviderId): Promise<vo
   state.updatedAt = Date.now();
   currentState = state;
   publishState(state);
-  await persistState(state);
+  await persistStateNow(state);
 }
 
 export async function resetProviderPauseState(provider: HealthProviderId): Promise<void> {
@@ -1066,7 +1203,7 @@ export async function resetProviderPauseState(provider: HealthProviderId): Promi
   state.updatedAt = Date.now();
   currentState = state;
   publishState(state);
-  await persistState(state);
+  await persistStateNow(state);
 }
 
 export async function forgetRssFeedHealth(feedUrl: string): Promise<void> {
@@ -1076,8 +1213,8 @@ export async function forgetRssFeedHealth(feedUrl: string): Promise<void> {
   delete state.rssFeeds[feedUrl];
   state.updatedAt = Date.now();
   currentState = state;
-  publishState(state);
-  await persistState(state);
+  publishState(state, feedUrl);
+  await persistStateNow(state);
 }
 
 export async function recordProviderHealthEvent(
@@ -1116,29 +1253,15 @@ export async function recordProviderHealthEvent(
     const feedState = state.rssFeeds[attempt.feedUrl] ?? {
       feedUrl: attempt.feedUrl,
       feedTitle: attempt.feedTitle ?? attempt.feedUrl,
-      dailyBuckets: defaultDailyBuckets(attempt.finishedAt),
-      hourlyBuckets: defaultHourlyBuckets(attempt.finishedAt),
+      dailyBuckets: [],
+      hourlyBuckets: [],
       latestAttempts: [],
     };
     state.rssFeeds[attempt.feedUrl] = {
       ...feedState,
       feedTitle: attempt.feedTitle ?? feedState.feedTitle,
-      dailyBuckets: bumpDailyBuckets(
-        feedState.dailyBuckets,
-        attempt.finishedAt,
-        attempt.outcome,
-        attempt.itemsSeen,
-        attempt.itemsAdded,
-        attempt.bytesMoved,
-      ),
-      hourlyBuckets: bumpHourlyBuckets(
-        feedState.hourlyBuckets,
-        attempt.finishedAt,
-        attempt.outcome,
-        attempt.itemsSeen,
-        attempt.itemsAdded,
-        attempt.bytesMoved,
-      ),
+      dailyBuckets: [],
+      hourlyBuckets: [],
       latestAttempts: upsertAttempt(
         feedState.latestAttempts,
         attempt,
@@ -1150,7 +1273,11 @@ export async function recordProviderHealthEvent(
   maybeAutoPause(state, attempt);
   state.updatedAt = attempt.finishedAt;
   currentState = state;
-  publishState(state);
-  await persistState(state);
+  publishState(state, attempt.scope === "rss_feed" ? attempt.feedUrl : undefined);
+  if (attempt.scope === "rss_feed") {
+    schedulePersistState(state);
+  } else {
+    await persistStateNow(state);
+  }
   return attempt;
 }
