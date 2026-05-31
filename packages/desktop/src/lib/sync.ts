@@ -294,6 +294,10 @@ export type { CloudProvider };
 const CLOUD_TOKEN_KEY = (p: CloudProvider) => `freed_cloud_token_${p}`;
 const CLOUD_TOKEN_META_KEY = (p: CloudProvider) => `freed_cloud_token_meta_${p}`;
 const UPLOAD_DEBOUNCE_MS = 2_000;
+const UPLOAD_DEFER_BACKOFF_BASE_MS = 10_000;
+const UPLOAD_DEFER_BACKOFF_MAX_MS = 120_000;
+const INITIAL_DOWNLOAD_DEFER_BACKOFF_BASE_MS = 15_000;
+const INITIAL_DOWNLOAD_DEFER_BACKOFF_MAX_MS = 180_000;
 const TOKEN_REFRESH_SKEW_MS = 60_000;
 const GOOGLE_TOKEN_REFRESH_FALLBACK_TTL_MS = 55 * 60 * 1000;
 const AUTH_FAILURE_REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
@@ -301,9 +305,12 @@ const AUTH_FAILURE_REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
 /** Per-provider abort controllers, upload timers, and doc-change unsubscribers. */
 const cloudAborts = new Map<CloudProvider, AbortController>();
 const uploadTimers = new Map<CloudProvider, ReturnType<typeof setTimeout>>();
+const initialDownloadTimers = new Map<CloudProvider, ReturnType<typeof setTimeout>>();
 const cloudChangeUnsubscribes = new Map<CloudProvider, () => void>();
 const cloudTokenRefreshes = new Map<CloudProvider, Promise<string | null>>();
 const cloudAuthFailureRefreshes = new Map<CloudProvider, number>();
+const cloudUploadDeferredAttempts = new Map<CloudProvider, number>();
+const cloudInitialDownloadDeferredAttempts = new Map<CloudProvider, number>();
 
 // Desktop OAuth client IDs. These are public and embedded in the app bundle.
 const DEFAULT_GDRIVE_DESKTOP_CLIENT_ID =
@@ -431,6 +438,17 @@ function authFailureStatus(error: unknown): number | undefined {
   return typeof error === "object" && error !== null && "status" in error
     ? (error as { status?: number }).status
     : undefined;
+}
+
+function nextDeferredBackoffMs(
+  attempts: Map<CloudProvider, number>,
+  provider: CloudProvider,
+  baseMs: number,
+  maxMs: number,
+): number {
+  const nextAttempt = (attempts.get(provider) ?? 0) + 1;
+  attempts.set(provider, nextAttempt);
+  return Math.min(maxMs, baseMs * 2 ** Math.min(nextAttempt - 1, 6));
 }
 
 async function refreshCloudTokenAfterAuthFailure(
@@ -652,9 +670,17 @@ export async function getValidCloudToken(provider: CloudProvider): Promise<strin
   return bundle.accessToken;
 }
 
-/** Return all providers that have a stored access token. */
+/** Refresh a provider token even when its stored expiry still looks valid. */
+export async function forceRefreshCloudToken(provider: CloudProvider): Promise<string | null> {
+  const bundle = readCloudTokenBundle(provider);
+  if (!bundle) return null;
+  if (!bundle.refreshToken) return bundle.accessToken;
+  return refreshCloudToken(provider, bundle);
+}
+
+/** Return all supported providers that have a stored access token. */
 export function getActiveProviders(): CloudProvider[] {
-  const all: CloudProvider[] = ["gdrive", "dropbox"];
+  const all: CloudProvider[] = ["gdrive"];
   return all.filter((p) => !!getCloudToken(p));
 }
 
@@ -852,6 +878,80 @@ async function exchangeCode(
 
 // ─── Sync loops ───────────────────────────────────────────────────────────────
 
+async function runInitialCloudDownload(
+  provider: CloudProvider,
+  signal: AbortSignal,
+  resolveToken: () => Promise<string>,
+): Promise<void> {
+  const startedAt = Date.now();
+  const remote = provider === "gdrive"
+    ? await gdriveDownloadLatest(await resolveToken(), signal, googleDriveFetch)
+    : await dropboxDownloadLatest(await resolveToken(), signal);
+  if (remote) {
+    await mergeDoc(remote);
+    cloudInitialDownloadDeferredAttempts.delete(provider);
+    console.log("[CloudSync/%s] Initial merge (%d bytes)", provider, remote.length);
+    await recordProviderHealthEvent({
+      provider,
+      outcome: "success",
+      stage: "download",
+      startedAt,
+      finishedAt: Date.now(),
+      bytesMoved: remote.length,
+    });
+  } else {
+    cloudInitialDownloadDeferredAttempts.delete(provider);
+    await recordProviderHealthEvent({
+      provider,
+      outcome: "empty",
+      stage: "download",
+      reason: "No remote changes",
+      startedAt,
+      finishedAt: Date.now(),
+    });
+  }
+}
+
+function scheduleInitialCloudDownloadRetry(
+  provider: CloudProvider,
+  token: string,
+  reason: string,
+): void {
+  const delayMs = nextDeferredBackoffMs(
+    cloudInitialDownloadDeferredAttempts,
+    provider,
+    INITIAL_DOWNLOAD_DEFER_BACKOFF_BASE_MS,
+    INITIAL_DOWNLOAD_DEFER_BACKOFF_MAX_MS,
+  );
+  addDebugEvent(
+    "change",
+    `[Cloud/${provider}] initial download deferred: ${reason}; retry_ms=${delayMs.toLocaleString()}`,
+  );
+  const existing = initialDownloadTimers.get(provider);
+  if (existing) clearTimeout(existing);
+  const timer = setTimeout(() => {
+    initialDownloadTimers.delete(provider);
+    const controller = cloudAborts.get(provider);
+    if (!controller) return;
+    const resolveToken = async () => (provider === "gdrive" ? (await getValidCloudToken(provider)) ?? token : token);
+    runBackgroundJob({
+      kind: "cloud-sync",
+      source: `cloud:${provider}:initial-download-retry`,
+      timeoutMs: 180_000,
+      run: () => runInitialCloudDownload(provider, controller.signal, resolveToken),
+    }).catch((error) => {
+      if (controller.signal.aborted) return;
+      if (isBackgroundRuntimeDeferredError(error)) {
+        scheduleInitialCloudDownloadRetry(provider, token, error.reason);
+        return;
+      }
+      const msg = error instanceof Error ? error.message : String(error);
+      addDebugEvent("error", `[Cloud/${provider}] initial download retry failed: ${msg}`);
+    });
+  }, delayMs);
+  initialDownloadTimers.set(provider, timer);
+}
+
 /**
  * Start the cloud sync loop for a single provider.
  * Downloads the latest remote state immediately, then runs the appropriate
@@ -867,32 +967,16 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
 
   // Immediate pull to catch up on any changes since last session.
   try {
-    const remote = provider === "gdrive"
-      ? await gdriveDownloadLatest(await resolveToken(), signal, googleDriveFetch)
-      : await dropboxDownloadLatest(await resolveToken(), signal);
-    if (remote) {
-      await mergeDoc(remote);
-      console.log("[CloudSync/%s] Initial merge (%d bytes)", provider, remote.length);
-      await recordProviderHealthEvent({
-        provider,
-        outcome: "success",
-        stage: "download",
-        startedAt: Date.now(),
-        finishedAt: Date.now(),
-        bytesMoved: remote.length,
-      });
-    } else {
-      await recordProviderHealthEvent({
-        provider,
-        outcome: "empty",
-        stage: "download",
-        reason: "No remote changes",
-        startedAt: Date.now(),
-        finishedAt: Date.now(),
-      });
-    }
+    await runBackgroundJob({
+      kind: "cloud-sync",
+      source: `cloud:${provider}:initial-download`,
+      timeoutMs: 180_000,
+      run: () => runInitialCloudDownload(provider, signal, resolveToken),
+    });
   } catch (err) {
-    if (!signal.aborted) {
+    if (!signal.aborted && isBackgroundRuntimeDeferredError(err)) {
+      scheduleInitialCloudDownloadRetry(provider, token, err.reason);
+    } else if (!signal.aborted) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[CloudSync/${provider}] Initial download failed:`, err);
       addDebugEvent("error", `[Cloud/${provider}] initial download failed: ${msg}`);
@@ -1016,6 +1100,14 @@ export function stopCloudSync(provider: CloudProvider): void {
     uploadTimers.delete(provider);
   }
 
+  const initialTimer = initialDownloadTimers.get(provider);
+  if (initialTimer) {
+    clearTimeout(initialTimer);
+    initialDownloadTimers.delete(provider);
+  }
+
+  cloudUploadDeferredAttempts.delete(provider);
+  cloudInitialDownloadDeferredAttempts.delete(provider);
   cloudChangeUnsubscribes.get(provider)?.();
   cloudChangeUnsubscribes.delete(provider);
 }
@@ -1077,6 +1169,7 @@ export function scheduleCloudUpload(provider: CloudProvider, token?: string): vo
               } else {
                 await dropboxUploadSafe(uploadToken, binary);
               }
+              cloudUploadDeferredAttempts.delete(provider);
               console.log("[CloudSync/%s] Uploaded (%d bytes)", provider, binary.byteLength);
               await recordProviderHealthEvent({
                 provider,
@@ -1103,8 +1196,21 @@ export function scheduleCloudUpload(provider: CloudProvider, token?: string): vo
           },
         }).catch((error) => {
           if (isBackgroundRuntimeDeferredError(error)) {
-            addDebugEvent("change", `[Cloud/${provider}] upload deferred: ${error.reason}`);
-            scheduleCloudUpload(provider, token);
+            const delayMs = nextDeferredBackoffMs(
+              cloudUploadDeferredAttempts,
+              provider,
+              UPLOAD_DEFER_BACKOFF_BASE_MS,
+              UPLOAD_DEFER_BACKOFF_MAX_MS,
+            );
+            addDebugEvent(
+              "change",
+              `[Cloud/${provider}] upload deferred: ${error.reason}; retry_ms=${delayMs.toLocaleString()}`,
+            );
+            const retryTimer = setTimeout(() => {
+              uploadTimers.delete(provider);
+              scheduleCloudUpload(provider, token);
+            }, delayMs);
+            uploadTimers.set(provider, retryTimer);
             return;
           }
           throw error;
