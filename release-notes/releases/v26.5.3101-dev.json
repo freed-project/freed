@@ -1,0 +1,37 @@
+{
+  "tag": "v26.5.3101-dev",
+  "version": "26.5.3101-dev",
+  "channel": "dev",
+  "dayKey": "26.5.31",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-31T07:54:50.125Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.3011-dev",
+    "previousPublishedDayTag": "v26.5.3011-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.3101-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.3101-dev"
+    ],
+    "prNumbers": [],
+    "commitSubjects": [
+      "fix: stabilize desktop release regression tests",
+      "release: approve v26.5.3100-dev",
+      "release: v26.5.3100-dev",
+      "perf: reduce desktop sync memory pressure"
+    ]
+  },
+  "release": {
+    "deck": "Desktop sync memory pressure and desktop release regression tests are now more stable",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3101-dev\n\nDesktop sync memory pressure and desktop release regression tests are now more stable\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
