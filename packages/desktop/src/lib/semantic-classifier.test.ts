@@ -115,7 +115,7 @@ describe("semantic classifier", () => {
 
     enabled.current = true;
     callbacks.preferences?.();
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 5_000);
 
     expect(mockDocBackfillContentSignals).toHaveBeenCalledWith(100);
     expect(mockUpdateHealth).toHaveBeenCalledWith("integrated-pro", {
@@ -123,6 +123,18 @@ describe("semantic classifier", () => {
       lastRunAt: expect.any(Number),
       failureCount: 0,
     });
+    mod.stop();
+  });
+
+  it("does not run semantic enrichment during the launch memory quiet period", async () => {
+    vi.useFakeTimers();
+    const enabled = { current: true };
+    const { mockDocBackfillContentSignals, mod } =
+      await loadSemanticClassifierModule({ enabled });
+
+    await vi.advanceTimersByTimeAsync(9 * 60 * 1000);
+
+    expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
     mod.stop();
   });
 });

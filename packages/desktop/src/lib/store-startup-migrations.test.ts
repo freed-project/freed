@@ -159,7 +159,7 @@ describe("store startup migrations", () => {
     expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
     expect(mockRunBackgroundJob).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(119_999);
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000 - 1);
     expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);

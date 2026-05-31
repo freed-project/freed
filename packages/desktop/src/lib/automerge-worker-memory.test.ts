@@ -6,6 +6,10 @@ const workerSource = readFileSync(
   join(process.cwd(), "src/lib/automerge.worker.ts"),
   "utf8",
 );
+const clientSource = readFileSync(
+  join(process.cwd(), "src/lib/automerge.ts"),
+  "utf8",
+);
 
 function caseBody(caseName: string): string {
   const pattern = new RegExp(`case "${caseName}":[\\s\\S]*?break;`);
@@ -113,6 +117,30 @@ describe("automerge worker memory routing", () => {
     expect(helperBody).not.toContain("A.save");
     expect(initBody).toContain("loadedDocNeedsPersist");
     expect(initBody).toContain("hydrateAndBroadcastWithoutPersist(trace)");
+  });
+
+  it("releases the Automerge document after idle and reloads it on demand", () => {
+    const scheduleBody = functionBody("scheduleDocIdleUnload");
+    const ensureBody = functionBody("ensureCurrentDocLoaded");
+    const enqueueBody = functionBody("enqueueRequest");
+    const handleBody = functionBody("handleRequest");
+
+    expect(scheduleBody).toContain("currentDoc = null");
+    expect(scheduleBody).toContain("createPersistenceState(currentBinary)");
+    expect(scheduleBody).toContain("request queue drained");
+    expect(ensureBody).toContain("A.load<FreedDoc>(currentBinary)");
+    expect(enqueueBody).toContain("scheduleDocIdleUnload()");
+    expect(handleBody).toContain("cancelDocIdleUnload()");
+    expect(handleBody).toContain("ensureCurrentDocLoaded(req.type)");
+  });
+
+  it("terminates idle workers and restarts them before later requests", () => {
+    expect(clientSource).toContain("let worker: Worker | null = null");
+    expect(clientSource).toContain("function stopIdleWorker()");
+    expect(clientSource).toContain("worker.terminate()");
+    expect(clientSource).toContain("ensureWorkerDocumentReadyFor(msg.type)");
+    expect(clientSource).toContain("await sendInit()");
+    expect(clientSource).toContain("(msg.detail ?? \"\").startsWith(\"[automerge-worker] released idle document\")");
   });
 
   it("rebuilds a fresh Automerge document only after compacting oversized text", () => {

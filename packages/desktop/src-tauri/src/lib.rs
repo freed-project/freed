@@ -77,7 +77,7 @@ const LI_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
 ];
 const BYTES_PER_GIB: u64 = 1024 * 1024 * 1024;
 const MIN_CRITICAL_MEMORY_BYTES: u64 = 7 * BYTES_PER_GIB / 2;
-const MAX_CRITICAL_MEMORY_BYTES: u64 = 4 * BYTES_PER_GIB;
+const MAX_CRITICAL_MEMORY_BYTES: u64 = 12 * BYTES_PER_GIB;
 const WEBKIT_CACHE_TRIM_AT_BYTES: u64 = 768 * 1024 * 1024;
 const WEBKIT_CACHE_TRIM_TARGET_BYTES: u64 = 512 * 1024 * 1024;
 const OPTIONAL_STORY_MEMORY_BUDGET_PERCENT: u64 = 85;
@@ -1331,6 +1331,57 @@ impl BackgroundRuntimeCoordinator {
                 )
             })
             .unwrap_or((None, None))
+    }
+
+    fn pause_status_for_health(&self) -> (bool, Option<&'static str>, Option<u128>) {
+        let now = Instant::now();
+        let state = self.state.read().unwrap();
+
+        if state.healthy_heartbeats < BACKGROUND_REQUIRED_HEALTHY_HEARTBEATS {
+            return (true, Some("waiting_for_renderer_heartbeats"), None);
+        }
+
+        if state.renderer_stale {
+            return (
+                true,
+                Some("renderer_stale"),
+                state
+                    .cooldown_until
+                    .and_then(|until| (until > now).then(|| until.duration_since(now).as_millis())),
+            );
+        }
+
+        if let Some(cooldown_until) = state.cooldown_until {
+            if cooldown_until > now {
+                return (
+                    true,
+                    Some("renderer_recovery_cooldown"),
+                    Some(cooldown_until.duration_since(now).as_millis()),
+                );
+            }
+        }
+
+        if let Some(memory_cooldown_until) = state.memory_cooldown_until {
+            if memory_cooldown_until > now {
+                return (
+                    true,
+                    Some("memory_pressure_cooldown"),
+                    Some(memory_cooldown_until.duration_since(now).as_millis()),
+                );
+            }
+        }
+
+        if let Some(safe_mode_until) = state.safe_mode_until {
+            if safe_mode_until > now {
+                return (
+                    true,
+                    Some("renderer_safe_mode"),
+                    Some(safe_mode_until.duration_since(now).as_millis()),
+                );
+            }
+        }
+
+        (false, None, None)
     }
 
     fn recovery_status_for_health(&self) -> (bool, Option<u128>, usize, usize) {
@@ -6969,6 +7020,8 @@ pub fn run() {
                 Arc::new(StdMutex::new(None));
             let renderer_health_for_listener = renderer_health.clone();
             let renderer_memory_sample_for_listener = renderer_memory_sample.clone();
+            let renderer_health_for_memory_monitor = renderer_health.clone();
+            let renderer_memory_sample_for_memory_monitor = renderer_memory_sample.clone();
             let app_for_renderer = app.handle().clone();
             let app_for_renderer_listener = app_for_renderer.clone();
             let background_runtime_for_listener = app
@@ -7093,6 +7146,83 @@ pub fn run() {
                     {
                         let _ = window.close();
                     }
+                }
+            });
+
+            let app_for_memory_monitor = app.handle().clone();
+            let background_runtime_for_memory_monitor = app
+                .state::<CaptureState>()
+                .background_runtime
+                .clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(RENDERER_HEARTBEAT_MEMORY_SAMPLE_INTERVAL).await;
+
+                    let now = std::time::Instant::now();
+                    let stats = collect_runtime_memory_stats(&app_for_memory_monitor, 0, 0);
+                    let memory_health_fields = {
+                        let mut sample = renderer_memory_sample_for_memory_monitor.lock().unwrap();
+                        *sample = Some(RendererMemorySample::from_stats(now, stats));
+                        renderer_memory_health_fields(sample.as_ref(), now, true)
+                    };
+                    let is_main_visible = app_for_memory_monitor
+                        .get_webview_window(MAIN_WINDOW_LABEL)
+                        .and_then(|window| window.is_visible().ok())
+                        .unwrap_or(false);
+                    let (active_job, active_job_age_ms) =
+                        background_runtime_for_memory_monitor.active_job_for_health();
+                    let (background_work_paused, background_pause_reason, background_pause_remaining_ms) =
+                        background_runtime_for_memory_monitor.pause_status_for_health();
+                    let (
+                        safe_mode_active,
+                        safe_mode_remaining_ms,
+                        recoveries_short,
+                        recoveries_long,
+                    ) = background_runtime_for_memory_monitor.recovery_status_for_health();
+                    let mut health_payload = {
+                        let health = renderer_health_for_memory_monitor.read().unwrap();
+                        let age_ms = health
+                            .last_seen_at
+                            .map(|last| now.duration_since(last).as_millis())
+                            .unwrap_or_else(|| now.duration_since(health.started_at).as_millis());
+                        serde_json::json!({
+                            "event": "native_runtime_memory_sample",
+                            "rendererGeneration": health.renderer_generation,
+                            "ageMs": age_ms,
+                            "visible": is_main_visible,
+                            "lastSeq": health.last_seq,
+                            "lastReason": health.last_reason.clone(),
+                            "lastVisibility": health.last_visibility.clone(),
+                            "href": truncate_for_log(&health.last_href, 120),
+                            "pageLoadId": health.last_page_load_id.clone(),
+                            "uptimeMs": health.last_uptime_ms,
+                            "appPhase": health.last_app_phase.clone(),
+                            "eventLoopLagMs": health.last_event_loop_lag_ms,
+                            "hiddenTimerThrottled": renderer_health_hidden_timer_throttled(
+                                !renderer_is_effectively_visible(is_main_visible, &health.last_visibility),
+                                health.last_hidden_timer_throttled,
+                            ),
+                            "domNodeCount": health.last_dom_node_count,
+                            "rendererHeapUsedBytes": health.last_renderer_heap_used_bytes,
+                            "rendererHeapTotalBytes": health.last_renderer_heap_total_bytes,
+                            "lastInputAgeMs": health.last_input_age_ms,
+                            "settingsOpen": health.last_settings_open,
+                            "dialogOpen": health.last_dialog_open,
+                            "backgroundWorkPaused": background_work_paused,
+                            "backgroundPauseReason": background_pause_reason,
+                            "backgroundPauseRemainingMs": background_pause_remaining_ms,
+                            "safeModeActive": safe_mode_active,
+                            "safeModeRemainingMs": safe_mode_remaining_ms,
+                            "recoveriesInShortWindow": recoveries_short,
+                            "recoveriesInLongWindow": recoveries_long,
+                            "activeBackgroundJob": active_job,
+                            "activeBackgroundJobAgeMs": active_job_age_ms
+                        })
+                    };
+                    if let Some(fields) = health_payload.as_object_mut() {
+                        fields.extend(memory_health_fields);
+                    }
+                    append_runtime_health(&app_for_memory_monitor, health_payload);
                 }
             });
 
@@ -7677,11 +7807,20 @@ mod tests {
     fn background_runtime_requires_stable_renderer_before_jobs() {
         let runtime = BackgroundRuntimeCoordinator::new();
         assert!(runtime.begin_job("fb_scrape_feed").is_err());
+        assert_eq!(
+            runtime.pause_status_for_health(),
+            (true, Some("waiting_for_renderer_heartbeats"), None)
+        );
 
         runtime.note_renderer_heartbeat();
         assert!(runtime.begin_job("fb_scrape_feed").is_err());
+        assert_eq!(
+            runtime.pause_status_for_health(),
+            (true, Some("waiting_for_renderer_heartbeats"), None)
+        );
 
         runtime.note_renderer_heartbeat();
+        assert_eq!(runtime.pause_status_for_health(), (false, None, None));
         assert!(runtime.begin_job("fb_scrape_feed").is_ok());
         assert!(runtime.begin_job("ig_scrape_feed").is_err());
         assert!(runtime.finish_job("fb_scrape_feed").is_some());
@@ -7696,11 +7835,21 @@ mod tests {
         let _ = runtime.finish_job("fb_scrape_feed");
 
         runtime.note_renderer_stale("test stale renderer");
+        let (paused, reason, remaining_ms) = runtime.pause_status_for_health();
+        assert!(paused);
+        assert_eq!(reason, Some("renderer_stale"));
+        assert!(remaining_ms.unwrap_or(0) > 0);
+
         let err = runtime.begin_job("ig_scrape_feed").unwrap_err();
         assert!(err.contains("renderer is stale") || err.contains("cooling down"));
 
         runtime.note_renderer_heartbeat();
         runtime.note_renderer_heartbeat();
+        let (paused, reason, remaining_ms) = runtime.pause_status_for_health();
+        assert!(paused);
+        assert_eq!(reason, Some("renderer_recovery_cooldown"));
+        assert!(remaining_ms.unwrap_or(0) > 0);
+
         let err = runtime.begin_job("ig_scrape_feed").unwrap_err();
         assert!(err.contains("cooling down"));
     }
@@ -7715,6 +7864,11 @@ mod tests {
 
         let high_cooldown = runtime.note_memory_pressure("Facebook", "visit", false);
         assert!(high_cooldown > 0);
+        let (paused, reason, remaining_ms) = runtime.pause_status_for_health();
+        assert!(paused);
+        assert_eq!(reason, Some("memory_pressure_cooldown"));
+        assert!(remaining_ms.unwrap_or(0) > 0);
+
         let high_err = runtime.begin_job("ig_visit_url").unwrap_err();
         assert!(high_err.contains("cooling down"));
         assert!(high_err.contains("memory pressure high"));
