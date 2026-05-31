@@ -3,7 +3,7 @@
   "version": "26.5.3103-dev",
   "channel": "dev",
   "dayKey": "26.5.31",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-31T08:57:46.953Z",
   "model": "heuristic",
@@ -34,10 +34,16 @@
     ]
   },
   "release": {
-    "deck": "Reader rail regression test are now more stable, settle release regression waits, and desktop sync memory pressure",
+    "deck": "Freed Desktop sync now sheds idle memory, records native runtime pressure, and keeps the release regression lane stable.",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Recycles idle Automerge sync workers after queued document work finishes.",
+      "Adds native hidden-window memory samples with pause state, safe mode state, recovery counts, and active background job details.",
+      "Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom.",
+      "Delays low-priority semantic enrichment during launch so Facebook and Instagram capture get priority.",
+      "Hardens release regression coverage for compact sidebar transitions, persisted map filters, fast reader-rail collapse, and sidebar resize settling."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3103-dev\n\nReader rail regression test are now more stable, settle release regression waits, and desktop sync memory pressure\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3103-dev\n\nFreed Desktop sync now sheds idle memory, records native runtime pressure, and keeps the release regression lane stable.\n\n### Fixes\n\n- Recycles idle Automerge sync workers after queued document work finishes.\n- Adds native hidden-window memory samples with pause state, safe mode state, recovery counts, and active background job details.\n- Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom.\n- Delays low-priority semantic enrichment during launch so Facebook and Instagram capture get priority.\n- Hardens release regression coverage for compact sidebar transitions, persisted map filters, fast reader-rail collapse, and sidebar resize settling.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
