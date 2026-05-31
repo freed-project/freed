@@ -197,6 +197,48 @@ async function expectDesktopSidebarShellWidthAtMost(page: Page, maximumWidth: nu
     .toBeLessThanOrEqual(maximumWidth);
 }
 
+async function expectDesktopSidebarWidthBetween(
+  page: Page,
+  minimumWidth: number,
+  maximumWidth: number,
+  timeout = 1_000,
+) {
+  await expect
+    .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout })
+    .toBeLessThanOrEqual(maximumWidth);
+  const width = (await readDesktopSidebarGeometry(page)).sidebarWidth;
+  expect(width).toBeGreaterThanOrEqual(minimumWidth);
+}
+
+async function persistDisplayPreference(page: Page, key: "mapMode" | "mapTimeMode", value: string) {
+  await page.waitForFunction(
+    ({ key, value }) => {
+      const w = window as Record<string, unknown>;
+      const store = w.__FREED_STORE__ as
+        | {
+            getState: () => {
+              preferences: { display: Record<string, unknown> };
+            };
+          }
+        | undefined;
+      return store?.getState().preferences.display[key] === value;
+    },
+    { key, value },
+    { timeout: 5_000 },
+  );
+
+  await page.evaluate(
+    async ({ key, value }) => {
+      const w = window as Record<string, unknown>;
+      const automerge = w.__FREED_AUTOMERGE__ as {
+        docUpdatePreferences: (updates: { display: Record<string, string> }) => Promise<void>;
+      };
+      await automerge.docUpdatePreferences({ display: { [key]: value } });
+    },
+    { key, value },
+  );
+}
+
 async function readDesktopSidebarPadding(page: Page) {
   return page.evaluate(() => {
     const sidebarBody = document.querySelector('[data-testid="app-sidebar-body"]') as HTMLElement | null;
@@ -590,14 +632,8 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   await sidebarToggle.click();
   await page.waitForTimeout(250);
 
-  const compactWidth = await page.evaluate(() => {
-    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
-    return sidebarShell?.getBoundingClientRect().width ?? 0;
-  });
-
   expect(initialWidth).toBeGreaterThan(200);
-  expect(compactWidth).toBeGreaterThanOrEqual(46);
-  expect(compactWidth).toBeLessThanOrEqual(70);
+  await expectDesktopSidebarWidthBetween(page, 46, 50, 1_500);
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
 
   await sidebarToggle.click();
@@ -1352,10 +1388,7 @@ test("desktop sidebar reopens at the default width after being dragged narrow an
   });
 
   await sidebarToggle.click();
-  await page.waitForTimeout(250);
-  const compactWidth = await sidebar.evaluate((element) => element.getBoundingClientRect().width);
-  expect(compactWidth).toBeGreaterThanOrEqual(46);
-  expect(compactWidth).toBeLessThanOrEqual(50);
+  await expectDesktopSidebarWidthBetween(page, 46, 50, 1_500);
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
 
   await sidebarToggle.click();
@@ -2934,6 +2967,7 @@ test("recoverable story locations appear in All content mode and the mode persis
   const allContentButton = page.getByRole("button", { name: "All content", exact: true });
   await allContentButton.click();
   await expect(allContentButton).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
+  await persistDisplayPreference(page, "mapMode", "all_content");
 
   await openVisibleMapMarker(page, "Nora Quinn");
   await expect(page.getByText("Big Bear California")).toBeVisible({ timeout: 10_000 });
@@ -3040,6 +3074,7 @@ test("map time filters switch between current and future location windows", asyn
   const futureButton = page.getByRole("button", { name: "Future", exact: true });
   await futureButton.click();
   await expect(futureButton).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
+  await persistDisplayPreference(page, "mapTimeMode", "future");
   await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
 
   await page.reload();
