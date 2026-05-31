@@ -1,0 +1,54 @@
+{
+  "tag": "v26.5.3105-dev",
+  "version": "26.5.3105-dev",
+  "channel": "dev",
+  "dayKey": "26.5.31",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-31T09:48:11.286Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.3011-dev",
+    "previousPublishedDayTag": "v26.5.3011-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.3105-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.3105-dev"
+    ],
+    "prNumbers": [
+      654,
+      655,
+      656
+    ],
+    "commitSubjects": [
+      "fix: stabilize reader rail collapse check (#656)",
+      "release: approve v26.5.3104-dev",
+      "release: v26.5.3104-dev",
+      "fix: repair release smoke syntax (#655)",
+      "fix: restore nightly smoke parse (#654)",
+      "release: approve v26.5.3103-dev",
+      "release: v26.5.3103-dev",
+      "fix: settle release regression waits",
+      "release: approve v26.5.3102-dev",
+      "release: v26.5.3102-dev",
+      "fix: stabilize reader rail regression test",
+      "release: approve v26.5.3101-dev",
+      "release: v26.5.3101-dev",
+      "fix: stabilize desktop release regression tests",
+      "release: approve v26.5.3100-dev",
+      "release: v26.5.3100-dev",
+      "perf: reduce desktop sync memory pressure"
+    ]
+  },
+  "release": {
+    "deck": "Settle release regression waits and desktop sync memory pressure",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3105-dev\n\nSettle release regression waits and desktop sync memory pressure\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
