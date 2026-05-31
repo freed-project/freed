@@ -3,7 +3,7 @@
   "version": "26.5.3009-dev",
   "channel": "dev",
   "dayKey": "26.5.30",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-31T02:06:09.326Z",
   "model": "heuristic",
@@ -121,7 +121,7 @@
       "Guard provider-visible peer work"
     ],
     "fixes": [
-      "Provider sync under memory pressure are now more stable",
+      "Provider sync under memory pressure is now more stable",
       "Reader, feed, and header polish",
       "Mark Dropbox sync as coming soon",
       "Capture and scraper reliability fixes",
@@ -146,5 +146,5 @@
       "Shared content-signal backfill now scans feed items in one pass instead of building stale item arrays for every batch"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3009-dev\n\nGoogle sync recovery and lower Settings pressure\n\n### Features\n\n- Safe sample data cleanup\n- Guard nightly runner branch context\n- Guard provider-visible peer work\n\n### Fixes\n\n- Provider sync under memory pressure are now more stable\n- Reader, feed, and header polish\n- Mark Dropbox sync as coming soon\n- Capture and scraper reliability fixes\n- Prevent dev release note rollup repeats\n- Loaded libraries no longer rebuild Automerge history just to check for possible savings when no synced text changed, avoiding another startup allocation spike\n- Clean startup loads now hydrate the first UI state without reserializing or rewriting an unchanged Automerge document\n- Google Contacts now recovers from stale in-progress sync state after a successful People API fetch\n- Manual Google Contacts reconnect and Sync Now actions force a fresh sync instead of being skipped by the automatic sync cooldown\n\n### Follow-ups\n\n- Nightly preflight actions\n- Gate nightly performance targets on soak quality\n- Nightly soak pointer repair\n- Nightly runner readable soak fallback\n- Changelog preview to update settings\n- Skip unchanged Automerge history probes\n- Project desktop feed items without full clone\n- Cap background article fetch size\n- Safer overnight article backfill\n- Keeps explicit reader loads available while the lower-priority background path stays under a native response-size budget\n- Lower startup memory pressure\n- Shared content-signal backfill now scans feed items in one pass instead of building stale item arrays for every batch\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3009-dev\n\nGoogle sync recovery and lower Settings pressure\n\n### Features\n\n- Safe sample data cleanup\n- Guard nightly runner branch context\n- Guard provider-visible peer work\n\n### Fixes\n\n- Provider sync under memory pressure is now more stable\n- Reader, feed, and header polish\n- Mark Dropbox sync as coming soon\n- Capture and scraper reliability fixes\n- Prevent dev release note rollup repeats\n- Loaded libraries no longer rebuild Automerge history just to check for possible savings when no synced text changed, avoiding another startup allocation spike\n- Clean startup loads now hydrate the first UI state without reserializing or rewriting an unchanged Automerge document\n- Google Contacts now recovers from stale in-progress sync state after a successful People API fetch\n- Manual Google Contacts reconnect and Sync Now actions force a fresh sync instead of being skipped by the automatic sync cooldown\n\n### Follow-ups\n\n- Nightly preflight actions\n- Gate nightly performance targets on soak quality\n- Nightly soak pointer repair\n- Nightly runner readable soak fallback\n- Changelog preview to update settings\n- Skip unchanged Automerge history probes\n- Project desktop feed items without full clone\n- Cap background article fetch size\n- Safer overnight article backfill\n- Keeps explicit reader loads available while the lower-priority background path stays under a native response-size budget\n- Lower startup memory pressure\n- Shared content-signal backfill now scans feed items in one pass instead of building stale item arrays for every batch\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
