@@ -324,14 +324,6 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
 
   try {
     addDebugEvent("change", "[FB] sync started");
-    try {
-      await captureFbGroups();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to refresh Facebook groups";
-      addDebugEvent("error", `[FB] group refresh failed: ${message}`);
-    }
-
     const result = await fetchFbFeed();
     recordScrape();
 
