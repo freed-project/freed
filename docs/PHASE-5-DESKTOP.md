@@ -285,7 +285,7 @@ export async function captureDomFeed(
 - [x] Clicking `Sync now` shows a visible `Syncing Initiated` acknowledgment while the menu stays open, even if the provider is already syncing
 - [x] `Cooling down` uses a small amber emoji indicator instead of an amber spinner so the paused state feels distinct at a glance
 - [x] LinkedIn and the other social source rows keep a sidebar status indicator even if auth state lags behind, falling back to the provider's actual item counts before hiding the dot
-- [x] Facebook group settings show active group counts in the header, keep refresh with the bulk actions, split scraped `Last active ...` text into its own smaller right-aligned column, and keep late-loaded groups inside a filtered inner scroller capped to the Settings modal
+- [x] Facebook group settings show active group counts in the header, keep refresh with the bulk actions, split scraped `Last active ...` text into its own smaller right-aligned column, repair stored missing group names from captured posts or refreshed group data, and keep late-loaded groups inside a filtered inner scroller capped to the Settings modal
 - [x] The redundant desktop header sync dropdown has been removed, leaving the sidebar source menus and provider settings as the canonical sync status and action surfaces
 - [x] Desktop view chrome now routes through one shared top toolbar, so feed, reader, and Friends stop stacking separate bars on top of each other
 - [x] Desktop top-toolbar controls now keep normal click behavior, but a full drag gesture from the wordmark, title area, or toolbar buttons repositions the native window the way a title bar should

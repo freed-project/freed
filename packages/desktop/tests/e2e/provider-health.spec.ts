@@ -764,6 +764,11 @@ test("facebook groups settings separate last-active text and show active counts"
             name: "North Idaho Lifelast active 2 hours ago",
             url: "https://facebook.com/groups/two",
           },
+          "377650389038228": {
+            id: "377650389038228",
+            name: "1m",
+            url: "https://facebook.com/groups/377650389038228",
+          },
         },
         excludedGroupIds: {
           two: true,
@@ -788,14 +793,14 @@ test("facebook groups settings separate last-active text and show active counts"
       | undefined;
     const fbCapture = store?.getState().preferences.fbCapture;
     return (
-      Object.keys(fbCapture?.knownGroups ?? {}).length === 2 &&
+      Object.keys(fbCapture?.knownGroups ?? {}).length === 3 &&
       fbCapture?.excludedGroupIds?.two === true
     );
   });
 
   await openSettingsSection(page, "Facebook");
 
-  await expect(page.getByText("1 active of 2 total")).toBeVisible();
+  await expect(page.getByText("2 active of 3 total")).toBeVisible();
   await expect(page.getByRole("button", { name: "Activate all", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Deactivate all", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeVisible();
@@ -803,6 +808,9 @@ test("facebook groups settings separate last-active text and show active counts"
   await expect(page.getByTestId("facebook-groups-list-scroll")).toBeVisible();
   await expect(page.getByTestId("facebook-group-one-label")).toHaveText("CDA Buy Trade Or Sell");
   await expect(page.getByTestId("facebook-group-one-meta")).toHaveText("Last active about a minute ago");
+  await expect(page.getByTestId("facebook-group-377650389038228-label")).toHaveText(
+    "Facebook group ...89038228",
+  );
 
   await page.getByTestId("facebook-groups-filter").fill("North Idaho");
   await expect(page.getByRole("button", { name: "Activate shown", exact: true })).toBeVisible();
