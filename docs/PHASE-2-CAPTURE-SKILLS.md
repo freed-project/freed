@@ -327,6 +327,7 @@ capture-rss recent [count]
 ### RSS Polling
 
 - Default poll interval: 30 minutes
+- Scheduled desktop polls refresh only due stale feeds in capped batches, while manual refresh still covers all enabled feeds
 - Respects `Cache-Control` and `Retry-After` headers
 - Conditional GET reduces bandwidth by ~90%
 - Feed-specific intervals can be configured
