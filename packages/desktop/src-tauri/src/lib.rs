@@ -1742,7 +1742,7 @@ fn renderer_recovery_threshold_for_count(
 }
 
 fn renderer_is_effectively_visible(is_visible: bool, last_visibility: &str) -> bool {
-    is_visible || last_visibility == "visible"
+    is_visible && last_visibility != "hidden"
 }
 
 fn renderer_stale_log_after(is_visible: bool, last_visibility: &str) -> Duration {
@@ -1771,7 +1771,7 @@ fn renderer_gap_is_expected_hidden_throttle(
     age: Duration,
     _recovery_threshold: Duration,
 ) -> bool {
-    !is_visible
+    !renderer_is_effectively_visible(is_visible, last_visibility)
         && (last_visibility == "hidden" || last_hidden_timer_throttled == Some(true))
         && age >= WEBKIT_HIDDEN_TIMER_THROTTLE_AFTER
 }
@@ -1816,14 +1816,14 @@ mod renderer_watchdog_tests {
     fn renderer_recovery_threshold_prefers_visible_windows() {
         assert_eq!(
             renderer_recovery_threshold(true, "hidden"),
-            RENDERER_VISIBLE_RECOVERY_AFTER
-        );
-        assert_eq!(
-            renderer_recovery_threshold(false, "visible"),
-            RENDERER_VISIBLE_RECOVERY_AFTER
+            RENDERER_HIDDEN_RECOVERY_AFTER
         );
         assert_eq!(
             renderer_recovery_threshold(false, "hidden"),
+            RENDERER_HIDDEN_RECOVERY_AFTER
+        );
+        assert_eq!(
+            renderer_recovery_threshold(false, "visible"),
             RENDERER_HIDDEN_RECOVERY_AFTER
         );
         assert_eq!(
@@ -1840,11 +1840,11 @@ mod renderer_watchdog_tests {
         );
         assert_eq!(
             renderer_stale_log_after(true, "hidden"),
-            RENDERER_STALE_LOG_AFTER
+            RENDERER_HIDDEN_STALE_LOG_AFTER
         );
         assert_eq!(
             renderer_stale_log_after(false, "visible"),
-            RENDERER_STALE_LOG_AFTER
+            RENDERER_HIDDEN_STALE_LOG_AFTER
         );
     }
 
@@ -1857,8 +1857,10 @@ mod renderer_watchdog_tests {
     #[test]
     fn truly_hidden_renderer_stale_log_keeps_background_work_eligible() {
         assert!(renderer_stale_log_should_pause_background(true, "visible"));
-        assert!(renderer_stale_log_should_pause_background(true, "hidden"));
-        assert!(renderer_stale_log_should_pause_background(false, "visible"));
+        assert!(!renderer_stale_log_should_pause_background(true, "hidden"));
+        assert!(!renderer_stale_log_should_pause_background(
+            false, "visible"
+        ));
         assert!(!renderer_stale_log_should_pause_background(false, "hidden"));
     }
 
@@ -1867,10 +1869,10 @@ mod renderer_watchdog_tests {
         assert!(renderer_stale_log_should_capture_deep_diagnostic(
             true, "visible"
         ));
-        assert!(renderer_stale_log_should_capture_deep_diagnostic(
+        assert!(!renderer_stale_log_should_capture_deep_diagnostic(
             true, "hidden"
         ));
-        assert!(renderer_stale_log_should_capture_deep_diagnostic(
+        assert!(!renderer_stale_log_should_capture_deep_diagnostic(
             false, "visible"
         ));
         assert!(!renderer_stale_log_should_capture_deep_diagnostic(
@@ -1881,8 +1883,8 @@ mod renderer_watchdog_tests {
     #[test]
     fn truly_hidden_renderer_stale_skips_renderer_recovery() {
         assert!(renderer_stale_should_recover(true, "visible"));
-        assert!(renderer_stale_should_recover(true, "hidden"));
-        assert!(renderer_stale_should_recover(false, "visible"));
+        assert!(!renderer_stale_should_recover(true, "hidden"));
+        assert!(!renderer_stale_should_recover(false, "visible"));
         assert!(!renderer_stale_should_recover(false, "hidden"));
     }
 
@@ -1895,7 +1897,7 @@ mod renderer_watchdog_tests {
             RENDERER_HIDDEN_STALE_LOG_AFTER + Duration::from_secs(1),
             RENDERER_HIDDEN_RECOVERY_AFTER,
         ));
-        assert!(!renderer_gap_is_expected_hidden_throttle(
+        assert!(renderer_gap_is_expected_hidden_throttle(
             true,
             "hidden",
             Some(false),
