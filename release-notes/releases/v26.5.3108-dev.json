@@ -3,7 +3,7 @@
   "version": "26.5.3108-dev",
   "channel": "dev",
   "dayKey": "26.5.31",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-01T00:07:09.035Z",
   "model": "heuristic",
@@ -31,7 +31,9 @@
       657,
       658,
       659,
-      661
+      660,
+      661,
+      662
     ],
     "commitSubjects": [
       "fix: repair RSS refresh plan fixture",
@@ -68,7 +70,7 @@
     ]
   },
   "release": {
-    "deck": "Keeps the Phase 7 docs and public roadmap aligned with the new social scrape memory behavior, gate Facebook group refresh, and relay dev Google OAuth callback",
+    "deck": "Keeps Facebook group refresh explicit, repairs dev release validation, and carries forward the latest social sync recovery fixes",
     "features": [],
     "fixes": [
       "Repair Facebook group names",
@@ -80,11 +82,14 @@
       "Adds native hidden-window memory samples with pause state, safe mode state, recovery counts, and active background job details",
       "Hardens release regression coverage for compact sidebar transitions, persisted map filters, fast reader-rail collapse, sidebar resize settling, stress graph setup parsing, and compact reader rail collapse checks",
       "Skips story collection and caps scroll passes when Freed Desktop is near the scrape memory budget",
-      "Records each scrape plan in runtime health diagnostics with provider, pass range, story decision, memory margin, and budget details"
+      "Records each scrape plan in runtime health diagnostics with provider, pass range, story decision, memory margin, and budget details",
+      "Stops normal Facebook feed sync from visiting the joined-groups page, while keeping manual group refresh behind explicit provider risk confirmation",
+      "Recovers social sync controls cleanly after memory-pressure deferrals",
+      "Repairs RSS refresh-plan test fixtures so dev release validation can build Freed Desktop"
     ],
     "followUps": [
-      "Reduce desktop sync memory pressure"
+      "Keeps the Phase 7 docs and public roadmap aligned with the new social scrape memory behavior"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3108-dev\n\nKeeps the Phase 7 docs and public roadmap aligned with the new social scrape memory behavior, gate Facebook group refresh, and relay dev Google OAuth callback\n\n### Fixes\n\n- Repair Facebook group names\n- Release build and type-safety cleanup\n- Recycles idle Automerge sync workers after queued document work finishes\n- Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom\n- Delays low-priority semantic enrichment during launch so Facebook and Instagram capture get priority\n- Plans each Facebook and Instagram feed scrape after the WebView is open, using the current native memory budget instead of a fixed full-session pass count\n- Adds native hidden-window memory samples with pause state, safe mode state, recovery counts, and active background job details\n- Hardens release regression coverage for compact sidebar transitions, persisted map filters, fast reader-rail collapse, sidebar resize settling, stress graph setup parsing, and compact reader rail collapse checks\n- Skips story collection and caps scroll passes when Freed Desktop is near the scrape memory budget\n- Records each scrape plan in runtime health diagnostics with provider, pass range, story decision, memory margin, and budget details\n\n### Follow-ups\n\n- Reduce desktop sync memory pressure\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3108-dev\n\nKeeps Facebook group refresh explicit, repairs dev release validation, and carries forward the latest social sync recovery fixes\n\n### Fixes\n\n- Repair Facebook group names\n- Release build and type-safety cleanup\n- Recycles idle Automerge sync workers after queued document work finishes\n- Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom\n- Delays low-priority semantic enrichment during launch so Facebook and Instagram capture get priority\n- Plans each Facebook and Instagram feed scrape after the WebView is open, using the current native memory budget instead of a fixed full-session pass count\n- Adds native hidden-window memory samples with pause state, safe mode state, recovery counts, and active background job details\n- Hardens release regression coverage for compact sidebar transitions, persisted map filters, fast reader-rail collapse, sidebar resize settling, stress graph setup parsing, and compact reader rail collapse checks\n- Skips story collection and caps scroll passes when Freed Desktop is near the scrape memory budget\n- Records each scrape plan in runtime health diagnostics with provider, pass range, story decision, memory margin, and budget details\n- Stops normal Facebook feed sync from visiting the joined-groups page, while keeping manual group refresh behind explicit provider risk confirmation\n- Recovers social sync controls cleanly after memory-pressure deferrals\n- Repairs RSS refresh-plan test fixtures so dev release validation can build Freed Desktop\n\n### Follow-ups\n\n- Keeps the Phase 7 docs and public roadmap aligned with the new social scrape memory behavior\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
