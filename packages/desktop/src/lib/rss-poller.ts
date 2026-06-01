@@ -18,6 +18,7 @@ import {
 
 /** Default poll interval: 30 minutes */
 const DEFAULT_INTERVAL_MS = 30 * 60 * 1000;
+const DEFAULT_STARTUP_POLL_DELAY_MS = 5 * 60 * 1000;
 const DEFERRED_RETRY_BASE_MS = 60_000;
 const DEFERRED_RETRY_MAX_MS = 30 * 60_000;
 const SCHEDULED_REFRESH_OPTIONS = {
@@ -25,8 +26,13 @@ const SCHEDULED_REFRESH_OPTIONS = {
   staleAfterMs: SCHEDULED_RSS_STALE_AFTER_MS,
 };
 
+interface RssPollerOptions {
+  startupDelayMs?: number;
+}
+
 let pollIntervalId: ReturnType<typeof setInterval> | null = null;
 let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+let startupTimeoutId: ReturnType<typeof setTimeout> | null = null;
 let isPolling = false;
 let deferredRetryCount = 0;
 
@@ -36,6 +42,13 @@ function clearDeferredRetry(): void {
     retryTimeoutId = null;
   }
   deferredRetryCount = 0;
+}
+
+function clearStartupPoll(): void {
+  if (startupTimeoutId !== null) {
+    clearTimeout(startupTimeoutId);
+    startupTimeoutId = null;
+  }
 }
 
 function parseCooldownRetryMs(reason: string): number | null {
@@ -76,15 +89,30 @@ function scheduleDeferredRetry(reason: string): void {
  *
  * @param intervalMs Poll interval in milliseconds (default: 30 minutes)
  */
-export function startRssPoller(intervalMs = DEFAULT_INTERVAL_MS): void {
+export function startRssPoller(
+  intervalMs = DEFAULT_INTERVAL_MS,
+  options: RssPollerOptions = {},
+): void {
   if (pollIntervalId !== null) return; // Already running
 
-  // Do an immediate refresh on first start
-  void triggerPoll();
+  const startupDelayMs =
+    options.startupDelayMs ?? DEFAULT_STARTUP_POLL_DELAY_MS;
+  if (startupDelayMs > 0) {
+    startupTimeoutId = setTimeout(() => {
+      startupTimeoutId = null;
+      void triggerPoll();
+    }, startupDelayMs);
+    addDebugEvent(
+      "change",
+      `[RSS] startup poll scheduled in ${Math.round(startupDelayMs / 1000).toLocaleString()}s`,
+    );
+  } else {
+    void triggerPoll();
+  }
 
   pollIntervalId = setInterval(triggerPoll, intervalMs);
   console.log(
-    `[RssPoller] Started — polling every ${intervalMs / 60000} minutes`,
+    `[RssPoller] Started, polling every ${(intervalMs / 60000).toLocaleString()} minutes`,
   );
 }
 
@@ -92,6 +120,7 @@ export function startRssPoller(intervalMs = DEFAULT_INTERVAL_MS): void {
  * Stop background RSS polling.
  */
 export function stopRssPoller(): void {
+  clearStartupPoll();
   clearDeferredRetry();
   if (pollIntervalId !== null) {
     clearInterval(pollIntervalId);
