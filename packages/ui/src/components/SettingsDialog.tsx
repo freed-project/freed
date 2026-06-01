@@ -774,9 +774,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     __APP_VERSION__,
     changelogPreview,
   );
+  const resolvedInstalledReleaseChannel =
+    installedReleaseChannel === "dev"
+      ? installedReleaseChannel
+      : inferredInstalledReleaseChannel ?? installedReleaseChannel ?? releaseChannel;
   const displayVersion = formatReleaseVersion(
     __APP_VERSION__,
-    inferredInstalledReleaseChannel ?? installedReleaseChannel ?? releaseChannel,
+    resolvedInstalledReleaseChannel,
   );
   const selectedReleaseChannel = releaseChannel ?? "production";
   const fullChangelogUrl = getSettingsChangelogUrl(selectedReleaseChannel);
