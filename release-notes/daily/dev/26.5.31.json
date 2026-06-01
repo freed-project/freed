@@ -2,13 +2,18 @@
   "channel": "dev",
   "dayKey": "26.5.31",
   "date": "2026-05-31",
-  "preferredDeck": null,
+  "preferredDeck": "Facebook sync now reports unusable scrape results as sync issues and adds diagnostics for the next dev soak.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
-  "pinnedHighlights": [],
-  "editorialNotes": [],
-  "updatedAt": "2026-06-01T01:50:27.383Z"
+  "pinnedHighlights": [
+    "Facebook feed sync now reports unusable raw scrape results as failures instead of healthy zero-post syncs.",
+    "The scrape log now exposes extraction strategy, rejection counts, normalization counts, and existing-item counts."
+  ],
+  "editorialNotes": [
+    "Use the Facebook sync repair as the headline for v26.5.3110-dev."
+  ],
+  "updatedAt": "2026-06-01T01:52:06.141Z"
 }
