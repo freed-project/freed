@@ -3,7 +3,7 @@
 > **Status:** 🚧 In Progress
 > **Dependencies:** Phase 1-2 (Capture layers ✓)
 >
-> Local relay, Google Drive cloud sync, desktop local snapshot rotation, "Sync Now" button, "Last synced" indicator, proxied Google token exchange for Freed Desktop, durable Google OAuth refresh, a production callback relay for dev and preview PWA Google OAuth, appDataFolder Drive polling, cloud sync health diagnostics, runtime-gated cloud backoff, and the no-cloud-sync launch banner are all working. Dropbox remains behind a coming-soon gate while its provider work is finished. iCloud sync is the remaining open item.
+> Local relay, Google Drive cloud sync, desktop local snapshot rotation, "Sync Now" button, "Last synced" indicator, proxied Google token exchange for Freed Desktop, durable Google OAuth refresh, a production callback relay for dev and preview PWA Google OAuth, appDataFolder Drive polling, cloud sync health diagnostics, visible Drive transfer diagnostics in Settings, initial Drive download auth-refresh recovery, merged-upload local convergence, runtime-gated cloud backoff, and the no-cloud-sync launch banner are all working. Dropbox remains behind a coming-soon gate while its provider work is finished. iCloud sync is the remaining open item.
 
 ---
 
@@ -278,6 +278,7 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 | 4.12 | Manual "Sync now" button              | ✓      | Low        |
 | 4.13 | Cloud sync health diagnostics         | ✓      | Medium     |
 | 4.14 | Desktop local rotating snapshots + restore UI | ✓ | Medium |
+| 4.15 | Visible cloud transfer diagnostics and initial Drive download recovery | ✓ | Medium |
 
 ---
 
@@ -291,6 +292,9 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] Sync connection status observable (`onStatusChange` listener in sync.ts)
 - [x] PWA falls back to cloud sync when away from home (Google Drive PKCE OAuth, production callback relay for dev and preview app origins, Automerge merge-upload)
 - [x] Google Drive uses the server token proxy in Freed Desktop so the Google client secret stays out of the app bundle, watches appDataFolder changes, refreshes stored OAuth credentials before Drive or Contacts calls, and retries Contacts once after a 401 with a forced token refresh
+- [x] PWA and Desktop retry the initial Google Drive document download after a 401 token refresh before starting from a fresh Drive changes cursor, so existing remote libraries are not skipped after reconnect
+- [x] Google Drive upload returns the merged local plus remote Automerge binary to the uploading device, so a client that discovers remote changes during upload also converges locally
+- [x] PWA and Desktop Settings show local item count, local document size, cloud stage, last download, last merge, last upload, remote bytes, uploaded bytes, and cloud errors
 - [x] Google Drive startup downloads and uploads wait behind runtime health, memory pressure, and social-scrape gates, then retry with bounded backoff instead of repeatedly copying the Automerge document while the app is under pressure
 - [x] At least one cloud provider works: Google Drive is the active cloud sync provider while Dropbox remains disabled behind a coming-soon control
 - [x] Desktop surfaces cloud sync health with retry/reconnect actions, recent failures, and debug charts

@@ -68,10 +68,16 @@ describe("Google Drive cloud sync", () => {
       throw new Error(`Unexpected fetch: ${url}`);
     }));
 
-    await gdriveUploadSafe("token", new Uint8Array([1, 2, 3]));
+    const result = await gdriveUploadSafe("token", new Uint8Array([1, 2, 3]));
 
     expect(uploadHeaders).toHaveLength(1);
     expect(uploadHeaders[0]).toMatchObject({ "If-Match": '"server-etag"' });
+    expect(result).toMatchObject({
+      fileId: "file-1",
+      uploadedBytes: 3,
+      remoteBytes: 0,
+      mergedRemote: false,
+    });
   });
 
   it("can route Drive downloads through a platform fetcher", async () => {

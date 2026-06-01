@@ -586,7 +586,7 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
           })}
           <p className="pt-6 text-center text-xs text-[var(--theme-text-muted)]">
             Connect to Freed Desktop over the cloud or your local network to keep your library in sync.
-            Your data stays in your own cloud account -- Freed never sees it.
+            Your data stays in your own cloud account. Freed never sees it.
           </p>
         </div>
       )}

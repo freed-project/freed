@@ -125,6 +125,16 @@ export interface CloudProviderDebugState {
   status: CloudSyncStatus;
   error?: string;
   lastSyncAt?: number;
+  stage?: "auth" | "download" | "merge" | "poll" | "upload" | "idle";
+  lastAttemptAt?: number;
+  lastSuccessfulAt?: number;
+  lastDownloadAt?: number;
+  lastUploadAt?: number;
+  lastMergeAt?: number;
+  lastRemoteBytes?: number;
+  lastUploadedBytes?: number;
+  lastLocalBytes?: number;
+  lastErrorAt?: number;
 }
 
 export interface CloudProvidersDebugState {
@@ -254,6 +264,7 @@ interface DebugState {
   setDocSnapshot: (snap: DocSnapshot) => void;
   setRuntimeMemory: (snap: RuntimeMemorySnapshot) => void;
   setCloudProviders: (state: CloudProvidersDebugState) => void;
+  updateCloudProvider: (provider: keyof CloudProvidersDebugState, state: Partial<CloudProviderDebugState>) => void;
   setHealth: (state: ProviderHealthDebugState) => void;
   setPerfSnapshot: (snap: FpsSnapshot) => void;
   resetPerfSnapshot: () => void;
@@ -298,6 +309,23 @@ export const useDebugStore = create<DebugState>()((set) => ({
   setRuntimeMemory: (runtimeMemory) => set({ runtimeMemory }),
 
   setCloudProviders: (cloudProviders) => set({ cloudProviders }),
+
+  updateCloudProvider: (provider, state) =>
+    set((s) => {
+      const current = s.cloudProviders ?? {
+        gdrive: { status: "idle" as CloudSyncStatus },
+        dropbox: { status: "idle" as CloudSyncStatus },
+      };
+      return {
+        cloudProviders: {
+          ...current,
+          [provider]: {
+            ...current[provider],
+            ...state,
+          },
+        },
+      };
+    }),
 
   setHealth: (health) => set({ health }),
 
@@ -358,6 +386,13 @@ export function setRuntimeMemory(snap: RuntimeMemorySnapshot): void {
 
 export function setCloudProviders(state: CloudProvidersDebugState): void {
   useDebugStore.getState().setCloudProviders(state);
+}
+
+export function updateCloudProvider(
+  provider: keyof CloudProvidersDebugState,
+  state: Partial<CloudProviderDebugState>,
+): void {
+  useDebugStore.getState().updateCloudProvider(provider, state);
 }
 
 export function setProviderHealth(state: ProviderHealthDebugState): void {

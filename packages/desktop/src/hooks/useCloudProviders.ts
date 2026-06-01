@@ -21,7 +21,7 @@ import type {
   ProviderState,
   CloudProviderStatus,
 } from "@freed/ui/components/CloudProviderCard";
-import { setCloudProviders } from "@freed/ui/lib/debug-store";
+import { updateCloudProvider } from "@freed/ui/lib/debug-store";
 
 export type { ProviderState, CloudProviderStatus };
 
@@ -111,15 +111,11 @@ export function useCloudProviders() {
 
   // Keep the debug panel's cloud sync section in sync with live provider state.
   useEffect(() => {
-    setCloudProviders({
-      gdrive: {
-        status: providers.gdrive.status,
-        error: providers.gdrive.status === "error" ? providers.gdrive.error : undefined,
-      },
-      dropbox: {
-        status: providers.dropbox.status,
-        error: providers.dropbox.status === "error" ? providers.dropbox.error : undefined,
-      },
+    (["gdrive", "dropbox"] as const).forEach((provider) => {
+      updateCloudProvider(provider, {
+        status: providers[provider].status,
+        error: providers[provider].status === "error" ? providers[provider].error : undefined,
+      });
     });
   }, [providers]);
 
