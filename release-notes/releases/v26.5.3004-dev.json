@@ -1,0 +1,75 @@
+{
+  "tag": "v26.5.3004-dev",
+  "version": "26.5.3004-dev",
+  "channel": "dev",
+  "dayKey": "26.5.30",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-30T10:56:29.188Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.3003-dev",
+    "previousPublishedDayTag": "v26.5.2903-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.3000-dev",
+      "v26.5.3001-dev",
+      "v26.5.3002-dev",
+      "v26.5.3003-dev",
+      "v26.5.3004-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.3000-dev",
+      "v26.5.3001-dev",
+      "v26.5.3002-dev",
+      "v26.5.3003-dev",
+      "v26.5.3004-dev"
+    ],
+    "prNumbers": [
+      625,
+      626,
+      627,
+      628,
+      629
+    ],
+    "commitSubjects": [
+      "perf: skip clean startup document rewrites (#629)",
+      "release: approve v26.5.3003-dev notes",
+      "release: v26.5.3003-dev",
+      "perf: skip unchanged Automerge history probes (#628)",
+      "release: approve v26.5.3002-dev notes",
+      "release: v26.5.3002-dev",
+      "perf: project desktop feed items without full clone (#627)",
+      "release: preserve v26.5.3001-dev rollup notes",
+      "release: approve v26.5.3001-dev notes",
+      "release: v26.5.3001-dev",
+      "perf: pace startup content backfill (#626)",
+      "release: approve v26.5.3000-dev notes",
+      "release: v26.5.3000-dev",
+      "perf: cap background article fetch size (#625)"
+    ]
+  },
+  "release": {
+    "deck": "Lower startup memory pressure",
+    "features": [],
+    "fixes": [
+      "Background article backfill now skips oversized pages before they enter WebKit, reducing the chance that one huge HTML page inflates Freed Desktop memory",
+      "Freed Desktop now rejects oversized cached reader HTML before loading it into WebKit and prunes legacy oversized cache files at startup",
+      "Startup content-signal backfill now waits until after launch, runs through the background runtime gate, and continues in smaller paced batches",
+      "Freed Desktop now builds the feed item UI projection without deep-cloning full article text first, reducing startup allocation spikes on large libraries",
+      "Loaded libraries no longer rebuild Automerge history just to check for possible savings when no synced text changed, avoiding another startup allocation spike",
+      "Clean startup loads now hydrate the first UI state without reserializing or rewriting an unchanged Automerge document"
+    ],
+    "followUps": [
+      "Skip unchanged Automerge history probes",
+      "Project desktop feed items without full clone",
+      "Cap background article fetch size",
+      "Safer overnight article backfill",
+      "Keeps explicit reader loads available while the lower-priority background path stays under a native response-size budget",
+      "Shared content-signal backfill now scans feed items in one pass instead of building stale item arrays for every batch"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3004-dev\n\nLower startup memory pressure\n\n### Fixes\n\n- Background article backfill now skips oversized pages before they enter WebKit, reducing the chance that one huge HTML page inflates Freed Desktop memory\n- Freed Desktop now rejects oversized cached reader HTML before loading it into WebKit and prunes legacy oversized cache files at startup\n- Startup content-signal backfill now waits until after launch, runs through the background runtime gate, and continues in smaller paced batches\n- Freed Desktop now builds the feed item UI projection without deep-cloning full article text first, reducing startup allocation spikes on large libraries\n- Loaded libraries no longer rebuild Automerge history just to check for possible savings when no synced text changed, avoiding another startup allocation spike\n- Clean startup loads now hydrate the first UI state without reserializing or rewriting an unchanged Automerge document\n\n### Follow-ups\n\n- Skip unchanged Automerge history probes\n- Project desktop feed items without full clone\n- Cap background article fetch size\n- Safer overnight article backfill\n- Keeps explicit reader loads available while the lower-priority background path stays under a native response-size budget\n- Shared content-signal backfill now scans feed items in one pass instead of building stale item arrays for every batch\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

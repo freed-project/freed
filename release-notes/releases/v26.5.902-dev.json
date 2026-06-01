@@ -1,0 +1,55 @@
+{
+  "tag": "v26.5.902-dev",
+  "version": "26.5.902-dev",
+  "channel": "dev",
+  "dayKey": "26.5.9",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-09T19:40:42.788Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.901-dev",
+    "previousPublishedDayTag": "v26.5.807-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.901-dev",
+      "v26.5.902-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.901-dev",
+      "v26.5.902-dev"
+    ],
+    "prNumbers": [
+      543,
+      544,
+      545,
+      546
+    ],
+    "commitSubjects": [
+      "fix: show crash recovery when rendering fails (#546)",
+      "perf: stabilize map markers across refreshes (#545)",
+      "release: approve v26.5.901-dev notes",
+      "release: v26.5.901-dev",
+      "perf: restore WebKit memory attribution (#544)",
+      "release: approve v26.5.900-dev notes",
+      "release: v26.5.900-dev",
+      "perf: relax hidden renderer watchdog (#543)"
+    ]
+  },
+  "release": {
+    "deck": "Keeps hidden sessions quieter, restores WebKit memory attribution, improves desktop recovery, and stabilizes dense Map markers.",
+    "features": [],
+    "fixes": [
+      "Shows the fatal recovery screen instead of a blank shell when a React render error is caught.",
+      "Keeps dense Map markers stable across timer refreshes so the map does not rebuild unchanged marker DOM during interaction.",
+      "Freed Desktop now attributes age-matched WebKit WebContent memory even after the process releases its Freed cache handles, so high WebKit RSS is visible to diagnostics and memory preflight checks.",
+      "Hidden or locked Freed Desktop sessions now wait longer before logging stale renderer heartbeats, which avoids noisy recovery work during expected WebKit timer throttling while preserving the existing foreground recovery path."
+    ],
+    "followUps": [
+      "Continue local soak monitoring on the newly installed dev build and track any remaining Map or Friends route stalls."
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.902-dev\n\nKeeps hidden sessions quieter, restores WebKit memory attribution, improves desktop recovery, and stabilizes dense Map markers.\n\n### Fixes\n\n- Shows the fatal recovery screen instead of a blank shell when a React render error is caught.\n- Keeps dense Map markers stable across timer refreshes so the map does not rebuild unchanged marker DOM during interaction.\n- Freed Desktop now attributes age-matched WebKit WebContent memory even after the process releases its Freed cache handles, so high WebKit RSS is visible to diagnostics and memory preflight checks.\n- Hidden or locked Freed Desktop sessions now wait longer before logging stale renderer heartbeats, which avoids noisy recovery work during expected WebKit timer throttling while preserving the existing foreground recovery path.\n\n### Follow-up\n\n- Continue local soak monitoring on the newly installed dev build and track any remaining Map or Friends route stalls.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

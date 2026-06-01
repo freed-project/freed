@@ -137,12 +137,14 @@ describe("provider health", () => {
     ).toBe(12);
   });
 
-  it("persists native health state through the filesystem instead of Tauri store", async () => {
+  it("persists native health state through the filesystem and debounces RSS feed writes", async () => {
     vi.useFakeTimers();
     const now = new Date("2026-04-02T19:15:00.000Z");
     vi.setSystemTime(now);
 
     const { mod, nativeFiles, nativeWrites } = await loadProviderHealthModule({ native: true });
+    await mod.initProviderHealth();
+    const writesAfterInit = nativeWrites.length;
 
     await mod.recordProviderHealthEvent({
       provider: "rss",
@@ -154,6 +156,10 @@ describe("provider health", () => {
       itemsSeen: 42,
       itemsAdded: 5,
     });
+
+    expect(nativeWrites).toHaveLength(writesAfterInit);
+
+    await vi.advanceTimersByTimeAsync(5_000);
 
     const stored = JSON.parse(
       nativeFiles.get("/mock/app-data/sync-health.json") ?? "{}",
@@ -219,6 +225,44 @@ describe("provider health", () => {
     expect(provider?.lastError).toBe("Rate limit exceeded");
   });
 
+  it("compacts retained RSS feed attempts before writing diagnostics", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, nativeFiles } = await loadProviderHealthModule({ native: true });
+    const feedUrl = "https://example.com/rss.xml";
+    const longReason = "Connection refused while loading ".repeat(20);
+
+    for (let index = 0; index < 8; index += 1) {
+      await mod.recordProviderHealthEvent({
+        provider: "rss",
+        scope: "rss_feed",
+        feedUrl,
+        feedTitle: "Example Feed",
+        outcome: "error",
+        stage: "fetch",
+        reason: longReason,
+        finishedAt: now.getTime() + index * 1_000,
+      });
+    }
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    const stored = JSON.parse(
+      nativeFiles.get("/mock/app-data/sync-health.json") ?? "{}",
+    ) as {
+      "provider-health"?: {
+        rssFeeds?: Record<string, { latestAttempts?: Array<{ reason?: string }> }>;
+      };
+    };
+    const attempts = stored["provider-health"]?.rssFeeds?.[feedUrl]?.latestAttempts ?? [];
+
+    expect(attempts).toHaveLength(5);
+    expect(attempts[0]?.reason?.length).toBeLessThanOrEqual(240);
+    expect(attempts[0]?.reason?.endsWith("...")).toBe(true);
+  });
+
   it("does not auto-pause on cooldown outcomes", async () => {
     vi.useFakeTimers();
     const now = new Date("2026-04-02T19:15:00.000Z");
@@ -237,6 +281,38 @@ describe("provider health", () => {
     expect(mod.getProviderPause("instagram")).toBeNull();
     expect(storeState.igAuth.pausedUntil).toBeUndefined();
     expect(toastInfo).not.toHaveBeenCalled();
+  });
+
+  it("keeps old memory-pressure deferrals out of current provider status", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, debugStore } = await loadProviderHealthModule();
+
+    await mod.recordProviderHealthEvent({
+      provider: "facebook",
+      outcome: "success",
+      finishedAt: now.getTime() - 60 * 60 * 1000,
+      itemsSeen: 12,
+      itemsAdded: 8,
+    });
+
+    await mod.recordProviderHealthEvent({
+      provider: "facebook",
+      outcome: "error",
+      stage: "memory_pressure",
+      reason: "Facebook sync did not start because Freed Desktop memory is high. App RSS is 2.62 GB after cleanup.",
+      finishedAt: now.getTime() - 20 * 60 * 1000,
+    });
+
+    const provider = debugStore.useDebugStore.getState().health?.providers.facebook;
+
+    expect(provider?.status).toBe("healthy");
+    expect(provider?.lastOutcome).toBe("success");
+    expect(provider?.lastError).toBeUndefined();
+    expect(provider?.currentMessage).toBeUndefined();
+    expect(provider?.latestAttempts[0]?.stage).toBe("memory_pressure");
   });
 
   it("auto-pauses on explicit provider rate limits and exposes the toast action", async () => {

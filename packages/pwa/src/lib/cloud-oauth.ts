@@ -1,5 +1,10 @@
+import {
+  createGoogleOAuthState,
+  getGoogleOAuthRedirectUri,
+  storeGoogleOAuthRedirectUri,
+} from "./oauth-redirect";
+
 const GDRIVE_CLIENT_ID = import.meta.env.VITE_GDRIVE_CLIENT_ID ?? "";
-const OAUTH_REDIRECT_URI = `${window.location.origin}/oauth-callback`;
 
 function generateCodeVerifier(): string {
   const array = new Uint8Array(64);
@@ -22,12 +27,14 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 export async function initiateGDriveOAuth(): Promise<void> {
   const verifier = generateCodeVerifier();
   const challenge = await generateCodeChallenge(verifier);
+  const redirectUri = getGoogleOAuthRedirectUri();
   sessionStorage.setItem("freed_pkce_verifier", verifier);
   sessionStorage.setItem("freed_pkce_provider", "gdrive");
+  storeGoogleOAuthRedirectUri(redirectUri);
 
   const params = new URLSearchParams({
     client_id: GDRIVE_CLIENT_ID,
-    redirect_uri: OAUTH_REDIRECT_URI,
+    redirect_uri: redirectUri,
     response_type: "code",
     scope: "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/contacts.readonly",
     include_granted_scopes: "true",
@@ -35,6 +42,7 @@ export async function initiateGDriveOAuth(): Promise<void> {
     code_challenge_method: "S256",
     access_type: "offline",
     prompt: "consent",
+    state: createGoogleOAuthState(),
   });
 
   window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;

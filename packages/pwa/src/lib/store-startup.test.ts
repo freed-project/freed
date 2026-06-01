@@ -19,6 +19,7 @@ const automerge = vi.hoisted(() => {
     docMarkAllAsRead: resolved(),
     docToggleSaved: resolved(),
     docRemoveFeedItem: resolved(),
+    docClearSampleData: vi.fn(() => Promise.resolve({ feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 })),
     docToggleArchived: resolved(),
     docToggleLiked: resolved(),
     docArchiveAllReadUnsaved: resolved(),
@@ -116,5 +117,13 @@ describe("PWA store startup maintenance", () => {
     });
     expect(automerge.docBackfillContentSignals).toHaveBeenNthCalledWith(1, 200);
     expect(automerge.docBackfillContentSignals).toHaveBeenNthCalledWith(2, 200);
+  });
+
+  it("delegates sample data clearing to the worker", async () => {
+    const summary = { feeds: 1, items: 2, persons: 3, accounts: 4, total: 10 };
+    automerge.docClearSampleData.mockResolvedValueOnce(summary);
+
+    await expect(useAppStore.getState().clearSampleData()).resolves.toEqual(summary);
+    expect(automerge.docClearSampleData).toHaveBeenCalledTimes(1);
   });
 });

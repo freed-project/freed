@@ -26,6 +26,7 @@ import type {
   LocalAIModelInstallState,
   LocalAIModelManifestEntry,
   ReportPrivacyTier,
+  StoryWallManifest,
 } from "@freed/shared";
 import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
 import type { GoogleContactsResult } from "@freed/shared/google-contacts";
@@ -61,6 +62,14 @@ export interface AvailableUpdateInfo {
   channel: ReleaseChannel;
 }
 
+export interface ChangelogPreviewRelease {
+  version: string;
+  channel: ReleaseChannel;
+  date: string | null;
+  summary: string;
+  items: string[];
+}
+
 export type SyncProviderSectionSurface = "settings" | "debug-card";
 
 export interface SyncProviderSectionProps {
@@ -73,6 +82,39 @@ export interface SidebarSourceStatusSummary {
   detail?: string;
   syncing?: boolean;
   paused?: boolean;
+}
+
+export interface StoryWallArchiveSummary {
+  provider: "facebook" | "instagram";
+  enabled: boolean;
+  fileCount: number;
+  byteSize: number;
+  ownerHandles: string[];
+}
+
+export interface StoryWallImportSummary {
+  provider: "facebook" | "instagram";
+  filesScanned: number;
+  mediaFilesFound: number;
+  imported: number;
+  skipped: number;
+  failed: number;
+  ownerHandles: string[];
+}
+
+export interface StoryWallPublishRequest {
+  token: string;
+  owner?: string;
+  repoName: string;
+  branch: string;
+  directory: string;
+  manifest: StoryWallManifest;
+}
+
+export interface StoryWallPublishResult {
+  pagesUrl: string;
+  commitSha: string;
+  repoFullName: string;
 }
 
 export interface BugReportingConfig {
@@ -191,6 +233,9 @@ export interface PlatformConfig {
   /** Rendered inline per source button for status indicators (e.g. X auth dot) */
   SourceIndicator: ComponentType<{ sourceId: string }> | null;
 
+  /** Optional replacement for the shared RSS feed settings section. */
+  FeedsSettingsContent?: ComponentType | null;
+
   /** Rendered in Header actions area (e.g. sync panel, refresh button) */
   HeaderSyncIndicator: ComponentType | null;
 
@@ -235,6 +280,9 @@ export interface PlatformConfig {
 
   /** Manual update check. Returns available update info, null if up-to-date. */
   checkForUpdates?: () => Promise<AvailableUpdateInfo | null>;
+
+  /** Compact release notes shown in Settings > Updates. */
+  changelogPreview?: ChangelogPreviewRelease[];
 
   /** Apply a detected update (PWA: reload, Desktop: handled by UpdateNotification). */
   applyUpdate?: () => void;
@@ -366,6 +414,15 @@ export interface PlatformConfig {
 
   /** Device-local optional model downloads for offline AI. */
   localAIModels?: LocalAIModelControls;
+
+  /** Import an Instagram Accounts Center export into the device-local media vault. */
+  importInstagramStoryWallArchive?: (files: FileList) => Promise<StoryWallImportSummary>;
+
+  /** Return media vault summaries used by StoryWall (beta). */
+  getStoryWallArchiveSummaries?: () => Promise<StoryWallArchiveSummary[]>;
+
+  /** Publish the generated StoryWall (beta) site to a static host. */
+  publishStoryWall?: (request: StoryWallPublishRequest) => Promise<StoryWallPublishResult>;
 
   /**
    * Google Contacts API integration.

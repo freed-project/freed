@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
   Account,
@@ -13,7 +14,7 @@ import type {
 } from "@freed/shared";
 import { formatDistanceToNow } from "date-fns";
 import { buildFriendCandidateSuggestions, isInReconnectZone } from "@freed/shared";
-import { useAppStore } from "../../context/PlatformContext.js";
+import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import type { FriendGraphHandle } from "./FriendGraph.js";
@@ -65,6 +66,7 @@ const SORT_OPTIONS: Array<{ id: FriendOverviewSort; label: string }> = [
 const BUTTON_CHROME = "btn-secondary rounded-lg px-3 py-1.5 text-xs";
 const FRIENDS_SIDEBAR_SECTION = "theme-dialog-divider border-b px-4 py-3";
 const FRIEND_OVERVIEW_ROW_ESTIMATE = 104;
+const MAP_SURFACE_COMMIT_RETRY_MS = 150;
 
 type RelationshipTierLevel = 1 | 3 | 5;
 
@@ -550,6 +552,7 @@ export function FriendsView({
   const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
   const setActiveView = useAppStore((s) => s.setActiveView);
+  const openMapForPerson = useAppStore((s) => s.openMapForPerson);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const display = useAppStore((s) => s.preferences.display);
   const friendSuggestionPreferences = useAppStore((s) => s.preferences.friendSuggestions);
@@ -576,6 +579,7 @@ export function FriendsView({
   const pendingPersistedSidebarWidth = useRef<number | null>(null);
   const isMobile = useIsMobile();
 
+  const { googleContacts } = usePlatform();
   const contactSync = useContactSyncContext();
 
   const feedItems = useMemo(() => {
@@ -787,6 +791,22 @@ export function FriendsView({
     setSelectedPerson(null);
     setSelectedAccount(null);
   }, [setSelectedAccount, setSelectedPerson]);
+
+  const handleOpenMapForPerson = useCallback((personId: string) => {
+    flushSync(() => {
+      openMapForPerson(personId);
+    });
+
+    window.setTimeout(() => {
+      if (document.querySelector('[data-testid="map-surface"]')) return;
+      if (!document.querySelector('[data-testid="friends-sidebar"]')) return;
+
+      setActiveView("friends");
+      window.requestAnimationFrame(() => {
+        openMapForPerson(personId);
+      });
+    }, MAP_SURFACE_COMMIT_RETRY_MS);
+  }, [openMapForPerson, setActiveView]);
 
   const handleLogReachOut = useCallback(
     async (entry: ReachOutLog) => {
@@ -1172,19 +1192,25 @@ export function FriendsView({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleOpenSyncModal}
-              disabled={openingSyncModal}
-              className={BUTTON_CHROME}
-            >
-              {openingSyncModal ? "Syncing..." : "Import Contacts"}
-              {pendingMatchCount > 0 && (
-                <span className="ml-2 rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.24)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
-                  {pendingMatchCount.toLocaleString()}
-                </span>
-              )}
-            </button>
+            {googleContacts ? (
+              <button
+                type="button"
+                onClick={handleOpenSyncModal}
+                disabled={openingSyncModal}
+                className={BUTTON_CHROME}
+              >
+                {openingSyncModal ? "Syncing..." : "Import Contacts"}
+                {pendingMatchCount > 0 && (
+                  <span className="ml-2 rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.24)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
+                    {pendingMatchCount.toLocaleString()}
+                  </span>
+                )}
+              </button>
+            ) : pendingMatchCount > 0 ? (
+              <span className="rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.18)] px-2 py-1 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
+                {pendingMatchCount.toLocaleString()} contact review
+              </span>
+            ) : null}
             <button
               type="button"
               onClick={() => setEditorState({ kind: "new" })}
@@ -1435,8 +1461,7 @@ export function FriendsView({
             feedItems={feedItems}
             onLogReachOut={handleLogReachOut}
             onOpenMap={() => {
-              setSelectedPerson(selectedPerson.id);
-              setActiveView("map");
+              handleOpenMapForPerson(selectedPerson.id);
             }}
           />
         </div>

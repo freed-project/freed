@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Key, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, type Key, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { SearchField } from "../SearchField.js";
 
@@ -53,14 +53,24 @@ export function SettingsListPanel<T>({
 }: SettingsListPanelProps<T>) {
   const [query, setQuery] = useState("");
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
-  const normalizedQuery = normalizeSearchText(query);
+  const deferredQuery = useDeferredValue(query);
+  const normalizedQuery = normalizeSearchText(deferredQuery);
+
+  const searchEntries = useMemo(
+    () =>
+      items.map((item) => ({
+        item,
+        searchText: normalizeSearchText(getSearchText(item)),
+      })),
+    [getSearchText, items],
+  );
 
   const filteredItems = useMemo(() => {
     if (!normalizedQuery) return items;
-    return items.filter((item) =>
-      normalizeSearchText(getSearchText(item)).includes(normalizedQuery),
-    );
-  }, [getSearchText, items, normalizedQuery]);
+    return searchEntries
+      .filter((entry) => entry.searchText.includes(normalizedQuery))
+      .map((entry) => entry.item);
+  }, [items, normalizedQuery, searchEntries]);
 
   const countLabel = normalizedQuery
     ? `${filteredItems.length.toLocaleString()} of ${items.length.toLocaleString()}`

@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, density-aware fixed-height unified feed rows shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, idle Automerge worker recycling shipped, bounded scheduled RSS refresh shipped, density-aware fixed-height unified feed rows shipped, settings changelog preview shipped, fingerprinted sample-data cleanup shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -25,6 +25,7 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Paused providers reuse the primary action:** Settings surfaces swap `Sync Now` to `Resume Now` when a provider is paused, instead of rendering a second resume button
 - **Internal navigation history** — Desktop keeps a browser-style serialized navigation stack so `Cmd+[` and `Cmd+]` move through views and open reader state
 - **Blank-state testing escape hatch** — Desktop empty states now offer a lightweight sample-data section below the primary blank-state prompt, so fresh installs can seed realistic data without detouring into Settings
+- **Fingerprinted sample-data cleanup** - New sample batches carry an internal marker across feeds, items, people, and accounts, so accidental sample population can be cleared without matching on names, URLs, or content patterns
 - **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
 - **Live sidebar snap preview** — During desktop resize drag, the expanded card still tracks the grab rail directly, while compact and closed thresholds now animate in place so the sidebar snaps to the icon rail or slides offscreen before mouseup
 - **Inset compact rail** — The icon-only sidebar now keeps a real outer inset around square buttons instead of rendering full bleed against the shell, while stacked icon rows stay visually tight
@@ -38,7 +39,9 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Local card density control:** The feed toolbar now exposes a three-stop card density slider that persists on the current device, with compact, comfortable, and expansive vertical card spacing
 - **Hot-path side-effect scheduling:** Desktop routes native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains through typed queues so clicks, scroll callbacks, and document subscriptions do not directly run slow native I/O or large scans
 - **Background runtime coordination:** Desktop gates high-risk background work behind healthy renderer startup, shared memory pressure cooldowns, renderer recovery safe mode, and a native social-scrape lease so WebKit pressure cannot keep blanking the main window
-- **Deep local WebKit diagnostics:** Renderer stalls, memory preflight blocks, and recovery attempts write bounded local diagnostics with WebKit process identity, RSS, CPU, process age, WebView labels, cache sizes, vmmap summaries, and short process samples
+- **Deep local WebKit diagnostics:** Renderer stalls, memory preflight blocks, and recovery attempts write bounded local diagnostics with WebKit process identity, RSS, CPU, process age, WebView labels, cache sizes, vmmap summaries, short process samples, and scraper recycle PID verification
+- **Adaptive social memory budgets:** Freed Desktop now scales high and critical scrape guardrails on high-memory machines, records native memory samples even when the renderer is hidden, and keeps low-priority semantic enrichment out of the launch path so Facebook and Instagram get memory first
+- **Bounded scheduled RSS refresh:** Background RSS polling now refreshes only due stale feeds in capped batches, while manual RSS refresh keeps the full enabled-feed sweep
 
 ---
 
@@ -232,6 +235,7 @@ export async function captureDomFeed(
 - [x] System tray shows sync status
 - [x] App runs in background after window close
 - [x] Auto-updater checks GitHub Releases on launch and in the background, then installs updates in-app
+- [x] Desktop Settings > Updates embeds a compact scrolling preview of the latest five changelog cards with a full changelog link
 - [x] CI/CD release pipeline builds for macOS (ARM + Intel), Windows, Linux on tag push
 - [x] Dev release tags run the faster dev validation lane and build only the internal macOS Apple Silicon target, while production tags keep full validation and all supported platform builds
 - [x] App icons generated for all platforms
@@ -282,7 +286,7 @@ export async function captureDomFeed(
 - [x] Clicking `Sync now` shows a visible `Syncing Initiated` acknowledgment while the menu stays open, even if the provider is already syncing
 - [x] `Cooling down` uses a small amber emoji indicator instead of an amber spinner so the paused state feels distinct at a glance
 - [x] LinkedIn and the other social source rows keep a sidebar status indicator even if auth state lags behind, falling back to the provider's actual item counts before hiding the dot
-- [x] Facebook group settings show active group counts in the header, keep refresh with the bulk actions, split scraped `Last active ...` text into its own smaller right-aligned column, and keep late-loaded groups inside a filtered inner scroller capped to the Settings modal
+- [x] Facebook group settings show active group counts in the header, keep refresh with the bulk actions, split scraped `Last active ...` text into its own smaller right-aligned column, repair stored missing group names from captured posts or refreshed group data, and keep late-loaded groups inside a filtered inner scroller capped to the Settings modal
 - [x] The redundant desktop header sync dropdown has been removed, leaving the sidebar source menus and provider settings as the canonical sync status and action surfaces
 - [x] Desktop view chrome now routes through one shared top toolbar, so feed, reader, and Friends stop stacking separate bars on top of each other
 - [x] Desktop top-toolbar controls now keep normal click behavior, but a full drag gesture from the wordmark, title area, or toolbar buttons repositions the native window the way a title bar should
@@ -315,8 +319,10 @@ export async function captureDomFeed(
 - [x] Desktop debug tooling now samples runtime memory, relay document size, relay client count, and content-fetcher queue depth so long-run RAM growth can be correlated without attaching Instruments first
 - [x] Desktop diagnostics now also sample renderer JS heap and DOM node counts so overnight RAM growth can be split between native process pressure and WebView pressure
 - [x] Desktop diagnostics now include Freed-owned WebKit renderer RSS, Automerge binary size, IndexedDB size, WebKit cache size, and adaptive memory guardrails that reclaim scraper windows and network-cache blobs before pausing social capture
+- [x] Social scrape memory preflight now records whether recycled WebKit process IDs exited, were retained, or were replaced, plus the RSS delta after cleanup
 - [x] Desktop now records rotating runtime-health diagnostics with renderer heartbeat state, memory preflight results, recovery attempts, and active background work so blank-renderer reports include the last bad minute of runtime context
-- [x] High-risk background work now waits for healthy renderer startup and memory pressure cooldowns before running content fetches, RSS polls, automatic snapshots, cloud uploads, outbox drains, or native social scrapes
+- [x] High-risk background work now waits for healthy renderer startup and memory pressure cooldowns before running content fetches, RSS polls, automatic snapshots, cloud uploads, cloud startup downloads, outbox drains, or native social scrapes
+- [x] Renderer recovery now requires both native window visibility and renderer document visibility before treating heartbeat gaps as foreground stalls, so background provider work is not paused by normal hidden WebKit timer throttling
 - [x] Native renderer recovery now marks failed recovery state, requests relaunch, and forces the old process to exit if the main WebView label stays stuck after a destroyed renderer
 - [x] Native relay broadcasts now reuse shared document buffers and stop writing a full snapshot on every live document push, reducing clone pressure during heavy sync churn
 - [x] Desktop worker state no longer ships the full `allItemIds` list or full Automerge binary back to the main thread on every mutation, and the content fetcher now bounds its failed-item cooldown cache instead of keeping an immortal set of every fetch miss
@@ -324,6 +330,10 @@ export async function captureDomFeed(
 - [x] Background fetch no longer rescans the entire visible feed on every document mutation, it only rescans when the document item count changes, which cuts repeated O(n) churn during read toggles and preference writes
 - [x] Outbox retry bookkeeping now drops completed and terminally failed IDs instead of keeping a session-long retry map for every action it has ever seen
 - [x] Removing RSS feeds now also drops their retained provider-health diagnostics instead of keeping dead feed histories in memory and storage forever
+- [x] Provider-health persistence now compacts RSS feed attempt history, derives per-feed charts from retained attempts, trims oversized error reasons, updates failing-feed diagnostics incrementally, and batches hot RSS writes so renderer memory is not burned repeatedly on `sync-health.json` parse and stringify cycles
+- [x] Native runtime-health sampling continues while the renderer is hidden, including background pause state, active job age, safe-mode state, WebKit RSS, and adaptive memory limits
+- [x] Desktop social scrape guardrails now scale beyond the old 4 GB ceiling on high-memory machines, while low-priority semantic enrichment and startup content-signal backfill wait through the launch quiet period
+- [x] Desktop releases idle Automerge worker documents after the request queue drains and terminates the worker until the next document operation, reducing retained renderer work during long background sessions
 - [x] Desktop live UI state now caps preserved article text previews and fetches full preserved text on demand for the active reader item, instead of cloning entire article bodies through every feed-state update
 - [x] Desktop native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains now run through typed side-effect queues with slow-task diagnostics, so common UI actions do not directly wait on native storage or broad outbox scans
 - [x] Desktop Automerge subscriptions now carry change metadata, so item-patch mutations let the outbox drain only changed items while startup and full document updates keep the full scan path
@@ -364,10 +374,16 @@ export async function captureDomFeed(
 > backup, and snapshots, rather than shipping those payloads back to the
 > main thread on every state update. Desktop memory telemetry now also samples
 > Freed-owned WebKit renderer RSS, Automerge binary size, IndexedDB storage,
-> WebKit cache size, and adaptive high and critical memory limits. Social
-> capture now runs a native preflight that recycles stale scraper windows and
-> trims only Freed WebKit network-cache blobs before it decides a scrape must
-> pause. The background runtime now also gates content fetches, RSS polls,
+> WebKit cache size, and adaptive high and critical memory limits. Native
+> runtime-health sampling now continues even while the renderer is hidden, so
+> overnight reports still show memory, pause, safe-mode, and active background
+> job state. Social capture now runs a native preflight that recycles stale scraper windows,
+> records which WebKit process IDs exited or survived the recycle, and trims
+> only Freed WebKit network-cache blobs before it decides a scrape must pause.
+> On high-memory machines, scrape guardrails now scale beyond the old 4 GB
+> critical cap, and low-priority semantic enrichment waits through launch so it
+> does not spend the first Automerge-heavy background slot before provider sync.
+> The background runtime now also gates content fetches, RSS polls,
 > automatic snapshots, cloud uploads, outbox drains, and social scrapes behind
 > healthy renderer startup and shared pressure cooldowns, while native recovery
 > writes runtime-health records and relaunches if the old renderer label stays
@@ -423,6 +439,8 @@ export async function captureDomFeed(
 > releases so older builds can be linked directly without turning the page
 > into a mile-long papyrus scroll, and card hover states now key off the
 > existing timeline lane instead of inventing a second internal accent rail.
+> Freed Desktop Settings now embeds those latest five cumulative changelog
+> cards in the Updates pane, with a channel-aware link to the full changelog.
 > The updater endpoint now lives behind `freed.wtf/api/desktop-updates/{{target}}`,
 > and Freed Desktop can switch locally between production releases from `main`
 > and dev prereleases from `dev` without syncing that preference through the

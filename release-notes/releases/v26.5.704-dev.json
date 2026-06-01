@@ -1,0 +1,92 @@
+{
+  "tag": "v26.5.704-dev",
+  "version": "26.5.704-dev",
+  "channel": "dev",
+  "dayKey": "26.5.7",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-07T13:24:17.167Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.701-dev",
+    "previousPublishedDayTag": "v26.5.633-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.700-dev",
+      "v26.5.701-dev",
+      "v26.5.704-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.700-dev",
+      "v26.5.701-dev",
+      "v26.5.704-dev"
+    ],
+    "prNumbers": [
+      510,
+      511,
+      512,
+      513,
+      515,
+      516,
+      517,
+      518,
+      519,
+      520,
+      521,
+      522,
+      523,
+      524
+    ],
+    "commitSubjects": [
+      "fix: stabilize release pinch gesture check (#524)",
+      "release: approve v26.5.703-dev notes",
+      "release: v26.5.703-dev",
+      "fix: reset debug drawer before desktop e2e tests (#523)",
+      "perf: keep hidden heartbeat throttling from pausing scrapers (#522)",
+      "chore: reverse integrate v26.5.702 (#521)",
+      "fix: stabilize friends graph resize lifecycle (#520)",
+      "release: v26.5.701-dev",
+      "fix: stabilize friends empty graph regression (#519)",
+      "perf: reduce dense map interaction work (#517)",
+      "fix: stabilize friends graph regression tests (#518)",
+      "fix: stabilize pinned graph position test (#516)",
+      "fix: stabilize friends rail resize test (#515)",
+      "release: v26.5.700-dev",
+      "perf: reduce feed and friends render pressure (#513)",
+      "fix: stabilize last seen map view test (#512)",
+      "fix: stabilize unlinked map marker test (#511)",
+      "fix: stabilize friends last seen map test (#510)"
+    ]
+  },
+  "release": {
+    "deck": "Freed Desktop keeps Friends release validation stable across virtualized sidebar remounts, reader, sidebar, and settings UX work, and reader, feed, and header polish",
+    "features": [],
+    "fixes": [
+      "Release pinch gesture check is now more stable",
+      "Reset debug drawer before desktop e2e tests",
+      "Friends graph resize lifecycle is now more stable",
+      "Friends back-navigation release validation now clicks the visible back button without losing it to sidebar remounts, unblocking the replacement dev build",
+      "Friends performance validation now measures visible graph mount separately from display preference persistence, so release gates catch rendering regressions instead of background save timing",
+      "Feed-card regression coverage now protects that reader-only media policy so release validation catches accidental inline media work",
+      "Release validation now resizes the Friends detail rail through the real browser pointer path, and the resize handle is visible and cleaned up across pointerup, cancel, blur, and unmount",
+      "Sync and update reliability fixes",
+      "Friends graph regression checks now stabilize pinned positions, dense graph screenshots, and empty-graph fallbacks before release validation"
+    ],
+    "followUps": [
+      "Reduce feed and friends render pressure",
+      "Dense surfaces and mobile validation repairs plus feed pressure relief",
+      "Freed Desktop keeps reader transitions cheaper and Friends performance gates focused on visible rendering work",
+      "More accurate memory pressure and smoother large views",
+      "Freed Desktop keeps large social views responsive",
+      "Freed Desktop keeps WebKit memory maintenance ahead of scrapes",
+      "Freed Desktop improves dense Map rendering and keeps Google sync on native requests",
+      "Freed Desktop keeps display preference changes on the fast path and stabilizes Friends graph release checks",
+      "Freed Desktop stabilizes Friends detail rail resizing before the replacement dev build ships",
+      "Freed Desktop virtualizes large settings lists and exports the shared date-format helper used by dev release builds",
+      "Recycle blocked scraper windows"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.704-dev\n\nFreed Desktop keeps Friends release validation stable across virtualized sidebar remounts, reader, sidebar, and settings UX work, and reader, feed, and header polish\n\n### Fixes\n\n- Release pinch gesture check is now more stable\n- Reset debug drawer before desktop e2e tests\n- Friends graph resize lifecycle is now more stable\n- Friends back-navigation release validation now clicks the visible back button without losing it to sidebar remounts, unblocking the replacement dev build\n- Friends performance validation now measures visible graph mount separately from display preference persistence, so release gates catch rendering regressions instead of background save timing\n- Feed-card regression coverage now protects that reader-only media policy so release validation catches accidental inline media work\n- Release validation now resizes the Friends detail rail through the real browser pointer path, and the resize handle is visible and cleaned up across pointerup, cancel, blur, and unmount\n- Sync and update reliability fixes\n- Friends graph regression checks now stabilize pinned positions, dense graph screenshots, and empty-graph fallbacks before release validation\n\n### Follow-ups\n\n- Reduce feed and friends render pressure\n- Dense surfaces and mobile validation repairs plus feed pressure relief\n- Freed Desktop keeps reader transitions cheaper and Friends performance gates focused on visible rendering work\n- More accurate memory pressure and smoother large views\n- Freed Desktop keeps large social views responsive\n- Freed Desktop keeps WebKit memory maintenance ahead of scrapes\n- Freed Desktop improves dense Map rendering and keeps Google sync on native requests\n- Freed Desktop keeps display preference changes on the fast path and stabilizes Friends graph release checks\n- Freed Desktop stabilizes Friends detail rail resizing before the replacement dev build ships\n- Freed Desktop virtualizes large settings lists and exports the shared date-format helper used by dev release builds\n- Recycle blocked scraper windows\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

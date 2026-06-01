@@ -22,9 +22,11 @@ import type {
   ContentSignals,
   EventCandidate,
   LocationSource,
+  SampleDataClearSummary,
 } from "./types.js";
 import { createDefaultPreferences, createDefaultMeta } from "./types.js";
 import { friendForAuthor, personForAuthor } from "./friends.js";
+import { hasSampleDataFingerprint } from "./sample-data.js";
 import {
   CONTENT_SIGNAL_KEYS,
   CONTENT_SIGNAL_VERSION,
@@ -1097,9 +1099,60 @@ function normalizePerson(person: Person): Person {
     graphY: person.graphY,
     graphPinned: person.graphPinned,
     graphUpdatedAt: person.graphUpdatedAt,
+    sampleDataFingerprint: person.sampleDataFingerprint,
     createdAt: person.createdAt,
     updatedAt: person.updatedAt,
   });
+}
+
+export function clearSampleData(doc: FreedDoc): SampleDataClearSummary {
+  ensureIdentityGraphRoots(doc);
+  const summary: SampleDataClearSummary = {
+    feeds: 0,
+    items: 0,
+    persons: 0,
+    accounts: 0,
+    total: 0,
+  };
+
+  for (const [id, item] of Object.entries(doc.feedItems)) {
+    if (!hasSampleDataFingerprint(item)) continue;
+    delete doc.feedItems[id];
+    summary.items += 1;
+  }
+
+  for (const [url, feed] of Object.entries(doc.rssFeeds)) {
+    if (!hasSampleDataFingerprint(feed)) continue;
+    delete doc.rssFeeds[url];
+    summary.feeds += 1;
+  }
+
+  const samplePersonIds = new Set<string>();
+  for (const [personId, person] of Object.entries(doc.persons)) {
+    if (!hasSampleDataFingerprint(person)) continue;
+    samplePersonIds.add(personId);
+  }
+
+  const now = Date.now();
+  for (const [accountId, account] of Object.entries(doc.accounts)) {
+    if (hasSampleDataFingerprint(account)) {
+      delete doc.accounts[accountId];
+      summary.accounts += 1;
+      continue;
+    }
+    if (account.personId && samplePersonIds.has(account.personId)) {
+      delete account.personId;
+      account.updatedAt = now;
+    }
+  }
+
+  for (const personId of samplePersonIds) {
+    delete doc.persons[personId];
+    summary.persons += 1;
+  }
+
+  summary.total = summary.feeds + summary.items + summary.persons + summary.accounts;
+  return summary;
 }
 
 /**
@@ -1156,49 +1209,81 @@ function createEmptyContentSignalCounts(): Record<ContentSignal, number> {
   ) as Record<ContentSignal, number>;
 }
 
+function createContentSignalSummaryState(): {
+  counts: Record<ContentSignal, number>;
+  samples: Partial<Record<ContentSignal, string[]>>;
+  multiSignalCount: number;
+  untaggedCount: number;
+  total: number;
+} {
+  return {
+    counts: createEmptyContentSignalCounts(),
+    samples: {},
+    multiSignalCount: 0,
+    untaggedCount: 0,
+    total: 0,
+  };
+}
+
+function addFeedItemToContentSignalSummary(
+  item: FeedItem,
+  state: ReturnType<typeof createContentSignalSummaryState>,
+): void {
+  state.total += 1;
+  const tags = item.contentSignals?.tags ?? [];
+  if (tags.length === 0) {
+    state.untaggedCount += 1;
+    return;
+  }
+
+  if (tags.length > 1) {
+    state.multiSignalCount += 1;
+  }
+
+  for (const tag of tags) {
+    state.counts[tag] += 1;
+    const signalSamples = state.samples[tag] ?? [];
+    if (signalSamples.length < 5) {
+      signalSamples.push(`...${item.globalId.slice(-8)}`);
+      state.samples[tag] = signalSamples;
+    }
+  }
+}
+
+function createContentSignalBackfillSummary(
+  state: ReturnType<typeof createContentSignalSummaryState>,
+  updated: number,
+  scanned: number,
+  remaining: number,
+): ContentSignalBackfillSummary {
+  return {
+    version: CONTENT_SIGNAL_VERSION,
+    total: state.total,
+    scanned,
+    updated,
+    remaining,
+    counts: state.counts,
+    multiSignalCount: state.multiSignalCount,
+    untaggedCount: state.untaggedCount,
+    samples: state.samples,
+  };
+}
+
 function summarizeContentSignals(
   doc: FreedDoc,
   updated: number,
   scanned: number,
   remaining: number,
 ): ContentSignalBackfillSummary {
-  const counts = createEmptyContentSignalCounts();
-  const samples: Partial<Record<ContentSignal, string[]>> = {};
-  let multiSignalCount = 0;
-  let untaggedCount = 0;
-  let total = 0;
+  const state = createContentSignalSummaryState();
 
-  for (const item of Object.values(doc.feedItems) as FeedItem[]) {
-    total += 1;
-    const tags = item.contentSignals?.tags ?? [];
-    if (tags.length === 0) {
-      untaggedCount += 1;
-      continue;
-    }
-    if (tags.length > 1) {
-      multiSignalCount += 1;
-    }
-    for (const tag of tags) {
-      counts[tag] += 1;
-      const signalSamples = samples[tag] ?? [];
-      if (signalSamples.length < 5) {
-        signalSamples.push(`...${item.globalId.slice(-8)}`);
-        samples[tag] = signalSamples;
-      }
-    }
+  for (const globalId in doc.feedItems) {
+    const item = doc.feedItems[globalId];
+    if (!item) continue;
+    addFeedItemToContentSignalSummary(item, state);
   }
 
-  return {
-    version: CONTENT_SIGNAL_VERSION,
-    total,
-    scanned,
-    updated,
-    remaining,
-    counts,
-    multiSignalCount,
-    untaggedCount,
-    samples,
-  };
+  return createContentSignalBackfillSummary(state, updated, scanned, remaining);
 }
 
 export function summarizeDocContentSignals(doc: FreedDoc): ContentSignalBackfillSummary {
@@ -1206,30 +1291,42 @@ export function summarizeDocContentSignals(doc: FreedDoc): ContentSignalBackfill
 }
 
 export function countContentSignalBackfillItems(doc: FreedDoc): number {
-  return (Object.values(doc.feedItems) as FeedItem[]).filter(
-    (item) => !hasCurrentContentSignals(item),
-  ).length;
+  let count = 0;
+  for (const globalId in doc.feedItems) {
+    const item = doc.feedItems[globalId];
+    if (item && !hasCurrentContentSignals(item)) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 export function backfillContentSignals(
   doc: FreedDoc,
   batchSize: number = 200,
 ): ContentSignalBackfillSummary {
-  const staleItems = (Object.values(doc.feedItems) as FeedItem[]).filter(
-    (item) => !hasCurrentContentSignals(item),
-  );
-  const batch = staleItems.slice(0, Math.max(1, batchSize));
+  const maxBatchSize = Math.max(1, batchSize);
+  const state = createContentSignalSummaryState();
+  let updated = 0;
+  let remaining = 0;
 
-  for (const item of batch) {
-    applySemanticEnrichmentToItem(item);
+  for (const globalId in doc.feedItems) {
+    const item = doc.feedItems[globalId];
+    if (!item) continue;
+
+    if (!hasCurrentContentSignals(item)) {
+      if (updated < maxBatchSize) {
+        applySemanticEnrichmentToItem(item);
+        updated += 1;
+      } else {
+        remaining += 1;
+      }
+    }
+
+    addFeedItemToContentSignalSummary(item, state);
   }
 
-  return summarizeContentSignals(
-    doc,
-    batch.length,
-    batch.length,
-    Math.max(0, staleItems.length - batch.length),
-  );
+  return createContentSignalBackfillSummary(state, updated, updated, remaining);
 }
 
 /**

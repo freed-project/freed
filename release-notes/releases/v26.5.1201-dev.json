@@ -1,0 +1,47 @@
+{
+  "tag": "v26.5.1201-dev",
+  "version": "26.5.1201-dev",
+  "channel": "dev",
+  "dayKey": "26.5.12",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-12T19:49:15.886Z",
+  "model": "manual",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.1112-dev",
+    "previousPublishedDayTag": "v26.5.1112-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.1200-dev",
+      "v26.5.1201-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.1200-dev",
+      "v26.5.1201-dev"
+    ],
+    "prNumbers": [
+      598,
+      599
+    ],
+    "commitSubjects": [
+      "perf: steady dense graph and sidebar interactions (#599)",
+      "release: approve v26.5.1200-dev notes",
+      "release: v26.5.1200-dev",
+      "perf: smooth dense friends graph interactions (#598)"
+    ]
+  },
+  "release": {
+    "deck": "Dense Friends graph motion and source filtering stay lighter",
+    "features": [],
+    "fixes": [
+      "Keep large Friends graphs responsive by holding active pan and zoom to a stable 160-node paint layer, then refreshing viewport detail after motion settles",
+      "Add regression coverage for 1,600-person Friends graphs, including mount time, zoom, pan, scene sync, long tasks, dropped frames, and sidebar row virtualization",
+      "Keep large relationship graphs on a smaller 96-node paint layer during active motion before refreshing viewport detail",
+      "Reduce Source sidebar feed search allocation churn for large RSS collections"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1201-dev\n\nDense Friends graph motion and source filtering stay lighter\n\n### Fixes\n\n- Keep large Friends graphs responsive by holding active pan and zoom to a stable 160-node paint layer, then refreshing viewport detail after motion settles\n- Add regression coverage for 1,600-person Friends graphs, including mount time, zoom, pan, scene sync, long tasks, dropped frames, and sidebar row virtualization\n- Optimized source sidebar feed search allocation churn for large RSS collections\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

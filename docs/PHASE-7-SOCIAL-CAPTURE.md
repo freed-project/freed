@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, shared memory-preflight backoff, Facebook group controls, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, explicit reply links with opt-in beta inline hydration for X, Facebook, and Instagram reader posts, captured authors now feeding the Phase 8 account catalog for identity review, and a local permanent media vault for a user's own Meta media
+> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, shared memory-preflight backoff, transient memory-pressure health recovery, memory-aware scrape pass planning, cloud-sync exclusion while social scrapes are active, Facebook group controls with stored-name repair, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, explicit reply links with opt-in beta inline hydration for X, Facebook, and Instagram reader posts, captured authors now feeding the Phase 8 account catalog for identity review, and a local permanent media vault for a user's own Meta media
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -109,7 +109,11 @@ Story replies are treated differently from post comments. Facebook and Instagram
 
 Background scrape and auth-check sessions now force provider media elements silent through the injected WebKit mask layer. Audio elements are paused outright, video elements are forced muted, and newly inserted media is re-silenced as the DOM changes.
 
-Social memory preflight now has shared backoff across Facebook, Instagram, and LinkedIn. When one provider cannot start because Freed Desktop memory is high after cleanup, the next providers reuse that deferred result instead of immediately opening more WebKit work.
+Social memory preflight now has shared backoff across Facebook, Instagram, and LinkedIn. When one provider cannot start because Freed Desktop memory is high after cleanup, the next providers reuse that deferred result instead of immediately opening more WebKit work. High-memory Freed Desktop installs now get larger adaptive scrape budgets, and low-priority semantic enrichment waits through launch so Facebook and Instagram scraping does not lose the first background window to Automerge maintenance.
+
+Provider health now treats memory-pressure preflight blocks as transient deferrals instead of durable provider failures. The attempts stay in local diagnostics for review, but after the recovery window they stop driving sidebar warnings or stale source-menu copy.
+
+Facebook and Instagram feed scrapes now build a memory-aware pass plan after the WebView has loaded. When memory is healthy they keep the normal randomized session. When Freed Desktop is close to the scrape budget, they skip story collection and reduce scroll passes instead of opening a full story-plus-feed session that is likely to pause or trigger memory recovery. Each plan is written to runtime health diagnostics with the provider, pass range, story decision, margin, and memory budgets.
 
 ### Permanent Media Archive
 
@@ -122,6 +126,12 @@ Historical completeness comes from Meta export import. The importer accepts Acco
 Recent coverage is continuous. After Facebook or Instagram sync stores captured items, Freed records roster metadata and attempts to archive recent own-account media when the provider archive is enabled and the user's handle is known. The archive dedupes by content hash, source URL, provider media ID, and normalized media URL, records bounded retry state for failed downloads, and never prunes permanent media.
 
 Profile backfill is user-started and visible in settings. The current implementation backfills media already captured from the user's own provider identity and marks those files with the profile-backfill import source. Direct historical own-profile DOM crawling remains selector-sensitive and should stay slower, resumable, and separately smoke-tested before we claim full coverage beyond Meta export import.
+
+### Story Wall beta
+
+Freed Desktop now has a Story Wall settings section for owner-controlled memory publishing. It sits under a dedicated Beta settings group with AI, and stays out of the primary app sidebar while the feature is still early. The wall starts from existing Freed history, guides the user through Instagram Accounts Center ZIP export before import, can import those exports into the local media vault, and keeps the synced wall config small in `preferences.storyWall`. Media binaries stay in the device-local vault until a publish run writes static assets to the target. The settings section uses shared theme panels, inputs, and buttons, stays gated until the user enables Story Wall, and only previews media-backed memories from real Freed history or imported archives.
+
+The first publisher target is GitHub Pages. The desktop publisher creates or reuses a user-owned repo, writes a static site under `/docs`, includes `index.html`, `embed.js`, `data/story-wall.json`, `.nojekyll`, and vault assets, then commits through Git blobs, trees, commits, and refs. The UI exposes manual publish now with privacy review copy. GitHub OAuth and automatic settle-window publishing remain follow-up work.
 
 ---
 
@@ -168,6 +178,7 @@ const RATE_LIMITS = {
 | 7.19 | Reader reply hydration for X posts          | ✓ Complete  |
 | 7.20 | Explicit reply links and opt-in beta inline hydration for reader posts | ✓ Complete |
 | 7.21 | Shared social memory-preflight backoff      | ✓ Complete  |
+| 7.22 | Story Wall grouped settings section and GitHub Pages publisher | 🚧 In Progress |
 
 ---
 
@@ -184,6 +195,7 @@ const RATE_LIMITS = {
 - [x] Settings UI for both platforms (login, check connection, sync, disconnect), with the same provider section also reused inside Debug panel health cards
 - [x] Feed pollution filtering blocks promoted X entries and suggested FB/IG posts
 - [x] Facebook Settings includes per-group include/exclude controls for joined groups inside a filtered inner scroller that prevents late group loads from shifting the outer Settings view
+- [x] Facebook group discovery rejects activity-only labels and numeric ID fallbacks, preserves good stored names, repairs missing stored names from already captured group posts during normal sync, and keeps joined-groups refresh behind explicit provider-risk confirmation
 - [x] Desktop Sources settings expose per-source scraper window modes: shown, cloaked, hidden
 - [x] Background FB and IG scraper WebViews force provider media silent during scrape and auth-check flows
 - [x] Social providers surface paused/degraded health summaries in settings and the sidebar source surfaces
@@ -195,6 +207,9 @@ const RATE_LIMITS = {
 - [x] Social provider sections include a filtered line-by-line scrape log so users can see what the scraper is doing in real time without expanding the outer Settings view
 - [x] Desktop social scraper commands serialize behind a shared native session lock so background WebKit jobs cannot overlap and starve the main renderer
 - [x] Social memory preflight blocks fan-out across providers when Freed Desktop memory remains high after cleanup
+- [x] Memory-pressure preflight deferrals stay in diagnostics but age out of the current sidebar and source-menu warning state
+- [x] Facebook and Instagram feed scrapes now register with the shared background runtime so cloud sync, content fetches, RSS polls, snapshots, outbox drains, and semantic classifiers do not compete with active WebKit scraping
+- [x] Social scrape memory preflight uses adaptive high-memory budgets, native hidden-window runtime samples, and launch-delayed semantic enrichment so provider WebKit sessions get priority during long background runs
 - [x] Facebook, Instagram, and LinkedIn extractors expand common long-text controls before normalization
 - [x] Social provider source menus surface a quick status explanation for warning or reconnect states before routing into full settings
 - [x] Captured social authors can backfill the Phase 8 account catalog so followed accounts exist before identity confirmation
@@ -207,6 +222,11 @@ const RATE_LIMITS = {
 - [x] Permanent media archive state stays outside Automerge and is not synced
 - [x] Continuous backup archives recent own-account media after provider sync when the account handle is known
 - [x] Facebook roster planning keeps group ID, name, and URL in the local archive manifest
+- [x] Story Wall beta preferences store selected years, source filters, layout, style, embed, publish target, hidden memories, and featured memories without syncing media binaries
+- [x] Story Wall settings section lives under the Beta settings group, stays hidden behind an enable gate, previews media-backed Freed history, applies style controls live, and imports Instagram archive ZIPs through the permanent media vault after an export guidance modal
+- [x] Story Wall beta GitHub Pages publisher generates a static destination with `index.html`, `embed.js`, static JSON, `.nojekyll`, and committed vault assets
+- [ ] Story Wall beta automatic publishing runs after capture settles with capped randomized backoff
+- [ ] Story Wall beta GitHub connector uses a GitHub App or scoped OAuth flow instead of manual token entry
 - [ ] Facebook feed posts validated against real account (selector tuning)
 - [ ] Instagram feed posts validated against real account (selector tuning)
 - [ ] Direct own-profile crawler validated against saved Facebook profile, Instagram grid, reels, albums, and media-page DOM fixtures

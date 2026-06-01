@@ -1,0 +1,62 @@
+{
+  "tag": "v26.5.803-dev",
+  "version": "26.5.803-dev",
+  "channel": "dev",
+  "dayKey": "26.5.8",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-08T20:26:02.875Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.801-dev",
+    "previousPublishedDayTag": "v26.5.705-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.800-dev",
+      "v26.5.801-dev",
+      "v26.5.803-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.800-dev",
+      "v26.5.801-dev",
+      "v26.5.803-dev"
+    ],
+    "prNumbers": [
+      531,
+      532,
+      533,
+      534,
+      535
+    ],
+    "commitSubjects": [
+      "fix: guard map marker handoff race (#535)",
+      "perf: classify hidden renderer timer throttling (#534)",
+      "release: approve v26.5.802-dev notes",
+      "release: v26.5.802-dev",
+      "perf: isolate dense map marker paint (#533)",
+      "release: approve v26.5.801-dev notes",
+      "release: v26.5.801-dev",
+      "perf: cull dense friends graph during interaction (#532)",
+      "release: approve v26.5.800-dev notes",
+      "release: v26.5.800-dev",
+      "perf: bound runtime health log retention (#531)"
+    ]
+  },
+  "release": {
+    "deck": "Map handoff crash guard, hidden renderer heartbeat telemetry, and dense Friends and Map performance fixes.",
+    "features": [],
+    "fixes": [
+      "Guard the Friends last-seen to Map handoff so stale MapLibre marker work cannot crash the app during view changes.",
+      "Classify hidden renderer timer throttling separately from foreground event-loop lag so soak metrics stop blaming macOS background timer behavior for app jank.",
+      "Isolate dense Map marker paint so large Map views do less layout and paint work during active zoom and pan.",
+      "Cull the dense Friends graph interaction layer at the 1,600-person scale so active pan and zoom draws only the viewport-near capped set while the full dense graph returns after interaction settles.",
+      "Keep runtime health telemetry bounded so renderer heartbeat and memory diagnostics stay useful without unbounded log growth.",
+      "Friends graph interaction culling and Bound runtime health log retention.",
+      "Runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.803-dev\n\nMap handoff crash guard, hidden renderer heartbeat telemetry, and dense Friends and Map performance fixes.\n\n### Fixes\n\n- Guard the Friends last-seen to Map handoff so stale MapLibre marker work cannot crash the app during view changes.\n- Classify hidden renderer timer throttling separately from foreground event-loop lag so soak metrics stop blaming macOS background timer behavior for app jank.\n- Isolate dense Map marker paint so large Map views do less layout and paint work during active zoom and pan.\n- Cull the dense Friends graph interaction layer at the 1,600-person scale so active pan and zoom draws only the viewport-near capped set while the full dense graph returns after interaction settles.\n- Keep runtime health telemetry bounded so renderer heartbeat and memory diagnostics stay useful without unbounded log growth.\n- Friends graph interaction culling and Bound runtime health log retention.\n- Runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

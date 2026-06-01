@@ -19,6 +19,7 @@ import {
   addAccount,
   addAccounts,
   backfillContentSignals,
+  clearSampleData,
   countContentSignalBackfillItems,
   addFeedItem,
   hasLegacyIdentityGraphData,
@@ -415,6 +416,15 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         await applyChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item", true);
         ack(req.reqId);
         break;
+
+      case "CLEAR_SAMPLE_DATA": {
+        let summary = { feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 };
+        await applyChange((doc) => {
+          summary = clearSampleData(doc);
+        }, "Clear sample data", true);
+        send({ reqId: req.reqId, type: "SAMPLE_DATA_CLEAR_RESULT", summary });
+        break;
+      }
 
       case "UPDATE_FEED_ITEM":
         await applyChange(

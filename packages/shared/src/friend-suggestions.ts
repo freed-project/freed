@@ -10,6 +10,7 @@ import type {
   IdentitySuggestion,
   Person,
 } from "./types.js";
+import { isValidDiscoveredSocialAccount } from "./social-account-validity.js";
 
 export interface BuildFriendCandidateSuggestionsInput {
   persons: Person[] | Record<string, Person>;
@@ -349,7 +350,9 @@ export function buildFriendCandidateSuggestions({
     for (const accountId of suggestion.accountIds) contactAccountIds.add(accountId);
   }
 
-  const socialAccounts = Object.values(accounts).filter((account) => account.kind === "social");
+  const socialAccounts = Object.values(accounts).filter((account) =>
+    account.kind === "social" && isValidDiscoveredSocialAccount(account)
+  );
   const accountsByPerson = new Map<string, Account[]>();
   for (const account of socialAccounts) {
     if (!account.personId) continue;

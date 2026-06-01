@@ -1,0 +1,38 @@
+{
+  "tag": "v26.5.1200-dev",
+  "version": "26.5.1200-dev",
+  "channel": "dev",
+  "dayKey": "26.5.12",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-12T19:10:13.374Z",
+  "model": "manual",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.1112-dev",
+    "previousPublishedDayTag": "v26.5.1112-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.1200-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.1200-dev"
+    ],
+    "prNumbers": [
+      598
+    ],
+    "commitSubjects": [
+      "perf: smooth dense friends graph interactions (#598)"
+    ]
+  },
+  "release": {
+    "deck": "Dense Friends graph motion stays lighter",
+    "features": [],
+    "fixes": [
+      "Keep large relationship graphs on a smaller 96-node paint layer during active motion before refreshing viewport detail"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1200-dev\n\nDense Friends graph motion stays lighter\n\n### Fixes\n\n- Keep large relationship graphs on a smaller 96-node paint layer during active motion before refreshing viewport detail\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

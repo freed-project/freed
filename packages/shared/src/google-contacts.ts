@@ -76,7 +76,8 @@ export async function fetchGoogleContactsWithPageFetcher(
     baseParams.set("requestSyncToken", "true");
   }
 
-  const allRaw: NonNullable<GoogleContactsConnectionsResponse["connections"]> = [];
+  const contacts: GoogleContact[] = [];
+  const deleted: string[] = [];
   let nextSyncToken = "";
   let pageToken: string | undefined;
 
@@ -85,7 +86,13 @@ export async function fetchGoogleContactsWithPageFetcher(
       const params = new URLSearchParams(baseParams);
       if (pageToken) params.set("pageToken", pageToken);
       const page = await pageFetcher(accessToken, params);
-      allRaw.push(...(page.connections ?? []));
+      for (const raw of page.connections ?? []) {
+        if (raw.metadata?.deleted) {
+          deleted.push(raw.resourceName);
+        } else {
+          contacts.push(parseContact(raw));
+        }
+      }
       nextSyncToken = page.nextSyncToken ?? nextSyncToken;
       pageToken = page.nextPageToken;
     } while (pageToken);
@@ -101,17 +108,6 @@ export async function fetchGoogleContactsWithPageFetcher(
       return fetchGoogleContactsWithPageFetcher(accessToken, null, pageFetcher);
     }
     throw err;
-  }
-
-  const contacts: GoogleContact[] = [];
-  const deleted: string[] = [];
-
-  for (const raw of allRaw) {
-    if (raw.metadata?.deleted) {
-      deleted.push(raw.resourceName);
-    } else {
-      contacts.push(parseContact(raw));
-    }
   }
 
   return { contacts, nextSyncToken, deleted };

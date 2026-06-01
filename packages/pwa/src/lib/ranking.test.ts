@@ -380,6 +380,34 @@ describe("filterFeedItems", () => {
     ).toEqual(["rob-archived"]);
   });
 
+  it("filters RSS source views by feed URL", () => {
+    const feedItems: FeedItem[] = [
+      makeItem({
+        globalId: "feed-a",
+        platform: "rss",
+        rssSource: {
+          feedUrl: "https://bench.example/a.xml",
+          feedTitle: "A",
+          siteUrl: "https://bench.example/a",
+        },
+      }),
+      makeItem({
+        globalId: "feed-b",
+        platform: "rss",
+        rssSource: {
+          feedUrl: "https://bench.example/b.xml",
+          feedTitle: "B",
+          siteUrl: "https://bench.example/b",
+        },
+      }),
+      makeItem({ globalId: "social", platform: "x" }),
+    ];
+
+    expect(
+      filterFeedItems(feedItems, { feedUrl: "https://bench.example/a.xml" }).map((item) => item.globalId),
+    ).toEqual(["feed-a"]);
+  });
+
   it("filters to saved only", () => {
     const result = filterFeedItems(items, { savedOnly: true });
     expect(result.every((i) => i.userState.saved)).toBe(true);

@@ -1,0 +1,19 @@
+{
+  "channel": "dev",
+  "dayKey": "26.5.13",
+  "date": "2026-05-13",
+  "preferredDeck": "Lighter location rendering",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Dense Map movement now keeps only the active marker budget attached while pan or zoom is in progress.",
+    "The Map performance guard now checks attached marker count during movement."
+  ],
+  "editorialNotes": [
+    "v26.5.1300-dev is the first May 13 dev build and follows v26.5.1201-dev."
+  ],
+  "updatedAt": "2026-05-13T15:48:02.373Z"
+}

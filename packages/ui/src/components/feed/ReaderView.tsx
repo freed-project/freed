@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { formatDistanceToNow } from "date-fns";
-import type { FeedItem as FeedItemType } from "@freed/shared";
+import type { FeedItem as FeedItemType, FocusOptions } from "@freed/shared";
 import {
   useAppStore,
   usePlatform,
@@ -8,7 +8,6 @@ import {
   type ReaderHydrationResult,
   type ReaderThreadReply,
 } from "../../context/PlatformContext.js";
-import { applyFocusMode, type FocusOptions } from "@freed/shared";
 import { cacheArticleHtml, warmArticleImageCache } from "../../lib/article-cache.js";
 import {
   getReaderOfflineCacheMode,
@@ -20,6 +19,7 @@ import {
 } from "../../lib/native-drag-region.js";
 import { Tooltip } from "../Tooltip.js";
 import { ExternalLinkIcon, TrashIcon } from "../icons.js";
+import { FocusText } from "./FocusText.js";
 
 interface ReaderViewProps {
   item: FeedItemType;
@@ -295,6 +295,7 @@ export function ReaderView({
       const cacheMode = getReaderOfflineCacheMode();
       const shouldPin = item.userState.saved || shouldPinOpenedReaderItem(cacheMode);
       let hasReaderContent = false;
+      let readerContentSource: ContentSource = null;
 
       setIsLoading(true);
       setIsCaching(false);
@@ -320,6 +321,7 @@ export function ReaderView({
           setContentSource("cache");
           setIsLoading(false);
           hasReaderContent = true;
+          readerContentSource = "cache";
         }
       } else if (articleUrl && "caches" in window) {
         try {
@@ -332,6 +334,7 @@ export function ReaderView({
               setContentSource("cache");
               setIsLoading(false);
               hasReaderContent = true;
+              readerContentSource = "cache";
             }
           }
         } catch {
@@ -356,12 +359,18 @@ export function ReaderView({
           setContentSource("text");
           setIsLoading(false);
           hasReaderContent = true;
+          readerContentSource = "text";
         }
       }
 
       // Layer 3: platform hydration. Desktop uses native fetch or authenticated
       // provider paths here, so reader failures are not confused with CORS.
-      if (hydrateReaderItem && navigator.onLine) {
+      const shouldHydrateLive =
+        Boolean(hydrateReaderItem) &&
+        navigator.onLine &&
+        (!hasReaderContent || (readerContentSource !== "cache" && shouldPin));
+
+      if (shouldHydrateLive && hydrateReaderItem) {
         setIsCaching(true);
         try {
           const hydrated = await hydrateReaderItem(item, { cacheMode, pin: shouldPin });
@@ -1189,25 +1198,6 @@ function inferMediaType(url: string): "image" | "video" | "link" {
 function formatMetric(value: number | undefined, label: string): string | null {
   if (typeof value !== "number" || value <= 0) return null;
   return `${value.toLocaleString()} ${label}`;
-}
-
-// ─── Focus text renderer ─────────────────────────────────────────────────────
-//
-// Renders text with focus-mode bolding on word beginnings. Each segment becomes
-// a React element (no dangerouslySetInnerHTML). The segments are memoized so
-// the element array is only rebuilt when text or options change.
-
-function FocusText({ text, options }: { text: string; options: FocusOptions }) {
-  const elements = useMemo(() => {
-    const segments = applyFocusMode(text, options);
-    return segments.map((seg, i) =>
-      seg.emphasis
-        ? <strong key={i} className="font-bold text-[var(--theme-text-primary)]">{seg.text}</strong>
-        : <span key={i}>{seg.text}</span>,
-    );
-  }, [text, options]);
-
-  return <div>{elements}</div>;
 }
 
 // ─── Live fetch helper ───────────────────────────────────────────────────────

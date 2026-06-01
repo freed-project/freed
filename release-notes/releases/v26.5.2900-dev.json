@@ -1,0 +1,43 @@
+{
+  "tag": "v26.5.2900-dev",
+  "version": "26.5.2900-dev",
+  "channel": "dev",
+  "dayKey": "26.5.29",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-30T04:47:42.424Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.2700-dev",
+    "previousPublishedDayTag": "v26.5.2700-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.2900-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.2900-dev"
+    ],
+    "prNumbers": [
+      379,
+      606
+    ],
+    "commitSubjects": [
+      "fix: route desktop Google OAuth through proxy (#606)",
+      "fix: lighten focus mode emphasis (#379)"
+    ]
+  },
+  "release": {
+    "deck": "Google sign-in and interaction polish",
+    "features": [],
+    "fixes": [
+      "Freed Desktop now routes Google Drive and Google Contacts token exchange through the server proxy, keeping the Google client secret out of the app bundle while allowing the desktop OAuth client to connect.",
+      "The dev release workflow now forces the Google proxy path and includes a guard that prevents direct Google token exchange from shipping again.",
+      "Focus mode now uses lighter emphasis so the active reading surface feels calmer.",
+      "Friends graph pinning stays intentional: dense friends graph interactions no longer create accidental pinned states when the graph is already heavily populated."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.2900-dev\n\nGoogle sign-in and interaction polish\n\n### Fixes\n\n- Freed Desktop now routes Google Drive and Google Contacts token exchange through the server proxy, keeping the Google client secret out of the app bundle while allowing the desktop OAuth client to connect.\n- The dev release workflow now forces the Google proxy path and includes a guard that prevents direct Google token exchange from shipping again.\n- Focus mode now uses lighter emphasis so the active reading surface feels calmer.\n- Friends graph pinning stays intentional: dense friends graph interactions no longer create accidental pinned states when the graph is already heavily populated.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

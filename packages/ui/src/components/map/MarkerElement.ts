@@ -73,6 +73,7 @@ export function createMarkerElement(
   }
   el.style.cssText = [
     "position:absolute",
+    "contain:layout paint style",
     "transform-origin:center center",
   ].join(";");
 

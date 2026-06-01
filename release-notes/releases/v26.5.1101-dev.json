@@ -1,0 +1,54 @@
+{
+  "tag": "v26.5.1101-dev",
+  "version": "26.5.1101-dev",
+  "channel": "dev",
+  "dayKey": "26.5.11",
+  "approved": true,
+  "editorialNotes": [
+    "Approved after the dense Map movement paint fix landed. This replacement preserves the v26.5.1100 same-day rollup and adds the Map 1,600-author perf guard improvement."
+  ],
+  "generatedAt": "2026-05-11T10:27:25.706Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.1100-dev",
+    "previousPublishedDayTag": "v26.5.1015-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.1100-dev",
+      "v26.5.1101-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.1100-dev",
+      "v26.5.1101-dev"
+    ],
+    "prNumbers": [
+      583,
+      584,
+      585
+    ],
+    "commitSubjects": [
+      "perf: reduce dense map movement paint (#585)",
+      "release: approve v26.5.1100-dev notes",
+      "release: v26.5.1100-dev",
+      "fix: stabilize friends map handoff (#584)",
+      "release: approve v26.5.1016-dev notes",
+      "release: v26.5.1016-dev",
+      "perf: reduce settings scroll overdraw (#583)"
+    ]
+  },
+  "release": {
+    "deck": "Friends navigation and dense Map movement get steadier",
+    "features": [],
+    "fixes": [
+      "Retries the Friends last-seen route commit when the store reaches Map before the full Map surface mounts",
+      "Paints fewer primary markers during dense Map pan and zoom movement"
+    ],
+    "followUps": [
+      "Continue monitoring Friends to Map handoffs and dense Map movement under installed dev builds",
+      "Friends navigation recovers from late Map mounting"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1101-dev\n\nFriends navigation and dense Map movement get steadier\n\n### Fixes\n\n- Retries the Friends last-seen route commit when the store reaches Map before the full Map surface mounts\n- Paints fewer primary markers during dense Map pan and zoom movement\n\n### Follow-ups\n\n- Continue monitoring Friends to Map handoffs and dense Map movement under installed dev builds\n- Friends navigation recovers from late Map mounting\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

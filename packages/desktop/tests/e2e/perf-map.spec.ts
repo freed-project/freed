@@ -7,7 +7,8 @@ const MAP_MOUNT_BUDGET_MS = process.env.CI ? 4_500 : 1_500;
 const MAP_FRAME_P95_BUDGET_MS = process.env.CI ? 67 : 50;
 const MAP_DROPPED_FRAME_BUDGET = process.env.CI ? 40 : 12;
 const MAP_LONG_TASK_COUNT_BUDGET = process.env.CI ? 4 : 2;
-const MAP_MARKER_DOM_BUDGET = 240;
+const MAP_MARKER_DOM_BUDGET = 160;
+const MAP_MOVING_MARKER_PAINT_BUDGET = 24;
 
 async function seedLargeMapWorkspace(page: Page): Promise<void> {
   await page.evaluate(async ({ authorCount, itemCount }) => {
@@ -131,6 +132,13 @@ async function collectLongTasksDuring<T>(
 
 test("Map view handles 1,600 visible location authors within frame budget", async ({ app, page }) => {
   test.setTimeout(90_000);
+  await page.addInitScript(() => {
+    (
+      window as Window & {
+        __FREED_E2E_MAP_TIME_REFRESH_MS__?: number;
+      }
+    ).__FREED_E2E_MAP_TIME_REFRESH_MS__ = 120;
+  });
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -177,10 +185,34 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
 
   const mountElapsed = Date.now() - mountStartedAt;
   const markerCount = await page.locator(".freed-map-marker").count();
+  const movingPrimaryMarkerCount = await page.locator('.freed-map-marker[data-map-moving-priority="primary"]').count();
+  const movingDeferredMarkerCount = await page.locator('.freed-map-marker[data-map-moving-priority="deferred"]').count();
   const totalMarkerCount = await page.getByTestId("map-surface").evaluate((element) =>
     Number.parseInt(element.getAttribute("data-map-total-markers") ?? "0", 10),
   );
+  await page.locator(".freed-map-marker").evaluateAll((elements) => {
+    elements.forEach((element, index) => {
+      element.setAttribute("data-marker-stability-token", `marker-${index}`);
+    });
+  });
+  await page.waitForTimeout(360);
+  const retainedMarkerCount = await page.locator(".freed-map-marker[data-marker-stability-token]").count();
   const domNodeCount = await page.evaluate(() => document.querySelectorAll("*").length);
+  await page.mouse.move(720, 450);
+  await page.mouse.wheel(0, 600);
+  await expect
+    .poll(async () => page.getByTestId("map-surface").getAttribute("data-map-moving"), { timeout: 1_000 })
+    .toBe("true");
+  const movingVisibleMarkerCount = await page.getByTestId("map-surface").evaluate((element) =>
+    Array.from(element.querySelectorAll<HTMLElement>(".freed-map-marker"))
+      .filter((marker) => window.getComputedStyle(marker).display !== "none")
+      .length,
+  );
+  const movingAttachedMarkerCount = await page.locator(".freed-map-marker").count();
+  await expect
+    .poll(async () => page.getByTestId("map-surface").getAttribute("data-map-moving"), { timeout: 2_000 })
+    .toBe("false");
+  const restoredMarkerCount = await page.locator(".freed-map-marker").count();
 
   const interaction = await collectLongTasksDuring(page, () =>
     measureFps(page, async () => {
@@ -188,7 +220,7 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
       await page.waitForTimeout(180);
       await page.mouse.wheel(0, -900);
       await page.waitForTimeout(180);
-      const marker = page.locator(".freed-map-marker").nth(Math.floor(MAP_MARKER_DOM_BUDGET / 2));
+      const marker = page.locator(".freed-map-marker").nth(Math.floor(MAP_MOVING_MARKER_PAINT_BUDGET / 2));
       await marker.click({ force: true });
       await page.waitForTimeout(220);
     }),
@@ -196,6 +228,12 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
 
   console.log(`[PERF] Map mount: ${mountElapsed.toLocaleString()} ms`);
   console.log(`[PERF] Map marker DOM count: ${markerCount.toLocaleString()}`);
+  console.log(`[PERF] Map moving primary markers: ${movingPrimaryMarkerCount.toLocaleString()}`);
+  console.log(`[PERF] Map moving deferred markers: ${movingDeferredMarkerCount.toLocaleString()}`);
+  console.log(`[PERF] Map visible markers while moving: ${movingVisibleMarkerCount.toLocaleString()}`);
+  console.log(`[PERF] Map attached markers while moving: ${movingAttachedMarkerCount.toLocaleString()}`);
+  console.log(`[PERF] Map restored markers after moving: ${restoredMarkerCount.toLocaleString()}`);
+  console.log(`[PERF] Map stable markers after timer refresh: ${retainedMarkerCount.toLocaleString()}`);
   console.log(`[PERF] Map total markers: ${totalMarkerCount.toLocaleString()}`);
   console.log(`[PERF] Map DOM nodes: ${domNodeCount.toLocaleString()}`);
   console.log(`[PERF] Map interaction FPS: ${interaction.result.fps.toLocaleString()}`);
@@ -207,6 +245,12 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
   expect(mountElapsed).toBeLessThan(MAP_MOUNT_BUDGET_MS);
   expect(totalMarkerCount).toBe(MAP_AUTHOR_COUNT);
   expect(markerCount).toBeLessThanOrEqual(MAP_MARKER_DOM_BUDGET);
+  expect(retainedMarkerCount).toBe(markerCount);
+  expect(movingPrimaryMarkerCount).toBeLessThanOrEqual(MAP_MOVING_MARKER_PAINT_BUDGET);
+  expect(movingPrimaryMarkerCount + movingDeferredMarkerCount).toBe(markerCount);
+  expect(movingVisibleMarkerCount).toBeLessThanOrEqual(MAP_MOVING_MARKER_PAINT_BUDGET);
+  expect(movingAttachedMarkerCount).toBeLessThanOrEqual(MAP_MOVING_MARKER_PAINT_BUDGET);
+  expect(restoredMarkerCount).toBe(markerCount);
   expect(interaction.result.p95Ms).toBeLessThan(MAP_FRAME_P95_BUDGET_MS);
   expect(interaction.result.droppedFrames).toBeLessThanOrEqual(MAP_DROPPED_FRAME_BUDGET);
   expect(interaction.count).toBeLessThanOrEqual(MAP_LONG_TASK_COUNT_BUDGET);

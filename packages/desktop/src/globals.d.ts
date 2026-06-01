@@ -16,6 +16,8 @@ declare global {
     readonly VITE_GDRIVE_DESKTOP_CLIENT_ID: string;
     /** Optional server token exchange proxy for Google web OAuth clients. */
     readonly VITE_GDRIVE_TOKEN_PROXY_URL: string;
+    /** Force Google token exchange through the configured server proxy. */
+    readonly VITE_GDRIVE_FORCE_TOKEN_PROXY: string;
     /** Dropbox OAuth app key for the desktop app. */
     readonly VITE_DROPBOX_CLIENT_ID: string;
     /**

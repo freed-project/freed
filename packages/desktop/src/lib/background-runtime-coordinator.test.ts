@@ -85,6 +85,34 @@ describe("background runtime coordinator", () => {
     ).resolves.toBe("ok");
   });
 
+  it("keeps cloud sync behind active social scrapes", async () => {
+    const coordinator = await loadCoordinator();
+    coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: true });
+    coordinator.noteRendererHeartbeat(heartbeat(1));
+    coordinator.noteRendererHeartbeat(heartbeat(2));
+
+    let releaseScrape: () => void = () => {};
+    const scrape = coordinator.runBackgroundJob({
+      kind: "social-scrape",
+      source: "facebook:feed",
+      run: () => new Promise<void>((resolve) => {
+        releaseScrape = resolve;
+      }),
+    });
+
+    await Promise.resolve();
+    await expect(
+      coordinator.runBackgroundJob({
+        kind: "cloud-sync",
+        source: "cloud:gdrive",
+        run: () => undefined,
+      }),
+    ).rejects.toMatchObject({ reason: "active:social-scrape:facebook:feed" });
+
+    releaseScrape();
+    await scrape;
+  });
+
   it("pauses jobs during memory pressure cooldown", async () => {
     vi.useFakeTimers();
     const coordinator = await loadCoordinator();

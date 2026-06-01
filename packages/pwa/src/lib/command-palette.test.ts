@@ -3,9 +3,10 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { create } from "zustand";
-import type { Account, BaseAppState, FeedItem, FilterOptions, Person } from "@freed/shared";
+import { createDefaultPreferences, type Account, type BaseAppState, type FeedItem, type FilterOptions, type Person } from "@freed/shared";
 import type { PlatformConfig } from "../../../ui/src/context/PlatformContext.tsx";
 import { PlatformProvider } from "../../../ui/src/context/PlatformContext.tsx";
+import { SettingsDialog } from "../../../ui/src/components/SettingsDialog.tsx";
 import { AppShell } from "../../../ui/src/components/layout/AppShell.tsx";
 import { SearchJumpField } from "../../../ui/src/components/layout/SearchJumpField.tsx";
 import {
@@ -91,20 +92,7 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
     persons: overrides.persons ?? {},
     accounts: overrides.accounts ?? {},
     friends: overrides.friends ?? {},
-    preferences: overrides.preferences ?? ({
-      display: {
-        themeId: "midas",
-        reading: {
-          dualColumnMode: false,
-          focusMode: false,
-        },
-        archivePruneDays: 30,
-        sidebarMode: "expanded",
-        friendsMode: "all_content",
-        mapMode: "friends",
-        mapTimeMode: "current",
-      },
-    } as BaseAppState["preferences"]),
+    preferences: overrides.preferences ?? createDefaultPreferences(),
     feedUnreadCounts: overrides.feedUnreadCounts ?? {},
     feedTotalCounts: overrides.feedTotalCounts ?? {},
     totalUnreadCount: overrides.totalUnreadCount ?? 0,
@@ -200,6 +188,9 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
         }));
       }),
     removeItem: overrides.removeItem ?? noopAsync,
+    clearSampleData:
+      overrides.clearSampleData
+      ?? (async () => ({ feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 })),
     toggleLiked:
       overrides.toggleLiked
       ?? (async (id: string) => {
@@ -247,7 +238,17 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
     searchQuery: overrides.searchQuery ?? "",
     setSearchQuery: overrides.setSearchQuery ?? ((query: string) => set({ searchQuery: query })),
     activeView: overrides.activeView ?? "feed",
-    setActiveView: overrides.setActiveView ?? ((view: "feed" | "friends" | "map") => set({ activeView: view })),
+    setActiveView: overrides.setActiveView ?? ((view: "feed" | "friends" | "map" | "storyWall") => set({ activeView: view })),
+    openMapForPerson:
+      overrides.openMapForPerson
+      ?? ((personId: string) =>
+        set({
+          activeView: "map",
+          selectedPersonId: personId,
+          selectedAccountId: null,
+          selectedFriendId: personId,
+          selectedItemId: null,
+        })),
     pendingMatchCount: 0,
     setPendingMatchCount: noop,
   }));
@@ -654,6 +655,77 @@ describe("command palette", () => {
       platform: "rss",
       feedUrl: "https://alpha.example/feed.xml",
     });
+  });
+
+  it("omits AI settings from the search palette when the platform cannot manage AI", async () => {
+    const store = createTestStore();
+    const platform = createPlatform(store);
+    const render = renderNode(
+      createElement(
+        PlatformProvider,
+        { value: platform, children: createElement(SearchJumpField) },
+      ),
+    );
+    cleanups.push(render.cleanup);
+    await flush();
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
+    await flush();
+    changeInput(input!, "ai");
+    await flush();
+
+    const aiSettingsAction = document.querySelector("[data-testid='search-command-action-go-settings-ai']");
+    expect(aiSettingsAction).toBeNull();
+    expect(document.body.textContent).not.toContain("AI settings");
+  });
+
+  it("omits AI settings from the settings nav when the platform cannot manage AI", async () => {
+    const store = createTestStore();
+    const platform = createPlatform(store);
+    const render = renderNode(
+      createElement(
+        PlatformProvider,
+        {
+          value: platform,
+          children: createElement(SettingsDialog, { open: true, onClose: noop }),
+        },
+      ),
+    );
+    cleanups.push(render.cleanup);
+    await flush();
+
+    expect(document.querySelector('[data-section="ai"]')).toBeNull();
+    expect(Array.from(document.querySelectorAll("button")).some((button) => button.textContent === "AI")).toBe(false);
+  });
+
+  it("keeps AI settings in the search palette when the platform can manage AI", async () => {
+    const store = createTestStore();
+    const platform = createPlatform(store, {
+      secureStorage: {
+        getApiKey: async () => null,
+        setApiKey: noopAsync,
+        clearApiKey: noopAsync,
+      },
+    });
+    const render = renderNode(
+      createElement(
+        PlatformProvider,
+        { value: platform, children: createElement(SearchJumpField) },
+      ),
+    );
+    cleanups.push(render.cleanup);
+    await flush();
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
+    await flush();
+    changeInput(input!, "ai");
+    await flush();
+
+    expect(document.querySelector("[data-testid='search-command-action-go-settings-ai']")).not.toBeNull();
   });
 
   it("renders with malformed stored feed and account labels", async () => {

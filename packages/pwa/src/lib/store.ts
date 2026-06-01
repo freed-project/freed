@@ -34,6 +34,7 @@ import {
   docMarkAllAsRead,
   docToggleSaved,
   docRemoveFeedItem,
+  docClearSampleData,
   docToggleArchived,
   docArchiveItems,
   docToggleLiked,
@@ -308,6 +309,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     await docRemoveFeedItem(id);
   },
 
+  clearSampleData: async () => {
+    return docClearSampleData();
+  },
+
   // Feed actions
   addFeed: async (feed) => {
     await docAddRssFeed(feed);
@@ -460,5 +465,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   setError: (error) => set({ error }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setActiveView: (activeView) => set({ activeView }),
+  openMapForPerson: (personId) =>
+    set({
+      activeView: "map",
+      selectedPersonId: personId,
+      selectedAccountId: null,
+      selectedFriendId: personId,
+      selectedItemId: null,
+    }),
   setPendingMatchCount: (pendingMatchCount) => set({ pendingMatchCount }),
 }));
