@@ -29,6 +29,12 @@ import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-mon
 import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
 import { socialProviderCopy } from "./social-provider-copy";
 import { runBackgroundJob } from "./background-runtime-coordinator";
+import {
+  applyRuntimeDeferredDiag,
+  isRuntimeDeferredStage,
+  SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
+  SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
+} from "./social-capture-runtime";
 
 // =============================================================================
 // Rate Limiting
@@ -143,12 +149,17 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
       kind: "social-scrape",
       source: "instagram:feed",
       timeoutMs: 600_000,
+      waitForActiveJobMs: SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
+      waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
       run: () => invoke("ig_scrape_feed", { windowMode: getIgScraperWindowMode() }),
     });
 
     // Brief wait for any in-flight events to arrive after invoke resolves
     await new Promise<void>((r) => setTimeout(r, 500));
   } catch (err) {
+    if (applyRuntimeDeferredDiag(diag, err)) {
+      return { items: [], diag };
+    }
     diag.errorStage = "invoke";
     diag.errorMessage = err instanceof Error ? err.message : String(err);
     return { items: [], diag };
@@ -240,11 +251,17 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
   try {
     addDebugEvent("change", "[IG] sync started");
     const result = await fetchIgFeed();
-    recordScrape();
 
     if (result.diag.errorStage) {
-      const detail = `[IG] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
-      addDebugEvent("error", detail);
+      const runtimeDeferred = isRuntimeDeferredStage(result.diag.errorStage);
+      const detail = `[IG] sync ${runtimeDeferred ? "deferred" : "failed"} at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
+      addDebugEvent(runtimeDeferred ? "change" : "error", detail);
+      if (runtimeDeferred) {
+        return result;
+      }
+      if (result.diag.errorStage !== "memory_pressure") {
+        recordScrape();
+      }
       if (result.diag.errorStage !== "memory_pressure") {
         store.setError(result.diag.errorMessage ?? result.diag.errorStage);
         const errState = { ...useAppStore.getState().igAuth, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed" };
@@ -264,6 +281,7 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
       return result;
     }
 
+    recordScrape();
     if (result.items.length > 0) {
       addDebugEvent(
         "change",

@@ -44,6 +44,8 @@ export interface BackgroundRuntimeTask<T> {
   kind: BackgroundJobKind;
   source: string;
   timeoutMs?: number;
+  waitForActiveJobMs?: number;
+  waitForActiveJobKinds?: readonly BackgroundJobKind[];
   run: () => Promise<T> | T;
 }
 
@@ -64,6 +66,7 @@ let activeJob: {
   startedAt: number;
 } | null = null;
 let requireRendererHealth = import.meta.env.MODE !== "test";
+let activeJobWaiters: Array<() => void> = [];
 
 export class BackgroundRuntimeDeferredError extends Error {
   readonly reason: string;
@@ -83,6 +86,54 @@ export function isBackgroundRuntimeDeferredError(
 
 function nowMs(): number {
   return Date.now();
+}
+
+function isActiveJobReason(reason: string): boolean {
+  return reason.startsWith("active:");
+}
+
+function activeKindFromReason(reason: string): BackgroundJobKind | null {
+  if (!isActiveJobReason(reason)) return null;
+  const [, kind] = reason.split(":");
+  return (kind as BackgroundJobKind | undefined) ?? null;
+}
+
+function shouldWaitForActiveJob<T>(
+  task: BackgroundRuntimeTask<T>,
+  reason: string,
+): boolean {
+  if (!task.waitForActiveJobMs || task.waitForActiveJobMs <= 0) return false;
+  const activeKind = activeKindFromReason(reason);
+  if (!activeKind) return false;
+  return !task.waitForActiveJobKinds || task.waitForActiveJobKinds.includes(activeKind);
+}
+
+function notifyActiveJobWaiters(): void {
+  const waiters = activeJobWaiters;
+  activeJobWaiters = [];
+  for (const notify of waiters) {
+    notify();
+  }
+}
+
+function waitForActiveJobChange(timeoutMs: number): Promise<void> {
+  if (timeoutMs <= 0 || !activeJob) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    let done = false;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      activeJobWaiters = activeJobWaiters.filter((waiter) => waiter !== finish);
+      resolve();
+    };
+
+    activeJobWaiters.push(finish);
+    timeoutHandle = setTimeout(finish, timeoutMs);
+  });
 }
 
 function markCooldown(durationMs: number, reason: string): void {
@@ -190,7 +241,17 @@ export function canStartBackgroundJob(kind: BackgroundJobKind): { ok: true } | {
 }
 
 export async function runBackgroundJob<T>(task: BackgroundRuntimeTask<T>): Promise<T> {
-  const gate = canStartBackgroundJob(task.kind);
+  let gate = canStartBackgroundJob(task.kind);
+  if (!gate.ok && shouldWaitForActiveJob(task, gate.reason)) {
+    const deadline = nowMs() + (task.waitForActiveJobMs ?? 0);
+    while (!gate.ok && shouldWaitForActiveJob(task, gate.reason)) {
+      const remainingMs = deadline - nowMs();
+      if (remainingMs <= 0) break;
+      await waitForActiveJobChange(remainingMs);
+      gate = canStartBackgroundJob(task.kind);
+    }
+  }
+
   if (!gate.ok) {
     throw new BackgroundRuntimeDeferredError(gate.reason);
   }
@@ -219,6 +280,7 @@ export async function runBackgroundJob<T>(task: BackgroundRuntimeTask<T>): Promi
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
     activeJob = null;
+    notifyActiveJobWaiters();
   }
 }
 
@@ -230,5 +292,6 @@ export function resetBackgroundRuntimeForTests(options?: { requireRendererHealth
   lastRecoveryReason = null;
   pressureLevel = "normal";
   activeJob = null;
+  notifyActiveJobWaiters();
   requireRendererHealth = options?.requireRendererHealth ?? false;
 }

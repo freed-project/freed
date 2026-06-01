@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
+  const recordProviderHealthEvent = vi.fn();
   const storeState = {
     items: [] as Array<{ platform: string; globalId?: string }>,
     preferences: {},
@@ -48,6 +49,7 @@ const mocks = vi.hoisted(() => {
     invoke: vi.fn(),
     listen: vi.fn(),
     prepareSocialScrapeMemory: vi.fn(),
+    recordProviderHealthEvent,
     storeState,
     resetStoreState: () => {
       storeState.items = [];
@@ -62,6 +64,7 @@ const mocks = vi.hoisted(() => {
       storeState.setLiAuth.mockClear();
       storeState.addItems.mockClear();
       storeState.updatePreferences.mockClear();
+      recordProviderHealthEvent.mockClear();
     },
     fbPostsToFeedItems: vi.fn((posts: Array<{ id?: string }>) =>
       posts.map((post, index) => ({
@@ -113,7 +116,7 @@ vi.mock("./scraper-media-diag", () => ({
 
 vi.mock("./provider-health", () => ({
   getProviderPause: vi.fn(() => null),
-  recordProviderHealthEvent: vi.fn(),
+  recordProviderHealthEvent: mocks.recordProviderHealthEvent,
 }));
 
 vi.mock("./fb-auth", () => ({ storeFbAuthState: vi.fn() }));
@@ -367,6 +370,82 @@ describe("social capture completion", () => {
       lastCapturedAt: 123_456,
       lastCaptureError: expectedMessage,
     });
+  });
+
+  it("waits for local semantic indexing before invoking Instagram scrape", async () => {
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.invoke.mockResolvedValue(null);
+
+    const coordinator = await import("./background-runtime-coordinator");
+    coordinator.resetBackgroundRuntimeForTests();
+    let releaseSemantic: () => void = () => {};
+    const semantic = coordinator.runBackgroundJob({
+      kind: "semantic-classifier",
+      source: "content-signals",
+      run: () => new Promise<void>((resolve) => {
+        releaseSemantic = resolve;
+      }),
+    });
+
+    await Promise.resolve();
+    const { fetchIgFeed } = await import("./instagram-capture");
+    const resultPromise = fetchIgFeed();
+
+    await Promise.resolve();
+    expect(mocks.invoke).not.toHaveBeenCalledWith("ig_scrape_feed", expect.anything());
+
+    releaseSemantic();
+    await semantic;
+    const result = await resultPromise;
+
+    expect(result.diag.errorStage).toBeNull();
+    expect(mocks.invoke).toHaveBeenCalledWith("ig_scrape_feed", expect.anything());
+  });
+
+  it("does not poison Instagram health when a provider scrape is already active", async () => {
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockResolvedValue(vi.fn());
+
+    const coordinator = await import("./background-runtime-coordinator");
+    coordinator.resetBackgroundRuntimeForTests();
+    let releaseScrape: () => void = () => {};
+    const activeScrape = coordinator.runBackgroundJob({
+      kind: "social-scrape",
+      source: "facebook:feed",
+      run: () => new Promise<void>((resolve) => {
+        releaseScrape = resolve;
+      }),
+    });
+
+    await Promise.resolve();
+    const { captureIgFeed } = await import("./instagram-capture");
+    const result = await captureIgFeed();
+
+    expect(result.diag.errorStage).toBe("runtime_deferred");
+    expect(result.diag.errorMessage).toContain("local background work");
+    expect(mocks.invoke).not.toHaveBeenCalledWith("ig_scrape_feed", expect.anything());
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(null);
+    expect(mocks.storeState.setError).not.toHaveBeenCalledWith(
+      expect.stringContaining("background work"),
+    );
+    expect(mocks.storeState.setIgAuth).not.toHaveBeenCalled();
+    expect(mocks.recordProviderHealthEvent).not.toHaveBeenCalled();
+
+    releaseScrape();
+    await activeScrape;
   });
 });
 

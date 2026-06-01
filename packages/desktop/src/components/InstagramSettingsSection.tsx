@@ -42,6 +42,7 @@ import { withProviderSyncing } from "../lib/store";
 import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
 import { MediaVaultSettingsCard } from "./MediaVaultSettingsCard";
 import { socialProviderCopy } from "../lib/social-provider-copy";
+import { isRuntimeDeferredStage } from "../lib/social-capture-runtime";
 
 // =============================================================================
 // Diagnostic Panel
@@ -65,6 +66,7 @@ function DiagRow({ label, value, warn }: DiagRowProps) {
 }
 
 function IgDiagPanel({ diag }: { diag: IgSyncDiag }) {
+  const runtimeDeferred = isRuntimeDeferredStage(diag.errorStage);
   return (
     <details className="group">
       <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
@@ -96,8 +98,12 @@ function IgDiagPanel({ diag }: { diag: IgSyncDiag }) {
         />
 
         {diag.errorStage && (
-          <p className="text-red-400 pt-1 leading-relaxed">
-            Failed at{" "}
+          <p
+            className={`${
+              runtimeDeferred ? "text-[#a1a1aa]" : "text-red-400"
+            } pt-1 leading-relaxed`}
+          >
+            {runtimeDeferred ? "Deferred at" : "Failed at"}{" "}
             <span className="font-semibold">{diag.errorStage}</span>
             {diag.errorMessage ? `: ${diag.errorMessage}` : ""}
           </p>
