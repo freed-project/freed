@@ -356,7 +356,12 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
 
         if (error) {
           addDebugEvent("error", `[FB] extraction error: ${error}`);
-          diag.errorStage = "extract";
+          diag.errorStage =
+            strategy === "not_authenticated"
+              ? "auth"
+              : strategy === "short_non_feed"
+                ? "provider_page"
+                : "extract";
           diag.errorMessage = error;
           return;
         }
@@ -547,7 +552,12 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       }
       if (result.diag.errorStage !== "memory_pressure") {
         store.setError(result.diag.errorMessage ?? result.diag.errorStage);
-        const errState = { ...useAppStore.getState().fbAuth, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed" };
+        const errState = {
+          ...useAppStore.getState().fbAuth,
+          isAuthenticated:
+            result.diag.errorStage === "auth" ? false : useAppStore.getState().fbAuth.isAuthenticated,
+          lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
+        };
         store.setFbAuth(errState);
         storeFbAuthState(errState);
       }

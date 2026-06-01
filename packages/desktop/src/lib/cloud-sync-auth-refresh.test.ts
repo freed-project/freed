@@ -190,4 +190,39 @@ describe("desktop cloud sync auth refresh", () => {
     expect(gdriveStartPollLoopMock).toHaveBeenCalledTimes(2);
     expect(logWarnMock).toHaveBeenCalledWith(expect.stringContaining("auth failure refresh suppressed"));
   });
+
+  it("does not crash startup when a stored Google token cannot refresh", async () => {
+    vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "");
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "google_oauth_proxy_request") {
+        return {
+          status: 400,
+          headers: [["content-type", "application/json"]],
+          body: Array.from(new TextEncoder().encode(JSON.stringify({
+            error: "invalid_request",
+            error_description: "client_secret is missing.",
+          }))),
+        };
+      }
+      return null;
+    });
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "expired-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() - 60_000,
+    }));
+
+    const { startAllCloudSyncs } = await import("./sync");
+    await expect(startAllCloudSyncs()).resolves.toBeUndefined();
+
+    expect(gdriveDownloadLatestMock).not.toHaveBeenCalled();
+    expect(gdriveStartPollLoopMock).not.toHaveBeenCalled();
+    expect(recordProviderHealthEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      provider: "gdrive",
+      outcome: "error",
+      stage: "auth",
+      reason: expect.stringContaining("client_secret is missing"),
+    }));
+    expect(logWarnMock).toHaveBeenCalledWith(expect.stringContaining("Failed to refresh gdrive on startup"));
+  });
 });

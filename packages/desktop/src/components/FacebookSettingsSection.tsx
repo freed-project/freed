@@ -23,6 +23,7 @@ import {
   showFbLogin,
   checkFbAuth,
   disconnectFb,
+  hideFbLogin,
   storeFbAuthState,
 } from "../lib/fb-auth";
 import {
@@ -232,10 +233,15 @@ export function FacebookSettingsSection({
     if (!isTauri()) return;
 
     const unlisten = listen<{ loggedIn: boolean }>("fb-auth-result", (event) => {
+      const newState = {
+        ...useAppStore.getState().fbAuth,
+        isAuthenticated: event.payload.loggedIn,
+        lastCheckedAt: Date.now(),
+      };
+      setFbAuth(newState);
+      storeFbAuthState(newState);
       if (event.payload.loggedIn) {
-        const newState = { isAuthenticated: true, lastCheckedAt: Date.now() };
-        setFbAuth(newState);
-        storeFbAuthState(newState);
+        void hideFbLogin().catch(() => {});
       }
     });
     return () => { unlisten.then((fn) => fn()); };
