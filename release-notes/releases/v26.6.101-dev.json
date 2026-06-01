@@ -3,7 +3,7 @@
   "version": "26.6.101-dev",
   "channel": "dev",
   "dayKey": "26.6.1",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-01T23:23:36.343Z",
   "model": "heuristic",
@@ -40,10 +40,13 @@
     ]
   },
   "release": {
-    "deck": "Facebook, Instagram, and LinkedIn sync now share the same lower-profile feed scrolling behavior, with stronger Facebook auth checks to avoid false zero-post success and desktop sidebar reopen smoke are now more stable",
+    "deck": "Facebook, Instagram, and LinkedIn sync now share the same lower-profile feed scrolling behavior, Facebook no longer treats an unauthenticated or stalled page as a clean zero-post sync, and social source status no longer shows old posts as proof of a live connection.",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull.",
+      "Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.101-dev\n\nFacebook, Instagram, and LinkedIn sync now share the same lower-profile feed scrolling behavior, with stronger Facebook auth checks to avoid false zero-post success and desktop sidebar reopen smoke are now more stable\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.101-dev\n\nFacebook, Instagram, and LinkedIn sync now share the same lower-profile feed scrolling behavior. Facebook no longer treats an unauthenticated or stalled page as a clean zero-post sync, and social source status no longer shows old posts as proof of a live connection.\n\n### Fixes\n\n- Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull.\n- Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
