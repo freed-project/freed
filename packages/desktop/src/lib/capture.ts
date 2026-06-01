@@ -102,6 +102,37 @@ export async function addRssFeed(feedUrl: string): Promise<void> {
 
 /** Max concurrent feed fetches — avoids saturating Tauri's HTTP layer. */
 const FETCH_CONCURRENCY = 5;
+const RSS_FAILURE_RETRY_BASE_MS = 2 * 60 * 60 * 1000;
+const RSS_FAILURE_RETRY_MAX_MS = 24 * 60 * 60 * 1000;
+
+function nextFailedFeedRetryMs(feed: RssFeed): number {
+  const failureCount = Math.max(0, feed.consecutiveFailures ?? 0);
+  return Math.min(
+    RSS_FAILURE_RETRY_MAX_MS,
+    RSS_FAILURE_RETRY_BASE_MS * Math.pow(2, Math.min(failureCount, 4)),
+  );
+}
+
+function markFeedFetchSucceeded(feed: RssFeed, now: number): RssFeed {
+  return {
+    ...feed,
+    lastFetched: now,
+    lastFetchAttemptedAt: now,
+    nextFetchAfter: 0,
+    consecutiveFailures: 0,
+    lastFetchError: "",
+  };
+}
+
+function markFeedFetchFailed(feed: RssFeed, message: string, now: number): RssFeed {
+  return {
+    ...feed,
+    lastFetchAttemptedAt: now,
+    nextFetchAfter: now + nextFailedFeedRetryMs(feed),
+    consecutiveFailures: (feed.consecutiveFailures ?? 0) + 1,
+    lastFetchError: message.slice(0, 500),
+  };
+}
 
 async function refreshEnabledRssFeeds(
   store: ReturnType<typeof useAppStore.getState>,
@@ -112,6 +143,7 @@ async function refreshEnabledRssFeeds(
     await withProviderSyncing("rss", async () => {
       const allNewItems: FeedItem[] = [];
       const fetchedFeeds: RssFeed[] = [];
+      const feedUpdates: RssFeed[] = [];
       const feedErrors: string[] = [];
       const rssStartedAt = Date.now();
       const rssBefore = store.items.filter(
@@ -145,8 +177,7 @@ async function refreshEnabledRssFeeds(
 
             return {
               feed: {
-                ...feed,
-                lastFetched: Date.now(),
+                ...markFeedFetchSucceeded(feed, Date.now()),
                 ...(healedTitle ? { title: healedTitle } : {}),
                 ...(!feed.siteUrl && liveSiteUrl
                   ? { siteUrl: liveSiteUrl }
@@ -160,6 +191,7 @@ async function refreshEnabledRssFeeds(
         for (const [resultIndex, result] of results.entries()) {
           if (result.status === "fulfilled") {
             fetchedFeeds.push(result.value.feed);
+            feedUpdates.push(result.value.feed);
             allNewItems.push(...result.value.items);
             rssSeen += result.value.items.length;
             await recordProviderHealthEvent({
@@ -186,6 +218,7 @@ async function refreshEnabledRssFeeds(
             addDebugEvent("error", `[RSS] feed fetch failed: ${msg}`);
             const failedFeed = batch[resultIndex];
             if (failedFeed) {
+              feedUpdates.push(markFeedFetchFailed(failedFeed, msg, Date.now()));
               await recordProviderHealthEvent({
                 provider: "rss",
                 scope: "rss_feed",
@@ -202,8 +235,8 @@ async function refreshEnabledRssFeeds(
         }
       }
 
-      if (fetchedFeeds.length > 0 || allNewItems.length > 0) {
-        await docBatchRefreshFeeds(fetchedFeeds, allNewItems);
+      if (feedUpdates.length > 0 || allNewItems.length > 0) {
+        await docBatchRefreshFeeds(feedUpdates, allNewItems);
       }
       const rssAfter = useAppStore
         .getState()
