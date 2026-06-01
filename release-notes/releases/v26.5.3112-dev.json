@@ -3,8 +3,10 @@
   "version": "26.5.3112-dev",
   "channel": "dev",
   "dayKey": "26.5.31",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Manual review narrowed this build to the RSS retry and dev-channel fixes while carrying forward Facebook diagnostics for the next soak."
+  ],
   "generatedAt": "2026-06-01T02:54:43.743Z",
   "model": "heuristic",
   "source": {
@@ -92,24 +94,26 @@
     ]
   },
   "release": {
-    "deck": "Facebook sync now reports unusable scrape results as sync issues and adds diagnostics for the next dev soak",
+    "deck": "This dev build cuts RSS retry churn and keeps installed dev builds on the dev channel.",
     "features": [],
     "fixes": [
-      "Release build and type-safety cleanup",
-      "Reader, feed, and header polish",
-      "Capture and scraper reliability fixes",
-      "Align social memory preflight test",
-      "Recover social sync after memory deferrals",
-      "Recycles idle Automerge sync workers after queued document work finishes",
-      "Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom"
+      "RSS scheduled polling now backs off after runtime deferrals instead of retrying every 15 seconds.",
+      "Broken RSS feeds now record retry windows after failed fetches, preventing dead sources from being retried on every scheduled pass.",
+      "Installed dev builds continue using the dev release channel after reinstall.",
+      "Facebook sync keeps the prior zero-post diagnostics so unusable scrape results are surfaced as sync issues instead of healthy empty runs.",
+      "Capture and scraper reliability fixes.",
+      "Reader, feed, and header polish.",
+      "Release build and type-safety cleanup.",
+      "Recycles idle Automerge sync workers after queued document work finishes.",
+      "Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom.",
+      "Recovers social sync controls cleanly after memory-pressure deferrals.",
+      "Aligns the social memory preflight e2e with transient provider-health memory pressure.",
+      "Keeps the Phase 7 docs and public roadmap aligned with the new social scrape memory behavior."
     ],
     "followUps": [
-      "Adapt social scrape load to memory headroom",
-      "Reduce desktop sync memory pressure",
-      "Keeps the Phase 7 docs and public roadmap aligned with the new social scrape memory behavior",
-      "Use this build for the next Facebook sync soak and inspect the new diagnostics if the provider still returns zero usable posts",
-      "Keeps Facebook group refresh explicit, repairs dev release validation, and carries forward the latest social sync recovery fixes"
+      "Install this build and verify RSS failures stop piling up in sync health.",
+      "Run the next Facebook sync soak after explicit provider-risk confirmation, using the new diagnostics if results are still zero."
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3112-dev\n\nFacebook sync now reports unusable scrape results as sync issues and adds diagnostics for the next dev soak\n\n### Fixes\n\n- Release build and type-safety cleanup\n- Reader, feed, and header polish\n- Capture and scraper reliability fixes\n- Align social memory preflight test\n- Recover social sync after memory deferrals\n- Recycles idle Automerge sync workers after queued document work finishes\n- Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom\n\n### Follow-ups\n\n- Adapt social scrape load to memory headroom\n- Reduce desktop sync memory pressure\n- Keeps the Phase 7 docs and public roadmap aligned with the new social scrape memory behavior\n- Use this build for the next Facebook sync soak and inspect the new diagnostics if the provider still returns zero usable posts\n- Keeps Facebook group refresh explicit, repairs dev release validation, and carries forward the latest social sync recovery fixes\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3112-dev\n\nThis dev build cuts RSS retry churn and keeps installed dev builds on the dev channel\n\n### Fixes\n\n- RSS scheduled polling now backs off after runtime deferrals instead of retrying every 15 seconds\n- Broken RSS feeds now record retry windows after failed fetches, preventing dead sources from being retried on every scheduled pass\n- Installed dev builds continue using the dev release channel after reinstall\n- Facebook sync keeps the prior zero-post diagnostics so unusable scrape results are surfaced as sync issues instead of healthy empty runs\n- Capture and scraper reliability fixes\n- Reader, feed, and header polish\n- Release build and type-safety cleanup\n- Recycles idle Automerge sync workers after queued document work finishes\n- Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom\n- Recovers social sync controls cleanly after memory-pressure deferrals\n- Aligns the social memory preflight e2e with transient provider-health memory pressure\n- Keeps the Phase 7 docs and public roadmap aligned with the new social scrape memory behavior\n\n### Follow-ups\n\n- Install this build and verify RSS failures stop piling up in sync health\n- Run the next Facebook sync soak after explicit provider-risk confirmation, using the new diagnostics if results are still zero\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
