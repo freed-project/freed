@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useState, useRef, useCallback, type ReactNode } from "react";
 import { Sidebar } from "./Sidebar.js";
 import { Header } from "./Header.js";
 import { DebugPanel } from "../DebugPanel.js";
@@ -8,7 +8,6 @@ import { LibraryDialog } from "../LibraryDialog.js";
 import { addDebugEvent, useDebugStore } from "../../lib/debug-store.js";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
-import { FriendsView } from "../friends/FriendsView.js";
 import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
 import { ContactSyncContext } from "../../context/ContactSyncContext.js";
@@ -18,6 +17,7 @@ import { useSettingsStore } from "../../lib/settings-store.js";
 import {
   buildProvisionalPersonCandidates,
   buildDiscoveredAccountsFromItems,
+  isPrunableInvalidDiscoveredSocialAccount,
   type GoogleContact,
   type IdentitySuggestion,
   type SidebarMode,
@@ -40,6 +40,9 @@ import {
 const DEFAULT_DEBUG_WIDTH = 320;
 const MIN_DEBUG_WIDTH = 280;
 const MAX_DEBUG_WIDTH = 600;
+const LazyFriendsView = lazy(() =>
+  import("../friends/FriendsView.js").then((module) => ({ default: module.FriendsView })),
+);
 
 interface AppShellProps {
   children: ReactNode;
@@ -56,11 +59,13 @@ export function AppShell({ children }: AppShellProps) {
   const debugVisible = useDebugStore((s) => s.visible);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
+  const setActiveView = useAppStore((s) => s.setActiveView);
   const items = useAppStore((s) => s.items);
   const accounts = useAppStore((s) => s.accounts);
   const persons = useAppStore((s) => s.persons);
   const addPerson = useAppStore((s) => s.addPerson);
   const addAccounts = useAppStore((s) => s.addAccounts);
+  const removeAccount = useAppStore((s) => s.removeAccount);
   const createConnectionPersonsFromCandidates = useAppStore((s) => s.createConnectionPersonsFromCandidates);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const themeId = useAppStore((s) => s.preferences.display.themeId);
@@ -69,6 +74,7 @@ export function AppShell({ children }: AppShellProps) {
   );
   const showAtmosphere = activeView !== "friends" && activeView !== "map";
   const settingsOpen = useSettingsStore((s) => s.open);
+  const openSettingsTo = useSettingsStore((s) => s.openTo);
   const requestSearchPalette = useCommandSurfaceStore((s) => s.requestSearchPalette);
   const addFeedOpen = useCommandSurfaceStore((s) => s.addFeedOpen);
   const closeAddFeedDialog = useCommandSurfaceStore((s) => s.closeAddFeedDialog);
@@ -101,12 +107,19 @@ export function AppShell({ children }: AppShellProps) {
   );
   const discoveredAccountScanRef = useRef({ itemCount: 0, accountCount: 0 });
   const provisionalPersonScanRef = useRef({ personCount: 0, accountCount: 0 });
+  const invalidAccountCleanupRef = useRef("");
   const blockingModalOpen =
     settingsOpen ||
     addFeedOpen ||
     savedContentOpen ||
     libraryDialogOpen ||
     showContactReview;
+
+  useEffect(() => {
+    if (activeView !== "storyWall") return;
+    setActiveView("feed");
+    openSettingsTo("storyWall");
+  }, [activeView, openSettingsTo, setActiveView]);
   const forceCompactDesktopSidebar = !isMobileDevice && isMobileViewport;
   const effectiveDesktopSidebarDisplayMode =
     forceCompactDesktopSidebar && desktopSidebarMode !== "closed"
@@ -258,6 +271,28 @@ export function AppShell({ children }: AppShellProps) {
   }, [activeView, isMobileViewport]);
 
   useEffect(() => {
+    if (!isInitialized) return;
+    const prunableAccounts = Object.values(accounts).filter(isPrunableInvalidDiscoveredSocialAccount);
+    if (prunableAccounts.length === 0) return;
+    const cleanupSignature = prunableAccounts.map((account) => account.id).sort().join("|");
+    if (cleanupSignature === invalidAccountCleanupRef.current) return;
+    invalidAccountCleanupRef.current = cleanupSignature;
+    void Promise.all(prunableAccounts.map((account) => removeAccount(account.id)))
+      .then(() => {
+        invalidAccountCleanupRef.current = "";
+        addDebugEvent(
+          "change",
+          `[Identity] removed ${prunableAccounts.length.toLocaleString()} invalid Facebook account${prunableAccounts.length === 1 ? "" : "s"}`,
+        );
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        addDebugEvent("error", `[Identity] invalid Facebook account cleanup failed: ${message}`);
+        invalidAccountCleanupRef.current = "";
+      });
+  }, [accounts, isInitialized, removeAccount]);
+
+  useEffect(() => {
     const itemCount = items.length;
     const accountCount = Object.keys(accounts).length;
     const previous = discoveredAccountScanRef.current;
@@ -382,11 +417,13 @@ export function AppShell({ children }: AppShellProps) {
           >
             {activeView === "friends"
               ? (
-                <FriendsView
-                  friendsSidebarOpen={friendsSidebarOpen}
-                  onFriendsSidebarOpenChange={handleFriendsSidebarOpenChange}
-                  mobileSurface={friendsMobileSurface}
-                />
+                <Suspense fallback={<div className="h-full min-h-0" data-testid="friends-view-loading" />}>
+                  <LazyFriendsView
+                    friendsSidebarOpen={friendsSidebarOpen}
+                    onFriendsSidebarOpenChange={handleFriendsSidebarOpenChange}
+                    mobileSurface={friendsMobileSurface}
+                  />
+                </Suspense>
               )
               : activeView === "map"
                 ? <MapView />

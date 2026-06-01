@@ -26,6 +26,7 @@ vi.mock("./automerge", () => ({
   docMarkAllAsRead: vi.fn(),
   docToggleSaved: vi.fn(),
   docRemoveFeedItem: vi.fn(),
+  docClearSampleData: vi.fn(() => Promise.resolve({ feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 })),
   docToggleArchived: vi.fn(),
   docArchiveAllReadUnsaved: vi.fn(),
   docUnarchiveSavedItems: vi.fn(),
@@ -108,6 +109,26 @@ describe("store.updatePreferences", () => {
     expect(useAppStore.getState().preferences.display.animationIntensity).toBe("none");
     expect(mockDocUpdatePreferences).toHaveBeenCalledWith({
       display: { animationIntensity: "none" },
+    });
+  });
+
+  it("opens the full map for a person in one state transition", () => {
+    useAppStore.setState({
+      activeView: "friends",
+      selectedPersonId: null,
+      selectedAccountId: "account-ada",
+      selectedFriendId: null,
+      selectedItemId: "ig:ada:paris",
+    });
+
+    useAppStore.getState().openMapForPerson("friend-ada");
+
+    expect(useAppStore.getState()).toMatchObject({
+      activeView: "map",
+      selectedPersonId: "friend-ada",
+      selectedAccountId: null,
+      selectedFriendId: "friend-ada",
+      selectedItemId: null,
     });
   });
 

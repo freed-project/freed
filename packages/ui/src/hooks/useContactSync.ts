@@ -18,10 +18,43 @@ import { matchContacts } from "@freed/shared/contact-matching";
 import { usePlatform } from "../context/PlatformContext.js";
 
 const SYNC_INTERVAL_MS = 15 * 60 * 1000;
+const CONTACT_SYNC_TIMEOUT_MS = 60 * 1000;
+const STALE_SYNCING_MS = 2 * CONTACT_SYNC_TIMEOUT_MS;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${timeoutMs.toLocaleString()} ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+  }
+}
 
 function loadSyncState(): ContactSyncState {
   try {
-    return parseContactSyncState(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY));
+    const parsed = parseContactSyncState(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY));
+    if (
+      parsed.syncStatus === "syncing" &&
+      (!parsed.syncStartedAt || Date.now() - parsed.syncStartedAt > STALE_SYNCING_MS)
+    ) {
+      return {
+        ...parsed,
+        syncStatus: parsed.lastSyncedAt ? "idle" : "error",
+        syncStartedAt: null,
+        lastErrorCode: parsed.lastSyncedAt ? undefined : "network",
+        lastErrorMessage: parsed.lastSyncedAt
+          ? undefined
+          : "Google Contacts sync did not finish. Try syncing again.",
+      };
+    }
+    return parsed;
   } catch {
     return createEmptyContactSyncState();
   }
@@ -70,6 +103,7 @@ function withError(
       ? "reconnect_required"
       : current.authStatus,
     syncStatus: "error",
+    syncStartedAt: null,
     lastErrorCode: code,
     lastErrorMessage: message,
     createdFriendCount: current.createdFriendCount ?? 0,
@@ -95,6 +129,7 @@ export function useContactSync() {
   const syncStateRef = useRef(syncState);
   syncStateRef.current = syncState;
   const matchesRef = useRef<Map<string, ContactMatch>>(new Map());
+  const syncPromiseRef = useRef<Promise<ContactSyncState> | null>(null);
 
   useEffect(() => {
     setPendingMatchCount(syncState.pendingSuggestions.length);
@@ -106,76 +141,117 @@ export function useContactSync() {
     saveSyncState(nextState);
   }, []);
 
-  const runSync = useCallback(async () => {
-    const current = syncStateRef.current;
-    const contactsApi = googleContacts;
-    const token = contactsApi ? await contactsApi.getToken() : null;
+  const runSync = useCallback((options: { force?: boolean } = {}) => {
+    if (syncPromiseRef.current) return syncPromiseRef.current;
 
-    if (!token) {
-      const nextState = withError(current, "missing_token", "Reconnect Google to sync contacts.");
-      commitSyncState(nextState);
-      return nextState;
-    }
+    let syncPromise!: Promise<ContactSyncState>;
+    syncPromise = (async () => {
+      const current = syncStateRef.current;
+      const now = Date.now();
+      if (!options.force && current.syncStatus === "syncing") {
+        const nextState: ContactSyncState = current.lastSyncedAt
+          ? { ...current, syncStatus: "idle", syncStartedAt: null }
+          : withError(current, "network", "Google Contacts sync did not finish. Try syncing again.");
+        commitSyncState(nextState);
+        return nextState;
+      }
 
-    commitSyncState({
-      ...current,
-      authStatus: "connected",
-      syncStatus: "syncing",
-      lastErrorCode: undefined,
-      lastErrorMessage: undefined,
+      if (
+        !options.force &&
+        current.syncStatus !== "error" &&
+        current.lastSyncedAt &&
+        now - current.lastSyncedAt < SYNC_INTERVAL_MS
+      ) {
+        return current;
+      }
+
+      const contactsApi = googleContacts;
+      const token = contactsApi
+        ? await withTimeout(
+            Promise.resolve(contactsApi.getToken()),
+            CONTACT_SYNC_TIMEOUT_MS,
+            "Google Contacts token lookup",
+          )
+        : null;
+
+      if (!token) {
+        const nextState = withError(current, "missing_token", "Reconnect Google to sync contacts.");
+        commitSyncState(nextState);
+        return nextState;
+      }
+
+      commitSyncState({
+        ...current,
+        authStatus: "connected",
+        syncStatus: "syncing",
+        syncStartedAt: now,
+        lastErrorCode: undefined,
+        lastErrorMessage: undefined,
+      });
+
+      try {
+        const contactsPromise: Promise<GoogleContactsResult> = contactsApi?.fetchContacts
+          ? contactsApi.fetchContacts(token, current.syncToken)
+          : fetchGoogleContacts(token, current.syncToken);
+        const result = await withTimeout(
+          contactsPromise,
+          CONTACT_SYNC_TIMEOUT_MS,
+          "Google Contacts sync",
+        );
+        const merged = mergeContactChanges(current.cachedContacts, result.contacts, result.deleted);
+        const allMatches = matchContacts(
+          merged,
+          personsRef.current,
+          accountsRef.current,
+          itemsRef.current,
+        );
+        matchesRef.current = new Map(
+          allMatches.map((match) => [suggestionIdForMatch(match), match])
+        );
+
+        const pendingSuggestions = allMatches
+          .map((match) => buildSuggestion(match, itemsRef.current))
+          .filter((suggestion): suggestion is IdentitySuggestion => suggestion !== null)
+          .filter((suggestion) => !current.dismissedSuggestionIds.includes(suggestion.id));
+
+        const nextState: ContactSyncState = {
+          authStatus: "connected",
+          syncStatus: "idle",
+          syncStartedAt: null,
+          syncToken: result.nextSyncToken,
+          lastSyncedAt: Date.now(),
+          cachedContacts: merged,
+          pendingSuggestions,
+          dismissedSuggestionIds: current.dismissedSuggestionIds,
+          createdFriendCount: current.createdFriendCount,
+        };
+
+        commitSyncState(nextState);
+        return nextState;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Google Contacts sync failed.";
+        const status = typeof error === "object" && error !== null && "status" in error
+          ? (error as { status?: number }).status
+          : undefined;
+        const code = status === 401 || status === 403 ? "auth" : "network";
+        const nextState = withError(syncStateRef.current, code, message);
+        commitSyncState(nextState);
+        return nextState;
+      }
+    })().finally(() => {
+      if (syncPromiseRef.current === syncPromise) {
+        syncPromiseRef.current = null;
+      }
     });
 
-    try {
-      const result: GoogleContactsResult = contactsApi?.fetchContacts
-        ? await contactsApi.fetchContacts(token, current.syncToken)
-        : await fetchGoogleContacts(token, current.syncToken);
-      const merged = mergeContactChanges(current.cachedContacts, result.contacts, result.deleted);
-      const allMatches = matchContacts(
-        merged,
-        personsRef.current,
-        accountsRef.current,
-        itemsRef.current,
-      );
-      matchesRef.current = new Map(
-        allMatches.map((match) => [suggestionIdForMatch(match), match])
-      );
-
-      const pendingSuggestions = allMatches
-        .map((match) => buildSuggestion(match, itemsRef.current))
-        .filter((suggestion): suggestion is IdentitySuggestion => suggestion !== null)
-        .filter((suggestion) => !current.dismissedSuggestionIds.includes(suggestion.id));
-
-      const nextState: ContactSyncState = {
-        authStatus: "connected",
-        syncStatus: "idle",
-        syncToken: result.nextSyncToken,
-        lastSyncedAt: Date.now(),
-        cachedContacts: merged,
-        pendingSuggestions,
-        dismissedSuggestionIds: current.dismissedSuggestionIds,
-        createdFriendCount: current.createdFriendCount,
-      };
-
-      commitSyncState(nextState);
-      return nextState;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Google Contacts sync failed.";
-      const status = typeof error === "object" && error !== null && "status" in error
-        ? (error as { status?: number }).status
-        : undefined;
-      const code = status === 401 || status === 403 ? "auth" : "network";
-      const nextState = withError(current, code, message);
-      commitSyncState(nextState);
-      return nextState;
-    }
+    syncPromiseRef.current = syncPromise;
+    return syncPromise;
   }, [commitSyncState, googleContacts]);
 
   useEffect(() => {
     if (!googleContacts) return undefined;
     const id = setInterval(() => {
-      void Promise.resolve(googleContacts.getToken()).then((token) => {
-        if (token) void runSync();
-      });
+      void runSync();
     }, SYNC_INTERVAL_MS);
     return () => clearInterval(id);
   }, [googleContacts, runSync]);
@@ -183,16 +259,7 @@ export function useContactSync() {
   useEffect(() => {
     if (!googleContacts) return undefined;
     const onFocus = () => {
-      void Promise.resolve(googleContacts.getToken()).then((token) => {
-        if (token) {
-          void runSync();
-          return;
-        }
-        const current = syncStateRef.current;
-        if (current.authStatus !== "reconnect_required" || current.syncStatus !== "error") {
-          commitSyncState(withError(current, "missing_token", "Reconnect Google to sync contacts."));
-        }
-      });
+      void runSync();
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);

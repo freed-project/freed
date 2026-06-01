@@ -1,0 +1,62 @@
+{
+  "tag": "v26.5.1102-dev",
+  "version": "26.5.1102-dev",
+  "channel": "dev",
+  "dayKey": "26.5.11",
+  "approved": true,
+  "editorialNotes": [
+    "Approved after PR #586 landed. This preserves the v26.5.1100 and v26.5.1101 same-day rollup and adds the Settings moving chrome paint fix."
+  ],
+  "generatedAt": "2026-05-11T14:05:02.016Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.1101-dev",
+    "previousPublishedDayTag": "v26.5.1015-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.1100-dev",
+      "v26.5.1101-dev",
+      "v26.5.1102-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.1100-dev",
+      "v26.5.1101-dev",
+      "v26.5.1102-dev"
+    ],
+    "prNumbers": [
+      583,
+      584,
+      585,
+      586
+    ],
+    "commitSubjects": [
+      "perf: lighten settings moving chrome (#586)",
+      "release: approve v26.5.1101-dev notes",
+      "release: v26.5.1101-dev",
+      "perf: reduce dense map movement paint (#585)",
+      "release: approve v26.5.1100-dev notes",
+      "release: v26.5.1100-dev",
+      "fix: stabilize friends map handoff (#584)",
+      "release: approve v26.5.1016-dev notes",
+      "release: v26.5.1016-dev",
+      "perf: reduce settings scroll overdraw (#583)"
+    ]
+  },
+  "release": {
+    "deck": "Map navigation, dense movement, and Settings motion get steadier",
+    "features": [],
+    "fixes": [
+      "Retries the Friends last-seen route commit when the store reaches Map before the full Map surface mounts",
+      "Paints fewer primary markers during dense Map pan and zoom movement",
+      "Lightens Settings moving chrome while the dialog is in motion"
+    ],
+    "followUps": [
+      "Continue reducing Settings scroll overdraw in installed dev builds",
+      "Friends navigation recovers from late Map mounting",
+      "Continue monitoring Friends to Map handoffs under installed dev builds"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1102-dev\n\nMap navigation, dense movement, and Settings motion get steadier\n\n### Fixes\n\n- Retries the Friends last-seen route commit when the store reaches Map before the full Map surface mounts\n- Paints fewer primary markers during dense Map pan and zoom movement\n- Lightens Settings moving chrome while the dialog is in motion\n\n### Follow-ups\n\n- Continue reducing Settings scroll overdraw in installed dev builds\n- Friends navigation recovers from late Map mounting\n- Continue monitoring Friends to Map handoffs under installed dev builds\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

@@ -729,7 +729,7 @@ test("paused provider health is visible in X settings and can be resumed", async
   await expect(page.getByTestId("provider-sync-action-x")).toContainText("Resume Now");
 });
 
-test("facebook groups settings separate last-active text and show active counts", async ({ app, page }) => {
+test("facebook groups settings separate last-active text, show active counts, and gate refresh", async ({ app, page, ipc }) => {
   await seedAcceptedDesktopConsent(page);
 
   await app.goto();
@@ -764,6 +764,11 @@ test("facebook groups settings separate last-active text and show active counts"
             name: "North Idaho Lifelast active 2 hours ago",
             url: "https://facebook.com/groups/two",
           },
+          "377650389038228": {
+            id: "377650389038228",
+            name: "1m",
+            url: "https://facebook.com/groups/377650389038228",
+          },
         },
         excludedGroupIds: {
           two: true,
@@ -788,14 +793,14 @@ test("facebook groups settings separate last-active text and show active counts"
       | undefined;
     const fbCapture = store?.getState().preferences.fbCapture;
     return (
-      Object.keys(fbCapture?.knownGroups ?? {}).length === 2 &&
+      Object.keys(fbCapture?.knownGroups ?? {}).length === 3 &&
       fbCapture?.excludedGroupIds?.two === true
     );
   });
 
   await openSettingsSection(page, "Facebook");
 
-  await expect(page.getByText("1 active of 2 total")).toBeVisible();
+  await expect(page.getByText("2 active of 3 total")).toBeVisible();
   await expect(page.getByRole("button", { name: "Activate all", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Deactivate all", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeVisible();
@@ -803,12 +808,27 @@ test("facebook groups settings separate last-active text and show active counts"
   await expect(page.getByTestId("facebook-groups-list-scroll")).toBeVisible();
   await expect(page.getByTestId("facebook-group-one-label")).toHaveText("CDA Buy Trade Or Sell");
   await expect(page.getByTestId("facebook-group-one-meta")).toHaveText("Last active about a minute ago");
+  await expect(page.getByTestId("facebook-group-377650389038228-label")).toHaveText(
+    "Facebook group ...89038228",
+  );
 
   await page.getByTestId("facebook-groups-filter").fill("North Idaho");
   await expect(page.getByRole("button", { name: "Activate shown", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Deactivate shown", exact: true })).toBeVisible();
   await expect(page.getByTestId("facebook-group-two-label")).toHaveText("North Idaho Life");
   await expect(page.getByTestId("facebook-group-one-label")).toHaveCount(0);
+
+  await page.getByTestId("facebook-groups-filter").fill("");
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByTestId("provider-risk-dialog-facebook")).toBeVisible();
+  let invocations = await ipc.invocations();
+  expect(invocations.some((call) => call.cmd === "fb_scrape_groups")).toBe(false);
+
+  await app.acceptProviderRiskIfPresent("facebook");
+  await expect.poll(async () => {
+    const calls = await ipc.invocations();
+    return calls.some((call) => call.cmd === "fb_scrape_groups");
+  }).toBe(true);
 });
 
 test("auth failures in X settings prompt the user to reconnect", async ({ app, page }) => {
@@ -2299,6 +2319,8 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   await settingsBtn.click();
   await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
   const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  await settingsDialog.getByRole("button", { name: "Feeds", exact: true }).click();
+  await expect(settingsDialog.getByRole("heading", { name: "Feeds" })).toBeVisible();
 
   await expect(settingsDialog.getByRole("button", { name: "All (2)", exact: true })).toBeVisible();
   await expect(settingsDialog.getByTestId("feeds-manage-filter")).toBeVisible();

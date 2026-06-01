@@ -9,7 +9,14 @@
  * colliding with real subscriptions and to prevent actual fetch attempts.
  */
 
-import type { FeedItem, Friend, RssFeed } from "./types.js";
+import type {
+  Account,
+  FeedItem,
+  Friend,
+  Person,
+  RssFeed,
+  SampleDataFingerprint,
+} from "./types.js";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -314,6 +321,7 @@ interface SampleFriendDef {
 
 export interface SampleDataOptions {
   batchId?: string;
+  generatedAt?: number;
   seed?: number;
   scale?: "showcase" | "stress";
   friendCount?: number;
@@ -331,9 +339,12 @@ export const SAMPLE_STRESS_FRIEND_COUNT = 1_000;
 export const SAMPLE_STRESS_IDENTITIES_PER_FRIEND = 5;
 export const SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT =
   SAMPLE_STRESS_FRIEND_COUNT * SAMPLE_STRESS_IDENTITIES_PER_FRIEND;
+export const SAMPLE_DATA_FINGERPRINT = "freed.sample-data.v1" as const;
+export const SAMPLE_DATA_GENERATOR_VERSION = 1;
 
 interface ResolvedSampleDataOptions {
   batchId: string;
+  generatedAt: number;
   seed: number;
   friendCount: number;
   identitiesPerFriend: number;
@@ -407,10 +418,26 @@ function resolveSampleDataOptions(options?: SampleDataOptions): ResolvedSampleDa
     (scale === "stress" ? SAMPLE_STRESS_IDENTITIES_PER_FRIEND : SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND);
   return {
     batchId,
+    generatedAt: options?.generatedAt ?? Date.now(),
     seed: options?.seed ?? hashSeed(batchId),
     friendCount,
     identitiesPerFriend,
   };
+}
+
+function sampleDataFingerprint(options: ResolvedSampleDataOptions): SampleDataFingerprint {
+  return {
+    marker: SAMPLE_DATA_FINGERPRINT,
+    batchId: options.batchId,
+    generatedAt: options.generatedAt,
+    generatorVersion: SAMPLE_DATA_GENERATOR_VERSION,
+  };
+}
+
+export function hasSampleDataFingerprint(
+  record: Pick<FeedItem | RssFeed | Person | Account, "sampleDataFingerprint"> | null | undefined,
+): boolean {
+  return record?.sampleDataFingerprint?.marker === SAMPLE_DATA_FINGERPRINT;
 }
 
 function rotateArray<T>(values: T[], offset: number): T[] {
@@ -522,7 +549,9 @@ const SAMPLE_FEED_URL_PREFIX = "https://sample.freed.wtf/";
  * collide with real feeds or trigger network fetches.
  */
 export function generateSampleFeeds(options?: SampleDataOptions): RssFeed[] {
-  const { batchId, seed } = resolveSampleDataOptions(options);
+  const resolvedOptions = resolveSampleDataOptions(options);
+  const { batchId, seed } = resolvedOptions;
+  const fingerprint = sampleDataFingerprint(resolvedOptions);
   const batchLabel = batchId.slice(-4).toUpperCase();
   return rotateArray(FEED_DEFS, seed % FEED_DEFS.length).map((def) => ({
     url: `${SAMPLE_FEED_URL_PREFIX}${batchId}/${def.slug}`,
@@ -531,12 +560,15 @@ export function generateSampleFeeds(options?: SampleDataOptions): RssFeed[] {
     enabled: true,
     trackUnread: true,
     folder: `Sample Feeds ${batchLabel}`,
+    sampleDataFingerprint: fingerprint,
   }));
 }
 
 export function generateSampleFriends(options?: SampleDataOptions): Friend[] {
-  const { seed } = resolveSampleDataOptions(options);
-  const sampleFriendDefs = buildSampleFriendDefs(options);
+  const resolvedOptions = resolveSampleDataOptions(options);
+  const { seed } = resolvedOptions;
+  const fingerprint = sampleDataFingerprint(resolvedOptions);
+  const sampleFriendDefs = buildSampleFriendDefs(resolvedOptions);
   const now = Date.now();
   return sampleFriendDefs.map((friend, index) => ({
     id: friend.id,
@@ -548,6 +580,7 @@ export function generateSampleFriends(options?: SampleDataOptions): Friend[] {
     ...(friend.notes ? { notes: friend.notes } : {}),
     tags: ["sample", "social"],
     sources: friend.sources,
+    sampleDataFingerprint: fingerprint,
     createdAt: now - (index + 1) * 7 * DAY - (seed % DAY),
     updatedAt: now - index * DAY,
     ...(index === 0
@@ -587,6 +620,7 @@ export function generateSampleLibraryData(options?: SampleDataOptions): {
 export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
   const resolvedOptions = resolveSampleDataOptions(options);
   const { batchId, seed } = resolvedOptions;
+  const fingerprint = sampleDataFingerprint(resolvedOptions);
   const rand = mulberry32(seed);
   const now = Date.now();
   const items: FeedItem[] = [];
@@ -1067,7 +1101,10 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
     }
   }
 
-  return items;
+  return items.map((item) => ({
+    ...item,
+    sampleDataFingerprint: fingerprint,
+  }));
 }
 
 /** Pick 1-3 topics deterministically for a given item index. */

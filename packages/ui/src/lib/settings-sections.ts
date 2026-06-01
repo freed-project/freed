@@ -10,6 +10,7 @@ export type SectionId =
   | "appearance"
   | "feeds"
   | "saved"
+  | "storyWall"
   | "ai"
   | "sync"
   | "updates"
@@ -28,7 +29,10 @@ export interface SectionMeta {
 }
 
 export interface SettingsSectionAvailability {
+  hasFeedManagement: boolean;
   hasGoogleContacts: boolean;
+  hasGoogleContactsManagement: boolean;
+  hasAISettings: boolean;
   hasX: boolean;
   hasFacebook: boolean;
   hasInstagram: boolean;
@@ -69,9 +73,17 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
     keywords: ["bookmark", "save url", "reading list", "markdown", "import", "export", "manage", "articles", "sources"],
   },
   {
+    id: "storyWall",
+    label: "Story Wall",
+    keywords: [
+      "storywall", "story wall", "stories", "memory", "memories", "year",
+      "collage", "instagram archive", "instagram export", "github pages", "publish", "embed",
+    ],
+  },
+  {
     id: "feeds",
     label: "Feeds",
-    keywords: ["rss", "atom", "subscribe", "subscription", "add feed", "url", "opml", "import", "export", "manage", "sources"],
+    keywords: ["rss", "atom", "feeds", "subscriptions", "sources", "status"],
   },
 ];
 
@@ -114,8 +126,12 @@ export const LI_SECTION_META: SectionMeta = {
 export const GOOGLE_CONTACTS_SECTION_META: SectionMeta = {
   id: "googleContacts",
   label: "Google Contacts",
-  keywords: ["google contacts", "contacts", "people api", "friends", "address book", "connect", "sync"],
+  keywords: ["google contacts", "contacts", "friends", "address book", "sync", "status"],
 };
+
+const GOOGLE_CONTACTS_MANAGEMENT_KEYWORDS = ["people api", "connect", "reconnect", "import"];
+
+const FEED_MANAGEMENT_KEYWORDS = ["subscribe", "add feed", "url", "opml", "import", "export", "manage"];
 
 export const AI_SECTION_META: SectionMeta = {
   id: "ai",
@@ -154,9 +170,22 @@ export function buildSettingsSectionMetas(
     ...(availability.hasInstagram ? [IG_SECTION_META] : []),
     ...(availability.hasLinkedIn ? [LI_SECTION_META] : []),
     baseSectionById.feeds,
-    AI_SECTION_META,
+    baseSectionById.storyWall,
+    ...(availability.hasAISettings ? [AI_SECTION_META] : []),
     ...(availability.hasUpdateChecks ? [UPDATES_SECTION_META] : []),
     baseSectionById.legal,
     ...(availability.hasFactoryReset ? [DANGER_SECTION_META] : []),
-  ];
+  ].map((section) =>
+    section.id === "feeds" && availability.hasFeedManagement
+      ? {
+          ...section,
+          keywords: [...section.keywords, ...FEED_MANAGEMENT_KEYWORDS],
+        }
+      : section.id === "googleContacts" && availability.hasGoogleContactsManagement
+      ? {
+          ...section,
+          keywords: [...section.keywords, ...GOOGLE_CONTACTS_MANAGEMENT_KEYWORDS],
+        }
+      : section,
+  );
 }

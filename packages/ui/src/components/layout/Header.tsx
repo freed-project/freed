@@ -10,6 +10,7 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import {
   applyFeedSignalModesToFilter,
   FEED_SIGNAL_FILTER_PRESETS,
@@ -388,7 +389,10 @@ export function Header({
   );
 
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds, accounts), [accounts, activeFilter, feeds]);
-  const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
+  const friendCount = useMemo(
+    () => Object.values(persons).filter((person) => person.relationshipStatus === "friend").length,
+    [persons],
+  );
   const mappedFriendCount = useAppStore((s) => s.mapFriendLocationCount);
   const mappedAllContentCount = useAppStore((s) => s.mapAllContentLocationCount);
   const socialAccountCount = useMemo(
@@ -701,11 +705,15 @@ export function Header({
 
   const handleFriendsToolbarModeChange = useCallback((mode: FriendsToolbarMode) => {
     if (mode === "details") {
-      onFriendsMobileSurfaceChange("details");
+      flushSync(() => {
+        onFriendsMobileSurfaceChange("details");
+      });
       return;
     }
-    handleIdentityModeChange("friendsMode", mode);
-    onFriendsMobileSurfaceChange("graph");
+    flushSync(() => {
+      handleIdentityModeChange("friendsMode", mode);
+      onFriendsMobileSurfaceChange("graph");
+    });
   }, [handleIdentityModeChange, onFriendsMobileSurfaceChange]);
 
   const handleMapTimeModeChange = useCallback((mode: MapTimeMode) => {

@@ -122,6 +122,12 @@ Blank suggestions now stay compact. Individual RSS feeds and danger actions are 
 
 The shared extension points now live in `packages/ui/src/lib/command-palette.ts`, `packages/ui/src/lib/command-palette-registry.ts`, and `packages/ui/src/lib/command-surface-store.ts`.
 
+### Nightly Improvement Runner
+
+Freed now has a local nightly improvement planner in `scripts/nightly-self-improve.mjs`. It folds the installed-build soak, daily bug scan memory, crash-watch state, roadmap fallback memory, peer worktrees, prior outcome history, and current git state into a ranked queue of work that can run overnight.
+
+The runner can choose multiple targets in one night. Bug fixes are first-class targets through the existing daily bug scan memory, while peer worktree integration, duplicate-work detection, performance, stability, release readiness, and roadmap work compete by score and machine-time budget. Each run now writes a preflight risk snapshot plus an execution plan with stop gates, command hints, task prompts, outcome templates, and ready-to-run ledger closeout commands so overnight automation has a clear path from clean evidence to validation, dev build shipping, installed-build soak, learned scoring, and morning closeout. When the active soak pointer has no samples, the runner falls back to the newest readable soak and records that fallback as preflight evidence. It can also repair the pointer to that readable soak when the remediation is unambiguous and local only. Performance targets require enough fresh soak samples before WebKit RSS or heartbeat evidence can win the queue. Preflight actions now label each remediation as a safe local command, manual review, or automation-tool action. Provider-visible peer worktrees are surfaced by default and stay blocked unless a human explicitly approves the fingerprinting risk. The planner also blocks the default nightly path when it is launched from a non-dev checkout, because release lanes and product lanes are not interchangeable no matter how many shell prompts whisper otherwise.
+
 ### Keyboard Shortcuts
 
 ```typescript
@@ -408,7 +414,7 @@ Reward security researchers for responsible disclosure.
 | 10.12 | Content summarization    | High       | ✓ Complete (summarize() in content-fetcher.ts)
 | 10.13 | Sentiment analysis       | Medium     | ✓ Complete (AISummary.sentiment field)
 | 10.14 | Smart notifications      | High       |
-| 10.15 | AI settings UI           | Medium     | ✓ Complete (unified provider selector for Integrated AI, Ollama, OpenAI, Anthropic, and Gemini with provider-scoped sharing tags, optimistic selection, and default workflows when AI is enabled)
+| 10.15 | AI settings UI           | Medium     | ✓ Complete (Freed Desktop provider selector for Integrated AI, Ollama, OpenAI, Anthropic, and Gemini with provider-scoped sharing tags, optimistic selection, default workflows when AI is enabled, and no PWA controls for AI paths the browser cannot run)
 | 10.25 | Local content signals    | Medium     | ✓ Complete (rule-based contentSignals metadata, automatic ingestion inference, resumable desktop and PWA semantic backfill, inclusive saved toolbar filter presets, expanded signal taxonomy, and compact event candidate extraction)
 | 10.26 | Optional local AI packs  | High       | ✓ Complete (disabled-by-default Light, Balanced, and Pro Integrated AI packs, hardware-based recommendations, pinned download manifests, semantic scan health, source links, resumable desktop downloads, raw-file checksum verification, and removal controls)
 | 10.27 | Local AI signal consumers | Medium | ✓ Complete (Friends suggestions improve from Integrated AI `Topics and ranking` contentSignals while still working deterministically when AI is off)
@@ -455,7 +461,7 @@ Reward security researchers for responsible disclosure.
 
 - [ ] Topic extraction works (at least one method)
 - [ ] Summarization available for long content
-- [x] AI settings start with a single provider choice that determines whether content stays local, goes to Ollama, or goes to a selected API provider, without selection flicker while preferences persist
+- [x] AI settings in Freed Desktop start with a single provider choice that determines whether content stays local, goes to Ollama, or goes to a selected API provider, without selection flicker while preferences persist. The PWA hides AI controls because it cannot run those providers, downloads, or key storage paths.
 - [x] Local content signals classify existing and newly ingested items without cloud AI on Desktop and PWA, with inclusive saved feed filter presets, expanded semantic signals, and compact event metadata for high-confidence upcoming items
 - [x] Optional local AI stays out of the installer, remains off by default, recommends Light, Balanced, or Pro from local hardware, stores pack selection plus model files in device-local state, and refreshes semantic scan health while settings is open
 - [x] Friend suggestions consume local `contentSignals` and optional Integrated AI enrichment without adding a cloud prompt path or automatic friend promotion
@@ -466,6 +472,7 @@ Reward security researchers for responsible disclosure.
 - [ ] Discord server active
 - [ ] Bug bounty program published
 - [ ] Regular release schedule established
+- [x] Local nightly improvement runner ranks preflight risks, duplicate peer work, peer worktree, bug fix, performance, stability, release, and roadmap targets before autonomous work begins, with local soak pointer repair, typed preflight actions, provider-visible peer guards, and dev-branch context checks
 - [ ] Documentation site live
 
 ### Resilience

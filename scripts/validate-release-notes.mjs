@@ -18,6 +18,17 @@ function loadArtifact(filePath) {
   return JSON.parse(readFileSync(path.resolve(REPO_ROOT, filePath), "utf8"));
 }
 
+function loadOptionalArtifact(filePath) {
+  try {
+    return loadArtifact(filePath);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
 function main() {
   const filePath = process.argv[2];
   if (!filePath) {
@@ -26,8 +37,14 @@ function main() {
 
   const artifact = loadArtifact(filePath);
   const priorArtifacts = process.argv.slice(3).map((priorPath) => loadArtifact(priorPath).release ?? {});
+  const previousDayTag =
+    artifact.channel === "dev" ? artifact.source?.previousPublishedDayTag : null;
+  const previousDayArtifact = previousDayTag
+    ? loadOptionalArtifact(path.join("release-notes", "releases", `${previousDayTag}.json`))
+    : null;
   const result = validateReleaseShape(artifact.release ?? {}, {
     earlierReleases: priorArtifacts,
+    previousDayRelease: previousDayArtifact?.release,
   });
 
   if (result.errors.length > 0) {

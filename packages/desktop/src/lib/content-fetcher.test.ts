@@ -141,6 +141,7 @@ async function loadContentFetcherModule() {
   return {
     mod,
     subscriberRef,
+    mockInvoke,
     mockCacheSet,
     mockDocUpdateFeedItem,
   };
@@ -245,6 +246,8 @@ async function loadContentFetcherModuleWithAi({
   return {
     mod,
     subscriberRef,
+    mockInvoke,
+    mockCacheSet,
     mockDocUpdateFeedItem,
     mockSummarize,
     mockGetApiKey,
@@ -261,13 +264,17 @@ afterEach(() => {
 describe("content fetcher", () => {
   it("keeps full HTML in the local cache but syncs only a compact excerpt", async () => {
     vi.useFakeTimers();
-    const { mod, subscriberRef, mockCacheSet, mockDocUpdateFeedItem } = await loadContentFetcherModule();
+    const { mod, subscriberRef, mockInvoke, mockCacheSet, mockDocUpdateFeedItem } = await loadContentFetcherModule();
 
     mod.start();
     subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
+    expect(mockInvoke).toHaveBeenCalledWith("fetch_url", {
+      url: SAMPLE_URL,
+      maxBytes: 2 * 1024 * 1024,
+    });
     expect(mockCacheSet).toHaveBeenCalledWith("rss:1", SAMPLE_ARTICLE_HTML);
     expect(mockDocUpdateFeedItem).toHaveBeenCalledOnce();
 
@@ -423,6 +430,28 @@ describe("content fetcher", () => {
     }));
   });
 
+  it("skips oversized background article fetches without parsing or retry backoff", async () => {
+    vi.useFakeTimers();
+    const { mod, subscriberRef, mockCacheSet, mockDocUpdateFeedItem } = await loadContentFetcherModuleWithAi({
+      autoSummarize: false,
+      extractTopics: false,
+      invokeImpl: () => Promise.reject(new Error("response_too_large content_length=22000000 limit=2097152 url=https://example.com/articles/memory-landfill")),
+    });
+
+    mod.start();
+    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    mod.stop();
+
+    expect(mockCacheSet).not.toHaveBeenCalled();
+    expect(mockDocUpdateFeedItem).not.toHaveBeenCalled();
+    expect(mod.getStatus()).toEqual(expect.objectContaining({
+      backoffLevel: 0,
+      failedCount: 1,
+      pending: 0,
+    }));
+  });
+
   it("writes extracted content and advances when AI summarization times out", async () => {
     vi.useFakeTimers();
     const { mod, subscriberRef, mockDocUpdateFeedItem } = await loadContentFetcherModuleWithAi({
@@ -481,5 +510,29 @@ describe("content fetcher", () => {
 
     expect(mockCacheSet).toHaveBeenCalledWith("rss:1", expect.stringContaining("Article title"));
     expect(statuses.at(-1)?.pending).toBe(1);
+  });
+
+  it("defers background article parsing while settings are open", async () => {
+    vi.useFakeTimers();
+    const settingsShell = document.createElement("div");
+    settingsShell.className = "theme-settings-shell";
+    document.body.appendChild(settingsShell);
+    const { mod, subscriberRef, mockInvoke } = await loadContentFetcherModule();
+
+    mod.start();
+    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mod.getStatus()).toEqual(expect.objectContaining({
+      pending: 1,
+      active: false,
+      nextDelayMs: 15_000,
+    }));
+
+    settingsShell.remove();
+    await vi.advanceTimersByTimeAsync(15_000);
+    mod.stop();
+
+    expect(mockInvoke).toHaveBeenCalledOnce();
   });
 });

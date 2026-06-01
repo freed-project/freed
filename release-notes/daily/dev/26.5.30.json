@@ -1,0 +1,19 @@
+{
+  "channel": "dev",
+  "dayKey": "26.5.30",
+  "date": "2026-05-30",
+  "preferredDeck": "Google sync recovery and lower Settings pressure",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Stop Google token refresh loops after non-refreshable Drive auth failures",
+    "Preserve Google refresh tokens across reconnects",
+    "Recover stale Google Contacts syncing state after successful People API fetches",
+    "Defer background article parsing while Settings is active"
+  ],
+  "editorialNotes": [],
+  "updatedAt": "2026-05-31T04:56:22.757Z"
+}

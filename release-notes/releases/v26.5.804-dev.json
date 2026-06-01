@@ -1,0 +1,72 @@
+{
+  "tag": "v26.5.804-dev",
+  "version": "26.5.804-dev",
+  "channel": "dev",
+  "dayKey": "26.5.8",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-08T22:36:36.640Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.803-dev",
+    "previousPublishedDayTag": "v26.5.705-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.800-dev",
+      "v26.5.801-dev",
+      "v26.5.803-dev",
+      "v26.5.804-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.800-dev",
+      "v26.5.801-dev",
+      "v26.5.803-dev",
+      "v26.5.804-dev"
+    ],
+    "prNumbers": [
+      531,
+      532,
+      533,
+      534,
+      535,
+      536,
+      537
+    ],
+    "commitSubjects": [
+      "fix: restore window on macOS reopen (#537)",
+      "perf: make source sidebar search immediate (#536)",
+      "release: approve v26.5.803-dev notes",
+      "release: v26.5.803-dev",
+      "fix: guard map marker handoff race (#535)",
+      "perf: classify hidden renderer timer throttling (#534)",
+      "release: approve v26.5.802-dev notes",
+      "release: v26.5.802-dev",
+      "perf: isolate dense map marker paint (#533)",
+      "release: approve v26.5.801-dev notes",
+      "release: v26.5.801-dev",
+      "perf: cull dense friends graph during interaction (#532)",
+      "release: approve v26.5.800-dev notes",
+      "release: v26.5.800-dev",
+      "perf: bound runtime health log retention (#531)"
+    ]
+  },
+  "release": {
+    "deck": "This dev build keeps the desktop performance audit moving with faster source filtering, better window recovery, and today's Friends, Map, and runtime performance fixes.",
+    "features": [],
+    "fixes": [
+      "Source sidebar search now filters sources immediately while the heavier feed search stays debounced.",
+      "Opening Freed from the dock or Finder now restores the primary window when macOS reports the app as running with no visible windows.",
+      "Guard the Friends last-seen to Map handoff so stale MapLibre marker work cannot crash the app during view changes.",
+      "Classify hidden renderer timer throttling separately from foreground event-loop lag so soak metrics stop blaming macOS background timer behavior for app jank.",
+      "Isolate dense Map marker paint so large Map views do less layout and paint work during active zoom and pan.",
+      "Cull the dense Friends graph interaction layer at the 1,600-person scale so active pan and zoom draws only the viewport-near capped set while the full dense graph returns after interaction settles.",
+      "Keep runtime health telemetry bounded so renderer heartbeat and memory diagnostics stay useful without unbounded log growth.",
+      "Friends graph interaction culling and Bound runtime health log retention.",
+      "Runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.804-dev\n\nThis dev build keeps the desktop performance audit moving with faster source filtering, better window recovery, and today's Friends, Map, and runtime performance fixes.\n\n### Fixes\n\n- Source sidebar search now filters sources immediately while the heavier feed search stays debounced.\n- Opening Freed from the dock or Finder now restores the primary window when macOS reports the app as running with no visible windows.\n- Guard the Friends last-seen to Map handoff so stale MapLibre marker work cannot crash the app during view changes.\n- Classify hidden renderer timer throttling separately from foreground event-loop lag so soak metrics stop blaming macOS background timer behavior for app jank.\n- Isolate dense Map marker paint so large Map views do less layout and paint work during active zoom and pan.\n- Cull the dense Friends graph interaction layer at the 1,600-person scale so active pan and zoom draws only the viewport-near capped set while the full dense graph returns after interaction settles.\n- Keep runtime health telemetry bounded so renderer heartbeat and memory diagnostics stay useful without unbounded log growth.\n- Friends graph interaction culling and Bound runtime health log retention.\n- Runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

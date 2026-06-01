@@ -262,14 +262,16 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
 
     if (result.diag.errorStage) {
       const detail = `[LI] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
-      store.setError(result.diag.errorMessage ?? result.diag.errorStage);
       addDebugEvent("error", detail);
-      const errState = {
-        ...useAppStore.getState().liAuth,
-        lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
-      };
-      store.setLiAuth(errState);
-      storeLiAuthState(errState);
+      if (result.diag.errorStage !== "memory_pressure") {
+        store.setError(result.diag.errorMessage ?? result.diag.errorStage);
+        const errState = {
+          ...useAppStore.getState().liAuth,
+          lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
+        };
+        store.setLiAuth(errState);
+        storeLiAuthState(errState);
+      }
       await recordProviderHealthEvent({
         provider: "linkedin",
         outcome: "error",

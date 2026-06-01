@@ -185,47 +185,65 @@ export function filterFeedItems(
     archivedOnly?: boolean;
     platform?: string;
     authorId?: string;
+    feedUrl?: string;
     socialContentFilter?: SocialContentFilter;
     tags?: string[];
     signals?: ContentSignal[];
     savedOnly?: boolean;
   } = {},
 ): FeedItem[] {
-  return items.filter((item) => {
-    // Filter hidden unless explicitly showing
-    if (!options.showHidden && item.userState.hidden) return false;
+  return items.filter((item) => matchesFeedFilter(item, options));
+}
 
-    // Archived view shows only archived; normal feed excludes archived
-    if (options.archivedOnly) {
-      if (!item.userState.archived) return false;
-    } else {
-      if (item.userState.archived) return false;
-    }
+export function matchesFeedFilter(
+  item: FeedItem,
+  options: {
+    showHidden?: boolean;
+    /** Show only archived items (the Archived view). Mutually exclusive with normal feed. */
+    archivedOnly?: boolean;
+    platform?: string;
+    authorId?: string;
+    feedUrl?: string;
+    socialContentFilter?: SocialContentFilter;
+    tags?: string[];
+    signals?: ContentSignal[];
+    savedOnly?: boolean;
+  } = {},
+): boolean {
+  // Filter hidden unless explicitly showing
+  if (!options.showHidden && item.userState.hidden) return false;
 
-    // Filter by platform
-    if (options.platform && item.platform !== options.platform) return false;
-    if (options.authorId && item.author.id !== options.authorId) return false;
+  // Archived view shows only archived; normal feed excludes archived
+  if (options.archivedOnly) {
+    if (!item.userState.archived) return false;
+  } else {
+    if (item.userState.archived) return false;
+  }
 
-    if (options.socialContentFilter && options.socialContentFilter !== "all") {
-      if (options.socialContentFilter === "stories" && item.contentType !== "story") return false;
-      if (options.socialContentFilter === "posts" && item.contentType === "story") return false;
-    }
+  // Filter by platform
+  if (options.platform && item.platform !== options.platform) return false;
+  if (options.authorId && item.author.id !== options.authorId) return false;
+  if (options.feedUrl && item.rssSource?.feedUrl !== options.feedUrl) return false;
 
-    // Filter by saved status
-    if (options.savedOnly && !item.userState.saved) return false;
+  if (options.socialContentFilter && options.socialContentFilter !== "all") {
+    if (options.socialContentFilter === "stories" && item.contentType !== "story") return false;
+    if (options.socialContentFilter === "posts" && item.contentType === "story") return false;
+  }
 
-    // Filter by tags (any match)
-    if (options.tags?.length) {
-      const hasTag = options.tags.some((t) => item.userState.tags.includes(t));
-      if (!hasTag) return false;
-    }
+  // Filter by saved status
+  if (options.savedOnly && !item.userState.saved) return false;
 
-    if (options.signals?.length) {
-      const itemSignals = item.contentSignals?.tags ?? [];
-      const hasSignal = options.signals.some((signal) => itemSignals.includes(signal));
-      if (!hasSignal) return false;
-    }
+  // Filter by tags (any match)
+  if (options.tags?.length) {
+    const hasTag = options.tags.some((t) => item.userState.tags.includes(t));
+    if (!hasTag) return false;
+  }
 
-    return true;
-  });
+  if (options.signals?.length) {
+    const itemSignals = item.contentSignals?.tags ?? [];
+    const hasSignal = options.signals.some((signal) => itemSignals.includes(signal));
+    if (!hasSignal) return false;
+  }
+
+  return true;
 }

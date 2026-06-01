@@ -20,10 +20,6 @@ export function getHealthStatusLabel(snapshot?: ProviderHealthSnapshot | null): 
     return "Paused";
   }
 
-  if (snapshot.status === "healthy") {
-    return "Healthy";
-  }
-
   if (snapshot.lastOutcome === "cooldown") {
     return "Cooling down";
   }
@@ -34,6 +30,10 @@ export function getHealthStatusLabel(snapshot?: ProviderHealthSnapshot | null): 
 
   if (snapshot.lastOutcome === "empty") {
     return "No posts pulled";
+  }
+
+  if (snapshot.status === "healthy") {
+    return "Healthy";
   }
 
   if (snapshot.status === "degraded") {
@@ -59,6 +59,12 @@ export function hasAuthLikeIssue(error?: string | null): boolean {
   );
 }
 
+export function isTransientMemoryPressureIssue(error?: string | null): boolean {
+  if (!error) return false;
+  const normalized = error.toLocaleLowerCase();
+  return normalized.includes("memory is high") && normalized.includes("after cleanup");
+}
+
 export function getProviderStatusTone({
   isConnected,
   authError,
@@ -71,12 +77,16 @@ export function getProviderStatusTone({
   if (hasAuthLikeIssue(authError)) {
     return "critical";
   }
+  const usableAuthError = isTransientMemoryPressureIssue(authError)
+    ? undefined
+    : authError;
 
   if (
     snapshot?.status === "paused" ||
     snapshot?.status === "degraded" ||
+    snapshot?.lastOutcome === "empty" ||
     snapshot?.lastOutcome === "provider_rate_limit" ||
-    (!!authError && !hasAuthLikeIssue(authError))
+    (!!usableAuthError && !hasAuthLikeIssue(usableAuthError))
   ) {
     return "warning";
   }
@@ -132,17 +142,20 @@ export function getProviderStatusDetail({
   if (snapshot?.currentMessage) {
     return snapshot.currentMessage;
   }
+  const usableAuthError = isTransientMemoryPressureIssue(authError)
+    ? undefined
+    : authError;
 
-  if (hasAuthLikeIssue(authError)) {
-    return authError ?? "Your session needs to be reconnected before sync can continue.";
+  if (hasAuthLikeIssue(usableAuthError)) {
+    return usableAuthError ?? "Your session needs to be reconnected before sync can continue.";
   }
 
   if (snapshot?.lastError) {
     return snapshot.lastError;
   }
 
-  if (authError) {
-    return authError;
+  if (usableAuthError) {
+    return usableAuthError;
   }
 
   if (snapshot?.status === "healthy" || isConnected) {

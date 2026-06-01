@@ -19,6 +19,7 @@ import {
   removeFeedItem,
   markAsRead,
   archiveItemsById,
+  clearSampleData,
   toggleSaved,
   unarchiveSavedItems,
   hideItem,
@@ -29,7 +30,7 @@ import {
   updatePreferences,
 } from "@freed/shared/schema";
 import type { FreedDoc } from "@freed/shared/schema";
-import type { Account, FeedItem, RssFeed } from "@freed/shared";
+import type { Account, FeedItem, RssFeed, SampleDataFingerprint } from "@freed/shared";
 
 // =============================================================================
 // Test fixtures
@@ -73,6 +74,13 @@ function makeAccount(overrides: Partial<Account> & {
     ...overrides,
   };
 }
+
+const sampleFingerprint: SampleDataFingerprint = {
+  marker: "freed.sample-data.v1",
+  batchId: "test-batch",
+  generatedAt: 1,
+  generatorVersion: 1,
+};
 
 // =============================================================================
 // identity graph placement
@@ -124,6 +132,84 @@ describe("identity graph placement", () => {
       graphPinned: false,
       graphUpdatedAt: 890,
     });
+  });
+});
+
+describe("clearSampleData", () => {
+  it("removes only fingerprinted sample records and unlinks real accounts", () => {
+    let doc = createEmptyDoc();
+
+    doc = A.change(doc, (draft) => {
+      addRssFeed(draft, makeFeed({
+        url: "https://sample.freed.wtf/test/feed",
+        title: "Sample",
+        sampleDataFingerprint: sampleFingerprint,
+      }));
+      addRssFeed(draft, makeFeed({ url: "https://example.com/feed", title: "Real" }));
+      addFeedItem(draft, makeItem({
+        globalId: "sample:item",
+        sampleDataFingerprint: sampleFingerprint,
+      }));
+      addFeedItem(draft, makeItem({ globalId: "real:item" }));
+      addPerson(draft, {
+        id: "sample-person",
+        name: "Sample Person",
+        relationshipStatus: "friend",
+        careLevel: 3,
+        sampleDataFingerprint: sampleFingerprint,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      addPerson(draft, {
+        id: "real-person",
+        name: "Real Person",
+        relationshipStatus: "friend",
+        careLevel: 3,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      addAccounts(draft, [
+        makeAccount({
+          id: "sample-account",
+          personId: "sample-person",
+          kind: "social",
+          provider: "x",
+          externalId: "sample",
+          sampleDataFingerprint: sampleFingerprint,
+        }),
+        makeAccount({
+          id: "real-linked-account",
+          personId: "sample-person",
+          kind: "social",
+          provider: "instagram",
+          externalId: "real-linked",
+        }),
+        makeAccount({
+          id: "real-account",
+          personId: "real-person",
+          kind: "social",
+          provider: "facebook",
+          externalId: "real",
+        }),
+      ]);
+    });
+
+    let summary = { feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 };
+    doc = A.change(doc, (draft) => {
+      summary = clearSampleData(draft);
+    });
+
+    expect(summary).toEqual({ feeds: 1, items: 1, persons: 1, accounts: 1, total: 4 });
+    expect(doc.rssFeeds["https://sample.freed.wtf/test/feed"]).toBeUndefined();
+    expect(doc.rssFeeds["https://example.com/feed"]).toBeDefined();
+    expect(doc.feedItems["sample:item"]).toBeUndefined();
+    expect(doc.feedItems["real:item"]).toBeDefined();
+    expect(doc.persons["sample-person"]).toBeUndefined();
+    expect(doc.persons["real-person"]).toBeDefined();
+    expect(doc.accounts["sample-account"]).toBeUndefined();
+    expect(doc.accounts["real-account"]?.personId).toBe("real-person");
+    expect(doc.accounts["real-linked-account"]).toBeDefined();
+    expect(doc.accounts["real-linked-account"]?.personId).toBeUndefined();
   });
 });
 

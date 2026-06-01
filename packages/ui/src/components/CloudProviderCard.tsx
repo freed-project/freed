@@ -27,7 +27,7 @@ const PROVIDER_META: Record<
 > = {
   dropbox: {
     name: "Dropbox",
-    detail: "~1-4 s sync, /Apps/Freed/",
+    detail: "Coming soon",
     icon: (
       <svg className="theme-icon-media h-6 w-6 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
         <path d="M6 2L0 6l6 4-6 4 6 4 6-4-6-4 6-4L6 2zM18 2l-6 4 6 4-6 4 6 4 6-4-6-4 6-4-6-4zM12 14l-6 4 6 4 6-4-6-4z" />
@@ -72,9 +72,10 @@ export function CloudProviderCard({
   const isConnected = state.status === "connected";
   const isConnecting = state.status === "connecting";
   const error = state.status === "error" ? state.error : undefined;
+  const isComingSoon = provider === "dropbox" && !isConnected;
 
-  const isIdle = !isConnected && !isConnecting;
-  const canCancel = isConnecting && !!onCancelConnect;
+  const isIdle = !isConnected && !isConnecting && !isComingSoon;
+  const canCancel = isConnecting && !!onCancelConnect && !isComingSoon;
 
   return (
     <div
@@ -95,7 +96,9 @@ export function CloudProviderCard({
           ? "bg-[rgb(var(--theme-feedback-success-rgb)/0.06)] border-[rgb(var(--theme-feedback-success-rgb)/0.2)]"
           : isIdle || canCancel
             ? "cursor-pointer border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] hover:border-[var(--theme-border-strong)] hover:bg-[var(--theme-bg-card-hover)]"
-            : "border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)]"
+            : isComingSoon
+              ? "border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] opacity-75"
+              : "border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)]"
       }`}
     >
       {meta.icon}
@@ -132,9 +135,11 @@ export function CloudProviderCard({
               onConnect(provider);
             }
           }}
-          disabled={!isIdle && !canCancel}
+          disabled={isComingSoon || (!isIdle && !canCancel)}
           className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-lg transition-colors ${
-            isConnected
+            isComingSoon
+              ? "cursor-not-allowed bg-[var(--theme-bg-soft)] text-[var(--theme-text-muted)]"
+              : isConnected
               ? "theme-status-pill-success"
               : isConnecting
                 ? canCancel
@@ -143,7 +148,15 @@ export function CloudProviderCard({
                 : "theme-accent-tag"
           }`}
         >
-          {isConnecting ? (canCancel ? "Cancel" : "Opening...") : isConnected ? "Connected" : "Connect"}
+          {isComingSoon
+            ? "Coming soon"
+            : isConnecting
+              ? canCancel
+                ? "Cancel"
+                : "Opening..."
+              : isConnected
+                ? "Connected"
+                : "Connect"}
         </button>
       )}
     </div>

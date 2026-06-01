@@ -18,6 +18,12 @@
 
 import { useEffect, useState } from "react";
 import { startCloudSync, storeCloudToken, type CloudProvider, type CloudTokenBundle } from "../lib/sync";
+import {
+  clearStoredGoogleOAuthRedirectUri,
+  createGoogleOAuthRelayTarget,
+  getOAuthCallbackUri,
+  getStoredGoogleOAuthRedirectUri,
+} from "../lib/oauth-redirect";
 
 const DROPBOX_TOKEN_ENDPOINT = "https://api.dropboxapi.com/oauth2/token";
 
@@ -25,19 +31,20 @@ const DROPBOX_TOKEN_ENDPOINT = "https://api.dropboxapi.com/oauth2/token";
 // (in SyncConnectDialog). The token exchange uses the server proxy at
 // /api/oauth/google, which holds the client_secret.
 const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
-const OAUTH_REDIRECT_URI = `${window.location.origin}/oauth-callback`;
+const OAUTH_REDIRECT_URI = getOAuthCallbackUri();
 
 type ExchangeResult =
   | { ok: true; token: CloudTokenBundle }
   | { ok: false; error: string };
 
 async function exchangeGDrive(code: string, verifier: string): Promise<ExchangeResult> {
+  const redirectUri = getStoredGoogleOAuthRedirectUri();
   // Token exchange is proxied server-side: Google requires a client_secret
   // even for PKCE, so we never expose it to the browser.
   const res = await fetch("/api/oauth/google", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code, verifier, redirectUri: OAUTH_REDIRECT_URI }),
+    body: JSON.stringify({ code, verifier, redirectUri }),
   });
 
   const data = await res.json().catch(() => ({ error: "invalid JSON from proxy" }));
@@ -103,6 +110,12 @@ export function OAuthCallback() {
 
     const run = async () => {
       const params = new URLSearchParams(window.location.search);
+      const relayTarget = createGoogleOAuthRelayTarget(window.location.origin, params);
+      if (relayTarget) {
+        window.location.replace(relayTarget);
+        return;
+      }
+
       const code = params.get("code");
       const oauthError = params.get("error");
 
@@ -112,6 +125,7 @@ export function OAuthCallback() {
       // Clean up PKCE state immediately, single-use.
       sessionStorage.removeItem("freed_pkce_provider");
       sessionStorage.removeItem("freed_pkce_verifier");
+      clearStoredGoogleOAuthRedirectUri();
 
       if (oauthError) {
         if (!cancelled) {

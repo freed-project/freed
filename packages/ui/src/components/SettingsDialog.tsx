@@ -8,7 +8,7 @@
  * Mobile: single-column with stacked sections and compact spacing.
  */
 
-import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   formatReleaseVersion,
   RELEASE_CHANNEL_LABELS,
@@ -17,16 +17,25 @@ import {
   SAMPLE_SHOWCASE_FRIEND_COUNT,
   SAMPLE_SHOWCASE_ITEM_COUNT,
   SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+  stripReleaseChannelSuffix,
   type AnimationIntensity,
   type ReleaseChannel,
 } from "@freed/shared";
 import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { createPortal } from "react-dom";
-import { useAppStore, usePlatform } from "../context/PlatformContext.js";
+import {
+  useAppStore,
+  usePlatform,
+  type ChangelogPreviewRelease,
+} from "../context/PlatformContext.js";
 import { describeInstalledBuild, readBuildMetadata } from "../lib/build-info.js";
 import { useDebugStore } from "../lib/debug-store.js";
 import { useSettingsStore } from "../lib/settings-store.js";
-import { refreshSampleLibraryData } from "../lib/sample-library-seed.js";
+import {
+  formatSampleDataSummary,
+  refreshSampleLibraryData,
+  summarizeSampleData,
+} from "../lib/sample-library-seed.js";
 import {
   applyThemeToDocument,
   persistTheme,
@@ -54,12 +63,13 @@ import {
 import { FeedsSection } from "./settings/FeedsSection.js";
 import { SavedSection } from "./settings/SavedSection.js";
 import { AISection } from "./settings/AISection.js";
+import { StoryWallView } from "./story-wall/StoryWallView.js";
 import { SettingsToggle } from "./SettingsToggle.js";
 import { ReportComposer } from "./report/ReportComposer.js";
 import { SearchField } from "./SearchField.js";
 import { ThemePreviewButton } from "./ThemePreviewButton.js";
 import { Tooltip } from "./Tooltip.js";
-import { GoogleContactsIcon } from "./icons.js";
+import { ExternalLinkIcon, GoogleContactsIcon, StoryWallIcon } from "./icons.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -83,6 +93,11 @@ interface SettingsDialogProps {
   onClose: () => void;
 }
 
+type SettingsScrollAnchor = {
+  sectionId: SectionId;
+  offset: number;
+};
+
 const ANIMATION_OPTIONS: ReadonlyArray<{ value: AnimationIntensity; label: string }> = [
   { value: "none", label: "None" },
   { value: "light", label: "Light" },
@@ -103,6 +118,61 @@ type ProviderAuthSlices = {
 const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
 const INSTALLED_BUILD_PRESENTATION = describeInstalledBuild(readBuildMetadata());
 const SETTINGS_OVERVIEW_ROW_TEXT = "text-base sm:text-xs";
+const SETTINGS_SCROLL_OPTIMIZATION_RESTORE_MS = 380;
+const CHANGELOG_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+});
+
+function formatChangelogDate(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return CHANGELOG_DATE_FORMATTER.format(date);
+}
+
+function inferInstalledReleaseChannelFromChangelog(
+  version: string,
+  releases: ChangelogPreviewRelease[] | undefined,
+): ReleaseChannel | null {
+  const baseVersion = stripReleaseChannelSuffix(version);
+  let hasDevRelease = false;
+  let hasProductionRelease = false;
+
+  for (const release of releases ?? []) {
+    if (stripReleaseChannelSuffix(release.version) !== baseVersion) {
+      continue;
+    }
+
+    if (release.channel === "dev") {
+      hasDevRelease = true;
+    } else {
+      hasProductionRelease = true;
+    }
+  }
+
+  if (hasDevRelease && !hasProductionRelease) {
+    return "dev";
+  }
+
+  if (hasProductionRelease && !hasDevRelease) {
+    return "production";
+  }
+
+  return null;
+}
+
+function getSettingsChangelogUrl(channel: ReleaseChannel): string {
+  return channel === "dev"
+    ? "https://freed.wtf/changelog/all"
+    : "https://freed.wtf/changelog";
+}
 
 function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId {
   return (
@@ -166,12 +236,102 @@ function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
     </div>
   );
 }
+
+function ChangelogPreviewList({
+  releases,
+  fullChangelogUrl,
+  openUrl,
+}: {
+  releases: ChangelogPreviewRelease[];
+  fullChangelogUrl: string;
+  openUrl?: (url: string) => void;
+}) {
+  if (releases.length === 0) {
+    return null;
+  }
+
+  const linkClassName = "btn-secondary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold";
+
+  return (
+    <section
+      className="space-y-2 pt-5"
+      aria-label="Recent releases"
+      data-testid="settings-changelog-preview"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-text-primary">Recent releases</p>
+        </div>
+        {openUrl ? (
+          <button
+            type="button"
+            onClick={() => openUrl(fullChangelogUrl)}
+            className={linkClassName}
+          >
+            Show full changelog
+            <ExternalLinkIcon className="h-3.5 w-3.5" />
+          </button>
+        ) : (
+          <a
+            href={fullChangelogUrl}
+            target="_blank"
+            rel="noreferrer"
+            className={linkClassName}
+          >
+            Show full changelog
+            <ExternalLinkIcon className="h-3.5 w-3.5" />
+          </a>
+        )}
+      </div>
+      <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
+        {releases.map((release) => {
+          const dateLabel = formatChangelogDate(release.date);
+
+          return (
+            <article
+              key={`${release.channel}:${release.version}`}
+              className="rounded-lg border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_68%,transparent)] px-3 py-2.5"
+            >
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                <span className="font-mono font-semibold text-text-primary">
+                  v{formatReleaseVersion(release.version, release.channel)}
+                </span>
+                <span className="rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 font-semibold text-text-muted">
+                  {RELEASE_CHANNEL_LABELS[release.channel]}
+                </span>
+                {dateLabel && <span className="text-text-muted">{dateLabel}</span>}
+              </div>
+              <p className="mt-1.5 text-sm leading-5 text-text-primary">{release.summary}</p>
+              {release.items.length > 0 && (
+                <ul className="mt-2 space-y-1 text-xs leading-5 text-text-muted">
+                  {release.items.map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span aria-hidden="true" className="mt-2 h-1 w-1 shrink-0 rounded-full bg-current" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 // ── Section icons ─────────────────────────────────────────────────────────────
 
 /** Icon for the Sources nav group (not a section itself). */
 const ICON_SOURCES = (
   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+  </svg>
+);
+
+/** Icon for the Beta nav group (not a section itself). */
+const ICON_BETA = (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3.5l1.6 4.9 5.1 1.1-3.5 3.7.5 5.2-4.7-2.2-4.7 2.2.5-5.2-3.5-3.7 5.1-1.1L12 3.5z" />
   </svg>
 );
 
@@ -201,6 +361,9 @@ const ICONS: Record<SectionId, ReactNode> = {
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
     </svg>
+  ),
+  storyWall: (
+    <StoryWallIcon />
   ),
   sync: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -265,11 +428,20 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     InstagramSettingsContent,
     LinkedInSettingsContent,
     GoogleContactsSettingsContent,
+    FeedsSettingsContent,
+    addRssFeed,
+    importOPMLFeeds,
+    exportFeedsAsOPML,
+    googleContacts,
+    secureStorage,
+    localAIModels,
     checkForUpdates,
+    changelogPreview,
     applyUpdate,
     headerDragRegion,
     factoryReset,
     activeCloudProviderLabel,
+    openUrl,
     seedSocialConnections,
     releaseChannel,
     installedReleaseChannel,
@@ -280,51 +452,90 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const themeBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollOptimizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const themeSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingThemeIdRef = useRef<ThemeId | null>(null);
   const pendingThemeSaveSeqRef = useRef(0);
   const committedThemeIdRef = useRef(preferences.display.themeId);
+  const settingsShellRef = useRef<HTMLDivElement>(null);
   const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
-  const allSections: Section[] = buildSettingsSectionMetas({
-    hasGoogleContacts: !!GoogleContactsSettingsContent,
-    hasX: !!XSettingsContent,
-    hasFacebook: !!FacebookSettingsContent,
-    hasInstagram: !!InstagramSettingsContent,
-    hasLinkedIn: !!LinkedInSettingsContent,
-    hasUpdateChecks: !!checkForUpdates,
-    hasFactoryReset: !!factoryReset,
-  }).map((section) => ({
-    ...section,
-    icon: ICONS[section.id],
-  }));
+  const allSections: Section[] = useMemo(
+    () =>
+      buildSettingsSectionMetas({
+        hasFeedManagement: !!(addRssFeed || importOPMLFeeds || exportFeedsAsOPML),
+        hasGoogleContacts: !!GoogleContactsSettingsContent,
+        hasGoogleContactsManagement: !!googleContacts,
+        hasAISettings: !!(secureStorage || localAIModels),
+        hasX: !!XSettingsContent,
+        hasFacebook: !!FacebookSettingsContent,
+        hasInstagram: !!InstagramSettingsContent,
+        hasLinkedIn: !!LinkedInSettingsContent,
+        hasUpdateChecks: !!checkForUpdates,
+        hasFactoryReset: !!factoryReset,
+      }).map((section) => ({
+        ...section,
+        icon: ICONS[section.id],
+      })),
+    [
+      addRssFeed,
+      importOPMLFeeds,
+      exportFeedsAsOPML,
+      GoogleContactsSettingsContent,
+      XSettingsContent,
+      FacebookSettingsContent,
+      InstagramSettingsContent,
+      LinkedInSettingsContent,
+      checkForUpdates,
+      factoryReset,
+      googleContacts,
+      localAIModels,
+      secureStorage,
+    ],
+  );
 
   // Hierarchical nav structure — drives left sidebar rendering only.
   // Re-use the Section objects already defined in allSections so keywords stay in sync.
-  const sectionById = Object.fromEntries(allSections.map((s) => [s.id, s])) as Record<SectionId, Section>;
-  const navStructure: NavStructureItem[] = [
-    sectionById.appearance,
-    sectionById.sync,
-    {
-      kind: "group",
-      label: "Sources",
-      icon: ICON_SOURCES,
-      children: [
-        sectionById.saved,
-        ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
-        ...(XSettingsContent ? [sectionById.x] : []),
-        ...(FacebookSettingsContent ? [sectionById.facebook] : []),
-        ...(InstagramSettingsContent ? [sectionById.instagram] : []),
-        ...(LinkedInSettingsContent ? [sectionById.linkedin] : []),
-        sectionById.feeds,
-      ],
-    },
-    sectionById.ai,
-    ...(checkForUpdates ? [sectionById.updates] : []),
-    sectionById.legal,
-    ...(factoryReset ? [sectionById.danger] : []),
-  ];
+  const sectionById = useMemo(
+    () => Object.fromEntries(allSections.map((s) => [s.id, s])) as Partial<Record<SectionId, Section>>,
+    [allSections],
+  );
+  const navStructure: NavStructureItem[] = useMemo(
+    () => [
+      sectionById.appearance!,
+      sectionById.sync!,
+      {
+        kind: "group",
+        label: "Sources",
+        icon: ICON_SOURCES,
+        children: [
+          sectionById.saved!,
+          ...(sectionById.googleContacts ? [sectionById.googleContacts] : []),
+          ...(sectionById.x ? [sectionById.x] : []),
+          ...(sectionById.facebook ? [sectionById.facebook] : []),
+          ...(sectionById.instagram ? [sectionById.instagram] : []),
+          ...(sectionById.linkedin ? [sectionById.linkedin] : []),
+          sectionById.feeds!,
+        ],
+      },
+      {
+        kind: "group",
+        label: "Beta",
+        icon: ICON_BETA,
+        children: [
+          ...(sectionById.ai ? [sectionById.ai] : []),
+          ...(sectionById.storyWall ? [sectionById.storyWall] : []),
+        ],
+      },
+      ...(sectionById.updates ? [sectionById.updates] : []),
+      sectionById.legal!,
+      ...(sectionById.danger ? [sectionById.danger] : []),
+    ],
+    [
+      sectionById,
+    ],
+  );
 
   // ── Preferences state ────────────────────────────────────────────────────
   const [display, setDisplay] = useState(() => preferences.display);
@@ -412,9 +623,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (open) return;
     setThemePreviewHovering(false);
     setThemePreviewTouchActive(false);
+    delete settingsShellRef.current?.dataset.moving;
     if (themeBlurRestoreTimerRef.current) {
       clearTimeout(themeBlurRestoreTimerRef.current);
       themeBlurRestoreTimerRef.current = null;
+    }
+    if (scrollOptimizationTimerRef.current) {
+      clearTimeout(scrollOptimizationTimerRef.current);
+      scrollOptimizationTimerRef.current = null;
     }
     flushPendingThemeSelectionNow();
   }, [flushPendingThemeSelectionNow, open]);
@@ -424,6 +640,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       if (themeBlurRestoreTimerRef.current) {
         clearTimeout(themeBlurRestoreTimerRef.current);
       }
+      if (scrollOptimizationTimerRef.current) {
+        clearTimeout(scrollOptimizationTimerRef.current);
+      }
+      delete settingsShellRef.current?.dataset.moving;
       flushPendingThemeSelectionNow();
     };
   }, [flushPendingThemeSelectionNow]);
@@ -439,6 +659,21 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       themeBlurRestoreTimerRef.current = null;
     }, 5000);
   }, [hasCoarsePointer]);
+
+  const suppressSettingsChromeDuringScroll = useCallback(() => {
+    const shell = settingsShellRef.current;
+    if (shell && shell.dataset.moving !== "true") {
+      shell.dataset.moving = "true";
+    }
+
+    if (scrollOptimizationTimerRef.current) {
+      clearTimeout(scrollOptimizationTimerRef.current);
+    }
+    scrollOptimizationTimerRef.current = setTimeout(() => {
+      delete settingsShellRef.current?.dataset.moving;
+      scrollOptimizationTimerRef.current = null;
+    }, SETTINGS_SCROLL_OPTIMIZATION_RESTORE_MS);
+  }, []);
 
   const handleThemeCommit = useCallback((themeId: ThemeId) => {
     activateTouchThemePreview();
@@ -529,40 +764,67 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // ── Update check ─────────────────────────────────────────────────────────
   const [updateState, setUpdateState] = useState<UpdateCheckState>({ status: "idle" });
+  // Keep a ref in sync with updateState.status so scroll/visibility callbacks
+  // always read the current value without needing to be re-created.
+  const updateStatusRef = useRef(updateState.status);
+  updateStatusRef.current = updateState.status;
   const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const shouldRecheckAfterChannelChangeRef = useRef(false);
+  const inferredInstalledReleaseChannel = inferInstalledReleaseChannelFromChangelog(
+    __APP_VERSION__,
+    changelogPreview,
+  );
   const displayVersion = formatReleaseVersion(
     __APP_VERSION__,
-    installedReleaseChannel ?? releaseChannel,
+    inferredInstalledReleaseChannel ?? installedReleaseChannel ?? releaseChannel,
   );
+  const selectedReleaseChannel = releaseChannel ?? "production";
+  const fullChangelogUrl = getSettingsChangelogUrl(selectedReleaseChannel);
+  const visibleChangelogPreview = (changelogPreview ?? [])
+    .filter((release) => selectedReleaseChannel === "dev" || release.channel === "production")
+    .slice(0, 5);
 
   const runUpdateCheck = useCallback(async () => {
     if (!checkForUpdates) return;
 
+    updateStatusRef.current = "checking";
     setUpdateState({ status: "checking" });
     try {
       const update = await checkForUpdates();
       const next: UpdateCheckState = update
         ? { status: "available", version: update.version, channel: update.channel }
         : { status: "up-to-date" };
+      updateStatusRef.current = next.status;
       setUpdateState(next);
       if (next.status === "up-to-date") {
         clearTimeout(fadeTimer.current);
-        fadeTimer.current = setTimeout(() => setUpdateState({ status: "idle" }), 4000);
+        fadeTimer.current = setTimeout(() => {
+          updateStatusRef.current = "idle";
+          setUpdateState({ status: "idle" });
+        }, 4000);
       }
     } catch {
+      updateStatusRef.current = "error";
       setUpdateState({ status: "error" });
       clearTimeout(fadeTimer.current);
-      fadeTimer.current = setTimeout(() => setUpdateState({ status: "idle" }), 4000);
+      fadeTimer.current = setTimeout(() => {
+        updateStatusRef.current = "idle";
+        setUpdateState({ status: "idle" });
+      }, 4000);
     }
   }, [checkForUpdates]);
 
   const handleCheckForUpdates = useCallback(async () => {
+    if (updateStatusRef.current !== "idle") {
+      return;
+    }
+
     await runUpdateCheck();
   }, [runUpdateCheck]);
 
   useEffect(() => {
     clearTimeout(fadeTimer.current);
+    updateStatusRef.current = "idle";
     setUpdateState({ status: "idle" });
 
     if (!shouldRecheckAfterChannelChangeRef.current || !checkForUpdates) {
@@ -582,6 +844,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [deleteFromCloud, setDeleteFromCloud] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [showSampleSeedConfirm, setShowSampleSeedConfirm] = useState(false);
+  const [showSampleClearConfirm, setShowSampleClearConfirm] = useState(false);
   const [supportModalOpen, setSupportModalOpen] = useState(false);
 
   const handleReset = useCallback(async () => {
@@ -603,12 +866,21 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
   const friends = useAppStore((s) => s.friends);
+  const persons = useAppStore((s) => s.persons);
+  const accounts = useAppStore((s) => s.accounts);
   const addFeed = useAppStore((s) => s.addFeed);
   const addItems = useAppStore((s) => s.addItems);
   const addFriends = useAppStore((s) => s.addFriends);
+  const clearSampleData = useAppStore((s) => s.clearSampleData);
+  const [clearingSampleData, setClearingSampleData] = useState(false);
   const existingFeedCount = Object.keys(feeds).length;
   const existingFriendCount = Object.keys(friends).length;
   const existingItemCount = items.length;
+  const sampleDataSummary = useMemo(
+    () => summarizeSampleData({ items, feeds, persons, accounts }),
+    [accounts, feeds, items, persons],
+  );
+  const hasSampleData = sampleDataSummary.total > 0;
   const hasExistingLibraryData =
     existingFeedCount > 0 || existingFriendCount > 0 || existingItemCount > 0;
 
@@ -650,25 +922,54 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     void handleSeedSampleData();
   }, [handleSeedSampleData, hasExistingLibraryData]);
 
+  const handleClearSampleData = useCallback(async () => {
+    setClearingSampleData(true);
+    toast.info("Clearing sample data...");
+    try {
+      const summary = await clearSampleData();
+      setSeedDone(false);
+      setShowSampleClearConfirm(false);
+      toast.success(`Sample data cleared: ${formatSampleDataSummary(summary)}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to clear sample data");
+    } finally {
+      setClearingSampleData(false);
+    }
+  }, [clearSampleData]);
+
   // ── Search ────────────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
   const searchLower = search.toLowerCase().trim();
-  const visibleSections = searchLower
-    ? allSections.filter((s) =>
-        s.label.toLowerCase().includes(searchLower) ||
-        s.keywords.some((k) => k.includes(searchLower)),
-      )
-    : allSections;
+  const visibleSections = useMemo(
+    () =>
+      searchLower
+        ? allSections.filter((s) =>
+            s.label.toLowerCase().includes(searchLower) ||
+            s.keywords.some((k) => k.includes(searchLower)),
+          )
+        : allSections,
+    [allSections, searchLower],
+  );
 
   // ── Scrollspy ────────────────────────────────────────────────────────────
   const [activeSection, setActiveSection] = useState<SectionId>("appearance");
   const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
+  const [scrollportHeight, setScrollportHeight] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeSectionRef = useRef(activeSection);
+  const scrollAnchorRef = useRef<SettingsScrollAnchor>({ sectionId: "appearance", offset: 0 });
+  const renderedSectionIds = useMemo(() => {
+    if (isMobile || searchLower) {
+      return new Set(visibleSections.map((section) => section.id));
+    }
 
-  // Keep a ref in sync with updateState.status so scroll/visibility callbacks
-  // always read the current value without needing to be re-created.
-  const updateStatusRef = useRef(updateState.status);
-  updateStatusRef.current = updateState.status;
+    const activeIndex = Math.max(0, allSections.findIndex((section) => section.id === activeSection));
+    const ids = new Set<SectionId>();
+    for (let index = Math.max(0, activeIndex - 1); index <= Math.min(allSections.length - 1, activeIndex + 1); index += 1) {
+      ids.add(allSections[index].id);
+    }
+    return ids;
+  }, [activeSection, allSections, isMobile, searchLower, visibleSections]);
 
   // Ref for the "Check for updates" button element.
   const checkButtonRef = useRef<HTMLDivElement>(null);
@@ -677,6 +978,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const scrollContainerBottomPadding = isMobile
     ? "calc(2rem + env(safe-area-inset-bottom, 0px))"
     : "calc(8rem + env(safe-area-inset-bottom, 0px))";
+  const desktopSectionMinHeight = scrollportHeight > 0
+    ? `${scrollportHeight}px`
+    : "calc(100dvh - 8rem)";
+
+  useEffect(() => {
+    activeSectionRef.current = activeSection;
+  }, [activeSection]);
 
   // Auto-check when the button enters the scroll container's visible area.
   // Re-checks each time the button transitions from hidden → visible, so scrolling
@@ -689,15 +997,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     let wasVisible = false;
     let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-    const check = () => {
+    const setVisible = (isVisible: boolean) => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        const btn = checkButtonRef.current;
-        if (!btn) return;
-        const rootRect = root.getBoundingClientRect();
-        const btnRect = btn.getBoundingClientRect();
-        const isVisible = btnRect.bottom > rootRect.top && btnRect.top < rootRect.bottom;
-
         if (isVisible && !wasVisible && updateStatusRef.current === "idle") {
           handleCheckForUpdates();
         }
@@ -705,19 +1007,114 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       }, 120);
     };
 
-    check();
-    root.addEventListener("scroll", check, { passive: true });
+    const checkNow = () => {
+      const btn = checkButtonRef.current;
+      if (!btn) return;
+      const rootRect = root.getBoundingClientRect();
+      const btnRect = btn.getBoundingClientRect();
+      setVisible(btnRect.bottom > rootRect.top && btnRect.top < rootRect.bottom);
+    };
+
+    if (typeof IntersectionObserver === "undefined") {
+      checkNow();
+      root.addEventListener("scroll", checkNow, { passive: true });
+      return () => {
+        clearTimeout(debounceTimer);
+        root.removeEventListener("scroll", checkNow);
+      };
+    }
+
+    const btn = checkButtonRef.current;
+    if (!btn) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setVisible(entry?.isIntersecting === true);
+      },
+      { root, threshold: 0 },
+    );
+    observer.observe(btn);
     return () => {
       clearTimeout(debounceTimer);
-      root.removeEventListener("scroll", check);
+      observer.disconnect();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, checkForUpdates]);
+  }, [activeSection, checkForUpdates, handleCheckForUpdates, open, renderedSectionIds]);
   // While true, scroll-driven updates are suppressed so intermediate sections
   // that drift through the trigger zone during a smooth-scroll animation don't
   // cause nav items to flicker.
   const isScrollingProgrammatically = useRef(false);
   const scrollEndTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const updateScrollAnchorFromPosition = useCallback((): SectionId | null => {
+    const container = scrollRef.current;
+    if (!container) {
+      return null;
+    }
+
+    const sections = Array.from(container.querySelectorAll<HTMLElement>("[data-section]"));
+    if (sections.length === 0) {
+      return null;
+    }
+
+    const scrollPosition = container.scrollTop + 56;
+    let anchorSection = sections[0];
+    for (const section of sections) {
+      if (section.offsetTop <= scrollPosition) {
+        anchorSection = section;
+      } else {
+        break;
+      }
+    }
+
+    const sectionId = anchorSection.dataset.section as SectionId;
+    scrollAnchorRef.current = {
+      sectionId,
+      offset: container.scrollTop - anchorSection.offsetTop,
+    };
+    return sectionId;
+  }, []);
+
+  const setScrollAnchorForSection = useCallback((id: SectionId, scrollTop?: number) => {
+    const container = scrollRef.current;
+    if (!container) {
+      scrollAnchorRef.current = { sectionId: id, offset: 0 };
+      return;
+    }
+
+    const section = container.querySelector<HTMLElement>(`[data-section="${id}"]`);
+    scrollAnchorRef.current = {
+      sectionId: id,
+      offset: section ? (scrollTop ?? container.scrollTop) - section.offsetTop : 0,
+    };
+  }, []);
+
+  const restoreScrollAnchor = useCallback(() => {
+    if (isMobile || searchLower) {
+      return;
+    }
+
+    const container = scrollRef.current;
+    if (!container) {
+      return;
+    }
+
+    const { sectionId, offset } = scrollAnchorRef.current;
+    const section = container.querySelector<HTMLElement>(`[data-section="${sectionId}"]`);
+    if (!section) {
+      return;
+    }
+
+    const nextScrollTop = Math.max(0, section.offsetTop + offset);
+    if (Math.abs(container.scrollTop - nextScrollTop) < 1) {
+      return;
+    }
+
+    isScrollingProgrammatically.current = true;
+    clearTimeout(scrollEndTimerRef.current);
+    container.scrollTop = nextScrollTop;
+    scrollEndTimerRef.current = setTimeout(() => {
+      isScrollingProgrammatically.current = false;
+    }, 120);
+  }, [isMobile, searchLower]);
 
   // When search is cleared, restore scroll-driven active section detection.
   // When searching, highlight the first visible match.
@@ -727,15 +1124,15 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
   }, [searchLower, visibleSections]);
 
-  const scrollSectionIntoView = useCallback((id: SectionId, behavior: ScrollBehavior = "smooth") => {
+  const resolveSectionScrollTarget = useCallback((id: SectionId) => {
     const container = scrollRef.current;
     if (!container) {
-      return;
+      return null;
     }
 
     const el = container.querySelector<HTMLElement>(`[data-section="${id}"]`);
     if (!el) {
-      return;
+      return null;
     }
 
     const contentAnchor = el.querySelector<HTMLElement>(":scope > :nth-child(2)");
@@ -748,6 +1145,18 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       container.scrollTop + (targetRect.top - containerRect.top) - topInset,
     );
 
+    return { container, targetTop };
+  }, [isMobile]);
+
+  const scrollSectionIntoView = useCallback((id: SectionId, behavior: ScrollBehavior = "smooth") => {
+    const target = resolveSectionScrollTarget(id);
+    if (!target) {
+      return;
+    }
+
+    const { container, targetTop } = target;
+
+    setScrollAnchorForSection(id, targetTop);
     isScrollingProgrammatically.current = true;
     clearTimeout(scrollEndTimerRef.current);
 
@@ -760,55 +1169,123 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
 
     const clearScrolling = () => {
+      const settledTarget = resolveSectionScrollTarget(id);
+      if (settledTarget) {
+        const delta = Math.abs(settledTarget.container.scrollTop - settledTarget.targetTop);
+        if (delta > 1) {
+          settledTarget.container.scrollTop = settledTarget.targetTop;
+        }
+      }
       isScrollingProgrammatically.current = false;
+      clearTimeout(scrollEndTimerRef.current);
     };
 
     container.addEventListener("scrollend", clearScrolling, { once: true });
     scrollEndTimerRef.current = setTimeout(clearScrolling, 800);
 
     container.scrollTo({ top: targetTop, behavior: animationAwareScrollBehavior(behavior) });
-  }, [isMobile]);
+  }, [resolveSectionScrollTarget, setScrollAnchorForSection]);
 
   useEffect(() => {
     const root = scrollRef.current;
     if (!root || searchLower || (isMobile && mobileView === "nav")) return;
+    let scrollIdleTimer: ReturnType<typeof setTimeout> | undefined;
+    const supportsScrollEnd = "onscrollend" in root;
 
     const updateActiveSectionFromScroll = () => {
       if (isScrollingProgrammatically.current) return;
 
-      const sections = Array.from(
-        root.querySelectorAll<HTMLElement>("[data-section]")
-      );
-      if (sections.length === 0) return;
+      const nextActive = updateScrollAnchorFromPosition();
+      if (!nextActive) return;
 
-      const activationOffset = 56;
-      const scrollPosition = root.scrollTop + activationOffset;
-      let nextActive = sections[0].dataset.section as SectionId;
-
-      for (const section of sections) {
-        const id = section.dataset.section as SectionId;
-        if (section.offsetTop <= scrollPosition) {
-          nextActive = id;
-        } else {
-          break;
-        }
+      if (nextActive !== activeSectionRef.current) {
+        activeSectionRef.current = nextActive;
+        setActiveSection(nextActive);
       }
+    };
 
-      setActiveSection(nextActive);
+    const scheduleActiveSectionUpdate = () => {
+      suppressSettingsChromeDuringScroll();
+      if (!isScrollingProgrammatically.current) {
+        updateScrollAnchorFromPosition();
+      }
+      if (supportsScrollEnd) {
+        return;
+      }
+      clearTimeout(scrollIdleTimer);
+      scrollIdleTimer = setTimeout(() => {
+        updateActiveSectionFromScroll();
+      }, 140);
     };
 
     updateActiveSectionFromScroll();
-    root.addEventListener("scroll", updateActiveSectionFromScroll, { passive: true });
-    window.addEventListener("resize", updateActiveSectionFromScroll);
+    root.addEventListener("scroll", scheduleActiveSectionUpdate, { passive: true });
+    if (supportsScrollEnd) {
+      root.addEventListener("scrollend", updateActiveSectionFromScroll);
+    }
 
     return () => {
-      root.removeEventListener("scroll", updateActiveSectionFromScroll);
-      window.removeEventListener("resize", updateActiveSectionFromScroll);
+      clearTimeout(scrollIdleTimer);
+      root.removeEventListener("scroll", scheduleActiveSectionUpdate);
+      if (supportsScrollEnd) {
+        root.removeEventListener("scrollend", updateActiveSectionFromScroll);
+      }
     };
-  }, [isMobile, mobileView, open, searchLower]);
+  }, [isMobile, mobileView, open, searchLower, suppressSettingsChromeDuringScroll, updateScrollAnchorFromPosition]);
+
+  useEffect(() => {
+    if (!open || isMobile || searchLower) {
+      return;
+    }
+
+    const container = scrollRef.current;
+    if (!container) {
+      return;
+    }
+
+    const updateMeasuredHeight = (height: number) => {
+      setScrollportHeight((currentHeight) =>
+        Math.abs(currentHeight - height) < 1 ? currentHeight : height,
+      );
+    };
+
+    let previousHeight = container.clientHeight;
+    updateMeasuredHeight(previousHeight);
+
+    const scheduleRestore = () => {
+      const nextHeight = container.clientHeight;
+      if (Math.abs(nextHeight - previousHeight) < 1) {
+        return;
+      }
+      previousHeight = nextHeight;
+      updateMeasuredHeight(nextHeight);
+
+      restoreScrollAnchor();
+    };
+
+    const observer = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(scheduleRestore);
+    observer?.observe(container);
+    window.addEventListener("resize", scheduleRestore);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", scheduleRestore);
+    };
+  }, [isMobile, open, restoreScrollAnchor, searchLower]);
+
+  useLayoutEffect(() => {
+    if (!open || isMobile || searchLower || scrollportHeight <= 0) {
+      return;
+    }
+
+    restoreScrollAnchor();
+  }, [isMobile, open, restoreScrollAnchor, scrollportHeight, searchLower]);
 
   const scrollToSection = useCallback((id: SectionId) => {
     setActiveSection(id);
+    activeSectionRef.current = id;
     if (isMobile && mobileView === "nav") {
       isScrollingProgrammatically.current = true;
       clearTimeout(scrollEndTimerRef.current);
@@ -826,12 +1303,35 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     setMobileView("section");
   }, [isMobile, mobileView, scrollSectionIntoView]);
 
+  const jumpToUpdatesFromVersion = useCallback(() => {
+    if (!checkForUpdates) {
+      return;
+    }
+
+    setSearch("");
+    void handleCheckForUpdates();
+    if (!searchLower) {
+      scrollToSection("updates");
+      return;
+    }
+
+    setActiveSection("updates");
+    activeSectionRef.current = "updates";
+    setMobileView("section");
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        scrollSectionIntoView("updates", "smooth");
+      });
+    });
+  }, [checkForUpdates, handleCheckForUpdates, scrollSectionIntoView, scrollToSection, searchLower]);
+
   // Reset state on close
   useEffect(() => {
     if (!open) {
       setSearch("");
       setMobileView("nav");
       setSupportModalOpen(false);
+      scrollAnchorRef.current = { sectionId: "appearance", offset: 0 };
     }
   }, [open]);
 
@@ -850,6 +1350,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
     const rafId = requestAnimationFrame(() => {
       setActiveSection(targetSection as SectionId);
+      activeSectionRef.current = targetSection as SectionId;
       isScrollingProgrammatically.current = true;
       clearTimeout(scrollEndTimerRef.current);
       setMobileView("section");
@@ -901,7 +1402,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   function renderSectionBlock(id: SectionId) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
-    const sectionMinHeight = isMobile ? undefined : "calc(100% + 20rem)";
+    const sectionStyle: CSSProperties | undefined = isMobile
+      ? undefined
+      : {
+          minHeight: desktopSectionMinHeight,
+          contain: "layout paint style",
+        };
+    const shouldRenderContent = renderedSectionIds.has(id);
 
     // SectionContent and this wrapper both stay plain function calls because
     // they are defined inside SettingsDialog. Rendering either as JSX would
@@ -912,9 +1419,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       <section
         data-section={id}
         className={isMobile ? "flex flex-col pb-2" : "flex flex-col pb-8"}
-        style={{ minHeight: sectionMinHeight }}
+        style={sectionStyle}
       >
-        {SectionContent({ id })}
+        {shouldRenderContent ? SectionContent({ id }) : null}
       </section>
     );
   }
@@ -1122,7 +1629,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return (
           <>
             <SectionHeading label="Feeds" />
-            <FeedsSection />
+            {FeedsSettingsContent ? <FeedsSettingsContent /> : <FeedsSection />}
           </>
         );
 
@@ -1131,6 +1638,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="Saved Content" />
             <SavedSection />
+          </>
+        );
+
+      case "storyWall":
+        return (
+          <>
+            <SectionHeading label="Story Wall" />
+            <StoryWallView variant="settings" />
           </>
         );
 
@@ -1193,7 +1708,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <button
                     onClick={handleCheckForUpdates}
                     disabled={updateState.status === "checking" || updateDownloadProgress?.phase === "downloading"}
-                    className="text-sm px-3 py-1.5 rounded-lg bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_88%,transparent)] text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="btn-primary rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {updateState.status === "checking" ? (
                       <span className="flex items-center gap-2">
@@ -1237,6 +1752,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               {updateDownloadProgress?.phase === "error" && (
                 <p className="theme-feedback-text-danger text-xs">{updateDownloadProgress.message}</p>
               )}
+              <ChangelogPreviewList
+                releases={visibleChangelogPreview}
+                fullChangelogUrl={fullChangelogUrl}
+                openUrl={openUrl}
+              />
             </div>
           </>
         );
@@ -1297,6 +1817,25 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   </svg>
                 )}
               </button>
+              {hasSampleData && (
+                <button
+                  onClick={() => setShowSampleClearConfirm(true)}
+                  disabled={clearingSampleData}
+                  className="theme-feedback-panel-danger w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <div>
+                    <p className="theme-feedback-text-danger text-sm">
+                      {clearingSampleData ? "Clearing sample data..." : "Clear sample data"}
+                    </p>
+                    <p className="mt-0.5 text-xs text-[rgb(var(--theme-feedback-danger-rgb)/0.72)]">
+                      Removes only internally marked sample records: {formatSampleDataSummary(sampleDataSummary)}
+                    </p>
+                  </div>
+                  <svg className="ml-3 h-4 w-4 shrink-0 text-[rgb(var(--theme-feedback-danger-rgb)/0.56)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m-8 0h10" />
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={() => setShowResetConfirm(true)}
                 className="theme-feedback-panel-danger w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors"
@@ -1414,6 +1953,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
       {/* Panel */}
       <div
+        ref={settingsShellRef}
         className={`
           theme-dialog-shell theme-settings-shell relative z-10 flex w-full flex-col
           h-[100dvh] rounded-none
@@ -1472,10 +2012,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <div className="theme-dialog-divider hidden shrink-0 items-center justify-between border-t px-4 py-3 sm:flex">
             {checkForUpdates ? (
               <button
-                onClick={() => {
-                  setSearch("");
-                  scrollToSection("updates");
-                }}
+                onClick={jumpToUpdatesFromVersion}
                 className="text-xs font-mono text-text-muted transition-colors tabular-nums hover:text-text-secondary"
               >
                 v{displayVersion}
@@ -1531,8 +2068,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <div
             ref={scrollRef}
             data-testid="settings-scroll-container"
-            className="flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
-            style={{ paddingBottom: scrollContainerBottomPadding }}
+            className="theme-settings-scrollport flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
+            style={{
+              paddingBottom: scrollContainerBottomPadding,
+            }}
           >
             {searchLower && visibleSections.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center gap-2 pb-16 text-center">
@@ -1674,6 +2213,56 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 className="theme-feedback-button-warning flex-1 px-4 py-2.5"
               >
                 Populate anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSampleClearConfirm && (
+        <div className="theme-elevated-overlay absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 sm:items-center">
+          <div className="theme-dialog-shell my-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[rgb(var(--theme-feedback-danger-rgb)/0.15)]">
+                <svg className="h-5 w-5 theme-feedback-text-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 4h.01m-7.938 4h15.876c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L2.33 17c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-text-primary">Clear sample data?</p>
+                <p className="mt-0.5 text-xs text-text-secondary">
+                  Only records with Freed's internal sample-data marker will be removed. Real library data is ignored.
+                </p>
+              </div>
+            </div>
+
+            <div className="theme-feedback-panel-danger mb-5 rounded-xl px-4 py-3">
+              <p className="theme-feedback-text-danger text-xs leading-5">
+                Ready to remove {formatSampleDataSummary(sampleDataSummary)}.
+              </p>
+              <p className="mt-2 text-xs leading-5 text-[rgb(var(--theme-feedback-danger-rgb)/0.72)]">
+                Older unmarked sample data will stay in place.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSampleClearConfirm(false)}
+                disabled={clearingSampleData}
+                className="flex-1 rounded-xl border border-[color:var(--theme-border)] px-4 py-2.5 text-text-secondary transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] hover:text-text-primary disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleClearSampleData();
+                }}
+                disabled={clearingSampleData}
+                className="theme-feedback-button-danger flex-1 px-4 py-2.5 disabled:opacity-50"
+              >
+                {clearingSampleData ? "Clearing..." : "Clear sample data"}
               </button>
             </div>
           </div>

@@ -28,6 +28,7 @@ import type {
   Person,
   ReachOutLog,
   RssFeed,
+  SampleDataClearSummary,
   UserPreferences,
 } from "@freed/shared";
 import type { DocChangeEvent, DocState, DocStats, WorkerRequest, WorkerResponse } from "./automerge-types";
@@ -47,24 +48,96 @@ const WORKER_REQUEST_TIMEOUT_MS = 180_000;
 // Worker lifecycle
 // ---------------------------------------------------------------------------
 
-const worker = new Worker(new URL("./automerge.worker.ts", import.meta.url), {
-  type: "module",
-});
+let worker: Worker | null = null;
+let workerReady: Promise<void> | null = null;
+let appDocumentInitialized = false;
+let workerDocumentInitialized = false;
+let latestRelayClientCount = 0;
 
-const workerReady = new Promise<void>((resolve, reject) => {
-  const timeout = setTimeout(() => {
-    reject(new Error("Automerge worker failed to start within 15 seconds"));
-  }, 15_000);
+function getWorker(): Worker {
+  if (!worker) startWorker();
+  if (!worker) throw new Error("Automerge worker failed to start");
+  return worker;
+}
 
-  const onReady = (event: MessageEvent<WorkerResponse>) => {
-    if (event.data.type === "READY") {
-      clearTimeout(timeout);
-      worker.removeEventListener("message", onReady);
-      resolve();
-    }
-  };
-  worker.addEventListener("message", onReady);
-});
+function startWorker(): void {
+  if (worker) return;
+
+  const nextWorker = new Worker(new URL("./automerge.worker.ts", import.meta.url), {
+    type: "module",
+  });
+  worker = nextWorker;
+  workerDocumentInitialized = false;
+  log.info("[automerge-worker] started worker");
+  workerReady = new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("Automerge worker failed to start within 15 seconds"));
+    }, 15_000);
+
+    const onReady = (event: MessageEvent<WorkerResponse>) => {
+      if (event.data.type === "READY") {
+        clearTimeout(timeout);
+        nextWorker.removeEventListener("message", onReady);
+        resolve();
+      }
+    };
+    nextWorker.addEventListener("message", onReady);
+  });
+  nextWorker.onmessage = handleWorkerMessage;
+  nextWorker.onerror = handleWorkerError;
+  if (latestRelayClientCount > 0) {
+    void workerReady.then(() => {
+      if (worker !== nextWorker) return;
+      nextWorker.postMessage({
+        reqId: nextReqId++,
+        type: "UPDATE_RELAY_CLIENT_COUNT",
+        count: latestRelayClientCount,
+      } satisfies WorkerRequest);
+    });
+  }
+}
+
+async function ensureWorkerReady(): Promise<void> {
+  startWorker();
+  await workerReady;
+}
+
+function stopIdleWorker(): void {
+  if (!worker) return;
+  if (
+    pending.size > 0 ||
+    pendingAllItemIds.size > 0 ||
+    pendingDocBinary.size > 0 ||
+    pendingPreservedText.size > 0 ||
+    pendingContentSignalBackfill.size > 0 ||
+    pendingSampleDataClear.size > 0
+  ) {
+    return;
+  }
+  worker.terminate();
+  worker = null;
+  workerReady = null;
+  workerDocumentInitialized = false;
+  log.info("[automerge-worker] terminated idle worker");
+  addDebugEvent("change", "[automerge-worker] terminated idle worker");
+}
+
+async function ensureWorkerDocumentReadyFor(type: WorkerRequest["type"]): Promise<void> {
+  await ensureWorkerReady();
+  if (
+    !appDocumentInitialized ||
+    workerDocumentInitialized ||
+    type === "INIT" ||
+    type === "CLEAR_LOCAL" ||
+    type === "REPLACE_DOC"
+  ) {
+    return;
+  }
+  log.info(`[automerge-worker] reinitializing idle worker op=${type}`);
+  await sendInit();
+}
+
+startWorker();
 
 // ---------------------------------------------------------------------------
 // Request/response plumbing
@@ -103,8 +176,17 @@ const pendingContentSignalBackfill = new Map<
     timer: ReturnType<typeof setTimeout>;
   }
 >();
+const pendingSampleDataClear = new Map<
+  number,
+  {
+    resolve: (summary: SampleDataClearSummary) => void;
+    reject: (err: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }
+>();
 async function request(msg: WorkerRequest): Promise<void> {
-  await workerReady;
+  await ensureWorkerDocumentReadyFor(msg.type);
+  const activeWorker = getWorker();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       if (!pending.has(msg.reqId)) return;
@@ -120,7 +202,7 @@ async function request(msg: WorkerRequest): Promise<void> {
     }, WORKER_REQUEST_TIMEOUT_MS);
 
     pending.set(msg.reqId, { resolve, reject, timer });
-    worker.postMessage(msg);
+    activeWorker.postMessage(msg);
   });
 }
 
@@ -177,19 +259,24 @@ function publishState(state: DocState, event: DocChangeEvent): void {
 // ---------------------------------------------------------------------------
 
 export function setRelayClientCount(n: number): void {
-  const reqId = nextReqId++;
-  worker.postMessage({
-    reqId,
-    type: "UPDATE_RELAY_CLIENT_COUNT",
-    count: n,
-  } satisfies WorkerRequest);
+  latestRelayClientCount = n;
+  if (!worker) return;
+  const activeWorker = worker;
+  void ensureWorkerReady().then(() => {
+    if (worker !== activeWorker) return;
+    activeWorker.postMessage({
+      reqId: nextReqId++,
+      type: "UPDATE_RELAY_CLIENT_COUNT",
+      count: n,
+    } satisfies WorkerRequest);
+  });
 }
 
 // ---------------------------------------------------------------------------
 // Inbound worker message handler
 // ---------------------------------------------------------------------------
 
-worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   const msg = event.data;
 
   if (msg.type === "READY") return;
@@ -253,6 +340,12 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
 
   if (msg.type === "DEBUG_EVENT") {
     addDebugEvent(msg.kind as Parameters<typeof addDebugEvent>[0], msg.detail, msg.bytes);
+    if (
+      msg.kind === "change" &&
+      (msg.detail ?? "").startsWith("[automerge-worker] released idle document")
+    ) {
+      stopIdleWorker();
+    }
     return;
   }
 
@@ -304,6 +397,15 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     return;
   }
 
+  if (msg.type === "SAMPLE_DATA_CLEAR_RESULT") {
+    const pendingClear = pendingSampleDataClear.get(msg.reqId);
+    if (!pendingClear) return;
+    clearTimeout(pendingClear.timer);
+    pendingSampleDataClear.delete(msg.reqId);
+    pendingClear.resolve(msg.summary);
+    return;
+  }
+
   // ACK
   const pendingBackfill = pendingContentSignalBackfill.get(msg.reqId);
   if (pendingBackfill && msg.error) {
@@ -313,19 +415,27 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     return;
   }
 
+  const pendingClear = pendingSampleDataClear.get(msg.reqId);
+  if (pendingClear && msg.error) {
+    clearTimeout(pendingClear.timer);
+    pendingSampleDataClear.delete(msg.reqId);
+    pendingClear.reject(new Error(msg.error));
+    return;
+  }
+
   const p = pending.get(msg.reqId);
   if (!p) return;
   clearTimeout(p.timer);
   pending.delete(msg.reqId);
   if (msg.error) p.reject(new Error(msg.error));
   else p.resolve();
-};
+}
 
-worker.onerror = (err) => {
+function handleWorkerError(err: ErrorEvent) {
   const msg = err instanceof Error ? err.message : String(err);
   log.error(`[automerge-worker] unhandled error: ${msg}`);
   addDebugEvent("error", `[AutomergeWorker] unhandled error: ${msg}`);
-};
+}
 
 // ---------------------------------------------------------------------------
 // Import progress listeners (for callers using onChunk callbacks)
@@ -349,13 +459,19 @@ function withImportProgress<T>(
 
 function sendInit(): Promise<DocState> {
   return new Promise((resolve, reject) => {
+    const activeWorker = getWorker();
     const reqId = nextReqId++;
 
     let initialState: DocState | null = null;
     let initAcked = false;
+    let resolved = false;
 
     function tryResolve() {
-      if (initialState && initAcked) resolve(initialState);
+      if (!initialState || !initAcked || resolved) return;
+      resolved = true;
+      appDocumentInitialized = true;
+      workerDocumentInitialized = true;
+      resolve(initialState);
     }
 
     const stateHandler = (event: MessageEvent<WorkerResponse>) => {
@@ -371,7 +487,7 @@ function sendInit(): Promise<DocState> {
           () => "(doc lives in worker - not directly accessible)",
           () => new Uint8Array(0),
         );
-        worker.removeEventListener("message", stateHandler);
+        activeWorker.removeEventListener("message", stateHandler);
         if (msg.error) {
           reject(new Error(msg.error));
         } else {
@@ -381,18 +497,24 @@ function sendInit(): Promise<DocState> {
       }
     };
 
-    worker.addEventListener("message", stateHandler);
-    worker.postMessage({ reqId, type: "INIT" } satisfies WorkerRequest);
+    activeWorker.addEventListener("message", stateHandler);
+    activeWorker.postMessage({ reqId, type: "INIT" } satisfies WorkerRequest);
   });
 }
 
 export async function initDoc(): Promise<DocState> {
-  await workerReady;
+  await ensureWorkerReady();
   try {
-    return await sendInit();
+    const state = await sendInit();
+    appDocumentInitialized = true;
+    workerDocumentInitialized = true;
+    return state;
   } catch {
     await clearLocalDoc();
-    return sendInit();
+    const state = await sendInit();
+    appDocumentInitialized = true;
+    workerDocumentInitialized = true;
+    return state;
   }
 }
 
@@ -402,7 +524,8 @@ export function getDocState(): DocState | null {
 }
 
 export async function getDocBinary(): Promise<Uint8Array> {
-  await workerReady;
+  await ensureWorkerDocumentReadyFor("GET_DOC_BINARY");
+  const activeWorker = getWorker();
   return new Promise((resolve, reject) => {
     const reqId = nextReqId++;
     const timer = setTimeout(() => {
@@ -416,7 +539,7 @@ export async function getDocBinary(): Promise<Uint8Array> {
     }, WORKER_REQUEST_TIMEOUT_MS);
 
     pendingDocBinary.set(reqId, { resolve, reject, timer });
-    worker.postMessage({ reqId, type: "GET_DOC_BINARY" } satisfies WorkerRequest);
+    activeWorker.postMessage({ reqId, type: "GET_DOC_BINARY" } satisfies WorkerRequest);
   });
 }
 
@@ -425,7 +548,8 @@ export function getCachedDocStats(): DocStats | null {
 }
 
 export async function getAllItemIds(): Promise<string[]> {
-  await workerReady;
+  await ensureWorkerDocumentReadyFor("GET_ALL_ITEM_IDS");
+  const activeWorker = getWorker();
   return new Promise((resolve, reject) => {
     const reqId = nextReqId++;
     const timer = setTimeout(() => {
@@ -439,12 +563,13 @@ export async function getAllItemIds(): Promise<string[]> {
     }, WORKER_REQUEST_TIMEOUT_MS);
 
     pendingAllItemIds.set(reqId, { resolve, reject, timer });
-    worker.postMessage({ reqId, type: "GET_ALL_ITEM_IDS" } satisfies WorkerRequest);
+    activeWorker.postMessage({ reqId, type: "GET_ALL_ITEM_IDS" } satisfies WorkerRequest);
   });
 }
 
 export async function getItemPreservedText(globalId: string): Promise<string | null> {
-  await workerReady;
+  await ensureWorkerDocumentReadyFor("GET_ITEM_PRESERVED_TEXT");
+  const activeWorker = getWorker();
   return new Promise((resolve, reject) => {
     const reqId = nextReqId++;
     const timer = setTimeout(() => {
@@ -458,7 +583,7 @@ export async function getItemPreservedText(globalId: string): Promise<string | n
     }, WORKER_REQUEST_TIMEOUT_MS);
 
     pendingPreservedText.set(reqId, { resolve, reject, timer });
-    worker.postMessage({ reqId, type: "GET_ITEM_PRESERVED_TEXT", globalId } satisfies WorkerRequest);
+    activeWorker.postMessage({ reqId, type: "GET_ITEM_PRESERVED_TEXT", globalId } satisfies WorkerRequest);
   });
 }
 
@@ -494,6 +619,26 @@ export async function docAddFeedItems(items: FeedItem[]): Promise<void> {
 export async function docRemoveFeedItem(globalId: string): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "REMOVE_FEED_ITEM", globalId });
+}
+
+export async function docClearSampleData(): Promise<SampleDataClearSummary> {
+  await ensureWorkerDocumentReadyFor("CLEAR_SAMPLE_DATA");
+  const activeWorker = getWorker();
+  return new Promise((resolve, reject) => {
+    const reqId = nextReqId++;
+    const timer = setTimeout(() => {
+      if (!pendingSampleDataClear.has(reqId)) return;
+      pendingSampleDataClear.delete(reqId);
+      reject(
+        new Error(
+          `[automerge-worker] request TIMEOUT op=CLEAR_SAMPLE_DATA reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
+        ),
+      );
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pendingSampleDataClear.set(reqId, { resolve, reject, timer });
+    activeWorker.postMessage({ reqId, type: "CLEAR_SAMPLE_DATA" } satisfies WorkerRequest);
+  });
 }
 
 export async function docUpdateFeedItem(
@@ -712,7 +857,8 @@ export async function docDeduplicateFeedItems(): Promise<void> {
 export async function docBackfillContentSignals(
   batchSize: number = 200,
 ): Promise<ContentSignalBackfillSummary> {
-  await workerReady;
+  await ensureWorkerDocumentReadyFor("BACKFILL_CONTENT_SIGNALS");
+  const activeWorker = getWorker();
   return new Promise((resolve, reject) => {
     const reqId = nextReqId++;
     const timer = setTimeout(() => {
@@ -726,7 +872,7 @@ export async function docBackfillContentSignals(
     }, WORKER_REQUEST_TIMEOUT_MS);
 
     pendingContentSignalBackfill.set(reqId, { resolve, reject, timer });
-    worker.postMessage({ reqId, type: "BACKFILL_CONTENT_SIGNALS", batchSize } satisfies WorkerRequest);
+    activeWorker.postMessage({ reqId, type: "BACKFILL_CONTENT_SIGNALS", batchSize } satisfies WorkerRequest);
   });
 }
 

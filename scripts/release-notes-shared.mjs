@@ -111,6 +111,23 @@ export function compareTags(a, b) {
   return left.channel === "dev" ? -1 : 1;
 }
 
+export function compareVersionDays(a, b) {
+  const left = parseComparableVersion(a);
+  const right = parseComparableVersion(b);
+  const leftDay = Math.floor(left.patch / 100);
+  const rightDay = Math.floor(right.patch / 100);
+
+  if (left.yy !== right.yy) {
+    return left.yy - right.yy;
+  }
+
+  if (left.month !== right.month) {
+    return left.month - right.month;
+  }
+
+  return leftDay - rightDay;
+}
+
 export function versionDayKey(version) {
   const parts = String(version ?? "")
     .replace(DEV_SUFFIX, "")
@@ -914,6 +931,9 @@ export function validateReleaseShape(release, options = {}) {
   const normalized = sanitizeReleaseShape(release);
   const rawNormalized = coerceReleaseShape(release);
   const rawComparable = rawComparableReleaseShape(release);
+  const previousDayFeatures = options.previousDayRelease
+    ? dedupeSimilarStrings(coerceReleaseShape(options.previousDayRelease).features)
+    : [];
 
   if (!normalized.deck) {
     errors.push("Deck is required.");
@@ -1010,12 +1030,37 @@ export function validateReleaseShape(release, options = {}) {
 
   for (const priorRelease of options.earlierReleases ?? []) {
     for (const priorEntry of releaseVisibleEntries(priorRelease)) {
+      if (priorEntry.kind === "deck") {
+        continue;
+      }
+
+      const repeatsPreviousDayFeature = previousDayFeatures.some((feature) =>
+        areNearDuplicates(feature, priorEntry.text),
+      );
+      if (repeatsPreviousDayFeature) {
+        continue;
+      }
+
       const isPresent = releaseVisibleItems(normalized).some((item) =>
         areNearDuplicates(item, priorEntry.text),
       );
 
       if (!isPresent && !isCoveredByConsolidation(priorEntry, normalized)) {
         errors.push(`Latest-of-day release is missing earlier same-day item: ${priorEntry.text}`);
+      }
+    }
+  }
+
+  if (options.previousDayRelease) {
+    const currentVisibleItems = releaseVisibleItems(normalized);
+
+    for (const feature of previousDayFeatures) {
+      const isRepeated = currentVisibleItems.some((item) =>
+        areNearDuplicates(item, feature),
+      );
+
+      if (isRepeated) {
+        errors.push(`Latest-of-day release repeats previous-day feature: ${feature}`);
       }
     }
   }

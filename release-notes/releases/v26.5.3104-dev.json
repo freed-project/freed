@@ -1,0 +1,56 @@
+{
+  "tag": "v26.5.3104-dev",
+  "version": "26.5.3104-dev",
+  "channel": "dev",
+  "dayKey": "26.5.31",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-31T09:18:39.431Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.3011-dev",
+    "previousPublishedDayTag": "v26.5.3011-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.3104-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.3104-dev"
+    ],
+    "prNumbers": [
+      654,
+      655
+    ],
+    "commitSubjects": [
+      "fix: repair release smoke syntax (#655)",
+      "fix: restore nightly smoke parse (#654)",
+      "release: approve v26.5.3103-dev",
+      "release: v26.5.3103-dev",
+      "fix: settle release regression waits",
+      "release: approve v26.5.3102-dev",
+      "release: v26.5.3102-dev",
+      "fix: stabilize reader rail regression test",
+      "release: approve v26.5.3101-dev",
+      "release: v26.5.3101-dev",
+      "fix: stabilize desktop release regression tests",
+      "release: approve v26.5.3100-dev",
+      "release: v26.5.3100-dev",
+      "perf: reduce desktop sync memory pressure"
+    ]
+  },
+  "release": {
+    "deck": "Freed Desktop sync now sheds idle memory, records native runtime pressure, and keeps the release regression lane stable.",
+    "features": [],
+    "fixes": [
+      "Recycles idle Automerge sync workers after queued document work finishes.",
+      "Adds native hidden-window memory samples with pause state, safe mode state, recovery counts, and active background job details.",
+      "Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom.",
+      "Delays low-priority semantic enrichment during launch so Facebook and Instagram capture get priority.",
+      "Hardens release regression coverage for compact sidebar transitions, persisted map filters, fast reader-rail collapse, sidebar resize settling, and stress graph setup parsing."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3104-dev\n\nFreed Desktop sync now sheds idle memory, records native runtime pressure, and keeps the release regression lane stable.\n\n### Fixes\n\n- Recycles idle Automerge sync workers after queued document work finishes.\n- Adds native hidden-window memory samples with pause state, safe mode state, recovery counts, and active background job details.\n- Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom.\n- Delays low-priority semantic enrichment during launch so Facebook and Instagram capture get priority.\n- Hardens release regression coverage for compact sidebar transitions, persisted map filters, fast reader-rail collapse, sidebar resize settling, and stress graph setup parsing.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

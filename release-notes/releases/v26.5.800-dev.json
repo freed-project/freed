@@ -1,0 +1,38 @@
+{
+  "tag": "v26.5.800-dev",
+  "version": "26.5.800-dev",
+  "channel": "dev",
+  "dayKey": "26.5.8",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-08T16:02:53.138Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.705-dev",
+    "previousPublishedDayTag": "v26.5.705-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.800-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.800-dev"
+    ],
+    "prNumbers": [
+      531
+    ],
+    "commitSubjects": [
+      "perf: bound runtime health log retention (#531)"
+    ]
+  },
+  "release": {
+    "deck": "Bound runtime health log retention",
+    "features": [],
+    "fixes": [
+      "Runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.800-dev\n\nBound runtime health log retention\n\n### Fixes\n\n- Runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

@@ -26,6 +26,7 @@ import type {
   RssFeed,
 } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
+import { recordRuntimeError } from "../../lib/bug-report.js";
 import {
   buildIdentityGraphLayout,
   buildSpatialIndex,
@@ -176,6 +177,31 @@ interface RegionDisplay {
   text: Text;
 }
 
+function destroyPixiScene(scene: PixiScene): void {
+  for (const display of scene.nodeDisplays.values()) {
+    if (display.avatarSprite) {
+      display.avatarSprite.mask = null;
+    }
+  }
+  scene.nodeDisplays.clear();
+  scene.regionDisplays.clear();
+  scene.labelDisplays.clear();
+  scene.app.stop();
+  if (scene.app.canvas.isConnected) {
+    scene.app.canvas.remove();
+  }
+  try {
+    scene.app.destroy(true);
+  } catch (error) {
+    recordRuntimeError({
+      source: "friends:graph:pixi-destroy",
+      error,
+      fatal: false,
+    });
+    console.warn("[friends-graph] ignored Pixi teardown error", error);
+  }
+}
+
 type GraphDebugNode = Pick<
   IdentityGraphLayoutNode,
   "id" | "personId" | "accountId" | "feedUrl" | "linkedPersonId" | "kind" | "x" | "y" | "radius"
@@ -187,6 +213,7 @@ const MIN_SCALE = 0.2;
 const MAX_SCALE = 2.8;
 const TRACKPAD_PINCH_ZOOM_SPEED = 0.005;
 const GRAPH_INTERACTION_SETTLE_DELAY_MS = 140;
+const DENSE_GRAPH_INTERACTION_SETTLE_DELAY_MS = 700;
 const GRAPH_LAYOUT_WORKER_TIMEOUT_MS = 4_000;
 const INTERACTIVE_LABEL_LIMIT = 16;
 const SETTLED_LABEL_LIMIT = 32;
@@ -194,9 +221,13 @@ const FAST_LAYOUT_NODE_THRESHOLD = 1_600;
 const NODE_LAYER_TEXTURE_CACHE_MAX_NODES = 1_200;
 const INTERACTIVE_NODE_CULL_THRESHOLD = 1_200;
 const DENSE_GRAPH_SINGLE_LAYER_THRESHOLD = 1_200;
-const DENSE_INTERACTION_CULL_THRESHOLD = 3_200;
-const DENSE_INTERACTION_NODE_LIMIT = 900;
-const DENSE_INTERACTION_VIEWPORT_PADDING = 96;
+const DENSE_INTERACTION_CULL_THRESHOLD = 1_600;
+const DENSE_INTERACTION_NODE_LIMIT = 64;
+const DENSE_SETTLED_VIEWPORT_NODE_LIMIT = 560;
+const DENSE_INTERACTION_VIEWPORT_PADDING = 72;
+const DENSE_INTERACTION_TRANSFORM_BUCKET_PX = 900;
+const DENSE_INTERACTION_SCALE_BUCKET_FACTOR = 2;
+const DENSE_SETTLED_VIEWPORT_SCALE_THRESHOLD = 0.55;
 const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
 const RELATIONSHIP_TIER_DROP_SELECTOR = "[data-friend-tier-drop-value]";
 
@@ -240,7 +271,52 @@ interface GraphPerfSnapshot {
   visibleLabelCount: number;
   visibleNodeLabelCount: number;
   visibleProviderLabelCount: number;
+  denseRenderMode: "dense" | "containers";
+  denseInteractionEligible: boolean;
+  denseInteractionNodeCount: number;
+  denseInteractionCulled: boolean;
+  denseInteractionRebuildCount: number;
   qualityMode: GraphQualityMode;
+}
+
+interface GraphSurfacePerfSnapshot extends GraphPerfSnapshot {
+  nodeCount: number;
+  linkCount: number;
+  personCount: number;
+  channelCount: number;
+  transformScale: number;
+}
+
+interface GraphLayoutCounts {
+  nodeCount: number;
+  linkCount: number;
+  personCount: number;
+  channelCount: number;
+}
+
+function shouldExposeGraphDebug(): boolean {
+  return typeof window !== "undefined" &&
+    (window as typeof window & { __FREED_GRAPH_DEBUG_ENABLED__?: boolean })
+      .__FREED_GRAPH_DEBUG_ENABLED__ === true;
+}
+
+function buildGraphLayoutCounts(layout: IdentityGraphLayout): GraphLayoutCounts {
+  let personCount = 0;
+  let channelCount = 0;
+  for (const node of layout.nodes) {
+    if (node.personId) {
+      personCount += 1;
+    }
+    if (node.accountId || node.feedUrl) {
+      channelCount += 1;
+    }
+  }
+  return {
+    nodeCount: layout.nodes.length,
+    linkCount: layout.edges.length,
+    personCount,
+    channelCount,
+  };
 }
 
 function relationshipTierDropLevelAt(clientX: number, clientY: number): 1 | 3 | 5 | null {
@@ -797,9 +873,16 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasHostRef = useRef<HTMLDivElement>(null);
+  const canvasOverlayRef = useRef<HTMLDivElement>(null);
   const pixiRef = useRef<PixiScene | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const layoutRef = useRef<IdentityGraphLayout>({ nodes: [], edges: [], regions: [] });
+  const layoutCountsRef = useRef<GraphLayoutCounts>({
+    nodeCount: 0,
+    linkCount: 0,
+    personCount: 0,
+    channelCount: 0,
+  });
   const layoutNodeByIdRef = useRef<Map<string, IdentityGraphLayoutNode>>(new Map());
   const layoutDebugNodesRef = useRef<GraphDebugNode[]>([]);
   const spatialIndexRef = useRef<SpatialIndex>({ cellSize: 96, buckets: new Map() });
@@ -809,6 +892,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const hoveredNodeIdRef = useRef<string | null>(null);
   const transformRef = useRef<ViewTransform>({ ...FRIEND_GRAPH_DEFAULT_TRANSFORM });
   const hasFittedInitialLayoutRef = useRef(false);
+  const pendingFitAllRef = useRef(false);
+  const hasUserAdjustedTransformRef = useRef(false);
   const latestLayoutRequestIdRef = useRef(0);
   const latestResolvedLayoutRequestIdRef = useRef(0);
   const pendingLayoutTimeoutsRef = useRef<Map<number, number>>(new Map());
@@ -816,6 +901,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const drawRafPendingRef = useRef(false);
   const settleTimerRef = useRef<number | null>(null);
   const lastStaticRenderKeyRef = useRef("");
+  const lastDenseInteractionRenderKeyRef = useRef("");
+  const lastDenseInteractionStatsRef = useRef({
+    nodeCount: 0,
+    culled: false,
+  });
+  const denseInteractionRebuildCountRef = useRef(0);
   const lastSelectionStyleKeyRef = useRef("");
   const lastLabelLayoutKeyRef = useRef("");
   const visibleLabelIdsRef = useRef<string[]>([]);
@@ -836,6 +927,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const graphQualityModeRef = useRef<GraphQualityMode>("settled");
   const layoutReadyRef = useRef(false);
   const syncSceneRef = useRef<() => void>(() => {});
+  const syncSceneErrorLoggedRef = useRef(false);
   const canvasSizeRef = useRef({ width: 900, height: DEFAULT_HEIGHT });
   const perfSnapshotRef = useRef<GraphPerfSnapshot>({
     modelBuildMs: 0,
@@ -852,13 +944,24 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     visibleLabelCount: 0,
     visibleNodeLabelCount: 0,
     visibleProviderLabelCount: 0,
+    denseRenderMode: "containers",
+    denseInteractionEligible: false,
+    denseInteractionNodeCount: 0,
+    denseInteractionCulled: false,
+    denseInteractionRebuildCount: 0,
     qualityMode: "settled",
   });
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: DEFAULT_HEIGHT });
   canvasSizeRef.current = canvasSize;
-  const [isInteracting, setIsInteracting] = useState(false);
   const [layoutReady, setLayoutReady] = useState(false);
   const [layoutVersion, setLayoutVersion] = useState(0);
+
+  const setInteractionCursor = useCallback((interacting: boolean) => {
+    const overlay = canvasOverlayRef.current;
+    if (!overlay) return;
+    overlay.classList.toggle("cursor-grabbing", interacting);
+    overlay.classList.toggle("cursor-grab", !interacting);
+  }, []);
   const personsById = useMemo(
     () => Object.fromEntries(persons.map((person) => [person.id, person])),
     [persons],
@@ -905,6 +1008,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const scene = pixiRef.current;
     if (!scene) return;
 
+    try {
     const sceneStart = nowMs();
     const drag = dragStateRef.current;
     const transform = transformRef.current;
@@ -944,12 +1048,15 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       highlighted.size === 0
         ? "dense"
         : "containers";
-    const useDenseInteractionLayer =
+    const denseInteractionEligible =
       denseRenderMode === "dense" &&
       graphNodeCount >= DENSE_INTERACTION_CULL_THRESHOLD &&
-      qualityMode === "interactive" &&
       !accountDrag &&
       highlighted.size === 0;
+    const useDenseInteractionLayer =
+      denseInteractionEligible &&
+      (qualityMode === "interactive" ||
+        transform.scale >= DENSE_SETTLED_VIEWPORT_SCALE_THRESHOLD);
     const queueAvatarRefresh = () => {
       lastStaticRenderKeyRef.current = "";
       requestAnimationFrame(() => syncSceneRef.current());
@@ -966,6 +1073,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
     scene.world.position.set(transform.x, transform.y);
     scene.world.scale.set(transform.scale);
+    let denseInteractionNodeCount = 0;
+    let denseInteractionCulled = false;
     const isInteractivePaint = qualityMode === "interactive" && !accountDrag;
     const shouldCacheNodeLayer =
       isInteractivePaint &&
@@ -988,8 +1097,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       scene.nodeLayer.cacheAsTexture(false);
     }
     scene.edgeLayer.visible = !isInteractivePaint;
+    scene.edgeLayer.renderable = !isInteractivePaint;
     scene.edgeHighlightLayer.visible = highlighted.size > 0;
+    scene.edgeHighlightLayer.renderable = highlighted.size > 0;
     scene.regionLabelLayer.visible = !isInteractivePaint;
+    scene.regionLabelLayer.renderable = !isInteractivePaint;
 
     if (lastStaticRenderKeyRef.current !== staticRenderKey || !!accountDrag) {
       didStaticRender = true;
@@ -1038,8 +1150,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       perfSnapshotRef.current.edgeRebuildCount += 1;
 
       scene.denseNodeLayer.visible = denseRenderMode === "dense" && !useDenseInteractionLayer;
+      scene.denseNodeLayer.renderable = denseRenderMode === "dense" && !useDenseInteractionLayer;
       scene.denseInteractionNodeLayer.visible = useDenseInteractionLayer;
+      scene.denseInteractionNodeLayer.renderable = useDenseInteractionLayer;
       scene.nodeLayer.visible = denseRenderMode !== "dense";
+      scene.nodeLayer.renderable = denseRenderMode !== "dense";
       if (denseRenderMode === "dense") {
         scene.denseNodeLayer.clear();
         scene.denseInteractionNodeLayer.clear();
@@ -1229,41 +1344,85 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
     if (denseRenderMode === "dense") {
       scene.denseNodeLayer.visible = !useDenseInteractionLayer;
+      scene.denseNodeLayer.renderable = !useDenseInteractionLayer;
       scene.denseInteractionNodeLayer.visible = useDenseInteractionLayer;
+      scene.denseInteractionNodeLayer.renderable = useDenseInteractionLayer;
       if (useDenseInteractionLayer) {
-        const viewportCenterX = canvasSize.width / 2;
-        const viewportCenterY = canvasSize.height / 2;
-        const visibleNodes: Array<{ node: IdentityGraphLayoutNode; distance: number }> = [];
-        for (const node of layoutRef.current.nodes) {
-          if (
-            !isNodeNearViewport(
-              node,
-              transform,
-              canvasSize.width,
-              canvasSize.height,
-              DENSE_INTERACTION_VIEWPORT_PADDING,
-            )
-          ) {
-            continue;
+        const denseNodeLimit =
+          qualityMode === "interactive"
+            ? DENSE_INTERACTION_NODE_LIMIT
+            : DENSE_SETTLED_VIEWPORT_NODE_LIMIT;
+        const transformBucketSize =
+          qualityMode === "interactive"
+            ? DENSE_INTERACTION_TRANSFORM_BUCKET_PX
+            : Math.max(220, DENSE_INTERACTION_TRANSFORM_BUCKET_PX / 2);
+        const scaleBucketFactor =
+          qualityMode === "interactive"
+            ? DENSE_INTERACTION_SCALE_BUCKET_FACTOR
+            : DENSE_INTERACTION_SCALE_BUCKET_FACTOR * 2;
+        const denseInteractionRenderKey = [
+          layoutVersion,
+          themeId ?? "",
+          qualityMode,
+          qualityMode === "interactive" ? "stable" : Math.round(transform.scale * scaleBucketFactor),
+          qualityMode === "interactive" ? "stable" : Math.round(transform.x / transformBucketSize),
+          qualityMode === "interactive" ? "stable" : Math.round(transform.y / transformBucketSize),
+          canvasSize.width,
+          canvasSize.height,
+        ].join("|");
+        if (lastDenseInteractionRenderKeyRef.current !== denseInteractionRenderKey) {
+          let drawnVisibleNodes = 0;
+          let didCullDenseInteraction = false;
+          scene.denseInteractionNodeLayer.clear();
+          for (const node of layoutRef.current.nodes) {
+            if (
+              !isNodeNearViewport(
+                node,
+                transform,
+                canvasSize.width,
+                canvasSize.height,
+                DENSE_INTERACTION_VIEWPORT_PADDING,
+              )
+            ) {
+              continue;
+            }
+            drawDenseGraphNode(scene.denseInteractionNodeLayer, node, graphPalette);
+            drawnVisibleNodes += 1;
+            if (drawnVisibleNodes >= denseNodeLimit) {
+              didCullDenseInteraction = true;
+              break;
+            }
           }
-          const point = screenPointForPosition(node, transform);
-          const dx = point.x - viewportCenterX;
-          const dy = point.y - viewportCenterY;
-          visibleNodes.push({ node, distance: dx * dx + dy * dy });
+          lastDenseInteractionRenderKeyRef.current = denseInteractionRenderKey;
+          lastDenseInteractionStatsRef.current = {
+            nodeCount: drawnVisibleNodes,
+            culled: didCullDenseInteraction,
+          };
+          denseInteractionRebuildCountRef.current += 1;
         }
-        if (visibleNodes.length > DENSE_INTERACTION_NODE_LIMIT) {
-          visibleNodes.sort((left, right) => left.distance - right.distance);
-          visibleNodes.length = DENSE_INTERACTION_NODE_LIMIT;
-        }
-        scene.denseInteractionNodeLayer.clear();
-        for (const { node } of visibleNodes) {
-          drawDenseGraphNode(scene.denseInteractionNodeLayer, node, graphPalette);
-        }
+        denseInteractionNodeCount = lastDenseInteractionStatsRef.current.nodeCount;
+        denseInteractionCulled = lastDenseInteractionStatsRef.current.culled;
       } else {
-        scene.denseInteractionNodeLayer.clear();
+        if (lastDenseInteractionRenderKeyRef.current) {
+          scene.denseInteractionNodeLayer.clear();
+          lastDenseInteractionRenderKeyRef.current = "";
+          lastDenseInteractionStatsRef.current = {
+            nodeCount: 0,
+            culled: false,
+          };
+        }
       }
     } else {
       scene.denseInteractionNodeLayer.visible = false;
+      scene.denseInteractionNodeLayer.renderable = false;
+      if (lastDenseInteractionRenderKeyRef.current) {
+        scene.denseInteractionNodeLayer.clear();
+        lastDenseInteractionRenderKeyRef.current = "";
+        lastDenseInteractionStatsRef.current = {
+          nodeCount: 0,
+          culled: false,
+        };
+      }
     }
 
     if (lastSelectionStyleKeyRef.current !== selectionStyleKey || didStaticRender || !!accountDrag) {
@@ -1349,58 +1508,60 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const providerMetrics = providerLabelMetrics(transform.scale);
     const providerLabelScale = 1 / transform.scale;
     let visibleProviderLabelCount = 0;
-    for (const region of layoutRef.current.regions) {
-      const display = scene.regionDisplays.get(region.id);
-      if (!display) continue;
-      const fill = providerColor(region.provider, graphPalette);
-      const point = screenPointForPosition({ x: region.x, y: region.y }, transform);
-      const onScreen =
-        point.x >= -160 &&
-        point.x <= canvasSize.width + 160 &&
-        point.y >= -160 &&
-        point.y <= canvasSize.height + 160;
-      display.container.visible = onScreen;
-      if (!onScreen) continue;
+    if (!isInteractivePaint) {
+      for (const region of layoutRef.current.regions) {
+        const display = scene.regionDisplays.get(region.id);
+        if (!display) continue;
+        const fill = providerColor(region.provider, graphPalette);
+        const point = screenPointForPosition({ x: region.x, y: region.y }, transform);
+        const onScreen =
+          point.x >= -160 &&
+          point.x <= canvasSize.width + 160 &&
+          point.y >= -160 &&
+          point.y <= canvasSize.height + 160;
+        display.container.visible = onScreen;
+        if (!onScreen) continue;
 
-      visibleProviderLabelCount += 1;
-      const label = `${region.label} ${region.count.toLocaleString()}`;
-      const labelWidth = estimateLabelWidth(label, providerMetrics.fontSize) +
-        providerMetrics.paddingX * 2;
-      display.container.position.set(
-        region.x,
-        region.y - region.radiusY - providerMetrics.gap / transform.scale,
-      );
-      display.container.scale.set(providerLabelScale);
-      display.container.alpha = highlighted.size > 0
-        ? providerMetrics.alpha * 0.52
-        : providerMetrics.alpha;
-      display.background.clear();
-      display.background.lineStyle(1.2, fill, 0.58);
-      display.background.beginFill(graphPalette.labelFill, 0.88);
-      display.background.drawRoundedRect(
-        -labelWidth / 2,
-        -providerMetrics.height / 2,
-        labelWidth,
-        providerMetrics.height,
-        providerMetrics.height / 2,
-      );
-      display.background.endFill();
-      display.text.text = label;
-      display.text.style = getCachedTextStyle(
-        [
-          "region",
-          themeId ?? "default",
-          region.provider,
-          providerMetrics.fontSize,
-        ].join(":"),
-        {
-          fill,
-          fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
-          fontSize: providerMetrics.fontSize,
-          fontWeight: "700",
-          letterSpacing: 1,
-        },
-      );
+        visibleProviderLabelCount += 1;
+        const label = `${region.label} ${region.count.toLocaleString()}`;
+        const labelWidth = estimateLabelWidth(label, providerMetrics.fontSize) +
+          providerMetrics.paddingX * 2;
+        display.container.position.set(
+          region.x,
+          region.y - region.radiusY - providerMetrics.gap / transform.scale,
+        );
+        display.container.scale.set(providerLabelScale);
+        display.container.alpha = highlighted.size > 0
+          ? providerMetrics.alpha * 0.52
+          : providerMetrics.alpha;
+        display.background.clear();
+        display.background.lineStyle(1.2, fill, 0.58);
+        display.background.beginFill(graphPalette.labelFill, 0.88);
+        display.background.drawRoundedRect(
+          -labelWidth / 2,
+          -providerMetrics.height / 2,
+          labelWidth,
+          providerMetrics.height,
+          providerMetrics.height / 2,
+        );
+        display.background.endFill();
+        display.text.text = label;
+        display.text.style = getCachedTextStyle(
+          [
+            "region",
+            themeId ?? "default",
+            region.provider,
+            providerMetrics.fontSize,
+          ].join(":"),
+          {
+            fill,
+            fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
+            fontSize: providerMetrics.fontSize,
+            fontWeight: "700",
+            letterSpacing: 1,
+          },
+        );
+      }
     }
 
     scene.hoverLayer.clear();
@@ -1582,6 +1743,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     perfSnapshotRef.current.visibleLabelCount = visibleLabelCount;
     perfSnapshotRef.current.visibleNodeLabelCount = visibleLabelIdsRef.current.length;
     perfSnapshotRef.current.visibleProviderLabelCount = visibleProviderLabelCount;
+    perfSnapshotRef.current.denseRenderMode = denseRenderMode;
+    perfSnapshotRef.current.denseInteractionEligible = denseInteractionEligible;
+    perfSnapshotRef.current.denseInteractionNodeCount = denseInteractionNodeCount;
+    perfSnapshotRef.current.denseInteractionCulled = denseInteractionCulled;
+    perfSnapshotRef.current.denseInteractionRebuildCount = denseInteractionRebuildCountRef.current;
     let avatarDisplayCount = 0;
     for (const display of scene.nodeDisplays.values()) {
       if (display.avatarSprite) avatarDisplayCount += 1;
@@ -1598,17 +1764,23 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     scene.app.render();
 
     if (containerRef.current) {
-      const personCount = layoutRef.current.nodes.filter((node) => !!node.personId).length;
-      const channelCount = layoutRef.current.nodes.filter((node) => !!node.accountId || !!node.feedUrl).length;
-      containerRef.current.dataset.graphNodeCount = String(layoutRef.current.nodes.length);
-      containerRef.current.dataset.graphLinkCount = String(layoutRef.current.edges.length);
-      containerRef.current.dataset.graphPersonCount = String(personCount);
-      containerRef.current.dataset.graphChannelCount = String(channelCount);
+      const counts = layoutCountsRef.current;
+      containerRef.current.dataset.graphNodeCount = String(counts.nodeCount);
+      containerRef.current.dataset.graphLinkCount = String(counts.linkCount);
+      containerRef.current.dataset.graphPersonCount = String(counts.personCount);
+      containerRef.current.dataset.graphChannelCount = String(counts.channelCount);
       containerRef.current.dataset.visibleLabelCount = String(visibleLabelCount);
       containerRef.current.dataset.graphQualityMode = qualityMode;
     }
-    if (typeof window !== "undefined") {
-      const debugNodes = drag
+    (window as typeof window & {
+      __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot;
+    }).__FREED_GRAPH_PERF__ = {
+      ...perfSnapshotRef.current,
+      ...layoutCountsRef.current,
+      transformScale: transform.scale,
+    };
+    if (shouldExposeGraphDebug()) {
+      const debugNodes = drag && drag.kind !== "pan"
         ? layoutRef.current.nodes.map((node) => ({
             id: node.id,
             personId: node.personId,
@@ -1636,6 +1808,18 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         qualityMode,
         metrics: { ...perfSnapshotRef.current },
       };
+    }
+    syncSceneErrorLoggedRef.current = false;
+    } catch (error) {
+      if (!syncSceneErrorLoggedRef.current) {
+        syncSceneErrorLoggedRef.current = true;
+        recordRuntimeError({
+          source: "friends:graph:pixi-sync",
+          error,
+          fatal: false,
+        });
+        console.warn("[friends-graph] ignored Pixi scene sync error", error);
+      }
     }
   }, [
     canvasSize.height,
@@ -1665,6 +1849,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (settleTimerRef.current !== null) {
       window.clearTimeout(settleTimerRef.current);
     }
+    const settleDelay =
+      layoutRef.current.nodes.length >= DENSE_INTERACTION_CULL_THRESHOLD
+        ? DENSE_GRAPH_INTERACTION_SETTLE_DELAY_MS
+        : GRAPH_INTERACTION_SETTLE_DELAY_MS;
     const settleWhenIdle = () => {
       if (
         dragStateRef.current ||
@@ -1673,7 +1861,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       ) {
         settleTimerRef.current = window.setTimeout(
           settleWhenIdle,
-          GRAPH_INTERACTION_SETTLE_DELAY_MS,
+          settleDelay,
         );
         return;
       }
@@ -1683,12 +1871,15 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     };
     settleTimerRef.current = window.setTimeout(
       settleWhenIdle,
-      GRAPH_INTERACTION_SETTLE_DELAY_MS,
+      settleDelay,
     );
   }, [scheduleSyncScene]);
 
   const fitAll = useCallback(() => {
-    if (layoutRef.current.nodes.length === 0) return;
+    if (layoutRef.current.nodes.length === 0) {
+      pendingFitAllRef.current = true;
+      return;
+    }
     transformRef.current = fitTransformToNodes(
       graphFitItems(layoutRef.current),
       canvasSize.width,
@@ -1731,14 +1922,21 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
     void (async () => {
       await app.init({
-        resizeTo: canvasHost,
         backgroundAlpha: 0,
         antialias: false,
         preference: "webgl",
         autoStart: false,
       });
       if (cancelled) {
-        app.destroy(true);
+        try {
+          app.destroy(true);
+        } catch (error) {
+          recordRuntimeError({
+            source: "friends:graph:pixi-init-cancel",
+            error,
+            fatal: false,
+          });
+        }
         return;
       }
 
@@ -1747,6 +1945,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       app.canvas.style.height = "100%";
       app.canvas.style.pointerEvents = "none";
       app.ticker.stop();
+      app.renderer.resize(canvasSizeRef.current.width, canvasSizeRef.current.height);
       canvasHost.appendChild(app.canvas);
 
       const world = new Container();
@@ -1785,7 +1984,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         regionDisplays: new Map(),
         labelDisplays: new Map(),
       };
-      scheduleSyncScene();
+      syncSceneRef.current();
     })();
 
     return () => {
@@ -1796,10 +1995,14 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         window.clearTimeout(settleTimerRef.current);
         settleTimerRef.current = null;
       }
-      pixiRef.current?.app.destroy(true);
+      syncSceneRef.current = () => {};
+      const scene = pixiRef.current;
       pixiRef.current = null;
+      if (scene) {
+        destroyPixiScene(scene);
+      }
     };
-  }, [scheduleSyncScene]);
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1817,6 +2020,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     observer.observe(container);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    const scene = pixiRef.current;
+    if (!scene) return;
+    scene.app.renderer.resize(canvasSize.width, canvasSize.height);
+    scheduleSyncScene();
+  }, [canvasSize.height, canvasSize.width, scheduleSyncScene]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1850,11 +2060,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
     latestResolvedLayoutRequestIdRef.current = requestId;
     layoutRef.current = layout;
+    layoutCountsRef.current = buildGraphLayoutCounts(layout);
     layoutNodeByIdRef.current = buildNodeById(layout.nodes);
     layoutDebugNodesRef.current = buildGraphDebugNodes(layout.nodes);
     spatialIndexRef.current = buildSpatialIndex(layout.nodes);
     lastLayoutMsRef.current = durationMs;
-    if (!hasFittedInitialLayoutRef.current) {
+    if (!hasFittedInitialLayoutRef.current || pendingFitAllRef.current) {
       const latestCanvasSize = canvasSizeRef.current;
       transformRef.current = fitTransformToNodes(
         graphFitItems(layout),
@@ -1863,6 +2074,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         FIT_PADDING,
       );
       hasFittedInitialLayoutRef.current = true;
+      pendingFitAllRef.current = false;
     }
     setLayoutVersion((value) => value + 1);
     requestAnimationFrame(() => syncSceneRef.current());
@@ -1963,7 +2175,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
   useEffect(() => {
     if (!layoutReady && layoutRef.current.nodes.length > 0) {
-      fitAll();
+      if (!hasUserAdjustedTransformRef.current) {
+        fitAll();
+      } else {
+        scheduleSyncScene();
+      }
       return;
     }
     scheduleSyncScene();
@@ -2006,6 +2222,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
   const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
+    hasUserAdjustedTransformRef.current = true;
     markInteractive();
     if (event.ctrlKey || event.metaKey) {
       const delta = Math.exp(-event.deltaY * TRACKPAD_PINCH_ZOOM_SPEED);
@@ -2047,7 +2264,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
               moved: false,
             };
             dragStateRef.current = null;
-            setIsInteracting(true);
+            setInteractionCursor(true);
             markInteractive();
             event.preventDefault();
             return;
@@ -2057,8 +2274,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
 
     const hit = hitNodeAt(event.clientX, event.clientY);
+    const shouldStartNodeDrag = !!hit && (
+      layoutRef.current.nodes.length < DENSE_INTERACTION_CULL_THRESHOLD ||
+      isSelectedGraphNode(hit, selectedPersonId, selectedAccountId)
+    );
 
-    if (hit?.accountId) {
+    if (shouldStartNodeDrag && hit?.accountId) {
       const point = viewportToWorld(event.clientX, event.clientY);
       dragStateRef.current = {
         kind: "account-drag",
@@ -2072,7 +2293,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         currentWorldX: point.x,
         currentWorldY: point.y,
       };
-    } else if (hit?.personId) {
+    } else if (shouldStartNodeDrag && hit?.personId) {
       const point = viewportToWorld(event.clientX, event.clientY);
       dragStateRef.current = {
         kind: "person-drag",
@@ -2096,9 +2317,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         moved: false,
       };
     }
-    setIsInteracting(true);
+    setInteractionCursor(true);
     markInteractive();
-  }, [hitNodeAt, markInteractive, viewportToWorld]);
+  }, [hitNodeAt, markInteractive, selectedAccountId, selectedPersonId, setInteractionCursor, viewportToWorld]);
 
   const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch") {
@@ -2134,6 +2355,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         x: localX - pinch.initialWorldPoint.x * scale,
         y: localY - pinch.initialWorldPoint.y * scale,
       };
+      hasUserAdjustedTransformRef.current = true;
       scheduleSyncScene();
       markInteractive();
       event.preventDefault();
@@ -2165,6 +2387,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         x: drag.originX + deltaX,
         y: drag.originY + deltaY,
       };
+      hasUserAdjustedTransformRef.current = true;
       if (event.pointerType === "touch") {
         event.preventDefault();
       }
@@ -2212,7 +2435,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       pinchStateRef.current = null;
       dragStateRef.current = null;
       emitRelationshipTierDragOver(null);
-      setIsInteracting(activeTouchPointsRef.current.size > 0);
+      setInteractionCursor(activeTouchPointsRef.current.size > 0);
       scheduleSyncScene();
       return;
     }
@@ -2220,7 +2443,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const drag = dragStateRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     dragStateRef.current = null;
-    setIsInteracting(false);
+    setInteractionCursor(false);
     emitRelationshipTierDragOver(null);
 
     if (
@@ -2269,7 +2492,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
 
     if (drag.moved) {
-      scheduleSyncScene();
       return;
     }
 
@@ -2291,7 +2513,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       }
     }
     scheduleSyncScene();
-  }, [accounts, hitNodeAt, onClearSelection, onDropNodeToRelationshipTier, onLinkAccountToPerson, onPinAccountPosition, onPinPersonPosition, onSelectAccount, onSelectPerson, personsById, scheduleSyncScene]);
+  }, [accounts, hitNodeAt, onClearSelection, onDropNodeToRelationshipTier, onLinkAccountToPerson, onPinAccountPosition, onPinPersonPosition, onSelectAccount, onSelectPerson, personsById, scheduleSyncScene, setInteractionCursor]);
 
   const handlePointerLeave = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (hoveredNodeIdRef.current) {
@@ -2306,7 +2528,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       pinchStateRef.current = null;
       dragStateRef.current = null;
       emitRelationshipTierDragOver(null);
-      setIsInteracting(activeTouchPointsRef.current.size > 0);
+      setInteractionCursor(activeTouchPointsRef.current.size > 0);
       scheduleSyncScene();
       return;
     }
@@ -2320,9 +2542,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
     dragStateRef.current = null;
     emitRelationshipTierDragOver(null);
-    setIsInteracting(false);
+    setInteractionCursor(false);
     scheduleSyncScene();
-  }, [onDropNodeToRelationshipTier, scheduleSyncScene]);
+  }, [onDropNodeToRelationshipTier, scheduleSyncScene, setInteractionCursor]);
 
   const handleDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -2352,8 +2574,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           </div>
         ) : null}
         <div
+          ref={canvasOverlayRef}
           data-testid="friend-graph-canvas-overlay"
-          className={`absolute inset-0 ${isInteracting ? "cursor-grabbing" : "cursor-grab"}`}
+          className="absolute inset-0 cursor-grab"
         />
       </div>
       <div className="absolute right-4 top-4 z-10 flex items-center gap-2">

@@ -6,6 +6,10 @@ const workerSource = readFileSync(
   join(process.cwd(), "src/lib/automerge.worker.ts"),
   "utf8",
 );
+const clientSource = readFileSync(
+  join(process.cwd(), "src/lib/automerge.ts"),
+  "utf8",
+);
 
 function caseBody(caseName: string): string {
   const pattern = new RegExp(`case "${caseName}":[\\s\\S]*?break;`);
@@ -58,13 +62,25 @@ describe("automerge worker memory routing", () => {
     expect(workerSource).toContain("DESKTOP_UI_CONTENT_TEXT_LIMIT = 280");
     expect(workerSource).toContain("DESKTOP_UI_PRESERVED_TEXT_LIMIT = 0");
     expect(workerSource).toContain("DESKTOP_UI_LINK_DESCRIPTION_LIMIT = 180");
-    expect(body).toContain("contentText.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT)");
-    expect(body).toContain("preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT)");
-    expect(workerSource).toContain("linkDescription.slice(0, DESKTOP_UI_LINK_DESCRIPTION_LIMIT)");
-    expect(workerSource).toContain("const tags = next.contentSignals.tags ?? []");
-    expect(workerSource).toContain("contentSignals: tags.length > 0 ? ({ tags } as FeedItem[\"contentSignals\"]) : undefined");
-    expect(workerSource).toContain(".map(trimFeedItemForDesktopUi)");
-    expect(patchBody).toContain("trimFeedItemForDesktopUi(cloned)");
+    expect(workerSource).toContain("DESKTOP_UI_EVENT_EVIDENCE_LIMIT = 220");
+    expect(body).toContain("contentText?.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT)");
+    expect(body).toContain("preservedText?.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT)");
+    expect(workerSource).toContain("linkDescription?.slice(0, DESKTOP_UI_LINK_DESCRIPTION_LIMIT)");
+    expect(workerSource).toContain("eventEvidence?.slice(0, DESKTOP_UI_EVENT_EVIDENCE_LIMIT)");
+    expect(workerSource).toContain("const tags = item.contentSignals?.tags ?? []");
+    expect(workerSource).toContain("contentSignals: tags.length > 0 ? ({ tags: [...tags] } as FeedItem[\"contentSignals\"]) : undefined");
+    expect(workerSource).toContain("cloneFeedItemsForDesktopUi");
+    expect(patchBody).toContain("trimFeedItemForDesktopUi(item)");
+    expect(patchBody).not.toContain("JSON.parse(JSON.stringify(item))");
+  });
+
+  it("hydrates desktop UI state without deep cloning the whole document first", () => {
+    const body = functionBody("hydrateFromDoc");
+
+    expect(body).not.toContain("A.toJS(doc)");
+    expect(body).toContain("cloneFeedItemsForDesktopUi");
+    expect(body).toContain("cloneRecordValues(doc.rssFeeds");
+    expect(body).toContain("docItemCount");
   });
 
   it("reader text requests fall back to full synced feed text", () => {
@@ -81,14 +97,53 @@ describe("automerge worker memory routing", () => {
 
     expect(workerSource).toContain("compactLoadedFeedText");
     expect(workerSource).toContain("FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES = 4 * 1024 * 1024");
-    expect(workerSource).toContain("FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES = 16 * 1024 * 1024");
     expect(initBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text\",");
     expect(replaceBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text\",");
     expect(mergeBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text after merge\",");
-    expect(initBody.indexOf("compactLoadedFeedText")).toBeLessThan(initBody.indexOf("saveAndBroadcast"));
+    expect(initBody.indexOf("compactLoadedFeedText")).toBeLessThan(initBody.indexOf("hydrateAndBroadcastWithoutPersist"));
   });
 
-  it("rebuilds a fresh Automerge document after compacting oversized loaded history", () => {
+  it("clean startup hydration avoids serializing and rewriting the loaded document", () => {
+    const helperBody = workerSource.match(
+      /async function hydrateAndBroadcastWithoutPersist[\s\S]*?\n}/,
+    )?.[0] ?? "";
+    const initBody = caseBody("INIT");
+
+    expect(workerSource).toContain("hydrateAndBroadcastWithoutPersist");
+    expect(helperBody).toContain("hydrateFromDoc");
+    expect(helperBody).toContain("STATE_UPDATE");
+    expect(helperBody).not.toContain("persistDoc");
+    expect(helperBody).not.toContain("storage.save");
+    expect(helperBody).not.toContain("A.save");
+    expect(initBody).toContain("loadedDocNeedsPersist");
+    expect(initBody).toContain("hydrateAndBroadcastWithoutPersist(trace)");
+  });
+
+  it("releases the Automerge document after idle and reloads it on demand", () => {
+    const scheduleBody = functionBody("scheduleDocIdleUnload");
+    const ensureBody = functionBody("ensureCurrentDocLoaded");
+    const enqueueBody = functionBody("enqueueRequest");
+    const handleBody = functionBody("handleRequest");
+
+    expect(scheduleBody).toContain("currentDoc = null");
+    expect(scheduleBody).toContain("createPersistenceState(currentBinary)");
+    expect(scheduleBody).toContain("request queue drained");
+    expect(ensureBody).toContain("A.load<FreedDoc>(currentBinary)");
+    expect(enqueueBody).toContain("scheduleDocIdleUnload()");
+    expect(handleBody).toContain("cancelDocIdleUnload()");
+    expect(handleBody).toContain("ensureCurrentDocLoaded(req.type)");
+  });
+
+  it("terminates idle workers and restarts them before later requests", () => {
+    expect(clientSource).toContain("let worker: Worker | null = null");
+    expect(clientSource).toContain("function stopIdleWorker()");
+    expect(clientSource).toContain("worker.terminate()");
+    expect(clientSource).toContain("ensureWorkerDocumentReadyFor(msg.type)");
+    expect(clientSource).toContain("await sendInit()");
+    expect(clientSource).toContain("(msg.detail ?? \"\").startsWith(\"[automerge-worker] released idle document\")");
+  });
+
+  it("rebuilds a fresh Automerge document only after compacting oversized text", () => {
     const compactBody = functionBody("compactLoadedFeedText");
     const initBody = caseBody("INIT");
     const replaceBody = caseBody("REPLACE_DOC");
@@ -96,8 +151,10 @@ describe("automerge worker memory routing", () => {
     expect(workerSource).toContain("createDocFromData");
     expect(compactBody).toContain("createDocFromData(plain)");
     expect(compactBody).toContain("rebuilt compacted document");
-    expect(compactBody).toContain("shouldProbeLargeHistory");
-    expect(compactBody).toContain("kept existing compacted document history");
+    expect(compactBody).toContain("summary.changed > 0");
+    expect(compactBody).not.toContain("shouldProbeLargeHistory");
+    expect(compactBody).not.toContain("kept existing compacted document history");
+    expect(workerSource).not.toContain("FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES");
     expect(initBody.indexOf("currentBinary = saved")).toBeLessThan(initBody.indexOf("compactLoadedFeedText"));
     expect(replaceBody.indexOf("currentBinary = req.binary")).toBeLessThan(replaceBody.indexOf("compactLoadedFeedText"));
     expect(replaceBody).not.toContain("await storage.save(req.binary)");

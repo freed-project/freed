@@ -15,19 +15,26 @@ export function tauriInitScript(): string {
     // Handler map - tests override individual entries after page.addInitScript.
     // The broadcast_doc handler wraps the real call to capture IPC timing data
     // consumed by the IPC latency harness in perf-feed.spec.ts.
+    function mockArray(name) {
+      if (!Array.isArray(window[name])) {
+        window[name] = [];
+      }
+      return window[name];
+    }
     window.__TAURI_MOCK_IPC_TIMINGS__ = [];
     function timedHandler(cmd, fn) {
       return function(args) {
         var start = performance.now();
         var result = fn(args);
-        window.__TAURI_MOCK_IPC_TIMINGS__.push({ cmd: cmd, startMs: start, endMs: performance.now(), args: args });
+        mockArray('__TAURI_MOCK_IPC_TIMINGS__').push({ cmd: cmd, startMs: start, endMs: performance.now(), args: args });
         return result;
       };
     }
     window.__TAURI_MOCK_HANDLERS__ = {
       broadcast_doc: timedHandler('broadcast_doc', function() { return null; }),
       fetch_url: () => '',
-      google_api_request: () => '{"connections":[],"nextSyncToken":"test-sync-token"}',
+      google_api_request: () => ({ status: 200, headers: [['content-type', 'application/json']], body: Array.from(new TextEncoder().encode('{"connections":[],"nextSyncToken":"test-sync-token"}')) }),
+      google_oauth_proxy_request: () => ({ status: 200, headers: [['content-type', 'application/json']], body: Array.from(new TextEncoder().encode('{"access_token":"test-access-token","refresh_token":"test-refresh-token","expires_in":3600}')) }),
       google_drive_request: () => ({ status: 200, headers: [['content-type', 'application/json']], body: Array.from(new TextEncoder().encode('{"files":[]}')) }),
       fetch_binary_url: () => [],
       get_local_ip: () => '127.0.0.1',
@@ -124,6 +131,7 @@ export function tauriInitScript(): string {
           after,
           recycledScraperWindows: false,
           cacheTrimmed: false,
+          scraperRecycleVerification: null,
           mayProceed: true,
         };
       },
@@ -179,7 +187,7 @@ export function tauriInitScript(): string {
       }
     };
     window.__TAURI_INTERNALS__.invoke = function(cmd, args) {
-      window.__TAURI_MOCK_INVOCATIONS__.push({ cmd: cmd, args: args });
+      mockArray('__TAURI_MOCK_INVOCATIONS__').push({ cmd: cmd, args: args });
       if (cmd === 'plugin:event|listen') {
         var eventId = nextPluginEventId++;
         window.__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__[eventId] = {

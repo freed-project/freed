@@ -58,7 +58,7 @@ export function GoogleContactsSection() {
     try {
       await googleContacts.connect({ signal: abortController.signal });
       setConnectErrorMessage(null);
-      await syncNow();
+      await syncNow({ force: true });
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         setConnectErrorMessage("Google Contacts connection canceled.");
@@ -87,7 +87,7 @@ export function GoogleContactsSection() {
 
   const handleSync = async () => {
     setConnectErrorMessage(null);
-    await syncNow();
+    await syncNow({ force: true });
   };
 
   const cachedCount = syncState.cachedContacts.length.toLocaleString();

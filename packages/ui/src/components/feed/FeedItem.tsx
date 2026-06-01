@@ -64,7 +64,7 @@ const COMPACT_CARD_TEXT_LIMIT = 500;
 const FIXED_CARD_TEXT_LIMIT = 900;
 const FULL_CARD_TEXT_LIMIT = 1_500;
 const FEED_IMAGE_SHED_APP_PRESSURE_BYTES = 2.25 * 1024 * 1024 * 1024;
-const FEED_IMAGE_SHED_WEBKIT_BYTES = 2 * 1024 * 1024 * 1024;
+const FEED_IMAGE_SHED_WEBKIT_BYTES = 1.5 * 1024 * 1024 * 1024;
 const EVENT_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",

@@ -1,0 +1,39 @@
+{
+  "tag": "v26.5.3100-dev",
+  "version": "26.5.3100-dev",
+  "channel": "dev",
+  "dayKey": "26.5.31",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-31T07:21:32.592Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.3011-dev",
+    "previousPublishedDayTag": "v26.5.3011-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.3100-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.3100-dev"
+    ],
+    "prNumbers": [],
+    "commitSubjects": [
+      "perf: reduce desktop sync memory pressure"
+    ]
+  },
+  "release": {
+    "deck": "Freed Desktop sync now sheds idle memory and records native runtime pressure while provider work is running.",
+    "features": [],
+    "fixes": [
+      "Recycles idle Automerge sync workers after queued document work finishes.",
+      "Adds native hidden-window memory samples with pause state, safe mode state, recovery counts, and active background job details.",
+      "Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom.",
+      "Delays low-priority semantic enrichment during launch so Facebook and Instagram capture get priority."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3100-dev\n\nFreed Desktop sync now sheds idle memory and records native runtime pressure while provider work is running.\n\n### Fixes\n\n- Recycles idle Automerge sync workers after queued document work finishes.\n- Adds native hidden-window memory samples with pause state, safe mode state, recovery counts, and active background job details.\n- Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom.\n- Delays low-priority semantic enrichment during launch so Facebook and Instagram capture get priority.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

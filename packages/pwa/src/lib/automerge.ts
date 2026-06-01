@@ -18,6 +18,7 @@ import type {
   Person,
   ReachOutLog,
   RssFeed,
+  SampleDataClearSummary,
   UserPreferences,
 } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
@@ -59,6 +60,13 @@ const pendingContentSignalBackfill = new Map<
   number,
   {
     resolve: (summary: ContentSignalBackfillSummary) => void;
+    reject: (err: Error) => void;
+  }
+>();
+const pendingSampleDataClear = new Map<
+  number,
+  {
+    resolve: (summary: SampleDataClearSummary) => void;
     reject: (err: Error) => void;
   }
 >();
@@ -126,11 +134,26 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     return;
   }
 
+  if (msg.type === "SAMPLE_DATA_CLEAR_RESULT") {
+    const pendingClear = pendingSampleDataClear.get(msg.reqId);
+    if (!pendingClear) return;
+    pendingSampleDataClear.delete(msg.reqId);
+    pendingClear.resolve(msg.summary);
+    return;
+  }
+
   // ACK — resolve or reject the pending promise
   const pendingBackfill = pendingContentSignalBackfill.get(msg.reqId);
   if (pendingBackfill && msg.error) {
     pendingContentSignalBackfill.delete(msg.reqId);
     pendingBackfill.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingClear = pendingSampleDataClear.get(msg.reqId);
+  if (pendingClear && msg.error) {
+    pendingSampleDataClear.delete(msg.reqId);
+    pendingClear.reject(new Error(msg.error));
     return;
   }
 
@@ -241,6 +264,15 @@ export async function docAddFeedItems(items: FeedItem[]): Promise<void> {
 export async function docRemoveFeedItem(globalId: string): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "REMOVE_FEED_ITEM", globalId });
+}
+
+export async function docClearSampleData(): Promise<SampleDataClearSummary> {
+  await workerReady;
+  return new Promise((resolve, reject) => {
+    const reqId = nextReqId++;
+    pendingSampleDataClear.set(reqId, { resolve, reject });
+    worker.postMessage({ reqId, type: "CLEAR_SAMPLE_DATA" } satisfies WorkerRequest);
+  });
 }
 
 export async function docUpdateFeedItem(globalId: string, updates: Partial<FeedItem>): Promise<void> {

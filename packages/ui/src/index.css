@@ -11,6 +11,9 @@ html[data-theme="neon"] {
   --theme-body-letter-spacing: 0;
   --theme-body-line-height: 1.5;
   --theme-body-font-weight: 400;
+  --theme-focus-emphasis-weight-light: 525;
+  --theme-focus-emphasis-weight-normal: 575;
+  --theme-focus-emphasis-weight-strong: 900;
 
   --theme-bg-root: #0a0a0a;
   --theme-bg-deep: #0f0f15;
@@ -169,6 +172,9 @@ html[data-theme="midas"] {
   --theme-body-letter-spacing: 0.004em;
   --theme-body-line-height: 1.56;
   --theme-body-font-weight: 430;
+  --theme-focus-emphasis-weight-light: 550;
+  --theme-focus-emphasis-weight-normal: 600;
+  --theme-focus-emphasis-weight-strong: 900;
 
   --theme-bg-root: #2b231d;
   --theme-bg-deep: #352b23;
@@ -281,6 +287,9 @@ html[data-theme="ember"] {
   --theme-body-letter-spacing: 0.012em;
   --theme-body-line-height: 1.52;
   --theme-body-font-weight: 430;
+  --theme-focus-emphasis-weight-light: 550;
+  --theme-focus-emphasis-weight-normal: 600;
+  --theme-focus-emphasis-weight-strong: 900;
   --theme-bg-root: #180f0d;
   --theme-bg-deep: #221411;
   --theme-bg-surface: #2a1a16;
@@ -392,6 +401,9 @@ html[data-theme="scriptorium"] {
   --theme-body-letter-spacing: 0.002em;
   --theme-body-line-height: 1.58;
   --theme-body-font-weight: 430;
+  --theme-focus-emphasis-weight-light: 550;
+  --theme-focus-emphasis-weight-normal: 600;
+  --theme-focus-emphasis-weight-strong: 900;
 
   --theme-bg-root: #f4ead7;
   --theme-bg-deep: #ece0ca;
@@ -678,6 +690,18 @@ body {
   letter-spacing: var(--theme-body-letter-spacing);
   line-height: var(--theme-body-line-height);
   font-weight: var(--theme-body-font-weight);
+}
+
+.theme-focus-text[data-focus-intensity="light"] .theme-focus-text__emphasis {
+  font-weight: var(--theme-focus-emphasis-weight-light);
+}
+
+.theme-focus-text[data-focus-intensity="normal"] .theme-focus-text__emphasis {
+  font-weight: var(--theme-focus-emphasis-weight-normal);
+}
+
+.theme-focus-text[data-focus-intensity="strong"] .theme-focus-text__emphasis {
+  font-weight: var(--theme-focus-emphasis-weight-strong);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2074,6 +2098,27 @@ html.freed-mobile-sidebar-open body {
   -webkit-backdrop-filter: blur(0px) saturate(100%);
 }
 
+.theme-settings-shell[data-moving="true"] .theme-card-soft {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.theme-settings-shell[data-moving="true"] .theme-settings-scrollport {
+  will-change: auto;
+}
+
+.theme-settings-shell[data-moving="true"] .theme-dialog-section {
+  box-shadow: none;
+}
+
+.theme-settings-shell[data-moving="true"] *,
+.theme-settings-shell[data-moving="true"] *::before,
+.theme-settings-shell[data-moving="true"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
 html[data-memory-pressure="critical"] .theme-settings-overlay,
 html[data-renderer-safe-mode="true"] .theme-settings-overlay {
   background: rgb(var(--theme-shell-rgb) / 0.18);
@@ -2135,6 +2180,7 @@ html[data-theme="scriptorium"] .theme-dialog-shell::before {
 }
 
 .theme-settings-shell {
+  contain: layout paint;
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.06),
     inset 0 0 0 0.5px rgb(255 255 255 / 0.028),
@@ -2144,7 +2190,12 @@ html[data-theme="scriptorium"] .theme-dialog-shell::before {
     0 0 0 1px rgb(255 255 255 / 0.025);
 }
 
-html[data-theme="scriptorium"] .theme-settings-shell {
+.theme-settings-scrollport {
+  contain: layout paint;
+  overscroll-behavior: contain;
+}
+
+html[data-theme="scriptorium"] .theme-settings-shell:not([data-moving="true"]) {
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.032),
     inset 0 0 0 0.5px rgb(255 255 255 / 0.018),
@@ -2152,6 +2203,10 @@ html[data-theme="scriptorium"] .theme-settings-shell {
     0 72px 188px rgb(84 58 35 / 0.34),
     0 0 56px rgb(84 58 35 / 0.08),
     0 0 0 1px rgb(255 255 255 / 0.04);
+}
+
+.theme-dialog-shell.theme-settings-shell[data-moving="true"] {
+  box-shadow: none;
 }
 
 .theme-dialog-divider {
@@ -2215,52 +2270,21 @@ html[data-theme="scriptorium"] .theme-card-soft {
   border-radius: var(--button-radius);
   border: 1px solid rgb(255 255 255 / 0.06);
   cursor: pointer;
-  transform-origin: center;
   transition:
-    transform 0.2s ease,
     box-shadow 0.2s ease,
     filter 0.2s ease;
   box-shadow: var(--theme-button-primary-shadow);
   overflow: hidden;
 }
 
-.btn-primary::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    115deg,
-    transparent 0%,
-    rgb(255 255 255 / 0.18) 28%,
-    transparent 55%
-  );
-  transform: translateX(-140%);
-  transition: transform 0.6s ease;
-  z-index: -1;
-}
-
-html[data-theme="scriptorium"] .btn-primary::before {
-  display: none;
-}
-
 .btn-primary:hover {
-  transform: scale(1.01);
   box-shadow: var(--theme-button-primary-shadow-hover);
   filter: saturate(1.05);
 }
 
 html[data-theme="scriptorium"] .btn-primary:hover {
-  transform: scale(1.005);
   box-shadow: var(--theme-button-primary-shadow-hover);
   filter: none;
-}
-
-.btn-primary:hover::before {
-  transform: translateX(135%);
-}
-
-.btn-primary:active {
-  transform: scale(0.985);
 }
 
 .nav-mobile-cta.btn-primary {
@@ -2281,14 +2305,8 @@ html[data-theme="scriptorium"] .btn-primary:hover {
 
 .nav-mobile-cta.btn-primary:hover,
 .nav-mobile-cta.btn-primary:active {
-  transform: none;
   border-radius: var(--button-radius);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
-}
-
-.newsletter-modal .btn-primary:hover,
-.newsletter-modal .btn-primary:active {
-  transform: none;
 }
 
 .newsletter-modal-download-cta.btn-primary {
@@ -2308,19 +2326,13 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   transition:
     border-color 0.18s ease,
     background-color 0.18s ease,
-    color 0.18s ease,
-    transform 0.18s ease;
+    color 0.18s ease;
 }
 
 .btn-secondary:hover,
 .glass-button:hover {
   border-color: var(--theme-border-strong);
   background: var(--theme-button-secondary-hover);
-}
-
-.glass-button:active,
-.btn-secondary:active {
-  transform: scale(0.985);
 }
 
 .theme-input {
@@ -2610,19 +2622,13 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   transition:
     background-color 0.18s ease,
     border-color 0.18s ease,
-    color 0.18s ease,
-    transform 0.18s ease;
+    color 0.18s ease;
 }
 
 .theme-feedback-button-warning:hover,
 .theme-feedback-button-danger:hover {
   background: rgb(var(--feedback-rgb) / 0.18);
   border-color: rgb(var(--feedback-rgb) / 0.3);
-}
-
-.theme-feedback-button-warning:active,
-.theme-feedback-button-danger:active {
-  transform: scale(0.985);
 }
 
 .theme-feedback-button-warning {

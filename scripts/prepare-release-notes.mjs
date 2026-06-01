@@ -8,6 +8,7 @@ import {
   areNearDuplicates,
   buildReleaseDeck,
   compareTags,
+  compareVersionDays,
   dedupeSimilarStrings,
   dayDateFromVersion,
   MAX_FEATURES,
@@ -547,10 +548,8 @@ function parseArguments(argv) {
 }
 
 function previousPublishedDayRelease(version, publishedReleases) {
-  const dayKey = versionDayKey(version);
-
   return [...publishedReleases]
-    .filter((release) => versionDayKey(release.tag_name.replace(/^v/, "")) < dayKey)
+    .filter((release) => compareVersionDays(release.tag_name, version) < 0)
     .pop() ?? null;
 }
 
@@ -1065,6 +1064,9 @@ async function main() {
     .map((release) => loadPublishedReleaseSummary(release))
     .filter((summary) => releaseHasContent(summary.release));
   const carriedForwardReleases = carriedForwardSummaries.map((summary) => summary.release);
+  const previousDayRelease = channel === "dev" && context.previousPublishedDayTag
+    ? loadPublishedReleaseSummary({ tag_name: context.previousPublishedDayTag }).release
+    : null;
   const cumulativePrNumbers = dedupeNumericList([
     ...context.prNumbers,
     ...carriedForwardSummaries.flatMap((summary) => summary.prNumbers),
@@ -1124,6 +1126,7 @@ async function main() {
   );
   const validation = validateReleaseShape(finalRelease, {
     earlierReleases: context.isLatestOfDay ? carriedForwardReleases : [],
+    previousDayRelease,
   });
 
   if (validation.errors.length > 0) {

@@ -50,4 +50,37 @@ describe("CloudProviderCard", () => {
     expect(onCancelConnect).toHaveBeenCalledWith("gdrive");
     expect(onConnect).not.toHaveBeenCalled();
   });
+
+  it("blocks Dropbox connection while it is coming soon", async () => {
+    const onConnect = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <CloudProviderCard
+          provider="dropbox"
+          state={{ status: "idle" }}
+          onConnect={onConnect}
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain("Coming soon");
+
+    const actionButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Coming soon",
+    );
+
+    expect(actionButton).toBeInstanceOf(HTMLButtonElement);
+    expect((actionButton as HTMLButtonElement | undefined)?.disabled).toBe(
+      true,
+    );
+
+    await act(async () => {
+      container.firstElementChild?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+
+    expect(onConnect).not.toHaveBeenCalled();
+  });
 });
