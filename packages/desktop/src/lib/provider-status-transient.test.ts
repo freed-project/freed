@@ -76,4 +76,31 @@ describe("provider status transient failures", () => {
       }),
     ).toBe(currentMessage);
   });
+
+  it("keeps empty social syncs out of the healthy connected state", () => {
+    const emptySnapshot = snapshot({
+      status: "healthy",
+      lastOutcome: "empty",
+      currentMessage: "No posts pulled",
+    });
+
+    expect(
+      getProviderStatusTone({
+        isConnected: true,
+        snapshot: emptySnapshot,
+      }),
+    ).toBe("warning");
+    expect(
+      getProviderStatusLabel({
+        isConnected: true,
+        snapshot: emptySnapshot,
+      }),
+    ).toBe("No posts pulled");
+    expect(
+      getProviderStatusDetail({
+        isConnected: true,
+        snapshot: emptySnapshot,
+      }),
+    ).toBe("No posts pulled");
+  });
 });
