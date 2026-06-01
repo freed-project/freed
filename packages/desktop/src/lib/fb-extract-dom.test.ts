@@ -66,4 +66,31 @@ describe("Facebook DOM extractor", () => {
     expect(payload?.posts).toEqual([]);
     expect(payload?.rejected).toMatchObject({ missingAuthor: 1 });
   });
+
+  it("extracts post blocks without role article or measurable height", () => {
+    const payload = runExtractor(`
+      <div role="main">
+        <section>
+          <div>
+            <div>
+              <h3><a href="https://www.facebook.com/bob.example">Bob Example</a></h3>
+              <a href="https://www.facebook.com/bob.example/posts/987654321">2 h</a>
+              <div dir="auto">Facebook sometimes hides useful feed structure from automation, but this plain block is still a real post.</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    `);
+
+    expect(payload?.strategy).toBe("role-main-fallback");
+    expect(payload?.candidateCount).toBe(1);
+    expect(payload?.posts).toEqual([
+      expect.objectContaining({
+        id: "987654321",
+        authorName: "Bob Example",
+        authorProfileUrl: "https://www.facebook.com/bob.example",
+        text: "Facebook sometimes hides useful feed structure from automation, but this plain block is still a real post.",
+      }),
+    ]);
+  });
 });

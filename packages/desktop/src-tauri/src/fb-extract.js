@@ -229,6 +229,27 @@
     );
   }
 
+  function hasTimestampCue(node) {
+    if (node.querySelector("time[datetime], abbr[data-utime]")) return true;
+    var links = node.querySelectorAll("a[href], a[aria-label]");
+    for (var i = 0; i < Math.min(links.length, 20); i++) {
+      var text = (
+        links[i].textContent ||
+        links[i].getAttribute("aria-label") ||
+        ""
+      ).trim();
+      if (
+        /^\d+\s*[hms]$/i.test(text) ||
+        /^\d+\s*(hour|minute|second|day|week|month)s?\s*ago$/i.test(text) ||
+        /^(yesterday|today|just now)$/i.test(text) ||
+        /^(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d/i.test(text)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function isLikelyPostElement(node, container) {
     if (!node || node === container) return false;
     var h = elementHeight(node);
@@ -238,11 +259,12 @@
       role === "article" ||
       /^FeedUnit/i.test(pagelet) ||
       node.hasAttribute("aria-posinset");
+    var structurallyPost = semanticPost || (hasAuthorArea(node) && hasTimestampCue(node));
 
-    if (!semanticPost && (h < 150 || h > 2000)) return false;
-    if (semanticPost && h > 0 && h > 2600) return false;
+    if (!structurallyPost && (h < 150 || h > 2000)) return false;
+    if (structurallyPost && h > 0 && h > 2600) return false;
     if (!hasPostContent(node)) return false;
-    return semanticPost || hasAuthorArea(node);
+    return structurallyPost;
   }
 
   function uniquePostElements(elements) {

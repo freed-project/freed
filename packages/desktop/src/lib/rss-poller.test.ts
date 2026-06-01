@@ -40,6 +40,40 @@ describe("rss poller", () => {
     vi.useRealTimers();
   });
 
+  it("delays the startup poll so launch stays responsive", async () => {
+    runBackgroundJob.mockResolvedValueOnce(undefined);
+
+    const poller = await loadPoller();
+    poller.startRssPoller(30 * 60 * 1000);
+    await vi.runAllTicks();
+
+    expect(runBackgroundJob).not.toHaveBeenCalled();
+    expect(addDebugEvent).toHaveBeenCalledWith(
+      "change",
+      "[RSS] startup poll scheduled in 300s",
+    );
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1);
+    expect(runBackgroundJob).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(runBackgroundJob).toHaveBeenCalledTimes(1);
+
+    poller.stopRssPoller();
+  });
+
+  it("still supports an immediate startup poll when requested", async () => {
+    runBackgroundJob.mockResolvedValueOnce(undefined);
+
+    const poller = await loadPoller();
+    poller.startRssPoller(30 * 60 * 1000, { startupDelayMs: 0 });
+    await vi.runAllTicks();
+
+    expect(runBackgroundJob).toHaveBeenCalledTimes(1);
+
+    poller.stopRssPoller();
+  });
+
   it("backs off a deferred startup poll before the normal interval", async () => {
     const deferredError = { reason: "waiting_for_renderer_heartbeat:1" };
     runBackgroundJob
@@ -47,7 +81,7 @@ describe("rss poller", () => {
       .mockResolvedValueOnce(undefined);
 
     const poller = await loadPoller();
-    poller.startRssPoller(30 * 60 * 1000);
+    poller.startRssPoller(30 * 60 * 1000, { startupDelayMs: 0 });
 
     await vi.runAllTicks();
     expect(runBackgroundJob).toHaveBeenCalledTimes(1);
@@ -85,7 +119,7 @@ describe("rss poller", () => {
     runBackgroundJob.mockRejectedValueOnce({ reason: "cooldown:120000" });
 
     const poller = await loadPoller();
-    poller.startRssPoller(30 * 60 * 1000);
+    poller.startRssPoller(30 * 60 * 1000, { startupDelayMs: 0 });
     await vi.runAllTicks();
 
     poller.stopRssPoller();
@@ -100,7 +134,7 @@ describe("rss poller", () => {
       .mockResolvedValueOnce(undefined);
 
     const poller = await loadPoller();
-    poller.startRssPoller(30 * 60 * 1000);
+    poller.startRssPoller(30 * 60 * 1000, { startupDelayMs: 0 });
     await vi.runAllTicks();
 
     await vi.advanceTimersByTimeAsync(119_999);
@@ -123,7 +157,7 @@ describe("rss poller", () => {
       .mockResolvedValueOnce(undefined);
 
     const poller = await loadPoller();
-    poller.startRssPoller(30 * 60 * 1000);
+    poller.startRssPoller(30 * 60 * 1000, { startupDelayMs: 0 });
     await vi.runAllTicks();
 
     await vi.advanceTimersByTimeAsync(60_000);
