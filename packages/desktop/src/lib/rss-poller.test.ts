@@ -40,7 +40,7 @@ describe("rss poller", () => {
     vi.useRealTimers();
   });
 
-  it("retries a deferred startup poll before the normal interval", async () => {
+  it("backs off a deferred startup poll before the normal interval", async () => {
     const deferredError = { reason: "waiting_for_renderer_heartbeat:1" };
     runBackgroundJob
       .mockRejectedValueOnce(deferredError)
@@ -64,7 +64,7 @@ describe("rss poller", () => {
       staleAfterMs: 2 * 60 * 60 * 1000,
     });
 
-    await vi.advanceTimersByTimeAsync(14_999);
+    await vi.advanceTimersByTimeAsync(59_999);
     expect(runBackgroundJob).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(1);
@@ -72,6 +72,10 @@ describe("rss poller", () => {
     expect(addDebugEvent).toHaveBeenCalledWith(
       "change",
       "[RSS] poll deferred: waiting_for_renderer_heartbeat:1",
+    );
+    expect(addDebugEvent).toHaveBeenCalledWith(
+      "change",
+      "[RSS] poll retry scheduled in 60s after waiting_for_renderer_heartbeat:1",
     );
 
     poller.stopRssPoller();
@@ -85,8 +89,59 @@ describe("rss poller", () => {
     await vi.runAllTicks();
 
     poller.stopRssPoller();
-    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(120_000);
 
     expect(runBackgroundJob).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the runtime cooldown when it is longer than the base retry", async () => {
+    runBackgroundJob
+      .mockRejectedValueOnce({ reason: "cooldown:120,000" })
+      .mockResolvedValueOnce(undefined);
+
+    const poller = await loadPoller();
+    poller.startRssPoller(30 * 60 * 1000);
+    await vi.runAllTicks();
+
+    await vi.advanceTimersByTimeAsync(119_999);
+    expect(runBackgroundJob).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(runBackgroundJob).toHaveBeenCalledTimes(2);
+    expect(addDebugEvent).toHaveBeenCalledWith(
+      "change",
+      "[RSS] poll retry scheduled in 120s after cooldown:120,000",
+    );
+
+    poller.stopRssPoller();
+  });
+
+  it("doubles repeated deferred retries up to the cap", async () => {
+    runBackgroundJob
+      .mockRejectedValueOnce({ reason: "high_memory_pressure" })
+      .mockRejectedValueOnce({ reason: "high_memory_pressure" })
+      .mockResolvedValueOnce(undefined);
+
+    const poller = await loadPoller();
+    poller.startRssPoller(30 * 60 * 1000);
+    await vi.runAllTicks();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(runBackgroundJob).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(119_999);
+    expect(runBackgroundJob).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(runBackgroundJob).toHaveBeenCalledTimes(3);
+    expect(addDebugEvent).toHaveBeenCalledWith(
+      "change",
+      "[RSS] poll retry scheduled in 60s after high_memory_pressure",
+    );
+    expect(addDebugEvent).toHaveBeenCalledWith(
+      "change",
+      "[RSS] poll retry scheduled in 120s after high_memory_pressure",
+    );
+
+    poller.stopRssPoller();
   });
 });

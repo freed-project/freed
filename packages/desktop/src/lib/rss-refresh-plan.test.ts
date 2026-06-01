@@ -71,4 +71,21 @@ describe("rss refresh plan", () => {
       "https://second.example/feed",
     ]);
   });
+
+  it("skips feeds whose retry window is still closed", () => {
+    const now = 10 * SCHEDULED_RSS_STALE_AFTER_MS;
+    const eligible = feed("https://eligible.example/feed", 100);
+    const delayed = {
+      ...feed("https://delayed.example/feed", 100),
+      nextFetchAfter: now + 1,
+    };
+
+    expect(
+      selectRssFeedsForRefresh([delayed, eligible], {
+        staleAfterMs: 1,
+        maxFeeds: SCHEDULED_RSS_MAX_FEEDS,
+        now,
+      }).map((entry) => entry.url),
+    ).toEqual(["https://eligible.example/feed"]);
+  });
 });
