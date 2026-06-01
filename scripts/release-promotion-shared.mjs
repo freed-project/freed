@@ -29,6 +29,10 @@ export const FORBIDDEN_MAIN_PR_PREFIXES = [
   "website/",
 ];
 
+export const PROMOTION_WEBSITE_CONFIG_FILES = [
+  "website/next.config.ts",
+];
+
 export const PROMOTION_BRANCH_PATTERN = /^chore\/promote-dev-to-main(?:-[a-z0-9._-]+)?$/;
 
 function runGit(args, { cwd } = {}) {
@@ -67,6 +71,10 @@ export function isReleaseOnlyFile(filePath) {
 }
 
 export function isPromotionScopeFile(filePath) {
+  if (PROMOTION_WEBSITE_CONFIG_FILES.includes(filePath)) {
+    return true;
+  }
+
   return PROMOTION_SCOPE_PATHS.some((scopePath) => (
     filePath === scopePath || filePath.startsWith(`${scopePath}/`)
   ));
@@ -81,12 +89,21 @@ export function listChangedFiles({ fromRef, toRef, cwd, pathspec = [] }) {
 }
 
 export function listPromotionDiffFiles({ fromRef, toRef, cwd }) {
-  return listChangedFiles({
+  const promotionScopeFiles = listChangedFiles({
     fromRef,
     toRef,
     cwd,
     pathspec: PROMOTION_SCOPE_PATHS,
-  }).filter((filePath) => !isReleaseOnlyFile(filePath));
+  });
+  const websiteConfigFiles = listChangedFiles({
+    fromRef,
+    toRef,
+    cwd,
+    pathspec: PROMOTION_WEBSITE_CONFIG_FILES,
+  });
+
+  return uniqueSorted([...promotionScopeFiles, ...websiteConfigFiles])
+    .filter((filePath) => !isReleaseOnlyFile(filePath));
 }
 
 export function listComparisonFiles({ baseRef, headRef, cwd }) {
@@ -139,7 +156,8 @@ export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
 
 export function listForbiddenMainPrFiles(files) {
   return files.filter((filePath) => (
-    FORBIDDEN_MAIN_PR_PREFIXES.some((prefix) => filePath.startsWith(prefix))
+    !PROMOTION_WEBSITE_CONFIG_FILES.includes(filePath)
+    && FORBIDDEN_MAIN_PR_PREFIXES.some((prefix) => filePath.startsWith(prefix))
   ));
 }
 
