@@ -65,6 +65,18 @@ export interface FbSyncDiag {
   itemsNormalized: number;
   itemsDeduplicated: number;
   itemsAdded: number;
+  extractionPasses: number;
+  lastExtractionStrategy: string | null;
+  lastCandidateCount: number | null;
+  lastRejected:
+    | {
+        suggestedOrSponsored?: number;
+        missingAuthor?: number;
+        missingContent?: number;
+      }
+    | null;
+  lastScrollY: number | null;
+  feedContainerFound: boolean | null;
   errorStage: string | null;
   errorMessage: string | null;
 }
@@ -141,6 +153,34 @@ function formatFacebookNormalizationSummary(
   );
 }
 
+function formatFacebookEmptySyncMessage(diag: FbSyncDiag): string {
+  const details: string[] = [];
+
+  if (diag.extractionPasses > 0) {
+    details.push(
+      `${diag.extractionPasses.toLocaleString()} extraction pass${diag.extractionPasses === 1 ? "" : "es"}`,
+    );
+  }
+  if (diag.lastExtractionStrategy) {
+    details.push(`last strategy ${diag.lastExtractionStrategy}`);
+  }
+  if (typeof diag.lastCandidateCount === "number") {
+    details.push(
+      `${diag.lastCandidateCount.toLocaleString()} candidate${diag.lastCandidateCount === 1 ? "" : "s"} on the last pass`,
+    );
+  }
+  if (typeof diag.lastScrollY === "number") {
+    details.push(`scrollY ${diag.lastScrollY.toLocaleString()}`);
+  }
+  if (typeof diag.feedContainerFound === "boolean") {
+    details.push(`feed container ${diag.feedContainerFound ? "found" : "not found"}`);
+  }
+
+  return details.length > 0
+    ? `${socialProviderCopy("facebook").feedReturnedEmpty} ${details.join(", ")}.`
+    : socialProviderCopy("facebook").feedReturnedEmpty;
+}
+
 function filterExcludedGroups(
   items: FeedItem[],
   excludedGroupIds: Record<string, true>,
@@ -208,6 +248,12 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
     itemsNormalized: 0,
     itemsDeduplicated: 0,
     itemsAdded: 0,
+    extractionPasses: 0,
+    lastExtractionStrategy: null,
+    lastCandidateCount: null,
+    lastRejected: null,
+    lastScrollY: null,
+    feedContainerFound: null,
     errorStage: null,
     errorMessage: null,
   };
@@ -259,17 +305,39 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
         missingAuthor?: number;
         missingContent?: number;
       };
+      scrollY?: number;
+      feedContainerFound?: boolean;
     }>(
       "fb-feed-data",
       (event) => {
-        const { posts, error, strategy, candidateCount, rejected } = event.payload;
+        const {
+          posts,
+          error,
+          strategy,
+          candidateCount,
+          rejected,
+          scrollY,
+          feedContainerFound,
+        } = event.payload;
+        diag.extractionPasses++;
+        diag.lastExtractionStrategy = strategy ?? null;
+        diag.lastCandidateCount = typeof candidateCount === "number" ? candidateCount : null;
+        diag.lastRejected = rejected ?? null;
+        diag.lastScrollY = typeof scrollY === "number" ? scrollY : null;
+        diag.feedContainerFound = typeof feedContainerFound === "boolean" ? feedContainerFound : null;
 
         const rejectionSummary = rejected
           ? `, rejected={sponsored:${(rejected.suggestedOrSponsored ?? 0).toLocaleString()}, author:${(rejected.missingAuthor ?? 0).toLocaleString()}, content:${(rejected.missingContent ?? 0).toLocaleString()}}`
           : "";
+        const scrollSummary =
+          typeof scrollY === "number" ? `, scrollY=${scrollY.toLocaleString()}` : "";
+        const feedSummary =
+          typeof feedContainerFound === "boolean"
+            ? `, feedContainer=${feedContainerFound ? "y" : "n"}`
+            : "";
         addDebugEvent(
           "change",
-          `[FB] extraction: strategy=${strategy ?? "?"}, candidates=${candidateCount ?? "?"}, posts=${posts.length.toLocaleString()}${rejectionSummary}`,
+          `[FB] extraction: strategy=${strategy ?? "?"}, candidates=${candidateCount?.toLocaleString() ?? "?"}, posts=${posts.length.toLocaleString()}${rejectionSummary}${scrollSummary}${feedSummary}`,
         );
 
         if (error) {
@@ -393,6 +461,12 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
         itemsNormalized: 0,
         itemsDeduplicated: 0,
         itemsAdded: 0,
+        extractionPasses: 0,
+        lastExtractionStrategy: null,
+        lastCandidateCount: null,
+        lastRejected: null,
+        lastScrollY: null,
+        feedContainerFound: null,
         errorStage: "provider_rate_limit",
         errorMessage: providerPause.pauseReason,
       },
@@ -422,6 +496,12 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
         itemsNormalized: 0,
         itemsDeduplicated: 0,
         itemsAdded: 0,
+        extractionPasses: 0,
+        lastExtractionStrategy: null,
+        lastCandidateCount: null,
+        lastRejected: null,
+        lastScrollY: null,
+        feedContainerFound: null,
         errorStage: "cooldown",
         errorMessage: `Cooling down. Try again in ~${minutesRemaining} minutes.`,
       },
@@ -494,7 +574,26 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
         `[FB] synced: ${result.diag.postsExtracted.toLocaleString()} posts extracted, ${result.diag.itemsAdded.toLocaleString()} new items`,
       );
     } else {
-      addDebugEvent("change", "[FB] sync complete: feed returned 0 posts");
+      const emptyMessage = formatFacebookEmptySyncMessage(result.diag);
+      addDebugEvent("change", `[FB] sync complete: ${emptyMessage}`);
+      store.setError(emptyMessage);
+      const emptyState = {
+        ...useAppStore.getState().fbAuth,
+        lastCaptureError: emptyMessage,
+      };
+      store.setFbAuth(emptyState);
+      storeFbAuthState(emptyState);
+      await recordProviderHealthEvent({
+        provider: "facebook",
+        outcome: "empty",
+        stage: "empty",
+        reason: emptyMessage,
+        startedAt,
+        finishedAt: Date.now(),
+        itemsSeen: result.diag.postsExtracted,
+        itemsAdded: result.diag.itemsAdded,
+      });
+      return result;
     }
 
     // Persist success timestamp so the sync dropdown shows "Synced X ago"
