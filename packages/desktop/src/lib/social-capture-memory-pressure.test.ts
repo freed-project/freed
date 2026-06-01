@@ -4,18 +4,6 @@ const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   listen: vi.fn(),
   prepareSocialScrapeMemory: vi.fn(),
-}));
-
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: mocks.invoke,
-  isTauri: () => true,
-}));
-
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: mocks.listen,
-}));
-
-vi.mock("@freed/capture-facebook/browser", () => ({
   fbPostsToFeedItems: vi.fn((posts: Array<{ id?: string }>) =>
     posts.map((post, index) => ({
       globalId: post.id ?? `post-${index}`,
@@ -28,6 +16,19 @@ vi.mock("@freed/capture-facebook/browser", () => ({
       topics: [],
     })),
   ),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: mocks.invoke,
+  isTauri: () => true,
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: mocks.listen,
+}));
+
+vi.mock("@freed/capture-facebook/browser", () => ({
+  fbPostsToFeedItems: mocks.fbPostsToFeedItems,
   deduplicateFeedItems: vi.fn((items: unknown[]) => items),
 }));
 
@@ -70,6 +71,19 @@ beforeEach(() => {
   vi.resetModules();
   mocks.invoke.mockReset();
   mocks.listen.mockReset();
+  mocks.fbPostsToFeedItems.mockClear();
+  mocks.fbPostsToFeedItems.mockImplementation((posts: Array<{ id?: string }>) =>
+    posts.map((post, index) => ({
+      globalId: post.id ?? `post-${index}`,
+      platform: "facebook",
+      content: { text: "post", mediaUrls: [], mediaTypes: [] },
+      author: { displayName: "Facebook" },
+      createdAt: Date.now(),
+      savedAt: Date.now(),
+      tags: [],
+      topics: [],
+    })),
+  );
   mocks.prepareSocialScrapeMemory.mockReset();
   mocks.prepareSocialScrapeMemory.mockResolvedValue({
     before: {},
@@ -124,6 +138,47 @@ describe("social capture completion", () => {
     expect(result.diag.errorStage).toBeNull();
     expect(result.diag.postsExtracted).toBe(2);
     expect(result.items).toHaveLength(2);
+  });
+
+  it("treats extracted Facebook posts that normalize to zero items as a sync failure", async () => {
+    const listeners = new Map<string, (event: { payload: unknown }) => void>();
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.fbPostsToFeedItems.mockReturnValue([]);
+    mocks.listen.mockImplementation(async (eventName: string, callback: (event: { payload: unknown }) => void) => {
+      listeners.set(eventName, callback);
+      return vi.fn();
+    });
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command !== "fb_scrape_feed") return null;
+
+      listeners.get("fb-feed-data")?.({
+        payload: {
+          posts: [{ id: "raw-post", authorName: "Raw", text: "Rejected" }],
+          extractedAt: Date.now(),
+          url: "https://www.facebook.com/",
+          strategy: "test",
+          candidateCount: 1,
+        },
+      });
+      return null;
+    });
+
+    const { fetchFbFeed } = await import("./fb-capture");
+    const result = await fetchFbFeed();
+
+    expect(result.items).toEqual([]);
+    expect(result.diag.postsExtracted).toBe(1);
+    expect(result.diag.itemsNormalized).toBe(0);
+    expect(result.diag.errorStage).toBe("normalize");
+    expect(result.diag.errorMessage).toBe(
+      "Extracted 1 Facebook post, but none passed normalization.",
+    );
   });
 });
 

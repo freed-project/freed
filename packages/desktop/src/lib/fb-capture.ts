@@ -243,6 +243,13 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
   try {
     const normalized = fbPostsToFeedItems(allRawPosts);
     diag.itemsNormalized = normalized.length;
+    if (normalized.length === 0) {
+      diag.errorStage = "normalize";
+      diag.errorMessage =
+        `Extracted ${allRawPosts.length.toLocaleString()} Facebook post` +
+        `${allRawPosts.length === 1 ? "" : "s"}, but none passed normalization.`;
+      return { items: [], diag };
+    }
 
     const items = deduplicateFeedItems(normalized);
     diag.itemsDeduplicated = items.length;

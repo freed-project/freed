@@ -20,10 +20,6 @@ export function getHealthStatusLabel(snapshot?: ProviderHealthSnapshot | null): 
     return "Paused";
   }
 
-  if (snapshot.status === "healthy") {
-    return "Healthy";
-  }
-
   if (snapshot.lastOutcome === "cooldown") {
     return "Cooling down";
   }
@@ -34,6 +30,10 @@ export function getHealthStatusLabel(snapshot?: ProviderHealthSnapshot | null): 
 
   if (snapshot.lastOutcome === "empty") {
     return "No posts pulled";
+  }
+
+  if (snapshot.status === "healthy") {
+    return "Healthy";
   }
 
   if (snapshot.status === "degraded") {
@@ -84,6 +84,7 @@ export function getProviderStatusTone({
   if (
     snapshot?.status === "paused" ||
     snapshot?.status === "degraded" ||
+    snapshot?.lastOutcome === "empty" ||
     snapshot?.lastOutcome === "provider_rate_limit" ||
     (!!usableAuthError && !hasAuthLikeIssue(usableAuthError))
   ) {
