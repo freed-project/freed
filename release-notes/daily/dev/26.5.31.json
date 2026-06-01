@@ -2,19 +2,20 @@
   "channel": "dev",
   "dayKey": "26.5.31",
   "date": "2026-05-31",
-  "preferredDeck": "This dev build cuts RSS retry churn and keeps installed dev builds on the dev channel.",
+  "preferredDeck": "This dev build adds Facebook zero-post diagnostics and keeps RSS retry pacing and installed dev-channel validation ready for the next soak.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Facebook sync now reports why extracted posts normalize to zero usable items.",
     "RSS scheduled polling now backs off after runtime deferrals instead of retrying every 15 seconds.",
     "Broken RSS feeds now record retry windows after failed fetches.",
     "Installed dev builds continue using the dev release channel after reinstall."
   ],
   "editorialNotes": [
-    "Use v26.5.3112-dev as the focused dev build for RSS retry pacing and installed dev-channel validation."
+    "Use v26.5.3114-dev as the focused dev build for Facebook zero-post diagnostics, RSS retry pacing, and installed dev-channel validation."
   ],
-  "updatedAt": "2026-06-01T03:22:58.504Z"
+  "updatedAt": "2026-06-01T03:24:10.721Z"
 }
