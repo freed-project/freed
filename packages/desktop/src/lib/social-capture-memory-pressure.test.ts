@@ -1,22 +1,82 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  invoke: vi.fn(),
-  listen: vi.fn(),
-  prepareSocialScrapeMemory: vi.fn(),
-  fbPostsToFeedItems: vi.fn((posts: Array<{ id?: string }>) =>
-    posts.map((post, index) => ({
-      globalId: post.id ?? `post-${index}`,
-      platform: "facebook",
-      content: { text: "post", mediaUrls: [], mediaTypes: [] },
-      author: { displayName: "Facebook" },
-      createdAt: Date.now(),
-      savedAt: Date.now(),
-      tags: [],
-      topics: [],
-    })),
-  ),
-}));
+const mocks = vi.hoisted(() => {
+  const storeState = {
+    items: [] as Array<{ platform: string; globalId?: string }>,
+    preferences: {},
+    fbAuth: { isAuthenticated: true, lastCapturedAt: 123_456 },
+    igAuth: { isAuthenticated: true, lastCapturedAt: 123_456 },
+    liAuth: { isAuthenticated: true, lastCapturedAt: 123_456 },
+    setLoading: vi.fn(),
+    setError: vi.fn(),
+    setFbAuth: vi.fn(
+      (next: {
+        isAuthenticated?: boolean;
+        lastCapturedAt?: number;
+        lastCaptureError?: string;
+      }) => {
+        storeState.fbAuth = { ...storeState.fbAuth, ...next };
+      },
+    ),
+    setIgAuth: vi.fn(
+      (next: {
+        isAuthenticated?: boolean;
+        lastCapturedAt?: number;
+        lastCaptureError?: string;
+      }) => {
+        storeState.igAuth = { ...storeState.igAuth, ...next };
+      },
+    ),
+    setLiAuth: vi.fn(
+      (next: {
+        isAuthenticated?: boolean;
+        lastCapturedAt?: number;
+        lastCaptureError?: string;
+      }) => {
+        storeState.liAuth = { ...storeState.liAuth, ...next };
+      },
+    ),
+    addItems: vi.fn(async (items: Array<{ platform: string; globalId?: string }>) => {
+      storeState.items.push(...items);
+    }),
+    updatePreferences: vi.fn(async (next: Record<string, unknown>) => {
+      storeState.preferences = { ...storeState.preferences, ...next };
+    }),
+  };
+
+  return {
+    invoke: vi.fn(),
+    listen: vi.fn(),
+    prepareSocialScrapeMemory: vi.fn(),
+    storeState,
+    resetStoreState: () => {
+      storeState.items = [];
+      storeState.preferences = {};
+      storeState.fbAuth = { isAuthenticated: true, lastCapturedAt: 123_456 };
+      storeState.igAuth = { isAuthenticated: true, lastCapturedAt: 123_456 };
+      storeState.liAuth = { isAuthenticated: true, lastCapturedAt: 123_456 };
+      storeState.setLoading.mockClear();
+      storeState.setError.mockClear();
+      storeState.setFbAuth.mockClear();
+      storeState.setIgAuth.mockClear();
+      storeState.setLiAuth.mockClear();
+      storeState.addItems.mockClear();
+      storeState.updatePreferences.mockClear();
+    },
+    fbPostsToFeedItems: vi.fn((posts: Array<{ id?: string }>) =>
+      posts.map((post, index) => ({
+        globalId: post.id ?? `post-${index}`,
+        platform: "facebook",
+        content: { text: "post", mediaUrls: [], mediaTypes: [] },
+        author: { displayName: "Facebook" },
+        createdAt: Date.now(),
+        savedAt: Date.now(),
+        tags: [],
+        topics: [],
+      })),
+    ),
+  };
+});
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: mocks.invoke,
@@ -43,10 +103,7 @@ vi.mock("./memory-monitor", () => ({
 
 vi.mock("./store", () => ({
   useAppStore: {
-    getState: () => ({
-      addFeedItems: vi.fn(),
-      preferences: {},
-    }),
+    getState: () => mocks.storeState,
   },
 }));
 
@@ -69,6 +126,7 @@ vi.mock("./media-vault", () => ({
 
 beforeEach(() => {
   vi.resetModules();
+  mocks.resetStoreState();
   mocks.invoke.mockReset();
   mocks.listen.mockReset();
   mocks.fbPostsToFeedItems.mockClear();
@@ -104,10 +162,15 @@ describe("social capture completion", () => {
       cacheTrimmed: false,
       mayProceed: true,
     });
-    mocks.listen.mockImplementation(async (eventName: string, callback: (event: { payload: unknown }) => void) => {
-      listeners.set(eventName, callback);
-      return vi.fn();
-    });
+    mocks.listen.mockImplementation(
+      async (
+        eventName: string,
+        callback: (event: { payload: unknown }) => void,
+      ) => {
+        listeners.set(eventName, callback);
+        return vi.fn();
+      },
+    );
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command !== "fb_scrape_feed") return null;
 
@@ -191,6 +254,70 @@ describe("social capture completion", () => {
     expect(result.diag.errorMessage).toBe(
       "Extracted 1 Facebook post, but none passed normalization. accepted=0, missingId=0, invalidAuthor=1, unexpected=0, firstRejected=invalidAuthor(id:y,url:n,author:y,profile:n,text:8,media:0)",
     );
+  });
+
+  it("does not mark an empty Facebook feed scrape as a successful account sync", async () => {
+    const listeners = new Map<string, (event: { payload: unknown }) => void>();
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockImplementation(async (eventName: string, callback: (event: { payload: unknown }) => void) => {
+      listeners.set(eventName, callback);
+      return vi.fn();
+    });
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command !== "fb_scrape_feed") return null;
+
+      listeners.get("fb-feed-data")?.({
+        payload: {
+          posts: [],
+          extractedAt: Date.now(),
+          url: "https://www.facebook.com/",
+          strategy: "feed-pass",
+          candidateCount: 0,
+          scrollY: 135,
+          feedContainerFound: false,
+        },
+      });
+      return null;
+    });
+
+    const { captureFbFeed } = await import("./fb-capture");
+    const { recordProviderHealthEvent } = await import("./provider-health");
+    const { storeFbAuthState } = await import("./fb-auth");
+
+    const result = await captureFbFeed();
+    const expectedMessage =
+      "Feed returned no posts. Facebook may need a moment to load. " +
+      "1 extraction pass, last strategy feed-pass, 0 candidates on the last pass, " +
+      "scrollY 135, feed container not found.";
+
+    expect(result.items).toEqual([]);
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(expectedMessage);
+    expect(mocks.storeState.setFbAuth).toHaveBeenCalledWith({
+      isAuthenticated: true,
+      lastCapturedAt: 123_456,
+      lastCaptureError: expectedMessage,
+    });
+    expect(storeFbAuthState).toHaveBeenCalledWith({
+      isAuthenticated: true,
+      lastCapturedAt: 123_456,
+      lastCaptureError: expectedMessage,
+    });
+    expect(recordProviderHealthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "facebook",
+        outcome: "empty",
+        stage: "empty",
+        itemsSeen: 0,
+        itemsAdded: 0,
+      }),
+    );
+    expect(mocks.storeState.fbAuth.lastCapturedAt).toBe(123_456);
   });
 });
 
