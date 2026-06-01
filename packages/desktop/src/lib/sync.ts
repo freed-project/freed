@@ -1227,7 +1227,23 @@ export function scheduleCloudUpload(provider: CloudProvider, token?: string): vo
  */
 export async function startAllCloudSyncs(): Promise<void> {
   for (const provider of getActiveProviders()) {
-    const token = await getValidCloudToken(provider);
+    let token: string | null = null;
+    try {
+      token = await getValidCloudToken(provider);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn(`[CloudSync] Failed to refresh ${provider} on startup: ${msg}`);
+      addDebugEvent("error", `[Cloud/${provider}] failed to refresh on startup: ${msg}`);
+      void recordProviderHealthEvent({
+        provider,
+        outcome: "error",
+        stage: "auth",
+        reason: msg,
+        finishedAt: Date.now(),
+      });
+      continue;
+    }
+
     if (!token) continue;
     startCloudSync(provider, token).catch((err) => {
       const msg = err instanceof Error ? err.message : String(err);

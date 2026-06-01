@@ -8,11 +8,14 @@ const script = readFileSync(
   "utf8",
 );
 
-function runExtractor(html: string) {
+function runExtractor(html: string, options: { authenticated?: boolean } = {}) {
   const dom = new JSDOM(html, {
     url: "https://www.facebook.com/",
     runScripts: "outside-only",
   });
+  if (options.authenticated !== false) {
+    dom.window.document.cookie = "c_user=12345";
+  }
   const payloads: Array<{ name: string; data: Record<string, unknown> }> = [];
   Object.defineProperty(dom.window, "__TAURI__", {
     value: {
@@ -29,6 +32,28 @@ function runExtractor(html: string) {
 }
 
 describe("Facebook DOM extractor", () => {
+  it("reports an auth error when Facebook renders the logged-out shell", () => {
+    const payload = runExtractor(
+      `
+        <main>
+          <h1>Facebook</h1>
+          <button>Log in</button>
+          <a>Create new account</a>
+        </main>
+      `,
+      { authenticated: false },
+    );
+
+    expect(payload?.strategy).toBe("not_authenticated");
+    expect(payload?.candidateCount).toBe(0);
+    expect(payload?.posts).toEqual([]);
+    expect(payload?.error).toContain("Reconnect Facebook");
+    expect(payload?.pageState).toMatchObject({
+      state: "not_authenticated",
+      loggedInCookie: false,
+    });
+  });
+
   it("extracts modern role article feed units without relying on the Feed posts heading", () => {
     const payload = runExtractor(`
       <div role="main">
@@ -48,6 +73,35 @@ describe("Facebook DOM extractor", () => {
         authorName: "Alice Example",
         authorProfileUrl: "https://www.facebook.com/alice.example",
         text: "This is a real Facebook post with enough text to clear the content heuristic.",
+      }),
+    ]);
+  });
+
+  it("accepts rendered feed evidence when the Facebook session cookie is not script-readable", () => {
+    const payload = runExtractor(
+      `
+        <div role="main">
+          <div role="article">
+            <h3><a href="https://www.facebook.com/alice.example">Alice Example</a></h3>
+            <a href="https://www.facebook.com/alice.example/posts/123456789">1 h</a>
+            <div dir="auto">A rendered feed post should prove the page is scrapeable even when c_user is hidden from document.cookie.</div>
+          </div>
+        </div>
+      `,
+      { authenticated: false },
+    );
+
+    expect(payload?.strategy).toBe("role-main-fallback");
+    expect(payload?.pageState).toMatchObject({
+      state: "feed_possible",
+      loggedInCookie: false,
+      feedLike: true,
+    });
+    expect(payload?.candidateCount).toBe(1);
+    expect(payload?.posts).toEqual([
+      expect.objectContaining({
+        id: "123456789",
+        authorName: "Alice Example",
       }),
     ]);
   });

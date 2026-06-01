@@ -208,6 +208,61 @@
     return null;
   }
 
+  function classifyPageState(feedContainer) {
+    var url = String(window.location && window.location.href ? window.location.href : "");
+    var title = String(document.title || "");
+    var cookie = String(document.cookie || "");
+    var bodyText = textValue(document.body, 2000).toLowerCase();
+    var scrollHeight =
+      (document.documentElement && document.documentElement.scrollHeight) ||
+      (document.body && document.body.scrollHeight) ||
+      0;
+    var loggedInCookie = cookie.indexOf("c_user=") !== -1 && cookie.indexOf("c_user=0") === -1;
+    var loginUrl = /\/login\b|\/recover\b|\/reg\b/.test(url);
+    var loginChrome =
+      /\blog in\b/.test(bodyText) ||
+      /\bsign up\b/.test(bodyText) ||
+      /\bcreate new account\b/.test(bodyText);
+    var shortPage = scrollHeight > 0 && scrollHeight < 1600;
+    var feedLike =
+      !!feedContainer ||
+      (!shortPage && !loginUrl && !loginChrome && document.querySelector('div[role="main"]'));
+
+    if (!feedLike && (!loggedInCookie || loginUrl || (shortPage && loginChrome))) {
+      return {
+        state: "not_authenticated",
+        message: "Facebook did not render an authenticated feed. Reconnect Facebook and try again.",
+        loggedInCookie: loggedInCookie,
+        feedLike: !!feedLike,
+        scrollHeight: scrollHeight,
+        url: url,
+        title: title,
+      };
+    }
+
+    if (!feedContainer && shortPage) {
+      return {
+        state: "short_non_feed",
+        message: "Facebook rendered a short page instead of the feed. Open Facebook settings, reconnect if needed, then sync again.",
+        loggedInCookie: loggedInCookie,
+        feedLike: !!feedLike,
+        scrollHeight: scrollHeight,
+        url: url,
+        title: title,
+      };
+    }
+
+    return {
+      state: "feed_possible",
+      message: null,
+      loggedInCookie: loggedInCookie,
+      feedLike: !!feedLike,
+      scrollHeight: scrollHeight,
+      url: url,
+      title: title,
+    };
+  }
+
   // ── Find individual post elements within a container ─────────────────────
   // Posts are rendered as large blocks (typically 200-1500px tall) with
   // user content. We walk the tree looking for "post-like" nodes:
@@ -589,6 +644,27 @@
     var feedContainer = findFeedContainer();
     var postEls = [];
     var strategy = "none";
+    var pageState = classifyPageState(feedContainer);
+
+    if (pageState.state === "not_authenticated" || pageState.state === "short_non_feed") {
+      emit("fb-feed-data", {
+        posts: [],
+        error: pageState.message,
+        extractedAt: Date.now(),
+        url: window.location.href,
+        strategy: pageState.state,
+        candidateCount: 0,
+        scrollY: window.scrollY,
+        feedContainerFound: !!feedContainer,
+        pageState: pageState,
+        rejected: {
+          suggestedOrSponsored: 0,
+          missingAuthor: 0,
+          missingContent: 0,
+        },
+      });
+      return;
+    }
 
     if (feedContainer) {
       postEls = findPostsInContainer(feedContainer);
@@ -707,6 +783,7 @@
       candidateCount: postEls.length,
       scrollY: window.scrollY,
       feedContainerFound: !!feedContainer,
+      pageState: pageState,
       rejected: rejected,
     });
   } catch (err) {

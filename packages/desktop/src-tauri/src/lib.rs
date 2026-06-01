@@ -294,18 +294,6 @@ impl Drop for WebviewRecycleGuard {
     }
 }
 
-fn schedule_webview_recycle(
-    app: tauri::AppHandle,
-    label: &'static str,
-    reason: &'static str,
-    delay: Duration,
-) {
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(delay).await;
-        recycle_webview_window(&app, label, reason);
-    });
-}
-
 fn scrub_webview_before_destroy(window: &tauri::WebviewWindow) {
     let _ = window.eval(
         r#"
@@ -449,7 +437,7 @@ async fn restore_scraper_feed(
         .map_err(|e| e.to_string())?;
     info!("[{}] restoring feed after story viewer", platform);
     tokio::time::sleep(Duration::from_millis(gaussian_ms(6500.0, 900.0))).await;
-    let _ = window.eval("window.scrollTo({ top: 0, behavior: 'instant' });");
+    let _ = window.eval("window.scrollTo({ top: 0, behavior: 'auto' });");
     tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 250.0))).await;
     Ok(())
 }
@@ -2921,6 +2909,176 @@ fn memory_pressure_limits(total_physical_memory_bytes: u64) -> (u64, u64) {
     (high, critical)
 }
 
+fn social_feed_scroll_script(delta_px: i64) -> String {
+    const SCRIPT_TEMPLATE: &str = r#"
+        (function() {
+            var requestedDelta = Number(__FREED_SCROLL_DELTA__) || 0;
+            var direction = requestedDelta >= 0 ? 1 : -1;
+            var minimumUsefulMovement = Math.max(18, Math.min(64, Math.abs(requestedDelta) * 0.18));
+
+            function clamp(value, min, max) {
+                return Math.max(min, Math.min(max, value));
+            }
+
+            function isElement(value) {
+                return value && value.nodeType === 1;
+            }
+
+            function scrollTopOf(target) {
+                if (target === window) {
+                    return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+                }
+                return target.scrollTop || 0;
+            }
+
+            function maxScrollTop(target) {
+                if (target === window) {
+                    var doc = document.scrollingElement || document.documentElement || document.body;
+                    return Math.max(0, doc.scrollHeight - window.innerHeight);
+                }
+                return Math.max(0, target.scrollHeight - target.clientHeight);
+            }
+
+            function writeScrollTop(target, value) {
+                if (target === window) {
+                    window.scrollTo({ top: value, left: window.scrollX || 0, behavior: "auto" });
+                    return;
+                }
+                if (typeof target.scrollTo === "function") {
+                    target.scrollTo({ top: value, left: target.scrollLeft || 0, behavior: "auto" });
+                    return;
+                }
+                target.scrollTop = value;
+            }
+
+            function canScroll(target) {
+                if (!target) return false;
+                var max = maxScrollTop(target);
+                if (max < 80) return false;
+                var top = scrollTopOf(target);
+                return direction > 0 ? top < max - 2 : top > 2;
+            }
+
+            function addCandidate(list, seen, target) {
+                if (!target || seen.indexOf(target) >= 0) return;
+                if (target !== window && !isElement(target)) return;
+                seen.push(target);
+                list.push(target);
+            }
+
+            function addAncestorCandidates(list, seen, node) {
+                var current = isElement(node) ? node : null;
+                var depth = 0;
+                while (current && depth < 8) {
+                    addCandidate(list, seen, current);
+                    current = current.parentElement;
+                    depth += 1;
+                }
+            }
+
+            function candidateScore(target) {
+                var range = maxScrollTop(target);
+                if (target === window || target === document.scrollingElement) return range + 100000;
+                try {
+                    var rect = target.getBoundingClientRect();
+                    var visibleHeight = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0));
+                    return range + visibleHeight * 4;
+                } catch (_) {
+                    return range;
+                }
+            }
+
+            function selectScrollers() {
+                var candidates = [];
+                var seen = [];
+                addCandidate(candidates, seen, document.scrollingElement || document.documentElement || document.body);
+                addCandidate(candidates, seen, document.documentElement);
+                addCandidate(candidates, seen, document.body);
+                addCandidate(candidates, seen, window);
+
+                var anchors = [];
+                try {
+                    anchors = Array.prototype.slice.call(document.querySelectorAll([
+                        "main",
+                        "[role='main']",
+                        "[role='feed']",
+                        "[aria-label*='feed' i]",
+                        "[data-pagelet*='Feed']",
+                        "[data-pagelet*='feed']"
+                    ].join(","))).slice(0, 12);
+                } catch (_) {}
+
+                anchors.forEach(function(anchor) {
+                    addAncestorCandidates(candidates, seen, anchor);
+                });
+
+                return candidates
+                    .filter(canScroll)
+                    .sort(function(a, b) { return candidateScore(b) - candidateScore(a); })
+                    .slice(0, 6);
+            }
+
+            function humanStep(target, remainingSteps, done) {
+                var current = scrollTopOf(target);
+                var max = maxScrollTop(target);
+                var targetTop = clamp(current + requestedDelta, 0, max);
+                var remaining = targetTop - current;
+                if (remainingSteps <= 1 || Math.abs(remaining) < 2) {
+                    writeScrollTop(target, targetTop);
+                    done();
+                    return;
+                }
+
+                var unevenness = 0.62 + Math.random() * 0.76;
+                var step = remaining / remainingSteps * unevenness;
+                var minStep = Math.min(22, Math.max(6, Math.abs(remaining) / (remainingSteps * 3)));
+                if (Math.abs(step) < minStep) step = minStep * (step < 0 ? -1 : 1);
+                if (Math.abs(step) > Math.abs(remaining)) step = remaining;
+
+                writeScrollTop(target, clamp(current + step, 0, max));
+                setTimeout(function() {
+                    humanStep(target, remainingSteps - 1, done);
+                }, 42 + Math.floor(Math.random() * 88));
+            }
+
+            function tryScrollAt(index, scrollers) {
+                if (index >= scrollers.length) return;
+
+                var target = scrollers[index];
+                var before = scrollTopOf(target);
+                var steps = 5 + Math.floor(Math.random() * 7);
+                humanStep(target, steps, function() {
+                    setTimeout(function() {
+                        var after = scrollTopOf(target);
+                        var movement = Math.abs(after - before);
+                        if (movement >= minimumUsefulMovement) return;
+
+                        if (index + 1 < scrollers.length) {
+                            tryScrollAt(index + 1, scrollers);
+                            return;
+                        }
+
+                        try {
+                            writeScrollTop(target, clamp(after + requestedDelta, 0, maxScrollTop(target)));
+                        } catch (_) {}
+                    }, 180 + Math.floor(Math.random() * 180));
+                });
+            }
+
+            var scrollers = selectScrollers();
+            if (scrollers.length > 0) {
+                tryScrollAt(0, scrollers);
+            } else {
+                try {
+                    window.scrollBy({ top: requestedDelta, left: 0, behavior: "auto" });
+                } catch (_) {}
+            }
+        })();
+    "#;
+
+    SCRIPT_TEMPLATE.replace("__FREED_SCROLL_DELTA__", &delta_px.to_string())
+}
+
 fn path_is_under_any_root(path: &Path, roots: &[PathBuf]) -> bool {
     roots.iter().any(|root| path.starts_with(root))
 }
@@ -4260,6 +4418,113 @@ struct FbGroupsDataPayload {
     error: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FbPageStatePayload {
+    logged_in_cookie: bool,
+    scroll_height: u64,
+    feed_posts_heading_count: u64,
+    role_main_count: u64,
+    url: String,
+    title: String,
+}
+
+impl FbPageStatePayload {
+    fn feed_like(&self) -> bool {
+        self.feed_posts_heading_count > 0 || (self.scroll_height >= 1600 && self.role_main_count > 0)
+    }
+}
+
+fn fb_page_state_probe_script() -> &'static str {
+    r#"
+    (function() {
+        try {
+            var headings = Array.prototype.filter.call(document.querySelectorAll('h3'), function(h3) {
+                return (h3.textContent || '').trim() === 'Feed posts';
+            }).length;
+            window.__TAURI__.event.emit('fb-page-state', {
+                loggedInCookie: document.cookie.indexOf('c_user=') !== -1 &&
+                    document.cookie.indexOf('c_user=0') === -1,
+                scrollHeight: document.documentElement.scrollHeight || document.body.scrollHeight || 0,
+                feedPostsHeadingCount: headings,
+                roleMainCount: document.querySelectorAll('div[role="main"]').length,
+                url: window.location.href,
+                title: document.title || ''
+            });
+        } catch (e) {
+            window.__TAURI__.event.emit('fb-page-state', {
+                loggedInCookie: false,
+                scrollHeight: 0,
+                feedPostsHeadingCount: 0,
+                roleMainCount: 0,
+                url: window.location.href,
+                title: document.title || '',
+                error: e.message || String(e)
+            });
+        }
+    })();
+    "#
+}
+
+fn fb_auth_result_script() -> &'static str {
+    r#"
+    (function() {
+        try {
+            var headings = Array.prototype.filter.call(document.querySelectorAll('h3'), function(h3) {
+                return (h3.textContent || '').trim() === 'Feed posts';
+            }).length;
+            var scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight || 0;
+            var roleMainCount = document.querySelectorAll('div[role="main"]').length;
+            var loggedInCookie = document.cookie.indexOf('c_user=') !== -1 &&
+                document.cookie.indexOf('c_user=0') === -1;
+            var feedLike = headings > 0 || (scrollHeight >= 1600 && roleMainCount > 0);
+            window.__TAURI__.event.emit('fb-auth-result', {
+                loggedIn: loggedInCookie || feedLike,
+                loggedInCookie: loggedInCookie,
+                feedLike: feedLike,
+                scrollHeight: scrollHeight,
+                feedPostsHeadingCount: headings,
+                roleMainCount: roleMainCount,
+                url: window.location.href,
+                title: document.title || ''
+            });
+        } catch(e) {
+            window.__TAURI__.event.emit('fb-auth-result', { loggedIn: false, error: e.message || String(e) });
+        }
+    })();
+    "#
+}
+
+async fn probe_fb_page_state(
+    app: &tauri::AppHandle,
+    wv: &tauri::WebviewWindow,
+) -> Result<FbPageStatePayload, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<FbPageStatePayload, String>>();
+    let tx = Arc::new(std::sync::Mutex::new(Some(tx)));
+    let listener_tx = tx.clone();
+    let listener_id = app.listen("fb-page-state", move |event| {
+        let result = serde_json::from_str::<FbPageStatePayload>(event.payload())
+            .map_err(|err| err.to_string());
+        if let Some(sender) = listener_tx.lock().unwrap().take() {
+            let _ = sender.send(result);
+        }
+    });
+
+    let eval_result = wv.eval(fb_page_state_probe_script()).map_err(|e| e.to_string());
+    if let Err(err) = eval_result {
+        app.unlisten(listener_id);
+        return Err(err);
+    }
+    let result = tokio::time::timeout(Duration::from_secs(2), rx)
+        .await
+        .map_err(|_| "Timed out checking Facebook page state".to_string())
+        .and_then(|received| {
+            received.map_err(|_| "Facebook page state listener dropped".to_string())
+        });
+    app.unlisten(listener_id);
+    result?
+}
+
 /// Show a visible WebView window navigated to facebook.com/login so the
 /// user can authenticate through the real Facebook login flow.
 ///
@@ -4276,21 +4541,9 @@ async fn fb_show_login(
 ) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
-    if let Some(existing) = app.get_webview_window("fb-scraper") {
-        let _ = set_background_scraper_window_cloak(&existing, false);
-        let _ = set_background_scraper_media_guard(&existing, false);
-        existing
-            .navigate("https://www.facebook.com/login".parse().unwrap())
-            .map_err(|e| e.to_string())?;
-        let _ = existing.show();
-        let _ = existing.set_focus();
-        // Update the stored UA in case it changed since last connect.
-        *capture.fb_user_agent.lock().unwrap() = user_agent;
-        return Ok(());
-    }
+    recycle_webview_window(&app, "fb-scraper", "login restart");
 
     let app_handle = app.clone();
-    let auth_emitted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     WebviewWindowBuilder::new(
         &app,
@@ -4317,22 +4570,15 @@ async fn fb_show_login(
         let path = url.path();
         let host = url.host_str().unwrap_or("");
 
-        // Detect successful login: navigated away from /login on a facebook domain
-        if host.contains("facebook.com")
-            && path != "/login"
-            && path != "/login/"
-            && !auth_emitted.swap(true, std::sync::atomic::Ordering::SeqCst)
-        {
-            if let Some(w) = app_handle.get_webview_window("fb-scraper") {
-                let _ = w.hide();
-            }
-            let _ = app_handle.emit("fb-auth-result", serde_json::json!({ "loggedIn": true }));
-            schedule_webview_recycle(
-                app_handle.clone(),
-                "fb-scraper",
-                "login complete",
-                Duration::from_secs(2),
-            );
+        // Detect likely login completion, then verify with page evidence.
+        if host.contains("facebook.com") && path != "/login" && path != "/login/" {
+            let check_app = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(1800)).await;
+                if let Some(w) = check_app.get_webview_window("fb-scraper") {
+                    let _ = w.eval(fb_auth_result_script());
+                }
+            });
         }
 
         true
@@ -4396,29 +4642,15 @@ async fn fb_check_auth(
 
     tokio::time::sleep(Duration::from_secs(6)).await;
 
-    wv.eval(
-        r#"
-        (function() {
-            try {
-                var loggedIn = document.cookie.indexOf('c_user=') !== -1
-                    && document.cookie.indexOf('c_user=0') === -1;
-                window.__TAURI__.event.emit('fb-auth-result', { loggedIn: loggedIn });
-            } catch(e) {
-                window.__TAURI__.event.emit('fb-auth-result', { loggedIn: false, error: e.message });
-            }
-        })();
-        "#,
-    )
+    wv.eval(fb_auth_result_script())
     .map_err(|e| e.to_string())?;
 
     tokio::time::sleep(Duration::from_millis(250)).await;
 
-    // The result is delivered asynchronously via event. The frontend
-    // listens for 'fb-auth-result'. For the command return value we
-    // fall back to a cookie-based heuristic checked from Rust.
-    // Since we can't get eval() return values, we return a best-guess
-    // and let the frontend reconcile via the event.
-    Ok(true)
+    // The result is delivered asynchronously via event. The frontend listens
+    // for 'fb-auth-result'. Since eval() return values are not available here,
+    // the command return value is only a fallback for missed events.
+    Ok(false)
 }
 
 // ---------------------------------------------------------------------------
@@ -4684,7 +4916,6 @@ async fn fb_scrape_feed(
             w
         }
         None => {
-            let app_handle = app.clone();
             let mut builder = WebviewWindowBuilder::new(
                 &app,
                 "fb-scraper",
@@ -4695,16 +4926,7 @@ async fn fb_scrape_feed(
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed Facebook")
-            .inner_size(1280.0, 900.0)
-            .on_navigation(move |url| {
-                let host = url.host_str().unwrap_or("");
-                let path = url.path();
-                if host.contains("facebook.com") && path != "/login" && path != "/login/" {
-                    let _ =
-                        app_handle.emit("fb-auth-result", serde_json::json!({ "loggedIn": true }));
-                }
-                true
-            });
+            .inner_size(1280.0, 900.0);
 
             if window_mode == ScraperWindowMode::Shown {
                 builder = builder.center().visible(true);
@@ -4750,6 +4972,12 @@ async fn fb_scrape_feed(
                     url: window.location.href,
                     title: document.title,
                     scrollHeight: document.documentElement.scrollHeight,
+                    loggedInCookie: document.cookie.indexOf('c_user=') !== -1 &&
+                        document.cookie.indexOf('c_user=0') === -1,
+                    feedPostsHeadingCount: Array.prototype.filter.call(document.querySelectorAll('h3'), function(h3) {
+                        return (h3.textContent || '').trim() === 'Feed posts';
+                    }).length,
+                    roleMainCount: document.querySelectorAll('div[role="main"]').length,
                 });
             }
         })();
@@ -4757,6 +4985,49 @@ async fn fb_scrape_feed(
     )
     .map_err(|e| e.to_string())?;
     tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let page_state = probe_fb_page_state(&app, &wv).await?;
+    let feed_like = page_state.feed_like();
+    let short_non_feed = page_state.scroll_height > 0
+        && page_state.scroll_height < 1600
+        && page_state.feed_posts_heading_count == 0;
+    let not_authenticated = !page_state.logged_in_cookie && !feed_like;
+    if not_authenticated || short_non_feed {
+        let message = if not_authenticated {
+            "Facebook did not render an authenticated feed. Reconnect Facebook and try again."
+        } else {
+            "Facebook rendered a short page instead of the feed. Open Facebook settings, reconnect if needed, then sync again."
+        };
+        let strategy = if not_authenticated {
+            "not_authenticated"
+        } else {
+            "short_non_feed"
+        };
+        let extracted_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_millis() as u64)
+            .unwrap_or(0);
+        let _ = app.emit(
+            "fb-feed-data",
+            serde_json::json!({
+                "posts": [],
+                "error": message,
+                "extractedAt": extracted_at,
+                "url": page_state.url,
+                "strategy": strategy,
+                "candidateCount": 0,
+                "scrollY": 0,
+                "feedContainerFound": page_state.feed_posts_heading_count > 0,
+                "pageState": page_state,
+                "rejected": {
+                    "suggestedOrSponsored": 0,
+                    "missingAuthor": 0,
+                    "missingContent": 0
+                }
+            }),
+        );
+        return Err(message.to_string());
+    }
 
     let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
     let scrape_plan = social_scrape_plan_for_memory(&scrape_plan_stats, 6, 10);
@@ -4830,27 +5101,8 @@ async fn fb_scrape_feed(
             use rand::Rng;
             rand::thread_rng().gen_range(280u64..520)
         };
-        let scroll_js = format!(
-            "window.scrollBy({{ top: {}, behavior: 'smooth' }});",
-            scroll_amount
-        );
+        let scroll_js = social_feed_scroll_script(scroll_amount as i64);
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
-
-        // Inject mouse movement before scrolling (mimics real user pointer activity).
-        let cx = 230 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(0i32..200)
-        };
-        let cy = 350 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(0i32..200)
-        };
-        let mouse_js = format!(
-            r#"(function(){{var x={cx},y={cy};[0,1,2].forEach(function(i){{setTimeout(function(){{document.dispatchEvent(new MouseEvent('mousemove',{{clientX:x+i*12,clientY:y+i*8,bubbles:true,cancelable:true}}));}},i*80);}});}})();"#,
-            cx = cx,
-            cy = cy
-        );
-        let _ = wv.eval(&mouse_js);
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Occasional micro-backscroll (~12% probability) simulates re-reading.
@@ -4862,7 +5114,7 @@ async fn fb_scrape_feed(
                 use rand::Rng;
                 rand::thread_rng().gen_range(80u64..250)
             };
-            let back_js = format!("window.scrollBy({{top: -{}, behavior: 'smooth'}});", back);
+            let back_js = social_feed_scroll_script(-(back as i64));
             let _ = wv.eval(&back_js);
             tokio::time::sleep(Duration::from_millis(gaussian_ms(600.0, 150.0))).await;
         }
@@ -4891,7 +5143,7 @@ async fn fb_scrape_feed(
                 "[FB] interleaving story scrape after {} feed passes",
                 early_passes
             );
-            let _ = wv.eval("window.scrollTo({ top: 0, behavior: 'smooth' });");
+            let _ = wv.eval("window.scrollTo({ top: 0, behavior: 'auto' });");
             tokio::time::sleep(Duration::from_millis(gaussian_ms(1800.0, 400.0))).await;
             scrape_fb_stories(&wv, story_frame_cap).await;
             restore_scraper_feed(&wv, fb_feed_url, "FB").await?;
@@ -4941,7 +5193,6 @@ async fn fb_scrape_groups(
             w
         }
         None => {
-            let app_handle = app.clone();
             let mut builder = WebviewWindowBuilder::new(
                 &app,
                 "fb-scraper",
@@ -4952,16 +5203,7 @@ async fn fb_scrape_groups(
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed Facebook")
-            .inner_size(1280.0, 900.0)
-            .on_navigation(move |url| {
-                let host = url.host_str().unwrap_or("");
-                let path = url.path();
-                if host.contains("facebook.com") && path != "/login" && path != "/login/" {
-                    let _ =
-                        app_handle.emit("fb-auth-result", serde_json::json!({ "loggedIn": true }));
-                }
-                true
-            });
+            .inner_size(1280.0, 900.0);
 
             if window_mode == ScraperWindowMode::Shown {
                 builder = builder.center().visible(true);
@@ -5062,7 +5304,8 @@ async fn fb_scrape_comments(
         })?;
         tokio::time::sleep(Duration::from_millis(700)).await;
         if index < 2 {
-            let _ = wv.eval(r#"window.scrollBy({ top: 520, behavior: 'smooth' });"#);
+            let comments_scroll_js = social_feed_scroll_script(520);
+            let _ = wv.eval(&comments_scroll_js);
             tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 250.0))).await;
         }
     }
@@ -5251,7 +5494,7 @@ async fn ig_check_auth(
 
     tokio::time::sleep(Duration::from_millis(250)).await;
 
-    Ok(true)
+    Ok(false)
 }
 
 /// Trigger a feed scrape in the hidden Instagram WebView.
@@ -5300,7 +5543,6 @@ async fn ig_scrape_feed(
         None => {
             // No existing window - create one. This path runs on first-ever scrape
             // (when the user hasn't gone through ig_show_login yet, e.g. auto-scrape).
-            let app_handle = app.clone();
             let mut builder = WebviewWindowBuilder::new(
                 &app,
                 "ig-scraper",
@@ -5311,20 +5553,7 @@ async fn ig_scrape_feed(
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed Instagram")
-            .inner_size(1280.0, 900.0)
-            .on_navigation(move |url| {
-                let path = url.path();
-                let host = url.host_str().unwrap_or("");
-                if host.contains("instagram.com")
-                    && (path == "/accounts/login" || path == "/accounts/login/")
-                {
-                    // Still on login — do nothing
-                } else if host.contains("instagram.com") {
-                    let _ =
-                        app_handle.emit("ig-auth-result", serde_json::json!({ "loggedIn": true }));
-                }
-                true
-            });
+            .inner_size(1280.0, 900.0);
 
             if window_mode == ScraperWindowMode::Shown {
                 builder = builder.center().visible(true);
@@ -5438,44 +5667,8 @@ async fn ig_scrape_feed(
             use rand::Rng;
             rand::thread_rng().gen_range(380u64..720)
         };
-        // Dispatch real WheelEvent + ScrollEvent so Instagram's React virtualizer
-        // detects the scroll and renders new posts into the DOM.
-        let scroll_js = format!(
-            r#"(function() {{
-                var el = document.scrollingElement || document.documentElement || document.body;
-                var target = el.scrollTop + {amt};
-                // Simulate wheel delta in small steps so React's scroll handler fires
-                var steps = 8;
-                var step = {amt} / steps;
-                var done = 0;
-                function tick() {{
-                    el.scrollTop += step;
-                    el.dispatchEvent(new Event('scroll', {{bubbles: true}}));
-                    window.dispatchEvent(new Event('scroll', {{bubbles: false}}));
-                    done++;
-                    if (done < steps) setTimeout(tick, 60);
-                }}
-                tick();
-            }})();"#,
-            amt = scroll_amount
-        );
+        let scroll_js = social_feed_scroll_script(scroll_amount as i64);
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
-
-        // Mouse movement before scroll.
-        let cx = 230 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(0i32..200)
-        };
-        let cy = 350 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(0i32..200)
-        };
-        let mouse_js = format!(
-            r#"(function(){{var x={cx},y={cy};[0,1,2].forEach(function(i){{setTimeout(function(){{document.dispatchEvent(new MouseEvent('mousemove',{{clientX:x+i*12,clientY:y+i*8,bubbles:true,cancelable:true}}));}},i*80);}});}})();"#,
-            cx = cx,
-            cy = cy
-        );
-        let _ = wv.eval(&mouse_js);
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Micro-backscroll ~12% of the time.
@@ -5487,7 +5680,7 @@ async fn ig_scrape_feed(
                 use rand::Rng;
                 rand::thread_rng().gen_range(80u64..250)
             };
-            let back_js = format!("window.scrollTop -= {};", back);
+            let back_js = social_feed_scroll_script(-(back as i64));
             let _ = wv.eval(&back_js);
             tokio::time::sleep(Duration::from_millis(gaussian_ms(600.0, 150.0))).await;
         }
@@ -5519,7 +5712,7 @@ async fn ig_scrape_feed(
             let _ = wv.eval(
                 r#"
                 (function() {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    window.scrollTo({ top: 0, behavior: 'auto' });
                 })();
             "#,
             );
@@ -5579,7 +5772,8 @@ async fn ig_scrape_comments(
         })?;
         tokio::time::sleep(Duration::from_millis(700)).await;
         if index < 2 {
-            let _ = wv.eval(r#"window.scrollBy({ top: 520, behavior: 'smooth' });"#);
+            let comments_scroll_js = social_feed_scroll_script(520);
+            let _ = wv.eval(&comments_scroll_js);
             tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 250.0))).await;
         }
     }
@@ -5946,7 +6140,7 @@ async fn li_check_auth(
 
     tokio::time::sleep(Duration::from_millis(250)).await;
 
-    Ok(true)
+    Ok(false)
 }
 
 /// Trigger a feed scrape in the LinkedIn WebView.
@@ -5990,7 +6184,6 @@ async fn li_scrape_feed(
             w
         }
         None => {
-            let app_handle = app.clone();
             let mut builder = WebviewWindowBuilder::new(
                 &app,
                 "li-scraper",
@@ -6001,16 +6194,7 @@ async fn li_scrape_feed(
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed LinkedIn")
-            .inner_size(1280.0, 900.0)
-            .on_navigation(move |url| {
-                let host = url.host_str().unwrap_or("");
-                let path = url.path();
-                if host.contains("linkedin.com") && path != "/login" && path != "/login/" {
-                    let _ =
-                        app_handle.emit("li-auth-result", serde_json::json!({ "loggedIn": true }));
-                }
-                true
-            });
+            .inner_size(1280.0, 900.0);
 
             if window_mode == ScraperWindowMode::Shown {
                 builder = builder.center().visible(true);
@@ -6097,41 +6281,8 @@ async fn li_scrape_feed(
             use rand::Rng;
             rand::thread_rng().gen_range(350u64..650)
         };
-        // Use stepped scroll events so LinkedIn's React virtualizer fires.
-        let scroll_js = format!(
-            r#"(function() {{
-                var el = document.scrollingElement || document.documentElement || document.body;
-                var steps = 8;
-                var step = {amt} / steps;
-                var done = 0;
-                function tick() {{
-                    el.scrollTop += step;
-                    el.dispatchEvent(new Event('scroll', {{bubbles: true}}));
-                    window.dispatchEvent(new Event('scroll', {{bubbles: false}}));
-                    done++;
-                    if (done < steps) setTimeout(tick, 60);
-                }}
-                tick();
-            }})();"#,
-            amt = scroll_amount
-        );
+        let scroll_js = social_feed_scroll_script(scroll_amount as i64);
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
-
-        // Mouse movement.
-        let cx = 230 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(0i32..200)
-        };
-        let cy = 350 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(0i32..200)
-        };
-        let mouse_js = format!(
-            r#"(function(){{var x={cx},y={cy};[0,1,2].forEach(function(i){{setTimeout(function(){{document.dispatchEvent(new MouseEvent('mousemove',{{clientX:x+i*12,clientY:y+i*8,bubbles:true,cancelable:true}}));}},i*80);}});}})();"#,
-            cx = cx,
-            cy = cy
-        );
-        let _ = wv.eval(&mouse_js);
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Occasional micro-backscroll (~12% probability).
@@ -6143,7 +6294,7 @@ async fn li_scrape_feed(
                 use rand::Rng;
                 rand::thread_rng().gen_range(80u64..200)
             };
-            let back_js = format!("window.scrollBy({{top: -{}, behavior: 'smooth'}});", back);
+            let back_js = social_feed_scroll_script(-(back as i64));
             let _ = wv.eval(&back_js);
             tokio::time::sleep(Duration::from_millis(gaussian_ms(600.0, 150.0))).await;
         }
@@ -7053,7 +7204,16 @@ pub fn run() {
                         .unwrap_or("");
 
                     if !error.is_empty() {
-                        info!("[FB] extraction error: {}", error);
+                        let strategy = val.get("strategy")
+                            .and_then(|s| s.as_str())
+                            .unwrap_or("?");
+                        let page_state = val.get("pageState")
+                            .and_then(|s| serde_json::to_string(s).ok())
+                            .unwrap_or_else(|| "{}".to_string());
+                        info!(
+                            "[FB] extraction error: {} strategy={} page_state={}",
+                            error, strategy, page_state
+                        );
                         return;
                     }
 
@@ -7922,6 +8082,36 @@ mod tests {
                 MAX_CRITICAL_MEMORY_BYTES
             )
         );
+    }
+
+    #[test]
+    fn social_feed_scroll_script_uses_measured_container_scrolls() {
+        let script = social_feed_scroll_script(420);
+
+        assert!(script.contains("requestedDelta = Number(420)"));
+        assert!(script.contains("minimumUsefulMovement"));
+        assert!(script.contains("document.scrollingElement"));
+        assert!(script.contains("[role='feed']"));
+        assert!(script.contains("[data-pagelet*='Feed']"));
+        assert!(script.contains("selectScrollers"));
+        assert!(script.contains("tryScrollAt"));
+        assert!(script.contains("target.scrollTo"));
+        assert!(script.contains("behavior: \"auto\""));
+        assert!(!script.contains("behavior: 'smooth'"));
+        assert!(!script.contains("behavior: \"smooth\""));
+        assert!(!script.contains("WheelEvent"));
+        assert!(!script.contains("MouseEvent"));
+        assert!(!script.contains("dispatchEvent(new Event(\"scroll\""));
+        assert!(!script.contains("dispatchEvent(new Event('scroll'"));
+    }
+
+    #[test]
+    fn social_feed_scroll_script_supports_backscroll() {
+        let script = social_feed_scroll_script(-180);
+
+        assert!(script.contains("requestedDelta = Number(-180)"));
+        assert!(script.contains("direction = requestedDelta >= 0 ? 1 : -1"));
+        assert!(script.contains("clamp(after + requestedDelta"));
     }
 
     #[test]

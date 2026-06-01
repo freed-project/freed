@@ -320,6 +320,59 @@ describe("social capture completion", () => {
     expect(mocks.storeState.fbAuth.lastCapturedAt).toBe(123_456);
   });
 
+  it("clears Facebook auth when the scraper reports an unauthenticated page", async () => {
+    const listeners = new Map<string, (event: { payload: unknown }) => void>();
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockImplementation(async (eventName: string, callback: (event: { payload: unknown }) => void) => {
+      listeners.set(eventName, callback);
+      return vi.fn();
+    });
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command !== "fb_scrape_feed") return null;
+
+      listeners.get("fb-feed-data")?.({
+        payload: {
+          posts: [],
+          error: "Facebook did not render an authenticated feed. Reconnect Facebook and try again.",
+          extractedAt: Date.now(),
+          url: "https://www.facebook.com/",
+          strategy: "not_authenticated",
+          candidateCount: 0,
+          scrollY: 0,
+          feedContainerFound: false,
+        },
+      });
+      throw new Error("Facebook did not render an authenticated feed. Reconnect Facebook and try again.");
+    });
+
+    const { captureFbFeed } = await import("./fb-capture");
+    const { storeFbAuthState } = await import("./fb-auth");
+
+    const result = await captureFbFeed();
+    const expectedMessage =
+      "Facebook did not render an authenticated feed. Reconnect Facebook and try again.";
+
+    expect(result.diag.errorStage).toBe("auth");
+    expect(result.items).toEqual([]);
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(expectedMessage);
+    expect(mocks.storeState.setFbAuth).toHaveBeenCalledWith({
+      isAuthenticated: false,
+      lastCapturedAt: 123_456,
+      lastCaptureError: expectedMessage,
+    });
+    expect(storeFbAuthState).toHaveBeenCalledWith({
+      isAuthenticated: false,
+      lastCapturedAt: 123_456,
+      lastCaptureError: expectedMessage,
+    });
+  });
+
   it("flags the Facebook zero-post pattern where scroll never advances", async () => {
     const listeners = new Map<string, (event: { payload: unknown }) => void>();
     mocks.prepareSocialScrapeMemory.mockResolvedValue({
