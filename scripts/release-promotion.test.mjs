@@ -50,6 +50,7 @@ function makeTempRepo() {
   writeRepoFile(cwd, "packages/desktop/src-tauri/tauri.conf.json", "{\n  \"version\": \"0.0.0\"\n}\n");
   writeRepoFile(cwd, "scripts/release.sh", "#!/usr/bin/env bash\n");
   writeRepoFile(cwd, "docs/PHASE-1-FOUNDATION.md", "# Phase 1\n");
+  writeRepoFile(cwd, "website/next.config.ts", "export default {};\n");
   writeRepoFile(cwd, "release-notes/releases/v0.0.0.json", "{\n  \"approved\": true\n}\n");
   commitAll(cwd, "initial");
 
@@ -179,6 +180,31 @@ test("validate-main-pr passes for a fresh promotion branch", (t) => {
   git(cwd, ["checkout", "dev"]);
   writeRepoFile(cwd, "packages/pwa/src/app.ts", "export const value = 'dev';\n");
   commitAll(cwd, "dev change");
+  updateOriginRef(cwd, "dev");
+
+  git(cwd, ["checkout", "-b", "chore/promote-dev-to-main-20260421", "main"]);
+  git(cwd, ["merge", "--squash", "--no-commit", "dev"]);
+  git(cwd, ["commit", "-m", "chore: promote dev into main for production release"]);
+
+  const result = runNode(VALIDATE_MAIN_PR, [
+    `--cwd=${cwd}`,
+    "--base-ref=origin/main",
+    "--head-ref=HEAD",
+    "--head-branch=chore/promote-dev-to-main-20260421",
+  ]);
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Promotion branch matches origin\/dev/);
+});
+
+test("validate-main-pr allows website build config in promotion branches", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(cwd, "packages/pwa/src/app.ts", "export const value = 'dev';\n");
+  writeRepoFile(cwd, "website/next.config.ts", "export default { transpilePackages: ['@freed/shared'] };\n");
+  commitAll(cwd, "dev build config");
   updateOriginRef(cwd, "dev");
 
   git(cwd, ["checkout", "-b", "chore/promote-dev-to-main-20260421", "main"]);
