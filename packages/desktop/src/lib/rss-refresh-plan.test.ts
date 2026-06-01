@@ -11,7 +11,7 @@ function feed(url: string, lastFetched?: number, enabled = true): RssFeed {
     url,
     title: url,
     enabled,
-    addedAt: 1,
+    trackUnread: false,
     lastFetched,
   };
 }
