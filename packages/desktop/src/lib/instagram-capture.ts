@@ -244,12 +244,13 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
 
     if (result.diag.errorStage) {
       const detail = `[IG] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
-      store.setError(result.diag.errorMessage ?? result.diag.errorStage);
       addDebugEvent("error", detail);
-      // Persist error so the sync dropdown can show "Last sync failed"
-      const errState = { ...useAppStore.getState().igAuth, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed" };
-      store.setIgAuth(errState);
-      storeIgAuthState(errState);
+      if (result.diag.errorStage !== "memory_pressure") {
+        store.setError(result.diag.errorMessage ?? result.diag.errorStage);
+        const errState = { ...useAppStore.getState().igAuth, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed" };
+        store.setIgAuth(errState);
+        storeIgAuthState(errState);
+      }
       await recordProviderHealthEvent({
         provider: "instagram",
         outcome: "error",

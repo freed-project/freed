@@ -49,6 +49,7 @@ const DEFAULT_HOURLY_BUCKETS = 24;
 const PAUSE_HOURS = [2, 4, 6] as const;
 const RATE_LIMIT_HEURISTIC_WINDOW_MS = 90 * 60 * 1000;
 const FAILING_FEED_OUTAGE_MS = 24 * 60 * 60 * 1000;
+const TRANSIENT_MEMORY_PRESSURE_STATUS_MS = 15 * 60 * 1000;
 
 type HealthStage =
   | "fetch"
@@ -821,14 +822,14 @@ function syncPauseToAuth(provider: HealthProviderId, pause: ProviderPauseState |
 function providerStatus(providerState: PersistedProviderHealth): ProviderHealthSnapshot["status"] {
   const currentPause = providerState.pause;
   if (currentPause && currentPause.pausedUntil > Date.now()) return "paused";
-  const latest = providerState.latestAttempts[0];
+  const latest = latestStatusAttempt(providerState);
   if (!latest) return "idle";
   if (bucketSuccess(latest.outcome)) return "healthy";
   return "degraded";
 }
 
 function messageFor(providerState: PersistedProviderHealth): string | undefined {
-  const latest = providerState.latestAttempts[0];
+  const latest = latestStatusAttempt(providerState);
   if (!latest) return undefined;
   if (providerState.pause && providerState.pause.pausedUntil > Date.now()) {
     return providerState.pause.pauseReason;
@@ -841,8 +842,26 @@ function messageFor(providerState: PersistedProviderHealth): string | undefined 
   return "Needs attention";
 }
 
+function isMemoryPressureAttempt(attempt: ProviderHealthAttempt): boolean {
+  const reason = attempt.reason?.toLocaleLowerCase() ?? "";
+  return (
+    attempt.stage === "memory_pressure" ||
+    (reason.includes("memory is high") && reason.includes("after cleanup"))
+  );
+}
+
+function latestStatusAttempt(
+  providerState: PersistedProviderHealth,
+  now = Date.now(),
+): ProviderHealthAttempt | undefined {
+  return providerState.latestAttempts.find((attempt) => {
+    if (!isMemoryPressureAttempt(attempt)) return true;
+    return now - attempt.finishedAt <= TRANSIENT_MEMORY_PRESSURE_STATUS_MS;
+  });
+}
+
 function snapshotForProvider(providerState: PersistedProviderHealth): ProviderHealthSnapshot {
-  const latestAttempt = providerState.latestAttempts[0];
+  const latestAttempt = latestStatusAttempt(providerState);
   const latestWasSuccessful = !!latestAttempt && bucketSuccess(latestAttempt.outcome);
   return {
     provider: providerState.provider,
