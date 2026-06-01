@@ -32,6 +32,12 @@ import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./m
 import { socialProviderCopy } from "./social-provider-copy";
 import { runBackgroundJob } from "./background-runtime-coordinator";
 import {
+  applyRuntimeDeferredDiag,
+  isRuntimeDeferredStage,
+  SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
+  SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
+} from "./social-capture-runtime";
+import {
   facebookGroupsFromFeedItems,
   mergeFacebookGroupRecords,
 } from "./facebook-groups";
@@ -369,11 +375,16 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
       kind: "social-scrape",
       source: "facebook:feed",
       timeoutMs: 600_000,
+      waitForActiveJobMs: SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
+      waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
       run: () => invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() }),
     });
     await new Promise<void>((resolve) => setTimeout(resolve, 500));
   } catch (err) {
     if (!diag.errorStage) {
+      if (applyRuntimeDeferredDiag(diag, err)) {
+        return { items: [], diag };
+      }
       diag.errorStage = "invoke";
       diag.errorMessage = err instanceof Error ? err.message : String(err);
     }
@@ -523,11 +534,17 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
   try {
     addDebugEvent("change", "[FB] sync started");
     const result = await fetchFbFeed();
-    recordScrape();
 
     if (result.diag.errorStage) {
-      const detail = `[FB] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
-      addDebugEvent("error", detail);
+      const runtimeDeferred = isRuntimeDeferredStage(result.diag.errorStage);
+      const detail = `[FB] sync ${runtimeDeferred ? "deferred" : "failed"} at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
+      addDebugEvent(runtimeDeferred ? "change" : "error", detail);
+      if (runtimeDeferred) {
+        return result;
+      }
+      if (result.diag.errorStage !== "memory_pressure") {
+        recordScrape();
+      }
       if (result.diag.errorStage !== "memory_pressure") {
         store.setError(result.diag.errorMessage ?? result.diag.errorStage);
         const errState = { ...useAppStore.getState().fbAuth, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed" };
@@ -547,6 +564,7 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       return result;
     }
 
+    recordScrape();
     if (result.items.length > 0) {
       await repairStoredFacebookGroupNamesFromItems(result.items);
       const excludedGroupIds =
