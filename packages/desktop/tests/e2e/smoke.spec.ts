@@ -175,20 +175,37 @@ async function readElementFromPointDragState(page: Page, locator: Locator) {
 }
 
 async function readDesktopSidebarGeometry(page: Page) {
-  return page.evaluate(() => {
-    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
-    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
-    const resizeHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
-    const sidebarRect = sidebar?.getBoundingClientRect();
-    const resizeHandleRect = resizeHandle?.getBoundingClientRect();
-    return {
-      shellWidth: sidebarShell?.getBoundingClientRect().width ?? 0,
-      sidebarWidth: sidebarRect?.width ?? 0,
-      sidebarLeft: sidebarRect?.left ?? 0,
-      sidebarRight: sidebarRect?.right ?? 0,
-      resizeHandleCenter: resizeHandleRect ? resizeHandleRect.left + resizeHandleRect.width / 2 : 0,
-    };
-  });
+  const sidebarShell = page.getByTestId("app-sidebar-shell");
+  const sidebar = page.getByTestId("app-sidebar");
+  const resizeHandle = page.getByTestId("app-sidebar-resize-handle");
+
+  const shellWidth = (await sidebarShell.count()) > 0
+    ? await sidebarShell.first().evaluate((element) => element.getBoundingClientRect().width)
+    : 0;
+  const sidebarRect = (await sidebar.count()) > 0
+    ? await sidebar.first().evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          width: rect.width,
+          left: rect.left,
+          right: rect.right,
+        };
+      })
+    : null;
+  const resizeHandleCenter = (await resizeHandle.count()) > 0
+    ? await resizeHandle.first().evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.left + rect.width / 2;
+      })
+    : 0;
+
+  return {
+    shellWidth,
+    sidebarWidth: sidebarRect?.width ?? 0,
+    sidebarLeft: sidebarRect?.left ?? 0,
+    sidebarRight: sidebarRect?.right ?? 0,
+    resizeHandleCenter,
+  };
 }
 
 async function expectDesktopSidebarShellWidthAtMost(page: Page, maximumWidth: number, timeout = 1_000) {
@@ -208,6 +225,16 @@ async function expectDesktopSidebarWidthBetween(
     .toBeLessThanOrEqual(maximumWidth);
   const width = (await readDesktopSidebarGeometry(page)).sidebarWidth;
   expect(width).toBeGreaterThanOrEqual(minimumWidth);
+}
+
+async function waitForDesktopSidebarMode(page: Page, mode: "expanded" | "compact" | "closed") {
+  await page.waitForFunction((expectedMode) => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | { getState: () => { preferences: { display: { sidebarMode?: string } } } }
+      | undefined;
+    return store?.getState().preferences.display.sidebarMode === expectedMode;
+  }, mode);
 }
 
 async function persistDisplayPreference(page: Page, key: "mapMode" | "mapTimeMode", value: string) {
@@ -869,6 +896,8 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   await expect
     .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout: 1_000 })
     .toBeGreaterThanOrEqual(252);
+  await waitForDesktopSidebarMode(page, "expanded");
+  await expect(desktopSidebar).toBeVisible();
   const reopenedExpandedGeometry = await readDesktopSidebarGeometry(page);
   expect(reopenedExpandedGeometry.sidebarWidth).toBeGreaterThanOrEqual(252);
   expect(reopenedExpandedGeometry.sidebarWidth).toBeLessThanOrEqual(260);
@@ -891,17 +920,13 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   await expect
     .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout: 1_000 })
     .toBeGreaterThanOrEqual(252);
+  await waitForDesktopSidebarMode(page, "expanded");
+  await expect(desktopSidebar).toBeVisible();
   const restoredExpandedGeometry = await readDesktopSidebarGeometry(page);
   expect(restoredExpandedGeometry.sidebarWidth).toBeGreaterThanOrEqual(252);
   expect(restoredExpandedGeometry.sidebarWidth).toBeLessThanOrEqual(260);
 
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | { getState: () => { preferences: { display: { sidebarMode?: string } } } }
-      | undefined;
-    return store?.getState().preferences.display.sidebarMode === "expanded";
-  });
+  await waitForDesktopSidebarMode(page, "expanded");
 });
 
 test("compact sidebar search opens as a floating palette and closes cleanly", async ({ app, page }) => {
