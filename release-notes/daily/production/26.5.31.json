@@ -1,0 +1,19 @@
+{
+  "channel": "production",
+  "dayKey": "26.5.31",
+  "date": "2026-05-31",
+  "preferredDeck": "This production build focuses on capture reliability, sync recovery, and interface stability.",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Facebook feed sync now reports unusable raw scrape results as failures instead of healthy zero-post syncs.",
+    "Social scrape planning now adapts to memory headroom and records diagnostics for provider sync soaks."
+  ],
+  "editorialNotes": [
+    "Use the promoted dev rollup as the production summary for v26.5.3111."
+  ],
+  "updatedAt": "2026-06-01T02:29:34.188Z"
+}
