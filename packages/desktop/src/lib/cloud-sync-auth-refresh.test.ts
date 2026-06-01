@@ -261,8 +261,52 @@ describe("desktop cloud sync auth refresh", () => {
     }));
   });
 
-  it("does not crash startup when a stored Google token cannot refresh", async () => {
+  it("uses the default Google token proxy when a stored token refreshes with empty proxy env", async () => {
     vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "");
+    const oauthCalls: Array<{ url: string; body: string; contentType: string }> = [];
+    invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "google_oauth_proxy_request") {
+        oauthCalls.push({
+          url: String(args?.url ?? ""),
+          body: String(args?.body ?? ""),
+          contentType: String(args?.contentType ?? ""),
+        });
+        return {
+          status: 200,
+          headers: [["content-type", "application/json"]],
+          body: Array.from(new TextEncoder().encode(JSON.stringify({
+            access_token: "refreshed-access-token",
+            expires_in: 3600,
+          }))),
+        };
+      }
+      return null;
+    });
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "expired-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() - 60_000,
+    }));
+
+    const { startAllCloudSyncs } = await import("./sync");
+    await expect(startAllCloudSyncs()).resolves.toBeUndefined();
+
+    expect(oauthCalls).toHaveLength(1);
+    expect(oauthCalls[0]?.url).toBe("https://app.freed.wtf/api/oauth/google");
+    expect(oauthCalls[0]?.contentType).toBe("application/json");
+    expect(JSON.parse(oauthCalls[0]!.body)).toMatchObject({
+      grantType: "refresh_token",
+      refreshToken: "refresh-token",
+      clientId: "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com",
+    });
+    expect(gdriveDownloadLatestMock).toHaveBeenCalledWith(
+      "refreshed-access-token",
+      expect.any(AbortSignal),
+      undefined,
+    );
+  });
+
+  it("does not crash startup when the Google token proxy is missing its secret", async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "google_oauth_proxy_request") {
         return {
@@ -291,7 +335,7 @@ describe("desktop cloud sync auth refresh", () => {
       provider: "gdrive",
       outcome: "error",
       stage: "auth",
-      reason: expect.stringContaining("client_secret is missing"),
+      reason: expect.stringContaining("Google token proxy is missing"),
     }));
     expect(logWarnMock).toHaveBeenCalledWith(expect.stringContaining("Failed to refresh gdrive on startup"));
   });

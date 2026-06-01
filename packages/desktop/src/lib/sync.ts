@@ -360,14 +360,15 @@ function markCloudError(provider: CloudProvider, stage: "auth" | "download" | "m
 // Desktop OAuth client IDs. These are public and embedded in the app bundle.
 const DEFAULT_GDRIVE_DESKTOP_CLIENT_ID =
   "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com";
+const DEFAULT_GDRIVE_TOKEN_PROXY_URL = "https://app.freed.wtf/api/oauth/google";
 const GDRIVE_CLIENT_ID =
   import.meta.env.VITE_GDRIVE_DESKTOP_CLIENT_ID || DEFAULT_GDRIVE_DESKTOP_CLIENT_ID;
 // Only needed when using direct token exchange for a Google OAuth client that
-// requires a secret. Prefer the server token proxy when it is configured so the
+// requires a secret. Prefer the server token proxy by default so the
 // secret never ships in the Freed Desktop bundle.
 const GDRIVE_CLIENT_SECRET = import.meta.env.VITE_GDRIVE_CLIENT_SECRET ?? "";
 const GDRIVE_TOKEN_PROXY_URL =
-  import.meta.env.VITE_GDRIVE_TOKEN_PROXY_URL ?? "";
+  import.meta.env.VITE_GDRIVE_TOKEN_PROXY_URL || DEFAULT_GDRIVE_TOKEN_PROXY_URL;
 const GDRIVE_FORCE_TOKEN_PROXY = import.meta.env.VITE_GDRIVE_FORCE_TOKEN_PROXY === "1";
 const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -622,6 +623,11 @@ function googleOAuthError(prefix: string, status: number, body: string): Error {
     const detail = parsed.error_description ?? parsed.message ?? parsed.error;
     if (detail) {
       if (detail === "client_secret is missing.") {
+        if (prefix.includes("proxy")) {
+          return new Error(
+            `${prefix} (${status}): client_secret is missing. The Google token proxy is missing its configured Google client secret.`,
+          );
+        }
         return new Error(
           `${prefix} (${status}): client_secret is missing. Freed Desktop is using direct Google token exchange for an OAuth client that requires a secret. Configure the Google token proxy or provide VITE_GDRIVE_CLIENT_SECRET.`,
         );

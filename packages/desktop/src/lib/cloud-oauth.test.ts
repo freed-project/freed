@@ -127,18 +127,18 @@ describe("desktop Google OAuth", () => {
     });
   });
 
-  it("uses native Google token exchange when no proxy URL is configured", async () => {
+  it("uses the default Google token proxy when the proxy URL env is empty", async () => {
     vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "");
     const oauthCalls = await completeGoogleOAuth();
 
-    expect(oauthCalls[0]?.url).toBe("https://oauth2.googleapis.com/token");
-    expect(oauthCalls[0]?.contentType).toBe("application/x-www-form-urlencoded");
-    const body = new URLSearchParams(oauthCalls[0]!.body);
-    expect(body.get("code")).toBe("auth-code");
-    expect(body.get("code_verifier")).toEqual(expect.any(String));
-    expect(body.get("redirect_uri")).toBe("http://localhost:45555/callback");
-    expect(body.get("client_id")).toBe("304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com");
-    expect(body.has("client_secret")).toBe(false);
+    expect(oauthCalls[0]?.url).toBe("https://app.freed.wtf/api/oauth/google");
+    expect(oauthCalls[0]?.contentType).toBe("application/json");
+    expect(JSON.parse(oauthCalls[0]!.body)).toMatchObject({
+      code: "auth-code",
+      verifier: expect.any(String),
+      redirectUri: "http://localhost:45555/callback",
+      clientId: "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com",
+    });
   });
 
   it("falls back to the public Google desktop client when local preview env is absent", async () => {
@@ -151,9 +151,11 @@ describe("desktop Google OAuth", () => {
       .toBe("304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com");
     expect(openedParams.get("redirect_uri")).toBe("http://localhost:45555/callback");
 
-    const body = new URLSearchParams(oauthCalls[0]!.body);
-    expect(body.get("redirect_uri")).toBe("http://localhost:45555/callback");
-    expect(body.get("client_id")).toBe("304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com");
+    expect(oauthCalls[0]?.url).toBe("https://app.freed.wtf/api/oauth/google");
+    expect(JSON.parse(oauthCalls[0]!.body)).toMatchObject({
+      redirectUri: "http://localhost:45555/callback",
+      clientId: "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com",
+    });
   });
 
   it("falls back to the public Google desktop client when local preview env is empty", async () => {
@@ -394,7 +396,7 @@ describe("desktop Google OAuth", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("google_oauth_proxy_request", expect.anything());
   });
 
-  it("surfaces Google token response bodies from native exchange failures", async () => {
+  it("surfaces Google token response bodies from proxy failures", async () => {
     vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "");
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "start_oauth_server") return 45555;
@@ -421,7 +423,7 @@ describe("desktop Google OAuth", () => {
     const { initiateDesktopOAuth } = await import("./sync");
 
     await expect(initiateDesktopOAuth("gdrive")).rejects.toThrow(
-      "Google token exchange failed (400): Contacts API has not been enabled.",
+      "Google token proxy failed (400): Contacts API has not been enabled.",
     );
   });
 
@@ -449,11 +451,11 @@ describe("desktop Google OAuth", () => {
     const { initiateDesktopOAuth } = await import("./sync");
 
     await expect(initiateDesktopOAuth("gdrive")).rejects.toThrow(
-      "Google token exchange failed (502): <html>bad gateway</html>",
+      "Google token proxy failed (502): <html>bad gateway</html>",
     );
   });
 
-  it("explains direct Google client secret failures", async () => {
+  it("explains Google token proxy client secret failures", async () => {
     vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "");
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "start_oauth_server") return 45555;
@@ -480,7 +482,7 @@ describe("desktop Google OAuth", () => {
     const { initiateDesktopOAuth } = await import("./sync");
 
     await expect(initiateDesktopOAuth("gdrive")).rejects.toThrow(
-      "Freed Desktop is using direct Google token exchange for an OAuth client that requires a secret.",
+      "The Google token proxy is missing its configured Google client secret.",
     );
   });
 });
