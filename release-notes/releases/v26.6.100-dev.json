@@ -3,7 +3,7 @@
   "version": "26.6.100-dev",
   "channel": "dev",
   "dayKey": "26.6.1",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-01T22:32:53.791Z",
   "model": "heuristic",
@@ -34,10 +34,10 @@
     ]
   },
   "release": {
-    "deck": "Desktop sidebar reopen smoke are now more stable",
+    "deck": "Facebook, Instagram, and LinkedIn sync now share the same lower-profile feed scrolling behavior, with stronger Facebook auth checks to avoid false zero-post success.",
     "features": [],
     "fixes": [],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.100-dev\n\nDesktop sidebar reopen smoke are now more stable\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.100-dev\n\nFacebook, Instagram, and LinkedIn sync now share the same lower-profile feed scrolling behavior, with stronger Facebook auth checks to avoid false zero-post success.\n\n### Fixes\n\n- Facebook sync now fails clearly when an authenticated feed does not render instead of reporting a successful zero-post sync.\n- Facebook reconnect now rebuilds and verifies the login WebView before saving the connected state.\n- Instagram and LinkedIn scrape windows now treat uncertain auth checks as signed out instead of quietly proceeding.\n- Google Drive token refresh failures no longer crash Freed Desktop startup.\n- Sidebar smoke coverage is more stable in CI.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
