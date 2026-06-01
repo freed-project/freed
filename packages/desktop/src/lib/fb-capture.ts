@@ -231,9 +231,18 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
 
     // Listen for diagnostics (fires before extraction)
     unlistenDiag = await listen("fb-diag", (diagEvent) => {
-      const diag = diagEvent.payload as Record<string, unknown>;
-      addDebugEvent("change", `[FB] DOM diag: feedUnits=${diag.feedUnits}, fallback=${diag.feedUnitsFallback}, feed=${diag.feedContainer}, h4s=${diag.h4Count}, bodyLen=${diag.bodyLen}, url=${diag.url}, tauriEmit=${diag.hasTauriEmit}`);
-      console.log("[FB] DOM diagnostics:", diag);
+      const payload = diagEvent.payload as Record<string, unknown>;
+      const url = typeof payload.url === "string" ? payload.url : "?";
+      const title = typeof payload.title === "string" ? payload.title : "?";
+      const scrollHeight =
+        typeof payload.scrollHeight === "number"
+          ? payload.scrollHeight.toLocaleString()
+          : "?";
+      addDebugEvent(
+        "change",
+        `[FB] DOM diag: title="${title}", scrollHeight=${scrollHeight}, url=${url}`,
+      );
+      console.log("[FB] DOM diagnostics:", payload);
     });
 
     // Listen for every extraction pass. The native scraper emits multiple

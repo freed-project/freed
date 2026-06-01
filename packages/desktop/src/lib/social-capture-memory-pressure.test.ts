@@ -111,6 +111,13 @@ describe("social capture completion", () => {
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command !== "fb_scrape_feed") return null;
 
+      listeners.get("fb-diag")?.({
+        payload: {
+          title: "Facebook",
+          scrollHeight: 12_345,
+          url: "https://www.facebook.com/",
+        },
+      });
       listeners.get("fb-feed-data")?.({
         payload: {
           posts: [{ id: "post-one", authorName: "One", text: "First" }],
@@ -133,11 +140,16 @@ describe("social capture completion", () => {
     });
 
     const { fetchFbFeed } = await import("./fb-capture");
+    const { addDebugEvent } = await import("@freed/ui/lib/debug-store");
     const result = await fetchFbFeed();
 
     expect(result.diag.errorStage).toBeNull();
     expect(result.diag.postsExtracted).toBe(2);
     expect(result.items).toHaveLength(2);
+    expect(addDebugEvent).toHaveBeenCalledWith(
+      "change",
+      '[FB] DOM diag: title="Facebook", scrollHeight=12,345, url=https://www.facebook.com/',
+    );
   });
 
   it("treats extracted Facebook posts that normalize to zero items as a sync failure", async () => {
