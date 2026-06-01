@@ -1,32 +1,26 @@
 [
   {
-    "version": "26.5.3110-dev",
-    "tagName": "v26.5.3110-dev",
+    "version": "26.5.3115-dev",
+    "tagName": "v26.5.3115-dev",
     "channel": "dev",
-    "date": "2026-06-01T02:22:25Z",
-    "deck": "Facebook sync now reports unusable scrape results as sync issues and adds diagnostics for the next dev soak.",
+    "date": "2026-06-01T04:27:43Z",
+    "deck": "This dev build adds Facebook zero-post diagnostics and keeps RSS retry pacing and installed dev-channel validation ready for the next soak",
     "features": [],
     "fixes": [
       {
-        "text": "Hardens Facebook feed extraction for current article and feed-unit containers"
-      },
-      {
-        "text": "Preserves Facebook group post IDs and improves fallback IDs for media-heavy posts"
-      },
-      {
-        "text": "Adds Facebook extraction, rejection, normalization, dedupe, and already-present diagnostics to the scrape log"
-      },
-      {
-        "text": "Treats raw Facebook posts that normalize to zero usable items as a sync failure instead of a healthy empty run"
-      },
-      {
-        "text": "Shows empty provider results as a warning state instead of a green connected badge"
-      },
-      {
-        "text": "Repair Facebook group names"
+        "text": "Capture and scraper reliability fixes"
       },
       {
         "text": "Release build and type-safety cleanup"
+      },
+      {
+        "text": "Reader, feed, and header polish"
+      },
+      {
+        "text": "Align social memory preflight test"
+      },
+      {
+        "text": "Recover social sync after memory deferrals"
       },
       {
         "text": "Recycles idle Automerge sync workers after queued document work finishes"
@@ -35,51 +29,42 @@
         "text": "Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom"
       },
       {
-        "text": "Delays low-priority semantic enrichment during launch so Facebook and Instagram capture get priority"
-      },
-      {
-        "text": "Plans each Facebook and Instagram feed scrape after the WebView is open, using the current native memory budget instead of a fixed full-session pass count"
-      },
-      {
-        "text": "Adds native hidden-window memory samples with pause state, safe mode state, recovery counts, and active background job details"
-      },
-      {
-        "text": "Hardens release regression coverage for compact sidebar transitions, persisted map filters, fast reader-rail collapse, sidebar resize settling, stress graph setup parsing, and compact reader rail collapse checks"
-      },
-      {
-        "text": "Skips story collection and caps scroll passes when Freed Desktop is near the scrape memory budget"
-      },
-      {
-        "text": "Records each scrape plan in runtime health diagnostics with provider, pass range, story decision, memory margin, and budget details"
-      },
-      {
-        "text": "Stops normal Facebook feed sync from visiting the joined-groups page, while keeping manual group refresh behind explicit provider risk confirmation"
-      },
-      {
-        "text": "Recovers social sync controls cleanly after memory-pressure deferrals"
-      },
-      {
-        "text": "Repairs RSS refresh-plan test fixtures so dev release validation can build Freed Desktop"
-      },
-      {
-        "text": "Aligns the social memory preflight e2e with transient provider-health memory pressure"
+        "text": "Keeps the Phase 7 docs and public roadmap aligned with the new social scrape memory behavior"
       }
     ],
     "followUps": [
       {
+        "text": "Backflow v26.5.3113 main into dev"
+      },
+      {
+        "text": "Adapt social scrape load to memory headroom"
+      },
+      {
+        "text": "Reduce desktop sync memory pressure"
+      },
+      {
+        "text": "Keeps Facebook group refresh explicit, repairs dev release validation, and carries forward the latest social sync recovery fixes"
+      },
+      {
+        "text": "Facebook sync now reports unusable scrape results as sync issues and adds diagnostics for the next dev soak"
+      },
+      {
         "text": "Use this build for the next Facebook sync soak and inspect the new diagnostics if the provider still returns zero usable posts"
       },
       {
-        "text": "Keeps the Phase 7 docs and public roadmap aligned with the new social scrape memory behavior"
+        "text": "Install this build and verify RSS failures stop piling up in sync health"
       }
     ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3110-dev",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3115-dev",
     "prNumbers": [],
     "builds": [
       "26.5.3105-dev",
       "26.5.3106-dev",
       "26.5.3109-dev",
-      "26.5.3110-dev"
+      "26.5.3110-dev",
+      "26.5.3112-dev",
+      "26.5.3114-dev",
+      "26.5.3115-dev"
     ],
     "buildLinks": [
       {
@@ -101,6 +86,100 @@
         "version": "26.5.3110-dev",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3110-dev",
         "channel": "dev"
+      },
+      {
+        "version": "26.5.3112-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3112-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3114-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3114-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3115-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3115-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.5.3113",
+    "tagName": "v26.5.3113",
+    "channel": "production",
+    "date": "2026-06-01T03:36:23Z",
+    "deck": "This production build focuses on capture reliability, sync recovery, and interface stability.",
+    "features": [
+      {
+        "text": "Story Wall can publish curated collections from the shared reader library."
+      },
+      {
+        "text": "PWA social setup now mirrors Freed Desktop provider consent and status flows."
+      },
+      {
+        "text": "Friend and Map surfaces scale better for dense libraries with lighter graph and marker rendering."
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Facebook feed sync now treats zero usable posts as a warning, records extraction diagnostics, and preserves more post IDs."
+      },
+      {
+        "text": "Social scrapes adapt pass counts to available memory and record plan details before opening provider WebViews."
+      },
+      {
+        "text": "Normal Facebook feed sync no longer visits the joined-groups page unless manual group refresh is explicitly confirmed."
+      },
+      {
+        "text": "Google OAuth relays dev and preview callbacks through the production callback without losing PKCE state."
+      },
+      {
+        "text": "RSS polling is bounded and refresh planning avoids duplicate startup work."
+      },
+      {
+        "text": "Google Drive and Google Contacts share native sync state with clearer error reporting."
+      },
+      {
+        "text": "Automerge sync workers recycle after queued document work finishes to reduce idle memory pressure."
+      },
+      {
+        "text": "Renderer recovery, hidden-window memory sampling, and release channel checks have stronger diagnostics."
+      },
+      {
+        "text": "Reader rail collapse, compact sidebar transitions, persisted map filters, and fast reader opening have tighter regression coverage."
+      },
+      {
+        "text": "Settings, Friends, and Map performance budgets cover dense lists, graph movement, and marker rendering."
+      },
+      {
+        "text": "Release tooling now allows the production promotion website build config while keeping promotion branch guards strict."
+      },
+      {
+        "text": "Historical release-note artifacts were cleaned up so production validation can audit the full promoted history."
+      },
+      {
+        "text": "Installed dev release channel labels now survive production builds that share the same base version."
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Use provider diagnostics from this build when investigating any remaining Facebook zero-post reports."
+      },
+      {
+        "text": "Keep monitoring installed memory pressure during long social sync so scrape budgets can be tuned from real data."
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3113",
+    "prNumbers": [],
+    "builds": [
+      "26.5.3113"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.5.3113",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3113",
+        "channel": "production"
       }
     ]
   },
@@ -1575,91 +1654,13 @@
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.406-dev",
     "prNumbers": [],
     "builds": [
-      "26.5.402-dev",
-      "26.5.404-dev",
-      "26.5.405-dev",
       "26.5.406-dev"
     ],
     "buildLinks": [
       {
-        "version": "26.5.402-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.402-dev",
-        "channel": "dev"
-      },
-      {
-        "version": "26.5.404-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.404-dev",
-        "channel": "dev"
-      },
-      {
-        "version": "26.5.405-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.405-dev",
-        "channel": "dev"
-      },
-      {
         "version": "26.5.406-dev",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.406-dev",
         "channel": "dev"
-      }
-    ]
-  },
-  {
-    "version": "26.5.403",
-    "tagName": "v26.5.403",
-    "channel": "production",
-    "date": "2026-05-05T02:12:56Z",
-    "deck": "Freed Desktop reliability fixes",
-    "features": [],
-    "fixes": [
-      {
-        "text": "Native macOS window dragging now works from the FREED wordmark, nearby titlebar gap, passive toolbar title areas, and fullscreen reader titlebar."
-      },
-      {
-        "text": "Toolbar controls stay clickable because buttons remain explicit no-drag targets while passive titlebar surfaces handle native dragging."
-      },
-      {
-        "text": "Fix stale renderer recovery restarts."
-      },
-      {
-        "text": "Recover stale renderers without blocking the macOS main thread while the old main window unregisters."
-      },
-      {
-        "text": "Let the startup recovery screen scroll in shorter windows so recovery actions stay reachable."
-      },
-      {
-        "text": "Pause heavy background work before high renderer memory can force repeated recovery."
-      },
-      {
-        "text": "Retry deferred startup RSS polls instead of waiting for the next normal polling interval."
-      },
-      {
-        "text": "Batch visible archive actions more aggressively."
-      },
-      {
-        "text": "Restore Linux release compilation for renderer memory diagnostics."
-      }
-    ],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.403",
-    "prNumbers": [
-      408,
-      418,
-      419,
-      420,
-      421,
-      424,
-      425,
-      427,
-      428
-    ],
-    "builds": [
-      "26.5.403"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.5.403",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.403",
-        "channel": "production"
       }
     ]
   }

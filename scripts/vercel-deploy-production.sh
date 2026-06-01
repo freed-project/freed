@@ -86,6 +86,10 @@ for dir in "${DEPENDENCY_DIRS[@]}"; do
   cp -R "$ROOT_DIR/$dir" "$TEMP_DIR/$dir"
 done
 
+if [[ "$TARGET" == "website" ]]; then
+  cp -R "$ROOT_DIR/release-notes" "$TEMP_DIR/release-notes"
+fi
+
 if [[ "$STAGE_AT_ROOT" == "false" ]]; then
   cp "$ROOT_DIR/scripts/vercel-deploy-preview.sh" "$TEMP_DIR/scripts/vercel-deploy-preview.sh"
   cp "$ROOT_DIR/scripts/vercel-deploy-production.sh" "$TEMP_DIR/scripts/vercel-deploy-production.sh"
