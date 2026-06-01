@@ -170,12 +170,30 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
 
     // Listen for every extraction pass. The native scraper emits multiple
     // batches while it scrolls through the virtualized feed.
-    unlisten = await listen<{ posts: RawFbPost[]; error?: string; extractedAt: number; url: string; strategy?: string; candidateCount?: number }>(
+    unlisten = await listen<{
+      posts: RawFbPost[];
+      error?: string;
+      extractedAt: number;
+      url: string;
+      strategy?: string;
+      candidateCount?: number;
+      rejected?: {
+        suggestedOrSponsored?: number;
+        missingAuthor?: number;
+        missingContent?: number;
+      };
+    }>(
       "fb-feed-data",
       (event) => {
-        const { posts, error, strategy, candidateCount } = event.payload;
+        const { posts, error, strategy, candidateCount, rejected } = event.payload;
 
-        addDebugEvent("change", `[FB] extraction: strategy=${strategy ?? "?"}, candidates=${candidateCount ?? "?"}, posts=${posts.length}`);
+        const rejectionSummary = rejected
+          ? `, rejected={sponsored:${(rejected.suggestedOrSponsored ?? 0).toLocaleString()}, author:${(rejected.missingAuthor ?? 0).toLocaleString()}, content:${(rejected.missingContent ?? 0).toLocaleString()}}`
+          : "";
+        addDebugEvent(
+          "change",
+          `[FB] extraction: strategy=${strategy ?? "?"}, candidates=${candidateCount ?? "?"}, posts=${posts.length.toLocaleString()}${rejectionSummary}`,
+        );
 
         if (error) {
           addDebugEvent("error", `[FB] extraction error: ${error}`);
@@ -228,6 +246,10 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
 
     const items = deduplicateFeedItems(normalized);
     diag.itemsDeduplicated = items.length;
+    addDebugEvent(
+      "change",
+      `[FB] normalization: raw=${allRawPosts.length.toLocaleString()}, normalized=${normalized.length.toLocaleString()}, deduplicated=${items.length.toLocaleString()}`,
+    );
 
     return { items, diag };
   } catch (err) {
@@ -354,11 +376,15 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       const excludedGroupIds =
         useAppStore.getState().preferences.fbCapture?.excludedGroupIds ?? {};
       const filteredItems = filterExcludedGroups(result.items, excludedGroupIds);
+      const beforeState = useAppStore.getState();
+      const beforeFacebookItems = beforeState.items.filter((i) => i.platform === "facebook");
+      const beforeFacebookIds = new Set(beforeFacebookItems.map((item) => item.globalId));
+      const existingCandidateCount = filteredItems.filter((item) => beforeFacebookIds.has(item.globalId)).length;
       addDebugEvent(
         "change",
-        `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library`,
+        `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library (${existingCandidateCount.toLocaleString()} already present)`,
       );
-      const before = store.items.filter((i) => i.platform === "facebook").length;
+      const before = beforeFacebookItems.length;
       await store.addItems(filteredItems);
       const after = useAppStore
         .getState()

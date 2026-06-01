@@ -24,6 +24,20 @@
     return value.trim();
   }
 
+  function elementHeight(node) {
+    if (!node) return 0;
+    var h = node.offsetHeight || 0;
+    if (h > 0) return h;
+    if (typeof node.getBoundingClientRect === "function") {
+      try {
+        h = node.getBoundingClientRect().height || 0;
+        if (h > 0) return h;
+      } catch (_) {}
+    }
+    var testHeight = parseInt(node.getAttribute && node.getAttribute("data-freed-test-height"), 10);
+    return isNaN(testHeight) ? 0 : testHeight;
+  }
+
   function parseEngagement(text) {
     if (!text) return null;
     var cleaned = text.replace(/[^0-9.KMkm]/g, "").trim();
@@ -200,16 +214,81 @@
   // a div that contains at least some text and/or images, and is a
   // reasonable height for a post.
 
+  function hasPostContent(node) {
+    var nodeText = textValue(node, 4000);
+    var hasScontent =
+      node.querySelector('img[src*="scontent"], img[src*="fbcdn"]') !== null;
+    var hasVideo = node.querySelector("video") !== null;
+    return nodeText.length > 40 || hasScontent || hasVideo;
+  }
+
+  function hasAuthorArea(node) {
+    return (
+      node.querySelector("h3 a, h4 a") !== null ||
+      node.querySelector('a[aria-label][role="link"]') !== null
+    );
+  }
+
+  function isLikelyPostElement(node, container) {
+    if (!node || node === container) return false;
+    var h = elementHeight(node);
+    var role = (node.getAttribute("role") || "").toLowerCase();
+    var pagelet = node.getAttribute("data-pagelet") || "";
+    var semanticPost =
+      role === "article" ||
+      /^FeedUnit/i.test(pagelet) ||
+      node.hasAttribute("aria-posinset");
+
+    if (!semanticPost && (h < 150 || h > 2000)) return false;
+    if (semanticPost && h > 0 && h > 2600) return false;
+    if (!hasPostContent(node)) return false;
+    return semanticPost || hasAuthorArea(node);
+  }
+
+  function uniquePostElements(elements) {
+    var unique = [];
+    for (var i = 0; i < elements.length; i++) {
+      var el = elements[i];
+      if (!el) continue;
+      var alreadyNested = false;
+      for (var j = 0; j < unique.length; j++) {
+        if (unique[j].contains(el) && unique[j] !== el) {
+          alreadyNested = true;
+          break;
+        }
+        if (el.contains(unique[j]) && unique[j] !== el) {
+          unique.splice(j, 1);
+          j--;
+        }
+      }
+      if (!alreadyNested) unique.push(el);
+    }
+    return unique;
+  }
+
   function findPostsInContainer(container) {
     var posts = [];
     var seen = new Set();
+
+    var semanticCandidates = container.querySelectorAll(
+      '[role="article"], div[data-pagelet^="FeedUnit"], div[aria-posinset]'
+    );
+    for (var s = 0; s < semanticCandidates.length && posts.length < 50; s++) {
+      if (isLikelyPostElement(semanticCandidates[s], container)) {
+        posts.push(semanticCandidates[s]);
+      }
+    }
+
+    if (posts.length > 0) {
+      return uniquePostElements(posts);
+    }
 
     // Recursive walker: find leaf-ish content blocks
     function walk(node, depth) {
       if (depth > 20 || posts.length > 50) return;
       if (!node || node.nodeType !== 1) return;
 
-      var h = node.offsetHeight;
+      var h = elementHeight(node);
       var children = node.children || [];
       var cc = children.length;
 
@@ -217,31 +296,14 @@
       // - Tall enough (> 150px) to be a real post, not a header
       // - Contain some text or images
       // - NOT be the entire feed container itself
-      if (h >= 150 && h <= 2000 && node !== container) {
+      if (isLikelyPostElement(node, container)) {
         var nodeText = textValue(node, 4000);
-        var hasScontent =
-          node.querySelector('img[src*="scontent"], img[src*="fbcdn"]') !==
-          null;
-        var hasVideo = node.querySelector("video") !== null;
-
-        // Post-like: has substantial text or media
-        if (nodeText.length > 40 || hasScontent || hasVideo) {
-          // Check if this is a profile/author link area (h3/h4 with name + text below)
-          var hasAuthorArea =
-            node.querySelector("h3 a, h4 a") !== null ||
-            node.querySelector('a[aria-label][role="link"]') !== null;
-
-          // Looks like a post if it has author-area + content,
-          // or if it has media + some text
-          if (hasAuthorArea || hasScontent || hasVideo) {
-            var id =
-              node.offsetTop + ":" + h + ":" + nodeText.length;
-            if (!seen.has(id)) {
-              seen.add(id);
-              posts.push(node);
-              return; // Don't recurse into found posts
-            }
-          }
+        var id =
+          node.offsetTop + ":" + h + ":" + nodeText.length;
+        if (!seen.has(id)) {
+          seen.add(id);
+          posts.push(node);
+          return; // Don't recurse into found posts
         }
       }
 
@@ -254,14 +316,7 @@
     walk(container, 0);
 
     // Deduplicate: remove elements that are children of other found posts
-    return posts.filter(function (p, i) {
-      for (var j = 0; j < posts.length; j++) {
-        if (i !== j && posts[j].contains(p) && posts[j] !== p) {
-          return false;
-        }
-      }
-      return true;
-    });
+    return uniquePostElements(posts);
   }
 
   // ── Extract author info ──────────────────────────────────────────────────
@@ -450,6 +505,7 @@
       var href = links[i].href || "";
       var m =
         href.match(/story_fbid=(\d+)/) ||
+        href.match(/\/groups\/[^/]+\/posts\/(\d+)/) ||
         href.match(/\/posts\/(\d+)/) ||
         href.match(/\/permalink\/(\d+)/) ||
         href.match(/(pfbid\w+)/);
@@ -527,11 +583,19 @@
     }
 
     var posts = [];
+    var rejected = {
+      suggestedOrSponsored: 0,
+      missingAuthor: 0,
+      missingContent: 0,
+    };
     for (var idx = 0; idx < postEls.length && posts.length < 50; idx++) {
       var el = postEls[idx];
       expandLongTextControls(el);
 
-      if (isSuggestedOrSponsored(el)) continue;
+      if (isSuggestedOrSponsored(el)) {
+        rejected.suggestedOrSponsored++;
+        continue;
+      }
 
       var author = extractAuthor(el);
       var text = extractText(el);
@@ -539,7 +603,10 @@
       var postRef = extractPostId(el);
       var group = extractGroup(el);
 
-      if (!author.name || !author.profileUrl) continue;
+      if (!author.name || !author.profileUrl) {
+        rejected.missingAuthor++;
+        continue;
+      }
 
       // Extract media
       var imgEls = el.querySelectorAll(
@@ -559,9 +626,12 @@
       var hasVideo = el.querySelector("video") !== null;
 
       // Must have SOME meaningful content
-      if (!text && mediaUrls.length === 0 && !hasVideo) continue;
+      if (!text && mediaUrls.length === 0 && !hasVideo) {
+        rejected.missingContent++;
+        continue;
+      }
 
-      var id = postRef.id || contentHash(author.name, text);
+      var id = postRef.id || contentHash(author.name, text || mediaUrls[0] || postRef.url);
 
       var reactionSpan = el.querySelector(
         'span[aria-label*="reaction"], span[aria-label*=" people"]'
@@ -611,9 +681,11 @@
       posts: posts,
       extractedAt: Date.now(),
       url: window.location.href,
+      strategy: strategy,
       candidateCount: postEls.length,
       scrollY: window.scrollY,
       feedContainerFound: !!feedContainer,
+      rejected: rejected,
     });
   } catch (err) {
     emit("fb-feed-data", {
