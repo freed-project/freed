@@ -79,6 +79,10 @@ for dir in "${DEPENDENCY_DIRS[@]}"; do
   cp -R "$ROOT_DIR/$dir" "$TEMP_DIR/$dir"
 done
 
+if [[ "$TARGET" == "website" ]]; then
+  cp -R "$ROOT_DIR/release-notes" "$TEMP_DIR/release-notes"
+fi
+
 echo "Verifying preview bundle for $TARGET from $TEMP_DIR"
 (
   cd "$TEMP_DIR"
