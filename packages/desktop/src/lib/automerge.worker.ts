@@ -1191,6 +1191,10 @@ async function handleRequest(
             const stored = doc.rssFeeds[feed.url] as RssFeed | undefined;
             if (!stored) continue;
             if (feed.lastFetched !== undefined) stored.lastFetched = feed.lastFetched;
+            if (feed.lastFetchAttemptedAt !== undefined) stored.lastFetchAttemptedAt = feed.lastFetchAttemptedAt;
+            if (feed.nextFetchAfter !== undefined) stored.nextFetchAfter = feed.nextFetchAfter;
+            if (feed.consecutiveFailures !== undefined) stored.consecutiveFailures = feed.consecutiveFailures;
+            if (feed.lastFetchError !== undefined) stored.lastFetchError = feed.lastFetchError;
             if (feed.title && feed.title !== "Untitled Feed" && feed.title !== feed.url) {
               if (stored.title === "Untitled Feed" || stored.title === stored.url) {
                 stored.title = feed.title;
