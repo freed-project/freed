@@ -18,7 +18,8 @@ import {
 
 /** Default poll interval: 30 minutes */
 const DEFAULT_INTERVAL_MS = 30 * 60 * 1000;
-const DEFERRED_RETRY_MS = 15_000;
+const DEFERRED_RETRY_BASE_MS = 60_000;
+const DEFERRED_RETRY_MAX_MS = 30 * 60_000;
 const SCHEDULED_REFRESH_OPTIONS = {
   maxFeeds: SCHEDULED_RSS_MAX_FEEDS,
   staleAfterMs: SCHEDULED_RSS_STALE_AFTER_MS,
@@ -27,20 +28,46 @@ const SCHEDULED_REFRESH_OPTIONS = {
 let pollIntervalId: ReturnType<typeof setInterval> | null = null;
 let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
 let isPolling = false;
+let deferredRetryCount = 0;
 
 function clearDeferredRetry(): void {
   if (retryTimeoutId !== null) {
     clearTimeout(retryTimeoutId);
     retryTimeoutId = null;
   }
+  deferredRetryCount = 0;
 }
 
-function scheduleDeferredRetry(): void {
+function parseCooldownRetryMs(reason: string): number | null {
+  const match = reason.match(/^cooldown:([\d,]+)$/);
+  if (!match) return null;
+
+  const value = Number.parseInt(match[1].replaceAll(",", ""), 10);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function nextDeferredRetryMs(reason: string): number {
+  const exponentialMs =
+    DEFERRED_RETRY_BASE_MS * Math.pow(2, Math.min(deferredRetryCount, 8));
+  const cooldownMs = parseCooldownRetryMs(reason) ?? 0;
+  return Math.min(
+    DEFERRED_RETRY_MAX_MS,
+    Math.max(DEFERRED_RETRY_BASE_MS, exponentialMs, cooldownMs),
+  );
+}
+
+function scheduleDeferredRetry(reason: string): void {
   if (retryTimeoutId !== null) return;
+  const retryMs = nextDeferredRetryMs(reason);
+  deferredRetryCount += 1;
+  addDebugEvent(
+    "change",
+    `[RSS] poll retry scheduled in ${Math.round(retryMs / 1000).toLocaleString()}s after ${reason}`,
+  );
   retryTimeoutId = setTimeout(() => {
     retryTimeoutId = null;
     void triggerPoll();
-  }, DEFERRED_RETRY_MS);
+  }, retryMs);
 }
 
 /**
@@ -91,9 +118,10 @@ async function triggerPoll(): Promise<void> {
   } catch (err) {
     if (isBackgroundRuntimeDeferredError(err)) {
       addDebugEvent("change", `[RSS] poll deferred: ${err.reason}`);
-      scheduleDeferredRetry();
+      scheduleDeferredRetry(err.reason);
       return;
     }
+    clearDeferredRetry();
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[RssPoller] Error during poll:", err);
     addDebugEvent("error", `[RSS] poller crashed: ${msg}`);

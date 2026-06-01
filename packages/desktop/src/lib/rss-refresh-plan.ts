@@ -15,6 +15,14 @@ function lastFetchedAt(feed: RssFeed): number {
     : 0;
 }
 
+function isRetryWindowOpen(feed: RssFeed, now: number): boolean {
+  return (
+    typeof feed.nextFetchAfter !== "number" ||
+    !Number.isFinite(feed.nextFetchAfter) ||
+    feed.nextFetchAfter <= now
+  );
+}
+
 function compareFeedsForRefresh(left: RssFeed, right: RssFeed): number {
   return (
     lastFetchedAt(left) - lastFetchedAt(right) ||
@@ -30,13 +38,14 @@ export function selectRssFeedsForRefresh(
   const enabled = feeds.filter((feed) => feed.enabled);
   const maxFeeds = options.maxFeeds ?? enabled.length;
   if (maxFeeds <= 0) return [];
+  const now = options.now ?? Date.now();
+  const eligible = enabled.filter((feed) => isRetryWindowOpen(feed, now));
 
   if (options.staleAfterMs === undefined) {
-    return enabled.slice().sort(compareFeedsForRefresh).slice(0, maxFeeds);
+    return eligible.slice().sort(compareFeedsForRefresh).slice(0, maxFeeds);
   }
 
-  const now = options.now ?? Date.now();
-  const due = enabled.filter((feed) => {
+  const due = eligible.filter((feed) => {
     const fetchedAt = lastFetchedAt(feed);
     return fetchedAt === 0 || now - fetchedAt >= options.staleAfterMs!;
   });

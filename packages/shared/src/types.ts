@@ -652,6 +652,18 @@ export interface RssFeed {
   /** Last successful fetch timestamp */
   lastFetched?: number;
 
+  /** Last fetch attempt timestamp, including failed attempts */
+  lastFetchAttemptedAt?: number;
+
+  /** Earliest timestamp for the next scheduled retry after a failed fetch */
+  nextFetchAfter?: number;
+
+  /** Consecutive fetch failure count used to pace scheduled retries */
+  consecutiveFailures?: number;
+
+  /** Last fetch error, used for diagnostics only */
+  lastFetchError?: string;
+
   /** ETag for conditional GET */
   etag?: string;
 
