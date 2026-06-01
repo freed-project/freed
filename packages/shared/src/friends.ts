@@ -6,6 +6,7 @@
  */
 
 import type { Account, FeedItem, Friend, Person, Platform } from "./types.js";
+import { isValidDiscoveredSocialFeedAuthor } from "./social-account-validity.js";
 
 const DEFAULT_INTERVALS: Record<1 | 2 | 3 | 4 | 5, number | null> = {
   5: 7,
@@ -106,6 +107,7 @@ export function buildDiscoveredAccountsFromItems(
 
   for (const item of items) {
     if (!SOCIAL_PLATFORMS.has(item.platform)) continue;
+    if (!isValidDiscoveredSocialFeedAuthor(item)) continue;
     const key = `${item.platform}:${item.author.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -307,6 +309,7 @@ export const personFromLegacyFriend = (friend: Friend): Person => ({
   reachOutLog: friend.reachOutLog,
   tags: friend.tags,
   notes: friend.notes,
+  sampleDataFingerprint: friend.sampleDataFingerprint,
   createdAt: friend.createdAt,
   updatedAt: friend.updatedAt,
 });
@@ -322,6 +325,7 @@ export function accountsFromLegacyFriend(friend: Friend): Account[] {
     displayName: source.displayName,
     avatarUrl: source.avatarUrl,
     profileUrl: source.profileUrl,
+    sampleDataFingerprint: friend.sampleDataFingerprint,
     firstSeenAt: friend.createdAt,
     lastSeenAt: friend.updatedAt,
     discoveredFrom: "captured_item",
@@ -353,6 +357,7 @@ export function accountsFromLegacyFriend(friend: Friend): Account[] {
     phone: friend.contact.phone,
     address: friend.contact.address,
     importedAt: friend.contact.importedAt,
+    sampleDataFingerprint: friend.sampleDataFingerprint,
     firstSeenAt: friend.contact.importedAt,
     lastSeenAt: friend.updatedAt,
     discoveredFrom: "contact_import",

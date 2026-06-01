@@ -37,12 +37,16 @@ import {
 const FETCH_TIMEOUT_MS = 30_000;
 const AI_SUMMARY_TIMEOUT_MS = 60_000;
 const AI_SUMMARY_TIMEOUT_MESSAGE = "ai_summarize TIMEOUT";
+const MAX_BACKGROUND_HTML_BYTES = 2 * 1024 * 1024;
 const BASE_DELAY_MIN_MS = 2_500;
 const BASE_DELAY_MAX_MS = 7_500;
 const MAX_BACKOFF_LEVEL = 5;
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const FAILED_RETRY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const MAX_FAILED_TRACKED = 2_000;
+const RESPONSE_TOO_LARGE_PREFIX = "response_too_large";
+const RECENT_INPUT_IDLE_MS = 10_000;
+const UI_DEFER_DELAY_MS = 15_000;
 
 export interface FetcherStatus {
   pending: number;
@@ -72,6 +76,8 @@ let lastScannedDocItemCount: number | null = null;
 let activeStartedAt: number | null = null;
 let nextDelayMs: number | undefined;
 let backoffLevel = 0;
+let lastUserInteractionAt = 0;
+let removeUserInteractionListeners: (() => void) | null = null;
 
 // Status subscribers
 type StatusSubscriber = (status: FetcherStatus) => void;
@@ -207,7 +213,44 @@ function maybeScanVisibleItems(items: FeedItem[], docItemCount: number): void {
   enqueue(items);
 }
 
-type ProcessOutcome = "success" | "backoff" | "deferred" | "idle";
+type ProcessOutcome = "success" | "skipped" | "backoff" | "deferred" | "idle";
+
+function isInteractiveUiOpen(): boolean {
+  if (typeof document === "undefined") return false;
+  return Boolean(
+    document.querySelector(".theme-settings-shell") ||
+      document.querySelector(".theme-dialog-shell") ||
+      document.querySelector('[role="dialog"]'),
+  );
+}
+
+function recentUserInteractionAgeMs(now = Date.now()): number {
+  if (!lastUserInteractionAt) return Number.POSITIVE_INFINITY;
+  return now - lastUserInteractionAt;
+}
+
+function getUiDeferReason(now = Date.now()): string | null {
+  if (isInteractiveUiOpen()) return "interactive_ui_open";
+  const inputAgeMs = recentUserInteractionAgeMs(now);
+  if (inputAgeMs < RECENT_INPUT_IDLE_MS) {
+    return `recent_user_input:${Math.max(0, Math.round(inputAgeMs)).toLocaleString()}`;
+  }
+  return null;
+}
+
+function startUserInteractionTracking(): void {
+  if (removeUserInteractionListeners || typeof window === "undefined") return;
+  const markInput = () => {
+    lastUserInteractionAt = Date.now();
+  };
+  window.addEventListener("pointerdown", markInput, { passive: true });
+  window.addEventListener("keydown", markInput);
+  removeUserInteractionListeners = () => {
+    window.removeEventListener("pointerdown", markInput);
+    window.removeEventListener("keydown", markInput);
+    removeUserInteractionListeners = null;
+  };
+}
 
 function randomDelayForBackoff(level: number): number {
   const multiplier = 2 ** Math.min(level, MAX_BACKOFF_LEVEL);
@@ -254,6 +297,10 @@ function isAiTimeoutError(error: unknown): boolean {
   return error instanceof Error && error.message === AI_SUMMARY_TIMEOUT_MESSAGE;
 }
 
+function isResponseTooLargeError(message: string): boolean {
+  return message.startsWith(RESPONSE_TOO_LARGE_PREFIX);
+}
+
 function scheduleWorker(delayMs: number): void {
   if (!running || workerTimer !== null) return;
   nextDelayMs = delayMs;
@@ -269,6 +316,14 @@ async function runWorkerOnce(): Promise<void> {
   if (!running || activeStartedAt !== null) return;
   if (queue.length === 0) {
     notifyStatus();
+    return;
+  }
+
+  const uiDeferReason = getUiDeferReason();
+  if (uiDeferReason) {
+    log.info(`[content-fetcher] deferred by UI reason=${uiDeferReason}`);
+    notifyStatus();
+    scheduleWorker(UI_DEFER_DELAY_MS);
     return;
   }
 
@@ -325,7 +380,7 @@ async function processNext(): Promise<ProcessOutcome> {
     // Race against a 30s timeout so a stalled network request on a sleeping
     // machine can't freeze the interval forever.
     const html = await Promise.race([
-      invoke<string>("fetch_url", { url: entry.url }),
+      invoke<string>("fetch_url", { url: entry.url, maxBytes: MAX_BACKGROUND_HTML_BYTES }),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("fetch_url TIMEOUT")), FETCH_TIMEOUT_MS),
       ),
@@ -403,6 +458,15 @@ async function processNext(): Promise<ProcessOutcome> {
       // Re-enqueue so the item is retried next cycle rather than permanently failed.
       queue.push(entry);
       outcome = "backoff";
+    } else if (isResponseTooLargeError(msg)) {
+      log.warn(
+        `[content-fetcher] skipped oversized article url=${entry.url} ` +
+          `limit_bytes=${MAX_BACKGROUND_HTML_BYTES.toLocaleString()} err=${msg}`,
+      );
+      failed.set(entry.globalId, Date.now());
+      pruneFailed();
+      addDebugEvent("error", `[Fetcher] skipped oversized article: ${entry.url}`);
+      outcome = "skipped";
     } else {
       log.warn(`[content-fetcher] fetch failed url=${entry.url} err=${msg}`);
       failed.set(entry.globalId, Date.now());
@@ -443,6 +507,7 @@ export function start(): void {
   });
 
   log.info("[content-fetcher] started");
+  startUserInteractionTracking();
 
   scheduleWorker(0);
 
@@ -480,6 +545,9 @@ export function stop(): void {
     unsubscribeDoc();
     unsubscribeDoc = null;
   }
+
+  removeUserInteractionListeners?.();
+  lastUserInteractionAt = 0;
 
   log.info("[content-fetcher] stopped");
 }

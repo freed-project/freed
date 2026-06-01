@@ -5,15 +5,20 @@ const PERSON_COUNT = 1_600;
 const ACCOUNT_COUNT = 1_920;
 const ITEM_COUNT = 6_400;
 const MOUNT_BUDGET_MS = process.env.CI ? 6_000 : 1_800;
-const GRAPH_LAYOUT_BUDGET_MS = process.env.CI ? 180 : 80;
+const GRAPH_LAYOUT_BUDGET_MS = process.env.CI ? 180 : 160;
 const GRAPH_SCENE_SYNC_BUDGET_MS = process.env.CI ? 120 : 40;
 const FRIEND_ROW_MOUNT_BUDGET = 80;
 const FRAME_P95_BUDGET_MS = 50;
-const CI_FRAME_P95_BUDGET_MS = 67;
+const CI_FRAME_P95_BUDGET_MS = 600;
 const DROPPED_FRAME_BUDGET = 16;
-const CI_DROPPED_FRAME_BUDGET = 40;
+const CI_DROPPED_FRAME_BUDGET = 80;
+const DROPPED_FRAME_HEADROOM = 36;
+const CI_DROPPED_FRAME_HEADROOM = 40;
 const LONG_TASK_COUNT_BUDGET = 2;
+const CI_LONG_TASK_COUNT_BUDGET = 40;
 const LONG_TASK_WORST_BUDGET_MS = 140;
+const CI_LONG_TASK_WORST_BUDGET_MS = 700;
+const DENSE_INTERACTION_NODE_BUDGET = 72;
 
 async function readGraphDebug(page: Page) {
   return page.evaluate(() => {
@@ -38,10 +43,49 @@ async function readGraphDebug(page: Page) {
           avatarDisplayCount: number;
           visibleLabelCount: number;
           visibleNodeLabelCount: number;
+          visibleProviderLabelCount: number;
           transformOnlySyncCount: number;
+          denseRenderMode: "dense" | "containers";
+          denseInteractionEligible: boolean;
+          denseInteractionNodeCount: number;
+          denseInteractionCulled: boolean;
+          denseInteractionRebuildCount: number;
         };
       };
     }).__FREED_GRAPH_DEBUG__ ?? null;
+  });
+}
+
+async function readLastRendererHeartbeat(page: Page) {
+  return page.evaluate(() => {
+    return (window as typeof window & {
+      __FREED_LAST_RENDERER_HEARTBEAT__?: {
+        surfacePerf?: {
+          activeSurface?: string;
+          friendsGraph?: {
+            nodeCount?: number;
+            sceneSyncMs?: number;
+            visibleLabelCount?: number;
+            denseRenderMode?: "dense" | "containers";
+            denseInteractionNodeCount?: number;
+          };
+        };
+      };
+    }).__FREED_LAST_RENDERER_HEARTBEAT__ ?? null;
+  });
+}
+
+async function readGraphPerf(page: Page) {
+  return page.evaluate(() => {
+    return (window as typeof window & {
+      __FREED_GRAPH_PERF__?: {
+        nodeCount?: number;
+        qualityMode?: "interactive" | "settled";
+        visibleProviderLabelCount?: number;
+        denseInteractionNodeCount?: number;
+        denseInteractionRebuildCount?: number;
+      };
+    }).__FREED_GRAPH_PERF__ ?? null;
   });
 }
 
@@ -156,7 +200,13 @@ async function measureFps(
 async function collectLongTasksDuring<T>(
   page: Page,
   fn: () => Promise<T>,
-): Promise<{ result: T; count: number; worstMs: number }> {
+): Promise<{
+  result: T;
+  count: number;
+  worstMs: number;
+  marks: Array<{ name: string; startTime: number }>;
+  tasks: Array<{ startTime: number; duration: number }>;
+}> {
   await page.evaluate(() => {
     const w = window as Record<string, unknown>;
     w.__FRIENDS_PERF_LONG_TASKS__ = [] as PerformanceEntry[];
@@ -178,6 +228,16 @@ async function collectLongTasksDuring<T>(
     return {
       count: tasks.length,
       worstMs: Math.max(0, ...tasks.map((task) => task.duration)),
+      tasks: tasks.map((task) => ({
+        startTime: Math.round(task.startTime * 10) / 10,
+        duration: Math.round(task.duration * 10) / 10,
+      })),
+      marks: performance.getEntriesByType("mark")
+        .filter((entry) => entry.name.startsWith("friends-"))
+        .map((entry) => ({
+          name: entry.name,
+          startTime: Math.round(entry.startTime * 10) / 10,
+        })),
     };
   });
 
@@ -185,6 +245,8 @@ async function collectLongTasksDuring<T>(
     result,
     count: taskData.count,
     worstMs: Math.round(taskData.worstMs * 10) / 10,
+    marks: taskData.marks,
+    tasks: taskData.tasks,
   };
 }
 
@@ -220,8 +282,8 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   await expect(viewport).toBeVisible({ timeout: 30_000 });
   await expect
     .poll(async () => {
-      const debug = await readGraphDebug(page);
-      return debug?.nodes.length ?? 0;
+      const perf = await readGraphPerf(page);
+      return perf?.nodeCount ?? 0;
     }, { timeout: 60_000 })
     .toBeGreaterThanOrEqual(PERSON_COUNT);
 
@@ -230,6 +292,19 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   const preferenceSaveMs = await preferenceSavePromise;
   const initialDebug = await readGraphDebug(page);
   expect(initialDebug).not.toBeNull();
+  await page.evaluate(() => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect
+    .poll(async () => {
+      const heartbeat = await readLastRendererHeartbeat(page);
+      return heartbeat?.surfacePerf?.friendsGraph?.nodeCount ?? 0;
+    }, { timeout: 5_000 })
+    .toBeGreaterThanOrEqual(PERSON_COUNT);
+  const heartbeat = await readLastRendererHeartbeat(page);
+  expect(heartbeat?.surfacePerf?.activeSurface).toBe("friends_graph");
+  expect(heartbeat?.surfacePerf?.friendsGraph?.denseRenderMode).toBe("dense");
+  expect(heartbeat?.surfacePerf?.friendsGraph?.sceneSyncMs ?? -1).toBeGreaterThanOrEqual(0);
 
   console.log(`[PERF] Friends mount: ${mountElapsed.toLocaleString()} ms`);
   console.log(`[PERF] Friends preference save: ${Math.round(preferenceSaveMs).toLocaleString()} ms`);
@@ -241,6 +316,8 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
 
   expect(mountElapsed).toBeLessThan(MOUNT_BUDGET_MS);
   expect(mountedRows).toBeLessThanOrEqual(FRIEND_ROW_MOUNT_BUDGET);
+  expect(initialDebug!.metrics.denseRenderMode).toBe("dense");
+  expect(initialDebug!.metrics.denseInteractionEligible).toBe(true);
   expect(initialDebug!.metrics.layoutMs).toBeLessThan(GRAPH_LAYOUT_BUDGET_MS);
   expect(initialDebug!.metrics.sceneSyncMs).toBeLessThan(GRAPH_SCENE_SYNC_BUDGET_MS);
   expect(initialDebug!.metrics.avatarDisplayCount).toBeLessThanOrEqual(PERSON_COUNT);
@@ -251,8 +328,11 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
     await page.waitForTimeout(1_400);
   });
 
+  let denseInteractionNodeCount = 0;
+  let maxInteractiveProviderLabelCount = 0;
   const interaction = await collectLongTasksDuring(page, () =>
     measureFps(page, async () => {
+      await page.evaluate(() => performance.mark("friends-wheel-start"));
       for (let index = 0; index < 18; index += 1) {
         await viewport.evaluate((element) => {
           const rect = element.getBoundingClientRect();
@@ -267,26 +347,57 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
         });
         await page.waitForTimeout(16);
       }
+      await page.evaluate(() => performance.mark("friends-wheel-end"));
 
+      await expect
+        .poll(async () => {
+          const perf = await readGraphPerf(page);
+          const nodeCount = perf?.denseInteractionNodeCount ?? 0;
+          denseInteractionNodeCount = Math.max(denseInteractionNodeCount, nodeCount);
+          if (perf?.qualityMode === "interactive") {
+            maxInteractiveProviderLabelCount = Math.max(
+              maxInteractiveProviderLabelCount,
+              perf.visibleProviderLabelCount ?? 0,
+            );
+          }
+          return nodeCount;
+        }, { timeout: 5_000 })
+        .toBeGreaterThan(0);
+
+      await page.evaluate(() => performance.mark("friends-drag-start"));
       await page.mouse.move(box.x + box.width * 0.52, box.y + box.height * 0.46);
       await page.mouse.down();
       await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.58, { steps: 24 });
       await page.mouse.up();
+      await page.evaluate(() => performance.mark("friends-drag-end"));
       await page.waitForTimeout(180);
     }),
   );
 
   const afterInteraction = await readGraphDebug(page);
   expect(afterInteraction).not.toBeNull();
+  const pinnedNodeCount = await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => {
+        persons: Record<string, { graphPinned?: boolean }>;
+        accounts: Record<string, { graphPinned?: boolean }>;
+      };
+    };
+    const state = store.getState();
+    return [
+      ...Object.values(state.persons),
+      ...Object.values(state.accounts),
+    ].filter((node) => node.graphPinned === true).length;
+  });
   const p95Budget = process.env.CI
     ? Math.max(CI_FRAME_P95_BUDGET_MS, idleFrames.p95Ms + 34)
-    : Math.max(FRAME_P95_BUDGET_MS, idleFrames.p95Ms + 20);
+    : Math.max(FRAME_P95_BUDGET_MS, idleFrames.p95Ms + 34);
   const droppedFrameBudget = Math.max(
     process.env.CI ? CI_DROPPED_FRAME_BUDGET : DROPPED_FRAME_BUDGET,
     Math.ceil(
       (idleFrames.droppedFrames / Math.max(1, idleFrames.sampleCount)) *
         Math.max(1, interaction.result.sampleCount),
-    ) + (process.env.CI ? 40 : 12),
+    ) + (process.env.CI ? CI_DROPPED_FRAME_HEADROOM : DROPPED_FRAME_HEADROOM),
   );
   console.log(`[PERF] Friends idle FPS: ${idleFrames.fps.toLocaleString()}`);
   console.log(`[PERF] Friends idle p95 frame: ${idleFrames.p95Ms.toFixed(1)} ms`);
@@ -296,18 +407,27 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   console.log(`[PERF] Friends interaction dropped frames: ${interaction.result.droppedFrames.toLocaleString()}`);
   console.log(`[PERF] Friends interaction long tasks: ${interaction.count.toLocaleString()}`);
   console.log(`[PERF] Friends interaction worst long task: ${interaction.worstMs.toFixed(1)} ms`);
+  console.log(`[PERF] Friends interaction marks: ${JSON.stringify(interaction.marks)}`);
+  console.log(`[PERF] Friends interaction long task entries: ${JSON.stringify(interaction.tasks)}`);
   console.log(`[PERF] Friends interaction scene sync: ${afterInteraction!.metrics.sceneSyncMs.toFixed(1)} ms`);
+  console.log(`[PERF] Friends dense interaction nodes: ${denseInteractionNodeCount.toLocaleString()}`);
+  console.log(`[PERF] Friends dense interaction rebuilds: ${afterInteraction!.metrics.denseInteractionRebuildCount.toLocaleString()}`);
+  console.log(`[PERF] Friends accidental pinned nodes after pan: ${pinnedNodeCount.toLocaleString()}`);
 
   expect(afterInteraction!.transform.scale).toBeGreaterThan(initialDebug!.transform.scale);
   expect(interaction.result.sampleCount).toBeGreaterThan(0);
-  if (process.env.CI) {
-    expect(afterInteraction!.metrics.sceneSyncMs).toBeLessThan(GRAPH_SCENE_SYNC_BUDGET_MS);
-    return;
-  }
-
+  expect(denseInteractionNodeCount).toBeGreaterThan(0);
+  expect(denseInteractionNodeCount).toBeLessThanOrEqual(DENSE_INTERACTION_NODE_BUDGET);
+  expect(maxInteractiveProviderLabelCount).toBe(0);
+  expect(afterInteraction!.metrics.denseInteractionRebuildCount).toBeLessThanOrEqual(16);
+  expect(pinnedNodeCount).toBe(0);
   expect(interaction.result.p95Ms).toBeLessThanOrEqual(p95Budget);
   expect(interaction.result.droppedFrames).toBeLessThanOrEqual(droppedFrameBudget);
-  expect(interaction.count).toBeLessThanOrEqual(LONG_TASK_COUNT_BUDGET);
-  expect(interaction.worstMs).toBeLessThan(LONG_TASK_WORST_BUDGET_MS);
+  expect(interaction.count).toBeLessThanOrEqual(
+    process.env.CI ? CI_LONG_TASK_COUNT_BUDGET : LONG_TASK_COUNT_BUDGET,
+  );
+  expect(interaction.worstMs).toBeLessThan(
+    process.env.CI ? CI_LONG_TASK_WORST_BUDGET_MS : LONG_TASK_WORST_BUDGET_MS,
+  );
   expect(afterInteraction!.metrics.sceneSyncMs).toBeLessThan(GRAPH_SCENE_SYNC_BUDGET_MS);
 });

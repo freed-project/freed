@@ -5,6 +5,7 @@
  */
 
 import type { FeedItem, Author, Content, Engagement, Location } from "@freed/shared";
+import { isValidFacebookAuthorIdentity } from "@freed/shared";
 import type { RawFbPost } from "./types.js";
 
 // =============================================================================
@@ -123,6 +124,12 @@ function buildFbGroup(post: RawFbPost): FeedItem["fbGroup"] | undefined {
  */
 export function fbPostToFeedItem(post: RawFbPost): FeedItem | null {
   if (!post.id && !post.url) return null;
+  if (!isValidFacebookAuthorIdentity({
+    displayName: post.authorName,
+    profileUrl: post.authorProfileUrl,
+  })) {
+    return null;
+  }
 
   const globalId = `fb:${post.id ?? encodeURIComponent(post.url ?? "")}`;
   const publishedAt = extractTimestamp(post);

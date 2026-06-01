@@ -29,6 +29,11 @@ import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
 import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-monitor";
 import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
 import { socialProviderCopy } from "./social-provider-copy";
+import { runBackgroundJob } from "./background-runtime-coordinator";
+import {
+  facebookGroupsFromFeedItems,
+  mergeFacebookGroupRecords,
+} from "./facebook-groups";
 
 // =============================================================================
 // Rate Limiting
@@ -68,17 +73,6 @@ export interface FbSyncResult {
   diag: FbSyncDiag;
 }
 
-function mergeKnownGroups(
-  existingGroups: Record<string, FbGroupInfo>,
-  groups: FbGroupInfo[],
-): Record<string, FbGroupInfo> {
-  const nextGroups = { ...existingGroups };
-  for (const group of groups) {
-    nextGroups[group.id] = group;
-  }
-  return nextGroups;
-}
-
 function filterExcludedGroups(
   items: FeedItem[],
   excludedGroupIds: Record<string, true>,
@@ -87,6 +81,44 @@ function filterExcludedGroups(
     const groupId = item.fbGroup?.id;
     return !groupId || !excludedGroupIds[groupId];
   });
+}
+
+async function updateKnownFacebookGroups(
+  groups: readonly FbGroupInfo[],
+): Promise<ReturnType<typeof mergeFacebookGroupRecords>> {
+  const store = useAppStore.getState();
+  const merge = mergeFacebookGroupRecords(
+    store.preferences.fbCapture?.knownGroups ?? {},
+    groups,
+  );
+
+  if (merge.changedCount > 0) {
+    await store.updatePreferences({
+      fbCapture: {
+        knownGroups: merge.knownGroups,
+        excludedGroupIds: store.preferences.fbCapture?.excludedGroupIds ?? {},
+      },
+    });
+  }
+
+  return merge;
+}
+
+export async function repairStoredFacebookGroupNamesFromItems(
+  items: readonly FeedItem[] = useAppStore.getState().items,
+): Promise<number> {
+  const groups = facebookGroupsFromFeedItems(items);
+  if (groups.length === 0) return 0;
+
+  const merge = await updateKnownFacebookGroups(groups);
+  if (merge.repairedNameCount > 0) {
+    addDebugEvent(
+      "change",
+      `[FB] repaired ${merge.repairedNameCount.toLocaleString()} stored group name${merge.repairedNameCount === 1 ? "" : "s"} from captured posts`,
+    );
+  }
+
+  return merge.repairedNameCount;
 }
 
 // =============================================================================
@@ -138,12 +170,30 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
 
     // Listen for every extraction pass. The native scraper emits multiple
     // batches while it scrolls through the virtualized feed.
-    unlisten = await listen<{ posts: RawFbPost[]; error?: string; extractedAt: number; url: string; strategy?: string; candidateCount?: number }>(
+    unlisten = await listen<{
+      posts: RawFbPost[];
+      error?: string;
+      extractedAt: number;
+      url: string;
+      strategy?: string;
+      candidateCount?: number;
+      rejected?: {
+        suggestedOrSponsored?: number;
+        missingAuthor?: number;
+        missingContent?: number;
+      };
+    }>(
       "fb-feed-data",
       (event) => {
-        const { posts, error, strategy, candidateCount } = event.payload;
+        const { posts, error, strategy, candidateCount, rejected } = event.payload;
 
-        addDebugEvent("change", `[FB] extraction: strategy=${strategy ?? "?"}, candidates=${candidateCount ?? "?"}, posts=${posts.length}`);
+        const rejectionSummary = rejected
+          ? `, rejected={sponsored:${(rejected.suggestedOrSponsored ?? 0).toLocaleString()}, author:${(rejected.missingAuthor ?? 0).toLocaleString()}, content:${(rejected.missingContent ?? 0).toLocaleString()}}`
+          : "";
+        addDebugEvent(
+          "change",
+          `[FB] extraction: strategy=${strategy ?? "?"}, candidates=${candidateCount ?? "?"}, posts=${posts.length.toLocaleString()}${rejectionSummary}`,
+        );
 
         if (error) {
           addDebugEvent("error", `[FB] extraction error: ${error}`);
@@ -162,7 +212,12 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
       },
     );
 
-    await invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() });
+    await runBackgroundJob({
+      kind: "social-scrape",
+      source: "facebook:feed",
+      timeoutMs: 600_000,
+      run: () => invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() }),
+    });
     await new Promise<void>((resolve) => setTimeout(resolve, 500));
   } catch (err) {
     if (!diag.errorStage) {
@@ -188,9 +243,20 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
   try {
     const normalized = fbPostsToFeedItems(allRawPosts);
     diag.itemsNormalized = normalized.length;
+    if (normalized.length === 0) {
+      diag.errorStage = "normalize";
+      diag.errorMessage =
+        `Extracted ${allRawPosts.length.toLocaleString()} Facebook post` +
+        `${allRawPosts.length === 1 ? "" : "s"}, but none passed normalization.`;
+      return { items: [], diag };
+    }
 
     const items = deduplicateFeedItems(normalized);
     diag.itemsDeduplicated = items.length;
+    addDebugEvent(
+      "change",
+      `[FB] normalization: raw=${allRawPosts.length.toLocaleString()}, normalized=${normalized.length.toLocaleString()}, deduplicated=${items.length.toLocaleString()}`,
+    );
 
     return { items, diag };
   } catch (err) {
@@ -201,7 +267,6 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
 }
 
 export async function captureFbGroups(): Promise<FbGroupInfo[]> {
-  const store = useAppStore.getState();
   const memoryPrep = await prepareSocialScrapeMemory("facebook", "groups scrape");
   if (!memoryPrep.mayProceed) {
     addDebugEvent(
@@ -217,21 +282,11 @@ export async function captureFbGroups(): Promise<FbGroupInfo[]> {
 
   if (groups.length === 0) return groups;
 
-  const nextKnownGroups = mergeKnownGroups(
-    store.preferences.fbCapture?.knownGroups ?? {},
-    groups,
-  );
-
-  await store.updatePreferences({
-    fbCapture: {
-      knownGroups: nextKnownGroups,
-      excludedGroupIds: store.preferences.fbCapture?.excludedGroupIds ?? {},
-    },
-  });
+  const merge = await updateKnownFacebookGroups(groups);
 
   addDebugEvent(
     "change",
-    `[FB] groups refreshed: ${groups.length.toLocaleString()} group${groups.length === 1 ? "" : "s"}`,
+    `[FB] groups refreshed: ${groups.length.toLocaleString()} group${groups.length === 1 ? "" : "s"}${merge.repairedNameCount > 0 ? `, repaired ${merge.repairedNameCount.toLocaleString()} stored name${merge.repairedNameCount === 1 ? "" : "s"}` : ""}`,
   );
 
   return groups;
@@ -298,25 +353,18 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
 
   try {
     addDebugEvent("change", "[FB] sync started");
-    try {
-      await captureFbGroups();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to refresh Facebook groups";
-      addDebugEvent("error", `[FB] group refresh failed: ${message}`);
-    }
-
     const result = await fetchFbFeed();
     recordScrape();
 
     if (result.diag.errorStage) {
       const detail = `[FB] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
-      store.setError(result.diag.errorMessage ?? result.diag.errorStage);
       addDebugEvent("error", detail);
-      // Persist error so the sync dropdown can show "Last sync failed"
-      const errState = { ...useAppStore.getState().fbAuth, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed" };
-      store.setFbAuth(errState);
-      storeFbAuthState(errState);
+      if (result.diag.errorStage !== "memory_pressure") {
+        store.setError(result.diag.errorMessage ?? result.diag.errorStage);
+        const errState = { ...useAppStore.getState().fbAuth, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed" };
+        store.setFbAuth(errState);
+        storeFbAuthState(errState);
+      }
       await recordProviderHealthEvent({
         provider: "facebook",
         outcome: "error",
@@ -331,14 +379,19 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
     }
 
     if (result.items.length > 0) {
+      await repairStoredFacebookGroupNamesFromItems(result.items);
       const excludedGroupIds =
         useAppStore.getState().preferences.fbCapture?.excludedGroupIds ?? {};
       const filteredItems = filterExcludedGroups(result.items, excludedGroupIds);
+      const beforeState = useAppStore.getState();
+      const beforeFacebookItems = beforeState.items.filter((i) => i.platform === "facebook");
+      const beforeFacebookIds = new Set(beforeFacebookItems.map((item) => item.globalId));
+      const existingCandidateCount = filteredItems.filter((item) => beforeFacebookIds.has(item.globalId)).length;
       addDebugEvent(
         "change",
-        `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library`,
+        `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library (${existingCandidateCount.toLocaleString()} already present)`,
       );
-      const before = store.items.filter((i) => i.platform === "facebook").length;
+      const before = beforeFacebookItems.length;
       await store.addItems(filteredItems);
       const after = useAppStore
         .getState()

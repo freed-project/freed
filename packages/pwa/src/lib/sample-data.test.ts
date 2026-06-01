@@ -6,8 +6,11 @@ import {
   SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
   SAMPLE_STRESS_FRIEND_COUNT,
   SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT,
+  accountsFromLegacyFriend,
   friendForAuthor,
   generateSampleLibraryData,
+  hasSampleDataFingerprint,
+  personFromLegacyFriend,
 } from "@freed/shared";
 
 describe("sample data batches", () => {
@@ -47,6 +50,28 @@ describe("sample data batches", () => {
     );
 
     expect(linkedItems.length).toBeGreaterThan(0);
+  });
+
+  it("fingerprints every generated sample record", () => {
+    const batch = generateSampleLibraryData({
+      batchId: "batch-fingerprint",
+      generatedAt: 123,
+      seed: 5,
+    });
+    const people = batch.friends.map(personFromLegacyFriend);
+    const accounts = batch.friends.flatMap(accountsFromLegacyFriend);
+
+    expect(batch.feeds.every(hasSampleDataFingerprint)).toBe(true);
+    expect(batch.items.every(hasSampleDataFingerprint)).toBe(true);
+    expect(batch.friends.every(hasSampleDataFingerprint)).toBe(true);
+    expect(people.every(hasSampleDataFingerprint)).toBe(true);
+    expect(accounts.every(hasSampleDataFingerprint)).toBe(true);
+    expect(batch.items[0]?.sampleDataFingerprint).toEqual({
+      marker: "freed.sample-data.v1",
+      batchId: "batch-fingerprint",
+      generatedAt: 123,
+      generatorVersion: 1,
+    });
   });
 
   it("normalizes negative seeds when generating sample friends", () => {

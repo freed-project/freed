@@ -26,5 +26,6 @@ export { BugReportBoundary } from "./components/BugReportBoundary.js";
 export { FatalErrorScreen } from "./components/FatalErrorScreen.js";
 export { LegalGate } from "./components/legal/LegalGate.js";
 export { ProviderRiskDialog } from "./components/legal/ProviderRiskDialog.js";
+export { StoryWallView } from "./components/story-wall/index.js";
 export { useSettingsStore } from "./lib/settings-store.js";
 export * from "./lib/bug-report.js";

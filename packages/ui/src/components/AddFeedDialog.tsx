@@ -12,9 +12,11 @@ export function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
 
   const handleClose = () => onClose();
 
+  if (!addRssFeed) return null;
+
   return (
     <BottomSheet open={open} onClose={handleClose} title="Add RSS Feed" maxWidth="sm:max-w-lg" headerDivider={false}>
-      {addRssFeed && <AddUrlTab onClose={handleClose} />}
+      <AddUrlTab onClose={handleClose} />
     </BottomSheet>
   );
 }

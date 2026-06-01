@@ -47,6 +47,7 @@ import {
   LinkedInIcon,
   MapPinIcon,
   RssIcon,
+  StoryWallIcon,
   TrashIcon,
   UsersIcon,
   XIcon,
@@ -158,6 +159,9 @@ function getCommandPaletteIcon(action: CommandPaletteAction): ReactNode {
   }
   if (action.id === "go-settings-googleContacts") {
     return <GoogleContactsIcon className={iconClass} />;
+  }
+  if (action.id === "go-settings-storyWall") {
+    return <StoryWallIcon className={iconClass} />;
   }
   if (action.id === "go-settings-danger" || action.id.startsWith("danger-")) {
     return <TrashIcon className={iconClass} />;
@@ -273,16 +277,20 @@ export function SearchJumpField({
   mobileSidebar = false,
   variant = "inline",
   inlineMarginBottomPx,
+  onInputValueChange,
 }: {
   compactSidebar?: boolean;
   narrowSidebar?: boolean;
   mobileSidebar?: boolean;
   variant?: "inline" | "trigger";
   inlineMarginBottomPx?: number;
+  onInputValueChange?: (value: string) => void;
 }) {
   const platform = usePlatform();
   const {
     addRssFeed,
+    importOPMLFeeds,
+    exportFeedsAsOPML,
     saveUrl,
     importMarkdown,
     exportMarkdown,
@@ -297,6 +305,9 @@ export function SearchJumpField({
     InstagramSettingsContent,
     LinkedInSettingsContent,
     GoogleContactsSettingsContent,
+    googleContacts,
+    secureStorage,
+    localAIModels,
   } = platform;
   const searchPaletteRequestId = useCommandSurfaceStore((s) => s.searchPaletteRequestId);
   const openAddFeedDialog = useCommandSurfaceStore((s) => s.openAddFeedDialog);
@@ -388,6 +399,18 @@ export function SearchJumpField({
         }),
     [feeds],
   );
+  const commandFeeds = useMemo(
+    () =>
+      enabledFeeds.map((feed) => {
+        const title = sortLabel(feed.title, feed.url);
+        return {
+          url: feed.url,
+          title,
+          searchText: `${title}\n${feed.url}\nfeed\nrss`.toLocaleLowerCase(),
+        };
+      }),
+    [enabledFeeds],
+  );
   const socialChannels = useMemo(
     () =>
       Object.values(accounts)
@@ -415,7 +438,10 @@ export function SearchJumpField({
   const settingsSections = useMemo(
     () =>
       buildSettingsSectionMetas({
+        hasFeedManagement: !!(addRssFeed || importOPMLFeeds || exportFeedsAsOPML),
         hasGoogleContacts: !!GoogleContactsSettingsContent,
+        hasGoogleContactsManagement: !!googleContacts,
+        hasAISettings: !!(secureStorage || localAIModels),
         hasX: !!XSettingsContent,
         hasFacebook: !!FacebookSettingsContent,
         hasInstagram: !!InstagramSettingsContent,
@@ -431,6 +457,11 @@ export function SearchJumpField({
       XSettingsContent,
       checkForUpdates,
       factoryReset,
+      googleContacts,
+      importOPMLFeeds,
+      localAIModels,
+      secureStorage,
+      exportFeedsAsOPML,
     ],
   );
   const currentSourceId = useMemo<Platform | null>(() => {
@@ -468,10 +499,7 @@ export function SearchJumpField({
           id: (source.id ?? undefined) as Platform | undefined,
           label: source.label,
         })),
-        feeds: enabledFeeds.map((feed) => ({
-          url: feed.url,
-          title: sortLabel(feed.title, feed.url),
-        })),
+        feeds: commandFeeds,
         socialChannels,
         tagFilters,
         currentSourceId,
@@ -594,7 +622,7 @@ export function SearchJumpField({
       checkForUpdates,
       currentSourceId,
       deleteAllArchived,
-      enabledFeeds,
+      commandFeeds,
       factoryReset,
       archiveItems,
       clearQueryForNavigation,
@@ -647,6 +675,10 @@ export function SearchJumpField({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    onInputValueChange?.(inputValue);
+  }, [inputValue, onInputValueChange]);
 
   useEffect(() => {
     debounceRef.current = setTimeout(() => {

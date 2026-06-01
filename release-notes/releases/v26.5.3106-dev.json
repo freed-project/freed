@@ -1,0 +1,70 @@
+{
+  "tag": "v26.5.3106-dev",
+  "version": "26.5.3106-dev",
+  "channel": "dev",
+  "dayKey": "26.5.31",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-31T11:25:23.062Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.3105-dev",
+    "previousPublishedDayTag": "v26.5.3011-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.3105-dev",
+      "v26.5.3106-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.3105-dev",
+      "v26.5.3106-dev"
+    ],
+    "prNumbers": [
+      654,
+      655,
+      656,
+      657
+    ],
+    "commitSubjects": [
+      "perf: adapt social scrape load to memory headroom (#657)",
+      "release: approve v26.5.3105-dev",
+      "release: v26.5.3105-dev",
+      "fix: stabilize reader rail collapse check (#656)",
+      "release: approve v26.5.3104-dev",
+      "release: v26.5.3104-dev",
+      "fix: repair release smoke syntax (#655)",
+      "fix: restore nightly smoke parse (#654)",
+      "release: approve v26.5.3103-dev",
+      "release: v26.5.3103-dev",
+      "fix: settle release regression waits",
+      "release: approve v26.5.3102-dev",
+      "release: v26.5.3102-dev",
+      "fix: stabilize reader rail regression test",
+      "release: approve v26.5.3101-dev",
+      "release: v26.5.3101-dev",
+      "fix: stabilize desktop release regression tests",
+      "release: approve v26.5.3100-dev",
+      "release: v26.5.3100-dev",
+      "perf: reduce desktop sync memory pressure"
+    ]
+  },
+  "release": {
+    "deck": "Facebook and Instagram capture now adapts each background scrape to current Freed Desktop memory headroom, so high-memory sessions reduce work instead of pushing the app into recovery.",
+    "features": [],
+    "fixes": [
+      "Plans each Facebook and Instagram feed scrape after the WebView is open, using the current native memory budget instead of a fixed full-session pass count",
+      "Skips story collection and caps scroll passes when Freed Desktop is near the scrape memory budget",
+      "Records each scrape plan in runtime health diagnostics with provider, pass range, story decision, memory margin, and budget details",
+      "Recycles idle Automerge sync workers after queued document work finishes",
+      "Adds native hidden-window memory samples with pause state, safe mode state, recovery counts, and active background job details",
+      "Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom",
+      "Hardens release regression coverage for compact sidebar transitions, persisted map filters, fast reader-rail collapse, sidebar resize settling, stress graph setup parsing, and compact reader rail collapse checks"
+    ],
+    "followUps": [
+      "Keeps the Phase 7 docs and public roadmap aligned with the new social scrape memory behavior"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.3106-dev\n\nFacebook and Instagram capture now adapts each background scrape to current Freed Desktop memory headroom, so high-memory sessions reduce work instead of pushing the app into recovery.\n\n### Fixes\n\n- Plans each Facebook and Instagram feed scrape after the WebView is open, using the current native memory budget instead of a fixed full-session pass count\n- Skips story collection and caps scroll passes when Freed Desktop is near the scrape memory budget\n- Records each scrape plan in runtime health diagnostics with provider, pass range, story decision, memory margin, and budget details\n- Recycles idle Automerge sync workers after queued document work finishes\n- Adds native hidden-window memory samples with pause state, safe mode state, recovery counts, and active background job details\n- Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom\n- Hardens release regression coverage for compact sidebar transitions, persisted map filters, fast reader-rail collapse, sidebar resize settling, stress graph setup parsing, and compact reader rail collapse checks\n\n### Follow-ups\n\n- Keeps the Phase 7 docs and public roadmap aligned with the new social scrape memory behavior\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

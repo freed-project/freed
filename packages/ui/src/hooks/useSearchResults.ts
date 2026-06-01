@@ -28,7 +28,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import MiniSearch from "minisearch";
-import { filterFeedItems, isFriendAuthoredItem, sortByPriority } from "@freed/shared";
+import { isFriendAuthoredItem, matchesFeedFilter, sortByPriority } from "@freed/shared";
 import type { Account, FeedItem, FilterOptions, Friend, Person } from "@freed/shared";
 
 const SEARCH_PRESERVED_TEXT_LIMIT = 1_200;
@@ -280,13 +280,39 @@ function priorityValue(item: FeedItem): number {
   return item.priority ?? 0;
 }
 
-function ensurePriorityOrder(items: FeedItem[]): FeedItem[] {
-  for (let index = 1; index < items.length; index += 1) {
-    if (priorityValue(items[index]) > priorityValue(items[index - 1])) {
-      return sortByPriority(items);
+function filterBrowseItems(args: {
+  items: FeedItem[];
+  activeFilter: FilterOptions;
+  identityMode: "friends" | "all_content";
+  persons: Record<string, Person>;
+  accounts: Record<string, Account>;
+  friends: Record<string, Friend>;
+}): FeedItem[] {
+  let filtered: FeedItem[] | null = null;
+  let ordered = true;
+  let previousPriority = Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index < args.items.length; index += 1) {
+    const item = args.items[index];
+    const passesIdentity =
+      args.identityMode !== "friends" ||
+      isFriendAuthoredItem(item, args.persons, args.accounts, args.friends);
+    const passesFilter = passesIdentity && matchesFeedFilter(item, args.activeFilter);
+
+    if (!passesFilter) {
+      if (!filtered) filtered = args.items.slice(0, index);
+      continue;
     }
+
+    const priority = priorityValue(item);
+    if (priority > previousPriority) ordered = false;
+    previousPriority = priority;
+
+    filtered?.push(item);
   }
-  return items;
+
+  const result = filtered ?? args.items;
+  return ordered ? result : sortByPriority(result);
 }
 
 function buildEmptyIndex(): MiniSearch<SearchDoc> {
@@ -349,21 +375,22 @@ function computeSearchResults(args: {
     return cached.result;
   }
 
-  const filterIdentityMode = (candidateItems: FeedItem[]): FeedItem[] =>
-    args.identityMode === "friends"
-      ? candidateItems.filter((item) => isFriendAuthoredItem(item, args.persons, args.accounts, args.friends))
-      : candidateItems;
-
   let result: SearchResults;
   if (!args.trimmedQuery) {
-    // Normal feed: apply active filter and preserve the worker-provided priority order.
-    // Older callers that still provide unsorted items get a cheap orderedness check
-    // followed by the old fallback sort only when needed.
-    const filtered = filterFeedItems(filterIdentityMode(args.items), args.activeFilter);
-    const byFeed = args.activeFilter.feedUrl
-      ? filtered.filter((item) => item.rssSource?.feedUrl === args.activeFilter.feedUrl)
-      : filtered;
-    result = { filteredItems: ensurePriorityOrder(byFeed), isSearching: false, resultCount: 0 };
+    // Normal feed: filter and check worker-provided priority order in one pass.
+    // This avoids an extra full-corpus scan during cold load for large libraries.
+    result = {
+      filteredItems: filterBrowseItems({
+        items: args.items,
+        activeFilter: args.activeFilter,
+        identityMode: args.identityMode,
+        persons: args.persons,
+        accounts: args.accounts,
+        friends: args.friends,
+      }),
+      isSearching: false,
+      resultCount: 0,
+    };
   } else if (!args.index || !args.itemById) {
     result = { filteredItems: [], isSearching: true, resultCount: 0 };
   } else {
@@ -376,10 +403,14 @@ function computeSearchResults(args: {
       if (item) matchingItems.push(item);
     }
 
-    const filtered = filterFeedItems(filterIdentityMode(matchingItems), args.activeFilter);
-    const byFeed = args.activeFilter.feedUrl
-      ? filtered.filter((item) => item.rssSource?.feedUrl === args.activeFilter.feedUrl)
-      : filtered;
+    const byFeed = filterBrowseItems({
+      items: matchingItems,
+      activeFilter: args.activeFilter,
+      identityMode: args.identityMode,
+      persons: args.persons,
+      accounts: args.accounts,
+      friends: args.friends,
+    });
 
     result = { filteredItems: byFeed, isSearching: true, resultCount: byFeed.length };
   }

@@ -70,12 +70,17 @@ const LOCATION_PATTERNS: RegExp[] = [
   /🌏\s*([^\n,]{2,60})/u,                               // 🌏 Tokyo
   /(?:^|\s)(?:in|at|from)\s+([A-Z][a-z]+(?: [A-Z][a-z]+)*)/u, // "in Paris"
 ];
+const LOCATION_TEXT_SIGNAL_PATTERN = /[📍🌍🌎🌏]|\b(?:in|at|from)\s+[A-Z]/u;
 
 /**
  * Try to extract a place name from free text.
  * Returns the first match or null.
  */
 export function extractLocationFromText(text: string): string | null {
+  if (!LOCATION_TEXT_SIGNAL_PATTERN.test(text)) {
+    return null;
+  }
+
   for (const pattern of LOCATION_PATTERNS) {
     const m = pattern.exec(text);
     if (m?.[1]) return m[1].trim();
@@ -499,7 +504,7 @@ export function countFriendsWithRecentLocationUpdates(
           item.platform,
           item.author.id,
         );
-    if (friend && (!accounts || friend.relationshipStatus === "friend")) {
+    if (friend?.relationshipStatus === "friend") {
       friendIds.add(friend.id);
     }
   }
@@ -540,12 +545,6 @@ export function resolveMapMode(
 ): MapMode {
   if (!preferredMode) {
     return getDefaultMapMode(friendMarkerCount, allContentMarkerCount);
-  }
-  if (preferredMode === "friends" && friendMarkerCount === 0 && allContentMarkerCount > 0) {
-    return "all_content";
-  }
-  if (preferredMode === "all_content" && allContentMarkerCount === 0 && friendMarkerCount > 0) {
-    return "friends";
   }
   return preferredMode;
 }

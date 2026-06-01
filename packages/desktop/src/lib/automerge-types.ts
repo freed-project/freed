@@ -17,6 +17,7 @@ import type {
   Person,
   ReachOutLog,
   RssFeed,
+  SampleDataClearSummary,
   UserPreferences,
 } from "@freed/shared";
 
@@ -78,6 +79,7 @@ export type WorkerRequest =
   | { reqId: number; type: "ADD_FEED_ITEM"; item: FeedItem }
   | { reqId: number; type: "ADD_FEED_ITEMS"; items: FeedItem[] }
   | { reqId: number; type: "REMOVE_FEED_ITEM"; globalId: string }
+  | { reqId: number; type: "CLEAR_SAMPLE_DATA" }
   | { reqId: number; type: "UPDATE_FEED_ITEM"; globalId: string; updates: Partial<FeedItem> }
   | { reqId: number; type: "ARCHIVE_ALL_READ_UNSAVED"; platform?: string; feedUrl?: string }
   | { reqId: number; type: "UNARCHIVE_SAVED_ITEMS" }
@@ -169,5 +171,7 @@ export type WorkerResponse =
   | { reqId: number; type: "ITEM_PRESERVED_TEXT"; globalId: string; text: string | null }
   /** One-batch content signal backfill summary. */
   | { reqId: number; type: "CONTENT_SIGNAL_BACKFILL_RESULT"; summary: ContentSignalBackfillSummary }
+  /** Clear generated sample data result. */
+  | { reqId: number; type: "SAMPLE_DATA_CLEAR_RESULT"; summary: SampleDataClearSummary }
   /** Progress reporting for BATCH_IMPORT_ITEMS. */
   | { type: "IMPORT_PROGRESS"; chunkIndex: number; totalChunks: number };

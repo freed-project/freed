@@ -12,6 +12,7 @@ import type {
   Friend,
   Person,
   ReachOutLog,
+  SampleDataClearSummary,
   UserPreferences,
   RssFeed,
 } from "./types.js";
@@ -115,6 +116,8 @@ export interface BaseAppState {
   deleteAllArchived: () => Promise<void>;
   /** Permanently remove a single feed item from the library. */
   removeItem: (id: string) => Promise<void>;
+  /** Permanently remove generated sample data that carries the internal fingerprint. */
+  clearSampleData: () => Promise<SampleDataClearSummary>;
   /**
    * Record like intent in Automerge. On the desktop, the outbox processor
    * drains this to the source platform. On the PWA, it syncs to desktop first.
@@ -172,9 +175,11 @@ export interface BaseAppState {
   setSearchQuery: (query: string) => void;
 
   /** The currently active top-level view. */
-  activeView: "feed" | "friends" | "map";
+  activeView: "feed" | "friends" | "map" | "storyWall";
   /** Switch the top-level view. */
-  setActiveView: (view: "feed" | "friends" | "map") => void;
+  setActiveView: (view: "feed" | "friends" | "map" | "storyWall") => void;
+  /** Open the full Map view focused on one person. */
+  openMapForPerson: (personId: string) => void;
   /** Number of unreviewed Google Contacts match suggestions. */
   pendingMatchCount: number;
   /** Update the pending match count (set by useContactSync). */

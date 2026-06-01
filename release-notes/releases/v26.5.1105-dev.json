@@ -1,0 +1,88 @@
+{
+  "tag": "v26.5.1105-dev",
+  "version": "26.5.1105-dev",
+  "channel": "dev",
+  "dayKey": "26.5.11",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-11T17:34:04.166Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.5.1104-dev",
+    "previousPublishedDayTag": "v26.5.1015-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.1100-dev",
+      "v26.5.1101-dev",
+      "v26.5.1102-dev",
+      "v26.5.1104-dev",
+      "v26.5.1105-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.1100-dev",
+      "v26.5.1101-dev",
+      "v26.5.1102-dev",
+      "v26.5.1104-dev",
+      "v26.5.1105-dev"
+    ],
+    "prNumbers": [
+      405,
+      583,
+      584,
+      585,
+      586,
+      587,
+      588,
+      589
+    ],
+    "commitSubjects": [
+      "fix: complete desktop google contacts sync",
+      "feat: add story wall publishing (#405)",
+      "fix: keep dense map focused marker visible (#589)",
+      "release: approve v26.5.1104-dev notes",
+      "release: v26.5.1104-dev",
+      "fix: keep friends graph sync errors recoverable (#588)",
+      "release: approve v26.5.1103-dev notes",
+      "release: v26.5.1103-dev",
+      "fix: report throttled renderer heartbeats clearly (#587)",
+      "release: approve v26.5.1102-dev notes",
+      "release: v26.5.1102-dev",
+      "perf: lighten settings moving chrome (#586)",
+      "release: approve v26.5.1101-dev notes",
+      "release: v26.5.1101-dev",
+      "perf: reduce dense map movement paint (#585)",
+      "release: approve v26.5.1100-dev notes",
+      "release: v26.5.1100-dev",
+      "fix: stabilize friends map handoff (#584)",
+      "release: approve v26.5.1016-dev notes",
+      "release: v26.5.1016-dev",
+      "perf: reduce settings scroll overdraw (#583)"
+    ]
+  },
+  "release": {
+    "deck": "Google sync, Story wall, and recovery fixes land",
+    "features": [
+      "Story wall publishing"
+    ],
+    "fixes": [
+      "Completes Google Contacts sync in Freed Desktop",
+      "Shares native Google OAuth credentials between Drive and Contacts refresh",
+      "Surfaces Google OAuth and People API failure details in Settings instead of generic load errors",
+      "Keeps dense Map focused markers visible during movement",
+      "Keeps Friends graph sync errors recoverable",
+      "Reports throttled renderer heartbeats with clearer context",
+      "Retries the Friends last-seen route commit when the store reaches Map before the full Map surface mounts",
+      "Lightens Settings moving chrome while the dialog is in motion"
+    ],
+    "followUps": [
+      "Continue monitoring Settings scroll and scraper memory pressure under installed dev builds",
+      "Friends navigation recovers from late Map mounting",
+      "Friends navigation and dense Map movement get steadier",
+      "Continue monitoring Friends to Map handoffs and dense Map movement under installed dev builds",
+      "Friends recovery and renderer health reporting improve"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.1105-dev\n\nGoogle sync, Story wall, and recovery fixes land\n\n### Features\n\n- Story wall publishing\n\n### Fixes\n\n- Completes Google Contacts sync in Freed Desktop\n- Shares native Google OAuth credentials between Drive and Contacts refresh\n- Surfaces Google OAuth and People API failure details in Settings instead of generic load errors\n- Keeps dense Map focused markers visible during movement\n- Keeps Friends graph sync errors recoverable\n- Reports throttled renderer heartbeats with clearer context\n- Retries the Friends last-seen route commit when the store reaches Map before the full Map surface mounts\n- Lightens Settings moving chrome while the dialog is in motion\n\n### Follow-ups\n\n- Continue monitoring Settings scroll and scraper memory pressure under installed dev builds\n- Friends navigation recovers from late Map mounting\n- Friends navigation and dense Map movement get steadier\n- Continue monitoring Friends to Map handoffs and dense Map movement under installed dev builds\n- Friends recovery and renderer health reporting improve\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

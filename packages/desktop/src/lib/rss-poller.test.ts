@@ -1,17 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const refreshAllFeeds = vi.fn();
+const refreshRssFeeds = vi.fn();
 const addDebugEvent = vi.fn();
 const runBackgroundJob = vi.fn();
 const isBackgroundRuntimeDeferredError = vi.fn(
   (error: unknown) =>
-    typeof error === "object" &&
-    error !== null &&
-    "reason" in error,
+    typeof error === "object" && error !== null && "reason" in error,
 );
 
 vi.mock("./capture", () => ({
-  refreshAllFeeds,
+  refreshRssFeeds,
 }));
 
 vi.mock("@freed/ui/lib/debug-store", () => ({
@@ -31,7 +29,7 @@ async function loadPoller() {
 describe("rss poller", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    refreshAllFeeds.mockReset();
+    refreshRssFeeds.mockReset();
     addDebugEvent.mockReset();
     runBackgroundJob.mockReset();
     isBackgroundRuntimeDeferredError.mockClear();
@@ -53,6 +51,18 @@ describe("rss poller", () => {
 
     await vi.runAllTicks();
     expect(runBackgroundJob).toHaveBeenCalledTimes(1);
+    expect(runBackgroundJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "rss-poll",
+        run: expect.any(Function),
+      }),
+    );
+    const task = runBackgroundJob.mock.calls[0]?.[0];
+    await task.run();
+    expect(refreshRssFeeds).toHaveBeenCalledWith({
+      maxFeeds: 80,
+      staleAfterMs: 2 * 60 * 60 * 1000,
+    });
 
     await vi.advanceTimersByTimeAsync(14_999);
     expect(runBackgroundJob).toHaveBeenCalledTimes(1);

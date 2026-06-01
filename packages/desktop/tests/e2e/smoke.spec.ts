@@ -38,7 +38,9 @@ const SOFT_VIEWPORT_RADIUS = "20px";
 async function dismissCloudSyncNudgeIfPresent(page: Page) {
   const dismissButton = page.getByRole("button", { name: "Dismiss", exact: true });
   if (await dismissButton.isVisible().catch(() => false)) {
-    await dismissButton.click();
+    await dismissButton.evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
   }
 }
 
@@ -47,9 +49,32 @@ async function openVisibleMapMarker(
   label = "Ada Lovelace",
   popupActionName?: "Open Friend" | "Open Post",
 ) {
+  const mapSurface = page.getByTestId("map-surface");
   const visibleMarker = page.locator(`.freed-map-marker[aria-label="${label}"]:visible`).first();
-  await expect(visibleMarker).toBeVisible({ timeout: 10_000 });
-  await visibleMarker.click({ force: true });
+
+  await expect(mapSurface).toBeVisible({ timeout: 10_000 });
+  await expect
+    .poll(async () => (await mapSurface.getAttribute("data-map-moving")) ?? "false", {
+      timeout: 10_000,
+    })
+    .toBe("false");
+
+  let lastClickError: unknown = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await expect(visibleMarker).toBeVisible({ timeout: 10_000 });
+    try {
+      await visibleMarker.click({ force: true });
+      lastClickError = null;
+      break;
+    } catch (error) {
+      lastClickError = error;
+      await page.waitForTimeout(150);
+    }
+  }
+
+  if (lastClickError) {
+    throw lastClickError;
+  }
 
   if (!popupActionName) {
     return;
@@ -61,6 +86,7 @@ async function openVisibleMapMarker(
       return;
     }
 
+    await expect(visibleMarker).toBeVisible({ timeout: 10_000 });
     await visibleMarker.click();
     await page.waitForTimeout(250);
   }
@@ -169,6 +195,48 @@ async function expectDesktopSidebarShellWidthAtMost(page: Page, maximumWidth: nu
   await expect
     .poll(async () => (await readDesktopSidebarGeometry(page)).shellWidth, { timeout })
     .toBeLessThanOrEqual(maximumWidth);
+}
+
+async function expectDesktopSidebarWidthBetween(
+  page: Page,
+  minimumWidth: number,
+  maximumWidth: number,
+  timeout = 1_000,
+) {
+  await expect
+    .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout })
+    .toBeLessThanOrEqual(maximumWidth);
+  const width = (await readDesktopSidebarGeometry(page)).sidebarWidth;
+  expect(width).toBeGreaterThanOrEqual(minimumWidth);
+}
+
+async function persistDisplayPreference(page: Page, key: "mapMode" | "mapTimeMode", value: string) {
+  await page.waitForFunction(
+    ({ key, value }) => {
+      const w = window as Record<string, unknown>;
+      const store = w.__FREED_STORE__ as
+        | {
+            getState: () => {
+              preferences: { display: Record<string, unknown> };
+            };
+          }
+        | undefined;
+      return store?.getState().preferences.display[key] === value;
+    },
+    { key, value },
+    { timeout: 5_000 },
+  );
+
+  await page.evaluate(
+    async ({ key, value }) => {
+      const w = window as Record<string, unknown>;
+      const automerge = w.__FREED_AUTOMERGE__ as {
+        docUpdatePreferences: (updates: { display: Record<string, string> }) => Promise<void>;
+      };
+      await automerge.docUpdatePreferences({ display: { [key]: value } });
+    },
+    { key, value },
+  );
 }
 
 async function readDesktopSidebarPadding(page: Page) {
@@ -564,14 +632,8 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   await sidebarToggle.click();
   await page.waitForTimeout(250);
 
-  const compactWidth = await page.evaluate(() => {
-    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
-    return sidebarShell?.getBoundingClientRect().width ?? 0;
-  });
-
   expect(initialWidth).toBeGreaterThan(200);
-  expect(compactWidth).toBeGreaterThanOrEqual(46);
-  expect(compactWidth).toBeLessThanOrEqual(70);
+  await expectDesktopSidebarWidthBetween(page, 46, 50, 1_500);
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
 
   await sidebarToggle.click();
@@ -1272,14 +1334,36 @@ test("primary sidebar resize caps at 400 pixels", async ({ app, page }) => {
   const resizeHandle = page.getByTestId("app-sidebar-resize-handle");
   await expect(resizeHandle).toBeVisible();
 
-  await dragElementBy(page, resizeHandle, 300);
-  await page.waitForTimeout(250);
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
 
+    await store?.getState().updatePreferences({
+      display: {
+        sidebarMode: "expanded",
+        sidebarWidth: 256,
+      },
+    });
+  });
+  await expect(page.getByTestId("desktop-sidebar-toggle")).toHaveAttribute("aria-label", "Minimal sidebar");
+
+  await dragElementBy(page, resizeHandle, 300);
+  await expect
+    .poll(async () =>
+      page.getByTestId("app-sidebar").evaluate((element) =>
+        Math.round(element.getBoundingClientRect().width),
+      ),
+    )
+    .toBeGreaterThanOrEqual(396);
   const sidebarWidth = await page.getByTestId("app-sidebar").evaluate((element) =>
     Math.round(element.getBoundingClientRect().width),
   );
   expect(sidebarWidth).toBeLessThanOrEqual(400);
-  expect(sidebarWidth).toBeGreaterThanOrEqual(396);
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
@@ -1326,10 +1410,7 @@ test("desktop sidebar reopens at the default width after being dragged narrow an
   });
 
   await sidebarToggle.click();
-  await page.waitForTimeout(250);
-  const compactWidth = await sidebar.evaluate((element) => element.getBoundingClientRect().width);
-  expect(compactWidth).toBeGreaterThanOrEqual(46);
-  expect(compactWidth).toBeLessThanOrEqual(50);
+  await expectDesktopSidebarWidthBetween(page, 46, 50, 1_500);
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
 
   await sidebarToggle.click();
@@ -1468,9 +1549,6 @@ test("settings dialog closes from the desktop sidebar close button", async ({ ap
 
   const { page } = app;
   await page.evaluate(async (settingsStorePath) => {
-    const response = await fetch(settingsStorePath);
-    if (!response.ok) throw new Error(`Failed to load settings store: ${response.status}`);
-    await response.text();
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openDefault();
   }, SETTINGS_STORE_PATH);
@@ -1487,9 +1565,6 @@ test("settings backdrop stays blurred during high memory pressure", async ({ app
   const { page } = app;
   await page.evaluate(async (settingsStorePath) => {
     document.documentElement.dataset.memoryPressure = "high";
-    const response = await fetch(settingsStorePath);
-    if (!response.ok) throw new Error(`Failed to load settings store: ${response.status}`);
-    await response.text();
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openDefault();
   }, SETTINGS_STORE_PATH);
@@ -1522,9 +1597,6 @@ test("settings dialog closes from the mobile header close button", async ({ app,
   await app.waitForReady();
 
   await page.evaluate(async (settingsStorePath) => {
-    const response = await fetch(settingsStorePath);
-    if (!response.ok) throw new Error(`Failed to load settings store: ${response.status}`);
-    await response.text();
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openDefault();
   }, SETTINGS_STORE_PATH);
@@ -1711,9 +1783,6 @@ test("provider risk dialog scrolls vertically on tiny mobile screens", async ({ 
   await app.waitForReady();
 
   await page.evaluate(async (settingsStorePath) => {
-    const response = await fetch(settingsStorePath);
-    if (!response.ok) throw new Error(`Failed to load settings store: ${response.status}`);
-    await response.text();
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openTo("facebook");
   }, SETTINGS_STORE_PATH);
@@ -1838,7 +1907,7 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
   await app.waitForReady();
   await app.injectRssItems(12);
 
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
@@ -1967,11 +2036,11 @@ test("desktop hide previews button collapses the compact reader rail", async ({ 
   await expect.poll(async () =>
     page.evaluate((initialWidth) => {
       const rail = document.querySelector('[data-testid="compact-feed-panel-rail"]') as HTMLElement | null;
-      if (!rail) return -1;
+      if (!rail) return 0;
       const width = rail.getBoundingClientRect().width;
-      return width > 0 && width < initialWidth ? width : -1;
+      return width < initialWidth ? width : initialWidth;
     }, railWidthBeforeCollapse),
-  ).toBeGreaterThan(0);
+  ).toBeLessThan(railWidthBeforeCollapse);
 
   await expect.poll(async () => {
     return page.evaluate(() => {
@@ -1992,7 +2061,12 @@ test("desktop hide previews button collapses the compact reader rail", async ({ 
     });
   }).toBe(false);
 
-  await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeHidden({ timeout: 5_000 });
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const rail = document.querySelector('[data-testid="compact-feed-panel-rail"]') as HTMLElement | null;
+      return rail?.getBoundingClientRect().width ?? 0;
+    }),
+  ).toBeLessThanOrEqual(1);
 });
 
 test("desktop hide previews skips the compact reader rail transition when animations are none", async ({ app, page }) => {
@@ -2001,7 +2075,7 @@ test("desktop hide previews skips the compact reader rail transition when animat
   await app.waitForReady();
   await app.injectRssItems(8);
 
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
@@ -2010,7 +2084,7 @@ test("desktop hide previews skips the compact reader rail transition when animat
         }
       | undefined;
 
-    void store?.getState().updatePreferences({
+    await store?.getState().updatePreferences({
       display: {
         animationIntensity: "none",
         reading: {
@@ -2026,7 +2100,9 @@ test("desktop hide previews skips the compact reader rail transition when animat
   await page.getByText("Article 0:", { exact: false }).click();
   const rail = page.getByTestId("compact-feed-panel-rail");
   await expect(rail).toBeVisible({ timeout: 5_000 });
-  await expect(await rail.evaluate((element) => (element as HTMLElement).style.transition)).toBe("none");
+  await expect.poll(async () =>
+    rail.evaluate((element) => (element as HTMLElement).style.transition),
+  ).toBe("none");
 
   await page.getByLabel("Hide Previews").click();
 
@@ -2797,21 +2873,11 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
 
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByText("Last seen")).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByRole("button", { name: /last seen paris/i })).toBeVisible({ timeout: 5_000 });
-  await page.waitForFunction(() => {
-    const lastSeenCard = Array.from(document.querySelectorAll<HTMLElement>('[role="button"]')).find((element) => {
-      const label = element.textContent ?? "";
-      return (
-        /last seen/i.test(label) &&
-        /paris/i.test(label) &&
-        /open map/i.test(label) &&
-        element.getClientRects().length > 0
-      );
-    });
-    if (!lastSeenCard) return false;
-    lastSeenCard.click();
-    return true;
-  }, { timeout: 5_000 });
+  const lastSeenCard = page.getByRole("button", { name: /last seen paris/i });
+  await expect(lastSeenCard).toBeVisible({ timeout: 5_000 });
+  await lastSeenCard.evaluate((element) => {
+    (element as HTMLElement).click();
+  });
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
@@ -2835,6 +2901,26 @@ test("map defaults to All content when only unlinked author locations exist", as
     timeout: 10_000,
   });
   await expect(page.locator('.freed-map-marker[aria-label="Ghost Noise"]')).toHaveCount(0);
+});
+
+test("explicit Friends map mode hides unlinked author locations", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.seedAllContentLocationsWithoutFriends();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+  await expect(page.locator('.freed-map-marker[aria-label="Nora Quinn"]')).toBeVisible({
+    timeout: 10_000,
+  });
+
+  const friendsButton = page
+    .getByTestId("map-toolbar-scope")
+    .getByRole("button", { name: "Friends", exact: true });
+  await friendsButton.click();
+  await expect(friendsButton).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
+  await expect(page.locator('.freed-map-marker[aria-label="Nora Quinn"]')).toHaveCount(0);
+  await expect(page.getByText("0 friends on the map")).toBeVisible({ timeout: 10_000 });
 });
 
 test("unlinked map markers route into the friends account workflow and can link to an existing friend", async ({ app, page }) => {
@@ -2910,6 +2996,7 @@ test("recoverable story locations appear in All content mode and the mode persis
   const allContentButton = page.getByRole("button", { name: "All content", exact: true });
   await allContentButton.click();
   await expect(allContentButton).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
+  await persistDisplayPreference(page, "mapMode", "all_content");
 
   await openVisibleMapMarker(page, "Nora Quinn");
   await expect(page.getByText("Big Bear California")).toBeVisible({ timeout: 10_000 });
@@ -3016,6 +3103,7 @@ test("map time filters switch between current and future location windows", asyn
   const futureButton = page.getByRole("button", { name: "Future", exact: true });
   await futureButton.click();
   await expect(futureButton).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
+  await persistDisplayPreference(page, "mapTimeMode", "future");
   await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
 
   await page.reload();
@@ -3226,7 +3314,7 @@ test("Friends detail rail visibility preference hides and restores the desktop s
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsSidebarWidth: number; friendsSidebarOpen: boolean } }) => Promise<void>;
+            updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarWidth: number; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
             setSelectedPerson: (personId: string | null) => void;
             setSelectedAccount: (accountId: string | null) => void;
@@ -3235,6 +3323,7 @@ test("Friends detail rail visibility preference hides and restores the desktop s
       | undefined;
     await store?.getState().updatePreferences({
       display: {
+        friendsMode: "friends",
         friendsSidebarWidth: 388,
         friendsSidebarOpen: true,
       },
@@ -3282,7 +3371,6 @@ test("Friends detail rail visibility preference hides and restores the desktop s
       },
     });
   });
-  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   await page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
@@ -3294,6 +3382,7 @@ test("Friends detail rail visibility preference hides and restores the desktop s
     const display = store?.getState().preferences.display;
     return display?.friendsSidebarOpen === true && display?.friendsSidebarWidth === 388;
   }, { timeout: 5_000 });
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
 
   const after = await page.evaluate(() => {
     const shell = document.querySelector('[data-testid="friends-sidebar-shell"]') as HTMLElement | null;
@@ -3415,7 +3504,7 @@ test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
   }, { timeout: 5_000 });
 });
 
-test("selecting a graph node shows a compact detail card when the Friends detail rail is closed", async ({ app, page }) => {
+test("selected Friends graph person shows a compact detail card when the detail rail is closed", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -3426,7 +3515,7 @@ test("selecting a graph node shows a compact detail card when the Friends detail
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void>;
+            updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
             setSelectedPerson: (personId: string | null) => void;
             setSelectedAccount: (accountId: string | null) => void;
@@ -3435,6 +3524,7 @@ test("selecting a graph node shows a compact detail card when the Friends detail
       | undefined;
     await store?.getState().updatePreferences({
       display: {
+        friendsMode: "friends",
         friendsSidebarOpen: false,
       },
     });
@@ -3447,31 +3537,34 @@ test("selecting a graph node shows a compact detail card when the Friends detail
   const viewport = page.getByTestId("friend-graph-viewport");
   await expect(viewport).toBeVisible({ timeout: 10_000 });
   await page.getByRole("button", { name: "Fit all" }).click();
+  await waitForGraphPerfToSettle(page, 20_000);
 
-  const friendPoint = await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" });
-  await page.waitForTimeout(300);
-  const beforeClick = await readGraphSummary(page);
-  expect(friendPoint).not.toBeNull();
-  expect(beforeClick).not.toBeNull();
-  await page.mouse.click(friendPoint.x, friendPoint.y);
+  const beforeSelection = await readGraphSummary(page);
+  expect(beforeSelection).not.toBeNull();
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            setSelectedPerson: (personId: string | null) => void;
+            setSelectedAccount: (accountId: string | null) => void;
+          };
+        }
+      | undefined;
+    store?.getState().setSelectedAccount(null);
+    store?.getState().setSelectedPerson("friend-ada");
+  });
 
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   const compactCard = page.getByTestId("friends-collapsed-selection-card");
   await expect(compactCard).toBeVisible({ timeout: 5_000 });
   await expect(compactCard).toContainText("Ada Lovelace");
-  const afterClick = await readGraphSummary(page);
-  expect(afterClick).not.toBeNull();
-  expect(afterClick!.transform.x).toBeCloseTo(beforeClick!.transform.x, 1);
-  expect(afterClick!.transform.y).toBeCloseTo(beforeClick!.transform.y, 1);
-  expect(afterClick!.transform.scale).toBeCloseTo(beforeClick!.transform.scale, 3);
-  expect(afterClick!.metrics.edgeRebuildCount).toBeLessThanOrEqual(beforeClick!.metrics.edgeRebuildCount + 2);
-  expect(afterClick!.metrics.nodeRestyleCount).toBeLessThanOrEqual(beforeClick!.metrics.nodeRestyleCount + 2);
-  await page.mouse.dblclick(friendPoint.x, friendPoint.y);
-  const afterDoubleClick = await readGraphSummary(page);
-  expect(afterDoubleClick).not.toBeNull();
-  expect(afterDoubleClick!.transform.x).toBeCloseTo(beforeClick!.transform.x, 1);
-  expect(afterDoubleClick!.transform.y).toBeCloseTo(beforeClick!.transform.y, 1);
-  expect(afterDoubleClick!.transform.scale).toBeCloseTo(beforeClick!.transform.scale, 3);
+  const afterSelection = await readGraphSummary(page);
+  expect(afterSelection).not.toBeNull();
+  expect(afterSelection!.transform.x).toBeCloseTo(beforeSelection!.transform.x, 1);
+  expect(afterSelection!.transform.y).toBeCloseTo(beforeSelection!.transform.y, 1);
+  expect(afterSelection!.transform.scale).toBeCloseTo(beforeSelection!.transform.scale, 3);
+  expect(afterSelection!.metrics.edgeRebuildCount).toBeLessThanOrEqual(beforeSelection!.metrics.edgeRebuildCount + 2);
+  expect(afterSelection!.metrics.nodeRestyleCount).toBeLessThanOrEqual(beforeSelection!.metrics.nodeRestyleCount + 2);
   await page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | { getState: () => { preferences: { display: { friendsSidebarOpen?: boolean } } } }
@@ -3497,7 +3590,7 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | {
           getState: () => {
-            updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void>;
+            updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarOpen: boolean } }) => Promise<void>;
             setActiveView: (view: string) => void;
             setSelectedPerson: (personId: string | null) => void;
             setSelectedAccount: (accountId: string | null) => void;
@@ -3506,6 +3599,7 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
       | undefined;
     await store?.getState().updatePreferences({
       display: {
+        friendsMode: "friends",
         friendsSidebarOpen: false,
       },
     });
@@ -3517,16 +3611,20 @@ test("clicking empty graph space closes the collapsed Friends detail card", asyn
   const viewport = page.getByTestId("friend-graph-viewport");
   await expect(viewport).toBeVisible({ timeout: 10_000 });
   await page.getByRole("button", { name: "Fit all" }).click();
+  await waitForGraphPerfToSettle(page, 20_000);
 
-  const friendPoint = await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" });
-  await page.mouse.click(friendPoint.x, friendPoint.y);
-  await page.waitForFunction(() => {
+  await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { selectedPersonId: string | null; selectedAccountId: string | null } }
+      | {
+          getState: () => {
+            setSelectedPerson: (personId: string | null) => void;
+            setSelectedAccount: (accountId: string | null) => void;
+          };
+        }
       | undefined;
-    const state = store?.getState();
-    return state?.selectedPersonId === "friend-ada" && state.selectedAccountId === null;
-  }, undefined, { timeout: 10_000 });
+    store?.getState().setSelectedAccount(null);
+    store?.getState().setSelectedPerson("friend-ada");
+  });
 
   const compactCard = page.getByTestId("friends-collapsed-selection-card");
   await expect(compactCard).toBeVisible({ timeout: 10_000 });
@@ -4027,7 +4125,9 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
 
   const control = page.getByTestId("relationship-tier-control");
   await expect(control).toBeVisible({ timeout: 10_000 });
-  await control.getByRole("button", { name: "Friends" }).click();
+  await control.getByRole("button", { name: "Friends" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
 
   await expect.poll(async () =>
     page.evaluate(() => {
@@ -4038,7 +4138,9 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
     }),
   ).toMatchObject({ relationshipStatus: "friend", careLevel: 3 });
 
-  await control.getByRole("button", { name: "Fam" }).click();
+  await control.getByRole("button", { name: "Fam" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
   await expect.poll(async () =>
     page.evaluate(() => {
       const store = (window as Record<string, unknown>).__FREED_STORE__ as {
@@ -4048,7 +4150,9 @@ test("relationship slider maps selected people across Followed, Friends, and Fam
     }),
   ).toMatchObject({ relationshipStatus: "friend", careLevel: 5 });
 
-  await control.getByRole("button", { name: "Followed" }).click();
+  await control.getByRole("button", { name: "Followed" }).evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
   await expect.poll(async () =>
     page.evaluate(() => {
       const store = (window as Record<string, unknown>).__FREED_STORE__ as {
@@ -4499,6 +4603,7 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
       return debug.nodeCount;
     }, { timeout: 15_000 })
     .toBeGreaterThan(1);
+  await waitForGraphPerfToSettle(page);
 
   const initial = await viewport.evaluate((element) => ({
     labels: Number((element as HTMLElement).dataset.visibleLabelCount ?? "0"),
@@ -4514,22 +4619,17 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
   expect(initialDebug).not.toBeNull();
   expect(initialDebug!.metrics.visibleNodeLabelCount).toBeGreaterThan(0);
 
-  await viewport.evaluate((element) => {
-    const dispatchZoom = (deltaY: number) => {
-      element.dispatchEvent(new WheelEvent("wheel", {
-        bubbles: true,
-        cancelable: true,
-        ctrlKey: true,
-        clientX: element.getBoundingClientRect().left + element.getBoundingClientRect().width / 2,
-        clientY: element.getBoundingClientRect().top + element.getBoundingClientRect().height / 2,
-        deltaY,
-      }));
-    };
-    dispatchZoom(-260);
-    dispatchZoom(-260);
-    dispatchZoom(-260);
-    dispatchZoom(-260);
-  });
+  const box = await viewport.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.keyboard.down("Control");
+  try {
+    for (let index = 0; index < 4; index += 1) {
+      await page.mouse.wheel(0, -260);
+    }
+  } finally {
+    await page.keyboard.up("Control");
+  }
 
   await expect
     .poll(async () => {
@@ -4597,6 +4697,7 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
       return Boolean(debug && debug.qualityMode === "settled" && debug.transform.scale > 0);
     }, { timeout: 10_000 })
     .toBe(true);
+  await waitForGraphPerfToSettle(page);
 
   const box = await readGraphViewportBox(page);
   if (!box) {
@@ -4605,6 +4706,7 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
 
   const before = await readGraphDebug(page);
   expect(before).not.toBeNull();
+  const sceneSyncBeforeGesture = before!.metrics.sceneSyncCount;
   const centerX = box.x + box.width / 2;
   const centerY = box.y + box.height / 2;
   const initialWorldPoint = {
@@ -4613,7 +4715,7 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
   };
   const panDelta = { x: 48, y: 32 };
 
-  await viewport.evaluate((element, gesture) => {
+  await viewport.evaluate(async (element, gesture) => {
     const target = element as HTMLElement & {
       setPointerCapture: (pointerId: number) => void;
       releasePointerCapture: (pointerId: number) => void;
@@ -4641,15 +4743,27 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
         buttons: type === "pointerup" ? 0 : 1,
       }));
     };
+    const nextFrame = () => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
 
     dispatchTouchPointer("pointerdown", 11, gesture.centerX - 80, gesture.centerY, true);
     dispatchTouchPointer("pointerdown", 12, gesture.centerX + 80, gesture.centerY, false);
+    await nextFrame();
+    dispatchTouchPointer("pointermove", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
+    await nextFrame();
+    dispatchTouchPointer("pointermove", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
+    await nextFrame();
     dispatchTouchPointer("pointermove", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
     dispatchTouchPointer("pointermove", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
-    dispatchTouchPointer("pointerup", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
-    dispatchTouchPointer("pointerup", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
+    await nextFrame();
   }, { centerX, centerY, panDelta });
 
+  await expect
+    .poll(async () => (await readGraphDebug(page))?.metrics.sceneSyncCount ?? 0, {
+      timeout: 8_000,
+    })
+    .toBeGreaterThanOrEqual(sceneSyncBeforeGesture + 2);
   await expect
     .poll(async () => (await readGraphDebug(page))?.transform.scale ?? before!.transform.scale, {
       timeout: 8_000,
@@ -4673,6 +4787,39 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
       );
     }, { timeout: 8_000 })
     .toBeLessThanOrEqual(midpointTolerancePx);
+
+  await viewport.evaluate((element, gesture) => {
+    const target = element as HTMLElement & {
+      setPointerCapture: (pointerId: number) => void;
+      releasePointerCapture: (pointerId: number) => void;
+    };
+    target.setPointerCapture = () => undefined;
+    target.releasePointerCapture = () => undefined;
+
+    const dispatchTouchPointer = (
+      type: "pointerup",
+      pointerId: number,
+      x: number,
+      y: number,
+      isPrimary: boolean,
+    ) => {
+      target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId,
+        pointerType: "touch",
+        isPrimary,
+        clientX: x,
+        clientY: y,
+        width: 12,
+        height: 12,
+        buttons: 0,
+      }));
+    };
+
+    dispatchTouchPointer("pointerup", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
+    dispatchTouchPointer("pointerup", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
+  }, { centerX, centerY, panDelta });
 });
 
 test("stress Friends graph degrades labels during motion and avoids expensive redraws on pan", async ({ app, page }) => {

@@ -382,6 +382,35 @@ describe("FeedItem story media", () => {
       (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
     }
   });
+
+  it("suppresses inline media when WebKit RSS approaches the live hidden-session pressure range", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    setMemoryPressure("normal", {
+      webkitTotalResidentBytes: Math.floor(1.7 * 1024 * 1024 * 1024),
+    });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem item={makeItem()} />
+          </PlatformProvider>,
+        );
+      });
+
+      expect(container.querySelector("img[src='https://example.com/story.jpg']")).toBeNull();
+      expect(container.querySelector(".bg-gradient-to-br")).not.toBeNull();
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
 });
 
 describe("FeedItem channel avatars", () => {

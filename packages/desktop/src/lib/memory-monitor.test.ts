@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatBytesForMemoryLog,
   getAdaptiveMemoryLimits,
+  getEffectiveMemoryPressureBytes,
   getMemoryPressureLevel,
 } from "./memory-monitor";
 
@@ -20,7 +21,10 @@ describe("memory monitor", () => {
     expect(getAdaptiveMemoryLimits(32 * gib).criticalBytes).toBe(
       Math.floor(32 * gib * 0.12),
     );
-    expect(getAdaptiveMemoryLimits(64 * gib).criticalBytes).toBe(4 * gib);
+    expect(getAdaptiveMemoryLimits(64 * gib).criticalBytes).toBe(
+      Math.floor(64 * gib * 0.12),
+    );
+    expect(getAdaptiveMemoryLimits(128 * gib).criticalBytes).toBe(12 * gib);
   });
 
   it("classifies high and critical app resident memory", () => {
@@ -29,5 +33,18 @@ describe("memory monitor", () => {
     expect(getMemoryPressureLevel(512 * 1024 * 1024)).toBe("normal");
     expect(getMemoryPressureLevel(limits.highBytes, limits)).toBe("high");
     expect(getMemoryPressureLevel(limits.criticalBytes, limits)).toBe("critical");
+  });
+
+  it("uses resident bytes when footprint understates WebKit memory", () => {
+    const gib = 1024 * 1024 * 1024;
+
+    expect(
+      getEffectiveMemoryPressureBytes({
+        processResidentBytes: 128 * 1024 * 1024,
+        processFootprintBytes: 64 * 1024 * 1024,
+        appResidentBytes: 6 * gib,
+        appMemoryPressureBytes: 1 * gib,
+      }),
+    ).toBe(6 * gib);
   });
 });

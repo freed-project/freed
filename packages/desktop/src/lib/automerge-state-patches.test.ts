@@ -140,6 +140,49 @@ describe("Automerge item patch state updates", () => {
     expect(result.state.totalArchivableCount).toBe(state.totalArchivableCount);
   });
 
+  it("keeps a synced X like patch count-neutral and in place", () => {
+    const { rssSource: _rssSource, ...baseXPost } = makeItem("x:2049705418436600244");
+    const xPost = {
+      ...baseXPost,
+      platform: "x" as const,
+    };
+    const read = makeItem("rss:read", { readAt: 10 });
+    const state = {
+      ...makeState([xPost, read]),
+      feedUnreadCounts: {},
+      feedTotalCounts: { [FEED_URL]: 1 },
+      totalUnreadCount: 1,
+      unreadCountByPlatform: { x: 1 },
+      totalItemCount: 2,
+      itemCountByPlatform: { x: 1, rss: 1 },
+      totalArchivableCount: 1,
+      archivableCountByPlatform: { rss: 1 },
+      archivableFeedCounts: { [FEED_URL]: 1 },
+    };
+    const index = createItemIndex(state.items);
+
+    const likedXPost = {
+      ...xPost,
+      userState: {
+        ...xPost.userState,
+        liked: true,
+        likedAt: 40,
+        likedSyncedAt: 50,
+      },
+    };
+    const result = applyItemPatchesToState(state, [{ item: likedXPost }], index);
+
+    expect(result.state.items).toEqual([likedXPost, read]);
+    expect(result.itemIndex.get("x:2049705418436600244")).toBe(0);
+    expect(result.state.totalUnreadCount).toBe(state.totalUnreadCount);
+    expect(result.state.unreadCountByPlatform).toBe(state.unreadCountByPlatform);
+    expect(result.state.totalItemCount).toBe(state.totalItemCount);
+    expect(result.state.itemCountByPlatform).toBe(state.itemCountByPlatform);
+    expect(result.state.totalArchivableCount).toBe(state.totalArchivableCount);
+    expect(result.state.mapFriendLocationCount).toBe(state.mapFriendLocationCount);
+    expect(result.state.mapAllContentLocationCount).toBe(state.mapAllContentLocationCount);
+  });
+
   it("applies a large archive patch batch to aggregate counts", () => {
     const items = Array.from({ length: 300 }, (_, index) =>
       makeItem(`rss:read-${index}`, { readAt: 10 + index })

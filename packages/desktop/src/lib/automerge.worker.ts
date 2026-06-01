@@ -23,6 +23,7 @@ import {
   addAccount,
   addAccounts,
   backfillContentSignals,
+  clearSampleData,
   countContentSignalBackfillItems,
   addFeedItem,
   deduplicateDocFeedItems,
@@ -94,9 +95,8 @@ const SLOW_SAVE_AND_BROADCAST_MS = 2_000;
 const DESKTOP_UI_PRESERVED_TEXT_LIMIT = 0;
 const DESKTOP_UI_CONTENT_TEXT_LIMIT = 280;
 const DESKTOP_UI_LINK_DESCRIPTION_LIMIT = 180;
+const DESKTOP_UI_EVENT_EVIDENCE_LIMIT = 220;
 const FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES = 4 * 1024 * 1024;
-const FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES = 16 * 1024 * 1024;
-const FRESH_DOC_REBUILD_MIN_SAVINGS_RATIO = 0.1;
 
 interface RequestTrace {
   reqId: number;
@@ -193,18 +193,49 @@ function bumpSearchCorpusVersion(): void {
   searchCorpusVersion += 1;
 }
 
-function migrateLoadedIdentityGraph(message: string): void {
-  if (!currentDoc || !hasLegacyIdentityGraphData(currentDoc)) return;
+function cancelDocIdleUnload(): void {
+  // Kept as a named lifecycle hook so request startup documents the intent.
+}
+
+function scheduleDocIdleUnload(): void {
+  if (!currentDoc || !currentBinary || queuedRequestCount > 0) return;
+  currentDoc = null;
+  persistenceState = createPersistenceState(currentBinary);
+  emitWorkerTrace(
+    "[automerge-worker] released idle document after request queue drained",
+    "change",
+  );
+}
+
+function ensureCurrentDocLoaded(reason: WorkerRequest["type"]): FreedDoc {
+  if (currentDoc) return currentDoc;
+  if (!currentBinary) throw new Error("Document not initialized");
+
+  const startedAt = performance.now();
+  currentDoc = A.load<FreedDoc>(currentBinary);
+  persistenceState = createPersistenceState(currentBinary);
+  emitWorkerTrace(
+    `[automerge-worker] reloaded idle document op=${reason}` +
+      ` load_ms=${formatMs(performance.now() - startedAt)}` +
+      ` bytes=${currentBinary.byteLength.toLocaleString()}`,
+    "change",
+  );
+  return currentDoc;
+}
+
+function migrateLoadedIdentityGraph(message: string): boolean {
+  if (!currentDoc || !hasLegacyIdentityGraphData(currentDoc)) return false;
   currentDoc = A.change(currentDoc, message, (doc) => {
     migrateLegacyIdentityGraph(doc);
   });
+  return true;
 }
 
 function compactLoadedFeedText(
   message: string,
   options: { rebuildHistory?: boolean; previousBinaryBytes?: number } = {},
-): void {
-  if (!currentDoc) return;
+): boolean {
+  if (!currentDoc) return false;
   let summary = createFeedTextCompactionSummary();
   currentDoc = A.change(currentDoc, message, (doc) => {
     summary = compactFeedItemsTextForSync(Object.values(doc.feedItems) as FeedItem[]);
@@ -218,27 +249,15 @@ function compactLoadedFeedText(
   }
 
   const previousBinaryBytes = options.previousBinaryBytes ?? currentBinary?.byteLength ?? 0;
-  if (!options.rebuildHistory) return;
+  if (!options.rebuildHistory) return summary.changed > 0;
   const shouldRebuildForChangedText =
     summary.changed > 0 && previousBinaryBytes >= FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES;
-  const shouldProbeLargeHistory = previousBinaryBytes >= FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES;
-  if (!shouldRebuildForChangedText && !shouldProbeLargeHistory) return;
+  if (!shouldRebuildForChangedText) return summary.changed > 0;
 
   const plain = A.toJS(currentDoc) as Partial<FreedDoc>;
   const rebuiltDoc = createDocFromData(plain);
   const rebuiltBinary = A.save(rebuiltDoc);
   const bytesSaved = previousBinaryBytes - rebuiltBinary.byteLength;
-  const minHistorySavings = previousBinaryBytes * FRESH_DOC_REBUILD_MIN_SAVINGS_RATIO;
-  if (!shouldRebuildForChangedText && bytesSaved < minHistorySavings) {
-    emitWorkerTrace(
-      `[automerge-worker] kept existing compacted document history` +
-        ` previous_bytes=${previousBinaryBytes.toLocaleString()}` +
-        ` rebuilt_bytes=${rebuiltBinary.byteLength.toLocaleString()}`,
-      "change",
-    );
-    return;
-  }
-
   currentDoc = rebuiltDoc;
   currentBinary = rebuiltBinary;
   persistenceState = createPersistenceState(rebuiltBinary);
@@ -249,6 +268,7 @@ function compactLoadedFeedText(
       ` saved_bytes=${Math.max(0, bytesSaved).toLocaleString()}`,
     "change",
   );
+  return true;
 }
 
 function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean {
@@ -277,61 +297,100 @@ function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean 
 }
 
 function cloneFeedItemForPatch(item: FeedItem): FeedItem {
-  const cloned = JSON.parse(JSON.stringify(item)) as FeedItem;
-  return trimFeedItemForDesktopUi(cloned);
+  return trimFeedItemForDesktopUi(item);
+}
+
+function cloneRecordValues<T>(record: Record<string, T> | undefined): Record<string, T> {
+  const cloned: Record<string, T> = {};
+  for (const [key, value] of Object.entries(record ?? {})) {
+    cloned[key] = JSON.parse(JSON.stringify(value)) as T;
+  }
+  return cloned;
+}
+
+function cloneFeedItemsForDesktopUi(record: Record<string, FeedItem> | undefined): {
+  items: FeedItem[];
+  totalCount: number;
+} {
+  const items: FeedItem[] = [];
+  let totalCount = 0;
+
+  for (const item of Object.values(record ?? {})) {
+    totalCount++;
+    items.push(cloneFeedItemForPatch(item));
+  }
+
+  return { items, totalCount };
 }
 
 function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
-  let next: FeedItem = item;
+  const contentText = item.content.text;
+  const linkPreview = item.content.linkPreview;
+  const linkDescription = linkPreview?.description;
   const preservedContent = item.preservedContent;
   const preservedText = preservedContent?.text;
-  if (preservedContent && preservedText && preservedText.length > DESKTOP_UI_PRESERVED_TEXT_LIMIT) {
+  const eventCandidate = item.eventCandidate;
+  const eventEvidence = eventCandidate?.evidence;
+  const tags = item.contentSignals?.tags ?? [];
+
+  return {
+    globalId: item.globalId,
+    platform: item.platform,
+    contentType: item.contentType,
+    capturedAt: item.capturedAt,
+    publishedAt: item.publishedAt,
+    author: { ...item.author },
+    content: {
+      text: contentText?.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT),
+      mediaUrls: [...item.content.mediaUrls],
+      mediaTypes: [...item.content.mediaTypes],
+      linkPreview: linkPreview
+        ? {
+            url: linkPreview.url,
+            title: linkPreview.title,
+            description: linkDescription?.slice(0, DESKTOP_UI_LINK_DESCRIPTION_LIMIT),
+          }
+        : undefined,
+    },
+    engagement: item.engagement ? { ...item.engagement } : undefined,
+    location: item.location
+      ? {
+          ...item.location,
+          coordinates: item.location.coordinates ? { ...item.location.coordinates } : undefined,
+        }
+      : undefined,
+    timeRange: item.timeRange ? { ...item.timeRange } : undefined,
+    rssSource: item.rssSource ? { ...item.rssSource } : undefined,
+    fbGroup: item.fbGroup ? { ...item.fbGroup } : undefined,
     // The reader asks the worker for full preserved text on demand. Keeping
     // it in every renderer item makes all non-reader surfaces pay for it.
-    next = {
-      ...next,
-      preservedContent: {
-        ...preservedContent,
-        text: preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT),
-      },
-    };
-  }
-
-  const contentText = next.content.text;
-  if (contentText && contentText.length > DESKTOP_UI_CONTENT_TEXT_LIMIT) {
-    next = {
-      ...next,
-      content: {
-        ...next.content,
-        text: contentText.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT),
-      },
-    };
-  }
-
-  const linkPreview = next.content.linkPreview;
-  const linkDescription = linkPreview?.description;
-  if (linkDescription && linkDescription.length > DESKTOP_UI_LINK_DESCRIPTION_LIMIT) {
-    next = {
-      ...next,
-      content: {
-        ...next.content,
-        linkPreview: {
-          ...linkPreview,
-          description: linkDescription.slice(0, DESKTOP_UI_LINK_DESCRIPTION_LIMIT),
-        },
-      },
-    };
-  }
-
-  if (next.contentSignals) {
-    const tags = next.contentSignals.tags ?? [];
-    next = {
-      ...next,
-      contentSignals: tags.length > 0 ? ({ tags } as FeedItem["contentSignals"]) : undefined,
-    };
-  }
-
-  return next;
+    preservedContent: preservedContent
+      ? {
+          author: preservedContent.author,
+          publishedAt: preservedContent.publishedAt,
+          wordCount: preservedContent.wordCount,
+          readingTime: preservedContent.readingTime,
+          preservedAt: preservedContent.preservedAt,
+          text: preservedText?.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT) ?? "",
+        }
+      : undefined,
+    userState: {
+      ...item.userState,
+      tags: [...item.userState.tags],
+      highlights: item.userState.highlights?.map((highlight) => ({ ...highlight })),
+    },
+    topics: [...item.topics],
+    contentSignals: tags.length > 0 ? ({ tags: [...tags] } as FeedItem["contentSignals"]) : undefined,
+    eventCandidate: eventCandidate
+      ? {
+          ...eventCandidate,
+          evidence: eventEvidence?.slice(0, DESKTOP_UI_EVENT_EVIDENCE_LIMIT),
+        }
+      : undefined,
+    priority: item.priority,
+    priorityComputedAt: item.priorityComputedAt,
+    sourceUrl: item.sourceUrl,
+  };
 }
 
 function markAllVisibleAsRead(doc: FreedDoc, platform?: string): string[] {
@@ -394,16 +453,18 @@ function healUntitledFeedTitles(doc: FreedDoc): number {
 
 /**
  * Convert the Automerge proxy document to a plain-JS DocState for postMessage.
- * Identical to the PWA worker — runs entirely off the main thread.
+ * Build the projection incrementally so large synced article bodies are
+ * trimmed before we hold a full deep clone of the document in worker memory.
  */
 function hydrateFromDoc(doc: FreedDoc): DocState {
-  const plain = A.toJS(doc) as FreedDoc;
-  const plainItems = Object.values(plain.feedItems as Record<string, FeedItem>).map(trimFeedItemForDesktopUi);
-  const feeds = plain.rssFeeds as Record<string, RssFeed>;
-  const persons = (plain.persons ?? {}) as Record<string, Person>;
-  const accounts = (plain.accounts ?? {}) as Record<string, Account>;
+  const { items: plainItems, totalCount: docItemCount } = cloneFeedItemsForDesktopUi(
+    doc.feedItems as Record<string, FeedItem> | undefined,
+  );
+  const feeds = cloneRecordValues(doc.rssFeeds as Record<string, RssFeed> | undefined);
+  const persons = cloneRecordValues(doc.persons as Record<string, Person> | undefined);
+  const accounts = cloneRecordValues(doc.accounts as Record<string, Account> | undefined);
   const friends = projectLegacyFriends(persons, accounts);
-  const preferences = mergeDefaultPreferences(plain.preferences as Partial<UserPreferences> | undefined);
+  const preferences = mergeDefaultPreferences(doc.preferences as Partial<UserPreferences> | undefined);
 
   const visibleItems = plainItems.filter((item) => !item.userState.hidden);
   const rankedItems = sortByPriority(
@@ -469,7 +530,7 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
     archivableFeedCounts,
     mapFriendLocationCount: countFriendsWithRecentLocationUpdates(rankedItems, persons, accounts),
     mapAllContentLocationCount: countAuthorsWithRecentLocationUpdates(rankedItems),
-    docItemCount: Object.keys(plain.feedItems as Record<string, FeedItem>).length,
+    docItemCount,
   };
 }
 
@@ -529,6 +590,35 @@ async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
         ` total_ms=${formatMs(totalMs)}` +
         ` persist_mode=${persisted.usedIncremental ? "incremental" : "snapshot"}` +
         ` bytes=${binary.byteLength.toLocaleString()}`,
+    );
+  }
+}
+
+async function hydrateAndBroadcastWithoutPersist(trace?: RequestTrace): Promise<void> {
+  const doc = currentDoc;
+  if (!doc) return;
+
+  const startedAt = performance.now();
+  const state = hydrateFromDoc(doc);
+  const afterHydrateAt = performance.now();
+
+  send({
+    type: "DEBUG_SNAPSHOT",
+    deviceId: (doc.meta?.deviceId as string | undefined) ?? "unknown",
+    itemCount: Object.keys(doc.feedItems ?? {}).length,
+    feedCount: Object.keys(doc.rssFeeds ?? {}).length,
+    binarySize: currentBinary?.byteLength ?? 0,
+  });
+  send({ type: "STATE_UPDATE", state, mutation: trace?.opType });
+
+  const totalMs = performance.now() - startedAt;
+  if (trace && totalMs >= SLOW_SAVE_AND_BROADCAST_MS) {
+    emitWorkerTrace(
+      `[automerge-worker] clean-hydrate op=${trace.opType} reqId=${trace.reqId}` +
+        ` hydrate_ms=${formatMs(afterHydrateAt - startedAt)}` +
+        ` emit_ms=${formatMs(totalMs - (afterHydrateAt - startedAt))}` +
+        ` total_ms=${formatMs(totalMs)}` +
+        ` bytes=${(currentBinary?.byteLength ?? 0).toLocaleString()}`,
     );
   }
 }
@@ -680,6 +770,16 @@ async function handleRequest(
         ` queued=${trace.queuedBeforeStart.toLocaleString()}`,
     );
   }
+  cancelDocIdleUnload();
+
+  if (
+    req.type !== "INIT" &&
+    req.type !== "CLEAR_LOCAL" &&
+    req.type !== "REPLACE_DOC" &&
+    req.type !== "GET_DOC_BINARY"
+  ) {
+    ensureCurrentDocLoaded(req.type);
+  }
 
   const applyRequestChange = (
     changeFn: (doc: FreedDoc) => void,
@@ -690,19 +790,24 @@ async function handleRequest(
   try {
     switch (req.type) {
       case "INIT": {
+        let loadedDocNeedsPersist = false;
         const saved = await storage.load();
         if (saved) {
           try {
             currentDoc = A.load<FreedDoc>(saved);
             currentBinary = saved;
             persistenceState = createPersistenceState(saved);
-            migrateLoadedIdentityGraph("Migrate legacy identity graph");
-            compactLoadedFeedText("Compact oversized synced feed text", {
-              rebuildHistory: true,
-              previousBinaryBytes: saved.byteLength,
-            });
+            loadedDocNeedsPersist =
+              migrateLoadedIdentityGraph("Migrate legacy identity graph") || loadedDocNeedsPersist;
+            loadedDocNeedsPersist =
+              compactLoadedFeedText("Compact oversized synced feed text", {
+                rebuildHistory: true,
+                previousBinaryBytes: saved.byteLength,
+              }) || loadedDocNeedsPersist;
           } catch {
             await storage.clear();
+            currentDoc = null;
+            currentBinary = null;
             persistenceState = createPersistenceState(null);
             send({ type: "DEBUG_EVENT", kind: "init", detail: "corrupt doc cleared, creating fresh" });
           }
@@ -715,14 +820,21 @@ async function handleRequest(
           await storage.save(binary);
         }
         searchCorpusVersion = 1;
-        const deviceId = (currentDoc.meta?.deviceId as string | undefined) ?? "unknown";
+        const initializedDoc = currentDoc;
+        if (!initializedDoc) throw new Error("Document not initialized");
+        const deviceId = (initializedDoc.meta?.deviceId as string | undefined) ?? "unknown";
         send({ type: "DEBUG_EVENT", kind: "init", detail: `device ...${deviceId.slice(-8)}` });
-        await saveAndBroadcast(trace);
+        if (loadedDocNeedsPersist) {
+          await saveAndBroadcast(trace);
+        } else {
+          await hydrateAndBroadcastWithoutPersist(trace);
+        }
         ack(req.reqId);
         break;
       }
 
       case "CLEAR_LOCAL":
+        cancelDocIdleUnload();
         await storage.clear();
         currentDoc = null;
         currentBinary = null;
@@ -746,9 +858,9 @@ async function handleRequest(
         break;
 
       case "GET_DOC_BINARY":
-        if (!currentDoc) throw new Error("Document not initialized");
         if (!currentBinary) {
-          currentBinary = A.save(currentDoc);
+          const doc = ensureCurrentDocLoaded(req.type);
+          currentBinary = A.save(doc);
           persistenceState = createPersistenceState(currentBinary);
         }
         send({ reqId: req.reqId, type: "DOC_BINARY", binary: currentBinary });
@@ -889,6 +1001,15 @@ async function handleRequest(
         await applyRequestChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item", true);
         ack(req.reqId);
         break;
+
+      case "CLEAR_SAMPLE_DATA": {
+        let summary = { feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 };
+        await applyRequestChange((doc) => {
+          summary = clearSampleData(doc);
+        }, "Clear sample data", true);
+        send({ reqId: req.reqId, type: "SAMPLE_DATA_CLEAR_RESULT", summary });
+        break;
+      }
 
       case "UPDATE_FEED_ITEM":
         await applyRequestChange(
@@ -1232,6 +1353,7 @@ function enqueueRequest(req: WorkerRequest): void {
     })
     .finally(() => {
       queuedRequestCount = Math.max(0, queuedRequestCount - 1);
+      scheduleDocIdleUnload();
     });
 }
 

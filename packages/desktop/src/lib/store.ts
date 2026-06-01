@@ -9,7 +9,7 @@
  */
 
 import { create } from "zustand";
-import type { Account, FeedItem, FilterOptions, Friend, Person, ReachOutLog, UserPreferences, RssFeed, RemoveFeedOptions } from "@freed/shared";
+import type { Account, FeedItem, FilterOptions, Friend, Person, ReachOutLog, SampleDataClearSummary, UserPreferences, RssFeed, RemoveFeedOptions } from "@freed/shared";
 import {
   applyFeedSignalModesToFilter,
   accountsFromLegacyFriend,
@@ -33,6 +33,7 @@ import {
   docMarkAllAsRead,
   docToggleSaved,
   docRemoveFeedItem,
+  docClearSampleData,
   docToggleArchived,
   docArchiveItems,
   docArchiveAllReadUnsaved,
@@ -63,11 +64,18 @@ import { startOutboxProcessor } from "./outbox";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
 import { pinReaderItem } from "./content-fetcher";
-
-let outboxTeardown: (() => void) | null = null;
+import {
+  isBackgroundRuntimeDeferredError,
+  runBackgroundJob,
+} from "./background-runtime-coordinator";
+import { log } from "./logger";
 import { initFbAuth, type FbAuthState } from "./fb-auth";
 import { initIgAuth, type IgAuthState } from "./instagram-auth";
 import { initLiAuth, type LiAuthState } from "./li-auth";
+
+let outboxTeardown: (() => void) | null = null;
+let startupContentSignalTimer: ReturnType<typeof setTimeout> | null = null;
+let startupContentSignalBackfillRunning = false;
 
 export type SyncProviderId =
   | "rss"
@@ -146,6 +154,7 @@ interface AppState {
   markAllAsRead: (platform?: string) => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
+  clearSampleData: () => Promise<SampleDataClearSummary>;
   toggleArchived: (id: string) => Promise<void>;
   archiveItems: (ids: string[]) => Promise<void>;
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
@@ -204,8 +213,9 @@ interface AppState {
   setSearchQuery: (query: string) => void;
 
   // View navigation
-  activeView: "feed" | "friends" | "map";
-  setActiveView: (view: "feed" | "friends" | "map") => void;
+  activeView: "feed" | "friends" | "map" | "storyWall";
+  setActiveView: (view: "feed" | "friends" | "map" | "storyWall") => void;
+  openMapForPerson: (personId: string) => void;
   pendingMatchCount: number;
   setPendingMatchCount: (count: number) => void;
 }
@@ -290,13 +300,7 @@ async function runStartupMigrations(archivePruneDays: number): Promise<void> {
       await docPruneArchivedItems(archivePruneDays * 24 * 60 * 60 * 1000);
     }
   } catch { /* non-fatal */ }
-  try {
-    for (;;) {
-      const summary = await docBackfillContentSignals(200);
-      if (summary.updated === 0 || summary.remaining === 0) break;
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-  } catch { /* non-fatal */ }
+  scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS);
 }
 
 const READ_MARK_BATCH_DELAY_MS = 50;
@@ -335,6 +339,54 @@ function recordReadStateInfo(message: string, detail: Record<string, unknown>): 
     message,
     JSON.stringify(detail),
   );
+}
+
+const STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS = 10 * 60 * 1000;
+const STARTUP_CONTENT_SIGNAL_RETRY_DELAY_MS = 30 * 1000;
+const STARTUP_CONTENT_SIGNAL_INTERVAL_MS = 60 * 1000;
+const STARTUP_CONTENT_SIGNAL_BATCH_SIZE = 50;
+
+function scheduleStartupContentSignalBackfill(delayMs: number): void {
+  if (startupContentSignalTimer) return;
+  startupContentSignalTimer = setTimeout(() => {
+    startupContentSignalTimer = null;
+    void runStartupContentSignalBackfill();
+  }, delayMs);
+}
+
+async function runStartupContentSignalBackfill(): Promise<void> {
+  if (startupContentSignalBackfillRunning) return;
+  startupContentSignalBackfillRunning = true;
+
+  try {
+    const summary = await runBackgroundJob({
+      kind: "content-signal-backfill",
+      source: "startup-migration",
+      timeoutMs: 120_000,
+      run: () => docBackfillContentSignals(STARTUP_CONTENT_SIGNAL_BATCH_SIZE),
+    });
+
+    if (summary.updated > 0) {
+      log.info(
+        `[content-signals] startup backfilled ${summary.updated.toLocaleString()} item${summary.updated === 1 ? "" : "s"}, ${summary.remaining.toLocaleString()} remaining`,
+      );
+    }
+
+    if (summary.remaining > 0) {
+      scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_INTERVAL_MS);
+    }
+  } catch (error) {
+    if (isBackgroundRuntimeDeferredError(error)) {
+      log.info(`[content-signals] startup backfill deferred reason=${error.reason}`);
+      scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_RETRY_DELAY_MS);
+      return;
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn(`[content-signals] startup backfill failed err=${message}`);
+  } finally {
+    startupContentSignalBackfillRunning = false;
+  }
 }
 
 async function flushPendingReadMarks(): Promise<void> {
@@ -602,6 +654,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     await docRemoveFeedItem(id);
   },
 
+  clearSampleData: async () => {
+    return docClearSampleData();
+  },
+
   // Feed actions
   addFeed: async (feed) => {
     await docAddRssFeed(feed);
@@ -796,6 +852,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   setError: (error) => set({ error }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setActiveView: (activeView) => set({ activeView }),
+  openMapForPerson: (personId) =>
+    set({
+      activeView: "map",
+      selectedPersonId: personId,
+      selectedAccountId: null,
+      selectedFriendId: personId,
+      selectedItemId: null,
+    }),
   setPendingMatchCount: (pendingMatchCount) => set({ pendingMatchCount }),
 }));
 

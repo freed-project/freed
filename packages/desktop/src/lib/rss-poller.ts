@@ -5,16 +5,24 @@
  * Runs in the JavaScript layer so it works regardless of Tauri's background state.
  */
 
-import { refreshAllFeeds } from "./capture";
+import { refreshRssFeeds } from "./capture";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import {
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
 } from "./background-runtime-coordinator";
+import {
+  SCHEDULED_RSS_MAX_FEEDS,
+  SCHEDULED_RSS_STALE_AFTER_MS,
+} from "./rss-refresh-plan";
 
 /** Default poll interval: 30 minutes */
 const DEFAULT_INTERVAL_MS = 30 * 60 * 1000;
 const DEFERRED_RETRY_MS = 15_000;
+const SCHEDULED_REFRESH_OPTIONS = {
+  maxFeeds: SCHEDULED_RSS_MAX_FEEDS,
+  staleAfterMs: SCHEDULED_RSS_STALE_AFTER_MS,
+};
 
 let pollIntervalId: ReturnType<typeof setInterval> | null = null;
 let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -77,7 +85,7 @@ async function triggerPoll(): Promise<void> {
       kind: "rss-poll",
       source: "rss-poller",
       timeoutMs: 180_000,
-      run: refreshAllFeeds,
+      run: () => refreshRssFeeds(SCHEDULED_REFRESH_OPTIONS),
     });
     clearDeferredRetry();
   } catch (err) {

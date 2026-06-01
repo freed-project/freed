@@ -22,7 +22,7 @@ import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { UpdateNotification, type UpdateState } from "./components/UpdateNotification";
 import { CloudSyncNudge } from "./components/CloudSyncNudge";
 import { useAppStore } from "./lib/store";
-import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML, refreshAllFeeds } from "./lib/capture";
+import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML, refreshRssFeeds } from "./lib/capture";
 import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
 import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
@@ -34,6 +34,7 @@ import {
   getActiveProviders,
   getCloudToken,
   getValidCloudToken,
+  forceRefreshCloudToken,
   clearCloudProvider,
   deleteCloudFile,
   startCloudSync,
@@ -85,6 +86,9 @@ import { clearContactSyncState, setContactSyncError } from "./lib/contact-sync-s
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
+import { importMetaExportFiles } from "./lib/meta-export-import";
+import { summarizeMediaVault } from "./lib/media-vault";
+import { publishStoryWallToGitHubPages } from "./lib/story-wall-publisher";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
 import { startMemoryMonitor, stopMemoryMonitor } from "./lib/memory-monitor";
 import {
@@ -106,11 +110,104 @@ import {
   type PendingDesktopUpdate,
   resolveDesktopDownloadFallbackUrl,
 } from "./lib/desktop-updater";
+import { rendererHeartbeatTiming } from "./lib/renderer-heartbeat";
+import { DESKTOP_CHANGELOG_PREVIEW } from "./lib/changelog-preview";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1";
 const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
 const RENDERER_HEARTBEAT_INTERVAL_MS = 15 * 1000;
+
+type FriendGraphSurfacePerf = {
+  modelBuildMs?: number;
+  layoutMs?: number;
+  sceneSyncMs?: number;
+  labelPassMs?: number;
+  sceneSyncCount?: number;
+  contentSyncCount?: number;
+  transformOnlySyncCount?: number;
+  edgeRebuildCount?: number;
+  nodeRestyleCount?: number;
+  labelLayoutCount?: number;
+  avatarDisplayCount?: number;
+  visibleLabelCount?: number;
+  visibleNodeLabelCount?: number;
+  visibleProviderLabelCount?: number;
+  denseRenderMode?: "dense" | "containers";
+  denseInteractionEligible?: boolean;
+  denseInteractionNodeCount?: number;
+  denseInteractionCulled?: boolean;
+  denseInteractionRebuildCount?: number;
+  qualityMode?: string;
+  nodeCount?: number;
+  linkCount?: number;
+  personCount?: number;
+  channelCount?: number;
+  transformScale?: number;
+};
+
+type SurfacePerfSnapshot = {
+  activeSurface: "feed" | "friends_graph" | "map" | "settings" | "dialog" | "unknown";
+  friendsGraph?: FriendGraphSurfacePerf;
+  map?: {
+    ready: boolean;
+    moving: boolean;
+    dense: boolean;
+    renderedMarkers: number;
+    totalMarkers: number;
+  };
+};
+
+function readNumberDatasetValue(element: HTMLElement, key: string): number | undefined {
+  const value = element.dataset[key];
+  if (value === undefined) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function collectSurfacePerf(): SurfacePerfSnapshot {
+  const settingsOpen = Boolean(document.querySelector(".theme-settings-shell"));
+  if (settingsOpen) return { activeSurface: "settings" };
+  const dialogOpen = Boolean(document.querySelector(".theme-dialog-shell"));
+  if (dialogOpen) return { activeSurface: "dialog" };
+
+  const friendGraph = document.querySelector<HTMLElement>('[data-testid="friend-graph-viewport"]');
+  if (friendGraph) {
+    const graphPerf = (window as typeof window & {
+      __FREED_GRAPH_PERF__?: FriendGraphSurfacePerf;
+    }).__FREED_GRAPH_PERF__;
+    return {
+      activeSurface: "friends_graph",
+      friendsGraph: graphPerf
+        ? { ...graphPerf }
+        : {
+            nodeCount: readNumberDatasetValue(friendGraph, "graphNodeCount"),
+            linkCount: readNumberDatasetValue(friendGraph, "graphLinkCount"),
+            personCount: readNumberDatasetValue(friendGraph, "graphPersonCount"),
+            channelCount: readNumberDatasetValue(friendGraph, "graphChannelCount"),
+            visibleLabelCount: readNumberDatasetValue(friendGraph, "visibleLabelCount"),
+            qualityMode: friendGraph.dataset.graphQualityMode,
+          },
+    };
+  }
+
+  const mapSurface = document.querySelector<HTMLElement>('[data-testid="map-surface"]');
+  if (mapSurface) {
+    return {
+      activeSurface: "map",
+      map: {
+        ready: mapSurface.dataset.mapReady === "true",
+        moving: mapSurface.dataset.mapMoving === "true",
+        dense: mapSurface.dataset.mapDense === "true",
+        renderedMarkers: readNumberDatasetValue(mapSurface, "mapRenderedMarkers") ?? 0,
+        totalMarkers: readNumberDatasetValue(mapSurface, "mapTotalMarkers") ?? 0,
+      },
+    };
+  }
+
+  if (document.querySelector("main")) return { activeSurface: "feed" };
+  return { activeSurface: "unknown" };
+}
 
 // Register the desktop log transport so addDebugEvent calls from ui/ flow
 // through the native logger in both local preview and release builds.
@@ -223,6 +320,7 @@ function App() {
       void startSnapshotManager();
     }
     // Start background content fetcher, which processes the article HTML queue.
+    void contentCache.pruneOversized();
     startContentFetcher();
     startSemanticClassifier({
       isEnabled: () => {
@@ -315,29 +413,42 @@ function App() {
           totalJSHeapSize?: number;
         };
       };
+      const visibility = document.visibilityState;
+      const timing = rendererHeartbeatTiming(
+        visibility,
+        now,
+        expectedHeartbeatAt,
+        RENDERER_HEARTBEAT_INTERVAL_MS,
+      );
       const payload = {
         seq: heartbeatSeq,
         ts: Date.now(),
         reason,
-        visibility: document.visibilityState,
+        visibility,
         href: window.location.href,
         pageLoadId,
         uptimeMs: Math.max(0, Math.round(now - startedAt)),
         appPhase: legalAccepted ? "ready" : "legal",
-        eventLoopLagMs: Math.max(0, now - expectedHeartbeatAt),
+        eventLoopLagMs: timing.eventLoopLagMs,
+        hiddenTimerThrottled: timing.hiddenTimerThrottled,
         domNodeCount: document.getElementsByTagName("*").length,
         rendererHeapUsedBytes: perf.memory?.usedJSHeapSize,
         rendererHeapTotalBytes: perf.memory?.totalJSHeapSize,
         lastInputAgeMs: Math.max(0, Math.round(now - lastInputAt)),
         settingsOpen: Boolean(document.querySelector(".theme-settings-shell")),
         dialogOpen: Boolean(document.querySelector(".theme-dialog-shell")),
+        surfacePerf: collectSurfacePerf(),
       };
       expectedHeartbeatAt = now + RENDERER_HEARTBEAT_INTERVAL_MS;
       noteRendererHeartbeat(payload);
       if (import.meta.env.VITE_TEST_TAURI === "1") {
-        const testWindow = window as unknown as { __FREED_RENDERER_HEARTBEATS__?: number };
+        const testWindow = window as unknown as {
+          __FREED_RENDERER_HEARTBEATS__?: number;
+          __FREED_LAST_RENDERER_HEARTBEAT__?: typeof payload;
+        };
         testWindow.__FREED_RENDERER_HEARTBEATS__ =
           (testWindow.__FREED_RENDERER_HEARTBEATS__ ?? 0) + 1;
+        testWindow.__FREED_LAST_RENDERER_HEARTBEAT__ = payload;
       }
       void emit("renderer-heartbeat", payload).catch(() => {
         // If the renderer is already failing, heartbeat delivery may fail too.
@@ -626,6 +737,20 @@ function App() {
       );
       return result;
     } catch (error) {
+      const status = typeof error === "object" && error !== null && "status" in error
+        ? (error as { status?: number }).status
+        : undefined;
+      if (status === 401) {
+        const refreshedToken = await forceRefreshCloudToken("gdrive");
+        if (refreshedToken && refreshedToken !== accessToken) {
+          log.info("[contacts] Google sync retrying after token refresh");
+          const result = await fetchGoogleContactsViaTauri(refreshedToken, syncToken);
+          log.info(
+            `[contacts] Google sync fetched contacts=${result.contacts.length.toLocaleString()} deleted=${result.deleted.length.toLocaleString()} next_sync_token=${result.nextSyncToken ? "yes" : "no"}`,
+          );
+          return result;
+        }
+      }
       const message = error instanceof Error ? error.message : String(error);
       log.warn(`[contacts] Google sync failed: ${message}`);
       throw error;
@@ -696,6 +821,7 @@ function App() {
       LinkedInSettingsContent: LinkedInSettingsSection,
       GoogleContactsSettingsContent: tauriRuntimeAvailable ? GoogleContactsSection : null,
       checkForUpdates: IS_LOCAL_PREVIEW ? undefined : checkForUpdates,
+      changelogPreview: DESKTOP_CHANGELOG_PREVIEW,
       applyUpdate: IS_LOCAL_PREVIEW ? undefined : applyUpdate,
       releaseChannel: IS_LOCAL_PREVIEW || !releaseChannelResolved ? undefined : releaseChannel,
       installedReleaseChannel: IS_LOCAL_PREVIEW || !releaseChannelResolved ? undefined : installedReleaseChannel,
@@ -721,7 +847,7 @@ function App() {
       retryCloudProvider,
       reconnectCloudProvider,
       forgetRssFeedHealth,
-      syncRssNow: refreshAllFeeds,
+      syncRssNow: refreshRssFeeds,
       syncSourceNow: async (sourceId) => {
         const state = useDesktopStore.getState();
         const health = useDebugStore.getState().health;
@@ -733,7 +859,7 @@ function App() {
           health?.providers[sourceId]?.status === "paused";
 
         if (sourceId === "rss") {
-          await refreshAllFeeds();
+          await refreshRssFeeds();
           return;
         }
 
@@ -785,6 +911,18 @@ function App() {
         clearApiKey: (provider: string) => Promise<void>;
       },
       localAIModels,
+      importInstagramStoryWallArchive: (files) => importMetaExportFiles("instagram", files),
+      getStoryWallArchiveSummaries: async () => {
+        const [facebook, instagram] = await Promise.all([
+          summarizeMediaVault("facebook"),
+          summarizeMediaVault("instagram"),
+        ]);
+        return [
+          { provider: "facebook", ...facebook },
+          { provider: "instagram", ...instagram },
+        ];
+      },
+      publishStoryWall: publishStoryWallToGitHubPages,
       openUrl: (url: string) => { void shellOpen(url); },
       pickContact: pickContactViaTauri,
       googleContacts: tauriRuntimeAvailable

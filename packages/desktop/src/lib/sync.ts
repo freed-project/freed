@@ -294,25 +294,38 @@ export type { CloudProvider };
 const CLOUD_TOKEN_KEY = (p: CloudProvider) => `freed_cloud_token_${p}`;
 const CLOUD_TOKEN_META_KEY = (p: CloudProvider) => `freed_cloud_token_meta_${p}`;
 const UPLOAD_DEBOUNCE_MS = 2_000;
+const UPLOAD_DEFER_BACKOFF_BASE_MS = 10_000;
+const UPLOAD_DEFER_BACKOFF_MAX_MS = 120_000;
+const INITIAL_DOWNLOAD_DEFER_BACKOFF_BASE_MS = 15_000;
+const INITIAL_DOWNLOAD_DEFER_BACKOFF_MAX_MS = 180_000;
 const TOKEN_REFRESH_SKEW_MS = 60_000;
+const GOOGLE_TOKEN_REFRESH_FALLBACK_TTL_MS = 55 * 60 * 1000;
+const AUTH_FAILURE_REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
 
 /** Per-provider abort controllers, upload timers, and doc-change unsubscribers. */
 const cloudAborts = new Map<CloudProvider, AbortController>();
 const uploadTimers = new Map<CloudProvider, ReturnType<typeof setTimeout>>();
+const initialDownloadTimers = new Map<CloudProvider, ReturnType<typeof setTimeout>>();
 const cloudChangeUnsubscribes = new Map<CloudProvider, () => void>();
+const cloudTokenRefreshes = new Map<CloudProvider, Promise<string | null>>();
+const cloudAuthFailureRefreshes = new Map<CloudProvider, number>();
+const cloudUploadDeferredAttempts = new Map<CloudProvider, number>();
+const cloudInitialDownloadDeferredAttempts = new Map<CloudProvider, number>();
 
 // Desktop OAuth client IDs. These are public and embedded in the app bundle.
 const DEFAULT_GDRIVE_DESKTOP_CLIENT_ID =
   "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com";
 const GDRIVE_CLIENT_ID =
   import.meta.env.VITE_GDRIVE_DESKTOP_CLIENT_ID || DEFAULT_GDRIVE_DESKTOP_CLIENT_ID;
-// Only needed when using a "Web application" OAuth client type for GDrive instead
-// of the correct "Desktop app" type. Desktop app clients support PKCE without a
-// client_secret; web app clients require it.
+// Only needed when using direct token exchange for a Google OAuth client that
+// requires a secret. Prefer the server token proxy when it is configured so the
+// secret never ships in the Freed Desktop bundle.
 const GDRIVE_CLIENT_SECRET = import.meta.env.VITE_GDRIVE_CLIENT_SECRET ?? "";
 const GDRIVE_TOKEN_PROXY_URL =
-  import.meta.env.VITE_GDRIVE_TOKEN_PROXY_URL ?? "https://app.freed.wtf/api/oauth/google";
+  import.meta.env.VITE_GDRIVE_TOKEN_PROXY_URL ?? "";
+const GDRIVE_FORCE_TOKEN_PROXY = import.meta.env.VITE_GDRIVE_FORCE_TOKEN_PROXY === "1";
 const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 export interface CloudTokenBundle {
   accessToken: string;
@@ -328,6 +341,12 @@ interface TokenExchangeResponse {
   access_token?: string;
   refresh_token?: string;
   expires_in?: number;
+}
+
+interface NativeGoogleOAuthResponse {
+  status: number;
+  headers: Array<[string, string]>;
+  body: number[];
 }
 
 function createOAuthCanceledError(): Error {
@@ -346,12 +365,20 @@ function throwIfOAuthCanceled(signal?: AbortSignal): void {
   }
 }
 
-function tokenBundleFromResponse(data: TokenExchangeResponse): CloudTokenBundle {
+function tokenBundleFromResponse(
+  data: TokenExchangeResponse,
+  options: { fallbackTtlMs?: number } = {},
+): CloudTokenBundle {
   if (!data.access_token) throw new Error("Token exchange returned no access_token");
+  const expiresAt = typeof data.expires_in === "number" && Number.isFinite(data.expires_in) && data.expires_in > 0
+    ? Date.now() + data.expires_in * 1000
+    : options.fallbackTtlMs
+      ? Date.now() + options.fallbackTtlMs
+      : undefined;
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
-    expiresAt: data.expires_in ? Date.now() + data.expires_in * 1000 : undefined,
+    expiresAt,
   };
 }
 
@@ -364,7 +391,9 @@ function readCloudTokenBundle(provider: CloudProvider): CloudTokenBundle | null 
         return {
           accessToken: parsed.accessToken,
           refreshToken: typeof parsed.refreshToken === "string" ? parsed.refreshToken : undefined,
-          expiresAt: typeof parsed.expiresAt === "number" ? parsed.expiresAt : undefined,
+          expiresAt: typeof parsed.expiresAt === "number" && Number.isFinite(parsed.expiresAt)
+            ? parsed.expiresAt
+            : undefined,
         };
       }
     } catch {
@@ -378,9 +407,14 @@ function readCloudTokenBundle(provider: CloudProvider): CloudTokenBundle | null 
 
 /** Persist OAuth credentials for a cloud provider. */
 export function storeCloudToken(provider: CloudProvider, token: string | CloudTokenBundle): void {
+  const previous = readCloudTokenBundle(provider);
   const bundle = typeof token === "string" ? { accessToken: token } : token;
-  localStorage.setItem(CLOUD_TOKEN_KEY(provider), bundle.accessToken);
-  localStorage.setItem(CLOUD_TOKEN_META_KEY(provider), JSON.stringify(bundle));
+  const storedBundle: CloudTokenBundle = {
+    ...bundle,
+    refreshToken: bundle.refreshToken ?? previous?.refreshToken,
+  };
+  localStorage.setItem(CLOUD_TOKEN_KEY(provider), storedBundle.accessToken);
+  localStorage.setItem(CLOUD_TOKEN_META_KEY(provider), JSON.stringify(storedBundle));
 }
 
 /** Retrieve the stored OAuth access token for a cloud provider. */
@@ -388,16 +422,94 @@ export function getCloudToken(provider: CloudProvider): string | null {
   return readCloudTokenBundle(provider)?.accessToken ?? null;
 }
 
+function shouldRefreshCloudToken(bundle: CloudTokenBundle, now = Date.now()): boolean {
+  return typeof bundle.expiresAt === "number"
+    && Number.isFinite(bundle.expiresAt)
+    && bundle.expiresAt - now <= TOKEN_REFRESH_SKEW_MS;
+}
+
+function cloudTokenExpiresInMs(bundle: CloudTokenBundle, now = Date.now()): number | null {
+  return typeof bundle.expiresAt === "number" && Number.isFinite(bundle.expiresAt)
+    ? bundle.expiresAt - now
+    : null;
+}
+
+function authFailureStatus(error: unknown): number | undefined {
+  return typeof error === "object" && error !== null && "status" in error
+    ? (error as { status?: number }).status
+    : undefined;
+}
+
+function nextDeferredBackoffMs(
+  attempts: Map<CloudProvider, number>,
+  provider: CloudProvider,
+  baseMs: number,
+  maxMs: number,
+): number {
+  const nextAttempt = (attempts.get(provider) ?? 0) + 1;
+  attempts.set(provider, nextAttempt);
+  return Math.min(maxMs, baseMs * 2 ** Math.min(nextAttempt - 1, 6));
+}
+
+async function refreshCloudTokenAfterAuthFailure(
+  provider: CloudProvider,
+  bundle: CloudTokenBundle,
+  error: unknown,
+): Promise<string | null> {
+  const status = authFailureStatus(error);
+  if (status !== 401) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn(`[cloud/${provider}] auth failure is not refreshable status=${status ?? "unknown"} reason=${message}`);
+    throw error;
+  }
+
+  if (!bundle.refreshToken) {
+    log.warn(`[cloud/${provider}] auth failure cannot refresh because no refresh token is stored`);
+    throw error;
+  }
+
+  const now = Date.now();
+  const lastRefreshAt = cloudAuthFailureRefreshes.get(provider);
+  if (typeof lastRefreshAt === "number" && now - lastRefreshAt < AUTH_FAILURE_REFRESH_COOLDOWN_MS) {
+    const ageMs = now - lastRefreshAt;
+    log.warn(`[cloud/${provider}] auth failure refresh suppressed age_ms=${ageMs.toLocaleString()}`);
+    throw error;
+  }
+
+  cloudAuthFailureRefreshes.set(provider, now);
+  const expiresInMs = cloudTokenExpiresInMs(bundle, now);
+  log.info(
+    `[cloud/${provider}] refreshing token after auth failure status=${status} expires_in_ms=${expiresInMs?.toLocaleString() ?? "unknown"}`,
+  );
+  return refreshCloudToken(provider, bundle);
+}
+
 async function refreshCloudToken(provider: CloudProvider, bundle: CloudTokenBundle): Promise<string | null> {
   if (!bundle.refreshToken) return bundle.accessToken;
+  const existingRefresh = cloudTokenRefreshes.get(provider);
+  if (existingRefresh) return existingRefresh;
+
+  let refreshPromise!: Promise<string | null>;
+  refreshPromise = refreshCloudTokenInner(provider, bundle).finally(() => {
+    if (cloudTokenRefreshes.get(provider) === refreshPromise) {
+      cloudTokenRefreshes.delete(provider);
+    }
+  });
+  cloudTokenRefreshes.set(provider, refreshPromise);
+  return refreshPromise;
+}
+
+async function refreshCloudTokenInner(provider: CloudProvider, bundle: CloudTokenBundle): Promise<string | null> {
+  const refreshToken = bundle.refreshToken;
+  if (!refreshToken) return bundle.accessToken;
 
   if (provider === "gdrive" && shouldUseGoogleTokenProxy()) {
-    return refreshGoogleTokenViaProxy(bundle.refreshToken);
+    return refreshGoogleTokenViaProxy(refreshToken);
   }
 
   const params = new URLSearchParams({
     grant_type: "refresh_token",
-    refresh_token: bundle.refreshToken,
+    refresh_token: refreshToken,
   });
 
   let tokenUrl: string;
@@ -406,7 +518,16 @@ async function refreshCloudToken(provider: CloudProvider, bundle: CloudTokenBund
     if (GDRIVE_CLIENT_SECRET) {
       params.set("client_secret", GDRIVE_CLIENT_SECRET);
     }
-    tokenUrl = "https://oauth2.googleapis.com/token";
+    const refreshed = tokenBundleFromResponse(
+      await postGoogleToken(params, "Google token refresh failed"),
+      { fallbackTtlMs: GOOGLE_TOKEN_REFRESH_FALLBACK_TTL_MS },
+    );
+    const nextBundle = {
+      ...refreshed,
+      refreshToken: refreshed.refreshToken ?? bundle.refreshToken,
+    };
+    storeCloudToken(provider, nextBundle);
+    return nextBundle.accessToken;
   } else {
     params.set("client_id", DROPBOX_CLIENT_ID);
     tokenUrl = "https://api.dropboxapi.com/oauth2/token";
@@ -433,11 +554,81 @@ async function refreshCloudToken(provider: CloudProvider, bundle: CloudTokenBund
 }
 
 function shouldUseGoogleTokenProxy(): boolean {
-  return !!GDRIVE_TOKEN_PROXY_URL && !!GDRIVE_CLIENT_ID && !GDRIVE_CLIENT_SECRET;
+  return !!GDRIVE_TOKEN_PROXY_URL && !!GDRIVE_CLIENT_ID && (GDRIVE_FORCE_TOKEN_PROXY || !GDRIVE_CLIENT_SECRET);
 }
 
 function tokenBundleFromProxyResponse(data: TokenExchangeResponse): CloudTokenBundle {
-  return tokenBundleFromResponse(data);
+  return tokenBundleFromResponse(data, { fallbackTtlMs: GOOGLE_TOKEN_REFRESH_FALLBACK_TTL_MS });
+}
+
+function decodeNativeBody(body: number[]): string {
+  return new TextDecoder().decode(new Uint8Array(body));
+}
+
+function googleOAuthError(prefix: string, status: number, body: string): Error {
+  const trimmed = body.trim();
+  if (!trimmed) return new Error(`${prefix} (${status})`);
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      error?: string;
+      error_description?: string;
+      message?: string;
+    };
+    const detail = parsed.error_description ?? parsed.message ?? parsed.error;
+    if (detail) {
+      if (detail === "client_secret is missing.") {
+        return new Error(
+          `${prefix} (${status}): client_secret is missing. Freed Desktop is using direct Google token exchange for an OAuth client that requires a secret. Configure the Google token proxy or provide VITE_GDRIVE_CLIENT_SECRET.`,
+        );
+      }
+      return new Error(`${prefix} (${status}): ${detail}`);
+    }
+  } catch {
+    // Use the raw body below.
+  }
+  return new Error(`${prefix} (${status}): ${trimmed.slice(0, 500)}`);
+}
+
+async function postNativeGoogleOAuth(
+  url: string,
+  requestBody: string,
+  contentType: string,
+  errorPrefix: string,
+): Promise<TokenExchangeResponse> {
+  const response = await invoke<NativeGoogleOAuthResponse>("google_oauth_proxy_request", {
+    url,
+    body: requestBody,
+    contentType,
+  });
+  const body = decodeNativeBody(response.body);
+  if (response.status < 200 || response.status >= 300) {
+    throw googleOAuthError(errorPrefix, response.status, body);
+  }
+  let data: TokenExchangeResponse;
+  try {
+    data = JSON.parse(body || "{}") as TokenExchangeResponse;
+  } catch {
+    throw new Error(`${errorPrefix}: invalid JSON response.`);
+  }
+  return data;
+}
+
+async function postGoogleTokenProxy(payload: Record<string, unknown>): Promise<TokenExchangeResponse> {
+  return postNativeGoogleOAuth(
+    GDRIVE_TOKEN_PROXY_URL,
+    JSON.stringify(payload),
+    "application/json",
+    "Google token proxy failed",
+  );
+}
+
+async function postGoogleToken(params: URLSearchParams, errorPrefix: string): Promise<TokenExchangeResponse> {
+  return postNativeGoogleOAuth(
+    GOOGLE_TOKEN_URL,
+    params.toString(),
+    "application/x-www-form-urlencoded",
+    errorPrefix,
+  );
 }
 
 async function exchangeGoogleCodeViaProxy(
@@ -445,45 +636,21 @@ async function exchangeGoogleCodeViaProxy(
   codeVerifier: string,
   redirectUri: string,
 ): Promise<CloudTokenBundle> {
-  const res = await fetch(GDRIVE_TOKEN_PROXY_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      code,
-      verifier: codeVerifier,
-      redirectUri,
-      clientId: GDRIVE_CLIENT_ID,
-    }),
+  const data = await postGoogleTokenProxy({
+    code,
+    verifier: codeVerifier,
+    redirectUri,
+    clientId: GDRIVE_CLIENT_ID,
   });
-
-  const data = (await res.json().catch(() => ({ error: "invalid JSON from Google token proxy" }))) as
-    TokenExchangeResponse & { error?: string };
-
-  if (!res.ok) {
-    throw new Error(`Google token proxy failed (${res.status}): ${data.error ?? "token exchange failed"}`);
-  }
-
   return tokenBundleFromProxyResponse(data);
 }
 
 async function refreshGoogleTokenViaProxy(refreshToken: string): Promise<string | null> {
-  const res = await fetch(GDRIVE_TOKEN_PROXY_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grantType: "refresh_token",
-      refreshToken,
-      clientId: GDRIVE_CLIENT_ID,
-    }),
+  const data = await postGoogleTokenProxy({
+    grantType: "refresh_token",
+    refreshToken,
+    clientId: GDRIVE_CLIENT_ID,
   });
-
-  const data = (await res.json().catch(() => ({ error: "invalid JSON from Google token proxy" }))) as
-    TokenExchangeResponse & { error?: string };
-
-  if (!res.ok) {
-    throw new Error(`Google token proxy refresh failed (${res.status}): ${data.error ?? "token refresh failed"}`);
-  }
-
   const refreshed = tokenBundleFromProxyResponse(data);
   const nextBundle = {
     ...refreshed,
@@ -497,15 +664,23 @@ async function refreshGoogleTokenViaProxy(refreshToken: string): Promise<string 
 export async function getValidCloudToken(provider: CloudProvider): Promise<string | null> {
   const bundle = readCloudTokenBundle(provider);
   if (!bundle) return null;
-  if (bundle.expiresAt && bundle.expiresAt - Date.now() <= TOKEN_REFRESH_SKEW_MS) {
+  if (shouldRefreshCloudToken(bundle)) {
     return refreshCloudToken(provider, bundle);
   }
   return bundle.accessToken;
 }
 
-/** Return all providers that have a stored access token. */
+/** Refresh a provider token even when its stored expiry still looks valid. */
+export async function forceRefreshCloudToken(provider: CloudProvider): Promise<string | null> {
+  const bundle = readCloudTokenBundle(provider);
+  if (!bundle) return null;
+  if (!bundle.refreshToken) return bundle.accessToken;
+  return refreshCloudToken(provider, bundle);
+}
+
+/** Return all supported providers that have a stored access token. */
 export function getActiveProviders(): CloudProvider[] {
-  const all: CloudProvider[] = ["gdrive", "dropbox"];
+  const all: CloudProvider[] = ["gdrive"];
   return all.filter((p) => !!getCloudToken(p));
 }
 
@@ -513,6 +688,7 @@ export function getActiveProviders(): CloudProvider[] {
 export function clearCloudProvider(provider: CloudProvider): void {
   localStorage.removeItem(CLOUD_TOKEN_KEY(provider));
   localStorage.removeItem(CLOUD_TOKEN_META_KEY(provider));
+  cloudAuthFailureRefreshes.delete(provider);
   stopCloudSync(provider);
 }
 
@@ -674,13 +850,13 @@ async function exchangeCode(
     }
 
     params.set("client_id", GDRIVE_CLIENT_ID);
-    // Desktop app OAuth clients use PKCE without a secret. If the console client
-    // is a "Web application" type, VITE_GDRIVE_CLIENT_SECRET must be set or
-    // Google returns 400 "client_secret is missing".
+    // Direct token exchange only works without a secret for native desktop
+    // OAuth clients. Web clients must use the server token proxy or include the
+    // secret in the build environment.
     if (GDRIVE_CLIENT_SECRET) {
       params.set("client_secret", GDRIVE_CLIENT_SECRET);
     }
-    tokenUrl = "https://oauth2.googleapis.com/token";
+    return tokenBundleFromResponse(await postGoogleToken(params, "Google token exchange failed"));
   } else {
     params.set("client_id", DROPBOX_CLIENT_ID);
     tokenUrl = "https://api.dropboxapi.com/oauth2/token";
@@ -702,6 +878,80 @@ async function exchangeCode(
 
 // ─── Sync loops ───────────────────────────────────────────────────────────────
 
+async function runInitialCloudDownload(
+  provider: CloudProvider,
+  signal: AbortSignal,
+  resolveToken: () => Promise<string>,
+): Promise<void> {
+  const startedAt = Date.now();
+  const remote = provider === "gdrive"
+    ? await gdriveDownloadLatest(await resolveToken(), signal, googleDriveFetch)
+    : await dropboxDownloadLatest(await resolveToken(), signal);
+  if (remote) {
+    await mergeDoc(remote);
+    cloudInitialDownloadDeferredAttempts.delete(provider);
+    console.log("[CloudSync/%s] Initial merge (%d bytes)", provider, remote.length);
+    await recordProviderHealthEvent({
+      provider,
+      outcome: "success",
+      stage: "download",
+      startedAt,
+      finishedAt: Date.now(),
+      bytesMoved: remote.length,
+    });
+  } else {
+    cloudInitialDownloadDeferredAttempts.delete(provider);
+    await recordProviderHealthEvent({
+      provider,
+      outcome: "empty",
+      stage: "download",
+      reason: "No remote changes",
+      startedAt,
+      finishedAt: Date.now(),
+    });
+  }
+}
+
+function scheduleInitialCloudDownloadRetry(
+  provider: CloudProvider,
+  token: string,
+  reason: string,
+): void {
+  const delayMs = nextDeferredBackoffMs(
+    cloudInitialDownloadDeferredAttempts,
+    provider,
+    INITIAL_DOWNLOAD_DEFER_BACKOFF_BASE_MS,
+    INITIAL_DOWNLOAD_DEFER_BACKOFF_MAX_MS,
+  );
+  addDebugEvent(
+    "change",
+    `[Cloud/${provider}] initial download deferred: ${reason}; retry_ms=${delayMs.toLocaleString()}`,
+  );
+  const existing = initialDownloadTimers.get(provider);
+  if (existing) clearTimeout(existing);
+  const timer = setTimeout(() => {
+    initialDownloadTimers.delete(provider);
+    const controller = cloudAborts.get(provider);
+    if (!controller) return;
+    const resolveToken = async () => (provider === "gdrive" ? (await getValidCloudToken(provider)) ?? token : token);
+    runBackgroundJob({
+      kind: "cloud-sync",
+      source: `cloud:${provider}:initial-download-retry`,
+      timeoutMs: 180_000,
+      run: () => runInitialCloudDownload(provider, controller.signal, resolveToken),
+    }).catch((error) => {
+      if (controller.signal.aborted) return;
+      if (isBackgroundRuntimeDeferredError(error)) {
+        scheduleInitialCloudDownloadRetry(provider, token, error.reason);
+        return;
+      }
+      const msg = error instanceof Error ? error.message : String(error);
+      addDebugEvent("error", `[Cloud/${provider}] initial download retry failed: ${msg}`);
+    });
+  }, delayMs);
+  initialDownloadTimers.set(provider, timer);
+}
+
 /**
  * Start the cloud sync loop for a single provider.
  * Downloads the latest remote state immediately, then runs the appropriate
@@ -717,32 +967,16 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
 
   // Immediate pull to catch up on any changes since last session.
   try {
-    const remote = provider === "gdrive"
-      ? await gdriveDownloadLatest(await resolveToken(), signal, googleDriveFetch)
-      : await dropboxDownloadLatest(await resolveToken(), signal);
-    if (remote) {
-      await mergeDoc(remote);
-      console.log("[CloudSync/%s] Initial merge (%d bytes)", provider, remote.length);
-      await recordProviderHealthEvent({
-        provider,
-        outcome: "success",
-        stage: "download",
-        startedAt: Date.now(),
-        finishedAt: Date.now(),
-        bytesMoved: remote.length,
-      });
-    } else {
-      await recordProviderHealthEvent({
-        provider,
-        outcome: "empty",
-        stage: "download",
-        reason: "No remote changes",
-        startedAt: Date.now(),
-        finishedAt: Date.now(),
-      });
-    }
+    await runBackgroundJob({
+      kind: "cloud-sync",
+      source: `cloud:${provider}:initial-download`,
+      timeoutMs: 180_000,
+      run: () => runInitialCloudDownload(provider, signal, resolveToken),
+    });
   } catch (err) {
-    if (!signal.aborted) {
+    if (!signal.aborted && isBackgroundRuntimeDeferredError(err)) {
+      scheduleInitialCloudDownloadRetry(provider, token, err.reason);
+    } else if (!signal.aborted) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[CloudSync/${provider}] Initial download failed:`, err);
       addDebugEvent("error", `[Cloud/${provider}] initial download failed: ${msg}`);
@@ -801,11 +1035,13 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
           return;
         } catch (error) {
           if (signal.aborted) return;
-          const status = typeof error === "object" && error !== null && "status" in error
-            ? (error as { status?: number }).status
-            : undefined;
+          const status = authFailureStatus(error);
           if (status !== 401 && status !== 403) throw error;
-          await refreshCloudToken("gdrive", readCloudTokenBundle("gdrive") ?? { accessToken: pollToken });
+          await refreshCloudTokenAfterAuthFailure(
+            "gdrive",
+            readCloudTokenBundle("gdrive") ?? { accessToken: pollToken },
+            error,
+          );
         }
       }
     };
@@ -864,6 +1100,14 @@ export function stopCloudSync(provider: CloudProvider): void {
     uploadTimers.delete(provider);
   }
 
+  const initialTimer = initialDownloadTimers.get(provider);
+  if (initialTimer) {
+    clearTimeout(initialTimer);
+    initialDownloadTimers.delete(provider);
+  }
+
+  cloudUploadDeferredAttempts.delete(provider);
+  cloudInitialDownloadDeferredAttempts.delete(provider);
   cloudChangeUnsubscribes.get(provider)?.();
   cloudChangeUnsubscribes.delete(provider);
 }
@@ -925,6 +1169,7 @@ export function scheduleCloudUpload(provider: CloudProvider, token?: string): vo
               } else {
                 await dropboxUploadSafe(uploadToken, binary);
               }
+              cloudUploadDeferredAttempts.delete(provider);
               console.log("[CloudSync/%s] Uploaded (%d bytes)", provider, binary.byteLength);
               await recordProviderHealthEvent({
                 provider,
@@ -951,8 +1196,21 @@ export function scheduleCloudUpload(provider: CloudProvider, token?: string): vo
           },
         }).catch((error) => {
           if (isBackgroundRuntimeDeferredError(error)) {
-            addDebugEvent("change", `[Cloud/${provider}] upload deferred: ${error.reason}`);
-            scheduleCloudUpload(provider, token);
+            const delayMs = nextDeferredBackoffMs(
+              cloudUploadDeferredAttempts,
+              provider,
+              UPLOAD_DEFER_BACKOFF_BASE_MS,
+              UPLOAD_DEFER_BACKOFF_MAX_MS,
+            );
+            addDebugEvent(
+              "change",
+              `[Cloud/${provider}] upload deferred: ${error.reason}; retry_ms=${delayMs.toLocaleString()}`,
+            );
+            const retryTimer = setTimeout(() => {
+              uploadTimers.delete(provider);
+              scheduleCloudUpload(provider, token);
+            }, delayMs);
+            uploadTimers.set(provider, retryTimer);
             return;
           }
           throw error;
