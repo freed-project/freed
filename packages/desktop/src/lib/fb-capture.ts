@@ -19,6 +19,7 @@ import {
   deduplicateFeedItems,
 } from "@freed/capture-facebook/browser";
 import type { FbGroupInfo, FeedItem } from "@freed/shared";
+import { isValidFacebookAuthorIdentity } from "@freed/shared";
 import { formatClockTime } from "@freed/ui/lib/date-format";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
@@ -71,6 +72,73 @@ export interface FbSyncDiag {
 export interface FbSyncResult {
   items: ReturnType<typeof fbPostsToFeedItems>;
   diag: FbSyncDiag;
+}
+
+interface FbNormalizationRejectionSummary {
+  accepted: number;
+  missingId: number;
+  invalidAuthor: number;
+  unexpected: number;
+  firstRejectedSample: string | null;
+}
+
+function rawFacebookPostSample(post: RawFbPost): string {
+  return [
+    `id:${post.id ? "y" : "n"}`,
+    `url:${post.url ? "y" : "n"}`,
+    `author:${post.authorName ? "y" : "n"}`,
+    `profile:${post.authorProfileUrl ? "y" : "n"}`,
+    `text:${(post.text?.length ?? 0).toLocaleString()}`,
+    `media:${(post.mediaUrls?.length ?? 0).toLocaleString()}`,
+  ].join(",");
+}
+
+function summarizeFacebookNormalizationRejections(
+  posts: readonly RawFbPost[],
+): FbNormalizationRejectionSummary {
+  const summary: FbNormalizationRejectionSummary = {
+    accepted: 0,
+    missingId: 0,
+    invalidAuthor: 0,
+    unexpected: 0,
+    firstRejectedSample: null,
+  };
+
+  for (const post of posts) {
+    let reason: "missingId" | "invalidAuthor" | null = null;
+    if (!post.id && !post.url) {
+      reason = "missingId";
+    } else if (!isValidFacebookAuthorIdentity({
+      displayName: post.authorName,
+      profileUrl: post.authorProfileUrl,
+    })) {
+      reason = "invalidAuthor";
+    }
+
+    if (!reason) {
+      summary.accepted++;
+      continue;
+    }
+
+    summary[reason]++;
+    if (!summary.firstRejectedSample) {
+      summary.firstRejectedSample = `${reason}(${rawFacebookPostSample(post)})`;
+    }
+  }
+
+  return summary;
+}
+
+function formatFacebookNormalizationSummary(
+  summary: FbNormalizationRejectionSummary,
+): string {
+  return (
+    `accepted=${summary.accepted.toLocaleString()}, ` +
+    `missingId=${summary.missingId.toLocaleString()}, ` +
+    `invalidAuthor=${summary.invalidAuthor.toLocaleString()}, ` +
+    `unexpected=${summary.unexpected.toLocaleString()}` +
+    (summary.firstRejectedSample ? `, firstRejected=${summary.firstRejectedSample}` : "")
+  );
 }
 
 function filterExcludedGroups(
@@ -243,11 +311,15 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
   try {
     const normalized = fbPostsToFeedItems(allRawPosts);
     diag.itemsNormalized = normalized.length;
+    const normalizationSummary = summarizeFacebookNormalizationRejections(allRawPosts);
+    normalizationSummary.unexpected = Math.max(0, normalizationSummary.accepted - normalized.length);
     if (normalized.length === 0) {
+      const summaryText = formatFacebookNormalizationSummary(normalizationSummary);
       diag.errorStage = "normalize";
       diag.errorMessage =
         `Extracted ${allRawPosts.length.toLocaleString()} Facebook post` +
-        `${allRawPosts.length === 1 ? "" : "s"}, but none passed normalization.`;
+        `${allRawPosts.length === 1 ? "" : "s"}, but none passed normalization. ${summaryText}`;
+      addDebugEvent("error", `[FB] normalization rejected all raw posts: ${summaryText}`);
       return { items: [], diag };
     }
 
@@ -255,7 +327,7 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
     diag.itemsDeduplicated = items.length;
     addDebugEvent(
       "change",
-      `[FB] normalization: raw=${allRawPosts.length.toLocaleString()}, normalized=${normalized.length.toLocaleString()}, deduplicated=${items.length.toLocaleString()}`,
+      `[FB] normalization: raw=${allRawPosts.length.toLocaleString()}, normalized=${normalized.length.toLocaleString()}, deduplicated=${items.length.toLocaleString()}, ${formatFacebookNormalizationSummary(normalizationSummary)}`,
     );
 
     return { items, diag };
