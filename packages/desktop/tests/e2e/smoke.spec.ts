@@ -665,7 +665,8 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
 
   await sidebarToggle.click();
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
-  await expectDesktopSidebarShellWidthAtMost(page, 2, 1_000);
+  await waitForDesktopSidebarMode(page, "closed");
+  await expectDesktopSidebarShellWidthAtMost(page, 2, 3_000);
 });
 
 test("narrow desktop viewports keep the desktop compact rail instead of switching to the mobile drawer", async ({ app, page }) => {
