@@ -319,6 +319,55 @@ describe("social capture completion", () => {
     );
     expect(mocks.storeState.fbAuth.lastCapturedAt).toBe(123_456);
   });
+
+  it("flags the Facebook zero-post pattern where scroll never advances", async () => {
+    const listeners = new Map<string, (event: { payload: unknown }) => void>();
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockImplementation(async (eventName: string, callback: (event: { payload: unknown }) => void) => {
+      listeners.set(eventName, callback);
+      return vi.fn();
+    });
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command !== "fb_scrape_feed") return null;
+
+      for (let pass = 0; pass < 8; pass++) {
+        listeners.get("fb-feed-data")?.({
+          payload: {
+            posts: [],
+            extractedAt: Date.now(),
+            url: "https://www.facebook.com/",
+            strategy: "role-main-fallback",
+            candidateCount: 0,
+            scrollY: 135,
+            feedContainerFound: false,
+          },
+        });
+      }
+      return null;
+    });
+
+    const { captureFbFeed } = await import("./fb-capture");
+
+    const result = await captureFbFeed();
+    const expectedMessage =
+      "Feed returned no posts. Facebook may need a moment to load. " +
+      "8 extraction passes, last strategy role-main-fallback, 0 candidates on the last pass, " +
+      "scrollY 135, feed container not found, scroll appears stuck near the top.";
+
+    expect(result.items).toEqual([]);
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(expectedMessage);
+    expect(mocks.storeState.setFbAuth).toHaveBeenCalledWith({
+      isAuthenticated: true,
+      lastCapturedAt: 123_456,
+      lastCaptureError: expectedMessage,
+    });
+  });
 });
 
 describe("social capture memory pressure gate", () => {

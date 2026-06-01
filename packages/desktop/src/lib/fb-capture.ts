@@ -155,6 +155,11 @@ function formatFacebookNormalizationSummary(
 
 function formatFacebookEmptySyncMessage(diag: FbSyncDiag): string {
   const details: string[] = [];
+  const scrollAppearsStuck =
+    diag.extractionPasses >= 3 &&
+    diag.lastCandidateCount === 0 &&
+    typeof diag.lastScrollY === "number" &&
+    diag.lastScrollY < 250;
 
   if (diag.extractionPasses > 0) {
     details.push(
@@ -174,6 +179,9 @@ function formatFacebookEmptySyncMessage(diag: FbSyncDiag): string {
   }
   if (typeof diag.feedContainerFound === "boolean") {
     details.push(`feed container ${diag.feedContainerFound ? "found" : "not found"}`);
+  }
+  if (scrollAppearsStuck) {
+    details.push("scroll appears stuck near the top");
   }
 
   return details.length > 0
