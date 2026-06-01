@@ -4,6 +4,7 @@ import {
   groupReleasesByDay,
   normalizeGitHubReleases,
   type ParsedRelease,
+  type ReleaseBuild,
   type ReleaseChannel,
   type ReleaseItem,
 } from "../src/content/changelog";
@@ -11,6 +12,7 @@ import {
 const OUTPUT_PATH = join(process.cwd(), "src/content/changelog.generated.json");
 const RELEASE_NOTES_ROOT = join(process.cwd(), "..", "release-notes");
 const RELEASE_NOTES_RELEASES_DIR = join(RELEASE_NOTES_ROOT, "releases");
+const GITHUB_RELEASE_PAGE_SIZE = 100;
 const authToken =
   process.env.GITHUB_RELEASES_TOKEN ??
   process.env.GITHUB_TOKEN ??
@@ -39,7 +41,9 @@ interface LocalReleaseArtifact {
   version: string;
   dayKey: string;
   source?: {
+    previousPublishedTag?: string;
     prNumbers?: number[];
+    relatedBuildTags?: string[];
   };
   release?: {
     deck?: string;
@@ -50,6 +54,14 @@ interface LocalReleaseArtifact {
     whatsNew?: string[];
     performance?: string[];
   };
+}
+
+interface GitHubCompare {
+  commits: Array<{
+    commit: {
+      message: string;
+    };
+  }>;
 }
 
 function dedupeItems(items: ReleaseItem[]): ReleaseItem[] {
@@ -85,6 +97,50 @@ async function fetchJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function fetchGitHubReleases(): Promise<GitHubRelease[]> {
+  const releases: GitHubRelease[] = [];
+
+  for (let page = 1; ; page += 1) {
+    const pageReleases = await fetchJson<GitHubRelease[]>(
+      `https://api.github.com/repos/freed-project/freed/releases?per_page=${GITHUB_RELEASE_PAGE_SIZE.toLocaleString(
+        "en-US",
+        { useGrouping: false },
+      )}&page=${page.toLocaleString("en-US", { useGrouping: false })}`,
+    );
+
+    releases.push(...pageReleases);
+
+    if (pageReleases.length < GITHUB_RELEASE_PAGE_SIZE) {
+      return releases;
+    }
+  }
+}
+
+function extractPrNumbersFromText(text: string): number[] {
+  return [...text.matchAll(/(?:#|\/pull\/)(\d+)/g)]
+    .map((match) => Number(match[1]))
+    .filter((num) => Number.isInteger(num) && num > 0);
+}
+
+async function fetchComparePrNumbers(
+  baseTag: string | undefined,
+  headTag: string,
+): Promise<number[]> {
+  if (!baseTag || baseTag === headTag) {
+    return [];
+  }
+
+  const compare = await fetchJson<GitHubCompare>(
+    `https://api.github.com/repos/freed-project/freed/compare/${encodeURIComponent(
+      baseTag,
+    )}...${encodeURIComponent(headTag)}`,
+  );
+
+  return compare.commits.flatMap((commit) =>
+    extractPrNumbersFromText(commit.commit.message),
+  );
+}
+
 function readLocalReleaseArtifacts(): Map<string, LocalReleaseArtifact> {
   const artifacts = new Map<string, LocalReleaseArtifact>();
 
@@ -109,10 +165,66 @@ function readLocalReleaseArtifacts(): Map<string, LocalReleaseArtifact> {
   return artifacts;
 }
 
-function releaseFromLocalArtifact(
+function buildLinksFromArtifact(
   artifact: LocalReleaseArtifact,
   release: GitHubRelease,
-): ParsedRelease {
+  releaseMap: Map<string, GitHubRelease>,
+): ReleaseBuild[] {
+  const relatedBuildTags = artifact.source?.relatedBuildTags ?? [];
+  const buildLinks = relatedBuildTags
+    .map((tag) => releaseMap.get(tag))
+    .filter((candidate): candidate is GitHubRelease => Boolean(candidate))
+    .map((candidate) => ({
+      version: candidate.tag_name.replace(/^v/, ""),
+      htmlUrl: candidate.html_url,
+      channel: (candidate.tag_name.endsWith("-dev") ? "dev" : "production") as ReleaseChannel,
+    }));
+
+  if (buildLinks.length > 0) {
+    return buildLinks;
+  }
+
+  return [
+    {
+      version: artifact.version || release.tag_name.replace(/^v/, ""),
+      htmlUrl: release.html_url,
+      channel: (release.tag_name.endsWith("-dev") ? "dev" : "production") as ReleaseChannel,
+    },
+  ];
+}
+
+async function collectPrNumbersFromArtifact(
+  artifact: LocalReleaseArtifact,
+  release: GitHubRelease,
+  localReleaseArtifacts: Map<string, LocalReleaseArtifact>,
+): Promise<number[]> {
+  const prNumbers = new Set(artifact.source?.prNumbers ?? []);
+
+  for (const relatedTag of artifact.source?.relatedBuildTags ?? []) {
+    const relatedArtifact = localReleaseArtifacts.get(relatedTag);
+    for (const prNumber of relatedArtifact?.source?.prNumbers ?? []) {
+      prNumbers.add(prNumber);
+    }
+  }
+
+  if (prNumbers.size === 0 && artifact.source?.previousPublishedTag) {
+    for (const prNumber of await fetchComparePrNumbers(
+      artifact.source.previousPublishedTag,
+      release.tag_name,
+    )) {
+      prNumbers.add(prNumber);
+    }
+  }
+
+  return [...prNumbers].sort((a, b) => a - b);
+}
+
+async function releaseFromLocalArtifact(
+  artifact: LocalReleaseArtifact,
+  release: GitHubRelease,
+  releaseMap: Map<string, GitHubRelease>,
+  localReleaseArtifacts: Map<string, LocalReleaseArtifact>,
+): Promise<ParsedRelease> {
   const releaseShape = artifact.release ?? {};
   const version = artifact.version || release.tag_name.replace(/^v/, "");
   const channel: ReleaseChannel = release.tag_name.endsWith("-dev")
@@ -124,6 +236,7 @@ function releaseFromLocalArtifact(
     ...(releaseShape.followUps ?? []),
     ...(releaseShape.performance ?? []),
   ]);
+  const buildLinks = buildLinksFromArtifact(artifact, release, releaseMap);
 
   return {
     version,
@@ -135,36 +248,37 @@ function releaseFromLocalArtifact(
     fixes,
     followUps,
     htmlUrl: release.html_url,
-    prNumbers: [...new Set(artifact.source?.prNumbers ?? [])].sort((a, b) => a - b),
-    builds: [release.tag_name.replace(/^v/, "")],
-    buildLinks: [
-      {
-        version,
-        htmlUrl: release.html_url,
-        channel,
-      },
-    ],
+    prNumbers: await collectPrNumbersFromArtifact(
+      artifact,
+      release,
+      localReleaseArtifacts,
+    ),
+    builds: buildLinks.map((build) => build.version),
+    buildLinks,
   };
 }
 
 async function fetchChangelog(): Promise<ParsedRelease[]> {
-  const releases = await fetchJson<GitHubRelease[]>(
-    "https://api.github.com/repos/freed-project/freed/releases?per_page=100",
-  );
+  const releases = await fetchGitHubReleases();
   const publishedReleases = normalizeGitHubReleases(releases);
   const releaseMap = new Map(releases.map((release) => [release.tag_name, release]));
   const localReleaseArtifacts = readLocalReleaseArtifacts();
 
-  const detailedReleases = publishedReleases.map((publishedRelease) => {
+  const detailedReleases = await Promise.all(publishedReleases.map((publishedRelease) => {
     const release = releaseMap.get(publishedRelease.tagName);
     const localArtifact = release ? localReleaseArtifacts.get(release.tag_name) : null;
 
     if (release && localArtifact?.release) {
-      return releaseFromLocalArtifact(localArtifact, release);
+      return releaseFromLocalArtifact(
+        localArtifact,
+        release,
+        releaseMap,
+        localReleaseArtifacts,
+      );
     }
 
     return publishedRelease;
-  });
+  }));
 
   return groupReleasesByDay(detailedReleases);
 }
