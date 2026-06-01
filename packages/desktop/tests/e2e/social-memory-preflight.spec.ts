@@ -1,7 +1,11 @@
-import { test, expect } from "./fixtures/app";
+import { test, expect, resolveViteFsModulePath } from "./fixtures/app";
 
 const MEMORY_PRESSURE_COPY =
   "Facebook sync did not start because Freed Desktop memory is high.";
+const DEBUG_STORE_PATH = resolveViteFsModulePath(
+  "../../../ui/src/lib/debug-store.ts",
+  import.meta.url,
+);
 
 async function seedAcceptedDesktopConsent(page: import("@playwright/test").Page) {
   await page.addInitScript(() => {
@@ -280,6 +284,15 @@ test("facebook scrape records provider memory pressure only when cleanup fails",
       liError: state.liAuth.lastCaptureError,
     };
   });
-  expect(authState.fbError).toContain(MEMORY_PRESSURE_COPY);
+  expect(authState.fbError).toBeUndefined();
   expect(authState.liError).toBeUndefined();
+
+  const providerState = await page.evaluate(async (debugStorePath) => {
+    const mod = await import(debugStorePath);
+    return mod.useDebugStore.getState().health?.providers.facebook;
+  }, DEBUG_STORE_PATH);
+
+  expect(providerState?.status).toBe("degraded");
+  expect(providerState?.currentMessage).toContain(MEMORY_PRESSURE_COPY);
+  expect(providerState?.latestAttempts[0]?.stage).toBe("memory_pressure");
 });
