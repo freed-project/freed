@@ -177,7 +177,7 @@ describe("social capture completion", () => {
     expect(result.diag.itemsNormalized).toBe(0);
     expect(result.diag.errorStage).toBe("normalize");
     expect(result.diag.errorMessage).toBe(
-      "Extracted 1 Facebook post, but none passed normalization.",
+      "Extracted 1 Facebook post, but none passed normalization. accepted=0, missingId=0, invalidAuthor=1, unexpected=0, firstRejected=invalidAuthor(id:y,url:n,author:y,profile:n,text:8,media:0)",
     );
   });
 });
