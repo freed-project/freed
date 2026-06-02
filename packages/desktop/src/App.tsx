@@ -45,7 +45,7 @@ import {
   type CloudProvider,
 } from "./lib/sync";
 import { clearLocalDoc, getCachedDocStats, getItemPreservedText } from "./lib/automerge";
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { log } from "./lib/logger";
@@ -117,6 +117,15 @@ const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1";
 const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
 const RENDERER_HEARTBEAT_INTERVAL_MS = 15 * 1000;
+const LOCKED_STARTUP_RECHECK_MS = 30 * 1000;
+
+interface DesktopSessionState {
+  available: boolean;
+  screenLocked: boolean;
+  error?: string | null;
+}
+
+type LockedStartupState = "checking" | "ready" | "locked";
 
 type FriendGraphSurfacePerf = {
   modelBuildMs?: number;
@@ -234,6 +243,9 @@ function App() {
   const isInitialized = useAppStore((state) => state.isInitialized);
   const error = useAppStore((state) => state.error);
   const tauriRuntimeAvailable = import.meta.env.VITE_TEST_TAURI === "1" || isTauri();
+  const [lockedStartupState, setLockedStartupState] = useState<LockedStartupState>(
+    tauriRuntimeAvailable ? "checking" : "ready",
+  );
   const [legalResolved, setLegalResolved] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [releaseChannel, setReleaseChannelState] = useState<ReleaseChannel>(() =>
@@ -246,6 +258,46 @@ function App() {
   const fatalError = useFatalRuntimeError();
 
   useDesktopNavigationHistory(legalAccepted);
+
+  useEffect(() => {
+    if (!tauriRuntimeAvailable) {
+      setLockedStartupState("ready");
+      return;
+    }
+
+    let cancelled = false;
+    let timeoutId: number | null = null;
+
+    async function checkLockedSession() {
+      try {
+        const state = await invoke<DesktopSessionState>("get_desktop_session_state");
+        if (cancelled) return;
+        if (state?.screenLocked) {
+          setLockedStartupState("locked");
+          timeoutId = window.setTimeout(checkLockedSession, LOCKED_STARTUP_RECHECK_MS);
+          return;
+        }
+        setLockedStartupState("ready");
+      } catch (error) {
+        if (cancelled) return;
+        log.warn(
+          `[startup] desktop session state unavailable: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        setLockedStartupState("ready");
+      }
+    }
+
+    void checkLockedSession();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [tauriRuntimeAvailable]);
 
   useEffect(() => {
     if (IS_LOCAL_PREVIEW) return;
@@ -288,9 +340,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!legalAccepted) return;
+    if (!legalAccepted || lockedStartupState !== "ready") return;
     initialize();
-  }, [initialize, legalAccepted]);
+  }, [initialize, legalAccepted, lockedStartupState]);
 
   useEffect(() => {
     if (!legalAccepted || !isInitialized) return;
@@ -951,6 +1003,18 @@ function App() {
     }),
      [checkForUpdates, applyUpdate, connectGoogleContacts, fetchGoogleContactsForDesktop, handleFactoryReset, installedReleaseChannel, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, tauriRuntimeAvailable, updateState],
   );
+
+  if (lockedStartupState !== "ready") {
+    return (
+      <div className="h-screen flex items-center justify-center bg-transparent">
+        <div className="rounded-2xl border border-white/10 bg-[rgba(10,10,10,0.72)] px-5 py-4 text-sm text-white/80 shadow-2xl shadow-black/60 backdrop-blur-xl">
+          {lockedStartupState === "locked"
+            ? "Freed Desktop will finish opening after you unlock this Mac."
+            : "Opening Freed Desktop..."}
+        </div>
+      </div>
+    );
+  }
 
   if (!legalResolved) {
     return (

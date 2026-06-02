@@ -44,6 +44,11 @@ export function tauriInitScript(): string {
       download_local_ai_model_file: (args) => args && args.request ? args.request.expectedSizeBytes || 0 : 0,
       cancel_local_ai_model_download: () => null,
       get_sync_client_count: () => 0,
+      get_desktop_session_state: () => window.__TAURI_MOCK_DESKTOP_SESSION_STATE__ || ({
+        available: true,
+        screenLocked: false,
+        error: null,
+      }),
       get_runtime_memory_stats: () => ({
         totalPhysicalMemoryBytes: 16 * 1024 * 1024 * 1024,
         processResidentBytes: 64 * 1024 * 1024,
