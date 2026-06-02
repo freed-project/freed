@@ -33,6 +33,7 @@ import { socialProviderCopy } from "./social-provider-copy";
 import { runBackgroundJob } from "./background-runtime-coordinator";
 import {
   applyRuntimeDeferredDiag,
+  applyLockedSessionDeferredDiag,
   isRuntimeDeferredStage,
   SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
   SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
@@ -366,6 +367,10 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
   if (cookieState && cookieState.available && !cookieState.hasAuthCookie) {
     diag.errorStage = "auth";
     diag.errorMessage = socialProviderMissingAuthCookieMessage("facebook");
+    return { items: [], diag };
+  }
+
+  if (await applyLockedSessionDeferredDiag(diag)) {
     return { items: [], diag };
   }
 

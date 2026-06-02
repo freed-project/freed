@@ -600,6 +600,85 @@ describe("social capture completion", () => {
     );
   });
 
+  it("defers Facebook sync before scraping when the Mac session is locked", async () => {
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "get_desktop_session_state") {
+        return {
+          available: true,
+          screenLocked: true,
+          error: null,
+        };
+      }
+      return null;
+    });
+
+    const { captureFbFeed } = await import("./fb-capture");
+    const { recordProviderHealthEvent } = await import("./provider-health");
+
+    const result = await captureFbFeed();
+    const expectedMessage =
+      "Freed paused provider sync because the Mac is locked. Unlock the Mac and try syncing again.";
+
+    expect(result.diag.errorStage).toBe("runtime_deferred");
+    expect(result.diag.errorMessage).toBe(expectedMessage);
+    expect(mocks.prepareSocialScrapeMemory).not.toHaveBeenCalled();
+    expect(mocks.invoke).not.toHaveBeenCalledWith("fb_scrape_feed", expect.anything());
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(null);
+    expect(mocks.storeState.setError).not.toHaveBeenCalledWith(expectedMessage);
+    expect(mocks.storeState.setFbAuth).not.toHaveBeenCalled();
+    expect(recordProviderHealthEvent).not.toHaveBeenCalled();
+  });
+
+  it("defers LinkedIn sync before scraping when the Mac session is locked", async () => {
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "get_desktop_session_state") {
+        return {
+          available: true,
+          screenLocked: true,
+          error: null,
+        };
+      }
+      return null;
+    });
+
+    const { captureLiFeed } = await import("./li-capture");
+    const { recordProviderHealthEvent } = await import("./provider-health");
+
+    const result = await captureLiFeed();
+
+    expect(result.diag.errorStage).toBe("runtime_deferred");
+    expect(mocks.prepareSocialScrapeMemory).not.toHaveBeenCalled();
+    expect(mocks.invoke).not.toHaveBeenCalledWith("li_scrape_feed", expect.anything());
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(null);
+    expect(mocks.storeState.setLiAuth).not.toHaveBeenCalled();
+    expect(recordProviderHealthEvent).not.toHaveBeenCalled();
+  });
+
+  it("defers Instagram sync before scraping when the Mac session is locked", async () => {
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "get_desktop_session_state") {
+        return {
+          available: true,
+          screenLocked: true,
+          error: null,
+        };
+      }
+      return null;
+    });
+
+    const { captureIgFeed } = await import("./instagram-capture");
+    const { recordProviderHealthEvent } = await import("./provider-health");
+
+    const result = await captureIgFeed();
+
+    expect(result.diag.errorStage).toBe("runtime_deferred");
+    expect(mocks.prepareSocialScrapeMemory).not.toHaveBeenCalled();
+    expect(mocks.invoke).not.toHaveBeenCalledWith("ig_scrape_feed", expect.anything());
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(null);
+    expect(mocks.storeState.setIgAuth).not.toHaveBeenCalled();
+    expect(recordProviderHealthEvent).not.toHaveBeenCalled();
+  });
+
   it("waits for local semantic indexing before invoking Instagram scrape", async () => {
     mocks.prepareSocialScrapeMemory.mockResolvedValue({
       before: {},

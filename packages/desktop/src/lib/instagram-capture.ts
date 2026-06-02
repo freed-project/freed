@@ -31,6 +31,7 @@ import { socialProviderCopy } from "./social-provider-copy";
 import { runBackgroundJob } from "./background-runtime-coordinator";
 import {
   applyRuntimeDeferredDiag,
+  applyLockedSessionDeferredDiag,
   isRuntimeDeferredStage,
   SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
   SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
@@ -95,6 +96,10 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
     errorStage: null,
     errorMessage: null,
   };
+
+  if (await applyLockedSessionDeferredDiag(diag)) {
+    return { items: [], diag };
+  }
 
   const memoryPrep = await prepareSocialScrapeMemory("instagram", "feed scrape");
   if (!memoryPrep.mayProceed) {
