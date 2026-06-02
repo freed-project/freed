@@ -43,6 +43,7 @@ export type { DocChangeEvent, DocState } from "./automerge-types";
  * backpressure during normal operation.
  */
 const WORKER_REQUEST_TIMEOUT_MS = 180_000;
+const IDLE_WORKER_STOP_RETRY_MS = 1_000;
 
 // ---------------------------------------------------------------------------
 // Worker lifecycle
@@ -53,6 +54,7 @@ let workerReady: Promise<void> | null = null;
 let appDocumentInitialized = false;
 let workerDocumentInitialized = false;
 let latestRelayClientCount = 0;
+let idleWorkerStopTimer: ReturnType<typeof setTimeout> | null = null;
 
 function getWorker(): Worker {
   if (!worker) startWorker();
@@ -102,17 +104,21 @@ async function ensureWorkerReady(): Promise<void> {
   await workerReady;
 }
 
-function stopIdleWorker(): void {
-  if (!worker) return;
-  if (
+function hasPendingWorkerRequests(): boolean {
+  return (
     pending.size > 0 ||
     pendingAllItemIds.size > 0 ||
     pendingDocBinary.size > 0 ||
     pendingPreservedText.size > 0 ||
     pendingContentSignalBackfill.size > 0 ||
     pendingSampleDataClear.size > 0
-  ) {
-    return;
+  );
+}
+
+function stopIdleWorker(): boolean {
+  if (!worker) return true;
+  if (hasPendingWorkerRequests()) {
+    return false;
   }
   worker.terminate();
   worker = null;
@@ -120,6 +126,17 @@ function stopIdleWorker(): void {
   workerDocumentInitialized = false;
   log.info("[automerge-worker] terminated idle worker");
   addDebugEvent("change", "[automerge-worker] terminated idle worker");
+  return true;
+}
+
+function scheduleIdleWorkerStop(): void {
+  if (idleWorkerStopTimer || !worker) return;
+  idleWorkerStopTimer = setTimeout(() => {
+    idleWorkerStopTimer = null;
+    if (!stopIdleWorker() && worker) {
+      scheduleIdleWorkerStop();
+    }
+  }, IDLE_WORKER_STOP_RETRY_MS);
 }
 
 async function ensureWorkerDocumentReadyFor(type: WorkerRequest["type"]): Promise<void> {
@@ -344,7 +361,7 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
       msg.kind === "change" &&
       (msg.detail ?? "").startsWith("[automerge-worker] released idle document")
     ) {
-      stopIdleWorker();
+      scheduleIdleWorkerStop();
     }
     return;
   }

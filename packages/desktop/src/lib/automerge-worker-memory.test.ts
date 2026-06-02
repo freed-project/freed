@@ -136,11 +136,17 @@ describe("automerge worker memory routing", () => {
 
   it("terminates idle workers and restarts them before later requests", () => {
     expect(clientSource).toContain("let worker: Worker | null = null");
+    expect(clientSource).toContain("let idleWorkerStopTimer");
+    expect(clientSource).toContain("IDLE_WORKER_STOP_RETRY_MS = 1_000");
+    expect(clientSource).toContain("function hasPendingWorkerRequests()");
     expect(clientSource).toContain("function stopIdleWorker()");
+    expect(clientSource).toContain("function scheduleIdleWorkerStop()");
+    expect(clientSource).toContain("if (!stopIdleWorker() && worker)");
     expect(clientSource).toContain("worker.terminate()");
     expect(clientSource).toContain("ensureWorkerDocumentReadyFor(msg.type)");
     expect(clientSource).toContain("await sendInit()");
     expect(clientSource).toContain("(msg.detail ?? \"\").startsWith(\"[automerge-worker] released idle document\")");
+    expect(clientSource).toContain("scheduleIdleWorkerStop();");
   });
 
   it("rebuilds a fresh Automerge document only after compacting oversized text", () => {
