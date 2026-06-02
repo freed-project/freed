@@ -938,14 +938,13 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   expect(expandedWidthSamples[0]).toBeGreaterThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX);
   expect(Math.min(...expandedWidthSamples)).toBeGreaterThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX);
 
-  await expect
-    .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout: 1_000 })
-    .toBeGreaterThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX);
   await waitForDesktopSidebarMode(page, "expanded");
   await expect(desktopSidebar).toBeVisible();
-  const reopenedExpandedGeometry = await readDesktopSidebarGeometry(page);
-  expect(reopenedExpandedGeometry.sidebarWidth).toBeGreaterThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX);
-  expect(reopenedExpandedGeometry.sidebarWidth).toBeLessThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MAX_WIDTH_PX);
+  await expectDesktopSidebarWidthBetween(
+    page,
+    DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX,
+    DEFAULT_REOPENED_SIDEBAR_MAX_WIDTH_PX,
+  );
 
   const compactHandleBox = await resizeHandle.boundingBox();
   expect(compactHandleBox).not.toBeNull();
@@ -965,9 +964,6 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   await waitForDesktopSidebarMode(page, "expanded");
   await expect(desktopSidebar).toBeVisible();
   await expectDesktopSidebarWidthBetween(page, 252, 260);
-  const restoredExpandedGeometry = await readDesktopSidebarGeometry(page);
-  expect(restoredExpandedGeometry.sidebarWidth).toBeGreaterThanOrEqual(252);
-  expect(restoredExpandedGeometry.sidebarWidth).toBeLessThanOrEqual(260);
 
   await waitForDesktopSidebarMode(page, "expanded");
 });
