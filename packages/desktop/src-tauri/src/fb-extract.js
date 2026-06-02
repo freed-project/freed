@@ -17,6 +17,10 @@
           window.__TAURI__.event.emit(name, data);
         }
       : function () {};
+  var scrapeRunId =
+    typeof window.__FREED_FB_SCRAPE_RUN_ID === "string"
+      ? window.__FREED_FB_SCRAPE_RUN_ID
+      : null;
 
   function textValue(node, maxChars) {
     var value = node && node.textContent ? node.textContent : "";
@@ -690,6 +694,7 @@
         error: pageState.message,
         extractedAt: Date.now(),
         url: window.location.href,
+        scrapeRunId: scrapeRunId,
         strategy: pageState.state,
         candidateCount: 0,
         scrollY: window.scrollY,
@@ -824,6 +829,7 @@
       posts: posts,
       extractedAt: Date.now(),
       url: window.location.href,
+      scrapeRunId: scrapeRunId,
       strategy: strategy,
       candidateCount: postEls.length,
       scrollY: window.scrollY,
@@ -837,6 +843,7 @@
       error: err.message || String(err),
       extractedAt: Date.now(),
       url: window.location.href,
+      scrapeRunId: scrapeRunId,
     });
   }
 })();

@@ -12,6 +12,7 @@ type FbFeedEvent = {
   }>;
   strategy?: string;
   candidateCount?: number;
+  scrapeRunId?: string | null;
   error?: string;
 };
 
@@ -48,6 +49,7 @@ function runFacebookExtractor(html: string): FbFeedEvent {
 describe("Facebook injected extractor", () => {
   beforeEach(() => {
     document.documentElement.innerHTML = "";
+    Reflect.deleteProperty(window, "__FREED_FB_SCRAPE_RUN_ID");
   });
 
   it("extracts a feed post without the legacy Feed posts heading", () => {
@@ -100,5 +102,26 @@ describe("Facebook injected extractor", () => {
       authorProfileUrl: "https://www.facebook.com/gabriel.bakker.1",
       text: "A community update with enough text to be treated as content.",
     });
+  });
+
+  it("emits the native scrape run id with extraction batches", () => {
+    Object.defineProperty(window, "__FREED_FB_SCRAPE_RUN_ID", {
+      value: "fb-test-run",
+      configurable: true,
+    });
+
+    const event = runFacebookExtractor(`
+      <body>
+        <div role="main">
+          <div role="article" data-freed-test-height="420">
+            <a aria-label="Zana Prana" href="https://www.facebook.com/zana.prana"></a>
+            <a href="https://www.facebook.com/zana.prana/posts/pfbid02abc">3 hours ago</a>
+            <div dir="auto">Europe is calling, and we are listening. See you all soon.</div>
+          </div>
+        </div>
+      </body>
+    `);
+
+    expect(event.scrapeRunId).toBe("fb-test-run");
   });
 });
