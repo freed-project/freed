@@ -219,10 +219,11 @@ async function expectDesktopSidebarWidthBetween(
   timeout = 1_000,
 ) {
   await expect
-    .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout })
-    .toBeLessThanOrEqual(maximumWidth);
-  const width = (await readDesktopSidebarGeometry(page)).sidebarWidth;
-  expect(width).toBeGreaterThanOrEqual(minimumWidth);
+    .poll(async () => {
+      const width = (await readDesktopSidebarGeometry(page)).sidebarWidth;
+      return width >= minimumWidth && width <= maximumWidth;
+    }, { timeout })
+    .toBe(true);
 }
 
 async function waitForDesktopSidebarMode(page: Page, mode: "expanded" | "compact" | "closed") {
@@ -961,11 +962,9 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   await page.mouse.up();
 
   await sidebarToggle.click();
-  await expect
-    .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout: 1_000 })
-    .toBeGreaterThanOrEqual(252);
   await waitForDesktopSidebarMode(page, "expanded");
   await expect(desktopSidebar).toBeVisible();
+  await expectDesktopSidebarWidthBetween(page, 252, 260);
   const restoredExpandedGeometry = await readDesktopSidebarGeometry(page);
   expect(restoredExpandedGeometry.sidebarWidth).toBeGreaterThanOrEqual(252);
   expect(restoredExpandedGeometry.sidebarWidth).toBeLessThanOrEqual(260);
