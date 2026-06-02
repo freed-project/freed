@@ -321,7 +321,7 @@ function App() {
     }
     // Start background content fetcher, which processes the article HTML queue.
     void contentCache.pruneOversized();
-    startContentFetcher();
+    startContentFetcher({ startupDelayMs: 5 * 60_000, memoryGuard: true });
     startSemanticClassifier({
       isEnabled: () => {
         const prefs = useDesktopStore.getState().preferences.ai;
