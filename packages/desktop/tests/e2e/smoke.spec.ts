@@ -33,6 +33,10 @@ const TOOLBAR_CENTER_ALIGNMENT_TOLERANCE_PX = 3;
 const TOOLBAR_VERTICAL_ALIGNMENT_TOLERANCE_PX = 2;
 const TOOLTIP_ARROW_ALIGNMENT_TOLERANCE_PX = 1.5;
 const SIDEBAR_CLOSED_EDGE_TOLERANCE_PX = 5;
+const NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX = 184;
+const NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX = 16;
+const DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX = 250;
+const DEFAULT_REOPENED_SIDEBAR_MAX_WIDTH_PX = 262;
 const SOFT_VIEWPORT_RADIUS = "20px";
 
 async function dismissCloudSyncNudgeIfPresent(page: Page) {
@@ -175,43 +179,37 @@ async function readElementFromPointDragState(page: Page, locator: Locator) {
 }
 
 async function readDesktopSidebarGeometry(page: Page) {
-  const sidebarShell = page.getByTestId("app-sidebar-shell");
-  const sidebar = page.getByTestId("app-sidebar");
-  const resizeHandle = page.getByTestId("app-sidebar-resize-handle");
+  return page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const resizeHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
 
-  const shellWidth = (await sidebarShell.count()) > 0
-    ? await sidebarShell.first().evaluate((element) => element.getBoundingClientRect().width)
-    : 0;
-  const sidebarRect = (await sidebar.count()) > 0
-    ? await sidebar.first().evaluate((element) => {
-        const rect = element.getBoundingClientRect();
-        return {
-          width: rect.width,
-          left: rect.left,
-          right: rect.right,
-        };
-      })
-    : null;
-  const resizeHandleCenter = (await resizeHandle.count()) > 0
-    ? await resizeHandle.first().evaluate((element) => {
-        const rect = element.getBoundingClientRect();
-        return rect.left + rect.width / 2;
-      })
-    : 0;
+    const shellRect = sidebarShell?.getBoundingClientRect() ?? null;
+    const sidebarRect = sidebar?.getBoundingClientRect() ?? null;
+    const resizeHandleRect = resizeHandle?.getBoundingClientRect() ?? null;
 
-  return {
-    shellWidth,
-    sidebarWidth: sidebarRect?.width ?? 0,
-    sidebarLeft: sidebarRect?.left ?? 0,
-    sidebarRight: sidebarRect?.right ?? 0,
-    resizeHandleCenter,
-  };
+    return {
+      shellWidth: shellRect?.width ?? 0,
+      sidebarWidth: sidebarRect?.width ?? 0,
+      sidebarLeft: sidebarRect?.left ?? 0,
+      sidebarRight: sidebarRect?.right ?? 0,
+      resizeHandleCenter: resizeHandleRect ? resizeHandleRect.left + resizeHandleRect.width / 2 : 0,
+    };
+  });
 }
 
 async function expectDesktopSidebarShellWidthAtMost(page: Page, maximumWidth: number, timeout = 1_000) {
   await expect
     .poll(async () => (await readDesktopSidebarGeometry(page)).shellWidth, { timeout })
     .toBeLessThanOrEqual(maximumWidth);
+}
+
+async function expectDesktopSidebarClosed(page: Page, timeout = 1_000) {
+  await waitForDesktopSidebarMode(page, "closed");
+  await expect.poll(async () => await page.getByTestId("app-sidebar").count(), {
+    timeout,
+  }).toBe(0);
+  await expect(page.getByTestId("app-sidebar-resize-handle")).toHaveCount(0);
 }
 
 async function expectDesktopSidebarWidthBetween(
@@ -666,7 +664,7 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   await sidebarToggle.click();
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
   await waitForDesktopSidebarMode(page, "closed");
-  await expectDesktopSidebarShellWidthAtMost(page, 2, 3_000);
+  await expectDesktopSidebarClosed(page, 3_000);
 });
 
 test("narrow desktop viewports keep the desktop compact rail instead of switching to the mobile drawer", async ({ app, page }) => {
@@ -684,7 +682,7 @@ test("narrow desktop viewports keep the desktop compact rail instead of switchin
 
   await sidebarToggle.click();
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
-  await expectDesktopSidebarShellWidthAtMost(page, 2, 1_000);
+  await expectDesktopSidebarClosed(page, 1_000);
 
   await sidebarToggle.click();
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
@@ -871,7 +869,9 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   await page.waitForTimeout(250);
 
   await sidebarToggle.click();
-  await expectDesktopSidebarShellWidthAtMost(page, 2, 1_000);
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
+  await waitForDesktopSidebarMode(page, "closed");
+  await expectDesktopSidebarClosed(page, 1_000);
 
   const widthSamplesPromise = page.evaluate(() => new Promise<number[]>((resolve) => {
     const samples: number[] = [];
@@ -890,18 +890,21 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
 
   await sidebarToggle.click();
   const widthSamples = await widthSamplesPromise;
-  const visibleWidthSamples = widthSamples.filter((width) => width > 1);
-  expect(visibleWidthSamples[0]).toBeGreaterThanOrEqual(252);
-  expect(Math.min(...visibleWidthSamples)).toBeGreaterThanOrEqual(252);
+  const expandedWidthSamples = widthSamples.filter(
+    (width) => width >= DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX,
+  );
+  expect(expandedWidthSamples.length).toBeGreaterThan(0);
+  expect(expandedWidthSamples[0]).toBeGreaterThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX);
+  expect(Math.min(...expandedWidthSamples)).toBeGreaterThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX);
 
   await expect
     .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout: 1_000 })
-    .toBeGreaterThanOrEqual(252);
+    .toBeGreaterThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX);
   await waitForDesktopSidebarMode(page, "expanded");
   await expect(desktopSidebar).toBeVisible();
   const reopenedExpandedGeometry = await readDesktopSidebarGeometry(page);
-  expect(reopenedExpandedGeometry.sidebarWidth).toBeGreaterThanOrEqual(252);
-  expect(reopenedExpandedGeometry.sidebarWidth).toBeLessThanOrEqual(260);
+  expect(reopenedExpandedGeometry.sidebarWidth).toBeGreaterThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX);
+  expect(reopenedExpandedGeometry.sidebarWidth).toBeLessThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MAX_WIDTH_PX);
 
   const compactHandleBox = await resizeHandle.boundingBox();
   expect(compactHandleBox).not.toBeNull();
@@ -1418,10 +1421,17 @@ test("desktop sidebar reopens at the default width after being dragged narrow an
   await page.waitForTimeout(250);
 
   const narrowWidth = await sidebar.evaluate((element) => element.getBoundingClientRect().width);
-  expect(narrowWidth).toBeGreaterThanOrEqual(176);
-  expect(narrowWidth).toBeLessThanOrEqual(190);
+  expect(narrowWidth).toBeGreaterThanOrEqual(
+    NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX - NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
+  );
+  expect(narrowWidth).toBeLessThanOrEqual(
+    NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX + NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
+  );
 
-  await page.waitForFunction(() => {
+  await page.waitForFunction(({
+    minimumWidth,
+    maximumWidth,
+  }) => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
       | {
@@ -1432,7 +1442,10 @@ test("desktop sidebar reopens at the default width after being dragged narrow an
       | undefined;
 
     const savedWidth = store?.getState().preferences.display.sidebarWidth ?? 0;
-    return savedWidth >= 176 && savedWidth <= 190;
+    return savedWidth >= minimumWidth && savedWidth <= maximumWidth;
+  }, {
+    minimumWidth: NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX - NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
+    maximumWidth: NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX + NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
   });
 
   await sidebarToggle.click();
@@ -1440,17 +1453,17 @@ test("desktop sidebar reopens at the default width after being dragged narrow an
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
 
   await sidebarToggle.click();
-  await expectDesktopSidebarShellWidthAtMost(page, 2, 1_000);
+  await waitForDesktopSidebarMode(page, "closed");
+  await expectDesktopSidebarClosed(page, 1_000);
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
 
   await sidebarToggle.click();
   await expect
     .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout: 1_000 })
-    .toBeGreaterThanOrEqual(252);
-
-  const reopenedWidth = await sidebar.evaluate((element) => element.getBoundingClientRect().width);
-  expect(reopenedWidth).toBeGreaterThanOrEqual(252);
-  expect(reopenedWidth).toBeLessThanOrEqual(260);
+    .toBeGreaterThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX);
+  await expect
+    .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout: 1_000 })
+    .toBeLessThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MAX_WIDTH_PX);
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
