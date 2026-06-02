@@ -55,6 +55,7 @@ Modes:
 export function parseArgs(argv) {
   let mode = "";
   let changedFiles = [];
+  let planLabels = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -68,6 +69,9 @@ export function parseArgs(argv) {
         changedFiles = argv.slice(i + 1);
         i = argv.length;
         break;
+      case "--plan-labels":
+        planLabels = true;
+        break;
       case "--help":
       case "-h":
         return { help: true, mode: "", changedFiles: [] };
@@ -80,7 +84,7 @@ export function parseArgs(argv) {
     throw new Error(`Error: --mode must be one of feature, providers, dev, production, or release.\n\n${usage()}`);
   }
 
-  return { help: false, mode, changedFiles: changedFiles.map(normalizeRepoPath) };
+  return { help: false, mode, changedFiles: changedFiles.map(normalizeRepoPath), planLabels };
 }
 
 function execGit(args) {
@@ -148,6 +152,79 @@ export function isDesktopSurface(filePath) {
 
 export function isPwaSurface(filePath) {
   return filePath.startsWith("packages/pwa/");
+}
+
+const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
+  "packages/desktop/src/lib/capture.ts",
+  "packages/desktop/src/lib/fb-auth.ts",
+  "packages/desktop/src/lib/fb-capture.ts",
+  "packages/desktop/src/lib/instagram-auth.ts",
+  "packages/desktop/src/lib/instagram-capture.ts",
+  "packages/desktop/src/lib/li-auth.ts",
+  "packages/desktop/src/lib/li-capture.ts",
+  "packages/desktop/src/lib/provider-auth-errors.ts",
+  "packages/desktop/src/lib/provider-health.ts",
+  "packages/desktop/src/lib/scraper-media-diag.ts",
+  "packages/desktop/src/lib/scraper-prefs.ts",
+  "packages/desktop/src/lib/social-auth-cookie-state.ts",
+  "packages/desktop/src/lib/social-capture-runtime.ts",
+  "packages/desktop/src/lib/social-comment-hydration.ts",
+  "packages/desktop/src/lib/social-provider-copy.ts",
+  "packages/desktop/src/lib/x-auth.ts",
+  "packages/desktop/src/lib/x-capture.ts",
+  "packages/desktop/src-tauri/src/fb-comments-extract.js",
+  "packages/desktop/src-tauri/src/fb-extract.js",
+  "packages/desktop/src-tauri/src/fb-groups-extract.js",
+  "packages/desktop/src-tauri/src/fb-stories-extract.js",
+  "packages/desktop/src-tauri/src/ig-comments-extract.js",
+  "packages/desktop/src-tauri/src/ig-extract.js",
+  "packages/desktop/src-tauri/src/ig-stories-extract.js",
+  "packages/desktop/src-tauri/src/li-extract.js",
+]);
+
+const SOCIAL_PROVIDER_PACKAGE_PREFIXES = [
+  "packages/capture-facebook/",
+  "packages/capture-instagram/",
+  "packages/capture-x/",
+];
+
+const SOCIAL_PROVIDER_FOCUSED_TEST_FILES = [
+  "facebook-extract-script.test.ts",
+  "fb-extract-dom.test.ts",
+  "facebook-normalize.test.ts",
+  "fb-stories-extract.test.ts",
+  "fb-groups-extract.test.ts",
+  "facebook-groups.test.ts",
+  "instagram-normalize.test.ts",
+  "ig-stories-extract.test.ts",
+  "instagram-dedup.test.ts",
+  "memory-monitor-social-preflight.test.ts",
+  "provider-health.test.ts",
+  "provider-status-transient.test.ts",
+  "social-provider-copy.test.ts",
+  "social-auth-cookie-state.test.ts",
+  "social-capture-memory-pressure.test.ts",
+  "social-extract-performance.test.ts",
+  "social-scraper-session-order.test.ts",
+  "x-capture.test.ts",
+  "x-normalize.test.ts",
+];
+
+const SOCIAL_PROVIDER_FOCUSED_TEST_FILE_SET = new Set(SOCIAL_PROVIDER_FOCUSED_TEST_FILES);
+
+export function isSocialProviderFocusedSurface(filePath) {
+  if (SOCIAL_PROVIDER_DESKTOP_FILES.has(filePath)) {
+    return true;
+  }
+
+  if (
+    filePath.startsWith("packages/desktop/src/lib/") &&
+    /\.test\.[cm]?tsx?$/.test(filePath)
+  ) {
+    return SOCIAL_PROVIDER_FOCUSED_TEST_FILE_SET.has(path.basename(filePath));
+  }
+
+  return SOCIAL_PROVIDER_PACKAGE_PREFIXES.some((prefix) => filePath.startsWith(prefix));
 }
 
 export function isDesktopPerfSensitiveSurface(filePath) {
@@ -263,21 +340,7 @@ function desktopUnitFilesCommand(label, files) {
 }
 
 function socialProviderFocusedTestsCommand() {
-  return desktopUnitFilesCommand("desktop social provider unit tests", [
-    "facebook-extract-script.test.ts",
-    "fb-extract-dom.test.ts",
-    "facebook-normalize.test.ts",
-    "fb-stories-extract.test.ts",
-    "fb-groups-extract.test.ts",
-    "facebook-groups.test.ts",
-    "instagram-normalize.test.ts",
-    "ig-stories-extract.test.ts",
-    "instagram-dedup.test.ts",
-    "social-auth-cookie-state.test.ts",
-    "social-capture-memory-pressure.test.ts",
-    "social-extract-performance.test.ts",
-    "social-scraper-session-order.test.ts",
-  ]);
+  return desktopUnitFilesCommand("desktop social provider unit tests", SOCIAL_PROVIDER_FOCUSED_TEST_FILES);
 }
 
 function listAllReleaseArtifacts() {
@@ -403,6 +466,15 @@ export function buildValidationPlan(mode, changedFiles) {
   const captureWorkspaces = unique(
     changedFiles.map(captureWorkspaceForFile).filter(Boolean),
   ).sort();
+  const socialProviderOnlyChanged =
+    changedFiles.length > 0 &&
+    changedFiles.every(isSocialProviderFocusedSurface);
+
+  if (socialProviderOnlyChanged) {
+    addCommand(plan, socialProviderFocusedTestsCommand());
+    addCommand(plan, npmCommand("desktop production build", ["run", "build", "--workspace=packages/desktop"]));
+    return plan;
+  }
 
   if (websiteSurfaceChanged) {
     addCommand(plan, npmCommand("website production build", ["run", "build", "--workspace=website"]));
@@ -519,13 +591,19 @@ export function runValidationPlan(plan) {
 }
 
 export function main(argv = process.argv.slice(2)) {
-  const { help, mode, changedFiles: explicitChangedFiles } = parseArgs(argv);
+  const { help, mode, changedFiles: explicitChangedFiles, planLabels } = parseArgs(argv);
   if (help) {
     console.log(usage());
     return;
   }
 
   const changedFiles = collectChangedFiles({ mode, changedFiles: explicitChangedFiles });
+  const plan = buildValidationPlan(mode, changedFiles);
+  if (planLabels) {
+    console.log(describePlan(plan).join("\n"));
+    return;
+  }
+
   console.log(`Mode: ${mode}`);
   if (changedFiles.length > 0) {
     console.log("Changed files:");
@@ -536,7 +614,6 @@ export function main(argv = process.argv.slice(2)) {
     console.log("Changed files: none detected");
   }
 
-  const plan = buildValidationPlan(mode, changedFiles);
   console.log("\nValidation plan:");
   for (const label of describePlan(plan)) {
     console.log(`- ${label}`);
