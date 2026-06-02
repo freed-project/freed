@@ -61,6 +61,23 @@ async function clickFacebookSync(page: import("@playwright/test").Page) {
   await button.click();
 }
 
+async function waitForFacebookCaptureError(
+  page: import("@playwright/test").Page,
+): Promise<string | undefined> {
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { fbAuth: { lastCaptureError?: string } };
+    };
+    return Boolean(store.getState().fbAuth.lastCaptureError);
+  });
+  return page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { fbAuth: { lastCaptureError?: string } };
+    };
+    return store.getState().fbAuth.lastCaptureError;
+  });
+}
+
 function installEmptyFacebookScrape(ipc: {
   setHandler: (cmd: string, handler: (args: unknown) => unknown) => Promise<void>;
 }) {
@@ -136,13 +153,9 @@ test("facebook scrape proceeds when unrelated WebKit memory is high", async ({ a
 
   await clickFacebookSync(page);
   await app.acceptProviderRiskIfPresent("facebook");
-  const authState = await page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => { fbAuth: { lastCaptureError?: string } };
-    };
-    return store.getState().fbAuth;
-  });
-  expect(authState.lastCaptureError).toBeUndefined();
+  await expect(await waitForFacebookCaptureError(page)).toContain(
+    "Feed returned no posts",
+  );
   const invocations = await ipc.invocations();
   expect(invocations.some((call) => call.cmd === "fb_scrape_feed")).toBe(true);
 });
@@ -203,13 +216,9 @@ test("facebook scrape proceeds after Freed memory cleanup recovers", async ({ ap
 
   await clickFacebookSync(page);
   await app.acceptProviderRiskIfPresent("facebook");
-  const authState = await page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => { fbAuth: { lastCaptureError?: string } };
-    };
-    return store.getState().fbAuth;
-  });
-  expect(authState.lastCaptureError).toBeUndefined();
+  await expect(await waitForFacebookCaptureError(page)).toContain(
+    "Feed returned no posts",
+  );
   const invocations = await ipc.invocations();
   expect(invocations.some((call) => call.cmd === "fb_scrape_feed")).toBe(true);
 });

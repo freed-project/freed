@@ -182,4 +182,30 @@ describe("Facebook DOM extractor", () => {
       }),
     ]);
   });
+
+  it("climbs from post permalinks when semantic article boundaries are missing", () => {
+    const payload = runExtractor(`
+      <div role="main">
+        <section>
+          <div>
+            <div>
+              <h3><a href="https://www.facebook.com/ada.example">Ada Example</a></h3>
+              <a href="https://www.facebook.com/ada.example/posts/123456789">Open post</a>
+              <div dir="auto">A permalink can be the only reliable post boundary on the current Facebook feed.</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    `);
+
+    expect(payload?.candidateCount).toBe(1);
+    expect(payload?.posts).toEqual([
+      expect.objectContaining({
+        id: "123456789",
+        authorName: "Ada Example",
+        authorProfileUrl: "https://www.facebook.com/ada.example",
+        text: "A permalink can be the only reliable post boundary on the current Facebook feed.",
+      }),
+    ]);
+  });
 });

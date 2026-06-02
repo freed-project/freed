@@ -529,6 +529,9 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
     if (diag.totalCandidateCount > 0 && parseRejectCount > 0) {
       diag.errorStage = "extract";
       diag.errorMessage = formatFacebookParseFailureMessage(diag);
+    } else {
+      diag.errorStage = "extract_empty";
+      diag.errorMessage = formatFacebookEmptySyncMessage(diag);
     }
     return { items: [], diag };
   }
