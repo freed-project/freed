@@ -15,7 +15,7 @@ const RESOLVED_NPM = path.join(
   process.platform === "win32" ? "npm.cmd" : "npm",
 );
 const NPM_BIN = existsSync(RESOLVED_NPM) ? RESOLVED_NPM : process.platform === "win32" ? "npm.cmd" : "npm";
-const VALID_MODES = new Set(["feature", "dev", "production", "release"]);
+const VALID_MODES = new Set(["feature", "providers", "dev", "production", "release"]);
 
 const RELEASE_TOOLING_PATHS = new Set([
   ".github/workflows/ci.yml",
@@ -41,10 +41,11 @@ function unique(values) {
 
 function usage() {
   return `Usage:
-  node scripts/validate-worktree.mjs --mode <feature|dev|production|release> [--changed-files <file>...]
+  node scripts/validate-worktree.mjs --mode <feature|providers|dev|production|release> [--changed-files <file>...]
 
 Modes:
   feature  Run root typecheck plus changed-surface checks derived from git diff or --changed-files.
+  providers  Run focused social provider checks for extractor, auth, memory-preflight, and capture-runtime work.
   dev      Run the integration suite used for dev branch pushes and dev builds.
   production  Run the full production validation suite for public release prep.
   release  Compatibility alias for production.
@@ -76,7 +77,7 @@ export function parseArgs(argv) {
   }
 
   if (!VALID_MODES.has(mode)) {
-    throw new Error(`Error: --mode must be one of feature, dev, production, or release.\n\n${usage()}`);
+    throw new Error(`Error: --mode must be one of feature, providers, dev, production, or release.\n\n${usage()}`);
   }
 
   return { help: false, mode, changedFiles: changedFiles.map(normalizeRepoPath) };
@@ -251,6 +252,34 @@ function nodeCommand(label, args) {
   };
 }
 
+function desktopUnitFilesCommand(label, files) {
+  return npmCommand(label, [
+    "run",
+    "test:unit",
+    "--workspace=packages/desktop",
+    "--",
+    ...files,
+  ]);
+}
+
+function socialProviderFocusedTestsCommand() {
+  return desktopUnitFilesCommand("desktop social provider unit tests", [
+    "facebook-extract-script.test.ts",
+    "fb-extract-dom.test.ts",
+    "facebook-normalize.test.ts",
+    "fb-stories-extract.test.ts",
+    "fb-groups-extract.test.ts",
+    "facebook-groups.test.ts",
+    "instagram-normalize.test.ts",
+    "ig-stories-extract.test.ts",
+    "instagram-dedup.test.ts",
+    "social-auth-cookie-state.test.ts",
+    "social-capture-memory-pressure.test.ts",
+    "social-extract-performance.test.ts",
+    "social-scraper-session-order.test.ts",
+  ]);
+}
+
 function listAllReleaseArtifacts() {
   const releasesDir = path.join(REPO_ROOT, "release-notes", "releases");
   if (!existsSync(releasesDir)) {
@@ -317,6 +346,12 @@ function releaseValidationItem(label, files) {
 
 export function buildValidationPlan(mode, changedFiles) {
   const normalizedMode = mode === "release" ? "production" : mode;
+
+  if (normalizedMode === "providers") {
+    return [
+      socialProviderFocusedTestsCommand(),
+    ];
+  }
 
   if (normalizedMode === "dev") {
     return [
