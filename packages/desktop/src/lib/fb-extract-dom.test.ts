@@ -8,11 +8,20 @@ const script = readFileSync(
   "utf8",
 );
 
-function runExtractor(html: string, options: { authenticated?: boolean } = {}) {
+function runExtractor(
+  html: string,
+  options: { authenticated?: boolean; scrollHeight?: number } = {},
+) {
   const dom = new JSDOM(html, {
     url: "https://www.facebook.com/",
     runScripts: "outside-only",
   });
+  if (typeof options.scrollHeight === "number") {
+    Object.defineProperty(dom.window.document.documentElement, "scrollHeight", {
+      configurable: true,
+      value: options.scrollHeight,
+    });
+  }
   if (options.authenticated !== false) {
     dom.window.document.cookie = "c_user=12345";
   }
@@ -96,6 +105,7 @@ describe("Facebook DOM extractor", () => {
       state: "feed_possible",
       loggedInCookie: false,
       feedLike: true,
+      feedUnitCount: 1,
     });
     expect(payload?.candidateCount).toBe(1);
     expect(payload?.posts).toEqual([
@@ -104,6 +114,31 @@ describe("Facebook DOM extractor", () => {
         authorName: "Alice Example",
       }),
     ]);
+  });
+
+  it("does not treat a tall logged-out shell as a feed", () => {
+    const payload = runExtractor(
+      `
+        <div role="main">
+          <section style="min-height: 2400px">
+            <h1>Facebook</h1>
+            <button>Log in</button>
+            <a>Create new account</a>
+            <div>Suggested pages and generic logged-out chrome can make this page tall.</div>
+          </section>
+        </div>
+      `,
+      { authenticated: false, scrollHeight: 3200 },
+    );
+
+    expect(payload?.strategy).toBe("not_authenticated");
+    expect(payload?.pageState).toMatchObject({
+      state: "not_authenticated",
+      feedLike: false,
+      feedUnitCount: 0,
+      loginChrome: true,
+      scrollHeight: 3200,
+    });
   });
 
   it("reports author rejections when Facebook renders non-post chrome as candidates", () => {
