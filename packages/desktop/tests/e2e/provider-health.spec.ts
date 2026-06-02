@@ -811,6 +811,10 @@ test("facebook groups settings separate last-active text, show active counts, an
   await expect(page.getByTestId("facebook-group-377650389038228-label")).toHaveText(
     "Facebook group ...89038228",
   );
+  await page.getByTestId("facebook-group-one-leave").hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Leave group via Facebook");
+  await page.getByTestId("facebook-group-one-leave").click();
+  await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toBe("https://facebook.com/groups/one");
 
   await page.getByTestId("facebook-groups-filter").fill("North Idaho");
   await expect(page.getByRole("button", { name: "Activate shown", exact: true })).toBeVisible();

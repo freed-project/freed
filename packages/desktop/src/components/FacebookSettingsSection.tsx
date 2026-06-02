@@ -6,10 +6,10 @@
  * authenticates, the WebView's cookies are shared with the scraper.
  */
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { SyncProviderSectionProps } from "@freed/ui/context";
+import { usePlatform, type SyncProviderSectionProps } from "@freed/ui/context";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
 import {
   getProviderStatusLabel,
@@ -17,7 +17,9 @@ import {
 } from "@freed/ui/lib/provider-status";
 import { ProviderStatusIndicator } from "@freed/ui/components/ProviderStatusIndicator";
 import { SettingsListPanel } from "@freed/ui/components/settings/SettingsListPanel";
+import { Tooltip } from "@freed/ui/components/Tooltip";
 import type { FbGroupInfo } from "@freed/shared";
+import { TrashIcon } from "@freed/ui/components/icons";
 import { useAppStore } from "../lib/store";
 import {
   showFbLogin,
@@ -102,6 +104,7 @@ function Toggle({
   description,
   meta,
   testId,
+  trailingAction,
 }: {
   label: string;
   checked: boolean;
@@ -109,6 +112,7 @@ function Toggle({
   description?: string;
   meta?: string;
   testId?: string;
+  trailingAction?: ReactNode;
 }) {
   return (
     <div className="flex items-start justify-between gap-4">
@@ -133,23 +137,32 @@ function Toggle({
           <p className="text-xs text-[#52525b] mt-0.5">{description}</p>
         ) : null}
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${
-          checked ? "bg-[#8b5cf6]" : "bg-white/10"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-            checked ? "translate-x-4" : "translate-x-0"
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={checked}
+          onClick={() => onChange(!checked)}
+          className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+            checked ? "bg-[#8b5cf6]" : "bg-white/10"
           }`}
-        />
-      </button>
+        >
+          <span
+            className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+              checked ? "translate-x-4" : "translate-x-0"
+            }`}
+          />
+        </button>
+        {trailingAction}
+      </div>
     </div>
   );
+}
+
+function getFacebookGroupUrl(group: FbGroupInfo): string {
+  const url = group.url.trim();
+  if (url) return url;
+  return `https://www.facebook.com/groups/${encodeURIComponent(group.id)}`;
 }
 
 function FbDiagPanel({ diag }: { diag: FbSyncDiag }) {
@@ -219,6 +232,7 @@ export function FacebookSettingsSection({
   const [actionError, setActionError] = useState<string | null>(null);
   const [loginWindowPendingSync, setLoginWindowPendingSync] = useState(false);
   const loginWindowPendingSyncRef = useRef(false);
+  const { openUrl } = usePlatform();
   const copy = socialProviderCopy("facebook");
   const { confirm, dialog } = useProviderRiskGate("facebook");
 
@@ -381,6 +395,18 @@ export function FacebookSettingsSection({
       await setExcludedGroups(nextExcluded);
     },
     [excludedGroupIds, groups.length, handleDeselectAllGroups, setExcludedGroups],
+  );
+
+  const handleLeaveGroupViaFacebook = useCallback(
+    (group: FbGroupInfo) => {
+      const url = getFacebookGroupUrl(group);
+      if (openUrl) {
+        openUrl(url);
+        return;
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+    },
+    [openUrl],
   );
 
   const handleRefreshGroups = useCallback(async () => {
@@ -600,6 +626,19 @@ export function FacebookSettingsSection({
                   }}
                   meta={lastActiveText}
                   description={included ? "Included in future syncs" : "Hidden from future syncs"}
+                  trailingAction={
+                    <Tooltip label="Leave group via Facebook" side="left">
+                      <button
+                        type="button"
+                        aria-label={`Leave group via Facebook: ${title}`}
+                        data-testid={`facebook-group-${group.id}-leave`}
+                        onClick={() => handleLeaveGroupViaFacebook(group)}
+                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[#71717a] transition-colors hover:bg-red-500/10 hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50"
+                      >
+                        <TrashIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </Tooltip>
+                  }
                 />
               );
             }}
