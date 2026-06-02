@@ -214,6 +214,7 @@ export function BackgroundAtmosphere() {
   const [orbs, setOrbs] = useState<Orb[] | null>(null);
   const [viewportWidth, setViewportWidth] = useState(DESKTOP_BASELINE_WIDTH);
   const [viewportHeight, setViewportHeight] = useState(MIN_BACKGROUND_HEIGHT);
+  const [documentVisible, setDocumentVisible] = useState(true);
   const [themeId, setThemeId] = useState<ThemeId>(DEFAULT_THEME_ID);
   const themeRecipe = useMemo(
     () => getThemeDefinition(themeId).background,
@@ -253,15 +254,26 @@ export function BackgroundAtmosphere() {
         setViewportHeight(window.innerHeight);
       });
     };
+    const onVisibilityChange = () => {
+      setDocumentVisible(document.visibilityState !== "hidden");
+    };
+    setDocumentVisible(document.visibilityState !== "hidden");
     window.addEventListener("resize", onResize);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("resize", onResize);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       cancelAnimationFrame(rafId);
       observer.disconnect();
     };
   }, []);
 
   useEffect(() => {
+    if (!documentVisible) {
+      setOrbs(null);
+      return;
+    }
+
     setOrbs(
       generateOrbs(
         themeRecipe,
@@ -270,7 +282,13 @@ export function BackgroundAtmosphere() {
         viewportHeight,
       ),
     );
-  }, [themeRecipe, viewportProfile.compact, rendererMode, viewportHeight]);
+  }, [
+    documentVisible,
+    themeRecipe,
+    viewportProfile.compact,
+    rendererMode,
+    viewportHeight,
+  ]);
 
   const gradientBackgroundImage = useMemo(
     () =>
@@ -304,10 +322,14 @@ export function BackgroundAtmosphere() {
     [isLegacyRenderer, orbs, themeRecipe],
   );
 
-  if (!orbs) return null;
+  if (!documentVisible || !orbs) return null;
 
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+    <div
+      className="pointer-events-none absolute inset-0 overflow-hidden"
+      aria-hidden="true"
+      data-testid="background-atmosphere"
+    >
       {isLegacyRenderer ? (
         <div
           className="absolute inset-0"
