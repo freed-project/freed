@@ -80,8 +80,9 @@ Both Facebook and Instagram use the same pattern:
 1. `*_show_login` opens a visible WebView to the platform's login page
 2. User authenticates through the real login flow (2FA, CAPTCHA, etc.)
 3. `on_navigation` handler detects redirect away from login page
-4. WebView is hidden and `*-auth-result` event is emitted
-5. Cookies persist in the WebView for future scraping sessions
+4. `*-auth-result` event is emitted while the WebView stays visible
+5. User finishes any platform prompts, closes the login window, and then sync begins
+6. Cookies persist in the WebView data store for future scraping sessions
 
 ### Feed Scraping
 
@@ -193,6 +194,7 @@ const RATE_LIMITS = {
 - [x] Instagram feed integrated into Desktop via Tauri WebView scraping
 - [x] Both platforms integrated into Desktop refreshAllFeeds()
 - [x] Settings UI for both platforms (login, check connection, sync, disconnect), with the same provider section also reused inside Debug panel health cards
+- [x] Facebook and Instagram login windows stay open after auth so users can finish platform prompts before sync starts
 - [x] Feed pollution filtering blocks promoted X entries and suggested FB/IG posts
 - [x] Facebook Settings includes per-group include/exclude controls for joined groups inside a filtered inner scroller that prevents late group loads from shifting the outer Settings view
 - [x] Facebook group discovery rejects activity-only labels and numeric ID fallbacks, preserves good stored names, repairs missing stored names from already captured group posts during normal sync, and keeps joined-groups refresh behind explicit provider-risk confirmation

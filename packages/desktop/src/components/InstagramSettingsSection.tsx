@@ -6,7 +6,7 @@
  * authenticates, the WebView's cookies are shared with the scraper.
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { SyncProviderSectionProps } from "@freed/ui/context";
@@ -127,18 +127,22 @@ export function InstagramSettingsSection({
   const [lastDiag, setLastDiag] = useState<IgSyncDiag | null>(null);
   const [windowMode, setWindowMode] = useState(() => getIgScraperWindowMode());
   const [actionError, setActionError] = useState<string | null>(null);
+  const [loginWindowPendingSync, setLoginWindowPendingSync] = useState(false);
+  const loginWindowPendingSyncRef = useRef(false);
   const copy = socialProviderCopy("instagram");
   const { confirm, dialog } = useProviderRiskGate("instagram");
 
   // Auto-detect login success from the WebView's on_navigation callback
   useEffect(() => {
-    if (!isTauri()) return;
+    if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return;
 
     const unlisten = listen<{ loggedIn: boolean }>("ig-auth-result", (event) => {
       if (event.payload.loggedIn) {
         const newState = { isAuthenticated: true, lastCheckedAt: Date.now() };
         setIgAuth(newState);
         storeIgAuthState(newState);
+        loginWindowPendingSyncRef.current = true;
+        setLoginWindowPendingSync(true);
       }
     });
     return () => { unlisten.then((fn) => fn()); };
@@ -177,6 +181,8 @@ export function InstagramSettingsSection({
   }, [confirm, setIgAuth]);
 
   const runSync = useCallback(async () => {
+    loginWindowPendingSyncRef.current = false;
+    setLoginWindowPendingSync(false);
     setLastDiag(null);
     try {
       const result = await withProviderSyncing("instagram", () => captureIgFeed());
@@ -185,6 +191,21 @@ export function InstagramSettingsSection({
       console.error("Instagram feed capture failed:", err);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return;
+
+    const unlisten = listen<{ closed: boolean }>("ig-login-window-closed", (event) => {
+      const shouldSync = event.payload.closed && useAppStore.getState().igAuth.isAuthenticated;
+      const pending = loginWindowPendingSyncRef.current;
+      loginWindowPendingSyncRef.current = false;
+      setLoginWindowPendingSync(false);
+      if (pending && shouldSync) {
+        void runSync();
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [runSync]);
 
   const handleDisconnect = useCallback(async () => {
     try {
@@ -252,6 +273,12 @@ export function InstagramSettingsSection({
               {statusLabel}
             </span>
           </div>
+
+          {loginWindowPendingSync && (
+            <p className="text-xs text-[#a1a1aa] leading-relaxed">
+              Connected. Finish any Instagram prompts, then close the login window.
+            </p>
+          )}
 
           <div className="flex gap-2">
             <ProviderSyncActionButton
