@@ -224,9 +224,13 @@
       /\bsign up\b/.test(bodyText) ||
       /\bcreate new account\b/.test(bodyText);
     var shortPage = scrollHeight > 0 && scrollHeight < 1600;
+    var feedUnitCount = document.querySelectorAll(
+      '[role="article"], div[data-pagelet^="FeedUnit"], div[aria-posinset]'
+    ).length;
     var feedLike =
       !!feedContainer ||
-      (!shortPage && !loginUrl && !loginChrome && document.querySelector('div[role="main"]'));
+      loggedInCookie ||
+      feedUnitCount > 0;
 
     if (!feedLike && (!loggedInCookie || loginUrl || (shortPage && loginChrome))) {
       return {
@@ -234,6 +238,8 @@
         message: "Facebook did not render an authenticated feed. Reconnect Facebook and try again.",
         loggedInCookie: loggedInCookie,
         feedLike: !!feedLike,
+        feedUnitCount: feedUnitCount,
+        loginChrome: loginChrome,
         scrollHeight: scrollHeight,
         url: url,
         title: title,
@@ -246,6 +252,8 @@
         message: "Facebook rendered a short page instead of the feed. Open Facebook settings, reconnect if needed, then sync again.",
         loggedInCookie: loggedInCookie,
         feedLike: !!feedLike,
+        feedUnitCount: feedUnitCount,
+        loginChrome: loginChrome,
         scrollHeight: scrollHeight,
         url: url,
         title: title,
@@ -257,6 +265,8 @@
       message: null,
       loggedInCookie: loggedInCookie,
       feedLike: !!feedLike,
+      feedUnitCount: feedUnitCount,
+      loginChrome: loginChrome,
       scrollHeight: scrollHeight,
       url: url,
       title: title,

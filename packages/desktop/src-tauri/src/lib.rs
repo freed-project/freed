@@ -4424,6 +4424,8 @@ struct FbPageStatePayload {
     logged_in_cookie: bool,
     scroll_height: u64,
     feed_posts_heading_count: u64,
+    feed_unit_count: u64,
+    login_chrome: bool,
     role_main_count: u64,
     url: String,
     title: String,
@@ -4431,7 +4433,7 @@ struct FbPageStatePayload {
 
 impl FbPageStatePayload {
     fn feed_like(&self) -> bool {
-        self.feed_posts_heading_count > 0 || (self.scroll_height >= 1600 && self.role_main_count > 0)
+        self.logged_in_cookie || self.feed_posts_heading_count > 0 || self.feed_unit_count > 0
     }
 }
 
@@ -4442,11 +4444,17 @@ fn fb_page_state_probe_script() -> &'static str {
             var headings = Array.prototype.filter.call(document.querySelectorAll('h3'), function(h3) {
                 return (h3.textContent || '').trim() === 'Feed posts';
             }).length;
+            var bodyText = ((document.body && document.body.textContent) || '').slice(0, 4000).toLowerCase();
+            var feedUnitCount = document.querySelectorAll('[role="article"], div[data-pagelet^="FeedUnit"], div[aria-posinset]').length;
             window.__TAURI__.event.emit('fb-page-state', {
                 loggedInCookie: document.cookie.indexOf('c_user=') !== -1 &&
                     document.cookie.indexOf('c_user=0') === -1,
                 scrollHeight: document.documentElement.scrollHeight || document.body.scrollHeight || 0,
                 feedPostsHeadingCount: headings,
+                feedUnitCount: feedUnitCount,
+                loginChrome: /\blog in\b/.test(bodyText) ||
+                    /\bsign up\b/.test(bodyText) ||
+                    /\bcreate new account\b/.test(bodyText),
                 roleMainCount: document.querySelectorAll('div[role="main"]').length,
                 url: window.location.href,
                 title: document.title || ''
@@ -4456,6 +4464,8 @@ fn fb_page_state_probe_script() -> &'static str {
                 loggedInCookie: false,
                 scrollHeight: 0,
                 feedPostsHeadingCount: 0,
+                feedUnitCount: 0,
+                loginChrome: false,
                 roleMainCount: 0,
                 url: window.location.href,
                 title: document.title || '',
@@ -4475,15 +4485,22 @@ fn fb_auth_result_script() -> &'static str {
             }).length;
             var scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight || 0;
             var roleMainCount = document.querySelectorAll('div[role="main"]').length;
+            var feedUnitCount = document.querySelectorAll('[role="article"], div[data-pagelet^="FeedUnit"], div[aria-posinset]').length;
+            var bodyText = ((document.body && document.body.textContent) || '').slice(0, 4000).toLowerCase();
+            var loginChrome = /\blog in\b/.test(bodyText) ||
+                /\bsign up\b/.test(bodyText) ||
+                /\bcreate new account\b/.test(bodyText);
             var loggedInCookie = document.cookie.indexOf('c_user=') !== -1 &&
                 document.cookie.indexOf('c_user=0') === -1;
-            var feedLike = headings > 0 || (scrollHeight >= 1600 && roleMainCount > 0);
+            var feedLike = loggedInCookie || headings > 0 || feedUnitCount > 0;
             window.__TAURI__.event.emit('fb-auth-result', {
                 loggedIn: loggedInCookie || feedLike,
                 loggedInCookie: loggedInCookie,
                 feedLike: feedLike,
                 scrollHeight: scrollHeight,
                 feedPostsHeadingCount: headings,
+                feedUnitCount: feedUnitCount,
+                loginChrome: loginChrome,
                 roleMainCount: roleMainCount,
                 url: window.location.href,
                 title: document.title || ''
@@ -4510,7 +4527,9 @@ async fn probe_fb_page_state(
         }
     });
 
-    let eval_result = wv.eval(fb_page_state_probe_script()).map_err(|e| e.to_string());
+    let eval_result = wv
+        .eval(fb_page_state_probe_script())
+        .map_err(|e| e.to_string());
     if let Err(err) = eval_result {
         app.unlisten(listener_id);
         return Err(err);
@@ -4643,7 +4662,7 @@ async fn fb_check_auth(
     tokio::time::sleep(Duration::from_secs(6)).await;
 
     wv.eval(fb_auth_result_script())
-    .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     tokio::time::sleep(Duration::from_millis(250)).await;
 
@@ -8112,6 +8131,45 @@ mod tests {
         assert!(script.contains("requestedDelta = Number(-180)"));
         assert!(script.contains("direction = requestedDelta >= 0 ? 1 : -1"));
         assert!(script.contains("clamp(after + requestedDelta"));
+    }
+
+    #[test]
+    fn facebook_page_state_requires_real_feed_evidence() {
+        let tall_logged_out_shell = FbPageStatePayload {
+            logged_in_cookie: false,
+            scroll_height: 3200,
+            feed_posts_heading_count: 0,
+            feed_unit_count: 0,
+            login_chrome: true,
+            role_main_count: 1,
+            url: "https://www.facebook.com/".to_string(),
+            title: "Facebook".to_string(),
+        };
+        assert!(!tall_logged_out_shell.feed_like());
+
+        let rendered_feed_with_hidden_cookie = FbPageStatePayload {
+            logged_in_cookie: false,
+            scroll_height: 3200,
+            feed_posts_heading_count: 0,
+            feed_unit_count: 2,
+            login_chrome: false,
+            role_main_count: 1,
+            url: "https://www.facebook.com/".to_string(),
+            title: "Facebook".to_string(),
+        };
+        assert!(rendered_feed_with_hidden_cookie.feed_like());
+
+        let cookie_session_without_rendered_units = FbPageStatePayload {
+            logged_in_cookie: true,
+            scroll_height: 900,
+            feed_posts_heading_count: 0,
+            feed_unit_count: 0,
+            login_chrome: false,
+            role_main_count: 1,
+            url: "https://www.facebook.com/".to_string(),
+            title: "Facebook".to_string(),
+        };
+        assert!(cookie_session_without_rendered_units.feed_like());
     }
 
     #[test]
