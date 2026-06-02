@@ -125,6 +125,10 @@ export function AppShell({ children }: AppShellProps) {
     forceCompactDesktopSidebar && desktopSidebarMode !== "closed"
       ? "compact"
       : desktopSidebarDisplayMode;
+  const desktopSidebarToggleMode =
+    forceCompactDesktopSidebar && desktopSidebarMode !== "closed"
+      ? "compact"
+      : desktopSidebarMode;
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
@@ -153,6 +157,7 @@ export function AppShell({ children }: AppShellProps) {
 
   const persistDesktopSidebarMode = useCallback((nextMode: SidebarMode) => {
     setDesktopSidebarMode(nextMode);
+    setDesktopSidebarDisplayMode(nextMode);
     if (nextMode !== "closed") {
       lastNonClosedDesktopSidebarModeRef.current = nextMode;
     }
@@ -165,13 +170,13 @@ export function AppShell({ children }: AppShellProps) {
   }, [updatePreferences]);
 
   const handleDesktopSidebarToggle = useCallback(() => {
-    const nextMode = effectiveDesktopSidebarDisplayMode === "closed"
+    const nextMode = desktopSidebarToggleMode === "closed"
       ? "expanded"
-      : effectiveDesktopSidebarDisplayMode === "compact"
+      : desktopSidebarToggleMode === "compact"
         ? "closed"
         : "compact";
     persistDesktopSidebarMode(nextMode);
-  }, [effectiveDesktopSidebarDisplayMode, persistDesktopSidebarMode]);
+  }, [desktopSidebarToggleMode, persistDesktopSidebarMode]);
 
   const handleFriendsSidebarOpenChange = useCallback((open: boolean) => {
     void updatePreferences({
