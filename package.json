@@ -19,6 +19,7 @@
     "typecheck": "node scripts/run-workspace-fanout.mjs typecheck",
     "typecheck:graph": "tsc --build --dry",
     "validate:feature": "node scripts/validate-worktree.mjs --mode feature",
+    "validate:providers": "node scripts/validate-worktree.mjs --mode providers",
     "validate:dev": "node scripts/validate-worktree.mjs --mode dev",
     "validate:production": "node scripts/validate-worktree.mjs --mode production",
     "validate:release": "node scripts/validate-worktree.mjs --mode release"

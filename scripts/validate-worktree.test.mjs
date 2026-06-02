@@ -113,6 +113,14 @@ test("feature plan for non-feed desktop changes skips desktop perf checks", () =
   ]);
 });
 
+test("providers plan runs focused social provider checks", () => {
+  const labels = describePlan(buildValidationPlan("providers", []));
+
+  assert.deepEqual(labels, [
+    "desktop social provider unit tests",
+  ]);
+});
+
 test("desktop perf sensitivity is scoped to hot paths and perf harnesses", () => {
   assert.equal(isDesktopPerfSensitiveSurface("packages/desktop/src/lib/automerge.worker.ts"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/desktop/tests/e2e/perf-map.spec.ts"), true);
