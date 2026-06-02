@@ -43,7 +43,7 @@ use objc2_app_kit::{
     NSRunningApplication,
 };
 #[cfg(target_os = "macos")]
-use objc2_foundation::{ns_string, MainThreadMarker, NSObjectNSKeyValueCoding, NSString};
+use objc2_foundation::{ns_string, MainThreadMarker, NSObjectNSKeyValueCoding, NSRect, NSString};
 #[cfg(target_os = "macos")]
 use objc2_web_kit::WKWebViewConfiguration;
 #[cfg(target_os = "macos")]
@@ -113,6 +113,8 @@ const BACKGROUND_JOB_MAX_HELD: Duration = Duration::from_secs(120);
 const FORCE_EXIT_AFTER_RESTART_REQUEST: Duration = Duration::from_secs(8);
 const MAIN_WINDOW_RELEASE_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const MAIN_WINDOW_RELEASE_POLL_ATTEMPTS: usize = 100;
+const MAIN_WINDOW_OCCLUSION_RECOVERY_AFTER: Duration = Duration::from_secs(5);
+const NS_WINDOW_OCCLUSION_STATE_VISIBLE: usize = 1 << 1;
 const MAIN_THREAD_WINDOW_STEP_TIMEOUT: Duration = Duration::from_secs(5);
 const LOCAL_AI_DOWNLOAD_PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
@@ -250,10 +252,311 @@ fn stored_or_default_user_agent(agent: &std::sync::Mutex<String>) -> String {
 
 fn social_scraper_data_store_identifier(label: &str) -> Option<[u8; 16]> {
     match label {
-        "fb-scraper" => Some(FB_SCRAPER_DATA_STORE_IDENTIFIER),
+        "fb-login" | "fb-scraper" => Some(FB_SCRAPER_DATA_STORE_IDENTIFIER),
         "ig-scraper" => Some(IG_SCRAPER_DATA_STORE_IDENTIFIER),
         "li-scraper" => Some(LI_SCRAPER_DATA_STORE_IDENTIFIER),
         _ => None,
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SocialProviderCookieState {
+    provider: String,
+    available: bool,
+    has_auth_cookie: bool,
+    cookie_count: usize,
+    cookie_names: Vec<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopSessionState {
+    available: bool,
+    screen_locked: bool,
+    error: Option<String>,
+}
+
+#[cfg(target_os = "macos")]
+fn parse_screen_locked_from_ioreg_plist(text: &str) -> Option<bool> {
+    let locked_key = "<key>CGSSessionScreenIsLocked</key>";
+    text.split(locked_key)
+        .nth(1)
+        .map(|tail| tail.trim_start().starts_with("<true/>"))
+}
+
+fn data_store_identifier_folder(identifier: [u8; 16]) -> String {
+    format!(
+        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        identifier[0],
+        identifier[1],
+        identifier[2],
+        identifier[3],
+        identifier[4],
+        identifier[5],
+        identifier[6],
+        identifier[7],
+        identifier[8],
+        identifier[9],
+        identifier[10],
+        identifier[11],
+        identifier[12],
+        identifier[13],
+        identifier[14],
+        identifier[15],
+    )
+}
+
+fn social_auth_cookie_config(
+    provider: &str,
+) -> Option<(&'static str, [u8; 16], &'static [&'static str])> {
+    match provider {
+        "facebook" => Some((
+            "facebook",
+            FB_SCRAPER_DATA_STORE_IDENTIFIER,
+            &["c_user", "xs"],
+        )),
+        "instagram" => Some((
+            "instagram",
+            IG_SCRAPER_DATA_STORE_IDENTIFIER,
+            &["sessionid"],
+        )),
+        "linkedin" => Some(("linkedin", LI_SCRAPER_DATA_STORE_IDENTIFIER, &["li_at"])),
+        _ => None,
+    }
+}
+
+fn read_u32_be(data: &[u8], offset: usize) -> Option<u32> {
+    let bytes = data.get(offset..offset + 4)?;
+    Some(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
+
+fn read_u32_le(data: &[u8], offset: usize) -> Option<u32> {
+    let bytes = data.get(offset..offset + 4)?;
+    Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
+
+fn cookie_record_string(record: &[u8], offset: usize) -> Option<String> {
+    if offset == 0 || offset >= record.len() {
+        return None;
+    }
+    let end = record[offset..]
+        .iter()
+        .position(|byte| *byte == 0)
+        .map(|relative| offset + relative)
+        .unwrap_or(record.len());
+    std::str::from_utf8(record.get(offset..end)?)
+        .ok()
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+}
+
+fn parse_webkit_binary_cookie_names(data: &[u8]) -> Result<Vec<String>, String> {
+    if data.len() < 8 || data.get(0..4) != Some(b"cook") {
+        return Err("Invalid WebKit cookie store header".to_string());
+    }
+
+    let page_count = read_u32_be(data, 4).ok_or_else(|| "Missing page count".to_string())? as usize;
+    let sizes_start = 8usize;
+    let sizes_end = sizes_start
+        .checked_add(page_count.saturating_mul(4))
+        .ok_or_else(|| "Cookie page table is too large".to_string())?;
+    if sizes_end > data.len() {
+        return Err("Cookie page table exceeds file size".to_string());
+    }
+
+    let mut page_sizes = Vec::with_capacity(page_count);
+    for index in 0..page_count {
+        let offset = sizes_start + index * 4;
+        page_sizes.push(read_u32_be(data, offset).unwrap_or(0) as usize);
+    }
+
+    let mut names = HashSet::new();
+    let mut page_start = sizes_end;
+    for page_size in page_sizes {
+        let Some(page_end) = page_start.checked_add(page_size) else {
+            break;
+        };
+        let Some(page) = data.get(page_start..page_end) else {
+            break;
+        };
+        page_start = page_end;
+
+        if page.len() < 8 {
+            continue;
+        }
+        let cookie_count = read_u32_le(page, 4).unwrap_or(0) as usize;
+        for index in 0..cookie_count {
+            let offset_offset = 8 + index * 4;
+            let Some(record_offset) = read_u32_le(page, offset_offset).map(|value| value as usize)
+            else {
+                continue;
+            };
+            let Some(record_size) = read_u32_le(page, record_offset).map(|value| value as usize)
+            else {
+                continue;
+            };
+            if record_size == 0 {
+                continue;
+            }
+            let Some(record_end) = record_offset.checked_add(record_size) else {
+                continue;
+            };
+            let Some(record) = page.get(record_offset..record_end) else {
+                continue;
+            };
+            let Some(name_offset) = read_u32_le(record, 20).map(|value| value as usize) else {
+                continue;
+            };
+            if let Some(name) = cookie_record_string(record, name_offset) {
+                names.insert(name);
+            }
+        }
+    }
+
+    let mut names: Vec<String> = names.into_iter().collect();
+    names.sort();
+    Ok(names)
+}
+
+#[cfg(target_os = "macos")]
+fn webkit_cookie_store_path(
+    app: &tauri::AppHandle,
+    identifier: [u8; 16],
+) -> Result<PathBuf, String> {
+    let home = app.path().home_dir().map_err(|error| error.to_string())?;
+    Ok(home
+        .join("Library")
+        .join("WebKit")
+        .join(app.config().identifier.as_str())
+        .join("WebsiteDataStore")
+        .join(data_store_identifier_folder(identifier))
+        .join("Cookies")
+        .join("Cookies.binarycookies"))
+}
+
+#[tauri::command]
+fn get_social_provider_cookie_state(
+    app: tauri::AppHandle,
+    provider: String,
+) -> Result<SocialProviderCookieState, String> {
+    let Some((provider, identifier, auth_cookie_names)) =
+        social_auth_cookie_config(provider.as_str())
+    else {
+        return Err(format!("Unsupported social provider: {}", provider));
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        return Ok(SocialProviderCookieState {
+            provider: provider.to_string(),
+            available: false,
+            has_auth_cookie: false,
+            cookie_count: 0,
+            cookie_names: Vec::new(),
+            error: Some("Provider cookie diagnostics are only available on macOS.".to_string()),
+        });
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let path = webkit_cookie_store_path(&app, identifier)?;
+        let data = match std::fs::read(&path) {
+            Ok(data) => data,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(SocialProviderCookieState {
+                    provider: provider.to_string(),
+                    available: false,
+                    has_auth_cookie: false,
+                    cookie_count: 0,
+                    cookie_names: Vec::new(),
+                    error: None,
+                });
+            }
+            Err(error) => {
+                return Ok(SocialProviderCookieState {
+                    provider: provider.to_string(),
+                    available: false,
+                    has_auth_cookie: false,
+                    cookie_count: 0,
+                    cookie_names: Vec::new(),
+                    error: Some(error.to_string()),
+                });
+            }
+        };
+
+        let cookie_names = match parse_webkit_binary_cookie_names(&data) {
+            Ok(cookie_names) => cookie_names,
+            Err(error) => {
+                return Ok(SocialProviderCookieState {
+                    provider: provider.to_string(),
+                    available: false,
+                    has_auth_cookie: false,
+                    cookie_count: 0,
+                    cookie_names: Vec::new(),
+                    error: Some(error),
+                });
+            }
+        };
+        let has_auth_cookie = cookie_names
+            .iter()
+            .any(|name| auth_cookie_names.iter().any(|auth_name| name == auth_name));
+
+        Ok(SocialProviderCookieState {
+            provider: provider.to_string(),
+            available: true,
+            has_auth_cookie,
+            cookie_count: cookie_names.len(),
+            cookie_names,
+            error: None,
+        })
+    }
+}
+
+#[tauri::command]
+fn get_desktop_session_state() -> DesktopSessionState {
+    #[cfg(not(target_os = "macos"))]
+    {
+        return DesktopSessionState {
+            available: false,
+            screen_locked: false,
+            error: Some("Desktop session diagnostics are only available on macOS.".to_string()),
+        };
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let output = match std::process::Command::new("/usr/sbin/ioreg")
+            .args(["-a", "-d", "1", "-c", "IORegistryEntry"])
+            .output()
+        {
+            Ok(output) => output,
+            Err(error) => {
+                return DesktopSessionState {
+                    available: false,
+                    screen_locked: false,
+                    error: Some(error.to_string()),
+                };
+            }
+        };
+
+        if !output.status.success() {
+            return DesktopSessionState {
+                available: false,
+                screen_locked: false,
+                error: Some(format!("ioreg exited with status {}", output.status)),
+            };
+        }
+
+        let text = String::from_utf8_lossy(&output.stdout);
+        let screen_locked = parse_screen_locked_from_ioreg_plist(&text).unwrap_or(false);
+
+        DesktopSessionState {
+            available: parse_screen_locked_from_ioreg_plist(&text).is_some(),
+            screen_locked,
+            error: None,
+        }
     }
 }
 
@@ -292,18 +595,6 @@ impl Drop for WebviewRecycleGuard {
     fn drop(&mut self) {
         recycle_webview_window(&self.app, self.label, self.reason);
     }
-}
-
-fn schedule_webview_recycle(
-    app: tauri::AppHandle,
-    label: &'static str,
-    reason: &'static str,
-    delay: Duration,
-) {
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(delay).await;
-        recycle_webview_window(&app, label, reason);
-    });
 }
 
 fn scrub_webview_before_destroy(window: &tauri::WebviewWindow) {
@@ -449,7 +740,7 @@ async fn restore_scraper_feed(
         .map_err(|e| e.to_string())?;
     info!("[{}] restoring feed after story viewer", platform);
     tokio::time::sleep(Duration::from_millis(gaussian_ms(6500.0, 900.0))).await;
-    let _ = window.eval("window.scrollTo({ top: 0, behavior: 'instant' });");
+    let _ = window.eval("window.scrollTo({ top: 0, behavior: 'auto' });");
     tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 250.0))).await;
     Ok(())
 }
@@ -2921,6 +3212,176 @@ fn memory_pressure_limits(total_physical_memory_bytes: u64) -> (u64, u64) {
     (high, critical)
 }
 
+fn social_feed_scroll_script(delta_px: i64) -> String {
+    const SCRIPT_TEMPLATE: &str = r#"
+        (function() {
+            var requestedDelta = Number(__FREED_SCROLL_DELTA__) || 0;
+            var direction = requestedDelta >= 0 ? 1 : -1;
+            var minimumUsefulMovement = Math.max(18, Math.min(64, Math.abs(requestedDelta) * 0.18));
+
+            function clamp(value, min, max) {
+                return Math.max(min, Math.min(max, value));
+            }
+
+            function isElement(value) {
+                return value && value.nodeType === 1;
+            }
+
+            function scrollTopOf(target) {
+                if (target === window) {
+                    return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+                }
+                return target.scrollTop || 0;
+            }
+
+            function maxScrollTop(target) {
+                if (target === window) {
+                    var doc = document.scrollingElement || document.documentElement || document.body;
+                    return Math.max(0, doc.scrollHeight - window.innerHeight);
+                }
+                return Math.max(0, target.scrollHeight - target.clientHeight);
+            }
+
+            function writeScrollTop(target, value) {
+                if (target === window) {
+                    window.scrollTo({ top: value, left: window.scrollX || 0, behavior: "auto" });
+                    return;
+                }
+                if (typeof target.scrollTo === "function") {
+                    target.scrollTo({ top: value, left: target.scrollLeft || 0, behavior: "auto" });
+                    return;
+                }
+                target.scrollTop = value;
+            }
+
+            function canScroll(target) {
+                if (!target) return false;
+                var max = maxScrollTop(target);
+                if (max < 80) return false;
+                var top = scrollTopOf(target);
+                return direction > 0 ? top < max - 2 : top > 2;
+            }
+
+            function addCandidate(list, seen, target) {
+                if (!target || seen.indexOf(target) >= 0) return;
+                if (target !== window && !isElement(target)) return;
+                seen.push(target);
+                list.push(target);
+            }
+
+            function addAncestorCandidates(list, seen, node) {
+                var current = isElement(node) ? node : null;
+                var depth = 0;
+                while (current && depth < 8) {
+                    addCandidate(list, seen, current);
+                    current = current.parentElement;
+                    depth += 1;
+                }
+            }
+
+            function candidateScore(target) {
+                var range = maxScrollTop(target);
+                if (target === window || target === document.scrollingElement) return range + 100000;
+                try {
+                    var rect = target.getBoundingClientRect();
+                    var visibleHeight = Math.max(0, Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0));
+                    return range + visibleHeight * 4;
+                } catch (_) {
+                    return range;
+                }
+            }
+
+            function selectScrollers() {
+                var candidates = [];
+                var seen = [];
+                addCandidate(candidates, seen, document.scrollingElement || document.documentElement || document.body);
+                addCandidate(candidates, seen, document.documentElement);
+                addCandidate(candidates, seen, document.body);
+                addCandidate(candidates, seen, window);
+
+                var anchors = [];
+                try {
+                    anchors = Array.prototype.slice.call(document.querySelectorAll([
+                        "main",
+                        "[role='main']",
+                        "[role='feed']",
+                        "[aria-label*='feed' i]",
+                        "[data-pagelet*='Feed']",
+                        "[data-pagelet*='feed']"
+                    ].join(","))).slice(0, 12);
+                } catch (_) {}
+
+                anchors.forEach(function(anchor) {
+                    addAncestorCandidates(candidates, seen, anchor);
+                });
+
+                return candidates
+                    .filter(canScroll)
+                    .sort(function(a, b) { return candidateScore(b) - candidateScore(a); })
+                    .slice(0, 6);
+            }
+
+            function humanStep(target, remainingSteps, done) {
+                var current = scrollTopOf(target);
+                var max = maxScrollTop(target);
+                var targetTop = clamp(current + requestedDelta, 0, max);
+                var remaining = targetTop - current;
+                if (remainingSteps <= 1 || Math.abs(remaining) < 2) {
+                    writeScrollTop(target, targetTop);
+                    done();
+                    return;
+                }
+
+                var unevenness = 0.62 + Math.random() * 0.76;
+                var step = remaining / remainingSteps * unevenness;
+                var minStep = Math.min(22, Math.max(6, Math.abs(remaining) / (remainingSteps * 3)));
+                if (Math.abs(step) < minStep) step = minStep * (step < 0 ? -1 : 1);
+                if (Math.abs(step) > Math.abs(remaining)) step = remaining;
+
+                writeScrollTop(target, clamp(current + step, 0, max));
+                setTimeout(function() {
+                    humanStep(target, remainingSteps - 1, done);
+                }, 42 + Math.floor(Math.random() * 88));
+            }
+
+            function tryScrollAt(index, scrollers) {
+                if (index >= scrollers.length) return;
+
+                var target = scrollers[index];
+                var before = scrollTopOf(target);
+                var steps = 5 + Math.floor(Math.random() * 7);
+                humanStep(target, steps, function() {
+                    setTimeout(function() {
+                        var after = scrollTopOf(target);
+                        var movement = Math.abs(after - before);
+                        if (movement >= minimumUsefulMovement) return;
+
+                        if (index + 1 < scrollers.length) {
+                            tryScrollAt(index + 1, scrollers);
+                            return;
+                        }
+
+                        try {
+                            writeScrollTop(target, clamp(after + requestedDelta, 0, maxScrollTop(target)));
+                        } catch (_) {}
+                    }, 180 + Math.floor(Math.random() * 180));
+                });
+            }
+
+            var scrollers = selectScrollers();
+            if (scrollers.length > 0) {
+                tryScrollAt(0, scrollers);
+            } else {
+                try {
+                    window.scrollBy({ top: requestedDelta, left: 0, behavior: "auto" });
+                } catch (_) {}
+            }
+        })();
+    "#;
+
+    SCRIPT_TEMPLATE.replace("__FREED_SCROLL_DELTA__", &delta_px.to_string())
+}
+
 fn path_is_under_any_root(path: &Path, roots: &[PathBuf]) -> bool {
     roots.iter().any(|root| path.starts_with(root))
 }
@@ -4260,14 +4721,140 @@ struct FbGroupsDataPayload {
     error: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FbPageStatePayload {
+    logged_in_cookie: bool,
+    scroll_height: u64,
+    feed_posts_heading_count: u64,
+    feed_unit_count: u64,
+    login_chrome: bool,
+    role_main_count: u64,
+    url: String,
+    title: String,
+}
+
+impl FbPageStatePayload {
+    fn feed_like(&self) -> bool {
+        self.logged_in_cookie || self.feed_posts_heading_count > 0 || self.feed_unit_count > 0
+    }
+}
+
+fn fb_page_state_probe_script() -> &'static str {
+    r#"
+    (function() {
+        try {
+            var headings = Array.prototype.filter.call(document.querySelectorAll('h3'), function(h3) {
+                return (h3.textContent || '').trim() === 'Feed posts';
+            }).length;
+            var bodyText = ((document.body && document.body.textContent) || '').slice(0, 4000).toLowerCase();
+            var feedUnitCount = document.querySelectorAll('[role="article"], div[data-pagelet^="FeedUnit"], div[aria-posinset]').length;
+            window.__TAURI__.event.emit('fb-page-state', {
+                loggedInCookie: document.cookie.indexOf('c_user=') !== -1 &&
+                    document.cookie.indexOf('c_user=0') === -1,
+                scrollHeight: document.documentElement.scrollHeight || document.body.scrollHeight || 0,
+                feedPostsHeadingCount: headings,
+                feedUnitCount: feedUnitCount,
+                loginChrome: /\blog in\b/.test(bodyText) ||
+                    /\bsign up\b/.test(bodyText) ||
+                    /\bcreate new account\b/.test(bodyText),
+                roleMainCount: document.querySelectorAll('div[role="main"]').length,
+                url: window.location.href,
+                title: document.title || ''
+            });
+        } catch (e) {
+            window.__TAURI__.event.emit('fb-page-state', {
+                loggedInCookie: false,
+                scrollHeight: 0,
+                feedPostsHeadingCount: 0,
+                feedUnitCount: 0,
+                loginChrome: false,
+                roleMainCount: 0,
+                url: window.location.href,
+                title: document.title || '',
+                error: e.message || String(e)
+            });
+        }
+    })();
+    "#
+}
+
+fn fb_auth_result_script() -> &'static str {
+    r#"
+    (function() {
+        try {
+            var headings = Array.prototype.filter.call(document.querySelectorAll('h3'), function(h3) {
+                return (h3.textContent || '').trim() === 'Feed posts';
+            }).length;
+            var scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight || 0;
+            var roleMainCount = document.querySelectorAll('div[role="main"]').length;
+            var feedUnitCount = document.querySelectorAll('[role="article"], div[data-pagelet^="FeedUnit"], div[aria-posinset]').length;
+            var bodyText = ((document.body && document.body.textContent) || '').slice(0, 4000).toLowerCase();
+            var loginChrome = /\blog in\b/.test(bodyText) ||
+                /\bsign up\b/.test(bodyText) ||
+                /\bcreate new account\b/.test(bodyText);
+            var loggedInCookie = document.cookie.indexOf('c_user=') !== -1 &&
+                document.cookie.indexOf('c_user=0') === -1;
+            var feedLike = loggedInCookie || headings > 0 || feedUnitCount > 0;
+            window.__TAURI__.event.emit('fb-auth-result', {
+                loggedIn: loggedInCookie || feedLike,
+                loggedInCookie: loggedInCookie,
+                feedLike: feedLike,
+                scrollHeight: scrollHeight,
+                feedPostsHeadingCount: headings,
+                feedUnitCount: feedUnitCount,
+                loginChrome: loginChrome,
+                roleMainCount: roleMainCount,
+                url: window.location.href,
+                title: document.title || ''
+            });
+        } catch(e) {
+            window.__TAURI__.event.emit('fb-auth-result', { loggedIn: false, error: e.message || String(e) });
+        }
+    })();
+    "#
+}
+
+async fn probe_fb_page_state(
+    app: &tauri::AppHandle,
+    wv: &tauri::WebviewWindow,
+) -> Result<FbPageStatePayload, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<FbPageStatePayload, String>>();
+    let tx = Arc::new(std::sync::Mutex::new(Some(tx)));
+    let listener_tx = tx.clone();
+    let listener_id = app.listen("fb-page-state", move |event| {
+        let result = serde_json::from_str::<FbPageStatePayload>(event.payload())
+            .map_err(|err| err.to_string());
+        if let Some(sender) = listener_tx.lock().unwrap().take() {
+            let _ = sender.send(result);
+        }
+    });
+
+    let eval_result = wv
+        .eval(fb_page_state_probe_script())
+        .map_err(|e| e.to_string());
+    if let Err(err) = eval_result {
+        app.unlisten(listener_id);
+        return Err(err);
+    }
+    let result = tokio::time::timeout(Duration::from_secs(2), rx)
+        .await
+        .map_err(|_| "Timed out checking Facebook page state".to_string())
+        .and_then(|received| {
+            received.map_err(|_| "Facebook page state listener dropped".to_string())
+        });
+    app.unlisten(listener_id);
+    result?
+}
+
 /// Show a visible WebView window navigated to facebook.com/login so the
 /// user can authenticate through the real Facebook login flow.
 ///
-/// The window reuses the "fb-scraper" label. If it already exists it is
-/// shown and focused; otherwise a new window is created.
+/// The window uses the "fb-login" label and shares the Facebook scraper data
+/// store, so login cookies remain available to feed scraping.
 ///
 /// An `on_navigation` handler detects when the user completes login
-/// (URL leaves /login) and auto-hides the window + emits `fb-auth-result`.
+/// (URL leaves /login) and emits `fb-auth-result`.
 #[tauri::command]
 async fn fb_show_login(
     app: tauri::AppHandle,
@@ -4276,7 +4863,10 @@ async fn fb_show_login(
 ) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
-    if let Some(existing) = app.get_webview_window("fb-scraper") {
+    info!("[FB] opening login window");
+    recycle_webview_window(&app, "fb-scraper", "facebook reconnect");
+
+    if let Some(existing) = app.get_webview_window("fb-login") {
         let _ = set_background_scraper_window_cloak(&existing, false);
         let _ = set_background_scraper_media_guard(&existing, false);
         existing
@@ -4284,17 +4874,18 @@ async fn fb_show_login(
             .map_err(|e| e.to_string())?;
         let _ = existing.show();
         let _ = existing.set_focus();
-        // Update the stored UA in case it changed since last connect.
         *capture.fb_user_agent.lock().unwrap() = user_agent;
+        info!("[FB] focused existing login window");
         return Ok(());
     }
 
     let app_handle = app.clone();
-    let auth_emitted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let auth_emitted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let auth_emitted_for_nav = auth_emitted.clone();
 
-    WebviewWindowBuilder::new(
+    let login_window = WebviewWindowBuilder::new(
         &app,
-        "fb-scraper",
+        "fb-login",
         tauri::WebviewUrl::External("https://www.facebook.com/login".parse().unwrap()),
     )
     .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
@@ -4317,30 +4908,37 @@ async fn fb_show_login(
         let path = url.path();
         let host = url.host_str().unwrap_or("");
 
-        // Detect successful login: navigated away from /login on a facebook domain
+        // Detect likely login completion, then verify with page evidence.
         if host.contains("facebook.com")
             && path != "/login"
             && path != "/login/"
-            && !auth_emitted.swap(true, std::sync::atomic::Ordering::SeqCst)
+            && !auth_emitted_for_nav.swap(true, std::sync::atomic::Ordering::SeqCst)
         {
-            if let Some(w) = app_handle.get_webview_window("fb-scraper") {
-                let _ = w.hide();
-            }
-            let _ = app_handle.emit("fb-auth-result", serde_json::json!({ "loggedIn": true }));
-            schedule_webview_recycle(
-                app_handle.clone(),
-                "fb-scraper",
-                "login complete",
-                Duration::from_secs(2),
-            );
+            let check_app = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(1800)).await;
+                if let Some(w) = check_app.get_webview_window("fb-login") {
+                    let _ = w.eval(fb_auth_result_script());
+                }
+            });
         }
 
         true
     })
     .build()
     .map_err(|e| e.to_string())?;
+    let close_app = app.clone();
+    login_window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { .. } = event {
+            let _ = close_app.emit(
+                "fb-login-window-closed",
+                serde_json::json!({ "closed": true }),
+            );
+        }
+    });
 
     *capture.fb_user_agent.lock().unwrap() = user_agent;
+    info!("[FB] created login window");
 
     Ok(())
 }
@@ -4348,7 +4946,11 @@ async fn fb_show_login(
 /// Hide the Facebook login window after successful authentication.
 #[tauri::command]
 async fn fb_hide_login(app: tauri::AppHandle) -> Result<(), String> {
-    recycle_webview_window(&app, "fb-scraper", "login dismissed");
+    let _ = app.emit(
+        "fb-login-window-closed",
+        serde_json::json!({ "closed": true }),
+    );
+    recycle_webview_window(&app, "fb-login", "login dismissed");
     Ok(())
 }
 
@@ -4396,29 +4998,15 @@ async fn fb_check_auth(
 
     tokio::time::sleep(Duration::from_secs(6)).await;
 
-    wv.eval(
-        r#"
-        (function() {
-            try {
-                var loggedIn = document.cookie.indexOf('c_user=') !== -1
-                    && document.cookie.indexOf('c_user=0') === -1;
-                window.__TAURI__.event.emit('fb-auth-result', { loggedIn: loggedIn });
-            } catch(e) {
-                window.__TAURI__.event.emit('fb-auth-result', { loggedIn: false, error: e.message });
-            }
-        })();
-        "#,
-    )
-    .map_err(|e| e.to_string())?;
+    wv.eval(fb_auth_result_script())
+        .map_err(|e| e.to_string())?;
 
     tokio::time::sleep(Duration::from_millis(250)).await;
 
-    // The result is delivered asynchronously via event. The frontend
-    // listens for 'fb-auth-result'. For the command return value we
-    // fall back to a cookie-based heuristic checked from Rust.
-    // Since we can't get eval() return values, we return a best-guess
-    // and let the frontend reconcile via the event.
-    Ok(true)
+    // The result is delivered asynchronously via event. The frontend listens
+    // for 'fb-auth-result'. Since eval() return values are not available here,
+    // the command return value is only a fallback for missed events.
+    Ok(false)
 }
 
 // ---------------------------------------------------------------------------
@@ -4664,6 +5252,10 @@ async fn fb_scrape_feed(
 
     let fb_feed_url = "https://www.facebook.com/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    let scrape_run_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| format!("fb-{}", duration.as_millis()))
+        .unwrap_or_else(|_| "fb-unknown".to_string());
     ensure_social_scrape_memory(
         &app,
         &capture.background_runtime,
@@ -4684,7 +5276,6 @@ async fn fb_scrape_feed(
             w
         }
         None => {
-            let app_handle = app.clone();
             let mut builder = WebviewWindowBuilder::new(
                 &app,
                 "fb-scraper",
@@ -4695,16 +5286,7 @@ async fn fb_scrape_feed(
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed Facebook")
-            .inner_size(1280.0, 900.0)
-            .on_navigation(move |url| {
-                let host = url.host_str().unwrap_or("");
-                let path = url.path();
-                if host.contains("facebook.com") && path != "/login" && path != "/login/" {
-                    let _ =
-                        app_handle.emit("fb-auth-result", serde_json::json!({ "loggedIn": true }));
-                }
-                true
-            });
+            .inner_size(1280.0, 900.0);
 
             if window_mode == ScraperWindowMode::Shown {
                 builder = builder.center().visible(true);
@@ -4735,21 +5317,36 @@ async fn fb_scrape_feed(
     };
 
     info!(
-        "[FB] scrape started (window_mode={}), waiting for page load...",
+        "[FB] scrape started (run_id={}, window_mode={}), waiting for page load...",
+        scrape_run_id,
         window_mode.as_str()
     );
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(13000.0, 1500.0))).await;
+
+    let set_scrape_run_id_script = format!(
+        "window.__FREED_FB_SCRAPE_RUN_ID = {};",
+        serde_json::to_string(&scrape_run_id).map_err(|e| e.to_string())?
+    );
+    wv.eval(&set_scrape_run_id_script)
+        .map_err(|e| e.to_string())?;
 
     wv.eval(
         r#"
         (function() {
             if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {
                 window.__TAURI__.event.emit('fb-diag', {
+                    scrapeRunId: window.__FREED_FB_SCRAPE_RUN_ID || null,
                     userAgent: navigator.userAgent,
                     url: window.location.href,
                     title: document.title,
                     scrollHeight: document.documentElement.scrollHeight,
+                    loggedInCookie: document.cookie.indexOf('c_user=') !== -1 &&
+                        document.cookie.indexOf('c_user=0') === -1,
+                    feedPostsHeadingCount: Array.prototype.filter.call(document.querySelectorAll('h3'), function(h3) {
+                        return (h3.textContent || '').trim() === 'Feed posts';
+                    }).length,
+                    roleMainCount: document.querySelectorAll('div[role="main"]').length,
                 });
             }
         })();
@@ -4757,6 +5354,50 @@ async fn fb_scrape_feed(
     )
     .map_err(|e| e.to_string())?;
     tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let page_state = probe_fb_page_state(&app, &wv).await?;
+    let feed_like = page_state.feed_like();
+    let short_non_feed = page_state.scroll_height > 0
+        && page_state.scroll_height < 1600
+        && page_state.feed_posts_heading_count == 0;
+    let not_authenticated = !page_state.logged_in_cookie && !feed_like;
+    if not_authenticated || short_non_feed {
+        let message = if not_authenticated {
+            "Facebook did not render an authenticated feed. Reconnect Facebook and try again."
+        } else {
+            "Facebook rendered a short page instead of the feed. Open Facebook settings, reconnect if needed, then sync again."
+        };
+        let strategy = if not_authenticated {
+            "not_authenticated"
+        } else {
+            "short_non_feed"
+        };
+        let extracted_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_millis() as u64)
+            .unwrap_or(0);
+        let _ = app.emit(
+            "fb-feed-data",
+            serde_json::json!({
+                "posts": [],
+                "error": message,
+                "extractedAt": extracted_at,
+                "url": page_state.url,
+                "scrapeRunId": scrape_run_id,
+                "strategy": strategy,
+                "candidateCount": 0,
+                "scrollY": 0,
+                "feedContainerFound": page_state.feed_posts_heading_count > 0,
+                "pageState": page_state,
+                "rejected": {
+                    "suggestedOrSponsored": 0,
+                    "missingAuthor": 0,
+                    "missingContent": 0
+                }
+            }),
+        );
+        return Err(message.to_string());
+    }
 
     let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
     let scrape_plan = social_scrape_plan_for_memory(&scrape_plan_stats, 6, 10);
@@ -4830,27 +5471,8 @@ async fn fb_scrape_feed(
             use rand::Rng;
             rand::thread_rng().gen_range(280u64..520)
         };
-        let scroll_js = format!(
-            "window.scrollBy({{ top: {}, behavior: 'smooth' }});",
-            scroll_amount
-        );
+        let scroll_js = social_feed_scroll_script(scroll_amount as i64);
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
-
-        // Inject mouse movement before scrolling (mimics real user pointer activity).
-        let cx = 230 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(0i32..200)
-        };
-        let cy = 350 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(0i32..200)
-        };
-        let mouse_js = format!(
-            r#"(function(){{var x={cx},y={cy};[0,1,2].forEach(function(i){{setTimeout(function(){{document.dispatchEvent(new MouseEvent('mousemove',{{clientX:x+i*12,clientY:y+i*8,bubbles:true,cancelable:true}}));}},i*80);}});}})();"#,
-            cx = cx,
-            cy = cy
-        );
-        let _ = wv.eval(&mouse_js);
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Occasional micro-backscroll (~12% probability) simulates re-reading.
@@ -4862,7 +5484,7 @@ async fn fb_scrape_feed(
                 use rand::Rng;
                 rand::thread_rng().gen_range(80u64..250)
             };
-            let back_js = format!("window.scrollBy({{top: -{}, behavior: 'smooth'}});", back);
+            let back_js = social_feed_scroll_script(-(back as i64));
             let _ = wv.eval(&back_js);
             tokio::time::sleep(Duration::from_millis(gaussian_ms(600.0, 150.0))).await;
         }
@@ -4891,7 +5513,7 @@ async fn fb_scrape_feed(
                 "[FB] interleaving story scrape after {} feed passes",
                 early_passes
             );
-            let _ = wv.eval("window.scrollTo({ top: 0, behavior: 'smooth' });");
+            let _ = wv.eval("window.scrollTo({ top: 0, behavior: 'auto' });");
             tokio::time::sleep(Duration::from_millis(gaussian_ms(1800.0, 400.0))).await;
             scrape_fb_stories(&wv, story_frame_cap).await;
             restore_scraper_feed(&wv, fb_feed_url, "FB").await?;
@@ -4941,7 +5563,6 @@ async fn fb_scrape_groups(
             w
         }
         None => {
-            let app_handle = app.clone();
             let mut builder = WebviewWindowBuilder::new(
                 &app,
                 "fb-scraper",
@@ -4952,16 +5573,7 @@ async fn fb_scrape_groups(
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed Facebook")
-            .inner_size(1280.0, 900.0)
-            .on_navigation(move |url| {
-                let host = url.host_str().unwrap_or("");
-                let path = url.path();
-                if host.contains("facebook.com") && path != "/login" && path != "/login/" {
-                    let _ =
-                        app_handle.emit("fb-auth-result", serde_json::json!({ "loggedIn": true }));
-                }
-                true
-            });
+            .inner_size(1280.0, 900.0);
 
             if window_mode == ScraperWindowMode::Shown {
                 builder = builder.center().visible(true);
@@ -5062,7 +5674,8 @@ async fn fb_scrape_comments(
         })?;
         tokio::time::sleep(Duration::from_millis(700)).await;
         if index < 2 {
-            let _ = wv.eval(r#"window.scrollBy({ top: 520, behavior: 'smooth' });"#);
+            let comments_scroll_js = social_feed_scroll_script(520);
+            let _ = wv.eval(&comments_scroll_js);
             tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 250.0))).await;
         }
     }
@@ -5094,8 +5707,7 @@ const IG_COMMENTS_EXTRACT_SCRIPT: &str = include_str!("ig-comments-extract.js");
 /// so the user can authenticate through the real Instagram login flow.
 ///
 /// An `on_navigation` handler detects when the user completes login
-/// (URL leaves /accounts/login) and auto-hides the window + emits
-/// `ig-auth-result`.
+/// (URL leaves /accounts/login) and emits `ig-auth-result`.
 #[tauri::command]
 async fn ig_show_login(
     app: tauri::AppHandle,
@@ -5104,23 +5716,13 @@ async fn ig_show_login(
 ) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
-    if let Some(existing) = app.get_webview_window("ig-scraper") {
-        let _ = set_background_scraper_window_cloak(&existing, false);
-        let _ = set_background_scraper_media_guard(&existing, false);
-        existing
-            .navigate("https://www.instagram.com/accounts/login/".parse().unwrap())
-            .map_err(|e| e.to_string())?;
-        let _ = existing.show();
-        let _ = existing.set_focus();
-        *capture.ig_user_agent.lock().unwrap() = user_agent;
-        return Ok(());
-    }
+    recycle_webview_window(&app, "ig-scraper", "login restart");
 
     let app_handle = app.clone();
     // Track whether we've already emitted the auth result (one-shot)
     let auth_emitted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    WebviewWindowBuilder::new(
+    let login_window = WebviewWindowBuilder::new(
         &app,
         "ig-scraper",
         tauri::WebviewUrl::External("https://www.instagram.com/accounts/login/".parse().unwrap()),
@@ -5152,32 +5754,22 @@ async fn ig_show_login(
             && path != "/accounts/login/"
             && !auth_emitted.swap(true, std::sync::atomic::Ordering::SeqCst)
         {
-            // Hide the login UI while the post-login scrape spins up.
-            // ig_scrape_feed now recycles the WebView when the scrape ends.
-            if let Some(w) = app_handle.get_webview_window("ig-scraper") {
-                let _ = w.hide();
-            }
             let _ = app_handle.emit("ig-auth-result", serde_json::json!({ "loggedIn": true }));
-
-            // Auto-trigger a scrape shortly after login so the user doesn't need
-            // to manually click "Sync Now".
-            let scrape_app = app_handle.clone();
-            tauri::async_runtime::spawn(async move {
-                info!("[IG] login detected, auto-scraping...");
-                tokio::time::sleep(Duration::from_millis(gaussian_ms(4000.0, 800.0))).await;
-                let capture = scrape_app.state::<CaptureState>();
-                // Post-login auto-scrapes use hidden mode so they do not compete with the main renderer.
-                match ig_scrape_feed(scrape_app.clone(), capture, ScraperWindowMode::Hidden).await {
-                    Ok(()) => info!("[IG] post-login auto-scrape complete"),
-                    Err(e) => info!("[IG] post-login auto-scrape error: {}", e),
-                }
-            });
         }
 
         true
     })
     .build()
     .map_err(|e| e.to_string())?;
+    let close_app = app.clone();
+    login_window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { .. } = event {
+            let _ = close_app.emit(
+                "ig-login-window-closed",
+                serde_json::json!({ "closed": true }),
+            );
+        }
+    });
 
     *capture.ig_user_agent.lock().unwrap() = user_agent;
 
@@ -5187,6 +5779,10 @@ async fn ig_show_login(
 /// Hide the Instagram login window after successful authentication.
 #[tauri::command]
 async fn ig_hide_login(app: tauri::AppHandle) -> Result<(), String> {
+    let _ = app.emit(
+        "ig-login-window-closed",
+        serde_json::json!({ "closed": true }),
+    );
     recycle_webview_window(&app, "ig-scraper", "login dismissed");
     Ok(())
 }
@@ -5251,7 +5847,7 @@ async fn ig_check_auth(
 
     tokio::time::sleep(Duration::from_millis(250)).await;
 
-    Ok(true)
+    Ok(false)
 }
 
 /// Trigger a feed scrape in the hidden Instagram WebView.
@@ -5300,7 +5896,6 @@ async fn ig_scrape_feed(
         None => {
             // No existing window - create one. This path runs on first-ever scrape
             // (when the user hasn't gone through ig_show_login yet, e.g. auto-scrape).
-            let app_handle = app.clone();
             let mut builder = WebviewWindowBuilder::new(
                 &app,
                 "ig-scraper",
@@ -5311,20 +5906,7 @@ async fn ig_scrape_feed(
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed Instagram")
-            .inner_size(1280.0, 900.0)
-            .on_navigation(move |url| {
-                let path = url.path();
-                let host = url.host_str().unwrap_or("");
-                if host.contains("instagram.com")
-                    && (path == "/accounts/login" || path == "/accounts/login/")
-                {
-                    // Still on login — do nothing
-                } else if host.contains("instagram.com") {
-                    let _ =
-                        app_handle.emit("ig-auth-result", serde_json::json!({ "loggedIn": true }));
-                }
-                true
-            });
+            .inner_size(1280.0, 900.0);
 
             if window_mode == ScraperWindowMode::Shown {
                 builder = builder.center().visible(true);
@@ -5438,44 +6020,8 @@ async fn ig_scrape_feed(
             use rand::Rng;
             rand::thread_rng().gen_range(380u64..720)
         };
-        // Dispatch real WheelEvent + ScrollEvent so Instagram's React virtualizer
-        // detects the scroll and renders new posts into the DOM.
-        let scroll_js = format!(
-            r#"(function() {{
-                var el = document.scrollingElement || document.documentElement || document.body;
-                var target = el.scrollTop + {amt};
-                // Simulate wheel delta in small steps so React's scroll handler fires
-                var steps = 8;
-                var step = {amt} / steps;
-                var done = 0;
-                function tick() {{
-                    el.scrollTop += step;
-                    el.dispatchEvent(new Event('scroll', {{bubbles: true}}));
-                    window.dispatchEvent(new Event('scroll', {{bubbles: false}}));
-                    done++;
-                    if (done < steps) setTimeout(tick, 60);
-                }}
-                tick();
-            }})();"#,
-            amt = scroll_amount
-        );
+        let scroll_js = social_feed_scroll_script(scroll_amount as i64);
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
-
-        // Mouse movement before scroll.
-        let cx = 230 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(0i32..200)
-        };
-        let cy = 350 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(0i32..200)
-        };
-        let mouse_js = format!(
-            r#"(function(){{var x={cx},y={cy};[0,1,2].forEach(function(i){{setTimeout(function(){{document.dispatchEvent(new MouseEvent('mousemove',{{clientX:x+i*12,clientY:y+i*8,bubbles:true,cancelable:true}}));}},i*80);}});}})();"#,
-            cx = cx,
-            cy = cy
-        );
-        let _ = wv.eval(&mouse_js);
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Micro-backscroll ~12% of the time.
@@ -5487,7 +6033,7 @@ async fn ig_scrape_feed(
                 use rand::Rng;
                 rand::thread_rng().gen_range(80u64..250)
             };
-            let back_js = format!("window.scrollTop -= {};", back);
+            let back_js = social_feed_scroll_script(-(back as i64));
             let _ = wv.eval(&back_js);
             tokio::time::sleep(Duration::from_millis(gaussian_ms(600.0, 150.0))).await;
         }
@@ -5519,7 +6065,7 @@ async fn ig_scrape_feed(
             let _ = wv.eval(
                 r#"
                 (function() {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    window.scrollTo({ top: 0, behavior: 'auto' });
                 })();
             "#,
             );
@@ -5579,7 +6125,8 @@ async fn ig_scrape_comments(
         })?;
         tokio::time::sleep(Duration::from_millis(700)).await;
         if index < 2 {
-            let _ = wv.eval(r#"window.scrollBy({ top: 520, behavior: 'smooth' });"#);
+            let comments_scroll_js = social_feed_scroll_script(520);
+            let _ = wv.eval(&comments_scroll_js);
             tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 250.0))).await;
         }
     }
@@ -5795,7 +6342,7 @@ const LI_EXTRACT_SCRIPT: &str = include_str!("li-extract.js");
 /// user can authenticate through the real LinkedIn login flow.
 ///
 /// An `on_navigation` handler detects when the user completes login
-/// (URL leaves /login) and auto-hides the window + emits `li-auth-result`.
+/// (URL leaves /login) and emits `li-auth-result`.
 #[tauri::command]
 async fn li_show_login(
     app: tauri::AppHandle,
@@ -5804,23 +6351,13 @@ async fn li_show_login(
 ) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
-    if let Some(existing) = app.get_webview_window("li-scraper") {
-        let _ = set_background_scraper_window_cloak(&existing, false);
-        let _ = set_background_scraper_media_guard(&existing, false);
-        existing
-            .navigate("https://www.linkedin.com/login".parse().unwrap())
-            .map_err(|e| e.to_string())?;
-        let _ = existing.show();
-        let _ = existing.set_focus();
-        *capture.li_user_agent.lock().unwrap() = user_agent;
-        return Ok(());
-    }
+    recycle_webview_window(&app, "li-scraper", "login restart");
 
     let app_handle = app.clone();
     // Track whether we've already emitted the auth result (one-shot)
     let auth_emitted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    WebviewWindowBuilder::new(
+    let login_window = WebviewWindowBuilder::new(
         &app,
         "li-scraper",
         tauri::WebviewUrl::External("https://www.linkedin.com/login".parse().unwrap()),
@@ -5853,9 +6390,6 @@ async fn li_show_login(
             && path != "/uas/login"
             && !auth_emitted.swap(true, std::sync::atomic::Ordering::SeqCst)
         {
-            if let Some(w) = app_handle.get_webview_window("li-scraper") {
-                let _ = w.hide();
-            }
             let _ = app_handle.emit("li-auth-result", serde_json::json!({ "loggedIn": true }));
         }
 
@@ -5863,6 +6397,15 @@ async fn li_show_login(
     })
     .build()
     .map_err(|e| e.to_string())?;
+    let close_app = app.clone();
+    login_window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { .. } = event {
+            let _ = close_app.emit(
+                "li-login-window-closed",
+                serde_json::json!({ "closed": true }),
+            );
+        }
+    });
 
     *capture.li_user_agent.lock().unwrap() = user_agent;
 
@@ -5872,6 +6415,10 @@ async fn li_show_login(
 /// Hide the LinkedIn login window after successful authentication.
 #[tauri::command]
 async fn li_hide_login(app: tauri::AppHandle) -> Result<(), String> {
+    let _ = app.emit(
+        "li-login-window-closed",
+        serde_json::json!({ "closed": true }),
+    );
     recycle_webview_window(&app, "li-scraper", "login dismissed");
     Ok(())
 }
@@ -5946,7 +6493,7 @@ async fn li_check_auth(
 
     tokio::time::sleep(Duration::from_millis(250)).await;
 
-    Ok(true)
+    Ok(false)
 }
 
 /// Trigger a feed scrape in the LinkedIn WebView.
@@ -5990,7 +6537,6 @@ async fn li_scrape_feed(
             w
         }
         None => {
-            let app_handle = app.clone();
             let mut builder = WebviewWindowBuilder::new(
                 &app,
                 "li-scraper",
@@ -6001,16 +6547,7 @@ async fn li_scrape_feed(
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed LinkedIn")
-            .inner_size(1280.0, 900.0)
-            .on_navigation(move |url| {
-                let host = url.host_str().unwrap_or("");
-                let path = url.path();
-                if host.contains("linkedin.com") && path != "/login" && path != "/login/" {
-                    let _ =
-                        app_handle.emit("li-auth-result", serde_json::json!({ "loggedIn": true }));
-                }
-                true
-            });
+            .inner_size(1280.0, 900.0);
 
             if window_mode == ScraperWindowMode::Shown {
                 builder = builder.center().visible(true);
@@ -6097,41 +6634,8 @@ async fn li_scrape_feed(
             use rand::Rng;
             rand::thread_rng().gen_range(350u64..650)
         };
-        // Use stepped scroll events so LinkedIn's React virtualizer fires.
-        let scroll_js = format!(
-            r#"(function() {{
-                var el = document.scrollingElement || document.documentElement || document.body;
-                var steps = 8;
-                var step = {amt} / steps;
-                var done = 0;
-                function tick() {{
-                    el.scrollTop += step;
-                    el.dispatchEvent(new Event('scroll', {{bubbles: true}}));
-                    window.dispatchEvent(new Event('scroll', {{bubbles: false}}));
-                    done++;
-                    if (done < steps) setTimeout(tick, 60);
-                }}
-                tick();
-            }})();"#,
-            amt = scroll_amount
-        );
+        let scroll_js = social_feed_scroll_script(scroll_amount as i64);
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
-
-        // Mouse movement.
-        let cx = 230 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(0i32..200)
-        };
-        let cy = 350 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(0i32..200)
-        };
-        let mouse_js = format!(
-            r#"(function(){{var x={cx},y={cy};[0,1,2].forEach(function(i){{setTimeout(function(){{document.dispatchEvent(new MouseEvent('mousemove',{{clientX:x+i*12,clientY:y+i*8,bubbles:true,cancelable:true}}));}},i*80);}});}})();"#,
-            cx = cx,
-            cy = cy
-        );
-        let _ = wv.eval(&mouse_js);
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Occasional micro-backscroll (~12% probability).
@@ -6143,7 +6647,7 @@ async fn li_scrape_feed(
                 use rand::Rng;
                 rand::thread_rng().gen_range(80u64..200)
             };
-            let back_js = format!("window.scrollBy({{top: -{}, behavior: 'smooth'}});", back);
+            let back_js = social_feed_scroll_script(-(back as i64));
             let _ = wv.eval(&back_js);
             tokio::time::sleep(Duration::from_millis(gaussian_ms(600.0, 150.0))).await;
         }
@@ -6520,6 +7024,79 @@ fn force_activate_ns_app(context: &str) {
 fn force_activate_ns_app(_context: &str) {}
 
 #[cfg(target_os = "macos")]
+fn main_window_native_occlusion_state(window: &tauri::WebviewWindow) -> Option<usize> {
+    let Ok(ns_window) = window.ns_window() else {
+        return None;
+    };
+
+    let ns_window = ns_window.cast::<AnyObject>();
+    Some(unsafe { msg_send![ns_window, occlusionState] })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn main_window_native_occlusion_state(_window: &tauri::WebviewWindow) -> Option<usize> {
+    None
+}
+
+fn main_window_native_is_occluded(window: &tauri::WebviewWindow) -> Option<bool> {
+    main_window_native_occlusion_state(window)
+        .map(|state| state & NS_WINDOW_OCCLUSION_STATE_VISIBLE == 0)
+}
+
+#[cfg(target_os = "macos")]
+fn log_main_window_native_state(window: &tauri::WebviewWindow, context: &str) {
+    let Ok(ns_window) = window.ns_window() else {
+        warn!(
+            "[main-window] native state unavailable context={} reason=missing-ns-window",
+            context
+        );
+        return;
+    };
+
+    let ns_window = ns_window.cast::<AnyObject>();
+    unsafe {
+        let frame: NSRect = msg_send![ns_window, frame];
+        let alpha: f64 = msg_send![ns_window, alphaValue];
+        let level: isize = msg_send![ns_window, level];
+        let occlusion_state = main_window_native_occlusion_state(window).unwrap_or(0);
+        let is_key: bool = msg_send![ns_window, isKeyWindow];
+        let is_main: bool = msg_send![ns_window, isMainWindow];
+        let is_visible: bool = msg_send![ns_window, isVisible];
+        let is_miniaturized: bool = msg_send![ns_window, isMiniaturized];
+        let content_view: *mut AnyObject = msg_send![ns_window, contentView];
+        let mut content_hidden: Option<bool> = None;
+        let mut content_alpha: Option<f64> = None;
+        if !content_view.is_null() {
+            let hidden: bool = msg_send![content_view, isHidden];
+            let alpha: f64 = msg_send![content_view, alphaValue];
+            content_hidden = Some(hidden);
+            content_alpha = Some(alpha);
+        }
+
+        info!(
+            "[main-window] native state context={} frame_x={} frame_y={} frame_width={} frame_height={} alpha={} level={} occlusion_state={} is_key={} is_main={} is_visible={} is_miniaturized={} content_hidden={:?} content_alpha={:?}",
+            context,
+            frame.origin.x,
+            frame.origin.y,
+            frame.size.width,
+            frame.size.height,
+            alpha,
+            level,
+            occlusion_state,
+            is_key,
+            is_main,
+            is_visible,
+            is_miniaturized,
+            content_hidden,
+            content_alpha
+        );
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn log_main_window_native_state(_window: &tauri::WebviewWindow, _context: &str) {}
+
+#[cfg(target_os = "macos")]
 fn force_show_webview_window(window: &tauri::WebviewWindow, context: &str) {
     let Ok(ns_window) = window.ns_window() else {
         warn!(
@@ -6540,6 +7117,7 @@ fn force_show_webview_window(window: &tauri::WebviewWindow, context: &str) {
         let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
         let _: () = msg_send![ns_window, orderFrontRegardless];
     }
+    log_main_window_native_state(window, context);
     info!(
         "[main-window] forced native window show context={} was_visible={:?} was_focused={:?} now_visible={:?} now_focused={:?}",
         context,
@@ -6587,6 +7165,39 @@ fn schedule_main_window_visibility_probe(
                 window.is_focused().ok()
             );
         });
+    });
+}
+
+fn schedule_main_window_occlusion_recovery(
+    app: &tauri::AppHandle,
+    delay: Duration,
+    context: &'static str,
+) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(delay).await;
+        let app_for_probe = app.clone();
+        let probe =
+            run_main_window_step_on_main_thread(&app, "main window occlusion probe", move || {
+                let Some(window) = live_main_window(&app_for_probe) else {
+                    return Ok(None);
+                };
+                let occlusion_state = main_window_native_occlusion_state(&window);
+                let is_occluded = main_window_native_is_occluded(&window).unwrap_or(false);
+                Ok(Some((is_occluded, occlusion_state)))
+            });
+
+        let Ok(Some((true, occlusion_state))) = probe else {
+            return;
+        };
+
+        warn!(
+            "[main-window] native window stayed occluded after startup context={} delay_ms={} occlusion_state={:?}; recycling renderer",
+            context,
+            delay.as_millis(),
+            occlusion_state
+        );
+        let _ = recover_main_window(&app, "startup native occlusion");
     });
 }
 
@@ -6692,6 +7303,11 @@ fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tau
     schedule_main_window_visibility_probe(app, Duration::from_millis(250), "startup-250ms");
     schedule_main_window_visibility_probe(app, Duration::from_secs(1), "startup-1s");
     schedule_main_window_visibility_probe(app, Duration::from_secs(3), "startup-3s");
+    schedule_main_window_occlusion_recovery(
+        app,
+        MAIN_WINDOW_OCCLUSION_RECOVERY_AFTER,
+        "startup-occlusion",
+    );
     let vibrancy_applied = apply_main_window_vibrancy(&window, "startup");
     info!(
         "[main-window] startup window ready vibrancy_applied={}",
@@ -7036,12 +7652,27 @@ pub fn run() {
             let fb_unique_ids: Arc<StdRwLock<std::collections::HashSet<String>>> =
                 Arc::new(StdRwLock::new(std::collections::HashSet::new()));
             let fb_total_posts = Arc::new(AtomicUsize::new(0));
+            let fb_active_run_id: Arc<StdRwLock<Option<String>>> = Arc::new(StdRwLock::new(None));
             let fb_ids_clone = fb_unique_ids.clone();
             let fb_total_clone = fb_total_posts.clone();
+            let fb_run_id_clone = fb_active_run_id.clone();
 
             let app_for_fb = app.handle().clone();
             app_for_fb.listen("fb-feed-data", move |event| {
                 if let Ok(val) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+                    let run_id = val.get("scrapeRunId")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("legacy")
+                        .to_string();
+                    {
+                        let mut active_run_id = fb_run_id_clone.write().unwrap();
+                        if active_run_id.as_deref() != Some(run_id.as_str()) {
+                            *active_run_id = Some(run_id.clone());
+                            fb_ids_clone.write().unwrap().clear();
+                            fb_total_clone.store(0, Ordering::Relaxed);
+                            info!("[FB] extraction run started: {}", run_id);
+                        }
+                    }
                     let scroll_y = val.get("scrollY")
                         .and_then(|s| s.as_f64())
                         .unwrap_or(0.0) as i64;
@@ -7053,7 +7684,16 @@ pub fn run() {
                         .unwrap_or("");
 
                     if !error.is_empty() {
-                        info!("[FB] extraction error: {}", error);
+                        let strategy = val.get("strategy")
+                            .and_then(|s| s.as_str())
+                            .unwrap_or("?");
+                        let page_state = val.get("pageState")
+                            .and_then(|s| serde_json::to_string(s).ok())
+                            .unwrap_or_else(|| "{}".to_string());
+                        info!(
+                            "[FB] extraction error: {} run_id={} strategy={} page_state={}",
+                            error, run_id, strategy, page_state
+                        );
                         return;
                     }
 
@@ -7086,8 +7726,8 @@ pub fn run() {
                     }
 
                     let total = fb_total_clone.load(Ordering::Relaxed);
-                    info!("[FB] pass @ scrollY={}: candidates={}, new={}, total_unique={}",
-                        scroll_y, candidates, new_count, total);
+                    info!("[FB] pass run_id={} @ scrollY={}: candidates={}, new={}, total_unique={}",
+                        run_id, scroll_y, candidates, new_count, total);
                 }
             });
 
@@ -7811,6 +8451,8 @@ pub fn run() {
             trim_webkit_network_cache_now,
             get_recent_runtime_health,
             get_ai_hardware_profile,
+            get_desktop_session_state,
+            get_social_provider_cookie_state,
             prepare_social_scrape_memory,
             broadcast_doc,
             reset_pairing_token,
@@ -7921,6 +8563,160 @@ mod tests {
                 MAX_CRITICAL_MEMORY_BYTES * 70 / 100,
                 MAX_CRITICAL_MEMORY_BYTES
             )
+        );
+    }
+
+    #[test]
+    fn social_feed_scroll_script_uses_measured_container_scrolls() {
+        let script = social_feed_scroll_script(420);
+
+        assert!(script.contains("requestedDelta = Number(420)"));
+        assert!(script.contains("minimumUsefulMovement"));
+        assert!(script.contains("document.scrollingElement"));
+        assert!(script.contains("[role='feed']"));
+        assert!(script.contains("[data-pagelet*='Feed']"));
+        assert!(script.contains("selectScrollers"));
+        assert!(script.contains("tryScrollAt"));
+        assert!(script.contains("target.scrollTo"));
+        assert!(script.contains("behavior: \"auto\""));
+        assert!(!script.contains("behavior: 'smooth'"));
+        assert!(!script.contains("behavior: \"smooth\""));
+        assert!(!script.contains("WheelEvent"));
+        assert!(!script.contains("MouseEvent"));
+        assert!(!script.contains("dispatchEvent(new Event(\"scroll\""));
+        assert!(!script.contains("dispatchEvent(new Event('scroll'"));
+    }
+
+    #[test]
+    fn social_feed_scroll_script_supports_backscroll() {
+        let script = social_feed_scroll_script(-180);
+
+        assert!(script.contains("requestedDelta = Number(-180)"));
+        assert!(script.contains("direction = requestedDelta >= 0 ? 1 : -1"));
+        assert!(script.contains("clamp(after + requestedDelta"));
+    }
+
+    #[test]
+    fn facebook_page_state_requires_real_feed_evidence() {
+        let tall_logged_out_shell = FbPageStatePayload {
+            logged_in_cookie: false,
+            scroll_height: 3200,
+            feed_posts_heading_count: 0,
+            feed_unit_count: 0,
+            login_chrome: true,
+            role_main_count: 1,
+            url: "https://www.facebook.com/".to_string(),
+            title: "Facebook".to_string(),
+        };
+        assert!(!tall_logged_out_shell.feed_like());
+
+        let rendered_feed_with_hidden_cookie = FbPageStatePayload {
+            logged_in_cookie: false,
+            scroll_height: 3200,
+            feed_posts_heading_count: 0,
+            feed_unit_count: 2,
+            login_chrome: false,
+            role_main_count: 1,
+            url: "https://www.facebook.com/".to_string(),
+            title: "Facebook".to_string(),
+        };
+        assert!(rendered_feed_with_hidden_cookie.feed_like());
+
+        let cookie_session_without_rendered_units = FbPageStatePayload {
+            logged_in_cookie: true,
+            scroll_height: 900,
+            feed_posts_heading_count: 0,
+            feed_unit_count: 0,
+            login_chrome: false,
+            role_main_count: 1,
+            url: "https://www.facebook.com/".to_string(),
+            title: "Facebook".to_string(),
+        };
+        assert!(cookie_session_without_rendered_units.feed_like());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn parses_macos_screen_lock_state_from_ioreg_plist() {
+        assert_eq!(
+            parse_screen_locked_from_ioreg_plist(
+                r#"<dict><key>CGSSessionScreenIsLocked</key><true/></dict>"#,
+            ),
+            Some(true),
+        );
+        assert_eq!(
+            parse_screen_locked_from_ioreg_plist(
+                r#"<dict><key>CGSSessionScreenIsLocked</key><false/></dict>"#,
+            ),
+            Some(false),
+        );
+        assert_eq!(parse_screen_locked_from_ioreg_plist("<dict></dict>"), None);
+    }
+
+    fn binary_cookie_record(name: &str) -> Vec<u8> {
+        let domain = b".facebook.com\0";
+        let mut name_bytes = name.as_bytes().to_vec();
+        name_bytes.push(0);
+        let path = b"/\0";
+        let cookie_value = b"redacted\0";
+        let strings_start = 48usize;
+        let domain_offset = strings_start;
+        let name_offset = domain_offset + domain.len();
+        let path_offset = name_offset + name_bytes.len();
+        let value_offset = path_offset + path.len();
+        let size = value_offset + cookie_value.len();
+        let mut record = vec![0u8; strings_start];
+        record[0..4].copy_from_slice(&(size as u32).to_le_bytes());
+        record[16..20].copy_from_slice(&(domain_offset as u32).to_le_bytes());
+        record[20..24].copy_from_slice(&(name_offset as u32).to_le_bytes());
+        record[24..28].copy_from_slice(&(path_offset as u32).to_le_bytes());
+        record[28..32].copy_from_slice(&(value_offset as u32).to_le_bytes());
+        record.extend_from_slice(domain);
+        record.extend_from_slice(&name_bytes);
+        record.extend_from_slice(path);
+        record.extend_from_slice(cookie_value);
+        record
+    }
+
+    fn binary_cookie_store(names: &[&str]) -> Vec<u8> {
+        let mut page = vec![0u8; 8 + names.len() * 4];
+        page[4..8].copy_from_slice(&(names.len() as u32).to_le_bytes());
+        for (index, name) in names.iter().enumerate() {
+            let record_offset = page.len();
+            page[8 + index * 4..12 + index * 4]
+                .copy_from_slice(&(record_offset as u32).to_le_bytes());
+            page.extend_from_slice(&binary_cookie_record(name));
+        }
+
+        let mut data = Vec::new();
+        data.extend_from_slice(b"cook");
+        data.extend_from_slice(&1u32.to_be_bytes());
+        data.extend_from_slice(&(page.len() as u32).to_be_bytes());
+        data.extend_from_slice(&page);
+        data
+    }
+
+    #[test]
+    fn social_cookie_parser_reads_names_without_values() {
+        let parsed = parse_webkit_binary_cookie_names(&binary_cookie_store(&["datr", "c_user"]))
+            .expect("cookie store should parse");
+
+        assert_eq!(parsed, vec!["c_user".to_string(), "datr".to_string()]);
+    }
+
+    #[test]
+    fn data_store_identifier_folder_matches_webkit_directory_names() {
+        assert_eq!(
+            data_store_identifier_folder(FB_SCRAPER_DATA_STORE_IDENTIFIER),
+            "66726565-64fb-0001-9a7d-370102fb0001"
+        );
+        assert_eq!(
+            data_store_identifier_folder(IG_SCRAPER_DATA_STORE_IDENTIFIER),
+            "66726565-641a-0002-9a7d-3701021a0002"
+        );
+        assert_eq!(
+            data_store_identifier_folder(LI_SCRAPER_DATA_STORE_IDENTIFIER),
+            "66726565-641d-0003-9a7d-3701021d0003"
         );
     }
 
@@ -8137,6 +8933,10 @@ mod tests {
     fn social_scraper_data_stores_are_provider_specific() {
         assert_eq!(
             social_scraper_data_store_identifier("fb-scraper"),
+            Some(FB_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("fb-login"),
             Some(FB_SCRAPER_DATA_STORE_IDENTIFIER)
         );
         assert_eq!(

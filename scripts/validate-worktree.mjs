@@ -15,7 +15,7 @@ const RESOLVED_NPM = path.join(
   process.platform === "win32" ? "npm.cmd" : "npm",
 );
 const NPM_BIN = existsSync(RESOLVED_NPM) ? RESOLVED_NPM : process.platform === "win32" ? "npm.cmd" : "npm";
-const VALID_MODES = new Set(["feature", "dev", "production", "release"]);
+const VALID_MODES = new Set(["feature", "providers", "dev", "production", "release"]);
 
 const RELEASE_TOOLING_PATHS = new Set([
   ".github/workflows/ci.yml",
@@ -41,19 +41,26 @@ function unique(values) {
 
 function usage() {
   return `Usage:
-  node scripts/validate-worktree.mjs --mode <feature|dev|production|release> [--changed-files <file>...]
+  node scripts/validate-worktree.mjs --mode <feature|providers|dev|production|release> [--plan-only] [--changed-files <file>...]
 
 Modes:
   feature  Run root typecheck plus changed-surface checks derived from git diff or --changed-files.
+  providers  Run focused social provider checks for extractor, auth, memory-preflight, and capture-runtime work.
   dev      Run the integration suite used for dev branch pushes and dev builds.
   production  Run the full production validation suite for public release prep.
   release  Compatibility alias for production.
+
+Options:
+  --plan-only  Print changed files and planned checks without executing them.
+  --plan-labels  Print planned check labels only. Used by CI.
 `;
 }
 
 export function parseArgs(argv) {
   let mode = "";
   let changedFiles = [];
+  let planLabels = false;
+  let planOnly = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -67,19 +74,25 @@ export function parseArgs(argv) {
         changedFiles = argv.slice(i + 1);
         i = argv.length;
         break;
+      case "--plan-labels":
+        planLabels = true;
+        break;
+      case "--plan-only":
+        planOnly = true;
+        break;
       case "--help":
       case "-h":
-        return { help: true, mode: "", changedFiles: [] };
+        return { help: true, mode: "", changedFiles: [], planLabels: false, planOnly: false };
       default:
         throw new Error(`Unexpected argument '${arg}'.\n\n${usage()}`);
     }
   }
 
   if (!VALID_MODES.has(mode)) {
-    throw new Error(`Error: --mode must be one of feature, dev, production, or release.\n\n${usage()}`);
+    throw new Error(`Error: --mode must be one of feature, providers, dev, production, or release.\n\n${usage()}`);
   }
 
-  return { help: false, mode, changedFiles: changedFiles.map(normalizeRepoPath) };
+  return { help: false, mode, changedFiles: changedFiles.map(normalizeRepoPath), planLabels, planOnly };
 }
 
 function execGit(args) {
@@ -147,6 +160,79 @@ export function isDesktopSurface(filePath) {
 
 export function isPwaSurface(filePath) {
   return filePath.startsWith("packages/pwa/");
+}
+
+const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
+  "packages/desktop/src/lib/capture.ts",
+  "packages/desktop/src/lib/fb-auth.ts",
+  "packages/desktop/src/lib/fb-capture.ts",
+  "packages/desktop/src/lib/instagram-auth.ts",
+  "packages/desktop/src/lib/instagram-capture.ts",
+  "packages/desktop/src/lib/li-auth.ts",
+  "packages/desktop/src/lib/li-capture.ts",
+  "packages/desktop/src/lib/provider-auth-errors.ts",
+  "packages/desktop/src/lib/provider-health.ts",
+  "packages/desktop/src/lib/scraper-media-diag.ts",
+  "packages/desktop/src/lib/scraper-prefs.ts",
+  "packages/desktop/src/lib/social-auth-cookie-state.ts",
+  "packages/desktop/src/lib/social-capture-runtime.ts",
+  "packages/desktop/src/lib/social-comment-hydration.ts",
+  "packages/desktop/src/lib/social-provider-copy.ts",
+  "packages/desktop/src/lib/x-auth.ts",
+  "packages/desktop/src/lib/x-capture.ts",
+  "packages/desktop/src-tauri/src/fb-comments-extract.js",
+  "packages/desktop/src-tauri/src/fb-extract.js",
+  "packages/desktop/src-tauri/src/fb-groups-extract.js",
+  "packages/desktop/src-tauri/src/fb-stories-extract.js",
+  "packages/desktop/src-tauri/src/ig-comments-extract.js",
+  "packages/desktop/src-tauri/src/ig-extract.js",
+  "packages/desktop/src-tauri/src/ig-stories-extract.js",
+  "packages/desktop/src-tauri/src/li-extract.js",
+]);
+
+const SOCIAL_PROVIDER_PACKAGE_PREFIXES = [
+  "packages/capture-facebook/",
+  "packages/capture-instagram/",
+  "packages/capture-x/",
+];
+
+const SOCIAL_PROVIDER_FOCUSED_TEST_FILES = [
+  "facebook-extract-script.test.ts",
+  "fb-extract-dom.test.ts",
+  "facebook-normalize.test.ts",
+  "fb-stories-extract.test.ts",
+  "fb-groups-extract.test.ts",
+  "facebook-groups.test.ts",
+  "instagram-normalize.test.ts",
+  "ig-stories-extract.test.ts",
+  "instagram-dedup.test.ts",
+  "memory-monitor-social-preflight.test.ts",
+  "provider-health.test.ts",
+  "provider-status-transient.test.ts",
+  "social-provider-copy.test.ts",
+  "social-auth-cookie-state.test.ts",
+  "social-capture-memory-pressure.test.ts",
+  "social-extract-performance.test.ts",
+  "social-scraper-session-order.test.ts",
+  "x-capture.test.ts",
+  "x-normalize.test.ts",
+];
+
+const SOCIAL_PROVIDER_FOCUSED_TEST_FILE_SET = new Set(SOCIAL_PROVIDER_FOCUSED_TEST_FILES);
+
+export function isSocialProviderFocusedSurface(filePath) {
+  if (SOCIAL_PROVIDER_DESKTOP_FILES.has(filePath)) {
+    return true;
+  }
+
+  if (
+    filePath.startsWith("packages/desktop/src/lib/") &&
+    /\.test\.[cm]?tsx?$/.test(filePath)
+  ) {
+    return SOCIAL_PROVIDER_FOCUSED_TEST_FILE_SET.has(path.basename(filePath));
+  }
+
+  return SOCIAL_PROVIDER_PACKAGE_PREFIXES.some((prefix) => filePath.startsWith(prefix));
 }
 
 export function isDesktopPerfSensitiveSurface(filePath) {
@@ -251,6 +337,20 @@ function nodeCommand(label, args) {
   };
 }
 
+function desktopUnitFilesCommand(label, files) {
+  return npmCommand(label, [
+    "run",
+    "test:unit",
+    "--workspace=packages/desktop",
+    "--",
+    ...files,
+  ]);
+}
+
+function socialProviderFocusedTestsCommand() {
+  return desktopUnitFilesCommand("desktop social provider unit tests", SOCIAL_PROVIDER_FOCUSED_TEST_FILES);
+}
+
 function listAllReleaseArtifacts() {
   const releasesDir = path.join(REPO_ROOT, "release-notes", "releases");
   if (!existsSync(releasesDir)) {
@@ -318,6 +418,12 @@ function releaseValidationItem(label, files) {
 export function buildValidationPlan(mode, changedFiles) {
   const normalizedMode = mode === "release" ? "production" : mode;
 
+  if (normalizedMode === "providers") {
+    return [
+      socialProviderFocusedTestsCommand(),
+    ];
+  }
+
   if (normalizedMode === "dev") {
     return [
       npmCommand("root build", ["run", "build"]),
@@ -368,6 +474,27 @@ export function buildValidationPlan(mode, changedFiles) {
   const captureWorkspaces = unique(
     changedFiles.map(captureWorkspaceForFile).filter(Boolean),
   ).sort();
+  const socialProviderOnlyChanged =
+    changedFiles.length > 0 &&
+    changedFiles.every(isSocialProviderFocusedSurface);
+  const validateRunnerOnlyChanged =
+    changedFiles.length > 0 &&
+    changedFiles.every(isValidateRunnerPath);
+
+  if (validateRunnerOnlyChanged) {
+    return [
+      nodeCommand("validation runner tests", [
+        "--test",
+        path.join("scripts", "validate-worktree.test.mjs"),
+      ]),
+    ];
+  }
+
+  if (socialProviderOnlyChanged) {
+    addCommand(plan, socialProviderFocusedTestsCommand());
+    addCommand(plan, npmCommand("desktop production build", ["run", "build", "--workspace=packages/desktop"]));
+    return plan;
+  }
 
   if (websiteSurfaceChanged) {
     addCommand(plan, npmCommand("website production build", ["run", "build", "--workspace=website"]));
@@ -466,6 +593,23 @@ export function describePlan(plan) {
   return plan.map((item) => item.label);
 }
 
+export function printValidationPlan({ mode, changedFiles, plan }) {
+  console.log(`Mode: ${mode}`);
+  if (changedFiles.length > 0) {
+    console.log("Changed files:");
+    for (const filePath of changedFiles) {
+      console.log(`- ${filePath}`);
+    }
+  } else {
+    console.log("Changed files: none detected");
+  }
+
+  console.log("\nValidation plan:");
+  for (const label of describePlan(plan)) {
+    console.log(`- ${label}`);
+  }
+}
+
 export function runValidationPlan(plan) {
   for (const item of plan) {
     if (item.kind === "command") {
@@ -484,27 +628,22 @@ export function runValidationPlan(plan) {
 }
 
 export function main(argv = process.argv.slice(2)) {
-  const { help, mode, changedFiles: explicitChangedFiles } = parseArgs(argv);
+  const { help, mode, changedFiles: explicitChangedFiles, planLabels, planOnly } = parseArgs(argv);
   if (help) {
     console.log(usage());
     return;
   }
 
   const changedFiles = collectChangedFiles({ mode, changedFiles: explicitChangedFiles });
-  console.log(`Mode: ${mode}`);
-  if (changedFiles.length > 0) {
-    console.log("Changed files:");
-    for (const filePath of changedFiles) {
-      console.log(`- ${filePath}`);
-    }
-  } else {
-    console.log("Changed files: none detected");
+  const plan = buildValidationPlan(mode, changedFiles);
+  if (planLabels) {
+    console.log(describePlan(plan).join("\n"));
+    return;
   }
 
-  const plan = buildValidationPlan(mode, changedFiles);
-  console.log("\nValidation plan:");
-  for (const label of describePlan(plan)) {
-    console.log(`- ${label}`);
+  printValidationPlan({ mode, changedFiles, plan });
+  if (planOnly) {
+    return;
   }
 
   runValidationPlan(plan);

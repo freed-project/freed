@@ -28,7 +28,7 @@ const LI_AUTH_KEY = "li_auth_state";
 /**
  * Open the LinkedIn login WebView so the user can authenticate.
  * The window is visible and allows normal LinkedIn login. Once logged
- * in, the user closes the window (or we hide it after detecting auth).
+ * in, Freed marks the session connected and the user closes the window.
  */
 export async function showLiLogin(): Promise<void> {
   // Generate and persist a fresh session UA at connect time.
@@ -37,7 +37,7 @@ export async function showLiLogin(): Promise<void> {
 }
 
 /**
- * Hide the login WebView (called after successful auth detection).
+ * Hide the login WebView after the user is done with provider prompts.
  */
 export async function hideLiLogin(): Promise<void> {
   await invoke("li_hide_login");

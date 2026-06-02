@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback } from "react";
 import { getPwaHostForChannel } from "@freed/shared";
 import type { CloudProvider } from "@freed/ui/components/CloudProviderCard";
 import { usePlatform } from "@freed/ui/context";
+import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { invoke } from "@tauri-apps/api/core";
 import QRCode from "react-qr-code";
 import {
@@ -58,6 +59,33 @@ function looksLikeVpn(iface: NetworkInterface): boolean {
   );
 }
 
+function formatBytes(bytes?: number): string {
+  if (typeof bytes !== "number") return "-";
+  if (bytes < 1024) return `${bytes.toLocaleString()} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} KB`;
+  return `${(bytes / (1024 * 1024)).toLocaleString(undefined, { maximumFractionDigits: 2 })} MB`;
+}
+
+function formatRelativeTime(timestamp?: number): string {
+  if (typeof timestamp !== "number") return "-";
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes.toLocaleString()}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours.toLocaleString()}h ago`;
+  return `${Math.floor(hours / 24).toLocaleString()}d ago`;
+}
+
+function DiagnosticCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-[var(--theme-bg-muted)] px-3 py-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">{label}</p>
+      <p className="mt-1 truncate font-mono text-xs tabular-nums text-[var(--theme-text-secondary)]">{value}</p>
+    </div>
+  );
+}
+
 type Tab = "cloud" | "qr" | "manual";
 
 export function MobileSyncTab() {
@@ -67,6 +95,8 @@ export function MobileSyncTab() {
   const [clientCount, setClientCount] = useState(0);
   const [resetting, setResetting] = useState(false);
   const [mdnsActive, setMdnsActive] = useState<boolean | null>(null);
+  const docSnapshot = useDebugStore((s) => s.docSnapshot);
+  const cloudProviders = useDebugStore((s) => s.cloudProviders);
 
   const { providers, connect, cancelConnect, disconnect } = useCloudProviders();
   const [cancelProvider, setCancelProvider] = useState<CloudProvider | null>(null);
@@ -136,6 +166,8 @@ export function MobileSyncTab() {
   const ip = parseIp(syncUrl);
   const token = parseToken(syncUrl);
   const cancelProviderLabel = cancelProvider === "gdrive" ? "Google Drive" : "Dropbox";
+  const activeProvider = providers.gdrive.status === "connected" ? "gdrive" : providers.dropbox.status === "connected" ? "dropbox" : null;
+  const activeCloudState = activeProvider ? cloudProviders?.[activeProvider] : null;
 
   return (
     <>
@@ -178,6 +210,30 @@ export function MobileSyncTab() {
             Connecting both providers lets the desktop bridge mobile clients
             using different cloud accounts.
           </p>
+          <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-[var(--theme-text-primary)]">Sync diagnostics</p>
+                <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">Local document and cloud transfer state</p>
+              </div>
+              {activeCloudState?.stage && (
+                <span className="rounded-full bg-[var(--theme-bg-muted)] px-2 py-1 text-[11px] font-medium text-[var(--theme-text-muted)]">
+                  {activeCloudState.stage}
+                </span>
+              )}
+            </div>
+            {activeCloudState?.error && (
+              <p className="theme-feedback-text-danger mb-3 break-words text-xs">{activeCloudState.error}</p>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <DiagnosticCell label="Local items" value={docSnapshot ? docSnapshot.itemCount.toLocaleString() : "-"} />
+              <DiagnosticCell label="Local size" value={formatBytes(docSnapshot?.binarySize)} />
+              <DiagnosticCell label="Last upload" value={formatRelativeTime(activeCloudState?.lastUploadAt)} />
+              <DiagnosticCell label="Uploaded bytes" value={formatBytes(activeCloudState?.lastUploadedBytes)} />
+              <DiagnosticCell label="Last download" value={formatRelativeTime(activeCloudState?.lastDownloadAt)} />
+              <DiagnosticCell label="Remote bytes" value={formatBytes(activeCloudState?.lastRemoteBytes)} />
+            </div>
+          </div>
         </div>
       )}
 

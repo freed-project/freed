@@ -6,6 +6,7 @@ import {
   acceptProviderRisk,
   hasAcceptedProviderRisk,
 } from "../lib/legal-consent";
+import { log } from "../lib/logger";
 
 export function useProviderRiskGate(provider: ProviderRiskId) {
   const [open, setOpen] = useState(false);
@@ -13,12 +14,16 @@ export function useProviderRiskGate(provider: ProviderRiskId) {
 
   const confirm = useCallback(
     async (action: () => Promise<void> | void) => {
+      log.info(`[provider-risk/${provider}] confirm requested`);
       if (await hasAcceptedProviderRisk(provider)) {
+        log.info(`[provider-risk/${provider}] already accepted, running action`);
         await action();
         return;
       }
 
+      log.info(`[provider-risk/${provider}] showing consent dialog`);
       pendingAction.current = async () => {
+        log.info(`[provider-risk/${provider}] accepted, running pending action`);
         await action();
       };
       setOpen(true);

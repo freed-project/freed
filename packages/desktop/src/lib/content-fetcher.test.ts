@@ -162,7 +162,7 @@ async function loadContentFetcherModuleWithAi({
     topics: string[];
     sentiment: "positive" | "negative" | "neutral" | "mixed";
   } | null>;
-  invokeImpl?: () => Promise<string>;
+  invokeImpl?: (...args: unknown[]) => Promise<unknown>;
 }) {
   vi.resetModules();
 
@@ -534,5 +534,69 @@ describe("content fetcher", () => {
     mod.stop();
 
     expect(mockInvoke).toHaveBeenCalledOnce();
+  });
+
+  it("honors a startup delay before processing queued content", async () => {
+    vi.useFakeTimers();
+    const { mod, subscriberRef, mockInvoke } = await loadContentFetcherModule();
+
+    mod.start({ startupDelayMs: 60_000 });
+    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    await vi.advanceTimersByTimeAsync(59_999);
+
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mod.getStatus()).toEqual(expect.objectContaining({
+      pending: 1,
+      active: false,
+    }));
+
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(1);
+    mod.stop();
+
+    expect(mockInvoke).toHaveBeenCalledWith(
+      "fetch_url",
+      expect.objectContaining({ url: SAMPLE_URL }),
+    );
+  });
+
+  it("defers content parsing when the main WebKit process is already large", async () => {
+    vi.useFakeTimers();
+    let highMemory = true;
+    const { mod, subscriberRef, mockInvoke } = await loadContentFetcherModuleWithAi({
+      autoSummarize: false,
+      extractTopics: false,
+      invokeImpl: async (cmd) => {
+        if (cmd === "get_runtime_memory_stats") {
+          return {
+            webkitTelemetryAvailable: true,
+            webkitTotalFootprintBytes: highMemory ? 640 * 1024 * 1024 : 180 * 1024 * 1024,
+            webkitTotalResidentBytes: highMemory ? 900 * 1024 * 1024 : 220 * 1024 * 1024,
+            webkitLargestProcessId: 123,
+            webkitProcessCount: 1,
+          };
+        }
+        return SAMPLE_HTML;
+      },
+    });
+
+    mod.start({ memoryGuard: true });
+    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const fetchCallsBeforeRecovery = mockInvoke.mock.calls.filter(([cmd]) => cmd === "fetch_url");
+    expect(fetchCallsBeforeRecovery).toHaveLength(0);
+    expect(mod.getStatus()).toEqual(expect.objectContaining({
+      pending: 1,
+      active: false,
+      nextDelayMs: 5 * 60_000,
+    }));
+
+    highMemory = false;
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    mod.stop();
+
+    const fetchCallsAfterRecovery = mockInvoke.mock.calls.filter(([cmd]) => cmd === "fetch_url");
+    expect(fetchCallsAfterRecovery).toHaveLength(1);
   });
 });

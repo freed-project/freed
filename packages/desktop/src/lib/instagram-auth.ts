@@ -27,7 +27,7 @@ const IG_AUTH_KEY = "ig_auth_state";
 /**
  * Open the Instagram login WebView so the user can authenticate.
  * The window is visible and allows normal Instagram login. Once logged
- * in, the on_navigation handler detects the redirect and hides the window.
+ * in, Freed marks the session connected and the user closes the window.
  */
 export async function showIgLogin(): Promise<void> {
   const userAgent = selectPlatformUA("instagram");
@@ -35,7 +35,7 @@ export async function showIgLogin(): Promise<void> {
 }
 
 /**
- * Hide the login WebView (called after successful auth detection).
+ * Hide the login WebView after the user is done with provider prompts.
  */
 export async function hideIgLogin(): Promise<void> {
   await invoke("ig_hide_login");

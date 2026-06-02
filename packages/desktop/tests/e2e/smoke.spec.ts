@@ -33,6 +33,10 @@ const TOOLBAR_CENTER_ALIGNMENT_TOLERANCE_PX = 3;
 const TOOLBAR_VERTICAL_ALIGNMENT_TOLERANCE_PX = 2;
 const TOOLTIP_ARROW_ALIGNMENT_TOLERANCE_PX = 1.5;
 const SIDEBAR_CLOSED_EDGE_TOLERANCE_PX = 5;
+const NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX = 184;
+const NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX = 16;
+const DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX = 250;
+const DEFAULT_REOPENED_SIDEBAR_MAX_WIDTH_PX = 262;
 const SOFT_VIEWPORT_RADIUS = "20px";
 
 async function dismissCloudSyncNudgeIfPresent(page: Page) {
@@ -179,10 +183,13 @@ async function readDesktopSidebarGeometry(page: Page) {
     const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
     const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
     const resizeHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
-    const sidebarRect = sidebar?.getBoundingClientRect();
-    const resizeHandleRect = resizeHandle?.getBoundingClientRect();
+
+    const shellRect = sidebarShell?.getBoundingClientRect() ?? null;
+    const sidebarRect = sidebar?.getBoundingClientRect() ?? null;
+    const resizeHandleRect = resizeHandle?.getBoundingClientRect() ?? null;
+
     return {
-      shellWidth: sidebarShell?.getBoundingClientRect().width ?? 0,
+      shellWidth: shellRect?.width ?? 0,
       sidebarWidth: sidebarRect?.width ?? 0,
       sidebarLeft: sidebarRect?.left ?? 0,
       sidebarRight: sidebarRect?.right ?? 0,
@@ -197,6 +204,14 @@ async function expectDesktopSidebarShellWidthAtMost(page: Page, maximumWidth: nu
     .toBeLessThanOrEqual(maximumWidth);
 }
 
+async function expectDesktopSidebarClosed(page: Page, timeout = 1_000) {
+  await waitForDesktopSidebarMode(page, "closed");
+  await expect.poll(async () => await page.getByTestId("app-sidebar").count(), {
+    timeout,
+  }).toBe(0);
+  await expect(page.getByTestId("app-sidebar-resize-handle")).toHaveCount(0);
+}
+
 async function expectDesktopSidebarWidthBetween(
   page: Page,
   minimumWidth: number,
@@ -208,6 +223,16 @@ async function expectDesktopSidebarWidthBetween(
     .toBeLessThanOrEqual(maximumWidth);
   const width = (await readDesktopSidebarGeometry(page)).sidebarWidth;
   expect(width).toBeGreaterThanOrEqual(minimumWidth);
+}
+
+async function waitForDesktopSidebarMode(page: Page, mode: "expanded" | "compact" | "closed") {
+  await page.waitForFunction((expectedMode) => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | { getState: () => { preferences: { display: { sidebarMode?: string } } } }
+      | undefined;
+    return store?.getState().preferences.display.sidebarMode === expectedMode;
+  }, mode);
 }
 
 async function persistDisplayPreference(page: Page, key: "mapMode" | "mapTimeMode", value: string) {
@@ -552,6 +577,46 @@ test("app loads and renders without crashing", async ({ app }) => {
   await expect(app.page.locator("main")).toBeVisible();
 });
 
+test("locked macOS session defers full desktop startup", async ({ app, ipc }) => {
+  await app.page.addInitScript(() => {
+    window.localStorage.setItem(
+      "__TAURI_MOCK_STORE__:legal.json",
+      JSON.stringify({
+        "legal.bundle.desktop": {
+          version: "2026-03-31.1",
+          acceptedAt: 1775146800000,
+          surface: "desktop-first-run",
+        },
+      }),
+    );
+    const w = window as unknown as {
+      __TAURI_MOCK_DESKTOP_SESSION_STATE__?: {
+        available: boolean;
+        screenLocked: boolean;
+        error: null;
+      };
+    };
+    w.__TAURI_MOCK_DESKTOP_SESSION_STATE__ = {
+      available: true,
+      screenLocked: true,
+      error: null,
+    };
+  });
+
+  await app.goto();
+
+  await expect(
+    app.page.getByText("Freed Desktop will finish opening after you unlock this Mac."),
+  ).toBeVisible();
+  await expect(app.page.locator("main")).toHaveCount(0);
+  await expect
+    .poll(async () => {
+      const invocations = await ipc.invocations();
+      return invocations.filter((call) => call.cmd === "broadcast_doc").length;
+    })
+    .toBe(0);
+});
+
 test("startup emits renderer health before background work can run", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
@@ -638,7 +703,8 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
 
   await sidebarToggle.click();
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
-  await expectDesktopSidebarShellWidthAtMost(page, 2, 1_000);
+  await waitForDesktopSidebarMode(page, "closed");
+  await expectDesktopSidebarClosed(page, 3_000);
 });
 
 test("narrow desktop viewports keep the desktop compact rail instead of switching to the mobile drawer", async ({ app, page }) => {
@@ -656,7 +722,7 @@ test("narrow desktop viewports keep the desktop compact rail instead of switchin
 
   await sidebarToggle.click();
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
-  await expectDesktopSidebarShellWidthAtMost(page, 2, 1_000);
+  await expectDesktopSidebarClosed(page, 1_000);
 
   await sidebarToggle.click();
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
@@ -843,7 +909,9 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   await page.waitForTimeout(250);
 
   await sidebarToggle.click();
-  await expectDesktopSidebarShellWidthAtMost(page, 2, 1_000);
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
+  await waitForDesktopSidebarMode(page, "closed");
+  await expectDesktopSidebarClosed(page, 1_000);
 
   const widthSamplesPromise = page.evaluate(() => new Promise<number[]>((resolve) => {
     const samples: number[] = [];
@@ -862,16 +930,21 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
 
   await sidebarToggle.click();
   const widthSamples = await widthSamplesPromise;
-  const visibleWidthSamples = widthSamples.filter((width) => width > 1);
-  expect(visibleWidthSamples[0]).toBeGreaterThanOrEqual(252);
-  expect(Math.min(...visibleWidthSamples)).toBeGreaterThanOrEqual(252);
+  const expandedWidthSamples = widthSamples.filter(
+    (width) => width >= DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX,
+  );
+  expect(expandedWidthSamples.length).toBeGreaterThan(0);
+  expect(expandedWidthSamples[0]).toBeGreaterThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX);
+  expect(Math.min(...expandedWidthSamples)).toBeGreaterThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX);
 
   await expect
     .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout: 1_000 })
-    .toBeGreaterThanOrEqual(252);
+    .toBeGreaterThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX);
+  await waitForDesktopSidebarMode(page, "expanded");
+  await expect(desktopSidebar).toBeVisible();
   const reopenedExpandedGeometry = await readDesktopSidebarGeometry(page);
-  expect(reopenedExpandedGeometry.sidebarWidth).toBeGreaterThanOrEqual(252);
-  expect(reopenedExpandedGeometry.sidebarWidth).toBeLessThanOrEqual(260);
+  expect(reopenedExpandedGeometry.sidebarWidth).toBeGreaterThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX);
+  expect(reopenedExpandedGeometry.sidebarWidth).toBeLessThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MAX_WIDTH_PX);
 
   const compactHandleBox = await resizeHandle.boundingBox();
   expect(compactHandleBox).not.toBeNull();
@@ -891,17 +964,13 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   await expect
     .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout: 1_000 })
     .toBeGreaterThanOrEqual(252);
+  await waitForDesktopSidebarMode(page, "expanded");
+  await expect(desktopSidebar).toBeVisible();
   const restoredExpandedGeometry = await readDesktopSidebarGeometry(page);
   expect(restoredExpandedGeometry.sidebarWidth).toBeGreaterThanOrEqual(252);
   expect(restoredExpandedGeometry.sidebarWidth).toBeLessThanOrEqual(260);
 
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | { getState: () => { preferences: { display: { sidebarMode?: string } } } }
-      | undefined;
-    return store?.getState().preferences.display.sidebarMode === "expanded";
-  });
+  await waitForDesktopSidebarMode(page, "expanded");
 });
 
 test("compact sidebar search opens as a floating palette and closes cleanly", async ({ app, page }) => {
@@ -1392,10 +1461,17 @@ test("desktop sidebar reopens at the default width after being dragged narrow an
   await page.waitForTimeout(250);
 
   const narrowWidth = await sidebar.evaluate((element) => element.getBoundingClientRect().width);
-  expect(narrowWidth).toBeGreaterThanOrEqual(176);
-  expect(narrowWidth).toBeLessThanOrEqual(190);
+  expect(narrowWidth).toBeGreaterThanOrEqual(
+    NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX - NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
+  );
+  expect(narrowWidth).toBeLessThanOrEqual(
+    NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX + NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
+  );
 
-  await page.waitForFunction(() => {
+  await page.waitForFunction(({
+    minimumWidth,
+    maximumWidth,
+  }) => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
       | {
@@ -1406,7 +1482,10 @@ test("desktop sidebar reopens at the default width after being dragged narrow an
       | undefined;
 
     const savedWidth = store?.getState().preferences.display.sidebarWidth ?? 0;
-    return savedWidth >= 176 && savedWidth <= 190;
+    return savedWidth >= minimumWidth && savedWidth <= maximumWidth;
+  }, {
+    minimumWidth: NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX - NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
+    maximumWidth: NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX + NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
   });
 
   await sidebarToggle.click();
@@ -1414,17 +1493,17 @@ test("desktop sidebar reopens at the default width after being dragged narrow an
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
 
   await sidebarToggle.click();
-  await expectDesktopSidebarShellWidthAtMost(page, 2, 1_000);
+  await waitForDesktopSidebarMode(page, "closed");
+  await expectDesktopSidebarClosed(page, 1_000);
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
 
   await sidebarToggle.click();
   await expect
     .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout: 1_000 })
-    .toBeGreaterThanOrEqual(252);
-
-  const reopenedWidth = await sidebar.evaluate((element) => element.getBoundingClientRect().width);
-  expect(reopenedWidth).toBeGreaterThanOrEqual(252);
-  expect(reopenedWidth).toBeLessThanOrEqual(260);
+    .toBeGreaterThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX);
+  await expect
+    .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout: 1_000 })
+    .toBeLessThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MAX_WIDTH_PX);
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
@@ -1804,6 +1883,63 @@ test("provider risk dialog scrolls vertically on tiny mobile screens", async ({ 
 
   expect(metrics.overflowY).toBe("auto");
   expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+});
+
+test("provider risk eyebrow stays readable across themes", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openTo("facebook");
+  }, SETTINGS_STORE_PATH);
+
+  await page.getByRole("button", { name: "Log in with Facebook" }).click();
+  const eyebrow = page.getByTestId("provider-risk-eyebrow-facebook");
+  await expect(eyebrow).toBeVisible({ timeout: 5_000 });
+
+  const themeIds = ["scriptorium", "neon", "midas", "ember"] as const;
+  for (const themeId of themeIds) {
+    const contrast = await eyebrow.evaluate((element, nextThemeId) => {
+      document.documentElement.dataset.theme = nextThemeId;
+
+      function resolveColor(value: string): [number, number, number] {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1;
+        canvas.height = 1;
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        if (!context) {
+          throw new Error("Could not create color parser");
+        }
+        context.fillStyle = value;
+        context.fillRect(0, 0, 1, 1);
+        const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+        return [red, green, blue];
+      }
+
+      function luminance([red, green, blue]: [number, number, number]): number {
+        const [r, g, b] = [red, green, blue].map((channel) => {
+          const value = channel / 255;
+          return value <= 0.03928
+            ? value / 12.92
+            : Math.pow((value + 0.055) / 1.055, 2.4);
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      }
+
+      const style = window.getComputedStyle(element);
+      const rootStyle = window.getComputedStyle(document.documentElement);
+      const foreground = resolveColor(style.color);
+      const surface = resolveColor(rootStyle.getPropertyValue("--theme-bg-surface").trim());
+      const foregroundLum = luminance(foreground);
+      const surfaceLum = luminance(surface);
+      const lighter = Math.max(foregroundLum, surfaceLum);
+      const darker = Math.min(foregroundLum, surfaceLum);
+      return (lighter + 0.05) / (darker + 0.05);
+    }, themeId);
+
+    expect(contrast, `${themeId} provider risk eyebrow contrast`).toBeGreaterThanOrEqual(4.5);
+  }
 });
 
 test("Friends view can return to the feed from sidebar navigation", async ({ app }) => {

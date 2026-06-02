@@ -6,6 +6,7 @@ import {
   collectReleaseArtifactsToValidate,
   describePlan,
   isDesktopPerfSensitiveSurface,
+  isSocialProviderFocusedSurface,
   parseArgs,
 } from "./validate-worktree.mjs";
 
@@ -110,6 +111,75 @@ test("feature plan for non-feed desktop changes skips desktop perf checks", () =
     "root typecheck",
     "desktop unit tests",
     "desktop e2e smoke",
+  ]);
+});
+
+test("feature plan for provider-only desktop changes uses focused provider checks", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", [
+      "packages/desktop/src/lib/fb-capture.ts",
+      "packages/desktop/src/lib/social-auth-cookie-state.ts",
+      "packages/desktop/src/lib/social-capture-memory-pressure.test.ts",
+    ]),
+  );
+
+  assert.deepEqual(labels, [
+    "root typecheck",
+    "desktop social provider unit tests",
+    "desktop production build",
+  ]);
+});
+
+test("feature plan for provider extractor scripts uses focused provider checks", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", ["packages/desktop/src-tauri/src/fb-extract.js"]),
+  );
+
+  assert.deepEqual(labels, [
+    "root typecheck",
+    "desktop social provider unit tests",
+    "desktop production build",
+  ]);
+});
+
+test("providers plan runs focused social provider checks", () => {
+  const labels = describePlan(buildValidationPlan("providers", []));
+
+  assert.deepEqual(labels, [
+    "desktop social provider unit tests",
+  ]);
+});
+
+test("social provider focused surfaces exclude native shell changes", () => {
+  assert.equal(isSocialProviderFocusedSurface("packages/desktop/src/lib/fb-capture.ts"), true);
+  assert.equal(isSocialProviderFocusedSurface("packages/desktop/src-tauri/src/fb-extract.js"), true);
+  assert.equal(isSocialProviderFocusedSurface("packages/capture-facebook/src/normalize.ts"), true);
+  assert.equal(isSocialProviderFocusedSurface("packages/desktop/src-tauri/src/lib.rs"), false);
+  assert.equal(isSocialProviderFocusedSurface("packages/desktop/src/components/ProviderHealthSectionSummary.tsx"), false);
+});
+
+test("parseArgs supports printing plan labels without executing", () => {
+  const parsed = parseArgs(["--mode", "feature", "--plan-labels"]);
+
+  assert.equal(parsed.planLabels, true);
+});
+
+test("parseArgs supports printing the full plan without executing", () => {
+  const parsed = parseArgs(["--mode", "feature", "--plan-only"]);
+
+  assert.equal(parsed.planOnly, true);
+});
+
+test("feature plan for validation runner changes runs only runner tests", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", [
+      "scripts/validate-worktree.mjs",
+      "scripts/validate-worktree.test.mjs",
+    ]),
+  );
+
+  assert.deepEqual(labels, [
+    "validation runner tests",
   ]);
 });
 

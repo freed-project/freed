@@ -80,7 +80,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Resolve feature validation plan
+        id: feature-plan
+        run: |
+          PLAN_LABELS="$(npm run --silent validate:feature -- --plan-labels)"
+          echo "Feature validation plan:"
+          printf '%s\n' "$PLAN_LABELS"
+          if printf '%s\n' "$PLAN_LABELS" | grep -q '^desktop e2e '; then
+            echo "needs_playwright=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_playwright=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install Playwright browsers
+        if: steps.feature-plan.outputs.needs_playwright == 'true'
         run: npx playwright install --with-deps chromium
         working-directory: packages/desktop
 
@@ -114,7 +127,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request?.number ?? context.issue.number,
-              body: `## Performance Benchmark Results\n\n\`\`\`\n${body}\n\`\`\``,
+              body: `(AI Generated).\n\n## Performance Benchmark Results\n\n\`\`\`\n${body}\n\`\`\``,
             });
 
       - name: Upload perf results

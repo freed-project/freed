@@ -1,0 +1,69 @@
+{
+  "tag": "v26.6.103-dev",
+  "version": "26.6.103-dev",
+  "channel": "dev",
+  "dayKey": "26.6.1",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-02T00:56:41.923Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.102-dev",
+    "previousPublishedDayTag": "v26.5.3117-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.100-dev",
+      "v26.6.101-dev",
+      "v26.6.102-dev",
+      "v26.6.103-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.100-dev",
+      "v26.6.101-dev",
+      "v26.6.102-dev",
+      "v26.6.103-dev"
+    ],
+    "prNumbers": [
+      681,
+      682,
+      683,
+      684,
+      686,
+      687,
+      688
+    ],
+    "commitSubjects": [
+      "fix: tighten Facebook feed page detection (#688)",
+      "chore: approve v26.6.102-dev notes",
+      "release: v26.6.102-dev",
+      "fix: stabilize Google Drive sync diagnostics (#686)",
+      "chore: approve v26.6.101-dev notes",
+      "release: v26.6.101-dev",
+      "fix: require live auth for social source status (#687)",
+      "chore: approve v26.6.100-dev notes",
+      "release: v26.6.100-dev",
+      "test: stabilize sidebar toggle regression (#685)",
+      "fix: unify social feed scrolling (#683)",
+      "fix: avoid false social sync failures (#684)",
+      "fix: stabilize desktop sidebar reopen smoke (#682)",
+      "fix: flag stalled Facebook empty syncs (#681)"
+    ]
+  },
+  "release": {
+    "deck": "Facebook sync now requires real feed evidence before treating a page as scrapeable, so tall logged-out Facebook shells fail fast instead of looking like empty feeds.",
+    "features": [],
+    "fixes": [
+      "Facebook page checks now require a live cookie, the Feed posts heading, or rendered feed units before marking a page feed-like",
+      "Logged-out Facebook pages with generic main content and tall layout now fail closed instead of wasting scrape passes",
+      "Facebook extraction diagnostics now include feed unit and login chrome evidence for faster follow-up debugging",
+      "Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull",
+      "Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session",
+      "Google Drive sync now retries token-refresh download failures and exposes clearer sync diagnostics before falling back to an empty cursor",
+      "Google Contacts token refresh failures now stay recoverable in Settings instead of opening the fatal recovery screen"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.103-dev\n\nFacebook sync now requires real feed evidence before treating a page as scrapeable, so tall logged-out Facebook shells fail fast instead of looking like empty feeds.\n\n### Fixes\n\n- Facebook page checks now require a live cookie, the Feed posts heading, or rendered feed units before marking a page feed-like\n- Logged-out Facebook pages with generic main content and tall layout now fail closed instead of wasting scrape passes\n- Facebook extraction diagnostics now include feed unit and login chrome evidence for faster follow-up debugging\n- Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull\n- Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session\n- Google Drive sync now retries token-refresh download failures and exposes clearer sync diagnostics before falling back to an empty cursor\n- Google Contacts token refresh failures now stay recoverable in Settings instead of opening the fatal recovery screen\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

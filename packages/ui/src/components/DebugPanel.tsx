@@ -114,14 +114,23 @@ const CLOUD_STATUS_STYLES: Record<
 function CloudProviderRow({
   name,
   icon,
-  status,
-  error,
+  state,
 }: {
   name: string;
   icon: ReactNode;
-  status: CloudSyncStatus;
-  error?: string;
+  state: {
+    status: CloudSyncStatus;
+    error?: string;
+    stage?: string;
+    lastDownloadAt?: number;
+    lastUploadAt?: number;
+    lastMergeAt?: number;
+    lastRemoteBytes?: number;
+    lastUploadedBytes?: number;
+    lastLocalBytes?: number;
+  };
 }) {
+  const { status, error } = state;
   const s = CLOUD_STATUS_STYLES[status];
   return (
     <div className={DEBUG_CARD_CLASS}>
@@ -136,6 +145,21 @@ function CloudProviderRow({
       {error && (
         <p className="theme-feedback-text-danger mt-1 break-all font-mono text-[10px] leading-snug">{error}</p>
       )}
+      <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-[10px] text-[var(--theme-text-soft)]">
+        <span>Stage</span>
+        <span className="text-right text-[var(--theme-text-muted)]">{state.stage ?? "-"}</span>
+        <span>Remote</span>
+        <span className="text-right text-[var(--theme-text-muted)]">{formatOptionalBytes(state.lastRemoteBytes)}</span>
+        <span>Uploaded</span>
+        <span className="text-right text-[var(--theme-text-muted)]">{formatOptionalBytes(state.lastUploadedBytes)}</span>
+        <span>Local</span>
+        <span className="text-right text-[var(--theme-text-muted)]">{formatOptionalBytes(state.lastLocalBytes)}</span>
+      </div>
+      <div className="mt-2 space-y-0.5 font-mono text-[10px] text-[var(--theme-text-soft)]">
+        <p>Download: {state.lastDownloadAt ? formatRelative(state.lastDownloadAt) : "-"}</p>
+        <p>Merge: {state.lastMergeAt ? formatRelative(state.lastMergeAt) : "-"}</p>
+        <p>Upload: {state.lastUploadAt ? formatRelative(state.lastUploadAt) : "-"}</p>
+      </div>
     </div>
   );
 }
@@ -194,14 +218,12 @@ function ConnectionTab() {
           <CloudProviderRow
             name="Dropbox"
             icon={<DropboxIcon />}
-            status={cloudProviders?.dropbox.status ?? "idle"}
-            error={cloudProviders?.dropbox.error}
+            state={cloudProviders?.dropbox ?? { status: "idle" }}
           />
           <CloudProviderRow
             name="Google Drive"
             icon={<GDriveIcon />}
-            status={cloudProviders?.gdrive.status ?? "idle"}
-            error={cloudProviders?.gdrive.error}
+            state={cloudProviders?.gdrive ?? { status: "idle" }}
           />
         </div>
       </div>

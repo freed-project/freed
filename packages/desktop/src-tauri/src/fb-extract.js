@@ -17,6 +17,10 @@
           window.__TAURI__.event.emit(name, data);
         }
       : function () {};
+  var scrapeRunId =
+    typeof window.__FREED_FB_SCRAPE_RUN_ID === "string"
+      ? window.__FREED_FB_SCRAPE_RUN_ID
+      : null;
 
   function textValue(node, maxChars) {
     var value = node && node.textContent ? node.textContent : "";
@@ -208,6 +212,71 @@
     return null;
   }
 
+  function classifyPageState(feedContainer) {
+    var url = String(window.location && window.location.href ? window.location.href : "");
+    var title = String(document.title || "");
+    var cookie = String(document.cookie || "");
+    var bodyText = textValue(document.body, 2000).toLowerCase();
+    var scrollHeight =
+      (document.documentElement && document.documentElement.scrollHeight) ||
+      (document.body && document.body.scrollHeight) ||
+      0;
+    var loggedInCookie = cookie.indexOf("c_user=") !== -1 && cookie.indexOf("c_user=0") === -1;
+    var loginUrl = /\/login\b|\/recover\b|\/reg\b/.test(url);
+    var loginChrome =
+      /\blog in\b/.test(bodyText) ||
+      /\bsign up\b/.test(bodyText) ||
+      /\bcreate new account\b/.test(bodyText);
+    var shortPage = scrollHeight > 0 && scrollHeight < 1600;
+    var feedUnitCount = document.querySelectorAll(
+      '[role="article"], div[data-pagelet^="FeedUnit"], div[aria-posinset]'
+    ).length;
+    var feedLike =
+      !!feedContainer ||
+      loggedInCookie ||
+      feedUnitCount > 0;
+
+    if (!feedLike && (!loggedInCookie || loginUrl || (shortPage && loginChrome))) {
+      return {
+        state: "not_authenticated",
+        message: "Facebook did not render an authenticated feed. Reconnect Facebook and try again.",
+        loggedInCookie: loggedInCookie,
+        feedLike: !!feedLike,
+        feedUnitCount: feedUnitCount,
+        loginChrome: loginChrome,
+        scrollHeight: scrollHeight,
+        url: url,
+        title: title,
+      };
+    }
+
+    if (!feedContainer && shortPage) {
+      return {
+        state: "short_non_feed",
+        message: "Facebook rendered a short page instead of the feed. Open Facebook settings, reconnect if needed, then sync again.",
+        loggedInCookie: loggedInCookie,
+        feedLike: !!feedLike,
+        feedUnitCount: feedUnitCount,
+        loginChrome: loginChrome,
+        scrollHeight: scrollHeight,
+        url: url,
+        title: title,
+      };
+    }
+
+    return {
+      state: "feed_possible",
+      message: null,
+      loggedInCookie: loggedInCookie,
+      feedLike: !!feedLike,
+      feedUnitCount: feedUnitCount,
+      loginChrome: loginChrome,
+      scrollHeight: scrollHeight,
+      url: url,
+      title: title,
+    };
+  }
+
   // ── Find individual post elements within a container ─────────────────────
   // Posts are rendered as large blocks (typically 200-1500px tall) with
   // user content. We walk the tree looking for "post-like" nodes:
@@ -225,7 +294,39 @@
   function hasAuthorArea(node) {
     return (
       node.querySelector("h3 a, h4 a") !== null ||
-      node.querySelector('a[aria-label][role="link"]') !== null
+      node.querySelector('a[aria-label][role="link"]') !== null ||
+      node.querySelector('a[aria-label][href]') !== null ||
+      node.querySelector('a[href*="facebook.com/profile.php"], a[href^="/profile.php"]') !== null
+    );
+  }
+
+  function hasTimestampCue(node) {
+    if (node.querySelector("time[datetime], abbr[data-utime]")) return true;
+    var links = node.querySelectorAll("a[href], a[aria-label]");
+    for (var i = 0; i < Math.min(links.length, 20); i++) {
+      var text = (
+        links[i].textContent ||
+        links[i].getAttribute("aria-label") ||
+        ""
+      ).trim();
+      if (
+        /^\d+\s*[hms]$/i.test(text) ||
+        /^\d+\s*(hour|minute|second|day|week|month)s?\s*ago$/i.test(text) ||
+        /^(yesterday|today|just now)$/i.test(text) ||
+        /^(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d/i.test(text)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function hasPostPermalink(node) {
+    if (!node || !node.querySelector) return false;
+    return (
+      node.querySelector(
+        'a[href*="story_fbid="], a[href*="/posts/"], a[href*="/permalink/"], a[href*="pfbid"], a[href*="/groups/"][href*="/posts/"]'
+      ) !== null
     );
   }
 
@@ -238,11 +339,51 @@
       role === "article" ||
       /^FeedUnit/i.test(pagelet) ||
       node.hasAttribute("aria-posinset");
+    var structurallyPost =
+      semanticPost ||
+      (hasAuthorArea(node) && hasTimestampCue(node)) ||
+      hasPostPermalink(node);
 
-    if (!semanticPost && (h < 150 || h > 2000)) return false;
-    if (semanticPost && h > 0 && h > 2600) return false;
+    if (!structurallyPost && (h < 150 || h > 2000)) return false;
+    if (structurallyPost && h > 0 && h > 2600) return false;
     if (!hasPostContent(node)) return false;
-    return semanticPost || hasAuthorArea(node);
+    return structurallyPost;
+  }
+
+  function postCandidateKey(node) {
+    var pagelet = node.getAttribute && node.getAttribute("data-pagelet");
+    if (pagelet) return "pagelet:" + pagelet;
+    var permalink = node.querySelector &&
+      node.querySelector('a[href*="story_fbid="], a[href*="/posts/"], a[href*="/permalink/"], a[href*="pfbid"], a[href*="/groups/"][href*="/posts/"]');
+    if (permalink && permalink.href) return "href:" + permalink.href;
+    var rect = node.getBoundingClientRect ? node.getBoundingClientRect() : null;
+    var top = rect ? Math.round(rect.top + window.scrollY) : node.offsetTop;
+    return "shape:" + top + ":" + elementHeight(node) + ":" + textValue(node, 400).length;
+  }
+
+  function pushCandidate(posts, seen, node, container) {
+    if (!node || !isLikelyPostElement(node, container)) return false;
+    var id = postCandidateKey(node);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    posts.push(node);
+    return true;
+  }
+
+  function closestPostCandidate(seed, container) {
+    var node = seed;
+    var best = null;
+    var depth = 0;
+    while (node && node !== container && depth < 10) {
+      if (node.nodeType === 1 && isLikelyPostElement(node, container)) {
+        best = node;
+        var h = elementHeight(node);
+        if (h >= 180 && h <= 1800 && hasAuthorArea(node)) break;
+      }
+      node = node.parentElement;
+      depth++;
+    }
+    return best;
   }
 
   function uniquePostElements(elements) {
@@ -271,12 +412,40 @@
     var seen = new Set();
 
     var semanticCandidates = container.querySelectorAll(
-      '[role="article"], div[data-pagelet^="FeedUnit"], div[aria-posinset]'
+      [
+        '[role="article"]',
+        'div[data-pagelet^="FeedUnit"]',
+        'div[data-pagelet*="FeedUnit"]',
+        'div[aria-posinset]',
+        '[data-ft*="top_level_post_id"]',
+        '[data-testid="story-subtitle"]',
+      ].join(",")
     );
     for (var s = 0; s < semanticCandidates.length && posts.length < 50; s++) {
-      if (isLikelyPostElement(semanticCandidates[s], container)) {
-        posts.push(semanticCandidates[s]);
+      if (pushCandidate(posts, seen, semanticCandidates[s], container)) {
+        continue;
       }
+
+      var ancestor = semanticCandidates[s].parentElement;
+      var depth = 0;
+      while (ancestor && ancestor !== container && depth < 8) {
+        if (pushCandidate(posts, seen, ancestor, container)) {
+          break;
+        }
+        ancestor = ancestor.parentElement;
+        depth++;
+      }
+    }
+
+    if (posts.length > 0) {
+      return uniquePostElements(posts);
+    }
+
+    var permalinkCandidates = container.querySelectorAll(
+      'a[href*="story_fbid="], a[href*="/posts/"], a[href*="/permalink/"], a[href*="pfbid"], a[href*="/groups/"][href*="/posts/"]'
+    );
+    for (var p = 0; p < permalinkCandidates.length && posts.length < 50; p++) {
+      pushCandidate(posts, seen, closestPostCandidate(permalinkCandidates[p], container), container);
     }
 
     if (posts.length > 0) {
@@ -297,12 +466,7 @@
       // - Contain some text or images
       // - NOT be the entire feed container itself
       if (isLikelyPostElement(node, container)) {
-        var nodeText = textValue(node, 4000);
-        var id =
-          node.offsetTop + ":" + h + ":" + nodeText.length;
-        if (!seen.has(id)) {
-          seen.add(id);
-          posts.push(node);
+        if (pushCandidate(posts, seen, node, container)) {
           return; // Don't recurse into found posts
         }
       }
@@ -357,7 +521,7 @@
 
     // aria-label links (skip generic labels)
     if (!name) {
-      var ariaLinks = el.querySelectorAll('a[aria-label][role="link"]');
+      var ariaLinks = el.querySelectorAll('a[aria-label][href]');
       for (var i = 0; i < ariaLinks.length; i++) {
         var label = ariaLinks[i].getAttribute("aria-label") || "";
         if (
@@ -388,7 +552,7 @@
           !href.includes("/marketplace") &&
           isValidFacebookActorUrl(href)
         ) {
-          var lt = (links[j].textContent || "").trim();
+          var lt = (links[j].textContent || links[j].getAttribute("aria-label") || "").trim();
           if (lt.length > 1 && lt.length < 80 && !isFacebookUiChromeLabel(lt)) {
             name = lt;
             profileUrl = href;
@@ -506,10 +670,16 @@
       var m =
         href.match(/story_fbid=(\d+)/) ||
         href.match(/\/groups\/[^/]+\/posts\/(\d+)/) ||
+        href.match(/\/groups\/[^/]+\/permalink\/(\d+)/) ||
         href.match(/\/posts\/(\d+)/) ||
         href.match(/\/permalink\/(\d+)/) ||
         href.match(/(pfbid\w+)/);
       if (m) return { id: m[1], url: href };
+    }
+    var dataFt = el.getAttribute("data-ft") || "";
+    var topLevelPost = dataFt.match(/top_level_post_id["']?\s*:\s*["']?([0-9]+)/);
+    if (topLevelPost) {
+      return { id: topLevelPost[1], url: null };
     }
     return { id: null, url: null };
   }
@@ -567,6 +737,28 @@
     var feedContainer = findFeedContainer();
     var postEls = [];
     var strategy = "none";
+    var pageState = classifyPageState(feedContainer);
+
+    if (pageState.state === "not_authenticated" || pageState.state === "short_non_feed") {
+      emit("fb-feed-data", {
+        posts: [],
+        error: pageState.message,
+        extractedAt: Date.now(),
+        url: window.location.href,
+        scrapeRunId: scrapeRunId,
+        strategy: pageState.state,
+        candidateCount: 0,
+        scrollY: window.scrollY,
+        feedContainerFound: !!feedContainer,
+        pageState: pageState,
+        rejected: {
+          suggestedOrSponsored: 0,
+          missingAuthor: 0,
+          missingContent: 0,
+        },
+      });
+      return;
+    }
 
     if (feedContainer) {
       postEls = findPostsInContainer(feedContainer);
@@ -580,6 +772,13 @@
         postEls = findPostsInContainer(mainEl);
         strategy = "role-main-fallback";
       }
+    }
+
+    // Fallback: Facebook sometimes renders feed units without the old
+    // "Feed posts" h3 or a stable role=main container.
+    if (postEls.length === 0) {
+      postEls = findPostsInContainer(document.body);
+      strategy = "document-feedunit-fallback";
     }
 
     var posts = [];
@@ -681,10 +880,12 @@
       posts: posts,
       extractedAt: Date.now(),
       url: window.location.href,
+      scrapeRunId: scrapeRunId,
       strategy: strategy,
       candidateCount: postEls.length,
       scrollY: window.scrollY,
       feedContainerFound: !!feedContainer,
+      pageState: pageState,
       rejected: rejected,
     });
   } catch (err) {
@@ -693,6 +894,7 @@
       error: err.message || String(err),
       extractedAt: Date.now(),
       url: window.location.href,
+      scrapeRunId: scrapeRunId,
     });
   }
 })();
