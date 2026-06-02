@@ -290,7 +290,9 @@
   function hasAuthorArea(node) {
     return (
       node.querySelector("h3 a, h4 a") !== null ||
-      node.querySelector('a[aria-label][role="link"]') !== null
+      node.querySelector('a[aria-label][role="link"]') !== null ||
+      node.querySelector('a[aria-label][href]') !== null ||
+      node.querySelector('a[href*="facebook.com/profile.php"], a[href^="/profile.php"]') !== null
     );
   }
 
@@ -358,11 +360,31 @@
     var seen = new Set();
 
     var semanticCandidates = container.querySelectorAll(
-      '[role="article"], div[data-pagelet^="FeedUnit"], div[aria-posinset]'
+      [
+        '[role="article"]',
+        'div[data-pagelet^="FeedUnit"]',
+        'div[data-pagelet*="FeedUnit"]',
+        'div[aria-posinset]',
+        '[data-ft*="top_level_post_id"]',
+        '[data-testid="story-subtitle"]',
+      ].join(",")
     );
     for (var s = 0; s < semanticCandidates.length && posts.length < 50; s++) {
-      if (isLikelyPostElement(semanticCandidates[s], container)) {
-        posts.push(semanticCandidates[s]);
+      var candidate = semanticCandidates[s];
+      if (isLikelyPostElement(candidate, container)) {
+        posts.push(candidate);
+        continue;
+      }
+
+      var ancestor = candidate.parentElement;
+      var depth = 0;
+      while (ancestor && ancestor !== container && depth < 8) {
+        if (isLikelyPostElement(ancestor, container)) {
+          posts.push(ancestor);
+          break;
+        }
+        ancestor = ancestor.parentElement;
+        depth++;
       }
     }
 
@@ -444,7 +466,7 @@
 
     // aria-label links (skip generic labels)
     if (!name) {
-      var ariaLinks = el.querySelectorAll('a[aria-label][role="link"]');
+      var ariaLinks = el.querySelectorAll('a[aria-label][href]');
       for (var i = 0; i < ariaLinks.length; i++) {
         var label = ariaLinks[i].getAttribute("aria-label") || "";
         if (
@@ -475,7 +497,7 @@
           !href.includes("/marketplace") &&
           isValidFacebookActorUrl(href)
         ) {
-          var lt = (links[j].textContent || "").trim();
+          var lt = (links[j].textContent || links[j].getAttribute("aria-label") || "").trim();
           if (lt.length > 1 && lt.length < 80 && !isFacebookUiChromeLabel(lt)) {
             name = lt;
             profileUrl = href;
@@ -593,10 +615,16 @@
       var m =
         href.match(/story_fbid=(\d+)/) ||
         href.match(/\/groups\/[^/]+\/posts\/(\d+)/) ||
+        href.match(/\/groups\/[^/]+\/permalink\/(\d+)/) ||
         href.match(/\/posts\/(\d+)/) ||
         href.match(/\/permalink\/(\d+)/) ||
         href.match(/(pfbid\w+)/);
       if (m) return { id: m[1], url: href };
+    }
+    var dataFt = el.getAttribute("data-ft") || "";
+    var topLevelPost = dataFt.match(/top_level_post_id["']?\s*:\s*["']?([0-9]+)/);
+    if (topLevelPost) {
+      return { id: topLevelPost[1], url: null };
     }
     return { id: null, url: null };
   }
@@ -688,6 +716,13 @@
         postEls = findPostsInContainer(mainEl);
         strategy = "role-main-fallback";
       }
+    }
+
+    // Fallback: Facebook sometimes renders feed units without the old
+    // "Feed posts" h3 or a stable role=main container.
+    if (postEls.length === 0) {
+      postEls = findPostsInContainer(document.body);
+      strategy = "document-feedunit-fallback";
     }
 
     var posts = [];
