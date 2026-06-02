@@ -323,6 +323,105 @@ describe("social capture completion", () => {
     expect(mocks.storeState.fbAuth.lastCapturedAt).toBe(123_456);
   });
 
+  it("fails Facebook sync locally when the isolated WebView has no auth cookies", async () => {
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "get_social_provider_cookie_state") {
+        return {
+          provider: "facebook",
+          available: true,
+          hasAuthCookie: false,
+          cookieCount: 6,
+          cookieNames: ["datr", "fr", "ps_l", "ps_n", "sb", "wd"],
+          error: null,
+        };
+      }
+      return null;
+    });
+
+    const { captureFbFeed } = await import("./fb-capture");
+    const { recordProviderHealthEvent } = await import("./provider-health");
+    const { storeFbAuthState } = await import("./fb-auth");
+
+    const result = await captureFbFeed();
+    const expectedMessage =
+      "Facebook is not connected in the local WebView session. Reconnect Facebook and try again.";
+
+    expect(result.diag.errorStage).toBe("auth");
+    expect(result.items).toEqual([]);
+    expect(mocks.prepareSocialScrapeMemory).not.toHaveBeenCalled();
+    expect(mocks.invoke).not.toHaveBeenCalledWith("fb_scrape_feed", expect.anything());
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(expectedMessage);
+    expect(mocks.storeState.setFbAuth).toHaveBeenCalledWith({
+      isAuthenticated: false,
+      lastCapturedAt: 123_456,
+      lastCaptureError: expectedMessage,
+    });
+    expect(storeFbAuthState).toHaveBeenCalledWith({
+      isAuthenticated: false,
+      lastCapturedAt: 123_456,
+      lastCaptureError: expectedMessage,
+    });
+    expect(recordProviderHealthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "facebook",
+        outcome: "error",
+        stage: "auth",
+        reason: expectedMessage,
+        itemsSeen: 0,
+        itemsAdded: 0,
+      }),
+    );
+  });
+
+  it("records why Facebook saw posts but added no new items", async () => {
+    const listeners = new Map<string, (event: { payload: unknown }) => void>();
+    mocks.storeState.items = [{ platform: "facebook", globalId: "existing-post" }];
+    mocks.storeState.addItems.mockImplementationOnce(async () => undefined);
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockImplementation(async (eventName: string, callback: (event: { payload: unknown }) => void) => {
+      listeners.set(eventName, callback);
+      return vi.fn();
+    });
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command !== "fb_scrape_feed") return null;
+
+      listeners.get("fb-feed-data")?.({
+        payload: {
+          posts: [{ id: "existing-post", authorName: "Existing", text: "Already here" }],
+          extractedAt: Date.now(),
+          url: "https://www.facebook.com/",
+          strategy: "test",
+          candidateCount: 1,
+        },
+      });
+      return null;
+    });
+
+    const { captureFbFeed } = await import("./fb-capture");
+    const { recordProviderHealthEvent } = await import("./provider-health");
+
+    const result = await captureFbFeed();
+
+    expect(result.diag.postsExtracted).toBe(1);
+    expect(result.diag.itemsAdded).toBe(0);
+    expect(result.diag.existingItems).toBe(1);
+    expect(recordProviderHealthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "facebook",
+        outcome: "success",
+        reason: "No new Facebook items: 1 already present, 1 write candidate.",
+        itemsSeen: 1,
+        itemsAdded: 0,
+      }),
+    );
+  });
+
   it("clears Facebook auth when the scraper reports an unauthenticated page", async () => {
     const listeners = new Map<string, (event: { payload: unknown }) => void>();
     mocks.prepareSocialScrapeMemory.mockResolvedValue({
