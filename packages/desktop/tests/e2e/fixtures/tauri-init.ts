@@ -149,6 +149,21 @@ export function tauriInitScript(): string {
       check_x_login_cookies: () => ({ status: 'closed' }),
       close_x_login_window: () => null,
       pick_contact: () => null,
+      get_social_provider_cookie_state: (args) => ({
+        provider: args && args.provider ? args.provider : 'facebook',
+        ...(window.__TAURI_MOCK_SOCIAL_COOKIE_STATES__ &&
+        args &&
+        args.provider &&
+        window.__TAURI_MOCK_SOCIAL_COOKIE_STATES__[args.provider]
+          ? window.__TAURI_MOCK_SOCIAL_COOKIE_STATES__[args.provider]
+          : {
+              available: false,
+              hasAuthCookie: false,
+              cookieCount: 0,
+              cookieNames: [],
+              error: null,
+            }),
+      }),
       fb_show_login: () => null,
       fb_hide_login: () => null,
       fb_check_auth: () => true,
