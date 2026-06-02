@@ -1885,6 +1885,63 @@ test("provider risk dialog scrolls vertically on tiny mobile screens", async ({ 
   expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
 });
 
+test("provider risk eyebrow stays readable across themes", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openTo("facebook");
+  }, SETTINGS_STORE_PATH);
+
+  await page.getByRole("button", { name: "Log in with Facebook" }).click();
+  const eyebrow = page.getByTestId("provider-risk-eyebrow-facebook");
+  await expect(eyebrow).toBeVisible({ timeout: 5_000 });
+
+  const themeIds = ["scriptorium", "neon", "midas", "ember"] as const;
+  for (const themeId of themeIds) {
+    const contrast = await eyebrow.evaluate((element, nextThemeId) => {
+      document.documentElement.dataset.theme = nextThemeId;
+
+      function resolveColor(value: string): [number, number, number] {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1;
+        canvas.height = 1;
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        if (!context) {
+          throw new Error("Could not create color parser");
+        }
+        context.fillStyle = value;
+        context.fillRect(0, 0, 1, 1);
+        const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+        return [red, green, blue];
+      }
+
+      function luminance([red, green, blue]: [number, number, number]): number {
+        const [r, g, b] = [red, green, blue].map((channel) => {
+          const value = channel / 255;
+          return value <= 0.03928
+            ? value / 12.92
+            : Math.pow((value + 0.055) / 1.055, 2.4);
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      }
+
+      const style = window.getComputedStyle(element);
+      const rootStyle = window.getComputedStyle(document.documentElement);
+      const foreground = resolveColor(style.color);
+      const surface = resolveColor(rootStyle.getPropertyValue("--theme-bg-surface").trim());
+      const foregroundLum = luminance(foreground);
+      const surfaceLum = luminance(surface);
+      const lighter = Math.max(foregroundLum, surfaceLum);
+      const darker = Math.min(foregroundLum, surfaceLum);
+      return (lighter + 0.05) / (darker + 0.05);
+    }, themeId);
+
+    expect(contrast, `${themeId} provider risk eyebrow contrast`).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
 test("Friends view can return to the feed from sidebar navigation", async ({ app }) => {
   await app.goto();
   await app.waitForReady();

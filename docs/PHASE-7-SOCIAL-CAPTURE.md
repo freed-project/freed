@@ -196,7 +196,7 @@ const RATE_LIMITS = {
 - [x] Settings UI for both platforms (login, check connection, sync, disconnect), with the same provider section also reused inside Debug panel health cards
 - [x] Facebook and Instagram login windows stay open after auth so users can finish platform prompts before sync starts
 - [x] Feed pollution filtering blocks promoted X entries and suggested FB/IG posts
-- [x] Facebook Settings includes per-group include/exclude controls for joined groups inside a filtered inner scroller that prevents late group loads from shifting the outer Settings view
+- [x] Facebook Settings includes per-group include/exclude controls for joined groups inside a filtered inner scroller that prevents late group loads from shifting the outer Settings view, plus a browser handoff action for leaving a group on Facebook
 - [x] Facebook group discovery rejects activity-only labels and numeric ID fallbacks, preserves good stored names, repairs missing stored names from already captured group posts during normal sync, and keeps joined-groups refresh behind explicit provider-risk confirmation
 - [x] Desktop Sources settings expose per-source scraper window modes: shown, cloaked, hidden
 - [x] Background FB and IG scraper WebViews force provider media silent during scrape and auth-check flows
