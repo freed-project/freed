@@ -164,6 +164,25 @@ test("parseArgs supports printing plan labels without executing", () => {
   assert.equal(parsed.planLabels, true);
 });
 
+test("parseArgs supports printing the full plan without executing", () => {
+  const parsed = parseArgs(["--mode", "feature", "--plan-only"]);
+
+  assert.equal(parsed.planOnly, true);
+});
+
+test("feature plan for validation runner changes runs only runner tests", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", [
+      "scripts/validate-worktree.mjs",
+      "scripts/validate-worktree.test.mjs",
+    ]),
+  );
+
+  assert.deepEqual(labels, [
+    "validation runner tests",
+  ]);
+});
+
 test("desktop perf sensitivity is scoped to hot paths and perf harnesses", () => {
   assert.equal(isDesktopPerfSensitiveSurface("packages/desktop/src/lib/automerge.worker.ts"), true);
   assert.equal(isDesktopPerfSensitiveSurface("packages/desktop/tests/e2e/perf-map.spec.ts"), true);
