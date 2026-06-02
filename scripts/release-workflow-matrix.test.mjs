@@ -36,7 +36,7 @@ test("dev and production releases use the same primary platform matrix", () => {
       rust_target: "aarch64-apple-darwin",
     },
     {
-      platform: "macos-latest",
+      platform: "macos-15-intel",
       args: "--target x86_64-apple-darwin",
       rust_target: "x86_64-apple-darwin",
     },
