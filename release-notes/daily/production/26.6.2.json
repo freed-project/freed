@@ -1,0 +1,25 @@
+{
+  "channel": "production",
+  "dayKey": "26.6.2",
+  "date": "2026-06-02",
+  "preferredDeck": null,
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with Facebook sync reliability and the lower-profile social capture changes.",
+    "Mention memory and validation improvements only when they directly affect shipped behavior."
+  ],
+  "pinnedHighlights": [
+    {
+      "text": "Facebook sync treats stalled, logged-out, and zero-usable-post pages as actionable sync failures instead of healthy empty pulls.",
+      "sourceTag": "v26.6.200"
+    },
+    {
+      "text": "Facebook extraction restores DOM-based feed parsing and reports why extracted posts normalize to zero usable items.",
+      "sourceTag": "v26.6.200"
+    }
+  ],
+  "editorialNotes": [
+    "This production build includes the June 1 dev release train plus post-dev Facebook sync reliability fixes through PR 707."
+  ],
+  "updatedAt": "2026-06-02T20:29:34.327Z"
+}
