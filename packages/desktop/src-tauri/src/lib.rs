@@ -252,7 +252,7 @@ fn stored_or_default_user_agent(agent: &std::sync::Mutex<String>) -> String {
 
 fn social_scraper_data_store_identifier(label: &str) -> Option<[u8; 16]> {
     match label {
-        "fb-scraper" => Some(FB_SCRAPER_DATA_STORE_IDENTIFIER),
+        "fb-login" | "fb-scraper" => Some(FB_SCRAPER_DATA_STORE_IDENTIFIER),
         "ig-scraper" => Some(IG_SCRAPER_DATA_STORE_IDENTIFIER),
         "li-scraper" => Some(LI_SCRAPER_DATA_STORE_IDENTIFIER),
         _ => None,
@@ -4850,8 +4850,8 @@ async fn probe_fb_page_state(
 /// Show a visible WebView window navigated to facebook.com/login so the
 /// user can authenticate through the real Facebook login flow.
 ///
-/// The window reuses the "fb-scraper" label. If it already exists it is
-/// shown and focused; otherwise a new window is created.
+/// The window uses the "fb-login" label and shares the Facebook scraper data
+/// store, so login cookies remain available to feed scraping.
 ///
 /// An `on_navigation` handler detects when the user completes login
 /// (URL leaves /login) and emits `fb-auth-result`.
@@ -4863,13 +4863,29 @@ async fn fb_show_login(
 ) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
-    recycle_webview_window(&app, "fb-scraper", "login restart");
+    info!("[FB] opening login window");
+    recycle_webview_window(&app, "fb-scraper", "facebook reconnect");
+
+    if let Some(existing) = app.get_webview_window("fb-login") {
+        let _ = set_background_scraper_window_cloak(&existing, false);
+        let _ = set_background_scraper_media_guard(&existing, false);
+        existing
+            .navigate("https://www.facebook.com/login".parse().unwrap())
+            .map_err(|e| e.to_string())?;
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        *capture.fb_user_agent.lock().unwrap() = user_agent;
+        info!("[FB] focused existing login window");
+        return Ok(());
+    }
 
     let app_handle = app.clone();
+    let auth_emitted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let auth_emitted_for_nav = auth_emitted.clone();
 
-    WebviewWindowBuilder::new(
+    let login_window = WebviewWindowBuilder::new(
         &app,
-        "fb-scraper",
+        "fb-login",
         tauri::WebviewUrl::External("https://www.facebook.com/login".parse().unwrap()),
     )
     .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
@@ -4888,23 +4904,20 @@ async fn fb_show_login(
     )
     .center()
     .visible(true)
-    .on_window_event(|window, event| {
-        if let tauri::WindowEvent::CloseRequested { .. } = event {
-            let _ = window
-                .app_handle()
-                .emit("fb-login-window-closed", serde_json::json!({ "closed": true }));
-        }
-    })
     .on_navigation(move |url| {
         let path = url.path();
         let host = url.host_str().unwrap_or("");
 
         // Detect likely login completion, then verify with page evidence.
-        if host.contains("facebook.com") && path != "/login" && path != "/login/" {
+        if host.contains("facebook.com")
+            && path != "/login"
+            && path != "/login/"
+            && !auth_emitted_for_nav.swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
             let check_app = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(1800)).await;
-                if let Some(w) = check_app.get_webview_window("fb-scraper") {
+                if let Some(w) = check_app.get_webview_window("fb-login") {
                     let _ = w.eval(fb_auth_result_script());
                 }
             });
@@ -4914,8 +4927,18 @@ async fn fb_show_login(
     })
     .build()
     .map_err(|e| e.to_string())?;
+    let close_app = app.clone();
+    login_window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { .. } = event {
+            let _ = close_app.emit(
+                "fb-login-window-closed",
+                serde_json::json!({ "closed": true }),
+            );
+        }
+    });
 
     *capture.fb_user_agent.lock().unwrap() = user_agent;
+    info!("[FB] created login window");
 
     Ok(())
 }
@@ -4927,7 +4950,7 @@ async fn fb_hide_login(app: tauri::AppHandle) -> Result<(), String> {
         "fb-login-window-closed",
         serde_json::json!({ "closed": true }),
     );
-    recycle_webview_window(&app, "fb-scraper", "login dismissed");
+    recycle_webview_window(&app, "fb-login", "login dismissed");
     Ok(())
 }
 
@@ -5699,7 +5722,7 @@ async fn ig_show_login(
     // Track whether we've already emitted the auth result (one-shot)
     let auth_emitted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    WebviewWindowBuilder::new(
+    let login_window = WebviewWindowBuilder::new(
         &app,
         "ig-scraper",
         tauri::WebviewUrl::External("https://www.instagram.com/accounts/login/".parse().unwrap()),
@@ -5720,13 +5743,6 @@ async fn ig_show_login(
     )
     .center()
     .visible(true)
-    .on_window_event(|window, event| {
-        if let tauri::WindowEvent::CloseRequested { .. } = event {
-            let _ = window
-                .app_handle()
-                .emit("ig-login-window-closed", serde_json::json!({ "closed": true }));
-        }
-    })
     .on_navigation(move |url| {
         let path = url.path();
         let host = url.host_str().unwrap_or("");
@@ -5745,6 +5761,15 @@ async fn ig_show_login(
     })
     .build()
     .map_err(|e| e.to_string())?;
+    let close_app = app.clone();
+    login_window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { .. } = event {
+            let _ = close_app.emit(
+                "ig-login-window-closed",
+                serde_json::json!({ "closed": true }),
+            );
+        }
+    });
 
     *capture.ig_user_agent.lock().unwrap() = user_agent;
 
@@ -6332,7 +6357,7 @@ async fn li_show_login(
     // Track whether we've already emitted the auth result (one-shot)
     let auth_emitted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    WebviewWindowBuilder::new(
+    let login_window = WebviewWindowBuilder::new(
         &app,
         "li-scraper",
         tauri::WebviewUrl::External("https://www.linkedin.com/login".parse().unwrap()),
@@ -6353,13 +6378,6 @@ async fn li_show_login(
     )
     .center()
     .visible(true)
-    .on_window_event(|window, event| {
-        if let tauri::WindowEvent::CloseRequested { .. } = event {
-            let _ = window
-                .app_handle()
-                .emit("li-login-window-closed", serde_json::json!({ "closed": true }));
-        }
-    })
     .on_navigation(move |url| {
         let path = url.path();
         let host = url.host_str().unwrap_or("");
@@ -6379,6 +6397,15 @@ async fn li_show_login(
     })
     .build()
     .map_err(|e| e.to_string())?;
+    let close_app = app.clone();
+    login_window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { .. } = event {
+            let _ = close_app.emit(
+                "li-login-window-closed",
+                serde_json::json!({ "closed": true }),
+            );
+        }
+    });
 
     *capture.li_user_agent.lock().unwrap() = user_agent;
 
@@ -7150,18 +7177,15 @@ fn schedule_main_window_occlusion_recovery(
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(delay).await;
         let app_for_probe = app.clone();
-        let probe = run_main_window_step_on_main_thread(
-            &app,
-            "main window occlusion probe",
-            move || {
+        let probe =
+            run_main_window_step_on_main_thread(&app, "main window occlusion probe", move || {
                 let Some(window) = live_main_window(&app_for_probe) else {
                     return Ok(None);
                 };
                 let occlusion_state = main_window_native_occlusion_state(&window);
                 let is_occluded = main_window_native_is_occluded(&window).unwrap_or(false);
                 Ok(Some((is_occluded, occlusion_state)))
-            },
-        );
+            });
 
         let Ok(Some((true, occlusion_state))) = probe else {
             return;
@@ -8909,6 +8933,10 @@ mod tests {
     fn social_scraper_data_stores_are_provider_specific() {
         assert_eq!(
             social_scraper_data_store_identifier("fb-scraper"),
+            Some(FB_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("fb-login"),
             Some(FB_SCRAPER_DATA_STORE_IDENTIFIER)
         );
         assert_eq!(

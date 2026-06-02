@@ -10,7 +10,7 @@ import { useState, useCallback, useEffect, useRef, type ReactNode } from "react"
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { usePlatform, type SyncProviderSectionProps } from "@freed/ui/context";
-import { useDebugStore } from "@freed/ui/lib/debug-store";
+import { addDebugEvent, useDebugStore } from "@freed/ui/lib/debug-store";
 import {
   getProviderStatusLabel,
   getProviderStatusTone,
@@ -52,6 +52,7 @@ import { clearProviderPause, resetProviderPauseState } from "../lib/provider-hea
 import { MediaVaultSettingsCard } from "./MediaVaultSettingsCard";
 import { socialProviderCopy } from "../lib/social-provider-copy";
 import { isRuntimeDeferredStage } from "../lib/social-capture-runtime";
+import { log } from "../lib/logger";
 
 // =============================================================================
 // Diagnostic Panel
@@ -183,6 +184,23 @@ function FbDiagPanel({ diag }: { diag: FbSyncDiag }) {
           warn={diag.postsExtracted === 0}
         />
         <DiagRow
+          label="Extraction passes"
+          value={diag.extractionPasses.toLocaleString()}
+        />
+        <DiagRow
+          label="Candidates seen"
+          value={diag.totalCandidateCount.toLocaleString()}
+          warn={diag.postsExtracted === 0 && diag.totalCandidateCount === 0}
+        />
+        <DiagRow
+          label="Rejected candidates"
+          value={(
+            diag.totalRejected.suggestedOrSponsored +
+            diag.totalRejected.missingAuthor +
+            diag.totalRejected.missingContent
+          ).toLocaleString()}
+        />
+        <DiagRow
           label="After normalize"
           value={diag.itemsNormalized.toLocaleString()}
           warn={diag.itemsNormalized === 0 && diag.postsExtracted > 0}
@@ -248,14 +266,20 @@ export function FacebookSettingsSection({
     if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return;
 
     const unlisten = listen<{ loggedIn: boolean }>("fb-auth-result", (event) => {
+      log.info(`[FB] auth result received logged_in=${event.payload.loggedIn}`);
       const newState = {
         ...useAppStore.getState().fbAuth,
         isAuthenticated: event.payload.loggedIn,
         lastCheckedAt: Date.now(),
+        lastCaptureError: event.payload.loggedIn
+          ? undefined
+          : useAppStore.getState().fbAuth.lastCaptureError,
       };
       setFbAuth(newState);
       storeFbAuthState(newState);
       if (event.payload.loggedIn) {
+        setActionError(null);
+        addDebugEvent("change", "[FB] connection restored");
         loginWindowPendingSyncRef.current = true;
         setLoginWindowPendingSync(true);
       } else {
@@ -272,15 +296,24 @@ export function FacebookSettingsSection({
   }, [fbAuth.isAuthenticated, items]);
 
   const handleLogin = useCallback(async () => {
+    log.info(
+      `[FB] reconnect click auth=${fbAuth.isAuthenticated} reconnect=${needsProviderReconnect(fbAuth.lastCaptureError ?? actionError ?? null)}`,
+    );
+    addDebugEvent("change", "[FB] reconnect requested");
     await confirm(async () => {
+      log.info("[FB] reconnect consent cleared");
       setActionError(null);
       try {
         await showFbLogin();
+        log.info("[FB] reconnect login window requested");
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : "Failed to open login window");
+        const message = err instanceof Error ? err.message : "Failed to open login window";
+        log.error(`[FB] reconnect failed: ${message}`);
+        addDebugEvent("error", `[FB] reconnect failed: ${message}`);
+        setActionError(message);
       }
     });
-  }, [confirm]);
+  }, [actionError, confirm, fbAuth.isAuthenticated, fbAuth.lastCaptureError]);
 
   const handleCheckAuth = useCallback(async () => {
     await confirm(async () => {

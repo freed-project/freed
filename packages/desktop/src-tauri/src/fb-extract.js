@@ -321,6 +321,15 @@
     return false;
   }
 
+  function hasPostPermalink(node) {
+    if (!node || !node.querySelector) return false;
+    return (
+      node.querySelector(
+        'a[href*="story_fbid="], a[href*="/posts/"], a[href*="/permalink/"], a[href*="pfbid"], a[href*="/groups/"][href*="/posts/"]'
+      ) !== null
+    );
+  }
+
   function isLikelyPostElement(node, container) {
     if (!node || node === container) return false;
     var h = elementHeight(node);
@@ -330,12 +339,51 @@
       role === "article" ||
       /^FeedUnit/i.test(pagelet) ||
       node.hasAttribute("aria-posinset");
-    var structurallyPost = semanticPost || (hasAuthorArea(node) && hasTimestampCue(node));
+    var structurallyPost =
+      semanticPost ||
+      (hasAuthorArea(node) && hasTimestampCue(node)) ||
+      hasPostPermalink(node);
 
     if (!structurallyPost && (h < 150 || h > 2000)) return false;
     if (structurallyPost && h > 0 && h > 2600) return false;
     if (!hasPostContent(node)) return false;
     return structurallyPost;
+  }
+
+  function postCandidateKey(node) {
+    var pagelet = node.getAttribute && node.getAttribute("data-pagelet");
+    if (pagelet) return "pagelet:" + pagelet;
+    var permalink = node.querySelector &&
+      node.querySelector('a[href*="story_fbid="], a[href*="/posts/"], a[href*="/permalink/"], a[href*="pfbid"], a[href*="/groups/"][href*="/posts/"]');
+    if (permalink && permalink.href) return "href:" + permalink.href;
+    var rect = node.getBoundingClientRect ? node.getBoundingClientRect() : null;
+    var top = rect ? Math.round(rect.top + window.scrollY) : node.offsetTop;
+    return "shape:" + top + ":" + elementHeight(node) + ":" + textValue(node, 400).length;
+  }
+
+  function pushCandidate(posts, seen, node, container) {
+    if (!node || !isLikelyPostElement(node, container)) return false;
+    var id = postCandidateKey(node);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    posts.push(node);
+    return true;
+  }
+
+  function closestPostCandidate(seed, container) {
+    var node = seed;
+    var best = null;
+    var depth = 0;
+    while (node && node !== container && depth < 10) {
+      if (node.nodeType === 1 && isLikelyPostElement(node, container)) {
+        best = node;
+        var h = elementHeight(node);
+        if (h >= 180 && h <= 1800 && hasAuthorArea(node)) break;
+      }
+      node = node.parentElement;
+      depth++;
+    }
+    return best;
   }
 
   function uniquePostElements(elements) {
@@ -374,22 +422,30 @@
       ].join(",")
     );
     for (var s = 0; s < semanticCandidates.length && posts.length < 50; s++) {
-      var candidate = semanticCandidates[s];
-      if (isLikelyPostElement(candidate, container)) {
-        posts.push(candidate);
+      if (pushCandidate(posts, seen, semanticCandidates[s], container)) {
         continue;
       }
 
-      var ancestor = candidate.parentElement;
+      var ancestor = semanticCandidates[s].parentElement;
       var depth = 0;
       while (ancestor && ancestor !== container && depth < 8) {
-        if (isLikelyPostElement(ancestor, container)) {
-          posts.push(ancestor);
+        if (pushCandidate(posts, seen, ancestor, container)) {
           break;
         }
         ancestor = ancestor.parentElement;
         depth++;
       }
+    }
+
+    if (posts.length > 0) {
+      return uniquePostElements(posts);
+    }
+
+    var permalinkCandidates = container.querySelectorAll(
+      'a[href*="story_fbid="], a[href*="/posts/"], a[href*="/permalink/"], a[href*="pfbid"], a[href*="/groups/"][href*="/posts/"]'
+    );
+    for (var p = 0; p < permalinkCandidates.length && posts.length < 50; p++) {
+      pushCandidate(posts, seen, closestPostCandidate(permalinkCandidates[p], container), container);
     }
 
     if (posts.length > 0) {
@@ -410,12 +466,7 @@
       // - Contain some text or images
       // - NOT be the entire feed container itself
       if (isLikelyPostElement(node, container)) {
-        var nodeText = textValue(node, 4000);
-        var id =
-          node.offsetTop + ":" + h + ":" + nodeText.length;
-        if (!seen.has(id)) {
-          seen.add(id);
-          posts.push(node);
+        if (pushCandidate(posts, seen, node, container)) {
           return; // Don't recurse into found posts
         }
       }

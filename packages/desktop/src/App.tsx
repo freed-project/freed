@@ -989,7 +989,15 @@ function App() {
       pickContact: pickContactViaTauri,
       googleContacts: tauriRuntimeAvailable
         ? {
-            getToken: () => getValidCloudToken("gdrive"),
+            getToken: async () => {
+              try {
+                return await getValidCloudToken("gdrive");
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                log.warn(`[contacts] Google token lookup failed: ${message}`);
+                return null;
+              }
+            },
             connect: connectGoogleContacts,
             fetchContacts: fetchGoogleContactsForDesktop,
           }

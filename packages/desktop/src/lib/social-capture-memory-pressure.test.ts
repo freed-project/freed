@@ -314,8 +314,9 @@ describe("social capture completion", () => {
     expect(recordProviderHealthEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: "facebook",
-        outcome: "empty",
-        stage: "empty",
+        outcome: "error",
+        stage: "extract_empty",
+        reason: expectedMessage,
         itemsSeen: 0,
         itemsAdded: 0,
       }),
