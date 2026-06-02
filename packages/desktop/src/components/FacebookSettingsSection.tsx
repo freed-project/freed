@@ -6,7 +6,7 @@
  * authenticates, the WebView's cookies are shared with the scraper.
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { SyncProviderSectionProps } from "@freed/ui/context";
@@ -23,7 +23,6 @@ import {
   showFbLogin,
   checkFbAuth,
   disconnectFb,
-  hideFbLogin,
   storeFbAuthState,
 } from "../lib/fb-auth";
 import {
@@ -218,6 +217,8 @@ export function FacebookSettingsSection({
   const [lastDiag, setLastDiag] = useState<FbSyncDiag | null>(null);
   const [windowMode, setWindowMode] = useState(() => getFbScraperWindowMode());
   const [actionError, setActionError] = useState<string | null>(null);
+  const [loginWindowPendingSync, setLoginWindowPendingSync] = useState(false);
+  const loginWindowPendingSyncRef = useRef(false);
   const copy = socialProviderCopy("facebook");
   const { confirm, dialog } = useProviderRiskGate("facebook");
 
@@ -230,7 +231,7 @@ export function FacebookSettingsSection({
 
   // Auto-detect login success from the WebView's on_navigation callback
   useEffect(() => {
-    if (!isTauri()) return;
+    if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return;
 
     const unlisten = listen<{ loggedIn: boolean }>("fb-auth-result", (event) => {
       const newState = {
@@ -241,7 +242,11 @@ export function FacebookSettingsSection({
       setFbAuth(newState);
       storeFbAuthState(newState);
       if (event.payload.loggedIn) {
-        void hideFbLogin().catch(() => {});
+        loginWindowPendingSyncRef.current = true;
+        setLoginWindowPendingSync(true);
+      } else {
+        loginWindowPendingSyncRef.current = false;
+        setLoginWindowPendingSync(false);
       }
     });
     return () => { unlisten.then((fn) => fn()); };
@@ -285,6 +290,8 @@ export function FacebookSettingsSection({
   }, [confirm, setFbAuth]);
 
   const runSync = useCallback(async () => {
+    loginWindowPendingSyncRef.current = false;
+    setLoginWindowPendingSync(false);
     setLastDiag(null);
     try {
       const result = await withProviderSyncing("facebook", () => captureFbFeed());
@@ -293,6 +300,21 @@ export function FacebookSettingsSection({
       console.error("Facebook feed capture failed:", err);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return;
+
+    const unlisten = listen<{ closed: boolean }>("fb-login-window-closed", (event) => {
+      const shouldSync = event.payload.closed && useAppStore.getState().fbAuth.isAuthenticated;
+      const pending = loginWindowPendingSyncRef.current;
+      loginWindowPendingSyncRef.current = false;
+      setLoginWindowPendingSync(false);
+      if (pending && shouldSync) {
+        void runSync();
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [runSync]);
 
   const setExcludedGroups = useCallback(
     async (nextExcludedGroupIds: Record<string, true>) => {
@@ -441,6 +463,12 @@ export function FacebookSettingsSection({
               {statusLabel}
             </span>
           </div>
+
+          {loginWindowPendingSync && (
+            <p className="text-xs text-[#a1a1aa] leading-relaxed">
+              Connected. Finish any Facebook prompts, then close the login window.
+            </p>
+          )}
 
           <div className="flex gap-2">
             <ProviderSyncActionButton

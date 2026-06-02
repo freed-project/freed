@@ -4854,7 +4854,7 @@ async fn probe_fb_page_state(
 /// shown and focused; otherwise a new window is created.
 ///
 /// An `on_navigation` handler detects when the user completes login
-/// (URL leaves /login) and auto-hides the window + emits `fb-auth-result`.
+/// (URL leaves /login) and emits `fb-auth-result`.
 #[tauri::command]
 async fn fb_show_login(
     app: tauri::AppHandle,
@@ -4888,6 +4888,13 @@ async fn fb_show_login(
     )
     .center()
     .visible(true)
+    .on_window_event(|window, event| {
+        if let tauri::WindowEvent::CloseRequested { .. } = event {
+            let _ = window
+                .app_handle()
+                .emit("fb-login-window-closed", serde_json::json!({ "closed": true }));
+        }
+    })
     .on_navigation(move |url| {
         let path = url.path();
         let host = url.host_str().unwrap_or("");
@@ -4916,6 +4923,10 @@ async fn fb_show_login(
 /// Hide the Facebook login window after successful authentication.
 #[tauri::command]
 async fn fb_hide_login(app: tauri::AppHandle) -> Result<(), String> {
+    let _ = app.emit(
+        "fb-login-window-closed",
+        serde_json::json!({ "closed": true }),
+    );
     recycle_webview_window(&app, "fb-scraper", "login dismissed");
     Ok(())
 }
@@ -5673,8 +5684,7 @@ const IG_COMMENTS_EXTRACT_SCRIPT: &str = include_str!("ig-comments-extract.js");
 /// so the user can authenticate through the real Instagram login flow.
 ///
 /// An `on_navigation` handler detects when the user completes login
-/// (URL leaves /accounts/login) and auto-hides the window + emits
-/// `ig-auth-result`.
+/// (URL leaves /accounts/login) and emits `ig-auth-result`.
 #[tauri::command]
 async fn ig_show_login(
     app: tauri::AppHandle,
@@ -5683,17 +5693,7 @@ async fn ig_show_login(
 ) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
-    if let Some(existing) = app.get_webview_window("ig-scraper") {
-        let _ = set_background_scraper_window_cloak(&existing, false);
-        let _ = set_background_scraper_media_guard(&existing, false);
-        existing
-            .navigate("https://www.instagram.com/accounts/login/".parse().unwrap())
-            .map_err(|e| e.to_string())?;
-        let _ = existing.show();
-        let _ = existing.set_focus();
-        *capture.ig_user_agent.lock().unwrap() = user_agent;
-        return Ok(());
-    }
+    recycle_webview_window(&app, "ig-scraper", "login restart");
 
     let app_handle = app.clone();
     // Track whether we've already emitted the auth result (one-shot)
@@ -5720,6 +5720,13 @@ async fn ig_show_login(
     )
     .center()
     .visible(true)
+    .on_window_event(|window, event| {
+        if let tauri::WindowEvent::CloseRequested { .. } = event {
+            let _ = window
+                .app_handle()
+                .emit("ig-login-window-closed", serde_json::json!({ "closed": true }));
+        }
+    })
     .on_navigation(move |url| {
         let path = url.path();
         let host = url.host_str().unwrap_or("");
@@ -5731,26 +5738,7 @@ async fn ig_show_login(
             && path != "/accounts/login/"
             && !auth_emitted.swap(true, std::sync::atomic::Ordering::SeqCst)
         {
-            // Hide the login UI while the post-login scrape spins up.
-            // ig_scrape_feed now recycles the WebView when the scrape ends.
-            if let Some(w) = app_handle.get_webview_window("ig-scraper") {
-                let _ = w.hide();
-            }
             let _ = app_handle.emit("ig-auth-result", serde_json::json!({ "loggedIn": true }));
-
-            // Auto-trigger a scrape shortly after login so the user doesn't need
-            // to manually click "Sync Now".
-            let scrape_app = app_handle.clone();
-            tauri::async_runtime::spawn(async move {
-                info!("[IG] login detected, auto-scraping...");
-                tokio::time::sleep(Duration::from_millis(gaussian_ms(4000.0, 800.0))).await;
-                let capture = scrape_app.state::<CaptureState>();
-                // Post-login auto-scrapes use hidden mode so they do not compete with the main renderer.
-                match ig_scrape_feed(scrape_app.clone(), capture, ScraperWindowMode::Hidden).await {
-                    Ok(()) => info!("[IG] post-login auto-scrape complete"),
-                    Err(e) => info!("[IG] post-login auto-scrape error: {}", e),
-                }
-            });
         }
 
         true
@@ -5766,6 +5754,10 @@ async fn ig_show_login(
 /// Hide the Instagram login window after successful authentication.
 #[tauri::command]
 async fn ig_hide_login(app: tauri::AppHandle) -> Result<(), String> {
+    let _ = app.emit(
+        "ig-login-window-closed",
+        serde_json::json!({ "closed": true }),
+    );
     recycle_webview_window(&app, "ig-scraper", "login dismissed");
     Ok(())
 }
@@ -6325,7 +6317,7 @@ const LI_EXTRACT_SCRIPT: &str = include_str!("li-extract.js");
 /// user can authenticate through the real LinkedIn login flow.
 ///
 /// An `on_navigation` handler detects when the user completes login
-/// (URL leaves /login) and auto-hides the window + emits `li-auth-result`.
+/// (URL leaves /login) and emits `li-auth-result`.
 #[tauri::command]
 async fn li_show_login(
     app: tauri::AppHandle,
@@ -6334,17 +6326,7 @@ async fn li_show_login(
 ) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
-    if let Some(existing) = app.get_webview_window("li-scraper") {
-        let _ = set_background_scraper_window_cloak(&existing, false);
-        let _ = set_background_scraper_media_guard(&existing, false);
-        existing
-            .navigate("https://www.linkedin.com/login".parse().unwrap())
-            .map_err(|e| e.to_string())?;
-        let _ = existing.show();
-        let _ = existing.set_focus();
-        *capture.li_user_agent.lock().unwrap() = user_agent;
-        return Ok(());
-    }
+    recycle_webview_window(&app, "li-scraper", "login restart");
 
     let app_handle = app.clone();
     // Track whether we've already emitted the auth result (one-shot)
@@ -6371,6 +6353,13 @@ async fn li_show_login(
     )
     .center()
     .visible(true)
+    .on_window_event(|window, event| {
+        if let tauri::WindowEvent::CloseRequested { .. } = event {
+            let _ = window
+                .app_handle()
+                .emit("li-login-window-closed", serde_json::json!({ "closed": true }));
+        }
+    })
     .on_navigation(move |url| {
         let path = url.path();
         let host = url.host_str().unwrap_or("");
@@ -6383,9 +6372,6 @@ async fn li_show_login(
             && path != "/uas/login"
             && !auth_emitted.swap(true, std::sync::atomic::Ordering::SeqCst)
         {
-            if let Some(w) = app_handle.get_webview_window("li-scraper") {
-                let _ = w.hide();
-            }
             let _ = app_handle.emit("li-auth-result", serde_json::json!({ "loggedIn": true }));
         }
 
@@ -6402,6 +6388,10 @@ async fn li_show_login(
 /// Hide the LinkedIn login window after successful authentication.
 #[tauri::command]
 async fn li_hide_login(app: tauri::AppHandle) -> Result<(), String> {
+    let _ = app.emit(
+        "li-login-window-closed",
+        serde_json::json!({ "closed": true }),
+    );
     recycle_webview_window(&app, "li-scraper", "login dismissed");
     Ok(())
 }

@@ -28,7 +28,7 @@ const FB_AUTH_KEY = "fb_auth_state";
 /**
  * Open the Facebook login WebView so the user can authenticate.
  * The window is visible and allows normal Facebook login. Once logged
- * in, the user closes the window (or we hide it after detecting auth).
+ * in, Freed marks the session connected and the user closes the window.
  */
 export async function showFbLogin(): Promise<void> {
   // Generate and persist a fresh session UA at connect time.
@@ -37,7 +37,7 @@ export async function showFbLogin(): Promise<void> {
 }
 
 /**
- * Hide the login WebView (called after successful auth detection).
+ * Hide the login WebView after the user is done with provider prompts.
  */
 export async function hideFbLogin(): Promise<void> {
   await invoke("fb_hide_login");

@@ -6,7 +6,7 @@
  * authenticates, the WebView's cookies are shared with the scraper.
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { SyncProviderSectionProps } from "@freed/ui/context";
@@ -119,10 +119,14 @@ export function LinkedInSettingsSection({
   const [lastDiag, setLastDiag] = useState<LiSyncDiag | null>(null);
   const [windowMode, setWindowMode] = useState(() => getLiScraperWindowMode());
   const [actionError, setActionError] = useState<string | null>(null);
+  const [loginWindowPendingSync, setLoginWindowPendingSync] = useState(false);
+  const loginWindowPendingSyncRef = useRef(false);
   const copy = socialProviderCopy("linkedin");
   const { confirm, dialog } = useProviderRiskGate("linkedin");
 
   const runSync = useCallback(async () => {
+    loginWindowPendingSyncRef.current = false;
+    setLoginWindowPendingSync(false);
     setLastDiag(null);
     try {
       const result = await withProviderSyncing("linkedin", () => captureLiFeed());
@@ -134,20 +138,34 @@ export function LinkedInSettingsSection({
 
   // Auto-detect login success from the WebView's on_navigation callback
   useEffect(() => {
-    if (!isTauri()) return;
+    if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return;
 
     const unlisten = listen<{ loggedIn: boolean }>("li-auth-result", (event) => {
       if (event.payload.loggedIn) {
         const newState = { isAuthenticated: true, lastCheckedAt: Date.now() };
         setLiAuth(newState);
         storeLiAuthState(newState);
-        if (!liAuth.isAuthenticated) {
-          void runSync();
-        }
+        loginWindowPendingSyncRef.current = true;
+        setLoginWindowPendingSync(true);
       }
     });
     return () => { unlisten.then((fn) => fn()); };
-  }, [liAuth.isAuthenticated, runSync, setLiAuth]);
+  }, [setLiAuth]);
+
+  useEffect(() => {
+    if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return;
+
+    const unlisten = listen<{ closed: boolean }>("li-login-window-closed", (event) => {
+      const shouldSync = event.payload.closed && useAppStore.getState().liAuth.isAuthenticated;
+      const pending = loginWindowPendingSyncRef.current;
+      loginWindowPendingSyncRef.current = false;
+      setLoginWindowPendingSync(false);
+      if (pending && shouldSync) {
+        void runSync();
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [runSync]);
 
   const handleLogin = useCallback(async () => {
     await confirm(async () => {
@@ -247,6 +265,12 @@ export function LinkedInSettingsSection({
               {statusLabel}
             </span>
           </div>
+
+          {loginWindowPendingSync && (
+            <p className="text-xs text-[#a1a1aa] leading-relaxed">
+              Connected. Finish any LinkedIn prompts, then close the login window.
+            </p>
+          )}
 
           <div className="flex gap-2">
             <ProviderSyncActionButton
