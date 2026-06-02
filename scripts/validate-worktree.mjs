@@ -41,7 +41,7 @@ function unique(values) {
 
 function usage() {
   return `Usage:
-  node scripts/validate-worktree.mjs --mode <feature|providers|dev|production|release> [--changed-files <file>...]
+  node scripts/validate-worktree.mjs --mode <feature|providers|dev|production|release> [--plan-only] [--changed-files <file>...]
 
 Modes:
   feature  Run root typecheck plus changed-surface checks derived from git diff or --changed-files.
@@ -49,6 +49,10 @@ Modes:
   dev      Run the integration suite used for dev branch pushes and dev builds.
   production  Run the full production validation suite for public release prep.
   release  Compatibility alias for production.
+
+Options:
+  --plan-only  Print changed files and planned checks without executing them.
+  --plan-labels  Print planned check labels only. Used by CI.
 `;
 }
 
@@ -56,6 +60,7 @@ export function parseArgs(argv) {
   let mode = "";
   let changedFiles = [];
   let planLabels = false;
+  let planOnly = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -72,9 +77,12 @@ export function parseArgs(argv) {
       case "--plan-labels":
         planLabels = true;
         break;
+      case "--plan-only":
+        planOnly = true;
+        break;
       case "--help":
       case "-h":
-        return { help: true, mode: "", changedFiles: [] };
+        return { help: true, mode: "", changedFiles: [], planLabels: false, planOnly: false };
       default:
         throw new Error(`Unexpected argument '${arg}'.\n\n${usage()}`);
     }
@@ -84,7 +92,7 @@ export function parseArgs(argv) {
     throw new Error(`Error: --mode must be one of feature, providers, dev, production, or release.\n\n${usage()}`);
   }
 
-  return { help: false, mode, changedFiles: changedFiles.map(normalizeRepoPath), planLabels };
+  return { help: false, mode, changedFiles: changedFiles.map(normalizeRepoPath), planLabels, planOnly };
 }
 
 function execGit(args) {
@@ -469,6 +477,18 @@ export function buildValidationPlan(mode, changedFiles) {
   const socialProviderOnlyChanged =
     changedFiles.length > 0 &&
     changedFiles.every(isSocialProviderFocusedSurface);
+  const validateRunnerOnlyChanged =
+    changedFiles.length > 0 &&
+    changedFiles.every(isValidateRunnerPath);
+
+  if (validateRunnerOnlyChanged) {
+    return [
+      nodeCommand("validation runner tests", [
+        "--test",
+        path.join("scripts", "validate-worktree.test.mjs"),
+      ]),
+    ];
+  }
 
   if (socialProviderOnlyChanged) {
     addCommand(plan, socialProviderFocusedTestsCommand());
@@ -573,6 +593,23 @@ export function describePlan(plan) {
   return plan.map((item) => item.label);
 }
 
+export function printValidationPlan({ mode, changedFiles, plan }) {
+  console.log(`Mode: ${mode}`);
+  if (changedFiles.length > 0) {
+    console.log("Changed files:");
+    for (const filePath of changedFiles) {
+      console.log(`- ${filePath}`);
+    }
+  } else {
+    console.log("Changed files: none detected");
+  }
+
+  console.log("\nValidation plan:");
+  for (const label of describePlan(plan)) {
+    console.log(`- ${label}`);
+  }
+}
+
 export function runValidationPlan(plan) {
   for (const item of plan) {
     if (item.kind === "command") {
@@ -591,7 +628,7 @@ export function runValidationPlan(plan) {
 }
 
 export function main(argv = process.argv.slice(2)) {
-  const { help, mode, changedFiles: explicitChangedFiles, planLabels } = parseArgs(argv);
+  const { help, mode, changedFiles: explicitChangedFiles, planLabels, planOnly } = parseArgs(argv);
   if (help) {
     console.log(usage());
     return;
@@ -604,19 +641,9 @@ export function main(argv = process.argv.slice(2)) {
     return;
   }
 
-  console.log(`Mode: ${mode}`);
-  if (changedFiles.length > 0) {
-    console.log("Changed files:");
-    for (const filePath of changedFiles) {
-      console.log(`- ${filePath}`);
-    }
-  } else {
-    console.log("Changed files: none detected");
-  }
-
-  console.log("\nValidation plan:");
-  for (const label of describePlan(plan)) {
-    console.log(`- ${label}`);
+  printValidationPlan({ mode, changedFiles, plan });
+  if (planOnly) {
+    return;
   }
 
   runValidationPlan(plan);
