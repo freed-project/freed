@@ -9,6 +9,7 @@
  */
 
 import { create } from "zustand";
+import { isTauri } from "@tauri-apps/api/core";
 import type { Account, FeedItem, FilterOptions, Friend, Person, ReachOutLog, SampleDataClearSummary, UserPreferences, RssFeed, RemoveFeedOptions } from "@freed/shared";
 import {
   applyFeedSignalModesToFilter,
@@ -69,9 +70,10 @@ import {
   runBackgroundJob,
 } from "./background-runtime-coordinator";
 import { log } from "./logger";
-import { initFbAuth, type FbAuthState } from "./fb-auth";
-import { initIgAuth, type IgAuthState } from "./instagram-auth";
-import { initLiAuth, type LiAuthState } from "./li-auth";
+import { initFbAuth, storeFbAuthState, type FbAuthState } from "./fb-auth";
+import { initIgAuth, storeIgAuthState, type IgAuthState } from "./instagram-auth";
+import { initLiAuth, storeLiAuthState, type LiAuthState } from "./li-auth";
+import { reconcileSocialAuthStateHints } from "./social-auth-cookie-state";
 
 let outboxTeardown: (() => void) | null = null;
 let startupContentSignalTimer: ReturnType<typeof setTimeout> | null = null;
@@ -512,9 +514,20 @@ export const useAppStore = create<AppState>((set, get) => ({
         ? { isAuthenticated: true, cookies: xCookies }
         : { isAuthenticated: false };
 
-      const fbAuth = initFbAuth();
-      const igAuth = initIgAuth();
-      const liAuth = initLiAuth();
+      let fbAuth = initFbAuth();
+      let igAuth = initIgAuth();
+      let liAuth = initLiAuth();
+
+      if (isTauri() || import.meta.env.VITE_TEST_TAURI === "1") {
+        const previousAuth = { fbAuth, igAuth, liAuth };
+        const reconciledAuth = await reconcileSocialAuthStateHints({ fbAuth, igAuth, liAuth });
+        fbAuth = reconciledAuth.fbAuth;
+        igAuth = reconciledAuth.igAuth;
+        liAuth = reconciledAuth.liAuth;
+        if (fbAuth !== previousAuth.fbAuth) storeFbAuthState(fbAuth);
+        if (igAuth !== previousAuth.igAuth) storeIgAuthState(igAuth);
+        if (liAuth !== previousAuth.liAuth) storeLiAuthState(liAuth);
+      }
 
       // Hydrate immediately from the initial DocState returned by the worker.
       set({

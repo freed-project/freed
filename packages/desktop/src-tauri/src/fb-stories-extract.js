@@ -23,6 +23,124 @@
         }
       : function () {};
 
+  var FACEBOOK_UI_LABELS = new Set([
+    "account",
+    "ads manager",
+    "create new account",
+    "events",
+    "facebook",
+    "feeds",
+    "friends",
+    "gaming",
+    "groups",
+    "home",
+    "log in",
+    "marketplace",
+    "memories",
+    "menu",
+    "messenger",
+    "meta",
+    "notifications",
+    "pages",
+    "profile",
+    "reels",
+    "saved",
+    "search facebook",
+    "see less",
+    "see more",
+    "sign up",
+    "video",
+    "watch",
+    "your shortcuts",
+  ]);
+
+  var FACEBOOK_BLOCKED_PATHS = new Set([
+    "ads",
+    "bookmarks",
+    "events",
+    "friends",
+    "gaming",
+    "groups",
+    "help",
+    "home",
+    "login",
+    "marketplace",
+    "me",
+    "memories",
+    "messages",
+    "notifications",
+    "pages",
+    "privacy",
+    "recover",
+    "reg",
+    "reel",
+    "reels",
+    "saved",
+    "settings",
+    "stories",
+    "watch",
+  ]);
+
+  function normalizeLabel(value) {
+    return (value || "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  }
+
+  function isFacebookUiChromeLabel(value) {
+    var normalized = normalizeLabel(value);
+    if (!normalized) return true;
+    if (FACEBOOK_UI_LABELS.has(normalized)) return true;
+    if (/^(create|log in|sign up|search|switch|manage)\b/.test(normalized)) return true;
+    if (/\b(shortcuts|notifications|messenger|marketplace)\b/.test(normalized)) return true;
+    return false;
+  }
+
+  function isUsableFacebookAuthorProfileUrl(value) {
+    if (!value) return false;
+    try {
+      var url = new URL(value, "https://www.facebook.com/");
+      var host = url.hostname.toLowerCase();
+      if (host !== "facebook.com" && !host.endsWith(".facebook.com")) return false;
+
+      var parts = url.pathname.split("/").filter(Boolean);
+      var first = parts[0] ? parts[0].toLowerCase() : "";
+      if (!first || FACEBOOK_BLOCKED_PATHS.has(first)) return false;
+
+      if (first === "profile.php") {
+        return /^\d+$/.test(url.searchParams.get("id") || "");
+      }
+
+      return /^[a-z0-9][a-z0-9._-]{1,79}$/i.test(parts[0]);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function isValidFacebookAuthor(name, profileUrl) {
+    return !isFacebookUiChromeLabel(name) && isUsableFacebookAuthorProfileUrl(profileUrl);
+  }
+
+  function emitStorySkip(reason, rejected) {
+    emit("fb-feed-data", {
+      posts: [],
+      extractedAt: Date.now(),
+      url: window.location.href,
+      strategy: "story-viewer-skip",
+      candidateCount: 0,
+      scrollY: 0,
+      feedContainerFound: false,
+      rejected: rejected || {
+        suggestedOrSponsored: 0,
+        missingAuthor: reason === "missing-author" ? 1 : 0,
+        missingContent: reason === "missing-content" ? 1 : 0,
+      },
+    });
+  }
+
   // ── Extract story ID from current URL ────────────────────────────────────
 
   function extractStoryId() {
@@ -65,7 +183,7 @@
       return ancestor;
     }
 
-    return document.body;
+    return null;
   }
 
   // ── Extract author ────────────────────────────────────────────────────────
@@ -221,10 +339,24 @@
   try {
     var rawStoryId = extractStoryId();
     var container = findStoryContainer();
+    if (!container) {
+      emitStorySkip("missing-content");
+      return;
+    }
     var author = extractAuthor(container);
     var media = extractMedia(container);
     var timestampIso = extractTimestamp(container);
     var location = extractLocation(container);
+
+    if (!isValidFacebookAuthor(author.name, author.profileUrl)) {
+      emitStorySkip("missing-author");
+      return;
+    }
+
+    if (media.urls.length === 0 && !media.isVideo) {
+      emitStorySkip("missing-content");
+      return;
+    }
 
     var storyId = rawStoryId
       ? "fbstory_" + rawStoryId

@@ -47,6 +47,14 @@ const MAX_FAILED_TRACKED = 2_000;
 const RESPONSE_TOO_LARGE_PREFIX = "response_too_large";
 const RECENT_INPUT_IDLE_MS = 10_000;
 const UI_DEFER_DELAY_MS = 15_000;
+const CONTENT_FETCH_MEMORY_DEFER_MS = 5 * 60_000;
+const CONTENT_FETCH_WEBKIT_FOOTPRINT_DEFER_BYTES = 512 * 1024 * 1024;
+const CONTENT_FETCH_WEBKIT_RESIDENT_DEFER_BYTES = 768 * 1024 * 1024;
+
+interface ContentFetcherOptions {
+  startupDelayMs?: number;
+  memoryGuard?: boolean;
+}
 
 export interface FetcherStatus {
   pending: number;
@@ -63,6 +71,19 @@ interface QueueEntry {
   url: string;
 }
 
+interface ContentFetchMemoryStats {
+  appResidentBytes?: number;
+  webkitFootprintBytes?: number;
+  webkitTotalFootprintBytes?: number;
+  webkitLargestFootprintBytes?: number;
+  webkitResidentBytes?: number;
+  webkitTotalResidentBytes?: number;
+  webkitLargestResidentBytes?: number;
+  webkitLargestProcessId?: number;
+  webkitProcessCount?: number;
+  webkitTelemetryAvailable?: boolean;
+}
+
 // In-memory queue and status
 const queue: QueueEntry[] = [];
 const inFlight = new Set<string>();
@@ -70,6 +91,7 @@ const failed = new Map<string, number>();
 let completed = 0;
 let running = false;
 let workerTimer: ReturnType<typeof setTimeout> | null = null;
+let startupTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
 let unsubscribeDoc: (() => void) | null = null;
 let lastScannedDocItemCount: number | null = null;
@@ -78,6 +100,8 @@ let nextDelayMs: number | undefined;
 let backoffLevel = 0;
 let lastUserInteractionAt = 0;
 let removeUserInteractionListeners: (() => void) | null = null;
+let memoryGuardEnabled = false;
+let startupDelayUntil = 0;
 
 // Status subscribers
 type StatusSubscriber = (status: FetcherStatus) => void;
@@ -95,6 +119,18 @@ function notifyStatus(): void {
     backoffLevel,
   };
   for (const sub of statusSubscribers) sub(status);
+}
+
+function startupDelayRemainingMs(now = Date.now()): number {
+  return Math.max(0, startupDelayUntil - now);
+}
+
+function clearStartupDelay(): void {
+  if (startupTimer !== null) {
+    clearTimeout(startupTimer);
+    startupTimer = null;
+  }
+  startupDelayUntil = 0;
 }
 
 /** Subscribe to fetcher status changes */
@@ -303,6 +339,12 @@ function isResponseTooLargeError(message: string): boolean {
 
 function scheduleWorker(delayMs: number): void {
   if (!running || workerTimer !== null) return;
+  const startupRemainingMs = startupDelayRemainingMs();
+  if (startupRemainingMs > 0) {
+    nextDelayMs = startupRemainingMs;
+    notifyStatus();
+    return;
+  }
   nextDelayMs = delayMs;
   workerTimer = setTimeout(() => {
     workerTimer = null;
@@ -310,6 +352,60 @@ function scheduleWorker(delayMs: number): void {
     void runWorkerOnce();
   }, delayMs);
   notifyStatus();
+}
+
+function scheduleStartupDelay(delayMs: number): void {
+  clearStartupDelay();
+  if (!running || delayMs <= 0) {
+    startupDelayUntil = 0;
+    scheduleWorker(0);
+    return;
+  }
+
+  startupDelayUntil = Date.now() + delayMs;
+  nextDelayMs = delayMs;
+  startupTimer = setTimeout(() => {
+    startupTimer = null;
+    startupDelayUntil = 0;
+    nextDelayMs = undefined;
+    scheduleWorker(0);
+  }, delayMs);
+  log.info(`[content-fetcher] startup delay scheduled delay_ms=${delayMs.toLocaleString()}`);
+  notifyStatus();
+}
+
+async function getContentFetchMemoryDeferReason(): Promise<string | null> {
+  if (!memoryGuardEnabled) return null;
+
+  let stats: ContentFetchMemoryStats;
+  try {
+    stats = await invoke<ContentFetchMemoryStats>("get_runtime_memory_stats");
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    log.warn(`[content-fetcher] memory guard sample failed err=${msg}`);
+    return null;
+  }
+
+  if (!stats.webkitTelemetryAvailable) return null;
+
+  const webkitFootprintBytes =
+    stats.webkitTotalFootprintBytes ??
+    stats.webkitFootprintBytes ??
+    stats.webkitLargestFootprintBytes ??
+    0;
+  const webkitResidentBytes =
+    stats.webkitTotalResidentBytes ??
+    stats.webkitResidentBytes ??
+    stats.webkitLargestResidentBytes ??
+    0;
+
+  if (webkitFootprintBytes >= CONTENT_FETCH_WEBKIT_FOOTPRINT_DEFER_BYTES) {
+    return `webkit_footprint:${webkitFootprintBytes.toLocaleString()}`;
+  }
+  if (webkitResidentBytes >= CONTENT_FETCH_WEBKIT_RESIDENT_DEFER_BYTES) {
+    return `webkit_rss:${webkitResidentBytes.toLocaleString()}`;
+  }
+  return null;
 }
 
 async function runWorkerOnce(): Promise<void> {
@@ -324,6 +420,14 @@ async function runWorkerOnce(): Promise<void> {
     log.info(`[content-fetcher] deferred by UI reason=${uiDeferReason}`);
     notifyStatus();
     scheduleWorker(UI_DEFER_DELAY_MS);
+    return;
+  }
+
+  const memoryDeferReason = await getContentFetchMemoryDeferReason();
+  if (memoryDeferReason) {
+    log.warn(`[content-fetcher] deferred by memory guard reason=${memoryDeferReason}`);
+    notifyStatus();
+    scheduleWorker(CONTENT_FETCH_MEMORY_DEFER_MS);
     return;
   }
 
@@ -486,9 +590,10 @@ async function processNext(): Promise<ProcessOutcome> {
  * Start the background fetcher.
  * Safe to call multiple times -- a second call is a no-op if already running.
  */
-export function start(): void {
+export function start(options: ContentFetcherOptions = {}): void {
   if (running) return;
   running = true;
+  memoryGuardEnabled = options.memoryGuard ?? false;
   lastScannedDocItemCount = null;
 
   // Wire up the Automerge subscription so stub items arriving via relay sync
@@ -509,7 +614,7 @@ export function start(): void {
   log.info("[content-fetcher] started");
   startUserInteractionTracking();
 
-  scheduleWorker(0);
+  scheduleStartupDelay(options.startupDelayMs ?? 0);
 
   // Periodic heartbeat so logs show the fetcher is still alive overnight.
   heartbeatHandle = setInterval(() => {
@@ -533,8 +638,10 @@ export function stop(): void {
     clearTimeout(workerTimer);
     workerTimer = null;
   }
+  clearStartupDelay();
   nextDelayMs = undefined;
   activeStartedAt = null;
+  memoryGuardEnabled = false;
 
   if (heartbeatHandle !== null) {
     clearInterval(heartbeatHandle);

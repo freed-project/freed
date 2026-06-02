@@ -79,14 +79,6 @@ export function getDesktopSourceStatus(
           : sourceId === "linkedin"
             ? desktopState.liAuth
             : null;
-  const sourceItemCount =
-    sourceId === "x" ||
-    sourceId === "facebook" ||
-    sourceId === "instagram" ||
-    sourceId === "linkedin"
-      ? (desktopState.itemCountByPlatform[sourceId] ?? 0)
-      : 0;
-
   const snapshot =
     sourceId === "x" ||
     sourceId === "facebook" ||
@@ -96,7 +88,7 @@ export function getDesktopSourceStatus(
       : undefined;
   const authError =
     typeof authState?.lastCaptureError === "string" ? authState.lastCaptureError : undefined;
-  const isConnected = authState?.isAuthenticated === true || sourceItemCount > 0;
+  const isConnected = authState?.isAuthenticated === true;
   const tone = getProviderStatusTone({
     isConnected,
     authError,

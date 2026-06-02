@@ -17,6 +17,7 @@ export {
   gdriveStartPollLoop,
   gdriveDeleteFile,
   type GoogleDriveFetch,
+  type CloudUploadResult,
 } from "./gdrive.js";
 export {
   dropboxUploadSafe,

@@ -59,7 +59,10 @@ export function ProviderRiskDialog({
         className="theme-dialog-shell my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col sm:max-h-[calc(100dvh-3rem)]"
       >
         <div className="theme-dialog-divider shrink-0 border-b bg-[linear-gradient(135deg,rgb(127_29_29_/_0.16),color-mix(in_oklab,var(--theme-bg-surface)_88%,transparent),rgb(var(--theme-accent-secondary-rgb)_/_0.14))] px-6 py-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300">
+          <p
+            data-testid={`provider-risk-eyebrow-${provider}`}
+            className="theme-feedback-text-warning text-xs font-semibold uppercase tracking-[0.18em]"
+          >
             High Risk Source
           </p>
           <h2 className="mt-2 text-xl font-semibold text-[var(--theme-text-primary)]">
@@ -67,8 +70,9 @@ export function ProviderRiskDialog({
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-[var(--theme-text-secondary)]">
             Connecting {providerLabel} can trigger checkpoints, forced logouts, account reviews,
-            temporary locks, or permanent bans. If that risk is not acceptable, back away slowly
-            and keep your fingers out of the machine.
+            temporary locks, or the potential of an account ban if {providerLabel} wants to be
+            evil. If that risk is not acceptable, back away slowly and keep your fingers out of
+            the machine.
           </p>
         </div>
 
@@ -112,7 +116,8 @@ export function ProviderRiskDialog({
             />
             <span className="text-sm leading-relaxed text-[var(--theme-text-primary)]">
               I understand the risk of using Freed with {providerLabel}, including rate limits,
-              forced re-authentication, temporary locks, and permanent account bans.
+              forced re-authentication, temporary locks, and the potential of an account ban if{" "}
+              {providerLabel} wants to be evil.
             </span>
           </label>
 

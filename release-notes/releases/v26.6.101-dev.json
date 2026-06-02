@@ -1,0 +1,52 @@
+{
+  "tag": "v26.6.101-dev",
+  "version": "26.6.101-dev",
+  "channel": "dev",
+  "dayKey": "26.6.1",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-01T23:23:36.343Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.100-dev",
+    "previousPublishedDayTag": "v26.5.3117-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.100-dev",
+      "v26.6.101-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.100-dev",
+      "v26.6.101-dev"
+    ],
+    "prNumbers": [
+      681,
+      682,
+      683,
+      684,
+      687
+    ],
+    "commitSubjects": [
+      "fix: require live auth for social source status (#687)",
+      "chore: approve v26.6.100-dev notes",
+      "release: v26.6.100-dev",
+      "test: stabilize sidebar toggle regression (#685)",
+      "fix: unify social feed scrolling (#683)",
+      "fix: avoid false social sync failures (#684)",
+      "fix: stabilize desktop sidebar reopen smoke (#682)",
+      "fix: flag stalled Facebook empty syncs (#681)"
+    ]
+  },
+  "release": {
+    "deck": "Facebook, Instagram, and LinkedIn sync now share the same lower-profile feed scrolling behavior, Facebook no longer treats an unauthenticated or stalled page as a clean zero-post sync, and social source status no longer shows old posts as proof of a live connection.",
+    "features": [],
+    "fixes": [
+      "Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull.",
+      "Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.101-dev\n\nFacebook, Instagram, and LinkedIn sync now share the same lower-profile feed scrolling behavior. Facebook no longer treats an unauthenticated or stalled page as a clean zero-post sync, and social source status no longer shows old posts as proof of a live connection.\n\n### Fixes\n\n- Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull.\n- Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

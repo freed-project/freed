@@ -113,6 +113,73 @@ describe("background runtime coordinator", () => {
     await scrape;
   });
 
+  it("lets social scrapes wait for active local semantic work", async () => {
+    const coordinator = await loadCoordinator();
+    coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: true });
+    coordinator.noteRendererHeartbeat(heartbeat(1));
+    coordinator.noteRendererHeartbeat(heartbeat(2));
+
+    let releaseSemantic: () => void = () => {};
+    const semantic = coordinator.runBackgroundJob({
+      kind: "semantic-classifier",
+      source: "content-signals",
+      run: () => new Promise<void>((resolve) => {
+        releaseSemantic = resolve;
+      }),
+    });
+
+    await Promise.resolve();
+    let completed = false;
+    const scrape = coordinator.runBackgroundJob({
+      kind: "social-scrape",
+      source: "instagram:feed",
+      waitForActiveJobMs: 1_000,
+      waitForActiveJobKinds: ["semantic-classifier"],
+      run: () => {
+        completed = true;
+        return "scraped";
+      },
+    });
+
+    await Promise.resolve();
+    expect(completed).toBe(false);
+
+    releaseSemantic();
+    await semantic;
+    await expect(scrape).resolves.toBe("scraped");
+    expect(completed).toBe(true);
+  });
+
+  it("keeps a second social scrape deferred instead of queueing another provider window", async () => {
+    const coordinator = await loadCoordinator();
+    coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: true });
+    coordinator.noteRendererHeartbeat(heartbeat(1));
+    coordinator.noteRendererHeartbeat(heartbeat(2));
+
+    let releaseScrape: () => void = () => {};
+    const first = coordinator.runBackgroundJob({
+      kind: "social-scrape",
+      source: "facebook:feed",
+      run: () => new Promise<void>((resolve) => {
+        releaseScrape = resolve;
+      }),
+    });
+
+    await Promise.resolve();
+    await expect(
+      coordinator.runBackgroundJob({
+        kind: "social-scrape",
+        source: "instagram:feed",
+        waitForActiveJobMs: 1_000,
+        waitForActiveJobKinds: ["semantic-classifier"],
+        run: () => "scraped",
+      }),
+    ).rejects.toMatchObject({ reason: "active:social-scrape:facebook:feed" });
+
+    releaseScrape();
+    await first;
+  });
+
   it("pauses jobs during memory pressure cooldown", async () => {
     vi.useFakeTimers();
     const coordinator = await loadCoordinator();

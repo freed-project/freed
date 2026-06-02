@@ -19,6 +19,7 @@ import {
   deduplicateFeedItems,
 } from "@freed/capture-facebook/browser";
 import type { FbGroupInfo, FeedItem } from "@freed/shared";
+import { isValidFacebookAuthorIdentity } from "@freed/shared";
 import { formatClockTime } from "@freed/ui/lib/date-format";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
@@ -31,9 +32,20 @@ import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./m
 import { socialProviderCopy } from "./social-provider-copy";
 import { runBackgroundJob } from "./background-runtime-coordinator";
 import {
+  applyRuntimeDeferredDiag,
+  applyLockedSessionDeferredDiag,
+  isRuntimeDeferredStage,
+  SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
+  SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
+} from "./social-capture-runtime";
+import {
   facebookGroupsFromFeedItems,
   mergeFacebookGroupRecords,
 } from "./facebook-groups";
+import {
+  loadSocialProviderCookieState,
+  socialProviderMissingAuthCookieMessage,
+} from "./social-auth-cookie-state";
 
 // =============================================================================
 // Rate Limiting
@@ -64,6 +76,41 @@ export interface FbSyncDiag {
   itemsNormalized: number;
   itemsDeduplicated: number;
   itemsAdded: number;
+  candidateItems: number;
+  existingItems: number;
+  excludedItems: number;
+  extractionPasses: number;
+  totalCandidateCount: number;
+  totalRejected: {
+    suggestedOrSponsored: number;
+    missingAuthor: number;
+    missingContent: number;
+  };
+  lastExtractionStrategy: string | null;
+  lastCandidateCount: number | null;
+  lastRejected:
+    | {
+        suggestedOrSponsored?: number;
+        missingAuthor?: number;
+        missingContent?: number;
+      }
+    | null;
+  lastScrollY: number | null;
+  maxScrollY: number | null;
+  feedContainerFound: boolean | null;
+  scrapeRunId: string | null;
+  lastPageState:
+    | {
+        state?: string;
+        loggedInCookie?: boolean;
+        feedLike?: boolean;
+        feedUnitCount?: number;
+        loginChrome?: boolean;
+        scrollHeight?: number;
+        url?: string;
+        title?: string;
+      }
+    | null;
   errorStage: string | null;
   errorMessage: string | null;
 }
@@ -71,6 +118,185 @@ export interface FbSyncDiag {
 export interface FbSyncResult {
   items: ReturnType<typeof fbPostsToFeedItems>;
   diag: FbSyncDiag;
+}
+
+function createEmptyFbSyncDiag(
+  overrides: Partial<FbSyncDiag> = {},
+): FbSyncDiag {
+  const { totalRejected: rejectedOverrides, ...rest } = overrides;
+  const totalRejected = {
+    suggestedOrSponsored: 0,
+    missingAuthor: 0,
+    missingContent: 0,
+    ...rejectedOverrides,
+  };
+  return {
+    postsExtracted: 0,
+    itemsNormalized: 0,
+    itemsDeduplicated: 0,
+    itemsAdded: 0,
+    candidateItems: 0,
+    existingItems: 0,
+    excludedItems: 0,
+    extractionPasses: 0,
+    totalCandidateCount: 0,
+    lastExtractionStrategy: null,
+    lastCandidateCount: null,
+    lastRejected: null,
+    lastScrollY: null,
+    maxScrollY: null,
+    feedContainerFound: null,
+    scrapeRunId: null,
+    lastPageState: null,
+    errorStage: null,
+    errorMessage: null,
+    ...rest,
+    totalRejected,
+  };
+}
+
+interface FbNormalizationRejectionSummary {
+  accepted: number;
+  missingId: number;
+  invalidAuthor: number;
+  unexpected: number;
+  firstRejectedSample: string | null;
+}
+
+function rawFacebookPostSample(post: RawFbPost): string {
+  return [
+    `id:${post.id ? "y" : "n"}`,
+    `url:${post.url ? "y" : "n"}`,
+    `author:${post.authorName ? "y" : "n"}`,
+    `profile:${post.authorProfileUrl ? "y" : "n"}`,
+    `text:${(post.text?.length ?? 0).toLocaleString()}`,
+    `media:${(post.mediaUrls?.length ?? 0).toLocaleString()}`,
+  ].join(",");
+}
+
+function summarizeFacebookNormalizationRejections(
+  posts: readonly RawFbPost[],
+): FbNormalizationRejectionSummary {
+  const summary: FbNormalizationRejectionSummary = {
+    accepted: 0,
+    missingId: 0,
+    invalidAuthor: 0,
+    unexpected: 0,
+    firstRejectedSample: null,
+  };
+
+  for (const post of posts) {
+    let reason: "missingId" | "invalidAuthor" | null = null;
+    if (!post.id && !post.url) {
+      reason = "missingId";
+    } else if (!isValidFacebookAuthorIdentity({
+      displayName: post.authorName,
+      profileUrl: post.authorProfileUrl,
+    })) {
+      reason = "invalidAuthor";
+    }
+
+    if (!reason) {
+      summary.accepted++;
+      continue;
+    }
+
+    summary[reason]++;
+    if (!summary.firstRejectedSample) {
+      summary.firstRejectedSample = `${reason}(${rawFacebookPostSample(post)})`;
+    }
+  }
+
+  return summary;
+}
+
+function formatFacebookNormalizationSummary(
+  summary: FbNormalizationRejectionSummary,
+): string {
+  return (
+    `accepted=${summary.accepted.toLocaleString()}, ` +
+    `missingId=${summary.missingId.toLocaleString()}, ` +
+    `invalidAuthor=${summary.invalidAuthor.toLocaleString()}, ` +
+    `unexpected=${summary.unexpected.toLocaleString()}` +
+    (summary.firstRejectedSample ? `, firstRejected=${summary.firstRejectedSample}` : "")
+  );
+}
+
+function formatFacebookEmptySyncMessage(diag: FbSyncDiag): string {
+  const details: string[] = [];
+  const scrollAppearsStuck =
+    diag.extractionPasses >= 3 &&
+    diag.lastCandidateCount === 0 &&
+    typeof diag.lastScrollY === "number" &&
+    diag.lastScrollY < 250;
+
+  if (diag.extractionPasses > 0) {
+    details.push(
+      `${diag.extractionPasses.toLocaleString()} extraction pass${diag.extractionPasses === 1 ? "" : "es"}`,
+    );
+  }
+  if (diag.lastExtractionStrategy) {
+    details.push(`last strategy ${diag.lastExtractionStrategy}`);
+  }
+  if (typeof diag.lastCandidateCount === "number") {
+    details.push(
+      `${diag.lastCandidateCount.toLocaleString()} candidate${diag.lastCandidateCount === 1 ? "" : "s"} on the last pass`,
+    );
+  }
+  if (typeof diag.lastScrollY === "number") {
+    details.push(`scrollY ${diag.lastScrollY.toLocaleString()}`);
+  }
+  if (typeof diag.feedContainerFound === "boolean") {
+    details.push(`feed container ${diag.feedContainerFound ? "found" : "not found"}`);
+  }
+  if (scrollAppearsStuck) {
+    details.push("scroll appears stuck near the top");
+  }
+
+  return details.length > 0
+    ? `${socialProviderCopy("facebook").feedReturnedEmpty} ${details.join(", ")}.`
+    : socialProviderCopy("facebook").feedReturnedEmpty;
+}
+
+function formatFacebookParseFailureMessage(diag: FbSyncDiag): string {
+  const rejected = diag.totalRejected;
+  const details = [
+    `${diag.totalCandidateCount.toLocaleString()} candidate${diag.totalCandidateCount === 1 ? "" : "s"}`,
+    `${rejected.missingAuthor.toLocaleString()} missing author`,
+    `${rejected.missingContent.toLocaleString()} missing content`,
+  ];
+
+  if (rejected.suggestedOrSponsored > 0) {
+    details.push(`${rejected.suggestedOrSponsored.toLocaleString()} suggested or sponsored`);
+  }
+  if (diag.extractionPasses > 0) {
+    details.push(`${diag.extractionPasses.toLocaleString()} extraction pass${diag.extractionPasses === 1 ? "" : "es"}`);
+  }
+  if (typeof diag.maxScrollY === "number") {
+    details.push(`max scrollY ${diag.maxScrollY.toLocaleString()}`);
+  }
+  if (diag.lastPageState?.state) {
+    details.push(`page state ${diag.lastPageState.state}`);
+  }
+
+  return `Facebook rendered post-like blocks, but Freed Desktop could not parse any posts. ${details.join(", ")}.`;
+}
+
+function formatFacebookNoNewItemsMessage(diag: FbSyncDiag): string {
+  const details: string[] = [];
+  if (diag.existingItems > 0) {
+    details.push(`${diag.existingItems.toLocaleString()} already present`);
+  }
+  if (diag.excludedItems > 0) {
+    details.push(`${diag.excludedItems.toLocaleString()} excluded`);
+  }
+  if (diag.candidateItems > 0) {
+    details.push(`${diag.candidateItems.toLocaleString()} write candidate${diag.candidateItems === 1 ? "" : "s"}`);
+  }
+
+  return details.length > 0
+    ? `No new Facebook items: ${details.join(", ")}.`
+    : "No new Facebook items.";
 }
 
 function filterExcludedGroups(
@@ -135,14 +361,18 @@ export async function repairStoredFacebookGroupNamesFromItems(
  * 4. Normalize raw posts to FeedItem[]
  */
 export async function fetchFbFeed(): Promise<FbSyncResult> {
-  const diag: FbSyncDiag = {
-    postsExtracted: 0,
-    itemsNormalized: 0,
-    itemsDeduplicated: 0,
-    itemsAdded: 0,
-    errorStage: null,
-    errorMessage: null,
-  };
+  const diag = createEmptyFbSyncDiag();
+
+  const cookieState = await loadSocialProviderCookieState("facebook");
+  if (cookieState && cookieState.available && !cookieState.hasAuthCookie) {
+    diag.errorStage = "auth";
+    diag.errorMessage = socialProviderMissingAuthCookieMessage("facebook");
+    return { items: [], diag };
+  }
+
+  if (await applyLockedSessionDeferredDiag(diag)) {
+    return { items: [], diag };
+  }
 
   const memoryPrep = await prepareSocialScrapeMemory("facebook", "feed scrape");
   if (!memoryPrep.mayProceed) {
@@ -163,9 +393,18 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
 
     // Listen for diagnostics (fires before extraction)
     unlistenDiag = await listen("fb-diag", (diagEvent) => {
-      const diag = diagEvent.payload as Record<string, unknown>;
-      addDebugEvent("change", `[FB] DOM diag: feedUnits=${diag.feedUnits}, fallback=${diag.feedUnitsFallback}, feed=${diag.feedContainer}, h4s=${diag.h4Count}, bodyLen=${diag.bodyLen}, url=${diag.url}, tauriEmit=${diag.hasTauriEmit}`);
-      console.log("[FB] DOM diagnostics:", diag);
+      const payload = diagEvent.payload as Record<string, unknown>;
+      const url = typeof payload.url === "string" ? payload.url : "?";
+      const title = typeof payload.title === "string" ? payload.title : "?";
+      const scrollHeight =
+        typeof payload.scrollHeight === "number"
+          ? payload.scrollHeight.toLocaleString()
+          : "?";
+      addDebugEvent(
+        "change",
+        `[FB] DOM diag: title="${title}", scrollHeight=${scrollHeight}, url=${url}`,
+      );
+      console.log("[FB] DOM diagnostics:", payload);
     });
 
     // Listen for every extraction pass. The native scraper emits multiple
@@ -182,22 +421,65 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
         missingAuthor?: number;
         missingContent?: number;
       };
+      scrollY?: number;
+      feedContainerFound?: boolean;
+      scrapeRunId?: string | null;
+      pageState?: FbSyncDiag["lastPageState"];
     }>(
       "fb-feed-data",
       (event) => {
-        const { posts, error, strategy, candidateCount, rejected } = event.payload;
+        const {
+          posts,
+          error,
+          strategy,
+          candidateCount,
+          rejected,
+          scrollY,
+          feedContainerFound,
+          scrapeRunId,
+          pageState,
+        } = event.payload;
+        diag.extractionPasses++;
+        diag.lastExtractionStrategy = strategy ?? null;
+        diag.lastCandidateCount = typeof candidateCount === "number" ? candidateCount : null;
+        diag.lastRejected = rejected ?? null;
+        diag.lastScrollY = typeof scrollY === "number" ? scrollY : null;
+        diag.maxScrollY =
+          typeof scrollY === "number"
+            ? Math.max(diag.maxScrollY ?? scrollY, scrollY)
+            : diag.maxScrollY;
+        diag.feedContainerFound = typeof feedContainerFound === "boolean" ? feedContainerFound : null;
+        diag.scrapeRunId = typeof scrapeRunId === "string" ? scrapeRunId : diag.scrapeRunId;
+        diag.lastPageState = pageState ?? diag.lastPageState;
+        diag.totalCandidateCount += typeof candidateCount === "number" ? candidateCount : 0;
+        if (rejected) {
+          diag.totalRejected.suggestedOrSponsored += rejected.suggestedOrSponsored ?? 0;
+          diag.totalRejected.missingAuthor += rejected.missingAuthor ?? 0;
+          diag.totalRejected.missingContent += rejected.missingContent ?? 0;
+        }
 
         const rejectionSummary = rejected
           ? `, rejected={sponsored:${(rejected.suggestedOrSponsored ?? 0).toLocaleString()}, author:${(rejected.missingAuthor ?? 0).toLocaleString()}, content:${(rejected.missingContent ?? 0).toLocaleString()}}`
           : "";
+        const scrollSummary =
+          typeof scrollY === "number" ? `, scrollY=${scrollY.toLocaleString()}` : "";
+        const feedSummary =
+          typeof feedContainerFound === "boolean"
+            ? `, feedContainer=${feedContainerFound ? "y" : "n"}`
+            : "";
         addDebugEvent(
           "change",
-          `[FB] extraction: strategy=${strategy ?? "?"}, candidates=${candidateCount ?? "?"}, posts=${posts.length.toLocaleString()}${rejectionSummary}`,
+          `[FB] extraction: strategy=${strategy ?? "?"}, candidates=${candidateCount?.toLocaleString() ?? "?"}, posts=${posts.length.toLocaleString()}${rejectionSummary}${scrollSummary}${feedSummary}`,
         );
 
         if (error) {
           addDebugEvent("error", `[FB] extraction error: ${error}`);
-          diag.errorStage = "extract";
+          diag.errorStage =
+            strategy === "not_authenticated"
+              ? "auth"
+              : strategy === "short_non_feed"
+                ? "provider_page"
+                : "extract";
           diag.errorMessage = error;
           return;
         }
@@ -216,11 +498,16 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
       kind: "social-scrape",
       source: "facebook:feed",
       timeoutMs: 600_000,
+      waitForActiveJobMs: SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
+      waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
       run: () => invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() }),
     });
     await new Promise<void>((resolve) => setTimeout(resolve, 500));
   } catch (err) {
     if (!diag.errorStage) {
+      if (applyRuntimeDeferredDiag(diag, err)) {
+        return { items: [], diag };
+      }
       diag.errorStage = "invoke";
       diag.errorMessage = err instanceof Error ? err.message : String(err);
     }
@@ -237,17 +524,30 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
   diag.postsExtracted = allRawPosts.length;
 
   if (allRawPosts.length === 0) {
+    const parseRejectCount =
+      diag.totalRejected.missingAuthor + diag.totalRejected.missingContent;
+    if (diag.totalCandidateCount > 0 && parseRejectCount > 0) {
+      diag.errorStage = "extract";
+      diag.errorMessage = formatFacebookParseFailureMessage(diag);
+    } else {
+      diag.errorStage = "extract_empty";
+      diag.errorMessage = formatFacebookEmptySyncMessage(diag);
+    }
     return { items: [], diag };
   }
 
   try {
     const normalized = fbPostsToFeedItems(allRawPosts);
     diag.itemsNormalized = normalized.length;
+    const normalizationSummary = summarizeFacebookNormalizationRejections(allRawPosts);
+    normalizationSummary.unexpected = Math.max(0, normalizationSummary.accepted - normalized.length);
     if (normalized.length === 0) {
+      const summaryText = formatFacebookNormalizationSummary(normalizationSummary);
       diag.errorStage = "normalize";
       diag.errorMessage =
         `Extracted ${allRawPosts.length.toLocaleString()} Facebook post` +
-        `${allRawPosts.length === 1 ? "" : "s"}, but none passed normalization.`;
+        `${allRawPosts.length === 1 ? "" : "s"}, but none passed normalization. ${summaryText}`;
+      addDebugEvent("error", `[FB] normalization rejected all raw posts: ${summaryText}`);
       return { items: [], diag };
     }
 
@@ -255,7 +555,7 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
     diag.itemsDeduplicated = items.length;
     addDebugEvent(
       "change",
-      `[FB] normalization: raw=${allRawPosts.length.toLocaleString()}, normalized=${normalized.length.toLocaleString()}, deduplicated=${items.length.toLocaleString()}`,
+      `[FB] normalization: raw=${allRawPosts.length.toLocaleString()}, normalized=${normalized.length.toLocaleString()}, deduplicated=${items.length.toLocaleString()}, ${formatFacebookNormalizationSummary(normalizationSummary)}`,
     );
 
     return { items, diag };
@@ -307,14 +607,10 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
     addDebugEvent("change", `[FB] paused until ${formatClockTime(providerPause.pausedUntil)}`);
     return {
       items: [],
-      diag: {
-        postsExtracted: 0,
-        itemsNormalized: 0,
-        itemsDeduplicated: 0,
-        itemsAdded: 0,
+      diag: createEmptyFbSyncDiag({
         errorStage: "provider_rate_limit",
         errorMessage: providerPause.pauseReason,
-      },
+      }),
     };
   }
 
@@ -336,14 +632,10 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
     });
     return {
       items: [],
-      diag: {
-        postsExtracted: 0,
-        itemsNormalized: 0,
-        itemsDeduplicated: 0,
-        itemsAdded: 0,
+      diag: createEmptyFbSyncDiag({
         errorStage: "cooldown",
         errorMessage: `Cooling down. Try again in ~${minutesRemaining} minutes.`,
-      },
+      }),
     };
   }
 
@@ -354,14 +646,25 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
   try {
     addDebugEvent("change", "[FB] sync started");
     const result = await fetchFbFeed();
-    recordScrape();
 
     if (result.diag.errorStage) {
-      const detail = `[FB] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
-      addDebugEvent("error", detail);
+      const runtimeDeferred = isRuntimeDeferredStage(result.diag.errorStage);
+      const detail = `[FB] sync ${runtimeDeferred ? "deferred" : "failed"} at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
+      addDebugEvent(runtimeDeferred ? "change" : "error", detail);
+      if (runtimeDeferred) {
+        return result;
+      }
+      if (result.diag.errorStage !== "memory_pressure") {
+        recordScrape();
+      }
       if (result.diag.errorStage !== "memory_pressure") {
         store.setError(result.diag.errorMessage ?? result.diag.errorStage);
-        const errState = { ...useAppStore.getState().fbAuth, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed" };
+        const errState = {
+          ...useAppStore.getState().fbAuth,
+          isAuthenticated:
+            result.diag.errorStage === "auth" ? false : useAppStore.getState().fbAuth.isAuthenticated,
+          lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
+        };
         store.setFbAuth(errState);
         storeFbAuthState(errState);
       }
@@ -378,18 +681,22 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       return result;
     }
 
+    recordScrape();
     if (result.items.length > 0) {
       await repairStoredFacebookGroupNamesFromItems(result.items);
       const excludedGroupIds =
         useAppStore.getState().preferences.fbCapture?.excludedGroupIds ?? {};
       const filteredItems = filterExcludedGroups(result.items, excludedGroupIds);
+      result.diag.candidateItems = filteredItems.length;
+      result.diag.excludedItems = result.items.length - filteredItems.length;
       const beforeState = useAppStore.getState();
       const beforeFacebookItems = beforeState.items.filter((i) => i.platform === "facebook");
       const beforeFacebookIds = new Set(beforeFacebookItems.map((item) => item.globalId));
       const existingCandidateCount = filteredItems.filter((item) => beforeFacebookIds.has(item.globalId)).length;
+      result.diag.existingItems = existingCandidateCount;
       addDebugEvent(
         "change",
-        `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library (${existingCandidateCount.toLocaleString()} already present)`,
+        `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library (${existingCandidateCount.toLocaleString()} already present, ${result.diag.excludedItems.toLocaleString()} excluded)`,
       );
       const before = beforeFacebookItems.length;
       await store.addItems(filteredItems);
@@ -410,10 +717,29 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       }
       addDebugEvent(
         "change",
-        `[FB] synced: ${result.diag.postsExtracted.toLocaleString()} posts extracted, ${result.diag.itemsAdded.toLocaleString()} new items`,
+        `[FB] synced: ${result.diag.postsExtracted.toLocaleString()} posts extracted, ${result.diag.itemsAdded.toLocaleString()} new item${result.diag.itemsAdded === 1 ? "" : "s"}, ${result.diag.existingItems.toLocaleString()} already present, ${result.diag.excludedItems.toLocaleString()} excluded`,
       );
     } else {
-      addDebugEvent("change", "[FB] sync complete: feed returned 0 posts");
+      const emptyMessage = formatFacebookEmptySyncMessage(result.diag);
+      addDebugEvent("change", `[FB] sync complete: ${emptyMessage}`);
+      store.setError(emptyMessage);
+      const emptyState = {
+        ...useAppStore.getState().fbAuth,
+        lastCaptureError: emptyMessage,
+      };
+      store.setFbAuth(emptyState);
+      storeFbAuthState(emptyState);
+      await recordProviderHealthEvent({
+        provider: "facebook",
+        outcome: "empty",
+        stage: "empty",
+        reason: emptyMessage,
+        startedAt,
+        finishedAt: Date.now(),
+        itemsSeen: result.diag.postsExtracted,
+        itemsAdded: result.diag.itemsAdded,
+      });
+      return result;
     }
 
     // Persist success timestamp so the sync dropdown shows "Synced X ago"
@@ -424,7 +750,12 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       provider: "facebook",
       outcome: result.diag.postsExtracted > 0 ? "success" : "empty",
       stage: result.diag.postsExtracted > 0 ? undefined : "empty",
-      reason: result.diag.postsExtracted > 0 ? undefined : "No posts pulled",
+      reason:
+        result.diag.postsExtracted > 0 && result.diag.itemsAdded === 0
+          ? formatFacebookNoNewItemsMessage(result.diag)
+          : result.diag.postsExtracted > 0
+            ? undefined
+            : "No posts pulled",
       startedAt,
       finishedAt: Date.now(),
       itemsSeen: result.diag.postsExtracted,

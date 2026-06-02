@@ -24,6 +24,8 @@ const HERO_ZONE_HEIGHT = 800;
 const MOBILE_BREAKPOINT = 768;
 const DESKTOP_BASELINE_WIDTH = 1280;
 const MIN_WIDTH_SCALE = 0.58;
+const MIN_BACKGROUND_HEIGHT = 1200;
+const VIEWPORT_BACKGROUND_BUFFER = 480;
 
 interface Orb {
   channel: ChannelName;
@@ -71,6 +73,7 @@ function generateOrbs(
   recipe: ThemeBackgroundRecipe,
   compact: boolean,
   rendererMode: RendererMode,
+  backgroundHeight: number,
 ): Orb[] {
   const orbs: Orb[] = [];
   const rowRecipe = recipe.rowOrbs;
@@ -91,8 +94,13 @@ function generateOrbs(
     });
   });
 
+  const targetHeight = clamp(
+    backgroundHeight + VIEWPORT_BACKGROUND_BUFFER,
+    MIN_BACKGROUND_HEIGHT,
+    MAX_HEIGHT,
+  );
   const numRows =
-    Math.ceil((MAX_HEIGHT - HERO_ZONE_HEIGHT) / VERTICAL_SPACING) + 1;
+    Math.ceil((targetHeight - HERO_ZONE_HEIGHT) / VERTICAL_SPACING) + 1;
   for (let row = 0; row < numRows; row++) {
     const baseY = HERO_ZONE_HEIGHT + row * VERTICAL_SPACING;
     for (let i = 0; i < countPerRow; i++) {
@@ -202,9 +210,19 @@ function resolveTextureOpacity(
   return texture.compactOpacity ?? 1;
 }
 
+function getDocumentVisible(): boolean {
+  if (typeof document === "undefined") {
+    return true;
+  }
+
+  return document.visibilityState !== "hidden";
+}
+
 export function BackgroundAtmosphere() {
   const [orbs, setOrbs] = useState<Orb[] | null>(null);
   const [viewportWidth, setViewportWidth] = useState(DESKTOP_BASELINE_WIDTH);
+  const [viewportHeight, setViewportHeight] = useState(MIN_BACKGROUND_HEIGHT);
+  const [documentVisible, setDocumentVisible] = useState(getDocumentVisible);
   const [themeId, setThemeId] = useState<ThemeId>(DEFAULT_THEME_ID);
   const themeRecipe = useMemo(
     () => getThemeDefinition(themeId).background,
@@ -222,6 +240,7 @@ export function BackgroundAtmosphere() {
       document.documentElement.dataset.theme || DEFAULT_THEME_ID,
     );
     setViewportWidth(window.innerWidth);
+    setViewportHeight(window.innerHeight);
     setThemeId(initialThemeId);
 
     const observer = new MutationObserver(() => {
@@ -240,19 +259,44 @@ export function BackgroundAtmosphere() {
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         setViewportWidth(window.innerWidth);
+        setViewportHeight(window.innerHeight);
       });
     };
+    const onVisibilityChange = () => {
+      setDocumentVisible(getDocumentVisible());
+    };
+    setDocumentVisible(getDocumentVisible());
     window.addEventListener("resize", onResize);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("resize", onResize);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       cancelAnimationFrame(rafId);
       observer.disconnect();
     };
   }, []);
 
   useEffect(() => {
-    setOrbs(generateOrbs(themeRecipe, viewportProfile.compact, rendererMode));
-  }, [themeRecipe, viewportProfile.compact, rendererMode]);
+    if (!documentVisible) {
+      setOrbs(null);
+      return;
+    }
+
+    setOrbs(
+      generateOrbs(
+        themeRecipe,
+        viewportProfile.compact,
+        rendererMode,
+        viewportHeight,
+      ),
+    );
+  }, [
+    documentVisible,
+    themeRecipe,
+    viewportProfile.compact,
+    rendererMode,
+    viewportHeight,
+  ]);
 
   const gradientBackgroundImage = useMemo(
     () =>
@@ -286,10 +330,14 @@ export function BackgroundAtmosphere() {
     [isLegacyRenderer, orbs, themeRecipe],
   );
 
-  if (!orbs) return null;
+  if (!documentVisible || !orbs) return null;
 
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+    <div
+      className="pointer-events-none absolute inset-0 overflow-hidden"
+      aria-hidden="true"
+      data-testid="background-atmosphere"
+    >
       {isLegacyRenderer ? (
         <div
           className="absolute inset-0"
@@ -297,8 +345,6 @@ export function BackgroundAtmosphere() {
             backgroundImage: gradientBackgroundImage,
             backgroundRepeat: gradientBackgroundRepeat,
             backgroundSize: gradientBackgroundSize,
-            willChange: "transform",
-            transform: "translateZ(0)",
           }}
         />
       ) : (
@@ -312,8 +358,6 @@ export function BackgroundAtmosphere() {
                 backgroundRepeat: texture.repeat,
                 backgroundSize: resolveTextureSize(texture, viewportProfile),
                 opacity: resolveTextureOpacity(texture, viewportProfile),
-                willChange: "transform",
-                transform: "translateZ(0)",
               }}
             />
           ))}
@@ -323,8 +367,6 @@ export function BackgroundAtmosphere() {
               backgroundImage: gradientBackgroundImage,
               backgroundRepeat: gradientBackgroundRepeat,
               backgroundSize: gradientBackgroundSize,
-              willChange: "transform",
-              transform: "translateZ(0)",
             }}
           />
         </>

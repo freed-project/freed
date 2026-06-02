@@ -23,6 +23,10 @@ import { storeLiAuthState } from "./li-auth";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
 import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-monitor";
 import { socialProviderCopy } from "./social-provider-copy";
+import {
+  applyLockedSessionDeferredDiag,
+  isRuntimeDeferredStage,
+} from "./social-capture-runtime";
 
 // =============================================================================
 // Rate Limiting
@@ -99,6 +103,10 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
 
   if (!isTauri()) {
     return emptyResult;
+  }
+
+  if (await applyLockedSessionDeferredDiag(diag)) {
+    return { items: [], diag };
   }
 
   const memoryPrep = await prepareSocialScrapeMemory("linkedin", "feed scrape");
@@ -261,8 +269,12 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
     const result = await fetchLiFeed();
 
     if (result.diag.errorStage) {
-      const detail = `[LI] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
-      addDebugEvent("error", detail);
+      const runtimeDeferred = isRuntimeDeferredStage(result.diag.errorStage);
+      const detail = `[LI] sync ${runtimeDeferred ? "deferred" : "failed"} at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
+      addDebugEvent(runtimeDeferred ? "change" : "error", detail);
+      if (runtimeDeferred) {
+        return result;
+      }
       if (result.diag.errorStage !== "memory_pressure") {
         store.setError(result.diag.errorMessage ?? result.diag.errorStage);
         const errState = {

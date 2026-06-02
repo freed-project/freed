@@ -94,6 +94,54 @@ test("Facebook connect form accepts cookies and triggers sync", async ({
   ).toBeVisible({ timeout: 5_000 });
 });
 
+test("Facebook reconnect opens the login WebView from connected error state", async ({
+  app,
+  ipc,
+}) => {
+  await app.goto();
+  await app.waitForReady();
+
+  const { page } = app;
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    store.setState({
+      fbAuth: {
+        isAuthenticated: true,
+        lastCheckedAt: Date.now(),
+        lastCaptureError: "Facebook session expired. Reconnect to keep syncing.",
+      },
+    });
+  });
+
+  const settingsBtn = page
+    .locator("button")
+    .filter({ hasText: /settings/i })
+    .first();
+  await expect(settingsBtn).toBeVisible({ timeout: 5_000 });
+  await settingsBtn.click();
+  await expect(page.getByText("Settings").first()).toBeVisible({
+    timeout: 5_000,
+  });
+
+  const fbSection = getSettingsDialog(page).getByRole("button", {
+    name: /Facebook.*Reconnect required/,
+  });
+  await expect(fbSection).toBeVisible({ timeout: 3_000 });
+  await fbSection.click();
+
+  const reconnectButton = page.getByTestId("provider-sync-action-facebook");
+  await expect(reconnectButton).toHaveText(/Reconnect Facebook/);
+  await reconnectButton.click();
+  await app.acceptProviderRiskIfPresent("facebook");
+
+  await expect.poll(async () => {
+    const invocations = await ipc.invocations();
+    return invocations.filter((call) => call.cmd === "fb_show_login").length;
+  }).toBe(1);
+});
+
 test("Facebook sync excludes posts from filtered groups", async ({
   app,
   ipc,

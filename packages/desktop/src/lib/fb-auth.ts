@@ -9,6 +9,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { selectPlatformUA, clearPlatformUA } from "./user-agent";
+import { log } from "./logger";
 
 export interface FbAuthState {
   isAuthenticated: boolean;
@@ -28,16 +29,24 @@ const FB_AUTH_KEY = "fb_auth_state";
 /**
  * Open the Facebook login WebView so the user can authenticate.
  * The window is visible and allows normal Facebook login. Once logged
- * in, the user closes the window (or we hide it after detecting auth).
+ * in, Freed marks the session connected and the user closes the window.
  */
 export async function showFbLogin(): Promise<void> {
   // Generate and persist a fresh session UA at connect time.
   const userAgent = selectPlatformUA("facebook");
-  await invoke("fb_show_login", { userAgent });
+  log.info("[FB] show login requested");
+  try {
+    await invoke("fb_show_login", { userAgent });
+    log.info("[FB] show login IPC completed");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.error(`[FB] show login IPC failed: ${message}`);
+    throw error;
+  }
 }
 
 /**
- * Hide the login WebView (called after successful auth detection).
+ * Hide the login WebView after the user is done with provider prompts.
  */
 export async function hideFbLogin(): Promise<void> {
   await invoke("fb_hide_login");

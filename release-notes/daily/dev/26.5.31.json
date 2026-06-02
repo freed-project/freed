@@ -2,18 +2,20 @@
   "channel": "dev",
   "dayKey": "26.5.31",
   "date": "2026-05-31",
-  "preferredDeck": "Facebook sync now reports unusable scrape results as sync issues and adds diagnostics for the next dev soak.",
+  "preferredDeck": "This dev build adds Facebook zero-post diagnostics and keeps RSS retry pacing and installed dev-channel validation ready for the next soak.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
-    "Facebook feed sync now reports unusable raw scrape results as failures instead of healthy zero-post syncs.",
-    "The scrape log now exposes extraction strategy, rejection counts, normalization counts, and existing-item counts."
+    "Facebook sync now reports why extracted posts normalize to zero usable items.",
+    "RSS scheduled polling now backs off after runtime deferrals instead of retrying every 15 seconds.",
+    "Broken RSS feeds now record retry windows after failed fetches.",
+    "Installed dev builds continue using the dev release channel after reinstall."
   ],
   "editorialNotes": [
-    "Use the Facebook sync repair as the headline for v26.5.3110-dev."
+    "Use v26.5.3114-dev as the focused dev build for Facebook zero-post diagnostics, RSS retry pacing, and installed dev-channel validation."
   ],
-  "updatedAt": "2026-06-01T01:52:06.141Z"
+  "updatedAt": "2026-06-01T05:39:19.153Z"
 }
