@@ -20,11 +20,15 @@
     {
       "text": "macOS Intel release builds now run on Intel GitHub runners, avoiding the x64 DMG cross-packaging failure from v26.6.201.",
       "sourceTag": "v26.6.202"
+    },
+    {
+      "text": "Release validation now avoids transient restored-sidebar geometry samples after the stable width assertion passes.",
+      "sourceTag": "v26.6.203"
     }
   ],
   "editorialNotes": [
     "This production build includes the June 1 dev release train plus post-dev Facebook sync reliability fixes through PR 707.",
-    "v26.6.202 replaces failed v26.6.200 and v26.6.201 release workflow attempts, and adds the macOS Intel runner fix from PR 716 and PR 717."
+    "v26.6.203 replaces failed v26.6.200, v26.6.201, and v26.6.202 release workflow attempts, and adds the macOS Intel runner fix plus sidebar release-validation stabilization."
   ],
-  "updatedAt": "2026-06-02T22:13:47.000Z"
+  "updatedAt": "2026-06-02T22:44:48.000Z"
 }
