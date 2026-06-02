@@ -257,6 +257,245 @@ fn social_scraper_data_store_identifier(label: &str) -> Option<[u8; 16]> {
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SocialProviderCookieState {
+    provider: String,
+    available: bool,
+    has_auth_cookie: bool,
+    cookie_count: usize,
+    cookie_names: Vec<String>,
+    error: Option<String>,
+}
+
+fn data_store_identifier_folder(identifier: [u8; 16]) -> String {
+    format!(
+        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        identifier[0],
+        identifier[1],
+        identifier[2],
+        identifier[3],
+        identifier[4],
+        identifier[5],
+        identifier[6],
+        identifier[7],
+        identifier[8],
+        identifier[9],
+        identifier[10],
+        identifier[11],
+        identifier[12],
+        identifier[13],
+        identifier[14],
+        identifier[15],
+    )
+}
+
+fn social_auth_cookie_config(
+    provider: &str,
+) -> Option<(&'static str, [u8; 16], &'static [&'static str])> {
+    match provider {
+        "facebook" => Some((
+            "facebook",
+            FB_SCRAPER_DATA_STORE_IDENTIFIER,
+            &["c_user", "xs"],
+        )),
+        "instagram" => Some((
+            "instagram",
+            IG_SCRAPER_DATA_STORE_IDENTIFIER,
+            &["sessionid"],
+        )),
+        "linkedin" => Some(("linkedin", LI_SCRAPER_DATA_STORE_IDENTIFIER, &["li_at"])),
+        _ => None,
+    }
+}
+
+fn read_u32_be(data: &[u8], offset: usize) -> Option<u32> {
+    let bytes = data.get(offset..offset + 4)?;
+    Some(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
+
+fn read_u32_le(data: &[u8], offset: usize) -> Option<u32> {
+    let bytes = data.get(offset..offset + 4)?;
+    Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+}
+
+fn cookie_record_string(record: &[u8], offset: usize) -> Option<String> {
+    if offset == 0 || offset >= record.len() {
+        return None;
+    }
+    let end = record[offset..]
+        .iter()
+        .position(|byte| *byte == 0)
+        .map(|relative| offset + relative)
+        .unwrap_or(record.len());
+    std::str::from_utf8(record.get(offset..end)?)
+        .ok()
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+}
+
+fn parse_webkit_binary_cookie_names(data: &[u8]) -> Result<Vec<String>, String> {
+    if data.len() < 8 || data.get(0..4) != Some(b"cook") {
+        return Err("Invalid WebKit cookie store header".to_string());
+    }
+
+    let page_count = read_u32_be(data, 4).ok_or_else(|| "Missing page count".to_string())? as usize;
+    let sizes_start = 8usize;
+    let sizes_end = sizes_start
+        .checked_add(page_count.saturating_mul(4))
+        .ok_or_else(|| "Cookie page table is too large".to_string())?;
+    if sizes_end > data.len() {
+        return Err("Cookie page table exceeds file size".to_string());
+    }
+
+    let mut page_sizes = Vec::with_capacity(page_count);
+    for index in 0..page_count {
+        let offset = sizes_start + index * 4;
+        page_sizes.push(read_u32_be(data, offset).unwrap_or(0) as usize);
+    }
+
+    let mut names = HashSet::new();
+    let mut page_start = sizes_end;
+    for page_size in page_sizes {
+        let Some(page_end) = page_start.checked_add(page_size) else {
+            break;
+        };
+        let Some(page) = data.get(page_start..page_end) else {
+            break;
+        };
+        page_start = page_end;
+
+        if page.len() < 8 {
+            continue;
+        }
+        let cookie_count = read_u32_le(page, 4).unwrap_or(0) as usize;
+        for index in 0..cookie_count {
+            let offset_offset = 8 + index * 4;
+            let Some(record_offset) = read_u32_le(page, offset_offset).map(|value| value as usize)
+            else {
+                continue;
+            };
+            let Some(record_size) = read_u32_le(page, record_offset).map(|value| value as usize)
+            else {
+                continue;
+            };
+            if record_size == 0 {
+                continue;
+            }
+            let Some(record_end) = record_offset.checked_add(record_size) else {
+                continue;
+            };
+            let Some(record) = page.get(record_offset..record_end) else {
+                continue;
+            };
+            let Some(name_offset) = read_u32_le(record, 20).map(|value| value as usize) else {
+                continue;
+            };
+            if let Some(name) = cookie_record_string(record, name_offset) {
+                names.insert(name);
+            }
+        }
+    }
+
+    let mut names: Vec<String> = names.into_iter().collect();
+    names.sort();
+    Ok(names)
+}
+
+#[cfg(target_os = "macos")]
+fn webkit_cookie_store_path(
+    app: &tauri::AppHandle,
+    identifier: [u8; 16],
+) -> Result<PathBuf, String> {
+    let home = app.path().home_dir().map_err(|error| error.to_string())?;
+    Ok(home
+        .join("Library")
+        .join("WebKit")
+        .join(app.config().identifier.as_str())
+        .join("WebsiteDataStore")
+        .join(data_store_identifier_folder(identifier))
+        .join("Cookies")
+        .join("Cookies.binarycookies"))
+}
+
+#[tauri::command]
+fn get_social_provider_cookie_state(
+    app: tauri::AppHandle,
+    provider: String,
+) -> Result<SocialProviderCookieState, String> {
+    let Some((provider, identifier, auth_cookie_names)) =
+        social_auth_cookie_config(provider.as_str())
+    else {
+        return Err(format!("Unsupported social provider: {}", provider));
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        return Ok(SocialProviderCookieState {
+            provider: provider.to_string(),
+            available: false,
+            has_auth_cookie: false,
+            cookie_count: 0,
+            cookie_names: Vec::new(),
+            error: Some("Provider cookie diagnostics are only available on macOS.".to_string()),
+        });
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let path = webkit_cookie_store_path(&app, identifier)?;
+        let data = match std::fs::read(&path) {
+            Ok(data) => data,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(SocialProviderCookieState {
+                    provider: provider.to_string(),
+                    available: false,
+                    has_auth_cookie: false,
+                    cookie_count: 0,
+                    cookie_names: Vec::new(),
+                    error: None,
+                });
+            }
+            Err(error) => {
+                return Ok(SocialProviderCookieState {
+                    provider: provider.to_string(),
+                    available: false,
+                    has_auth_cookie: false,
+                    cookie_count: 0,
+                    cookie_names: Vec::new(),
+                    error: Some(error.to_string()),
+                });
+            }
+        };
+
+        let cookie_names = match parse_webkit_binary_cookie_names(&data) {
+            Ok(cookie_names) => cookie_names,
+            Err(error) => {
+                return Ok(SocialProviderCookieState {
+                    provider: provider.to_string(),
+                    available: false,
+                    has_auth_cookie: false,
+                    cookie_count: 0,
+                    cookie_names: Vec::new(),
+                    error: Some(error),
+                });
+            }
+        };
+        let has_auth_cookie = cookie_names
+            .iter()
+            .any(|name| auth_cookie_names.iter().any(|auth_name| name == auth_name));
+
+        Ok(SocialProviderCookieState {
+            provider: provider.to_string(),
+            available: true,
+            has_auth_cookie,
+            cookie_count: cookie_names.len(),
+            cookie_names,
+            error: None,
+        })
+    }
+}
+
 fn recycle_webview_window(app: &tauri::AppHandle, label: &str, reason: &str) {
     if let Some(window) = app.get_webview_window(label) {
         scrub_webview_before_destroy(&window);
@@ -7990,6 +8229,7 @@ pub fn run() {
             trim_webkit_network_cache_now,
             get_recent_runtime_health,
             get_ai_hardware_profile,
+            get_social_provider_cookie_state,
             prepare_social_scrape_memory,
             broadcast_doc,
             reset_pairing_token,
@@ -8170,6 +8410,73 @@ mod tests {
             title: "Facebook".to_string(),
         };
         assert!(cookie_session_without_rendered_units.feed_like());
+    }
+
+    fn binary_cookie_record(name: &str) -> Vec<u8> {
+        let domain = b".facebook.com\0";
+        let mut name_bytes = name.as_bytes().to_vec();
+        name_bytes.push(0);
+        let path = b"/\0";
+        let cookie_value = b"redacted\0";
+        let strings_start = 48usize;
+        let domain_offset = strings_start;
+        let name_offset = domain_offset + domain.len();
+        let path_offset = name_offset + name_bytes.len();
+        let value_offset = path_offset + path.len();
+        let size = value_offset + cookie_value.len();
+        let mut record = vec![0u8; strings_start];
+        record[0..4].copy_from_slice(&(size as u32).to_le_bytes());
+        record[16..20].copy_from_slice(&(domain_offset as u32).to_le_bytes());
+        record[20..24].copy_from_slice(&(name_offset as u32).to_le_bytes());
+        record[24..28].copy_from_slice(&(path_offset as u32).to_le_bytes());
+        record[28..32].copy_from_slice(&(value_offset as u32).to_le_bytes());
+        record.extend_from_slice(domain);
+        record.extend_from_slice(&name_bytes);
+        record.extend_from_slice(path);
+        record.extend_from_slice(cookie_value);
+        record
+    }
+
+    fn binary_cookie_store(names: &[&str]) -> Vec<u8> {
+        let mut page = vec![0u8; 8 + names.len() * 4];
+        page[4..8].copy_from_slice(&(names.len() as u32).to_le_bytes());
+        for (index, name) in names.iter().enumerate() {
+            let record_offset = page.len();
+            page[8 + index * 4..12 + index * 4]
+                .copy_from_slice(&(record_offset as u32).to_le_bytes());
+            page.extend_from_slice(&binary_cookie_record(name));
+        }
+
+        let mut data = Vec::new();
+        data.extend_from_slice(b"cook");
+        data.extend_from_slice(&1u32.to_be_bytes());
+        data.extend_from_slice(&(page.len() as u32).to_be_bytes());
+        data.extend_from_slice(&page);
+        data
+    }
+
+    #[test]
+    fn social_cookie_parser_reads_names_without_values() {
+        let parsed = parse_webkit_binary_cookie_names(&binary_cookie_store(&["datr", "c_user"]))
+            .expect("cookie store should parse");
+
+        assert_eq!(parsed, vec!["c_user".to_string(), "datr".to_string()]);
+    }
+
+    #[test]
+    fn data_store_identifier_folder_matches_webkit_directory_names() {
+        assert_eq!(
+            data_store_identifier_folder(FB_SCRAPER_DATA_STORE_IDENTIFIER),
+            "66726565-64fb-0001-9a7d-370102fb0001"
+        );
+        assert_eq!(
+            data_store_identifier_folder(IG_SCRAPER_DATA_STORE_IDENTIFIER),
+            "66726565-641a-0002-9a7d-3701021a0002"
+        );
+        assert_eq!(
+            data_store_identifier_folder(LI_SCRAPER_DATA_STORE_IDENTIFIER),
+            "66726565-641d-0003-9a7d-3701021d0003"
+        );
     }
 
     #[test]

@@ -241,6 +241,17 @@ const handlers: Record<string, Handler> = {
   check_x_login_cookies: () => ({ status: "closed" }),
   close_x_login_window: () => null,
   pick_contact: () => null,
+  get_social_provider_cookie_state: (args?: { provider?: string }) => ({
+    provider: args?.provider ?? "facebook",
+    ...(((window as unknown as { __TAURI_MOCK_SOCIAL_COOKIE_STATES__?: Record<string, unknown> })
+      .__TAURI_MOCK_SOCIAL_COOKIE_STATES__?.[args?.provider ?? "facebook"] as Record<string, unknown> | undefined) ?? {
+      available: false,
+      hasAuthCookie: false,
+      cookieCount: 0,
+      cookieNames: [],
+      error: null,
+    }),
+  }),
   fb_show_login: () => null,
   fb_hide_login: () => null,
   fb_check_auth: () => true,
