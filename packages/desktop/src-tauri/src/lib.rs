@@ -43,7 +43,7 @@ use objc2_app_kit::{
     NSRunningApplication,
 };
 #[cfg(target_os = "macos")]
-use objc2_foundation::{ns_string, MainThreadMarker, NSObjectNSKeyValueCoding, NSString};
+use objc2_foundation::{ns_string, MainThreadMarker, NSObjectNSKeyValueCoding, NSRect, NSString};
 #[cfg(target_os = "macos")]
 use objc2_web_kit::WKWebViewConfiguration;
 #[cfg(target_os = "macos")]
@@ -113,6 +113,8 @@ const BACKGROUND_JOB_MAX_HELD: Duration = Duration::from_secs(120);
 const FORCE_EXIT_AFTER_RESTART_REQUEST: Duration = Duration::from_secs(8);
 const MAIN_WINDOW_RELEASE_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const MAIN_WINDOW_RELEASE_POLL_ATTEMPTS: usize = 100;
+const MAIN_WINDOW_OCCLUSION_RECOVERY_AFTER: Duration = Duration::from_secs(5);
+const NS_WINDOW_OCCLUSION_STATE_VISIBLE: usize = 1 << 1;
 const MAIN_THREAD_WINDOW_STEP_TIMEOUT: Duration = Duration::from_secs(5);
 const LOCAL_AI_DOWNLOAD_PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
@@ -6929,6 +6931,79 @@ fn force_activate_ns_app(context: &str) {
 fn force_activate_ns_app(_context: &str) {}
 
 #[cfg(target_os = "macos")]
+fn main_window_native_occlusion_state(window: &tauri::WebviewWindow) -> Option<usize> {
+    let Ok(ns_window) = window.ns_window() else {
+        return None;
+    };
+
+    let ns_window = ns_window.cast::<AnyObject>();
+    Some(unsafe { msg_send![ns_window, occlusionState] })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn main_window_native_occlusion_state(_window: &tauri::WebviewWindow) -> Option<usize> {
+    None
+}
+
+fn main_window_native_is_occluded(window: &tauri::WebviewWindow) -> Option<bool> {
+    main_window_native_occlusion_state(window)
+        .map(|state| state & NS_WINDOW_OCCLUSION_STATE_VISIBLE == 0)
+}
+
+#[cfg(target_os = "macos")]
+fn log_main_window_native_state(window: &tauri::WebviewWindow, context: &str) {
+    let Ok(ns_window) = window.ns_window() else {
+        warn!(
+            "[main-window] native state unavailable context={} reason=missing-ns-window",
+            context
+        );
+        return;
+    };
+
+    let ns_window = ns_window.cast::<AnyObject>();
+    unsafe {
+        let frame: NSRect = msg_send![ns_window, frame];
+        let alpha: f64 = msg_send![ns_window, alphaValue];
+        let level: isize = msg_send![ns_window, level];
+        let occlusion_state = main_window_native_occlusion_state(window).unwrap_or(0);
+        let is_key: bool = msg_send![ns_window, isKeyWindow];
+        let is_main: bool = msg_send![ns_window, isMainWindow];
+        let is_visible: bool = msg_send![ns_window, isVisible];
+        let is_miniaturized: bool = msg_send![ns_window, isMiniaturized];
+        let content_view: *mut AnyObject = msg_send![ns_window, contentView];
+        let mut content_hidden: Option<bool> = None;
+        let mut content_alpha: Option<f64> = None;
+        if !content_view.is_null() {
+            let hidden: bool = msg_send![content_view, isHidden];
+            let alpha: f64 = msg_send![content_view, alphaValue];
+            content_hidden = Some(hidden);
+            content_alpha = Some(alpha);
+        }
+
+        info!(
+            "[main-window] native state context={} frame_x={} frame_y={} frame_width={} frame_height={} alpha={} level={} occlusion_state={} is_key={} is_main={} is_visible={} is_miniaturized={} content_hidden={:?} content_alpha={:?}",
+            context,
+            frame.origin.x,
+            frame.origin.y,
+            frame.size.width,
+            frame.size.height,
+            alpha,
+            level,
+            occlusion_state,
+            is_key,
+            is_main,
+            is_visible,
+            is_miniaturized,
+            content_hidden,
+            content_alpha
+        );
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn log_main_window_native_state(_window: &tauri::WebviewWindow, _context: &str) {}
+
+#[cfg(target_os = "macos")]
 fn force_show_webview_window(window: &tauri::WebviewWindow, context: &str) {
     let Ok(ns_window) = window.ns_window() else {
         warn!(
@@ -6949,6 +7024,7 @@ fn force_show_webview_window(window: &tauri::WebviewWindow, context: &str) {
         let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
         let _: () = msg_send![ns_window, orderFrontRegardless];
     }
+    log_main_window_native_state(window, context);
     info!(
         "[main-window] forced native window show context={} was_visible={:?} was_focused={:?} now_visible={:?} now_focused={:?}",
         context,
@@ -6996,6 +7072,42 @@ fn schedule_main_window_visibility_probe(
                 window.is_focused().ok()
             );
         });
+    });
+}
+
+fn schedule_main_window_occlusion_recovery(
+    app: &tauri::AppHandle,
+    delay: Duration,
+    context: &'static str,
+) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(delay).await;
+        let app_for_probe = app.clone();
+        let probe = run_main_window_step_on_main_thread(
+            &app,
+            "main window occlusion probe",
+            move || {
+                let Some(window) = live_main_window(&app_for_probe) else {
+                    return Ok(None);
+                };
+                let occlusion_state = main_window_native_occlusion_state(&window);
+                let is_occluded = main_window_native_is_occluded(&window).unwrap_or(false);
+                Ok(Some((is_occluded, occlusion_state)))
+            },
+        );
+
+        let Ok(Some((true, occlusion_state))) = probe else {
+            return;
+        };
+
+        warn!(
+            "[main-window] native window stayed occluded after startup context={} delay_ms={} occlusion_state={:?}; recycling renderer",
+            context,
+            delay.as_millis(),
+            occlusion_state
+        );
+        let _ = recover_main_window(&app, "startup native occlusion");
     });
 }
 
@@ -7101,6 +7213,11 @@ fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tau
     schedule_main_window_visibility_probe(app, Duration::from_millis(250), "startup-250ms");
     schedule_main_window_visibility_probe(app, Duration::from_secs(1), "startup-1s");
     schedule_main_window_visibility_probe(app, Duration::from_secs(3), "startup-3s");
+    schedule_main_window_occlusion_recovery(
+        app,
+        MAIN_WINDOW_OCCLUSION_RECOVERY_AFTER,
+        "startup-occlusion",
+    );
     let vibrancy_applied = apply_main_window_vibrancy(&window, "startup");
     info!(
         "[main-window] startup window ready vibrancy_applied={}",
