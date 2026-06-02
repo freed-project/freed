@@ -110,6 +110,19 @@ function withError(
   };
 }
 
+function getErrorStatus(error: unknown): number | undefined {
+  return typeof error === "object" && error !== null && "status" in error
+    ? (error as { status?: number }).status
+    : undefined;
+}
+
+function isAuthSyncError(error: unknown): boolean {
+  const status = getErrorStatus(error);
+  if (status === 401 || status === 403) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /auth|token|client_secret|oauth/i.test(message);
+}
+
 export function useContactSync() {
   const { store, googleContacts } = usePlatform();
 
@@ -166,13 +179,21 @@ export function useContactSync() {
       }
 
       const contactsApi = googleContacts;
-      const token = contactsApi
-        ? await withTimeout(
+      let token: string | null = null;
+      if (contactsApi) {
+        try {
+          token = await withTimeout(
             Promise.resolve(contactsApi.getToken()),
             CONTACT_SYNC_TIMEOUT_MS,
             "Google Contacts token lookup",
-          )
-        : null;
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Google Contacts token lookup failed.";
+          const nextState = withError(current, "auth", message);
+          commitSyncState(nextState);
+          return nextState;
+        }
+      }
 
       if (!token) {
         const nextState = withError(current, "missing_token", "Reconnect Google to sync contacts.");
@@ -230,10 +251,7 @@ export function useContactSync() {
         return nextState;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Google Contacts sync failed.";
-        const status = typeof error === "object" && error !== null && "status" in error
-          ? (error as { status?: number }).status
-          : undefined;
-        const code = status === 401 || status === 403 ? "auth" : "network";
+        const code = isAuthSyncError(error) ? "auth" : "network";
         const nextState = withError(syncStateRef.current, code, message);
         commitSyncState(nextState);
         return nextState;

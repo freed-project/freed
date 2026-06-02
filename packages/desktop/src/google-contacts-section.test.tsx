@@ -87,6 +87,57 @@ describe("GoogleContactsSection", () => {
     expect(getLastFatalRuntimeError()).toBeNull();
   });
 
+  it("keeps manual Google Contacts sync failures recoverable in settings", async () => {
+    const syncNow = vi.fn().mockRejectedValue(
+      new Error("Google token refresh failed (400): client_secret is missing."),
+    );
+    const syncState = {
+      ...createEmptyContactSyncState(),
+      authStatus: "connected" as const,
+    };
+
+    const platformValue = {
+      googleContacts: {
+        getToken: () => null,
+        connect: vi.fn(async () => {}),
+      },
+    } as unknown as PlatformConfig;
+
+    const contactSyncValue: ContactSyncContextValue = {
+      syncState,
+      getSyncState: () => syncState,
+      syncNow,
+      dismissSuggestion: vi.fn(),
+      getMatchForSuggestion: vi.fn(() => null),
+      openReview: vi.fn(async () => {}),
+    };
+
+    await act(async () => {
+      root.render(
+        <PlatformProvider value={platformValue}>
+          <ContactSyncContext.Provider value={contactSyncValue}>
+            <GoogleContactsSection />
+          </ContactSyncContext.Provider>
+        </PlatformProvider>,
+      );
+    });
+
+    const syncButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Sync Now"),
+    );
+
+    expect(syncButton).toBeInstanceOf(HTMLButtonElement);
+
+    await act(async () => {
+      syncButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(syncNow).toHaveBeenCalledWith({ force: true });
+    expect(container.textContent).toContain("client_secret is missing.");
+    expect(getLastFatalRuntimeError()).toBeNull();
+  });
+
   it("confirms and cancels a pending Google Contacts connection", async () => {
     const captured: { signal: AbortSignal | null } = { signal: null };
     const connect = vi.fn(({ signal }: { signal?: AbortSignal } = {}) => {

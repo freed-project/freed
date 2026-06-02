@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, idle Automerge worker recycling shipped, bounded scheduled RSS refresh shipped, density-aware fixed-height unified feed rows shipped, settings changelog preview shipped, fingerprinted sample-data cleanup shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, idle Automerge worker recycling shipped, bounded scheduled RSS refresh shipped, density-aware fixed-height unified feed rows shipped, settings changelog preview shipped, fingerprinted sample-data cleanup shipped, visible cloud transfer diagnostics shipped, production-default Google token proxy fallback shipped, and recoverable Google Contacts refresh failures shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -38,6 +38,9 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Animated preview rail toggle:** The desktop reader keeps the compact preview rail mounted through show and hide transitions, while `Animations: None` still snaps instantly
 - **Local card density control:** The feed toolbar now exposes a three-stop card density slider that persists on the current device, with compact, comfortable, and expansive vertical card spacing
 - **Hot-path side-effect scheduling:** Desktop routes native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains through typed queues so clicks, scroll callbacks, and document subscriptions do not directly run slow native I/O or large scans
+- **Cloud transfer diagnostics:** Desktop Settings shows local item count, Automerge document size, Drive stage, last download, last upload, remote bytes, uploaded bytes, and cloud errors
+- **Recoverable Google Contacts auth failures:** Token lookup and forced refresh errors are recorded in contact sync state and Settings instead of opening the fatal recovery screen
+- **Google token proxy fallback:** Freed Desktop defaults missing or empty Google proxy build env to the production token proxy so dev and local builds cannot silently drift into direct Google token exchange
 - **Background runtime coordination:** Desktop gates high-risk background work behind healthy renderer startup, shared memory pressure cooldowns, renderer recovery safe mode, and a native social-scrape lease so WebKit pressure cannot keep blanking the main window
 - **Deep local WebKit diagnostics:** Renderer stalls, memory preflight blocks, and recovery attempts write bounded local diagnostics with WebKit process identity, RSS, CPU, process age, WebView labels, cache sizes, vmmap summaries, short process samples, and scraper recycle PID verification
 - **Adaptive social memory budgets:** Freed Desktop now scales high and critical scrape guardrails on high-memory machines, records native memory samples even when the renderer is hidden, and keeps low-priority semantic enrichment out of the launch path so Facebook and Instagram get memory first
@@ -221,6 +224,7 @@ export async function captureDomFeed(
 | 5.36 | Event-aware Automerge subscription metadata for item-patch outbox drains | Medium     |
 | 5.37 | Incremental main-thread item-patch state updates                         | Medium     |
 | 5.38 | Renderer recovery safe mode and deep local WebKit diagnostics            | Medium     |
+| 5.39 | Visible cloud transfer diagnostics in Settings                           | Medium     |
 
 ---
 
@@ -264,6 +268,7 @@ export async function captureDomFeed(
 - [x] Checked-in release notes are reviewed before a release tag can publish
 - [x] Production release prep and publish refuse stale `main` snapshots until current `dev` has been promoted into `main`, and PRs targeting `main` reject direct product edits outside the promotion flow
 - [x] Debug panel Health tab charts provider reliability plus daily and hourly pull volume across RSS, X, Facebook, Instagram, LinkedIn, Google Drive, and Dropbox
+- [x] Desktop Settings > Sync shows local item count, local document size, Drive stage, last download, last upload, remote bytes, uploaded bytes, and cloud errors
 - [x] Failing RSS feeds can be reviewed and unsubscribed from the health panel, with optional article/history deletion
 - [x] Sidebar source actions and source settings surface degraded or paused provider health outside the debug panel
 - [x] Debug panel Health tab charts provider reliability plus daily and hourly pull volume across RSS, X, Facebook, Instagram, LinkedIn, Google Drive, and Dropbox, with an in-card duration dropdown for each provider

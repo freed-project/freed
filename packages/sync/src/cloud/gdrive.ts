@@ -65,6 +65,14 @@ interface DownloadResult {
   fileId: string;
 }
 
+export interface CloudUploadResult {
+  fileId: string;
+  uploadedBinary: Uint8Array;
+  uploadedBytes: number;
+  remoteBytes: number;
+  mergedRemote: boolean;
+}
+
 /** Return the fileId of `freed.automerge` in appDataFolder, creating it if absent. */
 async function ensureFile(
   token: string,
@@ -134,7 +142,7 @@ export async function gdriveUploadSafe(
   token: string,
   localBinary: Uint8Array,
   googleFetch: GoogleDriveFetch = fetch,
-): Promise<void> {
+): Promise<CloudUploadResult> {
   const fileId = await ensureFile(token, undefined, googleFetch);
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -151,7 +159,15 @@ export async function gdriveUploadSafe(
       body: merged as BodyInit,
     });
 
-    if (res.ok) return;
+    if (res.ok) {
+      return {
+        fileId,
+        uploadedBinary: merged,
+        uploadedBytes: merged.byteLength,
+        remoteBytes: remoteBinary?.byteLength ?? 0,
+        mergedRemote: !!remoteBinary,
+      };
+    }
     if (res.status === 412) {
       await delay(200 * 2 ** attempt);
       continue;

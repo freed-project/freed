@@ -87,7 +87,13 @@ export function GoogleContactsSection() {
 
   const handleSync = async () => {
     setConnectErrorMessage(null);
-    await syncNow({ force: true });
+    try {
+      await syncNow({ force: true });
+    } catch (error) {
+      setConnectErrorMessage(
+        error instanceof Error ? error.message : "Google Contacts sync failed.",
+      );
+    }
   };
 
   const cachedCount = syncState.cachedContacts.length.toLocaleString();

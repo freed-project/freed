@@ -8,9 +8,9 @@ const mocks = vi.hoisted(() => ({
   getCloudToken: vi.fn(() => null),
   initiateDesktopOAuth: vi.fn(),
   isOAuthCanceledError: vi.fn((error: unknown) => error instanceof Error && error.name === "AbortError"),
-  setCloudProviders: vi.fn(),
   startCloudSync: vi.fn(),
   storeCloudToken: vi.fn(),
+  updateCloudProvider: vi.fn(),
 }));
 
 vi.mock("../lib/sync", () => ({
@@ -23,7 +23,7 @@ vi.mock("../lib/sync", () => ({
 }));
 
 vi.mock("@freed/ui/lib/debug-store", () => ({
-  setCloudProviders: mocks.setCloudProviders,
+  updateCloudProvider: mocks.updateCloudProvider,
 }));
 
 function Harness() {

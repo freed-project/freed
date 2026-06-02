@@ -12,6 +12,7 @@
 import { useMemo } from "react";
 import { getWebsiteHostForChannel } from "@freed/shared";
 import { usePlatform } from "@freed/ui/context";
+import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { useAppStore } from "../lib/store";
 import {
   getCloudProvider,
@@ -44,6 +45,26 @@ function formatRelativeTime(timestamp: number): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+function formatBytes(bytes?: number): string {
+  if (typeof bytes !== "number") return "-";
+  if (bytes < 1024) return `${bytes.toLocaleString()} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} KB`;
+  return `${(bytes / (1024 * 1024)).toLocaleString(undefined, { maximumFractionDigits: 2 })} MB`;
+}
+
+function formatDiagnosticTime(timestamp?: number): string {
+  return typeof timestamp === "number" ? formatRelativeTime(timestamp) : "-";
+}
+
+function SyncDiagnosticCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-[var(--theme-bg-muted)] px-3 py-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">{label}</p>
+      <p className="mt-1 truncate font-mono text-xs tabular-nums text-[var(--theme-text-secondary)]">{value}</p>
+    </div>
+  );
 }
 
 function ProviderLogo({ provider }: { provider: Provider }) {
@@ -79,6 +100,8 @@ export function PwaSyncSettings() {
   const syncConnected = useAppStore((s) => s.syncConnected);
   const isSyncing = useAppStore((s) => s.isSyncing);
   const feeds = useAppStore((s) => s.feeds);
+  const docSnapshot = useDebugStore((s) => s.docSnapshot);
+  const cloudProviders = useDebugStore((s) => s.cloudProviders);
   const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
 
   const lastSyncTime = useMemo(() => {
@@ -89,6 +112,9 @@ export function PwaSyncSettings() {
   }, [feeds]);
 
   const { label, provider } = getProviderInfo(syncConnected);
+  const cloudProviderState = provider === "gdrive" || provider === "dropbox"
+    ? cloudProviders?.[provider]
+    : null;
 
   const handleDisconnect = () => {
     clearStoredRelayUrl();
@@ -169,6 +195,52 @@ export function PwaSyncSettings() {
               Last synced {formatRelativeTime(lastSyncTime)}
             </p>
           )}
+          {cloudProviderState?.error && (
+            <p className="theme-feedback-text-danger mt-2 break-words text-xs">
+              {cloudProviderState.error}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-[var(--theme-text-primary)]">Sync diagnostics</p>
+            <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">Local document and cloud transfer state</p>
+          </div>
+          {cloudProviderState?.stage && (
+            <span className="rounded-full bg-[var(--theme-bg-muted)] px-2 py-1 text-[11px] font-medium text-[var(--theme-text-muted)]">
+              {cloudProviderState.stage}
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <SyncDiagnosticCell
+            label="Local items"
+            value={docSnapshot ? docSnapshot.itemCount.toLocaleString() : "-"}
+          />
+          <SyncDiagnosticCell
+            label="Local size"
+            value={formatBytes(docSnapshot?.binarySize)}
+          />
+          <SyncDiagnosticCell
+            label="Last download"
+            value={formatDiagnosticTime(cloudProviderState?.lastDownloadAt)}
+          />
+          <SyncDiagnosticCell
+            label="Remote bytes"
+            value={formatBytes(cloudProviderState?.lastRemoteBytes)}
+          />
+          <SyncDiagnosticCell
+            label="Last merge"
+            value={formatDiagnosticTime(cloudProviderState?.lastMergeAt)}
+          />
+          <SyncDiagnosticCell
+            label="Last upload"
+            value={formatDiagnosticTime(cloudProviderState?.lastUploadAt)}
+          />
         </div>
       </div>
 

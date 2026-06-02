@@ -741,7 +741,17 @@ function App() {
         ? (error as { status?: number }).status
         : undefined;
       if (status === 401) {
-        const refreshedToken = await forceRefreshCloudToken("gdrive");
+        let refreshedToken: string | null = null;
+        try {
+          refreshedToken = await forceRefreshCloudToken("gdrive");
+        } catch (refreshError) {
+          const message = refreshError instanceof Error
+            ? refreshError.message
+            : "Google token refresh failed.";
+          setContactSyncError(message, "auth");
+          log.warn(`[contacts] Google token refresh failed during sync: ${message}`);
+          throw refreshError;
+        }
         if (refreshedToken && refreshedToken !== accessToken) {
           log.info("[contacts] Google sync retrying after token refresh");
           const result = await fetchGoogleContactsViaTauri(refreshedToken, syncToken);

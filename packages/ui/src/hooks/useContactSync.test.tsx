@@ -105,6 +105,58 @@ describe("useContactSync", () => {
     });
   });
 
+  it("keeps Google token lookup failures recoverable in sync state", async () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    const getToken = vi.fn(async () => {
+      throw new Error("Google token refresh failed (400): client_secret is missing.");
+    });
+    const fetchContacts = vi.fn(async () => ({ contacts: [], nextSyncToken: "next-token", deleted: [] }));
+    const setPendingMatchCount = vi.fn();
+    const store = <T,>(selector: (state: unknown) => T): T => selector({
+      persons: {},
+      accounts: {},
+      items: [],
+      setPendingMatchCount,
+    });
+    const platformValue = {
+      store,
+      googleContacts: {
+        getToken,
+        connect: vi.fn(async () => {}),
+        fetchContacts,
+      },
+    } as unknown as PlatformConfig;
+    let actions: ContactSyncActions | null = null;
+    let result: ContactSyncState | null = null;
+
+    await act(async () => {
+      root.render(
+        <PlatformProvider value={platformValue}>
+          <ContactSyncHarness onReady={(nextActions) => {
+            actions = nextActions;
+          }} />
+        </PlatformProvider>,
+      );
+    });
+
+    await act(async () => {
+      result = await actions!.syncNow({ force: true });
+    });
+
+    expect(getToken).toHaveBeenCalledTimes(1);
+    expect(fetchContacts).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      authStatus: "reconnect_required",
+      syncStatus: "error",
+      syncStartedAt: null,
+      lastErrorCode: "auth",
+    });
+    expect(result?.lastErrorMessage).toContain("client_secret is missing");
+  });
+
   it("recovers a stale persisted syncing state after a successful sync", async () => {
     localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, JSON.stringify({
       authStatus: "connected",
