@@ -26,6 +26,10 @@ const AUTH_MISSING_MESSAGES: Record<SocialProviderId, string> = {
   linkedin: "LinkedIn is not connected in the local WebView session. Reconnect LinkedIn and try again.",
 };
 
+export function socialProviderMissingAuthCookieMessage(provider: SocialProviderId): string {
+  return AUTH_MISSING_MESSAGES[provider];
+}
+
 function withMissingAuthCookieMessage<T extends { isAuthenticated: boolean; lastCaptureError?: string }>(
   provider: SocialProviderId,
   auth: T,
@@ -38,7 +42,7 @@ function withMissingAuthCookieMessage<T extends { isAuthenticated: boolean; last
   return {
     ...auth,
     isAuthenticated: false,
-    lastCaptureError: AUTH_MISSING_MESSAGES[provider],
+    lastCaptureError: socialProviderMissingAuthCookieMessage(provider),
   };
 }
 

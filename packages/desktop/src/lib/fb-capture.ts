@@ -41,6 +41,10 @@ import {
   facebookGroupsFromFeedItems,
   mergeFacebookGroupRecords,
 } from "./facebook-groups";
+import {
+  loadSocialProviderCookieState,
+  socialProviderMissingAuthCookieMessage,
+} from "./social-auth-cookie-state";
 
 // =============================================================================
 // Rate Limiting
@@ -198,6 +202,23 @@ function formatFacebookEmptySyncMessage(diag: FbSyncDiag): string {
     : socialProviderCopy("facebook").feedReturnedEmpty;
 }
 
+function formatFacebookNoNewItemsMessage(diag: FbSyncDiag): string {
+  const details: string[] = [];
+  if (diag.existingItems > 0) {
+    details.push(`${diag.existingItems.toLocaleString()} already present`);
+  }
+  if (diag.excludedItems > 0) {
+    details.push(`${diag.excludedItems.toLocaleString()} excluded`);
+  }
+  if (diag.candidateItems > 0) {
+    details.push(`${diag.candidateItems.toLocaleString()} write candidate${diag.candidateItems === 1 ? "" : "s"}`);
+  }
+
+  return details.length > 0
+    ? `No new Facebook items: ${details.join(", ")}.`
+    : "No new Facebook items.";
+}
+
 function filterExcludedGroups(
   items: FeedItem[],
   excludedGroupIds: Record<string, true>,
@@ -277,6 +298,13 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
     errorStage: null,
     errorMessage: null,
   };
+
+  const cookieState = await loadSocialProviderCookieState("facebook");
+  if (cookieState && cookieState.available && !cookieState.hasAuthCookie) {
+    diag.errorStage = "auth";
+    diag.errorMessage = socialProviderMissingAuthCookieMessage("facebook");
+    return { items: [], diag };
+  }
 
   const memoryPrep = await prepareSocialScrapeMemory("facebook", "feed scrape");
   if (!memoryPrep.mayProceed) {
@@ -655,7 +683,12 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       provider: "facebook",
       outcome: result.diag.postsExtracted > 0 ? "success" : "empty",
       stage: result.diag.postsExtracted > 0 ? undefined : "empty",
-      reason: result.diag.postsExtracted > 0 ? undefined : "No posts pulled",
+      reason:
+        result.diag.postsExtracted > 0 && result.diag.itemsAdded === 0
+          ? formatFacebookNoNewItemsMessage(result.diag)
+          : result.diag.postsExtracted > 0
+            ? undefined
+            : "No posts pulled",
       startedAt,
       finishedAt: Date.now(),
       itemsSeen: result.diag.postsExtracted,
