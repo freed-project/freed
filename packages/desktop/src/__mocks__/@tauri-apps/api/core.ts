@@ -167,6 +167,18 @@ const handlers: Record<string, Handler> = {
   },
   cancel_local_ai_model_download: () => null,
   get_sync_client_count: () => 0,
+  get_desktop_session_state: () =>
+    (window as unknown as {
+      __TAURI_MOCK_DESKTOP_SESSION_STATE__?: {
+        available: boolean;
+        screenLocked: boolean;
+        error?: string | null;
+      };
+    }).__TAURI_MOCK_DESKTOP_SESSION_STATE__ ?? {
+      available: true,
+      screenLocked: false,
+      error: null,
+    },
   get_runtime_memory_stats: () => ({
     totalPhysicalMemoryBytes: 16 * 1024 * 1024 * 1024,
     processResidentBytes: 64 * 1024 * 1024,

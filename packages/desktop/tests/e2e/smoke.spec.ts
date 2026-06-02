@@ -577,6 +577,46 @@ test("app loads and renders without crashing", async ({ app }) => {
   await expect(app.page.locator("main")).toBeVisible();
 });
 
+test("locked macOS session defers full desktop startup", async ({ app, ipc }) => {
+  await app.page.addInitScript(() => {
+    window.localStorage.setItem(
+      "__TAURI_MOCK_STORE__:legal.json",
+      JSON.stringify({
+        "legal.bundle.desktop": {
+          version: "2026-03-31.1",
+          acceptedAt: 1775146800000,
+          surface: "desktop-first-run",
+        },
+      }),
+    );
+    const w = window as unknown as {
+      __TAURI_MOCK_DESKTOP_SESSION_STATE__?: {
+        available: boolean;
+        screenLocked: boolean;
+        error: null;
+      };
+    };
+    w.__TAURI_MOCK_DESKTOP_SESSION_STATE__ = {
+      available: true,
+      screenLocked: true,
+      error: null,
+    };
+  });
+
+  await app.goto();
+
+  await expect(
+    app.page.getByText("Freed Desktop will finish opening after you unlock this Mac."),
+  ).toBeVisible();
+  await expect(app.page.locator("main")).toHaveCount(0);
+  await expect
+    .poll(async () => {
+      const invocations = await ipc.invocations();
+      return invocations.filter((call) => call.cmd === "broadcast_doc").length;
+    })
+    .toBe(0);
+});
+
 test("startup emits renderer health before background work can run", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
