@@ -3,7 +3,7 @@
   "version": "26.6.102-dev",
   "channel": "dev",
   "dayKey": "26.6.1",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-02T00:02:24.220Z",
   "model": "heuristic",
@@ -46,13 +46,15 @@
     ]
   },
   "release": {
-    "deck": "Facebook, Instagram, and LinkedIn sync now share the same lower-profile feed scrolling behavior, with stronger Facebook auth checks to avoid false zero-post success, desktop sidebar reopen smoke are now more stable, and google Drive sync diagnostics are now more stable",
+    "deck": "Facebook, Instagram, and LinkedIn sync now share the same lower-profile feed scrolling behavior, Facebook now fails closed instead of reporting false zero-post success, and Google Drive sync now has stronger recovery diagnostics.",
     "features": [],
     "fixes": [
       "Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull",
-      "Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session"
+      "Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session",
+      "Google Drive sync now retries token-refresh download failures and exposes clearer sync diagnostics before falling back to an empty cursor",
+      "Google Contacts token refresh failures now stay recoverable in Settings instead of opening the fatal recovery screen"
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.102-dev\n\nFacebook, Instagram, and LinkedIn sync now share the same lower-profile feed scrolling behavior, with stronger Facebook auth checks to avoid false zero-post success, desktop sidebar reopen smoke are now more stable, and google Drive sync diagnostics are now more stable\n\n### Fixes\n\n- Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull\n- Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.102-dev\n\nFacebook, Instagram, and LinkedIn sync now share the same lower-profile feed scrolling behavior, Facebook now fails closed instead of reporting false zero-post success, and Google Drive sync now has stronger recovery diagnostics.\n\n### Fixes\n\n- Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull\n- Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session\n- Google Drive sync now retries token-refresh download failures and exposes clearer sync diagnostics before falling back to an empty cursor\n- Google Contacts token refresh failures now stay recoverable in Settings instead of opening the fatal recovery screen\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
