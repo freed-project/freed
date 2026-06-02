@@ -71,6 +71,9 @@ export interface FbSyncDiag {
   itemsNormalized: number;
   itemsDeduplicated: number;
   itemsAdded: number;
+  candidateItems: number;
+  existingItems: number;
+  excludedItems: number;
   extractionPasses: number;
   lastExtractionStrategy: string | null;
   lastCandidateCount: number | null;
@@ -262,6 +265,9 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
     itemsNormalized: 0,
     itemsDeduplicated: 0,
     itemsAdded: 0,
+    candidateItems: 0,
+    existingItems: 0,
+    excludedItems: 0,
     extractionPasses: 0,
     lastExtractionStrategy: null,
     lastCandidateCount: null,
@@ -485,6 +491,9 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
         itemsNormalized: 0,
         itemsDeduplicated: 0,
         itemsAdded: 0,
+        candidateItems: 0,
+        existingItems: 0,
+        excludedItems: 0,
         extractionPasses: 0,
         lastExtractionStrategy: null,
         lastCandidateCount: null,
@@ -520,6 +529,9 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
         itemsNormalized: 0,
         itemsDeduplicated: 0,
         itemsAdded: 0,
+        candidateItems: 0,
+        existingItems: 0,
+        excludedItems: 0,
         extractionPasses: 0,
         lastExtractionStrategy: null,
         lastCandidateCount: null,
@@ -580,13 +592,16 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       const excludedGroupIds =
         useAppStore.getState().preferences.fbCapture?.excludedGroupIds ?? {};
       const filteredItems = filterExcludedGroups(result.items, excludedGroupIds);
+      result.diag.candidateItems = filteredItems.length;
+      result.diag.excludedItems = result.items.length - filteredItems.length;
       const beforeState = useAppStore.getState();
       const beforeFacebookItems = beforeState.items.filter((i) => i.platform === "facebook");
       const beforeFacebookIds = new Set(beforeFacebookItems.map((item) => item.globalId));
       const existingCandidateCount = filteredItems.filter((item) => beforeFacebookIds.has(item.globalId)).length;
+      result.diag.existingItems = existingCandidateCount;
       addDebugEvent(
         "change",
-        `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library (${existingCandidateCount.toLocaleString()} already present)`,
+        `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library (${existingCandidateCount.toLocaleString()} already present, ${result.diag.excludedItems.toLocaleString()} excluded)`,
       );
       const before = beforeFacebookItems.length;
       await store.addItems(filteredItems);
@@ -607,7 +622,7 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       }
       addDebugEvent(
         "change",
-        `[FB] synced: ${result.diag.postsExtracted.toLocaleString()} posts extracted, ${result.diag.itemsAdded.toLocaleString()} new items`,
+        `[FB] synced: ${result.diag.postsExtracted.toLocaleString()} posts extracted, ${result.diag.itemsAdded.toLocaleString()} new item${result.diag.itemsAdded === 1 ? "" : "s"}, ${result.diag.existingItems.toLocaleString()} already present, ${result.diag.excludedItems.toLocaleString()} excluded`,
       );
     } else {
       const emptyMessage = formatFacebookEmptySyncMessage(result.diag);
