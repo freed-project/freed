@@ -1,3 +1,4 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { BackgroundJobKind } from "./background-runtime-coordinator";
 import { isBackgroundRuntimeDeferredError } from "./background-runtime-coordinator";
 
@@ -17,6 +18,12 @@ export const RUNTIME_DEFERRED_STAGE = "runtime_deferred";
 export interface RuntimeDeferredDiag {
   errorStage: string | null;
   errorMessage: string | null;
+}
+
+interface DesktopSessionState {
+  available: boolean;
+  screenLocked: boolean;
+  error?: string | null;
 }
 
 export function runtimeDeferredMessage(reason: string): string {
@@ -49,6 +56,23 @@ export function applyRuntimeDeferredDiag(
   diag.errorStage = RUNTIME_DEFERRED_STAGE;
   diag.errorMessage = runtimeDeferredMessage(error.reason);
   return true;
+}
+
+export async function applyLockedSessionDeferredDiag(
+  diag: RuntimeDeferredDiag,
+): Promise<boolean> {
+  if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return false;
+
+  try {
+    const state = await invoke<DesktopSessionState>("get_desktop_session_state");
+    if (!state?.screenLocked) return false;
+    diag.errorStage = RUNTIME_DEFERRED_STAGE;
+    diag.errorMessage =
+      "Freed paused provider sync because the Mac is locked. Unlock the Mac and try syncing again.";
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function isRuntimeDeferredStage(stage: string | null): boolean {

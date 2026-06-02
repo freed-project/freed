@@ -270,6 +270,22 @@ struct SocialProviderCookieState {
     error: Option<String>,
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopSessionState {
+    available: bool,
+    screen_locked: bool,
+    error: Option<String>,
+}
+
+#[cfg(target_os = "macos")]
+fn parse_screen_locked_from_ioreg_plist(text: &str) -> Option<bool> {
+    let locked_key = "<key>CGSSessionScreenIsLocked</key>";
+    text.split(locked_key)
+        .nth(1)
+        .map(|tail| tail.trim_start().starts_with("<true/>"))
+}
+
 fn data_store_identifier_folder(identifier: [u8; 16]) -> String {
     format!(
         "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
@@ -495,6 +511,52 @@ fn get_social_provider_cookie_state(
             cookie_names,
             error: None,
         })
+    }
+}
+
+#[tauri::command]
+fn get_desktop_session_state() -> DesktopSessionState {
+    #[cfg(not(target_os = "macos"))]
+    {
+        return DesktopSessionState {
+            available: false,
+            screen_locked: false,
+            error: Some("Desktop session diagnostics are only available on macOS.".to_string()),
+        };
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let output = match std::process::Command::new("/usr/sbin/ioreg")
+            .args(["-a", "-d", "1", "-c", "IORegistryEntry"])
+            .output()
+        {
+            Ok(output) => output,
+            Err(error) => {
+                return DesktopSessionState {
+                    available: false,
+                    screen_locked: false,
+                    error: Some(error.to_string()),
+                };
+            }
+        };
+
+        if !output.status.success() {
+            return DesktopSessionState {
+                available: false,
+                screen_locked: false,
+                error: Some(format!("ioreg exited with status {}", output.status)),
+            };
+        }
+
+        let text = String::from_utf8_lossy(&output.stdout);
+        let screen_locked = parse_screen_locked_from_ioreg_plist(&text).unwrap_or(false);
+
+        DesktopSessionState {
+            available: parse_screen_locked_from_ioreg_plist(&text).is_some(),
+            screen_locked,
+            error: None,
+        }
     }
 }
 
@@ -8375,6 +8437,7 @@ pub fn run() {
             trim_webkit_network_cache_now,
             get_recent_runtime_health,
             get_ai_hardware_profile,
+            get_desktop_session_state,
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
             broadcast_doc,
@@ -8556,6 +8619,24 @@ mod tests {
             title: "Facebook".to_string(),
         };
         assert!(cookie_session_without_rendered_units.feed_like());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn parses_macos_screen_lock_state_from_ioreg_plist() {
+        assert_eq!(
+            parse_screen_locked_from_ioreg_plist(
+                r#"<dict><key>CGSSessionScreenIsLocked</key><true/></dict>"#,
+            ),
+            Some(true),
+        );
+        assert_eq!(
+            parse_screen_locked_from_ioreg_plist(
+                r#"<dict><key>CGSSessionScreenIsLocked</key><false/></dict>"#,
+            ),
+            Some(false),
+        );
+        assert_eq!(parse_screen_locked_from_ioreg_plist("<dict></dict>"), None);
     }
 
     fn binary_cookie_record(name: &str) -> Vec<u8> {
