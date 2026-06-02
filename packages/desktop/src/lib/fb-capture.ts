@@ -79,6 +79,12 @@ export interface FbSyncDiag {
   existingItems: number;
   excludedItems: number;
   extractionPasses: number;
+  totalCandidateCount: number;
+  totalRejected: {
+    suggestedOrSponsored: number;
+    missingAuthor: number;
+    missingContent: number;
+  };
   lastExtractionStrategy: string | null;
   lastCandidateCount: number | null;
   lastRejected:
@@ -89,7 +95,21 @@ export interface FbSyncDiag {
       }
     | null;
   lastScrollY: number | null;
+  maxScrollY: number | null;
   feedContainerFound: boolean | null;
+  scrapeRunId: string | null;
+  lastPageState:
+    | {
+        state?: string;
+        loggedInCookie?: boolean;
+        feedLike?: boolean;
+        feedUnitCount?: number;
+        loginChrome?: boolean;
+        scrollHeight?: number;
+        url?: string;
+        title?: string;
+      }
+    | null;
   errorStage: string | null;
   errorMessage: string | null;
 }
@@ -97,6 +117,41 @@ export interface FbSyncDiag {
 export interface FbSyncResult {
   items: ReturnType<typeof fbPostsToFeedItems>;
   diag: FbSyncDiag;
+}
+
+function createEmptyFbSyncDiag(
+  overrides: Partial<FbSyncDiag> = {},
+): FbSyncDiag {
+  const { totalRejected: rejectedOverrides, ...rest } = overrides;
+  const totalRejected = {
+    suggestedOrSponsored: 0,
+    missingAuthor: 0,
+    missingContent: 0,
+    ...rejectedOverrides,
+  };
+  return {
+    postsExtracted: 0,
+    itemsNormalized: 0,
+    itemsDeduplicated: 0,
+    itemsAdded: 0,
+    candidateItems: 0,
+    existingItems: 0,
+    excludedItems: 0,
+    extractionPasses: 0,
+    totalCandidateCount: 0,
+    lastExtractionStrategy: null,
+    lastCandidateCount: null,
+    lastRejected: null,
+    lastScrollY: null,
+    maxScrollY: null,
+    feedContainerFound: null,
+    scrapeRunId: null,
+    lastPageState: null,
+    errorStage: null,
+    errorMessage: null,
+    ...rest,
+    totalRejected,
+  };
 }
 
 interface FbNormalizationRejectionSummary {
@@ -202,6 +257,30 @@ function formatFacebookEmptySyncMessage(diag: FbSyncDiag): string {
     : socialProviderCopy("facebook").feedReturnedEmpty;
 }
 
+function formatFacebookParseFailureMessage(diag: FbSyncDiag): string {
+  const rejected = diag.totalRejected;
+  const details = [
+    `${diag.totalCandidateCount.toLocaleString()} candidate${diag.totalCandidateCount === 1 ? "" : "s"}`,
+    `${rejected.missingAuthor.toLocaleString()} missing author`,
+    `${rejected.missingContent.toLocaleString()} missing content`,
+  ];
+
+  if (rejected.suggestedOrSponsored > 0) {
+    details.push(`${rejected.suggestedOrSponsored.toLocaleString()} suggested or sponsored`);
+  }
+  if (diag.extractionPasses > 0) {
+    details.push(`${diag.extractionPasses.toLocaleString()} extraction pass${diag.extractionPasses === 1 ? "" : "es"}`);
+  }
+  if (typeof diag.maxScrollY === "number") {
+    details.push(`max scrollY ${diag.maxScrollY.toLocaleString()}`);
+  }
+  if (diag.lastPageState?.state) {
+    details.push(`page state ${diag.lastPageState.state}`);
+  }
+
+  return `Facebook rendered post-like blocks, but Freed Desktop could not parse any posts. ${details.join(", ")}.`;
+}
+
 function formatFacebookNoNewItemsMessage(diag: FbSyncDiag): string {
   const details: string[] = [];
   if (diag.existingItems > 0) {
@@ -281,23 +360,7 @@ export async function repairStoredFacebookGroupNamesFromItems(
  * 4. Normalize raw posts to FeedItem[]
  */
 export async function fetchFbFeed(): Promise<FbSyncResult> {
-  const diag: FbSyncDiag = {
-    postsExtracted: 0,
-    itemsNormalized: 0,
-    itemsDeduplicated: 0,
-    itemsAdded: 0,
-    candidateItems: 0,
-    existingItems: 0,
-    excludedItems: 0,
-    extractionPasses: 0,
-    lastExtractionStrategy: null,
-    lastCandidateCount: null,
-    lastRejected: null,
-    lastScrollY: null,
-    feedContainerFound: null,
-    errorStage: null,
-    errorMessage: null,
-  };
+  const diag = createEmptyFbSyncDiag();
 
   const cookieState = await loadSocialProviderCookieState("facebook");
   if (cookieState && cookieState.available && !cookieState.hasAuthCookie) {
@@ -355,6 +418,8 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
       };
       scrollY?: number;
       feedContainerFound?: boolean;
+      scrapeRunId?: string | null;
+      pageState?: FbSyncDiag["lastPageState"];
     }>(
       "fb-feed-data",
       (event) => {
@@ -366,13 +431,27 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
           rejected,
           scrollY,
           feedContainerFound,
+          scrapeRunId,
+          pageState,
         } = event.payload;
         diag.extractionPasses++;
         diag.lastExtractionStrategy = strategy ?? null;
         diag.lastCandidateCount = typeof candidateCount === "number" ? candidateCount : null;
         diag.lastRejected = rejected ?? null;
         diag.lastScrollY = typeof scrollY === "number" ? scrollY : null;
+        diag.maxScrollY =
+          typeof scrollY === "number"
+            ? Math.max(diag.maxScrollY ?? scrollY, scrollY)
+            : diag.maxScrollY;
         diag.feedContainerFound = typeof feedContainerFound === "boolean" ? feedContainerFound : null;
+        diag.scrapeRunId = typeof scrapeRunId === "string" ? scrapeRunId : diag.scrapeRunId;
+        diag.lastPageState = pageState ?? diag.lastPageState;
+        diag.totalCandidateCount += typeof candidateCount === "number" ? candidateCount : 0;
+        if (rejected) {
+          diag.totalRejected.suggestedOrSponsored += rejected.suggestedOrSponsored ?? 0;
+          diag.totalRejected.missingAuthor += rejected.missingAuthor ?? 0;
+          diag.totalRejected.missingContent += rejected.missingContent ?? 0;
+        }
 
         const rejectionSummary = rejected
           ? `, rejected={sponsored:${(rejected.suggestedOrSponsored ?? 0).toLocaleString()}, author:${(rejected.missingAuthor ?? 0).toLocaleString()}, content:${(rejected.missingContent ?? 0).toLocaleString()}}`
@@ -440,6 +519,12 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
   diag.postsExtracted = allRawPosts.length;
 
   if (allRawPosts.length === 0) {
+    const parseRejectCount =
+      diag.totalRejected.missingAuthor + diag.totalRejected.missingContent;
+    if (diag.totalCandidateCount > 0 && parseRejectCount > 0) {
+      diag.errorStage = "extract";
+      diag.errorMessage = formatFacebookParseFailureMessage(diag);
+    }
     return { items: [], diag };
   }
 
@@ -514,23 +599,10 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
     addDebugEvent("change", `[FB] paused until ${formatClockTime(providerPause.pausedUntil)}`);
     return {
       items: [],
-      diag: {
-        postsExtracted: 0,
-        itemsNormalized: 0,
-        itemsDeduplicated: 0,
-        itemsAdded: 0,
-        candidateItems: 0,
-        existingItems: 0,
-        excludedItems: 0,
-        extractionPasses: 0,
-        lastExtractionStrategy: null,
-        lastCandidateCount: null,
-        lastRejected: null,
-        lastScrollY: null,
-        feedContainerFound: null,
+      diag: createEmptyFbSyncDiag({
         errorStage: "provider_rate_limit",
         errorMessage: providerPause.pauseReason,
-      },
+      }),
     };
   }
 
@@ -552,23 +624,10 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
     });
     return {
       items: [],
-      diag: {
-        postsExtracted: 0,
-        itemsNormalized: 0,
-        itemsDeduplicated: 0,
-        itemsAdded: 0,
-        candidateItems: 0,
-        existingItems: 0,
-        excludedItems: 0,
-        extractionPasses: 0,
-        lastExtractionStrategy: null,
-        lastCandidateCount: null,
-        lastRejected: null,
-        lastScrollY: null,
-        feedContainerFound: null,
+      diag: createEmptyFbSyncDiag({
         errorStage: "cooldown",
         errorMessage: `Cooling down. Try again in ~${minutesRemaining} minutes.`,
-      },
+      }),
     };
   }
 

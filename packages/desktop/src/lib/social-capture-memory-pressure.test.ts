@@ -524,6 +524,82 @@ describe("social capture completion", () => {
     });
   });
 
+  it("fails Facebook sync when rendered candidates cannot be parsed into posts", async () => {
+    const listeners = new Map<string, (event: { payload: unknown }) => void>();
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockImplementation(async (eventName: string, callback: (event: { payload: unknown }) => void) => {
+      listeners.set(eventName, callback);
+      return vi.fn();
+    });
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command !== "fb_scrape_feed") return null;
+
+      listeners.get("fb-feed-data")?.({
+        payload: {
+          posts: [],
+          extractedAt: Date.now(),
+          url: "https://www.facebook.com/",
+          strategy: "role-main-fallback",
+          candidateCount: 3,
+          rejected: {
+            suggestedOrSponsored: 1,
+            missingAuthor: 2,
+            missingContent: 1,
+          },
+          scrollY: 640,
+          feedContainerFound: true,
+          scrapeRunId: "fb-test-run",
+          pageState: {
+            state: "feed_possible",
+            feedLike: true,
+            feedUnitCount: 3,
+            scrollHeight: 4_200,
+            url: "https://www.facebook.com/",
+            title: "Facebook",
+          },
+        },
+      });
+      return null;
+    });
+
+    const { captureFbFeed } = await import("./fb-capture");
+    const { recordProviderHealthEvent } = await import("./provider-health");
+
+    const result = await captureFbFeed();
+    const expectedMessage =
+      "Facebook rendered post-like blocks, but Freed Desktop could not parse any posts. " +
+      "3 candidates, 2 missing author, 1 missing content, 1 suggested or sponsored, " +
+      "1 extraction pass, max scrollY 640, page state feed_possible.";
+
+    expect(result.items).toEqual([]);
+    expect(result.diag.errorStage).toBe("extract");
+    expect(result.diag.errorMessage).toBe(expectedMessage);
+    expect(result.diag.totalCandidateCount).toBe(3);
+    expect(result.diag.totalRejected).toEqual({
+      suggestedOrSponsored: 1,
+      missingAuthor: 2,
+      missingContent: 1,
+    });
+    expect(result.diag.scrapeRunId).toBe("fb-test-run");
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(expectedMessage);
+    expect(recordProviderHealthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "facebook",
+        outcome: "error",
+        stage: "extract",
+        reason: expectedMessage,
+        itemsSeen: 0,
+        itemsAdded: 0,
+      }),
+    );
+  });
+
   it("waits for local semantic indexing before invoking Instagram scrape", async () => {
     mocks.prepareSocialScrapeMemory.mockResolvedValue({
       before: {},

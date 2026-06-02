@@ -5154,6 +5154,10 @@ async fn fb_scrape_feed(
 
     let fb_feed_url = "https://www.facebook.com/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    let scrape_run_id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| format!("fb-{}", duration.as_millis()))
+        .unwrap_or_else(|_| "fb-unknown".to_string());
     ensure_social_scrape_memory(
         &app,
         &capture.background_runtime,
@@ -5215,17 +5219,26 @@ async fn fb_scrape_feed(
     };
 
     info!(
-        "[FB] scrape started (window_mode={}), waiting for page load...",
+        "[FB] scrape started (run_id={}, window_mode={}), waiting for page load...",
+        scrape_run_id,
         window_mode.as_str()
     );
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(13000.0, 1500.0))).await;
+
+    let set_scrape_run_id_script = format!(
+        "window.__FREED_FB_SCRAPE_RUN_ID = {};",
+        serde_json::to_string(&scrape_run_id).map_err(|e| e.to_string())?
+    );
+    wv.eval(&set_scrape_run_id_script)
+        .map_err(|e| e.to_string())?;
 
     wv.eval(
         r#"
         (function() {
             if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {
                 window.__TAURI__.event.emit('fb-diag', {
+                    scrapeRunId: window.__FREED_FB_SCRAPE_RUN_ID || null,
                     userAgent: navigator.userAgent,
                     url: window.location.href,
                     title: document.title,
@@ -5272,6 +5285,7 @@ async fn fb_scrape_feed(
                 "error": message,
                 "extractedAt": extracted_at,
                 "url": page_state.url,
+                "scrapeRunId": scrape_run_id,
                 "strategy": strategy,
                 "candidateCount": 0,
                 "scrollY": 0,
@@ -7445,12 +7459,27 @@ pub fn run() {
             let fb_unique_ids: Arc<StdRwLock<std::collections::HashSet<String>>> =
                 Arc::new(StdRwLock::new(std::collections::HashSet::new()));
             let fb_total_posts = Arc::new(AtomicUsize::new(0));
+            let fb_active_run_id: Arc<StdRwLock<Option<String>>> = Arc::new(StdRwLock::new(None));
             let fb_ids_clone = fb_unique_ids.clone();
             let fb_total_clone = fb_total_posts.clone();
+            let fb_run_id_clone = fb_active_run_id.clone();
 
             let app_for_fb = app.handle().clone();
             app_for_fb.listen("fb-feed-data", move |event| {
                 if let Ok(val) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+                    let run_id = val.get("scrapeRunId")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("legacy")
+                        .to_string();
+                    {
+                        let mut active_run_id = fb_run_id_clone.write().unwrap();
+                        if active_run_id.as_deref() != Some(run_id.as_str()) {
+                            *active_run_id = Some(run_id.clone());
+                            fb_ids_clone.write().unwrap().clear();
+                            fb_total_clone.store(0, Ordering::Relaxed);
+                            info!("[FB] extraction run started: {}", run_id);
+                        }
+                    }
                     let scroll_y = val.get("scrollY")
                         .and_then(|s| s.as_f64())
                         .unwrap_or(0.0) as i64;
@@ -7469,8 +7498,8 @@ pub fn run() {
                             .and_then(|s| serde_json::to_string(s).ok())
                             .unwrap_or_else(|| "{}".to_string());
                         info!(
-                            "[FB] extraction error: {} strategy={} page_state={}",
-                            error, strategy, page_state
+                            "[FB] extraction error: {} run_id={} strategy={} page_state={}",
+                            error, run_id, strategy, page_state
                         );
                         return;
                     }
@@ -7504,8 +7533,8 @@ pub fn run() {
                     }
 
                     let total = fb_total_clone.load(Ordering::Relaxed);
-                    info!("[FB] pass @ scrollY={}: candidates={}, new={}, total_unique={}",
-                        scroll_y, candidates, new_count, total);
+                    info!("[FB] pass run_id={} @ scrollY={}: candidates={}, new={}, total_unique={}",
+                        run_id, scroll_y, candidates, new_count, total);
                 }
             });
 
