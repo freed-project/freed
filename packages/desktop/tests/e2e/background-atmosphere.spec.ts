@@ -33,3 +33,27 @@ test("background atmosphere releases renderer layers while document is hidden", 
   await setDocumentVisibility(app.page, "visible");
   await expect(atmosphere).toBeVisible();
 });
+
+test("background atmosphere does not render during hidden startup", async ({
+  app,
+}) => {
+  await app.page.addInitScript(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => true,
+    });
+  });
+
+  await app.goto();
+  await app.waitForReady();
+
+  const atmosphere = app.page.getByTestId("background-atmosphere");
+  await expect(atmosphere).toHaveCount(0);
+
+  await setDocumentVisibility(app.page, "visible");
+  await expect(atmosphere).toBeVisible();
+});
