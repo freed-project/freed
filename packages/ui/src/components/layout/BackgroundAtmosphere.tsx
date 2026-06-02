@@ -210,11 +210,19 @@ function resolveTextureOpacity(
   return texture.compactOpacity ?? 1;
 }
 
+function getDocumentVisible(): boolean {
+  if (typeof document === "undefined") {
+    return true;
+  }
+
+  return document.visibilityState !== "hidden";
+}
+
 export function BackgroundAtmosphere() {
   const [orbs, setOrbs] = useState<Orb[] | null>(null);
   const [viewportWidth, setViewportWidth] = useState(DESKTOP_BASELINE_WIDTH);
   const [viewportHeight, setViewportHeight] = useState(MIN_BACKGROUND_HEIGHT);
-  const [documentVisible, setDocumentVisible] = useState(true);
+  const [documentVisible, setDocumentVisible] = useState(getDocumentVisible);
   const [themeId, setThemeId] = useState<ThemeId>(DEFAULT_THEME_ID);
   const themeRecipe = useMemo(
     () => getThemeDefinition(themeId).background,
@@ -255,9 +263,9 @@ export function BackgroundAtmosphere() {
       });
     };
     const onVisibilityChange = () => {
-      setDocumentVisible(document.visibilityState !== "hidden");
+      setDocumentVisible(getDocumentVisible());
     };
-    setDocumentVisible(document.visibilityState !== "hidden");
+    setDocumentVisible(getDocumentVisible());
     window.addEventListener("resize", onResize);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
