@@ -152,7 +152,7 @@ describe("PWA cloud sync auth refresh", () => {
 
   it("uploads after local document changes while connected by Google Drive only", async () => {
     vi.useFakeTimers();
-    subscribeMock.mockImplementation((_callback: () => void) => {
+    subscribeMock.mockImplementation(() => {
       return vi.fn();
     });
     gdriveDownloadLatestMock.mockResolvedValue(null);
