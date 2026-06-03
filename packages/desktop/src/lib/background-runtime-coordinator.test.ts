@@ -85,6 +85,19 @@ describe("background runtime coordinator", () => {
     ).resolves.toBe("ok");
   });
 
+  it("formats active semantic work without leaking runtime tokens", async () => {
+    const coordinator = await loadCoordinator();
+
+    const message = coordinator.formatBackgroundRuntimeDeferredReason(
+      "active:semantic-classifier:content-signals",
+    );
+
+    expect(message).toBe("Freed is finishing local indexing. Try again in a moment.");
+    expect(message).not.toContain("active:");
+    expect(message).not.toContain("semantic-classifier");
+    expect(message).not.toContain("content-signals");
+  });
+
   it("keeps cloud sync behind active social scrapes", async () => {
     const coordinator = await loadCoordinator();
     coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: true });

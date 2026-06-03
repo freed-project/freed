@@ -758,6 +758,16 @@ describe("social capture completion", () => {
 });
 
 describe("social capture memory pressure gate", () => {
+  function allowRendererMemoryPreflight(): void {
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+  }
+
   it("returns Facebook memory diagnostics before invoking the native scraper", async () => {
     const { fetchFbFeed } = await import("./fb-capture");
     const result = await fetchFbFeed();
@@ -785,6 +795,46 @@ describe("social capture memory pressure gate", () => {
     expect(mocks.invoke).not.toHaveBeenCalledWith("ig_scrape_feed", expect.anything());
   });
 
+  it("classifies native Instagram memory rejections after renderer preflight", async () => {
+    allowRendererMemoryPreflight();
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "ig_scrape_feed") {
+        throw new Error(
+          "Instagram sync paused because Freed Desktop memory remains high after cleanup.",
+        );
+      }
+      return null;
+    });
+
+    const { fetchIgFeed } = await import("./instagram-capture");
+    const result = await fetchIgFeed();
+
+    expect(result.diag.errorStage).toBe("memory_pressure");
+    expect(result.diag.errorMessage).toContain("Instagram sync did not start");
+    expect(mocks.invoke).toHaveBeenCalledWith("ig_scrape_feed", expect.anything());
+  });
+
+  it("classifies native Facebook memory rejections after renderer preflight", async () => {
+    allowRendererMemoryPreflight();
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "fb_scrape_feed") {
+        throw new Error(
+          "Facebook sync paused because Freed Desktop memory remains high after cleanup.",
+        );
+      }
+      return null;
+    });
+
+    const { fetchFbFeed } = await import("./fb-capture");
+    const result = await fetchFbFeed();
+
+    expect(result.diag.errorStage).toBe("memory_pressure");
+    expect(result.diag.errorMessage).toContain("Facebook sync did not start");
+    expect(mocks.invoke).toHaveBeenCalledWith("fb_scrape_feed", expect.anything());
+  });
+
   it("returns LinkedIn memory diagnostics before invoking the native scraper", async () => {
     const { fetchLiFeed } = await import("./li-capture");
     const result = await fetchLiFeed();
@@ -792,5 +842,25 @@ describe("social capture memory pressure gate", () => {
     expect(result.diag.errorStage).toBe("memory_pressure");
     expect(mocks.prepareSocialScrapeMemory).toHaveBeenCalledWith("linkedin", "feed scrape");
     expect(mocks.invoke).not.toHaveBeenCalledWith("li_scrape_feed", expect.anything());
+  });
+
+  it("classifies native LinkedIn memory rejections after renderer preflight", async () => {
+    allowRendererMemoryPreflight();
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "li_scrape_feed") {
+        throw new Error(
+          "LinkedIn sync paused because Freed Desktop memory remains high after cleanup.",
+        );
+      }
+      return null;
+    });
+
+    const { fetchLiFeed } = await import("./li-capture");
+    const result = await fetchLiFeed();
+
+    expect(result.diag.errorStage).toBe("memory_pressure");
+    expect(result.diag.errorMessage).toContain("LinkedIn sync did not start");
+    expect(mocks.invoke).toHaveBeenCalledWith("li_scrape_feed", expect.anything());
   });
 });

@@ -26,6 +26,7 @@ import {
   selectRssFeedsForRefresh,
   type RssRefreshPlanOptions,
 } from "./rss-refresh-plan";
+import { isRuntimeDeferredStage } from "./social-capture-runtime";
 
 /**
  * Fetch URL via Tauri backend (bypasses CORS)
@@ -104,6 +105,21 @@ export async function addRssFeed(feedUrl: string): Promise<void> {
 const FETCH_CONCURRENCY = 5;
 const RSS_FAILURE_RETRY_BASE_MS = 2 * 60 * 60 * 1000;
 const RSS_FAILURE_RETRY_MAX_MS = 24 * 60 * 60 * 1000;
+const SOCIAL_DEFERRED_RETRY_BASE_MS = 2 * 60 * 1000;
+const SOCIAL_DEFERRED_RETRY_MAX_MS = 10 * 60 * 1000;
+
+type RetriableSocialProvider = "facebook" | "instagram" | "linkedin";
+
+const socialDeferredRetryTimers = new Map<
+  RetriableSocialProvider,
+  ReturnType<typeof setTimeout>
+>();
+const socialDeferredRetryCounts = new Map<RetriableSocialProvider, number>();
+const socialDebugLabels: Record<RetriableSocialProvider, string> = {
+  facebook: "FB",
+  instagram: "IG",
+  linkedin: "LI",
+};
 
 function nextFailedFeedRetryMs(feed: RssFeed): number {
   const failureCount = Math.max(0, feed.consecutiveFailures ?? 0);
@@ -132,6 +148,103 @@ function markFeedFetchFailed(feed: RssFeed, message: string, now: number): RssFe
     consecutiveFailures: (feed.consecutiveFailures ?? 0) + 1,
     lastFetchError: message.slice(0, 500),
   };
+}
+
+function shouldRetrySocialStage(stage: string | null): boolean {
+  return stage === "memory_pressure" || isRuntimeDeferredStage(stage);
+}
+
+function nextSocialDeferredRetryMs(provider: RetriableSocialProvider): number {
+  const retryCount = socialDeferredRetryCounts.get(provider) ?? 0;
+  const exponentialMs =
+    SOCIAL_DEFERRED_RETRY_BASE_MS * Math.pow(2, Math.min(retryCount, 3));
+  const jitterMs = Math.floor(Math.random() * 30_000);
+  return Math.min(
+    SOCIAL_DEFERRED_RETRY_MAX_MS,
+    exponentialMs + jitterMs,
+  );
+}
+
+function clearSocialDeferredRetry(provider: RetriableSocialProvider): void {
+  const timer = socialDeferredRetryTimers.get(provider);
+  if (timer) {
+    clearTimeout(timer);
+    socialDeferredRetryTimers.delete(provider);
+  }
+  socialDeferredRetryCounts.delete(provider);
+}
+
+function scheduleSocialDeferredRetry(
+  provider: RetriableSocialProvider,
+  stage: string,
+): void {
+  if (socialDeferredRetryTimers.has(provider)) return;
+  const retryMs = nextSocialDeferredRetryMs(provider);
+  socialDeferredRetryCounts.set(
+    provider,
+    (socialDeferredRetryCounts.get(provider) ?? 0) + 1,
+  );
+  const label = socialDebugLabels[provider];
+  addDebugEvent(
+    "change",
+    `[${label}] retry scheduled in ${Math.round(retryMs / 1000).toLocaleString()}s after ${stage}`,
+  );
+  const timer = setTimeout(() => {
+    socialDeferredRetryTimers.delete(provider);
+    void refreshSocialProvider(provider);
+  }, retryMs);
+  socialDeferredRetryTimers.set(provider, timer);
+}
+
+function handleSocialResult(
+  provider: RetriableSocialProvider,
+  stage: string | null,
+): void {
+  if (shouldRetrySocialStage(stage)) {
+    scheduleSocialDeferredRetry(provider, stage ?? "deferred");
+  } else {
+    clearSocialDeferredRetry(provider);
+  }
+}
+
+async function refreshSocialProvider(
+  provider: RetriableSocialProvider,
+): Promise<void> {
+  if (!isTauri() || isProviderPaused(provider)) {
+    clearSocialDeferredRetry(provider);
+    return;
+  }
+
+  const store = useAppStore.getState();
+  try {
+    if (provider === "facebook" && store.fbAuth.isAuthenticated) {
+      const result = await withProviderSyncing("facebook", () => captureFbFeed());
+      handleSocialResult("facebook", result.diag.errorStage);
+      return;
+    }
+    if (provider === "instagram" && store.igAuth.isAuthenticated) {
+      const result = await withProviderSyncing("instagram", () => captureIgFeed());
+      handleSocialResult("instagram", result.diag.errorStage);
+      return;
+    }
+    if (provider === "linkedin" && store.liAuth.isAuthenticated) {
+      const result = await withProviderSyncing("linkedin", () => captureLiFeed());
+      handleSocialResult("linkedin", result.diag.errorStage);
+      return;
+    }
+    clearSocialDeferredRetry(provider);
+  } catch (error) {
+    const msg =
+      error instanceof Error
+        ? error.message
+        : `${provider} feed sync failed`;
+    console.error(`[Refresh] ${provider} feed failed:`, error);
+    addDebugEvent("error", `[${socialDebugLabels[provider]}] feed sync threw: ${msg}`);
+    if (!useAppStore.getState().error) {
+      store.setError(msg);
+    }
+    clearSocialDeferredRetry(provider);
+  }
 }
 
 async function refreshEnabledRssFeeds(
@@ -317,7 +430,9 @@ export async function refreshRssFeeds(
 /**
  * Refresh all subscribed RSS feeds and authenticated social providers.
  */
-export async function refreshAllFeeds(): Promise<void> {
+export async function refreshAllFeeds(
+  options: RssRefreshPlanOptions = {},
+): Promise<void> {
   if (!isTauri()) {
     addDebugEvent(
       "change",
@@ -326,7 +441,8 @@ export async function refreshAllFeeds(): Promise<void> {
     return;
   }
   const store = useAppStore.getState();
-  const feeds = Object.values(store.feeds).filter((f) => f.enabled);
+  const enabledFeeds = Object.values(store.feeds).filter((f) => f.enabled);
+  const feeds = selectRssFeedsForRefresh(enabledFeeds, options);
   const tauriAvailable = isTauri();
   const hasNativeSocialRefresh =
     tauriAvailable &&
@@ -366,74 +482,9 @@ export async function refreshAllFeeds(): Promise<void> {
       }
     }
 
-    // ── Facebook feed ─────────────────────────────────────────────────────────
-    // Independent of both RSS and X outcomes.
-    const { fbAuth } = useAppStore.getState();
-    if (
-      tauriAvailable &&
-      fbAuth.isAuthenticated &&
-      !isProviderPaused("facebook")
-    ) {
-      try {
-        await withProviderSyncing("facebook", () => captureFbFeed());
-      } catch (fbError) {
-        const msg =
-          fbError instanceof Error
-            ? fbError.message
-            : "Facebook feed sync failed";
-        console.error("[Refresh] Facebook feed failed:", fbError);
-        addDebugEvent("error", `[FB] feed sync threw: ${msg}`);
-        if (!useAppStore.getState().error) {
-          store.setError(msg);
-        }
-      }
-    }
-
-    // ── Instagram feed ───────────────────────────────────────────────────────
-    // Independent of RSS, X, and Facebook outcomes.
-    const { igAuth } = useAppStore.getState();
-    if (
-      tauriAvailable &&
-      igAuth.isAuthenticated &&
-      !isProviderPaused("instagram")
-    ) {
-      try {
-        await withProviderSyncing("instagram", () => captureIgFeed());
-      } catch (igError) {
-        const msg =
-          igError instanceof Error
-            ? igError.message
-            : "Instagram feed sync failed";
-        console.error("[Refresh] Instagram feed failed:", igError);
-        addDebugEvent("error", `[IG] feed sync threw: ${msg}`);
-        if (!useAppStore.getState().error) {
-          store.setError(msg);
-        }
-      }
-    }
-
-    // ── LinkedIn feed ─────────────────────────────────────────────────────────
-    // Independent of RSS, X, Facebook, and Instagram outcomes.
-    const { liAuth } = useAppStore.getState();
-    if (
-      tauriAvailable &&
-      liAuth.isAuthenticated &&
-      !isProviderPaused("linkedin")
-    ) {
-      try {
-        await withProviderSyncing("linkedin", () => captureLiFeed());
-      } catch (liError) {
-        const msg =
-          liError instanceof Error
-            ? liError.message
-            : "LinkedIn feed sync failed";
-        console.error("[Refresh] LinkedIn feed failed:", liError);
-        addDebugEvent("error", `[LI] feed sync threw: ${msg}`);
-        if (!useAppStore.getState().error) {
-          store.setError(msg);
-        }
-      }
-    }
+    await refreshSocialProvider("facebook");
+    await refreshSocialProvider("instagram");
+    await refreshSocialProvider("linkedin");
   } finally {
     store.setSyncing(false);
   }

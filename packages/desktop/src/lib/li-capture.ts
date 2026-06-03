@@ -25,6 +25,7 @@ import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-mon
 import { socialProviderCopy } from "./social-provider-copy";
 import {
   applyLockedSessionDeferredDiag,
+  applyNativeMemoryPressureDiag,
   isRuntimeDeferredStage,
 } from "./social-capture-runtime";
 
@@ -167,6 +168,9 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
     await new Promise<void>((resolve) => setTimeout(resolve, 500));
   } catch (err) {
     if (!diag.errorStage) {
+      if (applyNativeMemoryPressureDiag(diag, err, "linkedin")) {
+        return { items: [], diag };
+      }
       diag.errorStage = "invoke";
       diag.errorMessage = err instanceof Error ? err.message : String(err);
     }
