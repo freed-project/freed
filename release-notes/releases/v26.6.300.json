@@ -3,7 +3,7 @@
   "version": "26.6.300",
   "channel": "production",
   "dayKey": "26.6.3",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-03T15:01:43.360Z",
   "model": "heuristic",
@@ -27,10 +27,14 @@
     ]
   },
   "release": {
-    "deck": "Promote dev into main for production release",
+    "deck": "Stabilize Google Drive sync and large-library feed adds",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Google Drive sync now uploads local changes from Freed Desktop and the PWA instead of only downloading remote data.",
+      "The PWA waits for its Automerge document to initialize before Google Drive sync, manual sync, OAuth callback sync, or relay resume can merge remote data.",
+      "Freed Desktop avoids a fatal Automerge worker timeout when adding RSS feed metadata to a large library."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.300\n\nPromote dev into main for production release\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.300\n\nThis production build stabilizes Google Drive sync after the latest desktop and PWA fixes.\n\n### Fixes\n\n- Google Drive sync now uploads local changes from Freed Desktop and the PWA instead of only downloading remote data.\n- The PWA waits for its Automerge document to initialize before Google Drive sync, manual sync, OAuth callback sync, or relay resume can merge remote data.\n- Freed Desktop avoids a fatal Automerge worker timeout when adding RSS feed metadata to a large library.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
