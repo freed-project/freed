@@ -4,8 +4,10 @@ import { ProviderActivityLog } from "./ProviderActivityLog";
 
 export function ProviderHealthSectionSummary({
   provider,
+  showMessages = false,
 }: {
   provider: HealthProviderId;
+  showMessages?: boolean;
 }) {
   const health = useDebugStore((state) => state.health);
   const snapshot = health?.providers[provider];
@@ -20,6 +22,7 @@ export function ProviderHealthSectionSummary({
         defaultRange="hourly"
         framed={false}
         showProviderInfo={false}
+        showMessages={showMessages}
       />
       <ProviderActivityLog provider={provider} />
     </div>

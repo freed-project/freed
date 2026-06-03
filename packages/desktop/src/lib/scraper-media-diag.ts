@@ -1,6 +1,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import { safeUnlisten } from "./safe-unlisten";
 
 interface ScraperMediaDiagPayload {
   provider?: string;
@@ -26,6 +27,6 @@ export function attachScraperMediaDiagListener(
       `[${platformLabel}] silenced ${kind} (${reason}) on ${provider}`,
     );
   }).then((unlisten) => {
-    setTimeout(() => void unlisten(), timeoutMs);
+    setTimeout(() => safeUnlisten(unlisten, `scraper-media-diag:${providerToken}`), timeoutMs);
   });
 }

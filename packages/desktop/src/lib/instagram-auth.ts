@@ -9,6 +9,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { selectPlatformUA, clearPlatformUA } from "./user-agent";
+import { safeUnlisten } from "./safe-unlisten";
 
 export interface IgAuthState {
   isAuthenticated: boolean;
@@ -51,13 +52,13 @@ export async function checkIgAuth(): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     let unlisten: UnlistenFn | null = null;
     const timeout = setTimeout(() => {
-      unlisten?.();
+      safeUnlisten(unlisten, "ig-auth-result:timeout");
       resolve(false);
     }, 15_000);
 
     listen<{ loggedIn: boolean }>("ig-auth-result", (event) => {
       clearTimeout(timeout);
-      unlisten?.();
+      safeUnlisten(unlisten, "ig-auth-result");
       resolve(event.payload.loggedIn);
     }).then((fn) => {
       unlisten = fn;
@@ -65,7 +66,7 @@ export async function checkIgAuth(): Promise<boolean> {
 
     invoke("ig_check_auth").catch(() => {
       clearTimeout(timeout);
-      unlisten?.();
+      safeUnlisten(unlisten, "ig-auth-result:error");
       resolve(false);
     });
   });

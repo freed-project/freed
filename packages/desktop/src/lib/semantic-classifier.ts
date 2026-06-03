@@ -87,6 +87,7 @@ async function processNextBatch(): Promise<void> {
     const summary = await runBackgroundJob({
       kind: "semantic-classifier",
       source: "content-signals",
+      blocking: false,
       timeoutMs: 120_000,
       run: () => docBackfillContentSignals(BATCH_SIZE),
     });

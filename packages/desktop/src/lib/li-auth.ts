@@ -9,6 +9,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { selectPlatformUA, clearPlatformUA } from "./user-agent";
+import { safeUnlisten } from "./safe-unlisten";
 
 export interface LiAuthState {
   isAuthenticated: boolean;
@@ -53,13 +54,13 @@ export async function checkLiAuth(): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     let unlisten: UnlistenFn | null = null;
     const timeout = setTimeout(() => {
-      unlisten?.();
+      safeUnlisten(unlisten, "li-auth-result:timeout");
       resolve(false);
     }, 15_000);
 
     listen<{ loggedIn: boolean }>("li-auth-result", (event) => {
       clearTimeout(timeout);
-      unlisten?.();
+      safeUnlisten(unlisten, "li-auth-result");
       resolve(event.payload.loggedIn);
     }).then((fn) => {
       unlisten = fn;
@@ -67,7 +68,7 @@ export async function checkLiAuth(): Promise<boolean> {
 
     invoke("li_check_auth").catch(() => {
       clearTimeout(timeout);
-      unlisten?.();
+      safeUnlisten(unlisten, "li-auth-result:error");
       resolve(false);
     });
   });

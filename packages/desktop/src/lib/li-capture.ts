@@ -21,8 +21,12 @@ import { getLiScraperWindowMode } from "./scraper-prefs";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { storeLiAuthState } from "./li-auth";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
-import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-monitor";
+import {
+  formatScrapeMemoryPressureDetails,
+  prepareSocialScrapeMemory,
+} from "./memory-monitor";
 import { socialProviderCopy } from "./social-provider-copy";
+import { safeUnlisten } from "./safe-unlisten";
 import {
   applyLockedSessionDeferredDiag,
   applyNativeMemoryPressureDiag,
@@ -115,7 +119,7 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
     diag.errorStage = "memory_pressure";
     diag.errorMessage =
       `${socialProviderCopy("linkedin").memoryPressure} ` +
-      `App RSS is ${formatBytesForMemoryLog(memoryPrep.after.appResidentBytes)} after cleanup.`;
+      formatScrapeMemoryPressureDetails(memoryPrep);
     return { items: [], diag };
   }
 
@@ -176,7 +180,7 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
     }
     return { items: [], diag };
   } finally {
-    unlisten?.();
+    safeUnlisten(unlisten, "li-feed-data");
   }
 
   if (diag.errorStage) {

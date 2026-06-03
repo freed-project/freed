@@ -43,6 +43,7 @@ export interface RendererRecoveryStateEvent {
 export interface BackgroundRuntimeTask<T> {
   kind: BackgroundJobKind;
   source: string;
+  blocking?: boolean;
   timeoutMs?: number;
   waitForActiveJobMs?: number;
   waitForActiveJobKinds?: readonly BackgroundJobKind[];
@@ -278,11 +279,14 @@ export async function runBackgroundJob<T>(task: BackgroundRuntimeTask<T>): Promi
     throw new BackgroundRuntimeDeferredError(gate.reason);
   }
 
-  activeJob = {
-    kind: task.kind,
-    source: task.source,
-    startedAt: nowMs(),
-  };
+  const blocking = task.blocking !== false;
+  if (blocking) {
+    activeJob = {
+      kind: task.kind,
+      source: task.source,
+      startedAt: nowMs(),
+    };
+  }
 
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   try {
@@ -301,8 +305,10 @@ export async function runBackgroundJob<T>(task: BackgroundRuntimeTask<T>): Promi
     ]);
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
-    activeJob = null;
-    notifyActiveJobWaiters();
+    if (blocking) {
+      activeJob = null;
+      notifyActiveJobWaiters();
+    }
   }
 }
 
