@@ -1,0 +1,105 @@
+{
+  "tag": "v26.6.204",
+  "version": "26.6.204",
+  "channel": "production",
+  "dayKey": "26.6.2",
+  "approved": true,
+  "editorialNotes": [
+    "Approved for production release after rewriting the generated notes to focus on the Google Drive sync diagnostics shipped in PR 722."
+  ],
+  "generatedAt": "2026-06-03T05:52:33.645Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.6.203",
+    "previousPublishedDayTag": "v26.5.3113",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.203",
+      "v26.6.204"
+    ],
+    "relatedBuildTags": [
+      "v26.6.203",
+      "v26.6.204"
+    ],
+    "prNumbers": [
+      681,
+      682,
+      683,
+      684,
+      685,
+      686,
+      687,
+      688,
+      689,
+      690,
+      691,
+      692,
+      693,
+      694,
+      695,
+      696,
+      697,
+      698,
+      699,
+      700,
+      701,
+      702,
+      703,
+      704,
+      705,
+      706,
+      707,
+      708,
+      711,
+      712,
+      716,
+      717,
+      719,
+      720,
+      722,
+      723
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for production release (#723)",
+      "fix: add manual cloud sync diagnostics (#722)"
+    ]
+  },
+  "release": {
+    "deck": "Manual cloud troubleshooting joins the June 2 production rollup",
+    "features": [],
+    "fixes": [
+      "Facebook, Instagram, and LinkedIn sync now share lower-profile feed scrolling behavior",
+      "Facebook page checks now require a live cookie, the Feed posts heading, or rendered feed units before marking a page feed-like",
+      "Logged-out Facebook pages with generic main content and tall layout now fail closed instead of wasting scrape passes",
+      "Facebook extraction diagnostics now include feed unit and login chrome evidence for faster follow-up debugging",
+      "Facebook extraction restores DOM-based feed parsing and reports why extracted posts normalize to zero usable items",
+      "Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull",
+      "Zero usable Facebook scrape results still surface as sync issues instead of healthy success",
+      "Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session",
+      "Provider login prompts stay visible for disconnected Facebook, Instagram, and LinkedIn accounts instead of being hidden by stale state",
+      "Social sync defers while the Mac is locked, and Freed Desktop startup waits until the session can safely initialize",
+      "RSS scheduled polling backs off after runtime deferrals instead of retrying every 15 seconds",
+      "RSS content backfill defers under WebKit pressure",
+      "Idle Automerge workers stop reliably after queued work drains",
+      "Google Drive sync now retries token-refresh download failures and exposes clearer diagnostics before falling back to an empty cursor",
+      "Google Contacts token refresh failures now stay recoverable in Settings instead of opening the fatal recovery screen",
+      "Freed Desktop and app.freed.wtf now show a Sync now button for connected Google Drive accounts.",
+      "Google Drive sync records visible activity events for queued, started, deferred, completed, waiting, and failed work.",
+      "Sync diagnostics now explain why Last upload can be blank, including when there is no remote file yet or no local change has been uploaded.",
+      "Desktop and PWA Google Drive token refresh failures now surface as recoverable sync diagnostics instead of falling through silently.",
+      "The shared sync debug store now records richer transfer state so the same problem can be diagnosed from either connected device."
+    ],
+    "followUps": [
+      "Facebook group leave now hands off to the provider safely without folding group refresh into normal feed sync",
+      "Hidden atmosphere layers release memory and skip hidden startup work",
+      "Provider validation now has a fast lane so future social sync fixes can be proven without running every heavy validation tier",
+      "Desktop startup diagnostics now capture occluded-window cases that can look like a frozen launch",
+      "macOS Intel release builds now run on Intel GitHub runners so x64 DMG bundling avoids Apple Silicon cross packaging",
+      "Release validation now avoids transient restored-sidebar geometry samples after the stable width assertion passes",
+      "Phase 4, Phase 5, Phase 6, and the public roadmap now describe the manual sync and diagnostics behavior as shipped."
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.204\n\nManual cloud troubleshooting joins the June 2 production rollup\n\n### Fixes\n\n- Facebook, Instagram, and LinkedIn sync now share lower-profile feed scrolling behavior\n- Facebook page checks now require a live cookie, the Feed posts heading, or rendered feed units before marking a page feed-like\n- Logged-out Facebook pages with generic main content and tall layout now fail closed instead of wasting scrape passes\n- Facebook extraction diagnostics now include feed unit and login chrome evidence for faster follow-up debugging\n- Facebook extraction restores DOM-based feed parsing and reports why extracted posts normalize to zero usable items\n- Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull\n- Zero usable Facebook scrape results still surface as sync issues instead of healthy success\n- Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session\n- Provider login prompts stay visible for disconnected Facebook, Instagram, and LinkedIn accounts instead of being hidden by stale state\n- Social sync defers while the Mac is locked, and Freed Desktop startup waits until the session can safely initialize\n- RSS scheduled polling backs off after runtime deferrals instead of retrying every 15 seconds\n- RSS content backfill defers under WebKit pressure\n- Idle Automerge workers stop reliably after queued work drains\n- Google Drive sync now retries token-refresh download failures and exposes clearer diagnostics before falling back to an empty cursor\n- Google Contacts token refresh failures now stay recoverable in Settings instead of opening the fatal recovery screen\n- Freed Desktop and app.freed.wtf now show a Sync now button for connected Google Drive accounts.\n- Google Drive sync records visible activity events for queued, started, deferred, completed, waiting, and failed work.\n- Sync diagnostics now explain why Last upload can be blank, including when there is no remote file yet or no local change has been uploaded.\n- Desktop and PWA Google Drive token refresh failures now surface as recoverable sync diagnostics instead of falling through silently.\n- The shared sync debug store now records richer transfer state so the same problem can be diagnosed from either connected device.\n\n### Follow-ups\n\n- Facebook group leave now hands off to the provider safely without folding group refresh into normal feed sync\n- Hidden atmosphere layers release memory and skip hidden startup work\n- Provider validation now has a fast lane so future social sync fixes can be proven without running every heavy validation tier\n- Desktop startup diagnostics now capture occluded-window cases that can look like a frozen launch\n- macOS Intel release builds now run on Intel GitHub runners so x64 DMG bundling avoids Apple Silicon cross packaging\n- Release validation now avoids transient restored-sidebar geometry samples after the stable width assertion passes\n- Phase 4, Phase 5, Phase 6, and the public roadmap now describe the manual sync and diagnostics behavior as shipped.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed and notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
