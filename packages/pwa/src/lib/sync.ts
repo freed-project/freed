@@ -13,7 +13,12 @@
  */
 
 import { getDocBinary, mergeDoc } from "./automerge";
-import { addDebugEvent, updateCloudProvider } from "@freed/ui/lib/debug-store";
+import {
+  addDebugEvent,
+  recordCloudProviderEvent,
+  updateCloudProvider,
+  type CloudProviderEventKind,
+} from "@freed/ui/lib/debug-store";
 import {
   gdriveUploadSafe,
   gdriveStartPollLoop,
@@ -222,45 +227,87 @@ function describeSyncError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function markCloudAttempt(provider: CloudProvider, stage: "auth" | "download" | "merge" | "poll" | "upload"): void {
+type CloudStage = "auth" | "download" | "merge" | "poll" | "upload" | "idle";
+
+function recordCloudStep(
+  provider: CloudProvider,
+  kind: CloudProviderEventKind,
+  stage: CloudStage,
+  message: string,
+  bytes?: number,
+): void {
+  recordCloudProviderEvent(provider, { kind, stage, message, bytes });
+}
+
+function markCloudAttempt(provider: CloudProvider, stage: Exclude<CloudStage, "idle">, message?: string): void {
+  const statusMessage = message ?? `Running ${stage}.`;
   updateCloudProvider(provider, {
     status: "connected",
     stage,
     lastAttemptAt: Date.now(),
+    statusMessage,
+    pendingReason: undefined,
     error: undefined,
   });
+  recordCloudStep(provider, "started", stage, statusMessage);
 }
 
 function markCloudSuccess(
   provider: CloudProvider,
   state: {
-    stage?: "download" | "merge" | "poll" | "upload" | "idle";
+    stage?: CloudStage;
     lastDownloadAt?: number;
     lastUploadAt?: number;
     lastMergeAt?: number;
     lastRemoteBytes?: number;
     lastUploadedBytes?: number;
     lastLocalBytes?: number;
+    statusMessage?: string;
+    pendingReason?: string;
+    eventKind?: CloudProviderEventKind;
+    eventMessage?: string;
+    eventBytes?: number;
   } = {},
 ): void {
   const now = Date.now();
+  const stage = state.stage ?? "idle";
+  const statusMessage = state.statusMessage ?? (stage === "idle" ? "Sync is idle." : `${stage} complete.`);
+  const {
+    eventKind,
+    eventMessage,
+    eventBytes,
+    ...debugState
+  } = state;
   updateCloudProvider(provider, {
     status: "connected",
-    stage: state.stage ?? "idle",
+    stage,
     lastSuccessfulAt: now,
     lastSyncAt: now,
+    statusMessage,
+    pendingReason: debugState.pendingReason,
     error: undefined,
-    ...state,
+    ...debugState,
   });
+  recordCloudStep(
+    provider,
+    eventKind ?? "success",
+    stage,
+    eventMessage ?? statusMessage,
+    eventBytes ?? debugState.lastUploadedBytes ?? debugState.lastRemoteBytes ?? debugState.lastLocalBytes,
+  );
 }
 
 function markCloudError(provider: CloudProvider, stage: "auth" | "download" | "merge" | "poll" | "upload", error: unknown): void {
+  const message = describeSyncError(error);
   updateCloudProvider(provider, {
     status: "error",
     stage,
-    error: describeSyncError(error),
+    error: message,
+    statusMessage: message,
+    pendingReason: "Resolve this error, then reconnect or run Sync now.",
     lastErrorAt: Date.now(),
   });
+  recordCloudStep(provider, "error", stage, message);
 }
 
 export interface CloudTokenBundle {
@@ -442,13 +489,15 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
     status: "connecting",
     stage: "download",
     lastAttemptAt: Date.now(),
+    statusMessage: "Checking cloud storage for remote changes.",
+    pendingReason: undefined,
     error: undefined,
   });
 
   // Pull latest remote state immediately on connect. The AbortSignal is passed
   // through so stopCloudSync() cancels any in-flight fetch rather than orphaning it.
   try {
-    markCloudAttempt(provider, "download");
+    markCloudAttempt(provider, "download", "Checking cloud storage for remote changes.");
     let remote: Uint8Array | null;
     try {
       const downloadFn =
@@ -457,18 +506,18 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
     } catch (error) {
       const status = authFailureStatus(error);
       if (provider !== "gdrive" || status !== 401) throw error;
-      markCloudAttempt(provider, "auth");
+      markCloudAttempt(provider, "auth", "Refreshing Google Drive token after an auth response.");
       const refreshed = await refreshCloudTokenAfterAuthFailure(
         "gdrive",
         readCloudTokenBundle("gdrive") ?? { accessToken: token },
         error,
       );
       if (!refreshed) throw error;
-      markCloudAttempt(provider, "download");
+      markCloudAttempt(provider, "download", "Retrying cloud download after token refresh.");
       remote = await gdriveDownloadLatest(refreshed, signal);
     }
     if (remote) {
-      markCloudAttempt(provider, "merge");
+      markCloudAttempt(provider, "merge", "Merging remote document into the local library.");
       await mergeDoc(remote);
       console.log("[CloudSync] Initial merge on connect (%d bytes)", remote.length);
       addDebugEvent("received", `[Cloud/${provider}] initial download`, remote.length);
@@ -477,12 +526,19 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
         lastDownloadAt: Date.now(),
         lastMergeAt: Date.now(),
         lastRemoteBytes: remote.length,
+        statusMessage: "Remote changes merged.",
+        pendingReason: "Waiting for local document changes or Sync now.",
+        eventMessage: `Downloaded and merged ${remote.length.toLocaleString()} bytes.`,
+        eventBytes: remote.length,
       });
     } else {
       markCloudSuccess(provider, {
         stage: "idle",
         lastDownloadAt: Date.now(),
         lastRemoteBytes: 0,
+        statusMessage: "No remote changes found.",
+        pendingReason: "Waiting for local document changes or Sync now.",
+        eventMessage: "Checked cloud storage. No remote changes found.",
       });
     }
   } catch (err) {
@@ -504,6 +560,10 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
         lastDownloadAt: Date.now(),
         lastMergeAt: Date.now(),
         lastRemoteBytes: binary.length,
+        statusMessage: "Remote changes merged.",
+        pendingReason: "Waiting for local document changes or Sync now.",
+        eventMessage: `Merged remote change with ${binary.length.toLocaleString()} bytes.`,
+        eventBytes: binary.length,
       });
     } catch (err) {
       console.error("[CloudSync] Failed to merge remote change:", err);
@@ -550,6 +610,13 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
   }
 
   console.log("[CloudSync] Started (%s)", provider);
+  updateCloudProvider(provider, {
+    status: "connected",
+    stage: "idle",
+    statusMessage: "Watching for sync changes.",
+    pendingReason: "Next upload starts after a local document change or Sync now.",
+  });
+  recordCloudStep(provider, "waiting", "idle", "Watching for local document changes.");
 }
 
 /**
@@ -578,7 +645,60 @@ export function stopCloudSync(): void {
   notifyStatus();
   const provider = getCloudProvider();
   if (provider) {
-    updateCloudProvider(provider, { status: "idle", stage: "idle" });
+    updateCloudProvider(provider, {
+      status: "idle",
+      stage: "idle",
+      statusMessage: "Cloud sync stopped.",
+      pendingReason: "Reconnect Google Drive to resume cloud sync.",
+    });
+    recordCloudStep(provider, "waiting", "idle", "Cloud sync stopped.");
+  }
+}
+
+async function performCloudUpload(provider: CloudProvider, token?: string): Promise<void> {
+  const binary = getDocBinary();
+  try {
+    const uploadToken = token ?? await getValidCloudToken(provider);
+    if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
+    markCloudAttempt(provider, "upload", "Uploading local document to cloud storage.");
+    if (provider === "gdrive") {
+      const result = await gdriveUploadSafe(uploadToken, binary);
+      if (result.mergedRemote) {
+        markCloudAttempt(provider, "merge", "Merging remote data discovered during upload.");
+        await mergeDoc(result.uploadedBinary);
+      }
+      markCloudSuccess(provider, {
+        stage: "idle",
+        lastUploadAt: Date.now(),
+        lastMergeAt: result.mergedRemote ? Date.now() : undefined,
+        lastRemoteBytes: result.remoteBytes,
+        lastUploadedBytes: result.uploadedBytes,
+        lastLocalBytes: binary.byteLength,
+        statusMessage: "Upload complete.",
+        pendingReason: "Waiting for local document changes or Sync now.",
+        eventMessage: `Uploaded ${result.uploadedBytes.toLocaleString()} bytes.`,
+        eventBytes: result.uploadedBytes,
+      });
+    } else {
+      await dropboxUploadSafe(uploadToken, binary);
+      markCloudSuccess(provider, {
+        stage: "idle",
+        lastUploadAt: Date.now(),
+        lastUploadedBytes: binary.byteLength,
+        lastLocalBytes: binary.byteLength,
+        statusMessage: "Upload complete.",
+        pendingReason: "Waiting for local document changes or Sync now.",
+        eventMessage: `Uploaded ${binary.byteLength.toLocaleString()} bytes.`,
+        eventBytes: binary.byteLength,
+      });
+    }
+    console.log("[CloudSync] Uploaded (%d bytes)", binary.byteLength);
+    addDebugEvent("sent", `[Cloud/${provider}] upload`, binary.byteLength);
+  } catch (err) {
+    console.error("[CloudSync] Upload failed:", err);
+    addDebugEvent("error", `[Cloud/${provider}] upload failed: ${describeSyncError(err)}`);
+    markCloudError(provider, "upload", err);
+    throw err;
   }
 }
 
@@ -589,42 +709,97 @@ export function stopCloudSync(): void {
  */
 export function scheduleCloudUpload(provider: CloudProvider, token?: string): void {
   if (uploadTimer) clearTimeout(uploadTimer);
+  updateCloudProvider(provider, {
+    status: "connected",
+    stage: "idle",
+    statusMessage: "Upload queued.",
+    pendingReason: `Waiting ${UPLOAD_DEBOUNCE_MS.toLocaleString()} ms for local changes to settle.`,
+    error: undefined,
+  });
+  recordCloudStep(provider, "queued", "upload", "Upload queued after a local document change.");
+
   uploadTimer = setTimeout(async () => {
     uploadTimer = null;
-    const binary = getDocBinary();
-    try {
-      const uploadToken = token ?? await getValidCloudToken(provider);
-      if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
-      markCloudAttempt(provider, "upload");
-      if (provider === "gdrive") {
-        const result = await gdriveUploadSafe(uploadToken, binary);
-        if (result.mergedRemote) {
-          markCloudAttempt(provider, "merge");
-          await mergeDoc(result.uploadedBinary);
-        }
-        markCloudSuccess(provider, {
-          stage: "idle",
-          lastUploadAt: Date.now(),
-          lastMergeAt: result.mergedRemote ? Date.now() : undefined,
-          lastRemoteBytes: result.remoteBytes,
-          lastUploadedBytes: result.uploadedBytes,
-          lastLocalBytes: binary.byteLength,
-        });
-      } else {
-        await dropboxUploadSafe(uploadToken, binary);
-        markCloudSuccess(provider, {
-          stage: "idle",
-          lastUploadAt: Date.now(),
-          lastUploadedBytes: binary.byteLength,
-          lastLocalBytes: binary.byteLength,
-        });
-      }
-      console.log("[CloudSync] Uploaded (%d bytes)", binary.byteLength);
-      addDebugEvent("sent", `[Cloud/${provider}] upload`, binary.byteLength);
-    } catch (err) {
-      console.error("[CloudSync] Upload failed:", err);
-      addDebugEvent("error", `[Cloud/${provider}] upload failed: ${describeSyncError(err)}`);
-      markCloudError(provider, "upload", err);
-    }
+    void performCloudUpload(provider, token).catch(() => {});
   }, UPLOAD_DEBOUNCE_MS);
+}
+
+async function runInitialCloudDownload(
+  provider: CloudProvider,
+  signal: AbortSignal,
+  resolveToken: () => Promise<string>,
+): Promise<void> {
+  markCloudAttempt(provider, "download", "Checking cloud storage for remote changes.");
+  let remote: Uint8Array | null;
+  try {
+    const downloadFn =
+      provider === "gdrive" ? gdriveDownloadLatest : dropboxDownloadLatest;
+    remote = await downloadFn(await resolveToken(), signal);
+  } catch (error) {
+    const status = authFailureStatus(error);
+    if (provider !== "gdrive" || status !== 401) throw error;
+    markCloudAttempt(provider, "auth", "Refreshing Google Drive token after an auth response.");
+    const refreshed = await refreshCloudTokenAfterAuthFailure(
+      "gdrive",
+      readCloudTokenBundle("gdrive") ?? { accessToken: await resolveToken() },
+      error,
+    );
+    if (!refreshed) throw error;
+    markCloudAttempt(provider, "download", "Retrying cloud download after token refresh.");
+    remote = await gdriveDownloadLatest(refreshed, signal);
+  }
+  if (remote) {
+    markCloudAttempt(provider, "merge", "Merging remote document into the local library.");
+    await mergeDoc(remote);
+    console.log("[CloudSync] Manual merge (%d bytes)", remote.length);
+    addDebugEvent("received", `[Cloud/${provider}] manual download`, remote.length);
+    markCloudSuccess(provider, {
+      stage: "idle",
+      lastDownloadAt: Date.now(),
+      lastMergeAt: Date.now(),
+      lastRemoteBytes: remote.length,
+      statusMessage: "Remote changes merged.",
+      pendingReason: "Waiting for local document changes or Sync now.",
+      eventMessage: `Downloaded and merged ${remote.length.toLocaleString()} bytes.`,
+      eventBytes: remote.length,
+    });
+  } else {
+    markCloudSuccess(provider, {
+      stage: "idle",
+      lastDownloadAt: Date.now(),
+      lastRemoteBytes: 0,
+      statusMessage: "No remote changes found.",
+      pendingReason: "Waiting for local document changes or Sync now.",
+      eventMessage: "Checked cloud storage. No remote changes found.",
+    });
+  }
+}
+
+/** Run an immediate cloud sync pass without waiting for the debounce timer. */
+export async function syncCloudProviderNow(provider: CloudProvider): Promise<void> {
+  const token = await getValidCloudToken(provider);
+  if (!token) throw new Error("Cloud token missing. Reconnect the provider.");
+
+  if (uploadTimer) {
+    clearTimeout(uploadTimer);
+    uploadTimer = null;
+  }
+
+  const activeSignal = cloudAbort?.signal;
+  const controller = activeSignal ? null : new AbortController();
+  const signal = activeSignal ?? controller!.signal;
+  recordCloudStep(provider, "queued", "idle", "Manual sync requested.");
+  updateCloudProvider(provider, {
+    status: "connected",
+    stage: "idle",
+    statusMessage: "Manual sync requested.",
+    pendingReason: "Checking cloud storage, then uploading the local document.",
+    error: undefined,
+  });
+
+  await runInitialCloudDownload(provider, signal, async () => {
+    const currentToken = provider === "gdrive" ? await getValidCloudToken(provider) : token;
+    return currentToken ?? token;
+  });
+  await performCloudUpload(provider);
 }
