@@ -53,6 +53,7 @@ describe("Google Drive cloud sync", () => {
 
   it("uses the Drive metadata ETag for conditional uploads when Google provides one", async () => {
     const uploadHeaders: HeadersInit[] = [];
+    const uploadBodies: Array<BodyInit | null | undefined> = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/files?")) {
@@ -63,6 +64,7 @@ describe("Google Drive cloud sync", () => {
       }
       if (url.includes("/upload/drive/v3/files/file-1")) {
         uploadHeaders.push(init?.headers ?? {});
+        uploadBodies.push(init?.body);
         return jsonResponse({});
       }
       throw new Error(`Unexpected fetch: ${url}`);
@@ -72,6 +74,8 @@ describe("Google Drive cloud sync", () => {
 
     expect(uploadHeaders).toHaveLength(1);
     expect(uploadHeaders[0]).toMatchObject({ "If-Match": '"server-etag"' });
+    expect(uploadBodies[0]).toBeInstanceOf(ArrayBuffer);
+    expect(Array.from(new Uint8Array(uploadBodies[0] as ArrayBuffer))).toEqual([1, 2, 3]);
     expect(result).toMatchObject({
       fileId: "file-1",
       uploadedBytes: 3,

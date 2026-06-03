@@ -12,7 +12,7 @@
  * protected by optimistic locking — see @freed/sync/cloud for details.
  */
 
-import { getDocBinary, mergeDoc } from "./automerge";
+import { getDocBinary, mergeDoc, subscribe } from "./automerge";
 import {
   addDebugEvent,
   recordCloudProviderEvent,
@@ -41,6 +41,7 @@ let reconnectCount = 0;
 // Cloud sync connection state — set by startCloudSync/stopCloudSync so the
 // toolbar reflects "Connected" as soon as either channel is active.
 let isCloudConnectedState = false;
+let cloudChangeUnsubscribe: (() => void) | null = null;
 
 // Status listeners
 type StatusListener = (connected: boolean) => void;
@@ -610,6 +611,9 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
   }
 
   console.log("[CloudSync] Started (%s)", provider);
+  cloudChangeUnsubscribe = subscribe(() => {
+    scheduleCloudUpload(provider);
+  });
   updateCloudProvider(provider, {
     status: "connected",
     stage: "idle",
@@ -637,6 +641,8 @@ export async function deleteCloudFile(provider: CloudProvider, token: string): P
 export function stopCloudSync(): void {
   cloudAbort?.abort();
   cloudAbort = null;
+  cloudChangeUnsubscribe?.();
+  cloudChangeUnsubscribe = null;
   if (uploadTimer) {
     clearTimeout(uploadTimer);
     uploadTimer = null;

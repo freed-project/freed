@@ -150,6 +150,43 @@ describe("background runtime coordinator", () => {
     expect(completed).toBe(true);
   });
 
+  it("lets cloud sync wait for an active outbox drain", async () => {
+    const coordinator = await loadCoordinator();
+    coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: true });
+    coordinator.noteRendererHeartbeat(heartbeat(1));
+    coordinator.noteRendererHeartbeat(heartbeat(2));
+
+    let releaseOutbox: () => void = () => {};
+    const outbox = coordinator.runBackgroundJob({
+      kind: "outbox",
+      source: "outbox",
+      run: () => new Promise<void>((resolve) => {
+        releaseOutbox = resolve;
+      }),
+    });
+
+    await Promise.resolve();
+    let completed = false;
+    const upload = coordinator.runBackgroundJob({
+      kind: "cloud-sync",
+      source: "cloud:gdrive",
+      waitForActiveJobMs: 1_000,
+      waitForActiveJobKinds: ["outbox"],
+      run: () => {
+        completed = true;
+        return "uploaded";
+      },
+    });
+
+    await Promise.resolve();
+    expect(completed).toBe(false);
+
+    releaseOutbox();
+    await outbox;
+    await expect(upload).resolves.toBe("uploaded");
+    expect(completed).toBe(true);
+  });
+
   it("keeps a second social scrape deferred instead of queueing another provider window", async () => {
     const coordinator = await loadCoordinator();
     coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: true });

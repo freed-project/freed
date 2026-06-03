@@ -134,6 +134,12 @@ async function download(
   };
 }
 
+function bytesToUploadBody(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 /**
  * Safe upload: always download remote first, CRDT-merge, then upload with
  * If-Match so a concurrent desktop write returns 412 → retry with back-off.
@@ -156,7 +162,7 @@ export async function gdriveUploadSafe(
         "Content-Type": "application/octet-stream",
         ...(etag ? { "If-Match": etag } : {}),
       },
-      body: merged as BodyInit,
+      body: bytesToUploadBody(merged),
     });
 
     if (res.ok) {
