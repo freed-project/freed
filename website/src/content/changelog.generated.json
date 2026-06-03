@@ -1,35 +1,54 @@
 [
   {
-    "version": "26.6.301",
-    "tagName": "v26.6.301",
+    "version": "26.6.302",
+    "tagName": "v26.6.302",
     "channel": "production",
-    "date": "2026-06-03T16:19:20Z",
-    "deck": "Stabilize Google Drive sync and large-library feed adds",
+    "date": "2026-06-03T20:34:47Z",
+    "deck": "Stabilize Facebook and Instagram sync under memory pressure",
     "features": [],
     "fixes": [
       {
-        "text": "Google Drive sync now uploads local changes from Freed Desktop and the PWA instead of only downloading remote data."
+        "text": "Facebook and Instagram sync now fail loudly when a provider returns an empty extraction instead of recording a false success"
       },
       {
-        "text": "The PWA waits for its Automerge document to initialize before Google Drive sync, manual sync, OAuth callback sync, or relay resume can merge remote data."
+        "text": "Instagram sync records feed readiness, scroll targets, rejection counts, extraction passes, and store-write details so failed syncs are diagnosable from the field"
       },
       {
-        "text": "Freed Desktop avoids a fatal Automerge worker timeout when adding RSS feed metadata to a large library."
+        "text": "Freed Desktop now gates social sync on effective memory pressure instead of raw WebKit RSS, with detailed app RSS and WebKit RSS shown in provider errors"
+      },
+      {
+        "text": "Background semantic classification no longer blocks social sync, and social scraper listener cleanup avoids a Tauri event teardown crash"
+      },
+      {
+        "text": "Google Drive sync now uploads local changes from Freed Desktop and the PWA instead of only downloading remote data"
+      },
+      {
+        "text": "The PWA waits for its Automerge document to initialize before Google Drive sync, manual sync, OAuth callback sync, or relay resume can merge remote data"
+      },
+      {
+        "text": "Freed Desktop avoids a fatal Automerge worker timeout when adding RSS feed metadata to a large library"
       }
     ],
     "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.301",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.302",
     "prNumbers": [
       730,
-      733
+      733,
+      740
     ],
     "builds": [
-      "26.6.301"
+      "26.6.301",
+      "26.6.302"
     ],
     "buildLinks": [
       {
         "version": "26.6.301",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.301",
+        "channel": "production"
+      },
+      {
+        "version": "26.6.302",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.302",
         "channel": "production"
       }
     ]
