@@ -63,7 +63,7 @@ import {
   sortByPriority,
 } from "@freed/shared";
 import type { Account, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
-import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
+import type { DocState, RssFeedPatch, WorkerRequest, WorkerResponse } from "./automerge-types";
 import {
   createPersistenceState,
   persistDoc,
@@ -298,6 +298,10 @@ function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean 
 
 function cloneFeedItemForPatch(item: FeedItem): FeedItem {
   return trimFeedItemForDesktopUi(item);
+}
+
+function cloneRssFeedForPatch(feed: RssFeed): RssFeed {
+  return JSON.parse(JSON.stringify(feed)) as RssFeed;
 }
 
 function cloneRecordValues<T>(record: Record<string, T> | undefined): Record<string, T> {
@@ -693,6 +697,21 @@ async function applyPreferenceChange(
   send({ type: "PREFERENCES_PATCH", updates, mutation: trace?.opType });
 }
 
+async function applyRssFeedPatchChange(
+  changeFn: (doc: FreedDoc) => RssFeedPatch,
+  message: string,
+  trace?: RequestTrace,
+): Promise<void> {
+  if (!currentDoc) throw new Error("Document not initialized");
+  let patch: RssFeedPatch = { feeds: {}, removedUrls: [] };
+  currentDoc = A.change(currentDoc, message, (doc) => {
+    patch = changeFn(doc);
+  });
+  send({ type: "DEBUG_EVENT", kind: "change", detail: message });
+  await persistAndBroadcastWithoutHydration(trace);
+  send({ type: "FEEDS_PATCH", patch, mutation: trace?.opType });
+}
+
 async function applyCountedChange(
   changeFn: (doc: FreedDoc) => number,
   message: string,
@@ -1062,24 +1081,53 @@ async function handleRequest(
         break;
 
       case "ADD_RSS_FEED":
-        await applyRequestChange((doc) => addRssFeed(doc, req.feed), "Add RSS feed", true);
-        ack(req.reqId);
-        break;
-
-      case "REMOVE_RSS_FEED":
-        await applyRequestChange(
-          (doc) => removeRssFeed(doc, req.url, req.includeItems),
-          req.includeItems ? "Remove RSS feed and articles" : "Remove RSS feed",
-          true,
+        await applyRssFeedPatchChange(
+          (doc) => {
+            addRssFeed(doc, req.feed);
+            const stored = doc.rssFeeds[req.feed.url] as RssFeed | undefined;
+            return {
+              feeds: stored ? { [req.feed.url]: cloneRssFeedForPatch(stored) } : {},
+              removedUrls: [],
+            };
+          },
+          "Add RSS feed",
+          trace,
         );
         ack(req.reqId);
         break;
 
+      case "REMOVE_RSS_FEED":
+        if (req.includeItems) {
+          await applyRequestChange(
+            (doc) => removeRssFeed(doc, req.url, true),
+            "Remove RSS feed and articles",
+            true,
+          );
+        } else {
+          await applyRssFeedPatchChange(
+            (doc) => {
+              removeRssFeed(doc, req.url, false);
+              return { feeds: {}, removedUrls: [req.url] };
+            },
+            "Remove RSS feed",
+            trace,
+          );
+        }
+        ack(req.reqId);
+        break;
+
       case "UPDATE_RSS_FEED":
-        await applyRequestChange(
-          (doc) => updateRssFeed(doc, req.url, req.updates as Parameters<typeof updateRssFeed>[2]),
+        await applyRssFeedPatchChange(
+          (doc) => {
+            updateRssFeed(doc, req.url, req.updates as Parameters<typeof updateRssFeed>[2]);
+            const stored = doc.rssFeeds[req.url] as RssFeed | undefined;
+            return {
+              feeds: stored ? { [req.url]: cloneRssFeedForPatch(stored) } : {},
+              removedUrls: [],
+            };
+          },
           "Update RSS feed",
-          true,
+          trace,
         );
         ack(req.reqId);
         break;
