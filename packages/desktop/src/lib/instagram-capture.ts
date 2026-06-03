@@ -25,13 +25,19 @@ import { getIgScraperWindowMode } from "./scraper-prefs";
 import { storeIgAuthState } from "./instagram-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
-import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-monitor";
+import {
+  formatScrapeMemoryPressureDetails,
+  prepareSocialScrapeMemory,
+} from "./memory-monitor";
 import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
 import { socialProviderCopy } from "./social-provider-copy";
 import { runBackgroundJob } from "./background-runtime-coordinator";
+import { log } from "./logger";
+import { safeUnlisten } from "./safe-unlisten";
 import {
   applyRuntimeDeferredDiag,
   applyLockedSessionDeferredDiag,
+  applyNativeMemoryPressureDiag,
   isRuntimeDeferredStage,
   SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
   SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
@@ -65,6 +71,38 @@ export interface IgSyncDiag {
   itemsNormalized: number;
   itemsDeduplicated: number;
   itemsAdded: number;
+  extractionPasses: number;
+  totalCandidateCount: number;
+  totalRejected: {
+    suggestedOrSponsored: number;
+    missingContent: number;
+    duplicate: number;
+    tinyOrInvisible: number;
+  };
+  lastExtractionStrategy: string | null;
+  lastCandidateCount: number | null;
+  lastRejected:
+    | {
+        suggestedOrSponsored?: number;
+        missingContent?: number;
+        duplicate?: number;
+        tinyOrInvisible?: number;
+      }
+    | null;
+  lastScrollY: number | null;
+  maxScrollY: number | null;
+  lastPageState:
+    | {
+        articleCount?: number;
+        mainFound?: boolean;
+        loggedInCookie?: boolean;
+        loginChrome?: boolean;
+        feedLike?: boolean;
+        scrollHeight?: number;
+        url?: string;
+        title?: string;
+      }
+    | null;
   errorStage: string | null;
   errorMessage: string | null;
 }
@@ -72,6 +110,69 @@ export interface IgSyncDiag {
 export interface IgSyncResult {
   items: ReturnType<typeof igPostsToFeedItems>;
   diag: IgSyncDiag;
+}
+
+function createEmptyIgSyncDiag(): IgSyncDiag {
+  return {
+    postsExtracted: 0,
+    itemsNormalized: 0,
+    itemsDeduplicated: 0,
+    itemsAdded: 0,
+    extractionPasses: 0,
+    totalCandidateCount: 0,
+    totalRejected: {
+      suggestedOrSponsored: 0,
+      missingContent: 0,
+      duplicate: 0,
+      tinyOrInvisible: 0,
+    },
+    lastExtractionStrategy: null,
+    lastCandidateCount: null,
+    lastRejected: null,
+    lastScrollY: null,
+    maxScrollY: null,
+    lastPageState: null,
+    errorStage: null,
+    errorMessage: null,
+  };
+}
+
+function formatInstagramEmptySyncMessage(diag: IgSyncDiag): string {
+  const details: string[] = [];
+  if (diag.extractionPasses > 0) {
+    details.push(
+      `${diag.extractionPasses.toLocaleString()} extraction pass${diag.extractionPasses === 1 ? "" : "es"}`,
+    );
+  }
+  if (diag.lastExtractionStrategy) {
+    details.push(`last strategy ${diag.lastExtractionStrategy}`);
+  }
+  if (typeof diag.lastCandidateCount === "number") {
+    details.push(
+      `${diag.lastCandidateCount.toLocaleString()} candidate${diag.lastCandidateCount === 1 ? "" : "s"} on the last pass`,
+    );
+  }
+  if (typeof diag.lastScrollY === "number") {
+    details.push(`scrollY ${diag.lastScrollY.toLocaleString()}`);
+  }
+  if (typeof diag.lastPageState?.scrollHeight === "number") {
+    details.push(`scrollHeight ${diag.lastPageState.scrollHeight.toLocaleString()}`);
+  }
+  if (diag.lastPageState?.loginChrome) {
+    details.push("login chrome visible");
+  }
+  const rejected =
+    diag.totalRejected.suggestedOrSponsored +
+    diag.totalRejected.missingContent +
+    diag.totalRejected.duplicate +
+    diag.totalRejected.tinyOrInvisible;
+  if (rejected > 0) {
+    details.push(`${rejected.toLocaleString()} rejected`);
+  }
+
+  return details.length > 0
+    ? `Instagram feed returned 0 posts. ${details.join(", ")}.`
+    : "Instagram feed returned 0 posts.";
 }
 
 // =============================================================================
@@ -88,14 +189,7 @@ export interface IgSyncResult {
  * 4. Normalize raw posts to FeedItem[]
  */
 export async function fetchIgFeed(): Promise<IgSyncResult> {
-  const diag: IgSyncDiag = {
-    postsExtracted: 0,
-    itemsNormalized: 0,
-    itemsDeduplicated: 0,
-    itemsAdded: 0,
-    errorStage: null,
-    errorMessage: null,
-  };
+  const diag = createEmptyIgSyncDiag();
 
   if (await applyLockedSessionDeferredDiag(diag)) {
     return { items: [], diag };
@@ -106,7 +200,7 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
     diag.errorStage = "memory_pressure";
     diag.errorMessage =
       `${socialProviderCopy("instagram").memoryPressure} ` +
-      `App RSS is ${formatBytesForMemoryLog(memoryPrep.after.appResidentBytes)} after cleanup.`;
+      formatScrapeMemoryPressureDetails(memoryPrep);
     return { items: [], diag };
   }
 
@@ -127,12 +221,34 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
       extractedAt: number;
       url: string;
       candidateCount?: number;
+      rejected?: Partial<IgSyncDiag["totalRejected"]>;
+      scrollY?: number;
+      strategy?: string;
+      pageState?: IgSyncDiag["lastPageState"];
     }>("ig-feed-data", (event) => {
-      const { posts, error, candidateCount } = event.payload;
+      const { posts, error, candidateCount, pageState, rejected, scrollY, strategy } = event.payload;
+
+      diag.extractionPasses += 1;
+      diag.lastExtractionStrategy = strategy ?? diag.lastExtractionStrategy;
+      diag.lastCandidateCount = typeof candidateCount === "number" ? candidateCount : diag.lastCandidateCount;
+      diag.totalCandidateCount += candidateCount ?? 0;
+      diag.lastScrollY = typeof scrollY === "number" ? scrollY : diag.lastScrollY;
+      diag.maxScrollY =
+        typeof scrollY === "number"
+          ? Math.max(diag.maxScrollY ?? 0, scrollY)
+          : diag.maxScrollY;
+      diag.lastPageState = pageState ?? diag.lastPageState;
+      if (rejected) {
+        diag.lastRejected = rejected;
+        diag.totalRejected.suggestedOrSponsored += rejected.suggestedOrSponsored ?? 0;
+        diag.totalRejected.missingContent += rejected.missingContent ?? 0;
+        diag.totalRejected.duplicate += rejected.duplicate ?? 0;
+        diag.totalRejected.tinyOrInvisible += rejected.tinyOrInvisible ?? 0;
+      }
 
       addDebugEvent(
         "change",
-        `[IG] pass: candidates=${candidateCount ?? "?"}, posts=${posts.length}`,
+        `[IG] pass: candidates=${candidateCount?.toLocaleString() ?? "?"}, posts=${posts.length.toLocaleString()}, scrollY=${scrollY?.toLocaleString() ?? "?"}`,
       );
 
       if (error) {
@@ -165,17 +281,22 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
     if (applyRuntimeDeferredDiag(diag, err)) {
       return { items: [], diag };
     }
+    if (applyNativeMemoryPressureDiag(diag, err, "instagram")) {
+      return { items: [], diag };
+    }
     diag.errorStage = "invoke";
     diag.errorMessage = err instanceof Error ? err.message : String(err);
     return { items: [], diag };
   } finally {
-    unlisten?.();
+    safeUnlisten(unlisten, "ig-feed-data");
   }
 
   diag.postsExtracted = allRawPosts.length;
   addDebugEvent("change", `[IG] extraction complete: ${allRawPosts.length} unique posts across all passes`);
 
   if (allRawPosts.length === 0) {
+    diag.errorStage = "extract_empty";
+    diag.errorMessage = formatInstagramEmptySyncMessage(diag);
     return { items: [], diag };
   }
 
@@ -207,16 +328,12 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
   const providerPause = getProviderPause("instagram");
   if (providerPause) {
     addDebugEvent("change", `[IG] paused until ${formatClockTime(providerPause.pausedUntil)}`);
+    const diag = createEmptyIgSyncDiag();
+    diag.errorStage = "provider_rate_limit";
+    diag.errorMessage = providerPause.pauseReason;
     return {
       items: [],
-      diag: {
-        postsExtracted: 0,
-        itemsNormalized: 0,
-        itemsDeduplicated: 0,
-        itemsAdded: 0,
-        errorStage: "provider_rate_limit",
-        errorMessage: providerPause.pauseReason,
-      },
+      diag,
     };
   }
 
@@ -236,16 +353,12 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
       startedAt,
       finishedAt: Date.now(),
     });
+    const diag = createEmptyIgSyncDiag();
+    diag.errorStage = "cooldown";
+    diag.errorMessage = `Cooling down. Try again in ~${minutesRemaining} minutes.`;
     return {
       items: [],
-      diag: {
-        postsExtracted: 0,
-        itemsNormalized: 0,
-        itemsDeduplicated: 0,
-        itemsAdded: 0,
-        errorStage: "cooldown",
-        errorMessage: `Cooling down. Try again in ~${minutesRemaining} minutes.`,
-      },
+      diag,
     };
   }
 
@@ -298,6 +411,9 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
         .getState()
         .items.filter((i) => i.platform === "instagram").length;
       result.diag.itemsAdded = Math.max(0, after - before);
+      log.info(
+        `[IG] store write complete candidates=${result.items.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${result.diag.itemsAdded.toLocaleString()}`,
+      );
       await upsertMediaVaultRosterFromItems("instagram", result.items);
       const archivedCount = await archiveRecentProviderMedia(
         "instagram",

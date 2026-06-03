@@ -10,6 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { selectPlatformUA, clearPlatformUA } from "./user-agent";
 import { log } from "./logger";
+import { safeUnlisten } from "./safe-unlisten";
 
 export interface FbAuthState {
   isAuthenticated: boolean;
@@ -62,13 +63,13 @@ export async function checkFbAuth(): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     let unlisten: UnlistenFn | null = null;
     const timeout = setTimeout(() => {
-      unlisten?.();
+      safeUnlisten(unlisten, "fb-auth-result:timeout");
       resolve(false);
     }, 15_000);
 
     listen<{ loggedIn: boolean }>("fb-auth-result", (event) => {
       clearTimeout(timeout);
-      unlisten?.();
+      safeUnlisten(unlisten, "fb-auth-result");
       resolve(event.payload.loggedIn);
     }).then((fn) => {
       unlisten = fn;
@@ -76,7 +77,7 @@ export async function checkFbAuth(): Promise<boolean> {
 
     invoke("fb_check_auth").catch(() => {
       clearTimeout(timeout);
-      unlisten?.();
+      safeUnlisten(unlisten, "fb-auth-result:error");
       resolve(false);
     });
   });

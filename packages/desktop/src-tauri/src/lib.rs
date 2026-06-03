@@ -579,6 +579,35 @@ fn recycle_social_scraper_windows(app: &tauri::AppHandle, reason: &str) {
     }
 }
 
+fn active_job_uses_social_scraper(active_job: Option<&str>) -> bool {
+    active_job
+        .map(|operation| {
+            operation.starts_with("fb_")
+                || operation.starts_with("ig_")
+                || operation.starts_with("li_")
+        })
+        .unwrap_or(false)
+}
+
+fn recycle_social_scraper_windows_unless_active(
+    app: &tauri::AppHandle,
+    runtime: &BackgroundRuntimeCoordinator,
+    reason: &str,
+) {
+    let (active_job, active_job_age_ms) = runtime.active_job_for_health();
+    if active_job_uses_social_scraper(active_job) {
+        info!(
+            "[window] deferred scraper recycle ({}) active_op={} active_age_ms={}",
+            reason,
+            active_job.unwrap_or("unknown"),
+            active_job_age_ms.unwrap_or(0)
+        );
+        return;
+    }
+
+    recycle_social_scraper_windows(app, reason);
+}
+
 struct WebviewRecycleGuard {
     app: tauri::AppHandle,
     label: &'static str,
@@ -3279,6 +3308,48 @@ fn social_feed_scroll_script(delta_px: i64) -> String {
                 }
             }
 
+            function targetLabel(target) {
+                if (target === window) return "window";
+                if (target === document.scrollingElement) return "document.scrollingElement";
+                if (target === document.documentElement) return "document.documentElement";
+                if (target === document.body) return "document.body";
+                if (!isElement(target)) return "unknown";
+                var label = (target.tagName || "element").toLowerCase();
+                var role = target.getAttribute("role");
+                var aria = target.getAttribute("aria-label");
+                var testId = target.getAttribute("data-testid");
+                if (role) label += "[role='" + role + "']";
+                if (testId) label += "[data-testid='" + testId.slice(0, 40) + "']";
+                if (aria) label += "[aria-label='" + aria.slice(0, 40) + "']";
+                return label;
+            }
+
+            function isVisibleScrollableElement(target) {
+                if (!isElement(target)) return false;
+                if (maxScrollTop(target) < 80) return false;
+                try {
+                    var style = window.getComputedStyle(target);
+                    if (!/(auto|scroll|overlay)/.test(style.overflowY || style.overflow || "")) return false;
+                    if (style.display === "none" || style.visibility === "hidden") return false;
+                    var rect = target.getBoundingClientRect();
+                    if (rect.width < 120 || rect.height < 120) return false;
+                    if (rect.bottom < 0 || rect.top > window.innerHeight) return false;
+                } catch (_) {
+                    return false;
+                }
+                return true;
+            }
+
+            function addVisibleScrollableCandidates(list, seen) {
+                var nodes = [];
+                try {
+                    nodes = Array.prototype.slice.call(document.querySelectorAll("main, [role='main'], [role='feed'], div, section, ul")).slice(0, 1800);
+                } catch (_) {}
+                nodes.forEach(function(node) {
+                    if (isVisibleScrollableElement(node)) addCandidate(list, seen, node);
+                });
+            }
+
             function candidateScore(target) {
                 var range = maxScrollTop(target);
                 if (target === window || target === document.scrollingElement) return range + 100000;
@@ -3314,6 +3385,8 @@ fn social_feed_scroll_script(delta_px: i64) -> String {
                 anchors.forEach(function(anchor) {
                     addAncestorCandidates(candidates, seen, anchor);
                 });
+
+                addVisibleScrollableCandidates(candidates, seen);
 
                 return candidates
                     .filter(canScroll)
@@ -3354,7 +3427,18 @@ fn social_feed_scroll_script(delta_px: i64) -> String {
                     setTimeout(function() {
                         var after = scrollTopOf(target);
                         var movement = Math.abs(after - before);
-                        if (movement >= minimumUsefulMovement) return;
+                        if (movement >= minimumUsefulMovement) {
+                            window.__FREED_LAST_SOCIAL_SCROLL__ = {
+                                target: targetLabel(target),
+                                before: before,
+                                after: after,
+                                movement: movement,
+                                requestedDelta: requestedDelta,
+                                candidateCount: scrollers.length,
+                                at: Date.now()
+                            };
+                            return;
+                        }
 
                         if (index + 1 < scrollers.length) {
                             tryScrollAt(index + 1, scrollers);
@@ -3363,17 +3447,46 @@ fn social_feed_scroll_script(delta_px: i64) -> String {
 
                         try {
                             writeScrollTop(target, clamp(after + requestedDelta, 0, maxScrollTop(target)));
+                            window.__FREED_LAST_SOCIAL_SCROLL__ = {
+                                target: targetLabel(target),
+                                before: before,
+                                after: scrollTopOf(target),
+                                movement: Math.abs(scrollTopOf(target) - before),
+                                requestedDelta: requestedDelta,
+                                candidateCount: scrollers.length,
+                                fallback: true,
+                                at: Date.now()
+                            };
                         } catch (_) {}
                     }, 180 + Math.floor(Math.random() * 180));
                 });
             }
 
             var scrollers = selectScrollers();
+            window.__FREED_LAST_SOCIAL_SCROLL__ = {
+                target: "none",
+                before: 0,
+                after: 0,
+                movement: 0,
+                requestedDelta: requestedDelta,
+                candidateCount: scrollers.length,
+                at: Date.now()
+            };
             if (scrollers.length > 0) {
                 tryScrollAt(0, scrollers);
             } else {
                 try {
                     window.scrollBy({ top: requestedDelta, left: 0, behavior: "auto" });
+                    window.__FREED_LAST_SOCIAL_SCROLL__ = {
+                        target: "window.scrollBy",
+                        before: 0,
+                        after: window.scrollY || 0,
+                        movement: 0,
+                        requestedDelta: requestedDelta,
+                        candidateCount: 0,
+                        fallback: true,
+                        at: Date.now()
+                    };
                 } catch (_) {}
             }
         })();
@@ -3436,8 +3549,12 @@ fn macos_process_has_open_file_under_roots(pid: u32, roots: &[PathBuf]) -> bool 
         .any(|path| path_is_under_any_root(Path::new(path), roots))
 }
 
-fn webkit_process_belongs_to_current_launch(webkit_age_seconds: u64, app_age_seconds: u64) -> bool {
+fn webkit_process_started_after_app_start(webkit_age_seconds: u64, app_age_seconds: u64) -> bool {
     webkit_age_seconds <= app_age_seconds.saturating_add(WEBKIT_PROCESS_START_GRACE_SECONDS)
+}
+
+fn webkit_process_started_with_app(webkit_age_seconds: u64, app_age_seconds: u64) -> bool {
+    webkit_age_seconds.abs_diff(app_age_seconds) <= WEBKIT_PROCESS_START_GRACE_SECONDS
 }
 
 fn freed_webkit_process_role(
@@ -3445,13 +3562,16 @@ fn freed_webkit_process_role(
     webkit_age_seconds: u64,
     app_age_seconds: u64,
 ) -> Option<&'static str> {
-    if !webkit_process_belongs_to_current_launch(webkit_age_seconds, app_age_seconds) {
-        return None;
-    }
     if has_open_file_under_roots {
-        Some("freed-webcontent")
-    } else {
+        if webkit_process_started_after_app_start(webkit_age_seconds, app_age_seconds) {
+            Some("freed-webcontent")
+        } else {
+            None
+        }
+    } else if webkit_process_started_with_app(webkit_age_seconds, app_age_seconds) {
         Some("freed-webcontent-age-matched")
+    } else {
+        None
     }
 }
 
@@ -3792,9 +3912,15 @@ fn scrape_resident_start_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
         .saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES)
 }
 
+fn scrape_resident_critical_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
+    stats
+        .memory_critical_bytes
+        .saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES)
+}
+
 fn scrape_memory_may_proceed(stats: &RuntimeMemoryStats) -> bool {
     stats.app_memory_pressure_bytes < scrape_memory_start_budget_bytes(stats)
-        && stats.app_resident_bytes < scrape_resident_start_budget_bytes(stats)
+        && stats.app_resident_bytes < scrape_resident_critical_budget_bytes(stats)
 }
 
 fn scrape_memory_pressure_level(stats: &RuntimeMemoryStats) -> &'static str {
@@ -4740,6 +4866,30 @@ impl FbPageStatePayload {
     }
 }
 
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IgFeedStatePayload {
+    logged_in_cookie: bool,
+    article_count: u64,
+    ready_article_count: u64,
+    tiny_article_count: u64,
+    scroll_height: u64,
+    login_chrome: bool,
+    main_found: bool,
+    url: String,
+    title: String,
+}
+
+impl IgFeedStatePayload {
+    fn placeholders_only(&self) -> bool {
+        self.article_count > 0 && self.ready_article_count == 0 && self.tiny_article_count > 0
+    }
+
+    fn feed_ready(&self) -> bool {
+        self.ready_article_count > 0 && !self.login_chrome
+    }
+}
+
 fn fb_page_state_probe_script() -> &'static str {
     r#"
     (function() {
@@ -4772,6 +4922,60 @@ fn fb_page_state_probe_script() -> &'static str {
                 roleMainCount: 0,
                 url: window.location.href,
                 title: document.title || '',
+                error: e.message || String(e)
+            });
+        }
+    })();
+    "#
+}
+
+fn ig_feed_state_probe_script() -> &'static str {
+    r#"
+    (function() {
+        try {
+            var articles = Array.prototype.slice.call(document.querySelectorAll("article, [role='article']"));
+            var ready = 0;
+            var tiny = 0;
+            articles.forEach(function(article) {
+                var height = article.offsetHeight || 0;
+                if (height < 100) {
+                    tiny += 1;
+                    return;
+                }
+                var hasContent = !!(
+                    article.querySelector("time, img[src*='cdninstagram'], img[src*='scontent'], video") ||
+                    Array.prototype.some.call(article.querySelectorAll("[dir='auto']"), function(node) {
+                        return ((node.textContent || "").trim().length > 15);
+                    })
+                );
+                if (hasContent) ready += 1;
+            });
+            var bodyText = ((document.body && document.body.textContent) || "").slice(0, 4000).toLowerCase();
+            window.__TAURI__.event.emit("ig-feed-state", {
+                loggedInCookie: document.cookie.indexOf("sessionid=") !== -1 &&
+                    document.cookie.indexOf("sessionid=;") === -1,
+                articleCount: articles.length,
+                readyArticleCount: ready,
+                tinyArticleCount: tiny,
+                scrollHeight: document.documentElement.scrollHeight || document.body.scrollHeight || 0,
+                loginChrome: /\blog in\b/.test(bodyText) ||
+                    /\bsign up\b/.test(bodyText) ||
+                    /\blog into instagram\b/.test(bodyText),
+                mainFound: !!(document.querySelector("main") || document.querySelector("[role='main']")),
+                url: window.location.href,
+                title: document.title || ""
+            });
+        } catch (e) {
+            window.__TAURI__.event.emit("ig-feed-state", {
+                loggedInCookie: false,
+                articleCount: 0,
+                readyArticleCount: 0,
+                tinyArticleCount: 0,
+                scrollHeight: 0,
+                loginChrome: false,
+                mainFound: false,
+                url: window.location.href,
+                title: document.title || "",
                 error: e.message || String(e)
             });
         }
@@ -4845,6 +5049,80 @@ async fn probe_fb_page_state(
         });
     app.unlisten(listener_id);
     result?
+}
+
+async fn probe_ig_feed_state(
+    app: &tauri::AppHandle,
+    wv: &tauri::WebviewWindow,
+) -> Result<IgFeedStatePayload, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<IgFeedStatePayload, String>>();
+    let tx = Arc::new(std::sync::Mutex::new(Some(tx)));
+    let listener_tx = tx.clone();
+    let listener_id = app.listen("ig-feed-state", move |event| {
+        let result = serde_json::from_str::<IgFeedStatePayload>(event.payload())
+            .map_err(|err| err.to_string());
+        if let Some(sender) = listener_tx.lock().unwrap().take() {
+            let _ = sender.send(result);
+        }
+    });
+
+    let eval_result = wv
+        .eval(ig_feed_state_probe_script())
+        .map_err(|e| e.to_string());
+    if let Err(err) = eval_result {
+        app.unlisten(listener_id);
+        return Err(err);
+    }
+    let result = tokio::time::timeout(Duration::from_secs(2), rx)
+        .await
+        .map_err(|_| "Timed out checking Instagram feed state".to_string())
+        .and_then(|received| {
+            received.map_err(|_| "Instagram feed state listener dropped".to_string())
+        });
+    app.unlisten(listener_id);
+    result?
+}
+
+async fn wait_for_ig_feed_state(
+    app: &tauri::AppHandle,
+    wv: &tauri::WebviewWindow,
+    attempts: usize,
+) -> IgFeedStatePayload {
+    let mut last_state = IgFeedStatePayload::default();
+    for attempt in 1..=attempts.max(1) {
+        match probe_ig_feed_state(app, wv).await {
+            Ok(state) => {
+                info!(
+                    "[IG] feed state attempt={}/{} ready_articles={} tiny_articles={} articles={} scroll_height={} logged_in_cookie={} login_chrome={} main_found={} url={}",
+                    attempt,
+                    attempts.max(1),
+                    state.ready_article_count,
+                    state.tiny_article_count,
+                    state.article_count,
+                    state.scroll_height,
+                    state.logged_in_cookie,
+                    state.login_chrome,
+                    state.main_found,
+                    &state.url[..state.url.len().min(80)]
+                );
+                let ready = state.feed_ready();
+                last_state = state;
+                if ready {
+                    return last_state;
+                }
+            }
+            Err(err) => {
+                warn!(
+                    "[IG] feed state probe failed attempt={}/{} error={}",
+                    attempt,
+                    attempts.max(1),
+                    err
+                );
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(gaussian_ms(1400.0, 250.0))).await;
+    }
+    last_state
 }
 
 /// Show a visible WebView window navigated to facebook.com/login so the
@@ -5948,6 +6226,7 @@ async fn ig_scrape_feed(
     // Belt-and-suspenders: click the Following tab if present
     let _ = wv.eval(r#"document.querySelector('a[href="/?variant=following"]')?.click();"#);
     tokio::time::sleep(Duration::from_millis(2000)).await;
+    let initial_feed_state = wait_for_ig_feed_state(&app, &wv, 6).await;
 
     let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
     let scrape_plan = social_scrape_plan_for_memory(&scrape_plan_stats, 5, 9);
@@ -5961,15 +6240,16 @@ async fn ig_scrape_feed(
 
     // Randomized ordering: ~50% stories-first, ~50% feed-first.
     // ~15% chance to skip story scraping entirely.
+    let placeholder_feed = initial_feed_state.placeholders_only();
     let skip_stories = scrape_plan.skip_stories
         || !optional_story_scrape_may_continue(&app, "Instagram", "feed scrape")
-        || {
+        || (!placeholder_feed && {
             use rand::Rng;
             rand::thread_rng().gen_bool(0.15)
-        };
+        });
     let stories_first = !skip_stories && {
         use rand::Rng;
-        rand::thread_rng().gen_bool(0.50)
+        placeholder_feed || rand::thread_rng().gen_bool(0.50)
     };
     let story_frame_cap = {
         use rand::Rng;
@@ -5977,7 +6257,11 @@ async fn ig_scrape_feed(
     };
 
     if stories_first {
-        println!("[IG] coin flip: stories FIRST");
+        if initial_feed_state.placeholders_only() {
+            info!("[IG] stories first because feed rendered placeholder articles only");
+        } else {
+            println!("[IG] coin flip: stories FIRST");
+        }
         scrape_ig_stories(&wv, story_frame_cap).await;
         restore_scraper_feed(&wv, ig_feed_url, "IG").await?;
     } else if skip_stories {
@@ -7809,8 +8093,42 @@ pub fn run() {
                     let total = ig_total_clone.load(Ordering::Relaxed);
                     let strategy = val.get("strategy").and_then(|s| s.as_str()).unwrap_or("?");
                     let url = val.get("url").and_then(|u| u.as_str()).unwrap_or("?");
-                    info!("[IG] pass @ scrollY={}: candidates={}, new={}, total_unique={}, strategy={}, url={}",
-                        scroll_y, candidates, new_count, total, strategy, &url[..url.len().min(60)]);
+                    let rejected = val.get("rejected").unwrap_or(&serde_json::Value::Null);
+                    let rejected_suggested = rejected
+                        .get("suggestedOrSponsored")
+                        .and_then(|value| value.as_u64())
+                        .unwrap_or(0);
+                    let rejected_missing = rejected
+                        .get("missingContent")
+                        .and_then(|value| value.as_u64())
+                        .unwrap_or(0);
+                    let rejected_duplicate = rejected
+                        .get("duplicate")
+                        .and_then(|value| value.as_u64())
+                        .unwrap_or(0);
+                    let rejected_tiny = rejected
+                        .get("tinyOrInvisible")
+                        .and_then(|value| value.as_u64())
+                        .unwrap_or(0);
+                    let scroll_target = val.get("scrollTarget").unwrap_or(&serde_json::Value::Null);
+                    let scroll_target_label = scroll_target
+                        .get("target")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("?");
+                    let scroll_target_after = scroll_target
+                        .get("after")
+                        .and_then(|value| value.as_f64())
+                        .unwrap_or(0.0) as i64;
+                    let scroll_target_movement = scroll_target
+                        .get("movement")
+                        .and_then(|value| value.as_f64())
+                        .unwrap_or(0.0) as i64;
+                    let scroll_candidate_count = scroll_target
+                        .get("candidateCount")
+                        .and_then(|value| value.as_u64())
+                        .unwrap_or(0);
+                    info!("[IG] pass @ scrollY={}: candidates={}, new={}, total_unique={}, strategy={}, rejected_suggested={}, rejected_missing={}, rejected_duplicate={}, rejected_tiny={}, scroll_target={}, scroll_after={}, scroll_movement={}, scroll_candidates={}, url={}",
+                        scroll_y, candidates, new_count, total, strategy, rejected_suggested, rejected_missing, rejected_duplicate, rejected_tiny, scroll_target_label, scroll_target_after, scroll_target_movement, scroll_candidate_count, &url[..url.len().min(60)]);
                 }
             });
 
@@ -8332,8 +8650,9 @@ pub fn run() {
                     };
 
                     if should_recycle_scrapers {
-                        recycle_social_scraper_windows(
+                        recycle_social_scraper_windows_unless_active(
                             &app_for_renderer_watchdog,
+                            &background_runtime_for_watchdog,
                             "main renderer heartbeat stale",
                         );
                     }
@@ -8355,8 +8674,9 @@ pub fn run() {
                                     "reason": "renderer heartbeat stale"
                                 }),
                             );
-                            recycle_social_scraper_windows(
+                            recycle_social_scraper_windows_unless_active(
                                 &app_for_renderer_watchdog,
+                                &background_runtime_for_watchdog,
                                 "main renderer recovered",
                             );
                         }
@@ -8597,6 +8917,30 @@ mod tests {
     }
 
     #[test]
+    fn instagram_feed_ready_does_not_require_readable_session_cookie() {
+        let state = IgFeedStatePayload {
+            logged_in_cookie: false,
+            article_count: 3,
+            ready_article_count: 3,
+            tiny_article_count: 0,
+            scroll_height: 2589,
+            login_chrome: false,
+            main_found: true,
+            url: "https://www.instagram.com/?variant=following".to_string(),
+            title: "Instagram".to_string(),
+        };
+
+        assert!(state.feed_ready());
+        assert!(!IgFeedStatePayload {
+            ready_article_count: 0,
+            tiny_article_count: 2,
+            article_count: 2,
+            ..state
+        }
+        .feed_ready());
+    }
+
+    #[test]
     fn facebook_page_state_requires_real_feed_evidence() {
         let tall_logged_out_shell = FbPageStatePayload {
             logged_in_cookie: false,
@@ -8817,6 +9161,16 @@ mod tests {
     }
 
     #[test]
+    fn active_social_scraper_jobs_defer_recovery_recycling() {
+        assert!(active_job_uses_social_scraper(Some("fb_scrape_feed")));
+        assert!(active_job_uses_social_scraper(Some("ig_scrape_feed")));
+        assert!(active_job_uses_social_scraper(Some("li_scrape_feed")));
+        assert!(active_job_uses_social_scraper(Some("fb_visit_url")));
+        assert!(!active_job_uses_social_scraper(Some("cloud_sync")));
+        assert!(!active_job_uses_social_scraper(None));
+    }
+
+    #[test]
     fn background_runtime_blocks_during_recovery_cooldown() {
         let runtime = BackgroundRuntimeCoordinator::new();
         runtime.note_renderer_heartbeat();
@@ -8961,19 +9315,45 @@ mod tests {
     fn webkit_process_filter_excludes_prior_launches() {
         let app_age = 60;
 
-        assert!(webkit_process_belongs_to_current_launch(0, app_age));
-        assert!(webkit_process_belongs_to_current_launch(
+        assert!(webkit_process_started_after_app_start(0, app_age));
+        assert!(webkit_process_started_after_app_start(
             app_age + WEBKIT_PROCESS_START_GRACE_SECONDS,
             app_age
         ));
-        assert!(!webkit_process_belongs_to_current_launch(
+        assert!(!webkit_process_started_after_app_start(
             app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
             app_age
         ));
+
+        assert!(webkit_process_started_with_app(app_age, app_age));
+        assert!(webkit_process_started_with_app(
+            app_age.saturating_sub(WEBKIT_PROCESS_START_GRACE_SECONDS),
+            app_age
+        ));
+        assert!(!webkit_process_started_with_app(0, app_age));
     }
 
     #[test]
-    fn webkit_process_role_keeps_current_launch_after_root_files_close() {
+    fn webkit_process_role_counts_rooted_current_launches() {
+        let app_age = 60;
+
+        assert_eq!(
+            freed_webkit_process_role(true, app_age, app_age),
+            Some("freed-webcontent")
+        );
+        assert_eq!(freed_webkit_process_role(true, 0, app_age), Some("freed-webcontent"));
+        assert_eq!(
+            freed_webkit_process_role(
+                true,
+                app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
+                app_age
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn webkit_process_role_keeps_only_app_start_rootless_processes() {
         let app_age = 60;
 
         assert_eq!(
@@ -8981,9 +9361,14 @@ mod tests {
             Some("freed-webcontent-age-matched")
         );
         assert_eq!(
-            freed_webkit_process_role(true, app_age, app_age),
-            Some("freed-webcontent")
+            freed_webkit_process_role(
+                false,
+                app_age.saturating_sub(WEBKIT_PROCESS_START_GRACE_SECONDS),
+                app_age
+            ),
+            Some("freed-webcontent-age-matched")
         );
+        assert_eq!(freed_webkit_process_role(false, 0, app_age), None);
         assert_eq!(
             freed_webkit_process_role(
                 false,
@@ -9134,7 +9519,7 @@ mod tests {
     }
 
     #[test]
-    fn scrape_memory_blocks_resident_rss_at_high_budget_even_when_footprint_is_low() {
+    fn scrape_memory_degrades_resident_rss_at_high_budget_when_footprint_is_low() {
         let budget =
             (MIN_CRITICAL_MEMORY_BYTES * 70 / 100).saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES);
         let stats = RuntimeMemoryStats {
@@ -9168,11 +9553,22 @@ mod tests {
         };
 
         assert!(scrape_memory_may_proceed(&stats));
-        assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
+        let high_resident_stats = RuntimeMemoryStats {
             app_resident_bytes: budget,
             app_memory_pressure_bytes: budget - 1,
             ..stats
-        }));
+        };
+        assert!(scrape_memory_may_proceed(&high_resident_stats));
+        assert_eq!(scrape_memory_pressure_level(&high_resident_stats), "high");
+        assert_eq!(
+            social_scrape_plan_for_memory(&high_resident_stats, 6, 10),
+            SocialScrapePlan {
+                min_passes: 2,
+                max_passes: 3,
+                skip_stories: true,
+                reason: "minimal-memory-margin",
+            }
+        );
     }
 
     #[test]

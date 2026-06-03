@@ -219,7 +219,7 @@ const RATE_LIMITS = {
 - [x] Source indicators in sidebar for both platforms
 - [x] Sync indicator panel shows both platforms
 - [x] Direct Facebook and Instagram source views expose All, Posts, and Stories filters in the top toolbar
-- [x] Facebook and Instagram settings expose `Back up my uploaded media`, `Import Meta export`, `Backfill from profile`, `Back up now`, and `Open vault folder`
+- [x] Facebook and Instagram settings expose `(Beta) Back up my uploaded media`, `Import Meta export`, `Backfill from profile`, `Back up now`, and `Open vault folder`
 - [x] Meta export ZIP import copies Facebook and Instagram media into a permanent local vault with a local manifest
 - [x] Permanent media archive state stays outside Automerge and is not synced
 - [x] Continuous backup archives recent own-account media after provider sync when the account handle is known

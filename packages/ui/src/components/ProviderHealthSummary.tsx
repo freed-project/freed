@@ -189,6 +189,7 @@ export function ProviderHealthSummary({
   showRecentAttempts = false,
   framed = true,
   showProviderInfo = true,
+  showMessages = true,
   actions,
 }: {
   snapshot: ProviderHealthSnapshot;
@@ -197,6 +198,7 @@ export function ProviderHealthSummary({
   showRecentAttempts?: boolean;
   framed?: boolean;
   showProviderInfo?: boolean;
+  showMessages?: boolean;
   actions?: ReactNode;
 }) {
   const [selectedRange, setSelectedRange] = useState<HealthChartRange>(defaultRange);
@@ -291,10 +293,10 @@ export function ProviderHealthSummary({
         </div>
       )}
 
-      {showCurrentMessage && (
+      {showMessages && showCurrentMessage && (
         <p className="text-xs text-[var(--theme-text-muted)]">{snapshot.currentMessage}</p>
       )}
-      {snapshot.lastError && (
+      {showMessages && snapshot.lastError && (
         <p className="text-xs text-amber-400">{snapshot.lastError}</p>
       )}
     </>

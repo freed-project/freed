@@ -28,6 +28,7 @@ import type {
   LocalAIModelDownloadProgress,
   LocalAIModelViewState,
 } from "@freed/ui/context";
+import { safeUnlisten } from "./safe-unlisten";
 
 const STATE_VERSION = 1;
 const MODEL_ROOT_DIR = "local-ai-models";
@@ -230,7 +231,7 @@ const defaultDeps: LocalAIModelServiceDeps = {
       });
     } finally {
       input.signal.removeEventListener("abort", abort);
-      unlisten();
+      safeUnlisten(unlisten, `local-ai-download:${input.downloadId}`);
     }
   },
   cancelModelFileDownload: (downloadId) =>

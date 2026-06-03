@@ -101,6 +101,8 @@ vi.mock("@freed/ui/lib/debug-store", () => ({
 
 vi.mock("./memory-monitor", () => ({
   formatBytesForMemoryLog: (bytes: number) => `${bytes.toLocaleString()} B`,
+  formatScrapeMemoryPressureDetails: () =>
+    "Memory pressure is 2.00 GB, app RSS is 3.00 GB, WebKit RSS is 1.00 GB, high limit is 2.50 GB, critical limit is 3.50 GB after cleanup.",
   prepareSocialScrapeMemory: mocks.prepareSocialScrapeMemory,
 }));
 
@@ -680,7 +682,7 @@ describe("social capture completion", () => {
     expect(recordProviderHealthEvent).not.toHaveBeenCalled();
   });
 
-  it("waits for local semantic indexing before invoking Instagram scrape", async () => {
+  it("invokes Instagram scrape while local semantic indexing is active", async () => {
     mocks.prepareSocialScrapeMemory.mockResolvedValue({
       before: {},
       after: { appResidentBytes: 512 * 1024 * 1024 },
@@ -697,6 +699,7 @@ describe("social capture completion", () => {
     const semantic = coordinator.runBackgroundJob({
       kind: "semantic-classifier",
       source: "content-signals",
+      blocking: false,
       run: () => new Promise<void>((resolve) => {
         releaseSemantic = resolve;
       }),
@@ -707,14 +710,92 @@ describe("social capture completion", () => {
     const resultPromise = fetchIgFeed();
 
     await Promise.resolve();
-    expect(mocks.invoke).not.toHaveBeenCalledWith("ig_scrape_feed", expect.anything());
+    await resultPromise;
+    expect(mocks.invoke).toHaveBeenCalledWith("ig_scrape_feed", expect.anything());
 
     releaseSemantic();
     await semantic;
-    const result = await resultPromise;
+  });
 
-    expect(result.diag.errorStage).toBeNull();
-    expect(mocks.invoke).toHaveBeenCalledWith("ig_scrape_feed", expect.anything());
+  it("does not mark an empty Instagram feed scrape as a successful account sync", async () => {
+    const listeners = new Map<string, (event: { payload: unknown }) => void>();
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockImplementation(
+      async (
+        eventName: string,
+        callback: (event: { payload: unknown }) => void,
+      ) => {
+        listeners.set(eventName, callback);
+        return vi.fn();
+      },
+    );
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command !== "ig_scrape_feed") return null;
+      listeners.get("ig-feed-data")?.({
+        payload: {
+          posts: [],
+          extractedAt: Date.now(),
+          url: "https://www.instagram.com/?variant=following",
+          strategy: "article",
+          candidateCount: 3,
+          scrollY: 640,
+          rejected: {
+            suggestedOrSponsored: 1,
+            missingContent: 2,
+          },
+          pageState: {
+            articleCount: 3,
+            mainFound: true,
+            loggedInCookie: true,
+            loginChrome: false,
+            feedLike: true,
+            scrollHeight: 4_200,
+            url: "https://www.instagram.com/?variant=following",
+            title: "Instagram",
+          },
+        },
+      });
+      return null;
+    });
+
+    const { captureIgFeed } = await import("./instagram-capture");
+    const { recordProviderHealthEvent } = await import("./provider-health");
+
+    const result = await captureIgFeed();
+    const expectedMessage =
+      "Instagram feed returned 0 posts. 1 extraction pass, last strategy article, " +
+      "3 candidates on the last pass, scrollY 640, scrollHeight 4,200, 3 rejected.";
+
+    expect(result.items).toEqual([]);
+    expect(result.diag.errorStage).toBe("extract_empty");
+    expect(result.diag.errorMessage).toBe(expectedMessage);
+    expect(result.diag.totalCandidateCount).toBe(3);
+    expect(result.diag.totalRejected).toEqual({
+      suggestedOrSponsored: 1,
+      missingContent: 2,
+      duplicate: 0,
+      tinyOrInvisible: 0,
+    });
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(expectedMessage);
+    expect(mocks.storeState.setIgAuth).toHaveBeenCalledWith(
+      expect.objectContaining({ lastCaptureError: expectedMessage }),
+    );
+    expect(recordProviderHealthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "instagram",
+        outcome: "error",
+        stage: "extract_empty",
+        reason: expectedMessage,
+        itemsSeen: 0,
+        itemsAdded: 0,
+      }),
+    );
   });
 
   it("does not poison Instagram health when a provider scrape is already active", async () => {
@@ -758,6 +839,16 @@ describe("social capture completion", () => {
 });
 
 describe("social capture memory pressure gate", () => {
+  function allowRendererMemoryPreflight(): void {
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+  }
+
   it("returns Facebook memory diagnostics before invoking the native scraper", async () => {
     const { fetchFbFeed } = await import("./fb-capture");
     const result = await fetchFbFeed();
@@ -785,6 +876,46 @@ describe("social capture memory pressure gate", () => {
     expect(mocks.invoke).not.toHaveBeenCalledWith("ig_scrape_feed", expect.anything());
   });
 
+  it("classifies native Instagram memory rejections after renderer preflight", async () => {
+    allowRendererMemoryPreflight();
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "ig_scrape_feed") {
+        throw new Error(
+          "Instagram sync paused because Freed Desktop memory remains high after cleanup.",
+        );
+      }
+      return null;
+    });
+
+    const { fetchIgFeed } = await import("./instagram-capture");
+    const result = await fetchIgFeed();
+
+    expect(result.diag.errorStage).toBe("memory_pressure");
+    expect(result.diag.errorMessage).toContain("Instagram sync did not start");
+    expect(mocks.invoke).toHaveBeenCalledWith("ig_scrape_feed", expect.anything());
+  });
+
+  it("classifies native Facebook memory rejections after renderer preflight", async () => {
+    allowRendererMemoryPreflight();
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "fb_scrape_feed") {
+        throw new Error(
+          "Facebook sync paused because Freed Desktop memory remains high after cleanup.",
+        );
+      }
+      return null;
+    });
+
+    const { fetchFbFeed } = await import("./fb-capture");
+    const result = await fetchFbFeed();
+
+    expect(result.diag.errorStage).toBe("memory_pressure");
+    expect(result.diag.errorMessage).toContain("Facebook sync did not start");
+    expect(mocks.invoke).toHaveBeenCalledWith("fb_scrape_feed", expect.anything());
+  });
+
   it("returns LinkedIn memory diagnostics before invoking the native scraper", async () => {
     const { fetchLiFeed } = await import("./li-capture");
     const result = await fetchLiFeed();
@@ -792,5 +923,25 @@ describe("social capture memory pressure gate", () => {
     expect(result.diag.errorStage).toBe("memory_pressure");
     expect(mocks.prepareSocialScrapeMemory).toHaveBeenCalledWith("linkedin", "feed scrape");
     expect(mocks.invoke).not.toHaveBeenCalledWith("li_scrape_feed", expect.anything());
+  });
+
+  it("classifies native LinkedIn memory rejections after renderer preflight", async () => {
+    allowRendererMemoryPreflight();
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "li_scrape_feed") {
+        throw new Error(
+          "LinkedIn sync paused because Freed Desktop memory remains high after cleanup.",
+        );
+      }
+      return null;
+    });
+
+    const { fetchLiFeed } = await import("./li-capture");
+    const result = await fetchLiFeed();
+
+    expect(result.diag.errorStage).toBe("memory_pressure");
+    expect(result.diag.errorMessage).toContain("LinkedIn sync did not start");
+    expect(mocks.invoke).toHaveBeenCalledWith("li_scrape_feed", expect.anything());
   });
 });

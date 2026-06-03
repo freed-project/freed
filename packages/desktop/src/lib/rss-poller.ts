@@ -1,13 +1,14 @@
 /**
- * Background RSS polling service
+ * Background sync polling service
  *
- * Automatically refreshes all subscribed feeds on a regular interval.
+ * Automatically refreshes subscribed feeds and connected social providers.
  * Runs in the JavaScript layer so it works regardless of Tauri's background state.
  */
 
-import { refreshRssFeeds } from "./capture";
+import { refreshAllFeeds } from "./capture";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import {
+  formatBackgroundRuntimeDeferredReason,
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
 } from "./background-runtime-coordinator";
@@ -73,9 +74,10 @@ function scheduleDeferredRetry(reason: string): void {
   if (retryTimeoutId !== null) return;
   const retryMs = nextDeferredRetryMs(reason);
   deferredRetryCount += 1;
+  const displayReason = formatBackgroundRuntimeDeferredReason(reason);
   addDebugEvent(
     "change",
-    `[RSS] poll retry scheduled in ${Math.round(retryMs / 1000).toLocaleString()}s after ${reason}`,
+    `[Sync] poll retry scheduled in ${Math.round(retryMs / 1000).toLocaleString()}s. ${displayReason}`,
   );
   retryTimeoutId = setTimeout(() => {
     retryTimeoutId = null;
@@ -104,7 +106,7 @@ export function startRssPoller(
     }, startupDelayMs);
     addDebugEvent(
       "change",
-      `[RSS] startup poll scheduled in ${Math.round(startupDelayMs / 1000).toLocaleString()}s`,
+      `[Sync] startup refresh scheduled in ${Math.round(startupDelayMs / 1000).toLocaleString()}s`,
     );
   } else {
     void triggerPoll();
@@ -112,7 +114,7 @@ export function startRssPoller(
 
   pollIntervalId = setInterval(triggerPoll, intervalMs);
   console.log(
-    `[RssPoller] Started, polling every ${(intervalMs / 60000).toLocaleString()} minutes`,
+    `[SyncPoller] Started, polling every ${(intervalMs / 60000).toLocaleString()} minutes`,
   );
 }
 
@@ -125,7 +127,7 @@ export function stopRssPoller(): void {
   if (pollIntervalId !== null) {
     clearInterval(pollIntervalId);
     pollIntervalId = null;
-    console.log("[RssPoller] Stopped");
+    console.log("[SyncPoller] Stopped");
   }
 }
 
@@ -141,19 +143,19 @@ async function triggerPoll(): Promise<void> {
       kind: "rss-poll",
       source: "rss-poller",
       timeoutMs: 180_000,
-      run: () => refreshRssFeeds(SCHEDULED_REFRESH_OPTIONS),
+      run: () => refreshAllFeeds(SCHEDULED_REFRESH_OPTIONS),
     });
     clearDeferredRetry();
   } catch (err) {
     if (isBackgroundRuntimeDeferredError(err)) {
-      addDebugEvent("change", `[RSS] poll deferred: ${err.reason}`);
+      addDebugEvent("change", `[Sync] poll deferred: ${formatBackgroundRuntimeDeferredReason(err.reason)}`);
       scheduleDeferredRetry(err.reason);
       return;
     }
     clearDeferredRetry();
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[RssPoller] Error during poll:", err);
-    addDebugEvent("error", `[RSS] poller crashed: ${msg}`);
+    console.error("[SyncPoller] Error during poll:", err);
+    addDebugEvent("error", `[Sync] poller crashed: ${msg}`);
   } finally {
     isPolling = false;
   }
