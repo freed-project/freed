@@ -32,6 +32,7 @@ import { runBackgroundJob } from "./background-runtime-coordinator";
 import {
   applyRuntimeDeferredDiag,
   applyLockedSessionDeferredDiag,
+  applyNativeMemoryPressureDiag,
   isRuntimeDeferredStage,
   SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
   SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
@@ -163,6 +164,9 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
     await new Promise<void>((r) => setTimeout(r, 500));
   } catch (err) {
     if (applyRuntimeDeferredDiag(diag, err)) {
+      return { items: [], diag };
+    }
+    if (applyNativeMemoryPressureDiag(diag, err, "instagram")) {
       return { items: [], diag };
     }
     diag.errorStage = "invoke";

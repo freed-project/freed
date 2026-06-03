@@ -3436,8 +3436,12 @@ fn macos_process_has_open_file_under_roots(pid: u32, roots: &[PathBuf]) -> bool 
         .any(|path| path_is_under_any_root(Path::new(path), roots))
 }
 
-fn webkit_process_belongs_to_current_launch(webkit_age_seconds: u64, app_age_seconds: u64) -> bool {
+fn webkit_process_started_after_app_start(webkit_age_seconds: u64, app_age_seconds: u64) -> bool {
     webkit_age_seconds <= app_age_seconds.saturating_add(WEBKIT_PROCESS_START_GRACE_SECONDS)
+}
+
+fn webkit_process_started_with_app(webkit_age_seconds: u64, app_age_seconds: u64) -> bool {
+    webkit_age_seconds.abs_diff(app_age_seconds) <= WEBKIT_PROCESS_START_GRACE_SECONDS
 }
 
 fn freed_webkit_process_role(
@@ -3445,13 +3449,16 @@ fn freed_webkit_process_role(
     webkit_age_seconds: u64,
     app_age_seconds: u64,
 ) -> Option<&'static str> {
-    if !webkit_process_belongs_to_current_launch(webkit_age_seconds, app_age_seconds) {
-        return None;
-    }
     if has_open_file_under_roots {
-        Some("freed-webcontent")
-    } else {
+        if webkit_process_started_after_app_start(webkit_age_seconds, app_age_seconds) {
+            Some("freed-webcontent")
+        } else {
+            None
+        }
+    } else if webkit_process_started_with_app(webkit_age_seconds, app_age_seconds) {
         Some("freed-webcontent-age-matched")
+    } else {
+        None
     }
 }
 
@@ -8961,19 +8968,45 @@ mod tests {
     fn webkit_process_filter_excludes_prior_launches() {
         let app_age = 60;
 
-        assert!(webkit_process_belongs_to_current_launch(0, app_age));
-        assert!(webkit_process_belongs_to_current_launch(
+        assert!(webkit_process_started_after_app_start(0, app_age));
+        assert!(webkit_process_started_after_app_start(
             app_age + WEBKIT_PROCESS_START_GRACE_SECONDS,
             app_age
         ));
-        assert!(!webkit_process_belongs_to_current_launch(
+        assert!(!webkit_process_started_after_app_start(
             app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
             app_age
         ));
+
+        assert!(webkit_process_started_with_app(app_age, app_age));
+        assert!(webkit_process_started_with_app(
+            app_age.saturating_sub(WEBKIT_PROCESS_START_GRACE_SECONDS),
+            app_age
+        ));
+        assert!(!webkit_process_started_with_app(0, app_age));
     }
 
     #[test]
-    fn webkit_process_role_keeps_current_launch_after_root_files_close() {
+    fn webkit_process_role_counts_rooted_current_launches() {
+        let app_age = 60;
+
+        assert_eq!(
+            freed_webkit_process_role(true, app_age, app_age),
+            Some("freed-webcontent")
+        );
+        assert_eq!(freed_webkit_process_role(true, 0, app_age), Some("freed-webcontent"));
+        assert_eq!(
+            freed_webkit_process_role(
+                true,
+                app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
+                app_age
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn webkit_process_role_keeps_only_app_start_rootless_processes() {
         let app_age = 60;
 
         assert_eq!(
@@ -8981,9 +9014,14 @@ mod tests {
             Some("freed-webcontent-age-matched")
         );
         assert_eq!(
-            freed_webkit_process_role(true, app_age, app_age),
-            Some("freed-webcontent")
+            freed_webkit_process_role(
+                false,
+                app_age.saturating_sub(WEBKIT_PROCESS_START_GRACE_SECONDS),
+                app_age
+            ),
+            Some("freed-webcontent-age-matched")
         );
+        assert_eq!(freed_webkit_process_role(false, 0, app_age), None);
         assert_eq!(
             freed_webkit_process_role(
                 false,

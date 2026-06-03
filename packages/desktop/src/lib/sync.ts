@@ -32,6 +32,7 @@ import { log } from "./logger.js";
 import { recordProviderHealthEvent } from "./provider-health";
 import { scheduleSideEffect } from "./side-effect-scheduler";
 import {
+  formatBackgroundRuntimeDeferredReason,
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
   type BackgroundJobKind,
@@ -1061,9 +1062,10 @@ function scheduleInitialCloudDownloadRetry(
     INITIAL_DOWNLOAD_DEFER_BACKOFF_BASE_MS,
     INITIAL_DOWNLOAD_DEFER_BACKOFF_MAX_MS,
   );
+  const displayReason = formatBackgroundRuntimeDeferredReason(reason);
   addDebugEvent(
     "change",
-    `[Cloud/${provider}] initial download deferred: ${reason}; retry_ms=${delayMs.toLocaleString()}`,
+    `[Cloud/${provider}] initial download deferred: ${displayReason} Retry in ${delayMs.toLocaleString()} ms.`,
   );
   const existing = initialDownloadTimers.get(provider);
   if (existing) clearTimeout(existing);
@@ -1419,21 +1421,22 @@ export function scheduleCloudUpload(provider: CloudProvider, token?: string): vo
         }).catch((error) => {
           if (isBackgroundRuntimeDeferredError(error)) {
             const delayMs = nextUploadRetryMs(provider, error.reason);
+            const displayReason = formatBackgroundRuntimeDeferredReason(error.reason);
             addDebugEvent(
               "change",
-              `[Cloud/${provider}] upload deferred: ${error.reason}; retry_ms=${delayMs.toLocaleString()}`,
+              `[Cloud/${provider}] upload deferred: ${displayReason} Retry in ${delayMs.toLocaleString()} ms.`,
             );
             updateCloudProvider(provider, {
               status: "connected",
               stage: "idle",
               statusMessage: "Upload deferred.",
-              pendingReason: `${error.reason}. Retrying in ${delayMs.toLocaleString()} ms.`,
+              pendingReason: `${displayReason} Retrying in ${delayMs.toLocaleString()} ms.`,
             });
             recordCloudStep(
               provider,
               "deferred",
               "upload",
-              `Upload deferred: ${error.reason}. Retrying in ${delayMs.toLocaleString()} ms.`,
+              `Upload deferred: ${displayReason} Retrying in ${delayMs.toLocaleString()} ms.`,
             );
             const retryTimer = setTimeout(() => {
               uploadTimers.delete(provider);
@@ -1495,13 +1498,14 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
     });
   } catch (error) {
     if (isBackgroundRuntimeDeferredError(error)) {
+      const displayReason = formatBackgroundRuntimeDeferredReason(error.reason);
       updateCloudProvider(provider, {
         status: "connected",
         stage: "idle",
         statusMessage: "Manual sync deferred.",
-        pendingReason: error.reason,
+        pendingReason: displayReason,
       });
-      recordCloudStep(provider, "deferred", "idle", `Manual sync deferred: ${error.reason}.`);
+      recordCloudStep(provider, "deferred", "idle", `Manual sync deferred: ${displayReason}`);
     }
     throw error;
   }
