@@ -140,6 +140,36 @@ describe("Automerge item patch state updates", () => {
     expect(result.state.totalArchivableCount).toBe(state.totalArchivableCount);
   });
 
+  it("adds new items with ranked order metadata without a full state update", () => {
+    const unread = makeItem("rss:unread");
+    const read = makeItem("rss:read", { readAt: 10 });
+    const state = makeState([unread, read]);
+    const index = createItemIndex(state.items);
+    const added = makeItem("rss:new");
+
+    const result = applyItemPatchesToState(state, [{ item: added }], index, {
+      orderedItemIds: ["rss:new", "rss:unread", "rss:read"],
+      searchCorpusVersion: 2,
+      docItemCount: 3,
+    });
+
+    expect(result.state.items.map((item) => item.globalId)).toEqual([
+      "rss:new",
+      "rss:unread",
+      "rss:read",
+    ]);
+    expect(result.itemIndex.get("rss:new")).toBe(0);
+    expect(result.state.searchCorpusVersion).toBe(2);
+    expect(result.state.docItemCount).toBe(3);
+    expect(result.state.totalUnreadCount).toBe(2);
+    expect(result.state.unreadCountByPlatform).toEqual({ rss: 2 });
+    expect(result.state.feedUnreadCounts).toEqual({ [FEED_URL]: 2 });
+    expect(result.state.totalItemCount).toBe(3);
+    expect(result.state.itemCountByPlatform).toEqual({ rss: 3 });
+    expect(result.state.feedTotalCounts).toEqual({ [FEED_URL]: 3 });
+    expect(result.state.totalArchivableCount).toBe(1);
+  });
+
   it("keeps a synced X like patch count-neutral and in place", () => {
     const { rssSource: _rssSource, ...baseXPost } = makeItem("x:2049705418436600244");
     const xPost = {

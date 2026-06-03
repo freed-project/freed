@@ -417,7 +417,7 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
       await upsertMediaVaultRosterFromItems("instagram", result.items);
       const archivedCount = await archiveRecentProviderMedia(
         "instagram",
-        useAppStore.getState().items.filter((i) => i.platform === "instagram"),
+        result.items,
       );
       if (archivedCount > 0) {
         addDebugEvent(

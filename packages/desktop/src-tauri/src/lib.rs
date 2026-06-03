@@ -3912,15 +3912,9 @@ fn scrape_resident_start_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
         .saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES)
 }
 
-fn scrape_resident_critical_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
-    stats
-        .memory_critical_bytes
-        .saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES)
-}
-
 fn scrape_memory_may_proceed(stats: &RuntimeMemoryStats) -> bool {
     stats.app_memory_pressure_bytes < scrape_memory_start_budget_bytes(stats)
-        && stats.app_resident_bytes < scrape_resident_critical_budget_bytes(stats)
+        && stats.app_resident_bytes < scrape_resident_start_budget_bytes(stats)
 }
 
 fn scrape_memory_pressure_level(stats: &RuntimeMemoryStats) -> &'static str {
@@ -9519,7 +9513,7 @@ mod tests {
     }
 
     #[test]
-    fn scrape_memory_degrades_resident_rss_at_high_budget_when_footprint_is_low() {
+    fn scrape_memory_blocks_resident_rss_at_start_budget_when_footprint_is_low() {
         let budget =
             (MIN_CRITICAL_MEMORY_BYTES * 70 / 100).saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES);
         let stats = RuntimeMemoryStats {
@@ -9558,15 +9552,15 @@ mod tests {
             app_memory_pressure_bytes: budget - 1,
             ..stats
         };
-        assert!(scrape_memory_may_proceed(&high_resident_stats));
+        assert!(!scrape_memory_may_proceed(&high_resident_stats));
         assert_eq!(scrape_memory_pressure_level(&high_resident_stats), "high");
         assert_eq!(
             social_scrape_plan_for_memory(&high_resident_stats, 6, 10),
             SocialScrapePlan {
-                min_passes: 2,
-                max_passes: 3,
+                min_passes: 0,
+                max_passes: 0,
                 skip_stories: true,
-                reason: "minimal-memory-margin",
+                reason: "blocked",
             }
         );
     }

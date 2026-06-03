@@ -327,7 +327,11 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   if (msg.type === "ITEM_PATCH") {
     if (!lastDocState) return;
     const changedItems = msg.patches.map((patch) => patch.item);
-    const patched = applyItemPatchesToState(lastDocState, msg.patches, lastItemIndexById);
+    const patched = applyItemPatchesToState(lastDocState, msg.patches, lastItemIndexById, {
+      orderedItemIds: msg.orderedItemIds,
+      searchCorpusVersion: msg.searchCorpusVersion,
+      docItemCount: msg.docItemCount,
+    });
     lastItemIndexById = patched.itemIndex;
     publishState(patched.state, {
       source: "item_patch",

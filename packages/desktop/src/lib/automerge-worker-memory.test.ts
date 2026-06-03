@@ -167,10 +167,27 @@ describe("automerge worker memory routing", () => {
   });
 
   it("compacts oversized feed text before item writes", () => {
-    for (const caseName of ["ADD_FEED_ITEM", "ADD_FEED_ITEMS", "BATCH_REFRESH_FEEDS", "BATCH_IMPORT_ITEMS"]) {
+    for (const caseName of ["ADD_FEED_ITEM", "BATCH_REFRESH_FEEDS", "BATCH_IMPORT_ITEMS"]) {
       expect(caseBody(caseName)).toContain("compactFeedItemTextForSync");
     }
+    expect(workerSource).toContain("async function applyAddFeedItemsPatchChange");
+    expect(workerSource).toContain("compactFeedItemTextForSync(item)");
     expect(caseBody("UPDATE_FEED_ITEM")).toContain("compactFeedItemTextForSync(item)");
+  });
+
+  it("batch item writes use item patches unless social dedup rewrites existing records", () => {
+    const body = caseBody("ADD_FEED_ITEMS");
+
+    expect(body).toContain("applyAddFeedItemsPatchChange(req.items, trace)");
+    expect(body).not.toContain("applyRequestChange");
+    expect(body).not.toContain("saveAndBroadcast");
+    expect(workerSource).toContain("async function applyAddFeedItemsPatchChange");
+    expect(workerSource).toContain("await persistAndBroadcastWithoutHydration(trace)");
+    expect(workerSource).toContain("type: \"ITEM_PATCH\"");
+    expect(workerSource).toContain("orderedItemIds");
+    expect(workerSource).toContain("searchCorpusVersion");
+    expect(workerSource).toContain("docItemCount");
+    expect(workerSource).toContain("reason=social_dedup");
   });
 
   it("last sync persists without rehydrating the full document", () => {
