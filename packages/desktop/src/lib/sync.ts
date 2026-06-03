@@ -34,6 +34,7 @@ import { scheduleSideEffect } from "./side-effect-scheduler";
 import {
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
+  type BackgroundJobKind,
 } from "./background-runtime-coordinator";
 
 let googleDriveFetch: GoogleDriveFetch | undefined;
@@ -301,6 +302,9 @@ const CLOUD_TOKEN_META_KEY = (p: CloudProvider) => `freed_cloud_token_meta_${p}`
 const UPLOAD_DEBOUNCE_MS = 2_000;
 const UPLOAD_DEFER_BACKOFF_BASE_MS = 10_000;
 const UPLOAD_DEFER_BACKOFF_MAX_MS = 120_000;
+const UPLOAD_ACTIVE_JOB_WAIT_MS = 30_000;
+const UPLOAD_ACTIVE_JOB_RETRY_MS = 5_000;
+const UPLOAD_WAIT_FOR_ACTIVE_JOB_KINDS = ["outbox", "social-scrape"] as const satisfies readonly BackgroundJobKind[];
 const INITIAL_DOWNLOAD_DEFER_BACKOFF_BASE_MS = 15_000;
 const INITIAL_DOWNLOAD_DEFER_BACKOFF_MAX_MS = 180_000;
 const TOKEN_REFRESH_SKEW_MS = 60_000;
@@ -1086,6 +1090,22 @@ function scheduleInitialCloudDownloadRetry(
   initialDownloadTimers.set(provider, timer);
 }
 
+function isActiveRuntimeReason(reason: string): boolean {
+  return reason.startsWith("active:");
+}
+
+function nextUploadRetryMs(provider: CloudProvider, reason: string): number {
+  if (isActiveRuntimeReason(reason)) {
+    return UPLOAD_ACTIVE_JOB_RETRY_MS;
+  }
+  return nextDeferredBackoffMs(
+    cloudUploadDeferredAttempts,
+    provider,
+    UPLOAD_DEFER_BACKOFF_BASE_MS,
+    UPLOAD_DEFER_BACKOFF_MAX_MS,
+  );
+}
+
 /**
  * Start the cloud sync loop for a single provider.
  * Downloads the latest remote state immediately, then runs the appropriate
@@ -1393,15 +1413,12 @@ export function scheduleCloudUpload(provider: CloudProvider, token?: string): vo
           kind: "cloud-sync",
           source: `cloud:${provider}`,
           timeoutMs: 180_000,
+          waitForActiveJobMs: UPLOAD_ACTIVE_JOB_WAIT_MS,
+          waitForActiveJobKinds: UPLOAD_WAIT_FOR_ACTIVE_JOB_KINDS,
           run: () => performCloudUpload(provider, token),
         }).catch((error) => {
           if (isBackgroundRuntimeDeferredError(error)) {
-            const delayMs = nextDeferredBackoffMs(
-              cloudUploadDeferredAttempts,
-              provider,
-              UPLOAD_DEFER_BACKOFF_BASE_MS,
-              UPLOAD_DEFER_BACKOFF_MAX_MS,
-            );
+            const delayMs = nextUploadRetryMs(provider, error.reason);
             addDebugEvent(
               "change",
               `[Cloud/${provider}] upload deferred: ${error.reason}; retry_ms=${delayMs.toLocaleString()}`,
@@ -1461,6 +1478,8 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
       kind: "cloud-sync",
       source: `cloud:${provider}:manual-download`,
       timeoutMs: 180_000,
+      waitForActiveJobMs: UPLOAD_ACTIVE_JOB_WAIT_MS,
+      waitForActiveJobKinds: UPLOAD_WAIT_FOR_ACTIVE_JOB_KINDS,
       run: () => runInitialCloudDownload(provider, signal, async () => {
         const currentToken = provider === "gdrive" ? await getValidCloudToken(provider) : token;
         return currentToken ?? token;
@@ -1470,6 +1489,8 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
       kind: "cloud-sync",
       source: `cloud:${provider}:manual-upload`,
       timeoutMs: 180_000,
+      waitForActiveJobMs: UPLOAD_ACTIVE_JOB_WAIT_MS,
+      waitForActiveJobKinds: UPLOAD_WAIT_FOR_ACTIVE_JOB_KINDS,
       run: () => performCloudUpload(provider),
     });
   } catch (error) {
