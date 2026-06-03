@@ -2,14 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const gdriveDownloadLatestMock = vi.fn();
 const gdriveStartPollLoopMock = vi.fn();
+const gdriveUploadSafeMock = vi.fn();
 const mergeDocMock = vi.fn();
 const addDebugEventMock = vi.fn();
 const updateCloudProviderMock = vi.fn();
+const recordCloudProviderEventMock = vi.fn();
 
 vi.mock("@freed/sync/cloud", () => ({
   gdriveDownloadLatest: gdriveDownloadLatestMock,
   gdriveStartPollLoop: gdriveStartPollLoopMock,
-  gdriveUploadSafe: vi.fn(),
+  gdriveUploadSafe: gdriveUploadSafeMock,
   gdriveDeleteFile: vi.fn(),
   dropboxDownloadLatest: vi.fn(),
   dropboxStartLongpollLoop: vi.fn(),
@@ -24,6 +26,7 @@ vi.mock("./automerge", () => ({
 
 vi.mock("@freed/ui/lib/debug-store", () => ({
   addDebugEvent: addDebugEventMock,
+  recordCloudProviderEvent: recordCloudProviderEventMock,
   updateCloudProvider: updateCloudProviderMock,
 }));
 
@@ -32,9 +35,11 @@ describe("PWA cloud sync auth refresh", () => {
     vi.resetModules();
     gdriveDownloadLatestMock.mockReset();
     gdriveStartPollLoopMock.mockReset();
+    gdriveUploadSafeMock.mockReset();
     mergeDocMock.mockReset();
     addDebugEventMock.mockReset();
     updateCloudProviderMock.mockReset();
+    recordCloudProviderEventMock.mockReset();
     localStorage.clear();
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       access_token: "refreshed-access-token",
@@ -92,6 +97,41 @@ describe("PWA cloud sync auth refresh", () => {
     expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
       status: "connected",
       lastRemoteBytes: remote.length,
+    }));
+  });
+
+  it("runs an immediate Google Drive download and upload for manual sync", async () => {
+    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveUploadSafeMock.mockResolvedValue({
+      fileId: "file-1",
+      uploadedBytes: 0,
+      remoteBytes: 0,
+      mergedRemote: false,
+      uploadedBinary: new Uint8Array(),
+    });
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "valid-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 120_000,
+    }));
+
+    const { syncCloudProviderNow } = await import("./sync");
+    await syncCloudProviderNow("gdrive");
+
+    expect(gdriveDownloadLatestMock).toHaveBeenCalledWith("valid-access-token", expect.any(AbortSignal));
+    expect(gdriveUploadSafeMock).toHaveBeenCalledWith("valid-access-token", expect.any(Uint8Array));
+    expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      statusMessage: "Manual sync requested.",
+      pendingReason: "Checking cloud storage, then uploading the local document.",
+    }));
+    expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      lastUploadAt: expect.any(Number),
+      lastUploadedBytes: 0,
+      statusMessage: "Upload complete.",
+    }));
+    expect(recordCloudProviderEventMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      kind: "queued",
+      message: "Manual sync requested.",
     }));
   });
 });

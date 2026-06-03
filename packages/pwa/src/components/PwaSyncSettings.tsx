@@ -1,5 +1,5 @@
 /**
- * PwaSyncSettings -- sync section content for the Settings panel on the PWA.
+ * PwaSyncSettings, sync section content for the Settings panel on the PWA.
  *
  * Rendered via the SettingsExtraSections platform slot. Two views:
  *
@@ -9,10 +9,10 @@
  *   last-synced time, and a Disconnect action.
  */
 
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { getWebsiteHostForChannel } from "@freed/shared";
 import { usePlatform } from "@freed/ui/context";
-import { useDebugStore } from "@freed/ui/lib/debug-store";
+import { useDebugStore, type CloudProviderDebugState } from "@freed/ui/lib/debug-store";
 import { useAppStore } from "../lib/store";
 import {
   getCloudProvider,
@@ -20,6 +20,7 @@ import {
   stopCloudSync,
   clearStoredRelayUrl,
   disconnect,
+  syncCloudProviderNow,
 } from "../lib/sync";
 import { SyncConnectContent } from "./SyncConnectDialog";
 
@@ -40,11 +41,11 @@ function formatRelativeTime(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
   if (seconds < 60) return "just now";
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return `${minutes.toLocaleString()}m ago`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return `${hours.toLocaleString()}h ago`;
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return `${days.toLocaleString()}d ago`;
 }
 
 function formatBytes(bytes?: number): string {
@@ -65,6 +66,16 @@ function SyncDiagnosticCell({ label, value }: { label: string; value: string }) 
       <p className="mt-1 truncate font-mono text-xs tabular-nums text-[var(--theme-text-secondary)]">{value}</p>
     </div>
   );
+}
+
+function describeUploadGap(state: CloudProviderDebugState | null): string {
+  if (!state) return "Connect Google Drive to start cloud sync.";
+  if (state.stage === "upload") return "Uploading now.";
+  if (state.lastUploadAt) return state.pendingReason ?? "Last upload completed. Waiting for the next local change.";
+  if (state.error) return "Upload has not completed because sync needs attention.";
+  if (state.pendingReason) return state.pendingReason;
+  if (state.lastDownloadAt) return "Drive was checked, but no upload has completed yet. Use Sync now to upload immediately.";
+  return "No upload has completed yet. Use Sync now to force a full pass.";
 }
 
 function ProviderLogo({ provider }: { provider: Provider }) {
@@ -102,6 +113,8 @@ export function PwaSyncSettings() {
   const feeds = useAppStore((s) => s.feeds);
   const docSnapshot = useDebugStore((s) => s.docSnapshot);
   const cloudProviders = useDebugStore((s) => s.cloudProviders);
+  const [manualSyncingProvider, setManualSyncingProvider] = useState<"gdrive" | "dropbox" | null>(null);
+  const [manualSyncError, setManualSyncError] = useState<string | null>(null);
   const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
 
   const lastSyncTime = useMemo(() => {
@@ -115,6 +128,10 @@ export function PwaSyncSettings() {
   const cloudProviderState = provider === "gdrive" || provider === "dropbox"
     ? cloudProviders?.[provider]
     : null;
+  const activeCloudProvider = provider === "gdrive" || provider === "dropbox" ? provider : null;
+  const isManualSyncing = manualSyncingProvider !== null;
+  const uploadExplanation = describeUploadGap(cloudProviderState ?? null);
+  const diagnosticError = cloudProviderState?.error ?? manualSyncError;
 
   const handleDisconnect = () => {
     clearStoredRelayUrl();
@@ -126,7 +143,20 @@ export function PwaSyncSettings() {
     }
   };
 
-  // Disconnected -- show connect UI inline, no intermediate "Connect" button
+  const handleManualCloudSync = useCallback(async () => {
+    if (!activeCloudProvider) return;
+    setManualSyncingProvider(activeCloudProvider);
+    setManualSyncError(null);
+    try {
+      await syncCloudProviderNow(activeCloudProvider);
+    } catch (error) {
+      setManualSyncError(error instanceof Error ? error.message : "Cloud sync failed.");
+    } finally {
+      setManualSyncingProvider(null);
+    }
+  }, [activeCloudProvider]);
+
+  // Disconnected, show connect UI inline with no intermediate "Connect" button.
   if (!syncConnected) {
     return (
       <div className="flex flex-col flex-1">
@@ -174,7 +204,7 @@ export function PwaSyncSettings() {
     );
   }
 
-  // Connected -- polished status card
+  // Connected, polished status card.
   const statusText = isSyncing ? "Syncing now" : "Connected";
   const dotColor = isSyncing
     ? "bg-[var(--theme-accent-secondary)] animate-pulse"
@@ -203,17 +233,45 @@ export function PwaSyncSettings() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
+      <div
+        data-testid="pwa-cloud-sync-diagnostics"
+        className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4"
+      >
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-[var(--theme-text-primary)]">Sync diagnostics</p>
             <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">Local document and cloud transfer state</p>
           </div>
-          {cloudProviderState?.stage && (
-            <span className="rounded-full bg-[var(--theme-bg-muted)] px-2 py-1 text-[11px] font-medium text-[var(--theme-text-muted)]">
-              {cloudProviderState.stage}
-            </span>
-          )}
+          <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
+            {cloudProviderState?.stage && (
+              <span className="rounded-full bg-[var(--theme-bg-muted)] px-2 py-1 text-[11px] font-medium text-[var(--theme-text-muted)]">
+                {cloudProviderState.stage}
+              </span>
+            )}
+            <button
+              type="button"
+              data-testid="pwa-cloud-sync-now-button"
+              onClick={handleManualCloudSync}
+              disabled={!activeCloudProvider || isManualSyncing}
+              className="btn-secondary rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
+            >
+              {isManualSyncing ? "Syncing..." : "Sync now"}
+            </button>
+          </div>
+        </div>
+
+        {diagnosticError && (
+          <p className="theme-feedback-text-danger mb-3 break-words text-xs">{diagnosticError}</p>
+        )}
+
+        <div
+          data-testid="pwa-cloud-sync-status-message"
+          className="mb-3 rounded-lg bg-[var(--theme-bg-muted)] px-3 py-2 text-xs text-[var(--theme-text-secondary)]"
+        >
+          <p className="font-medium text-[var(--theme-text-primary)]">
+            {cloudProviderState?.statusMessage ?? "No cloud sync activity yet."}
+          </p>
+          <p className="mt-1 text-[var(--theme-text-muted)]">{uploadExplanation}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
@@ -242,6 +300,33 @@ export function PwaSyncSettings() {
             value={formatDiagnosticTime(cloudProviderState?.lastUploadAt)}
           />
         </div>
+
+        {cloudProviderState?.events && cloudProviderState.events.length > 0 && (
+          <div className="mt-3 space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">
+              Activity
+            </p>
+            <div data-testid="pwa-cloud-sync-activity" className="space-y-1.5">
+              {cloudProviderState.events.slice(0, 6).map((event) => (
+                <div
+                  key={event.id}
+                  className="flex items-start justify-between gap-3 rounded-lg bg-[var(--theme-bg-muted)] px-3 py-2 text-xs"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-[var(--theme-text-secondary)]">{event.message}</p>
+                    <p className="mt-0.5 text-[10px] uppercase tracking-wider text-[var(--theme-text-soft)]">
+                      {event.kind}, {event.stage}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right font-mono text-[10px] text-[var(--theme-text-muted)]">
+                    <p>{formatDiagnosticTime(event.ts)}</p>
+                    {typeof event.bytes === "number" && <p>{formatBytes(event.bytes)}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex justify-end">
