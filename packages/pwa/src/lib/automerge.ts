@@ -82,6 +82,8 @@ async function request(msg: WorkerRequest): Promise<void> {
 // Latest binary from the worker — updated on every STATE_UPDATE.
 // Returned synchronously by getDocBinary() so sync.ts callers are unchanged.
 let lastBinary: Uint8Array | null = null;
+let lastDocState: DocState | null = null;
+let initPromise: Promise<DocState> | null = null;
 
 // ---------------------------------------------------------------------------
 // Subscriber model
@@ -106,6 +108,7 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
 
   if (msg.type === "STATE_UPDATE") {
     lastBinary = msg.binary;
+    lastDocState = msg.state;
     for (const sub of subscribers) sub(msg.state);
     return;
   }
@@ -195,6 +198,7 @@ function sendInit(): Promise<DocState> {
       const msg = event.data;
       if (msg.type === "STATE_UPDATE" && !initialState) {
         lastBinary = msg.binary;
+        lastDocState = msg.state;
         initialState = msg.state;
         tryResolve();
       } else if (msg.type === "ACK" && msg.reqId === reqId) {
@@ -220,13 +224,16 @@ function sendInit(): Promise<DocState> {
 
 export async function initDoc(): Promise<DocState> {
   await workerReady;
+  if (lastDocState) return lastDocState;
+  if (initPromise) return initPromise;
 
-  try {
-    return await sendInit();
-  } catch {
+  initPromise = sendInit().catch(async () => {
     await clearLocalDoc();
     return sendInit();
-  }
+  }).finally(() => {
+    initPromise = null;
+  });
+  return initPromise;
 }
 
 /** Binary snapshot of the current doc — used by sync.ts for relay/cloud upload. */

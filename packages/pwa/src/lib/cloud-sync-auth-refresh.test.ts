@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const gdriveDownloadLatestMock = vi.fn();
 const gdriveStartPollLoopMock = vi.fn();
 const gdriveUploadSafeMock = vi.fn();
+const initDocMock = vi.fn();
 const mergeDocMock = vi.fn();
 const addDebugEventMock = vi.fn();
 const updateCloudProviderMock = vi.fn();
@@ -22,6 +23,7 @@ vi.mock("@freed/sync/cloud", () => ({
 
 vi.mock("./automerge", () => ({
   getDocBinary: vi.fn(() => new Uint8Array()),
+  initDoc: initDocMock,
   mergeDoc: mergeDocMock,
   subscribe: subscribeMock,
 }));
@@ -38,6 +40,8 @@ describe("PWA cloud sync auth refresh", () => {
     gdriveDownloadLatestMock.mockReset();
     gdriveStartPollLoopMock.mockReset();
     gdriveUploadSafeMock.mockReset();
+    initDocMock.mockReset();
+    initDocMock.mockResolvedValue({});
     mergeDocMock.mockReset();
     addDebugEventMock.mockReset();
     updateCloudProviderMock.mockReset();
@@ -86,6 +90,9 @@ describe("PWA cloud sync auth refresh", () => {
     await startCloudSync("gdrive", "expired-access-token");
     stopCloudSync();
 
+    expect(initDocMock.mock.invocationCallOrder[0]).toBeLessThan(
+      gdriveDownloadLatestMock.mock.invocationCallOrder[0],
+    );
     expect(fetch).toHaveBeenCalledWith("/api/oauth/google", expect.objectContaining({
       method: "POST",
     }));
@@ -123,6 +130,9 @@ describe("PWA cloud sync auth refresh", () => {
     const { syncCloudProviderNow } = await import("./sync");
     await syncCloudProviderNow("gdrive");
 
+    expect(initDocMock.mock.invocationCallOrder[0]).toBeLessThan(
+      gdriveDownloadLatestMock.mock.invocationCallOrder[0],
+    );
     expect(gdriveDownloadLatestMock).toHaveBeenCalledWith("valid-access-token", expect.any(AbortSignal));
     expect(gdriveUploadSafeMock).toHaveBeenCalledWith("valid-access-token", expect.any(Uint8Array));
     expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
