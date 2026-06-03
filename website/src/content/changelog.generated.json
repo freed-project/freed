@@ -1,5 +1,40 @@
 [
   {
+    "version": "26.6.301",
+    "tagName": "v26.6.301",
+    "channel": "production",
+    "date": "2026-06-03T16:19:20Z",
+    "deck": "Stabilize Google Drive sync and large-library feed adds",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Google Drive sync now uploads local changes from Freed Desktop and the PWA instead of only downloading remote data."
+      },
+      {
+        "text": "The PWA waits for its Automerge document to initialize before Google Drive sync, manual sync, OAuth callback sync, or relay resume can merge remote data."
+      },
+      {
+        "text": "Freed Desktop avoids a fatal Automerge worker timeout when adding RSS feed metadata to a large library."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.301",
+    "prNumbers": [
+      730,
+      733
+    ],
+    "builds": [
+      "26.6.301"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.301",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.301",
+        "channel": "production"
+      }
+    ]
+  },
+  {
     "version": "26.6.204",
     "tagName": "v26.6.204",
     "channel": "production",
