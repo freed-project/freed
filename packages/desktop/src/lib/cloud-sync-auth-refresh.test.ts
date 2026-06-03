@@ -9,6 +9,8 @@ const logInfoMock = vi.fn();
 const logWarnMock = vi.fn();
 const logErrorMock = vi.fn();
 const updateCloudProviderMock = vi.fn();
+const recordCloudProviderEventMock = vi.fn();
+const gdriveUploadSafeMock = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
@@ -25,7 +27,7 @@ vi.mock("@tauri-apps/plugin-shell", () => ({
 vi.mock("@freed/sync/cloud", () => ({
   gdriveDownloadLatest: gdriveDownloadLatestMock,
   gdriveStartPollLoop: gdriveStartPollLoopMock,
-  gdriveUploadSafe: vi.fn(),
+  gdriveUploadSafe: gdriveUploadSafeMock,
   gdriveDeleteFile: vi.fn(),
   dropboxDownloadLatest: vi.fn(),
   dropboxStartLongpollLoop: vi.fn(),
@@ -42,6 +44,7 @@ vi.mock("./automerge", () => ({
 
 vi.mock("@freed/ui/lib/debug-store", () => ({
   addDebugEvent: vi.fn(),
+  recordCloudProviderEvent: recordCloudProviderEventMock,
   updateCloudProvider: updateCloudProviderMock,
 }));
 
@@ -75,6 +78,8 @@ describe("desktop cloud sync auth refresh", () => {
     logWarnMock.mockReset();
     logErrorMock.mockReset();
     updateCloudProviderMock.mockReset();
+    recordCloudProviderEventMock.mockReset();
+    gdriveUploadSafeMock.mockReset();
     localStorage.clear();
   });
 
@@ -258,6 +263,50 @@ describe("desktop cloud sync auth refresh", () => {
     expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
       status: "connected",
       lastRemoteBytes: remote.length,
+    }));
+  });
+
+  it("runs an immediate Google Drive download and upload for manual sync", async () => {
+    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveUploadSafeMock.mockResolvedValue({
+      fileId: "file-1",
+      uploadedBytes: 0,
+      remoteBytes: 0,
+      mergedRemote: false,
+      uploadedBinary: new Uint8Array(),
+    });
+
+    const { storeCloudToken, syncCloudProviderNow } = await import("./sync");
+    storeCloudToken("gdrive", {
+      accessToken: "valid-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 120_000,
+    });
+
+    await syncCloudProviderNow("gdrive");
+
+    expect(gdriveDownloadLatestMock).toHaveBeenCalledWith(
+      "valid-access-token",
+      expect.any(AbortSignal),
+      undefined,
+    );
+    expect(gdriveUploadSafeMock).toHaveBeenCalledWith(
+      "valid-access-token",
+      expect.any(Uint8Array),
+      undefined,
+    );
+    expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      statusMessage: "Manual sync requested.",
+      pendingReason: "Checking cloud storage, then uploading the local document.",
+    }));
+    expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      lastUploadAt: expect.any(Number),
+      lastUploadedBytes: 0,
+      statusMessage: "Upload complete.",
+    }));
+    expect(recordCloudProviderEventMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      kind: "queued",
+      message: "Manual sync requested.",
     }));
   });
 

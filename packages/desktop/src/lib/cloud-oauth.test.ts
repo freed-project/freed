@@ -29,6 +29,7 @@ vi.mock("./automerge", () => ({
 
 vi.mock("@freed/ui/lib/debug-store", () => ({
   addDebugEvent: vi.fn(),
+  recordCloudProviderEvent: vi.fn(),
 }));
 
 vi.mock("./logger.js", () => ({
