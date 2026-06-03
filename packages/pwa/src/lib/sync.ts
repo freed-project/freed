@@ -12,7 +12,7 @@
  * protected by optimistic locking — see @freed/sync/cloud for details.
  */
 
-import { getDocBinary, mergeDoc } from "./automerge";
+import { getDocBinary, initDoc, mergeDoc, subscribe } from "./automerge";
 import {
   addDebugEvent,
   recordCloudProviderEvent,
@@ -41,6 +41,7 @@ let reconnectCount = 0;
 // Cloud sync connection state — set by startCloudSync/stopCloudSync so the
 // toolbar reflects "Connected" as soon as either channel is active.
 let isCloudConnectedState = false;
+let cloudChangeUnsubscribe: (() => void) | null = null;
 
 // Status listeners
 type StatusListener = (connected: boolean) => void;
@@ -222,6 +223,10 @@ let cloudAbort: AbortController | null = null;
 let uploadTimer: ReturnType<typeof setTimeout> | null = null;
 const cloudTokenRefreshes = new Map<CloudProvider, Promise<string | null>>();
 const cloudAuthFailureRefreshes = new Map<CloudProvider, number>();
+
+async function ensureDocumentReady(): Promise<void> {
+  await initDoc();
+}
 
 function describeSyncError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -477,6 +482,7 @@ export function clearCloudSync(provider: CloudProvider): void {
  */
 export async function startCloudSync(provider: CloudProvider, token: string): Promise<void> {
   stopCloudSync();
+  await ensureDocumentReady();
   cloudAbort = new AbortController();
   const { signal } = cloudAbort;
   const resolveToken = async () => (provider === "gdrive" ? (await getValidCloudToken(provider)) ?? token : token);
@@ -610,6 +616,9 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
   }
 
   console.log("[CloudSync] Started (%s)", provider);
+  cloudChangeUnsubscribe = subscribe(() => {
+    scheduleCloudUpload(provider);
+  });
   updateCloudProvider(provider, {
     status: "connected",
     stage: "idle",
@@ -637,6 +646,8 @@ export async function deleteCloudFile(provider: CloudProvider, token: string): P
 export function stopCloudSync(): void {
   cloudAbort?.abort();
   cloudAbort = null;
+  cloudChangeUnsubscribe?.();
+  cloudChangeUnsubscribe = null;
   if (uploadTimer) {
     clearTimeout(uploadTimer);
     uploadTimer = null;
@@ -656,6 +667,7 @@ export function stopCloudSync(): void {
 }
 
 async function performCloudUpload(provider: CloudProvider, token?: string): Promise<void> {
+  await ensureDocumentReady();
   const binary = getDocBinary();
   try {
     const uploadToken = token ?? await getValidCloudToken(provider);
@@ -777,6 +789,7 @@ async function runInitialCloudDownload(
 
 /** Run an immediate cloud sync pass without waiting for the debounce timer. */
 export async function syncCloudProviderNow(provider: CloudProvider): Promise<void> {
+  await ensureDocumentReady();
   const token = await getValidCloudToken(provider);
   if (!token) throw new Error("Cloud token missing. Reconnect the provider.");
 

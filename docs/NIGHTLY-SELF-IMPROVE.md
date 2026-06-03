@@ -30,7 +30,7 @@ The first rule is simple: evidence first, code second. If a target has weak evid
 - Roadmap: small autonomous product work after evidence-backed targets are exhausted
 - Blocked: provider-visible ideas that need explicit approval before execution
 
-The runner can select more than one target when the night has enough budget. A typical run should first compare peer worktrees, then pick WebKit memory when it is over budget and backed by enough fresh soak samples, then a bug scan, then crash-watch triage or release readiness.
+The runner can select more than one target when the night has enough budget. It now aims to queue at least three machine hours of safe work when the evidence supports it. If no single large target fills the night, it should keep stacking smaller, validation-friendly targets instead of stopping after the first easy win. A typical run should first compare peer worktrees, then pick WebKit memory when it is over budget and backed by enough fresh soak samples, then a bug scan, then crash-watch triage or release readiness.
 
 ## Usage
 
@@ -41,7 +41,7 @@ npm run nightly:self-improve
 Useful direct form:
 
 ```bash
-node scripts/nightly-self-improve.mjs --max-targets 3 --duration-minutes 480
+node scripts/nightly-self-improve.mjs --max-targets 6 --duration-minutes 480 --minimum-night-minutes 180
 ```
 
 Compare a known peer branch directly:
@@ -93,6 +93,8 @@ The generated run directory contains:
 - `outcome-template.jsonl`: lines to append back into the outcome ledger after the run
 
 Reports include an execution phase list so the night can move from evidence, to peer comparison, to implementation, validation, dev build shipping, installed-build soak, ledger closeout, and the morning digest.
+
+The queue is no longer allowed to stop after one short task. The default selector keeps adding safe targets until it reaches the three-hour floor, the budget runs out, or the candidate list is exhausted.
 
 ## Safety Gates
 

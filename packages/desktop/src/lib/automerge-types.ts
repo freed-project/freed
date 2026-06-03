@@ -52,6 +52,11 @@ export interface FeedItemPatch {
   item: FeedItem;
 }
 
+export interface RssFeedPatch {
+  feeds: Record<string, RssFeed>;
+  removedUrls: string[];
+}
+
 export interface DocStats {
   binaryBytes: number;
   itemCount: number;
@@ -135,6 +140,13 @@ export type DocChangeEvent =
       changedItemIds: string[];
       changedItems: FeedItem[];
       requiresFullScan: false;
+    }
+  | {
+      source: "feeds_patch";
+      mutation?: WorkerRequest["type"];
+      changedItemIds: null;
+      changedItems: [];
+      requiresFullScan: false;
     };
 
 // ---------------------------------------------------------------------------
@@ -150,6 +162,8 @@ export type WorkerResponse =
   | { type: "PREFERENCES_PATCH"; updates: Partial<UserPreferences>; mutation?: WorkerRequest["type"] }
   /** Small mutation update that avoids cloning and hydrating the full document. */
   | { type: "ITEM_PATCH"; patches: FeedItemPatch[]; changedItemIds: string[]; mutation?: WorkerRequest["type"] }
+  /** RSS feed metadata mutation that avoids hydrating every feed item. */
+  | { type: "FEEDS_PATCH"; patch: RssFeedPatch; mutation?: WorkerRequest["type"] }
   /** Debug panel event forwarding */
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
   /** Doc size snapshot for the debug panel */

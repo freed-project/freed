@@ -241,6 +241,34 @@ test("candidate selection prioritizes memory work while preserving bug scans", (
   assert.ok(!selected.some((candidate) => candidate.providerVisible));
 });
 
+test("target selection keeps batching small work until the three-hour floor is met", () => {
+  const selected = selectTargets(
+    [
+      { id: "one", estimatedMinutes: 45, providerVisible: false },
+      { id: "two", estimatedMinutes: 40, providerVisible: false },
+      { id: "three", estimatedMinutes: 35, providerVisible: false },
+      { id: "four", estimatedMinutes: 30, providerVisible: false },
+      { id: "five", estimatedMinutes: 30, providerVisible: false },
+      { id: "six", estimatedMinutes: 20, providerVisible: false },
+    ],
+    {
+      maxTargets: 6,
+      durationMinutes: 480,
+      minimumNightMinutes: 180,
+      allowProviderVisible: false,
+    },
+  );
+
+  assert.deepEqual(
+    selected.map((candidate) => candidate.id),
+    ["one", "two", "three", "four", "five"],
+  );
+  assert.equal(
+    selected.reduce((total, candidate) => total + candidate.estimatedMinutes, 0),
+    180,
+  );
+});
+
 test("candidate selection skips performance work when soak evidence is too thin", () => {
   const candidates = buildCandidates({
     soak: {
@@ -828,9 +856,16 @@ test("argument parsing validates numeric budgets", () => {
   );
   assert.equal(parseArgs(["--memory-gib", "3"]).memoryGib, 3);
   assert.equal(parseArgs([]).expectedBranch, "dev");
+  assert.equal(parseArgs([]).maxTargets, 6);
+  assert.equal(parseArgs([]).minimumNightMinutes, 180);
   assert.equal(parseArgs(["--expected-branch", "release"]).expectedBranch, "release");
   assert.equal(parseArgs(["--no-expected-branch"]).expectedBranch, "");
+  assert.equal(parseArgs(["--minimum-night-minutes", "210"]).minimumNightMinutes, 210);
   assert.throws(() => parseArgs(["--expected-branch", "bad branch"]), /expected-branch/);
+  assert.throws(
+    () => parseArgs(["--duration-minutes", "120", "--minimum-night-minutes", "180"]),
+    /minimumNightMinutes/,
+  );
   assert.equal(parseArgs(["--soak-pointer", "/tmp/pointer"]).soakPointer, "/tmp/pointer");
   assert.equal(parseArgs(["--repair-soak-pointer"]).repairSoakPointer, true);
   assert.throws(

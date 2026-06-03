@@ -30,6 +30,8 @@ const DEFAULT_OUTCOME_LEDGER = "/tmp/freed-nightly-self-improve/outcomes.jsonl";
 const MAX_PEER_EVIDENCE_FILES = 12;
 const STALE_SOAK_MS = 2 * 60 * 60 * 1000;
 const MIN_PERFORMANCE_SOAK_SAMPLES = 3;
+const DEFAULT_MAX_TARGETS = 6;
+const DEFAULT_MINIMUM_NIGHT_MINUTES = 180;
 
 const GIB = 1024 * 1024 * 1024;
 const numberFormatter = new Intl.NumberFormat("en-US", {
@@ -58,8 +60,9 @@ Options:
   --record-notes <text>         Notes for --record-outcome.
   --record-pr <number>          Pull request number or URL for --record-outcome.
   --record-build <version>      Dev build version for --record-outcome.
-  --max-targets <count>         Maximum targets to select. Defaults to 3.
+  --max-targets <count>         Maximum targets to select. Defaults to 6.
   --duration-minutes <count>    Planning budget for one night. Defaults to 480.
+  --minimum-night-minutes <n>   Keep batching safe work until at least this many machine minutes are queued. Defaults to 180.
   --memory-gib <count>          WebKit RSS budget before memory work wins. Defaults to 2.5.
   --allow-provider-visible      Permit targets that could touch third-party providers.
   --dry-run                     Print the plan without writing files.
@@ -89,8 +92,9 @@ export function parseArgs(argv) {
     peerWorktrees: [],
     peerScan: true,
     expectedBranch: "dev",
-    maxTargets: 3,
+    maxTargets: DEFAULT_MAX_TARGETS,
     durationMinutes: 480,
+    minimumNightMinutes: DEFAULT_MINIMUM_NIGHT_MINUTES,
     memoryGib: 2.5,
     allowProviderVisible: false,
     dryRun: false,
@@ -175,6 +179,10 @@ export function parseArgs(argv) {
         args.durationMinutes = Number.parseInt(argv[index + 1] ?? "", 10);
         index += 1;
         break;
+      case "--minimum-night-minutes":
+        args.minimumNightMinutes = Number.parseInt(argv[index + 1] ?? "", 10);
+        index += 1;
+        break;
       case "--memory-gib":
         args.memoryGib = Number.parseFloat(argv[index + 1] ?? "");
         index += 1;
@@ -226,6 +234,12 @@ export function parseArgs(argv) {
   }
   if (!Number.isFinite(args.durationMinutes) || args.durationMinutes < 30) {
     throw new Error("durationMinutes must be at least 30.");
+  }
+  if (!Number.isFinite(args.minimumNightMinutes) || args.minimumNightMinutes < 30) {
+    throw new Error("minimumNightMinutes must be at least 30.");
+  }
+  if (args.minimumNightMinutes > args.durationMinutes) {
+    throw new Error("minimumNightMinutes must be less than or equal to durationMinutes.");
   }
   if (!Number.isFinite(args.memoryGib) || args.memoryGib <= 0) {
     throw new Error("memoryGib must be greater than 0.");
@@ -1772,15 +1786,19 @@ export function applyOutcomeFeedback(candidates, outcomeLedger) {
 
 export function selectTargets(candidates, options) {
   const budget = options.durationMinutes;
+  const minimumNightMinutes = Math.min(options.minimumNightMinutes ?? DEFAULT_MINIMUM_NIGHT_MINUTES, budget);
   const selected = [];
   let used = 0;
 
   for (const candidate of candidates) {
-    if (selected.length >= options.maxTargets) {
-      break;
-    }
     if (candidate.providerVisible && !options.allowProviderVisible) {
       continue;
+    }
+    if (selected.length > 0 && used >= minimumNightMinutes) {
+      break;
+    }
+    if (selected.length >= options.maxTargets) {
+      break;
     }
     if (used + candidate.estimatedMinutes > budget && selected.length > 0) {
       continue;
@@ -1831,13 +1849,16 @@ function formatCandidate(candidate, index) {
 export function buildReport({ repo, soak, riskSnapshot, duplicateWork, outcomeLedger, candidates, selected, options }) {
   const blockedProvider = candidates.filter((candidate) => candidate.providerVisible);
   const phases = buildNightlyPhases(selected);
+  const selectedMinutes = selected.reduce((total, candidate) => total + (candidate.estimatedMinutes ?? 0), 0);
   return [
     "# Freed Nightly Improvement Plan",
     "",
     `Generated: ${new Date().toISOString()}`,
     `Repo: ${repo.branch || "unknown"} at ${repo.head || "unknown"}`,
     `Budget: ${numberFormatter.format(options.durationMinutes)} min`,
+    `Three-hour floor: ${numberFormatter.format(options.minimumNightMinutes ?? DEFAULT_MINIMUM_NIGHT_MINUTES)} min`,
     `Selected targets: ${numberFormatter.format(selected.length)}`,
+    `Selected machine time: ${numberFormatter.format(selectedMinutes)} min`,
     "",
     "## Current Evidence",
     "",

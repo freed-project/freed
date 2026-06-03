@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const gdriveDownloadLatestMock = vi.fn();
 const gdriveStartPollLoopMock = vi.fn();
 const gdriveUploadSafeMock = vi.fn();
+const initDocMock = vi.fn();
 const mergeDocMock = vi.fn();
 const addDebugEventMock = vi.fn();
 const updateCloudProviderMock = vi.fn();
 const recordCloudProviderEventMock = vi.fn();
+const subscribeMock = vi.fn();
 
 vi.mock("@freed/sync/cloud", () => ({
   gdriveDownloadLatest: gdriveDownloadLatestMock,
@@ -21,7 +23,9 @@ vi.mock("@freed/sync/cloud", () => ({
 
 vi.mock("./automerge", () => ({
   getDocBinary: vi.fn(() => new Uint8Array()),
+  initDoc: initDocMock,
   mergeDoc: mergeDocMock,
+  subscribe: subscribeMock,
 }));
 
 vi.mock("@freed/ui/lib/debug-store", () => ({
@@ -36,10 +40,14 @@ describe("PWA cloud sync auth refresh", () => {
     gdriveDownloadLatestMock.mockReset();
     gdriveStartPollLoopMock.mockReset();
     gdriveUploadSafeMock.mockReset();
+    initDocMock.mockReset();
+    initDocMock.mockResolvedValue({});
     mergeDocMock.mockReset();
     addDebugEventMock.mockReset();
     updateCloudProviderMock.mockReset();
     recordCloudProviderEventMock.mockReset();
+    subscribeMock.mockReset();
+    subscribeMock.mockReturnValue(vi.fn());
     localStorage.clear();
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       access_token: "refreshed-access-token",
@@ -63,6 +71,7 @@ describe("PWA cloud sync auth refresh", () => {
   afterEach(async () => {
     const sync = await import("./sync");
     sync.stopCloudSync();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     localStorage.clear();
   });
@@ -81,6 +90,9 @@ describe("PWA cloud sync auth refresh", () => {
     await startCloudSync("gdrive", "expired-access-token");
     stopCloudSync();
 
+    expect(initDocMock.mock.invocationCallOrder[0]).toBeLessThan(
+      gdriveDownloadLatestMock.mock.invocationCallOrder[0],
+    );
     expect(fetch).toHaveBeenCalledWith("/api/oauth/google", expect.objectContaining({
       method: "POST",
     }));
@@ -118,6 +130,9 @@ describe("PWA cloud sync auth refresh", () => {
     const { syncCloudProviderNow } = await import("./sync");
     await syncCloudProviderNow("gdrive");
 
+    expect(initDocMock.mock.invocationCallOrder[0]).toBeLessThan(
+      gdriveDownloadLatestMock.mock.invocationCallOrder[0],
+    );
     expect(gdriveDownloadLatestMock).toHaveBeenCalledWith("valid-access-token", expect.any(AbortSignal));
     expect(gdriveUploadSafeMock).toHaveBeenCalledWith("valid-access-token", expect.any(Uint8Array));
     expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
@@ -132,6 +147,41 @@ describe("PWA cloud sync auth refresh", () => {
     expect(recordCloudProviderEventMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
       kind: "queued",
       message: "Manual sync requested.",
+    }));
+  });
+
+  it("uploads after local document changes while connected by Google Drive only", async () => {
+    vi.useFakeTimers();
+    subscribeMock.mockImplementation((_callback: () => void) => {
+      return vi.fn();
+    });
+    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveUploadSafeMock.mockResolvedValue({
+      fileId: "file-1",
+      uploadedBytes: 0,
+      remoteBytes: 0,
+      mergedRemote: false,
+      uploadedBinary: new Uint8Array(),
+    });
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "valid-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 120_000,
+    }));
+
+    const { startCloudSync } = await import("./sync");
+    await startCloudSync("gdrive", "valid-access-token");
+
+    expect(subscribeMock).toHaveBeenCalledTimes(1);
+    const notifyChange = subscribeMock.mock.calls[0]?.[0] as (() => void) | undefined;
+    expect(notifyChange).toBeDefined();
+    notifyChange?.();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(gdriveUploadSafeMock).toHaveBeenCalledWith("valid-access-token", expect.any(Uint8Array));
+    expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      lastUploadAt: expect.any(Number),
+      statusMessage: "Upload complete.",
     }));
   });
 });
