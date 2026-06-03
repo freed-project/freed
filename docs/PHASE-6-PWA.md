@@ -1,6 +1,6 @@
 # Phase 6: PWA Reader
 
-> **Status:** ✅ Complete (first-run legal gate shipped, public-safe bug reporting shipped, homescreen install flow shipped, offline article and image caching shipped, local reader cache modes shipped, mobile toolbar and reader polish shipped)
+> **Status:** ✅ Complete (first-run legal gate shipped, public-safe bug reporting shipped, homescreen install flow shipped, offline article and image caching shipped, local reader cache modes shipped, mobile toolbar and reader polish shipped, manual Google Drive sync diagnostics shipped)
 > **Dependencies:** Phase 4 (Sync Layer), Phase 5 (Desktop App)
 
 ---
@@ -19,7 +19,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 - **URL-driven navigation** — Active view, feed scope, and open reader state serialize into the URL so browser back and forward behave naturally
 - **Desktop handoff in source settings:** PWA Settings exposes Feeds, X / Twitter, Facebook, Instagram, LinkedIn, and Google Contacts as sync status dashboards with clear Freed Desktop management handoff states
 - **Mobile settings scope:** PWA Settings hides AI controls and source connection controls that only Freed Desktop can run
-- **Cloud sync diagnostics:** PWA Settings shows local item count, local document size, Drive stage, last download, last merge, last upload, remote bytes, and the last cloud error
+- **Cloud sync diagnostics:** PWA Settings shows local item count, local document size, Drive stage, last download, last merge, last upload, remote bytes, the last cloud error, why upload is waiting, recent Drive activity, and a manual `Sync now` action
 - **Blank-state testing escape hatch** — PWA empty states now include a secondary sample-data section below the main handoff prompt for quick local testing
 - **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
 - **Mobile chrome polish:** The PWA mobile toolbar uses balanced menu and format controls, the mobile drawer starts with search, Settings stacks compact sections, and the reader keeps fixed menus plus sane article spacing
@@ -251,7 +251,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Bug report actions now label whether they download a public-safe or private bundle, and private diagnostics can be toggled as one group before emailing a report
 - [x] PWA Settings surfaces Feeds, X / Twitter, Facebook, Instagram, LinkedIn, and Google Contacts as status-only sections with Freed Desktop sync and download handoff states
-- [x] PWA Settings surfaces cloud sync diagnostics for connected Google Drive accounts so users can see whether the browser downloaded, merged, uploaded, or hit an error
+- [x] PWA Settings surfaces cloud sync diagnostics for connected Google Drive accounts so users can see whether the browser downloaded, merged, uploaded, hit an error, is waiting for local changes, or needs a manual `Sync now` pass
 - [x] PWA Settings omits AI controls and provider management controls that only Freed Desktop can run
 - [x] Theme changes in Settings temporarily clear the frosted backdrop on touch devices so the active page treatment stays visible while previewing themes
 - [x] Mobile Settings now open as a full-height sheet with a persistent close button, larger back target, and reliable section jumps instead of snapping back to the last scrolled provider section

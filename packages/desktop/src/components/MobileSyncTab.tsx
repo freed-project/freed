@@ -14,7 +14,7 @@ import { useState, useEffect, useCallback } from "react";
 import { getPwaHostForChannel } from "@freed/shared";
 import type { CloudProvider } from "@freed/ui/components/CloudProviderCard";
 import { usePlatform } from "@freed/ui/context";
-import { useDebugStore } from "@freed/ui/lib/debug-store";
+import { useDebugStore, type CloudProviderDebugState } from "@freed/ui/lib/debug-store";
 import { invoke } from "@tauri-apps/api/core";
 import QRCode from "react-qr-code";
 import {
@@ -22,6 +22,7 @@ import {
   getAllLocalIPs,
   resetPairingToken,
   onStatusChange,
+  syncCloudProviderNow,
   type SyncStatus,
   type NetworkInterface,
 } from "../lib/sync";
@@ -86,6 +87,16 @@ function DiagnosticCell({ label, value }: { label: string; value: string }) {
   );
 }
 
+function describeUploadGap(state: CloudProviderDebugState | null): string {
+  if (!state) return "Connect Google Drive to start cloud sync.";
+  if (state.stage === "upload") return "Uploading now.";
+  if (state.lastUploadAt) return state.pendingReason ?? "Last upload completed. Waiting for the next local change.";
+  if (state.error) return "Upload has not completed because sync needs attention.";
+  if (state.pendingReason) return state.pendingReason;
+  if (state.lastDownloadAt) return "Drive was checked, but no upload has completed yet. Use Sync now to upload immediately.";
+  return "No upload has completed yet. Use Sync now to force a full pass.";
+}
+
 type Tab = "cloud" | "qr" | "manual";
 
 export function MobileSyncTab() {
@@ -100,6 +111,8 @@ export function MobileSyncTab() {
 
   const { providers, connect, cancelConnect, disconnect } = useCloudProviders();
   const [cancelProvider, setCancelProvider] = useState<CloudProvider | null>(null);
+  const [manualSyncingProvider, setManualSyncingProvider] = useState<CloudProvider | null>(null);
+  const [manualSyncError, setManualSyncError] = useState<string | null>(null);
   const [allIPs, setAllIPs] = useState<NetworkInterface[]>([]);
   const [showIPPicker, setShowIPPicker] = useState(false);
 
@@ -168,6 +181,22 @@ export function MobileSyncTab() {
   const cancelProviderLabel = cancelProvider === "gdrive" ? "Google Drive" : "Dropbox";
   const activeProvider = providers.gdrive.status === "connected" ? "gdrive" : providers.dropbox.status === "connected" ? "dropbox" : null;
   const activeCloudState = activeProvider ? cloudProviders?.[activeProvider] : null;
+  const isManualSyncing = manualSyncingProvider !== null;
+  const uploadExplanation = describeUploadGap(activeCloudState ?? null);
+  const diagnosticError = activeCloudState?.error ?? manualSyncError;
+
+  const handleManualCloudSync = useCallback(async () => {
+    if (!activeProvider) return;
+    setManualSyncingProvider(activeProvider);
+    setManualSyncError(null);
+    try {
+      await syncCloudProviderNow(activeProvider);
+    } catch (error) {
+      setManualSyncError(error instanceof Error ? error.message : "Cloud sync failed.");
+    } finally {
+      setManualSyncingProvider(null);
+    }
+  }, [activeProvider]);
 
   return (
     <>
@@ -210,21 +239,44 @@ export function MobileSyncTab() {
             Connecting both providers lets the desktop bridge mobile clients
             using different cloud accounts.
           </p>
-          <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
+          <div
+            data-testid="cloud-sync-diagnostics"
+            className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4"
+          >
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-[var(--theme-text-primary)]">Sync diagnostics</p>
                 <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">Local document and cloud transfer state</p>
               </div>
-              {activeCloudState?.stage && (
-                <span className="rounded-full bg-[var(--theme-bg-muted)] px-2 py-1 text-[11px] font-medium text-[var(--theme-text-muted)]">
-                  {activeCloudState.stage}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {activeCloudState?.stage && (
+                  <span className="rounded-full bg-[var(--theme-bg-muted)] px-2 py-1 text-[11px] font-medium text-[var(--theme-text-muted)]">
+                    {activeCloudState.stage}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  data-testid="cloud-sync-now-button"
+                  onClick={handleManualCloudSync}
+                  disabled={!activeProvider || isManualSyncing}
+                  className="btn-secondary rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
+                >
+                  {isManualSyncing ? "Syncing..." : "Sync now"}
+                </button>
+              </div>
             </div>
-            {activeCloudState?.error && (
-              <p className="theme-feedback-text-danger mb-3 break-words text-xs">{activeCloudState.error}</p>
+            {diagnosticError && (
+              <p className="theme-feedback-text-danger mb-3 break-words text-xs">{diagnosticError}</p>
             )}
+            <div
+              data-testid="cloud-sync-status-message"
+              className="mb-3 rounded-lg bg-[var(--theme-bg-muted)] px-3 py-2 text-xs text-[var(--theme-text-secondary)]"
+            >
+              <p className="font-medium text-[var(--theme-text-primary)]">
+                {activeCloudState?.statusMessage ?? "No cloud sync activity yet."}
+              </p>
+              <p className="mt-1 text-[var(--theme-text-muted)]">{uploadExplanation}</p>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <DiagnosticCell label="Local items" value={docSnapshot ? docSnapshot.itemCount.toLocaleString() : "-"} />
               <DiagnosticCell label="Local size" value={formatBytes(docSnapshot?.binarySize)} />
@@ -233,6 +285,32 @@ export function MobileSyncTab() {
               <DiagnosticCell label="Last download" value={formatRelativeTime(activeCloudState?.lastDownloadAt)} />
               <DiagnosticCell label="Remote bytes" value={formatBytes(activeCloudState?.lastRemoteBytes)} />
             </div>
+            {activeCloudState?.events && activeCloudState.events.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">
+                  Activity
+                </p>
+                <div data-testid="cloud-sync-activity" className="space-y-1.5">
+                  {activeCloudState.events.slice(0, 6).map((event) => (
+                    <div
+                      key={event.id}
+                      className="flex items-start justify-between gap-3 rounded-lg bg-[var(--theme-bg-muted)] px-3 py-2 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-[var(--theme-text-secondary)]">{event.message}</p>
+                        <p className="mt-0.5 text-[10px] uppercase tracking-wider text-[var(--theme-text-soft)]">
+                          {event.kind}, {event.stage}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right font-mono text-[10px] text-[var(--theme-text-muted)]">
+                        <p>{formatRelativeTime(event.ts)}</p>
+                        {typeof event.bytes === "number" && <p>{formatBytes(event.bytes)}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

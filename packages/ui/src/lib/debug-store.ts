@@ -120,12 +120,26 @@ export interface FpsSnapshot {
 // Cloud sync provider state surfaced in the diagnostics panel.
 // Kept intentionally minimal - the panel only needs status + optional error.
 export type CloudSyncStatus = "idle" | "connecting" | "connected" | "error";
+export type CloudSyncStage = "auth" | "download" | "merge" | "poll" | "upload" | "idle";
+export type CloudProviderEventKind = "queued" | "started" | "success" | "error" | "waiting" | "deferred";
+
+export interface CloudProviderDebugEvent {
+  id: string;
+  ts: number;
+  kind: CloudProviderEventKind;
+  stage: CloudSyncStage;
+  message: string;
+  bytes?: number;
+}
 
 export interface CloudProviderDebugState {
   status: CloudSyncStatus;
   error?: string;
   lastSyncAt?: number;
-  stage?: "auth" | "download" | "merge" | "poll" | "upload" | "idle";
+  stage?: CloudSyncStage;
+  statusMessage?: string;
+  pendingReason?: string;
+  lastActivityAt?: number;
   lastAttemptAt?: number;
   lastSuccessfulAt?: number;
   lastDownloadAt?: number;
@@ -135,6 +149,7 @@ export interface CloudProviderDebugState {
   lastUploadedBytes?: number;
   lastLocalBytes?: number;
   lastErrorAt?: number;
+  events?: CloudProviderDebugEvent[];
 }
 
 export interface CloudProvidersDebugState {
@@ -265,6 +280,10 @@ interface DebugState {
   setRuntimeMemory: (snap: RuntimeMemorySnapshot) => void;
   setCloudProviders: (state: CloudProvidersDebugState) => void;
   updateCloudProvider: (provider: keyof CloudProvidersDebugState, state: Partial<CloudProviderDebugState>) => void;
+  recordCloudProviderEvent: (
+    provider: keyof CloudProvidersDebugState,
+    event: Omit<CloudProviderDebugEvent, "id" | "ts">,
+  ) => void;
   setHealth: (state: ProviderHealthDebugState) => void;
   setPerfSnapshot: (snap: FpsSnapshot) => void;
   resetPerfSnapshot: () => void;
@@ -275,6 +294,7 @@ interface DebugState {
 // ---------------------------------------------------------------------------
 
 const MAX_EVENTS = 200;
+const MAX_CLOUD_PROVIDER_EVENTS = 12;
 
 export const useDebugStore = create<DebugState>()((set) => ({
   visible: false,
@@ -322,6 +342,31 @@ export const useDebugStore = create<DebugState>()((set) => ({
           [provider]: {
             ...current[provider],
             ...state,
+          },
+        },
+      };
+    }),
+
+  recordCloudProviderEvent: (provider, event) =>
+    set((s) => {
+      const current = s.cloudProviders ?? {
+        gdrive: { status: "idle" as CloudSyncStatus },
+        dropbox: { status: "idle" as CloudSyncStatus },
+      };
+      const nextEvent: CloudProviderDebugEvent = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        ts: Date.now(),
+        ...event,
+      };
+      const providerState = current[provider];
+      return {
+        cloudProviders: {
+          ...current,
+          [provider]: {
+            ...providerState,
+            lastActivityAt: nextEvent.ts,
+            statusMessage: nextEvent.message,
+            events: [nextEvent, ...(providerState.events ?? [])].slice(0, MAX_CLOUD_PROVIDER_EVENTS),
           },
         },
       };
@@ -393,6 +438,13 @@ export function updateCloudProvider(
   state: Partial<CloudProviderDebugState>,
 ): void {
   useDebugStore.getState().updateCloudProvider(provider, state);
+}
+
+export function recordCloudProviderEvent(
+  provider: keyof CloudProvidersDebugState,
+  event: Omit<CloudProviderDebugEvent, "id" | "ts">,
+): void {
+  useDebugStore.getState().recordCloudProviderEvent(provider, event);
 }
 
 export function setProviderHealth(state: ProviderHealthDebugState): void {
