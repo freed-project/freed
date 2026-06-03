@@ -153,7 +153,7 @@ function App() {
   }, [initialize, legalAccepted]);
 
   useEffect(() => {
-    if (!legalAccepted) return;
+    if (!legalAccepted || !isInitialized) return;
     const unsubscribe = onStatusChange((connected) => {
       setSyncConnected(connected);
     });
@@ -179,7 +179,7 @@ function App() {
       unsubscribe();
       disconnect();
     };
-  }, [legalAccepted, setSyncConnected]);
+  }, [isInitialized, legalAccepted, setSyncConnected]);
 
   useEffect(() => {
     if (!legalAccepted) return;
