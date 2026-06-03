@@ -339,6 +339,26 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     return;
   }
 
+  if (msg.type === "FEEDS_PATCH") {
+    if (!lastDocState) return;
+    const feeds = { ...lastDocState.feeds };
+    for (const url of msg.patch.removedUrls) {
+      delete feeds[url];
+    }
+    Object.assign(feeds, msg.patch.feeds);
+    publishState(
+      { ...lastDocState, feeds },
+      {
+        source: "feeds_patch",
+        mutation: msg.mutation,
+        changedItemIds: null,
+        changedItems: [],
+        requiresFullScan: false,
+      },
+    );
+    return;
+  }
+
   if (msg.type === "BROADCAST_REQUEST") {
     // The worker already ran Array.from(binary). Just invoke on the main thread.
     void invoke("broadcast_doc", { docBytes: msg.data }).catch(() => {

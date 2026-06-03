@@ -181,6 +181,31 @@ describe("automerge worker memory routing", () => {
     expect(body).not.toContain("saveAndBroadcast");
   });
 
+  it("RSS feed metadata writes avoid full feed item hydration", () => {
+    const addBody = caseBody("ADD_RSS_FEED");
+    const updateBody = caseBody("UPDATE_RSS_FEED");
+    const removeBody = caseBody("REMOVE_RSS_FEED");
+    const applyBody = functionBody("applyRssFeedPatchChange");
+    const clientBody = clientSource.match(
+      /if \(msg.type === "FEEDS_PATCH"\) \{[\s\S]*?return;\n  \}/,
+    )?.[0] ?? "";
+
+    for (const body of [addBody, updateBody]) {
+      expect(body).toContain("applyRssFeedPatchChange");
+      expect(body).not.toContain("applyRequestChange");
+      expect(body).not.toContain("saveAndBroadcast");
+    }
+
+    expect(removeBody).toContain("if (req.includeItems)");
+    expect(removeBody).toContain("applyRequestChange");
+    expect(removeBody).toContain("applyRssFeedPatchChange");
+    expect(applyBody).toContain("persistAndBroadcastWithoutHydration");
+    expect(applyBody).toContain("FEEDS_PATCH");
+    expect(applyBody).not.toContain("saveAndBroadcast");
+    expect(clientBody).toContain("Object.assign(feeds, msg.patch.feeds)");
+    expect(clientBody).toContain("source: \"feeds_patch\"");
+  });
+
   it("display preference updates avoid full feed hydration", () => {
     const body = caseBody("UPDATE_PREFERENCES");
     const applyBody = functionBody("applyPreferenceChange");
