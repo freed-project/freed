@@ -1,9 +1,219 @@
 [
   {
-    "version": "26.5.3116-dev",
-    "tagName": "v26.5.3116-dev",
+    "version": "26.6.204",
+    "tagName": "v26.6.204",
+    "channel": "production",
+    "date": "2026-06-03T06:35:36Z",
+    "deck": "Manual cloud troubleshooting joins the June 2 production rollup",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Facebook, Instagram, and LinkedIn sync now share lower-profile feed scrolling behavior"
+      },
+      {
+        "text": "Facebook page checks now require a live cookie, the Feed posts heading, or rendered feed units before marking a page feed-like"
+      },
+      {
+        "text": "Logged-out Facebook pages with generic main content and tall layout now fail closed instead of wasting scrape passes"
+      },
+      {
+        "text": "Facebook extraction diagnostics now include feed unit and login chrome evidence for faster follow-up debugging"
+      },
+      {
+        "text": "Facebook extraction restores DOM-based feed parsing and reports why extracted posts normalize to zero usable items"
+      },
+      {
+        "text": "Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull"
+      },
+      {
+        "text": "Zero usable Facebook scrape results still surface as sync issues instead of healthy success"
+      },
+      {
+        "text": "Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session"
+      },
+      {
+        "text": "Provider login prompts stay visible for disconnected Facebook, Instagram, and LinkedIn accounts instead of being hidden by stale state"
+      },
+      {
+        "text": "Social sync defers while the Mac is locked, and Freed Desktop startup waits until the session can safely initialize"
+      },
+      {
+        "text": "RSS scheduled polling backs off after runtime deferrals instead of retrying every 15 seconds"
+      },
+      {
+        "text": "RSS content backfill defers under WebKit pressure"
+      },
+      {
+        "text": "Idle Automerge workers stop reliably after queued work drains"
+      },
+      {
+        "text": "Google Drive sync now retries token-refresh download failures and exposes clearer diagnostics before falling back to an empty cursor"
+      },
+      {
+        "text": "Google Contacts token refresh failures now stay recoverable in Settings instead of opening the fatal recovery screen"
+      },
+      {
+        "text": "Freed Desktop and app.freed.wtf now show a Sync now button for connected Google Drive accounts."
+      },
+      {
+        "text": "Google Drive sync records visible activity events for queued, started, deferred, completed, waiting, and failed work."
+      },
+      {
+        "text": "Sync diagnostics now explain why Last upload can be blank, including when there is no remote file yet or no local change has been uploaded."
+      },
+      {
+        "text": "Desktop and PWA Google Drive token refresh failures now surface as recoverable sync diagnostics instead of falling through silently."
+      },
+      {
+        "text": "The shared sync debug store now records richer transfer state so the same problem can be diagnosed from either connected device."
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Facebook group leave now hands off to the provider safely without folding group refresh into normal feed sync"
+      },
+      {
+        "text": "Hidden atmosphere layers release memory and skip hidden startup work"
+      },
+      {
+        "text": "Provider validation now has a fast lane so future social sync fixes can be proven without running every heavy validation tier"
+      },
+      {
+        "text": "Desktop startup diagnostics now capture occluded-window cases that can look like a frozen launch"
+      },
+      {
+        "text": "macOS Intel release builds now run on Intel GitHub runners so x64 DMG bundling avoids Apple Silicon cross packaging"
+      },
+      {
+        "text": "Release validation now avoids transient restored-sidebar geometry samples after the stable width assertion passes"
+      },
+      {
+        "text": "Phase 4, Phase 5, Phase 6, and the public roadmap now describe the manual sync and diagnostics behavior as shipped."
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.204",
+    "prNumbers": [
+      681,
+      682,
+      683,
+      684,
+      685,
+      686,
+      687,
+      688,
+      689,
+      690,
+      691,
+      692,
+      693,
+      694,
+      695,
+      696,
+      697,
+      698,
+      699,
+      700,
+      701,
+      702,
+      703,
+      704,
+      705,
+      706,
+      707,
+      708,
+      711,
+      712,
+      716,
+      717,
+      719,
+      720,
+      722,
+      723
+    ],
+    "builds": [
+      "26.6.203",
+      "26.6.204"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.203",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.203",
+        "channel": "production"
+      },
+      {
+        "version": "26.6.204",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.204",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.6.103-dev",
+    "tagName": "v26.6.103-dev",
     "channel": "dev",
-    "date": "2026-06-01T05:20:23Z",
+    "date": "2026-06-02T01:28:17Z",
+    "deck": "Facebook sync now requires real feed evidence before treating a page as scrapeable, so tall logged-out Facebook shells fail fast instead of looking like empty feeds.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Facebook page checks now require a live cookie, the Feed posts heading, or rendered feed units before marking a page feed-like"
+      },
+      {
+        "text": "Logged-out Facebook pages with generic main content and tall layout now fail closed instead of wasting scrape passes"
+      },
+      {
+        "text": "Facebook extraction diagnostics now include feed unit and login chrome evidence for faster follow-up debugging"
+      },
+      {
+        "text": "Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull"
+      },
+      {
+        "text": "Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session"
+      },
+      {
+        "text": "Google Drive sync now retries token-refresh download failures and exposes clearer sync diagnostics before falling back to an empty cursor"
+      },
+      {
+        "text": "Google Contacts token refresh failures now stay recoverable in Settings instead of opening the fatal recovery screen"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.103-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.6.100-dev",
+      "26.6.101-dev",
+      "26.6.102-dev",
+      "26.6.103-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.100-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.100-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.101-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.101-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.102-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.102-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.103-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.103-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.5.3117-dev",
+    "tagName": "v26.5.3117-dev",
+    "channel": "dev",
+    "date": "2026-06-01T06:11:30Z",
     "deck": "This dev build adds Facebook zero-post diagnostics and keeps RSS retry pacing and installed dev-channel validation ready for the next soak",
     "features": [],
     "fixes": [
@@ -55,7 +265,7 @@
         "text": "Install this build and verify RSS failures stop piling up in sync health"
       }
     ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3116-dev",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3117-dev",
     "prNumbers": [],
     "builds": [
       "26.5.3105-dev",
@@ -65,7 +275,8 @@
       "26.5.3112-dev",
       "26.5.3114-dev",
       "26.5.3115-dev",
-      "26.5.3116-dev"
+      "26.5.3116-dev",
+      "26.5.3117-dev"
     ],
     "buildLinks": [
       {
@@ -106,6 +317,11 @@
       {
         "version": "26.5.3116-dev",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3116-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3117-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3117-dev",
         "channel": "dev"
       }
     ]
