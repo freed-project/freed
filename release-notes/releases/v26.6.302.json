@@ -1,0 +1,52 @@
+{
+  "tag": "v26.6.302",
+  "version": "26.6.302",
+  "channel": "production",
+  "dayKey": "26.6.3",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-03T19:56:38.612Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.6.301",
+    "previousPublishedDayTag": "v26.6.204",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.301",
+      "v26.6.302"
+    ],
+    "relatedBuildTags": [
+      "v26.6.301",
+      "v26.6.302"
+    ],
+    "prNumbers": [
+      730,
+      733,
+      740
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for production release (#740)",
+      "docs: approve v26.6.301 release notes",
+      "release: v26.6.301",
+      "chore: promote dev into main for production release (#733)",
+      "docs: approve v26.6.300 release notes",
+      "release: v26.6.300",
+      "chore: promote dev into main for production release (#730)"
+    ]
+  },
+  "release": {
+    "deck": "Stabilize Google Drive sync and large-library feed adds",
+    "features": [],
+    "fixes": [
+      "Google Drive sync now uploads local changes from Freed Desktop and the PWA instead of only downloading remote data",
+      "The PWA waits for its Automerge document to initialize before Google Drive sync, manual sync, OAuth callback sync, or relay resume can merge remote data",
+      "Freed Desktop avoids a fatal Automerge worker timeout when adding RSS feed metadata to a large library"
+    ],
+    "followUps": [
+      "Promote dev into main for production release"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.302\n\nStabilize Google Drive sync and large-library feed adds\n\n### Fixes\n\n- Google Drive sync now uploads local changes from Freed Desktop and the PWA instead of only downloading remote data\n- The PWA waits for its Automerge document to initialize before Google Drive sync, manual sync, OAuth callback sync, or relay resume can merge remote data\n- Freed Desktop avoids a fatal Automerge worker timeout when adding RSS feed metadata to a large library\n\n### Follow-ups\n\n- Promote dev into main for production release\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
