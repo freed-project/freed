@@ -1,0 +1,101 @@
+{
+  "tag": "v26.6.204",
+  "version": "26.6.204",
+  "channel": "production",
+  "dayKey": "26.6.2",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-03T05:52:33.645Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.6.203",
+    "previousPublishedDayTag": "v26.5.3113",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.203",
+      "v26.6.204"
+    ],
+    "relatedBuildTags": [
+      "v26.6.203",
+      "v26.6.204"
+    ],
+    "prNumbers": [
+      681,
+      682,
+      683,
+      684,
+      685,
+      686,
+      687,
+      688,
+      689,
+      690,
+      691,
+      692,
+      693,
+      694,
+      695,
+      696,
+      697,
+      698,
+      699,
+      700,
+      701,
+      702,
+      703,
+      704,
+      705,
+      706,
+      707,
+      708,
+      711,
+      712,
+      716,
+      717,
+      719,
+      720,
+      723
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for production release (#723)",
+      "release: v26.6.203",
+      "test: stabilize sidebar release validation (#720)",
+      "release: v26.6.202",
+      "fix: run macOS Intel releases on Intel runners (#717)",
+      "release: v26.6.201",
+      "test: promote sidebar snap validation fix (#712)",
+      "release: v26.6.200",
+      "chore: promote dev into main for production release (#708)"
+    ]
+  },
+  "release": {
+    "deck": "Facebook group leave now hands off to the provider safely without folding group refresh into normal feed sync, Facebook sync reliability, lower-profile social capture, and stable release validation, and idle Automerge workers stop reliably after queued work drains",
+    "features": [],
+    "fixes": [
+      "Facebook, Instagram, and LinkedIn sync now share lower-profile feed scrolling behavior",
+      "Facebook page checks now require a live cookie, the Feed posts heading, or rendered feed units before marking a page feed-like",
+      "Logged-out Facebook pages with generic main content and tall layout now fail closed instead of wasting scrape passes",
+      "Facebook extraction diagnostics now include feed unit and login chrome evidence for faster follow-up debugging",
+      "Facebook extraction restores DOM-based feed parsing and reports why extracted posts normalize to zero usable items",
+      "Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull",
+      "Zero usable Facebook scrape results still surface as sync issues instead of healthy success",
+      "Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session",
+      "Provider login prompts stay visible for disconnected Facebook, Instagram, and LinkedIn accounts instead of being hidden by stale state",
+      "Social sync defers while the Mac is locked, and Freed Desktop startup waits until the session can safely initialize",
+      "RSS scheduled polling backs off after runtime deferrals instead of retrying every 15 seconds",
+      "Google Drive sync now retries token-refresh download failures and exposes clearer diagnostics before falling back to an empty cursor",
+      "Google Contacts token refresh failures now stay recoverable in Settings instead of opening the fatal recovery screen",
+      "RSS content backfill defers under WebKit pressure"
+    ],
+    "followUps": [
+      "Hidden atmosphere layers release memory and skip hidden startup work",
+      "Provider validation now has a fast lane so future social sync fixes can be proven without running every heavy validation tier",
+      "Desktop startup diagnostics now capture occluded-window cases that can look like a frozen launch",
+      "MacOS Intel release builds now run on Intel GitHub runners so x64 DMG bundling avoids Apple Silicon cross packaging",
+      "Release validation now avoids transient restored-sidebar geometry samples after the stable width assertion passes"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.204\n\nFacebook group leave now hands off to the provider safely without folding group refresh into normal feed sync, Facebook sync reliability, lower-profile social capture, and stable release validation, and idle Automerge workers stop reliably after queued work drains\n\n### Fixes\n\n- Facebook, Instagram, and LinkedIn sync now share lower-profile feed scrolling behavior\n- Facebook page checks now require a live cookie, the Feed posts heading, or rendered feed units before marking a page feed-like\n- Logged-out Facebook pages with generic main content and tall layout now fail closed instead of wasting scrape passes\n- Facebook extraction diagnostics now include feed unit and login chrome evidence for faster follow-up debugging\n- Facebook extraction restores DOM-based feed parsing and reports why extracted posts normalize to zero usable items\n- Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull\n- Zero usable Facebook scrape results still surface as sync issues instead of healthy success\n- Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session\n- Provider login prompts stay visible for disconnected Facebook, Instagram, and LinkedIn accounts instead of being hidden by stale state\n- Social sync defers while the Mac is locked, and Freed Desktop startup waits until the session can safely initialize\n- RSS scheduled polling backs off after runtime deferrals instead of retrying every 15 seconds\n- Google Drive sync now retries token-refresh download failures and exposes clearer diagnostics before falling back to an empty cursor\n- Google Contacts token refresh failures now stay recoverable in Settings instead of opening the fatal recovery screen\n- RSS content backfill defers under WebKit pressure\n\n### Follow-ups\n\n- Hidden atmosphere layers release memory and skip hidden startup work\n- Provider validation now has a fast lane so future social sync fixes can be proven without running every heavy validation tier\n- Desktop startup diagnostics now capture occluded-window cases that can look like a frozen launch\n- MacOS Intel release builds now run on Intel GitHub runners so x64 DMG bundling avoids Apple Silicon cross packaging\n- Release validation now avoids transient restored-sidebar geometry samples after the stable width assertion passes\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
