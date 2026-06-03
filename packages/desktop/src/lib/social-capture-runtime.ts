@@ -1,6 +1,10 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { BackgroundJobKind } from "./background-runtime-coordinator";
-import { isBackgroundRuntimeDeferredError } from "./background-runtime-coordinator";
+import {
+  formatBackgroundRuntimeDeferredReason,
+  isBackgroundRuntimeDeferredError,
+} from "./background-runtime-coordinator";
+import { socialProviderCopy, type SocialProviderId } from "./social-provider-copy";
 
 export const SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS = 150_000;
 export const SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS = [
@@ -14,6 +18,7 @@ export const SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS = [
 ] satisfies BackgroundJobKind[];
 
 export const RUNTIME_DEFERRED_STAGE = "runtime_deferred";
+export const NATIVE_MEMORY_PRESSURE_STAGE = "memory_pressure";
 
 export interface RuntimeDeferredDiag {
   errorStage: string | null;
@@ -27,25 +32,7 @@ interface DesktopSessionState {
 }
 
 export function runtimeDeferredMessage(reason: string): string {
-  if (reason.startsWith("active:semantic-classifier:")) {
-    return "Freed is finishing local semantic indexing. Try syncing again in a moment.";
-  }
-  if (reason.startsWith("active:content-signal-backfill:")) {
-    return "Freed is finishing local content-signal indexing. Try syncing again in a moment.";
-  }
-  if (reason.startsWith("active:")) {
-    return "Freed is finishing local background work. Try syncing again in a moment.";
-  }
-  if (reason.startsWith("waiting_for_renderer_heartbeat:")) {
-    return "Freed is waiting for the app window to report healthy. Try syncing again in a moment.";
-  }
-  if (reason.startsWith("renderer_safe_mode:") || reason.startsWith("cooldown:")) {
-    return "Freed paused background work while the app recovers. Try syncing again in a moment.";
-  }
-  if (reason === "high_memory_pressure" || reason === "critical_memory_pressure") {
-    return "Freed paused provider sync because memory is high. Try syncing again after memory settles.";
-  }
-  return "Freed deferred provider sync for local background work. Try syncing again in a moment.";
+  return formatBackgroundRuntimeDeferredReason(reason).replaceAll("Try again", "Try syncing again");
 }
 
 export function applyRuntimeDeferredDiag(
@@ -55,6 +42,29 @@ export function applyRuntimeDeferredDiag(
   if (!isBackgroundRuntimeDeferredError(error)) return false;
   diag.errorStage = RUNTIME_DEFERRED_STAGE;
   diag.errorMessage = runtimeDeferredMessage(error.reason);
+  return true;
+}
+
+function nativeErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function isNativeSocialMemoryPressureError(error: unknown): boolean {
+  const message = nativeErrorMessage(error).toLocaleLowerCase();
+  return (
+    message.includes("sync paused because freed desktop memory remains high after cleanup") ||
+    message.includes("memory remains high after cleanup")
+  );
+}
+
+export function applyNativeMemoryPressureDiag(
+  diag: RuntimeDeferredDiag,
+  error: unknown,
+  provider: SocialProviderId,
+): boolean {
+  if (!isNativeSocialMemoryPressureError(error)) return false;
+  diag.errorStage = NATIVE_MEMORY_PRESSURE_STAGE;
+  diag.errorMessage = `${socialProviderCopy(provider).memoryPressure} Try syncing again in a moment.`;
   return true;
 }
 

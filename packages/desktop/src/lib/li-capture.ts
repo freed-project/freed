@@ -21,10 +21,15 @@ import { getLiScraperWindowMode } from "./scraper-prefs";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { storeLiAuthState } from "./li-auth";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
-import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-monitor";
+import {
+  formatScrapeMemoryPressureDetails,
+  prepareSocialScrapeMemory,
+} from "./memory-monitor";
 import { socialProviderCopy } from "./social-provider-copy";
+import { safeUnlisten } from "./safe-unlisten";
 import {
   applyLockedSessionDeferredDiag,
+  applyNativeMemoryPressureDiag,
   isRuntimeDeferredStage,
 } from "./social-capture-runtime";
 
@@ -114,7 +119,7 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
     diag.errorStage = "memory_pressure";
     diag.errorMessage =
       `${socialProviderCopy("linkedin").memoryPressure} ` +
-      `App RSS is ${formatBytesForMemoryLog(memoryPrep.after.appResidentBytes)} after cleanup.`;
+      formatScrapeMemoryPressureDetails(memoryPrep);
     return { items: [], diag };
   }
 
@@ -167,12 +172,15 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
     await new Promise<void>((resolve) => setTimeout(resolve, 500));
   } catch (err) {
     if (!diag.errorStage) {
+      if (applyNativeMemoryPressureDiag(diag, err, "linkedin")) {
+        return { items: [], diag };
+      }
       diag.errorStage = "invoke";
       diag.errorMessage = err instanceof Error ? err.message : String(err);
     }
     return { items: [], diag };
   } finally {
-    unlisten?.();
+    safeUnlisten(unlisten, "li-feed-data");
   }
 
   if (diag.errorStage) {

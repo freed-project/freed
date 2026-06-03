@@ -43,6 +43,7 @@ export interface RendererRecoveryStateEvent {
 export interface BackgroundRuntimeTask<T> {
   kind: BackgroundJobKind;
   source: string;
+  blocking?: boolean;
   timeoutMs?: number;
   waitForActiveJobMs?: number;
   waitForActiveJobKinds?: readonly BackgroundJobKind[];
@@ -90,6 +91,28 @@ function nowMs(): number {
 
 function isActiveJobReason(reason: string): boolean {
   return reason.startsWith("active:");
+}
+
+export function formatBackgroundRuntimeDeferredReason(reason: string): string {
+  if (reason.startsWith("active:semantic-classifier:")) {
+    return "Freed is finishing local indexing. Try again in a moment.";
+  }
+  if (reason.startsWith("active:content-signal-backfill:")) {
+    return "Freed is finishing local indexing. Try again in a moment.";
+  }
+  if (reason.startsWith("active:")) {
+    return "Freed is finishing local background work. Try again in a moment.";
+  }
+  if (reason.startsWith("waiting_for_renderer_heartbeat:")) {
+    return "Freed is waiting for the app window to report healthy. Try again in a moment.";
+  }
+  if (reason.startsWith("renderer_safe_mode:") || reason.startsWith("cooldown:")) {
+    return "Freed paused background work while the app recovers. Try again in a moment.";
+  }
+  if (reason === "high_memory_pressure" || reason === "critical_memory_pressure") {
+    return "Freed paused background work because memory is high. Try again after memory settles.";
+  }
+  return "Freed deferred background work. Try again in a moment.";
 }
 
 function activeKindFromReason(reason: string): BackgroundJobKind | null {
@@ -256,11 +279,14 @@ export async function runBackgroundJob<T>(task: BackgroundRuntimeTask<T>): Promi
     throw new BackgroundRuntimeDeferredError(gate.reason);
   }
 
-  activeJob = {
-    kind: task.kind,
-    source: task.source,
-    startedAt: nowMs(),
-  };
+  const blocking = task.blocking !== false;
+  if (blocking) {
+    activeJob = {
+      kind: task.kind,
+      source: task.source,
+      startedAt: nowMs(),
+    };
+  }
 
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   try {
@@ -279,8 +305,10 @@ export async function runBackgroundJob<T>(task: BackgroundRuntimeTask<T>): Promi
     ]);
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
-    activeJob = null;
-    notifyActiveJobWaiters();
+    if (blocking) {
+      activeJob = null;
+      notifyActiveJobWaiters();
+    }
   }
 }
 

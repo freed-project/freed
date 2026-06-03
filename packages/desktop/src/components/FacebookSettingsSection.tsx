@@ -579,7 +579,7 @@ export function FacebookSettingsSection({
             </p>
           )}
 
-          <ProviderHealthSectionSummary provider="facebook" />
+          <ProviderHealthSectionSummary provider="facebook" showMessages={surface === "debug-card"} />
 
           {statusLine}
 
@@ -738,7 +738,7 @@ export function FacebookSettingsSection({
         {actionError && !needsReconnect && (
           <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
         )}
-        <ProviderHealthSectionSummary provider="facebook" />
+        <ProviderHealthSectionSummary provider="facebook" showMessages={surface === "debug-card"} />
       </div>
     </SyncProviderSectionSurface>
     {dialog}

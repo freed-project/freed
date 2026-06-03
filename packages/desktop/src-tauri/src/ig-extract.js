@@ -365,16 +365,28 @@
     var articles = findArticles();
     var posts = [];
     var seen = {};
+    var rejected = {
+      suggestedOrSponsored: 0,
+      missingContent: 0,
+      duplicate: 0,
+      tinyOrInvisible: 0,
+    };
 
     for (var idx = 0; idx < articles.length && posts.length < 50; idx++) {
       var article = articles[idx];
 
       // Skip tiny or invisible articles
-      if (article.offsetHeight < 100) continue;
+      if (article.offsetHeight < 100) {
+        rejected.tinyOrInvisible++;
+        continue;
+      }
       expandLongTextControls(article);
 
       // Skip suggested-for-you, sponsored, and non-followed-account posts
-      if (isSuggestedOrSponsored(article)) continue;
+      if (isSuggestedOrSponsored(article)) {
+        rejected.suggestedOrSponsored++;
+        continue;
+      }
 
       var author = extractAuthor(article);
       var caption = extractCaption(article);
@@ -388,12 +400,18 @@
       var location = extractLocation(article);
 
       // Must have some meaningful content
-      if (!caption && mediaUrls.length === 0 && !hasVideo) continue;
+      if (!caption && mediaUrls.length === 0 && !hasVideo) {
+        rejected.missingContent++;
+        continue;
+      }
 
       var id = shortcode || contentHash(author.handle, caption);
 
       // Deduplicate across scroll passes
-      if (seen[id]) continue;
+      if (seen[id]) {
+        rejected.duplicate++;
+        continue;
+      }
       seen[id] = true;
 
       var postType = "unknown";
@@ -433,8 +451,20 @@
       extractedAt: Date.now(),
       url: window.location.href,
       candidateCount: articles.length,
+      rejected: rejected,
       scrollY: window.scrollY,
+      scrollTarget: window.__FREED_LAST_SOCIAL_SCROLL__ || null,
       strategy: articles.length > 0 ? (articles[0].tagName || 'DIV').toLowerCase() : 'none',
+      pageState: {
+        articleCount: articles.length,
+        mainFound: !!(document.querySelector("main") || document.querySelector('[role="main"]')),
+        loggedInCookie: document.cookie.indexOf("sessionid=") !== -1 && document.cookie.indexOf("sessionid=;") === -1,
+        loginChrome: !!document.querySelector('input[name="username"], input[name="password"], form[action*="login"]'),
+        feedLike: articles.length > 0,
+        scrollHeight: document.documentElement.scrollHeight || document.body.scrollHeight || 0,
+        url: window.location.href,
+        title: document.title || "",
+      },
     });
   } catch (err) {
     emit("ig-feed-data", {

@@ -49,6 +49,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { log } from "./lib/logger";
+import { safeUnlisten } from "./lib/safe-unlisten";
 import { setLogTransport } from "@freed/ui/lib/debug-store";
 import { clearStoredCookies, storeCookies } from "./lib/x-auth";
 import { disconnectIg, storeIgAuthState } from "./lib/instagram-auth";
@@ -434,7 +435,7 @@ function App() {
       }
     }).then((unlisten) => cleanups.push(unlisten));
 
-    return () => cleanups.forEach((fn) => fn());
+    return () => cleanups.forEach((fn, index) => safeUnlisten(fn, `app-lifecycle:${index.toLocaleString()}`));
   }, [legalAccepted]);
 
   useEffect(() => {

@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { ReaderThreadReply } from "@freed/ui/context";
 import { getFbScraperWindowMode, getIgScraperWindowMode } from "./scraper-prefs";
+import { safeUnlisten } from "./safe-unlisten";
 
 type Provider = "facebook" | "instagram";
 
@@ -87,7 +88,7 @@ async function fetchProviderComments(
 
     await new Promise<void>((resolve) => setTimeout(resolve, 300));
   } finally {
-    unlisten?.();
+    safeUnlisten(unlisten, `${eventName}:comments`);
   }
 
   return comments.slice(0, 40);

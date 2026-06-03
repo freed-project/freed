@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const refreshRssFeeds = vi.fn();
+const refreshAllFeeds = vi.fn();
 const addDebugEvent = vi.fn();
 const runBackgroundJob = vi.fn();
 const isBackgroundRuntimeDeferredError = vi.fn(
@@ -9,7 +9,7 @@ const isBackgroundRuntimeDeferredError = vi.fn(
 );
 
 vi.mock("./capture", () => ({
-  refreshRssFeeds,
+  refreshAllFeeds,
 }));
 
 vi.mock("@freed/ui/lib/debug-store", () => ({
@@ -19,6 +19,18 @@ vi.mock("@freed/ui/lib/debug-store", () => ({
 vi.mock("./background-runtime-coordinator", () => ({
   runBackgroundJob,
   isBackgroundRuntimeDeferredError,
+  formatBackgroundRuntimeDeferredReason: (reason: string) => {
+    if (reason.startsWith("waiting_for_renderer_heartbeat:")) {
+      return "Freed is waiting for the app window to report healthy. Try again in a moment.";
+    }
+    if (reason.startsWith("cooldown:")) {
+      return "Freed paused background work while the app recovers. Try again in a moment.";
+    }
+    if (reason === "high_memory_pressure") {
+      return "Freed paused background work because memory is high. Try again after memory settles.";
+    }
+    return "Freed deferred background work. Try again in a moment.";
+  },
 }));
 
 async function loadPoller() {
@@ -29,7 +41,7 @@ async function loadPoller() {
 describe("rss poller", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    refreshRssFeeds.mockReset();
+    refreshAllFeeds.mockReset();
     addDebugEvent.mockReset();
     runBackgroundJob.mockReset();
     isBackgroundRuntimeDeferredError.mockClear();
@@ -50,7 +62,7 @@ describe("rss poller", () => {
     expect(runBackgroundJob).not.toHaveBeenCalled();
     expect(addDebugEvent).toHaveBeenCalledWith(
       "change",
-      "[RSS] startup poll scheduled in 300s",
+      "[Sync] startup refresh scheduled in 300s",
     );
 
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1);
@@ -93,7 +105,7 @@ describe("rss poller", () => {
     );
     const task = runBackgroundJob.mock.calls[0]?.[0];
     await task.run();
-    expect(refreshRssFeeds).toHaveBeenCalledWith({
+    expect(refreshAllFeeds).toHaveBeenCalledWith({
       maxFeeds: 80,
       staleAfterMs: 2 * 60 * 60 * 1000,
     });
@@ -105,11 +117,11 @@ describe("rss poller", () => {
     expect(runBackgroundJob).toHaveBeenCalledTimes(2);
     expect(addDebugEvent).toHaveBeenCalledWith(
       "change",
-      "[RSS] poll deferred: waiting_for_renderer_heartbeat:1",
+      "[Sync] poll deferred: Freed is waiting for the app window to report healthy. Try again in a moment.",
     );
     expect(addDebugEvent).toHaveBeenCalledWith(
       "change",
-      "[RSS] poll retry scheduled in 60s after waiting_for_renderer_heartbeat:1",
+      "[Sync] poll retry scheduled in 60s. Freed is waiting for the app window to report healthy. Try again in a moment.",
     );
 
     poller.stopRssPoller();
@@ -144,7 +156,7 @@ describe("rss poller", () => {
     expect(runBackgroundJob).toHaveBeenCalledTimes(2);
     expect(addDebugEvent).toHaveBeenCalledWith(
       "change",
-      "[RSS] poll retry scheduled in 120s after cooldown:120,000",
+      "[Sync] poll retry scheduled in 120s. Freed paused background work while the app recovers. Try again in a moment.",
     );
 
     poller.stopRssPoller();
@@ -169,11 +181,11 @@ describe("rss poller", () => {
     expect(runBackgroundJob).toHaveBeenCalledTimes(3);
     expect(addDebugEvent).toHaveBeenCalledWith(
       "change",
-      "[RSS] poll retry scheduled in 60s after high_memory_pressure",
+      "[Sync] poll retry scheduled in 60s. Freed paused background work because memory is high. Try again after memory settles.",
     );
     expect(addDebugEvent).toHaveBeenCalledWith(
       "change",
-      "[RSS] poll retry scheduled in 120s after high_memory_pressure",
+      "[Sync] poll retry scheduled in 120s. Freed paused background work because memory is high. Try again after memory settles.",
     );
 
     poller.stopRssPoller();

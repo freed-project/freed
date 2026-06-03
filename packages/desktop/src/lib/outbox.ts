@@ -26,6 +26,7 @@ import type { DocChangeEvent } from "./automerge-types";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { scheduleSideEffect } from "./side-effect-scheduler";
 import {
+  formatBackgroundRuntimeDeferredReason,
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
 } from "./background-runtime-coordinator";
@@ -279,7 +280,7 @@ export function startOutboxProcessor(
       drainTimer = null;
       drain().catch((err) => {
         if (isBackgroundRuntimeDeferredError(err)) {
-          addDebugEvent("change", `[Outbox] drain deferred: ${err.reason}`);
+          addDebugEvent("change", `[Outbox] drain deferred: ${formatBackgroundRuntimeDeferredReason(err.reason)}`);
           isDraining = false;
           scheduleDrain();
           return;
@@ -296,7 +297,7 @@ export function startOutboxProcessor(
   // Run an immediate drain on startup (catch anything queued while offline)
   drain().catch((err) => {
     if (isBackgroundRuntimeDeferredError(err)) {
-      addDebugEvent("change", `[Outbox] startup drain deferred: ${err.reason}`);
+      addDebugEvent("change", `[Outbox] startup drain deferred: ${formatBackgroundRuntimeDeferredReason(err.reason)}`);
       isDraining = false;
       scheduleDrain();
       return;

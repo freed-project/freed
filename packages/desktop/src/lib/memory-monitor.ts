@@ -157,6 +157,30 @@ export function formatBytesForMemoryLog(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+export function formatScrapeMemoryPressureDetails(
+  prep: ScrapeMemoryPreparation,
+): string {
+  const stats = prep.after;
+  const limits = {
+    highBytes:
+      stats.memoryHighBytes ??
+      getAdaptiveMemoryLimits(stats.totalPhysicalMemoryBytes).highBytes,
+    criticalBytes:
+      stats.memoryCriticalBytes ??
+      getAdaptiveMemoryLimits(stats.totalPhysicalMemoryBytes).criticalBytes,
+  };
+  const pressureBytes = getEffectiveMemoryPressureBytes(stats);
+  const webkitBytes = stats.webkitTotalResidentBytes ?? stats.webkitResidentBytes ?? 0;
+
+  return (
+    `Memory pressure is ${formatBytesForMemoryLog(pressureBytes)}, ` +
+    `app RSS is ${formatBytesForMemoryLog(stats.appResidentBytes)}, ` +
+    `WebKit RSS is ${formatBytesForMemoryLog(webkitBytes)}, ` +
+    `high limit is ${formatBytesForMemoryLog(limits.highBytes)}, ` +
+    `critical limit is ${formatBytesForMemoryLog(limits.criticalBytes)} after cleanup.`
+  );
+}
+
 export function getAdaptiveMemoryLimits(totalPhysicalMemoryBytes: number): {
   highBytes: number;
   criticalBytes: number;
@@ -187,12 +211,12 @@ export function getEffectiveMemoryPressureBytes(native: {
   appResidentBytes?: number;
   appMemoryPressureBytes?: number;
 }): number {
-  const pressureBytes =
+  return (
     native.appMemoryPressureBytes ??
     native.processFootprintBytes ??
-    native.processResidentBytes;
-  const residentBytes = native.appResidentBytes ?? native.processResidentBytes;
-  return Math.max(pressureBytes, residentBytes);
+    native.appResidentBytes ??
+    native.processResidentBytes
+  );
 }
 
 function emptyNativeRuntimeMemoryStats(): NativeRuntimeMemoryStats {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatBytesForMemoryLog,
+  formatScrapeMemoryPressureDetails,
   getAdaptiveMemoryLimits,
   getEffectiveMemoryPressureBytes,
   getMemoryPressureLevel,
@@ -35,7 +36,7 @@ describe("memory monitor", () => {
     expect(getMemoryPressureLevel(limits.criticalBytes, limits)).toBe("critical");
   });
 
-  it("uses resident bytes when footprint understates WebKit memory", () => {
+  it("uses pressure bytes when resident RSS is higher but footprint is healthy", () => {
     const gib = 1024 * 1024 * 1024;
 
     expect(
@@ -45,6 +46,46 @@ describe("memory monitor", () => {
         appResidentBytes: 6 * gib,
         appMemoryPressureBytes: 1 * gib,
       }),
+    ).toBe(1 * gib);
+  });
+
+  it("falls back to resident bytes when pressure telemetry is unavailable", () => {
+    const gib = 1024 * 1024 * 1024;
+
+    expect(
+      getEffectiveMemoryPressureBytes({
+        processResidentBytes: 128 * 1024 * 1024,
+        appResidentBytes: 6 * gib,
+      }),
     ).toBe(6 * gib);
+  });
+
+  it("formats scrape memory pause details with pressure and limits", () => {
+    const gib = 1024 * 1024 * 1024;
+    const details = formatScrapeMemoryPressureDetails({
+      before: {} as never,
+      after: {
+        totalPhysicalMemoryBytes: 64 * gib,
+        processResidentBytes: 256 * 1024 * 1024,
+        processFootprintBytes: 128 * 1024 * 1024,
+        processVirtualBytes: 512 * 1024 * 1024,
+        appResidentBytes: 6 * gib,
+        appMemoryPressureBytes: 2 * gib,
+        webkitTotalResidentBytes: 5 * gib,
+        memoryHighBytes: 3 * gib,
+        memoryCriticalBytes: 4 * gib,
+        relayDocBytes: 0,
+        relayClientCount: 0,
+      },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: false,
+    });
+
+    expect(details).toContain("Memory pressure is 2.00 GB");
+    expect(details).toContain("app RSS is 6.00 GB");
+    expect(details).toContain("WebKit RSS is 5.00 GB");
+    expect(details).toContain("high limit is 3.00 GB");
+    expect(details).toContain("critical limit is 4.00 GB");
   });
 });
