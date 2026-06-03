@@ -163,7 +163,7 @@ export function MediaVaultSettingsCard({
   return (
     <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
       <SettingsToggle
-        label="Back up my uploaded media"
+        label="(Beta) Back up my uploaded media"
         checked={summary.enabled}
         onChange={(enabled) => {
           void handleToggle(enabled);

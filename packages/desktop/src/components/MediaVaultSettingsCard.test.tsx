@@ -117,10 +117,10 @@ describe("MediaVaultSettingsCard", () => {
   it("renders disabled controls before the archive is enabled", async () => {
     await renderCard(false);
 
-    expect(container.textContent).toContain("Back up my uploaded media");
+    expect(container.textContent).toContain("(Beta) Back up my uploaded media");
     expect(container.textContent).toContain("Files 0");
     expect(container.textContent).toContain("Last backup Never");
-    expect(container.querySelector("button[aria-label='Back up my uploaded media']")?.getAttribute("aria-checked")).toBe("false");
+    expect(container.querySelector("button[aria-label='(Beta) Back up my uploaded media']")?.getAttribute("aria-checked")).toBe("false");
 
     const backfill = Array.from(container.querySelectorAll("button")).find((button) =>
       button.textContent?.includes("Backfill from profile")
@@ -139,7 +139,7 @@ describe("MediaVaultSettingsCard", () => {
 
     await renderCard(true);
 
-    expect(container.querySelector("button[aria-label='Back up my uploaded media']")?.getAttribute("aria-checked")).toBe("true");
+    expect(container.querySelector("button[aria-label='(Beta) Back up my uploaded media']")?.getAttribute("aria-checked")).toBe("true");
     expect(container.textContent).toContain("Files 1");
     expect(container.textContent).toContain("Size 3 B");
     expect(container.textContent).toContain("Known account @ada");
