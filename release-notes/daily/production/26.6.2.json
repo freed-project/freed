@@ -1,0 +1,30 @@
+{
+  "channel": "production",
+  "dayKey": "26.6.2",
+  "date": "2026-06-02",
+  "preferredDeck": "Google Drive sync now has a manual Sync now action and visible diagnostics in Freed Desktop and app.freed.wtf, including queued, started, deferred, completed, waiting, and failed sync events.",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with Google Drive manual sync and diagnostics.",
+    "Mention prior social sync fixes only if they are needed for same-day release context."
+  ],
+  "pinnedHighlights": [
+    {
+      "text": "Freed Desktop and app.freed.wtf now show a Sync now button for connected Google Drive accounts.",
+      "sourceTag": "v26.6.204"
+    },
+    {
+      "text": "Google Drive sync diagnostics now report queued, started, deferred, completed, waiting, and failed work.",
+      "sourceTag": "v26.6.204"
+    },
+    {
+      "text": "Sync diagnostics now explain why Last upload can be blank instead of leaving users to infer cloud state.",
+      "sourceTag": "v26.6.204"
+    }
+  ],
+  "editorialNotes": [
+    "This production build carries the Google Drive sync diagnostics and manual sync work from PR 722.",
+    "v26.6.204 follows v26.6.203 and should focus on the new cloud sync observability rather than repeating the prior Facebook release train."
+  ],
+  "updatedAt": "2026-06-03T05:52:33.648Z"
+}
