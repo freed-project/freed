@@ -364,6 +364,7 @@ async function runStartupContentSignalBackfill(): Promise<void> {
     const summary = await runBackgroundJob({
       kind: "content-signal-backfill",
       source: "startup-migration",
+      blocking: false,
       timeoutMs: 120_000,
       run: () => docBackfillContentSignals(STARTUP_CONTENT_SIGNAL_BATCH_SIZE),
     });
@@ -575,7 +576,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Item actions
   addItems: async (items) => {
+    const before = get().items.length;
     await docAddFeedItems(items);
+    const after = get().items.length;
+    log.info(
+      `[store] addItems requested=${items.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${Math.max(0, after - before).toLocaleString()}`,
+    );
   },
 
   updateItem: async (id, update) => {

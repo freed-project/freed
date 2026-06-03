@@ -31,6 +31,7 @@ import {
 import { log } from "./logger.js";
 import { recordProviderHealthEvent } from "./provider-health";
 import { scheduleSideEffect } from "./side-effect-scheduler";
+import { safeUnlisten } from "./safe-unlisten";
 import {
   formatBackgroundRuntimeDeferredReason,
   isBackgroundRuntimeDeferredError,
@@ -888,7 +889,7 @@ export async function initiateDesktopOAuth(
     cleanedUp = true;
     clearTimeout(timer);
     signal?.removeEventListener("abort", handleAbort);
-    unlisten?.();
+    safeUnlisten(unlisten, "cloud-oauth-code");
   };
   timer = setTimeout(() => {
     cleanupCodeWait();

@@ -27,10 +27,16 @@ import { getFbScraperWindowMode } from "./scraper-prefs";
 import { storeFbAuthState } from "./fb-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
-import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-monitor";
+import {
+  formatBytesForMemoryLog,
+  formatScrapeMemoryPressureDetails,
+  prepareSocialScrapeMemory,
+} from "./memory-monitor";
 import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
 import { socialProviderCopy } from "./social-provider-copy";
 import { runBackgroundJob } from "./background-runtime-coordinator";
+import { log } from "./logger";
+import { safeUnlisten } from "./safe-unlisten";
 import {
   applyRuntimeDeferredDiag,
   applyLockedSessionDeferredDiag,
@@ -380,7 +386,7 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
     diag.errorStage = "memory_pressure";
     diag.errorMessage =
       `${socialProviderCopy("facebook").memoryPressure} ` +
-      `App RSS is ${formatBytesForMemoryLog(memoryPrep.after.appResidentBytes)} after cleanup.`;
+      formatScrapeMemoryPressureDetails(memoryPrep);
     return { items: [], diag };
   }
 
@@ -517,8 +523,8 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
     }
     return { items: [], diag };
   } finally {
-    unlisten?.();
-    unlistenDiag?.();
+    safeUnlisten(unlisten, "fb-feed-data");
+    safeUnlisten(unlistenDiag, "fb-diag");
   }
 
   if (diag.errorStage) {
@@ -708,6 +714,9 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
         .getState()
         .items.filter((i) => i.platform === "facebook").length;
       result.diag.itemsAdded = Math.max(0, after - before);
+      log.info(
+        `[FB] store write complete candidates=${filteredItems.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${result.diag.itemsAdded.toLocaleString()} existing=${result.diag.existingItems.toLocaleString()} excluded=${result.diag.excludedItems.toLocaleString()}`,
+      );
       await upsertMediaVaultRosterFromItems("facebook", filteredItems);
       const archivedCount = await archiveRecentProviderMedia(
         "facebook",

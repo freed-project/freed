@@ -126,7 +126,7 @@ describe("background runtime coordinator", () => {
     await scrape;
   });
 
-  it("lets social scrapes wait for active local semantic work", async () => {
+  it("lets nonblocking local semantic work yield to social scrapes", async () => {
     const coordinator = await loadCoordinator();
     coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: true });
     coordinator.noteRendererHeartbeat(heartbeat(1));
@@ -136,31 +136,55 @@ describe("background runtime coordinator", () => {
     const semantic = coordinator.runBackgroundJob({
       kind: "semantic-classifier",
       source: "content-signals",
+      blocking: false,
       run: () => new Promise<void>((resolve) => {
         releaseSemantic = resolve;
       }),
     });
 
     await Promise.resolve();
-    let completed = false;
     const scrape = coordinator.runBackgroundJob({
       kind: "social-scrape",
       source: "instagram:feed",
       waitForActiveJobMs: 1_000,
       waitForActiveJobKinds: ["semantic-classifier"],
       run: () => {
-        completed = true;
         return "scraped";
       },
     });
 
-    await Promise.resolve();
-    expect(completed).toBe(false);
-
+    await expect(scrape).resolves.toBe("scraped");
     releaseSemantic();
     await semantic;
-    await expect(scrape).resolves.toBe("scraped");
-    expect(completed).toBe(true);
+  });
+
+  it("keeps nonblocking local semantic work behind active social scrapes", async () => {
+    const coordinator = await loadCoordinator();
+    coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: true });
+    coordinator.noteRendererHeartbeat(heartbeat(1));
+    coordinator.noteRendererHeartbeat(heartbeat(2));
+
+    let releaseScrape: () => void = () => {};
+    const scrape = coordinator.runBackgroundJob({
+      kind: "social-scrape",
+      source: "instagram:feed",
+      run: () => new Promise<void>((resolve) => {
+        releaseScrape = resolve;
+      }),
+    });
+
+    await Promise.resolve();
+    await expect(
+      coordinator.runBackgroundJob({
+        kind: "semantic-classifier",
+        source: "content-signals",
+        blocking: false,
+        run: () => "indexed",
+      }),
+    ).rejects.toMatchObject({ reason: "active:social-scrape:instagram:feed" });
+
+    releaseScrape();
+    await scrape;
   });
 
   it("lets cloud sync wait for an active outbox drain", async () => {

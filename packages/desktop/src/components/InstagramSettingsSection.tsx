@@ -330,7 +330,7 @@ export function InstagramSettingsSection({
             </p>
           )}
 
-          <ProviderHealthSectionSummary provider="instagram" />
+          <ProviderHealthSectionSummary provider="instagram" showMessages={surface === "debug-card"} />
 
           {statusLine}
 
@@ -404,7 +404,7 @@ export function InstagramSettingsSection({
         {actionError && !needsReconnect && (
           <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
         )}
-        <ProviderHealthSectionSummary provider="instagram" />
+        <ProviderHealthSectionSummary provider="instagram" showMessages={surface === "debug-card"} />
       </div>
     </SyncProviderSectionSurface>
     {dialog}

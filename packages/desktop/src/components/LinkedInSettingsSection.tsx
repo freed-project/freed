@@ -322,7 +322,7 @@ export function LinkedInSettingsSection({
             </p>
           )}
 
-          <ProviderHealthSectionSummary provider="linkedin" />
+          <ProviderHealthSectionSummary provider="linkedin" showMessages={surface === "debug-card"} />
 
           {statusLine}
 
@@ -389,7 +389,7 @@ export function LinkedInSettingsSection({
         {actionError && !needsReconnect && (
           <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
         )}
-        <ProviderHealthSectionSummary provider="linkedin" />
+        <ProviderHealthSectionSummary provider="linkedin" showMessages={surface === "debug-card"} />
       </div>
     </SyncProviderSectionSurface>
     {dialog}

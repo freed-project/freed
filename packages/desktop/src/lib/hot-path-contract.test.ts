@@ -68,4 +68,13 @@ describe("desktop hot-path contract", () => {
 
     expect(offenders).toEqual([]);
   });
+
+  it("keeps provider settings from duplicating active health messages", () => {
+    const summarySource = readFileSync(
+      join(DESKTOP_SRC_DIR, "components/ProviderHealthSectionSummary.tsx"),
+      "utf8",
+    );
+
+    expect(summarySource).toContain("showMessages = false");
+  });
 });
