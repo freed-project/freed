@@ -1572,6 +1572,10 @@ html[data-theme="scriptorium"] .theme-floating-panel {
   box-shadow: 28px 0 80px rgb(0 0 0 / 0.34);
 }
 
+.theme-mobile-sidebar[data-open="false"] {
+  box-shadow: none;
+}
+
 html.freed-mobile-sidebar-open,
 html.freed-mobile-sidebar-open body {
   overflow: hidden;
