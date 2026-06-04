@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry in Freed Desktop, the Friends workspace now defaults to `All content`, and the graph surface uses a WebGL-backed Pixi renderer with a bounded D3 Force worker solve, confirmed friend hubs near the center, provisional human identities in the middle field, linked channel satellites around people, unlinked provider islands around the edge, RSS treated as a normal provider island, drag-to-link reassignment, drag-to-pin placement, semantic zoom labels, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map plus Friends surfaces continue to share the unified top toolbar with current, future, and past map windows plus the quieter lower-left timeline scrubber
+> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry in Freed Desktop, Google Contacts sync now feeds the same global background activity monitor as social providers, the Friends workspace now defaults to `All content`, and the graph surface uses a WebGL-backed Pixi renderer with a bounded D3 Force worker solve, confirmed friend hubs near the center, provisional human identities in the middle field, linked channel satellites around people, unlinked provider islands around the edge, RSS treated as a normal provider island, drag-to-link reassignment, drag-to-pin placement, semantic zoom labels, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map plus Friends surfaces continue to share the unified top toolbar with current, future, and past map windows plus the quieter lower-left timeline scrubber
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -333,6 +333,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.42 | Search and filter the primary feed by followed social channel names, with profile navigation and promotion commands | Medium | Done |
 | 8.43 | Add AI-ranked suggestion-only friend candidates from identity graph, contact, activity, and content signals | Medium | Done |
 | 8.44 | Open captured channel details in Friends from the reader author name | Low | Done |
+| 8.45 | Include Google Contacts in the global background activity monitor | Low | Done |
 
 ---
 
@@ -350,6 +351,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Friends shown in Sidebar as a live navigation destination
 - [x] Google Contacts import creates friend persons by default and suggests same-person matches without auto-linking
 - [x] Google Contacts sync reuses native, refreshable Google credentials in Freed Desktop, retries once after an API 401 with a forced refresh, and streams People API pages into normalized results without retaining duplicate raw page arrays
+- [x] Google Contacts sync records token lookup, fetch start, result counts, auth failures, timeouts, and completion in the same global activity monitor used by social provider syncs without adding extra People API requests
 - [x] Desktop snapshot restore preserves cached Google contacts and pending match suggestions
 - [x] Google Contacts appears as a first-class source in Settings and Friends, with full management in Freed Desktop and status-only visibility in the PWA
 - [x] Captured social authors can backfill orphan followed-account records before the operator confirms identity

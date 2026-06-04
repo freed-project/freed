@@ -16,6 +16,11 @@ import {
 import { buildSocialAccountsFromAuthorIds } from "@freed/shared/google-contacts-automation";
 import { matchContacts } from "@freed/shared/contact-matching";
 import { usePlatform } from "../context/PlatformContext.js";
+import {
+  finishBackgroundActivity,
+  startBackgroundActivity,
+  updateBackgroundActivity,
+} from "../lib/background-activity-store.js";
 
 const SYNC_INTERVAL_MS = 15 * 60 * 1000;
 const CONTACT_SYNC_TIMEOUT_MS = 60 * 1000;
@@ -180,6 +185,13 @@ export function useContactSync() {
         return current;
       }
 
+      const activityId = startBackgroundActivity({
+        id: "channel:googleContacts",
+        kind: "channel",
+        channelId: "googleContacts",
+        label: "Google Contacts",
+        message: "Checking Google Contacts token.",
+      });
       const contactsApi = googleContacts;
       let token: string | null = null;
       if (contactsApi) {
@@ -193,6 +205,7 @@ export function useContactSync() {
           const message = error instanceof Error ? error.message : "Google Contacts token lookup failed.";
           const nextState = withError(current, "auth", message);
           commitSyncState(nextState);
+          finishBackgroundActivity(activityId, "error", `Google Contacts token lookup failed: ${message}`);
           return nextState;
         }
       }
@@ -200,6 +213,7 @@ export function useContactSync() {
       if (!token) {
         const nextState = withError(current, "missing_token", "Reconnect Google to sync contacts.");
         commitSyncState(nextState);
+        finishBackgroundActivity(activityId, "error", "Reconnect Google to sync contacts.");
         return nextState;
       }
 
@@ -210,6 +224,10 @@ export function useContactSync() {
         syncStartedAt: now,
         lastErrorCode: undefined,
         lastErrorMessage: undefined,
+      });
+      updateBackgroundActivity(activityId, {
+        message: "Fetching Google Contacts.",
+        log: true,
       });
 
       try {
@@ -250,12 +268,18 @@ export function useContactSync() {
         };
 
         commitSyncState(nextState);
+        finishBackgroundActivity(
+          activityId,
+          "success",
+          `Google Contacts sync finished with ${result.contacts.length.toLocaleString()} contact${result.contacts.length === 1 ? "" : "s"}.`,
+        );
         return nextState;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Google Contacts sync failed.";
         const code = isAuthSyncError(error) ? "auth" : "network";
         const nextState = withError(syncStateRef.current, code, message);
         commitSyncState(nextState);
+        finishBackgroundActivity(activityId, "error", `Google Contacts sync failed: ${message}`);
         return nextState;
       }
     })().finally(() => {
