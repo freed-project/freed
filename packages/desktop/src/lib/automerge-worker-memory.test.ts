@@ -21,6 +21,13 @@ function functionBody(functionName: string): string {
   return workerSource.match(pattern)?.[0] ?? "";
 }
 
+function sectionBody(start: string, end: string): string {
+  const startIndex = workerSource.indexOf(start);
+  const endIndex = workerSource.indexOf(end, startIndex + start.length);
+  if (startIndex < 0 || endIndex < 0) return "";
+  return workerSource.slice(startIndex, endIndex);
+}
+
 describe("automerge worker memory routing", () => {
   const patchOnlyMutations = [
     "MARK_AS_READ",
@@ -167,12 +174,34 @@ describe("automerge worker memory routing", () => {
   });
 
   it("compacts oversized feed text before item writes", () => {
-    for (const caseName of ["ADD_FEED_ITEM", "BATCH_REFRESH_FEEDS", "BATCH_IMPORT_ITEMS"]) {
+    for (const caseName of ["ADD_FEED_ITEM", "BATCH_IMPORT_ITEMS"]) {
       expect(caseBody(caseName)).toContain("compactFeedItemTextForSync");
     }
+    expect(workerSource).toContain("async function applyBatchRefreshFeedsPatchChange");
+    expect(sectionBody(
+      "async function applyBatchRefreshFeedsPatchChange",
+      "async function handleRequest",
+    )).toContain("compactFeedItemTextForSync(item)");
     expect(workerSource).toContain("async function applyAddFeedItemsPatchChange");
     expect(workerSource).toContain("compactFeedItemTextForSync(item)");
     expect(caseBody("UPDATE_FEED_ITEM")).toContain("compactFeedItemTextForSync(item)");
+  });
+
+  it("RSS batch refresh emits patches without hydrating every feed item", () => {
+    const body = caseBody("BATCH_REFRESH_FEEDS");
+    const helperBody = sectionBody(
+      "async function applyBatchRefreshFeedsPatchChange",
+      "async function handleRequest",
+    );
+
+    expect(body).toContain("applyBatchRefreshFeedsPatchChange(req.feeds, req.items, trace)");
+    expect(body).not.toContain("applyRequestChange");
+    expect(helperBody).toContain("persistAndBroadcastWithoutHydration");
+    expect(helperBody).toContain("type: \"FEEDS_PATCH\"");
+    expect(helperBody).toContain("type: \"ITEM_PATCH\"");
+    expect(helperBody).toContain("hasKnownLinkPreviewUrl");
+    expect(helperBody).not.toContain("Object.values(doc.feedItems");
+    expect(helperBody).not.toContain("saveAndBroadcast");
   });
 
   it("batch item writes use item patches unless social dedup rewrites existing records", () => {

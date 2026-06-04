@@ -904,7 +904,7 @@ function App() {
       },
       importMarkdown: importMarkdownFiles,
       exportMarkdown: () => {
-        const items = Object.values(useDesktopStore.getState().items ?? {});
+        const items = useDesktopStore.getState().items ?? [];
         return exportLibrary(items);
       },
       retryCloudProvider,

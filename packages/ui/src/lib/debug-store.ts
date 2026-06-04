@@ -79,10 +79,14 @@ export interface RuntimeMemorySnapshot {
     role: string;
   }>;
   webkitTelemetryAvailable?: boolean;
+  webkitAttributionPrecise?: boolean;
   automergeBinaryBytes?: number;
   automergeItemCount?: number;
   indexedDbBytes?: number;
   webkitCacheBytes?: number;
+  storageSizesSampled?: boolean;
+  sampleDurationMs?: number;
+  nativeSampleDurationMs?: number;
   memoryHighBytes?: number;
   memoryCriticalBytes?: number;
   pressureLevel?: "normal" | "high" | "critical";
