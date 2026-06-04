@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
+  getLocationTimelineBounds,
   getLocationTimelineMoments,
   type FeedItem,
   type Person,
@@ -204,6 +205,61 @@ describe("map playback selectors", () => {
     });
     expect(tokyoMarkers).toHaveLength(1);
     expect(tokyoMarkers[0]?.label).toBe("Tokyo");
+  });
+
+  it("filters map markers by an all-time slider range", () => {
+    const rome = createItem(
+      "ig:ada:rome",
+      NOW - 10 * 24 * 60 * 60_000,
+      "Rome",
+      { lat: 41.9028, lng: 12.4964 },
+    );
+    const berlin = createItem(
+      "ig:ada:berlin",
+      NOW - 3 * 24 * 60 * 60_000,
+      "Berlin",
+      { lat: 52.52, lng: 13.405 },
+    );
+    const lisbon = createItem(
+      "ig:ada:lisbon-plan",
+      NOW + 2 * 24 * 60 * 60_000,
+      "Lisbon",
+      { lat: 38.7223, lng: -9.1393 },
+      {
+        startsAt: NOW + 2 * 24 * 60 * 60_000,
+        endsAt: NOW + 4 * 24 * 60 * 60_000,
+        kind: "travel",
+      },
+    );
+
+    const resolvedItems = [
+      resolved(rome, { lat: 41.9028, lng: 12.4964 }),
+      resolved(berlin, { lat: 52.52, lng: 13.405 }),
+      resolved(lisbon, { lat: 38.7223, lng: -9.1393 }),
+    ];
+
+    expect(getLocationTimelineBounds(resolvedItems)).toEqual({
+      startAt: NOW - 10 * 24 * 60 * 60_000,
+      endAt: NOW + 4 * 24 * 60 * 60_000,
+    });
+
+    const fullRangeMarkers = getLatestFriendLocationMarkers(resolvedItems, {
+      timeRange: {
+        startAt: NOW - 10 * 24 * 60 * 60_000,
+        endAt: NOW + 4 * 24 * 60 * 60_000,
+      },
+    });
+    expect(fullRangeMarkers).toHaveLength(1);
+    expect(fullRangeMarkers[0]?.label).toBe("Lisbon");
+
+    const pastRangeMarkers = getLatestFriendLocationMarkers(resolvedItems, {
+      timeRange: {
+        startAt: NOW - 10 * 24 * 60 * 60_000,
+        endAt: NOW - 2 * 24 * 60 * 60_000,
+      },
+    });
+    expect(pastRangeMarkers).toHaveLength(1);
+    expect(pastRangeMarkers[0]?.label).toBe("Berlin");
   });
 
   it("keeps marker group counts correct without rescanning every location for every marker", () => {

@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import {
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
-  getLocationTimelineMoments,
+  getLocationTimelineBounds,
   resolveMapMode,
-  type MapTimeMode,
+  type LocationTimeRange,
 } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useResolvedLocations } from "../../hooks/useResolvedLocations.js";
@@ -20,10 +20,7 @@ const timelineEdgeFormatter = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
 });
-const DEFAULT_TIMELINE_INDEX: Record<Exclude<MapTimeMode, "current">, number> = {
-  past: -1,
-  future: 0,
-};
+const TIME_RANGE_SLIDER_STEPS = 1_000;
 
 function getMapTimeRefreshMs(): number {
   if (typeof window === "undefined") return MAP_TIME_REFRESH_MS;
@@ -45,6 +42,25 @@ function formatTimelineEdge(value: number): string {
   return timelineEdgeFormatter.format(value);
 }
 
+function formatTimelineRange(range: LocationTimeRange, bounds: LocationTimeRange): string {
+  if (range.startAt === bounds.startAt && range.endAt === bounds.endAt) {
+    return "All time";
+  }
+  return `${formatTimelineMoment(range.startAt)} to ${formatTimelineMoment(range.endAt)}`;
+}
+
+function timeToSliderStep(value: number, bounds: LocationTimeRange): number {
+  const span = bounds.endAt - bounds.startAt;
+  if (span <= 0) return 0;
+  return Math.round(((value - bounds.startAt) / span) * TIME_RANGE_SLIDER_STEPS);
+}
+
+function sliderStepToTime(step: number, bounds: LocationTimeRange): number {
+  const span = bounds.endAt - bounds.startAt;
+  if (span <= 0) return bounds.startAt;
+  return bounds.startAt + (span * step) / TIME_RANGE_SLIDER_STEPS;
+}
+
 export function MapView() {
   const items = useAppStore((state) => state.items);
   const persons = useAppStore((state) => state.persons);
@@ -58,54 +74,36 @@ export function MapView() {
   const setSearchQuery = useAppStore((state) => state.setSearchQuery);
   const display = useAppStore((state) => state.preferences.display);
   const themeId = display.themeId;
-  const savedTimeMode = display.mapTimeMode ?? "current";
   const [referenceNow, setReferenceNow] = useState(() => Date.now());
-  const [timelineIndexes, setTimelineIndexes] = useState<Record<Exclude<MapTimeMode, "current">, number | null>>({
-    past: null,
-    future: null,
-  });
+  const [selectedTimeRange, setSelectedTimeRange] = useState<LocationTimeRange | null>(null);
 
   const { resolvedItems } = useResolvedLocations(items, persons, accounts);
-  const timelineMoments = useMemo(
-    () => getLocationTimelineMoments(resolvedItems, { timeMode: savedTimeMode, now: referenceNow }),
-    [referenceNow, resolvedItems, savedTimeMode],
-  );
-  const selectedTimelineIndex =
-    savedTimeMode === "current"
-      ? null
-      : timelineIndexes[savedTimeMode];
-  const fallbackTimelineIndex =
-    savedTimeMode === "current"
-      ? null
-      : DEFAULT_TIMELINE_INDEX[savedTimeMode] < 0
-        ? Math.max(0, timelineMoments.length - 1)
-        : DEFAULT_TIMELINE_INDEX[savedTimeMode];
-  const effectiveTimelineIndex =
-    savedTimeMode === "current" || timelineMoments.length === 0
-      ? null
-      : Math.min(
-          selectedTimelineIndex ?? fallbackTimelineIndex ?? 0,
-          timelineMoments.length - 1,
-        );
-  const playbackAt =
-    effectiveTimelineIndex === null ? null : timelineMoments[effectiveTimelineIndex] ?? null;
+  const timelineBounds = useMemo(() => getLocationTimelineBounds(resolvedItems), [resolvedItems]);
+  const effectiveTimeRange = selectedTimeRange ?? timelineBounds;
+  const sliderStartStep =
+    timelineBounds && effectiveTimeRange ? timeToSliderStep(effectiveTimeRange.startAt, timelineBounds) : 0;
+  const sliderEndStep =
+    timelineBounds && effectiveTimeRange ? timeToSliderStep(effectiveTimeRange.endAt, timelineBounds) : 0;
+  const sliderStartPercent = (sliderStartStep / TIME_RANGE_SLIDER_STEPS) * 100;
+  const sliderEndPercent = (sliderEndStep / TIME_RANGE_SLIDER_STEPS) * 100;
+  const timeRangeLabel =
+    timelineBounds && effectiveTimeRange ? formatTimelineRange(effectiveTimeRange, timelineBounds) : "No location dates";
+  const sliderDisabled = !timelineBounds || timelineBounds.startAt === timelineBounds.endAt;
   const friendMarkers = useMemo(
     () =>
       getLatestFriendLocationMarkers(resolvedItems, {
-        timeMode: savedTimeMode,
         now: referenceNow,
-        playbackAt,
+        timeRange: effectiveTimeRange,
       }),
-    [playbackAt, referenceNow, resolvedItems, savedTimeMode],
+    [effectiveTimeRange, referenceNow, resolvedItems],
   );
   const allContentMarkers = useMemo(
     () =>
       getLatestAuthorLocationMarkers(resolvedItems, {
-        timeMode: savedTimeMode,
         now: referenceNow,
-        playbackAt,
+        timeRange: effectiveTimeRange,
       }),
-    [playbackAt, referenceNow, resolvedItems, savedTimeMode],
+    [effectiveTimeRange, referenceNow, resolvedItems],
   );
   const effectiveMode = resolveMapMode(
     display.mapMode,
@@ -123,75 +121,106 @@ export function MapView() {
     };
   }, []);
 
+  useEffect(() => {
+    setSelectedTimeRange((current) => {
+      if (!timelineBounds || !current) return null;
+
+      const startAt = Math.max(timelineBounds.startAt, Math.min(current.startAt, timelineBounds.endAt));
+      const endAt = Math.max(startAt, Math.min(current.endAt, timelineBounds.endAt));
+
+      if (startAt === current.startAt && endAt === current.endAt) return current;
+      return { startAt, endAt };
+    });
+  }, [timelineBounds]);
+
   const focusedMarker = useMemo(
     () => markers.find((marker) => marker.friend?.id === selectedPersonId) ?? null,
     [markers, selectedPersonId]
   );
 
-  const handleTimelineScrub = (nextIndex: number) => {
-    if (savedTimeMode === "current") return;
-    setTimelineIndexes((current) => ({
-      ...current,
-      [savedTimeMode]: nextIndex,
-    }));
+  const handleTimeRangeStartChange = (nextStep: number) => {
+    if (!timelineBounds || !effectiveTimeRange) return;
+    const endStep = timeToSliderStep(effectiveTimeRange.endAt, timelineBounds);
+    const clampedStep = Math.min(nextStep, endStep);
+    setSelectedTimeRange({
+      startAt: sliderStepToTime(clampedStep, timelineBounds),
+      endAt: effectiveTimeRange.endAt,
+    });
+  };
+
+  const handleTimeRangeEndChange = (nextStep: number) => {
+    if (!timelineBounds || !effectiveTimeRange) return;
+    const startStep = timeToSliderStep(effectiveTimeRange.startAt, timelineBounds);
+    const clampedStep = Math.max(nextStep, startStep);
+    setSelectedTimeRange({
+      startAt: effectiveTimeRange.startAt,
+      endAt: sliderStepToTime(clampedStep, timelineBounds),
+    });
   };
 
   const emptyState = (() => {
-    if (savedTimeMode === "future") {
-      return {
-        title: "No future location windows yet.",
-        body: "Future-dated travel or event plans will appear here once captured.",
-      };
-    }
-    if (savedTimeMode === "past") {
-      return {
-        title: effectiveMode === "friends" ? "No friend location history yet." : "No past location pins yet.",
-        body:
-          effectiveMode === "friends"
-            ? "Switch to Current or All content to see active last-seen pins."
-            : "Captured historical check-ins and posts will appear here.",
-      };
-    }
     return {
       title: effectiveMode === "friends" ? "No friend pins yet." : "No location pins yet.",
       body:
         effectiveMode === "friends"
-          ? "Switch to All content to see the latest locations from followed accounts."
-          : "Followed accounts with valid location data will appear here.",
+          ? "Drag the time slider wider or switch to All content to see followed accounts."
+          : "Drag the time slider wider or capture followed accounts with valid location data.",
     };
   })();
 
   return (
     <div className="app-theme-shell relative h-full overflow-hidden">
-      {savedTimeMode !== "current" && timelineMoments.length > 0 && effectiveTimelineIndex !== null ? (
-        <div className="pointer-events-none absolute bottom-4 left-4 z-20 flex justify-start">
-          <div
-            className="pointer-events-auto theme-floating-panel w-[min(25rem,calc(100vw-2rem))] px-4 py-3"
-            data-testid="map-timeline-scrubber"
-          >
-            <div className="flex items-center justify-between gap-3 text-[10px] font-medium text-[color:var(--theme-text-muted)]">
-              <span>{savedTimeMode === "past" ? "History" : "Future"}</span>
-              <span className="text-right text-[color:var(--theme-text-secondary)]">
-                {formatTimelineMoment(timelineMoments[effectiveTimelineIndex])}
-              </span>
-            </div>
+      <div className="pointer-events-none absolute bottom-4 left-4 z-20 flex justify-start">
+        <div
+          className="pointer-events-auto theme-floating-panel w-[min(27rem,calc(100vw-2rem))] px-4 py-3"
+          data-testid="map-time-range-slider"
+        >
+          <div className="flex items-center justify-between gap-3 text-[10px] font-medium text-[color:var(--theme-text-muted)]">
+            <span>Time</span>
+            <span className="text-right text-[color:var(--theme-text-secondary)]">{timeRangeLabel}</span>
+          </div>
+          <div className="relative mt-3 h-7">
+            <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-[var(--theme-border-subtle)]" />
+            <div
+              className="absolute top-1/2 h-1 -translate-y-1/2 rounded-full bg-[var(--theme-accent-secondary)]"
+              style={{
+                left: `${sliderStartPercent}%`,
+                right: `${100 - sliderEndPercent}%`,
+              }}
+            />
             <input
               type="range"
               min={0}
-              max={Math.max(0, timelineMoments.length - 1)}
+              max={TIME_RANGE_SLIDER_STEPS}
               step={1}
-              value={effectiveTimelineIndex}
-              aria-label="Map timeline scrubber"
-              className="mt-3 h-2 w-full accent-[var(--theme-accent-secondary)]"
-              onChange={(event) => handleTimelineScrub(Number.parseInt(event.currentTarget.value, 10))}
+              value={sliderStartStep}
+              disabled={sliderDisabled}
+              aria-label="Map time range start"
+              data-testid="map-time-range-start"
+              className="theme-map-time-range-slider"
+              style={{ zIndex: sliderStartStep > TIME_RANGE_SLIDER_STEPS - 40 ? 3 : 2 }}
+              onChange={(event) => handleTimeRangeStartChange(Number.parseInt(event.currentTarget.value, 10))}
             />
-            <div className="mt-2 flex items-center justify-between text-[10px] text-[color:var(--theme-text-soft)]">
-              <span>{formatTimelineEdge(timelineMoments[0])}</span>
-              <span>{formatTimelineEdge(timelineMoments[timelineMoments.length - 1])}</span>
-            </div>
+            <input
+              type="range"
+              min={0}
+              max={TIME_RANGE_SLIDER_STEPS}
+              step={1}
+              value={sliderEndStep}
+              disabled={sliderDisabled}
+              aria-label="Map time range end"
+              data-testid="map-time-range-end"
+              className="theme-map-time-range-slider"
+              style={{ zIndex: 2 }}
+              onChange={(event) => handleTimeRangeEndChange(Number.parseInt(event.currentTarget.value, 10))}
+            />
+          </div>
+          <div className="mt-1 flex items-center justify-between text-[10px] text-[color:var(--theme-text-soft)]">
+            <span>{timelineBounds ? formatTimelineEdge(timelineBounds.startAt) : "Start"}</span>
+            <span>{timelineBounds ? formatTimelineEdge(timelineBounds.endAt) : "End"}</span>
           </div>
         </div>
-      ) : null}
+      </div>
 
       <MapSurface
         markers={markers}

@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry in Freed Desktop, the Friends workspace now defaults to `All content`, and the graph surface uses a WebGL-backed Pixi renderer with a bounded D3 Force worker solve, confirmed friend hubs near the center, provisional human identities in the middle field, linked channel satellites around people, unlinked provider islands around the edge, RSS treated as a normal provider island, drag-to-link reassignment, drag-to-pin placement, semantic zoom labels, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map plus Friends surfaces continue to share the unified top toolbar with current, future, and past map windows plus the quieter lower-left timeline scrubber
+> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry in Freed Desktop, the Friends workspace now defaults to `All content`, and the graph surface uses a WebGL-backed Pixi renderer with a bounded D3 Force worker solve, confirmed friend hubs near the center, provisional human identities in the middle field, linked channel satellites around people, unlinked provider islands around the edge, RSS treated as a normal provider island, drag-to-link reassignment, drag-to-pin placement, semantic zoom labels, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map keeps Friends and All content in the unified top toolbar and moves all time filtering into an always visible lower-left range slider
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -198,7 +198,7 @@ Default nudge intervals by care level:
 ## 8D: Location / Map View
 
 ```
-FeedItems → extractLocationFromItem() + optional time window → geocode() (Nominatim) → cache → MapLibre markers → Friends mode or All content mode → timeline scrubber → derived overlap views
+FeedItems to extractLocationFromItem() plus optional time window to geocode() (Nominatim) to cache to MapLibre markers to Friends mode or All content mode to time range slider to derived overlap views
 ```
 
 Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare), text patterns ("📍 Paris"), **and IG/FB story location stickers** (Phase 7.11). Low-confidence story labels are recovered from preserved Instagram location URLs when possible, or dropped when they cannot be trusted. Planned future sources such as Mozi add another class of signal: place windows that may sit in the future instead of the past.
@@ -209,8 +209,8 @@ Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare),
 
 - Historical posts still render as point-in-time events
 - Future-aware sources can attach a start and optional end time to a location-bearing item
-- The map defaults to `Now` but should be able to scrub backward and forward in time
-- Marker visibility is filtered by the selected time or time window, not just by "latest post wins"
+- The map defaults to the full captured time span, from the earliest historical item to the farthest future time window
+- Marker visibility is filtered by the selected time range, with draggable start and end edges
 
 ### Planned overlap model
 
@@ -261,10 +261,8 @@ Map popovers now use a wider card layout and deliberately omit the old MapLibre 
 Friends and Map now consume the same shared theme tokens, button treatments, shell backgrounds, surface recipes, and theme-native map palettes as the rest of Freed, so themes like Neon, Midas, Vesper, Ember, and Scriptorium land consistently across the graph, sidebars, popovers, mini-map cards, editor, contact-sync flows, and map basemap itself.
 The shared map now includes a persisted `Friends` / `All content` toggle. It restores the user's last mode from preferences and defaults to `All content` when the library has geolocatable followed accounts but no friend-linked pins yet.
 That same `Friends` / `All content` lens now lives in the shared toolbar for feed surfaces too, so the operator can collapse Freed down to real-world people without leaving the main reading views.
-The shared map now also persists a `Current` / `Future` / `Past` time filter. Future-dated `timeRange` windows stay out of the default current map until they start, upcoming travel or event windows can be previewed directly, and expired windows fall into a separate past view without hijacking the current last-seen map.
-Map history playback now stays inside the map surface as a lower-left scrubber panel, while the toolbar keeps only the high-level mode switches instead of growing a second floating control row.
-Friends and Map now use the shared top toolbar for their identity and time controls, and feed-only bulk actions no longer appear in those workspaces.
-Past and future views now expose a timeline scrubber, so the operator can replay historical location posts or step through upcoming travel windows instead of staring at one collapsed "latest" pin and pretending that counts as time.
+The shared map now uses one always visible lower-left time range slider instead of `Current`, `Future`, and `Past` toolbar buttons. It defaults to the full captured time span, lets either edge narrow the visible window, and treats future-dated `timeRange` windows as part of the same continuous map timeline.
+Friends and Map now use the shared top toolbar for identity controls, and feed-only bulk actions no longer appear in those workspaces.
 The Friends graph now auto-discovers likely human identities as provisional `connection` people from unlinked social accounts, persists those middle-ring nodes across sessions, and removes empty provisional identities when all linked channels move away.
 The Friends graph also now renders followed RSS feeds in the same graph, so the operator can see confirmed people, provisional people, linked channels, stray channels, and feed subscriptions in one zoomable workspace instead of splitting the world across separate mental models.
 The graph renderer keeps Pixi, draws every graph role from theme tokens, and uses provider islands for Instagram, LinkedIn, X, Facebook, RSS, and any future provider.
@@ -306,7 +304,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.19 | Google Contacts source, refreshable sync lifecycle, matching, and Friend creation flow | Medium | Done |
 | 8.20 | Wire Map to live sidebar navigation | Low | Done |
 | 8.21 | Add future-aware map filtering for location-bearing items | Medium | Done |
-| 8.22 | Add map timeline scrubber for past and future playback | Medium | Done |
+| 8.22 | Add always visible map time range slider with draggable edges | Medium | Done |
 | 8.23 | Replace embedded Friend identity with canonical `Person` + `Account` schema and Automerge migration | High | Done |
 | 8.24 | Backfill followed-account catalog from captured authors and stories | Medium | Done |
 | 8.25 | Google Contacts imports create friend persons with linked contact accounts | Medium | Done |
@@ -398,8 +396,8 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
 - [ ] macOS native contact picker (CNContactStore)
 - [x] Map promoted to live sidebar navigation
-- [x] Future-aware map filtering supports past, current, and future location windows
-- [x] Timeline scrubbing works across historical posts and future planning items
+- [x] Future-aware map filtering supports a continuous all-time range from historical posts through future planning windows
+- [x] Time range selection works across historical posts and future planning items with draggable start and end edges
 - [ ] Overlaps render as derived read-time views, not persisted source records
 - [ ] Mozi-backed friend/location events appear in Friend identity and map flows
 
