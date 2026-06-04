@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry in Freed Desktop, the Friends workspace now defaults to `All content`, and the graph surface now uses a worker-built graph atlas with a capped canvas renderer, confirmed friend hubs near the center, provisional human identities in the middle field, linked channel satellites around people, unlinked provider islands around the edge, RSS treated as a normal provider island, drag-to-link reassignment, drag-to-pin placement, semantic zoom labels, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map plus Friends surfaces continue to share the unified top toolbar with current, future, and past map windows plus the quieter lower-left timeline scrubber
+> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry in Freed Desktop, the Friends workspace now defaults to `All content`, and the graph surface now uses a worker-built graph atlas with a theme-aware Three.js starfield renderer, Troika billboard labels, visible-node caps, provider nebula and ring variations, confirmed friend stars closer to the camera, provisional human identities in the middle field, linked channel satellites around people, unlinked provider constellations around the edge, RSS treated as a normal provider island, context-menu linking and pinning, semantic zoom labels, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map plus Friends surfaces continue to share the unified top toolbar with current, future, and past map windows plus the quieter lower-left timeline scrubber
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -39,8 +39,8 @@ This phase also becomes the home for future-aware social planning. Historical po
            ▼                         ▼
 ┌──────────────────┐      ┌───────────────────────────┐
 │  8B: Identity Graph │    │  8C: Detail + Reach-out   │
-│  Pixi WebGL scene  │    │  Cross-platform timeline  │
-│  Worker radial     │    │  Reach-out log + nudges   │
+│  Three starfield   │    │  Cross-platform timeline  │
+│  Atlas worker      │    │  Reach-out log + nudges   │
 │  layout + zoom     │    │                           │
 └──────────────────┘      └───────────────────────────┘
            │
@@ -138,29 +138,32 @@ Default nudge intervals by care level:
 
 ### Renderer and layout
 
-- Renderer: graph atlas canvas scene with capped visible nodes, screen-space semantic labels, and transform-only pan and pinch
+- Renderer: theme-aware Three.js starfield with capped visible graph nodes, Troika billboard labels, and a canvas fallback when WebGL is unavailable
 - Layout: off-main-thread worker that computes stable atlas tiers from activity summaries instead of shipping the full graph scene to the main thread
 - Tiering:
-  - confirmed friends are the largest identity nodes near the center
+  - confirmed friends are the largest identity stars near the center and closer to the camera
+  - Fam and high-priority friends get the strongest depth and glow
   - provisional human identities sit in the middle field
   - linked social channels orbit their linked identity
-  - unlinked channels and RSS feeds live in provider islands around the outer edge
+  - unlinked channels and RSS feeds live in provider constellations around the outer edge
   - RSS is a provider island like Instagram, LinkedIn, X, and Facebook, not a separate content band
+  - provider zones can render as nebula clouds, constellation rings, or both through the dev test control
 - Interaction:
   - pan and zoom with semantic label reveal
   - click or double-click to focus identity or channel clusters in place without moving the camera
-  - drag social channel nodes onto human identities to re-link immediately
-  - drag people or channels without a link drop to pin their graph position
+  - right click or long press a node to open graph actions
+  - link accounts through a context-menu person picker
+  - pin people or accounts from the node context menu
   - non-selected clusters dim when a person or channel is focused
 
 ### Visual encoding
 
 | Signal | Visual |
 |---|---|
-| Confirmed friend | Largest central circle |
-| Provisional human identity | Medium circle in middle ring |
-| Linked social channel | Small satellite circle with quiet connector line |
-| RSS or unlinked outer channel | Small outer circle inside provider island |
+| Confirmed friend | Bright central star, closer to the camera |
+| Provisional human identity | Medium star in middle depth |
+| Linked social channel | Small satellite star with quiet connector line |
+| RSS or unlinked outer channel | Small outer star inside provider constellation |
 | Focused selection | Connected cluster stays bright, unrelated nodes dim |
 | Higher zoom | More labels appear without shrinking the viewport |
 
@@ -180,7 +183,7 @@ Default nudge intervals by care level:
 ### Files
 
 - `packages/ui/src/components/friends/FriendsView.tsx` — top-level view shell
-- `packages/ui/src/components/friends/FriendGraph.tsx`: graph atlas canvas shell with semantic zoom labels, gestures, and diagnostics
+- `packages/ui/src/components/friends/FriendGraph.tsx`: graph atlas starfield shell with Three.js rendering, Troika labels, context menus, gestures, fallback rendering, and diagnostics
 - `packages/ui/src/lib/identity-graph-model.ts` — derived person, channel, and feed graph model
 - `packages/shared/src/friend-suggestions.ts`: pure suggestion-only friend candidate ranking from identity, activity, content signals, and contact overlap
 - `packages/ui/src/lib/identity-graph-layout.ts` — stable radial layout plus spatial index helpers
@@ -253,11 +256,13 @@ That same Friends rail can now be collapsed from a far-right toolbar toggle on l
 When that rail is collapsed on desktop, selecting a friend or channel now opens a compact floating detail card instead of springing the full rail back open without consent.
 Clicking empty graph space now dismisses that collapsed floating detail card, so the graph behaves like a workspace again instead of trapping the last selection until the operator finds the tiny close button.
 Trackpad and multitouch pinch zoom are now captured by the Friends graph itself, with faster graph-native scaling and Safari gesture suppression so zooming the workspace no longer zooms the whole browser window.
-Panning the Friends graph no longer rebuilds every node, edge, and label object on each frame, so the Pixi renderer finally behaves like a real retained scene instead of a very expensive Etch A Sketch.
+Panning the Friends graph no longer rebuilds every node, edge, and label object on each frame. The graph treats active movement as camera work instead of scene reconstruction.
 Scriptorium also now gives the graph a darker node palette, stronger edges, and real label contrast, so the Friends view reads like an interface instead of a ghost story printed on oatmeal.
 The Friends graph viewport now owns its own soft-mask compensation instead of inheriting the primary sidebar offset, which restores the left-edge vignette so all four edges feather consistently like the map view.
 The identity graph now builds activity counts in one pass, uses cheaper bucketed overlap resolution in the worker, drops into an interaction-quality mode while you pan or pinch, and exposes internal timing counters so performance regressions can fail in desktop tests instead of sneaking into a merge.
-The Friends graph now uses a graph atlas instead of the previous full-scene Pixi renderer. The worker builds capped viewport slices from activity summaries, the canvas renderer draws only the visible tier, provider labels stay visible at overview zoom, and diagnostics report source nodes separately from visible nodes so dense graph tests prove the cap instead of accidentally requiring the old expensive payload.
+The Friends graph now uses a graph atlas instead of the previous full-scene Pixi renderer. The worker builds capped viewport slices from activity summaries, the starfield renderer draws only the visible graph tier, provider labels stay visible at overview zoom, and diagnostics report source nodes separately from visible nodes so dense graph tests prove the cap instead of accidentally requiring the old expensive payload.
+The Friends graph now renders that atlas as a theme-aware 3D starfield. Prominent friends sit closer to the camera, panning has slight depth parallax, provider zones can switch between nebula clouds, constellation rings, or both in dev, and headless or no-WebGL environments use a canvas starfield fallback while preserving diagnostics.
+Graph linking and pinning now live in node context menus. Accounts link through a searchable person picker, and pinning writes the clicked node position without turning normal pan gestures into accidental edits.
 Friend captions in the graph now use pill backgrounds and label-aware spacing, so names stay readable instead of collapsing into an overlapping word soup.
 Friend avatars now inherit a theme-authored tint across the Friends graph and map markers, so each theme stays coherent without a stray custom accent fighting the palette.
 The Friends graph now defaults to `All content`, keeps confirmed friends as larger center hubs, renders their linked channels as smaller radial satellites with straight connectors, and shows every other captured social account on the periphery inside provider-shaped metaball island regions.
@@ -272,10 +277,10 @@ Friends and Map now use the shared top toolbar for their identity and time contr
 Past and future views now expose a timeline scrubber, so the operator can replay historical location posts or step through upcoming travel windows instead of staring at one collapsed "latest" pin and pretending that counts as time.
 The Friends graph now auto-discovers likely human identities as provisional `connection` people from unlinked social accounts, persists those middle-ring nodes across sessions, and removes empty provisional identities when all linked channels move away.
 The Friends graph also now renders followed RSS feeds in the same graph, so the operator can see confirmed people, provisional people, linked channels, stray channels, and feed subscriptions in one zoomable workspace instead of splitting the world across separate mental models.
-The graph renderer keeps Pixi, draws every graph role from theme tokens, and uses provider islands for Instagram, LinkedIn, X, Facebook, RSS, and any future provider.
+The graph renderer draws every graph role from theme tokens and uses provider constellations for Instagram, LinkedIn, X, Facebook, RSS, and any future provider.
 The graph viewport keeps its soft edge mask on graph content only, while floating controls use opaque theme-aware surfaces and the old node/link debug counter stays out of the user interface.
 The layout worker now uses bounded D3 Force ticks for the people field, places confirmed friends in the center by care and activity, leaves provisional identities in the middle field, orbits linked channels around their person, and places every unlinked channel in a provider island around the edge.
-Dragging a person or channel now pins its graph position unless the channel is dropped onto a person, in which case the existing link flow wins.
+Node context menus now handle pinning, relationship promotion, and account linking, so pan and pinch stay clean navigation gestures.
 Sample data now defaults to a showcase graph with 250 friends and 1,250 connected social identities, while the stress fixture covers 1,000 friends and 5,000 connected social identities.
 Semantic zoom now promotes provider island labels at low zoom while delaying person and channel labels until the operator zooms in, so the graph reads as geography first and detail second.
 Suggested friends now appear in the Friends sidebar for both `Friends` and `All content` review flows when existing connection people or unlinked human-looking accounts have enough personal content, recent activity, linked-channel evidence, or Google Contacts overlap. Suggestions are ranked evidence only. Promotion and linking still require explicit operator action.
@@ -322,7 +327,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.26 | Add persisted `Friends` / `All content` map modes with latest-author pins | Medium | Done |
 | 8.27 | Friends workspace defaults to `All content` and renders friend hubs, linked satellites, and peripheral captured accounts | High | Done |
 | 8.28 | Move Friends and Map identity controls into the shared header and hide feed bulk actions in those views | Medium | Done |
-| 8.29 | Promote or link unconfirmed accounts from Friends and Map, including drag-to-friend linking from the graph | High | Done |
+| 8.29 | Promote or link unconfirmed accounts from Friends and Map, including context-menu linking from the graph | High | Done |
 | 8.30 | Persist provisional human identities from unlinked social accounts and prune empty connection shells after relinks | Medium | Done |
 | 8.31 | Replace the Friends canvas renderer with a WebGL Pixi graph plus worker-computed radial layout and spatial indexing | High | Done |
 | 8.32 | Add semantic zoom label culling plus seeded desktop graph regressions for drag, zoom, and dense graph visuals | Medium | Done |
@@ -332,13 +337,14 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.36 | Keep Pixi while making all graph roles theme-aware across node, edge, label, glow, provider island, hover, drag, and selection states | High | Done |
 | 8.37 | Use bounded D3 Force in the worker for the person field while keeping transform-only pan and zoom interaction | High | Done |
 | 8.38 | Treat RSS as a normal provider island, with linked RSS accounts orbiting their person like other channels | Medium | Done |
-| 8.39 | Persist optional graph placement and support drag-to-pin without breaking drag-to-link | Medium | Done |
+| 8.39 | Persist optional graph placement and support context-menu pinning and linking | Medium | Done |
 | 8.40 | Expand showcase and stress sample graph coverage to 250 friends plus 1,250 identities and 1,000 friends plus 5,000 identities | Medium | Done |
 | 8.41 | Add semantic zoom hierarchy so provider island labels dominate low zoom and person labels appear at closer zoom | Medium | Done |
 | 8.42 | Search and filter the primary feed by followed social channel names, with profile navigation and promotion commands | Medium | Done |
 | 8.43 | Add AI-ranked suggestion-only friend candidates from identity graph, contact, activity, and content signals | Medium | Done |
 | 8.44 | Open captured channel details in Friends from the reader author name | Low | Done |
 | 8.45 | Replace the retained Pixi full-scene graph with a summary-backed graph atlas worker and capped canvas renderer | High | Done |
+| 8.46 | Render the Friends atlas as a theme-aware 3D starfield with context-menu linking and pinning | High | Done |
 
 ---
 
@@ -381,10 +387,10 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Unlinked accounts can be promoted or linked from both the Friends workspace and Map popups
 - [x] Likely human social accounts can persist as provisional `connection` identities before they are confirmed as friends
 - [x] Empty provisional identities are removed automatically when their last linked channel moves away
-- [x] The Friends graph uses a WebGL Pixi renderer with worker-computed radial layout instead of the old main-thread canvas stack
+- [x] The Friends graph uses a Three.js starfield renderer with worker-computed atlas slices instead of the old main-thread canvas stack
 - [x] Semantic zoom reveals more labels as the operator zooms in, without crushing the viewport
 - [x] Provider island labels stay prominent at low zoom while person labels wait for closer inspection
-- [x] Pan and zoom reuse retained Pixi node and label objects instead of rebuilding the full scene every frame
+- [x] Pan and zoom update only the graph transform during active movement instead of rebuilding the full scene every frame
 - [x] Scriptorium graph colors stay legible instead of washing node fills and labels into the stage
 - [x] Graph model construction uses single-pass activity indexing instead of rescanning every captured item per node
 - [x] Worker layout uses local bucketed overlap resolution instead of naïve all-pairs nudging
@@ -392,17 +398,18 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Desktop tests assert graph timing and stress-fixture behavior through internal debug counters
 - [x] Followed RSS feeds render as outer graph channels in `All content`
 - [x] RSS is treated as a normal provider island, and linked RSS accounts orbit their person like other social channels
-- [x] Graph color roles are theme-aware across background, nodes, labels, edges, hover, drag, selection, glow, and provider islands
+- [x] Graph color roles are theme-aware across background, nodes, labels, edges, hover, selection, glow, and provider constellations
 - [x] Optional graph placement fields persist for persons and accounts
-- [x] Dragging a person or channel pins the graph position, while channel drops onto people still link accounts
+- [x] Node context menus pin graph positions and link accounts through a searchable person picker
 - [x] Stress coverage exercises 1,000 friends plus 5,000 connected social identities
 - [x] Primary search can find followed social channels by account name or handle, filter the feed to that exact channel, open the profile in Friends or Map, and promote the profile to Friends or Fam
 - [x] Friends `All content` shows ranked suggested friends from connection people and unlinked human-looking accounts, with reasons, signal counts, sample item ids, dismissal, and explicit promotion only
 - [x] Reader author names open the matching captured channel details in Friends
 - [x] Graph benchmarks cover model build time, worker layout time, scene sync time, pan and zoom sync time, selection and hover sync time, visible label count, and quality mode transitions
 - [x] Graph atlas diagnostics report canonical source nodes, visible nodes, rendered primitive count, first visible time, frame p95, long tasks, memory estimate, renderer type, and touch input mode
+- [x] Headless and no-WebGL environments fall back to a canvas starfield while preserving graph diagnostics
 - [x] Dense graph coverage asserts capped visible nodes instead of requiring the full source graph in the renderer payload
-- [x] Desktop browser tests cover mixed-tier graph load, drag-to-link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
+- [x] Desktop browser tests cover mixed-tier graph load, context-menu link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
 - [ ] macOS native contact picker (CNContactStore)
 - [x] Map promoted to live sidebar navigation
