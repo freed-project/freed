@@ -1,5 +1,225 @@
 [
   {
+    "version": "26.6.407",
+    "tagName": "v26.6.407",
+    "channel": "production",
+    "date": "2026-06-04T22:13:58Z",
+    "deck": "Mobile sidebar layering, background activity monitor, and saved content sorting",
+    "features": [
+      {
+        "text": "Background activity monitor"
+      },
+      {
+        "text": "Facebook group leave handoff"
+      },
+      {
+        "text": "Saved content sorting"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Mobile sidebar stays above the page on small screens"
+      },
+      {
+        "text": "Mobile sidebar spacing now matches the settings sidebar"
+      },
+      {
+        "text": "Reader, feed, and header polish"
+      },
+      {
+        "text": "Dev release validation is more stable"
+      },
+      {
+        "text": "Capture and scraper reliability fixes"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Reduce desktop sync stutter"
+      },
+      {
+        "text": "Reverse integrate v26.6.303"
+      },
+      {
+        "text": "Reduce settings scroll frame work"
+      },
+      {
+        "text": "Reduce sync frame pressure"
+      },
+      {
+        "text": "Merge main back into dev after v26.6.204"
+      },
+      {
+        "text": "Stop idle automerge workers reliably"
+      },
+      {
+        "text": "Trim validation runner checks"
+      },
+      {
+        "text": "Skip hidden atmosphere startup"
+      },
+      {
+        "text": "Release hidden atmosphere layers"
+      },
+      {
+        "text": "Reduce renderer atmosphere memory"
+      },
+      {
+        "text": "Defer RSS content backfill under WebKit pressure"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.407",
+    "prNumbers": [
+      689,
+      690,
+      691,
+      692,
+      693,
+      694,
+      695,
+      696,
+      697,
+      698,
+      699,
+      700,
+      701,
+      702,
+      703,
+      704,
+      705,
+      706,
+      707,
+      716,
+      722,
+      725,
+      726,
+      727,
+      728,
+      729,
+      732,
+      735,
+      736,
+      739,
+      743,
+      745,
+      747,
+      748,
+      750,
+      752,
+      753,
+      754,
+      755,
+      756,
+      757,
+      758,
+      759,
+      760,
+      762,
+      765,
+      767,
+      771,
+      773
+    ],
+    "builds": [
+      "26.6.404",
+      "26.6.406",
+      "26.6.407"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.404",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.404",
+        "channel": "production"
+      },
+      {
+        "version": "26.6.406",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.406",
+        "channel": "production"
+      },
+      {
+        "version": "26.6.407",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.407",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.6.402-dev",
+    "tagName": "v26.6.402-dev",
+    "channel": "dev",
+    "date": "2026-06-04T17:29:07Z",
+    "deck": "Background activity monitor, Facebook group leave handoff, and saved content sorting",
+    "features": [
+      {
+        "text": "Background activity monitor"
+      },
+      {
+        "text": "Facebook group leave handoff"
+      },
+      {
+        "text": "Saved content sorting"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Reader, feed, and header polish"
+      },
+      {
+        "text": "Dev release validation is more stable"
+      },
+      {
+        "text": "Capture and scraper reliability fixes"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Reduce desktop sync stutter"
+      },
+      {
+        "text": "Reverse integrate v26.6.303"
+      },
+      {
+        "text": "Reduce settings scroll frame work"
+      },
+      {
+        "text": "Reduce sync frame pressure"
+      },
+      {
+        "text": "Merge main back into dev after v26.6.204"
+      },
+      {
+        "text": "Stop idle automerge workers reliably"
+      },
+      {
+        "text": "Trim validation runner checks"
+      },
+      {
+        "text": "Skip hidden atmosphere startup"
+      },
+      {
+        "text": "Release hidden atmosphere layers"
+      },
+      {
+        "text": "Reduce renderer atmosphere memory"
+      },
+      {
+        "text": "Defer RSS content backfill under WebKit pressure"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.402-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.6.402-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.402-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.402-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
     "version": "26.6.303",
     "tagName": "v26.6.303",
     "channel": "production",
