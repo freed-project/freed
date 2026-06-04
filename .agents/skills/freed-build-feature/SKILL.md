@@ -26,6 +26,7 @@ Create a product worktree branch from the latest remote `dev`, implement enough 
    - Default to `./scripts/worktree-preview.sh pwa` for normal product work, shared behavior, sync flows, reader UI, and most Desktop feature work.
    - Use `./scripts/worktree-preview.sh desktop` only when you need the Desktop shell running in the mocked browser preview.
    - Use `./scripts/worktree-preview.sh desktop --native` only when the change depends on real Tauri behavior such as native windowing, tray behavior, updater wiring, filesystem or process plugins, native OAuth windows, or Rust-side integrations.
+   - Product previews launched through the helper set the feature-preview flag, auto-accept local legal gates, and seed sample data before inspection.
    - When native Desktop preview is running, report the preview label so parallel native windows can be matched to the worktree and thread that launched them.
 9. Iterate against the preview. Use focused checks during iteration only when they answer an immediate implementation question, such as a targeted unit test, Desktop e2e test, browser check, or preview compile failure.
    - For queued UI polish, keep stacking the user's small visual fixes in the same worktree and PR.
