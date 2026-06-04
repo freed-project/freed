@@ -12,6 +12,12 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
   });
 }
 
+function responseBodyFromBytes(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 function makeItem(globalId: string): FeedItem {
   return {
     platform: "rss",
@@ -136,7 +142,7 @@ describe("Google Drive cloud sync", () => {
         );
       }
       if (url.includes("/files/file-1?alt=media")) {
-        return new Response(trusted);
+        return new Response(responseBodyFromBytes(trusted));
       }
       if (url.includes("/upload/drive/v3/files/file-1")) {
         throw new Error("Upload should not run after destructive merge guard blocks.");
