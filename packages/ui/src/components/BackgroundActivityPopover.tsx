@@ -8,6 +8,7 @@ import {
   type BackgroundActivityRecord,
 } from "../lib/background-activity-store.js";
 import { formatClockTime } from "../lib/date-format.js";
+import { CloseIcon } from "./icons.js";
 
 interface BackgroundActivityPopoverProps {
   anchorElement: HTMLElement | null;
@@ -122,16 +123,19 @@ export function BackgroundActivityPopover({
       const popoverRect = popoverRef.current?.getBoundingClientRect();
       const width = popoverRect?.width ?? Math.min(380, window.innerWidth - VIEWPORT_PADDING * 2);
       const height = popoverRect?.height ?? 360;
-      const left = clamp(
-        anchorRect.right - width,
-        VIEWPORT_PADDING,
-        Math.max(VIEWPORT_PADDING, window.innerWidth - VIEWPORT_PADDING - width),
-      );
+      const maxLeft = Math.max(VIEWPORT_PADDING, window.innerWidth - VIEWPORT_PADDING - width);
+      const maxTop = Math.max(VIEWPORT_PADDING, window.innerHeight - VIEWPORT_PADDING - height);
+      const fitsRight = anchorRect.right + POPOVER_GAP + width + VIEWPORT_PADDING <= window.innerWidth;
+      const left = fitsRight
+        ? anchorRect.right + POPOVER_GAP
+        : clamp(anchorRect.right - width, VIEWPORT_PADDING, maxLeft);
+      const sideTop = clamp(anchorRect.bottom - height, VIEWPORT_PADDING, maxTop);
       const belowTop = anchorRect.bottom + POPOVER_GAP;
       const aboveTop = anchorRect.top - height - POPOVER_GAP;
-      const top = belowTop + height + VIEWPORT_PADDING <= window.innerHeight
+      const fallbackTop = belowTop + height + VIEWPORT_PADDING <= window.innerHeight
         ? belowTop
-        : clamp(aboveTop, VIEWPORT_PADDING, Math.max(VIEWPORT_PADDING, window.innerHeight - VIEWPORT_PADDING - height));
+        : clamp(aboveTop, VIEWPORT_PADDING, maxTop);
+      const top = fitsRight ? sideTop : fallbackTop;
 
       setPosition({
         left: Math.round(left),
@@ -187,10 +191,10 @@ export function BackgroundActivityPopover({
       role="dialog"
       aria-label="Background activity"
       data-testid="background-activity-popover"
-      className="theme-dialog-shell theme-menu-shell fixed z-[330] w-[min(24rem,calc(100vw-1.5rem))] rounded-[var(--card-radius)] border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-3 shadow-2xl shadow-black/45"
+      className="theme-dialog-shell theme-menu-shell fixed z-[330] flex w-[min(24rem,calc(100vw-1.5rem))] flex-col !overflow-y-hidden rounded-[var(--card-radius)] border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-0 shadow-2xl shadow-black/45"
       style={position}
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] px-3 pb-2.5 pt-3">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-muted)]">
             Background Activity
@@ -202,62 +206,65 @@ export function BackgroundActivityPopover({
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md px-2 py-1 text-xs text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+          aria-label="Close"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
         >
-          Close
+          <CloseIcon className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="mt-3">
-        <input
-          ref={searchRef}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Filter activity"
-          data-testid="background-activity-filter"
-          className="theme-input w-full rounded-lg px-2.5 py-1.5 text-xs outline-none"
-        />
-      </div>
-
-      {channelActivities.length > 0 ? (
-        <section className="mt-3 space-y-2" aria-label="Running channel syncs">
-          <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
-            Channel Syncs
-          </p>
-          {channelActivities.map((activity) => (
-            <ActiveRow key={activity.id} activity={activity} />
-          ))}
-        </section>
-      ) : null}
-
-      {jobActivities.length > 0 ? (
-        <section className="mt-3 space-y-2" aria-label="Running background jobs">
-          <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
-            Jobs
-          </p>
-          {jobActivities.map((activity) => (
-            <ActiveRow key={activity.id} activity={activity} />
-          ))}
-        </section>
-      ) : null}
-
-      <section className="mt-3" aria-label="Activity log">
-        <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
-          Live Log
-        </p>
-        <div
-          className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-1"
-          data-testid="background-activity-log"
-        >
-          {filteredLog.length > 0 ? (
-            filteredLog.map((entry) => <LogRow key={entry.id} entry={entry} />)
-          ) : (
-            <p className="px-2 py-3 text-xs text-[var(--theme-text-muted)]">
-              No activity matches that filter.
-            </p>
-          )}
+      <div data-testid="background-activity-scroll" className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+        <div className="mt-3">
+          <input
+            ref={searchRef}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Filter activity"
+            data-testid="background-activity-filter"
+            className="theme-input w-full rounded-lg px-2.5 py-1.5 text-xs outline-none"
+          />
         </div>
-      </section>
+
+        {channelActivities.length > 0 ? (
+          <section className="mt-3 space-y-2" aria-label="Running channel syncs">
+            <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
+              Channel Syncs
+            </p>
+            {channelActivities.map((activity) => (
+              <ActiveRow key={activity.id} activity={activity} />
+            ))}
+          </section>
+        ) : null}
+
+        {jobActivities.length > 0 ? (
+          <section className="mt-3 space-y-2" aria-label="Running background jobs">
+            <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
+              Jobs
+            </p>
+            {jobActivities.map((activity) => (
+              <ActiveRow key={activity.id} activity={activity} />
+            ))}
+          </section>
+        ) : null}
+
+        <section className="mt-3" aria-label="Activity log">
+          <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
+            Live Log
+          </p>
+          <div
+            className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-1"
+            data-testid="background-activity-log"
+          >
+            {filteredLog.length > 0 ? (
+              filteredLog.map((entry) => <LogRow key={entry.id} entry={entry} />)
+            ) : (
+              <p className="px-2 py-3 text-xs text-[var(--theme-text-muted)]">
+                No activity matches that filter.
+              </p>
+            )}
+          </div>
+        </section>
+      </div>
     </div>,
     document.body,
   );
