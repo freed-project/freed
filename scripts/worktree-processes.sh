@@ -184,7 +184,6 @@ track_process() {
 
   validate_kind "${kind}"
   write_process_metadata "${pid}" "${kind}" "${target}" "${worktree_path}" "${port}" "${command}" "${log_path}" "${preview_label}"
-  write_lock_metadata "${kind}" "${pid}" "${worktree_path}" "${target}" "${port}"
 }
 
 SUBCOMMAND="${1:-}"

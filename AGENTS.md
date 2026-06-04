@@ -66,9 +66,11 @@ Run `./scripts/release.sh` with no args to auto-compute the next version.
 Pass an explicit remote base like `origin/dev` or `origin/www` so feature work does not inherit a stale local branch by accident.
 For multi-thread or speculative worktree swarms, prefer `--swarm`. That maps to deferred bootstrap until the thread actually needs verification or a preview.
 Prefer the lightest useful local preview before opening a draft PR:
-- product work usually uses `./scripts/worktree-preview.sh pwa`
-- website work uses `./scripts/worktree-preview.sh website`
+- product work usually uses `PORT=$(node scripts/lib/find-free-port.mjs 1421) && ./scripts/worktree-preview.sh pwa --port "$PORT"`
+- website work uses `PORT=$(node scripts/lib/find-free-port.mjs 3000) && ./scripts/worktree-preview.sh website --port "$PORT"`
 - use `./scripts/worktree-preview.sh desktop --native` only when real Tauri behavior matters, and report the preview label when you do
+- for mocked Desktop preview, use `PORT=$(node scripts/lib/find-free-port.mjs 1422) && ./scripts/worktree-preview.sh desktop --port "$PORT"`
+- never run `./scripts/dev-session-clean.sh` just to relaunch a preview. Launch on a fresh explicit port instead.
 - never run `npm run <script> --workspace=...` from the repo root in this monorepo, run from the workspace directory instead
 - root `npm run dev` now fails fast on purpose, use `./scripts/worktree-preview.sh <target>` or run `npm run dev` from the workspace directory you actually want
 - the root fanout scripts now fail fast if you try the dangerous workspace-dispatch pattern, treat that error as a routing mistake and re-run from the workspace
@@ -76,7 +78,8 @@ Prefer the lightest useful local preview before opening a draft PR:
 - expect the worktree helpers to print the resolved `node` and `npm` pair before they do real work, and treat a surprising path there as a machine issue to fix before debugging the repo
 - rerunning `./scripts/worktree-publish.sh` should update the existing draft PR body and title, and push a ready PR back to draft when the local branch changes underneath it
 - browser tooling is opt-in only, do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging
-- after browser tooling work, run `./scripts/dev-session-clean.sh`
+- after browser tooling work, do not run broad cleanup while the preview should remain open. If cleanup is needed, scope it with `./scripts/dev-session-clean.sh --worktree <worktree>`.
+- when a PR is merged, the worktree is removed, or the thread is archived, close only that thread's preview with `./scripts/worktree-processes.sh stop --worktree <worktree> --target <pwa|desktop|website>`.
 - `./scripts/worktree-publish.sh` now refuses stray untracked files unless you stage them yourself first or pass `--include-untracked`
 
 ### Queued UI Polish
@@ -87,7 +90,7 @@ When a user queues several small UI fixes for the same product surface, keep the
 - Do not run `npm run validate:feature` after every small visual adjustment. Run it at the publish checkpoint, or earlier only when the user asks for a full validation checkpoint.
 - Do not run desktop e2e between queued UI updates in the same thread unless the user asks for that checkpoint or the change is too risky to inspect with the live preview. Prefer keeping the preview running, applying the next queued visual fix, and doing one focused e2e pass after the queue settles.
 - When the user is actively sending browser comments or screenshots, treat the queue as still open. Give a short status update, keep the preview current, and wait to spend machine time on heavier verification until the user signals that the batch is ready or asks for tests.
-- If browser automation is needed for a visual fix, use it for that fix and keep the local preview current. Clean stale automation helpers before closeout, then restart the preview if the user still needs it.
+- If browser automation is needed for a visual fix, use it for that fix and keep the local preview current. Do not run broad cleanup before closeout unless the user no longer needs the preview. Prefer targeted cleanup for this worktree.
 - Update the draft PR once after the queued batch is ready, unless the user asks for an interim publish.
 
 **Branch naming:** `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/` prefix followed by a short kebab-case description.
