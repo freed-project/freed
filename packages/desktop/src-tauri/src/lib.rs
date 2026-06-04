@@ -16,9 +16,9 @@ use std::process::Command;
 use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use sysinfo::{Disks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-#[cfg(target_os = "macos")]
-use tauri::menu::Submenu;
 use tauri::menu::{Menu, MenuItem};
+#[cfg(target_os = "macos")]
+use tauri::menu::{PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -8315,8 +8315,31 @@ fn build_macos_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> tauri:
         true,
         &[&show_item, &quit_item],
     )?;
+    let undo_item = PredefinedMenuItem::undo(manager, None)?;
+    let redo_item = PredefinedMenuItem::redo(manager, None)?;
+    let edit_history_separator = PredefinedMenuItem::separator(manager)?;
+    let cut_item = PredefinedMenuItem::cut(manager, None)?;
+    let copy_item = PredefinedMenuItem::copy(manager, None)?;
+    let paste_item = PredefinedMenuItem::paste(manager, None)?;
+    let edit_selection_separator = PredefinedMenuItem::separator(manager)?;
+    let select_all_item = PredefinedMenuItem::select_all(manager, None)?;
+    let edit_menu = Submenu::with_items(
+        manager,
+        "Edit",
+        true,
+        &[
+            &undo_item,
+            &redo_item,
+            &edit_history_separator,
+            &cut_item,
+            &copy_item,
+            &paste_item,
+            &edit_selection_separator,
+            &select_all_item,
+        ],
+    )?;
 
-    Menu::with_items(manager, &[&app_menu])
+    Menu::with_items(manager, &[&app_menu, &edit_menu])
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
