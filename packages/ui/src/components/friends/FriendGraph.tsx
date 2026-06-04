@@ -1,3 +1,5 @@
+/// <reference path="../../types/troika-three-text.d.ts" />
+
 import {
   forwardRef,
   useCallback,
@@ -7,6 +9,8 @@ import {
   useRef,
   useState,
 } from "react";
+import * as THREE from "three";
+import { Text as TroikaText } from "troika-three-text";
 import type {
   Account,
   FeedItem,
@@ -64,38 +68,15 @@ interface FriendGraphProps {
 }
 
 type DragState =
-  | {
-      kind: "pan";
-      pointerId: number;
-      startX: number;
-      startY: number;
-      originX: number;
-      originY: number;
-      moved: boolean;
-    }
-  | {
-      kind: "account-drag";
-      pointerId: number;
-      nodeId: string;
-      accountId: string;
-      startX: number;
-      startY: number;
-      moved: boolean;
-      currentWorldX: number;
-      currentWorldY: number;
-      dropTargetPersonId: string | null;
-    }
-  | {
-      kind: "person-drag";
-      pointerId: number;
-      nodeId: string;
-      personId: string;
-      startX: number;
-      startY: number;
-      moved: boolean;
-      currentWorldX: number;
-      currentWorldY: number;
-    };
+  {
+    kind: "pan";
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    moved: boolean;
+  };
 
 type TouchPoint = {
   x: number;
@@ -109,6 +90,16 @@ type PinchState = {
   initialMidpoint: TouchPoint;
   initialWorldPoint: TouchPoint;
   moved: boolean;
+};
+
+type StarfieldVariation = "nebula-rings" | "nebula" | "rings";
+
+type GraphContextMenuState = {
+  x: number;
+  y: number;
+  worldX: number;
+  worldY: number;
+  node: IdentityGraphAtlasNode;
 };
 
 interface GraphDebugNode {
@@ -151,7 +142,7 @@ interface GraphPerfSnapshot {
   frameP95Ms: number;
   longTaskCount: number;
   memoryEstimateBytes: number;
-  rendererType: "canvas-atlas";
+  rendererType: "three-starfield" | "canvas-starfield-fallback";
   touchInputMode: "pointer-events";
   lod: string;
   capped: boolean;
@@ -199,7 +190,6 @@ const INTERACTION_SETTLE_DELAY_MS = 180;
 const DENSE_INTERACTION_SETTLE_DELAY_MS = 420;
 const GRAPH_LAYOUT_WORKER_TIMEOUT_MS = 2_400;
 const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
-const RELATIONSHIP_TIER_DROP_SELECTOR = "[data-friend-tier-drop-value]";
 
 function nowMs(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -221,20 +211,6 @@ function midpointBetween(first: TouchPoint, second: TouchPoint): TouchPoint {
     x: (first.x + second.x) / 2,
     y: (first.y + second.y) / 2,
   };
-}
-
-function relationshipTierDropLevelAt(clientX: number, clientY: number): 1 | 3 | 5 | null {
-  const element = document.elementFromPoint(clientX, clientY);
-  const target = element?.closest<HTMLElement>(RELATIONSHIP_TIER_DROP_SELECTOR);
-  const value = target?.dataset.friendTierDropValue;
-  if (value === "1" || value === "3" || value === "5") {
-    return Number(value) as 1 | 3 | 5;
-  }
-  return null;
-}
-
-function emitRelationshipTierDragOver(level: 1 | 3 | 5 | null): void {
-  window.dispatchEvent(new CustomEvent("freed-friend-tier-dragover", { detail: { level } }));
 }
 
 function cssRgbVar(style: CSSStyleDeclaration, name: string, fallback: string): string {
@@ -292,13 +268,6 @@ function shouldExposeGraphDebug(): boolean {
   return typeof window !== "undefined" &&
     (window as typeof window & { __FREED_GRAPH_DEBUG_ENABLED__?: boolean })
       .__FREED_GRAPH_DEBUG_ENABLED__ === true;
-}
-
-function screenPointForPosition(position: { x: number; y: number }, transform: ViewTransform): TouchPoint {
-  return {
-    x: position.x * transform.scale + transform.x,
-    y: position.y * transform.scale + transform.y,
-  };
 }
 
 function buildGraphDebugNodes(nodes: IdentityGraphAtlasNode[]): GraphDebugNode[] {
@@ -366,40 +335,146 @@ function findHitNode(
   return best;
 }
 
-function drawRoundedRect(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-): void {
-  const safeRadius = Math.min(radius, height / 2, width / 2);
-  context.beginPath();
-  context.moveTo(x + safeRadius, y);
-  context.lineTo(x + width - safeRadius, y);
-  context.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
-  context.lineTo(x + width, y + height - safeRadius);
-  context.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
-  context.lineTo(x + safeRadius, y + height);
-  context.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
-  context.lineTo(x, y + safeRadius);
-  context.quadraticCurveTo(x, y, x + safeRadius, y);
-  context.closePath();
+function hashValue(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = Math.imul(31, hash) + value.charCodeAt(index) | 0;
+  }
+  return Math.abs(hash);
 }
 
-function drawAtlas(
+function seededUnit(value: string): number {
+  return (hashValue(value) % 10_000) / 10_000;
+}
+
+function colorFromCss(value: string, fallback = "#7dd3fc"): THREE.Color {
+  const match = value.match(/rgb\((\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/);
+  if (!match) return new THREE.Color(fallback);
+  return new THREE.Color(Number(match[1]) / 255, Number(match[2]) / 255, Number(match[3]) / 255);
+}
+
+function nodeDepth(node: IdentityGraphAtlasNode): number {
+  if (node.kind === "friend_person") {
+    const tierBoost = node.priority >= 980 ? 90 : node.priority >= 880 ? 64 : 36;
+    return tierBoost + Math.min(46, Math.sqrt(node.activityCount + 1) * 2.8);
+  }
+  if (node.kind === "connection_person") return 16 + Math.min(22, Math.sqrt(node.activityCount + 1) * 1.3);
+  if (node.kind === "account") return -30 - seededUnit(node.id) * 46;
+  if (node.kind === "feed") return -48 - seededUnit(node.id) * 52;
+  return -128;
+}
+
+function nodePointSize(node: IdentityGraphAtlasNode, selected: boolean, hovered: boolean): number {
+  const roleSize = node.kind === "friend_person"
+    ? 24
+    : node.kind === "connection_person"
+      ? 18
+      : node.kind === "provider_cluster"
+        ? 28
+        : 12;
+  return Math.max(5, roleSize + node.radius * 0.82 + (selected ? 16 : hovered ? 9 : 0));
+}
+
+function graphNodeColor(
+  node: IdentityGraphAtlasNode,
+  palette: GraphPalette,
+  selected: boolean,
+  linkedToSelected: boolean,
+  hovered: boolean,
+): THREE.Color {
+  if (selected) return colorFromCss(palette.selection, "#67e8f9");
+  if (hovered || linkedToSelected) return colorFromCss(palette.highlight, "#f0abfc");
+  if (node.kind === "friend_person") return colorFromCss(palette.friendStroke, "#60a5fa");
+  if (node.kind === "connection_person") return colorFromCss(palette.connectionStroke, "#c084fc");
+  if (node.kind === "feed") return new THREE.Color("#f59e0b");
+  return colorFromCss(providerColor(node.provider, palette), "#38bdf8");
+}
+
+function makePointMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    depthTest: true,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      pixelRatio: { value: Math.min(2, window.devicePixelRatio || 1) },
+    },
+    vertexShader: `
+      attribute float pointSize;
+      varying vec3 vColor;
+      varying float vAlpha;
+
+      void main() {
+        vColor = color;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        float depthScale = clamp(900.0 / max(260.0, -mvPosition.z), 0.52, 2.3);
+        gl_PointSize = pointSize * depthScale;
+        gl_Position = projectionMatrix * mvPosition;
+        vAlpha = clamp(pointSize / 38.0, 0.28, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vColor;
+      varying float vAlpha;
+
+      void main() {
+        vec2 center = gl_PointCoord - vec2(0.5);
+        float distanceFromCenter = length(center);
+        float core = smoothstep(0.34, 0.02, distanceFromCenter);
+        float halo = smoothstep(0.5, 0.08, distanceFromCenter) * 0.52;
+        float alpha = max(core, halo) * vAlpha;
+        if (alpha < 0.02) discard;
+        gl_FragColor = vec4(vColor, alpha);
+      }
+    `,
+    vertexColors: true,
+  });
+}
+
+function makeStarGeometry(count: number, width: number, height: number, palette: GraphPalette): THREE.BufferGeometry {
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+  const themeColors = [
+    colorFromCss(palette.text, "#f8fafc"),
+    colorFromCss(palette.friendStroke, "#93c5fd"),
+    colorFromCss(palette.connectionStroke, "#c4b5fd"),
+    colorFromCss(palette.accountFill, "#67e8f9"),
+    colorFromCss(palette.feedFill, "#fbbf24"),
+  ];
+  const span = Math.max(width, height, 1) * 8.5;
+  for (let index = 0; index < count; index += 1) {
+    const seed = `star:${index}`;
+    const angle = seededUnit(`${seed}:angle`) * Math.PI * 2;
+    const radius = Math.sqrt(seededUnit(`${seed}:radius`)) * span;
+    const arm = Math.sin(angle * 3 + seededUnit(`${seed}:arm`) * 4) * span * 0.055;
+    positions[index * 3] = Math.cos(angle) * radius + Math.cos(angle + Math.PI / 2) * arm;
+    positions[index * 3 + 1] = Math.sin(angle) * radius * 0.64 + Math.sin(angle + Math.PI / 2) * arm;
+    positions[index * 3 + 2] = -360 - seededUnit(`${seed}:depth`) * 2_600;
+    const color = themeColors[Math.floor(seededUnit(`${seed}:color`) * themeColors.length)] ?? themeColors[0]!;
+    const brightness = 0.2 + seededUnit(`${seed}:brightness`) * 0.68;
+    colors[index * 3] = color.r * brightness;
+    colors[index * 3 + 1] = color.g * brightness;
+    colors[index * 3 + 2] = color.b * brightness;
+    sizes[index] = 1.2 + seededUnit(`${seed}:size`) * 4.4;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute("pointSize", new THREE.BufferAttribute(sizes, 1));
+  return geometry;
+}
+
+function drawFallbackStarfield(
   canvas: HTMLCanvasElement,
   atlas: IdentityGraphAtlas,
   transform: ViewTransform,
   palette: GraphPalette,
-  hoveredNodeId: string | null,
   selectedPersonId: string | null | undefined,
   selectedAccountId: string | null | undefined,
-  drag: DragState | null,
-): number {
+): void {
   const context = canvas.getContext("2d");
-  if (!context) return 0;
+  if (!context) return;
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
@@ -409,143 +484,359 @@ function drawAtlas(
     canvas.width = pixelWidth;
     canvas.height = pixelHeight;
   }
-
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   context.clearRect(0, 0, width, height);
-  context.fillStyle = palette.surface;
+  const gradient = context.createRadialGradient(width * 0.5, height * 0.45, 0, width * 0.5, height * 0.45, Math.max(width, height) * 0.85);
+  gradient.addColorStop(0, palette.surface);
+  gradient.addColorStop(1, "transparent");
+  context.fillStyle = gradient;
   context.fillRect(0, 0, width, height);
+
+  for (let index = 0; index < 2_800; index += 1) {
+    const x = seededUnit(`fallback-star-x:${index}`) * width;
+    const y = seededUnit(`fallback-star-y:${index}`) * height;
+    const depth = seededUnit(`fallback-star-z:${index}`);
+    context.globalAlpha = 0.08 + depth * 0.34;
+    context.fillStyle = index % 7 === 0 ? palette.friendStroke : palette.mutedText;
+    context.fillRect(x, y, 1 + depth * 1.8, 1 + depth * 1.8);
+  }
+  context.globalAlpha = 1;
 
   context.save();
   context.translate(transform.x, transform.y);
   context.scale(transform.scale, transform.scale);
-
   for (const region of atlas.regions) {
     context.beginPath();
     context.ellipse(region.x, region.y, region.radiusX, region.radiusY, 0, 0, Math.PI * 2);
     context.fillStyle = providerColor(region.provider, palette).replace(/\/ 0\.\d+\)/, "/ 0.12)");
-    context.strokeStyle = providerColor(region.provider, palette).replace(/\/ 0\.\d+\)/, "/ 0.36)");
+    context.strokeStyle = providerColor(region.provider, palette).replace(/\/ 0\.\d+\)/, "/ 0.38)");
     context.lineWidth = 1.2 / transform.scale;
     context.fill();
     context.stroke();
   }
-
-  const nodeById = new Map(atlas.nodes.map((node) => [node.id, node]));
-  const draggedNodeId = drag?.kind === "account-drag" || drag?.kind === "person-drag" ? drag.nodeId : null;
-  const nodePosition = (node: IdentityGraphAtlasNode): { x: number; y: number } => {
-    if (draggedNodeId === node.id && drag && drag.kind !== "pan") {
-      return {
-        x: drag.currentWorldX,
-        y: drag.currentWorldY,
-      };
-    }
-    return node;
-  };
-
-  context.lineCap = "round";
-  for (const edge of atlas.edges) {
-    const source = nodeById.get(edge.sourceId);
-    const target = nodeById.get(edge.targetId);
-    if (!source || !target) continue;
-    const sourcePoint = nodePosition(source);
-    const targetPoint = nodePosition(target);
-    context.beginPath();
-    context.moveTo(sourcePoint.x, sourcePoint.y);
-    context.lineTo(targetPoint.x, targetPoint.y);
-    context.strokeStyle = palette.edge;
-    context.lineWidth = 1.4 / transform.scale;
-    context.stroke();
-  }
-
   for (const node of atlas.nodes) {
-    const position = nodePosition(node);
     const selected =
       (!!node.personId && node.personId === selectedPersonId) ||
       (!!node.accountId && node.accountId === selectedAccountId);
-    const linkedToSelected = !!selectedPersonId && node.linkedPersonId === selectedPersonId;
-    const hovered = node.id === hoveredNodeId;
-    let fill = palette.accountFill;
-    let stroke = providerColor(node.provider, palette);
-    if (node.kind === "friend_person") {
-      fill = palette.friendFill;
-      stroke = palette.friendStroke;
-    } else if (node.kind === "connection_person") {
-      fill = palette.connectionFill;
-      stroke = palette.connectionStroke;
-    } else if (node.kind === "feed") {
-      fill = palette.feedFill;
-    } else if (node.kind === "provider_cluster") {
-      fill = providerColor(node.provider, palette).replace(/\/ 0\.\d+\)/, "/ 0.28)");
-    }
-
+    const depth = nodeDepth(node);
+    const parallax = 1 + Math.max(-0.24, Math.min(0.42, depth / 260));
+    const radius = Math.max(3.5, node.radius * 0.55 * parallax + (selected ? 5 : 0));
     context.beginPath();
-    context.arc(position.x, position.y, node.radius, 0, Math.PI * 2);
-    context.fillStyle = fill;
-    context.strokeStyle = selected ? palette.selection : stroke;
-    context.lineWidth = (selected ? 3 : hovered || linkedToSelected ? 2.2 : 1.3) / transform.scale;
-    context.globalAlpha = selectedPersonId || selectedAccountId
-      ? selected || linkedToSelected || hovered ? 1 : 0.34
-      : 1;
+    context.arc(node.x, node.y, radius, 0, Math.PI * 2);
+    context.fillStyle = node.kind === "friend_person"
+      ? palette.friendStroke
+      : node.kind === "connection_person"
+        ? palette.connectionStroke
+        : providerColor(node.provider, palette);
+    context.shadowBlur = selected ? 20 / transform.scale : 8 / transform.scale;
+    context.shadowColor = context.fillStyle;
     context.fill();
-    context.stroke();
-    context.globalAlpha = 1;
-
-    if (node.friendSuggestionConfidence) {
-      context.beginPath();
-      context.arc(position.x, position.y, node.radius + 5, 0, Math.PI * 2);
-      context.strokeStyle = palette.highlight;
-      context.lineWidth = (node.friendSuggestionConfidence === "high" ? 2 : 1.35) / transform.scale;
-      context.globalAlpha = node.friendSuggestionConfidence === "high" ? 0.48 : 0.32;
-      context.stroke();
-      context.globalAlpha = 1;
-    }
-
-    if (node.kind !== "provider_cluster" && node.initials && transform.scale >= 0.72) {
-      context.fillStyle = palette.text;
-      context.font = `${Math.max(9, Math.min(16, node.radius * 0.48)) / transform.scale}px system-ui, sans-serif`;
-      context.textAlign = "center";
-      context.textBaseline = "middle";
-      context.globalAlpha = 0.86;
-      context.fillText(node.initials, position.x, position.y + 0.5 / transform.scale);
-      context.globalAlpha = 1;
-    }
+    context.shadowBlur = 0;
   }
-
-  if (drag?.kind === "account-drag" && drag.dropTargetPersonId) {
-    const target = nodeById.get(`person:${drag.dropTargetPersonId}`);
-    if (target) {
-      context.beginPath();
-      context.arc(target.x, target.y, target.radius + 8, 0, Math.PI * 2);
-      context.strokeStyle = palette.selection;
-      context.lineWidth = 4 / transform.scale;
-      context.stroke();
-    }
-  }
-
   context.restore();
+}
 
-  context.textBaseline = "top";
-  context.textAlign = "center";
-  for (const label of atlas.labels) {
-    const point = screenPointForPosition({ x: label.x, y: label.y }, transform);
-    if (point.x < -160 || point.x > width + 160 || point.y < -80 || point.y > height + 80) {
-      continue;
+class StarfieldGraphRenderer {
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly scene = new THREE.Scene();
+  private readonly camera = new THREE.PerspectiveCamera(42, 1, 1, 8_000);
+  private readonly graphGroup = new THREE.Group();
+  private readonly regionGroup = new THREE.Group();
+  private readonly labelGroup = new THREE.Group();
+  private readonly nodeGeometry = new THREE.BufferGeometry();
+  private readonly nodeMaterial = makePointMaterial();
+  private readonly nodePoints: THREE.Points;
+  private readonly edgeGeometry = new THREE.BufferGeometry();
+  private readonly edgeMaterial = new THREE.LineBasicMaterial({
+    color: 0x7dd3fc,
+    transparent: true,
+    opacity: 0.18,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  private readonly edgeLines: THREE.LineSegments;
+  private readonly starMaterial = makePointMaterial();
+  private starPoints: THREE.Points | null = null;
+  private labels: TroikaText[] = [];
+  private width = 1;
+  private height = 1;
+  private starCount = 0;
+  private paletteKey = "";
+  private disposed = false;
+
+  constructor(canvas: HTMLCanvasElement) {
+    const context = canvas.getContext("webgl2", {
+      alpha: true,
+      antialias: false,
+      powerPreference: "high-performance",
+      premultipliedAlpha: true,
+    }) as WebGL2RenderingContext | null;
+    if (!context) {
+      throw new Error("WebGL unavailable");
     }
-    const fontSize = label.kind === "friend_person" ? 12 : 11;
-    context.font = `700 ${fontSize}px system-ui, sans-serif`;
-    const textWidth = Math.ceil(context.measureText(label.text).width);
-    const labelWidth = Math.max(44, textWidth + 18);
-    const labelHeight = fontSize + 9;
-    drawRoundedRect(context, point.x - labelWidth / 2, point.y, labelWidth, labelHeight, 9);
-    context.fillStyle = palette.labelFill;
-    context.strokeStyle = palette.labelStroke;
-    context.lineWidth = 1;
-    context.fill();
-    context.stroke();
-    context.fillStyle = palette.text;
-    context.fillText(label.text, point.x, point.y + 4);
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      context,
+      alpha: true,
+      antialias: false,
+      powerPreference: "high-performance",
+      premultipliedAlpha: true,
+    });
+    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.sortObjects = false;
+    this.scene.add(this.graphGroup);
+    this.scene.add(this.labelGroup);
+    this.nodePoints = new THREE.Points(this.nodeGeometry, this.nodeMaterial);
+    this.nodePoints.frustumCulled = false;
+    this.graphGroup.add(this.nodePoints);
+    this.edgeLines = new THREE.LineSegments(this.edgeGeometry, this.edgeMaterial);
+    this.edgeLines.frustumCulled = false;
+    this.graphGroup.add(this.edgeLines);
+    this.graphGroup.add(this.regionGroup);
   }
 
-  return nowMs();
+  resize(width: number, height: number): void {
+    if (this.disposed) return;
+    this.width = Math.max(1, Math.floor(width));
+    this.height = Math.max(1, Math.floor(height));
+    const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+    this.renderer.setPixelRatio(pixelRatio);
+    this.renderer.setSize(this.width, this.height, false);
+    this.camera.aspect = this.width / this.height;
+    this.camera.position.set(0, 0, this.height / 2 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
+    this.camera.lookAt(0, 0, 0);
+    this.camera.updateProjectionMatrix();
+    this.nodeMaterial.uniforms.pixelRatio.value = pixelRatio;
+    this.starMaterial.uniforms.pixelRatio.value = pixelRatio;
+  }
+
+  syncScene(
+    atlas: IdentityGraphAtlas,
+    palette: GraphPalette,
+    selectedPersonId: string | null | undefined,
+    selectedAccountId: string | null | undefined,
+    hoveredNodeId: string | null,
+    variation: StarfieldVariation,
+    quality: IdentityGraphAtlasQuality,
+  ): void {
+    if (this.disposed) return;
+    const nextPaletteKey = [
+      palette.surface,
+      palette.text,
+      palette.friendStroke,
+      palette.connectionStroke,
+      palette.accountFill,
+      palette.feedFill,
+    ].join("|");
+    const nextStarCount = Math.max(24_000, Math.min(72_000, atlas.metrics.sourceNodeCount * 18));
+    if (nextStarCount !== this.starCount || nextPaletteKey !== this.paletteKey || !this.starPoints) {
+      if (this.starPoints) {
+        this.scene.remove(this.starPoints);
+        this.starPoints.geometry.dispose();
+      }
+      this.starPoints = new THREE.Points(makeStarGeometry(nextStarCount, this.width, this.height, palette), this.starMaterial);
+      this.starPoints.frustumCulled = false;
+      this.scene.add(this.starPoints);
+      this.starCount = nextStarCount;
+      this.paletteKey = nextPaletteKey;
+    }
+    this.syncRegions(atlas, palette, variation);
+    this.syncEdges(atlas);
+    this.syncNodes(atlas, palette, selectedPersonId, selectedAccountId, hoveredNodeId);
+    this.syncLabels(atlas, palette, quality);
+  }
+
+  render(transform: ViewTransform): void {
+    if (this.disposed) return;
+    this.applyTransform(transform);
+    const time = nowMs() * 0.00004;
+    if (this.starPoints) {
+      this.starPoints.rotation.z = time;
+      this.starPoints.position.set(
+        (transform.x - this.width / 2) * 0.08,
+        (this.height / 2 - transform.y) * 0.08,
+        0,
+      );
+      this.starPoints.scale.setScalar(1 + transform.scale * 0.035);
+    }
+    this.regionGroup.rotation.z = Math.sin(time * 4) * 0.006;
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.clearRegions();
+    this.clearLabels();
+    this.nodeGeometry.dispose();
+    this.nodeMaterial.dispose();
+    this.edgeGeometry.dispose();
+    this.edgeMaterial.dispose();
+    if (this.starPoints) {
+      this.starPoints.geometry.dispose();
+    }
+    this.starMaterial.dispose();
+    this.renderer.dispose();
+  }
+
+  private applyTransform(transform: ViewTransform): void {
+    this.graphGroup.position.set(transform.x - this.width / 2, this.height / 2 - transform.y, 0);
+    this.graphGroup.scale.set(transform.scale, transform.scale, transform.scale);
+    this.labelGroup.position.copy(this.graphGroup.position);
+    this.labelGroup.scale.copy(this.graphGroup.scale);
+    for (const label of this.labels) {
+      label.quaternion.copy(this.camera.quaternion);
+    }
+  }
+
+  private nodePosition(node: IdentityGraphAtlasNode): THREE.Vector3 {
+    return new THREE.Vector3(node.x, -node.y, nodeDepth(node));
+  }
+
+  private clearRegions(): void {
+    for (const child of this.regionGroup.children) {
+      if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+        child.geometry.dispose();
+        const material = child.material;
+        if (Array.isArray(material)) {
+          material.forEach((entry) => entry.dispose());
+        } else {
+          material.dispose();
+        }
+      }
+    }
+    this.regionGroup.clear();
+  }
+
+  private syncRegions(atlas: IdentityGraphAtlas, palette: GraphPalette, variation: StarfieldVariation): void {
+    this.clearRegions();
+    for (const region of atlas.regions) {
+      const color = colorFromCss(providerColor(region.provider, palette), "#38bdf8");
+      if (variation === "nebula-rings" || variation === "nebula") {
+        const haze = new THREE.Mesh(
+          new THREE.CircleGeometry(1, 128),
+          new THREE.MeshBasicMaterial({
+            color,
+            transparent: true,
+            opacity: 0.105,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+          }),
+        );
+        haze.position.set(region.x, -region.y, -170);
+        haze.scale.set(region.radiusX, region.radiusY, 1);
+        this.regionGroup.add(haze);
+      }
+      if (variation === "nebula-rings" || variation === "rings") {
+        const points = Array.from({ length: 97 }, (_, index) => {
+          const angle = (index / 96) * Math.PI * 2;
+          return new THREE.Vector3(
+            region.x + Math.cos(angle) * region.radiusX,
+            -region.y + Math.sin(angle) * region.radiusY,
+            -92,
+          );
+        });
+        const ring = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints(points),
+          new THREE.LineBasicMaterial({
+            color,
+            transparent: true,
+            opacity: 0.42,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+          }),
+        );
+        this.regionGroup.add(ring);
+      }
+    }
+  }
+
+  private syncEdges(atlas: IdentityGraphAtlas): void {
+    const nodeById = new Map(atlas.nodes.map((node) => [node.id, node]));
+    const positions = new Float32Array(atlas.edges.length * 6);
+    let offset = 0;
+    for (const edge of atlas.edges) {
+      const source = nodeById.get(edge.sourceId);
+      const target = nodeById.get(edge.targetId);
+      if (!source || !target) continue;
+      const sourcePoint = this.nodePosition(source);
+      const targetPoint = this.nodePosition(target);
+      positions[offset] = sourcePoint.x;
+      positions[offset + 1] = sourcePoint.y;
+      positions[offset + 2] = sourcePoint.z - 8;
+      positions[offset + 3] = targetPoint.x;
+      positions[offset + 4] = targetPoint.y;
+      positions[offset + 5] = targetPoint.z - 8;
+      offset += 6;
+    }
+    this.edgeGeometry.setAttribute("position", new THREE.BufferAttribute(positions.slice(0, offset), 3));
+    this.edgeGeometry.computeBoundingSphere();
+  }
+
+  private syncNodes(
+    atlas: IdentityGraphAtlas,
+    palette: GraphPalette,
+    selectedPersonId: string | null | undefined,
+    selectedAccountId: string | null | undefined,
+    hoveredNodeId: string | null,
+  ): void {
+    const positions = new Float32Array(atlas.nodes.length * 3);
+    const colors = new Float32Array(atlas.nodes.length * 3);
+    const sizes = new Float32Array(atlas.nodes.length);
+    for (let index = 0; index < atlas.nodes.length; index += 1) {
+      const node = atlas.nodes[index]!;
+      const selected =
+        (!!node.personId && node.personId === selectedPersonId) ||
+        (!!node.accountId && node.accountId === selectedAccountId);
+      const linkedToSelected = !!selectedPersonId && node.linkedPersonId === selectedPersonId;
+      const hovered = node.id === hoveredNodeId;
+      const point = this.nodePosition(node);
+      const color = graphNodeColor(node, palette, selected, linkedToSelected, hovered);
+      const muted = selectedPersonId || selectedAccountId
+        ? selected || linkedToSelected || hovered ? 1 : 0.34
+        : 1;
+      positions[index * 3] = point.x;
+      positions[index * 3 + 1] = point.y;
+      positions[index * 3 + 2] = point.z;
+      colors[index * 3] = color.r * muted;
+      colors[index * 3 + 1] = color.g * muted;
+      colors[index * 3 + 2] = color.b * muted;
+      sizes[index] = nodePointSize(node, selected, hovered);
+    }
+    this.nodeGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    this.nodeGeometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    this.nodeGeometry.setAttribute("pointSize", new THREE.BufferAttribute(sizes, 1));
+    this.nodeGeometry.computeBoundingSphere();
+  }
+
+  private clearLabels(): void {
+    for (const label of this.labels) {
+      this.labelGroup.remove(label);
+      label.dispose();
+    }
+    this.labels = [];
+  }
+
+  private syncLabels(atlas: IdentityGraphAtlas, palette: GraphPalette, quality: IdentityGraphAtlasQuality): void {
+    this.clearLabels();
+    if (quality === "interactive") return;
+    const cap = window.innerWidth < 720 ? 30 : 84;
+    for (const label of atlas.labels.slice(0, cap)) {
+      const text = new TroikaText();
+      text.text = label.text;
+      text.fontSize = label.kind === "provider_cluster" ? 24 : 15;
+      text.anchorX = "center";
+      text.anchorY = "middle";
+      text.color = colorFromCss(palette.text, "#f8fafc");
+      text.outlineColor = colorFromCss(palette.labelFill, "#020617");
+      text.outlineWidth = label.kind === "provider_cluster" ? "8%" : "10%";
+      text.position.set(label.x, -label.y - 24 / Math.max(0.7, label.priority / 600), label.kind === "provider_cluster" ? -38 : 86);
+      text.renderOrder = 10;
+      text.sync();
+      this.labels.push(text);
+      this.labelGroup.add(text);
+    }
+  }
 }
 
 export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(function FriendGraph(
@@ -574,8 +865,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const rendererRef = useRef<StarfieldGraphRenderer | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const atlasRef = useRef<IdentityGraphAtlas | null>(null);
+  const webglUnavailableRef = useRef(false);
   const hitBucketsRef = useRef<Map<string, string[]>>(new Map());
   const transformRef = useRef<ViewTransform>({ ...FRIEND_GRAPH_DEFAULT_TRANSFORM });
   const dragStateRef = useRef<DragState | null>(null);
@@ -588,7 +881,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const atlasRafRef = useRef(0);
   const drawRafRef = useRef(0);
   const drawPendingRef = useRef(false);
+  const sceneDirtyRef = useRef(true);
   const settleTimerRef = useRef<number | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
   const hasFittedInitialAtlasRef = useRef(false);
   const hasUserAdjustedTransformRef = useRef(false);
   const mountedAtRef = useRef(nowMs());
@@ -601,6 +896,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const paletteRef = useRef<GraphPalette | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: 640 });
   const [atlasReady, setAtlasReady] = useState(false);
+  const [contextMenu, setContextMenu] = useState<GraphContextMenuState | null>(null);
+  const [linkPickerAccountId, setLinkPickerAccountId] = useState<string | null>(null);
+  const [linkPickerQuery, setLinkPickerQuery] = useState("");
+  const [starfieldVariation, setStarfieldVariation] = useState<StarfieldVariation>("nebula-rings");
 
   const activitySummaries = useMemo(
     () => activitySummariesProp ?? buildIdentityGraphActivitySummaries(feedItems ?? {}),
@@ -610,6 +909,22 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     () => Object.fromEntries(persons.map((person) => [person.id, person])),
     [persons],
   );
+  const personPickerOptions = useMemo(() => {
+    const query = linkPickerQuery.trim().toLowerCase();
+    return persons
+      .filter((person) => {
+        if (!query) return true;
+        return person.name.toLowerCase().includes(query) ||
+          person.notes?.toLowerCase().includes(query);
+      })
+      .sort((left, right) => {
+        const leftFriend = left.relationshipStatus === "friend" ? 0 : 1;
+        const rightFriend = right.relationshipStatus === "friend" ? 0 : 1;
+        if (leftFriend !== rightFriend) return leftFriend - rightFriend;
+        return left.name.localeCompare(right.name);
+      })
+      .slice(0, 12);
+  }, [linkPickerQuery, persons]);
   const personCount = persons.length;
   const channelCount = Object.values(accounts).filter((account) => account.kind === "social").length +
     Object.values(feeds).filter((feed) => feed.enabled !== false).length;
@@ -678,7 +993,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       frameP95Ms,
       longTaskCount: longTaskCountRef.current,
       memoryEstimateBytes: estimateMemoryBytes(atlas),
-      rendererType: "canvas-atlas",
+      rendererType: webglUnavailableRef.current ? "canvas-starfield-fallback" : "three-starfield",
       touchInputMode: "pointer-events",
       lod: atlas.metrics.lod,
       capped: atlas.metrics.capped,
@@ -697,7 +1012,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       container.dataset.visibleLabelCount = String(atlas.labels.length);
       container.dataset.graphQualityMode = latestQualityRef.current;
       container.dataset.graphVisibleNodeCount = String(visibleNodeCount);
-      container.dataset.graphRenderer = "canvas-atlas";
+      container.dataset.graphRenderer = webglUnavailableRef.current ? "canvas-starfield-fallback" : "three-starfield";
     }
     (window as typeof window & { __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot }).__FREED_GRAPH_PERF__ = perf;
     if (shouldExposeGraphDebug()) {
@@ -724,6 +1039,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const atlas = atlasRef.current;
     if (!canvas || !atlas) return;
     try {
+      let renderer = rendererRef.current;
+      if (!renderer && !webglUnavailableRef.current) {
+        renderer = new StarfieldGraphRenderer(canvas);
+        rendererRef.current = renderer;
+      }
       const frameAt = nowMs();
       if (lastFrameAtRef.current !== null) {
         const delta = frameAt - lastFrameAtRef.current;
@@ -734,26 +1054,65 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       }
       lastFrameAtRef.current = frameAt;
       const startedAt = nowMs();
-      drawAtlas(
-        canvas,
-        atlas,
-        transformRef.current,
-        getPalette(),
-        hoveredNodeIdRef.current,
-        selectedPersonId,
-        selectedAccountId,
-        dragStateRef.current,
-      );
+      if (renderer) {
+        renderer.resize(canvasSize.width, canvasSize.height);
+        if (sceneDirtyRef.current) {
+          renderer.syncScene(
+            atlas,
+            getPalette(),
+            selectedPersonId,
+            selectedAccountId,
+            hoveredNodeIdRef.current,
+            starfieldVariation,
+            latestQualityRef.current,
+          );
+          sceneDirtyRef.current = false;
+        }
+        renderer.render(transformRef.current);
+      } else {
+        drawFallbackStarfield(
+          canvas,
+          atlas,
+          transformRef.current,
+          getPalette(),
+          selectedPersonId,
+          selectedAccountId,
+        );
+      }
       if (!firstVisibleMsRef.current && atlas.nodes.length > 0) {
         firstVisibleMsRef.current = nowMs() - mountedAtRef.current;
       }
       exposeDiagnostics(atlas, nowMs() - startedAt);
     } catch (error) {
+      if (error instanceof Error && error.message === "WebGL unavailable") {
+        webglUnavailableRef.current = true;
+        drawFallbackStarfield(
+          canvas,
+          atlas,
+          transformRef.current,
+          getPalette(),
+          selectedPersonId,
+          selectedAccountId,
+        );
+        if (!firstVisibleMsRef.current && atlas.nodes.length > 0) {
+          firstVisibleMsRef.current = nowMs() - mountedAtRef.current;
+        }
+        exposeDiagnostics(atlas, 0);
+        return;
+      }
       (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string }).__FREED_GRAPH_DRAW_ERROR__ =
         error instanceof Error ? error.message : String(error);
-      console.warn("[friends-graph] canvas atlas draw failed", error);
+      console.warn("[friends-graph] starfield draw failed", error);
     }
-  }, [exposeDiagnostics, getPalette, selectedAccountId, selectedPersonId]);
+  }, [
+    canvasSize.height,
+    canvasSize.width,
+    exposeDiagnostics,
+    getPalette,
+    selectedAccountId,
+    selectedPersonId,
+    starfieldVariation,
+  ]);
 
   const scheduleDraw = useCallback(() => {
     if (drawPendingRef.current) return;
@@ -775,6 +1134,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     atlas.metrics.buildMs = durationMs;
     atlasRef.current = atlas;
     hitBucketsRef.current = buildHitBucketMap(atlas);
+    sceneDirtyRef.current = true;
     if (!hasFittedInitialAtlasRef.current && !hasUserAdjustedTransformRef.current) {
       transformRef.current = fitTransformToAtlasBounds(atlas.bounds, canvasSize.width, canvasSize.height, FIT_PADDING);
       hasFittedInitialAtlasRef.current = true;
@@ -848,9 +1208,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   }, [requestAtlas]);
 
   const markInteractive = useCallback(() => {
+    const wasInteractive = latestQualityRef.current === "interactive";
     latestQualityRef.current = "interactive";
     scheduleDraw();
-    scheduleAtlas("interactive");
+    if (!wasInteractive) {
+      sceneDirtyRef.current = true;
+      scheduleAtlas("interactive");
+    }
     if (settleTimerRef.current !== null) {
       window.clearTimeout(settleTimerRef.current);
     }
@@ -884,6 +1248,27 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const point = viewportToWorld(clientX, clientY);
     return findHitNode(atlas, hitBucketsRef.current, point.x, point.y);
   }, [viewportToWorld]);
+
+  const openNodeContextMenu = useCallback((clientX: number, clientY: number) => {
+    const node = hitNodeAt(clientX, clientY);
+    if (!node || node.kind === "provider_cluster") {
+      setContextMenu(null);
+      return false;
+    }
+    const container = containerRef.current;
+    const rect = container?.getBoundingClientRect();
+    const point = viewportToWorld(clientX, clientY);
+    setContextMenu({
+      x: rect ? clientX - rect.left : clientX,
+      y: rect ? clientY - rect.top : clientY,
+      worldX: point.x,
+      worldY: point.y,
+      node,
+    });
+    setLinkPickerAccountId(null);
+    setLinkPickerQuery("");
+    return true;
+  }, [hitNodeAt, viewportToWorld]);
 
   const fitAll = useCallback(() => {
     const atlas = atlasRef.current;
@@ -959,13 +1344,20 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
   useEffect(() => {
     if (!atlasReady) return;
+    rendererRef.current?.resize(canvasSize.width, canvasSize.height);
     scheduleDraw();
   }, [atlasReady, canvasSize.height, canvasSize.width, scheduleDraw]);
 
   useEffect(() => {
     paletteKeyRef.current = "";
+    sceneDirtyRef.current = true;
     scheduleDraw();
   }, [scheduleDraw, themeId]);
+
+  useEffect(() => {
+    sceneDirtyRef.current = true;
+    scheduleDraw();
+  }, [scheduleDraw, selectedAccountId, selectedPersonId, starfieldVariation]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1001,6 +1393,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       if (settleTimerRef.current !== null) {
         window.clearTimeout(settleTimerRef.current);
       }
+      if (longPressTimerRef.current !== null) {
+        window.clearTimeout(longPressTimerRef.current);
+      }
+      rendererRef.current?.dispose();
+      rendererRef.current = null;
     };
   }, []);
 
@@ -1048,10 +1445,19 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const container = containerRef.current;
     if (!container) return;
     container.setPointerCapture(event.pointerId);
+    setContextMenu(null);
+    setLinkPickerAccountId(null);
 
     if (event.pointerType === "touch") {
       activeTouchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (longPressTimerRef.current !== null) {
+        window.clearTimeout(longPressTimerRef.current);
+      }
       if (activeTouchPointsRef.current.size >= 2) {
+        if (longPressTimerRef.current !== null) {
+          window.clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
         const [firstEntry, secondEntry] = [...activeTouchPointsRef.current.entries()];
         if (firstEntry && secondEntry) {
           const initialDistance = distanceBetween(firstEntry[1], secondEntry[1]);
@@ -1067,6 +1473,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           dragStateRef.current = null;
         }
       } else {
+        longPressTimerRef.current = window.setTimeout(() => {
+          if (activeTouchPointsRef.current.has(event.pointerId)) {
+            dragStateRef.current = null;
+            openNodeContextMenu(event.clientX, event.clientY);
+            scheduleDraw();
+          }
+        }, 520);
         dragStateRef.current = {
           kind: "pan",
           pointerId: event.pointerId,
@@ -1083,48 +1496,18 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       return;
     }
 
-    const hit = hitNodeAt(event.clientX, event.clientY);
-    if (hit?.accountId) {
-      const point = viewportToWorld(event.clientX, event.clientY);
-      dragStateRef.current = {
-        kind: "account-drag",
-        pointerId: event.pointerId,
-        nodeId: hit.id,
-        accountId: hit.accountId,
-        startX: event.clientX,
-        startY: event.clientY,
-        moved: false,
-        currentWorldX: point.x,
-        currentWorldY: point.y,
-        dropTargetPersonId: null,
-      };
-    } else if (hit?.personId) {
-      const point = viewportToWorld(event.clientX, event.clientY);
-      dragStateRef.current = {
-        kind: "person-drag",
-        pointerId: event.pointerId,
-        nodeId: hit.id,
-        personId: hit.personId,
-        startX: event.clientX,
-        startY: event.clientY,
-        moved: false,
-        currentWorldX: point.x,
-        currentWorldY: point.y,
-      };
-    } else {
-      dragStateRef.current = {
-        kind: "pan",
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        originX: transformRef.current.x,
-        originY: transformRef.current.y,
-        moved: false,
-      };
-    }
+    dragStateRef.current = {
+      kind: "pan",
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: transformRef.current.x,
+      originY: transformRef.current.y,
+      moved: false,
+    };
     overlayRef.current?.classList.add("cursor-grabbing");
     markInteractive();
-  }, [hitNodeAt, markInteractive, viewportToWorld]);
+  }, [markInteractive, openNodeContextMenu, scheduleDraw, viewportToWorld]);
 
   const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch") {
@@ -1164,6 +1547,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         const nextHovered = hit?.id ?? null;
         if (hoveredNodeIdRef.current !== nextHovered) {
           hoveredNodeIdRef.current = nextHovered;
+          sceneDirtyRef.current = true;
           scheduleDraw();
         }
       }
@@ -1172,41 +1556,32 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (drag.pointerId !== event.pointerId) return;
     const moved = Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3;
     drag.moved = drag.moved || moved;
-    if (drag.kind === "pan") {
-      transformRef.current = {
-        ...transformRef.current,
-        x: drag.originX + event.clientX - drag.startX,
-        y: drag.originY + event.clientY - drag.startY,
-      };
-      hasUserAdjustedTransformRef.current = true;
-      markInteractive();
-      if (event.pointerType === "touch") event.preventDefault();
-      return;
+    if (drag.moved && longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
-
-    const point = viewportToWorld(event.clientX, event.clientY);
-    drag.currentWorldX = point.x;
-    drag.currentWorldY = point.y;
-    if (drag.moved && onDropNodeToRelationshipTier) {
-      emitRelationshipTierDragOver(relationshipTierDropLevelAt(event.clientX, event.clientY));
-    }
-    if (drag.kind === "account-drag") {
-      const hit = hitNodeAt(event.clientX, event.clientY);
-      drag.dropTargetPersonId = hit?.personId ?? null;
-    }
+    transformRef.current = {
+      ...transformRef.current,
+      x: drag.originX + event.clientX - drag.startX,
+      y: drag.originY + event.clientY - drag.startY,
+    };
+    hasUserAdjustedTransformRef.current = true;
     markInteractive();
-    event.preventDefault();
-  }, [hitNodeAt, markInteractive, onDropNodeToRelationshipTier, scheduleDraw, viewportToWorld]);
+    if (event.pointerType === "touch") event.preventDefault();
+  }, [hitNodeAt, markInteractive, scheduleDraw]);
 
-  const handlePointerUp = useCallback(async (event: React.PointerEvent<HTMLDivElement>) => {
+  const handlePointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch") {
       activeTouchPointsRef.current.delete(event.pointerId);
+    }
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
     const pinch = pinchStateRef.current;
     if (pinch && pinch.pointerIds.includes(event.pointerId)) {
       pinchStateRef.current = null;
       dragStateRef.current = null;
-      emitRelationshipTierDragOver(null);
       overlayRef.current?.classList.toggle("cursor-grabbing", activeTouchPointsRef.current.size > 0);
       requestAtlas("settled");
       return;
@@ -1216,48 +1591,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (!drag || drag.pointerId !== event.pointerId) return;
     dragStateRef.current = null;
     overlayRef.current?.classList.remove("cursor-grabbing");
-    emitRelationshipTierDragOver(null);
-
-    if (
-      drag.moved &&
-      (drag.kind === "account-drag" || drag.kind === "person-drag") &&
-      onDropNodeToRelationshipTier
-    ) {
-      const level = relationshipTierDropLevelAt(event.clientX, event.clientY);
-      if (level) {
-        await onDropNodeToRelationshipTier({
-          personId: drag.kind === "person-drag" ? drag.personId : undefined,
-          accountId: drag.kind === "account-drag" ? drag.accountId : undefined,
-          level,
-        });
-        requestAtlas("settled");
-        return;
-      }
-    }
-
-    if (drag.kind === "account-drag") {
-      if (drag.moved && drag.dropTargetPersonId && onLinkAccountToPerson) {
-        await onLinkAccountToPerson(drag.accountId, drag.dropTargetPersonId);
-      } else if (drag.moved) {
-        await onPinAccountPosition?.(drag.accountId, drag.currentWorldX, drag.currentWorldY);
-      } else {
-        const account = accounts[drag.accountId];
-        if (account) onSelectAccount(account);
-      }
-      requestAtlas("settled");
-      return;
-    }
-
-    if (drag.kind === "person-drag") {
-      if (drag.moved) {
-        await onPinPersonPosition?.(drag.personId, drag.currentWorldX, drag.currentWorldY);
-      } else {
-        const person = personsById[drag.personId];
-        if (person) onSelectPerson(person);
-      }
-      requestAtlas("settled");
-      return;
-    }
 
     if (drag.moved) {
       requestAtlas("settled");
@@ -1282,10 +1615,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     accounts,
     hitNodeAt,
     onClearSelection,
-    onDropNodeToRelationshipTier,
-    onLinkAccountToPerson,
-    onPinAccountPosition,
-    onPinPersonPosition,
     onSelectAccount,
     onSelectPerson,
     personsById,
@@ -1296,19 +1625,20 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const handlePointerLeave = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (hoveredNodeIdRef.current) {
       hoveredNodeIdRef.current = null;
+      sceneDirtyRef.current = true;
       scheduleDraw();
     }
     if (event.pointerType === "touch") {
       activeTouchPointsRef.current.delete(event.pointerId);
     }
-    if (onDropNodeToRelationshipTier && dragStateRef.current?.kind !== "pan") {
-      return;
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
     dragStateRef.current = null;
     pinchStateRef.current = null;
     overlayRef.current?.classList.remove("cursor-grabbing");
-    emitRelationshipTierDragOver(null);
-  }, [onDropNodeToRelationshipTier, scheduleDraw]);
+  }, [scheduleDraw]);
 
   const handleCopyDiagnostics = useCallback(async () => {
     const debug = {
@@ -1319,6 +1649,67 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     };
     await navigator.clipboard?.writeText(JSON.stringify(debug, null, 2));
   }, []);
+
+  const handleContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    openNodeContextMenu(event.clientX, event.clientY);
+  }, [openNodeContextMenu]);
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+    setLinkPickerAccountId(null);
+    setLinkPickerQuery("");
+  }, []);
+
+  const handleOpenContextDetails = useCallback(() => {
+    const node = contextMenu?.node;
+    if (!node) return;
+    if (node.personId) {
+      const person = personsById[node.personId];
+      if (person) onSelectPerson(person);
+    } else if (node.accountId) {
+      const account = accounts[node.accountId];
+      if (account) onSelectAccount(account);
+    }
+    closeContextMenu();
+  }, [accounts, closeContextMenu, contextMenu, onSelectAccount, onSelectPerson, personsById]);
+
+  const handlePinContextNode = useCallback(async () => {
+    const menu = contextMenu;
+    if (!menu) return;
+    if (menu.node.personId) {
+      await onPinPersonPosition?.(menu.node.personId, menu.worldX, menu.worldY);
+    } else if (menu.node.accountId) {
+      await onPinAccountPosition?.(menu.node.accountId, menu.worldX, menu.worldY);
+    }
+    closeContextMenu();
+    requestAtlas("settled");
+  }, [closeContextMenu, contextMenu, onPinAccountPosition, onPinPersonPosition, requestAtlas]);
+
+  const handlePromoteContextNode = useCallback(async (level: 1 | 3 | 5) => {
+    const node = contextMenu?.node;
+    if (!node || !onDropNodeToRelationshipTier) return;
+    await onDropNodeToRelationshipTier({
+      personId: node.personId,
+      accountId: node.accountId,
+      level,
+    });
+    closeContextMenu();
+    requestAtlas("settled");
+  }, [closeContextMenu, contextMenu, onDropNodeToRelationshipTier, requestAtlas]);
+
+  const handleStartLinkPicker = useCallback(() => {
+    if (!contextMenu?.node.accountId) return;
+    setLinkPickerAccountId(contextMenu.node.accountId);
+    setLinkPickerQuery("");
+  }, [contextMenu]);
+
+  const handleLinkAccountToPickerPerson = useCallback(async (personId: string) => {
+    if (!linkPickerAccountId || !onLinkAccountToPerson) return;
+    await onLinkAccountToPerson(linkPickerAccountId, personId);
+    closeContextMenu();
+    requestAtlas("settled");
+  }, [closeContextMenu, linkPickerAccountId, onLinkAccountToPerson, requestAtlas]);
 
   return (
     <div
@@ -1331,6 +1722,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerLeave}
       onPointerLeave={handlePointerLeave}
+      onContextMenu={handleContextMenu}
       onDoubleClick={(event) => event.preventDefault()}
       aria-label="Friends identity graph"
     >
@@ -1353,6 +1745,102 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           className="absolute inset-0 cursor-grab"
         />
       </div>
+      {import.meta.env.DEV ? (
+        <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-xl border border-[color:rgb(var(--theme-border-rgb)/0.22)] bg-[color:rgb(var(--theme-surface-rgb)/0.78)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)] shadow-lg backdrop-blur-md">
+          <span className="font-semibold text-[color:var(--theme-text-primary)]">Starfield</span>
+          <select
+            className="rounded-lg border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:var(--theme-bg-card)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)]"
+            value={starfieldVariation}
+            onChange={(event) => setStarfieldVariation(event.target.value as StarfieldVariation)}
+            aria-label="Starfield variation"
+          >
+            <option value="nebula-rings">Nebula and rings</option>
+            <option value="nebula">Nebula</option>
+            <option value="rings">Rings</option>
+          </select>
+        </div>
+      ) : null}
+      {contextMenu ? (
+        <div
+          className="theme-menu-shell absolute z-30 w-64 rounded-xl border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:rgb(var(--theme-surface-rgb)/0.94)] p-2 text-sm text-[color:var(--theme-text-primary)] shadow-2xl backdrop-blur-xl"
+          style={{
+            left: Math.min(contextMenu.x, Math.max(12, canvasSize.width - 272)),
+            top: Math.min(contextMenu.y, Math.max(12, canvasSize.height - 360)),
+          }}
+          role="menu"
+          data-testid="friend-graph-context-menu"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="px-2 pb-2">
+            <p className="truncate text-sm font-semibold">{contextMenu.node.label}</p>
+            <p className="text-xs text-[color:var(--theme-text-muted)]">
+              {contextMenu.node.kind === "friend_person" ? "Person" : contextMenu.node.kind === "connection_person" ? "Connection" : contextMenu.node.provider ?? "Account"}
+            </p>
+          </div>
+          {linkPickerAccountId ? (
+            <div className="space-y-2">
+              <input
+                className="w-full rounded-lg border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:var(--theme-bg-card)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none"
+                value={linkPickerQuery}
+                onChange={(event) => setLinkPickerQuery(event.target.value)}
+                placeholder="Search people"
+                autoFocus
+              />
+              <div className="max-h-64 space-y-1 overflow-auto">
+                {personPickerOptions.map((person) => (
+                  <button
+                    key={person.id}
+                    type="button"
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[color:var(--theme-bg-card-hover)]"
+                    onClick={() => void handleLinkAccountToPickerPerson(person.id)}
+                  >
+                    <span className="block truncate font-medium">{person.name}</span>
+                    <span className="block text-xs text-[color:var(--theme-text-muted)]">
+                      {person.relationshipStatus === "friend" ? "Friend" : "Connection"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <button type="button" className={`${CONTROL_BASE} w-full`} onClick={() => setLinkPickerAccountId(null)}>
+                Back
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={handleOpenContextDetails}>
+                Open details
+              </button>
+              {(contextMenu.node.personId || contextMenu.node.accountId) && (onPinPersonPosition || onPinAccountPosition) ? (
+                <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={() => void handlePinContextNode()}>
+                  Pin here
+                </button>
+              ) : null}
+              {contextMenu.node.accountId && onLinkAccountToPerson ? (
+                <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={handleStartLinkPicker}>
+                  Link to person
+                </button>
+              ) : null}
+              {onDropNodeToRelationshipTier ? (
+                <>
+                  <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={() => void handlePromoteContextNode(1)}>
+                    Mark followed
+                  </button>
+                  <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={() => void handlePromoteContextNode(3)}>
+                    Promote to Friend
+                  </button>
+                  <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={() => void handlePromoteContextNode(5)}>
+                    Promote to Fam
+                  </button>
+                </>
+              ) : null}
+              <button type="button" className="w-full rounded-lg px-3 py-2 text-left text-[color:var(--theme-text-muted)] hover:bg-[color:var(--theme-bg-card-hover)]" onClick={closeContextMenu}>
+                Close
+              </button>
+            </div>
+          )}
+        </div>
+      ) : null}
       <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
         <button type="button" className={CONTROL_BASE} onClick={fitAll}>
           Fit all
