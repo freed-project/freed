@@ -73,6 +73,19 @@ export function FilterIcon({ className = "w-4 h-4", style }: IconProps) {
   );
 }
 
+/** Sort lines with descending emphasis. */
+export function SortIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+      <path d="M5 7h10" />
+      <path d="M5 12h7" />
+      <path d="M5 17h4" />
+      <path d="M17 7v10" />
+      <path d="M14 14l3 3 3-3" />
+    </svg>
+  );
+}
+
 export function MenuIcon({ className = "w-5 h-5", style }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">

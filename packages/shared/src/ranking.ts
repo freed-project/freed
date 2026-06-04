@@ -5,7 +5,7 @@
  * Runs on Desktop/OpenClaw, results synced to edge devices.
  */
 
-import type { Account, ContentSignal, FeedItem, Person, WeightPreferences } from "./types.js";
+import type { Account, ContentSignal, FeedItem, Person, SavedContentSortMode, WeightPreferences } from "./types.js";
 import type { SocialContentFilter } from "./store-types.js";
 
 /**
@@ -147,6 +147,41 @@ function normalizeEngagement(engagement: {
  */
 export function sortByPriority(items: FeedItem[]): FeedItem[] {
   return [...items].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+}
+
+function compareNewestTimestamp(
+  left: FeedItem,
+  right: FeedItem,
+  timestamp: (item: FeedItem) => number,
+): number {
+  const delta = timestamp(right) - timestamp(left);
+  return delta || left.globalId.localeCompare(right.globalId);
+}
+
+/**
+ * Sort saved items for the Saved view.
+ */
+export function sortSavedFeedItems(
+  items: FeedItem[],
+  mode: SavedContentSortMode = "date_saved",
+): FeedItem[] {
+  if (mode === "recommended") {
+    return sortByPriority(items);
+  }
+
+  return [...items].sort((left, right) => {
+    if (mode === "date_published") {
+      return compareNewestTimestamp(left, right, (item) => item.publishedAt || item.capturedAt);
+    }
+
+    if (mode === "shortest_read") {
+      const delta = (left.preservedContent?.readingTime ?? Number.POSITIVE_INFINITY) -
+        (right.preservedContent?.readingTime ?? Number.POSITIVE_INFINITY);
+      return delta || compareNewestTimestamp(left, right, (item) => item.userState.savedAt ?? item.capturedAt);
+    }
+
+    return compareNewestTimestamp(left, right, (item) => item.userState.savedAt ?? item.capturedAt);
+  });
 }
 
 /**
