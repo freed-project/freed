@@ -101,20 +101,6 @@ PROCESS_SCRIPT="${SCRIPT_DIR}/worktree-processes.sh"
 PREVIEW_LABEL="${PREVIEW_LABEL:-$(preview_label_for_worktree "${WORKTREE_PATH}")}"
 print_node_tooling_preflight
 
-if existing_manifest="$(existing_process_for_target "${WORKTREE_PATH}" "${TARGET}")"; then
-  unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH PREVIEW_LABEL STARTED_AT
-  # shellcheck disable=SC1090
-  source "${existing_manifest}"
-  echo "Preview already running for ${TARGET} in ${WORKTREE_PATH}: pid ${PID}, port ${PORT:-"-"}"
-  if [[ -n "${PREVIEW_LABEL:-}" ]]; then
-    echo "Label: ${PREVIEW_LABEL}"
-  fi
-  if [[ -n "${LOG_PATH:-}" ]]; then
-    echo "Log: ${LOG_PATH}"
-  fi
-  exit 0
-fi
-
 "${SCRIPT_DIR}/worktree-bootstrap.sh" "${WORKTREE_PATH}" --target "${TARGET}"
 
 NPM_BIN="$(resolve_npm_bin)"
@@ -190,9 +176,6 @@ case "${TARGET}" in
     ;;
 esac
 
-"${PROCESS_SCRIPT}" claim --kind "${SLOT_KIND}" --worktree "${WORKTREE_PATH}" --pid "$$"
-trap '"${PROCESS_SCRIPT}" release --kind "${SLOT_KIND}" --pid "$$" >/dev/null 2>&1 || true' EXIT
-
 ensure_runtime_dirs
 LOG_PATH="$(log_state_dir)/${TARGET}-$(date -u +%Y%m%dT%H%M%SZ)-$(worktree_id_for_path "${WORKTREE_PATH}").log"
 
@@ -255,8 +238,6 @@ if ! is_pid_running "${PID_VALUE}"; then
   echo "Error: preview exited immediately. Check ${LOG_PATH}." >&2
   exit 1
 fi
-
-trap - EXIT
 
 echo "Started ${TARGET} preview."
 echo "Worktree: ${WORKTREE_PATH}"
