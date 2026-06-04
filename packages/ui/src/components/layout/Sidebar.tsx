@@ -1,4 +1,5 @@
 import { useDeferredValue, useState, useCallback, useEffect, useRef, useMemo, cloneElement, isValidElement, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import {
   resolveMapMode,
@@ -356,7 +357,7 @@ function SidebarContextMenuShell({
     ["--theme-menu-viewport-margin" as string]: `${viewportMargin}px`,
   } as CSSProperties;
 
-  return (
+  const menu = (
     <div
       ref={menuRef}
       style={menuStyle}
@@ -366,6 +367,9 @@ function SidebarContextMenuShell({
       {children}
     </div>
   );
+
+  if (typeof document === "undefined") return menu;
+  return createPortal(menu, document.body);
 }
 
 function FeedContextMenu({
