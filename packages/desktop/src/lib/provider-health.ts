@@ -850,12 +850,29 @@ function isMemoryPressureAttempt(attempt: ProviderHealthAttempt): boolean {
   );
 }
 
+function isRuntimeDeferredAttempt(attempt: ProviderHealthAttempt): boolean {
+  const reason = attempt.reason?.toLocaleLowerCase() ?? "";
+  return (
+    attempt.stage === "runtime_deferred" ||
+    reason.includes("runtime_deferred") ||
+    reason.includes("renderer safe mode") ||
+    reason.includes("background work is paused") ||
+    reason.includes("background work is cooling down") ||
+    reason.includes("app window to report healthy") ||
+    reason.includes("app recovers")
+  );
+}
+
+function isTransientStatusAttempt(attempt: ProviderHealthAttempt): boolean {
+  return isMemoryPressureAttempt(attempt) || isRuntimeDeferredAttempt(attempt);
+}
+
 function latestStatusAttempt(
   providerState: PersistedProviderHealth,
   now = Date.now(),
 ): ProviderHealthAttempt | undefined {
   return providerState.latestAttempts.find((attempt) => {
-    if (!isMemoryPressureAttempt(attempt)) return true;
+    if (!isTransientStatusAttempt(attempt)) return true;
     return now - attempt.finishedAt <= TRANSIENT_MEMORY_PRESSURE_STATUS_MS;
   });
 }

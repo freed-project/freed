@@ -65,6 +65,23 @@ export function isTransientMemoryPressureIssue(error?: string | null): boolean {
   return normalized.includes("memory is high") && normalized.includes("after cleanup");
 }
 
+export function isTransientRuntimeDeferredIssue(error?: string | null): boolean {
+  if (!error) return false;
+  const normalized = error.toLocaleLowerCase();
+  return (
+    normalized.includes("runtime_deferred") ||
+    normalized.includes("renderer safe mode") ||
+    normalized.includes("background work is paused") ||
+    normalized.includes("background work is cooling down") ||
+    normalized.includes("app window to report healthy") ||
+    normalized.includes("app recovers")
+  );
+}
+
+export function isTransientProviderIssue(error?: string | null): boolean {
+  return isTransientMemoryPressureIssue(error) || isTransientRuntimeDeferredIssue(error);
+}
+
 export function getProviderStatusTone({
   isConnected,
   authError,
@@ -77,7 +94,7 @@ export function getProviderStatusTone({
   if (hasAuthLikeIssue(authError)) {
     return "critical";
   }
-  const usableAuthError = isTransientMemoryPressureIssue(authError)
+  const usableAuthError = isTransientProviderIssue(authError)
     ? undefined
     : authError;
 
@@ -142,7 +159,7 @@ export function getProviderStatusDetail({
   if (snapshot?.currentMessage) {
     return snapshot.currentMessage;
   }
-  const usableAuthError = isTransientMemoryPressureIssue(authError)
+  const usableAuthError = isTransientProviderIssue(authError)
     ? undefined
     : authError;
 

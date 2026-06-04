@@ -377,7 +377,10 @@ export function XSettingsSection({
             </p>
           )}
 
-          <ProviderHealthSectionSummary provider="x" showMessages={surface === "debug-card"} />
+          <ProviderHealthSectionSummary
+            provider="x"
+            showMessages={surface === "debug-card" && !syncError && !actionError}
+          />
 
           {statusLine}
 
@@ -511,7 +514,10 @@ export function XSettingsSection({
         >
           Manual cookie setup
         </button>
-        <ProviderHealthSectionSummary provider="x" showMessages={surface === "debug-card"} />
+        <ProviderHealthSectionSummary
+          provider="x"
+          showMessages={surface === "debug-card" && !actionError}
+        />
       </div>
     </SyncProviderSectionSurface>
     {dialog}

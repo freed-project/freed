@@ -161,7 +161,15 @@ export type WorkerResponse =
   /** Preference-only mutation that avoids cloning, ranking, and hydrating every feed item. */
   | { type: "PREFERENCES_PATCH"; updates: Partial<UserPreferences>; mutation?: WorkerRequest["type"] }
   /** Small mutation update that avoids cloning and hydrating the full document. */
-  | { type: "ITEM_PATCH"; patches: FeedItemPatch[]; changedItemIds: string[]; mutation?: WorkerRequest["type"] }
+  | {
+      type: "ITEM_PATCH";
+      patches: FeedItemPatch[];
+      changedItemIds: string[];
+      mutation?: WorkerRequest["type"];
+      orderedItemIds?: string[];
+      searchCorpusVersion?: number;
+      docItemCount?: number;
+    }
   /** RSS feed metadata mutation that avoids hydrating every feed item. */
   | { type: "FEEDS_PATCH"; patch: RssFeedPatch; mutation?: WorkerRequest["type"] }
   /** Debug panel event forwarding */
