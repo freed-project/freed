@@ -176,23 +176,114 @@ test("map view repaints across all themes without using the old canvas filter", 
   await expect.poll(async () => {
     return page.evaluate(() => {
       const mapSurface = document.querySelector('[data-testid="map-surface"]');
+      const mapBackground = document.querySelector('[data-testid="map-background-layer"]');
+      const main = document.querySelector("main");
       const sidebar = document.querySelector('[data-testid="app-sidebar"]');
       if (!(mapSurface instanceof HTMLElement)) return null;
+      if (!(mapBackground instanceof HTMLElement)) return null;
+      if (!(main instanceof HTMLElement)) return null;
       if (!(sidebar instanceof HTMLElement)) return null;
 
       const rect = mapSurface.getBoundingClientRect();
+      const mainRect = main.getBoundingClientRect();
       const sidebarRect = sidebar.getBoundingClientRect();
+      const backgroundStyle = window.getComputedStyle(mapBackground);
       return {
-        leftGapPx: Math.round(rect.left - sidebarRect.right),
+        leftGapPx: Math.round(rect.left),
         rightGapPx: Math.round(window.innerWidth - rect.right),
         bottomGapPx: Math.round(window.innerHeight - rect.bottom),
+        foregroundLeftInsetPx: Math.round(Number.parseFloat(backgroundStyle.getPropertyValue("--freed-canvas-viewport-inset-left"))),
+        foregroundRightInsetPx: Math.round(Number.parseFloat(backgroundStyle.getPropertyValue("--freed-canvas-viewport-inset-right"))),
+        foregroundMatchesMainLeft: Math.round(mainRect.left - rect.left),
+        foregroundMatchesMainRight: Math.round(rect.right - mainRect.right),
+        sidebarLeftPx: Math.round(sidebarRect.left),
+        sidebarOverlapsMap: sidebarRect.left >= rect.left && sidebarRect.right <= rect.right,
       };
     });
   }).toEqual({
     leftGapPx: 0,
     rightGapPx: 0,
     bottomGapPx: 0,
+    foregroundLeftInsetPx: 272,
+    foregroundRightInsetPx: 8,
+    foregroundMatchesMainLeft: 272,
+    foregroundMatchesMainRight: 8,
+    sidebarLeftPx: 8,
+    sidebarOverlapsMap: true,
   });
+
+  await expect(page.locator(".freed-map-marker")).toBeVisible({ timeout: 20_000 });
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const marker = document.querySelector(".freed-map-marker");
+      const main = document.querySelector("main");
+      if (!(marker instanceof HTMLElement)) return null;
+      if (!(main instanceof HTMLElement)) return null;
+
+      const markerRect = marker.getBoundingClientRect();
+      const mainRect = main.getBoundingClientRect();
+      const markerCenterX = markerRect.left + markerRect.width / 2;
+      const foregroundCenterX = mainRect.left + mainRect.width / 2;
+      return Math.round(Math.abs(markerCenterX - foregroundCenterX));
+    });
+  }, { timeout: 20_000 }).toBeLessThanOrEqual(24);
+
+  await page.evaluate(() => {
+    const w = window as Window & {
+      __freed?: {
+        debug?: () => { setVisible: (visible: boolean) => void };
+      };
+    };
+    w.__freed?.debug?.()?.setVisible(true);
+  });
+  await expect(page.getByTestId("debug-panel-drawer")).not.toHaveCSS("width", "0px", { timeout: 5_000 });
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const marker = document.querySelector(".freed-map-marker");
+      const main = document.querySelector("main");
+      const mapBackground = document.querySelector('[data-testid="map-background-layer"]');
+      if (!(marker instanceof HTMLElement)) return null;
+      if (!(main instanceof HTMLElement)) return null;
+      if (!(mapBackground instanceof HTMLElement)) return null;
+
+      const markerRect = marker.getBoundingClientRect();
+      const mainRect = main.getBoundingClientRect();
+      const backgroundStyle = window.getComputedStyle(mapBackground);
+      const markerCenterX = markerRect.left + markerRect.width / 2;
+      const foregroundCenterX = mainRect.left + mainRect.width / 2;
+      return {
+        markerCenterDiffPx: Math.round(Math.abs(markerCenterX - foregroundCenterX)),
+        foregroundRightInsetPx: Math.round(Number.parseFloat(backgroundStyle.getPropertyValue("--freed-canvas-viewport-inset-right"))),
+      };
+    });
+  }, { timeout: 20_000 }).toEqual({
+    markerCenterDiffPx: expect.any(Number),
+    foregroundRightInsetPx: 340,
+  });
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const marker = document.querySelector(".freed-map-marker");
+      const main = document.querySelector("main");
+      if (!(marker instanceof HTMLElement)) return null;
+      if (!(main instanceof HTMLElement)) return null;
+
+      const markerRect = marker.getBoundingClientRect();
+      const mainRect = main.getBoundingClientRect();
+      const markerCenterX = markerRect.left + markerRect.width / 2;
+      const foregroundCenterX = mainRect.left + mainRect.width / 2;
+      return Math.round(Math.abs(markerCenterX - foregroundCenterX));
+    });
+  }, { timeout: 20_000 }).toBeLessThanOrEqual(24);
+
+  await page.evaluate(() => {
+    const w = window as Window & {
+      __freed?: {
+        debug?: () => { setVisible: (visible: boolean) => void };
+      };
+    };
+    w.__freed?.debug?.()?.setVisible(false);
+  });
+  await expect(page.getByTestId("debug-panel-drawer")).toHaveCSS("width", "0px", { timeout: 5_000 });
 
   await page.evaluate((width) => {
     const mapSurface = document.querySelector('[data-testid="map-surface"]') as HTMLElement | null;
@@ -212,18 +303,20 @@ test("map view repaints across all themes without using the old canvas filter", 
 
   await expect.poll(async () => {
     return page.evaluate(() => {
-      const overlay = document.querySelector(".freed-map-edge-overlay");
-      if (!(overlay instanceof HTMLElement)) return null;
+      const mapSurface = document.querySelector('[data-testid="map-surface"]');
+      if (!(mapSurface instanceof HTMLElement)) return null;
 
-      const backgroundImage = window.getComputedStyle(overlay).backgroundImage;
+      const style = window.getComputedStyle(mapSurface);
       return {
-        twentyPxStops: backgroundImage.match(/20px/g)?.length ?? 0,
-        fiftySixPxStops: backgroundImage.match(/56px/g)?.length ?? 0,
+        edgeOverlayCount: document.querySelectorAll(".freed-map-edge-overlay").length,
+        maskImage: style.maskImage,
+        webkitMaskImage: style.webkitMaskImage,
       };
     });
   }).toEqual({
-    twentyPxStops: 6,
-    fiftySixPxStops: 6,
+    edgeOverlayCount: 0,
+    maskImage: "none",
+    webkitMaskImage: "none",
   });
 
   const themeIds = ["ember", "neon", "midas", "scriptorium"] as const;
@@ -274,6 +367,27 @@ test("map view repaints across all themes without using the old canvas filter", 
   }
 });
 
+test("top toolbar uses a single bottom border", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const toolbar = document.querySelector('[data-testid="workspace-toolbar"]');
+      if (!(toolbar instanceof HTMLElement)) return null;
+
+      const style = window.getComputedStyle(toolbar);
+      return {
+        borderBottomWidth: style.borderBottomWidth,
+        boxShadow: style.boxShadow,
+      };
+    });
+  }).toEqual({
+    borderBottomWidth: "1px",
+    boxShadow: "none",
+  });
+});
+
 test("map view removes the left frame when the desktop sidebar is closed", async ({ app, page }) => {
   await page.setViewportSize({ width: 900, height: 1390 });
   await app.goto();
@@ -321,7 +435,7 @@ test("map view removes the left frame when the desktop sidebar is closed", async
   });
 });
 
-test("friends graph uses the same full-canvas edge frame as map view", async ({ app, page }) => {
+test("friends graph controls align to the graph lane between sidebars", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -352,15 +466,20 @@ test("friends graph uses the same full-canvas edge frame as map view", async ({ 
   await expect.poll(async () => {
     return page.evaluate(() => {
       const graph = document.querySelector('[data-testid="friend-graph-viewport"]');
+      const fitAll = Array.from(document.querySelectorAll("button")).find((button) =>
+        button.textContent?.trim() === "Fit all",
+      );
       const sidebar = document.querySelector('[data-testid="app-sidebar"]');
       const handle = document.querySelector('[aria-label="Resize friends sidebar"]');
       const header = document.querySelector("header");
       if (!(graph instanceof HTMLElement)) return null;
+      if (!(fitAll instanceof HTMLElement)) return null;
       if (!(sidebar instanceof HTMLElement)) return null;
       if (!(handle instanceof HTMLElement)) return null;
       if (!(header instanceof HTMLElement)) return null;
 
       const graphRect = graph.getBoundingClientRect();
+      const fitAllRect = fitAll.getBoundingClientRect();
       const sidebarRect = sidebar.getBoundingClientRect();
       const handleRect = handle.getBoundingClientRect();
       const headerRect = header.getBoundingClientRect();
@@ -369,6 +488,8 @@ test("friends graph uses the same full-canvas edge frame as map view", async ({ 
         topGapPx: Math.round(graphRect.top - headerRect.bottom),
         rightGapPx: Math.round(handleRect.left - graphRect.right),
         bottomGapPx: Math.round(window.innerHeight - graphRect.bottom),
+        fitAllTopGapPx: Math.round(fitAllRect.top - graphRect.top),
+        fitAllRightGapPx: Math.round(graphRect.right - fitAllRect.right),
       };
     });
   }).toEqual({
@@ -376,5 +497,7 @@ test("friends graph uses the same full-canvas edge frame as map view", async ({ 
     topGapPx: 0,
     rightGapPx: 0,
     bottomGapPx: 0,
+    fitAllTopGapPx: 16,
+    fitAllRightGapPx: 16,
   });
 });

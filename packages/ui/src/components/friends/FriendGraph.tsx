@@ -38,6 +38,7 @@ import {
   type IdentityGraphLayoutNode,
   type SpatialIndex,
   type ViewTransform,
+  type ViewportPadding,
 } from "../../lib/identity-graph-layout.js";
 import {
   buildIdentityGraphModel,
@@ -207,6 +208,20 @@ type GraphDebugNode = Pick<
   "id" | "personId" | "accountId" | "feedUrl" | "linkedPersonId" | "kind" | "x" | "y" | "radius"
 >;
 
+type GraphViewportInsets = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
+const EMPTY_GRAPH_VIEWPORT_INSETS: GraphViewportInsets = {
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+};
+
 const DEFAULT_HEIGHT = 560;
 const FIT_PADDING = 84;
 const MIN_SCALE = 0.2;
@@ -230,6 +245,52 @@ const DENSE_INTERACTION_SCALE_BUCKET_FACTOR = 2;
 const DENSE_SETTLED_VIEWPORT_SCALE_THRESHOLD = 0.55;
 const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
 const RELATIONSHIP_TIER_DROP_SELECTOR = "[data-friend-tier-drop-value]";
+
+function readCanvasViewportInset(element: HTMLElement, name: string): number {
+  const raw = window.getComputedStyle(element).getPropertyValue(name).trim();
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
+}
+
+function readCanvasViewportInsets(element: HTMLElement): GraphViewportInsets {
+  return {
+    top: readCanvasViewportInset(element, "--freed-canvas-viewport-inset-top"),
+    right: readCanvasViewportInset(element, "--freed-canvas-viewport-inset-right"),
+    bottom: readCanvasViewportInset(element, "--freed-canvas-viewport-inset-bottom"),
+    left: readCanvasViewportInset(element, "--freed-canvas-viewport-inset-left"),
+  };
+}
+
+function sameGraphViewportInsets(
+  left: GraphViewportInsets,
+  right: GraphViewportInsets,
+): boolean {
+  return (
+    left.top === right.top &&
+    left.right === right.right &&
+    left.bottom === right.bottom &&
+    left.left === right.left
+  );
+}
+
+function graphViewportPadding(insets: GraphViewportInsets): ViewportPadding {
+  return {
+    top: FIT_PADDING + insets.top,
+    right: FIT_PADDING + insets.right,
+    bottom: FIT_PADDING + insets.bottom,
+    left: FIT_PADDING + insets.left,
+  };
+}
+
+function graphViewportCenter(
+  canvasSize: { width: number; height: number },
+  insets: GraphViewportInsets,
+): { x: number; y: number } {
+  return {
+    x: insets.left + Math.max(1, canvasSize.width - insets.left - insets.right) / 2,
+    y: insets.top + Math.max(1, canvasSize.height - insets.top - insets.bottom) / 2,
+  };
+}
 
 interface RgbColor {
   r: number;
@@ -929,6 +990,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const syncSceneRef = useRef<() => void>(() => {});
   const syncSceneErrorLoggedRef = useRef(false);
   const canvasSizeRef = useRef({ width: 900, height: DEFAULT_HEIGHT });
+  const graphViewportInsetsRef = useRef<GraphViewportInsets>(EMPTY_GRAPH_VIEWPORT_INSETS);
   const perfSnapshotRef = useRef<GraphPerfSnapshot>({
     modelBuildMs: 0,
     layoutMs: 0,
@@ -952,7 +1014,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     qualityMode: "settled",
   });
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: DEFAULT_HEIGHT });
+  const [graphViewportInsets, setGraphViewportInsets] =
+    useState<GraphViewportInsets>(EMPTY_GRAPH_VIEWPORT_INSETS);
   canvasSizeRef.current = canvasSize;
+  graphViewportInsetsRef.current = graphViewportInsets;
   const [layoutReady, setLayoutReady] = useState(false);
   const [layoutVersion, setLayoutVersion] = useState(0);
 
@@ -1884,10 +1949,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       graphFitItems(layoutRef.current),
       canvasSize.width,
       canvasSize.height,
-      FIT_PADDING,
+      graphViewportPadding(graphViewportInsets),
     );
     scheduleSyncScene();
-  }, [canvasSize.height, canvasSize.width, scheduleSyncScene]);
+  }, [canvasSize.height, canvasSize.width, graphViewportInsets, scheduleSyncScene]);
 
   const focusNode = useCallback((id: string) => {
     const hit = layoutRef.current.nodes.find(
@@ -1895,13 +1960,14 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     );
     if (!hit) return;
     const scale = transformRef.current.scale;
+    const center = graphViewportCenter(canvasSize, graphViewportInsets);
     transformRef.current = {
-      x: canvasSize.width / 2 - hit.x * scale,
-      y: canvasSize.height / 2 - hit.y * scale,
+      x: center.x - hit.x * scale,
+      y: center.y - hit.y * scale,
       scale,
     };
     scheduleSyncScene();
-  }, [canvasSize.height, canvasSize.width, scheduleSyncScene]);
+  }, [canvasSize, graphViewportInsets, scheduleSyncScene]);
 
   useImperativeHandle(
     ref,
@@ -2009,10 +2075,14 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (!container) return;
 
     const updateSize = () => {
+      const nextInsets = readCanvasViewportInsets(container);
       setCanvasSize({
         width: Math.max(320, container.clientWidth),
         height: Math.max(320, container.clientHeight || DEFAULT_HEIGHT),
       });
+      setGraphViewportInsets((current) =>
+        sameGraphViewportInsets(current, nextInsets) ? current : nextInsets,
+      );
     };
 
     updateSize();
@@ -2071,7 +2141,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         graphFitItems(layout),
         latestCanvasSize.width,
         latestCanvasSize.height,
-        FIT_PADDING,
+        graphViewportPadding(graphViewportInsetsRef.current),
       );
       hasFittedInitialLayoutRef.current = true;
       pendingFitAllRef.current = false;
@@ -2579,7 +2649,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           className="absolute inset-0 cursor-grab"
         />
       </div>
-      <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+      <div
+        className="absolute z-10 flex items-center gap-2"
+        style={{
+          right: "calc(var(--freed-canvas-viewport-inset-right, 0px) + 1rem)",
+          top: "calc(var(--freed-canvas-viewport-inset-top, 0px) + 1rem)",
+        }}
+      >
         <button
           type="button"
           className={CONTROL_BASE}

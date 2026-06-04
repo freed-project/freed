@@ -1,4 +1,14 @@
-import { Suspense, lazy, useEffect, useState, useRef, useCallback, type ReactNode } from "react";
+import {
+  Suspense,
+  lazy,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useRef,
+  useCallback,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { Sidebar } from "./Sidebar.js";
 import { Header } from "./Header.js";
 import { DebugPanel } from "../DebugPanel.js";
@@ -50,6 +60,36 @@ interface AppShellProps {
 
 type FriendsMobileSurface = "graph" | "details";
 
+type CanvasViewportInsets = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
+const EMPTY_CANVAS_VIEWPORT_INSETS: CanvasViewportInsets = {
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+};
+
+function roundInset(value: number): number {
+  return Math.max(0, Math.round(value));
+}
+
+function sameCanvasViewportInsets(
+  left: CanvasViewportInsets,
+  right: CanvasViewportInsets,
+): boolean {
+  return (
+    left.top === right.top &&
+    left.right === right.right &&
+    left.bottom === right.bottom &&
+    left.left === right.left
+  );
+}
+
 export function AppShell({ children }: AppShellProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [friendsMobileSurface, setFriendsMobileSurface] =
@@ -98,12 +138,15 @@ export function AppShell({ children }: AppShellProps) {
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [committedDebugWidth, setCommittedDebugWidth] = useState(persistedDebugWidth);
   const [desktopSidebarMode, setDesktopSidebarMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
-  const usesFullCanvasFrame = activeView === "map" || activeView === "friends";
+  const contentFrameRef = useRef<HTMLDivElement | null>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
+  const [mapViewportInsets, setMapViewportInsets] = useState<CanvasViewportInsets>(EMPTY_CANVAS_VIEWPORT_INSETS);
+  const usesFullCanvasFrame = activeView === "friends";
   const contentFrameSpacingClass = usesFullCanvasFrame
-    ? desktopSidebarMode === "closed"
-      ? ""
-      : "pl-[var(--feed-card-gap,8px)]"
-    : "px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)]";
+      ? desktopSidebarMode === "closed"
+        ? ""
+        : "pl-[var(--feed-card-gap,8px)]"
+      : "px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)]";
   const [desktopSidebarDisplayMode, setDesktopSidebarDisplayMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
   const dragging = useRef(false);
   const pendingPersistedDebugWidth = useRef<number | null>(null);
@@ -160,6 +203,59 @@ export function AppShell({ children }: AppShellProps) {
   }, [persistedDesktopSidebarMode]);
 
   const debugWidth = dragWidth ?? committedDebugWidth;
+  const mapViewportInsetStyle = {
+    "--freed-canvas-viewport-inset-top": `${mapViewportInsets.top}px`,
+    "--freed-canvas-viewport-inset-right": `${mapViewportInsets.right}px`,
+    "--freed-canvas-viewport-inset-bottom": `${mapViewportInsets.bottom}px`,
+    "--freed-canvas-viewport-inset-left": `${mapViewportInsets.left}px`,
+  } as CSSProperties;
+
+  useLayoutEffect(() => {
+    if (activeView !== "map") {
+      setMapViewportInsets((current) =>
+        sameCanvasViewportInsets(current, EMPTY_CANVAS_VIEWPORT_INSETS)
+          ? current
+          : EMPTY_CANVAS_VIEWPORT_INSETS,
+      );
+      return;
+    }
+
+    const contentFrame = contentFrameRef.current;
+    const main = mainRef.current;
+    if (!contentFrame || !main) return;
+
+    let frame = 0;
+    const updateInsets = () => {
+      frame = 0;
+      const frameRect = contentFrame.getBoundingClientRect();
+      const mainRect = main.getBoundingClientRect();
+      const next = {
+        top: roundInset(mainRect.top - frameRect.top),
+        right: roundInset(frameRect.right - mainRect.right),
+        bottom: roundInset(frameRect.bottom - mainRect.bottom),
+        left: roundInset(mainRect.left - frameRect.left),
+      };
+      setMapViewportInsets((current) =>
+        sameCanvasViewportInsets(current, next) ? current : next,
+      );
+    };
+
+    const scheduleUpdate = () => {
+      if (frame !== 0) return;
+      frame = window.requestAnimationFrame(updateInsets);
+    };
+
+    updateInsets();
+    const observer = new ResizeObserver(scheduleUpdate);
+    observer.observe(contentFrame);
+    observer.observe(main);
+    window.addEventListener("resize", scheduleUpdate);
+    return () => {
+      if (frame !== 0) window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", scheduleUpdate);
+    };
+  }, [activeView, debugVisible, debugWidth, desktopSidebarMode, effectiveDesktopSidebarDisplayMode, isMobileDevice]);
 
   const persistDesktopSidebarMode = useCallback((nextMode: SidebarMode) => {
     setDesktopSidebarMode(nextMode);
@@ -412,20 +508,35 @@ export function AppShell({ children }: AppShellProps) {
         />
 
         <div
+          ref={contentFrameRef}
           className={`relative z-10 flex flex-1 ${contentFrameSpacingClass} ${
             isMobileDevice ? "" : "min-h-0 overflow-hidden"
           }`}
         >
-          <Sidebar
-            mobileOpen={mobileSidebarOpen}
-            onMobileClose={() => setMobileSidebarOpen(false)}
-            desktopMode={desktopSidebarMode}
-            onDesktopModeChange={persistDesktopSidebarMode}
-            onDesktopDisplayModeChange={setDesktopSidebarDisplayMode}
-            desktopGapWidthPx={usesFullCanvasFrame ? 0 : undefined}
-          />
+          {activeView === "map" ? (
+            <div
+              className="absolute inset-0 z-0"
+              data-testid="map-background-layer"
+              style={mapViewportInsetStyle}
+            >
+              <MapView viewportInsets={mapViewportInsets} />
+            </div>
+          ) : null}
+          <div className="relative z-10 flex flex-none">
+            <Sidebar
+              mobileOpen={mobileSidebarOpen}
+              onMobileClose={() => setMobileSidebarOpen(false)}
+              desktopMode={desktopSidebarMode}
+              onDesktopModeChange={persistDesktopSidebarMode}
+              onDesktopDisplayModeChange={setDesktopSidebarDisplayMode}
+              desktopGapWidthPx={usesFullCanvasFrame ? 0 : undefined}
+            />
+          </div>
           <main
-            className={`min-w-0 flex-1 ${isMobileDevice ? "" : "min-h-0 overflow-hidden"}`}
+            ref={mainRef}
+            className={`relative z-10 min-w-0 flex-1 ${activeView === "map" ? "pointer-events-none" : ""} ${
+              isMobileDevice ? "" : "min-h-0 overflow-hidden"
+            }`}
           >
             {activeView === "friends"
               ? (
@@ -438,13 +549,13 @@ export function AppShell({ children }: AppShellProps) {
                 </Suspense>
               )
               : activeView === "map"
-                ? <MapView />
+                ? null
                 : children}
           </main>
 
           <div
             data-testid="debug-panel-drawer"
-            className="relative hidden sm:flex flex-none overflow-hidden"
+            className="relative z-10 hidden sm:flex flex-none overflow-hidden"
             style={{
               width: debugVisible ? debugWidth + AUXILIARY_DRAWER_GAP_WIDTH_PX : 0,
               opacity: debugVisible ? 1 : 0,

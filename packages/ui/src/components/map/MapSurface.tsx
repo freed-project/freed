@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type PointerEvent,
   type WheelEvent,
 } from "react";
@@ -33,6 +32,7 @@ interface MapSurfaceProps {
   focusedMarkerKey?: string | null;
   interactive?: boolean;
   themeId?: ThemeId;
+  viewportInsets?: MapViewportInsets;
   onOpenFriend?: (marker: LocationMarkerSummary) => void;
   onPromoteAccount?: (marker: LocationMarkerSummary) => void;
   onLinkAccount?: (marker: LocationMarkerSummary) => void;
@@ -40,6 +40,18 @@ interface MapSurfaceProps {
   emptyTitle?: string;
   emptyBody?: string;
 }
+
+type MapViewportInsets = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
+type MapSurfaceSize = {
+  width: number;
+  height: number;
+};
 
 let mapLibreLoader: Promise<MapLibreModule> | null = null;
 const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -53,11 +65,7 @@ const MAP_POPUP_VIEWPORT_MARGIN = 40;
 const MAP_DOM_MARKER_LIMIT = 160;
 const MAP_MOVING_MARKER_PAINT_LIMIT = 24;
 const MAP_DENSE_MARKER_RESTORE_DELAY_MS = 420;
-const MAP_EDGE_TOP_BOTTOM_FADE_PX = 56;
-const MAP_EDGE_SIDE_FADE_PX = 20;
-const MAP_VIEWPORT_MASK_STYLE = {
-  "--theme-soft-viewport-mask-size": "20px",
-} as CSSProperties;
+const MAP_CAMERA_PADDING_PX = 72;
 
 function shouldForceMapFallback() {
   if (typeof window === "undefined") return false;
@@ -400,8 +408,7 @@ function mapStyles(interactive: boolean) {
       filter: none;
     }
 
-    .freed-map-shell[data-map-moving="true"] .freed-map-grid-overlay,
-    .freed-map-shell[data-map-moving="true"] .freed-map-edge-overlay {
+    .freed-map-shell[data-map-moving="true"] .freed-map-grid-overlay {
       display: none;
     }
 
@@ -420,12 +427,22 @@ function mapStyles(interactive: boolean) {
   `;
 }
 
-function fallbackPosition(marker: LocationMarkerSummary) {
-  const left = ((marker.lng + 180) / 360) * 100;
-  const top = ((90 - marker.lat) / 180) * 100;
+function fallbackPosition(
+  marker: LocationMarkerSummary,
+  viewportInsets: MapViewportInsets | undefined,
+  surfaceSize: MapSurfaceSize,
+) {
+  const leftRatio = Math.min(0.96, Math.max(0.04, (marker.lng + 180) / 360));
+  const topRatio = Math.min(0.94, Math.max(0.06, (90 - marker.lat) / 180));
+  const leftInset = viewportInsets?.left ?? 0;
+  const rightInset = viewportInsets?.right ?? 0;
+  const topInset = viewportInsets?.top ?? 0;
+  const bottomInset = viewportInsets?.bottom ?? 0;
+  const availableWidth = Math.max(1, surfaceSize.width - leftInset - rightInset);
+  const availableHeight = Math.max(1, surfaceSize.height - topInset - bottomInset);
   return {
-    left: `${Math.min(96, Math.max(4, left)).toFixed(2)}%`,
-    top: `${Math.min(94, Math.max(6, top)).toFixed(2)}%`,
+    left: `${Math.round(leftInset + availableWidth * leftRatio)}px`,
+    top: `${Math.round(topInset + availableHeight * topRatio)}px`,
   };
 }
 
@@ -559,52 +576,28 @@ function fallbackScanBackground(background: string, water: string) {
   `;
 }
 
-function mapEdgeVignetteBackground() {
-  return `
-    radial-gradient(
-      ${MAP_EDGE_SIDE_FADE_PX}px ${MAP_EDGE_TOP_BOTTOM_FADE_PX}px at 0% 0%,
-      rgb(var(--theme-shell-rgb) / 0.18) 0%,
-      transparent 76%
-    ),
-    radial-gradient(
-      ${MAP_EDGE_SIDE_FADE_PX}px ${MAP_EDGE_TOP_BOTTOM_FADE_PX}px at 100% 0%,
-      rgb(var(--theme-shell-rgb) / 0.18) 0%,
-      transparent 76%
-    ),
-    radial-gradient(
-      ${MAP_EDGE_SIDE_FADE_PX}px ${MAP_EDGE_TOP_BOTTOM_FADE_PX}px at 0% 100%,
-      rgb(var(--theme-shell-rgb) / 0.18) 0%,
-      transparent 76%
-    ),
-    radial-gradient(
-      ${MAP_EDGE_SIDE_FADE_PX}px ${MAP_EDGE_TOP_BOTTOM_FADE_PX}px at 100% 100%,
-      rgb(var(--theme-shell-rgb) / 0.18) 0%,
-      transparent 76%
-    ),
-    linear-gradient(
-      to bottom,
-      rgb(var(--theme-shell-rgb) / 0.22) 0%,
-      transparent ${MAP_EDGE_TOP_BOTTOM_FADE_PX}px
-    ),
-    linear-gradient(
-      to top,
-      rgb(var(--theme-shell-rgb) / 0.22) 0%,
-      transparent ${MAP_EDGE_TOP_BOTTOM_FADE_PX}px
-    ),
-    linear-gradient(
-      to right,
-      rgb(var(--theme-shell-rgb) / 0.22) 0%,
-      transparent ${MAP_EDGE_SIDE_FADE_PX}px
-    ),
-    linear-gradient(
-      to left,
-      rgb(var(--theme-shell-rgb) / 0.22) 0%,
-      transparent ${MAP_EDGE_SIDE_FADE_PX}px
-    )
-  `;
+function mapCameraPadding(viewportInsets?: MapViewportInsets) {
+  return {
+    top: MAP_CAMERA_PADDING_PX + (viewportInsets?.top ?? 0),
+    right: MAP_CAMERA_PADDING_PX + (viewportInsets?.right ?? 0),
+    bottom: MAP_CAMERA_PADDING_PX + (viewportInsets?.bottom ?? 0),
+    left: MAP_CAMERA_PADDING_PX + (viewportInsets?.left ?? 0),
+  };
 }
 
-function fitMarkers(map: MapInstance, markers: LocationMarkerSummary[], focusedMarkerKey?: string | null) {
+function mapCameraOffset(viewportInsets?: MapViewportInsets): [number, number] {
+  return [
+    ((viewportInsets?.left ?? 0) - (viewportInsets?.right ?? 0)) / 2,
+    ((viewportInsets?.top ?? 0) - (viewportInsets?.bottom ?? 0)) / 2,
+  ];
+}
+
+function fitMarkers(
+  map: MapInstance,
+  markers: LocationMarkerSummary[],
+  focusedMarkerKey?: string | null,
+  viewportInsets?: MapViewportInsets,
+) {
   if (markers.length === 0) return;
 
   const focusedMarker = focusedMarkerKey
@@ -616,6 +609,7 @@ function fitMarkers(map: MapInstance, markers: LocationMarkerSummary[], focusedM
       center: [focusedMarker.lng, focusedMarker.lat],
       zoom: 7.5,
       duration: 600,
+      offset: mapCameraOffset(viewportInsets),
     });
     return;
   }
@@ -626,6 +620,7 @@ function fitMarkers(map: MapInstance, markers: LocationMarkerSummary[], focusedM
       center: [marker.lng, marker.lat],
       zoom: 4.5,
       duration: 600,
+      offset: mapCameraOffset(viewportInsets),
     });
     return;
   }
@@ -648,7 +643,7 @@ function fitMarkers(map: MapInstance, markers: LocationMarkerSummary[], focusedM
       [minLng, minLat],
       [maxLng, maxLat],
     ],
-    { padding: 72, duration: 600 }
+    { padding: mapCameraPadding(viewportInsets), duration: 600 }
   );
 }
 
@@ -657,6 +652,7 @@ export function MapSurface({
   focusedMarkerKey,
   interactive = true,
   themeId,
+  viewportInsets,
   onOpenFriend,
   onPromoteAccount,
   onLinkAccount,
@@ -677,6 +673,7 @@ export function MapSurface({
   const [mapReady, setMapReady] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [fallbackMoving, setFallbackMoving] = useState(false);
+  const [surfaceSize, setSurfaceSize] = useState<MapSurfaceSize>({ width: 900, height: 560 });
   const [selectedFallbackMarkerKey, setSelectedFallbackMarkerKey] = useState<string | null>(null);
   const activePopupRef = useRef<PopupInstance | null>(null);
   const activePopupKeyRef = useRef<string | null>(null);
@@ -795,6 +792,29 @@ export function MapSurface({
     clearNativeMarkerRestoreTimeout();
     setShellMoving(false);
   }, [clearFallbackMovingTimeout, clearNativeMarkerRestoreTimeout, setShellMoving]);
+
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+
+    const updateSize = () => {
+      const rect = shell.getBoundingClientRect();
+      setSurfaceSize((current) => {
+        const next = {
+          width: Math.max(1, Math.round(rect.width)),
+          height: Math.max(1, Math.round(rect.height)),
+        };
+        return current.width === next.width && current.height === next.height
+          ? current
+          : next;
+      });
+    };
+
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(shell);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (showFallback) return;
@@ -1005,8 +1025,8 @@ export function MapSurface({
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
-    fitMarkers(mapRef.current, stableMarkers, focusedMarkerKey);
-  }, [focusedMarkerKey, mapReady, stableMarkers]);
+    fitMarkers(mapRef.current, stableMarkers, focusedMarkerKey, viewportInsets);
+  }, [focusedMarkerKey, mapReady, stableMarkers, viewportInsets]);
 
   return (
     <div
@@ -1018,14 +1038,13 @@ export function MapSurface({
       data-map-dense={useDenseMarkers ? "true" : "false"}
       data-map-ready={mapReady && !loadFailed ? "true" : "false"}
       data-map-moving="false"
-      className="freed-map-shell theme-soft-viewport relative h-full w-full"
-      style={MAP_VIEWPORT_MASK_STYLE}
+      className="freed-map-shell relative h-full w-full overflow-hidden"
       onWheel={showFallback ? handleFallbackWheel : undefined}
       onPointerDown={showFallback ? handleFallbackPointerDown : undefined}
       onPointerMove={showFallback ? handleFallbackPointerMove : undefined}
     >
       <style>{mapStyles(interactive)}</style>
-      <div className="theme-soft-viewport-content">
+      <div className="absolute inset-0 overflow-hidden">
         <div
           ref={containerRef}
           className={`h-full w-full ${showFallback ? "invisible" : "visible"}`}
@@ -1037,13 +1056,6 @@ export function MapSurface({
             opacity: mapPalette.gridOpacity,
           }}
         />
-        <div
-          className="freed-map-edge-overlay pointer-events-none absolute inset-0"
-          style={{
-            background: mapEdgeVignetteBackground(),
-          }}
-        />
-
         {showFallback && renderedMarkers.length > 0 && (
           <div
             className="freed-map-fallback-scan absolute inset-0 overflow-hidden"
@@ -1079,7 +1091,7 @@ export function MapSurface({
             }}
           />
           {fallbackRenderedMarkers.map((marker) => {
-            const position = fallbackPosition(marker);
+            const position = fallbackPosition(marker, viewportInsets, surfaceSize);
             const renderedMarkerIndex = renderedMarkers.findIndex((entry) => entry.key === marker.key);
             return (
               <button
@@ -1107,7 +1119,14 @@ export function MapSurface({
           })}
 
           {interactive && selectedFallbackMarker && (
-            <div data-testid="map-fallback-popup" className="theme-dialog-shell absolute bottom-4 left-4 w-[min(560px,calc(100%-2rem))] p-5">
+            <div
+              data-testid="map-fallback-popup"
+              className="theme-dialog-shell absolute bottom-4 p-5"
+              style={{
+                left: "calc(var(--freed-canvas-viewport-inset-left, 0px) + 1rem)",
+                width: "min(560px, calc(100% - var(--freed-canvas-viewport-inset-left, 0px) - var(--freed-canvas-viewport-inset-right, 0px) - 2rem))",
+              }}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">

@@ -1551,7 +1551,7 @@ html[data-theme="scriptorium"] .theme-floating-panel {
   border-bottom-right-radius: 0;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--theme-header-border) 82%, transparent);
+  box-shadow: none;
 }
 
 .theme-attached-topbar::before {
