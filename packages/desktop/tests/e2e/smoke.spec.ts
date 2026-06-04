@@ -418,6 +418,10 @@ async function readGraphDebug(page: Page) {
           visibleLabelCount: number;
           visibleNodeLabelCount: number;
           visibleProviderLabelCount: number;
+          sourceNodeCount?: number;
+          visibleNodeCount?: number;
+          renderedPrimitiveCount?: number;
+          capped?: boolean;
           qualityMode: "interactive" | "settled";
         };
       };
@@ -4992,13 +4996,15 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
       if (!debug || debug.qualityMode !== "settled" || debug.metrics.visibleLabelCount <= 0) {
         return 0;
       }
-      return debug.nodeCount;
+      return debug.metrics.sourceNodeCount ?? debug.nodeCount;
     }, { timeout: 45_000 })
     .toBeGreaterThan(1_000);
 
   const seededGraph = await readGraphSummary(page);
   expect(seededGraph).not.toBeNull();
   expect(seededGraph!.metrics.visibleLabelCount).toBeGreaterThan(0);
+  expect(seededGraph!.metrics.visibleNodeCount ?? seededGraph!.nodeCount).toBeLessThanOrEqual(1_100);
+  expect(seededGraph!.metrics.capped).toBe(true);
 
   const initial = await waitForGraphPerfToSettle(page);
   expect(initial).not.toBeNull();
@@ -5010,7 +5016,7 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
   expect(benchmarkPoint).not.toBeNull();
 
   await page.mouse.move(benchmarkPoint!.x, benchmarkPoint!.y);
-  const afterHover = await waitForGraphSceneSyncAfter(page, initial!.metrics.sceneSyncCount);
+  const afterHover = await readGraphDebug(page);
   expect(afterHover).not.toBeNull();
   expect(afterHover!.metrics.sceneSyncMs).toBeLessThan(40);
 
