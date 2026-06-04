@@ -1584,6 +1584,12 @@ test("provider sync button shows a spinner while that provider is active", async
       channelId: "x",
       message: "[X] requesting home timeline",
     });
+    for (let index = 0; index < 36; index += 1) {
+      activity.recordBackgroundActivityLog({
+        channelId: "x",
+        message: `[X] background activity detail ${index.toLocaleString()}`,
+      });
+    }
   }, { activityStorePath: BACKGROUND_ACTIVITY_STORE_PATH });
 
   const activityTrigger = getDesktopSidebar(page).getByTestId("background-activity-trigger");
@@ -1591,6 +1597,27 @@ test("provider sync button shows a spinner while that provider is active", async
   await activityTrigger.click();
   const activityPopover = page.getByTestId("background-activity-popover");
   await expect(activityPopover).toBeVisible();
+  await expect(activityPopover.getByRole("heading", { name: "Background Activity" })).toBeVisible();
+  const popoverPlacement = await page.evaluate(() => {
+    const trigger = document.querySelector('[data-testid="background-activity-trigger"]');
+    const popover = document.querySelector('[data-testid="background-activity-popover"]');
+    if (!trigger || !popover) return null;
+    const triggerRect = trigger.getBoundingClientRect();
+    const popoverRect = popover.getBoundingClientRect();
+    return {
+      triggerRight: triggerRect.right,
+      popoverLeft: popoverRect.left,
+    };
+  });
+  expect(popoverPlacement).not.toBeNull();
+  expect(popoverPlacement!.popoverLeft).toBeGreaterThan(popoverPlacement!.triggerRight);
+  const scrollBody = activityPopover.getByTestId("background-activity-scroll");
+  await scrollBody.evaluate((node) => {
+    const element = node as HTMLElement;
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(activityPopover.getByRole("heading", { name: "Background Activity" })).toBeVisible();
+  await expect(activityPopover.getByRole("button", { name: "Close" })).toBeVisible();
   await expect(activityPopover).toContainText("X");
   await expect(activityPopover).toContainText("X sync started");
   await expect(activityPopover).toContainText("[X] requesting home timeline");
