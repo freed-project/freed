@@ -100,6 +100,8 @@ const WEBKIT_HIDDEN_TIMER_THROTTLE_AFTER: Duration = Duration::from_secs(480);
 const RENDERER_HIDDEN_STALE_LOG_AFTER: Duration = Duration::from_secs(570);
 const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(75);
 const RENDERER_HIDDEN_RECOVERY_AFTER: Duration = Duration::from_secs(900);
+const MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS: u64 = 5 * 60;
+const RENDERER_EVENT_LOOP_LAG_RECOVERY_MS: f64 = 45_000.0;
 const BACKGROUND_REQUIRED_HEALTHY_HEARTBEATS: u64 = 2;
 const BACKGROUND_RECOVERY_COOLDOWN: Duration = Duration::from_secs(120);
 const BACKGROUND_MEMORY_HIGH_COOLDOWN: Duration = Duration::from_secs(120);
@@ -1494,6 +1496,8 @@ impl BackgroundRuntimeCoordinator {
         state.healthy_heartbeats = state.healthy_heartbeats.saturating_add(1);
         if state.healthy_heartbeats >= BACKGROUND_REQUIRED_HEALTHY_HEARTBEATS {
             state.renderer_stale = false;
+            state.cooldown_until = None;
+            state.last_recovery_reason = None;
         }
     }
 
@@ -2173,6 +2177,38 @@ fn renderer_stale_should_recover(is_visible: bool, last_visibility: &str) -> boo
     renderer_is_effectively_visible(is_visible, last_visibility)
 }
 
+fn renderer_event_loop_lag_should_recover(
+    is_visible: bool,
+    last_visibility: &str,
+    event_loop_lag_ms: Option<f64>,
+) -> bool {
+    renderer_is_effectively_visible(is_visible, last_visibility)
+        && event_loop_lag_ms
+            .map(|lag| lag >= RENDERER_EVENT_LOOP_LAG_RECOVERY_MS)
+            .unwrap_or(false)
+}
+
+fn main_renderer_memory_should_recover(
+    is_visible: bool,
+    last_visibility: &str,
+    stats: &RuntimeMemoryStats,
+) -> bool {
+    if !renderer_is_effectively_visible(is_visible, last_visibility) {
+        return false;
+    }
+    if stats.webkit_largest_role.as_deref() != Some("freed-webcontent-age-matched") {
+        return false;
+    }
+    let main_webkit_pressure_bytes = stats
+        .webkit_largest_footprint_bytes
+        .unwrap_or_else(|| stats.webkit_largest_resident_bytes.unwrap_or(0));
+    main_webkit_pressure_bytes >= stats.memory_high_bytes
+        && stats
+            .webkit_largest_age_seconds
+            .map(|age| age >= MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS)
+            .unwrap_or(false)
+}
+
 fn format_bytes_for_log(bytes: u64) -> String {
     const KIB: f64 = 1024.0;
     const MIB: f64 = KIB * 1024.0;
@@ -2268,6 +2304,87 @@ mod renderer_watchdog_tests {
         assert!(!renderer_stale_should_recover(true, "hidden"));
         assert!(!renderer_stale_should_recover(false, "visible"));
         assert!(!renderer_stale_should_recover(false, "hidden"));
+    }
+
+    #[test]
+    fn visible_renderer_recovers_from_high_event_loop_lag() {
+        assert!(renderer_event_loop_lag_should_recover(
+            true,
+            "visible",
+            Some(RENDERER_EVENT_LOOP_LAG_RECOVERY_MS)
+        ));
+        assert!(!renderer_event_loop_lag_should_recover(
+            true,
+            "visible",
+            Some(RENDERER_EVENT_LOOP_LAG_RECOVERY_MS - 1.0)
+        ));
+        assert!(!renderer_event_loop_lag_should_recover(
+            true,
+            "visible",
+            Some(5_500.0)
+        ));
+        assert!(!renderer_event_loop_lag_should_recover(
+            true,
+            "hidden",
+            Some(RENDERER_EVENT_LOOP_LAG_RECOVERY_MS)
+        ));
+        assert!(!renderer_event_loop_lag_should_recover(
+            false,
+            "visible",
+            Some(RENDERER_EVENT_LOOP_LAG_RECOVERY_MS)
+        ));
+    }
+
+    #[test]
+    fn visible_main_renderer_recovers_from_high_webkit_footprint() {
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: 9 * BYTES_PER_GIB,
+            app_memory_pressure_bytes: 7 * BYTES_PER_GIB,
+            webkit_resident_bytes: Some(8 * BYTES_PER_GIB),
+            webkit_footprint_bytes: Some(7 * BYTES_PER_GIB),
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: 8 * BYTES_PER_GIB,
+            webkit_total_footprint_bytes: Some(7 * BYTES_PER_GIB),
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(8 * BYTES_PER_GIB),
+            webkit_largest_footprint_bytes: Some(7 * BYTES_PER_GIB),
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(0.0),
+            webkit_largest_age_seconds: Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS),
+            webkit_largest_role: Some("freed-webcontent-age-matched".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert!(main_renderer_memory_should_recover(true, "visible", &stats));
+        assert!(!main_renderer_memory_should_recover(true, "hidden", &stats));
+        assert!(!main_renderer_memory_should_recover(
+            true,
+            "visible",
+            &RuntimeMemoryStats {
+                webkit_largest_role: Some("ig-scraper".to_string()),
+                ..stats.clone()
+            }
+        ));
+        assert!(!main_renderer_memory_should_recover(
+            true,
+            "visible",
+            &RuntimeMemoryStats {
+                webkit_largest_age_seconds: Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS - 1,),
+                ..stats
+            }
+        ));
     }
 
     #[test]
@@ -3912,18 +4029,50 @@ fn scrape_resident_start_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
         .saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES)
 }
 
+fn webkit_resident_tail_is_probably_reclaimable(stats: &RuntimeMemoryStats) -> bool {
+    if !stats.webkit_telemetry_available {
+        return false;
+    }
+    let Some(webkit_footprint_bytes) = stats.webkit_total_footprint_bytes else {
+        return false;
+    };
+    if stats.webkit_total_resident_bytes <= webkit_footprint_bytes {
+        return false;
+    }
+    let webkit_resident_tail_bytes = stats.webkit_total_resident_bytes - webkit_footprint_bytes;
+    let largest_webkit_cpu_usage = stats.webkit_largest_cpu_usage.unwrap_or(0.0);
+    stats.app_memory_pressure_bytes < scrape_memory_start_budget_bytes(stats)
+        && stats.app_resident_bytes
+            < stats
+                .memory_critical_bytes
+                .saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES)
+        && webkit_resident_tail_bytes >= BYTES_PER_GIB
+        && largest_webkit_cpu_usage <= 10.0
+}
+
+fn scrape_effective_resident_bytes(stats: &RuntimeMemoryStats) -> u64 {
+    if webkit_resident_tail_is_probably_reclaimable(stats) {
+        return stats
+            .process_resident_bytes
+            .saturating_add(stats.webkit_total_footprint_bytes.unwrap_or(0));
+    }
+    stats.app_resident_bytes
+}
+
 fn scrape_memory_may_proceed(stats: &RuntimeMemoryStats) -> bool {
     stats.app_memory_pressure_bytes < scrape_memory_start_budget_bytes(stats)
-        && stats.app_resident_bytes < scrape_resident_start_budget_bytes(stats)
+        && scrape_effective_resident_bytes(stats) < scrape_resident_start_budget_bytes(stats)
 }
 
 fn scrape_memory_pressure_level(stats: &RuntimeMemoryStats) -> &'static str {
+    let effective_resident_bytes = scrape_effective_resident_bytes(stats);
     if stats.app_memory_pressure_bytes >= stats.memory_critical_bytes
-        || stats.app_resident_bytes >= stats.memory_critical_bytes
+        || (stats.app_resident_bytes >= stats.memory_critical_bytes
+            && !webkit_resident_tail_is_probably_reclaimable(stats))
     {
         "critical"
     } else if stats.app_memory_pressure_bytes >= stats.memory_high_bytes
-        || stats.app_resident_bytes >= scrape_resident_start_budget_bytes(stats)
+        || effective_resident_bytes >= scrape_resident_start_budget_bytes(stats)
     {
         "high"
     } else {
@@ -3947,8 +4096,8 @@ fn optional_story_scrape_may_proceed(stats: &RuntimeMemoryStats) -> bool {
 fn scrape_memory_available_margin_bytes(stats: &RuntimeMemoryStats) -> u64 {
     let pressure_margin =
         scrape_memory_start_budget_bytes(stats).saturating_sub(stats.app_memory_pressure_bytes);
-    let resident_margin =
-        scrape_resident_start_budget_bytes(stats).saturating_sub(stats.app_resident_bytes);
+    let resident_margin = scrape_resident_start_budget_bytes(stats)
+        .saturating_sub(scrape_effective_resident_bytes(stats));
     pressure_margin.min(resident_margin)
 }
 
@@ -4280,6 +4429,8 @@ async fn prepare_social_scrape_memory_internal(
             "webkitProcessCount": after.webkit_process_count,
             "scrapeStartBudgetBytes": scrape_start_budget_bytes,
             "scrapeResidentBudgetBytes": scrape_resident_budget_bytes,
+            "effectiveResidentBytes": scrape_effective_resident_bytes(&after),
+            "webkitResidentTailReclaimable": webkit_resident_tail_is_probably_reclaimable(&after),
             "scrapeHeadroomBytes": SCRAPE_MEMORY_HEADROOM_BYTES,
             "memoryHighBytes": after.memory_high_bytes,
             "memoryCriticalBytes": after.memory_critical_bytes,
@@ -4366,6 +4517,8 @@ async fn ensure_social_scrape_memory(
             "webkitLargestResidentBytes": prep.after.webkit_largest_resident_bytes,
             "scrapeStartBudgetBytes": prep.scrape_start_budget_bytes,
             "scrapeResidentBudgetBytes": scrape_resident_start_budget_bytes(&prep.after),
+            "effectiveResidentBytes": scrape_effective_resident_bytes(&prep.after),
+            "webkitResidentTailReclaimable": webkit_resident_tail_is_probably_reclaimable(&prep.after),
             "memoryHighBytes": prep.after.memory_high_bytes,
             "memoryCriticalBytes": prep.after.memory_critical_bytes,
             "recycledAllScraperWindows": critical,
@@ -4867,7 +5020,11 @@ struct IgFeedStatePayload {
     article_count: u64,
     ready_article_count: u64,
     tiny_article_count: u64,
+    first_article_height: u64,
+    first_article_text_length: u64,
+    first_article_media_count: u64,
     scroll_height: u64,
+    document_ready_state: String,
     login_chrome: bool,
     main_found: bool,
     url: String,
@@ -4881,6 +5038,24 @@ impl IgFeedStatePayload {
 
     fn feed_ready(&self) -> bool {
         self.ready_article_count > 0 && !self.login_chrome
+    }
+
+    fn diagnostic_summary(&self) -> String {
+        format!(
+            "ready_articles={}, tiny_articles={}, articles={}, scroll_height={}, first_article_height={}, first_article_text_length={}, first_article_media_count={}, ready_state={}, logged_in_cookie={}, login_chrome={}, main_found={}, url={}",
+            self.ready_article_count,
+            self.tiny_article_count,
+            self.article_count,
+            self.scroll_height,
+            self.first_article_height,
+            self.first_article_text_length,
+            self.first_article_media_count,
+            self.document_ready_state,
+            self.logged_in_cookie,
+            self.login_chrome,
+            self.main_found,
+            &self.url[..self.url.len().min(80)]
+        )
     }
 }
 
@@ -4930,6 +5105,12 @@ fn ig_feed_state_probe_script() -> &'static str {
             var articles = Array.prototype.slice.call(document.querySelectorAll("article, [role='article']"));
             var ready = 0;
             var tiny = 0;
+            var firstArticle = articles[0] || null;
+            var firstArticleHeight = firstArticle ? (firstArticle.offsetHeight || 0) : 0;
+            var firstArticleTextLength = firstArticle ? ((firstArticle.textContent || "").trim().length) : 0;
+            var firstArticleMediaCount = firstArticle
+                ? firstArticle.querySelectorAll("img[src*='cdninstagram'], img[src*='scontent'], img[srcset], video").length
+                : 0;
             articles.forEach(function(article) {
                 var height = article.offsetHeight || 0;
                 if (height < 100) {
@@ -4951,7 +5132,11 @@ fn ig_feed_state_probe_script() -> &'static str {
                 articleCount: articles.length,
                 readyArticleCount: ready,
                 tinyArticleCount: tiny,
+                firstArticleHeight: firstArticleHeight,
+                firstArticleTextLength: firstArticleTextLength,
+                firstArticleMediaCount: firstArticleMediaCount,
                 scrollHeight: document.documentElement.scrollHeight || document.body.scrollHeight || 0,
+                documentReadyState: document.readyState || "",
                 loginChrome: /\blog in\b/.test(bodyText) ||
                     /\bsign up\b/.test(bodyText) ||
                     /\blog into instagram\b/.test(bodyText),
@@ -4965,7 +5150,11 @@ fn ig_feed_state_probe_script() -> &'static str {
                 articleCount: 0,
                 readyArticleCount: 0,
                 tinyArticleCount: 0,
+                firstArticleHeight: 0,
+                firstArticleTextLength: 0,
+                firstArticleMediaCount: 0,
                 scrollHeight: 0,
+                documentReadyState: document.readyState || "",
                 loginChrome: false,
                 mainFound: false,
                 url: window.location.href,
@@ -5087,17 +5276,10 @@ async fn wait_for_ig_feed_state(
         match probe_ig_feed_state(app, wv).await {
             Ok(state) => {
                 info!(
-                    "[IG] feed state attempt={}/{} ready_articles={} tiny_articles={} articles={} scroll_height={} logged_in_cookie={} login_chrome={} main_found={} url={}",
+                    "[IG] feed state attempt={}/{} {}",
                     attempt,
                     attempts.max(1),
-                    state.ready_article_count,
-                    state.tiny_article_count,
-                    state.article_count,
-                    state.scroll_height,
-                    state.logged_in_cookie,
-                    state.login_chrome,
-                    state.main_found,
-                    &state.url[..state.url.len().min(80)]
+                    state.diagnostic_summary()
                 );
                 let ready = state.feed_ready();
                 last_state = state;
@@ -6220,7 +6402,32 @@ async fn ig_scrape_feed(
     // Belt-and-suspenders: click the Following tab if present
     let _ = wv.eval(r#"document.querySelector('a[href="/?variant=following"]')?.click();"#);
     tokio::time::sleep(Duration::from_millis(2000)).await;
-    let initial_feed_state = wait_for_ig_feed_state(&app, &wv, 6).await;
+    let mut initial_feed_state = wait_for_ig_feed_state(&app, &wv, 6).await;
+    if initial_feed_state.placeholders_only() {
+        info!(
+            "[IG] placeholder feed detected before extraction, attempting one feed refresh: {}",
+            initial_feed_state.diagnostic_summary()
+        );
+        tokio::time::sleep(Duration::from_millis(gaussian_ms(1800.0, 450.0))).await;
+        wv.navigate(ig_feed_url.parse::<url::Url>().map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+        tokio::time::sleep(Duration::from_millis(gaussian_ms(6500.0, 900.0))).await;
+        let _ = wv.eval(r#"document.querySelector('a[href="/?variant=following"]')?.click();"#);
+        tokio::time::sleep(Duration::from_millis(gaussian_ms(1400.0, 250.0))).await;
+        initial_feed_state = wait_for_ig_feed_state(&app, &wv, 6).await;
+        if initial_feed_state.placeholders_only() {
+            let message = format!(
+                "placeholder_feed: Instagram loaded placeholder feed articles after one refresh. {}",
+                initial_feed_state.diagnostic_summary()
+            );
+            warn!("[IG] {}", message);
+            return Err(message);
+        }
+        info!(
+            "[IG] placeholder feed recovered after one refresh: {}",
+            initial_feed_state.diagnostic_summary()
+        );
+    }
 
     let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
     let scrape_plan = social_scrape_plan_for_memory(&scrape_plan_stats, 5, 9);
@@ -8273,7 +8480,7 @@ pub fn run() {
                     let stats = collect_runtime_memory_stats(&app_for_memory_monitor, 0, 0);
                     let memory_health_fields = {
                         let mut sample = renderer_memory_sample_for_memory_monitor.lock().unwrap();
-                        *sample = Some(RendererMemorySample::from_stats(now, stats));
+                        *sample = Some(RendererMemorySample::from_stats(now, stats.clone()));
                         renderer_memory_health_fields(sample.as_ref(), now, true)
                     };
                     let is_main_visible = app_for_memory_monitor
@@ -8334,6 +8541,136 @@ pub fn run() {
                         fields.extend(memory_health_fields);
                     }
                     append_runtime_health(&app_for_memory_monitor, health_payload);
+
+                    let should_recover_main_for_memory =
+                        active_job.is_none()
+                            && main_renderer_memory_should_recover(
+                                is_main_visible,
+                                &renderer_health_for_memory_monitor
+                                    .read()
+                                    .unwrap()
+                                    .last_visibility,
+                                &stats,
+                            );
+                    if should_recover_main_for_memory {
+                        let recovery = {
+                            let mut health = renderer_health_for_memory_monitor.write().unwrap();
+                            let recent_recovery_count = health
+                                .recent_recovery_count(BACKGROUND_SAFE_MODE_RECOVERY_WINDOW_SHORT);
+                            let recovery_threshold = renderer_recovery_threshold_for_count(
+                                is_main_visible,
+                                &health.last_visibility,
+                                recent_recovery_count,
+                            );
+                            let cooldown_elapsed = health
+                                .last_recovery_at
+                                .map(|last| last.elapsed() > recovery_threshold)
+                                .unwrap_or(true);
+                            if cooldown_elapsed {
+                                let attempt = health.note_recovery_attempt(std::time::Instant::now());
+                                Some((
+                                    attempt,
+                                    health.renderer_generation,
+                                    health.last_visibility.clone(),
+                                    health.last_page_load_id.clone(),
+                                    health.last_app_phase.clone(),
+                                    recovery_threshold,
+                                ))
+                            } else {
+                                None
+                            }
+                        };
+
+                        if let Some((
+                            attempt,
+                            renderer_generation,
+                            last_visibility,
+                            page_load_id,
+                            app_phase,
+                            recovery_threshold,
+                        )) = recovery
+                        {
+                            let reason = "main renderer WebKit memory high";
+                            background_runtime_for_memory_monitor.note_renderer_recovery_attempt(reason);
+                            let (
+                                safe_mode_active,
+                                safe_mode_remaining_ms,
+                                recoveries_short,
+                                recoveries_long,
+                            ) = background_runtime_for_memory_monitor.recovery_status_for_health();
+                            append_runtime_health(
+                                &app_for_memory_monitor,
+                                serde_json::json!({
+                                    "event": "renderer_recovery_attempt",
+                                    "reason": reason,
+                                    "rendererGeneration": renderer_generation,
+                                    "attempt": attempt,
+                                    "thresholdMs": recovery_threshold.as_millis(),
+                                    "visible": is_main_visible,
+                                    "lastVisibility": last_visibility,
+                                    "pageLoadId": page_load_id,
+                                    "appPhase": app_phase,
+                                    "rendererRecoveryAllowed": true,
+                                    "appMemoryPressureBytes": stats.app_memory_pressure_bytes,
+                                    "appResidentBytes": stats.app_resident_bytes,
+                                    "nativeResidentBytes": stats.process_resident_bytes,
+                                    "nativeFootprintBytes": stats.process_footprint_bytes,
+                                    "webkitFootprintBytes": stats.webkit_total_footprint_bytes,
+                                    "webkitResidentBytes": stats.webkit_total_resident_bytes,
+                                    "webkitLargestProcessId": stats.webkit_largest_process_id,
+                                    "webkitLargestFootprintBytes": stats.webkit_largest_footprint_bytes,
+                                    "webkitLargestResidentBytes": stats.webkit_largest_resident_bytes,
+                                    "webkitLargestCpuUsage": stats.webkit_largest_cpu_usage,
+                                    "webkitLargestAgeSeconds": stats.webkit_largest_age_seconds,
+                                    "webkitLargestRole": stats.webkit_largest_role,
+                                    "webkitProcessCount": stats.webkit_process_count,
+                                    "memoryHighBytes": stats.memory_high_bytes,
+                                    "memoryCriticalBytes": stats.memory_critical_bytes,
+                                    "safeModeActive": safe_mode_active,
+                                    "safeModeRemainingMs": safe_mode_remaining_ms,
+                                    "recoveriesInShortWindow": recoveries_short,
+                                    "recoveriesInLongWindow": recoveries_long
+                                }),
+                            );
+                            capture_deep_runtime_diagnostic(
+                                &app_for_memory_monitor,
+                                "renderer_memory_recovery_attempt",
+                                reason,
+                                &stats,
+                                None,
+                                None,
+                                true,
+                            );
+                            warn!(
+                                "[main-window] recovering renderer for memory attempt={} app_pressure={} app_rss={} webkit_pressure={} webkit_rss={} threshold_ms={} safe_mode={}",
+                                attempt,
+                                format_bytes_for_log(stats.app_memory_pressure_bytes),
+                                format_bytes_for_log(stats.app_resident_bytes),
+                                format_bytes_for_log(
+                                    stats
+                                        .webkit_largest_footprint_bytes
+                                        .unwrap_or_else(|| stats.webkit_largest_resident_bytes.unwrap_or(0))
+                                ),
+                                format_bytes_for_log(stats.webkit_total_resident_bytes),
+                                recovery_threshold.as_millis(),
+                                safe_mode_active
+                            );
+                            recycle_social_scraper_windows_unless_active(
+                                &app_for_memory_monitor,
+                                &background_runtime_for_memory_monitor,
+                                reason,
+                            );
+                            if let Err(error) = recover_main_window(
+                                &app_for_memory_monitor,
+                                reason,
+                            ) {
+                                error!(
+                                    "[main-window] memory recovery failed reason={} error={}",
+                                    reason, error
+                                );
+                            }
+                        }
+                    }
                 }
             });
 
@@ -8372,6 +8709,16 @@ pub fn run() {
                             is_main_visible,
                             &health.last_visibility,
                         );
+                        let lag_recovery_allowed = renderer_event_loop_lag_should_recover(
+                            is_main_visible,
+                            &health.last_visibility,
+                            health.last_event_loop_lag_ms,
+                        );
+                        let recovery_reason = if lag_recovery_allowed {
+                            "renderer event loop lag high"
+                        } else {
+                            "renderer heartbeat stale"
+                        };
                         let expected_hidden_throttle = renderer_gap_is_expected_hidden_throttle(
                             is_main_visible,
                             &health.last_visibility,
@@ -8386,7 +8733,7 @@ pub fn run() {
                         let should_log_stale = should_log_gap && !expected_hidden_throttle;
                         let should_recover =
                             recovery_allowed &&
-                            age > recovery_threshold &&
+                            (age > recovery_threshold || lag_recovery_allowed) &&
                             health
                                 .last_recovery_at
                                 .map(|last| last.elapsed() > recovery_threshold)
@@ -8568,9 +8915,13 @@ pub fn run() {
                         }
 
                         if should_recover {
+                            let recovery_last_visibility = health.last_visibility.clone();
+                            let recovery_event_loop_lag_ms = health.last_event_loop_lag_ms;
+                            let recovery_renderer_generation =
+                                health.renderer_generation.saturating_add(1);
                             let attempt = health.note_recovery_attempt(std::time::Instant::now());
                             background_runtime_for_watchdog
-                                .note_renderer_recovery_attempt("renderer heartbeat stale");
+                                .note_renderer_recovery_attempt(recovery_reason);
                             let stats = collect_runtime_memory_stats(&app_for_renderer_watchdog, 0, 0);
                             let (active_job, active_job_age_ms) =
                                 background_runtime_for_watchdog.active_job_for_health();
@@ -8580,13 +8931,15 @@ pub fn run() {
                                 &app_for_renderer_watchdog,
                                 serde_json::json!({
                                     "event": "renderer_recovery_attempt",
-                                    "rendererGeneration": health.renderer_generation,
+                                    "rendererGeneration": recovery_renderer_generation,
                                     "attempt": attempt,
                                     "ageMs": age.as_millis(),
+                                    "reason": recovery_reason,
                                     "thresholdMs": recovery_threshold.as_millis(),
                                     "visible": is_main_visible,
-                                    "lastVisibility": health.last_visibility.clone(),
+                                    "lastVisibility": recovery_last_visibility.clone(),
                                     "rendererRecoveryAllowed": recovery_allowed,
+                                    "eventLoopLagMs": recovery_event_loop_lag_ms,
                                     "webkitResidentBytes": stats.webkit_total_resident_bytes,
                                     "webkitLargestProcessId": stats.webkit_largest_process_id,
                                     "webkitLargestResidentBytes": stats.webkit_largest_resident_bytes,
@@ -8608,12 +8961,12 @@ pub fn run() {
                                 "renderer-recovery-state",
                                 serde_json::json!({
                                     "phase": if safe_mode_active { "safe_mode" } else { "recovery_attempt" },
-                                    "reason": "renderer heartbeat stale",
-                                    "rendererGeneration": health.renderer_generation,
+                                    "reason": recovery_reason,
+                                    "rendererGeneration": recovery_renderer_generation,
                                     "attempt": attempt,
                                     "ageMs": age.as_millis(),
                                     "thresholdMs": recovery_threshold.as_millis(),
-                                    "lastVisibility": health.last_visibility.clone(),
+                                    "lastVisibility": recovery_last_visibility,
                                     "rendererRecoveryAllowed": recovery_allowed,
                                     "safeModeActive": safe_mode_active,
                                     "safeModeRemainingMs": safe_mode_remaining_ms,
@@ -8624,16 +8977,18 @@ pub fn run() {
                             capture_deep_runtime_diagnostic(
                                 &app_for_renderer_watchdog,
                                 "renderer_recovery_attempt",
-                                "renderer heartbeat stale",
+                                recovery_reason,
                                 &stats,
                                 active_job,
                                 active_job_age_ms,
                                 true,
                             );
                             warn!(
-                                "[main-window] recovering stale renderer attempt={} age_ms={} threshold_ms={} visible={} safe_mode={}",
+                                "[main-window] recovering renderer attempt={} reason={} age_ms={} event_loop_lag_ms={} threshold_ms={} visible={} safe_mode={}",
                                 attempt,
+                                recovery_reason,
                                 age.as_millis(),
+                                recovery_event_loop_lag_ms.unwrap_or(0.0),
                                 recovery_threshold.as_millis(),
                                 is_main_visible,
                                 safe_mode_active
@@ -8654,7 +9009,7 @@ pub fn run() {
                     if should_recover_main {
                         if let Err(error) = recover_main_window(
                             &app_for_renderer_watchdog,
-                            "renderer heartbeat stale",
+                            "renderer watchdog recovery",
                         ) {
                             error!(
                                 "[main-window] failed to recover stale renderer: {}",
@@ -8917,7 +9272,11 @@ mod tests {
             article_count: 3,
             ready_article_count: 3,
             tiny_article_count: 0,
+            first_article_height: 612,
+            first_article_text_length: 120,
+            first_article_media_count: 1,
             scroll_height: 2589,
+            document_ready_state: "complete".to_string(),
             login_chrome: false,
             main_found: true,
             url: "https://www.instagram.com/?variant=following".to_string(),
@@ -8929,9 +9288,20 @@ mod tests {
             ready_article_count: 0,
             tiny_article_count: 2,
             article_count: 2,
-            ..state
+            ..state.clone()
         }
         .feed_ready());
+        assert!(IgFeedStatePayload {
+            ready_article_count: 0,
+            tiny_article_count: 2,
+            article_count: 2,
+            first_article_height: 56,
+            first_article_text_length: 0,
+            first_article_media_count: 0,
+            scroll_height: 1199,
+            ..state
+        }
+        .placeholders_only());
     }
 
     #[test]
@@ -9165,7 +9535,7 @@ mod tests {
     }
 
     #[test]
-    fn background_runtime_blocks_during_recovery_cooldown() {
+    fn background_runtime_resumes_after_healthy_recovery_heartbeats() {
         let runtime = BackgroundRuntimeCoordinator::new();
         runtime.note_renderer_heartbeat();
         runtime.note_renderer_heartbeat();
@@ -9184,12 +9554,10 @@ mod tests {
         runtime.note_renderer_heartbeat();
         runtime.note_renderer_heartbeat();
         let (paused, reason, remaining_ms) = runtime.pause_status_for_health();
-        assert!(paused);
-        assert_eq!(reason, Some("renderer_recovery_cooldown"));
-        assert!(remaining_ms.unwrap_or(0) > 0);
-
-        let err = runtime.begin_job("ig_scrape_feed").unwrap_err();
-        assert!(err.contains("cooling down"));
+        assert!(!paused);
+        assert_eq!(reason, None);
+        assert_eq!(remaining_ms, None);
+        assert!(runtime.begin_job("ig_scrape_feed").is_ok());
     }
 
     #[test]
@@ -9335,7 +9703,10 @@ mod tests {
             freed_webkit_process_role(true, app_age, app_age),
             Some("freed-webcontent")
         );
-        assert_eq!(freed_webkit_process_role(true, 0, app_age), Some("freed-webcontent"));
+        assert_eq!(
+            freed_webkit_process_role(true, 0, app_age),
+            Some("freed-webcontent")
+        );
         assert_eq!(
             freed_webkit_process_role(
                 true,
@@ -9513,7 +9884,7 @@ mod tests {
     }
 
     #[test]
-    fn scrape_memory_blocks_resident_rss_at_start_budget_when_footprint_is_low() {
+    fn scrape_memory_allows_reclaimable_webkit_rss_tail_below_critical_pressure() {
         let budget =
             (MIN_CRITICAL_MEMORY_BYTES * 70 / 100).saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES);
         let stats = RuntimeMemoryStats {
@@ -9552,17 +9923,58 @@ mod tests {
             app_memory_pressure_bytes: budget - 1,
             ..stats
         };
-        assert!(!scrape_memory_may_proceed(&high_resident_stats));
-        assert_eq!(scrape_memory_pressure_level(&high_resident_stats), "high");
+        assert!(webkit_resident_tail_is_probably_reclaimable(
+            &high_resident_stats
+        ));
+        assert!(scrape_memory_may_proceed(&high_resident_stats));
+        assert_eq!(scrape_memory_pressure_level(&high_resident_stats), "normal");
         assert_eq!(
             social_scrape_plan_for_memory(&high_resident_stats, 6, 10),
             SocialScrapePlan {
-                min_passes: 0,
-                max_passes: 0,
+                min_passes: 2,
+                max_passes: 3,
                 skip_stories: true,
-                reason: "blocked",
+                reason: "minimal-memory-margin",
             }
         );
+    }
+
+    #[test]
+    fn scrape_memory_blocks_high_resident_bytes_without_webkit_footprint_telemetry() {
+        let budget =
+            (MIN_CRITICAL_MEMORY_BYTES * 70 / 100).saturating_sub(SCRAPE_MEMORY_HEADROOM_BYTES);
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: budget,
+            app_memory_pressure_bytes: budget - 1,
+            webkit_resident_bytes: Some(budget - 1),
+            webkit_footprint_bytes: None,
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: budget - 1,
+            webkit_total_footprint_bytes: None,
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(budget - 1),
+            webkit_largest_footprint_bytes: None,
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(0.0),
+            webkit_largest_age_seconds: Some(10),
+            webkit_largest_role: Some("freed-webcontent".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: false,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert!(!scrape_memory_may_proceed(&stats));
+        assert_eq!(scrape_memory_pressure_level(&stats), "high");
     }
 
     #[test]

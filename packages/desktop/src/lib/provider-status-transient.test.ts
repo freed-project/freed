@@ -51,6 +51,33 @@ describe("provider status transient failures", () => {
     ).toBe("Sync looks healthy right now.");
   });
 
+  it("does not turn stale renderer safe-mode auth errors into sidebar warnings", () => {
+    const authError =
+      "background work is paused for 113949 ms while renderer safe mode is active";
+
+    expect(
+      getProviderStatusTone({
+        isConnected: true,
+        authError,
+        snapshot: snapshot({ status: "healthy" }),
+      }),
+    ).toBe("healthy");
+    expect(
+      getProviderStatusLabel({
+        isConnected: true,
+        authError,
+        snapshot: snapshot({ status: "healthy" }),
+      }),
+    ).toBe("Connected");
+    expect(
+      getProviderStatusDetail({
+        isConnected: true,
+        authError,
+        snapshot: snapshot({ status: "healthy" }),
+      }),
+    ).toBe("Sync looks healthy right now.");
+  });
+
   it("still warns while memory pressure is the active provider snapshot", () => {
     const currentMessage =
       "Facebook sync did not start because Freed Desktop memory is high. App RSS is 2.62 GB after cleanup.";

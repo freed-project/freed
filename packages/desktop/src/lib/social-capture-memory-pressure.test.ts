@@ -798,6 +798,47 @@ describe("social capture completion", () => {
     );
   });
 
+  it("records Instagram placeholder feed recovery failures with a specific stage", async () => {
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "ig_scrape_feed") {
+        throw new Error(
+          "placeholder_feed: Instagram loaded placeholder feed articles after one refresh. ready_articles=0, tiny_articles=2, articles=2, scroll_height=1,199",
+        );
+      }
+      return null;
+    });
+
+    const { captureIgFeed } = await import("./instagram-capture");
+    const { recordProviderHealthEvent } = await import("./provider-health");
+
+    const result = await captureIgFeed();
+
+    expect(result.items).toEqual([]);
+    expect(result.diag.errorStage).toBe("placeholder_feed");
+    expect(result.diag.errorMessage).toContain(
+      "Instagram loaded placeholder feed articles after one refresh",
+    );
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(
+      expect.stringContaining("placeholder feed articles"),
+    );
+    expect(recordProviderHealthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "instagram",
+        outcome: "error",
+        stage: "placeholder_feed",
+        reason: expect.stringContaining("placeholder feed articles"),
+      }),
+    );
+  });
+
   it("does not poison Instagram health when a provider scrape is already active", async () => {
     mocks.prepareSocialScrapeMemory.mockResolvedValue({
       before: {},

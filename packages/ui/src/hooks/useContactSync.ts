@@ -20,6 +20,7 @@ import { usePlatform } from "../context/PlatformContext.js";
 const SYNC_INTERVAL_MS = 15 * 60 * 1000;
 const CONTACT_SYNC_TIMEOUT_MS = 60 * 1000;
 const STALE_SYNCING_MS = 2 * CONTACT_SYNC_TIMEOUT_MS;
+const FOCUS_SYNC_LAUNCH_GRACE_MS = 5 * 60 * 1000;
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -143,6 +144,7 @@ export function useContactSync() {
   syncStateRef.current = syncState;
   const matchesRef = useRef<Map<string, ContactMatch>>(new Map());
   const syncPromiseRef = useRef<Promise<ContactSyncState> | null>(null);
+  const mountedAtRef = useRef(Date.now());
 
   useEffect(() => {
     setPendingMatchCount(syncState.pendingSuggestions.length);
@@ -277,6 +279,7 @@ export function useContactSync() {
   useEffect(() => {
     if (!googleContacts) return undefined;
     const onFocus = () => {
+      if (Date.now() - mountedAtRef.current < FOCUS_SYNC_LAUNCH_GRACE_MS) return;
       void runSync();
     };
     window.addEventListener("focus", onFocus);

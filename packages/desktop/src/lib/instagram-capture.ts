@@ -175,6 +175,18 @@ function formatInstagramEmptySyncMessage(diag: IgSyncDiag): string {
     : "Instagram feed returned 0 posts.";
 }
 
+function errorMessageFromUnknown(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function applyInstagramPlaceholderDiag(diag: IgSyncDiag, error: unknown): boolean {
+  const message = errorMessageFromUnknown(error);
+  if (!message.startsWith("placeholder_feed:")) return false;
+  diag.errorStage = "placeholder_feed";
+  diag.errorMessage = message.replace(/^placeholder_feed:\s*/, "");
+  return true;
+}
+
 // =============================================================================
 // Core scrape trigger
 // =============================================================================
@@ -284,8 +296,11 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
     if (applyNativeMemoryPressureDiag(diag, err, "instagram")) {
       return { items: [], diag };
     }
+    if (applyInstagramPlaceholderDiag(diag, err)) {
+      return { items: [], diag };
+    }
     diag.errorStage = "invoke";
-    diag.errorMessage = err instanceof Error ? err.message : String(err);
+    diag.errorMessage = errorMessageFromUnknown(err);
     return { items: [], diag };
   } finally {
     safeUnlisten(unlisten, "ig-feed-data");
