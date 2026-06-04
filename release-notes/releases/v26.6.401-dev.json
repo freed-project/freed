@@ -3,7 +3,7 @@
   "version": "26.6.401-dev",
   "channel": "dev",
   "dayKey": "26.6.4",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-04T16:48:17.762Z",
   "model": "heuristic",
@@ -124,7 +124,7 @@
       "Saved content sorting"
     ],
     "fixes": [
-      "Dev release validation are now more stable",
+      "Dev release validation is more stable",
       "Capture and scraper reliability fixes",
       "Reader, feed, and header polish"
     ],
@@ -142,5 +142,5 @@
       "Defer RSS content backfill under WebKit pressure"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.401-dev\n\nBackground activity monitor, Facebook group leave handoff, and saved content sorting\n\n### Features\n\n- Background activity monitor\n- Facebook group leave handoff\n- Saved content sorting\n\n### Fixes\n\n- Dev release validation are now more stable\n- Capture and scraper reliability fixes\n- Reader, feed, and header polish\n\n### Follow-ups\n\n- Reduce desktop sync stutter\n- Reverse integrate v26.6.303\n- Reduce settings scroll frame work\n- Reduce sync frame pressure\n- Merge main back into dev after v26.6.204\n- Stop idle automerge workers reliably\n- Trim validation runner checks\n- Skip hidden atmosphere startup\n- Release hidden atmosphere layers\n- Reduce renderer atmosphere memory\n- Defer RSS content backfill under WebKit pressure\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.401-dev\n\nBackground activity monitor, Facebook group leave handoff, and saved content sorting\n\n### Features\n\n- Background activity monitor\n- Facebook group leave handoff\n- Saved content sorting\n\n### Fixes\n\n- Dev release validation is more stable\n- Capture and scraper reliability fixes\n- Reader, feed, and header polish\n\n### Follow-ups\n\n- Reduce desktop sync stutter\n- Reverse integrate v26.6.303\n- Reduce settings scroll frame work\n- Reduce sync frame pressure\n- Merge main back into dev after v26.6.204\n- Stop idle automerge workers reliably\n- Trim validation runner checks\n- Skip hidden atmosphere startup\n- Release hidden atmosphere layers\n- Reduce renderer atmosphere memory\n- Defer RSS content backfill under WebKit pressure\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
