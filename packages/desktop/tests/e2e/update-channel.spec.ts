@@ -1,36 +1,38 @@
 import { test, expect } from "./fixtures/app";
+import type { Locator } from "@playwright/test";
 
-async function measureButtonTextPosition(
-  page: import("@playwright/test").Page,
-  buttonText: string,
-) {
-  return page.evaluate((text) => {
-    const button = Array.from(document.querySelectorAll("button")).find(
-      (candidate) => candidate.textContent?.trim() === text,
-    );
-    if (!button) {
-      return null;
-    }
-
-    const textNode = Array.from(button.childNodes).find(
+async function measureButtonTextPosition(button: Locator, buttonText: string) {
+  return button.evaluate((buttonElement, text) => {
+    const textNode = Array.from(buttonElement.childNodes).find(
       (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.includes(text),
     );
     const range = document.createRange();
     if (textNode) {
       range.selectNodeContents(textNode);
     } else {
-      range.selectNodeContents(button);
+      range.selectNodeContents(buttonElement);
     }
     const textRect = range.getBoundingClientRect();
-    const buttonStyle = getComputedStyle(button);
+    const buttonStyle = getComputedStyle(buttonElement);
 
     return {
       x: textRect.x,
       y: textRect.y,
       transform: buttonStyle.transform,
-      matchesHover: button.matches(":hover"),
+      matchesHover: buttonElement.matches(":hover"),
     };
   }, buttonText);
+}
+
+async function waitForButtonScrollSettle(button: Locator) {
+  await button.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(resolve);
+        });
+      }),
+  );
 }
 
 test("launch-time auto-check runs once after legal acceptance", async ({ app, page }) => {
@@ -228,16 +230,18 @@ test("updates settings buttons do not move text on hover", async ({ app, page })
   for (const buttonName of buttons) {
     const button = settingsDialog.getByRole("button", { name: buttonName });
     await expect(button).toBeVisible({ timeout: 5_000 });
+    await button.scrollIntoViewIfNeeded();
+    await waitForButtonScrollSettle(button);
 
-    const before = await measureButtonTextPosition(page, buttonName);
+    const before = await measureButtonTextPosition(button, buttonName);
     expect(before).not.toBeNull();
 
     await button.hover();
     await expect.poll(async () => {
-      return (await measureButtonTextPosition(page, buttonName))?.matchesHover ?? false;
+      return (await measureButtonTextPosition(button, buttonName))?.matchesHover ?? false;
     }).toBe(true);
 
-    const hover = await measureButtonTextPosition(page, buttonName);
+    const hover = await measureButtonTextPosition(button, buttonName);
     expect(hover).not.toBeNull();
     expect(hover?.transform).toBe("none");
     expect(Math.abs((hover?.x ?? 0) - (before?.x ?? 0))).toBeLessThanOrEqual(0.01);
