@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   invoke: vi.fn(async () => false),
   onStatusChange: vi.fn(() => () => {}),
   resetPairingToken: vi.fn(),
+  resolveCloudSyncConflict: vi.fn(async () => {}),
   syncCloudProviderNow: vi.fn(async () => {}),
 }));
 
@@ -41,6 +42,7 @@ vi.mock("../lib/sync", () => ({
   getSyncUrl: mocks.getSyncUrl,
   onStatusChange: mocks.onStatusChange,
   resetPairingToken: mocks.resetPairingToken,
+  resolveCloudSyncConflict: mocks.resolveCloudSyncConflict,
   syncCloudProviderNow: mocks.syncCloudProviderNow,
 }));
 
@@ -120,5 +122,49 @@ describe("MobileSyncTab cloud diagnostics", () => {
     });
 
     expect(mocks.syncCloudProviderNow).toHaveBeenCalledWith("gdrive");
+  });
+
+  it("lets the user choose a winner when a destructive cloud merge is blocked", async () => {
+    useDebugStore.setState({
+      cloudProviders: {
+        dropbox: { status: "idle" },
+        gdrive: {
+          status: "connected",
+          stage: "idle",
+          error: "Freed blocked a sync merge because it would remove too much feed history.",
+          statusMessage: "Watching for local document changes.",
+        },
+      },
+    });
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    await act(async () => {
+      root.render(<MobileSyncTab />);
+    });
+
+    const recovery = container.querySelector("[data-testid='cloud-sync-conflict-recovery']");
+    const keepLocal = container.querySelector<HTMLButtonElement>("[data-testid='cloud-sync-keep-local-button']");
+    const keepCloud = container.querySelector<HTMLButtonElement>("[data-testid='cloud-sync-keep-cloud-button']");
+
+    expect(recovery?.textContent).toContain("Choose which copy should win.");
+    expect(recovery?.textContent).toContain("Keep this device replaces the cloud backup.");
+    expect(keepLocal).toBeInstanceOf(HTMLButtonElement);
+    expect(keepCloud).toBeInstanceOf(HTMLButtonElement);
+
+    await act(async () => {
+      keepLocal?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(confirmMock).toHaveBeenCalledWith(expect.stringContaining("replace the Google Drive cloud backup"));
+    expect(mocks.resolveCloudSyncConflict).toHaveBeenCalledWith("gdrive", "local");
+
+    await act(async () => {
+      keepCloud?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(mocks.resolveCloudSyncConflict).toHaveBeenCalledWith("gdrive", "cloud");
+    confirmMock.mockRestore();
   });
 });

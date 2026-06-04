@@ -11,6 +11,8 @@ const logErrorMock = vi.fn();
 const updateCloudProviderMock = vi.fn();
 const recordCloudProviderEventMock = vi.fn();
 const gdriveUploadSafeMock = vi.fn();
+const gdriveDeleteFileMock = vi.fn();
+const replaceLocalDocMock = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
@@ -28,7 +30,7 @@ vi.mock("@freed/sync/cloud", () => ({
   gdriveDownloadLatest: gdriveDownloadLatestMock,
   gdriveStartPollLoop: gdriveStartPollLoopMock,
   gdriveUploadSafe: gdriveUploadSafeMock,
-  gdriveDeleteFile: vi.fn(),
+  gdriveDeleteFile: gdriveDeleteFileMock,
   dropboxDownloadLatest: vi.fn(),
   dropboxStartLongpollLoop: vi.fn(),
   dropboxUploadSafe: vi.fn(),
@@ -38,6 +40,7 @@ vi.mock("@freed/sync/cloud", () => ({
 vi.mock("./automerge", () => ({
   getDocBinary: vi.fn(async () => new Uint8Array()),
   mergeDoc: vi.fn(),
+  replaceLocalDoc: replaceLocalDocMock,
   setRelayClientCount: vi.fn(),
   subscribe: subscribeMock,
 }));
@@ -80,6 +83,8 @@ describe("desktop cloud sync auth refresh", () => {
     updateCloudProviderMock.mockReset();
     recordCloudProviderEventMock.mockReset();
     gdriveUploadSafeMock.mockReset();
+    gdriveDeleteFileMock.mockReset();
+    replaceLocalDocMock.mockReset();
     localStorage.clear();
   });
 
@@ -353,6 +358,60 @@ describe("desktop cloud sync auth refresh", () => {
       expect.any(AbortSignal),
       undefined,
     );
+  });
+
+  it("resolves a destructive merge by making this device replace the cloud backup", async () => {
+    const { resolveCloudSyncConflict, storeCloudToken, stopAllCloudSyncs } = await import("./sync");
+    storeCloudToken("gdrive", {
+      accessToken: "valid-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 3_600_000,
+    });
+    gdriveUploadSafeMock.mockResolvedValue({
+      fileId: "file-1",
+      uploadedBinary: new Uint8Array([1, 2, 3]),
+      uploadedBytes: 3,
+      remoteBytes: 0,
+      mergedRemote: false,
+    });
+    gdriveDownloadLatestMock.mockResolvedValue(null);
+
+    await resolveCloudSyncConflict("gdrive", "local");
+    stopAllCloudSyncs();
+
+    expect(gdriveDeleteFileMock).toHaveBeenCalledWith("valid-access-token", undefined);
+    expect(gdriveUploadSafeMock).toHaveBeenCalledWith(
+      "valid-access-token",
+      expect.any(Uint8Array),
+      undefined,
+    );
+    expect(replaceLocalDocMock).not.toHaveBeenCalled();
+    expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      statusMessage: "This device replaced the cloud backup.",
+    }));
+  });
+
+  it("resolves a destructive merge by making the cloud backup replace this device", async () => {
+    const remote = new Uint8Array([9, 8, 7]);
+    const { resolveCloudSyncConflict, storeCloudToken, stopAllCloudSyncs } = await import("./sync");
+    storeCloudToken("gdrive", {
+      accessToken: "valid-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 3_600_000,
+    });
+    gdriveDownloadLatestMock
+      .mockResolvedValueOnce(remote)
+      .mockResolvedValue(null);
+
+    await resolveCloudSyncConflict("gdrive", "cloud");
+    stopAllCloudSyncs();
+
+    expect(replaceLocalDocMock).toHaveBeenCalledWith(remote);
+    expect(gdriveDeleteFileMock).not.toHaveBeenCalled();
+    expect(gdriveUploadSafeMock).not.toHaveBeenCalled();
+    expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      statusMessage: "This device now uses the cloud backup.",
+    }));
   });
 
   it("does not crash startup when the Google token proxy is missing its secret", async () => {

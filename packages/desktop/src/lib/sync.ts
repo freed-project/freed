@@ -21,7 +21,7 @@ import {
   type CloudProvider,
   type GoogleDriveFetch,
 } from "@freed/sync/cloud";
-import { getDocBinary, mergeDoc, subscribe, setRelayClientCount } from "./automerge";
+import { getDocBinary, mergeDoc, replaceLocalDoc, subscribe, setRelayClientCount } from "./automerge";
 import {
   addDebugEvent,
   recordCloudProviderEvent,
@@ -1313,6 +1313,94 @@ export async function deleteCloudFile(provider: CloudProvider, token: string): P
     await gdriveDeleteFile(token, googleDriveFetch);
   } else {
     await dropboxDeleteFile(token);
+  }
+}
+
+export type CloudConflictWinner = "local" | "cloud";
+
+/**
+ * Resolve a blocked destructive merge by making one document authoritative.
+ * Local wins deletes the cloud file first, then uploads this device's current
+ * Automerge binary. Cloud wins downloads the cloud binary and replaces this
+ * device's local document instead of merging it.
+ */
+export async function resolveCloudSyncConflict(
+  provider: CloudProvider,
+  winner: CloudConflictWinner,
+): Promise<void> {
+  const token = await getValidCloudToken(provider);
+  if (!token) throw new Error("Cloud token missing. Reconnect the provider.");
+
+  stopCloudSync(provider);
+  updateCloudProvider(provider, {
+    status: "connected",
+    stage: winner === "local" ? "upload" : "download",
+    statusMessage: winner === "local"
+      ? "Replacing the cloud backup with this device."
+      : "Replacing this device with the cloud backup.",
+    pendingReason: "Applying the selected sync recovery path.",
+    error: undefined,
+  });
+  recordCloudStep(
+    provider,
+    "queued",
+    winner === "local" ? "upload" : "download",
+    winner === "local"
+      ? "Sync recovery requested. This device will replace the cloud backup."
+      : "Sync recovery requested. The cloud backup will replace this device.",
+  );
+
+  try {
+    if (winner === "local") {
+      await runBackgroundJob({
+        kind: "cloud-sync",
+        source: `cloud:${provider}:conflict-local-wins`,
+        timeoutMs: 180_000,
+        waitForActiveJobMs: UPLOAD_ACTIVE_JOB_WAIT_MS,
+        waitForActiveJobKinds: UPLOAD_WAIT_FOR_ACTIVE_JOB_KINDS,
+        run: async () => {
+          await deleteCloudFile(provider, token);
+          await performCloudUpload(provider, token);
+        },
+      });
+      await startCloudSync(provider, token);
+      updateCloudProvider(provider, {
+        status: "connected",
+        stage: "idle",
+        statusMessage: "This device replaced the cloud backup.",
+        pendingReason: "Waiting for local document changes or Sync now.",
+        error: undefined,
+      });
+      recordCloudStep(provider, "success", "idle", "This device replaced the cloud backup.");
+      return;
+    }
+
+    await runBackgroundJob({
+      kind: "cloud-sync",
+      source: `cloud:${provider}:conflict-cloud-wins`,
+      timeoutMs: 180_000,
+      waitForActiveJobMs: UPLOAD_ACTIVE_JOB_WAIT_MS,
+      waitForActiveJobKinds: UPLOAD_WAIT_FOR_ACTIVE_JOB_KINDS,
+      run: async () => {
+        const remote = provider === "gdrive"
+          ? await gdriveDownloadLatest(token, undefined, googleDriveFetch)
+          : await dropboxDownloadLatest(token);
+        if (!remote) throw new Error("No cloud backup found.");
+        await replaceLocalDoc(remote);
+      },
+    });
+    await startCloudSync(provider, token);
+    updateCloudProvider(provider, {
+      status: "connected",
+      stage: "idle",
+      statusMessage: "This device now uses the cloud backup.",
+      pendingReason: "Waiting for local document changes or Sync now.",
+      error: undefined,
+    });
+    recordCloudStep(provider, "success", "idle", "This device now uses the cloud backup.");
+  } catch (error) {
+    markCloudError(provider, winner === "local" ? "upload" : "download", error);
+    throw error;
   }
 }
 
