@@ -141,10 +141,12 @@ describe("store startup migrations", () => {
     mockStartOutboxProcessor.mockReset();
     mockStartOutboxProcessor.mockReturnValue(() => {});
     mockSubscribe.mockClear();
+    localStorage.clear();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    localStorage.clear();
   });
 
   it("defers content signal backfill instead of running it during launch", async () => {
@@ -171,5 +173,21 @@ describe("store startup migrations", () => {
       }),
     );
     expect(mockDocBackfillContentSignals).toHaveBeenCalledWith(50);
+  });
+
+  it("does not run cleanup migrations before cloud sync catches up", async () => {
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "token",
+      expiresAt: Date.now() + 120_000,
+    }));
+    const { useAppStore } = await import("./store");
+
+    await useAppStore.getState().initialize();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mockDocHealUntitledFeedTitles).not.toHaveBeenCalled();
+    expect(mockDocDeduplicateFeedItems).not.toHaveBeenCalled();
+    expect(mockDocPruneArchivedItems).not.toHaveBeenCalled();
+    expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
   });
 });

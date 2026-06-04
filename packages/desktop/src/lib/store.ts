@@ -305,6 +305,17 @@ async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS);
 }
 
+function hasStoredCloudSyncCredentials(): boolean {
+  try {
+    return (
+      localStorage.getItem("freed_cloud_token_meta_gdrive") !== null ||
+      localStorage.getItem("freed_cloud_token_meta_dropbox") !== null
+    );
+  } catch {
+    return false;
+  }
+}
+
 const READ_MARK_BATCH_DELAY_MS = 50;
 const pendingReadIds = new Set<string>();
 let readMarkBatchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -562,8 +573,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         async (id, syncedAt) => { await docConfirmSeenSynced(id, syncedAt); },
       );
 
-      // Run cleanup migrations in the background via worker.
-      void runStartupMigrations(docState.preferences.display.archivePruneDays ?? 30);
+      // Do not mutate the local doc before cloud sync has reconciled it.
+      if (!hasStoredCloudSyncCredentials()) {
+        void runStartupMigrations(docState.preferences.display.archivePruneDays ?? 30);
+      }
     } catch (error) {
       recordRuntimeError({ source: "desktop:initialize", error, fatal: false });
       recordBugReportEvent("desktop:initialize", "error", "Initialization failed");

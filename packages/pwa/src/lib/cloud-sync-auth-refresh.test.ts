@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const gdriveDownloadLatestMock = vi.fn();
 const gdriveStartPollLoopMock = vi.fn();
 const gdriveUploadSafeMock = vi.fn();
+const getDocBinaryMock = vi.fn();
 const initDocMock = vi.fn();
 const mergeDocMock = vi.fn();
 const addDebugEventMock = vi.fn();
@@ -22,7 +23,7 @@ vi.mock("@freed/sync/cloud", () => ({
 }));
 
 vi.mock("./automerge", () => ({
-  getDocBinary: vi.fn(() => new Uint8Array()),
+  getDocBinary: getDocBinaryMock,
   initDoc: initDocMock,
   mergeDoc: mergeDocMock,
   subscribe: subscribeMock,
@@ -40,6 +41,8 @@ describe("PWA cloud sync auth refresh", () => {
     gdriveDownloadLatestMock.mockReset();
     gdriveStartPollLoopMock.mockReset();
     gdriveUploadSafeMock.mockReset();
+    getDocBinaryMock.mockReset();
+    getDocBinaryMock.mockResolvedValue(new Uint8Array());
     initDocMock.mockReset();
     initDocMock.mockResolvedValue({});
     mergeDocMock.mockReset();
@@ -148,6 +151,34 @@ describe("PWA cloud sync auth refresh", () => {
       kind: "queued",
       message: "Manual sync requested.",
     }));
+  });
+
+  it("reads the upload binary after the manual merge completes", async () => {
+    const remote = new Uint8Array([1, 2, 3]);
+    const mergedBinary = new Uint8Array([4, 5, 6]);
+    gdriveDownloadLatestMock.mockResolvedValue(remote);
+    getDocBinaryMock.mockResolvedValue(mergedBinary);
+    gdriveUploadSafeMock.mockResolvedValue({
+      fileId: "file-1",
+      uploadedBytes: mergedBinary.byteLength,
+      remoteBytes: remote.byteLength,
+      mergedRemote: false,
+      uploadedBinary: mergedBinary,
+    });
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "valid-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 120_000,
+    }));
+
+    const { syncCloudProviderNow } = await import("./sync");
+    await syncCloudProviderNow("gdrive");
+
+    expect(mergeDocMock).toHaveBeenCalledWith(remote);
+    expect(mergeDocMock.mock.invocationCallOrder[0]).toBeLessThan(
+      getDocBinaryMock.mock.invocationCallOrder[0],
+    );
+    expect(gdriveUploadSafeMock).toHaveBeenCalledWith("valid-access-token", mergedBinary);
   });
 
   it("uploads after local document changes while connected by Google Drive only", async () => {

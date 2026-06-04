@@ -274,9 +274,7 @@ async function saveAndBroadcast(): Promise<void> {
   };
   send(snapshot);
 
-  // binary is cloned by structured-clone on postMessage (not transferred) so
-  // the copy in storage.save() above is not affected.
-  const stateUpdate: WorkerResponse = { type: "STATE_UPDATE", state, binary };
+  const stateUpdate: WorkerResponse = { type: "STATE_UPDATE", state };
   send(stateUpdate);
 }
 
@@ -423,6 +421,12 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           summary = clearSampleData(doc);
         }, "Clear sample data", true);
         send({ reqId: req.reqId, type: "SAMPLE_DATA_CLEAR_RESULT", summary });
+        break;
+      }
+
+      case "GET_DOC_BINARY": {
+        if (!currentDoc) throw new Error("Document not initialized");
+        send({ reqId: req.reqId, type: "DOC_BINARY", binary: A.save(currentDoc) });
         break;
       }
 
