@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry in Freed Desktop, the Friends workspace now defaults to `All content`, and the graph surface now uses a worker-built graph atlas with a theme-aware Three.js starfield renderer, Troika billboard labels, visible-node caps, provider nebula and ring variations, confirmed friend stars closer to the camera, provisional human identities in the middle field, linked channel satellites around people, unlinked provider constellations around the edge, RSS treated as a normal provider island, context-menu linking and pinning, semantic zoom labels, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map plus Friends surfaces continue to share the unified top toolbar with current, future, and past map windows plus the quieter lower-left timeline scrubber
+> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry in Freed Desktop, the Friends workspace now defaults to `All content`, and the graph surface now uses a worker-built graph atlas with a theme-aware Three.js starfield renderer, Troika billboard labels, visible-node caps, provider nebula and ring variations, confirmed friend stars closer to the camera, provisional human identities in the middle field, linked channel satellites packed into tight fields around people with short bright connectors, unlinked provider constellations around the edge, RSS treated as a normal provider island, context-menu linking and pinning, semantic zoom labels, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map plus Friends surfaces continue to share the unified top toolbar with current, future, and past map windows plus the quieter lower-left timeline scrubber
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -144,7 +144,7 @@ Default nudge intervals by care level:
   - confirmed friends are the largest identity stars near the center and closer to the camera
   - Fam and high-priority friends get the strongest depth and glow
   - provisional human identities sit in the middle field
-  - linked social channels orbit their linked identity
+  - linked social channels pack into tight satellite fields around their linked identity
   - unlinked channels and RSS feeds live in provider constellations around the outer edge
   - RSS is a provider island like Instagram, LinkedIn, X, and Facebook, not a separate content band
   - provider zones can render as nebula clouds, constellation rings, or both through the dev test control
@@ -162,7 +162,7 @@ Default nudge intervals by care level:
 |---|---|
 | Confirmed friend | Bright central star, closer to the camera |
 | Provisional human identity | Medium star in middle depth |
-| Linked social channel | Small satellite star with quiet connector line |
+| Linked social channel | Readable satellite star with a short bright connector line |
 | RSS or unlinked outer channel | Small outer star inside provider constellation |
 | Focused selection | Connected cluster stays bright, unrelated nodes dim |
 | Higher zoom | More labels appear without shrinking the viewport |
@@ -345,6 +345,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.44 | Open captured channel details in Friends from the reader author name | Low | Done |
 | 8.45 | Replace the retained Pixi full-scene graph with a summary-backed graph atlas worker and capped canvas renderer | High | Done |
 | 8.46 | Render the Friends atlas as a theme-aware 3D starfield with context-menu linking and pinning | High | Done |
+| 8.47 | Tune the starfield for larger readable stars, tighter linked-channel fields, brighter connectors, and lower zoom render cost | High | Done |
 
 ---
 

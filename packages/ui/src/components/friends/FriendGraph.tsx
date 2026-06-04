@@ -364,15 +364,23 @@ function nodeDepth(node: IdentityGraphAtlasNode): number {
   return -128;
 }
 
-function nodePointSize(node: IdentityGraphAtlasNode, selected: boolean, hovered: boolean): number {
+function nodePointSize(
+  node: IdentityGraphAtlasNode,
+  selected: boolean,
+  hovered: boolean,
+  quality: IdentityGraphAtlasQuality,
+): number {
   const roleSize = node.kind === "friend_person"
-    ? 24
+    ? 34
     : node.kind === "connection_person"
-      ? 18
+      ? 28
       : node.kind === "provider_cluster"
-        ? 28
-        : 12;
-  return Math.max(5, roleSize + node.radius * 0.82 + (selected ? 16 : hovered ? 9 : 0));
+        ? 40
+        : node.kind === "feed"
+          ? 20
+          : 22;
+  const size = roleSize + node.radius * 1.05 + (selected ? 22 : hovered ? 12 : 0);
+  return Math.max(8, size * (quality === "interactive" ? 0.78 : 1));
 }
 
 function graphNodeColor(
@@ -397,7 +405,7 @@ function makePointMaterial(): THREE.ShaderMaterial {
     depthTest: true,
     blending: THREE.AdditiveBlending,
     uniforms: {
-      pixelRatio: { value: Math.min(2, window.devicePixelRatio || 1) },
+      pixelRatio: { value: Math.min(1.5, window.devicePixelRatio || 1) },
     },
     vertexShader: `
       attribute float pointSize;
@@ -407,10 +415,10 @@ function makePointMaterial(): THREE.ShaderMaterial {
       void main() {
         vColor = color;
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        float depthScale = clamp(900.0 / max(260.0, -mvPosition.z), 0.52, 2.3);
+        float depthScale = clamp(940.0 / max(280.0, -mvPosition.z), 0.68, 2.35);
         gl_PointSize = pointSize * depthScale;
         gl_Position = projectionMatrix * mvPosition;
-        vAlpha = clamp(pointSize / 38.0, 0.28, 1.0);
+        vAlpha = clamp(pointSize / 48.0, 0.36, 1.0);
       }
     `,
     fragmentShader: `
@@ -477,7 +485,7 @@ function drawFallbackStarfield(
   if (!context) return;
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
-  const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+  const pixelRatio = Math.min(1.5, window.devicePixelRatio || 1);
   const pixelWidth = Math.max(1, Math.floor(width * pixelRatio));
   const pixelHeight = Math.max(1, Math.floor(height * pixelRatio));
   if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
@@ -520,7 +528,7 @@ function drawFallbackStarfield(
       (!!node.accountId && node.accountId === selectedAccountId);
     const depth = nodeDepth(node);
     const parallax = 1 + Math.max(-0.24, Math.min(0.42, depth / 260));
-    const radius = Math.max(3.5, node.radius * 0.55 * parallax + (selected ? 5 : 0));
+    const radius = Math.max(5, node.radius * 0.82 * parallax + (selected ? 7 : 0));
     context.beginPath();
     context.arc(node.x, node.y, radius, 0, Math.PI * 2);
     context.fillStyle = node.kind === "friend_person"
@@ -550,9 +558,10 @@ class StarfieldGraphRenderer {
   private readonly edgeMaterial = new THREE.LineBasicMaterial({
     color: 0x7dd3fc,
     transparent: true,
-    opacity: 0.18,
+    opacity: 0.58,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+    depthTest: false,
   });
   private readonly edgeLines: THREE.LineSegments;
   private readonly starMaterial = makePointMaterial();
@@ -562,6 +571,7 @@ class StarfieldGraphRenderer {
   private height = 1;
   private starCount = 0;
   private paletteKey = "";
+  private pixelRatio = 0;
   private disposed = false;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -586,20 +596,26 @@ class StarfieldGraphRenderer {
     this.renderer.sortObjects = false;
     this.scene.add(this.graphGroup);
     this.scene.add(this.labelGroup);
-    this.nodePoints = new THREE.Points(this.nodeGeometry, this.nodeMaterial);
-    this.nodePoints.frustumCulled = false;
-    this.graphGroup.add(this.nodePoints);
+    this.graphGroup.add(this.regionGroup);
     this.edgeLines = new THREE.LineSegments(this.edgeGeometry, this.edgeMaterial);
     this.edgeLines.frustumCulled = false;
     this.graphGroup.add(this.edgeLines);
-    this.graphGroup.add(this.regionGroup);
+    this.nodePoints = new THREE.Points(this.nodeGeometry, this.nodeMaterial);
+    this.nodePoints.frustumCulled = false;
+    this.graphGroup.add(this.nodePoints);
   }
 
   resize(width: number, height: number): void {
     if (this.disposed) return;
-    this.width = Math.max(1, Math.floor(width));
-    this.height = Math.max(1, Math.floor(height));
-    const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+    const nextWidth = Math.max(1, Math.floor(width));
+    const nextHeight = Math.max(1, Math.floor(height));
+    const pixelRatio = Math.min(1.5, window.devicePixelRatio || 1);
+    if (this.width === nextWidth && this.height === nextHeight && this.pixelRatio === pixelRatio) {
+      return;
+    }
+    this.width = nextWidth;
+    this.height = nextHeight;
+    this.pixelRatio = pixelRatio;
     this.renderer.setPixelRatio(pixelRatio);
     this.renderer.setSize(this.width, this.height, false);
     this.camera.aspect = this.width / this.height;
@@ -628,7 +644,14 @@ class StarfieldGraphRenderer {
       palette.accountFill,
       palette.feedFill,
     ].join("|");
-    const nextStarCount = Math.max(24_000, Math.min(72_000, atlas.metrics.sourceNodeCount * 18));
+    const smallViewport = this.width <= 720 || this.height <= 620;
+    const starBudget = smallViewport
+      ? { min: 3_000, max: 7_000, perSource: 2 }
+      : { min: 5_000, max: 12_000, perSource: 3 };
+    const nextStarCount = Math.max(
+      starBudget.min,
+      Math.min(starBudget.max, atlas.metrics.sourceNodeCount * starBudget.perSource),
+    );
     if (nextStarCount !== this.starCount || nextPaletteKey !== this.paletteKey || !this.starPoints) {
       if (this.starPoints) {
         this.scene.remove(this.starPoints);
@@ -641,25 +664,26 @@ class StarfieldGraphRenderer {
       this.paletteKey = nextPaletteKey;
     }
     this.syncRegions(atlas, palette, variation);
+    this.edgeMaterial.color.copy(colorFromCss(palette.edge, "#7dd3fc"));
+    this.edgeMaterial.opacity = quality === "interactive" ? 0.26 : 0.58;
     this.syncEdges(atlas);
-    this.syncNodes(atlas, palette, selectedPersonId, selectedAccountId, hoveredNodeId);
+    this.syncNodes(atlas, palette, selectedPersonId, selectedAccountId, hoveredNodeId, quality);
     this.syncLabels(atlas, palette, quality);
   }
 
-  render(transform: ViewTransform): void {
+  render(transform: ViewTransform, quality: IdentityGraphAtlasQuality): void {
     if (this.disposed) return;
     this.applyTransform(transform);
-    const time = nowMs() * 0.00004;
     if (this.starPoints) {
-      this.starPoints.rotation.z = time;
+      this.starPoints.visible = quality !== "interactive";
       this.starPoints.position.set(
-        (transform.x - this.width / 2) * 0.08,
-        (this.height / 2 - transform.y) * 0.08,
+        (transform.x - this.width / 2) * 0.055,
+        (this.height / 2 - transform.y) * 0.055,
         0,
       );
-      this.starPoints.scale.setScalar(1 + transform.scale * 0.035);
+      this.starPoints.scale.setScalar(1.01 + transform.scale * 0.018);
     }
-    this.regionGroup.rotation.z = Math.sin(time * 4) * 0.006;
+    this.regionGroup.visible = quality !== "interactive";
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -779,6 +803,7 @@ class StarfieldGraphRenderer {
     selectedPersonId: string | null | undefined,
     selectedAccountId: string | null | undefined,
     hoveredNodeId: string | null,
+    quality: IdentityGraphAtlasQuality,
   ): void {
     const positions = new Float32Array(atlas.nodes.length * 3);
     const colors = new Float32Array(atlas.nodes.length * 3);
@@ -801,7 +826,7 @@ class StarfieldGraphRenderer {
       colors[index * 3] = color.r * muted;
       colors[index * 3 + 1] = color.g * muted;
       colors[index * 3 + 2] = color.b * muted;
-      sizes[index] = nodePointSize(node, selected, hovered);
+      sizes[index] = nodePointSize(node, selected, hovered, quality);
     }
     this.nodeGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     this.nodeGeometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
@@ -820,11 +845,17 @@ class StarfieldGraphRenderer {
   private syncLabels(atlas: IdentityGraphAtlas, palette: GraphPalette, quality: IdentityGraphAtlasQuality): void {
     this.clearLabels();
     if (quality === "interactive") return;
-    const cap = window.innerWidth < 720 ? 30 : 84;
+    const cap = window.innerWidth < 720 ? 44 : 110;
     for (const label of atlas.labels.slice(0, cap)) {
       const text = new TroikaText();
       text.text = label.text;
-      text.fontSize = label.kind === "provider_cluster" ? 24 : 15;
+      text.fontSize = label.kind === "provider_cluster"
+        ? 26
+        : label.kind === "friend_person"
+          ? 19
+          : label.kind === "connection_person"
+            ? 17
+            : 15;
       text.anchorX = "center";
       text.anchorY = "middle";
       text.color = colorFromCss(palette.text, "#f8fafc");
@@ -1068,7 +1099,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           );
           sceneDirtyRef.current = false;
         }
-        renderer.render(transformRef.current);
+        renderer.render(transformRef.current, latestQualityRef.current);
       } else {
         drawFallbackStarfield(
           canvas,
