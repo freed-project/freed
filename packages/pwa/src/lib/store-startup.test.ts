@@ -96,6 +96,7 @@ function makeBackfillSummary(
 describe("PWA store startup maintenance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     useAppStore.setState(useAppStore.getInitialState(), true);
     automerge.initDoc.mockResolvedValue(makeDocState());
     automerge.docBackfillContentSignals.mockResolvedValue(makeBackfillSummary(0, 0));
@@ -117,6 +118,18 @@ describe("PWA store startup maintenance", () => {
     });
     expect(automerge.docBackfillContentSignals).toHaveBeenNthCalledWith(1, 200);
     expect(automerge.docBackfillContentSignals).toHaveBeenNthCalledWith(2, 200);
+  });
+
+  it("does not mutate the local document before cloud sync catches up", async () => {
+    localStorage.setItem("freed_cloud_provider", "gdrive");
+
+    await useAppStore.getState().initialize();
+
+    await vi.waitFor(() => {
+      expect(automerge.initDoc).toHaveBeenCalledTimes(1);
+    });
+    expect(automerge.docPruneArchivedItems).not.toHaveBeenCalled();
+    expect(automerge.docBackfillContentSignals).not.toHaveBeenCalled();
   });
 
   it("delegates sample data clearing to the worker", async () => {

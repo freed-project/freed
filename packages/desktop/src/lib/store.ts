@@ -76,6 +76,7 @@ import { initLiAuth, storeLiAuthState, type LiAuthState } from "./li-auth";
 import { reconcileSocialAuthStateHints } from "./social-auth-cookie-state";
 
 let outboxTeardown: (() => void) | null = null;
+let startupMaintenanceTimer: ReturnType<typeof setTimeout> | null = null;
 let startupContentSignalTimer: ReturnType<typeof setTimeout> | null = null;
 let startupContentSignalBackfillRunning = false;
 
@@ -285,10 +286,12 @@ async function pruneConnectionPersonIfNeeded(
 }
 
 /**
- * Run idempotent startup migrations in the background after the app renders.
+ * Run idempotent startup migrations after the app survives launch.
  * subscribe() is already wired up at call time, so any doc mutations propagate
  * to the UI automatically. Errors are swallowed - all three ops are non-fatal.
- * Migrations now run in the worker (zero main-thread cost).
+ * Migrations run in the worker, but WebKit still owns worker memory. Delaying
+ * them keeps large libraries from immediately reloading the Automerge document
+ * right after first paint.
  */
 async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   try {
@@ -305,6 +308,18 @@ async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS);
 }
 
+function hasStoredCloudSyncCredentials(): boolean {
+  try {
+    return (
+      localStorage.getItem("freed_cloud_token_meta_gdrive") !== null ||
+      localStorage.getItem("freed_cloud_token_meta_dropbox") !== null
+    );
+  } catch {
+    return false;
+  }
+}
+
+const STARTUP_MAINTENANCE_INITIAL_DELAY_MS = 15 * 60 * 1000;
 const READ_MARK_BATCH_DELAY_MS = 50;
 const pendingReadIds = new Set<string>();
 let readMarkBatchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -347,6 +362,14 @@ const STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS = 10 * 60 * 1000;
 const STARTUP_CONTENT_SIGNAL_RETRY_DELAY_MS = 30 * 1000;
 const STARTUP_CONTENT_SIGNAL_INTERVAL_MS = 60 * 1000;
 const STARTUP_CONTENT_SIGNAL_BATCH_SIZE = 50;
+
+function scheduleStartupMigrations(archivePruneDays: number): void {
+  if (startupMaintenanceTimer) return;
+  startupMaintenanceTimer = setTimeout(() => {
+    startupMaintenanceTimer = null;
+    void runStartupMigrations(archivePruneDays);
+  }, STARTUP_MAINTENANCE_INITIAL_DELAY_MS);
+}
 
 function scheduleStartupContentSignalBackfill(delayMs: number): void {
   if (startupContentSignalTimer) return;
@@ -562,8 +585,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         async (id, syncedAt) => { await docConfirmSeenSynced(id, syncedAt); },
       );
 
-      // Run cleanup migrations in the background via worker.
-      void runStartupMigrations(docState.preferences.display.archivePruneDays ?? 30);
+      // Do not mutate the local doc before cloud sync has reconciled it.
+      if (!hasStoredCloudSyncCredentials()) {
+        // Run cleanup migrations later. On large local libraries, immediate
+        // maintenance can force another full Automerge load while the renderer is
+        // still recovering from initial hydration.
+        scheduleStartupMigrations(docState.preferences.display.archivePruneDays ?? 30);
+      }
     } catch (error) {
       recordRuntimeError({ source: "desktop:initialize", error, fatal: false });
       recordBugReportEvent("desktop:initialize", "error", "Initialization failed");

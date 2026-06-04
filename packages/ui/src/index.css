@@ -2098,6 +2098,13 @@ html.freed-mobile-sidebar-open body {
   -webkit-backdrop-filter: blur(0px) saturate(100%);
 }
 
+.theme-settings-overlay[data-moving="true"] {
+  background: rgb(var(--theme-shell-rgb) / 0.12);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: none;
+}
+
 .theme-settings-shell[data-moving="true"] .theme-card-soft {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035);
   backdrop-filter: none;
@@ -2110,13 +2117,6 @@ html.freed-mobile-sidebar-open body {
 
 .theme-settings-shell[data-moving="true"] .theme-dialog-section {
   box-shadow: none;
-}
-
-.theme-settings-shell[data-moving="true"] *,
-.theme-settings-shell[data-moving="true"] *::before,
-.theme-settings-shell[data-moving="true"] *::after {
-  animation: none !important;
-  transition: none !important;
 }
 
 html[data-memory-pressure="critical"] .theme-settings-overlay,
@@ -2207,6 +2207,9 @@ html[data-theme="scriptorium"] .theme-settings-shell:not([data-moving="true"]) {
 
 .theme-dialog-shell.theme-settings-shell[data-moving="true"] {
   box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: none;
 }
 
 .theme-dialog-divider {

@@ -351,4 +351,28 @@ describe("background runtime coordinator", () => {
       reason: "waiting_for_renderer_heartbeat:0",
     });
   });
+
+  it("resumes jobs after renderer recovery reports healthy heartbeats", async () => {
+    const coordinator = await loadCoordinator();
+    coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: true });
+    coordinator.noteRendererHeartbeat(heartbeat(1));
+    coordinator.noteRendererHeartbeat(heartbeat(2));
+
+    coordinator.noteRendererRecoveryState({
+      phase: "recovery_attempt",
+      reason: "renderer event loop lag high",
+    });
+
+    coordinator.noteRendererHeartbeat(heartbeat(3));
+    coordinator.noteRendererHeartbeat(heartbeat(4));
+
+    expect(coordinator.canStartBackgroundJob("social-scrape")).toEqual({ ok: true });
+    await expect(
+      coordinator.runBackgroundJob({
+        kind: "social-scrape",
+        source: "instagram:feed",
+        run: () => "scraped",
+      }),
+    ).resolves.toBe("scraped");
+  });
 });

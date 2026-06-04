@@ -11,6 +11,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { selectPlatformUA, clearPlatformUA } from "./user-agent";
 import { log } from "./logger";
 import { safeUnlisten } from "./safe-unlisten";
+import { clearTransientLastCaptureError } from "./social-auth-transient-errors";
 
 export interface FbAuthState {
   isAuthenticated: boolean;
@@ -96,7 +97,7 @@ export async function disconnectFb(): Promise<void> {
  * Persist auth state to localStorage for fast startup.
  */
 export function storeFbAuthState(state: FbAuthState): void {
-  localStorage.setItem(FB_AUTH_KEY, JSON.stringify(state));
+  localStorage.setItem(FB_AUTH_KEY, JSON.stringify(clearTransientLastCaptureError(state)));
 }
 
 /**
@@ -108,7 +109,7 @@ export function initFbAuth(): FbAuthState {
   if (!stored) return { isAuthenticated: false };
   try {
     const parsed = JSON.parse(stored) as FbAuthState;
-    return {
+    return clearTransientLastCaptureError({
       isAuthenticated: !!parsed.isAuthenticated,
       lastCheckedAt: parsed.lastCheckedAt,
       lastCapturedAt: parsed.lastCapturedAt,
@@ -116,7 +117,7 @@ export function initFbAuth(): FbAuthState {
       pausedUntil: parsed.pausedUntil,
       pauseReason: parsed.pauseReason,
       pauseLevel: parsed.pauseLevel,
-    };
+    });
   } catch {
     return { isAuthenticated: false };
   }

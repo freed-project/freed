@@ -329,4 +329,59 @@ describe("useContactSync", () => {
 
     expect(fetchContacts).toHaveBeenCalledOnce();
   });
+
+  it("skips automatic focus syncs during the launch grace period", async () => {
+    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, JSON.stringify({
+      authStatus: "connected",
+      syncStatus: "idle",
+      syncStartedAt: null,
+      syncToken: "stale-token",
+      lastSyncedAt: Date.now() - 60 * 60 * 1000,
+      cachedContacts: [],
+      pendingSuggestions: [],
+      dismissedSuggestionIds: [],
+      createdFriendCount: 0,
+    }));
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    const fetchContacts = vi.fn(async () => ({ contacts: [], nextSyncToken: "next-token", deleted: [] }));
+    const platformValue = {
+      store: <T,>(selector: (state: unknown) => T): T => selector({
+        persons: {},
+        accounts: {},
+        items: [],
+        setPendingMatchCount: vi.fn(),
+      }),
+      googleContacts: {
+        getToken: vi.fn(async () => "google-access-token"),
+        connect: vi.fn(async () => {}),
+        fetchContacts,
+      },
+    } as unknown as PlatformConfig;
+
+    await act(async () => {
+      root.render(
+        <PlatformProvider value={platformValue}>
+          <ContactSyncHarness onReady={() => {}} />
+        </PlatformProvider>,
+      );
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      await Promise.resolve();
+    });
+
+    expect(fetchContacts).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    expect(fetchContacts).toHaveBeenCalledOnce();
+  });
 });

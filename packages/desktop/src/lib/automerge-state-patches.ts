@@ -97,8 +97,26 @@ export function applyItemPatchesToState(
   state: DocState,
   patches: FeedItemPatch[],
   itemIndex: ItemIndex,
+  options: {
+    orderedItemIds?: string[];
+    searchCorpusVersion?: number;
+    docItemCount?: number;
+  } = {},
 ): { state: DocState; itemIndex: ItemIndex } {
-  if (patches.length === 0) return { state, itemIndex };
+  if (patches.length === 0 && !options.orderedItemIds) {
+    const metadataChanged =
+      options.searchCorpusVersion !== undefined || options.docItemCount !== undefined;
+    return metadataChanged
+      ? {
+          state: {
+            ...state,
+            searchCorpusVersion: options.searchCorpusVersion ?? state.searchCorpusVersion,
+            docItemCount: options.docItemCount ?? state.docItemCount,
+          },
+          itemIndex,
+        }
+      : { state, itemIndex };
+  }
 
   let nextItems: FeedItem[] | null = null;
   let counts: CountState | null = null;
@@ -148,10 +166,43 @@ export function applyItemPatchesToState(
     }
   }
 
-  if (!nextItems) return { state, itemIndex };
+  const itemsForOrdering = nextItems as FeedItem[] | null;
+  if (itemsForOrdering && options.orderedItemIds) {
+    const itemById = new Map<string, FeedItem>(
+      itemsForOrdering.map((item) => [item.globalId, item]),
+    );
+    const reorderedItems: FeedItem[] = [];
+    for (const globalId of options.orderedItemIds) {
+      const item = itemById.get(globalId);
+      if (!item) continue;
+      reorderedItems.push(item);
+      itemById.delete(globalId);
+    }
+    if (reorderedItems.length > 0) {
+      nextItems = [...reorderedItems, ...itemById.values()];
+      indexNeedsRebuild = true;
+    }
+  }
+
+  if (!nextItems) {
+    return {
+      state: {
+        ...state,
+        searchCorpusVersion: options.searchCorpusVersion ?? state.searchCorpusVersion,
+        docItemCount: options.docItemCount ?? state.docItemCount,
+      },
+      itemIndex,
+    };
+  }
   const nextIndex = indexNeedsRebuild ? createItemIndex(nextItems) : itemIndex;
+  const metadataState = {
+    searchCorpusVersion: options.searchCorpusVersion ?? state.searchCorpusVersion,
+    docItemCount: options.docItemCount ?? state.docItemCount,
+  };
   return {
-    state: counts ? applyCountState({ ...state, items: nextItems }, counts) : { ...state, items: nextItems },
+    state: counts
+      ? applyCountState({ ...state, ...metadataState, items: nextItems }, counts)
+      : { ...state, ...metadataState, items: nextItems },
     itemIndex: nextIndex,
   };
 }

@@ -215,7 +215,7 @@ test("settings version click smooth-scrolls to updates once and remains anchored
   await expectHeadingTopNear(page, "updates", 20);
 });
 
-test("settings only unblurs the backdrop while hovering the appearance theme card", async ({ app, page }) => {
+test("settings reduces backdrop work during scroll and restores it at idle", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -232,6 +232,17 @@ test("settings only unblurs the backdrop while hovering the appearance theme car
   await page.getByTestId("settings-scroll-container").hover();
   await expect(dialog).not.toHaveAttribute("data-moving", "true");
   await expect(overlay).not.toHaveClass(/theme-settings-overlay-preview-off/);
+  await expect(overlay).not.toHaveAttribute("data-moving", "true");
+
+  await page.getByTestId("settings-scroll-container").evaluate((container) => {
+    container.scrollTop += 180;
+    container.dispatchEvent(new Event("scroll"));
+  });
+  await expect(dialog).toHaveAttribute("data-moving", "true");
+  await expect(overlay).toHaveAttribute("data-moving", "true");
+  await expect(overlay).toHaveCSS("backdrop-filter", "none");
+  await expect(overlay).not.toHaveClass(/theme-settings-overlay-preview-off/);
+  await expect(overlay).not.toHaveAttribute("data-moving", "true", { timeout: 2_000 });
 
   await dialog.getByRole("button", { name: "Appearance", exact: true }).click();
   await dialog.locator(".theme-settings-theme-card").hover();

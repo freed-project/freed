@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as A from "@automerge/automerge";
+import { addFeedItem, createEmptyDoc, type FreedDoc } from "@freed/shared/schema";
+import type { FeedItem } from "@freed/shared";
 import { gdriveDownloadLatest, gdriveStartPollLoop, gdriveUploadSafe } from "@freed/sync/cloud";
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
@@ -7,6 +10,47 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     ...init,
   });
+}
+
+function responseBodyFromBytes(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
+function makeItem(globalId: string): FeedItem {
+  return {
+    platform: "rss",
+    contentType: "article",
+    capturedAt: Date.now(),
+    publishedAt: Date.now(),
+    author: { id: "author-1", handle: "author", displayName: "Author" },
+    content: { text: "Test content", mediaUrls: [], mediaTypes: [] },
+    topics: [],
+    userState: { hidden: false, saved: false, archived: false, tags: [] },
+    globalId,
+  };
+}
+
+function makeTrustedAndDeleteHeavyDocs(): { trusted: Uint8Array; deleteHeavy: Uint8Array } {
+  let trustedDoc = createEmptyDoc();
+  trustedDoc = A.change(trustedDoc, (doc) => {
+    for (let i = 0; i < 600; i += 1) {
+      addFeedItem(doc, makeItem(`trusted-item-${i}`));
+    }
+  });
+
+  let deleteHeavyDoc = A.clone(trustedDoc) as FreedDoc;
+  deleteHeavyDoc = A.change(deleteHeavyDoc, (doc) => {
+    for (let i = 20; i < 600; i += 1) {
+      delete doc.feedItems[`trusted-item-${i}`];
+    }
+  });
+
+  return {
+    trusted: A.save(trustedDoc),
+    deleteHeavy: A.save(deleteHeavyDoc),
+  };
 }
 
 describe("Google Drive cloud sync", () => {
@@ -82,6 +126,39 @@ describe("Google Drive cloud sync", () => {
       remoteBytes: 0,
       mergedRemote: false,
     });
+  });
+
+  it("blocks uploads when a cloud merge would wipe out a much larger document", async () => {
+    const { trusted, deleteHeavy } = makeTrustedAndDeleteHeavyDocs();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/files?")) {
+        return jsonResponse({ files: [{ id: "file-1" }] });
+      }
+      if (url.includes("/files/file-1?fields=")) {
+        return jsonResponse(
+          { size: trusted.byteLength.toLocaleString("en-US", { useGrouping: false }) },
+          { headers: { ETag: '"server-etag"' } },
+        );
+      }
+      if (url.includes("/files/file-1?alt=media")) {
+        return new Response(responseBodyFromBytes(trusted));
+      }
+      if (url.includes("/upload/drive/v3/files/file-1")) {
+        throw new Error("Upload should not run after destructive merge guard blocks.");
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(gdriveUploadSafe("token", deleteHeavy)).rejects.toThrow(
+      /Freed blocked a sync merge/,
+    );
+
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("/upload/drive/v3/files/file-1"),
+      expect.anything(),
+    );
   });
 
   it("can route Drive downloads through a platform fetcher", async () => {

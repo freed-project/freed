@@ -463,7 +463,7 @@ declare global {
     __freed: {
       getDoc?: () => unknown;
       getDocJson?: () => string;
-      getDocBinary?: () => Uint8Array;
+      getDocBinary?: () => Uint8Array | Promise<Uint8Array>;
       debug?: () => DebugState;
     };
   }
@@ -472,7 +472,7 @@ declare global {
 export function registerDocAccessors(
   getDoc: () => unknown,
   getDocJson: () => string,
-  getDocBinary: () => Uint8Array,
+  getDocBinary: () => Uint8Array | Promise<Uint8Array>,
 ): void {
   window.__freed = {
     ...window.__freed,

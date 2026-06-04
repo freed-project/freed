@@ -70,6 +70,13 @@ const pendingSampleDataClear = new Map<
     reject: (err: Error) => void;
   }
 >();
+const pendingDocBinary = new Map<
+  number,
+  {
+    resolve: (binary: Uint8Array) => void;
+    reject: (err: Error) => void;
+  }
+>();
 
 async function request(msg: WorkerRequest): Promise<void> {
   await workerReady;
@@ -79,8 +86,7 @@ async function request(msg: WorkerRequest): Promise<void> {
   });
 }
 
-// Latest binary from the worker — updated on every STATE_UPDATE.
-// Returned synchronously by getDocBinary() so sync.ts callers are unchanged.
+// Latest binary fetched from the worker for the debug escape hatch.
 let lastBinary: Uint8Array | null = null;
 let lastDocState: DocState | null = null;
 let initPromise: Promise<DocState> | null = null;
@@ -107,9 +113,18 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   if (msg.type === "READY") return;
 
   if (msg.type === "STATE_UPDATE") {
-    lastBinary = msg.binary;
+    if (msg.binary) lastBinary = msg.binary;
     lastDocState = msg.state;
     for (const sub of subscribers) sub(msg.state);
+    return;
+  }
+
+  if (msg.type === "DOC_BINARY") {
+    const pendingBinary = pendingDocBinary.get(msg.reqId);
+    if (!pendingBinary) return;
+    pendingDocBinary.delete(msg.reqId);
+    lastBinary = msg.binary;
+    pendingBinary.resolve(msg.binary);
     return;
   }
 
@@ -160,6 +175,13 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     return;
   }
 
+  const pendingBinary = pendingDocBinary.get(msg.reqId);
+  if (pendingBinary && msg.error) {
+    pendingDocBinary.delete(msg.reqId);
+    pendingBinary.reject(new Error(msg.error));
+    return;
+  }
+
   const p = pending.get(msg.reqId);
   if (!p) return;
   pending.delete(msg.reqId);
@@ -197,7 +219,7 @@ function sendInit(): Promise<DocState> {
     const stateHandler = (event: MessageEvent<WorkerResponse>) => {
       const msg = event.data;
       if (msg.type === "STATE_UPDATE" && !initialState) {
-        lastBinary = msg.binary;
+        if (msg.binary) lastBinary = msg.binary;
         lastDocState = msg.state;
         initialState = msg.state;
         tryResolve();
@@ -237,9 +259,13 @@ export async function initDoc(): Promise<DocState> {
 }
 
 /** Binary snapshot of the current doc — used by sync.ts for relay/cloud upload. */
-export function getDocBinary(): Uint8Array {
-  if (!lastBinary) throw new Error("Document not initialized");
-  return lastBinary;
+export async function getDocBinary(): Promise<Uint8Array> {
+  await workerReady;
+  const reqId = nextReqId++;
+  return new Promise((resolve, reject) => {
+    pendingDocBinary.set(reqId, { resolve, reject });
+    worker.postMessage({ reqId, type: "GET_DOC_BINARY" } satisfies WorkerRequest);
+  });
 }
 
 /** Merge incoming sync binary into the doc (relay / cloud download). */

@@ -519,4 +519,26 @@ describe("provider health", () => {
     expect(provider?.lastError).toBeUndefined();
     expect(provider?.currentMessage).toBeUndefined();
   });
+
+  it("drops stale runtime-deferred provider attempts from visible status", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, debugStore } = await loadProviderHealthModule();
+
+    await mod.recordProviderHealthEvent({
+      provider: "instagram",
+      outcome: "error",
+      stage: "runtime_deferred",
+      reason: "background work is paused for 113949 ms while renderer safe mode is active",
+      finishedAt: now.getTime() - 16 * 60 * 1_000,
+    });
+
+    const provider = debugStore.useDebugStore.getState().health?.providers.instagram;
+    expect(provider?.status).toBe("idle");
+    expect(provider?.lastOutcome).toBeUndefined();
+    expect(provider?.lastError).toBeUndefined();
+    expect(provider?.currentMessage).toBeUndefined();
+  });
 });

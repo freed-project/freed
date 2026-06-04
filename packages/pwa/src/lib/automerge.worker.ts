@@ -15,6 +15,7 @@ import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import { hashSavedUrl } from "@freed/capture-save/normalize";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
+  assertNonDestructiveMerge,
   createEmptyDoc,
   addAccount,
   addAccounts,
@@ -274,9 +275,7 @@ async function saveAndBroadcast(): Promise<void> {
   };
   send(snapshot);
 
-  // binary is cloned by structured-clone on postMessage (not transferred) so
-  // the copy in storage.save() above is not affected.
-  const stateUpdate: WorkerResponse = { type: "STATE_UPDATE", state, binary };
+  const stateUpdate: WorkerResponse = { type: "STATE_UPDATE", state };
   send(stateUpdate);
 }
 
@@ -423,6 +422,12 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           summary = clearSampleData(doc);
         }, "Clear sample data", true);
         send({ reqId: req.reqId, type: "SAMPLE_DATA_CLEAR_RESULT", summary });
+        break;
+      }
+
+      case "GET_DOC_BINARY": {
+        if (!currentDoc) throw new Error("Document not initialized");
+        send({ reqId: req.reqId, type: "DOC_BINARY", binary: A.save(currentDoc) });
         break;
       }
 
@@ -628,7 +633,11 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         if (!currentDoc) throw new Error("Document not initialized");
         const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const incomingDoc = A.load<FreedDoc>(req.binary);
-        currentDoc = A.merge(currentDoc, incomingDoc);
+        const mergedDoc = A.merge(currentDoc, incomingDoc);
+        const guard = assertNonDestructiveMerge(currentDoc, incomingDoc, mergedDoc, {
+          source: "PWA sync",
+        });
+        currentDoc = mergedDoc;
         migrateLoadedIdentityGraph("Migrate legacy identity graph");
         const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const delta = afterCount - beforeCount;
@@ -638,6 +647,14 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           detail: delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} items` : "no new items",
           bytes: req.binary.byteLength,
         });
+        if (guard.deletedItemCount > 0) {
+          send({
+            type: "DEBUG_EVENT",
+            kind: "merge_ok",
+            detail: `merge safety checked ${guard.deletedItemCount.toLocaleString()} item deletions`,
+            bytes: req.binary.byteLength,
+          });
+        }
         bumpSearchCorpusVersion();
         await saveAndBroadcast();
         ack(req.reqId);

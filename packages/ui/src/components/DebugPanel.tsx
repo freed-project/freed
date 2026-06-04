@@ -502,8 +502,8 @@ function DocumentTab() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const downloadBinary = () => {
-    const binary = window.__freed?.getDocBinary?.();
+  const downloadBinary = async () => {
+    const binary = await window.__freed?.getDocBinary?.();
     if (!binary) return;
     // Ensure we have a plain ArrayBuffer to satisfy Blob's type constraint
     const blob = new Blob([binary.buffer instanceof ArrayBuffer ? binary.buffer : new Uint8Array(binary).buffer], { type: "application/octet-stream" });

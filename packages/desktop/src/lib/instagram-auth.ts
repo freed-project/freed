@@ -10,6 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { selectPlatformUA, clearPlatformUA } from "./user-agent";
 import { safeUnlisten } from "./safe-unlisten";
+import { clearTransientLastCaptureError } from "./social-auth-transient-errors";
 
 export interface IgAuthState {
   isAuthenticated: boolean;
@@ -85,7 +86,7 @@ export async function disconnectIg(): Promise<void> {
  * Persist auth state to localStorage for fast startup.
  */
 export function storeIgAuthState(state: IgAuthState): void {
-  localStorage.setItem(IG_AUTH_KEY, JSON.stringify(state));
+  localStorage.setItem(IG_AUTH_KEY, JSON.stringify(clearTransientLastCaptureError(state)));
 }
 
 /**
@@ -97,7 +98,7 @@ export function initIgAuth(): IgAuthState {
   if (!stored) return { isAuthenticated: false };
   try {
     const parsed = JSON.parse(stored) as IgAuthState;
-    return {
+    return clearTransientLastCaptureError({
       isAuthenticated: !!parsed.isAuthenticated,
       lastCheckedAt: parsed.lastCheckedAt,
       lastCapturedAt: parsed.lastCapturedAt,
@@ -105,7 +106,7 @@ export function initIgAuth(): IgAuthState {
       pausedUntil: parsed.pausedUntil,
       pauseReason: parsed.pauseReason,
       pauseLevel: parsed.pauseLevel,
-    };
+    });
   } catch {
     return { isAuthenticated: false };
   }

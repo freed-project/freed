@@ -123,6 +123,18 @@ async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   }
 }
 
+function hasStoredCloudSyncCredentials(): boolean {
+  try {
+    return (
+      localStorage.getItem("freed_cloud_provider") !== null ||
+      localStorage.getItem("freed_cloud_token_meta_gdrive") !== null ||
+      localStorage.getItem("freed_cloud_token_meta_dropbox") !== null
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   items: [],
@@ -200,10 +212,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         isLoading: false,
       });
 
-      // Run idempotent maintenance in the background. The subscriber above
-      // propagates doc changes to the UI automatically.
-      const pruneDays = state.preferences.display.archivePruneDays ?? 30;
-      void runStartupMigrations(pruneDays);
+      // Do not mutate the local doc before cloud sync has reconciled it.
+      if (!hasStoredCloudSyncCredentials()) {
+        const pruneDays = state.preferences.display.archivePruneDays ?? 30;
+        void runStartupMigrations(pruneDays);
+      }
     } catch (error) {
       recordRuntimeError({ source: "pwa:initialize", error, fatal: false });
       recordBugReportEvent("pwa:initialize", "error", "Initialization failed");
