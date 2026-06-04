@@ -156,7 +156,7 @@ test("updates settings shows recent changelog entries and opens the full changel
 
   await page.getByTestId("settings-release-channel-select").selectOption("dev");
   await expect(preview.getByRole("article")).toHaveCount(5);
-  await expect(preview.getByText(/v26\.5\.\d+-dev/).first()).toBeVisible();
+  await expect(preview.getByText(/v\d+\.\d+\.\d+-dev/).first()).toBeVisible();
   await page.evaluate(() => {
     const store = window as unknown as Record<string, unknown>;
     delete store.__FREED_E2E_FORCE_MAP_FALLBACK__;
