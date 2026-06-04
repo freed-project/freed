@@ -7,7 +7,7 @@ use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(target_os = "macos")]
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
@@ -5056,6 +5056,17 @@ struct FbGroupsDataPayload {
     error: Option<String>,
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FbGroupMembershipPayload {
+    id: String,
+    url: String,
+    name: Option<String>,
+    still_joined: Option<bool>,
+    reason: String,
+    checked_at: u64,
+}
+
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FbPageStatePayload {
@@ -6121,36 +6132,271 @@ async fn fb_scrape_groups(
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(3500.0, 500.0))).await;
 
-    let (tx, rx) = tokio::sync::oneshot::channel::<Result<Vec<FbGroupInfoPayload>, String>>();
+    let mut groups_by_id: HashMap<String, FbGroupInfoPayload> = HashMap::new();
+    let mut unchanged_passes = 0usize;
+    let max_passes = 24usize;
+
+    for pass in 0..max_passes {
+        let (tx, rx) = tokio::sync::oneshot::channel::<Result<Vec<FbGroupInfoPayload>, String>>();
+        let tx = Arc::new(std::sync::Mutex::new(Some(tx)));
+        let listener_tx = tx.clone();
+        let listener_id = app.listen("fb-groups-data", move |event| {
+            let result = serde_json::from_str::<FbGroupsDataPayload>(event.payload())
+                .map_err(|err| err.to_string())
+                .and_then(|payload| {
+                    if let Some(error) = payload.error {
+                        Err(error)
+                    } else {
+                        Ok(payload.groups)
+                    }
+                });
+
+            if let Some(sender) = listener_tx.lock().unwrap().take() {
+                let _ = sender.send(result);
+            }
+        });
+
+        wv.eval(FB_GROUPS_EXTRACT_SCRIPT)
+            .map_err(|e| format!("Failed to inject groups extraction script: {}", e))?;
+
+        let groups = match timeout(Duration::from_secs(10), rx).await {
+            Ok(Ok(result)) => result?,
+            Ok(Err(_)) => {
+                app.unlisten(listener_id);
+                Err("Groups scrape channel closed".to_string())?
+            }
+            Err(_) => {
+                app.unlisten(listener_id);
+                Err("Groups scrape timed out after 10 seconds".to_string())?
+            }
+        };
+
+        app.unlisten(listener_id);
+
+        let before_len = groups_by_id.len();
+        for group in groups {
+            match groups_by_id.get(&group.id) {
+                Some(existing) if existing.name.len() >= group.name.len() => {}
+                _ => {
+                    groups_by_id.insert(group.id.clone(), group);
+                }
+            }
+        }
+
+        let after_len = groups_by_id.len();
+        if after_len == before_len {
+            unchanged_passes += 1;
+        } else {
+            unchanged_passes = 0;
+        }
+
+        info!(
+            "[FB] groups scrape pass {}/{}: {} unique groups",
+            pass + 1,
+            max_passes,
+            after_len
+        );
+
+        if pass >= 4 && unchanged_passes >= 4 {
+            break;
+        }
+
+        let scroll_js = r#"
+            (function() {
+                var amount = Math.max(600, Math.floor((window.innerHeight || 900) * 0.85));
+                window.scrollBy({ top: amount, left: 0, behavior: "auto" });
+            })();
+        "#;
+        let _ = wv.eval(scroll_js);
+        tokio::time::sleep(Duration::from_millis(gaussian_ms(900.0, 180.0))).await;
+    }
+
+    Ok(groups_by_id.into_values().collect())
+}
+
+#[tauri::command]
+async fn fb_check_group_membership(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    group_id: String,
+    group_url: String,
+    window_mode: ScraperWindowMode,
+) -> Result<FbGroupMembershipPayload, String> {
+    use tauri::WebviewWindowBuilder;
+
+    let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Facebook",
+        "single group membership check",
+        None,
+    )
+    .await?;
+    let _scraper_session =
+        acquire_background_scraper_session(&capture, "fb_check_group_membership").await?;
+    let _recycle_guard =
+        WebviewRecycleGuard::new(app.clone(), "fb-scraper", "group membership check complete");
+
+    let wv = match app.get_webview_window("fb-scraper") {
+        Some(w) => {
+            prepare_background_scraper_window(&w, window_mode)?;
+            w.navigate(group_url.parse::<url::Url>().map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+            w
+        }
+        None => {
+            let mut builder = WebviewWindowBuilder::new(
+                &app,
+                "fb-scraper",
+                tauri::WebviewUrl::External(
+                    group_url.parse::<url::Url>().map_err(|e| e.to_string())?,
+                ),
+            )
+            .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
+            .user_agent(&scraper_user_agent)
+            .initialization_script(include_str!("webkit-mask.js"))
+            .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
+            .title("Freed Facebook")
+            .inner_size(1280.0, 900.0);
+
+            if window_mode == ScraperWindowMode::Shown {
+                builder = builder.center().visible(true);
+            } else if window_mode == ScraperWindowMode::Cloaked {
+                builder = builder
+                    .transparent(true)
+                    .focused(false)
+                    .focusable(false)
+                    .decorations(false)
+                    .always_on_bottom(true)
+                    .skip_taskbar(true)
+                    .shadow(false)
+                    .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_CLOAK_JS)
+                    .visible(true);
+            } else {
+                builder = builder
+                    .focused(false)
+                    .focusable(false)
+                    .decorations(false)
+                    .always_on_bottom(true)
+                    .skip_taskbar(true)
+                    .shadow(false)
+                    .visible(false);
+            }
+
+            builder.build().map_err(|e| e.to_string())?
+        }
+    };
+
+    tokio::time::sleep(Duration::from_millis(gaussian_ms(4500.0, 700.0))).await;
+
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<FbGroupMembershipPayload, String>>();
     let tx = Arc::new(std::sync::Mutex::new(Some(tx)));
     let listener_tx = tx.clone();
-    let listener_id = app.listen("fb-groups-data", move |event| {
-        let result = serde_json::from_str::<FbGroupsDataPayload>(event.payload())
-            .map_err(|err| err.to_string())
-            .and_then(|payload| {
-                if let Some(error) = payload.error {
-                    Err(error)
-                } else {
-                    Ok(payload.groups)
-                }
-            });
+    let listener_id = app.listen("fb-group-membership", move |event| {
+        let result = serde_json::from_str::<FbGroupMembershipPayload>(event.payload())
+            .map_err(|err| err.to_string());
 
         if let Some(sender) = listener_tx.lock().unwrap().take() {
             let _ = sender.send(result);
         }
     });
 
-    wv.eval(FB_GROUPS_EXTRACT_SCRIPT)
-        .map_err(|e| format!("Failed to inject groups extraction script: {}", e))?;
+    let group_id_json = serde_json::to_string(&group_id).map_err(|e| e.to_string())?;
+    let group_url_json = serde_json::to_string(&group_url).map_err(|e| e.to_string())?;
+    let script = format!(
+        r#"
+        (function(groupId, groupUrl) {{
+          function normalizeText(value) {{
+            return String(value || "")
+              .replace(/\u200b/g, "")
+              .replace(/\s+/g, " ")
+              .replace(/(\S)(last active\b)/i, "$1 $2")
+              .trim()
+              .replace(/^(?:\d+\s*(?:m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|mo|mos|month|months|y|yr|yrs|year|years)(?:\s+ago)?|just now)\s+(?=\S)/i, "")
+              .trim();
+          }}
+          function cleanName(value) {{
+            var text = normalizeText(value);
+            text = text.replace(/\s+\|\s+Facebook$/i, "").trim();
+            text = text.replace(/\s+Facebook$/i, "").trim();
+            return text;
+          }}
+          function candidateName() {{
+            var metaTitle = document.querySelector('meta[property="og:title"], meta[name="twitter:title"]');
+            var candidates = [
+              document.querySelector("h1"),
+              document.querySelector('[role="main"] h1'),
+              document.querySelector('span[dir="auto"]')
+            ];
+            if (metaTitle) {{
+              var metaName = cleanName(metaTitle.getAttribute("content"));
+              if (metaName && metaName.toLowerCase() !== "facebook") return metaName;
+            }}
+            for (var i = 0; i < candidates.length; i++) {{
+              var name = cleanName(candidates[i] && candidates[i].textContent);
+              if (name && name.toLowerCase() !== "facebook") return name;
+            }}
+            var titleName = cleanName(document.title);
+            return titleName && titleName.toLowerCase() !== "facebook" ? titleName : null;
+          }}
+          function visibleControlTexts() {{
+            var nodes = document.querySelectorAll('button, [role="button"], a[role="button"]');
+            var texts = [];
+            for (var i = 0; i < nodes.length; i++) {{
+              var node = nodes[i];
+              var rect = node.getBoundingClientRect ? node.getBoundingClientRect() : {{ width: 1, height: 1 }};
+              if (rect.width === 0 && rect.height === 0) continue;
+              var text = normalizeText(
+                node.getAttribute("aria-label") ||
+                  node.getAttribute("title") ||
+                  node.textContent
+              );
+              if (text) texts.push(text);
+            }}
+            return texts;
+          }}
+          var texts = visibleControlTexts();
+          var joined = texts.some(function(text) {{
+            return /^(joined|leave group)$/i.test(text) || /\bleave group\b/i.test(text);
+          }});
+          var notJoined = texts.some(function(text) {{
+            return /^(join group|request to join)$/i.test(text) || /\bjoin group\b/i.test(text);
+          }});
+          var stillJoined = null;
+          var reason = "membership control not found";
+          if (joined && !notJoined) {{
+            stillJoined = true;
+            reason = "joined control found";
+          }} else if (notJoined && !joined) {{
+            stillJoined = false;
+            reason = "join control found";
+          }} else if (joined && notJoined) {{
+            reason = "conflicting membership controls found";
+          }}
+          window.__TAURI__.event.emit("fb-group-membership", {{
+            id: groupId,
+            url: window.location.href || groupUrl,
+            name: candidateName(),
+            stillJoined: stillJoined,
+            reason: reason,
+            checkedAt: Date.now()
+          }});
+        }})({group_id_json}, {group_url_json});
+        "#
+    );
 
-    let groups = match timeout(Duration::from_secs(10), rx).await {
+    wv.eval(&script)
+        .map_err(|e| format!("Failed to inject group membership script: {}", e))?;
+
+    let result = match timeout(Duration::from_secs(10), rx).await {
         Ok(Ok(result)) => result?,
-        Ok(Err(_)) => Err("Groups scrape channel closed".to_string())?,
-        Err(_) => Err("Groups scrape timed out after 10 seconds".to_string())?,
+        Ok(Err(_)) => Err("Group membership check channel closed".to_string())?,
+        Err(_) => Err("Group membership check timed out after 10 seconds".to_string())?,
     };
 
     app.unlisten(listener_id);
-    Ok(groups)
+    Ok(result)
 }
 
 #[tauri::command]
@@ -9201,6 +9447,7 @@ pub fn run() {
             fb_check_auth,
             fb_scrape_feed,
             fb_scrape_groups,
+            fb_check_group_membership,
             fb_scrape_comments,
             fb_disconnect,
             ig_show_login,
