@@ -458,6 +458,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const pendingThemeSaveSeqRef = useRef(0);
   const committedThemeIdRef = useRef(preferences.display.themeId);
   const settingsShellRef = useRef<HTMLDivElement>(null);
+  const settingsOverlayRef = useRef<HTMLDivElement>(null);
   const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
@@ -624,6 +625,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     setThemePreviewHovering(false);
     setThemePreviewTouchActive(false);
     delete settingsShellRef.current?.dataset.moving;
+    delete settingsOverlayRef.current?.dataset.moving;
     if (themeBlurRestoreTimerRef.current) {
       clearTimeout(themeBlurRestoreTimerRef.current);
       themeBlurRestoreTimerRef.current = null;
@@ -644,6 +646,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         clearTimeout(scrollOptimizationTimerRef.current);
       }
       delete settingsShellRef.current?.dataset.moving;
+      delete settingsOverlayRef.current?.dataset.moving;
       flushPendingThemeSelectionNow();
     };
   }, [flushPendingThemeSelectionNow]);
@@ -665,12 +668,17 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (shell && shell.dataset.moving !== "true") {
       shell.dataset.moving = "true";
     }
+    const overlay = settingsOverlayRef.current;
+    if (overlay && overlay.dataset.moving !== "true") {
+      overlay.dataset.moving = "true";
+    }
 
     if (scrollOptimizationTimerRef.current) {
       clearTimeout(scrollOptimizationTimerRef.current);
     }
     scrollOptimizationTimerRef.current = setTimeout(() => {
       delete settingsShellRef.current?.dataset.moving;
+      delete settingsOverlayRef.current?.dataset.moving;
       scrollOptimizationTimerRef.current = null;
     }, SETTINGS_SCROLL_OPTIMIZATION_RESTORE_MS);
   }, []);
@@ -1210,14 +1218,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
     const scheduleActiveSectionUpdate = () => {
       suppressSettingsChromeDuringScroll();
-      if (!isScrollingProgrammatically.current) {
-        updateScrollAnchorFromPosition();
-      }
-      if (supportsScrollEnd) {
-        return;
-      }
       clearTimeout(scrollIdleTimer);
       scrollIdleTimer = setTimeout(() => {
+        if (isScrollingProgrammatically.current) {
+          updateScrollAnchorFromPosition();
+          return;
+        }
         updateActiveSectionFromScroll();
       }, 140);
     };
@@ -1951,6 +1957,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
       {/* Backdrop */}
       <div
+        ref={settingsOverlayRef}
         className={`theme-settings-overlay absolute inset-0 ${themeBackdropSuppressed ? "theme-settings-overlay-preview-off" : ""}`}
         onClick={onClose}
       />
