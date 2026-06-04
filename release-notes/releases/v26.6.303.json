@@ -1,0 +1,63 @@
+{
+  "tag": "v26.6.303",
+  "version": "26.6.303",
+  "channel": "production",
+  "dayKey": "26.6.3",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-04T06:23:36.485Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.6.302",
+    "previousPublishedDayTag": "v26.6.204",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.301",
+      "v26.6.302",
+      "v26.6.303"
+    ],
+    "relatedBuildTags": [
+      "v26.6.301",
+      "v26.6.302",
+      "v26.6.303"
+    ],
+    "prNumbers": [
+      730,
+      733,
+      740,
+      751
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for production release (#751)",
+      "docs: approve v26.6.302 release notes",
+      "release: v26.6.302",
+      "chore: promote dev into main for production release (#740)",
+      "docs: approve v26.6.301 release notes",
+      "release: v26.6.301",
+      "chore: promote dev into main for production release (#733)",
+      "docs: approve v26.6.300 release notes",
+      "release: v26.6.300",
+      "chore: promote dev into main for production release (#730)"
+    ]
+  },
+  "release": {
+    "deck": "Stabilize Facebook and Instagram sync under memory pressure",
+    "features": [],
+    "fixes": [
+      "Google Drive sync now uploads local changes from Freed Desktop and the PWA instead of only downloading remote data",
+      "The PWA waits for its Automerge document to initialize before Google Drive sync, manual sync, OAuth callback sync, or relay resume can merge remote data",
+      "Freed Desktop avoids a fatal Automerge worker timeout when adding RSS feed metadata to a large library",
+      "Facebook and Instagram sync now fail loudly when a provider returns an empty extraction instead of recording a false success",
+      "Instagram sync records feed readiness, scroll targets, rejection counts, extraction passes, and store-write details so failed syncs are diagnosable from the field",
+      "Freed Desktop now gates social sync on effective memory pressure instead of raw WebKit RSS, with detailed app RSS and WebKit RSS shown in provider errors",
+      "Background semantic classification no longer blocks social sync, and social scraper listener cleanup avoids a Tauri event teardown crash"
+    ],
+    "followUps": [
+      "Promote dev into main for production release",
+      "Stabilize Google Drive sync and large-library feed adds"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.303\n\nStabilize Facebook and Instagram sync under memory pressure\n\n### Fixes\n\n- Google Drive sync now uploads local changes from Freed Desktop and the PWA instead of only downloading remote data\n- The PWA waits for its Automerge document to initialize before Google Drive sync, manual sync, OAuth callback sync, or relay resume can merge remote data\n- Freed Desktop avoids a fatal Automerge worker timeout when adding RSS feed metadata to a large library\n- Facebook and Instagram sync now fail loudly when a provider returns an empty extraction instead of recording a false success\n- Instagram sync records feed readiness, scroll targets, rejection counts, extraction passes, and store-write details so failed syncs are diagnosable from the field\n- Freed Desktop now gates social sync on effective memory pressure instead of raw WebKit RSS, with detailed app RSS and WebKit RSS shown in provider errors\n- Background semantic classification no longer blocks social sync, and social scraper listener cleanup avoids a Tauri event teardown crash\n\n### Follow-ups\n\n- Promote dev into main for production release\n- Stabilize Google Drive sync and large-library feed adds\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
