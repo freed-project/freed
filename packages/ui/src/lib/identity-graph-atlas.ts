@@ -135,10 +135,10 @@ const DETAIL_NODE_CAP = 1_100;
 const MOBILE_OVERVIEW_NODE_CAP = 150;
 const MOBILE_MIDDLE_NODE_CAP = 260;
 const MOBILE_DETAIL_NODE_CAP = 520;
-const INTERACTIVE_NODE_CAP = 160;
-const INTERACTIVE_DESKTOP_NODE_CAP = 300;
-const LABEL_CAP = 90;
-const MOBILE_LABEL_CAP = 42;
+const INTERACTIVE_NODE_CAP = 140;
+const INTERACTIVE_DESKTOP_NODE_CAP = 240;
+const LABEL_CAP = 120;
+const MOBILE_LABEL_CAP = 56;
 
 function nowMs(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -288,8 +288,8 @@ function buildHitBuckets(nodes: IdentityGraphAtlasNode[]): IdentityGraphAtlasHit
 }
 
 function lodForScale(scale: number): "overview" | "middle" | "detail" {
-  if (scale < 0.42) return "overview";
-  if (scale < 1.15) return "middle";
+  if (scale < 0.34) return "overview";
+  if (scale < 0.85) return "middle";
   return "detail";
 }
 
@@ -371,8 +371,8 @@ export function buildIdentityGraphAtlas({
       x: position.x,
       y: position.y,
       radius: friend
-        ? Math.min(58, 38 + person.careLevel * 3 + linkedAccounts.length)
-        : Math.min(36, 24 + linkedAccounts.length * 1.5),
+        ? Math.min(70, 44 + person.careLevel * 4 + Math.min(16, linkedAccounts.length * 0.8))
+        : Math.min(46, 28 + Math.min(12, linkedAccounts.length * 1.2)),
       priority: friend ? 900 + person.careLevel * 40 : 560 + linkedAccounts.length * 10,
       personId: person.id,
       initials: initialsForLabel(person.name),
@@ -388,6 +388,16 @@ export function buildIdentityGraphAtlas({
   const visibleSocialAccounts = accountValues
     .filter((account) => account.kind === "social")
     .filter((account) => mode === "all_content" || (!!account.personId && visiblePersonIds.has(account.personId)));
+  const visibleSocialAccountsByPersonId = new Map<string, Account[]>();
+  for (const account of visibleSocialAccounts) {
+    if (!account.personId) continue;
+    const siblings = visibleSocialAccountsByPersonId.get(account.personId);
+    if (siblings) {
+      siblings.push(account);
+    } else {
+      visibleSocialAccountsByPersonId.set(account.personId, [account]);
+    }
+  }
 
   for (const account of visibleSocialAccounts) {
     const linkedPersonId = account.personId && visiblePersonIds.has(account.personId) ? account.personId : null;
@@ -395,17 +405,19 @@ export function buildIdentityGraphAtlas({
     const linkedPerson = linkedPersonId ? personNodeById.get(linkedPersonId) : null;
     const label = accountLabel(account);
     const activityCount = summary?.itemCount ?? 0;
-    const radius = Math.min(linkedPerson ? 16 : 13, Math.max(8, (linkedPerson ? 10 : 9) + Math.log2(activityCount + 1.5) * 1.8));
+    const radius = Math.min(linkedPerson ? 21 : 15, Math.max(10, (linkedPerson ? 12 : 10) + Math.log2(activityCount + 1.5) * 1.9));
     let fallback: { x: number; y: number };
     if (linkedPerson) {
-      const siblingIndex = visibleSocialAccounts
-        .filter((entry) => entry.personId === linkedPersonId)
-        .findIndex((entry) => entry.id === account.id);
-      const orbit = linkedPerson.radius + 38 + Math.floor(Math.max(0, siblingIndex) / 10) * 18;
-      const angle = (Math.PI * 2 * Math.max(0, siblingIndex)) / 10 + seededUnit(`account:${account.id}`) * 0.08;
+      const siblings = linkedPersonId ? visibleSocialAccountsByPersonId.get(linkedPersonId) ?? [] : [];
+      const siblingIndex = Math.max(0, siblings.findIndex((entry) => entry.id === account.id));
+      const ringCapacity = linkedPerson.radius >= 60 ? 18 : 14;
+      const ringIndex = Math.floor(siblingIndex / ringCapacity);
+      const indexInRing = siblingIndex % ringCapacity;
+      const orbit = linkedPerson.radius + 18 + ringIndex * 15;
+      const angle = (Math.PI * 2 * (indexInRing + ringIndex * 0.36)) / ringCapacity + seededUnit(`account:${account.id}`) * 0.045;
       fallback = {
         x: linkedPerson.x + Math.cos(angle) * orbit,
-        y: linkedPerson.y + Math.sin(angle) * orbit,
+        y: linkedPerson.y + Math.sin(angle) * orbit * 0.86,
       };
     } else {
       fallback = {
@@ -579,10 +591,13 @@ export function buildIdentityGraphAtlas({
     if (selectedNodeIds.has(node.id)) return true;
     if (node.kind === "provider_cluster") return lod !== "detail" || node.aggregateCount! > 24;
     if (quality === "interactive") {
-      return node.kind === "friend_person" || node.kind === "connection_person";
+      return node.kind === "friend_person" ||
+        node.kind === "connection_person" ||
+        (node.kind === "account" && !!node.linkedPersonId && node.priority > 430);
     }
     if (lod === "overview") {
-      return node.kind === "friend_person";
+      return node.kind === "friend_person" ||
+        (node.kind === "account" && !!node.linkedPersonId && node.priority > 480);
     }
     if (lod === "middle") {
       return node.kind !== "feed" && (node.kind !== "account" || !!node.linkedPersonId || node.priority > 340);
@@ -625,7 +640,8 @@ export function buildIdentityGraphAtlas({
       .filter((node) =>
         node.kind === "provider_cluster" ||
         selectedNodeIds.has(node.id) ||
-        (lod !== "overview" && node.priority >= 560) ||
+        (lod === "overview" && node.kind === "friend_person" && node.priority >= 980) ||
+        (lod === "middle" && (node.kind === "friend_person" || node.priority >= 620)) ||
         (lod === "detail" && node.priority >= 320),
       )
       .map((node) => ({

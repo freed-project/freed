@@ -119,4 +119,45 @@ describe("buildIdentityGraphAtlas", () => {
 
     expect(atlas.nodes.some((node) => node.personId === "person-399")).toBe(true);
   });
+
+  it("packs linked accounts into tight fields around their person", () => {
+    const linkedPerson = {
+      ...person(1),
+      careLevel: 5,
+      relationshipStatus: "friend",
+    } satisfies Person;
+    const linkedAccounts = Array.from({ length: 32 }, (_, index) => ({
+      ...account(index),
+      id: `linked-account-${index}`,
+      personId: linkedPerson.id,
+      externalId: `linked-author-${index}`,
+      handle: `linked-author-${index}`,
+      displayName: `Linked Author ${index}`,
+    } satisfies Account));
+    const atlas = buildIdentityGraphAtlas({
+      persons: [linkedPerson],
+      accounts: Object.fromEntries(linkedAccounts.map((entry) => [entry.id, entry])),
+      feeds: {},
+      activitySummaries: {
+        social: {},
+        rss: {},
+        buildMs: 0,
+        itemCount: 0,
+      },
+      mode: "all_content",
+      transform: { x: 0, y: 0, scale: 1 },
+      width: 1_400,
+      height: 900,
+      quality: "settled",
+    });
+
+    const personNode = atlas.nodes.find((node) => node.personId === linkedPerson.id);
+    expect(personNode).toBeDefined();
+    const accountNodes = atlas.nodes.filter((node) => node.linkedPersonId === linkedPerson.id);
+    expect(accountNodes).toHaveLength(linkedAccounts.length);
+    const maxAccountDistance = Math.max(
+      ...accountNodes.map((node) => Math.hypot(node.x - personNode!.x, node.y - personNode!.y)),
+    );
+    expect(maxAccountDistance).toBeLessThanOrEqual(personNode!.radius + 55);
+  });
 });
