@@ -1551,7 +1551,7 @@ html[data-theme="scriptorium"] .theme-floating-panel {
   border-bottom-right-radius: 0;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--theme-header-border) 82%, transparent);
+  box-shadow: none;
 }
 
 .theme-attached-topbar::before {
@@ -1706,8 +1706,8 @@ html.freed-mobile-sidebar-open body {
 .theme-toolbar-icon-button {
   display: inline-flex;
   box-sizing: border-box;
-  height: 2.5rem;
-  width: 2.5rem;
+  height: 2.25rem;
+  width: 2.25rem;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
@@ -1859,6 +1859,45 @@ html.freed-mobile-sidebar-open body {
   box-shadow:
     0 0 0 2px rgb(var(--theme-accent-secondary-rgb) / 0.18),
     0 2px 8px rgb(0 0 0 / 0.18);
+}
+
+.theme-toolbar-select-control {
+  display: inline-flex;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2.25rem;
+  width: 10.75rem;
+  min-width: 0;
+  padding: 0 0.65rem;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: var(--button-radius);
+  background: var(--theme-button-secondary-background);
+  color: var(--theme-text-muted);
+}
+
+.theme-toolbar-select-control > svg {
+  flex-shrink: 0;
+}
+
+.theme-toolbar-select-control select {
+  min-width: 0;
+  flex: 1;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--theme-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+  outline: none;
+  cursor: pointer;
+}
+
+.theme-toolbar-select-control select:focus-visible {
+  outline: 2px solid rgb(var(--theme-accent-secondary-rgb) / 0.65);
+  outline-offset: 3px;
+  border-radius: calc(var(--button-radius) - 2px);
 }
 
 .theme-fab-button {

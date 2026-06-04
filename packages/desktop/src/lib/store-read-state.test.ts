@@ -61,6 +61,10 @@ async function loadStore() {
   return mod.useAppStore;
 }
 
+async function loadStoreModule() {
+  return import("./store");
+}
+
 describe("store read-state batching", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -154,6 +158,44 @@ describe("store read-state batching", () => {
       "Flushed 2 read marks",
       expect.stringContaining("...87654321"),
     );
+  });
+
+  it("records provider sync activity around the provider task", async () => {
+    const { withProviderSyncing } = await loadStoreModule();
+    const { useBackgroundActivityStore } = await import("@freed/ui/lib/background-activity-store");
+
+    let activeDuringTask = false;
+    const result = await withProviderSyncing("facebook", async () => {
+      activeDuringTask = Boolean(useBackgroundActivityStore.getState().active["channel:facebook"]);
+      return "ok";
+    });
+
+    expect(result).toBe("ok");
+    expect(activeDuringTask).toBe(true);
+    expect(useBackgroundActivityStore.getState().active["channel:facebook"]).toBeUndefined();
+    expect(useBackgroundActivityStore.getState().log[0]).toMatchObject({
+      level: "success",
+      channelId: "facebook",
+      message: "Facebook sync finished.",
+    });
+  });
+
+  it("clears provider sync activity when the provider task throws", async () => {
+    const { withProviderSyncing } = await loadStoreModule();
+    const { useBackgroundActivityStore } = await import("@freed/ui/lib/background-activity-store");
+
+    await expect(
+      withProviderSyncing("instagram", async () => {
+        throw new Error("session expired");
+      }),
+    ).rejects.toThrow("session expired");
+
+    expect(useBackgroundActivityStore.getState().active["channel:instagram"]).toBeUndefined();
+    expect(useBackgroundActivityStore.getState().log[0]).toMatchObject({
+      level: "error",
+      channelId: "instagram",
+      message: "Instagram sync failed: session expired",
+    });
   });
 });
 

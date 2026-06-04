@@ -98,6 +98,24 @@ test("Instagram source toolbar filters posts, stories, and all items", async ({ 
   expect(filterBox).not.toBeNull();
   expect(signalFilterBox).not.toBeNull();
   expect((signalFilterBox?.x ?? 0) - ((filterBox?.x ?? 0) + (filterBox?.width ?? 0))).toBeGreaterThanOrEqual(8);
+  const toolbarControlHeights = await page.getByTestId("workspace-toolbar").evaluate((toolbar) => {
+    const selectors = [
+      '[data-testid="feed-toolbar-lens"]',
+      '[data-testid="social-content-toolbar-filter"]',
+      '[data-testid="feed-card-density-control"]',
+      '[data-testid="feed-signal-filter-button"]',
+      '[data-testid="toolbar-overflow-button"]',
+    ];
+
+    return selectors.flatMap((selector) => {
+      const element = toolbar.querySelector(selector) as HTMLElement | null;
+      if (!element) return [];
+      const rect = element.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 ? [Math.round(rect.height)] : [];
+    });
+  });
+  expect(toolbarControlHeights.length).toBeGreaterThanOrEqual(4);
+  expect(new Set(toolbarControlHeights)).toEqual(new Set([36]));
 
   await expect(page.getByText("Instagram filter post item")).toBeVisible();
   await expect(page.getByText("Instagram filter reel item")).toBeVisible();

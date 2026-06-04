@@ -1,5 +1,10 @@
 import type { RuntimeMemorySnapshot } from "@freed/ui/lib/debug-store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import {
+  BACKGROUND_JOB_LABELS,
+  finishBackgroundActivity,
+  startBackgroundActivity,
+} from "@freed/ui/lib/background-activity-store";
 import { log } from "./logger";
 
 export type BackgroundJobKind =
@@ -297,10 +302,19 @@ export async function runBackgroundJob<T>(task: BackgroundRuntimeTask<T>): Promi
     };
   }
 
+  const jobLabel = BACKGROUND_JOB_LABELS[task.kind];
+  const activityId = startBackgroundActivity({
+    id: `job:${task.kind}:${task.source}`,
+    kind: "job",
+    jobKind: task.kind,
+    label: jobLabel,
+    source: task.source,
+    message: `${jobLabel} started.`,
+  });
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   try {
     const timeoutMs = task.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    return await Promise.race([
+    const result = await Promise.race([
       Promise.resolve().then(task.run),
       new Promise<never>((_, reject) => {
         timeoutHandle = setTimeout(() => {
@@ -312,6 +326,12 @@ export async function runBackgroundJob<T>(task: BackgroundRuntimeTask<T>): Promi
         }, timeoutMs);
       }),
     ]);
+    finishBackgroundActivity(activityId, "success", `${jobLabel} finished.`);
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    finishBackgroundActivity(activityId, "error", `${jobLabel} failed: ${message}`);
+    throw error;
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
     if (blocking) {

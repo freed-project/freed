@@ -51,6 +51,11 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { log } from "./lib/logger";
 import { safeUnlisten } from "./lib/safe-unlisten";
 import { setLogTransport } from "@freed/ui/lib/debug-store";
+import {
+  finishBackgroundActivity,
+  startBackgroundActivity,
+  updateBackgroundActivity,
+} from "@freed/ui/lib/background-activity-store";
 import { clearStoredCookies, storeCookies } from "./lib/x-auth";
 import { disconnectIg, storeIgAuthState } from "./lib/instagram-auth";
 import { disconnectFb, storeFbAuthState } from "./lib/fb-auth";
@@ -596,24 +601,40 @@ function App() {
     async ({ showCheckingState }: { showCheckingState: boolean }): Promise<AvailableUpdateInfo | null> => {
       if (IS_LOCAL_PREVIEW) return null;
 
+      const activityId = startBackgroundActivity({
+        id: "job:update:desktop-check",
+        kind: "job",
+        jobKind: "update",
+        label: "Update",
+        source: "desktop-check",
+        message: "Checking for Freed Desktop updates.",
+      });
       if (showCheckingState) {
         setUpdateState({ phase: "checking" });
       }
 
-      const availableUpdate = await checkDesktopUpdate(releaseChannel);
-      if (availableUpdate) {
-        setAvailableUpdate(availableUpdate);
-        return {
-          version: availableUpdate.update.version,
-          channel: availableUpdate.channel,
-        };
-      }
+      try {
+        const availableUpdate = await checkDesktopUpdate(releaseChannel);
+        if (availableUpdate) {
+          setAvailableUpdate(availableUpdate);
+          finishBackgroundActivity(activityId, "success", `Freed Desktop ${availableUpdate.update.version} is available.`);
+          return {
+            version: availableUpdate.update.version,
+            channel: availableUpdate.channel,
+          };
+        }
 
-      pendingUpdate.current = null;
-      if (showCheckingState) {
-        setUpdateState({ phase: "idle" });
+        pendingUpdate.current = null;
+        if (showCheckingState) {
+          setUpdateState({ phase: "idle" });
+        }
+        finishBackgroundActivity(activityId, "success", "Freed Desktop is up to date.");
+        return null;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        finishBackgroundActivity(activityId, "error", `Update check failed: ${message}`);
+        throw error;
       }
-      return null;
     },
     [releaseChannel, setAvailableUpdate],
   );
@@ -666,6 +687,15 @@ function App() {
   const applyUpdate = useCallback(async () => {
     const pending = pendingUpdate.current;
     if (!pending) return;
+    const activityId = startBackgroundActivity({
+      id: "job:update:desktop-download",
+      kind: "job",
+      jobKind: "update",
+      label: "Update",
+      source: "desktop-download",
+      message: "Downloading Freed Desktop update.",
+      progress: 0,
+    });
     setUpdateState({ phase: "downloading", percent: 0 });
 
     try {
@@ -675,10 +705,20 @@ function App() {
             phase: "downloading",
             percent: progress.percent,
           });
+          updateBackgroundActivity(activityId, {
+            message: "Downloading Freed Desktop update.",
+            progress: progress.percent,
+          });
           return;
         }
 
         setUpdateState({ phase: "ready" });
+        updateBackgroundActivity(activityId, {
+          message: "Freed Desktop update is ready.",
+          progress: 100,
+          log: true,
+          level: "success",
+        });
       });
 
       // Persist the installed version across the relaunch so we can greet the user.
@@ -686,12 +726,15 @@ function App() {
       setInstalledReleaseChannel(pending.channel);
       await persistDesktopReleaseChannel(releaseChannel);
       localStorage.setItem(JUST_UPDATED_KEY, version);
+      finishBackgroundActivity(activityId, "success", `Freed Desktop ${version} installed. Restarting.`);
       await relaunch();
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Update failed";
       setUpdateState({
         phase: "error",
-        message: err instanceof Error ? err.message : "Update failed",
+        message,
       });
+      finishBackgroundActivity(activityId, "error", `Update failed: ${message}`);
     }
   }, [releaseChannel]);
 
@@ -904,7 +947,7 @@ function App() {
       },
       importMarkdown: importMarkdownFiles,
       exportMarkdown: () => {
-        const items = Object.values(useDesktopStore.getState().items ?? {});
+        const items = useDesktopStore.getState().items ?? [];
         return exportLibrary(items);
       },
       retryCloudProvider,

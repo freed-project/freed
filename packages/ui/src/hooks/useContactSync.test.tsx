@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { CONTACT_SYNC_STORAGE_KEY, type ContactSyncState } from "@freed/shared";
 import { PlatformProvider, type PlatformConfig } from "../context/PlatformContext";
+import { useBackgroundActivityStore } from "../lib/background-activity-store";
 import { useContactSync } from "./useContactSync";
 
 type ContactSyncActions = ReturnType<typeof useContactSync>;
@@ -40,6 +41,7 @@ describe("useContactSync", () => {
     root = null;
     container = null;
     localStorage.removeItem(CONTACT_SYNC_STORAGE_KEY);
+    useBackgroundActivityStore.getState().clearBackgroundActivity();
     vi.restoreAllMocks();
   });
 
@@ -92,6 +94,12 @@ describe("useContactSync", () => {
     expect(getToken).toHaveBeenCalledTimes(1);
     expect(fetchContacts).toHaveBeenCalledTimes(1);
     expect(fetchContacts).toHaveBeenCalledWith("google-access-token", null);
+    expect(Object.values(useBackgroundActivityStore.getState().active)).toHaveLength(1);
+    expect(useBackgroundActivityStore.getState().active["channel:googleContacts"]).toMatchObject({
+      channelId: "googleContacts",
+      label: "Google Contacts",
+      message: "Fetching Google Contacts.",
+    });
 
     await act(async () => {
       resolveFetch?.({ contacts: [], nextSyncToken: "next-token", deleted: [] });
@@ -102,6 +110,11 @@ describe("useContactSync", () => {
       authStatus: "connected",
       syncStatus: "idle",
       syncToken: "next-token",
+    });
+    expect(Object.values(useBackgroundActivityStore.getState().active)).toHaveLength(0);
+    expect(useBackgroundActivityStore.getState().log[0]).toMatchObject({
+      level: "success",
+      channelId: "googleContacts",
     });
   });
 
@@ -155,6 +168,11 @@ describe("useContactSync", () => {
       lastErrorCode: "auth",
     });
     expect(result?.lastErrorMessage).toContain("client_secret is missing");
+    expect(Object.values(useBackgroundActivityStore.getState().active)).toHaveLength(0);
+    expect(useBackgroundActivityStore.getState().log[0]).toMatchObject({
+      level: "error",
+      channelId: "googleContacts",
+    });
   });
 
   it("recovers a stale persisted syncing state after a successful sync", async () => {
@@ -271,6 +289,11 @@ describe("useContactSync", () => {
       lastErrorCode: "network",
     });
     expect(actions?.getSyncState().lastErrorMessage).toContain("Google Contacts sync timed out");
+    expect(Object.values(useBackgroundActivityStore.getState().active)).toHaveLength(0);
+    expect(useBackgroundActivityStore.getState().log[0]).toMatchObject({
+      level: "error",
+      channelId: "googleContacts",
+    });
   });
 
   it("skips automatic focus syncs when Contacts synced recently", async () => {

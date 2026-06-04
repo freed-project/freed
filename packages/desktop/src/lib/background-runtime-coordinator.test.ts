@@ -52,6 +52,7 @@ describe("background runtime coordinator", () => {
 
   it("prevents overlapping background jobs", async () => {
     const coordinator = await loadCoordinator();
+    const { useBackgroundActivityStore } = await import("@freed/ui/lib/background-activity-store");
     coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: true });
     coordinator.noteRendererHeartbeat(heartbeat(1));
     coordinator.noteRendererHeartbeat(heartbeat(2));
@@ -66,6 +67,11 @@ describe("background runtime coordinator", () => {
     });
 
     await Promise.resolve();
+    expect(useBackgroundActivityStore.getState().active["job:content-fetch:test-fetch"]).toMatchObject({
+      jobKind: "content-fetch",
+      source: "test-fetch",
+      label: "Article fetch",
+    });
     await expect(
       coordinator.runBackgroundJob({
         kind: "outbox",
@@ -76,6 +82,12 @@ describe("background runtime coordinator", () => {
 
     releaseFirst();
     await first;
+    expect(useBackgroundActivityStore.getState().active["job:content-fetch:test-fetch"]).toBeUndefined();
+    expect(useBackgroundActivityStore.getState().log[0]).toMatchObject({
+      level: "success",
+      jobKind: "content-fetch",
+      message: "Article fetch finished.",
+    });
     await expect(
       coordinator.runBackgroundJob({
         kind: "outbox",

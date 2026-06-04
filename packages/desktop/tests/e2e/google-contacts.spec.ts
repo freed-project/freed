@@ -69,6 +69,34 @@ async function mockGoogleContacts(
   );
 }
 
+async function mockSlowGoogleContacts(
+  page: import("@playwright/test").Page,
+  connections: unknown[],
+) {
+  await page.evaluate((connections) => {
+    const body = JSON.stringify({
+      connections,
+      nextSyncToken: "sync-token-1",
+    });
+    const encodedBody = Array.from(new TextEncoder().encode(body));
+    const handlers = (window as Window & {
+      __TAURI_MOCK_HANDLERS__?: Record<string, (args: unknown) => unknown>;
+      __resolveGoogleContactsSync?: () => void;
+    }).__TAURI_MOCK_HANDLERS__;
+    if (!handlers) throw new Error("Tauri mock handlers are unavailable");
+    handlers.google_api_request = () =>
+      new Promise((resolve) => {
+        (window as Window & { __resolveGoogleContactsSync?: () => void }).__resolveGoogleContactsSync = () => {
+          resolve({
+            status: 200,
+            headers: [["content-type", "application/json"]],
+            body: encodedBody,
+          });
+        };
+      });
+  }, connections);
+}
+
 async function readContactSyncState(page: import("@playwright/test").Page) {
   return page.evaluate((storageKey) => {
     const raw = window.localStorage.getItem(storageKey);
@@ -172,6 +200,45 @@ test("syncs Google Contacts through the desktop native API path", async ({ app }
   expect(state?.syncToken).toBe("sync-token-1");
   expect(state?.cachedContacts).toHaveLength(1);
   expect(state?.cachedContacts?.[0]?.name?.displayName).toBe("Ada Lovelace");
+});
+
+test("slow Google Contacts sync appears in the global background activity popover", async ({ app }) => {
+  await seedGoogleToken(app.page);
+  await app.goto();
+  await mockSlowGoogleContacts(app.page, [
+    {
+      resourceName: "people/grace",
+      etag: "contact-etag",
+      names: [{ displayName: "Grace Hopper", givenName: "Grace", familyName: "Hopper", metadata: { primary: true } }],
+      emailAddresses: [{ value: "grace@example.com", type: "home" }],
+    },
+  ]);
+  await app.waitForReady();
+
+  const section = await openGoogleContactsSection(app.page, test);
+  if (!section) return;
+  await section.getByRole("button", { name: "Sync Now" }).click();
+  await expect(section.getByText("Syncing", { exact: true })).toBeVisible({ timeout: 5_000 });
+
+  await app.page.getByTestId("settings-close-button-sidebar").click();
+  const trigger = app.page.getByTestId("background-activity-trigger");
+  await expect(trigger).toBeVisible({ timeout: 5_000 });
+  await trigger.click();
+
+  const popover = app.page.getByTestId("background-activity-popover");
+  await expect(popover).toBeVisible();
+  await expect(popover).toContainText("Google Contacts");
+  await expect(popover).toContainText("Fetching Google Contacts");
+  await expect(app.page.getByTestId("background-activity-log")).toContainText("Fetching Google Contacts");
+
+  await app.page.evaluate(() => {
+    (window as Window & { __resolveGoogleContactsSync?: () => void }).__resolveGoogleContactsSync?.();
+  });
+
+  await expect(trigger).toHaveCount(0, { timeout: 5_000 });
+  const state = await readContactSyncState(app.page);
+  expect(state?.syncStatus).toBe("idle");
+  expect(state?.cachedContacts?.[0]?.name?.displayName).toBe("Grace Hopper");
 });
 
 test("People API failures surface reconnect state instead of failing silently", async ({ app }) => {
