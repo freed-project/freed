@@ -772,14 +772,14 @@ export function Sidebar({
   const expandedSidebarUsesCondensedPadding =
     renderMode === "expanded" && desktopWidth < EXPANDED_SIDEBAR_PADDING_CROSSOVER_WIDTH_PX;
   const sidebarPaddingInlinePx = isMobileDevice
-    ? 20
+    ? 12
     : compactRail
     ? COMPACT_RAIL_OUTER_INSET_PX
     : expandedSidebarUsesCondensedPadding
       ? EXPANDED_SIDEBAR_CONDENSED_PADDING_PX
       : EXPANDED_SIDEBAR_ROOMY_PADDING_PX;
   const sidebarPaddingBlockPx = isMobileDevice
-    ? 14
+    ? 8
     : compactRail
     ? COMPACT_RAIL_OUTER_INSET_PX
     : expandedSidebarUsesCondensedPadding
@@ -819,30 +819,30 @@ export function Sidebar({
   const desktopAsideRenderedWidth = closedPreviewActive ? COMPACT_WIDTH : desktopAsideWidth;
   const compactSidebar = compactRail;
   const rowPaddingClass = isMobileDevice
-    ? "px-3"
+    ? "px-2"
     : compactRail
       ? "px-1.5"
       : narrowLabeledSidebar
         ? "pl-2 pr-0"
         : "px-2.5";
   const rowLeadingPaddingClass = isMobileDevice
-    ? "pl-3"
+    ? "pl-2"
     : compactRail
       ? "pl-1.5"
       : narrowLabeledSidebar
         ? "pl-2"
         : "pl-2.5";
   const rowTrailingPaddingClass = isMobileDevice
-    ? "pr-3"
+    ? "pr-2"
     : compactRail
       ? "pr-1.5"
       : narrowLabeledSidebar
         ? "pr-1.5"
         : "pr-2.5";
-  const rowGapClass = isMobileDevice ? "gap-3.5" : narrowLabeledSidebar ? "gap-2" : "gap-3";
+  const rowGapClass = isMobileDevice ? "gap-2" : narrowLabeledSidebar ? "gap-2" : "gap-3";
   const rowTextClass = isMobileDevice ? "text-base" : "text-sm";
-  const rowVerticalPaddingClass = isMobileDevice ? "py-3" : "py-1.5";
-  const feedRowVerticalPaddingClass = isMobileDevice ? "py-2.5" : "py-2";
+  const rowVerticalPaddingClass = isMobileDevice ? "py-2" : "py-1.5";
+  const feedRowVerticalPaddingClass = "py-2";
   const countTextClass = isMobileDevice ? "text-xs" : "text-[10px]";
   const mobileSidebarWidth = `min(${MOBILE_SIDEBAR_WIDTH_PX}px, calc(100vw - ${MOBILE_SIDEBAR_VIEWPORT_MARGIN_PX}px))`;
   const inlineSearchGapPx = sidebarPaddingBlockPx;
@@ -1847,15 +1847,66 @@ export function Sidebar({
     </nav>
   );
 
-  return (
+  const mobileSidebarLayer = isMobileDevice ? (
     <>
-      {isMobileDevice && mobileOpen && (
+      {mobileOpen && (
         <div
-          className="fixed bottom-0 left-0 right-0 z-20 bg-black/60 md:hidden"
+          className="fixed bottom-0 left-0 right-0 z-[145] bg-black/60 md:hidden"
           style={{ top: `calc(env(safe-area-inset-top, 0px) + ${MOBILE_MENU_TOP_PX}px)` }}
           onClick={onMobileClose}
         />
       )}
+
+      <aside
+        data-testid="app-sidebar-mobile"
+        data-open={mobileOpen ? "true" : "false"}
+        className={`
+          theme-mobile-sidebar fixed left-0 z-[150] flex min-h-0 flex-col overflow-hidden
+          transform transition-transform duration-200 ease-in-out
+          ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
+        `}
+        style={{
+          width: mobileSidebarWidth,
+          top: `calc(env(safe-area-inset-top, 0px) + ${MOBILE_MENU_TOP_PX}px)`,
+          height: `calc(100dvh - env(safe-area-inset-top, 0px) - ${MOBILE_MENU_TOP_PX}px)`,
+          maxHeight: `calc(100dvh - env(safe-area-inset-top, 0px) - ${MOBILE_MENU_TOP_PX}px)`,
+        }}
+        >
+        {sidebarBody}
+        <div
+          data-testid="mobile-sidebar-settings-footer"
+          className="shrink-0"
+          style={{
+            paddingInline: `${sidebarPaddingInlinePx}px`,
+            paddingTop: "4px",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          }}
+        >
+          <div className={`flex w-full items-center rounded-lg text-base text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}>
+            <button
+              type="button"
+              data-testid="mobile-sidebar-settings-button"
+              onClick={handleOpenSettingsFromMobileSidebar}
+              className={`flex min-w-0 flex-1 cursor-pointer items-center gap-2 ${rowPaddingClass} ${rowVerticalPaddingClass} text-left`}
+            >
+              {settingsButtonContent}
+            </button>
+            <div className="pr-2">
+              {renderActivityButton("background-activity-trigger-mobile")}
+            </div>
+          </div>
+        </div>
+      </aside>
+    </>
+  ) : null;
+  const renderedMobileSidebarLayer =
+    mobileSidebarLayer && typeof document !== "undefined"
+      ? createPortal(mobileSidebarLayer, document.body)
+      : mobileSidebarLayer;
+
+  return (
+    <>
+      {renderedMobileSidebarLayer}
 
       {!isMobileDevice ? (
       <div
@@ -1891,47 +1942,6 @@ export function Sidebar({
           ) : null}
         </div>
       </div>
-      ) : null}
-
-      {isMobileDevice ? (
-      <aside
-        data-testid="app-sidebar-mobile"
-        className={`
-          theme-mobile-sidebar fixed left-0 z-40 flex min-h-0 flex-col overflow-hidden
-          transform transition-transform duration-200 ease-in-out
-          ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
-        `}
-        style={{
-          width: mobileSidebarWidth,
-          top: `calc(env(safe-area-inset-top, 0px) + ${MOBILE_MENU_TOP_PX}px)`,
-          height: `calc(100dvh - env(safe-area-inset-top, 0px) - ${MOBILE_MENU_TOP_PX}px)`,
-          maxHeight: `calc(100dvh - env(safe-area-inset-top, 0px) - ${MOBILE_MENU_TOP_PX}px)`,
-        }}
-        >
-        {sidebarBody}
-        <div
-          data-testid="mobile-sidebar-settings-footer"
-          className="shrink-0 border-t border-[var(--theme-border-subtle)]"
-          style={{
-            paddingInline: `${sidebarPaddingInlinePx}px`,
-            paddingBottom: "env(safe-area-inset-bottom, 0px)",
-          }}
-        >
-          <div className={`flex w-full items-center rounded-lg text-base text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}>
-            <button
-              type="button"
-              data-testid="mobile-sidebar-settings-button"
-              onClick={handleOpenSettingsFromMobileSidebar}
-              className={`flex min-w-0 flex-1 cursor-pointer items-center gap-3 ${rowPaddingClass} ${rowVerticalPaddingClass} text-left`}
-            >
-              {settingsButtonContent}
-            </button>
-            <div className="pr-2">
-              {renderActivityButton("background-activity-trigger-mobile")}
-            </div>
-          </div>
-        </div>
-      </aside>
       ) : null}
 
       <SettingsDialog open={showSettings} onClose={closeSettings} />
