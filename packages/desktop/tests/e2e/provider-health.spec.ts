@@ -5,6 +5,10 @@ const DEBUG_STORE_PATH = resolveViteFsModulePath(
   "../../../ui/src/lib/debug-store.ts",
   import.meta.url,
 );
+const BACKGROUND_ACTIVITY_STORE_PATH = resolveViteFsModulePath(
+  "../../../ui/src/lib/background-activity-store.ts",
+  import.meta.url,
+);
 
 function getDesktopSidebar(page: import("@playwright/test").Page) {
   return page.getByTestId("app-sidebar");
@@ -1514,7 +1518,7 @@ test("provider sync button shows a spinner while that provider is active", async
   await app.goto();
   await app.waitForReady();
 
-  await page.evaluate(() => {
+  await page.evaluate(async ({ activityStorePath }) => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
@@ -1540,7 +1544,30 @@ test("provider sync button shows a spinner while that provider is active", async
     window.__freed.debug?.()?.addEvent("change", "[X] sync started");
     window.__freed.debug?.()?.addEvent("change", "[X] requesting home timeline");
     window.__freed.debug?.()?.addEvent("change", "[X] response received: 12,345 bytes");
-  });
+    const activity = await import(activityStorePath) as typeof import("../../../ui/src/lib/background-activity-store");
+    activity.startBackgroundActivity({
+      id: "channel:x",
+      kind: "channel",
+      channelId: "x",
+      label: "X",
+      message: "X sync started.",
+    });
+    activity.recordBackgroundActivityLog({
+      channelId: "x",
+      message: "[X] requesting home timeline",
+    });
+  }, { activityStorePath: BACKGROUND_ACTIVITY_STORE_PATH });
+
+  const activityTrigger = getDesktopSidebar(page).getByTestId("background-activity-trigger");
+  await expect(activityTrigger).toBeVisible();
+  await activityTrigger.click();
+  const activityPopover = page.getByTestId("background-activity-popover");
+  await expect(activityPopover).toBeVisible();
+  await expect(activityPopover).toContainText("X");
+  await expect(activityPopover).toContainText("X sync started");
+  await expect(activityPopover).toContainText("[X] requesting home timeline");
+  await page.keyboard.press("Escape");
+  await expect(activityPopover).toHaveCount(0);
 
   await openSettingsSection(page, "X");
   const sidebar = getDesktopSidebar(page);
@@ -1576,6 +1603,53 @@ test("provider sync button shows a spinner while that provider is active", async
   expect(sourceIndicatorSizes).not.toBeNull();
   expect(Math.abs(sourceIndicatorSizes!.syncingWidth - sourceIndicatorSizes!.healthyWidth)).toBeLessThanOrEqual(1);
   expect(Math.abs(sourceIndicatorSizes!.syncingHeight - sourceIndicatorSizes!.healthyHeight)).toBeLessThanOrEqual(1);
+});
+
+test("compact sidebar activity badge opens job activity popover", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async ({ activityStorePath }) => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        preferences: { display: Record<string, unknown> };
+      };
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    const current = store.getState();
+    store.setState({
+      preferences: {
+        ...current.preferences,
+        display: {
+          ...current.preferences.display,
+          sidebarMode: "compact",
+        },
+      },
+    });
+    const activity = await import(activityStorePath) as typeof import("../../../ui/src/lib/background-activity-store");
+    activity.startBackgroundActivity({
+      id: "job:content-fetch:e2e",
+      kind: "job",
+      jobKind: "content-fetch",
+      label: "Article fetch",
+      source: "e2e",
+      message: "Fetching saved article content.",
+    });
+  }, { activityStorePath: BACKGROUND_ACTIVITY_STORE_PATH });
+
+  const sidebar = getDesktopSidebar(page);
+  const trigger = sidebar.getByTestId("background-activity-trigger-compact");
+  await expect(trigger).toBeVisible({ timeout: 5_000 });
+  await trigger.click();
+
+  const popover = page.getByTestId("background-activity-popover");
+  await expect(popover).toBeVisible();
+  await expect(popover).toContainText("Jobs");
+  await expect(popover).toContainText("Article fetch");
+  await expect(popover).toContainText("Fetching saved article content");
 });
 
 test("feeds source indicator reflects aggregate feed health and active syncing", async ({ app, page }) => {

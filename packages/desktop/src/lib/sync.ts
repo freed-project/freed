@@ -28,6 +28,11 @@ import {
   updateCloudProvider,
   type CloudProviderEventKind,
 } from "@freed/ui/lib/debug-store";
+import {
+  BACKGROUND_CHANNEL_LABELS,
+  finishBackgroundActivity,
+  startBackgroundActivity,
+} from "@freed/ui/lib/background-activity-store";
 import { log } from "./logger.js";
 import { recordProviderHealthEvent } from "./provider-health";
 import { scheduleSideEffect } from "./side-effect-scheduler";
@@ -341,6 +346,14 @@ function recordCloudStep(
 
 function markCloudAttempt(provider: CloudProvider, stage: Exclude<CloudStage, "idle">, message?: string): void {
   const statusMessage = message ?? `Running ${stage}.`;
+  startBackgroundActivity({
+    id: `channel:${provider}`,
+    kind: "channel",
+    channelId: provider,
+    label: BACKGROUND_CHANNEL_LABELS[provider],
+    message: statusMessage,
+    log: false,
+  });
   updateCloudProvider(provider, {
     status: "connected",
     stage,
@@ -395,6 +408,11 @@ function markCloudSuccess(
     eventMessage ?? statusMessage,
     eventBytes ?? debugState.lastUploadedBytes ?? debugState.lastRemoteBytes ?? debugState.lastLocalBytes,
   );
+  finishBackgroundActivity(
+    `channel:${provider}`,
+    "success",
+    eventMessage ?? statusMessage,
+  );
 }
 
 function markCloudError(provider: CloudProvider, stage: "auth" | "download" | "merge" | "poll" | "upload", error: unknown): void {
@@ -408,6 +426,7 @@ function markCloudError(provider: CloudProvider, stage: "auth" | "download" | "m
     lastErrorAt: Date.now(),
   });
   recordCloudStep(provider, "error", stage, message);
+  finishBackgroundActivity(`channel:${provider}`, "error", `${BACKGROUND_CHANNEL_LABELS[provider]} failed: ${message}`);
 }
 
 // Desktop OAuth client IDs. These are public and embedded in the app bundle.
