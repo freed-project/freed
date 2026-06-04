@@ -4,16 +4,29 @@
  */
 
 import * as A from "@automerge/automerge";
-import type { FreedDoc } from "@freed/shared/schema";
+import {
+  assertNonDestructiveMerge,
+  type DestructiveMergeGuardOptions,
+  type FreedDoc,
+} from "@freed/shared/schema";
 
 /**
  * CRDT-merge two raw Automerge binaries and return the merged binary.
  * Neither input is mutated — a fresh document is produced each time.
  */
-export function mergeBinaries(a: Uint8Array, b: Uint8Array): Uint8Array {
+export function mergeBinaries(
+  a: Uint8Array,
+  b: Uint8Array,
+  options: DestructiveMergeGuardOptions = {},
+): Uint8Array {
   const docA = A.load<FreedDoc>(a);
   const docB = A.load<FreedDoc>(b);
-  return A.save(A.merge(docA, docB));
+  const merged = A.merge(docA, docB);
+  assertNonDestructiveMerge(docA, docB, merged, {
+    source: "cloud upload",
+    ...options,
+  });
+  return A.save(merged);
 }
 
 export function delay(ms: number): Promise<void> {

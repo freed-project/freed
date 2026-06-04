@@ -121,7 +121,9 @@ export function connect(url: string): void {
         await mergeDoc(bytes);
         console.log("[Sync] Received and merged document (%d bytes)", bytes.length);
       } catch (error) {
+        const message = describeSyncError(error);
         console.error("[Sync] Failed to merge doc:", error);
+        addDebugEvent("merge_err", `[Relay] merge failed: ${message}`, bytes.length);
       }
     };
 
