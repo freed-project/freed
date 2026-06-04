@@ -64,6 +64,11 @@ import { buildPlatformActionsRegistry } from "./platform-actions";
 import { startOutboxProcessor } from "./outbox";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
+import {
+  BACKGROUND_CHANNEL_LABELS,
+  finishBackgroundActivity,
+  startBackgroundActivity,
+} from "@freed/ui/lib/background-activity-store";
 import { pinReaderItem } from "./content-fetcher";
 import {
   isBackgroundRuntimeDeferredError,
@@ -914,9 +919,23 @@ export async function withProviderSyncing<T>(
   provider: SyncProviderId,
   task: () => Promise<T>,
 ): Promise<T> {
+  const label = BACKGROUND_CHANNEL_LABELS[provider];
+  const activityId = startBackgroundActivity({
+    id: `channel:${provider}`,
+    kind: "channel",
+    channelId: provider,
+    label,
+    message: `${label} sync started.`,
+  });
   useAppStore.getState().setProviderSyncing(provider, true);
   try {
-    return await task();
+    const result = await task();
+    finishBackgroundActivity(activityId, "success", `${label} sync finished.`);
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    finishBackgroundActivity(activityId, "error", `${label} sync failed: ${message}`);
+    throw error;
   } finally {
     useAppStore.getState().setProviderSyncing(provider, false);
   }

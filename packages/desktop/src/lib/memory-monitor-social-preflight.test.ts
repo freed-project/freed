@@ -66,8 +66,11 @@ function blockedPreparation() {
     webkitLargestRole: "freed-webcontent",
     webkitProcesses: [],
     webkitTelemetryAvailable: true,
+    webkitAttributionPrecise: true,
     indexedDbBytes: 0,
     webkitCacheBytes: 0,
+    storageSizesSampled: true,
+    sampleDurationMs: 1,
     memoryHighBytes: 2 * 1024 * 1024 * 1024,
     memoryCriticalBytes: 4 * 1024 * 1024 * 1024,
     relayDocBytes: 0,
@@ -134,6 +137,40 @@ describe("social scrape memory preflight scheduling", () => {
 
     await flushPromises();
     expect(mocks.invoke).toHaveBeenCalledWith("trim_webkit_network_cache_now");
+    monitor.stopMemoryMonitor();
+  });
+
+  it("uses cheap memory samples after startup", async () => {
+    vi.useFakeTimers();
+    const after = {
+      ...blockedPreparation().after,
+      appResidentBytes: 512 * 1024 * 1024,
+      appMemoryPressureBytes: 512 * 1024 * 1024,
+      memoryHighBytes: 3 * 1024 * 1024 * 1024,
+      memoryCriticalBytes: 4 * 1024 * 1024 * 1024,
+    };
+    mocks.invoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_runtime_memory_stats") {
+        return Promise.resolve(after);
+      }
+      return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+    });
+    const monitor = await loadMonitor();
+
+    monitor.startMemoryMonitor();
+    await flushPromises();
+    expect(mocks.invoke).toHaveBeenCalledWith("get_runtime_memory_stats", {
+      includeStorageSizes: true,
+      preciseWebkitAttribution: true,
+    });
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    await flushPromises();
+    expect(mocks.invoke).toHaveBeenLastCalledWith("get_runtime_memory_stats", {
+      includeStorageSizes: false,
+      preciseWebkitAttribution: false,
+    });
+
     monitor.stopMemoryMonitor();
   });
 });

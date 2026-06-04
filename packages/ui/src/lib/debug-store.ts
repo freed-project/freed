@@ -10,6 +10,10 @@
  */
 
 import { create } from "zustand";
+import {
+  inferBackgroundActivityFromDebugEvent,
+  recordBackgroundActivityLog,
+} from "./background-activity-store.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -79,10 +83,14 @@ export interface RuntimeMemorySnapshot {
     role: string;
   }>;
   webkitTelemetryAvailable?: boolean;
+  webkitAttributionPrecise?: boolean;
   automergeBinaryBytes?: number;
   automergeItemCount?: number;
   indexedDbBytes?: number;
   webkitCacheBytes?: number;
+  storageSizesSampled?: boolean;
+  sampleDurationMs?: number;
+  nativeSampleDurationMs?: number;
   memoryHighBytes?: number;
   memoryCriticalBytes?: number;
   pressureLevel?: "normal" | "high" | "critical";
@@ -406,6 +414,15 @@ export function addDebugEvent(
   bytes?: number,
 ): void {
   useDebugStore.getState().addEvent(kind, detail, bytes);
+  const activity = inferBackgroundActivityFromDebugEvent(kind, detail);
+  if (activity && detail) {
+    recordBackgroundActivityLog({
+      ...activity,
+      message: bytes !== undefined
+        ? `${detail} (${bytes.toLocaleString()} bytes)`
+        : detail,
+    });
+  }
 
   if (_logTransport) {
     const level =

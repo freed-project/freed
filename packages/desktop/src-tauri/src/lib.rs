@@ -7,7 +7,7 @@ use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(target_os = "macos")]
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
@@ -16,9 +16,9 @@ use std::process::Command;
 use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use sysinfo::{Disks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-#[cfg(target_os = "macos")]
-use tauri::menu::Submenu;
 use tauri::menu::{Menu, MenuItem};
+#[cfg(target_os = "macos")]
+use tauri::menu::{PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -1356,8 +1356,11 @@ struct RuntimeMemoryStats {
     webkit_largest_role: Option<String>,
     webkit_processes: Vec<WebkitProcessRuntimeStats>,
     webkit_telemetry_available: bool,
+    webkit_attribution_precise: bool,
     indexed_db_bytes: Option<u64>,
     webkit_cache_bytes: Option<u64>,
+    storage_sizes_sampled: bool,
+    sample_duration_ms: u64,
     memory_high_bytes: u64,
     memory_critical_bytes: u64,
     relay_doc_bytes: u64,
@@ -1374,6 +1377,21 @@ struct WebkitProcessRuntimeStats {
     cpu_usage: f32,
     age_seconds: u64,
     role: String,
+}
+
+#[derive(Clone, Copy)]
+struct RuntimeMemoryStatsOptions {
+    include_storage_sizes: bool,
+    precise_webkit_attribution: bool,
+}
+
+impl RuntimeMemoryStatsOptions {
+    fn full() -> Self {
+        Self {
+            include_storage_sizes: true,
+            precise_webkit_attribution: true,
+        }
+    }
 }
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
@@ -2359,8 +2377,11 @@ mod renderer_watchdog_tests {
             webkit_largest_role: Some("freed-webcontent-age-matched".to_string()),
             webkit_processes: Vec::new(),
             webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
@@ -3717,6 +3738,7 @@ fn freed_webkit_memory_stats(
     system: &System,
     roots: &[PathBuf],
     app_age_seconds: u64,
+    precise_attribution: bool,
 ) -> WebkitMemoryStats {
     let mut total_resident_bytes = 0u64;
     let mut total_footprint_bytes = 0u64;
@@ -3734,11 +3756,11 @@ fn freed_webkit_memory_stats(
             }
             let pid_u32 = pid.as_u32();
             let age_seconds = process.run_time();
-            let Some(role) = freed_webkit_process_role(
-                macos_process_has_open_file_under_roots(pid_u32, roots),
-                age_seconds,
-                app_age_seconds,
-            ) else {
+            let has_open_file_under_roots =
+                precise_attribution && macos_process_has_open_file_under_roots(pid_u32, roots);
+            let Some(role) =
+                freed_webkit_process_role(has_open_file_under_roots, age_seconds, app_age_seconds)
+            else {
                 continue;
             };
             let resident = process.memory();
@@ -3792,6 +3814,21 @@ fn collect_runtime_memory_stats(
     relay_doc_bytes: u64,
     relay_client_count: u64,
 ) -> RuntimeMemoryStats {
+    collect_runtime_memory_stats_with_options(
+        app,
+        relay_doc_bytes,
+        relay_client_count,
+        RuntimeMemoryStatsOptions::full(),
+    )
+}
+
+fn collect_runtime_memory_stats_with_options(
+    app: &tauri::AppHandle,
+    relay_doc_bytes: u64,
+    relay_client_count: u64,
+    options: RuntimeMemoryStatsOptions,
+) -> RuntimeMemoryStats {
+    let sample_started_at = Instant::now();
     let pid = Pid::from_u32(std::process::id());
     let mut system = System::new();
     system.refresh_memory();
@@ -3818,20 +3855,33 @@ fn collect_runtime_memory_stats(
         ProcessRefreshKind::nothing().with_memory(),
     );
 
-    let webkit = freed_webkit_memory_stats(&system, &app_storage_roots(app), process_age_seconds);
+    let webkit = freed_webkit_memory_stats(
+        &system,
+        &app_storage_roots(app),
+        process_age_seconds,
+        options.precise_webkit_attribution,
+    );
     let total_physical_memory_bytes = system.total_memory();
     let (memory_high_bytes, memory_critical_bytes) =
         memory_pressure_limits(total_physical_memory_bytes);
-    let indexed_db_bytes = app
-        .path()
-        .app_data_dir()
-        .ok()
-        .and_then(|path| dir_size_bytes(&path.join("IndexedDB")));
-    let webkit_cache_bytes = app
-        .path()
-        .app_cache_dir()
-        .ok()
-        .and_then(|path| dir_size_bytes(&path.join("WebKit")));
+    let indexed_db_bytes = options
+        .include_storage_sizes
+        .then(|| {
+            app.path()
+                .app_data_dir()
+                .ok()
+                .and_then(|path| dir_size_bytes(&path.join("IndexedDB")))
+        })
+        .flatten();
+    let webkit_cache_bytes = options
+        .include_storage_sizes
+        .then(|| {
+            app.path()
+                .app_cache_dir()
+                .ok()
+                .and_then(|path| dir_size_bytes(&path.join("WebKit")))
+        })
+        .flatten();
     let app_resident_bytes = process_resident_bytes.saturating_add(webkit.total_resident_bytes);
     let webkit_pressure_bytes = webkit
         .total_footprint_bytes
@@ -3862,8 +3912,14 @@ fn collect_runtime_memory_stats(
         webkit_largest_role: webkit.largest_role,
         webkit_processes: webkit.processes,
         webkit_telemetry_available: webkit.process_count > 0,
+        webkit_attribution_precise: options.precise_webkit_attribution,
         indexed_db_bytes,
         webkit_cache_bytes,
+        storage_sizes_sampled: options.include_storage_sizes,
+        sample_duration_ms: sample_started_at
+            .elapsed()
+            .as_millis()
+            .min(u128::from(u64::MAX)) as u64,
         memory_high_bytes,
         memory_critical_bytes,
         relay_doc_bytes,
@@ -4536,6 +4592,8 @@ async fn ensure_social_scrape_memory(
 async fn get_runtime_memory_stats(
     app: tauri::AppHandle,
     state: tauri::State<'_, RelayState>,
+    include_storage_sizes: Option<bool>,
+    precise_webkit_attribution: Option<bool>,
 ) -> Result<RuntimeMemoryStats, String> {
     let relay_doc_bytes = state
         .current_doc
@@ -4546,10 +4604,14 @@ async fn get_runtime_memory_stats(
         .unwrap_or(0);
     let relay_client_count = *state.client_count.read().await as u64;
 
-    Ok(collect_runtime_memory_stats(
+    Ok(collect_runtime_memory_stats_with_options(
         &app,
         relay_doc_bytes,
         relay_client_count,
+        RuntimeMemoryStatsOptions {
+            include_storage_sizes: include_storage_sizes.unwrap_or(true),
+            precise_webkit_attribution: precise_webkit_attribution.unwrap_or(true),
+        },
     ))
 }
 
@@ -4992,6 +5054,17 @@ struct FbGroupInfoPayload {
 struct FbGroupsDataPayload {
     groups: Vec<FbGroupInfoPayload>,
     error: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FbGroupMembershipPayload {
+    id: String,
+    url: String,
+    name: Option<String>,
+    still_joined: Option<bool>,
+    reason: String,
+    checked_at: u64,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -6059,36 +6132,271 @@ async fn fb_scrape_groups(
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(3500.0, 500.0))).await;
 
-    let (tx, rx) = tokio::sync::oneshot::channel::<Result<Vec<FbGroupInfoPayload>, String>>();
+    let mut groups_by_id: HashMap<String, FbGroupInfoPayload> = HashMap::new();
+    let mut unchanged_passes = 0usize;
+    let max_passes = 24usize;
+
+    for pass in 0..max_passes {
+        let (tx, rx) = tokio::sync::oneshot::channel::<Result<Vec<FbGroupInfoPayload>, String>>();
+        let tx = Arc::new(std::sync::Mutex::new(Some(tx)));
+        let listener_tx = tx.clone();
+        let listener_id = app.listen("fb-groups-data", move |event| {
+            let result = serde_json::from_str::<FbGroupsDataPayload>(event.payload())
+                .map_err(|err| err.to_string())
+                .and_then(|payload| {
+                    if let Some(error) = payload.error {
+                        Err(error)
+                    } else {
+                        Ok(payload.groups)
+                    }
+                });
+
+            if let Some(sender) = listener_tx.lock().unwrap().take() {
+                let _ = sender.send(result);
+            }
+        });
+
+        wv.eval(FB_GROUPS_EXTRACT_SCRIPT)
+            .map_err(|e| format!("Failed to inject groups extraction script: {}", e))?;
+
+        let groups = match timeout(Duration::from_secs(10), rx).await {
+            Ok(Ok(result)) => result?,
+            Ok(Err(_)) => {
+                app.unlisten(listener_id);
+                Err("Groups scrape channel closed".to_string())?
+            }
+            Err(_) => {
+                app.unlisten(listener_id);
+                Err("Groups scrape timed out after 10 seconds".to_string())?
+            }
+        };
+
+        app.unlisten(listener_id);
+
+        let before_len = groups_by_id.len();
+        for group in groups {
+            match groups_by_id.get(&group.id) {
+                Some(existing) if existing.name.len() >= group.name.len() => {}
+                _ => {
+                    groups_by_id.insert(group.id.clone(), group);
+                }
+            }
+        }
+
+        let after_len = groups_by_id.len();
+        if after_len == before_len {
+            unchanged_passes += 1;
+        } else {
+            unchanged_passes = 0;
+        }
+
+        info!(
+            "[FB] groups scrape pass {}/{}: {} unique groups",
+            pass + 1,
+            max_passes,
+            after_len
+        );
+
+        if pass >= 4 && unchanged_passes >= 4 {
+            break;
+        }
+
+        let scroll_js = r#"
+            (function() {
+                var amount = Math.max(600, Math.floor((window.innerHeight || 900) * 0.85));
+                window.scrollBy({ top: amount, left: 0, behavior: "auto" });
+            })();
+        "#;
+        let _ = wv.eval(scroll_js);
+        tokio::time::sleep(Duration::from_millis(gaussian_ms(900.0, 180.0))).await;
+    }
+
+    Ok(groups_by_id.into_values().collect())
+}
+
+#[tauri::command]
+async fn fb_check_group_membership(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    group_id: String,
+    group_url: String,
+    window_mode: ScraperWindowMode,
+) -> Result<FbGroupMembershipPayload, String> {
+    use tauri::WebviewWindowBuilder;
+
+    let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        "Facebook",
+        "single group membership check",
+        None,
+    )
+    .await?;
+    let _scraper_session =
+        acquire_background_scraper_session(&capture, "fb_check_group_membership").await?;
+    let _recycle_guard =
+        WebviewRecycleGuard::new(app.clone(), "fb-scraper", "group membership check complete");
+
+    let wv = match app.get_webview_window("fb-scraper") {
+        Some(w) => {
+            prepare_background_scraper_window(&w, window_mode)?;
+            w.navigate(group_url.parse::<url::Url>().map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+            w
+        }
+        None => {
+            let mut builder = WebviewWindowBuilder::new(
+                &app,
+                "fb-scraper",
+                tauri::WebviewUrl::External(
+                    group_url.parse::<url::Url>().map_err(|e| e.to_string())?,
+                ),
+            )
+            .data_store_identifier(FB_SCRAPER_DATA_STORE_IDENTIFIER)
+            .user_agent(&scraper_user_agent)
+            .initialization_script(include_str!("webkit-mask.js"))
+            .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
+            .title("Freed Facebook")
+            .inner_size(1280.0, 900.0);
+
+            if window_mode == ScraperWindowMode::Shown {
+                builder = builder.center().visible(true);
+            } else if window_mode == ScraperWindowMode::Cloaked {
+                builder = builder
+                    .transparent(true)
+                    .focused(false)
+                    .focusable(false)
+                    .decorations(false)
+                    .always_on_bottom(true)
+                    .skip_taskbar(true)
+                    .shadow(false)
+                    .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_CLOAK_JS)
+                    .visible(true);
+            } else {
+                builder = builder
+                    .focused(false)
+                    .focusable(false)
+                    .decorations(false)
+                    .always_on_bottom(true)
+                    .skip_taskbar(true)
+                    .shadow(false)
+                    .visible(false);
+            }
+
+            builder.build().map_err(|e| e.to_string())?
+        }
+    };
+
+    tokio::time::sleep(Duration::from_millis(gaussian_ms(4500.0, 700.0))).await;
+
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<FbGroupMembershipPayload, String>>();
     let tx = Arc::new(std::sync::Mutex::new(Some(tx)));
     let listener_tx = tx.clone();
-    let listener_id = app.listen("fb-groups-data", move |event| {
-        let result = serde_json::from_str::<FbGroupsDataPayload>(event.payload())
-            .map_err(|err| err.to_string())
-            .and_then(|payload| {
-                if let Some(error) = payload.error {
-                    Err(error)
-                } else {
-                    Ok(payload.groups)
-                }
-            });
+    let listener_id = app.listen("fb-group-membership", move |event| {
+        let result = serde_json::from_str::<FbGroupMembershipPayload>(event.payload())
+            .map_err(|err| err.to_string());
 
         if let Some(sender) = listener_tx.lock().unwrap().take() {
             let _ = sender.send(result);
         }
     });
 
-    wv.eval(FB_GROUPS_EXTRACT_SCRIPT)
-        .map_err(|e| format!("Failed to inject groups extraction script: {}", e))?;
+    let group_id_json = serde_json::to_string(&group_id).map_err(|e| e.to_string())?;
+    let group_url_json = serde_json::to_string(&group_url).map_err(|e| e.to_string())?;
+    let script = format!(
+        r#"
+        (function(groupId, groupUrl) {{
+          function normalizeText(value) {{
+            return String(value || "")
+              .replace(/\u200b/g, "")
+              .replace(/\s+/g, " ")
+              .replace(/(\S)(last active\b)/i, "$1 $2")
+              .trim()
+              .replace(/^(?:\d+\s*(?:m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|mo|mos|month|months|y|yr|yrs|year|years)(?:\s+ago)?|just now)\s+(?=\S)/i, "")
+              .trim();
+          }}
+          function cleanName(value) {{
+            var text = normalizeText(value);
+            text = text.replace(/\s+\|\s+Facebook$/i, "").trim();
+            text = text.replace(/\s+Facebook$/i, "").trim();
+            return text;
+          }}
+          function candidateName() {{
+            var metaTitle = document.querySelector('meta[property="og:title"], meta[name="twitter:title"]');
+            var candidates = [
+              document.querySelector("h1"),
+              document.querySelector('[role="main"] h1'),
+              document.querySelector('span[dir="auto"]')
+            ];
+            if (metaTitle) {{
+              var metaName = cleanName(metaTitle.getAttribute("content"));
+              if (metaName && metaName.toLowerCase() !== "facebook") return metaName;
+            }}
+            for (var i = 0; i < candidates.length; i++) {{
+              var name = cleanName(candidates[i] && candidates[i].textContent);
+              if (name && name.toLowerCase() !== "facebook") return name;
+            }}
+            var titleName = cleanName(document.title);
+            return titleName && titleName.toLowerCase() !== "facebook" ? titleName : null;
+          }}
+          function visibleControlTexts() {{
+            var nodes = document.querySelectorAll('button, [role="button"], a[role="button"]');
+            var texts = [];
+            for (var i = 0; i < nodes.length; i++) {{
+              var node = nodes[i];
+              var rect = node.getBoundingClientRect ? node.getBoundingClientRect() : {{ width: 1, height: 1 }};
+              if (rect.width === 0 && rect.height === 0) continue;
+              var text = normalizeText(
+                node.getAttribute("aria-label") ||
+                  node.getAttribute("title") ||
+                  node.textContent
+              );
+              if (text) texts.push(text);
+            }}
+            return texts;
+          }}
+          var texts = visibleControlTexts();
+          var joined = texts.some(function(text) {{
+            return /^(joined|leave group)$/i.test(text) || /\bleave group\b/i.test(text);
+          }});
+          var notJoined = texts.some(function(text) {{
+            return /^(join group|request to join)$/i.test(text) || /\bjoin group\b/i.test(text);
+          }});
+          var stillJoined = null;
+          var reason = "membership control not found";
+          if (joined && !notJoined) {{
+            stillJoined = true;
+            reason = "joined control found";
+          }} else if (notJoined && !joined) {{
+            stillJoined = false;
+            reason = "join control found";
+          }} else if (joined && notJoined) {{
+            reason = "conflicting membership controls found";
+          }}
+          window.__TAURI__.event.emit("fb-group-membership", {{
+            id: groupId,
+            url: window.location.href || groupUrl,
+            name: candidateName(),
+            stillJoined: stillJoined,
+            reason: reason,
+            checkedAt: Date.now()
+          }});
+        }})({group_id_json}, {group_url_json});
+        "#
+    );
 
-    let groups = match timeout(Duration::from_secs(10), rx).await {
+    wv.eval(&script)
+        .map_err(|e| format!("Failed to inject group membership script: {}", e))?;
+
+    let result = match timeout(Duration::from_secs(10), rx).await {
         Ok(Ok(result)) => result?,
-        Ok(Err(_)) => Err("Groups scrape channel closed".to_string())?,
-        Err(_) => Err("Groups scrape timed out after 10 seconds".to_string())?,
+        Ok(Err(_)) => Err("Group membership check channel closed".to_string())?,
+        Err(_) => Err("Group membership check timed out after 10 seconds".to_string())?,
     };
 
     app.unlisten(listener_id);
-    Ok(groups)
+    Ok(result)
 }
 
 #[tauri::command]
@@ -8007,8 +8315,31 @@ fn build_macos_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> tauri:
         true,
         &[&show_item, &quit_item],
     )?;
+    let undo_item = PredefinedMenuItem::undo(manager, None)?;
+    let redo_item = PredefinedMenuItem::redo(manager, None)?;
+    let edit_history_separator = PredefinedMenuItem::separator(manager)?;
+    let cut_item = PredefinedMenuItem::cut(manager, None)?;
+    let copy_item = PredefinedMenuItem::copy(manager, None)?;
+    let paste_item = PredefinedMenuItem::paste(manager, None)?;
+    let edit_selection_separator = PredefinedMenuItem::separator(manager)?;
+    let select_all_item = PredefinedMenuItem::select_all(manager, None)?;
+    let edit_menu = Submenu::with_items(
+        manager,
+        "Edit",
+        true,
+        &[
+            &undo_item,
+            &redo_item,
+            &edit_history_separator,
+            &cut_item,
+            &copy_item,
+            &paste_item,
+            &edit_selection_separator,
+            &select_all_item,
+        ],
+    )?;
 
-    Menu::with_items(manager, &[&app_menu])
+    Menu::with_items(manager, &[&app_menu, &edit_menu])
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -9139,6 +9470,7 @@ pub fn run() {
             fb_check_auth,
             fb_scrape_feed,
             fb_scrape_groups,
+            fb_check_group_membership,
             fb_scrape_comments,
             fb_disconnect,
             ig_show_login,
@@ -9201,8 +9533,11 @@ mod tests {
             webkit_largest_role: None,
             webkit_processes: Vec::new(),
             webkit_telemetry_available: false,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MAX_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MAX_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
@@ -9468,8 +9803,11 @@ mod tests {
             webkit_largest_role: Some("freed-webcontent".to_string()),
             webkit_processes: Vec::new(),
             webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: 601,
             memory_critical_bytes: 602,
             relay_doc_bytes: 0,
@@ -9867,8 +10205,11 @@ mod tests {
             webkit_largest_role: None,
             webkit_processes: Vec::new(),
             webkit_telemetry_available: false,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
@@ -9909,8 +10250,11 @@ mod tests {
             webkit_largest_role: Some("freed-webcontent".to_string()),
             webkit_processes: Vec::new(),
             webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
@@ -9965,8 +10309,11 @@ mod tests {
             webkit_largest_role: Some("freed-webcontent".to_string()),
             webkit_processes: Vec::new(),
             webkit_telemetry_available: false,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
@@ -10002,8 +10349,11 @@ mod tests {
             webkit_largest_role: Some("freed-webcontent".to_string()),
             webkit_processes: Vec::new(),
             webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
@@ -10045,8 +10395,11 @@ mod tests {
             webkit_largest_role: None,
             webkit_processes: Vec::new(),
             webkit_telemetry_available: false,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
@@ -10102,8 +10455,11 @@ mod tests {
             webkit_largest_role: None,
             webkit_processes: Vec::new(),
             webkit_telemetry_available: false,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,

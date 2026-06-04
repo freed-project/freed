@@ -72,4 +72,33 @@ describe("facebook groups extractor", () => {
     expect(payload.error).toBeUndefined();
     expect(payload.groups).toEqual([]);
   });
+
+  it("uses nearby card text when the group link only exposes a timestamp", () => {
+    const payload = runExtractor(`
+      <div role="listitem">
+        <a href="https://www.facebook.com/groups/07115243">1d</a>
+        <span dir="auto">Bellingham Tool Library</span>
+        <span>Last active a day ago</span>
+      </div>
+      <div role="listitem">
+        <a href="https://www.facebook.com/groups/09712538">
+          <img alt="Spokane Mutual Aid" />
+        </a>
+      </div>
+    `);
+
+    expect(payload.error).toBeUndefined();
+    expect(payload.groups).toEqual([
+      {
+        id: "07115243",
+        name: "Bellingham Tool Library Last active a day ago",
+        url: "https://www.facebook.com/groups/07115243",
+      },
+      {
+        id: "09712538",
+        name: "Spokane Mutual Aid",
+        url: "https://www.facebook.com/groups/09712538",
+      },
+    ]);
+  });
 });

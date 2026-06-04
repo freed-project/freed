@@ -1,4 +1,5 @@
 import { useDeferredValue, useState, useCallback, useEffect, useRef, useMemo, cloneElement, isValidElement, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import {
   resolveMapMode,
@@ -8,9 +9,11 @@ import {
 } from "@freed/shared";
 import { useAppStore, usePlatform, type SidebarSourceStatusSummary } from "../../context/PlatformContext.js";
 import { ProviderStatusIndicator } from "../ProviderStatusIndicator.js";
+import { BackgroundActivityPopover } from "../BackgroundActivityPopover.js";
 import { SettingsDialog } from "../SettingsDialog.js";
 import { toast } from "../Toast.js";
 import { Tooltip } from "../Tooltip.js";
+import { useBackgroundActivityStore } from "../../lib/background-activity-store.js";
 import { useDebugStore } from "../../lib/debug-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
@@ -227,6 +230,7 @@ interface SidebarProps {
   desktopMode: SidebarMode;
   onDesktopModeChange: (nextMode: SidebarMode) => void;
   onDesktopDisplayModeChange?: (nextMode: SidebarMode) => void;
+  desktopGapWidthPx?: number;
 }
 
 function SidebarSection({
@@ -353,7 +357,7 @@ function SidebarContextMenuShell({
     ["--theme-menu-viewport-margin" as string]: `${viewportMargin}px`,
   } as CSSProperties;
 
-  return (
+  const menu = (
     <div
       ref={menuRef}
       style={menuStyle}
@@ -363,6 +367,9 @@ function SidebarContextMenuShell({
       {children}
     </div>
   );
+
+  if (typeof document === "undefined") return menu;
+  return createPortal(menu, document.body);
 }
 
 function FeedContextMenu({
@@ -573,6 +580,7 @@ export function Sidebar({
   desktopMode,
   onDesktopModeChange,
   onDesktopDisplayModeChange,
+  desktopGapWidthPx,
 }: SidebarProps) {
   const { SourceIndicator, syncRssNow, syncSourceNow, getSourceStatus } = usePlatform();
   const isMobileViewport = useIsMobile();
@@ -613,6 +621,15 @@ export function Sidebar({
   const display = useAppStore((s) => s.preferences.display);
   const animationIntensity = resolveAnimationIntensity(display.animationIntensity);
   const health = useDebugStore((s) => s.health);
+  const activeBackgroundActivityCount = useBackgroundActivityStore((s) => Object.keys(s.active).length);
+  const backgroundActivityActive = activeBackgroundActivityCount > 0;
+  const [activityAnchorElement, setActivityAnchorElement] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!backgroundActivityActive) {
+      setActivityAnchorElement(null);
+    }
+  }, [backgroundActivityActive]);
 
   const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
   const archivedCount = useMemo(() => items.filter((i) => i.userState.archived).length, [items]);
@@ -718,9 +735,11 @@ export function Sidebar({
           ? DEFAULT_WIDTH
           : committedWidth);
   const effectiveGapWidthPx =
-    activeView === "friends"
-      ? FRIENDS_SIDEBAR_GAP_WIDTH_PX
-      : PRIMARY_SIDEBAR_GAP_WIDTH_PX;
+    desktopGapWidthPx ?? (
+      activeView === "friends"
+        ? FRIENDS_SIDEBAR_GAP_WIDTH_PX
+        : PRIMARY_SIDEBAR_GAP_WIDTH_PX
+    );
   const compactReaderRailVisible =
     activeView === "feed" &&
     !!selectedItemId &&
@@ -1126,6 +1145,33 @@ export function Sidebar({
       <span>Settings</span>
     </>
   );
+  const settingsIcon = (
+    <svg className="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  );
+
+  const renderActivityButton = (testId: string, extraClassName = "") => {
+    if (!backgroundActivityActive) return null;
+    return (
+      <button
+        type="button"
+        aria-label="Show background activity"
+        aria-expanded={activityAnchorElement !== null}
+        data-testid={testId}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const target = event.currentTarget;
+          setActivityAnchorElement((current) => current === target ? null : target);
+        }}
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--theme-accent-secondary)] hover:bg-[var(--theme-bg-muted)] ${extraClassName}`}
+      >
+        <span className="h-3.5 w-3.5 animate-spin rounded-full border border-current border-t-transparent" />
+      </button>
+    );
+  };
 
   const handleOpenSettingsFromMobileSidebar = useCallback(() => {
     onMobileClose();
@@ -1764,37 +1810,37 @@ export function Sidebar({
           {!isMobileDevice ? (
             <div className="mt-auto shrink-0">
             {compactRail ? (
-              renderCompactRow({
-                key: "settings",
-                label: "Settings",
-                active: false,
-                onClick: openSettings,
-                icon: (
-                  <svg className="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                ),
-              })
+              <Tooltip key="settings" label="Settings" side="right" className="flex w-full">
+                <div className="relative w-full">
+                  <button
+                    type="button"
+                    onClick={openSettings}
+                    data-testid="sidebar-settings-button"
+                    className="group/compact relative flex aspect-square w-full items-center justify-center overflow-visible rounded-[var(--card-radius)] border border-transparent text-[color:var(--theme-text-secondary)] transition-all hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
+                    aria-label="Settings"
+                  >
+                    <span className="relative flex h-[18px] w-[18px] items-center justify-center">
+                      {settingsIcon}
+                    </span>
+                  </button>
+                  {renderActivityButton("background-activity-trigger-compact", "absolute -right-1 -top-1 h-5 w-5 bg-[var(--theme-bg-elevated)]")}
+                </div>
+              </Tooltip>
             ) : (
-              <SidebarNavRow
-                active={false}
-                countTextClass={countTextClass}
-                icon={renderSidebarRowIcon(
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>,
-                )}
-                label="Settings"
-                labelClass={sidebarLabelClass}
-                onClick={openSettings}
-                rowGapClass={rowGapClass}
-                rowLeadingPaddingClass={rowLeadingPaddingClass}
-                rowTextClass={rowTextClass}
-                rowTrailingPaddingClass={rowTrailingPaddingClass}
-                rowVerticalPaddingClass={rowVerticalPaddingClass}
-              />
+              <div className="group/sidebar-row flex items-stretch gap-0 rounded-lg border border-transparent text-[color:var(--theme-text-secondary)] transition-all hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]">
+                <button
+                  type="button"
+                  onClick={openSettings}
+                  data-testid="sidebar-settings-button"
+                  className={`flex min-w-0 flex-1 cursor-pointer items-center ${rowGapClass} ${rowLeadingPaddingClass} ${rowVerticalPaddingClass} text-left ${rowTextClass} transition-all`}
+                >
+                  <span data-sidebar-icon-slot="true">{renderSidebarRowIcon(settingsIcon)}</span>
+                  <span className={sidebarLabelClass}>Settings</span>
+                </button>
+                <div className={`flex shrink-0 items-center ${rowTrailingPaddingClass}`}>
+                  {renderActivityButton("background-activity-trigger")}
+                </div>
+              </div>
             )}
             </div>
           ) : null}
@@ -1861,7 +1907,7 @@ export function Sidebar({
           height: `calc(100dvh - env(safe-area-inset-top, 0px) - ${MOBILE_MENU_TOP_PX}px)`,
           maxHeight: `calc(100dvh - env(safe-area-inset-top, 0px) - ${MOBILE_MENU_TOP_PX}px)`,
         }}
-      >
+        >
         {sidebarBody}
         <div
           data-testid="mobile-sidebar-settings-footer"
@@ -1871,19 +1917,29 @@ export function Sidebar({
             paddingBottom: "env(safe-area-inset-bottom, 0px)",
           }}
         >
-          <button
-            type="button"
-            data-testid="mobile-sidebar-settings-button"
-            onClick={handleOpenSettingsFromMobileSidebar}
-            className={`w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} ${rowVerticalPaddingClass} rounded-lg text-left text-base text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}
-          >
-            {settingsButtonContent}
-          </button>
+          <div className={`flex w-full items-center rounded-lg text-base text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}>
+            <button
+              type="button"
+              data-testid="mobile-sidebar-settings-button"
+              onClick={handleOpenSettingsFromMobileSidebar}
+              className={`flex min-w-0 flex-1 cursor-pointer items-center gap-3 ${rowPaddingClass} ${rowVerticalPaddingClass} text-left`}
+            >
+              {settingsButtonContent}
+            </button>
+            <div className="pr-2">
+              {renderActivityButton("background-activity-trigger-mobile")}
+            </div>
+          </div>
         </div>
       </aside>
       ) : null}
 
       <SettingsDialog open={showSettings} onClose={closeSettings} />
+      <BackgroundActivityPopover
+        anchorElement={activityAnchorElement}
+        open={activityAnchorElement !== null}
+        onClose={() => setActivityAnchorElement(null)}
+      />
 
       {/* Feed context menu — rendered outside scroll container to avoid clipping */}
       {openMenuFeedUrl && menuAnchorRect && feeds[openMenuFeedUrl] && (

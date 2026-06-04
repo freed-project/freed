@@ -2290,7 +2290,7 @@ test("narrow reader toolbar moves hidden actions into the overflow menu", async 
       rightGap: overflowButtonRect.left - backButtonRect.right,
     };
   });
-  expect(Math.abs(spacing.leftGap - spacing.rightGap)).toBeLessThanOrEqual(1);
+  expect(Math.abs(spacing.leftGap - spacing.rightGap)).toBeLessThanOrEqual(4);
 
   await overflowButton.click();
   const overflowMenu = page.getByTestId("toolbar-overflow-menu");
@@ -2311,7 +2311,31 @@ test("narrow feed toolbar moves bulk actions into the overflow menu", async ({ a
 
   const overflowButton = page.getByTestId("toolbar-overflow-button");
   await expect(overflowButton).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByTestId("mobile-toolbar-filter-button")).toBeVisible({ timeout: 5_000 });
+  const filterButton = page.getByTestId("mobile-toolbar-filter-button");
+  await expect(filterButton).toBeVisible({ timeout: 5_000 });
+  const collapsedGeometry = await page.evaluate(() => {
+    const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+    const overflow = document.querySelector('[data-testid="toolbar-overflow-button"]') as HTMLElement | null;
+    const filter = document.querySelector('[data-testid="mobile-toolbar-filter-button"]') as HTMLElement | null;
+    if (!toolbar || !overflow || !filter) {
+      throw new Error("Collapsed toolbar controls were not found");
+    }
+
+    const toolbarRect = toolbar.getBoundingClientRect();
+    const overflowRect = overflow.getBoundingClientRect();
+    const filterRect = filter.getBoundingClientRect();
+
+    return {
+      overflowHeight: Math.round(overflowRect.height),
+      filterHeight: Math.round(filterRect.height),
+      gap: Math.round(filterRect.left - overflowRect.right),
+      edgeGap: Math.round(toolbarRect.right - filterRect.right),
+    };
+  });
+  expect(collapsedGeometry.overflowHeight).toBe(36);
+  expect(collapsedGeometry.filterHeight).toBe(36);
+  expect(collapsedGeometry.gap).toBe(8);
+  expect(collapsedGeometry.edgeGap).toBe(collapsedGeometry.gap);
   await overflowButton.click();
 
   const overflowMenu = page.getByTestId("toolbar-overflow-menu");

@@ -788,6 +788,7 @@ export interface ReadingEnhancements {
 
 export type SidebarMode = "expanded" | "compact" | "closed";
 export type FeedSignalMode = "all" | "inspiring" | "events" | "personal" | "conversation" | "news";
+export type SavedContentSortMode = "date_saved" | "date_published" | "recommended" | "shortest_read";
 
 export interface DisplayPreferences {
   /** Items per page */
@@ -840,6 +841,9 @@ export interface DisplayPreferences {
 
   /** Saved unified feed signal filter modes. Empty means show all items. */
   feedSignalModes?: FeedSignalMode[];
+
+  /** Saved content sort mode. Unset means newest saved items first. */
+  savedContentSortMode?: SavedContentSortMode;
 
   /** Days to keep archived items before pruning (default: 30, 0 = never prune) */
   archivePruneDays: number;
@@ -1059,6 +1063,7 @@ export function createDefaultPreferences(): UserPreferences {
       mapTimeMode: "current",
       feedSignalMode: "all",
       feedSignalModes: [],
+      savedContentSortMode: "date_saved",
       archivePruneDays: 30,
     },
     xCapture: {

@@ -5,6 +5,10 @@ const DEBUG_STORE_PATH = resolveViteFsModulePath(
   "../../../ui/src/lib/debug-store.ts",
   import.meta.url,
 );
+const BACKGROUND_ACTIVITY_STORE_PATH = resolveViteFsModulePath(
+  "../../../ui/src/lib/background-activity-store.ts",
+  import.meta.url,
+);
 
 function getDesktopSidebar(page: import("@playwright/test").Page) {
   return page.getByTestId("app-sidebar");
@@ -809,12 +813,37 @@ test("facebook groups settings separate last-active text, show active counts, an
   await expect(page.getByTestId("facebook-group-one-label")).toHaveText("CDA Buy Trade Or Sell");
   await expect(page.getByTestId("facebook-group-one-meta")).toHaveText("Last active about a minute ago");
   await expect(page.getByTestId("facebook-group-377650389038228-label")).toHaveText(
-    "Facebook group ...89038228",
+    "Facebook group",
   );
+  await expect(page.getByText("Included in future syncs")).toHaveCount(0);
+  await page.getByTestId("facebook-group-one-switch").hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Included in future syncs");
+  await page.getByTestId("facebook-group-two-switch").hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Hidden from future syncs");
+  const groupRowHeight = await page
+    .getByTestId("facebook-group-one-label")
+    .locator("xpath=ancestor::div[contains(@class, 'justify-between')][1]")
+    .evaluate((node) => node.getBoundingClientRect().height);
+  expect(groupRowHeight).toBeLessThanOrEqual(36);
+  await ipc.setHandler("fb_check_group_membership", (args: { groupId: string; groupUrl: string }) => ({
+    id: args.groupId,
+    url: args.groupUrl,
+    name: args.groupId === "377650389038228" ? "Recovered Local Exchange" : "CDA Buy Trade Or Sell",
+    stillJoined: args.groupId !== "one",
+    reason: args.groupId === "one" ? "join control found" : "joined control found",
+    checkedAt: Date.now(),
+  }));
   await page.getByTestId("facebook-group-one-leave").hover();
   await expect(page.getByRole("tooltip")).toHaveText("Leave group via Facebook");
   await page.getByTestId("facebook-group-one-leave").click();
   await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toBe("https://facebook.com/groups/one");
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByTestId("facebook-group-one-label")).toHaveCount(0);
+  await expect(page.getByText("1 active of 2 total")).toBeVisible();
+  await expect.poll(async () => {
+    const calls = await ipc.invocations();
+    return calls.some((call) => call.cmd === "fb_check_group_membership");
+  }).toBe(true);
 
   await page.getByTestId("facebook-groups-filter").fill("North Idaho");
   await expect(page.getByRole("button", { name: "Activate shown", exact: true })).toBeVisible();
@@ -833,6 +862,9 @@ test("facebook groups settings separate last-active text, show active counts, an
     const calls = await ipc.invocations();
     return calls.some((call) => call.cmd === "fb_scrape_groups");
   }).toBe(true);
+  await expect(page.getByTestId("facebook-group-377650389038228-label")).toHaveText(
+    "Recovered Local Exchange",
+  );
 });
 
 test("auth failures in X settings prompt the user to reconnect", async ({ app, page }) => {
@@ -1514,7 +1546,7 @@ test("provider sync button shows a spinner while that provider is active", async
   await app.goto();
   await app.waitForReady();
 
-  await page.evaluate(() => {
+  await page.evaluate(async ({ activityStorePath }) => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
@@ -1540,7 +1572,30 @@ test("provider sync button shows a spinner while that provider is active", async
     window.__freed.debug?.()?.addEvent("change", "[X] sync started");
     window.__freed.debug?.()?.addEvent("change", "[X] requesting home timeline");
     window.__freed.debug?.()?.addEvent("change", "[X] response received: 12,345 bytes");
-  });
+    const activity = await import(activityStorePath) as typeof import("../../../ui/src/lib/background-activity-store");
+    activity.startBackgroundActivity({
+      id: "channel:x",
+      kind: "channel",
+      channelId: "x",
+      label: "X",
+      message: "X sync started.",
+    });
+    activity.recordBackgroundActivityLog({
+      channelId: "x",
+      message: "[X] requesting home timeline",
+    });
+  }, { activityStorePath: BACKGROUND_ACTIVITY_STORE_PATH });
+
+  const activityTrigger = getDesktopSidebar(page).getByTestId("background-activity-trigger");
+  await expect(activityTrigger).toBeVisible();
+  await activityTrigger.click();
+  const activityPopover = page.getByTestId("background-activity-popover");
+  await expect(activityPopover).toBeVisible();
+  await expect(activityPopover).toContainText("X");
+  await expect(activityPopover).toContainText("X sync started");
+  await expect(activityPopover).toContainText("[X] requesting home timeline");
+  await page.keyboard.press("Escape");
+  await expect(activityPopover).toHaveCount(0);
 
   await openSettingsSection(page, "X");
   const sidebar = getDesktopSidebar(page);
@@ -1576,6 +1631,53 @@ test("provider sync button shows a spinner while that provider is active", async
   expect(sourceIndicatorSizes).not.toBeNull();
   expect(Math.abs(sourceIndicatorSizes!.syncingWidth - sourceIndicatorSizes!.healthyWidth)).toBeLessThanOrEqual(1);
   expect(Math.abs(sourceIndicatorSizes!.syncingHeight - sourceIndicatorSizes!.healthyHeight)).toBeLessThanOrEqual(1);
+});
+
+test("compact sidebar activity badge opens job activity popover", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async ({ activityStorePath }) => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        preferences: { display: Record<string, unknown> };
+      };
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    const current = store.getState();
+    store.setState({
+      preferences: {
+        ...current.preferences,
+        display: {
+          ...current.preferences.display,
+          sidebarMode: "compact",
+        },
+      },
+    });
+    const activity = await import(activityStorePath) as typeof import("../../../ui/src/lib/background-activity-store");
+    activity.startBackgroundActivity({
+      id: "job:content-fetch:e2e",
+      kind: "job",
+      jobKind: "content-fetch",
+      label: "Article fetch",
+      source: "e2e",
+      message: "Fetching saved article content.",
+    });
+  }, { activityStorePath: BACKGROUND_ACTIVITY_STORE_PATH });
+
+  const sidebar = getDesktopSidebar(page);
+  const trigger = sidebar.getByTestId("background-activity-trigger-compact");
+  await expect(trigger).toBeVisible({ timeout: 5_000 });
+  await trigger.click();
+
+  const popover = page.getByTestId("background-activity-popover");
+  await expect(popover).toBeVisible();
+  await expect(popover).toContainText("Jobs");
+  await expect(popover).toContainText("Article fetch");
+  await expect(popover).toContainText("Fetching saved article content");
 });
 
 test("feeds source indicator reflects aggregate feed health and active syncing", async ({ app, page }) => {

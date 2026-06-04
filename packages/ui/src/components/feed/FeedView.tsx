@@ -13,6 +13,7 @@ import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import {
   buildDiscoveredAccountsFromItems,
   socialAccountForAuthor,
+  sortSavedFeedItems,
   type Account,
   type FeedItem,
 } from "@freed/shared";
@@ -265,6 +266,7 @@ export function FeedView() {
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
   const friendsMode = useAppStore((s) => s.preferences.display.friendsMode ?? "all_content");
+  const savedContentSortMode = useAppStore((s) => s.preferences.display.savedContentSortMode ?? "date_saved");
 
   const handleItemSave = useCallback(
     (item: FeedItem) => toggleSaved(item.globalId),
@@ -323,6 +325,12 @@ export function FeedView() {
     accounts,
     friends,
   );
+  const visibleItems = useMemo(
+    () => activeFilter.savedOnly
+      ? sortSavedFeedItems(filteredItems, savedContentSortMode)
+      : filteredItems,
+    [activeFilter.savedOnly, filteredItems, savedContentSortMode],
+  );
 
   const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
   const markReadOnScroll = useAppStore((s) => s.preferences.display.reading.markReadOnScroll);
@@ -347,14 +355,14 @@ export function FeedView() {
   const [keyboardFocusDirection, setKeyboardFocusDirection] = useState<-1 | 0 | 1>(0);
   const [compactSelectionDirection, setCompactSelectionDirection] = useState<-1 | 0 | 1>(0);
   const readerItems = useMemo(() => {
-    if (!readerOrderIds) return filteredItems;
+    if (!readerOrderIds) return visibleItems;
 
-    const itemById = new Map(filteredItems.map((item) => [item.globalId, item]));
+    const itemById = new Map(visibleItems.map((item) => [item.globalId, item]));
     const stableItems = readerOrderIds
       .map((id) => itemById.get(id))
       .filter((item): item is FeedItem => Boolean(item));
-    return stableItems.length > 0 ? stableItems : filteredItems;
-  }, [filteredItems, readerOrderIds]);
+    return stableItems.length > 0 ? stableItems : visibleItems;
+  }, [readerOrderIds, visibleItems]);
   // Store only the ID so the rendered item stays in sync with the store.
   // Holding the full FeedItem in state would freeze userState (saved, archived,
   // tags) at the moment the user clicked, making toolbar toggles appear broken.
@@ -362,10 +370,10 @@ export function FeedView() {
     () =>
       selectedItemId
         ? readerItems.find((item) => item.globalId === selectedItemId) ??
-          filteredItems.find((item) => item.globalId === selectedItemId) ??
+          visibleItems.find((item) => item.globalId === selectedItemId) ??
           null
         : null,
-    [filteredItems, readerItems, selectedItemId],
+    [readerItems, selectedItemId, visibleItems],
   );
 
   const openItem = useCallback(
@@ -376,14 +384,14 @@ export function FeedView() {
       };
 
       if (showDualColumn && !selectedItemId) {
-        setReaderOrderIds(filteredItems.map((candidate) => candidate.globalId));
+        setReaderOrderIds(visibleItems.map((candidate) => candidate.globalId));
         runFeedLayoutTransition(selectItem);
         return;
       }
 
       selectItem();
     },
-    [filteredItems, markAsRead, runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn],
+    [markAsRead, runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn, visibleItems],
   );
 
   const openItemDirect = useCallback((item: FeedItem) => {
@@ -442,20 +450,20 @@ export function FeedView() {
       if (e.key === "j" || e.key === "ArrowDown") {
         e.preventDefault();
         setKeyboardFocusDirection(1);
-        setFocusedIndex((prev) => Math.min(prev + 1, filteredItems.length - 1));
+        setFocusedIndex((prev) => Math.min(prev + 1, visibleItems.length - 1));
       } else if (e.key === "k" || e.key === "ArrowUp") {
         e.preventDefault();
         setKeyboardFocusDirection(-1);
         setFocusedIndex((prev) => Math.max(prev - 1, 0));
       } else if ((e.key === "Enter" || e.key === "o") && focusedIndex >= 0) {
-        const item = filteredItems[focusedIndex];
+        const item = visibleItems[focusedIndex];
         if (item) openItemDirect(item);
       }
     };
 
     document.addEventListener("keydown", handleKey, { capture: true });
     return () => document.removeEventListener("keydown", handleKey, { capture: true });
-  }, [selectedItemId, showDualColumn, filteredItems, readerItems, focusedIndex, openItem, openItemDirect, closeItem]);
+  }, [selectedItemId, showDualColumn, visibleItems, readerItems, focusedIndex, openItem, openItemDirect, closeItem]);
 
   // Reset keyboard focus when the active filter or search query changes.
   useEffect(() => {
@@ -463,7 +471,7 @@ export function FeedView() {
     setKeyboardFocusDirection(0);
     setFocusedIndex(-1);
     setReaderOrderIds(null);
-  }, [activeFilter, searchQuery]);
+  }, [activeFilter, searchQuery, savedContentSortMode]);
 
   const handleFocusChange = useCallback((index: number) => {
     setKeyboardFocusDirection(0);
@@ -627,7 +635,7 @@ export function FeedView() {
   return (
     <div className="h-full flex flex-col">
       <FeedList
-        items={filteredItems}
+        items={visibleItems}
         onItemClick={openItemDirect}
         focusedIndex={focusedIndex}
         focusMoveDirection={keyboardFocusDirection}

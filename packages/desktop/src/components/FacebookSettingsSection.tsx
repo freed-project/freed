@@ -31,6 +31,7 @@ import {
   captureFbFeed,
   captureFbGroups,
   repairStoredFacebookGroupNamesFromItems,
+  verifyFacebookGroupLeave,
 } from "../lib/fb-capture";
 import type { FbSyncDiag } from "../lib/fb-capture";
 import { getFacebookGroupDisplayName } from "../lib/facebook-groups";
@@ -53,6 +54,9 @@ import { MediaVaultSettingsCard } from "./MediaVaultSettingsCard";
 import { socialProviderCopy } from "../lib/social-provider-copy";
 import { isRuntimeDeferredStage } from "../lib/social-capture-runtime";
 import { log } from "../lib/logger";
+
+const FACEBOOK_LEAVE_CHECK_DELAY_MS = import.meta.env.VITE_TEST_TAURI === "1" ? 100 : 60_000;
+const FACEBOOK_LEAVE_CHECK_FOCUS_GRACE_MS = import.meta.env.VITE_TEST_TAURI === "1" ? 0 : 5_000;
 
 // =============================================================================
 // Diagnostic Panel
@@ -102,7 +106,7 @@ function Toggle({
   label,
   checked,
   onChange,
-  description,
+  status,
   meta,
   testId,
   trailingAction,
@@ -110,50 +114,52 @@ function Toggle({
   label: string;
   checked: boolean;
   onChange: (value: boolean) => void;
-  description?: string;
+  status?: string;
   meta?: string;
   testId?: string;
   trailingAction?: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-3">
+    <div className="flex h-8 items-center justify-between gap-4">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <p
+          data-testid={testId ? `${testId}-label` : undefined}
+          className="min-w-0 flex-1 truncate text-sm text-[#a1a1aa]"
+        >
+          {label}
+        </p>
+        {meta ? (
           <p
-            data-testid={testId ? `${testId}-label` : undefined}
-            className="min-w-0 text-sm text-[#a1a1aa] truncate"
+            data-testid={testId ? `${testId}-meta` : undefined}
+            className="shrink-0 truncate text-[11px] text-[#71717a] text-right"
           >
-            {label}
+            {meta}
           </p>
-          {meta ? (
-            <p
-              data-testid={testId ? `${testId}-meta` : undefined}
-              className="shrink-0 pt-0.5 text-[11px] text-[#71717a] text-right"
-            >
-              {meta}
-            </p>
-          ) : null}
-        </div>
-        {description ? (
-          <p className="text-xs text-[#52525b] mt-0.5">{description}</p>
         ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          role="switch"
-          aria-checked={checked}
-          onClick={() => onChange(!checked)}
-          className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-            checked ? "bg-[#8b5cf6]" : "bg-white/10"
-          }`}
+        <Tooltip
+          label={status ?? (checked ? "Included in future syncs" : "Hidden from future syncs")}
+          side="left"
         >
-          <span
-            className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
-              checked ? "translate-x-4" : "translate-x-0"
+          <button
+            type="button"
+            role="switch"
+            aria-label={`${label}: ${status ?? (checked ? "Included in future syncs" : "Hidden from future syncs")}`}
+            aria-checked={checked}
+            data-testid={testId ? `${testId}-switch` : undefined}
+            onClick={() => onChange(!checked)}
+            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+              checked ? "bg-[#8b5cf6]" : "bg-white/10"
             }`}
-          />
-        </button>
+          >
+            <span
+              className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                checked ? "translate-x-4" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </Tooltip>
         {trailingAction}
       </div>
     </div>
@@ -249,7 +255,11 @@ export function FacebookSettingsSection({
   const [windowMode, setWindowMode] = useState(() => getFbScraperWindowMode());
   const [actionError, setActionError] = useState<string | null>(null);
   const [loginWindowPendingSync, setLoginWindowPendingSync] = useState(false);
+  const [checkingLeaveGroupIds, setCheckingLeaveGroupIds] = useState<Record<string, true>>({});
   const loginWindowPendingSyncRef = useRef(false);
+  const pendingLeaveCheckRef = useRef<{ group: FbGroupInfo; openedAt: number } | null>(null);
+  const leaveCheckTimerRef = useRef<number | null>(null);
+  const leaveCheckInFlightRef = useRef(false);
   const { openUrl } = usePlatform();
   const copy = socialProviderCopy("facebook");
   const { confirm, dialog } = useProviderRiskGate("facebook");
@@ -430,16 +440,68 @@ export function FacebookSettingsSection({
     [excludedGroupIds, groups.length, handleDeselectAllGroups, setExcludedGroups],
   );
 
+  const runPendingLeaveCheck = useCallback(async () => {
+    const pending = pendingLeaveCheckRef.current;
+    if (!pending || leaveCheckInFlightRef.current) return;
+    if (Date.now() - pending.openedAt < FACEBOOK_LEAVE_CHECK_FOCUS_GRACE_MS) return;
+
+    pendingLeaveCheckRef.current = null;
+    if (leaveCheckTimerRef.current !== null) {
+      window.clearTimeout(leaveCheckTimerRef.current);
+      leaveCheckTimerRef.current = null;
+    }
+
+    leaveCheckInFlightRef.current = true;
+    setCheckingLeaveGroupIds((current) => ({ ...current, [pending.group.id]: true }));
+    setActionError(null);
+    try {
+      await verifyFacebookGroupLeave(pending.group);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to verify Facebook group leave";
+      setActionError(message);
+      addDebugEvent("error", `[FB] leave check failed: ${message}`);
+    } finally {
+      leaveCheckInFlightRef.current = false;
+      setCheckingLeaveGroupIds((current) => {
+        const next = { ...current };
+        delete next[pending.group.id];
+        return next;
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      void runPendingLeaveCheck();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      if (leaveCheckTimerRef.current !== null) {
+        window.clearTimeout(leaveCheckTimerRef.current);
+        leaveCheckTimerRef.current = null;
+      }
+    };
+  }, [runPendingLeaveCheck]);
+
   const handleLeaveGroupViaFacebook = useCallback(
     (group: FbGroupInfo) => {
       const url = getFacebookGroupUrl(group);
       if (openUrl) {
         openUrl(url);
-        return;
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
       }
-      window.open(url, "_blank", "noopener,noreferrer");
+
+      pendingLeaveCheckRef.current = { group, openedAt: Date.now() };
+      if (leaveCheckTimerRef.current !== null) {
+        window.clearTimeout(leaveCheckTimerRef.current);
+      }
+      leaveCheckTimerRef.current = window.setTimeout(() => {
+        void runPendingLeaveCheck();
+      }, FACEBOOK_LEAVE_CHECK_DELAY_MS);
     },
-    [openUrl],
+    [openUrl, runPendingLeaveCheck],
   );
 
   const handleRefreshGroups = useCallback(async () => {
@@ -607,7 +669,8 @@ export function FacebookSettingsSection({
             searchDataTestId="facebook-groups-filter"
             scrollDataTestId="facebook-groups-list-scroll"
             className="border-white/10 bg-white/5"
-            listClassName="space-y-3"
+            listClassName="space-y-1"
+            estimateItemSize={36}
             reserveScrollHeight
             itemKey={(group) => group.id}
             getSearchText={(group) => {
@@ -649,6 +712,7 @@ export function FacebookSettingsSection({
             }}
             renderItem={(group) => {
               const included = !excludedGroupIds[group.id];
+              const checkingLeave = Boolean(checkingLeaveGroupIds[group.id]);
               const { title, lastActiveText } = splitFacebookGroupName(
                 getFacebookGroupDisplayName(group),
               );
@@ -661,13 +725,21 @@ export function FacebookSettingsSection({
                     void handleToggleGroup(group, nextIncluded);
                   }}
                   meta={lastActiveText}
-                  description={included ? "Included in future syncs" : "Hidden from future syncs"}
+                  status={included ? "Included in future syncs" : "Hidden from future syncs"}
                   trailingAction={
-                    <Tooltip label="Leave group via Facebook" side="left">
+                    <Tooltip
+                      label={checkingLeave ? "Checking leave status" : "Leave group via Facebook"}
+                      side="left"
+                    >
                       <button
                         type="button"
-                        aria-label={`Leave group via Facebook: ${title}`}
+                        aria-label={
+                          checkingLeave
+                            ? `Checking leave status: ${title}`
+                            : `Leave group via Facebook: ${title}`
+                        }
                         data-testid={`facebook-group-${group.id}-leave`}
+                        disabled={checkingLeave}
                         onClick={() => handleLeaveGroupViaFacebook(group)}
                         className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[#71717a] transition-colors hover:bg-red-500/10 hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/50"
                       >

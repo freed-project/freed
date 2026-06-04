@@ -12,6 +12,11 @@ import type {
   LocalAIModelDownloadProgress,
   LocalAIModelViewState,
 } from "../../context/PlatformContext.js";
+import {
+  finishBackgroundActivity,
+  startBackgroundActivity,
+  updateBackgroundActivity,
+} from "../../lib/background-activity-store.js";
 import { formatMediumDateShortTime } from "../../lib/date-format.js";
 import { SettingsToggle } from "../SettingsToggle.js";
 import { ExternalLinkIcon } from "../icons.js";
@@ -642,14 +647,40 @@ export function AISection() {
 
   const handleDownloadLocalModel = useCallback((id: LocalAIModelId) => {
     if (!localAIModels) return;
+    const modelTitle = localModels.find((model) => model.manifest.id === id)?.manifest.title ?? "Local AI model";
+    const activityId = startBackgroundActivity({
+      id: `job:local-ai-model-download:${id}`,
+      kind: "job",
+      jobKind: "local-ai-model-download",
+      label: "Local AI download",
+      source: id,
+      message: `Downloading ${modelTitle}.`,
+      progress: 0,
+    });
     setBusyModelId(id);
     void localAIModels
       .downloadModel(id, (progress) => {
+        const percent = progress.totalBytes > 0
+          ? Math.min(100, (progress.downloadedBytes / progress.totalBytes) * 100)
+          : undefined;
         setLocalModels((current) => applyDownloadProgress(current, progress));
+        updateBackgroundActivity(activityId, {
+          message: progress.currentFile
+            ? `Downloading ${progress.currentFile}.`
+            : `Downloading ${modelTitle}.`,
+          progress: percent,
+        });
       })
-      .then(setLocalModels)
+      .then((models) => {
+        setLocalModels(models);
+        finishBackgroundActivity(activityId, "success", `${modelTitle} download finished.`);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        finishBackgroundActivity(activityId, "error", `${modelTitle} download failed: ${message}`);
+      })
       .finally(() => setBusyModelId(null));
-  }, [localAIModels]);
+  }, [localAIModels, localModels]);
 
   const handleSelectLocalModel = useCallback((id: LocalAIModelId) => {
     if (!localAIModels) return;
