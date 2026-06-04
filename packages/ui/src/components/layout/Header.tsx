@@ -100,6 +100,8 @@ const TOOLBAR_ICON_BUTTON_CLASS =
   "theme-toolbar-icon-button rounded-lg";
 const TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS =
   "theme-toolbar-reader-layout-button rounded-lg";
+const TOOLBAR_ICON_BUTTON_SIZE = "2.25rem";
+const COLLAPSED_TOOLBAR_PAIR_WIDTH = "5rem";
 const READER_LAYOUT_CONTROL_BUTTON_SIZE_PX = 32;
 const READER_LAYOUT_CONTROL_ICON_SIZE_PX = 20;
 const READER_LAYOUT_CONTROL_BUTTON_GAP_PX = 0;
@@ -1573,7 +1575,7 @@ export function Header({
               ? isBelowLargeToolbar
                 ? `theme-toolbar-cluster theme-toolbar-cluster-tight absolute right-0 top-1/2 z-10 flex shrink-0 -translate-y-1/2 items-center justify-end pr-2 ${collapsedReaderActionWidthClass}`
                 : "theme-toolbar-cluster theme-toolbar-cluster-tight ml-auto flex min-w-max shrink-0 items-center pr-2"
-              : "theme-toolbar-cluster theme-toolbar-cluster-tight flex min-w-max shrink-0 items-center pr-2 sm:pr-2.5"}
+              : "theme-toolbar-cluster theme-toolbar-cluster-tight flex min-w-max shrink-0 items-center pr-2"}
           >
             {selectedItem ? (
               <>
@@ -1587,7 +1589,7 @@ export function Header({
                         ...(headerDragRegion ? toolbarControlStyle : undefined),
                         width: "4.5rem",
                       }}
-                      className={`w-full justify-center rounded-lg px-2.5 py-2 text-sm font-bold lg:inline-flex ${
+                      className={`h-9 w-full justify-center rounded-lg px-2.5 py-0 text-sm font-bold lg:inline-flex ${
                         display.reading.focusMode
                           ? "theme-toolbar-button-active"
                           : "theme-toolbar-button-neutral"
@@ -1604,7 +1606,7 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showInlineReaderBookmark} width="2.5rem">
+                <ToolbarAnimatedSlot visible={showInlineReaderBookmark} width={TOOLBAR_ICON_BUTTON_SIZE}>
                   {showInlineReaderBookmark ? (
                     <Tooltip label={selectedItem.userState.saved ? "Remove bookmark" : "Bookmark"}>
                       <button
@@ -1632,7 +1634,7 @@ export function Header({
 
                 <ToolbarAnimatedSlot
                   visible={showToolbarOverflowMenuButton}
-                  width="2.5rem"
+                  width={TOOLBAR_ICON_BUTTON_SIZE}
                   flushStartMargin={isBelowLargeToolbar && !showInlineReaderBookmark}
                   style={{ order: 98 }}
                 >
@@ -1657,7 +1659,7 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={!isBelowLargeToolbar} width="2.5rem" className="hidden lg:flex">
+                <ToolbarAnimatedSlot visible={!isBelowLargeToolbar} width={TOOLBAR_ICON_BUTTON_SIZE} className="hidden lg:flex">
                   {!isBelowLargeToolbar ? (
                   <Tooltip label={selectedItem.userState.archived ? "Unarchive" : "Archive"}>
                     <button
@@ -1681,7 +1683,7 @@ export function Header({
                     <button
                       onClick={handleOpenReaderUrl}
                       {...getToolbarControlProps({ width: "4.5rem" })}
-                      className="theme-toolbar-button-neutral inline-flex h-10 items-center justify-center gap-1.5 rounded-lg px-2.5 py-0 text-sm"
+                      className="theme-toolbar-button-neutral inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-2.5 py-0 text-sm"
                       aria-label="Open"
                     >
                       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1752,7 +1754,7 @@ export function Header({
                     <button
                       onClick={handleUnarchiveSavedClick}
                       {...getToolbarControlProps()}
-                      className="theme-toolbar-button-ghost rounded-lg px-3 py-1.5 text-sm"
+                      className="theme-toolbar-button-ghost inline-flex h-9 items-center rounded-lg px-3 py-0 text-sm"
                     >
                       Unarchive saved
                     </button>
@@ -1764,7 +1766,7 @@ export function Header({
                     <button
                       onClick={handleDeleteArchivedClick}
                       {...getToolbarControlProps()}
-                      className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                      className={`inline-flex h-9 items-center rounded-lg px-3 py-0 text-sm transition-colors ${
                         deleteConfirmArmed
                           ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
                           : "theme-toolbar-button-ghost"
@@ -1842,7 +1844,7 @@ export function Header({
                         onClick={onFriendsSidebarToggle}
                         {...getToolbarControlProps()}
                         data-testid="friends-sidebar-toggle"
-                        className="theme-toolbar-button-ghost rounded-lg p-2"
+                        className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-ghost`}
                         aria-pressed={friendsSidebarOpen}
                         aria-label={friendsSidebarOpen ? "Hide details" : "Show details"}
                       >
@@ -1858,10 +1860,10 @@ export function Header({
 
                 <ToolbarAnimatedSlot
                   visible={showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu}
-                  width={showToolbarOverflowMenuButton && showCollapsedToolbarFilterMenu ? "5rem" : "2.5rem"}
+                  width={showToolbarOverflowMenuButton && showCollapsedToolbarFilterMenu ? COLLAPSED_TOOLBAR_PAIR_WIDTH : TOOLBAR_ICON_BUTTON_SIZE}
                 >
                   {showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu ? (
-                    <div className="flex items-center gap-0">
+                    <div className="flex items-center gap-2">
                       {showToolbarOverflowMenuButton ? (
                         <Tooltip label="More actions">
                           <button
