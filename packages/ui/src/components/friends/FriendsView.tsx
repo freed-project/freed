@@ -1716,7 +1716,7 @@ export function FriendsView({
   return (
     <div className="app-theme-shell flex h-full flex-col overflow-hidden">
       <div
-        className={`relative flex min-h-0 flex-1 pt-[var(--feed-card-gap,8px)] ${isMobile ? "flex-col" : "flex-row"}`}
+        className={`relative flex min-h-0 flex-1 ${isMobile ? "flex-col pt-[var(--feed-card-gap,8px)]" : "flex-row"}`}
       >
         {showGraphSurface ? (
           <div className="relative min-h-0 min-w-0 flex-1">

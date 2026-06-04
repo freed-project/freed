@@ -173,6 +173,27 @@ test("map view repaints across all themes without using the old canvas filter", 
   await page.getByRole("button", { name: /^Map/ }).click();
   await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
 
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const mapSurface = document.querySelector('[data-testid="map-surface"]');
+      const sidebar = document.querySelector('[data-testid="app-sidebar"]');
+      if (!(mapSurface instanceof HTMLElement)) return null;
+      if (!(sidebar instanceof HTMLElement)) return null;
+
+      const rect = mapSurface.getBoundingClientRect();
+      const sidebarRect = sidebar.getBoundingClientRect();
+      return {
+        leftGapPx: Math.round(rect.left - sidebarRect.right),
+        rightGapPx: Math.round(window.innerWidth - rect.right),
+        bottomGapPx: Math.round(window.innerHeight - rect.bottom),
+      };
+    });
+  }).toEqual({
+    leftGapPx: 0,
+    rightGapPx: 0,
+    bottomGapPx: 0,
+  });
+
   await page.evaluate((width) => {
     const mapSurface = document.querySelector('[data-testid="map-surface"]') as HTMLElement | null;
     if (!mapSurface) {
@@ -188,6 +209,22 @@ test("map view repaints across all themes without using the old canvas filter", 
     mapSurface.style.maxHeight = "654px";
   }, stableMapSurfaceWidth);
   await page.waitForTimeout(100);
+
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const overlay = document.querySelector(".freed-map-edge-overlay");
+      if (!(overlay instanceof HTMLElement)) return null;
+
+      const backgroundImage = window.getComputedStyle(overlay).backgroundImage;
+      return {
+        twentyPxStops: backgroundImage.match(/20px/g)?.length ?? 0,
+        fiftySixPxStops: backgroundImage.match(/56px/g)?.length ?? 0,
+      };
+    });
+  }).toEqual({
+    twentyPxStops: 6,
+    fiftySixPxStops: 6,
+  });
 
   const themeIds = ["ember", "neon", "midas", "scriptorium"] as const;
 
@@ -235,4 +272,109 @@ test("map view repaints across all themes without using the old canvas filter", 
       maxDiffPixelRatio: 0.02,
     });
   }
+});
+
+test("map view removes the left frame when the desktop sidebar is closed", async ({ app, page }) => {
+  await page.setViewportSize({ width: 900, height: 1390 });
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+  await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (patch: { display: { sidebarMode: "closed" } }) => Promise<void>;
+          };
+        }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        sidebarMode: "closed",
+      },
+    });
+  });
+
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
+
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const mapSurface = document.querySelector('[data-testid="map-surface"]');
+      if (!(mapSurface instanceof HTMLElement)) return null;
+
+      const rect = mapSurface.getBoundingClientRect();
+      return {
+        leftGapPx: Math.round(rect.left),
+        rightGapPx: Math.round(window.innerWidth - rect.right),
+        bottomGapPx: Math.round(window.innerHeight - rect.bottom),
+      };
+    });
+  }).toEqual({
+    leftGapPx: 0,
+    rightGapPx: 0,
+    bottomGapPx: 0,
+  });
+});
+
+test("friends graph uses the same full-canvas edge frame as map view", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarOpen: boolean } }) => Promise<void>;
+            setActiveView: (view: string) => void;
+          };
+        }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        friendsMode: "friends",
+        friendsSidebarOpen: true,
+      },
+    });
+    store?.getState().setActiveView("friends");
+  });
+
+  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 10_000 });
+
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const graph = document.querySelector('[data-testid="friend-graph-viewport"]');
+      const sidebar = document.querySelector('[data-testid="app-sidebar"]');
+      const handle = document.querySelector('[aria-label="Resize friends sidebar"]');
+      const header = document.querySelector("header");
+      if (!(graph instanceof HTMLElement)) return null;
+      if (!(sidebar instanceof HTMLElement)) return null;
+      if (!(handle instanceof HTMLElement)) return null;
+      if (!(header instanceof HTMLElement)) return null;
+
+      const graphRect = graph.getBoundingClientRect();
+      const sidebarRect = sidebar.getBoundingClientRect();
+      const handleRect = handle.getBoundingClientRect();
+      const headerRect = header.getBoundingClientRect();
+      return {
+        leftGapPx: Math.round(graphRect.left - sidebarRect.right),
+        topGapPx: Math.round(graphRect.top - headerRect.bottom),
+        rightGapPx: Math.round(handleRect.left - graphRect.right),
+        bottomGapPx: Math.round(window.innerHeight - graphRect.bottom),
+      };
+    });
+  }).toEqual({
+    leftGapPx: 0,
+    topGapPx: 0,
+    rightGapPx: 0,
+    bottomGapPx: 0,
+  });
 });

@@ -98,6 +98,12 @@ export function AppShell({ children }: AppShellProps) {
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [committedDebugWidth, setCommittedDebugWidth] = useState(persistedDebugWidth);
   const [desktopSidebarMode, setDesktopSidebarMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
+  const usesFullCanvasFrame = activeView === "map" || activeView === "friends";
+  const contentFrameSpacingClass = usesFullCanvasFrame
+    ? desktopSidebarMode === "closed"
+      ? ""
+      : "pl-[var(--feed-card-gap,8px)]"
+    : "px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)]";
   const [desktopSidebarDisplayMode, setDesktopSidebarDisplayMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
   const dragging = useRef(false);
   const pendingPersistedDebugWidth = useRef<number | null>(null);
@@ -406,7 +412,7 @@ export function AppShell({ children }: AppShellProps) {
         />
 
         <div
-          className={`relative z-10 flex flex-1 px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)] ${
+          className={`relative z-10 flex flex-1 ${contentFrameSpacingClass} ${
             isMobileDevice ? "" : "min-h-0 overflow-hidden"
           }`}
         >
@@ -416,6 +422,7 @@ export function AppShell({ children }: AppShellProps) {
             desktopMode={desktopSidebarMode}
             onDesktopModeChange={persistDesktopSidebarMode}
             onDesktopDisplayModeChange={setDesktopSidebarDisplayMode}
+            desktopGapWidthPx={usesFullCanvasFrame ? 0 : undefined}
           />
           <main
             className={`min-w-0 flex-1 ${isMobileDevice ? "" : "min-h-0 overflow-hidden"}`}

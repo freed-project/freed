@@ -53,6 +53,8 @@ const MAP_POPUP_VIEWPORT_MARGIN = 40;
 const MAP_DOM_MARKER_LIMIT = 160;
 const MAP_MOVING_MARKER_PAINT_LIMIT = 24;
 const MAP_DENSE_MARKER_RESTORE_DELAY_MS = 420;
+const MAP_EDGE_TOP_BOTTOM_FADE_PX = 56;
+const MAP_EDGE_SIDE_FADE_PX = 20;
 const MAP_VIEWPORT_MASK_STYLE = {
   "--theme-soft-viewport-mask-size": "20px",
 } as CSSProperties;
@@ -560,44 +562,44 @@ function fallbackScanBackground(background: string, water: string) {
 function mapEdgeVignetteBackground() {
   return `
     radial-gradient(
-      56px 56px at 0% 0%,
+      ${MAP_EDGE_SIDE_FADE_PX}px ${MAP_EDGE_TOP_BOTTOM_FADE_PX}px at 0% 0%,
       rgb(var(--theme-shell-rgb) / 0.18) 0%,
       transparent 76%
     ),
     radial-gradient(
-      56px 56px at 100% 0%,
+      ${MAP_EDGE_SIDE_FADE_PX}px ${MAP_EDGE_TOP_BOTTOM_FADE_PX}px at 100% 0%,
       rgb(var(--theme-shell-rgb) / 0.18) 0%,
       transparent 76%
     ),
     radial-gradient(
-      56px 56px at 0% 100%,
+      ${MAP_EDGE_SIDE_FADE_PX}px ${MAP_EDGE_TOP_BOTTOM_FADE_PX}px at 0% 100%,
       rgb(var(--theme-shell-rgb) / 0.18) 0%,
       transparent 76%
     ),
     radial-gradient(
-      56px 56px at 100% 100%,
+      ${MAP_EDGE_SIDE_FADE_PX}px ${MAP_EDGE_TOP_BOTTOM_FADE_PX}px at 100% 100%,
       rgb(var(--theme-shell-rgb) / 0.18) 0%,
       transparent 76%
     ),
     linear-gradient(
       to bottom,
       rgb(var(--theme-shell-rgb) / 0.22) 0%,
-      transparent 56px
+      transparent ${MAP_EDGE_TOP_BOTTOM_FADE_PX}px
     ),
     linear-gradient(
       to top,
       rgb(var(--theme-shell-rgb) / 0.22) 0%,
-      transparent 56px
+      transparent ${MAP_EDGE_TOP_BOTTOM_FADE_PX}px
     ),
     linear-gradient(
       to right,
       rgb(var(--theme-shell-rgb) / 0.22) 0%,
-      transparent 56px
+      transparent ${MAP_EDGE_SIDE_FADE_PX}px
     ),
     linear-gradient(
       to left,
       rgb(var(--theme-shell-rgb) / 0.22) 0%,
-      transparent 56px
+      transparent ${MAP_EDGE_SIDE_FADE_PX}px
     )
   `;
 }
