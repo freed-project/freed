@@ -57,6 +57,7 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 
 let healthyHeartbeats = 0;
 let cooldownUntil = 0;
+let cooldownReason: string | null = null;
 let safeModeUntil = 0;
 let lastRecoveryPhase: string | null = null;
 let lastRecoveryReason: string | null = null;
@@ -161,6 +162,7 @@ function waitForActiveJobChange(timeoutMs: number): Promise<void> {
 
 function markCooldown(durationMs: number, reason: string): void {
   cooldownUntil = Math.max(cooldownUntil, nowMs() + durationMs);
+  cooldownReason = reason;
   const message = `[background-runtime] paused reason=${reason} cooldown_ms=${durationMs.toLocaleString()}`;
   log.warn(message);
   addDebugEvent("error", message);
@@ -168,6 +170,13 @@ function markCooldown(durationMs: number, reason: string): void {
 
 export function noteRendererHeartbeat(_payload: RendererHeartbeatNote): void {
   healthyHeartbeats += 1;
+  if (
+    healthyHeartbeats >= REQUIRED_HEALTHY_HEARTBEATS &&
+    cooldownReason?.startsWith("renderer_")
+  ) {
+    cooldownUntil = 0;
+    cooldownReason = null;
+  }
 }
 
 export function noteRendererRecovery(reason: string): void {
@@ -315,6 +324,7 @@ export async function runBackgroundJob<T>(task: BackgroundRuntimeTask<T>): Promi
 export function resetBackgroundRuntimeForTests(options?: { requireRendererHealth?: boolean }): void {
   healthyHeartbeats = 0;
   cooldownUntil = 0;
+  cooldownReason = null;
   safeModeUntil = 0;
   lastRecoveryPhase = null;
   lastRecoveryReason = null;

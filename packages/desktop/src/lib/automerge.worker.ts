@@ -18,6 +18,7 @@ import * as A from "@automerge/automerge";
 import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
+  assertNonDestructiveMerge,
   createEmptyDoc,
   createDocFromData,
   addAccount,
@@ -455,6 +456,22 @@ function healUntitledFeedTitles(doc: FreedDoc): number {
   return changed;
 }
 
+function rankedVisibleItemIdsFromDoc(doc: FreedDoc): string[] {
+  const preferences = mergeDefaultPreferences(doc.preferences as Partial<UserPreferences> | undefined);
+  const persons = doc.persons as Record<string, Person> | undefined;
+  const accounts = doc.accounts as Record<string, Account> | undefined;
+  const visibleItems = (Object.values(doc.feedItems ?? {}) as FeedItem[])
+    .filter((item) => !item.userState.hidden)
+    .sort((a, b) => b.publishedAt - a.publishedAt);
+
+  return sortByPriority(
+    rankFeedItems(visibleItems, preferences.weights, {
+      persons: persons ?? {},
+      accounts: accounts ?? {},
+    }),
+  ).map((item) => item.globalId);
+}
+
 /**
  * Convert the Automerge proxy document to a plain-JS DocState for postMessage.
  * Build the projection incrementally so large synced article bodies are
@@ -769,6 +786,65 @@ async function applyItemPatchChange(
   }
 }
 
+async function applyAddFeedItemsPatchChange(items: FeedItem[], trace?: RequestTrace): Promise<void> {
+  if (!currentDoc) throw new Error("Document not initialized");
+  let changedIds: string[] = [];
+  let dedupedCount = 0;
+  currentDoc = A.change(currentDoc, `Add ${items.length.toLocaleString()} feed items`, (doc) => {
+    for (const item of items) {
+      compactFeedItemTextForSync(item);
+      if (doc.feedItems[item.globalId]) continue;
+      addFeedItem(doc, item);
+      changedIds.push(item.globalId);
+    }
+    if (items.some((item) => item.platform === "facebook" || item.platform === "instagram")) {
+      dedupedCount = deduplicateDocFeedItems(doc);
+    }
+  });
+
+  if (changedIds.length === 0 && dedupedCount === 0) {
+    emitWorkerTrace(
+      `[automerge-worker] skip op=${trace?.opType ?? "unknown"} reason=no_changes`,
+      "change",
+    );
+    return;
+  }
+
+  bumpSearchCorpusVersion();
+  send({
+    type: "DEBUG_EVENT",
+    kind: "change",
+    detail: `Add ${items.length.toLocaleString()} feed items: ${changedIds.length.toLocaleString()} changed`,
+  });
+
+  if (dedupedCount > 0) {
+    emitWorkerTrace(
+      `[automerge-worker] full-hydrate op=${trace?.opType ?? "unknown"} reason=social_dedup deleted=${dedupedCount.toLocaleString()}`,
+    );
+    await saveAndBroadcast(trace);
+    return;
+  }
+
+  await persistAndBroadcastWithoutHydration(trace);
+  const doc = currentDoc;
+  const patches = changedIds
+    .map((globalId) => doc?.feedItems[globalId] as FeedItem | undefined)
+    .filter((item): item is FeedItem => Boolean(item))
+    .map((item) => ({ item: cloneFeedItemForPatch(item) }));
+
+  if (patches.length > 0) {
+    send({
+      type: "ITEM_PATCH",
+      patches,
+      changedItemIds: changedIds,
+      orderedItemIds: doc ? rankedVisibleItemIdsFromDoc(doc) : undefined,
+      searchCorpusVersion,
+      docItemCount: doc ? Object.keys(doc.feedItems ?? {}).length : undefined,
+      mutation: trace?.opType,
+    });
+  }
+}
+
 async function handleRequest(
   req: WorkerRequest,
   enqueuedAt: number,
@@ -889,7 +965,11 @@ async function handleRequest(
         if (!currentDoc) throw new Error("Document not initialized");
         const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const incomingDoc = A.load<FreedDoc>(req.binary);
-        currentDoc = A.merge(currentDoc, incomingDoc);
+        const mergedDoc = A.merge(currentDoc, incomingDoc);
+        const guard = assertNonDestructiveMerge(currentDoc, incomingDoc, mergedDoc, {
+          source: "Desktop sync",
+        });
+        currentDoc = mergedDoc;
         migrateLoadedIdentityGraph("Migrate legacy identity graph");
         compactLoadedFeedText("Compact oversized synced feed text after merge", {
           rebuildHistory: true,
@@ -903,6 +983,14 @@ async function handleRequest(
           detail: delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} items` : "no new items",
           bytes: req.binary.byteLength,
         });
+        if (guard.deletedItemCount > 0) {
+          send({
+            type: "DEBUG_EVENT",
+            kind: "merge_ok",
+            detail: `merge safety checked ${guard.deletedItemCount.toLocaleString()} item deletions`,
+            bytes: req.binary.byteLength,
+          });
+        }
         bumpSearchCorpusVersion();
         await saveAndBroadcast(trace);
         ack(req.reqId);
@@ -1004,15 +1092,7 @@ async function handleRequest(
         break;
 
       case "ADD_FEED_ITEMS":
-        await applyRequestChange((doc) => {
-          for (const item of req.items) {
-            compactFeedItemTextForSync(item);
-            if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
-          }
-          if (req.items.some((item) => item.platform === "facebook" || item.platform === "instagram")) {
-            deduplicateDocFeedItems(doc);
-          }
-        }, `Add ${req.items.length} feed items`, true);
+        await applyAddFeedItemsPatchChange(req.items, trace);
         ack(req.reqId);
         break;
 

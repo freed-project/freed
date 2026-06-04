@@ -720,7 +720,7 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       await upsertMediaVaultRosterFromItems("facebook", filteredItems);
       const archivedCount = await archiveRecentProviderMedia(
         "facebook",
-        useAppStore.getState().items.filter((i) => i.platform === "facebook"),
+        filteredItems,
       );
       if (archivedCount > 0) {
         addDebugEvent(

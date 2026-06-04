@@ -2006,6 +2006,121 @@ export function updateLastSync(doc: FreedDoc): void {
 }
 
 // =============================================================================
+// Sync Safety Helpers
+// =============================================================================
+
+export interface DestructiveMergeGuardOptions {
+  minLargestInputItems?: number;
+  minDeletedItems?: number;
+  maxDeletedFraction?: number;
+  source?: string;
+}
+
+export interface DestructiveMergeGuardReport {
+  blocked: boolean;
+  source: string;
+  localItemCount: number;
+  incomingItemCount: number;
+  mergedItemCount: number;
+  largestInputItemCount: number;
+  deletedItemCount: number;
+  deletedFraction: number;
+  message: string;
+}
+
+const DEFAULT_DESTRUCTIVE_MERGE_GUARD = {
+  minLargestInputItems: 500,
+  minDeletedItems: 100,
+  maxDeletedFraction: 0.25,
+} as const;
+
+const mergeSafetyCountFormatter = new Intl.NumberFormat();
+const mergeSafetyPercentFormatter = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 0,
+  style: "percent",
+});
+
+function countFeedItems(doc: FreedDoc): number {
+  return Object.keys(doc.feedItems ?? {}).length;
+}
+
+function formatDestructiveMergeMessage(
+  report: Omit<DestructiveMergeGuardReport, "message">,
+): string {
+  return [
+    "Freed blocked a sync merge because it would remove too much feed history.",
+    `Source: ${report.source}.`,
+    `Largest input: ${mergeSafetyCountFormatter.format(report.largestInputItemCount)} items.`,
+    `Merged result: ${mergeSafetyCountFormatter.format(report.mergedItemCount)} items.`,
+    `Potential loss: ${mergeSafetyCountFormatter.format(report.deletedItemCount)} items (${mergeSafetyPercentFormatter.format(
+      report.deletedFraction,
+    )}).`,
+    "Restore from a trusted snapshot or reconnect sync after confirming which copy should win.",
+  ].join(" ");
+}
+
+/**
+ * Detect CRDT merges where one side carries delete history that would wipe out
+ * a much larger document. The caller should block the merge when this reports
+ * `blocked`, then surface `message` to the user.
+ */
+export function evaluateDestructiveMergeGuard(
+  localDoc: FreedDoc,
+  incomingDoc: FreedDoc,
+  mergedDoc: FreedDoc,
+  options: DestructiveMergeGuardOptions = {},
+): DestructiveMergeGuardReport {
+  const source = options.source ?? "sync";
+  const localItemCount = countFeedItems(localDoc);
+  const incomingItemCount = countFeedItems(incomingDoc);
+  const mergedItemCount = countFeedItems(mergedDoc);
+  const largestInputItemCount = Math.max(localItemCount, incomingItemCount);
+  const deletedItemCount = Math.max(0, largestInputItemCount - mergedItemCount);
+  const deletedFraction =
+    largestInputItemCount > 0 ? deletedItemCount / largestInputItemCount : 0;
+  const minLargestInputItems =
+    options.minLargestInputItems ?? DEFAULT_DESTRUCTIVE_MERGE_GUARD.minLargestInputItems;
+  const minDeletedItems =
+    options.minDeletedItems ?? DEFAULT_DESTRUCTIVE_MERGE_GUARD.minDeletedItems;
+  const maxDeletedFraction =
+    options.maxDeletedFraction ?? DEFAULT_DESTRUCTIVE_MERGE_GUARD.maxDeletedFraction;
+  const blocked =
+    largestInputItemCount >= minLargestInputItems &&
+    deletedItemCount >= minDeletedItems &&
+    deletedFraction >= maxDeletedFraction;
+  const reportWithoutMessage = {
+    blocked,
+    source,
+    localItemCount,
+    incomingItemCount,
+    mergedItemCount,
+    largestInputItemCount,
+    deletedItemCount,
+    deletedFraction,
+  };
+
+  return {
+    ...reportWithoutMessage,
+    message: blocked
+      ? formatDestructiveMergeMessage(reportWithoutMessage)
+      : "Sync merge passed destructive merge guard.",
+  };
+}
+
+export function assertNonDestructiveMerge(
+  localDoc: FreedDoc,
+  incomingDoc: FreedDoc,
+  mergedDoc: FreedDoc,
+  options: DestructiveMergeGuardOptions = {},
+): DestructiveMergeGuardReport {
+  const report = evaluateDestructiveMergeGuard(localDoc, incomingDoc, mergedDoc, options);
+  if (report.blocked) {
+    throw new Error(report.message);
+  }
+  return report;
+}
+
+// =============================================================================
 // Query Helpers
 // =============================================================================
 

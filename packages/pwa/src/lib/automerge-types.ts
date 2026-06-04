@@ -89,6 +89,7 @@ export type WorkerRequest =
   | { reqId: number; type: "ADD_STUB_ITEM"; url: string; tags: string[] }
   | { reqId: number; type: "BACKFILL_CONTENT_SIGNALS"; batchSize?: number }
   | { reqId: number; type: "MERGE_DOC"; binary: Uint8Array }
+  | { reqId: number; type: "GET_DOC_BINARY" }
   | { reqId: number; type: "CLEAR_LOCAL" };
 
 // ---------------------------------------------------------------------------
@@ -99,7 +100,8 @@ export type WorkerResponse =
   /** Simple acknowledgement for mutations that return void */
   | { reqId: number; type: "ACK"; error?: string }
   /** Broadcast on every doc mutation — main thread uses this to update UI */
-  | { type: "STATE_UPDATE"; state: DocState; binary: Uint8Array }
+  | { type: "STATE_UPDATE"; state: DocState; binary?: Uint8Array }
+  | { reqId: number; type: "DOC_BINARY"; binary: Uint8Array }
   /** Debug panel event forwarding */
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
   /** Doc size snapshot for the debug panel */
