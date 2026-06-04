@@ -20,6 +20,7 @@ import {
   type FeedSignalMode,
   type MapMode,
   type MapTimeMode,
+  type SavedContentSortMode,
   type SidebarMode,
   type SocialContentFilter,
   resolveMapMode,
@@ -34,6 +35,7 @@ import {
   ReaderRailShowIcon,
   SidebarCollapseIcon,
   SidebarExpandIcon,
+  SortIcon,
 } from "../icons.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
@@ -109,6 +111,12 @@ const DEFAULT_LAYOUT_CONTROL_RESERVED_WIDTH_PX = 280;
 const TOOLBAR_SLOT_WIDTH_CONTENT = "max-content";
 const TOOLBAR_COLLAPSE_BREAKPOINT_PX = 1200;
 const READER_BOOKMARK_INLINE_MIN_WIDTH_PX = 980;
+const SAVED_SORT_OPTIONS: Array<{ value: SavedContentSortMode; label: string }> = [
+  { value: "date_saved", label: "Date saved" },
+  { value: "date_published", label: "Date published" },
+  { value: "recommended", label: "Recommended" },
+  { value: "shortest_read", label: "Shortest read" },
+];
 
 function formatItemCount(count: number): string {
   return `${count.toLocaleString()} item${count === 1 ? "" : "s"}`;
@@ -258,6 +266,46 @@ function FeedCardDensitySlider({
           <span />
           <span />
         </span>
+      </div>
+    </Tooltip>
+  );
+}
+
+function SavedSortSelect({
+  value,
+  onChange,
+  fullWidth = false,
+  style,
+}: {
+  value: SavedContentSortMode;
+  onChange: (value: SavedContentSortMode) => void;
+  fullWidth?: boolean;
+  style?: CSSProperties;
+}) {
+  return (
+    <Tooltip label="Sort saved content" className={fullWidth ? "w-full" : undefined}>
+      <div
+        data-testid="saved-sort-control"
+        className={`theme-toolbar-select-control ${fullWidth ? "w-full" : ""}`}
+        style={{
+          ...(fullWidth ? { width: "100%" } : {}),
+          ...style,
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <SortIcon className="h-4 w-4" />
+        <select
+          data-testid="saved-sort-select"
+          value={value}
+          onChange={(event) => onChange(event.target.value as SavedContentSortMode)}
+          aria-label="Sort saved content"
+        >
+          {SAVED_SORT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </div>
     </Tooltip>
   );
@@ -422,6 +470,7 @@ export function Header({
   const showMapTimeControls = activeView === "map";
   const showFeedBulkActions = activeView === "feed";
   const showFeedSignalFilter = activeView === "feed" && !selectedItem;
+  const showSavedSortControl = showFeedSignalFilter && activeFilter.savedOnly === true;
   const showArchivedToolbar = activeView === "feed" && activeFilter.archivedOnly === true;
   const showArchivedDeleteAction = showArchivedToolbar && (display.archivePruneDays ?? 30) > 0;
   const showSocialContentControls =
@@ -449,12 +498,15 @@ export function Header({
       (collapseToolbarViewControls && (
         showWorkspaceIdentityControls ||
         showMapTimeControls ||
-        showSocialContentControls
+        showSocialContentControls ||
+        showSavedSortControl
       )) ||
       ((isMobile || collapseToolbarViewControls) && showFeedSignalFilter)
     );
   const showInlineFeedSignalFilter =
     showFeedSignalFilter && !showCollapsedToolbarFilterMenu;
+  const showInlineSavedSortControl =
+    showSavedSortControl && !showCollapsedToolbarFilterMenu;
   const showFeedCardDensityControl =
     activeView === "feed" &&
     !selectedItem &&
@@ -593,6 +645,7 @@ export function Header({
     : activeFeedSignalModes.length === 1
       ? FEED_SIGNAL_FILTER_PRESETS.find((preset) => preset.mode === activeFeedSignalModes[0])?.label ?? "Custom"
       : `${activeFeedSignalModes.length.toLocaleString()} filters`;
+  const savedContentSortMode = display.savedContentSortMode ?? "date_saved";
   const contextualListTitle = useMemo(() => {
     if (activeView !== "feed") return currentListTitle;
     return contextualFeedTitle({
@@ -718,6 +771,10 @@ export function Header({
 
   const handleMapTimeModeChange = useCallback((mode: MapTimeMode) => {
     updateDisplayPreference({ mapTimeMode: mode });
+  }, [updateDisplayPreference]);
+
+  const handleSavedContentSortModeChange = useCallback((mode: SavedContentSortMode) => {
+    updateDisplayPreference({ savedContentSortMode: mode });
   }, [updateDisplayPreference]);
 
   const handleCloseReader = useCallback(() => {
@@ -1745,6 +1802,16 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
+                <ToolbarAnimatedSlot visible={showInlineSavedSortControl} width="10.75rem" className="hidden lg:flex">
+                  {showInlineSavedSortControl ? (
+                    <SavedSortSelect
+                      value={savedContentSortMode}
+                      onChange={handleSavedContentSortModeChange}
+                      style={headerDragRegion ? toolbarControlStyle : undefined}
+                    />
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
                 <ToolbarAnimatedSlot visible={showInlineFeedSignalFilter} width={TOOLBAR_SLOT_WIDTH_CONTENT}>
                   {showInlineFeedSignalFilter ? (
                     <div className="relative flex">
@@ -1929,7 +1996,7 @@ export function Header({
           ) : null}
 
           {showCollapsedToolbarFilterMenu && showWorkspaceIdentityControls ? (
-            <div className={`${showMapTimeControls || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
+            <div className={`${showMapTimeControls || showSavedSortControl || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
               <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
                 Connections
               </p>
@@ -1945,7 +2012,7 @@ export function Header({
           ) : null}
 
           {showCollapsedToolbarFilterMenu && showMapTimeControls ? (
-            <div className="px-3 py-3">
+            <div className={`${showSavedSortControl || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
               <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
                 Time
               </p>
@@ -1960,6 +2027,20 @@ export function Header({
                 onChange={handleMapTimeModeChange}
                 compact
                 fullWidth
+              />
+            </div>
+          ) : null}
+
+          {showCollapsedToolbarFilterMenu && showSavedSortControl ? (
+            <div className={`${showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
+              <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Sort
+              </p>
+              <SavedSortSelect
+                value={savedContentSortMode}
+                onChange={handleSavedContentSortModeChange}
+                fullWidth
+                style={headerDragRegion ? toolbarControlStyle : undefined}
               />
             </div>
           ) : null}

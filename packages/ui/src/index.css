@@ -1861,6 +1861,45 @@ html.freed-mobile-sidebar-open body {
     0 2px 8px rgb(0 0 0 / 0.18);
 }
 
+.theme-toolbar-select-control {
+  display: inline-flex;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2.25rem;
+  width: 10.75rem;
+  min-width: 0;
+  padding: 0 0.65rem;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: var(--button-radius);
+  background: var(--theme-button-secondary-background);
+  color: var(--theme-text-muted);
+}
+
+.theme-toolbar-select-control > svg {
+  flex-shrink: 0;
+}
+
+.theme-toolbar-select-control select {
+  min-width: 0;
+  flex: 1;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--theme-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+  outline: none;
+  cursor: pointer;
+}
+
+.theme-toolbar-select-control select:focus-visible {
+  outline: 2px solid rgb(var(--theme-accent-secondary-rgb) / 0.65);
+  outline-offset: 3px;
+  border-radius: calc(var(--button-radius) - 2px);
+}
+
 .theme-fab-button {
   background: color-mix(
     in oklab,
