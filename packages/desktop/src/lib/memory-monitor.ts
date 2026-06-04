@@ -3,7 +3,7 @@ import { setRuntimeMemory, type RuntimeMemorySnapshot } from "@freed/ui/lib/debu
 import { getStatus as getContentFetcherStatus } from "./content-fetcher";
 import { log } from "./logger";
 
-const MEMORY_SAMPLE_INTERVAL_MS = 15_000;
+const MEMORY_SAMPLE_INTERVAL_MS = 60_000;
 const MEMORY_LOG_INTERVAL = 4;
 const BYTES_PER_GIB = 1024 * 1024 * 1024;
 const MIN_CRITICAL_RESIDENT_BYTES = 3.5 * BYTES_PER_GIB;
@@ -43,8 +43,11 @@ interface NativeRuntimeMemoryStats {
     role: string;
   }>;
   webkitTelemetryAvailable?: boolean;
+  webkitAttributionPrecise?: boolean;
   indexedDbBytes?: number;
   webkitCacheBytes?: number;
+  storageSizesSampled?: boolean;
+  sampleDurationMs?: number;
   memoryHighBytes?: number;
   memoryCriticalBytes?: number;
   relayDocBytes: number;
@@ -243,8 +246,11 @@ function emptyNativeRuntimeMemoryStats(): NativeRuntimeMemoryStats {
     webkitLargestRole: undefined,
     webkitProcesses: [],
     webkitTelemetryAvailable: false,
+    webkitAttributionPrecise: false,
     indexedDbBytes: undefined,
     webkitCacheBytes: undefined,
+    storageSizesSampled: false,
+    sampleDurationMs: 0,
     memoryHighBytes: limits.highBytes,
     memoryCriticalBytes: limits.criticalBytes,
     relayDocBytes: 0,
@@ -252,17 +258,35 @@ function emptyNativeRuntimeMemoryStats(): NativeRuntimeMemoryStats {
   };
 }
 
+function memorySampleOptions(reason: "startup" | "interval"): {
+  includeStorageSizes: boolean;
+  preciseWebkitAttribution: boolean;
+} {
+  const diagnosticSample =
+    reason === "startup" ||
+    sampleCount % MEMORY_LOG_INTERVAL === 0 ||
+    currentPressureLevel !== "normal";
+  return {
+    includeStorageSizes: diagnosticSample,
+    preciseWebkitAttribution: diagnosticSample,
+  };
+}
+
 async function sampleRuntimeMemory(
   reason: "startup" | "interval",
   options: MemoryMonitorOptions,
 ): Promise<void> {
+  const sampleStartedAt = performance.now();
   const fetcher = getContentFetcherStatus();
   const renderer = getRendererMemoryStats();
   const domNodeCount = getDomNodeCount();
   const automerge = options.getAutomergeStats?.() ?? null;
+  const nativeOptions = memorySampleOptions(reason);
+  const nativeStartedAt = performance.now();
   const native = canSampleNativeMemoryStats()
-    ? await invoke<NativeRuntimeMemoryStats>("get_runtime_memory_stats")
+    ? await invoke<NativeRuntimeMemoryStats>("get_runtime_memory_stats", nativeOptions)
     : emptyNativeRuntimeMemoryStats();
+  const nativeSampleDurationMs = Math.round(performance.now() - nativeStartedAt);
   const limits = {
     highBytes:
       native.memoryHighBytes ??
@@ -308,10 +332,14 @@ async function sampleRuntimeMemory(
     webkitLargestRole: native.webkitLargestRole,
     webkitProcesses: native.webkitProcesses,
     webkitTelemetryAvailable: native.webkitTelemetryAvailable,
+    webkitAttributionPrecise: native.webkitAttributionPrecise,
     automergeBinaryBytes: automerge?.binaryBytes,
     automergeItemCount: automerge?.itemCount,
     indexedDbBytes: native.indexedDbBytes,
     webkitCacheBytes: native.webkitCacheBytes,
+    storageSizesSampled: native.storageSizesSampled,
+    sampleDurationMs: Math.round(performance.now() - sampleStartedAt),
+    nativeSampleDurationMs,
     memoryHighBytes: limits.highBytes,
     memoryCriticalBytes: limits.criticalBytes,
     pressureLevel,
@@ -379,6 +407,10 @@ async function sampleRuntimeMemory(
       (native.webkitCacheBytes !== undefined
         ? `webkit_cache=${formatBytesForMemoryLog(native.webkitCacheBytes)} `
         : "") +
+      `storage_sampled=${String(native.storageSizesSampled === true)} ` +
+      `webkit_precise=${String(native.webkitAttributionPrecise === true)} ` +
+      `sample_ms=${(native.sampleDurationMs ?? 0).toLocaleString()} ` +
+      `native_sample_ms=${nativeSampleDurationMs.toLocaleString()} ` +
       `relay_doc=${formatBytesForMemoryLog(native.relayDocBytes)} ` +
       `peak_relay_doc=${formatBytesForMemoryLog(peakRelayDocBytes)} ` +
       `relay_clients=${native.relayClientCount.toLocaleString()} ` +
@@ -410,7 +442,7 @@ export function startMemoryMonitor(options: MemoryMonitorOptions = {}): void {
     log.warn(`[memory] startup sample failed: ${msg}`);
   });
 
-  startupFollowupHandles = [2_000, 8_000, 16_000].map((delayMs) =>
+  startupFollowupHandles = [30_000].map((delayMs) =>
     setTimeout(() => {
       void sampleRuntimeMemory("interval", options).catch((error) => {
         const msg = error instanceof Error ? error.message : String(error);

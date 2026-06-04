@@ -89,6 +89,7 @@ let relayClientCount = 0;
 let queuedRequestCount = 0;
 let requestChain: Promise<void> = Promise.resolve();
 let searchCorpusVersion = 0;
+let linkPreviewUrlCounts = new Map<string, number>();
 
 const SLOW_QUEUE_WAIT_MS = 1_000;
 const SLOW_REQUEST_PROCESS_MS = 5_000;
@@ -117,6 +118,29 @@ function send(msg: WorkerResponse): void {
 
 function ack(reqId: number, error?: string): void {
   send({ reqId, type: "ACK", error });
+}
+
+function itemLinkPreviewUrl(item: FeedItem | undefined): string | null {
+  const url = item?.content.linkPreview?.url;
+  return typeof url === "string" && url.length > 0 ? url : null;
+}
+
+function addKnownLinkPreviewUrl(item: FeedItem | undefined): void {
+  const url = itemLinkPreviewUrl(item);
+  if (!url) return;
+  linkPreviewUrlCounts.set(url, (linkPreviewUrlCounts.get(url) ?? 0) + 1);
+}
+
+function hasKnownLinkPreviewUrl(url: string | null): boolean {
+  return Boolean(url && (linkPreviewUrlCounts.get(url) ?? 0) > 0);
+}
+
+function rebuildKnownLinkPreviewUrls(doc: FreedDoc | null): void {
+  linkPreviewUrlCounts = new Map();
+  if (!doc) return;
+  for (const item of Object.values(doc.feedItems ?? {}) as FeedItem[]) {
+    addKnownLinkPreviewUrl(item);
+  }
 }
 
 function toLegacyContact(account: Account): LegacyDeviceContact {
@@ -215,6 +239,7 @@ function ensureCurrentDocLoaded(reason: WorkerRequest["type"]): FreedDoc {
   const startedAt = performance.now();
   currentDoc = A.load<FreedDoc>(currentBinary);
   persistenceState = createPersistenceState(currentBinary);
+  rebuildKnownLinkPreviewUrls(currentDoc);
   emitWorkerTrace(
     `[automerge-worker] reloaded idle document op=${reason}` +
       ` load_ms=${formatMs(performance.now() - startedAt)}` +
@@ -578,6 +603,7 @@ async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
   await storage.save(binary);
   const afterPersistAt = performance.now();
   const state = hydrateFromDoc(doc);
+  rebuildKnownLinkPreviewUrls(doc);
   const afterHydrateAt = performance.now();
 
   const snapshot: Extract<WorkerResponse, { type: "DEBUG_SNAPSHOT" }> = {
@@ -621,6 +647,7 @@ async function hydrateAndBroadcastWithoutPersist(trace?: RequestTrace): Promise<
 
   const startedAt = performance.now();
   const state = hydrateFromDoc(doc);
+  rebuildKnownLinkPreviewUrls(doc);
   const afterHydrateAt = performance.now();
 
   send({
@@ -796,6 +823,7 @@ async function applyAddFeedItemsPatchChange(items: FeedItem[], trace?: RequestTr
       if (doc.feedItems[item.globalId]) continue;
       addFeedItem(doc, item);
       changedIds.push(item.globalId);
+      addKnownLinkPreviewUrl(item);
     }
     if (items.some((item) => item.platform === "facebook" || item.platform === "instagram")) {
       dedupedCount = deduplicateDocFeedItems(doc);
@@ -832,6 +860,84 @@ async function applyAddFeedItemsPatchChange(items: FeedItem[], trace?: RequestTr
     .filter((item): item is FeedItem => Boolean(item))
     .map((item) => ({ item: cloneFeedItemForPatch(item) }));
 
+  if (patches.length > 0) {
+    send({
+      type: "ITEM_PATCH",
+      patches,
+      changedItemIds: changedIds,
+      orderedItemIds: doc ? rankedVisibleItemIdsFromDoc(doc) : undefined,
+      searchCorpusVersion,
+      docItemCount: doc ? Object.keys(doc.feedItems ?? {}).length : undefined,
+      mutation: trace?.opType,
+    });
+  }
+}
+
+async function applyBatchRefreshFeedsPatchChange(
+  feeds: RssFeed[],
+  items: FeedItem[],
+  trace?: RequestTrace,
+): Promise<void> {
+  if (!currentDoc) throw new Error("Document not initialized");
+  const feedPatch: RssFeedPatch = { feeds: {}, removedUrls: [] };
+  let changedIds: string[] = [];
+  currentDoc = A.change(currentDoc, `Refresh ${feeds.length.toLocaleString()} feeds, ${items.length.toLocaleString()} items`, (doc) => {
+    for (const feed of feeds) {
+      const stored = doc.rssFeeds[feed.url] as RssFeed | undefined;
+      if (!stored) continue;
+      if (feed.lastFetched !== undefined) stored.lastFetched = feed.lastFetched;
+      if (feed.lastFetchAttemptedAt !== undefined) stored.lastFetchAttemptedAt = feed.lastFetchAttemptedAt;
+      if (feed.nextFetchAfter !== undefined) stored.nextFetchAfter = feed.nextFetchAfter;
+      if (feed.consecutiveFailures !== undefined) stored.consecutiveFailures = feed.consecutiveFailures;
+      if (feed.lastFetchError !== undefined) stored.lastFetchError = feed.lastFetchError;
+      if (feed.title && feed.title !== "Untitled Feed" && feed.title !== feed.url) {
+        if (stored.title === "Untitled Feed" || stored.title === stored.url) {
+          stored.title = feed.title;
+        }
+      }
+      if (feed.siteUrl && !stored.siteUrl) stored.siteUrl = feed.siteUrl;
+      feedPatch.feeds[feed.url] = cloneRssFeedForPatch(stored);
+    }
+
+    for (const item of items) {
+      compactFeedItemTextForSync(item);
+      if (doc.feedItems[item.globalId]) continue;
+      const linkUrl = itemLinkPreviewUrl(item);
+      if (hasKnownLinkPreviewUrl(linkUrl)) continue;
+      addFeedItem(doc, item);
+      changedIds.push(item.globalId);
+      addKnownLinkPreviewUrl(item);
+    }
+  });
+
+  const feedChanged = Object.keys(feedPatch.feeds).length > 0 || feedPatch.removedUrls.length > 0;
+  if (!feedChanged && changedIds.length === 0) {
+    emitWorkerTrace(
+      `[automerge-worker] skip op=${trace?.opType ?? "unknown"} reason=no_changes`,
+      "change",
+    );
+    return;
+  }
+
+  if (changedIds.length > 0) bumpSearchCorpusVersion();
+  send({
+    type: "DEBUG_EVENT",
+    kind: "change",
+    detail:
+      `Refresh ${feeds.length.toLocaleString()} feeds, ${items.length.toLocaleString()} items: ` +
+      `${changedIds.length.toLocaleString()} new`,
+  });
+  await persistAndBroadcastWithoutHydration(trace);
+
+  if (feedChanged) {
+    send({ type: "FEEDS_PATCH", patch: feedPatch, mutation: trace?.opType });
+  }
+
+  const doc = currentDoc;
+  const patches = changedIds
+    .map((globalId) => doc?.feedItems[globalId] as FeedItem | undefined)
+    .filter((item): item is FeedItem => Boolean(item))
+    .map((item) => ({ item: cloneFeedItemForPatch(item) }));
   if (patches.length > 0) {
     send({
       type: "ITEM_PATCH",
@@ -934,6 +1040,7 @@ async function handleRequest(
         currentDoc = null;
         currentBinary = null;
         persistenceState = createPersistenceState(null);
+        linkPreviewUrlCounts = new Map();
         searchCorpusVersion = 0;
         ack(req.reqId);
         break;
@@ -1314,37 +1421,7 @@ async function handleRequest(
         break;
 
       case "BATCH_REFRESH_FEEDS":
-        await applyRequestChange((doc) => {
-          for (const feed of req.feeds) {
-            const stored = doc.rssFeeds[feed.url] as RssFeed | undefined;
-            if (!stored) continue;
-            if (feed.lastFetched !== undefined) stored.lastFetched = feed.lastFetched;
-            if (feed.lastFetchAttemptedAt !== undefined) stored.lastFetchAttemptedAt = feed.lastFetchAttemptedAt;
-            if (feed.nextFetchAfter !== undefined) stored.nextFetchAfter = feed.nextFetchAfter;
-            if (feed.consecutiveFailures !== undefined) stored.consecutiveFailures = feed.consecutiveFailures;
-            if (feed.lastFetchError !== undefined) stored.lastFetchError = feed.lastFetchError;
-            if (feed.title && feed.title !== "Untitled Feed" && feed.title !== feed.url) {
-              if (stored.title === "Untitled Feed" || stored.title === stored.url) {
-                stored.title = feed.title;
-              }
-            }
-            if (feed.siteUrl && !stored.siteUrl) stored.siteUrl = feed.siteUrl;
-          }
-
-          const existingLinkUrls = new Set<string>();
-          for (const existing of Object.values(doc.feedItems) as FeedItem[]) {
-            const url = existing.content.linkPreview?.url;
-            if (url) existingLinkUrls.add(url);
-          }
-          for (const item of req.items) {
-            compactFeedItemTextForSync(item);
-            if (doc.feedItems[item.globalId]) continue;
-            const linkUrl = item.content.linkPreview?.url;
-            if (linkUrl && existingLinkUrls.has(linkUrl)) continue;
-            addFeedItem(doc, item);
-            if (linkUrl) existingLinkUrls.add(linkUrl);
-          }
-        }, `Refresh ${req.feeds.length} feeds, ${req.items.length} items`, true);
+        await applyBatchRefreshFeedsPatchChange(req.feeds, req.items, trace);
         ack(req.reqId);
         break;
 

@@ -1356,8 +1356,11 @@ struct RuntimeMemoryStats {
     webkit_largest_role: Option<String>,
     webkit_processes: Vec<WebkitProcessRuntimeStats>,
     webkit_telemetry_available: bool,
+    webkit_attribution_precise: bool,
     indexed_db_bytes: Option<u64>,
     webkit_cache_bytes: Option<u64>,
+    storage_sizes_sampled: bool,
+    sample_duration_ms: u64,
     memory_high_bytes: u64,
     memory_critical_bytes: u64,
     relay_doc_bytes: u64,
@@ -1374,6 +1377,21 @@ struct WebkitProcessRuntimeStats {
     cpu_usage: f32,
     age_seconds: u64,
     role: String,
+}
+
+#[derive(Clone, Copy)]
+struct RuntimeMemoryStatsOptions {
+    include_storage_sizes: bool,
+    precise_webkit_attribution: bool,
+}
+
+impl RuntimeMemoryStatsOptions {
+    fn full() -> Self {
+        Self {
+            include_storage_sizes: true,
+            precise_webkit_attribution: true,
+        }
+    }
 }
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq, Eq)]
@@ -2359,8 +2377,11 @@ mod renderer_watchdog_tests {
             webkit_largest_role: Some("freed-webcontent-age-matched".to_string()),
             webkit_processes: Vec::new(),
             webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
@@ -3717,6 +3738,7 @@ fn freed_webkit_memory_stats(
     system: &System,
     roots: &[PathBuf],
     app_age_seconds: u64,
+    precise_attribution: bool,
 ) -> WebkitMemoryStats {
     let mut total_resident_bytes = 0u64;
     let mut total_footprint_bytes = 0u64;
@@ -3734,11 +3756,11 @@ fn freed_webkit_memory_stats(
             }
             let pid_u32 = pid.as_u32();
             let age_seconds = process.run_time();
-            let Some(role) = freed_webkit_process_role(
-                macos_process_has_open_file_under_roots(pid_u32, roots),
-                age_seconds,
-                app_age_seconds,
-            ) else {
+            let has_open_file_under_roots =
+                precise_attribution && macos_process_has_open_file_under_roots(pid_u32, roots);
+            let Some(role) =
+                freed_webkit_process_role(has_open_file_under_roots, age_seconds, app_age_seconds)
+            else {
                 continue;
             };
             let resident = process.memory();
@@ -3792,6 +3814,21 @@ fn collect_runtime_memory_stats(
     relay_doc_bytes: u64,
     relay_client_count: u64,
 ) -> RuntimeMemoryStats {
+    collect_runtime_memory_stats_with_options(
+        app,
+        relay_doc_bytes,
+        relay_client_count,
+        RuntimeMemoryStatsOptions::full(),
+    )
+}
+
+fn collect_runtime_memory_stats_with_options(
+    app: &tauri::AppHandle,
+    relay_doc_bytes: u64,
+    relay_client_count: u64,
+    options: RuntimeMemoryStatsOptions,
+) -> RuntimeMemoryStats {
+    let sample_started_at = Instant::now();
     let pid = Pid::from_u32(std::process::id());
     let mut system = System::new();
     system.refresh_memory();
@@ -3818,20 +3855,33 @@ fn collect_runtime_memory_stats(
         ProcessRefreshKind::nothing().with_memory(),
     );
 
-    let webkit = freed_webkit_memory_stats(&system, &app_storage_roots(app), process_age_seconds);
+    let webkit = freed_webkit_memory_stats(
+        &system,
+        &app_storage_roots(app),
+        process_age_seconds,
+        options.precise_webkit_attribution,
+    );
     let total_physical_memory_bytes = system.total_memory();
     let (memory_high_bytes, memory_critical_bytes) =
         memory_pressure_limits(total_physical_memory_bytes);
-    let indexed_db_bytes = app
-        .path()
-        .app_data_dir()
-        .ok()
-        .and_then(|path| dir_size_bytes(&path.join("IndexedDB")));
-    let webkit_cache_bytes = app
-        .path()
-        .app_cache_dir()
-        .ok()
-        .and_then(|path| dir_size_bytes(&path.join("WebKit")));
+    let indexed_db_bytes = options
+        .include_storage_sizes
+        .then(|| {
+            app.path()
+                .app_data_dir()
+                .ok()
+                .and_then(|path| dir_size_bytes(&path.join("IndexedDB")))
+        })
+        .flatten();
+    let webkit_cache_bytes = options
+        .include_storage_sizes
+        .then(|| {
+            app.path()
+                .app_cache_dir()
+                .ok()
+                .and_then(|path| dir_size_bytes(&path.join("WebKit")))
+        })
+        .flatten();
     let app_resident_bytes = process_resident_bytes.saturating_add(webkit.total_resident_bytes);
     let webkit_pressure_bytes = webkit
         .total_footprint_bytes
@@ -3862,8 +3912,14 @@ fn collect_runtime_memory_stats(
         webkit_largest_role: webkit.largest_role,
         webkit_processes: webkit.processes,
         webkit_telemetry_available: webkit.process_count > 0,
+        webkit_attribution_precise: options.precise_webkit_attribution,
         indexed_db_bytes,
         webkit_cache_bytes,
+        storage_sizes_sampled: options.include_storage_sizes,
+        sample_duration_ms: sample_started_at
+            .elapsed()
+            .as_millis()
+            .min(u128::from(u64::MAX)) as u64,
         memory_high_bytes,
         memory_critical_bytes,
         relay_doc_bytes,
@@ -4536,6 +4592,8 @@ async fn ensure_social_scrape_memory(
 async fn get_runtime_memory_stats(
     app: tauri::AppHandle,
     state: tauri::State<'_, RelayState>,
+    include_storage_sizes: Option<bool>,
+    precise_webkit_attribution: Option<bool>,
 ) -> Result<RuntimeMemoryStats, String> {
     let relay_doc_bytes = state
         .current_doc
@@ -4546,10 +4604,14 @@ async fn get_runtime_memory_stats(
         .unwrap_or(0);
     let relay_client_count = *state.client_count.read().await as u64;
 
-    Ok(collect_runtime_memory_stats(
+    Ok(collect_runtime_memory_stats_with_options(
         &app,
         relay_doc_bytes,
         relay_client_count,
+        RuntimeMemoryStatsOptions {
+            include_storage_sizes: include_storage_sizes.unwrap_or(true),
+            precise_webkit_attribution: precise_webkit_attribution.unwrap_or(true),
+        },
     ))
 }
 
@@ -9201,8 +9263,11 @@ mod tests {
             webkit_largest_role: None,
             webkit_processes: Vec::new(),
             webkit_telemetry_available: false,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MAX_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MAX_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
@@ -9468,8 +9533,11 @@ mod tests {
             webkit_largest_role: Some("freed-webcontent".to_string()),
             webkit_processes: Vec::new(),
             webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: 601,
             memory_critical_bytes: 602,
             relay_doc_bytes: 0,
@@ -9867,8 +9935,11 @@ mod tests {
             webkit_largest_role: None,
             webkit_processes: Vec::new(),
             webkit_telemetry_available: false,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
@@ -9909,8 +9980,11 @@ mod tests {
             webkit_largest_role: Some("freed-webcontent".to_string()),
             webkit_processes: Vec::new(),
             webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
@@ -9965,8 +10039,11 @@ mod tests {
             webkit_largest_role: Some("freed-webcontent".to_string()),
             webkit_processes: Vec::new(),
             webkit_telemetry_available: false,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
@@ -10002,8 +10079,11 @@ mod tests {
             webkit_largest_role: Some("freed-webcontent".to_string()),
             webkit_processes: Vec::new(),
             webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
@@ -10045,8 +10125,11 @@ mod tests {
             webkit_largest_role: None,
             webkit_processes: Vec::new(),
             webkit_telemetry_available: false,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
@@ -10102,8 +10185,11 @@ mod tests {
             webkit_largest_role: None,
             webkit_processes: Vec::new(),
             webkit_telemetry_available: false,
+            webkit_attribution_precise: true,
             indexed_db_bytes: None,
             webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
             memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
             relay_doc_bytes: 0,
