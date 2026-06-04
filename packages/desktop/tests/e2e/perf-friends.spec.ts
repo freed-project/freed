@@ -20,7 +20,7 @@ const LONG_TASK_COUNT_BUDGET = 2;
 const CI_LONG_TASK_COUNT_BUDGET = 48;
 const LONG_TASK_WORST_BUDGET_MS = 140;
 const CI_LONG_TASK_WORST_BUDGET_MS = 700;
-const DENSE_INTERACTION_NODE_BUDGET = 72;
+const DENSE_INTERACTION_NODE_BUDGET = 300;
 
 async function readGraphDebug(page: Page) {
   return page.evaluate(() => {

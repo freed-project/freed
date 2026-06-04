@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry in Freed Desktop, Google Contacts sync now feeds the same top-toolbar background activity monitor as social providers with elapsed active-work timers, the Friends workspace now defaults to `All content`, and the graph surface uses a WebGL-backed Pixi renderer with a bounded D3 Force worker solve, confirmed friend hubs near the center, provisional human identities in the middle field, linked channel satellites around people, unlinked provider islands around the edge, RSS treated as a normal provider island, drag-to-link reassignment, drag-to-pin placement, semantic zoom labels, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map plus Friends surfaces continue to share the unified top toolbar with current, future, and past map windows plus the quieter lower-left timeline scrubber
+> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry in Freed Desktop, Google Contacts sync now feeds the same top-toolbar background activity monitor as social providers with elapsed active-work timers, the Friends workspace now defaults to `All content`, and the graph surface now uses a worker-built graph atlas with a capped canvas renderer, confirmed friend hubs near the center, provisional human identities in the middle field, linked channel satellites around people, unlinked provider islands around the edge, RSS treated as a normal provider island, drag-to-link reassignment, drag-to-pin placement, semantic zoom labels, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map plus Friends surfaces continue to share the unified top toolbar with current, future, and past map windows plus the quieter lower-left timeline scrubber
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -138,8 +138,8 @@ Default nudge intervals by care level:
 
 ### Renderer and layout
 
-- Renderer: `pixi.js` WebGL scene with screen-space semantic labels
-- Layout: off-main-thread worker that computes a stable graph with bounded D3 Force ticks for the person field
+- Renderer: graph atlas canvas scene with capped visible nodes, screen-space semantic labels, and transform-only pan and pinch
+- Layout: off-main-thread worker that computes stable atlas tiers from activity summaries instead of shipping the full graph scene to the main thread
 - Tiering:
   - confirmed friends are the largest identity nodes near the center
   - provisional human identities sit in the middle field
@@ -168,22 +168,26 @@ Default nudge intervals by care level:
 
 - Default showcase sample: 250 friends, 1,250 connected social identities, 15 feeds, and 1,445 items
 - Stress graph: 1,000 friends plus 5,000 connected social identities
-- Model build budget: under 500 ms for the stress graph
-- Worker layout budget: under 2,000 ms in unit coverage and under 500 ms in the desktop seeded fixture
+- Model build budget: under 500 ms for summary-backed graph input
+- Worker atlas budget: under 250 ms desktop and under 600 ms on older modern iPhone Safari class devices
 - Initial scene sync budget: under 40 ms in the desktop seeded fixture
 - Hover sync budget: under 40 ms in the desktop seeded fixture
 - Selection sync budget: under 60 ms in the desktop seeded fixture
-- Pan and zoom sync budget: under 20 ms while moving and under 30 ms after zoom settle
+- Pan and zoom sync budget: transform-only on the main thread, under 4 ms of main-thread work per gesture frame
+- Visible node budget during interaction: under 300 desktop and under 160 iPhone
 - Animation scope: camera movement, hover, focus, selection, pinning, and settle transitions only. There is no live force simulation during interaction
 
 ### Files
 
 - `packages/ui/src/components/friends/FriendsView.tsx` — top-level view shell
-- `packages/ui/src/components/friends/FriendGraph.tsx` — Pixi WebGL renderer with semantic zoom labels
+- `packages/ui/src/components/friends/FriendGraph.tsx`: graph atlas canvas shell with semantic zoom labels, gestures, and diagnostics
 - `packages/ui/src/lib/identity-graph-model.ts` — derived person, channel, and feed graph model
 - `packages/shared/src/friend-suggestions.ts`: pure suggestion-only friend candidate ranking from identity, activity, content signals, and contact overlap
 - `packages/ui/src/lib/identity-graph-layout.ts` — stable radial layout plus spatial index helpers
 - `packages/ui/src/lib/identity-graph-layout.worker.ts` — worker entrypoint for graph layout
+- `packages/ui/src/lib/identity-graph-activity-summary.ts` - summary builder for graph activity counts, latest activity, samples, location presence, and avatar candidates
+- `packages/ui/src/lib/identity-graph-atlas.ts` - capped atlas builder with provider clusters, LOD tiers, labels, hit buckets, bounds, and metrics
+- `packages/ui/src/lib/identity-graph-atlas.worker.ts` - worker entrypoint for graph atlas slices
 - `packages/ui/src/components/friends/index.ts` — barrel export
 
 ---
@@ -254,6 +258,7 @@ Panning the Friends graph no longer rebuilds every node, edge, and label object 
 Scriptorium also now gives the graph a darker node palette, stronger edges, and real label contrast, so the Friends view reads like an interface instead of a ghost story printed on oatmeal.
 The Friends graph viewport now owns its own soft-mask compensation instead of inheriting the primary sidebar offset, which restores the left-edge vignette so all four edges feather consistently like the map view.
 The identity graph now builds activity counts in one pass, uses cheaper bucketed overlap resolution in the worker, drops into an interaction-quality mode while you pan or pinch, and exposes internal timing counters so performance regressions can fail in desktop tests instead of sneaking into a merge.
+The Friends graph now uses a graph atlas instead of the previous full-scene Pixi renderer. The worker builds capped viewport slices from activity summaries, the canvas renderer draws only the visible tier, provider labels stay visible at overview zoom, and diagnostics report source nodes separately from visible nodes so dense graph tests prove the cap instead of accidentally requiring the old expensive payload.
 Friend captions in the graph now use pill backgrounds and label-aware spacing, so names stay readable instead of collapsing into an overlapping word soup.
 Friend avatars now inherit a theme-authored tint across the Friends graph and map markers, so each theme stays coherent without a stray custom accent fighting the palette.
 The Friends graph now defaults to `All content`, keeps confirmed friends as larger center hubs, renders their linked channels as smaller radial satellites with straight connectors, and shows every other captured social account on the periphery inside provider-shaped metaball island regions.
@@ -334,7 +339,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.42 | Search and filter the primary feed by followed social channel names, with profile navigation and promotion commands | Medium | Done |
 | 8.43 | Add AI-ranked suggestion-only friend candidates from identity graph, contact, activity, and content signals | Medium | Done |
 | 8.44 | Open captured channel details in Friends from the reader author name | Low | Done |
-| 8.45 | Include Google Contacts in the global background activity monitor | Low | Done |
+| 8.45 | Replace the retained Pixi full-scene graph with a summary-backed graph atlas worker and capped canvas renderer | High | Done |
 
 ---
 
@@ -352,7 +357,6 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Friends shown in Sidebar as a live navigation destination
 - [x] Google Contacts import creates friend persons by default and suggests same-person matches without auto-linking
 - [x] Google Contacts sync reuses native, refreshable Google credentials in Freed Desktop, retries once after an API 401 with a forced refresh, and streams People API pages into normalized results without retaining duplicate raw page arrays
-- [x] Google Contacts sync records token lookup, fetch start, result counts, auth failures, timeouts, and completion in the same global activity monitor used by social provider syncs without adding extra People API requests
 - [x] Desktop snapshot restore preserves cached Google contacts and pending match suggestions
 - [x] Google Contacts appears as a first-class source in Settings and Friends, with full management in Freed Desktop and status-only visibility in the PWA
 - [x] Captured social authors can backfill orphan followed-account records before the operator confirms identity
@@ -397,6 +401,8 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Friends `All content` shows ranked suggested friends from connection people and unlinked human-looking accounts, with reasons, signal counts, sample item ids, dismissal, and explicit promotion only
 - [x] Reader author names open the matching captured channel details in Friends
 - [x] Graph benchmarks cover model build time, worker layout time, scene sync time, pan and zoom sync time, selection and hover sync time, visible label count, and quality mode transitions
+- [x] Graph atlas diagnostics report canonical source nodes, visible nodes, rendered primitive count, first visible time, frame p95, long tasks, memory estimate, renderer type, and touch input mode
+- [x] Dense graph coverage asserts capped visible nodes instead of requiring the full source graph in the renderer payload
 - [x] Desktop browser tests cover mixed-tier graph load, drag-to-link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
 - [ ] macOS native contact picker (CNContactStore)
