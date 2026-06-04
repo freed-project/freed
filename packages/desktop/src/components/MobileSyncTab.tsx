@@ -23,6 +23,8 @@ import {
   resetPairingToken,
   onStatusChange,
   syncCloudProviderNow,
+  resolveCloudSyncConflict,
+  type CloudConflictWinner,
   type SyncStatus,
   type NetworkInterface,
 } from "../lib/sync";
@@ -97,6 +99,10 @@ function describeUploadGap(state: CloudProviderDebugState | null): string {
   return "No upload has completed yet. Use Sync now to force a full pass.";
 }
 
+function isDestructiveMergeWarning(message?: string | null): boolean {
+  return message?.includes("blocked a sync merge") ?? false;
+}
+
 type Tab = "cloud" | "qr" | "manual";
 
 export function MobileSyncTab() {
@@ -112,6 +118,7 @@ export function MobileSyncTab() {
   const { providers, connect, cancelConnect, disconnect } = useCloudProviders();
   const [cancelProvider, setCancelProvider] = useState<CloudProvider | null>(null);
   const [manualSyncingProvider, setManualSyncingProvider] = useState<CloudProvider | null>(null);
+  const [resolvingConflictWinner, setResolvingConflictWinner] = useState<CloudConflictWinner | null>(null);
   const [manualSyncError, setManualSyncError] = useState<string | null>(null);
   const [allIPs, setAllIPs] = useState<NetworkInterface[]>([]);
   const [showIPPicker, setShowIPPicker] = useState(false);
@@ -182,8 +189,10 @@ export function MobileSyncTab() {
   const activeProvider = providers.gdrive.status === "connected" ? "gdrive" : providers.dropbox.status === "connected" ? "dropbox" : null;
   const activeCloudState = activeProvider ? cloudProviders?.[activeProvider] : null;
   const isManualSyncing = manualSyncingProvider !== null;
+  const isResolvingConflict = resolvingConflictWinner !== null;
   const uploadExplanation = describeUploadGap(activeCloudState ?? null);
   const diagnosticError = activeCloudState?.error ?? manualSyncError;
+  const showConflictRecovery = activeProvider !== null && isDestructiveMergeWarning(diagnosticError);
 
   const handleManualCloudSync = useCallback(async () => {
     if (!activeProvider) return;
@@ -195,6 +204,27 @@ export function MobileSyncTab() {
       setManualSyncError(error instanceof Error ? error.message : "Cloud sync failed.");
     } finally {
       setManualSyncingProvider(null);
+    }
+  }, [activeProvider]);
+
+  const handleResolveCloudConflict = useCallback(async (winner: CloudConflictWinner) => {
+    if (!activeProvider) return;
+    const providerLabel = activeProvider === "gdrive" ? "Google Drive" : "Dropbox";
+    const confirmed = window.confirm(
+      winner === "local"
+        ? `Keep this device's library and replace the ${providerLabel} cloud backup?\n\nOther devices will sync from this copy after they reconnect.`
+        : `Keep the ${providerLabel} cloud backup and replace this device's library?\n\nLocal items that are missing from the cloud backup will be removed from this device.`,
+    );
+    if (!confirmed) return;
+
+    setResolvingConflictWinner(winner);
+    setManualSyncError(null);
+    try {
+      await resolveCloudSyncConflict(activeProvider, winner);
+    } catch (error) {
+      setManualSyncError(error instanceof Error ? error.message : "Sync recovery failed.");
+    } finally {
+      setResolvingConflictWinner(null);
     }
   }, [activeProvider]);
 
@@ -258,7 +288,7 @@ export function MobileSyncTab() {
                   type="button"
                   data-testid="cloud-sync-now-button"
                   onClick={handleManualCloudSync}
-                  disabled={!activeProvider || isManualSyncing}
+                  disabled={!activeProvider || isManualSyncing || isResolvingConflict}
                   className="btn-secondary rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
                 >
                   {isManualSyncing ? "Syncing..." : "Sync now"}
@@ -267,6 +297,39 @@ export function MobileSyncTab() {
             </div>
             {diagnosticError && (
               <p className="theme-feedback-text-danger mb-3 break-words text-xs">{diagnosticError}</p>
+            )}
+            {showConflictRecovery && (
+              <div
+                data-testid="cloud-sync-conflict-recovery"
+                className="mb-3 rounded-lg border border-[rgb(var(--theme-feedback-warning-rgb)/0.35)] bg-[rgb(var(--theme-feedback-warning-rgb)/0.08)] px-3 py-3"
+              >
+                <p className="text-xs font-medium text-[var(--theme-text-primary)]">
+                  Choose which copy should win.
+                </p>
+                <p className="mt-1 text-xs text-[var(--theme-text-secondary)]">
+                  Keep this device replaces the cloud backup. Keep cloud copy replaces this device.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    data-testid="cloud-sync-keep-local-button"
+                    onClick={() => void handleResolveCloudConflict("local")}
+                    disabled={isResolvingConflict}
+                    className="btn-secondary rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
+                  >
+                    {resolvingConflictWinner === "local" ? "Replacing..." : "Keep this device"}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="cloud-sync-keep-cloud-button"
+                    onClick={() => void handleResolveCloudConflict("cloud")}
+                    disabled={isResolvingConflict}
+                    className="btn-secondary rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
+                  >
+                    {resolvingConflictWinner === "cloud" ? "Replacing..." : "Keep cloud copy"}
+                  </button>
+                </div>
+              </div>
             )}
             <div
               data-testid="cloud-sync-status-message"
