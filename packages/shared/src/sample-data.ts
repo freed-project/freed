@@ -333,8 +333,18 @@ export const SAMPLE_SHOWCASE_FRIEND_COUNT = 250;
 export const SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND = 5;
 export const SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT =
   SAMPLE_SHOWCASE_FRIEND_COUNT * SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND;
+const SAMPLE_LOCATION_WINDOW_ITEM_COUNT = 6;
 export const SAMPLE_SHOWCASE_ITEM_COUNT =
-  SAMPLE_SHOWCASE_FEED_COUNT * 8 + 20 + 10 + 10 + 10 + 10 + 8 + 7 + SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT;
+  SAMPLE_SHOWCASE_FEED_COUNT * 8 +
+  20 +
+  10 +
+  10 +
+  10 +
+  10 +
+  8 +
+  7 +
+  SAMPLE_LOCATION_WINDOW_ITEM_COUNT +
+  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT;
 export const SAMPLE_STRESS_FRIEND_COUNT = 1_000;
 export const SAMPLE_STRESS_IDENTITIES_PER_FRIEND = 5;
 export const SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT =
@@ -607,9 +617,10 @@ export function generateSampleLibraryData(options?: SampleDataOptions): {
 }
 
 /**
- * Generate 195 sample feed items: 120 RSS articles (8 per feed) +
+ * Generate showcase sample feed items: 120 RSS articles (8 per feed) +
  * 20 saved bookmarks + 10 X posts + 10 Facebook posts + 10 Instagram posts +
- * 10 LinkedIn posts + 8 Instagram stories + 7 Facebook stories.
+ * 10 LinkedIn posts + 8 Instagram stories + 7 Facebook stories, six
+ * location time-window items, and one item per social identity.
  *
  * Stories use contentType:"story", portrait picsum images, and are spread
  * across the last 22 hours (reflecting the ephemeral nature of real stories).
@@ -685,6 +696,59 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
   const fbStoryLocations = rotateArray(FB_STORY_LOCATIONS, seed % FB_STORY_LOCATIONS.length);
   const igStoryCaptions = rotateArray(IG_STORY_CAPTIONS, seed % IG_STORY_CAPTIONS.length);
   const fbStoryCaptions = rotateArray(FB_STORY_CAPTIONS, seed % FB_STORY_CAPTIONS.length);
+  const locationWindows = rotateArray(
+    [
+      {
+        platform: "instagram" as const,
+        location: { name: "San Francisco, CA", coordinates: { lat: 37.7749, lng: -122.4194 }, source: "geo_tag" as const },
+        startOffset: -9 * DAY,
+        endOffset: -7 * DAY,
+        kind: "travel" as const,
+        text: "Back from a short San Francisco studio visit. The notes are mostly about fog, transit, and where the good outlets were.",
+      },
+      {
+        platform: "facebook" as const,
+        location: { name: "Chicago, IL", coordinates: { lat: 41.8781, lng: -87.6298 }, source: "check_in" as const },
+        startOffset: -3 * DAY,
+        endOffset: 2 * DAY,
+        kind: "overlap" as const,
+        text: "In Chicago for a few days, coffee first, workshop later, walking shoes carrying the whole operation.",
+      },
+      {
+        platform: "linkedin" as const,
+        location: { name: "London, UK", coordinates: { lat: 51.5072, lng: -0.1276 }, source: "text_extraction" as const },
+        startOffset: 2 * DAY,
+        endOffset: 4 * DAY,
+        kind: "event" as const,
+        text: "Speaking at a small local-first systems meetup in London next week.",
+      },
+      {
+        platform: "x" as const,
+        location: { name: "Tokyo, Japan", coordinates: { lat: 35.6762, lng: 139.6503 }, source: "text_extraction" as const },
+        startOffset: 8 * DAY,
+        endOffset: 12 * DAY,
+        kind: "travel" as const,
+        text: "Tokyo trip is finally booked. The itinerary is part ramen list, part train diagram, part beautiful nonsense.",
+      },
+      {
+        platform: "instagram" as const,
+        location: { name: "Mexico City", coordinates: { lat: 19.4326, lng: -99.1332 }, source: "geo_tag" as const },
+        startOffset: 18 * DAY,
+        endOffset: 22 * DAY,
+        kind: "travel" as const,
+        text: "Holding a few days for Mexico City in the calendar. Museum mornings, long walks, and a suspiciously dense taco map.",
+      },
+      {
+        platform: "facebook" as const,
+        location: { name: "Reykjavik, Iceland", coordinates: { lat: 64.1466, lng: -21.9426 }, source: "check_in" as const },
+        startOffset: 36 * DAY,
+        endOffset: 41 * DAY,
+        kind: "travel" as const,
+        text: "Booked Reykjavik for later this summer. Packing list begins with layers and ends with a note that simply says more layers.",
+      },
+    ],
+    seed % SAMPLE_LOCATION_WINDOW_ITEM_COUNT,
+  );
 
   // 120 RSS articles: 8 per feed
   for (let fi = 0; fi < feedDefs.length; fi++) {
@@ -1028,6 +1092,60 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
         tags: [],
       },
       topics: pickTopics(rand, 148 + si),
+    });
+  }
+
+  for (let wi = 0; wi < locationWindows.length; wi++) {
+    const windowDef = locationWindows[wi];
+    const friend = sampleFriendDefs[wi % sampleFriendDefs.length];
+    if (!friend) continue;
+    const source =
+      friend.sources.find((candidate) => candidate.platform === windowDef.platform) ??
+      friend.sources.find((candidate) => candidate.platform !== "rss") ??
+      friend.sources[0];
+    if (!source) continue;
+    const startsAt = Math.round(now + windowDef.startOffset);
+    const endsAt = Math.round(now + windowDef.endOffset);
+    const publishedAt = Math.round(Math.min(now - (wi + 1) * HOUR, startsAt - HOUR));
+
+    items.push({
+      globalId: namespaceId(batchId, `sample-location-window:${wi}`),
+      platform: source.platform,
+      contentType: "post",
+      capturedAt: publishedAt + 5_000,
+      publishedAt,
+      author: {
+        id: source.authorId,
+        handle: source.handle ?? source.authorId,
+        displayName: source.displayName ?? source.handle ?? friend.name,
+        avatarUrl: source.avatarUrl,
+      },
+      content: {
+        text: windowDef.text,
+        mediaUrls: windowDef.platform === "instagram"
+          ? [`https://picsum.photos/seed/${batchId}-location-window-${wi}/900/900`]
+          : [],
+        mediaTypes: windowDef.platform === "instagram" ? ["image"] : [],
+      },
+      location: windowDef.location,
+      timeRange: {
+        startsAt,
+        endsAt,
+        kind: windowDef.kind,
+      },
+      engagement: source.platform === "rss"
+        ? undefined
+        : {
+            likes: Math.round(90 + rand() * 1_400),
+            comments: Math.round(8 + rand() * 160),
+          },
+      userState: {
+        hidden: false,
+        saved: wi % 3 === 0,
+        archived: false,
+        tags: [],
+      },
+      topics: pickTopics(rand, 155 + wi),
     });
   }
 

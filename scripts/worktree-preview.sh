@@ -143,11 +143,12 @@ case "${TARGET}" in
       fi
       ENV_VARS=(
         "PATH=${ROOT_BIN_DIR}:${PATH}"
+        "VITE_FREED_FEATURE_PREVIEW=1"
         "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
         "FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL}"
       )
       RUN_ARGS=("${NPM_BIN}" "run" "tauri:dev")
-      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL} npm run tauri:dev"
+      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_FEATURE_PREVIEW=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL} npm run tauri:dev"
       URL="http://localhost:1420"
     else
       DEFAULT_PORT="1422"
@@ -155,10 +156,11 @@ case "${TARGET}" in
       ENV_VARS=(
         "PATH=${ROOT_BIN_DIR}:${PATH}"
         "VITE_TEST_TAURI=1"
+        "VITE_FREED_FEATURE_PREVIEW=1"
         "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
       )
       RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--port" "${PORT}")
-      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_TEST_TAURI=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
+      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_TEST_TAURI=1 VITE_FREED_FEATURE_PREVIEW=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
       URL="http://localhost:${PORT}"
     fi
     ;;
@@ -169,10 +171,11 @@ case "${TARGET}" in
     RUN_CWD="$(workspace_path_for_target "${WORKTREE_PATH}" "pwa")"
     ENV_VARS=(
       "PATH=${ROOT_BIN_DIR}:${PATH}"
+      "VITE_FREED_FEATURE_PREVIEW=1"
       "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
     )
     RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--port" "${PORT}")
-    COMMAND_DISPLAY="cd packages/pwa && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
+    COMMAND_DISPLAY="cd packages/pwa && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_FEATURE_PREVIEW=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
     URL="http://localhost:${PORT}"
     ;;
   website)

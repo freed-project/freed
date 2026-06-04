@@ -236,7 +236,7 @@ async function waitForDesktopSidebarMode(page: Page, mode: "expanded" | "compact
   }, mode);
 }
 
-async function persistDisplayPreference(page: Page, key: "mapMode" | "mapTimeMode", value: string) {
+async function persistDisplayPreference(page: Page, key: "mapMode", value: string) {
   await page.waitForFunction(
     ({ key, value }) => {
       const w = window as Record<string, unknown>;
@@ -263,6 +263,16 @@ async function persistDisplayPreference(page: Page, key: "mapMode" | "mapTimeMod
     },
     { key, value },
   );
+}
+
+async function setRangeInputValue(locator: Locator, value: number) {
+  await locator.evaluate((node, nextValue) => {
+    const input = node as HTMLInputElement;
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    valueSetter?.call(input, String(nextValue));
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, value);
 }
 
 async function readDesktopSidebarPadding(page: Page) {
@@ -3146,7 +3156,7 @@ test("recoverable story locations appear in All content mode and the mode persis
   });
 });
 
-test("map time filters switch between current and future location windows", async ({ app, page }) => {
+test("map time slider defaults to all location time and filters by edge", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
@@ -3221,34 +3231,37 @@ test("map time filters switch between current and future location windows", asyn
   });
 
   await page.getByRole("button", { name: /^Map/ }).click();
-  await expect(page.getByRole("button", { name: "Current", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-    { timeout: 10_000 },
-  );
+  await expect(page.getByRole("button", { name: "Current", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Future", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Past", exact: true })).toHaveCount(0);
+
+  const slider = page.getByTestId("map-time-range-slider");
+  const startSlider = page.getByTestId("map-time-range-start");
+  const endSlider = page.getByTestId("map-time-range-end");
+  await expect(slider).toBeVisible({ timeout: 10_000 });
+  await expect(startSlider).toHaveValue("0");
+  await expect(endSlider).toHaveValue("1000");
 
   await openVisibleMapMarker(page, "Ada Lovelace");
-  await expect(page.getByText("Paris", { exact: true })).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText("Lisbon", { exact: true })).toHaveCount(0);
-
-  const futureButton = page.getByRole("button", { name: "Future", exact: true });
-  await futureButton.click();
-  await expect(futureButton).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
-  await persistDisplayPreference(page, "mapTimeMode", "future");
   await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
+
+  await setRangeInputValue(endSlider, 0);
+  await expect(endSlider).toHaveValue("0");
+  await expect(page.getByText("Lisbon", { exact: true })).toHaveCount(0);
+  await expect(page.locator('.freed-map-marker[aria-label="Ada Lovelace"]:visible')).toBeVisible({
+    timeout: 10_000,
+  });
 
   await page.reload();
   await app.waitForReady();
   await dismissCloudSyncNudgeIfPresent(page);
   await page.getByRole("button", { name: /^Map/ }).click();
-  await expect(page.getByRole("button", { name: "Future", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-    { timeout: 10_000 },
-  );
+  await expect(page.getByTestId("map-time-range-slider")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("map-time-range-start")).toHaveValue("0");
+  await expect(page.getByTestId("map-time-range-end")).toHaveValue("1000");
 });
 
-test("map timeline playback surfaces future and historical markers", async ({ app, page }) => {
+test("map time slider surfaces future and historical markers", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
@@ -3419,19 +3432,22 @@ test("map timeline playback surfaces future and historical markers", async ({ ap
 
   await page.getByRole("button", { name: /^Map/ }).click();
 
-  const futureButton = page.getByRole("button", { name: "Future", exact: true });
-  await futureButton.click();
-  await expect(page.getByTestId("map-timeline-scrubber")).toBeVisible({ timeout: 10_000 });
+  const slider = page.getByTestId("map-time-range-slider");
+  const startSlider = page.getByTestId("map-time-range-start");
+  const endSlider = page.getByTestId("map-time-range-end");
+  await expect(slider).toBeVisible({ timeout: 10_000 });
+
+  await setRangeInputValue(startSlider, 650);
+  await setRangeInputValue(endSlider, 760);
 
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
   await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
 
-  const pastButton = page.getByRole("button", { name: "Past", exact: true });
-  await pastButton.click();
-  await expect(page.getByTestId("map-timeline-scrubber")).toBeVisible({ timeout: 10_000 });
+  await setRangeInputValue(startSlider, 0);
+  await setRangeInputValue(endSlider, 450);
 
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
-  await expect(page.getByText("Paris", { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Berlin", { exact: true })).toBeVisible({ timeout: 10_000 });
 });
 
 test("Friends detail rail visibility preference hides and restores the desktop sidebar without losing width", async ({ app, page }) => {

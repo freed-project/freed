@@ -24,6 +24,8 @@ Native macOS/Windows/Linux desktop application built with Tauri.
 npm run tauri:build
 ```
 
+Desktop previews launched through `worktree-preview.sh` are marked as feature previews. They accept local legal gates and seed sample data before the app opens.
+
 ## Building
 
 ### Debug build (faster, larger)

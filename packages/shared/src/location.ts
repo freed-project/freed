@@ -48,6 +48,12 @@ export interface LocationMarkerOptions {
   timeMode?: MapTimeMode;
   now?: number;
   playbackAt?: number | null;
+  timeRange?: LocationTimeRange | null;
+}
+
+export interface LocationTimeRange {
+  startAt: number;
+  endAt: number;
 }
 
 interface NamedLocationSignal {
@@ -240,6 +246,29 @@ function normalizeTimeRange(timeRange: TimeRange): { startsAt: number; endsAt: n
   };
 }
 
+function locationItemTimeRange(item: FeedItem): LocationTimeRange {
+  if (!item.timeRange) {
+    return {
+      startAt: item.publishedAt,
+      endAt: item.publishedAt,
+    };
+  }
+
+  const normalized = normalizeTimeRange(item.timeRange);
+  return {
+    startAt: normalized.startsAt,
+    endAt: normalized.endsAt,
+  };
+}
+
+function isLocationItemVisibleInRange(
+  item: FeedItem,
+  timeRange: LocationTimeRange,
+): boolean {
+  const itemRange = locationItemTimeRange(item);
+  return itemRange.startAt <= timeRange.endAt && itemRange.endAt >= timeRange.startAt;
+}
+
 export function isLocationItemVisibleInTimeMode(
   item: FeedItem,
   timeMode: MapTimeMode = "current",
@@ -287,6 +316,11 @@ export function filterResolvedLocationsByTime(
   resolvedItems: ResolvedLocationItem[],
   options: LocationMarkerOptions = {},
 ): ResolvedLocationItem[] {
+  const timeRange = options.timeRange ?? null;
+  if (timeRange) {
+    return resolvedItems.filter((resolved) => isLocationItemVisibleInRange(resolved.item, timeRange));
+  }
+
   const timeMode = options.timeMode ?? "current";
   const now = options.now ?? Date.now();
   const playbackAt = options.playbackAt ?? null;
@@ -336,6 +370,26 @@ export function getLocationTimelineMoments(
   }
 
   return Array.from(moments).sort((a, b) => a - b);
+}
+
+export function getLocationTimelineBounds(
+  resolvedItems: ResolvedLocationItem[],
+): LocationTimeRange | null {
+  let startAt = Number.POSITIVE_INFINITY;
+  let endAt = Number.NEGATIVE_INFINITY;
+
+  for (const resolved of resolvedItems) {
+    const range = locationItemTimeRange(resolved.item);
+    startAt = Math.min(startAt, range.startAt);
+    endAt = Math.max(endAt, range.endAt);
+  }
+
+  if (!Number.isFinite(startAt) || !Number.isFinite(endAt)) return null;
+
+  return {
+    startAt,
+    endAt,
+  };
 }
 
 export function groupResolvedLocations(

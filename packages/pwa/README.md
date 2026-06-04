@@ -1,5 +1,9 @@
 # React + TypeScript + Vite
 
+## Local Feature Previews
+
+Launch PWA previews with `../../scripts/worktree-preview.sh pwa` from this package or `./scripts/worktree-preview.sh pwa` from the worktree root. The helper marks the app as a feature preview, accepts local legal gates, and seeds sample data before inspection.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

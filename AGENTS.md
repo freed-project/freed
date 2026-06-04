@@ -69,6 +69,7 @@ Prefer the lightest useful local preview before opening a draft PR:
 - product work usually uses `./scripts/worktree-preview.sh pwa`
 - website work uses `./scripts/worktree-preview.sh website`
 - use `./scripts/worktree-preview.sh desktop --native` only when real Tauri behavior matters, and report the preview label when you do
+- product previews launched through `./scripts/worktree-preview.sh` mark the app as a feature preview, auto-accept local legal gates, and populate sample data so the first screen is ready to inspect
 - never run `npm run <script> --workspace=...` from the repo root in this monorepo, run from the workspace directory instead
 - root `npm run dev` now fails fast on purpose, use `./scripts/worktree-preview.sh <target>` or run `npm run dev` from the workspace directory you actually want
 - the root fanout scripts now fail fast if you try the dangerous workspace-dispatch pattern, treat that error as a routing mistake and re-run from the workspace
