@@ -64,15 +64,16 @@ function notifyStatus(): void {
  */
 export function broadcastDoc(): void {
   if (ws && ws.readyState === WebSocket.OPEN) {
-    try {
-      const doc = getDocBinary();
-      ws.send(doc);
+    const socket = ws;
+    void getDocBinary().then((doc) => {
+      if (socket.readyState !== WebSocket.OPEN) return;
+      socket.send(doc);
       console.log("[Sync] Broadcast document (%d bytes)", doc.byteLength);
       addDebugEvent("sent", undefined, doc.byteLength);
-    } catch (error) {
+    }).catch((error) => {
       console.error("[Sync] Failed to broadcast:", error);
       addDebugEvent("error", error instanceof Error ? error.message : String(error));
-    }
+    });
   }
 
   // Cloud backup — debounced to batch rapid changes.
@@ -668,7 +669,7 @@ export function stopCloudSync(): void {
 
 async function performCloudUpload(provider: CloudProvider, token?: string): Promise<void> {
   await ensureDocumentReady();
-  const binary = getDocBinary();
+  const binary = await getDocBinary();
   try {
     const uploadToken = token ?? await getValidCloudToken(provider);
     if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
