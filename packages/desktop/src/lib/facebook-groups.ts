@@ -11,6 +11,11 @@ function cleanFacebookGroupName(name: string): string {
     .replace(/\u200b/g, "")
     .replace(/\s+/g, " ")
     .replace(/(\S)(last active\b)/i, "$1 $2")
+    .trim()
+    .replace(
+      /^(?:\d+\s*(?:m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|mo|mos|month|months|y|yr|yrs|year|years)(?:\s+ago)?|just now)\s+(?=\S)/i,
+      "",
+    )
     .trim();
 }
 
@@ -32,14 +37,14 @@ function isUsableFacebookGroupName(name: string, id: string): boolean {
   return true;
 }
 
-function isMissingFacebookGroupName(group: Pick<FbGroupInfo, "id" | "name">): boolean {
+export function isMissingFacebookGroupName(group: Pick<FbGroupInfo, "id" | "name">): boolean {
   return !isUsableFacebookGroupName(group.name, group.id);
 }
 
 export function getFacebookGroupDisplayName(group: FbGroupInfo): string {
   const cleaned = cleanFacebookGroupName(group.name);
   if (isUsableFacebookGroupName(cleaned, group.id)) return cleaned;
-  return `Facebook group ...${group.id.slice(-8)}`;
+  return "Facebook group";
 }
 
 interface FacebookGroupMergeResult {

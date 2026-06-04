@@ -26,6 +26,11 @@
       .replace(/\u200b/g, "")
       .replace(/\s+/g, " ")
       .replace(/(\S)(last active\b)/i, "$1 $2")
+      .trim()
+      .replace(
+        /^(?:\d+\s*(?:m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|mo|mos|month|months|y|yr|yrs|year|years)(?:\s+ago)?|just now)\s+(?=\S)/i,
+        "",
+      )
       .trim();
   }
 
@@ -93,20 +98,35 @@
     });
   }
 
+  function collectTextSegments(candidates, value, id, sourceBonus) {
+    var raw = String(value || "");
+    var segments = raw
+      .split(/[\n\r]+/)
+      .map(normalizeText)
+      .filter(Boolean);
+
+    for (var i = 0; i < segments.length; i++) {
+      addCandidate(candidates, segments[i], id, sourceBonus);
+    }
+  }
+
   function collectCandidatesFromElement(candidates, element, id, sourceBonus) {
     if (!element) return;
 
     addCandidate(candidates, element.getAttribute("aria-label"), id, sourceBonus + 8);
     addCandidate(candidates, element.getAttribute("title"), id, sourceBonus + 6);
     addCandidate(candidates, element.textContent, id, sourceBonus);
+    collectTextSegments(candidates, element.innerText, id, sourceBonus + 3);
 
     var labels = element.querySelectorAll(
-      'h1, h2, h3, h4, strong, span[dir="auto"], [aria-label], [title]',
+      'h1, h2, h3, h4, strong, span[dir="auto"], img[alt], [aria-label], [title]',
     );
     for (var i = 0; i < labels.length; i++) {
       addCandidate(candidates, labels[i].getAttribute("aria-label"), id, sourceBonus + 8);
       addCandidate(candidates, labels[i].getAttribute("title"), id, sourceBonus + 6);
+      addCandidate(candidates, labels[i].getAttribute("alt"), id, sourceBonus + 7);
       addCandidate(candidates, labels[i].textContent, id, sourceBonus + 4);
+      collectTextSegments(candidates, labels[i].innerText, id, sourceBonus + 5);
     }
   }
 

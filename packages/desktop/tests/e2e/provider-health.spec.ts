@@ -813,12 +813,37 @@ test("facebook groups settings separate last-active text, show active counts, an
   await expect(page.getByTestId("facebook-group-one-label")).toHaveText("CDA Buy Trade Or Sell");
   await expect(page.getByTestId("facebook-group-one-meta")).toHaveText("Last active about a minute ago");
   await expect(page.getByTestId("facebook-group-377650389038228-label")).toHaveText(
-    "Facebook group ...89038228",
+    "Facebook group",
   );
+  await expect(page.getByText("Included in future syncs")).toHaveCount(0);
+  await page.getByTestId("facebook-group-one-switch").hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Included in future syncs");
+  await page.getByTestId("facebook-group-two-switch").hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Hidden from future syncs");
+  const groupRowHeight = await page
+    .getByTestId("facebook-group-one-label")
+    .locator("xpath=ancestor::div[contains(@class, 'justify-between')][1]")
+    .evaluate((node) => node.getBoundingClientRect().height);
+  expect(groupRowHeight).toBeLessThanOrEqual(36);
+  await ipc.setHandler("fb_check_group_membership", (args: { groupId: string; groupUrl: string }) => ({
+    id: args.groupId,
+    url: args.groupUrl,
+    name: args.groupId === "377650389038228" ? "Recovered Local Exchange" : "CDA Buy Trade Or Sell",
+    stillJoined: args.groupId !== "one",
+    reason: args.groupId === "one" ? "join control found" : "joined control found",
+    checkedAt: Date.now(),
+  }));
   await page.getByTestId("facebook-group-one-leave").hover();
   await expect(page.getByRole("tooltip")).toHaveText("Leave group via Facebook");
   await page.getByTestId("facebook-group-one-leave").click();
   await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toBe("https://facebook.com/groups/one");
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByTestId("facebook-group-one-label")).toHaveCount(0);
+  await expect(page.getByText("1 active of 2 total")).toBeVisible();
+  await expect.poll(async () => {
+    const calls = await ipc.invocations();
+    return calls.some((call) => call.cmd === "fb_check_group_membership");
+  }).toBe(true);
 
   await page.getByTestId("facebook-groups-filter").fill("North Idaho");
   await expect(page.getByRole("button", { name: "Activate shown", exact: true })).toBeVisible();
@@ -837,6 +862,9 @@ test("facebook groups settings separate last-active text, show active counts, an
     const calls = await ipc.invocations();
     return calls.some((call) => call.cmd === "fb_scrape_groups");
   }).toBe(true);
+  await expect(page.getByTestId("facebook-group-377650389038228-label")).toHaveText(
+    "Recovered Local Exchange",
+  );
 });
 
 test("auth failures in X settings prompt the user to reconnect", async ({ app, page }) => {

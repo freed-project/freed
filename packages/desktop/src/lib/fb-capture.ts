@@ -47,6 +47,7 @@ import {
 } from "./social-capture-runtime";
 import {
   facebookGroupsFromFeedItems,
+  isMissingFacebookGroupName,
   mergeFacebookGroupRecords,
 } from "./facebook-groups";
 import {
@@ -125,6 +126,21 @@ export interface FbSyncDiag {
 export interface FbSyncResult {
   items: ReturnType<typeof fbPostsToFeedItems>;
   diag: FbSyncDiag;
+}
+
+export interface FbGroupMembershipCheck {
+  id: string;
+  url: string;
+  name?: string | null;
+  stillJoined: boolean | null;
+  reason: string;
+  checkedAt: number;
+}
+
+export interface FbGroupLeaveVerification {
+  check: FbGroupMembershipCheck;
+  removed: boolean;
+  repairedNameCount: number;
 }
 
 function createEmptyFbSyncDiag(
@@ -590,16 +606,133 @@ export async function captureFbGroups(): Promise<FbGroupInfo[]> {
     windowMode: getFbScraperWindowMode(),
   });
 
-  if (groups.length === 0) return groups;
-
   const merge = await updateKnownFacebookGroups(groups);
+  const hydrated = await hydrateMissingFacebookGroupNames();
 
   addDebugEvent(
     "change",
-    `[FB] groups refreshed: ${groups.length.toLocaleString()} group${groups.length === 1 ? "" : "s"}${merge.repairedNameCount > 0 ? `, repaired ${merge.repairedNameCount.toLocaleString()} stored name${merge.repairedNameCount === 1 ? "" : "s"}` : ""}`,
+    `[FB] groups refreshed: ${groups.length.toLocaleString()} group${groups.length === 1 ? "" : "s"}${merge.repairedNameCount + hydrated.repairedNameCount > 0 ? `, repaired ${(merge.repairedNameCount + hydrated.repairedNameCount).toLocaleString()} stored name${merge.repairedNameCount + hydrated.repairedNameCount === 1 ? "" : "s"}` : ""}${hydrated.removedCount > 0 ? `, removed ${hydrated.removedCount.toLocaleString()} stale group${hydrated.removedCount === 1 ? "" : "s"}` : ""}`,
   );
 
   return groups;
+}
+
+async function checkFacebookGroupMembership(group: FbGroupInfo): Promise<FbGroupMembershipCheck> {
+  const groupUrl =
+    group.url.trim() || `https://www.facebook.com/groups/${encodeURIComponent(group.id)}`;
+  return invoke<FbGroupMembershipCheck>("fb_check_group_membership", {
+    groupId: group.id,
+    groupUrl,
+    windowMode: getFbScraperWindowMode(),
+  });
+}
+
+async function removeKnownFacebookGroup(groupId: string): Promise<boolean> {
+  const store = useAppStore.getState();
+  const knownGroups = { ...(store.preferences.fbCapture?.knownGroups ?? {}) };
+  const excludedGroupIds = { ...(store.preferences.fbCapture?.excludedGroupIds ?? {}) };
+  const existed = Boolean(knownGroups[groupId] || excludedGroupIds[groupId]);
+  delete knownGroups[groupId];
+  delete excludedGroupIds[groupId];
+
+  if (existed) {
+    await store.updatePreferences({
+      fbCapture: {
+        knownGroups,
+        excludedGroupIds,
+      },
+    });
+  }
+
+  return existed;
+}
+
+async function hydrateMissingFacebookGroupNames(): Promise<{
+  checkedCount: number;
+  repairedNameCount: number;
+  removedCount: number;
+}> {
+  const store = useAppStore.getState();
+  const missingGroups = Object.values(store.preferences.fbCapture?.knownGroups ?? {}).filter(
+    isMissingFacebookGroupName,
+  );
+
+  let repairedNameCount = 0;
+  let removedCount = 0;
+
+  for (const group of missingGroups) {
+    try {
+      const check = await checkFacebookGroupMembership(group);
+      if (check.stillJoined === false) {
+        if (await removeKnownFacebookGroup(group.id)) {
+          removedCount += 1;
+        }
+        continue;
+      }
+
+      if (!check.name) {
+        addDebugEvent(
+          "change",
+          `[FB] group name still missing for ...${group.id.slice(-8)}: ${check.reason}`,
+        );
+        continue;
+      }
+
+      const merge = await updateKnownFacebookGroups([
+        {
+          id: group.id,
+          name: check.name,
+          url: check.url || group.url,
+        },
+      ]);
+      repairedNameCount += merge.repairedNameCount;
+    } catch (err) {
+      addDebugEvent(
+        "error",
+        `[FB] group name repair failed for ...${group.id.slice(-8)}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  return {
+    checkedCount: missingGroups.length,
+    repairedNameCount,
+    removedCount,
+  };
+}
+
+export async function verifyFacebookGroupLeave(
+  group: FbGroupInfo,
+): Promise<FbGroupLeaveVerification> {
+  const check = await checkFacebookGroupMembership(group);
+  let repairedNameCount = 0;
+  if (check.name && check.stillJoined !== false) {
+    const merge = await updateKnownFacebookGroups([
+      {
+        id: group.id,
+        name: check.name,
+        url: check.url || group.url,
+      },
+    ]);
+    repairedNameCount = merge.repairedNameCount;
+  }
+
+  if (check.stillJoined !== false) {
+    addDebugEvent(
+      "change",
+      `[FB] leave check kept group ...${group.id.slice(-8)}: ${check.reason}`,
+    );
+    return { check, removed: false, repairedNameCount };
+  }
+
+  const existed = await removeKnownFacebookGroup(group.id);
+
+  addDebugEvent(
+    "change",
+    `[FB] leave check removed group ...${group.id.slice(-8)}: ${check.reason}`,
+  );
+
+  return { check, removed: existed, repairedNameCount };
 }
 
 // =============================================================================
