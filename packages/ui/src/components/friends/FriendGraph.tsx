@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -29,6 +30,7 @@ import {
   fitTransformToAtlasBounds,
   type BuildIdentityGraphAtlasInput,
   type IdentityGraphAtlas,
+  type IdentityGraphAtlasBounds,
   type IdentityGraphAtlasNode,
   type IdentityGraphAtlasQuality,
 } from "../../lib/identity-graph-atlas.js";
@@ -114,6 +116,13 @@ interface GraphDebugNode {
   radius: number;
 }
 
+type GraphViewportInsets = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
 interface GraphPerfSnapshot {
   modelBuildMs: number;
   layoutMs: number;
@@ -190,6 +199,12 @@ const INTERACTION_SETTLE_DELAY_MS = 180;
 const DENSE_INTERACTION_SETTLE_DELAY_MS = 420;
 const GRAPH_LAYOUT_WORKER_TIMEOUT_MS = 2_400;
 const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
+const EMPTY_GRAPH_VIEWPORT_INSETS: GraphViewportInsets = {
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+};
 
 function nowMs(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -210,6 +225,37 @@ function midpointBetween(first: TouchPoint, second: TouchPoint): TouchPoint {
   return {
     x: (first.x + second.x) / 2,
     y: (first.y + second.y) / 2,
+  };
+}
+
+function sameGraphViewportInsets(left: GraphViewportInsets, right: GraphViewportInsets): boolean {
+  return left.top === right.top &&
+    left.right === right.right &&
+    left.bottom === right.bottom &&
+    left.left === right.left;
+}
+
+function fitTransformToVisibleAtlasBounds(
+  bounds: IdentityGraphAtlasBounds,
+  width: number,
+  height: number,
+  padding: number,
+  viewportInsets: GraphViewportInsets,
+): ViewTransform {
+  const visibleWidth = Math.max(1, width - viewportInsets.left - viewportInsets.right);
+  const visibleHeight = Math.max(1, height - viewportInsets.top - viewportInsets.bottom);
+  const transform = fitTransformToAtlasBounds(bounds, visibleWidth, visibleHeight, padding);
+  return {
+    x: transform.x + viewportInsets.left,
+    y: transform.y + viewportInsets.top,
+    scale: transform.scale,
+  };
+}
+
+function visibleViewportCenter(width: number, height: number, viewportInsets: GraphViewportInsets): TouchPoint {
+  return {
+    x: viewportInsets.left + Math.max(1, width - viewportInsets.left - viewportInsets.right) / 2,
+    y: viewportInsets.top + Math.max(1, height - viewportInsets.top - viewportInsets.bottom) / 2,
   };
 }
 
@@ -925,7 +971,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const latestQualityRef = useRef<IdentityGraphAtlasQuality>("settled");
   const paletteKeyRef = useRef("");
   const paletteRef = useRef<GraphPalette | null>(null);
+  const viewportInsetsRef = useRef<GraphViewportInsets>(EMPTY_GRAPH_VIEWPORT_INSETS);
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: 640 });
+  const [viewportInsets, setViewportInsets] = useState<GraphViewportInsets>(EMPTY_GRAPH_VIEWPORT_INSETS);
   const [atlasReady, setAtlasReady] = useState(false);
   const [contextMenu, setContextMenu] = useState<GraphContextMenuState | null>(null);
   const [linkPickerAccountId, setLinkPickerAccountId] = useState<string | null>(null);
@@ -1167,7 +1215,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     hitBucketsRef.current = buildHitBucketMap(atlas);
     sceneDirtyRef.current = true;
     if (!hasFittedInitialAtlasRef.current && !hasUserAdjustedTransformRef.current) {
-      transformRef.current = fitTransformToAtlasBounds(atlas.bounds, canvasSize.width, canvasSize.height, FIT_PADDING);
+      transformRef.current = fitTransformToVisibleAtlasBounds(
+        atlas.bounds,
+        canvasSize.width,
+        canvasSize.height,
+        FIT_PADDING,
+        viewportInsetsRef.current,
+      );
       hasFittedInitialAtlasRef.current = true;
     }
     setAtlasReady(true);
@@ -1304,7 +1358,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const fitAll = useCallback(() => {
     const atlas = atlasRef.current;
     if (!atlas) return;
-    transformRef.current = fitTransformToAtlasBounds(atlas.bounds, canvasSize.width, canvasSize.height, FIT_PADDING);
+    transformRef.current = fitTransformToVisibleAtlasBounds(
+      atlas.bounds,
+      canvasSize.width,
+      canvasSize.height,
+      FIT_PADDING,
+      viewportInsetsRef.current,
+    );
     hasUserAdjustedTransformRef.current = true;
     requestAtlas("settled");
     scheduleDraw();
@@ -1316,9 +1376,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const hit = atlas.nodes.find((node) => node.id === id || node.personId === id || node.accountId === id);
     if (!hit) return;
     const scale = Math.max(transformRef.current.scale, 0.92);
+    const center = visibleViewportCenter(canvasSize.width, canvasSize.height, viewportInsetsRef.current);
     transformRef.current = {
-      x: canvasSize.width / 2 - hit.x * scale,
-      y: canvasSize.height / 2 - hit.y * scale,
+      x: center.x - hit.x * scale,
+      y: center.y - hit.y * scale,
       scale,
     };
     hasUserAdjustedTransformRef.current = true;
@@ -1354,10 +1415,24 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     };
   }, [applyAtlas]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const updateSize = () => {
+      const containerRect = container.getBoundingClientRect();
+      const mainRect = container.closest("main")?.getBoundingClientRect();
+      const nextInsets = mainRect
+        ? {
+            top: Math.max(0, Math.round(mainRect.top - containerRect.top)),
+            right: Math.max(0, Math.round(containerRect.right - mainRect.right)),
+            bottom: Math.max(0, Math.round(containerRect.bottom - mainRect.bottom)),
+            left: Math.max(0, Math.round(mainRect.left - containerRect.left)),
+          }
+        : EMPTY_GRAPH_VIEWPORT_INSETS;
+      viewportInsetsRef.current = nextInsets;
+      setViewportInsets((current) =>
+        sameGraphViewportInsets(current, nextInsets) ? current : nextInsets,
+      );
       setCanvasSize({
         width: Math.max(320, container.clientWidth),
         height: Math.max(320, container.clientHeight || 640),
@@ -1366,6 +1441,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     updateSize();
     const observer = new ResizeObserver(updateSize);
     observer.observe(container);
+    const main = container.closest("main");
+    if (main) observer.observe(main);
     return () => observer.disconnect();
   }, []);
 
@@ -1378,6 +1455,22 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     rendererRef.current?.resize(canvasSize.width, canvasSize.height);
     scheduleDraw();
   }, [atlasReady, canvasSize.height, canvasSize.width, scheduleDraw]);
+
+  useEffect(() => {
+    if (!atlasReady) return;
+    const atlas = atlasRef.current;
+    if (atlas && !hasUserAdjustedTransformRef.current) {
+      transformRef.current = fitTransformToVisibleAtlasBounds(
+        atlas.bounds,
+        canvasSize.width,
+        canvasSize.height,
+        FIT_PADDING,
+        viewportInsets,
+      );
+    }
+    requestAtlas("settled");
+    scheduleDraw();
+  }, [atlasReady, canvasSize.height, canvasSize.width, requestAtlas, scheduleDraw, viewportInsets]);
 
   useEffect(() => {
     paletteKeyRef.current = "";
