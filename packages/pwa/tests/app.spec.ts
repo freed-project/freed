@@ -1666,39 +1666,68 @@ test.describe("FREED PWA", () => {
       const icon = button?.querySelector("[aria-hidden='true']") as HTMLElement | null;
       const sidebar = document.querySelector('[data-testid="app-sidebar-mobile"]') as HTMLElement | null;
       const search = sidebar?.querySelector('input[aria-label="Search or run"]') as HTMLElement | null;
+      const firstSourceButton = sidebar?.querySelector('[data-testid="source-row-all"]') as HTMLElement | null;
       const firstControl = sidebar?.querySelector("input, button") as HTMLElement | null;
       const settingsFooter = sidebar?.querySelector('[data-testid="mobile-sidebar-settings-footer"]') as HTMLElement | null;
       const settingsButton = sidebar?.querySelector('[data-testid="mobile-sidebar-settings-button"]') as HTMLElement | null;
-      if (!button || !icon || !sidebar || !search || !firstControl || !settingsFooter || !settingsButton) {
+      if (!button || !icon || !sidebar || !search || !firstSourceButton || !firstControl || !settingsFooter || !settingsButton) {
         throw new Error("Mobile menu geometry elements were not found");
       }
       const buttonRect = button.getBoundingClientRect();
       const iconRect = icon.getBoundingClientRect();
       const sidebarRect = sidebar.getBoundingClientRect();
       const searchRect = search.getBoundingClientRect();
+      const firstSourceButtonRect = firstSourceButton.getBoundingClientRect();
       const footerRect = settingsFooter.getBoundingClientRect();
       const settingsButtonRect = settingsButton.getBoundingClientRect();
+      const sidebarStyle = window.getComputedStyle(sidebar);
+      const sourceStyle = window.getComputedStyle(firstSourceButton);
+      const settingsButtonStyle = window.getComputedStyle(settingsButton);
+      const footerStyle = window.getComputedStyle(settingsFooter);
+      const sourceCenterX = firstSourceButtonRect.left + firstSourceButtonRect.width / 2;
+      const sourceCenterY = firstSourceButtonRect.top + firstSourceButtonRect.height / 2;
+      const hitElement = document.elementFromPoint(sourceCenterX, sourceCenterY);
       return {
         centerDelta: Math.abs(
           (buttonRect.left + buttonRect.width / 2) -
           (iconRect.left + iconRect.width / 2),
         ),
         firstControlIsSearch: firstControl === search,
+        sourceCenterHitsSidebar: !!hitElement && sidebar.contains(hitElement),
+        sidebarZIndex: Number.parseInt(sidebarStyle.zIndex, 10),
         searchTop: Math.round(searchRect.top),
         sidebarTop: Math.round(sidebarRect.top),
         footerBottomGap: Math.round(sidebarRect.bottom - footerRect.bottom),
-        dividerToBottom: Math.round(sidebarRect.bottom - footerRect.top),
+        footerBorderTopWidth: footerStyle.borderTopWidth,
+        sourceFontSize: sourceStyle.fontSize,
+        sourcePaddingTop: sourceStyle.paddingTop,
+        sourcePaddingBottom: sourceStyle.paddingBottom,
+        sourceColumnGap: sourceStyle.columnGap,
+        settingsButtonFontSize: settingsButtonStyle.fontSize,
+        settingsButtonPaddingTop: settingsButtonStyle.paddingTop,
         settingsButtonHeight: Math.round(settingsButtonRect.height),
       };
     });
     expect(geometry.centerDelta).toBeLessThanOrEqual(1);
     expect(geometry.firstControlIsSearch).toBe(true);
+    expect(geometry.sourceCenterHitsSidebar).toBe(true);
+    expect(geometry.sidebarZIndex).toBeGreaterThan(50);
     expect(geometry.searchTop - geometry.sidebarTop).toBeGreaterThanOrEqual(8);
     expect(geometry.footerBottomGap).toBeLessThanOrEqual(1);
-    expect(geometry.dividerToBottom - geometry.settingsButtonHeight).toBeLessThanOrEqual(2);
+    expect(geometry.footerBorderTopWidth).toBe("0px");
+    expect(geometry.sourceFontSize).toBe("17px");
+    expect(geometry.sourcePaddingTop).toBe("8px");
+    expect(geometry.sourcePaddingBottom).toBe("8px");
+    expect(geometry.sourceColumnGap).toBe("8px");
+    expect(geometry.settingsButtonFontSize).toBe("17px");
+    expect(geometry.settingsButtonPaddingTop).toBe("8px");
+    expect(geometry.settingsButtonHeight).toBeLessThanOrEqual(44);
 
     await menuButton.click();
     await expect(sidebar).toHaveClass(/-translate-x-full/);
+    await expect
+      .poll(() => sidebar.evaluate((element) => window.getComputedStyle(element).boxShadow))
+      .toBe("none");
   });
 
   test("mobile settings opens without hitting recovery", async ({ page }) => {
