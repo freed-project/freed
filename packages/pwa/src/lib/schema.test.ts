@@ -24,6 +24,8 @@ import {
   unarchiveSavedItems,
   hideItem,
   addRssFeed,
+  assertNonDestructiveMerge,
+  evaluateDestructiveMergeGuard,
   removeRssFeed,
   updateAccount,
   updatePerson,
@@ -898,6 +900,37 @@ describe("Automerge merge / sync simulation", () => {
     expect(merged.feedItems["desktop-item-1"]).toBeDefined();
     expect(merged.feedItems["desktop-item-2"]).toBeDefined();
     expect(merged.feedItems["pwa-item-1"]).toBeDefined();
+  });
+
+  it("blocks a merge that would delete most of a much larger document", () => {
+    let trusted = createEmptyDoc();
+    trusted = A.change(trusted, (d) => {
+      for (let i = 0; i < 600; i += 1) {
+        addFeedItem(d, makeItem({ globalId: `trusted-item-${i}` }));
+      }
+    });
+
+    let deleteHeavy = A.clone(trusted);
+    deleteHeavy = A.change(deleteHeavy, (d) => {
+      for (let i = 20; i < 600; i += 1) {
+        delete d.feedItems[`trusted-item-${i}`];
+      }
+    });
+
+    const merged = A.merge(trusted, deleteHeavy);
+    const report = evaluateDestructiveMergeGuard(trusted, deleteHeavy, merged, {
+      source: "test sync",
+    });
+
+    expect(report).toMatchObject({
+      blocked: true,
+      largestInputItemCount: 600,
+      mergedItemCount: 20,
+      deletedItemCount: 580,
+    });
+    expect(() =>
+      assertNonDestructiveMerge(trusted, deleteHeavy, merged, { source: "test sync" }),
+    ).toThrow(/Freed blocked a sync merge/);
   });
 
   it("serializes and deserializes without data loss", () => {

@@ -15,6 +15,7 @@ import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import { hashSavedUrl } from "@freed/capture-save/normalize";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
+  assertNonDestructiveMerge,
   createEmptyDoc,
   addAccount,
   addAccounts,
@@ -632,7 +633,11 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         if (!currentDoc) throw new Error("Document not initialized");
         const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const incomingDoc = A.load<FreedDoc>(req.binary);
-        currentDoc = A.merge(currentDoc, incomingDoc);
+        const mergedDoc = A.merge(currentDoc, incomingDoc);
+        const guard = assertNonDestructiveMerge(currentDoc, incomingDoc, mergedDoc, {
+          source: "PWA sync",
+        });
+        currentDoc = mergedDoc;
         migrateLoadedIdentityGraph("Migrate legacy identity graph");
         const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const delta = afterCount - beforeCount;
@@ -642,6 +647,14 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           detail: delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} items` : "no new items",
           bytes: req.binary.byteLength,
         });
+        if (guard.deletedItemCount > 0) {
+          send({
+            type: "DEBUG_EVENT",
+            kind: "merge_ok",
+            detail: `merge safety checked ${guard.deletedItemCount.toLocaleString()} item deletions`,
+            bytes: req.binary.byteLength,
+          });
+        }
         bumpSearchCorpusVersion();
         await saveAndBroadcast();
         ack(req.reqId);

@@ -18,6 +18,7 @@ import * as A from "@automerge/automerge";
 import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
+  assertNonDestructiveMerge,
   createEmptyDoc,
   createDocFromData,
   addAccount,
@@ -889,7 +890,11 @@ async function handleRequest(
         if (!currentDoc) throw new Error("Document not initialized");
         const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const incomingDoc = A.load<FreedDoc>(req.binary);
-        currentDoc = A.merge(currentDoc, incomingDoc);
+        const mergedDoc = A.merge(currentDoc, incomingDoc);
+        const guard = assertNonDestructiveMerge(currentDoc, incomingDoc, mergedDoc, {
+          source: "Desktop sync",
+        });
+        currentDoc = mergedDoc;
         migrateLoadedIdentityGraph("Migrate legacy identity graph");
         compactLoadedFeedText("Compact oversized synced feed text after merge", {
           rebuildHistory: true,
@@ -903,6 +908,14 @@ async function handleRequest(
           detail: delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} items` : "no new items",
           bytes: req.binary.byteLength,
         });
+        if (guard.deletedItemCount > 0) {
+          send({
+            type: "DEBUG_EVENT",
+            kind: "merge_ok",
+            detail: `merge safety checked ${guard.deletedItemCount.toLocaleString()} item deletions`,
+            bytes: req.binary.byteLength,
+          });
+        }
         bumpSearchCorpusVersion();
         await saveAndBroadcast(trace);
         ack(req.reqId);
