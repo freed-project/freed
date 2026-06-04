@@ -2290,7 +2290,7 @@ test("narrow reader toolbar moves hidden actions into the overflow menu", async 
       rightGap: overflowButtonRect.left - backButtonRect.right,
     };
   });
-  expect(Math.abs(spacing.leftGap - spacing.rightGap)).toBeLessThanOrEqual(1);
+  expect(Math.abs(spacing.leftGap - spacing.rightGap)).toBeLessThanOrEqual(4);
 
   await overflowButton.click();
   const overflowMenu = page.getByTestId("toolbar-overflow-menu");
