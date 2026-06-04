@@ -18,6 +18,13 @@ export interface ViewTransform {
   scale: number;
 }
 
+export type ViewportPadding = number | {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
 export const FRIEND_GRAPH_DEFAULT_TRANSFORM: ViewTransform = {
   x: 0,
   y: 0,
@@ -575,25 +582,30 @@ export function fitTransformToNodes(
   nodes: Array<{ x: number; y: number; radius: number }>,
   width: number,
   height: number,
-  padding: number = 80,
+  padding: ViewportPadding = 80,
 ): ViewTransform {
   if (nodes.length === 0) return { ...FRIEND_GRAPH_DEFAULT_TRANSFORM };
 
+  const resolvedPadding = typeof padding === "number"
+    ? { top: padding, right: padding, bottom: padding, left: padding }
+    : padding;
   const left = Math.min(...nodes.map((node) => node.x - node.radius));
   const right = Math.max(...nodes.map((node) => node.x + node.radius));
   const top = Math.min(...nodes.map((node) => node.y - node.radius));
   const bottom = Math.max(...nodes.map((node) => node.y + node.radius));
   const contentWidth = Math.max(1, right - left);
   const contentHeight = Math.max(1, bottom - top);
-  const availableWidth = Math.max(1, width - padding * 2);
-  const availableHeight = Math.max(1, height - padding * 2);
+  const availableWidth = Math.max(1, width - resolvedPadding.left - resolvedPadding.right);
+  const availableHeight = Math.max(1, height - resolvedPadding.top - resolvedPadding.bottom);
   const scale = Math.min(
     Math.min(availableWidth / contentWidth, availableHeight / contentHeight),
     1.5,
   );
+  const viewportCenterX = resolvedPadding.left + availableWidth / 2;
+  const viewportCenterY = resolvedPadding.top + availableHeight / 2;
   return {
-    x: width / 2 - ((left + right) / 2) * scale,
-    y: height / 2 - ((top + bottom) / 2) * scale,
+    x: viewportCenterX - ((left + right) / 2) * scale,
+    y: viewportCenterY - ((top + bottom) / 2) * scale,
     scale,
   };
 }

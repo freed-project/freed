@@ -227,6 +227,7 @@ interface SidebarProps {
   desktopMode: SidebarMode;
   onDesktopModeChange: (nextMode: SidebarMode) => void;
   onDesktopDisplayModeChange?: (nextMode: SidebarMode) => void;
+  desktopGapWidthPx?: number;
 }
 
 function SidebarSection({
@@ -573,6 +574,7 @@ export function Sidebar({
   desktopMode,
   onDesktopModeChange,
   onDesktopDisplayModeChange,
+  desktopGapWidthPx,
 }: SidebarProps) {
   const { SourceIndicator, syncRssNow, syncSourceNow, getSourceStatus } = usePlatform();
   const isMobileViewport = useIsMobile();
@@ -718,9 +720,11 @@ export function Sidebar({
           ? DEFAULT_WIDTH
           : committedWidth);
   const effectiveGapWidthPx =
-    activeView === "friends"
-      ? FRIENDS_SIDEBAR_GAP_WIDTH_PX
-      : PRIMARY_SIDEBAR_GAP_WIDTH_PX;
+    desktopGapWidthPx ?? (
+      activeView === "friends"
+        ? FRIENDS_SIDEBAR_GAP_WIDTH_PX
+        : PRIMARY_SIDEBAR_GAP_WIDTH_PX
+    );
   const compactReaderRailVisible =
     activeView === "feed" &&
     !!selectedItemId &&

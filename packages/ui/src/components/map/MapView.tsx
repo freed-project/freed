@@ -25,6 +25,17 @@ const DEFAULT_TIMELINE_INDEX: Record<Exclude<MapTimeMode, "current">, number> = 
   future: 0,
 };
 
+type MapViewportInsets = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
+interface MapViewProps {
+  viewportInsets?: MapViewportInsets;
+}
+
 function getMapTimeRefreshMs(): number {
   if (typeof window === "undefined") return MAP_TIME_REFRESH_MS;
   const override = (
@@ -45,7 +56,7 @@ function formatTimelineEdge(value: number): string {
   return timelineEdgeFormatter.format(value);
 }
 
-export function MapView() {
+export function MapView({ viewportInsets }: MapViewProps) {
   const items = useAppStore((state) => state.items);
   const persons = useAppStore((state) => state.persons);
   const accounts = useAppStore((state) => state.accounts);
@@ -164,7 +175,13 @@ export function MapView() {
   return (
     <div className="app-theme-shell relative h-full overflow-hidden">
       {savedTimeMode !== "current" && timelineMoments.length > 0 && effectiveTimelineIndex !== null ? (
-        <div className="pointer-events-none absolute bottom-4 left-4 z-20 flex justify-start">
+        <div
+          className="pointer-events-none absolute bottom-4 z-20 flex justify-start"
+          style={{
+            left: "calc(var(--freed-canvas-viewport-inset-left, 0px) + 1rem)",
+            maxWidth: "calc(100% - var(--freed-canvas-viewport-inset-left, 0px) - var(--freed-canvas-viewport-inset-right, 0px) - 2rem)",
+          }}
+        >
           <div
             className="pointer-events-auto theme-floating-panel w-[min(25rem,calc(100vw-2rem))] px-4 py-3"
             data-testid="map-timeline-scrubber"
@@ -197,6 +214,7 @@ export function MapView() {
         markers={markers}
         focusedMarkerKey={focusedMarker?.key ?? null}
         themeId={themeId}
+        viewportInsets={viewportInsets}
         onOpenFriend={(marker) => {
           openFriendFromMap(marker, {
             setActiveView,
