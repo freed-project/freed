@@ -1,537 +1,2081 @@
 [
   {
-    "version": "26.4.2303",
-    "tagName": "v26.4.2303",
+    "version": "26.6.504",
+    "tagName": "v26.6.504",
     "channel": "production",
-    "date": "2026-04-23T22:36:04Z",
-    "deck": "Pixi WebGL Friends graph with linked people, channels, and feeds, desktop details rail controls and a mobile Details mode for the Friends workspace, and sync UI package exports before production release",
-    "features": [
-      {
-        "text": "Pixi WebGL Friends graph with linked people, channels, and feeds"
-      },
-      {
-        "text": "Desktop details rail controls and a mobile Details mode for the Friends workspace"
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Smoother pan and pinch behavior with cleaner four-edge vignette feathering in the Friends graph"
-      },
-      {
-        "text": "Browser preview no longer crashes on native-only snapshot, LinkedIn, and capture paths"
-      },
-      {
-        "text": "Crash report exports now label and gate public-safe versus private bundles correctly"
-      }
-    ],
-    "followUps": [
-      {
-        "text": "Promote dev into main for production release and stop release workflow deploying website"
-      },
-      {
-        "text": "This build ships the new Friends graph workspace and hardens desktop preview, diagnostics, and graph performance"
-      }
-    ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2303",
-    "prNumbers": [
-      279,
-      285,
-      290,
-      294
-    ],
-    "builds": [
-      "26.4.2300",
-      "26.4.2301",
-      "26.4.2303"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.4.2300",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2300",
-        "channel": "production"
-      },
-      {
-        "version": "26.4.2301",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2301",
-        "channel": "production"
-      },
-      {
-        "version": "26.4.2303",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2303",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.4.2100",
-    "tagName": "v26.4.2100",
-    "channel": "production",
-    "date": "2026-04-21T20:57:19Z",
-    "deck": "Map timeline playback, cleaner identity migration, and smoother install and update flows",
-    "features": [
-      {
-        "text": "Filter maps with a shared timeline scrubber"
-      },
-      {
-        "text": "Replay historical posts and future plans from one map timeline"
-      },
-      {
-        "text": "Manage friends and map identities through the new person and account graph"
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Migrates older friend data into the new person and account graph during startup so existing identities keep loading cleanly after the update"
-      },
-      {
-        "text": "Dedupes Facebook and Instagram cross-posts"
-      },
-      {
-        "text": "Keeps the install prompt and update channel labeling clearer across the app"
-      },
-      {
-        "text": "Tightens reader, feed, header, sync, and release reliability"
-      }
-    ],
-    "followUps": [
-      {
-        "text": "Adds a tri-state source sidebar for faster filtering"
-      },
-      {
-        "text": "Brings the Friends lens into the feed toolbar"
-      },
-      {
-        "text": "Polishes settings jumps and hardens helper workflow stability"
-      }
-    ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2100",
-    "prNumbers": [
-      227,
-      274
-    ],
-    "builds": [
-      "26.4.1700-dev",
-      "26.4.1800-dev",
-      "26.4.1802-dev",
-      "26.4.1900-dev",
-      "26.4.1901-dev",
-      "26.4.2001-dev",
-      "26.4.2002-dev",
-      "26.4.2100"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.4.1700-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1700-dev",
-        "channel": "dev"
-      },
-      {
-        "version": "26.4.1800-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1800-dev",
-        "channel": "dev"
-      },
-      {
-        "version": "26.4.1802-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1802-dev",
-        "channel": "dev"
-      },
-      {
-        "version": "26.4.1900-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1900-dev",
-        "channel": "dev"
-      },
-      {
-        "version": "26.4.1901-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1901-dev",
-        "channel": "dev"
-      },
-      {
-        "version": "26.4.2001-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2001-dev",
-        "channel": "dev"
-      },
-      {
-        "version": "26.4.2002-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2002-dev",
-        "channel": "dev"
-      },
-      {
-        "version": "26.4.2100",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2100",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.4.2002-dev",
-    "tagName": "v26.4.2002-dev",
-    "channel": "dev",
-    "date": "2026-04-21T04:39:59Z",
-    "deck": "This dev build improves install flow and tightens startup, capture, and release stability.",
-    "features": [
-      {
-        "text": "PWA install prompt flow"
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Stop the desktop dev launch crash and clean up the recovery dialog"
-      },
-      {
-        "text": "Dedupe Facebook and Instagram cross-posts"
-      },
-      {
-        "text": "Reset preview banners to bottom center on load"
-      },
-      {
-        "text": "Harden build fanout and swarm worktree setup"
-      },
-      {
-        "text": "Keep installed version stable across release channels"
-      },
-      {
-        "text": "Polish mobile settings navigation"
-      },
-      {
-        "text": "Refine live theme preview interactions"
-      }
-    ],
-    "followUps": [
-      {
-        "text": "Refine settings section jump alignment, harden worktree helper flow, and harden helper session workflow"
-      }
-    ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2002-dev",
-    "prNumbers": [
-      253,
-      254,
-      255,
-      256,
-      258,
-      260,
-      261,
-      262,
-      263,
-      265,
-      266,
-      267,
-      268,
-      269,
-      270,
-      271
-    ],
-    "builds": [
-      "26.4.2001-dev",
-      "26.4.2002-dev"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.4.2001-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2001-dev",
-        "channel": "dev"
-      },
-      {
-        "version": "26.4.2002-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2002-dev",
-        "channel": "dev"
-      }
-    ]
-  },
-  {
-    "version": "26.4.1901-dev",
-    "tagName": "v26.4.1901-dev",
-    "channel": "dev",
-    "date": "2026-04-20T03:41:16Z",
-    "deck": "Expand friends and map identity workflows, tri-state source sidebar, and Friends lens to feed toolbar",
-    "features": [
-      {
-        "text": "Expand friends and map identity workflows"
-      },
-      {
-        "text": "Tri-state source sidebar"
-      },
-      {
-        "text": "Friends lens to feed toolbar"
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Redeploy dev pwa on dev merges"
-      },
-      {
-        "text": "Dismiss sticky tooltips after pointer activation"
-      },
-      {
-        "text": "Show -dev suffix for dev build versions"
-      },
-      {
-        "text": "Desktop toolbar dragging and back target restored"
-      },
-      {
-        "text": "Fall back to newer production updates on dev"
-      },
-      {
-        "text": "Add native startup recovery window"
-      },
-      {
-        "text": "Lets dev installs take a newer production update when no newer dev build exists, without switching release channels"
-      },
-      {
-        "text": "Shows the `-dev` suffix consistently in desktop update surfaces and settings"
-      }
-    ],
-    "followUps": [
-      {
-        "text": "Map timeline scrubber"
-      }
-    ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1901-dev",
-    "prNumbers": [
-      239,
-      240,
-      241,
-      242,
-      243,
-      244,
-      245,
-      246,
-      247,
-      248
-    ],
-    "builds": [
-      "26.4.1900-dev",
-      "26.4.1901-dev"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.4.1900-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1900-dev",
-        "channel": "dev"
-      },
-      {
-        "version": "26.4.1901-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1901-dev",
-        "channel": "dev"
-      }
-    ]
-  },
-  {
-    "version": "26.4.1802-dev",
-    "tagName": "v26.4.1802-dev",
-    "channel": "dev",
-    "date": "2026-04-18T20:09:06Z",
-    "deck": "Time-aware map filtering and migrate legacy identity graph on startup",
-    "features": [
-      {
-        "text": "Time-aware map filtering"
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Migrates older friend data into the person and account graph during startup so existing identities keep loading cleanly after the update."
-      }
-    ],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1802-dev",
-    "prNumbers": [
-      233,
-      235,
-      238
-    ],
-    "builds": [
-      "26.4.1800-dev",
-      "26.4.1802-dev"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.4.1800-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1800-dev",
-        "channel": "dev"
-      },
-      {
-        "version": "26.4.1802-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1802-dev",
-        "channel": "dev"
-      }
-    ]
-  },
-  {
-    "version": "26.4.1700-dev",
-    "tagName": "v26.4.1700-dev",
-    "channel": "dev",
-    "date": "2026-04-18T04:42:45Z",
-    "deck": "Refactor friends into a person account identity graph",
-    "features": [],
-    "fixes": [],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1700-dev",
-    "prNumbers": [
-      225,
-      226,
-      228,
-      229,
-      230
-    ],
-    "builds": [
-      "26.4.1700-dev"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.4.1700-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1700-dev",
-        "channel": "dev"
-      }
-    ]
-  },
-  {
-    "version": "26.4.1602",
-    "tagName": "v26.4.1602",
-    "channel": "production",
-    "date": "2026-04-17T02:06:16Z",
-    "deck": "Freed Desktop keeps update dialogs visible, restores read state correctly, and trims sync memory growth on large saves",
+    "date": "2026-06-05T23:06:10Z",
+    "deck": "Recent story media now loads in Freed Desktop with safer feed memory handling, more reliable cloud merge recovery, and clearer sync UI feedback.",
     "features": [],
     "fixes": [
       {
-        "text": "Update dialogs stay above the floating new button, and the Updates settings view labels the installed version clearly when you switch release channels."
+        "text": "Recent story cards show captured media previews again"
       },
       {
-        "text": "Read state and related UI updates restore correctly after merge recovery paths."
+        "text": "Feed image shedding now follows native memory pressure limits instead of blanking media too early"
       },
       {
-        "text": "Map view background tiles render again across the refreshed style palette."
-      },
-      {
-        "text": "Desktop sync trims preserved article text before it reaches Automerge, which reduces sync memory growth on large saves."
+        "text": "Cloud merge recovery and mobile sidebar behavior are more stable"
       }
     ],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1602",
+    "followUps": [
+      {
+        "text": "Stabilize update hover regression"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.504",
     "prNumbers": [
-      213,
-      215,
-      216,
-      222,
-      223,
-      224
+      763,
+      764,
+      766,
+      769,
+      772,
+      774,
+      775,
+      777,
+      780
     ],
     "builds": [
-      "26.4.1600",
-      "26.4.1601-dev",
-      "26.4.1602"
+      "26.6.502-dev",
+      "26.6.504"
     ],
     "buildLinks": [
       {
-        "version": "26.4.1600",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1600",
-        "channel": "production"
-      },
-      {
-        "version": "26.4.1601-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
+        "version": "26.6.502-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.502-dev",
         "channel": "dev"
       },
       {
-        "version": "26.4.1602",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1602",
+        "version": "26.6.504",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.504",
         "channel": "production"
       }
     ]
   },
   {
-    "version": "26.4.1601-dev",
-    "tagName": "v26.4.1601-dev",
+    "version": "26.6.502-dev",
+    "tagName": "v26.6.502-dev",
     "channel": "dev",
-    "date": "2026-04-17T00:12:58Z",
-    "deck": "Map tiles are back, and desktop sync carries less preserved article text",
+    "date": "2026-06-05T16:30:34Z",
+    "deck": "Recent story media now loads in Freed Desktop with safer feed media memory handling",
     "features": [],
     "fixes": [
       {
-        "text": "Map view background tiles render again across the refreshed style palette"
+        "text": "Recent story cards show captured media previews again"
       },
       {
-        "text": "Desktop sync now trims preserved article text before it reaches Automerge, which reduces sync memory growth on large saves"
+        "text": "Feed image shedding now follows native memory pressure limits instead of blanking media too early"
+      },
+      {
+        "text": "Cloud merge recovery and mobile sidebar behavior are more stable"
       }
     ],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
+    "followUps": [
+      {
+        "text": "Polish activity popover placement"
+      },
+      {
+        "text": "Stabilize update hover regression"
+      },
+      {
+        "text": "Loosen changelog preview release assertion"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.502-dev",
     "prNumbers": [
-      223,
-      224
+      763,
+      764,
+      766,
+      769,
+      772,
+      774,
+      775
     ],
     "builds": [
-      "26.4.1601-dev"
+      "26.6.502-dev"
     ],
     "buildLinks": [
       {
-        "version": "26.4.1601-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
+        "version": "26.6.502-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.502-dev",
         "channel": "dev"
       }
     ]
   },
   {
-    "version": "26.4.1501-dev",
-    "tagName": "v26.4.1501-dev",
-    "channel": "dev",
-    "date": "2026-04-15T20:29:20Z",
-    "deck": "Explicit website release flow and stability fixes for recovery and UI checks",
+    "version": "26.6.407",
+    "tagName": "v26.6.407",
+    "channel": "production",
+    "date": "2026-06-04T22:13:58Z",
+    "deck": "Mobile sidebar layering, background activity monitor, and saved content sorting",
     "features": [
       {
-        "text": "Explicit website release flow"
+        "text": "Background activity monitor"
+      },
+      {
+        "text": "Facebook group leave handoff"
+      },
+      {
+        "text": "Saved content sorting"
       }
     ],
     "fixes": [
       {
-        "text": "Crash reports now keep cleaner diagnostic state"
+        "text": "Mobile sidebar stays above the page on small screens"
       },
       {
-        "text": "Map popup smoke tests and reader rail alignment checks are steadier"
+        "text": "Mobile sidebar spacing now matches the settings sidebar"
       },
       {
-        "text": "Crash reporting and WebKit recovery are now more stable"
+        "text": "Reader, feed, and header polish"
+      },
+      {
+        "text": "Dev release validation is more stable"
+      },
+      {
+        "text": "Capture and scraper reliability fixes"
       }
     ],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1501-dev",
+    "followUps": [
+      {
+        "text": "Reduce desktop sync stutter"
+      },
+      {
+        "text": "Reverse integrate v26.6.303"
+      },
+      {
+        "text": "Reduce settings scroll frame work"
+      },
+      {
+        "text": "Reduce sync frame pressure"
+      },
+      {
+        "text": "Merge main back into dev after v26.6.204"
+      },
+      {
+        "text": "Stop idle automerge workers reliably"
+      },
+      {
+        "text": "Trim validation runner checks"
+      },
+      {
+        "text": "Skip hidden atmosphere startup"
+      },
+      {
+        "text": "Release hidden atmosphere layers"
+      },
+      {
+        "text": "Reduce renderer atmosphere memory"
+      },
+      {
+        "text": "Defer RSS content backfill under WebKit pressure"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.407",
     "prNumbers": [
-      214,
-      217,
-      218
+      689,
+      690,
+      691,
+      692,
+      693,
+      694,
+      695,
+      696,
+      697,
+      698,
+      699,
+      700,
+      701,
+      702,
+      703,
+      704,
+      705,
+      706,
+      707,
+      716,
+      722,
+      725,
+      726,
+      727,
+      728,
+      729,
+      732,
+      735,
+      736,
+      739,
+      743,
+      745,
+      747,
+      748,
+      750,
+      752,
+      753,
+      754,
+      755,
+      756,
+      757,
+      758,
+      759,
+      760,
+      762,
+      765,
+      767,
+      771,
+      773
     ],
     "builds": [
-      "26.4.1500-dev",
-      "26.4.1501-dev"
+      "26.6.402-dev",
+      "26.6.404",
+      "26.6.406",
+      "26.6.407"
     ],
     "buildLinks": [
       {
-        "version": "26.4.1500-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1500-dev",
+        "version": "26.6.402-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.402-dev",
         "channel": "dev"
       },
       {
-        "version": "26.4.1501-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1501-dev",
+        "version": "26.6.404",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.404",
+        "channel": "production"
+      },
+      {
+        "version": "26.6.406",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.406",
+        "channel": "production"
+      },
+      {
+        "version": "26.6.407",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.407",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.6.402-dev",
+    "tagName": "v26.6.402-dev",
+    "channel": "dev",
+    "date": "2026-06-04T17:29:07Z",
+    "deck": "Background activity monitor, Facebook group leave handoff, and saved content sorting",
+    "features": [
+      {
+        "text": "Background activity monitor"
+      },
+      {
+        "text": "Facebook group leave handoff"
+      },
+      {
+        "text": "Saved content sorting"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Reader, feed, and header polish"
+      },
+      {
+        "text": "Dev release validation is more stable"
+      },
+      {
+        "text": "Capture and scraper reliability fixes"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Reduce desktop sync stutter"
+      },
+      {
+        "text": "Reverse integrate v26.6.303"
+      },
+      {
+        "text": "Reduce settings scroll frame work"
+      },
+      {
+        "text": "Reduce sync frame pressure"
+      },
+      {
+        "text": "Merge main back into dev after v26.6.204"
+      },
+      {
+        "text": "Stop idle automerge workers reliably"
+      },
+      {
+        "text": "Trim validation runner checks"
+      },
+      {
+        "text": "Skip hidden atmosphere startup"
+      },
+      {
+        "text": "Release hidden atmosphere layers"
+      },
+      {
+        "text": "Reduce renderer atmosphere memory"
+      },
+      {
+        "text": "Defer RSS content backfill under WebKit pressure"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.402-dev",
+    "prNumbers": [
+      689,
+      690,
+      691,
+      692,
+      693,
+      694,
+      695,
+      696,
+      697,
+      698,
+      699,
+      700,
+      701,
+      702,
+      703,
+      704,
+      705,
+      706,
+      707,
+      716,
+      722,
+      725,
+      726,
+      727,
+      728,
+      729,
+      732,
+      735,
+      736,
+      739,
+      743,
+      745,
+      747,
+      748,
+      750,
+      752,
+      753,
+      754,
+      755,
+      756,
+      757,
+      758,
+      759,
+      760
+    ],
+    "builds": [
+      "26.6.402-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.402-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.402-dev",
         "channel": "dev"
       }
     ]
   },
   {
-    "version": "26.4.1403-dev",
-    "tagName": "v26.4.1403-dev",
-    "channel": "dev",
-    "date": "2026-04-15T06:04:17Z",
-    "deck": "Theme-native map palettes, contacts settings and sync, and rotating desktop snapshots",
-    "features": [
+    "version": "26.6.303",
+    "tagName": "v26.6.303",
+    "channel": "production",
+    "date": "2026-06-04T07:06:13Z",
+    "deck": "Stabilize Facebook and Instagram sync under memory pressure",
+    "features": [],
+    "fixes": [
       {
-        "text": "Theme-native map palettes"
+        "text": "Google Drive sync now uploads local changes from Freed Desktop and the PWA instead of only downloading remote data"
       },
       {
-        "text": "Finish Google Contacts settings and sync"
+        "text": "The PWA waits for its Automerge document to initialize before Google Drive sync, manual sync, OAuth callback sync, or relay resume can merge remote data"
       },
       {
-        "text": "Rotating desktop snapshots"
+        "text": "Freed Desktop avoids a fatal Automerge worker timeout when adding RSS feed metadata to a large library"
+      },
+      {
+        "text": "Facebook and Instagram sync now fail loudly when a provider returns an empty extraction instead of recording a false success"
+      },
+      {
+        "text": "Instagram sync records feed readiness, scroll targets, rejection counts, extraction passes, and store-write details so failed syncs are diagnosable from the field"
+      },
+      {
+        "text": "Freed Desktop now gates social sync on effective memory pressure instead of raw WebKit RSS, with detailed app RSS and WebKit RSS shown in provider errors"
+      },
+      {
+        "text": "Background semantic classification no longer blocks social sync, and social scraper listener cleanup avoids a Tauri event teardown crash"
       }
     ],
+    "followUps": [
+      {
+        "text": "Public changelog and updater metadata will be refreshed after the production build publishes"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.303",
+    "prNumbers": [
+      730,
+      733,
+      740,
+      751
+    ],
+    "builds": [
+      "26.6.301",
+      "26.6.302",
+      "26.6.303"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.301",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.301",
+        "channel": "production"
+      },
+      {
+        "version": "26.6.302",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.302",
+        "channel": "production"
+      },
+      {
+        "version": "26.6.303",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.303",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.6.204",
+    "tagName": "v26.6.204",
+    "channel": "production",
+    "date": "2026-06-03T06:35:36Z",
+    "deck": "Manual cloud troubleshooting joins the June 2 production rollup",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Facebook, Instagram, and LinkedIn sync now share lower-profile feed scrolling behavior"
+      },
+      {
+        "text": "Facebook page checks now require a live cookie, the Feed posts heading, or rendered feed units before marking a page feed-like"
+      },
+      {
+        "text": "Logged-out Facebook pages with generic main content and tall layout now fail closed instead of wasting scrape passes"
+      },
+      {
+        "text": "Facebook extraction diagnostics now include feed unit and login chrome evidence for faster follow-up debugging"
+      },
+      {
+        "text": "Facebook extraction restores DOM-based feed parsing and reports why extracted posts normalize to zero usable items"
+      },
+      {
+        "text": "Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull"
+      },
+      {
+        "text": "Zero usable Facebook scrape results still surface as sync issues instead of healthy success"
+      },
+      {
+        "text": "Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session"
+      },
+      {
+        "text": "Provider login prompts stay visible for disconnected Facebook, Instagram, and LinkedIn accounts instead of being hidden by stale state"
+      },
+      {
+        "text": "Social sync defers while the Mac is locked, and Freed Desktop startup waits until the session can safely initialize"
+      },
+      {
+        "text": "RSS scheduled polling backs off after runtime deferrals instead of retrying every 15 seconds"
+      },
+      {
+        "text": "RSS content backfill defers under WebKit pressure"
+      },
+      {
+        "text": "Idle Automerge workers stop reliably after queued work drains"
+      },
+      {
+        "text": "Google Drive sync now retries token-refresh download failures and exposes clearer diagnostics before falling back to an empty cursor"
+      },
+      {
+        "text": "Google Contacts token refresh failures now stay recoverable in Settings instead of opening the fatal recovery screen"
+      },
+      {
+        "text": "Freed Desktop and app.freed.wtf now show a Sync now button for connected Google Drive accounts."
+      },
+      {
+        "text": "Google Drive sync records visible activity events for queued, started, deferred, completed, waiting, and failed work."
+      },
+      {
+        "text": "Sync diagnostics now explain why Last upload can be blank, including when there is no remote file yet or no local change has been uploaded."
+      },
+      {
+        "text": "Desktop and PWA Google Drive token refresh failures now surface as recoverable sync diagnostics instead of falling through silently."
+      },
+      {
+        "text": "The shared sync debug store now records richer transfer state so the same problem can be diagnosed from either connected device."
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Facebook group leave now hands off to the provider safely without folding group refresh into normal feed sync"
+      },
+      {
+        "text": "Hidden atmosphere layers release memory and skip hidden startup work"
+      },
+      {
+        "text": "Provider validation now has a fast lane so future social sync fixes can be proven without running every heavy validation tier"
+      },
+      {
+        "text": "Desktop startup diagnostics now capture occluded-window cases that can look like a frozen launch"
+      },
+      {
+        "text": "macOS Intel release builds now run on Intel GitHub runners so x64 DMG bundling avoids Apple Silicon cross packaging"
+      },
+      {
+        "text": "Release validation now avoids transient restored-sidebar geometry samples after the stable width assertion passes"
+      },
+      {
+        "text": "Phase 4, Phase 5, Phase 6, and the public roadmap now describe the manual sync and diagnostics behavior as shipped."
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.204",
+    "prNumbers": [
+      681,
+      682,
+      683,
+      684,
+      685,
+      686,
+      687,
+      688,
+      689,
+      690,
+      691,
+      692,
+      693,
+      694,
+      695,
+      696,
+      697,
+      698,
+      699,
+      700,
+      701,
+      702,
+      703,
+      704,
+      705,
+      706,
+      707,
+      708,
+      711,
+      712,
+      716,
+      717,
+      719,
+      720,
+      722,
+      723
+    ],
+    "builds": [
+      "26.6.100-dev",
+      "26.6.101-dev",
+      "26.6.102-dev",
+      "26.6.103-dev",
+      "26.6.203",
+      "26.6.204"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.100-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.100-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.101-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.101-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.102-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.102-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.103-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.103-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.203",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.203",
+        "channel": "production"
+      },
+      {
+        "version": "26.6.204",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.204",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.6.103-dev",
+    "tagName": "v26.6.103-dev",
+    "channel": "dev",
+    "date": "2026-06-02T01:28:17Z",
+    "deck": "Facebook sync now requires real feed evidence before treating a page as scrapeable, so tall logged-out Facebook shells fail fast instead of looking like empty feeds.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Facebook page checks now require a live cookie, the Feed posts heading, or rendered feed units before marking a page feed-like"
+      },
+      {
+        "text": "Logged-out Facebook pages with generic main content and tall layout now fail closed instead of wasting scrape passes"
+      },
+      {
+        "text": "Facebook extraction diagnostics now include feed unit and login chrome evidence for faster follow-up debugging"
+      },
+      {
+        "text": "Facebook sync now reports unauthenticated or stalled feed pages as real sync failures instead of a successful zero-post pull"
+      },
+      {
+        "text": "Social source status now requires live auth state before showing a connected badge, so old items do not mask a lost provider session"
+      },
+      {
+        "text": "Google Drive sync now retries token-refresh download failures and exposes clearer sync diagnostics before falling back to an empty cursor"
+      },
+      {
+        "text": "Google Contacts token refresh failures now stay recoverable in Settings instead of opening the fatal recovery screen"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.103-dev",
+    "prNumbers": [
+      681,
+      682,
+      683,
+      684,
+      686,
+      687,
+      688
+    ],
+    "builds": [
+      "26.6.100-dev",
+      "26.6.101-dev",
+      "26.6.102-dev",
+      "26.6.103-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.100-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.100-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.101-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.101-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.102-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.102-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.103-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.103-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.5.3117-dev",
+    "tagName": "v26.5.3117-dev",
+    "channel": "dev",
+    "date": "2026-06-01T06:11:30Z",
+    "deck": "This dev build adds Facebook zero-post diagnostics and keeps RSS retry pacing and installed dev-channel validation ready for the next soak",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Capture and scraper reliability fixes"
+      },
+      {
+        "text": "Release build and type-safety cleanup"
+      },
+      {
+        "text": "Reader, feed, and header polish"
+      },
+      {
+        "text": "Align social memory preflight test"
+      },
+      {
+        "text": "Recover social sync after memory deferrals"
+      },
+      {
+        "text": "Recycles idle Automerge sync workers after queued document work finishes"
+      },
+      {
+        "text": "Raises adaptive memory guardrails on high-memory systems so long-running provider sync has more headroom"
+      },
+      {
+        "text": "Keeps the Phase 7 docs and public roadmap aligned with the new social scrape memory behavior"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Backflow v26.5.3113 main into dev"
+      },
+      {
+        "text": "Adapt social scrape load to memory headroom"
+      },
+      {
+        "text": "Reduce desktop sync memory pressure"
+      },
+      {
+        "text": "Keeps Facebook group refresh explicit, repairs dev release validation, and carries forward the latest social sync recovery fixes"
+      },
+      {
+        "text": "Facebook sync now reports unusable scrape results as sync issues and adds diagnostics for the next dev soak"
+      },
+      {
+        "text": "Use this build for the next Facebook sync soak and inspect the new diagnostics if the provider still returns zero usable posts"
+      },
+      {
+        "text": "Install this build and verify RSS failures stop piling up in sync health"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3117-dev",
+    "prNumbers": [
+      644,
+      654,
+      655,
+      656,
+      657,
+      658,
+      659,
+      660,
+      661,
+      662,
+      663,
+      665,
+      666,
+      668,
+      670,
+      671,
+      674,
+      675,
+      676,
+      678,
+      679
+    ],
+    "builds": [
+      "26.5.3105-dev",
+      "26.5.3106-dev",
+      "26.5.3109-dev",
+      "26.5.3110-dev",
+      "26.5.3112-dev",
+      "26.5.3114-dev",
+      "26.5.3115-dev",
+      "26.5.3116-dev",
+      "26.5.3117-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.5.3105-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3105-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3106-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3106-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3109-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3109-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3110-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3110-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3112-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3112-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3114-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3114-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3115-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3115-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3116-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3116-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3117-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3117-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.5.3113",
+    "tagName": "v26.5.3113",
+    "channel": "production",
+    "date": "2026-06-01T03:36:23Z",
+    "deck": "This production build focuses on capture reliability, sync recovery, and interface stability.",
+    "features": [
+      {
+        "text": "Story Wall can publish curated collections from the shared reader library."
+      },
+      {
+        "text": "PWA social setup now mirrors Freed Desktop provider consent and status flows."
+      },
+      {
+        "text": "Friend and Map surfaces scale better for dense libraries with lighter graph and marker rendering."
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Facebook feed sync now treats zero usable posts as a warning, records extraction diagnostics, and preserves more post IDs."
+      },
+      {
+        "text": "Social scrapes adapt pass counts to available memory and record plan details before opening provider WebViews."
+      },
+      {
+        "text": "Normal Facebook feed sync no longer visits the joined-groups page unless manual group refresh is explicitly confirmed."
+      },
+      {
+        "text": "Google OAuth relays dev and preview callbacks through the production callback without losing PKCE state."
+      },
+      {
+        "text": "RSS polling is bounded and refresh planning avoids duplicate startup work."
+      },
+      {
+        "text": "Google Drive and Google Contacts share native sync state with clearer error reporting."
+      },
+      {
+        "text": "Automerge sync workers recycle after queued document work finishes to reduce idle memory pressure."
+      },
+      {
+        "text": "Renderer recovery, hidden-window memory sampling, and release channel checks have stronger diagnostics."
+      },
+      {
+        "text": "Reader rail collapse, compact sidebar transitions, persisted map filters, and fast reader opening have tighter regression coverage."
+      },
+      {
+        "text": "Settings, Friends, and Map performance budgets cover dense lists, graph movement, and marker rendering."
+      },
+      {
+        "text": "Release tooling now allows the production promotion website build config while keeping promotion branch guards strict."
+      },
+      {
+        "text": "Historical release-note artifacts were cleaned up so production validation can audit the full promoted history."
+      },
+      {
+        "text": "Installed dev release channel labels now survive production builds that share the same base version."
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Use provider diagnostics from this build when investigating any remaining Facebook zero-post reports."
+      },
+      {
+        "text": "Keep monitoring installed memory pressure during long social sync so scrape budgets can be tuned from real data."
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3113",
+    "prNumbers": [],
+    "builds": [
+      "26.5.704-dev",
+      "26.5.705-dev",
+      "26.5.800-dev",
+      "26.5.801-dev",
+      "26.5.803-dev",
+      "26.5.804-dev",
+      "26.5.805-dev",
+      "26.5.807-dev",
+      "26.5.901-dev",
+      "26.5.903-dev",
+      "26.5.905-dev",
+      "26.5.906-dev",
+      "26.5.907-dev",
+      "26.5.908-dev",
+      "26.5.909-dev",
+      "26.5.910-dev",
+      "26.5.911-dev",
+      "26.5.914-dev",
+      "26.5.1003-dev",
+      "26.5.1004-dev",
+      "26.5.1010-dev",
+      "26.5.1013-dev",
+      "26.5.1015-dev",
+      "26.5.1100-dev",
+      "26.5.1101-dev",
+      "26.5.1102-dev",
+      "26.5.1104-dev",
+      "26.5.1105-dev",
+      "26.5.1106-dev",
+      "26.5.1107-dev",
+      "26.5.1108-dev",
+      "26.5.1109-dev",
+      "26.5.1110-dev",
+      "26.5.1112-dev",
+      "26.5.1201-dev",
+      "26.5.2600-dev",
+      "26.5.2601-dev",
+      "26.5.2603-dev",
+      "26.5.2700-dev",
+      "26.5.2900-dev",
+      "26.5.2901-dev",
+      "26.5.2903-dev",
+      "26.5.3000-dev",
+      "26.5.3001-dev",
+      "26.5.3002-dev",
+      "26.5.3003-dev",
+      "26.5.3004-dev",
+      "26.5.3005-dev",
+      "26.5.3006-dev",
+      "26.5.3007-dev",
+      "26.5.3008-dev",
+      "26.5.3009-dev",
+      "26.5.3010-dev",
+      "26.5.3011-dev",
+      "26.5.3105-dev",
+      "26.5.3106-dev",
+      "26.5.3109-dev",
+      "26.5.3110-dev",
+      "26.5.3113"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.5.704-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.704-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.705-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.705-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.800-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.800-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.801-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.801-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.803-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.803-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.804-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.804-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.805-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.805-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.807-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.807-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.901-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.901-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.903-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.903-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.905-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.905-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.906-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.906-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.907-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.907-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.908-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.908-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.909-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.909-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.910-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.910-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.911-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.911-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.914-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.914-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1003-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1003-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1004-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1004-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1010-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1010-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1013-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1013-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1015-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1015-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1100-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1100-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1101-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1101-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1102-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1102-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1104-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1104-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1105-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1105-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1106-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1106-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1107-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1107-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1108-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1108-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1109-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1109-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1110-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1110-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1112-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1112-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1201-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1201-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.2600-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2600-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.2601-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2601-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.2603-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2603-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.2700-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2700-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.2900-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2900-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.2901-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2901-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.2903-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2903-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3000-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3000-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3001-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3001-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3002-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3002-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3003-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3003-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3004-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3004-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3005-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3005-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3006-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3006-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3007-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3007-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3008-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3008-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3009-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3009-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3010-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3010-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3011-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3011-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3105-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3105-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3106-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3106-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3109-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3109-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3110-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3110-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3113",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3113",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.5.3011-dev",
+    "tagName": "v26.5.3011-dev",
+    "channel": "dev",
+    "date": "2026-05-31T05:25:42Z",
+    "deck": "Google sync recovery and lower Settings pressure",
+    "features": [
+      {
+        "text": "Safe sample data cleanup"
+      },
+      {
+        "text": "Guard nightly runner branch context"
+      },
+      {
+        "text": "Guard provider-visible peer work"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Keep hidden renderer throttling from pausing sync"
+      },
+      {
+        "text": "Provider sync is now more stable under memory pressure"
+      },
+      {
+        "text": "Reader, feed, and header polish"
+      },
+      {
+        "text": "Mark Dropbox sync as coming soon"
+      },
+      {
+        "text": "Capture and scraper reliability fixes"
+      },
+      {
+        "text": "Prevent dev release note rollup repeats"
+      },
+      {
+        "text": "Loaded libraries no longer rebuild Automerge history just to check for possible savings when no synced text changed, avoiding another startup allocation spike"
+      },
+      {
+        "text": "Clean startup loads now hydrate the first UI state without reserializing or rewriting an unchanged Automerge document"
+      },
+      {
+        "text": "Google Contacts now recovers from stale in-progress sync state after a successful People API fetch"
+      },
+      {
+        "text": "Manual Google Contacts reconnect and Sync Now actions force a fresh sync instead of being skipped by the automatic sync cooldown"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Nightly preflight actions"
+      },
+      {
+        "text": "Gate nightly performance targets on soak quality"
+      },
+      {
+        "text": "Nightly soak pointer repair"
+      },
+      {
+        "text": "Nightly runner readable soak fallback"
+      },
+      {
+        "text": "Changelog preview to update settings"
+      },
+      {
+        "text": "Skip unchanged Automerge history probes"
+      },
+      {
+        "text": "Project desktop feed items without full clone"
+      },
+      {
+        "text": "Cap background article fetch size"
+      },
+      {
+        "text": "Safer overnight article backfill"
+      },
+      {
+        "text": "Keeps explicit reader loads available while the lower-priority background path stays under a native response-size budget"
+      },
+      {
+        "text": "Lower startup memory pressure"
+      },
+      {
+        "text": "Shared content-signal backfill now scans feed items in one pass instead of building stale item arrays for every batch"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3011-dev",
+    "prNumbers": [
+      608,
+      609,
+      610,
+      614,
+      618,
+      620,
+      625,
+      626,
+      627,
+      628,
+      629,
+      630,
+      631,
+      632,
+      633,
+      634,
+      635,
+      636,
+      637,
+      638,
+      640,
+      641,
+      645,
+      646,
+      647,
+      648,
+      649
+    ],
+    "builds": [
+      "26.5.3000-dev",
+      "26.5.3001-dev",
+      "26.5.3002-dev",
+      "26.5.3003-dev",
+      "26.5.3004-dev",
+      "26.5.3005-dev",
+      "26.5.3006-dev",
+      "26.5.3007-dev",
+      "26.5.3008-dev",
+      "26.5.3009-dev",
+      "26.5.3010-dev",
+      "26.5.3011-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.5.3000-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3000-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3001-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3001-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3002-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3002-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3003-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3003-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3004-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3004-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3005-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3005-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3006-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3006-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3007-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3007-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3008-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3008-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3009-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3009-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3010-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3010-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.3011-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3011-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.5.2903-dev",
+    "tagName": "v26.5.2903-dev",
+    "channel": "dev",
+    "date": "2026-05-30T07:09:20Z",
+    "deck": "Safer startup refreshes and nightly runner guardrails",
+    "features": [
+      {
+        "text": "Nightly runner duplicate detection"
+      },
+      {
+        "text": "Nightly runner outcome closeout"
+      },
+      {
+        "text": "Nightly runner risk snapshot"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Removed a stale desktop refresh import that blocked the replacement dev build"
+      },
+      {
+        "text": "Route desktop Google OAuth through proxy"
+      },
+      {
+        "text": "Lighten focus mode emphasis"
+      },
+      {
+        "text": "The dev release workflow now forces the Google proxy path and includes a guard that prevents direct Google token exchange from shipping again"
+      },
+      {
+        "text": "Friends graph pinning stays intentional: dense friends graph interactions no longer create accidental pinned states when the graph is already heavily populated"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "RSS polling now stays RSS-only, so routine background feed checks no longer wake authenticated social scraping paths"
+      },
+      {
+        "text": "Lazy load friends graph"
+      },
+      {
+        "text": "Defer sidebar feed search"
+      },
+      {
+        "text": "Defer settings list filtering"
+      },
+      {
+        "text": "Nightly runner execution plan"
+      },
+      {
+        "text": "Avoid redundant reader hydration"
+      },
+      {
+        "text": "Verify scraper WebKit recycling"
+      },
+      {
+        "text": "Google sign-in and interaction polish"
+      },
+      {
+        "text": "Faster dense views with safer nightly tuning"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2903-dev",
+    "prNumbers": [
+      379,
+      606,
+      607,
+      611,
+      612,
+      613,
+      615,
+      616,
+      617,
+      619,
+      621,
+      622,
+      623,
+      624
+    ],
+    "builds": [
+      "26.5.2900-dev",
+      "26.5.2901-dev",
+      "26.5.2903-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.5.2900-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2900-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.2901-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2901-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.2903-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2903-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.5.2700-dev",
+    "tagName": "v26.5.2700-dev",
+    "channel": "dev",
+    "date": "2026-05-28T01:07:00Z",
+    "deck": "Friends graph pinning stays intentional",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Dense friends graph interactions no longer create accidental pinned states when the graph is already heavily populated."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2700-dev",
+    "prNumbers": [
+      605
+    ],
+    "builds": [
+      "26.5.2700-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.5.2700-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2700-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.5.2603-dev",
+    "tagName": "v26.5.2603-dev",
+    "channel": "dev",
+    "date": "2026-05-26T21:10:47Z",
+    "deck": "Reduces large-library hydration memory, keeps 1,600 connection Friends graph pan and zoom work inside the frame budget, keeps dense Map interactions responsive, trims oversized event evidence from Freed Desktop renderer state, and restores the dev release build after the projection type guard caught a CI-only TypeScript issue",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Builds the Freed Desktop Automerge UI projection incrementally, so large synced article bodies are trimmed before renderer state hydration"
+      },
+      {
+        "text": "Keeps 1,600 connection Friends graph pan and zoom work inside the frame budget with less debug snapshot cloning, less React drag-path work, and lighter Pixi traversal during dense interaction"
+      },
+      {
+        "text": "Caps oversized event evidence in Freed Desktop feed-item projection, reducing retained renderer text without changing provider scrape behavior"
+      },
+      {
+        "text": "Preserves required event candidate fields while trimming evidence so the dev release build typechecks cleanly"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2603-dev",
+    "prNumbers": [
+      601,
+      602,
+      603,
+      604
+    ],
+    "builds": [
+      "26.5.2600-dev",
+      "26.5.2601-dev",
+      "26.5.2603-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.5.2600-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2600-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.2601-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2601-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.2603-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2603-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.5.1201-dev",
+    "tagName": "v26.5.1201-dev",
+    "channel": "dev",
+    "date": "2026-05-12T20:18:26Z",
+    "deck": "Dense Friends graph motion and source filtering stay lighter",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Keep large Friends graphs responsive by holding active pan and zoom to a stable 160-node paint layer, then refreshing viewport detail after motion settles"
+      },
+      {
+        "text": "Add regression coverage for 1,600-person Friends graphs, including mount time, zoom, pan, scene sync, long tasks, dropped frames, and sidebar row virtualization"
+      },
+      {
+        "text": "Keep large relationship graphs on a smaller 96-node paint layer during active motion before refreshing viewport detail"
+      },
+      {
+        "text": "Reduce Source sidebar feed search allocation churn for large RSS collections"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1201-dev",
+    "prNumbers": [
+      598,
+      599
+    ],
+    "builds": [
+      "26.5.1201-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.5.1201-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1201-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.5.1112-dev",
+    "tagName": "v26.5.1112-dev",
+    "channel": "dev",
+    "date": "2026-05-12T00:39:08Z",
+    "deck": "Google sync, Story wall, scraper gates, and dense Map movement improve",
+    "features": [
+      {
+        "text": "Story wall publishing"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Completes Google Contacts sync in Freed Desktop"
+      },
+      {
+        "text": "Shares native Google OAuth credentials between Drive and Contacts refresh"
+      },
+      {
+        "text": "Surfaces Google OAuth and People API failure details in Settings instead of generic load errors"
+      },
+      {
+        "text": "Keeps dense Map focused markers visible during movement"
+      },
+      {
+        "text": "Keeps Friends graph sync errors recoverable"
+      },
+      {
+        "text": "Reports throttled renderer heartbeats clearly and separates Freed WebKit memory from machine-wide totals"
+      },
+      {
+        "text": "Gates social scrapes, session slots, and optional story checks on resident memory pressure"
+      },
+      {
+        "text": "Keeps dense Map motion inside the frame budget"
+      },
+      {
+        "text": "Skips hidden Friends provider labels during graph motion"
+      },
+      {
+        "text": "Retries the Friends last-seen route commit when the store reaches Map before the full Map surface mounts"
+      },
+      {
+        "text": "Lightens Settings moving chrome while the dialog is in motion"
+      },
+      {
+        "text": "Tightens the social scraper resident memory start budget"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Continue monitoring Settings scroll and scraper memory pressure under installed dev builds"
+      },
+      {
+        "text": "Friends navigation recovers from late Map mounting"
+      },
+      {
+        "text": "Friends navigation and dense Map movement get steadier"
+      },
+      {
+        "text": "Continue monitoring Friends to Map handoffs and dense Map movement under installed dev builds"
+      },
+      {
+        "text": "Friends recovery and renderer health reporting improve"
+      },
+      {
+        "text": "Keep memory-blocked scrapes from holding the shared scraper slot"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1112-dev",
+    "prNumbers": [
+      405,
+      583,
+      584,
+      585,
+      586,
+      587,
+      588,
+      589,
+      591,
+      592,
+      593,
+      594,
+      595,
+      596,
+      597
+    ],
+    "builds": [
+      "26.5.1100-dev",
+      "26.5.1101-dev",
+      "26.5.1102-dev",
+      "26.5.1104-dev",
+      "26.5.1105-dev",
+      "26.5.1106-dev",
+      "26.5.1107-dev",
+      "26.5.1108-dev",
+      "26.5.1109-dev",
+      "26.5.1110-dev",
+      "26.5.1112-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.5.1100-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1100-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1101-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1101-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1102-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1102-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1104-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1104-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1105-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1105-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1106-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1106-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1107-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1107-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1108-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1108-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1109-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1109-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1110-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1110-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1112-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1112-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.5.1015-dev",
+    "tagName": "v26.5.1015-dev",
+    "channel": "dev",
+    "date": "2026-05-11T04:47:52Z",
+    "deck": "Settings, Friends graph, and Map handoffs stay stable through release validation",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Pauses Settings descendant transitions while the dialog is moving"
+      },
+      {
+        "text": "Reduces Settings scroll paint work and interaction invalidation"
+      },
+      {
+        "text": "Flushes Friends detail to Map handoffs before selection changes"
+      },
+      {
+        "text": "Flushes mobile Friends toolbar switches between Details and graph modes"
+      },
+      {
+        "text": "Caches the Friends graph interaction layer during dense interaction"
+      },
+      {
+        "text": "Guards Friends graph Pixi teardown so the last-seen Map handoff cannot show the fatal error screen"
+      },
+      {
+        "text": "Keeps the collapsed Friends detail-card regression focused on selected-person behavior"
+      },
+      {
+        "text": "Guards the Friends Map surface handoff during route changes"
+      },
+      {
+        "text": "Open the full Map from Friends detail with one atomic store update"
+      },
+      {
+        "text": "Flush the Friends to Map handoff at the click boundary"
+      },
+      {
+        "text": "Friends graph perf telemetry now reports dense interaction rebuild count, with a release regression guard for the 1,600-person zoom and pan case"
+      },
+      {
+        "text": "Stabilizes Friends empty graph, Tauri mock, and collapsed detail-card validation"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Continue the installed dev build soak while Settings scroll and Friends graph performance settle"
+      },
+      {
+        "text": "Continue passive soak metrics until Apple Events authorization is restored for active UI driving"
+      },
+      {
+        "text": "Settings scrolling is lighter, and Friends view transitions are stable through the release regression gate"
+      },
+      {
+        "text": "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss"
+      },
+      {
+        "text": "Settings interaction work, Friends graph crash protection, and the collapsed Friends detail card stay stable"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1015-dev",
+    "prNumbers": [
+      395,
+      396,
+      397,
+      398,
+      399,
+      401,
+      402,
+      403,
+      404,
+      406,
+      407,
+      408,
+      409,
+      410,
+      412,
+      413,
+      414,
+      418,
+      419,
+      420,
+      424,
+      425,
+      426,
+      427,
+      431,
+      432,
+      433,
+      434,
+      435,
+      436,
+      437,
+      439,
+      440,
+      441,
+      442,
+      443,
+      444,
+      445,
+      446,
+      447,
+      448,
+      449,
+      450,
+      451,
+      452,
+      453,
+      454,
+      455,
+      456,
+      457,
+      458,
+      459,
+      460,
+      461,
+      463,
+      464,
+      465,
+      466,
+      467,
+      468,
+      469,
+      471,
+      472,
+      473,
+      475,
+      476,
+      478,
+      480,
+      481,
+      482,
+      483,
+      484,
+      485,
+      486,
+      487,
+      488,
+      489,
+      490,
+      491,
+      492,
+      494,
+      495,
+      496,
+      498,
+      500,
+      502,
+      504,
+      506,
+      507,
+      509,
+      510,
+      511,
+      512,
+      513,
+      515,
+      516,
+      517,
+      518,
+      519,
+      520,
+      521,
+      522,
+      523,
+      524,
+      525,
+      526,
+      527,
+      528,
+      531,
+      532,
+      533,
+      534,
+      535,
+      536,
+      537,
+      538,
+      539,
+      540,
+      541,
+      542,
+      543,
+      544,
+      545,
+      546,
+      548,
+      552,
+      553,
+      554,
+      555,
+      556,
+      557,
+      558,
+      559,
+      560,
+      563,
+      564,
+      565,
+      566,
+      567,
+      568,
+      569,
+      570,
+      571,
+      573,
+      575,
+      576,
+      578,
+      579,
+      580,
+      581,
+      582
+    ],
+    "builds": [
+      "26.5.1003-dev",
+      "26.5.1004-dev",
+      "26.5.1010-dev",
+      "26.5.1013-dev",
+      "26.5.1015-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.5.1003-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1003-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1004-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1004-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1010-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1010-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1013-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1013-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.1015-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1015-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.5.914-dev",
+    "tagName": "v26.5.914-dev",
+    "channel": "dev",
+    "date": "2026-05-10T07:21:23Z",
+    "deck": "Faster Map pan and zoom, steadier Friends to Map navigation, and stable release validation",
+    "features": [],
     "fixes": [
       {
         "text": "Reader, feed, and header polish"
@@ -540,880 +2084,417 @@
         "text": "Release build and type-safety cleanup"
       },
       {
-        "text": "Copy and documentation cleanup"
+        "text": "Settings now avoids repeated scroll timer churn and uses visibility observation for the update auto-check, reducing interaction work while the dialog is moving"
       },
       {
-        "text": "Capture and scraper reliability fixes"
+        "text": "Friends detail last-seen cards now switch to Map before applying the selected friend, avoiding a loaded-runner transition stall where the store reached Map before the Map surface mounted"
+      },
+      {
+        "text": "Map marker smoke validation now waits for moving-state marker deferral to settle before clicking visible markers"
       }
     ],
     "followUps": [
       {
-        "text": "Reader, sidebar, and settings UX work"
+        "text": "Replaces the failed v26.5.913-dev validation tag with the dense Map optimization, Friends to Map transition fix, and Map marker click stability fix"
       },
       {
-        "text": "Release workflow and build-system work"
+        "text": "Continue the installed dev build soak and compare WebKit RSS against the v26.5.911 baseline"
       },
       {
-        "text": "Capture, login, and scraping platform work"
+        "text": "Reduce map render comparison allocations and paint fewer dense Map markers during active movement"
       },
       {
-        "text": "Sync, cloud, and pairing infrastructure"
+        "text": "Reduce settings list filter work"
       },
       {
-        "text": "Testing, diagnostics, and developer tooling"
+        "text": "Reduce feed browse filtering scans"
       },
       {
-        "text": "Content and documentation work"
+        "text": "Stabilize map markers across refreshes"
+      },
+      {
+        "text": "Relax hidden renderer watchdog"
+      },
+      {
+        "text": "Continue the installed dev build soak and compare WebKit RSS against the v26.5.903 baseline"
+      },
+      {
+        "text": "Continue Map and Friends interaction monitoring under real desktop load"
+      },
+      {
+        "text": "Improves Settings scroll paint headroom and keeps the same-day performance fixes together"
+      },
+      {
+        "text": "Investigate the remaining Settings scroll p95 noise, which still appears without JavaScript long tasks"
+      },
+      {
+        "text": "Keeps hidden sessions quieter and restores WebKit memory attribution"
+      },
+      {
+        "text": "Improves dense Friends graph recovery, Map interaction smoothness, desktop crash recovery, and WebKit memory attribution for today's dev builds"
+      },
+      {
+        "text": "Reduces dense Map marker work, speeds Settings, and sheds feed media earlier under WebKit pressure"
       }
     ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1403-dev",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.914-dev",
     "prNumbers": [
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12,
-      13,
-      16,
-      27,
-      31,
-      32,
-      34,
-      35,
-      36,
-      37,
-      38,
-      39,
-      40,
-      41,
-      42,
-      43,
-      44,
-      45,
-      46,
-      47,
-      48,
-      49,
-      50,
-      51,
-      52,
-      55,
-      56,
-      57,
-      58,
-      59,
-      71,
-      72,
-      73,
-      74,
-      75,
-      76,
-      77,
-      78,
-      79,
-      80,
-      81,
-      82,
-      83,
-      84,
-      85,
-      86,
-      87,
-      89,
-      90,
-      91,
-      92,
-      93,
-      94,
-      95,
-      96,
-      97,
-      98,
-      100,
-      101,
-      102,
-      103,
-      104,
-      105,
-      106,
-      107,
-      108,
-      109,
-      110,
-      111,
-      112,
-      113,
-      114,
-      115,
-      116,
-      117,
-      118,
-      119,
-      120,
-      121,
-      122,
-      123,
-      124,
-      125,
-      126,
-      127,
-      128,
-      129,
-      130,
-      131,
-      132,
-      133,
-      134,
-      135,
-      136,
-      137,
-      138,
-      139,
-      140,
-      141,
-      142,
-      143,
-      144,
-      145,
-      146,
-      147,
-      148,
-      150,
-      151,
-      152,
-      153,
-      154,
-      155,
-      156,
-      157,
-      158,
-      159,
-      161,
-      162,
-      163,
-      164,
-      165,
-      166,
-      167,
-      168,
-      169,
-      170,
-      171,
-      172,
-      173,
-      174,
-      175,
-      176,
-      177,
-      178,
-      179,
-      180,
-      181,
-      182,
-      184,
-      185,
-      186,
-      187,
-      188,
-      190,
-      191,
-      192,
-      193,
-      194,
-      195,
-      196,
-      197,
-      198,
-      199,
-      200,
-      201,
-      202,
-      203,
-      204,
-      205,
-      208,
-      209,
-      210,
-      212
+      543,
+      544,
+      545,
+      546,
+      548,
+      552,
+      553,
+      554,
+      555,
+      556,
+      557,
+      558,
+      559,
+      560,
+      561,
+      562,
+      563,
+      564,
+      565
     ],
     "builds": [
-      "26.4.1403-dev"
+      "26.5.901-dev",
+      "26.5.903-dev",
+      "26.5.905-dev",
+      "26.5.906-dev",
+      "26.5.907-dev",
+      "26.5.908-dev",
+      "26.5.909-dev",
+      "26.5.910-dev",
+      "26.5.911-dev",
+      "26.5.914-dev"
     ],
     "buildLinks": [
       {
-        "version": "26.4.1403-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1403-dev",
+        "version": "26.5.901-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.901-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.903-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.903-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.905-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.905-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.906-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.906-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.907-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.907-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.908-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.908-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.909-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.909-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.910-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.910-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.911-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.911-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.914-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.914-dev",
         "channel": "dev"
       }
     ]
   },
   {
-    "version": "26.4.1400",
-    "tagName": "v26.4.1400",
-    "channel": "production",
-    "date": "2026-04-14T23:13:01Z",
-    "deck": "Theme-native map palettes, dev release channels and branch flow, and label macOS Activity Monitor web process as Freed",
-    "features": [
-      {
-        "text": "Theme-native map palettes"
-      },
-      {
-        "text": "Dev release channels and branch flow"
-      }
-    ],
-    "fixes": [],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1400",
-    "prNumbers": [
-      208,
-      209,
-      210,
-      211,
-      212
-    ],
-    "builds": [
-      "26.4.1400"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.4.1400",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1400",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.4.1300",
-    "tagName": "v26.4.1300",
-    "channel": "production",
-    "date": "2026-04-14T05:17:28Z",
-    "deck": "Desktop shell chrome is unified across the app, with theme-native maps, clearer recovery handoffs, and steadier reading surfaces.",
-    "features": [
-      {
-        "text": "Unified desktop shell chrome across the feed, reader, settings, and floating rails"
-      },
-      {
-        "text": "Added theme-native map palettes and improved Scriptorium readability"
-      },
-      {
-        "text": "Expanded empty-state recovery handoffs so sources are easier to reconnect"
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Stabilized desktop side panels, reader toolbar alignment, and feed card spacing"
-      },
-      {
-        "text": "Improved keyboard navigation in the reader and kept focused rows in view"
-      },
-      {
-        "text": "Polished settings controls, provider dialogs, and marketing launch surfaces"
-      }
-    ],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1300",
-    "prNumbers": [
-      206,
-      207
-    ],
-    "builds": [
-      "26.4.1300"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.4.1300",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1300",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.4.1203",
-    "tagName": "v26.4.1203",
-    "channel": "production",
-    "date": "2026-04-13T02:44:48Z",
-    "deck": "Unify themes across website and app, refreshed theme system and typography polish, and privacy policy callout border removed",
-    "features": [
-      {
-        "text": "Unify themes across website and app"
-      },
-      {
-        "text": "Refreshed theme system and typography polish"
-      },
-      {
-        "text": "A shared theme system now keeps the website and app visually aligned"
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Updater progress bar lag removed"
-      },
-      {
-        "text": "Refine sharing QR layout and footer hover states"
-      },
-      {
-        "text": "Reorder sidebar sources and fix the clipped QR heading"
-      },
-      {
-        "text": "Desktop scrapers now run in sequence, which helps avoid renderer stalls"
-      },
-      {
-        "text": "Paginate the changelog and polish roadmap motion"
-      }
-    ],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1203",
-    "prNumbers": [
-      184,
-      185,
-      186,
-      187,
-      188,
-      190,
-      191,
-      192,
-      193,
-      194,
-      195,
-      196,
-      197,
-      198,
-      199,
-      200,
-      201,
-      202,
-      203,
-      204,
-      205
-    ],
-    "builds": [
-      "26.4.1200",
-      "26.4.1201",
-      "26.4.1203"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.4.1200",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1200",
-        "channel": "production"
-      },
-      {
-        "version": "26.4.1201",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1201",
-        "channel": "production"
-      },
-      {
-        "version": "26.4.1203",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1203",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.4.1100",
-    "tagName": "v26.4.1100",
-    "channel": "production",
-    "date": "2026-04-12T06:06:18Z",
-    "deck": "Contacts settings and sync, rotating desktop snapshots, and unify theming across website and app",
-    "features": [
-      {
-        "text": "Finish Google Contacts settings and sync"
-      },
-      {
-        "text": "Rotating desktop snapshots"
-      },
-      {
-        "text": "Unify theming across website and app"
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Desktop map and smoke assertions are now more stable"
-      },
-      {
-        "text": "Handle empty release validation args"
-      },
-      {
-        "text": "Support macOS bash in release publish"
-      },
-      {
-        "text": "Mark items read when scrolled past"
-      },
-      {
-        "text": "Make browser session copy more accurate"
-      },
-      {
-        "text": "Silence background social scrapers"
-      },
-      {
-        "text": "Redeploy website after release publish"
-      },
-      {
-        "text": "Overhaul changelog release notes and cards"
-      },
-      {
-        "text": "Backfill concise historical changelog notes"
-      }
-    ],
-    "followUps": [
-      {
-        "text": "Public-safe bug reporting"
-      },
-      {
-        "text": "Browser-style navigation history"
-      },
-      {
-        "text": "Move feeds into source accordion"
-      },
-      {
-        "text": "Provider health diagnostics and source management"
-      }
-    ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1100",
-    "prNumbers": [
-      156,
-      158,
-      161,
-      162,
-      165,
-      172,
-      173,
-      174,
-      175,
-      176,
-      177,
-      178,
-      179,
-      180,
-      181,
-      182
-    ],
-    "builds": [
-      "26.4.1100"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.4.1100",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1100",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.4.900",
-    "tagName": "v26.4.900",
-    "channel": "production",
-    "date": "2026-04-10T04:38:56Z",
-    "deck": "Provider health diagnostics and quieter background scrapers",
-    "features": [
-      {
-        "text": "New provider health diagnostics make it easier to spot auth issues and source problems."
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Items now mark as read when you scroll past them."
-      },
-      {
-        "text": "Browser session copy is more accurate."
-      },
-      {
-        "text": "Background social scrapers stay quieter when they do not need attention."
-      }
-    ],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.900",
-    "prNumbers": [
-      158,
-      175,
-      176,
-      177
-    ],
-    "builds": [
-      "26.4.900"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.4.900",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.900",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.4.301",
-    "tagName": "v26.4.301",
-    "channel": "production",
-    "date": "2026-04-03T21:30:37Z",
-    "deck": "Website changelog catches same-day releases",
+    "version": "26.5.807-dev",
+    "tagName": "v26.5.807-dev",
+    "channel": "dev",
+    "date": "2026-05-09T03:15:51Z",
+    "deck": "This dev build keeps the overnight performance work moving with smoother dense Friends graph interaction, compact-feed read-state repair, and the full same-day performance rollup, guard the Friends last-seen to Map handoff so stale MapLibre marker work cannot crash the app during view changes, and isolate dense Map marker paint so large Map views do less layout and paint work during active zoom and pan",
     "features": [],
     "fixes": [
       {
-        "text": "freed.wtf now redeploys after a release publishes so the changelog includes the newly shipped build"
+        "text": "Runtime health telemetry now keeps a bounded tail instead of letting renderer heartbeats and scrape preflight records grow without limit"
       },
       {
-        "text": "Release notes and changelog cards now use cleaner reviewed summaries"
+        "text": "Cull the dense Friends graph interaction layer at the 1,600-person scale so active pan and zoom draws only the viewport-near capped set while the full dense graph returns after interaction settles"
       },
       {
-        "text": "Historical releases now keep concise daily rollups without losing major highlights"
+        "text": "Keep runtime health telemetry bounded so renderer heartbeats, DOM counts, event-loop lag, and scrape memory preflight records remain useful without unbounded file growth"
       },
       {
-        "text": "Freed Desktop update prompts now show a cleaner single-line release summary"
+        "text": "Classify hidden renderer timer throttling separately from foreground event-loop lag so soak metrics stop blaming macOS background timer behavior for app jank"
+      },
+      {
+        "text": "Friends graph interaction culling and Bound runtime health log retention"
+      },
+      {
+        "text": "Source sidebar search now filters sources immediately while the heavier feed search stays debounced"
+      },
+      {
+        "text": "Opening Freed from the dock or Finder now restores the primary window when macOS reports the app as running with no visible windows"
+      },
+      {
+        "text": "Friends graph zoom and pan now do less per-frame work at the 1,600-person scale by capping the transient dense interaction layer and keeping production debug payloads out of the hot path"
+      },
+      {
+        "text": "Map handoff crash guard, hidden renderer heartbeat telemetry, and dense Friends and Map performance fixes"
+      },
+      {
+        "text": "Friends detail last-seen cards now use a lightweight static mini map preview instead of mounting MapLibre before opening the full Map view"
+      },
+      {
+        "text": "Compact feed read-on-scroll tracking now resets its session key correctly when the visible item set changes"
       }
     ],
     "followUps": [
       {
-        "text": "Sharper release messaging"
+        "text": "This dev build keeps the desktop performance audit moving with faster source filtering, better window recovery, and today's Friends, Map, and runtime performance fixes"
+      },
+      {
+        "text": "Continue the installed soak and watch WebKit process pressure separately from foreground frame timing"
       }
     ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.301",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.807-dev",
     "prNumbers": [
-      172,
-      173,
-      174
+      531,
+      532,
+      533,
+      534,
+      535,
+      536,
+      537,
+      538,
+      539,
+      540,
+      541,
+      542
     ],
     "builds": [
-      "26.4.300",
-      "26.4.301"
+      "26.5.800-dev",
+      "26.5.801-dev",
+      "26.5.803-dev",
+      "26.5.804-dev",
+      "26.5.805-dev",
+      "26.5.807-dev"
     ],
     "buildLinks": [
       {
-        "version": "26.4.300",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.300",
-        "channel": "production"
+        "version": "26.5.800-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.800-dev",
+        "channel": "dev"
       },
       {
-        "version": "26.4.301",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.301",
-        "channel": "production"
+        "version": "26.5.801-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.801-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.803-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.803-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.804-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.804-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.805-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.805-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.5.807-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.807-dev",
+        "channel": "dev"
       }
     ]
   },
   {
-    "version": "26.4.109",
-    "tagName": "v26.4.109",
-    "channel": "production",
-    "date": "2026-04-02T02:49:52Z",
-    "deck": "Map view, refined consent gates, and signed macOS installs",
-    "features": [
-      {
-        "text": "New map and Friends views"
-      },
-      {
-        "text": "Signed macOS installs"
-      },
-      {
-        "text": "Refined consent gates"
-      }
-    ],
+    "version": "26.5.705-dev",
+    "tagName": "v26.5.705-dev",
+    "channel": "dev",
+    "date": "2026-05-07T21:23:02Z",
+    "deck": "Freed Desktop reduces hidden-renderer recovery risk, keeps dense Friends and Map validation stable, and preserves the full same-day dev release rollup.",
+    "features": [],
     "fixes": [
       {
-        "text": "Optimized desktop feed webview media usage"
+        "text": "Hidden, timer-throttled renderer heartbeat gaps now stay diagnostic-only instead of destroying and rebuilding the main window."
       },
       {
-        "text": "Social scraper webviews are now recycled after each run"
+        "text": "Friends graph zoom, pinch, node selection, collapsed detail cards, pinned positions, and rail resizing have stronger release coverage."
       },
       {
-        "text": "Settings toggles now stay shared across Freed Desktop and UI"
+        "text": "Release pinch gesture check is now more stable"
       },
       {
-        "text": "Desktop startup and scraper window modes are now more stable"
+        "text": "Friends graph resize lifecycle is now more stable"
       },
       {
-        "text": "Scraper restore URL handling is now explicit"
+        "text": "Friends back-navigation release validation now clicks the visible back button without losing it to sidebar remounts, unblocking the replacement dev build"
       },
       {
-        "text": "Desktop startup now recovers when the consent store fails"
+        "text": "Friends performance validation now measures visible graph mount separately from display preference persistence, so release gates catch rendering regressions instead of background save timing"
       },
       {
-        "text": "LinkedIn desktop integration is now complete"
+        "text": "Feed-card regression coverage now protects that reader-only media policy so release validation catches accidental inline media work"
+      },
+      {
+        "text": "Release validation now resizes the Friends detail rail through the real browser pointer path, and the resize handle is visible and cleaned up across pointerup, cancel, blur, and unmount"
+      },
+      {
+        "text": "Sync and update reliability fixes"
+      },
+      {
+        "text": "Debug drawer state is reset before desktop regression tests so graph geometry checks start from the intended viewport."
+      },
+      {
+        "text": "Source sidebar feed search keeps the feed list stable while unrelated sidebar state changes."
       }
     ],
     "followUps": [
       {
-        "text": "Simplify legal consent surfaces"
+        "text": "Dense surfaces and mobile validation repairs plus feed pressure relief"
       },
       {
-        "text": "Finalize qr landing page experience"
+        "text": "Reader, feed, and header polish"
+      },
+      {
+        "text": "More accurate memory pressure and smoother large views"
+      },
+      {
+        "text": "Freed Desktop keeps large social views responsive"
+      },
+      {
+        "text": "Freed Desktop keeps WebKit memory maintenance ahead of scrapes"
+      },
+      {
+        "text": "Freed Desktop stabilizes Friends detail rail resizing before the replacement dev build ships"
+      },
+      {
+        "text": "Reader, sidebar, and settings UX work"
+      },
+      {
+        "text": "Freed Desktop virtualizes large settings lists and exports the shared date-format helper used by dev release builds"
+      },
+      {
+        "text": "Recycle blocked scraper windows"
+      },
+      {
+        "text": "Reduce feed and friends render pressure"
+      },
+      {
+        "text": "Continue soaking the installed dev build with native RSS, WebKit RSS, CPU, DOM nodes, event loop lag, and renderer health telemetry."
+      },
+      {
+        "text": "Keep measuring Friends and Map interaction variance before shipping more speculative graph micro-optimizations."
+      },
+      {
+        "text": "Watch for hidden heartbeat stale events in the installed build to confirm recovery is suppressed while visible foreground stalls still recover."
       }
     ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.109",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.705-dev",
     "prNumbers": [
-      150,
-      151,
-      152,
-      153,
-      154,
-      155,
-      157,
-      159,
-      163,
-      164,
-      166,
-      167,
-      168,
-      169,
-      170,
-      171
+      510,
+      511,
+      512,
+      513,
+      515,
+      516,
+      517,
+      518,
+      519,
+      520,
+      521,
+      522,
+      523,
+      524,
+      525,
+      526,
+      527,
+      528
     ],
     "builds": [
-      "26.4.100",
-      "26.4.101",
-      "26.4.102",
-      "26.4.103",
-      "26.4.105",
-      "26.4.107",
-      "26.4.108",
-      "26.4.109"
+      "26.5.700-dev",
+      "26.5.701-dev",
+      "26.5.704-dev",
+      "26.5.705-dev"
     ],
     "buildLinks": [
       {
-        "version": "26.4.100",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.100",
-        "channel": "production"
+        "version": "26.5.700-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.700-dev",
+        "channel": "dev"
       },
       {
-        "version": "26.4.101",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.101",
-        "channel": "production"
+        "version": "26.5.701-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.701-dev",
+        "channel": "dev"
       },
       {
-        "version": "26.4.102",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.102",
-        "channel": "production"
+        "version": "26.5.704-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.704-dev",
+        "channel": "dev"
       },
       {
-        "version": "26.4.103",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.103",
-        "channel": "production"
-      },
-      {
-        "version": "26.4.105",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.105",
-        "channel": "production"
-      },
-      {
-        "version": "26.4.107",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.107",
-        "channel": "production"
-      },
-      {
-        "version": "26.4.108",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.108",
-        "channel": "production"
-      },
-      {
-        "version": "26.4.109",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.109",
-        "channel": "production"
+        "version": "26.5.705-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.705-dev",
+        "channel": "dev"
       }
     ]
   },
   {
-    "version": "26.3.3100",
-    "tagName": "v26.3.3100",
+    "version": "26.5.702",
+    "tagName": "v26.5.702",
     "channel": "production",
-    "date": "2026-04-01T05:12:01Z",
-    "deck": "QR landing page and refined consent gates",
+    "date": "2026-05-07T11:07:08Z",
+    "deck": "Dense surfaces and mobile validation repairs plus feed pressure relief",
     "features": [
       {
-        "text": "Refined consent gates"
+        "text": "Mobile PWA polish balances the toolbar, tightens the menu and settings surfaces, moves support into a dedicated modal, and fixes reader spacing and fixed action menus"
       },
       {
-        "text": "Finalize qr landing page experience"
-      }
-    ],
-    "fixes": [],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.3100",
-    "prNumbers": [
-      150,
-      151
-    ],
-    "builds": [
-      "26.3.3100"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.3.3100",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.3100",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.3.2402",
-    "tagName": "v26.3.2402",
-    "channel": "production",
-    "date": "2026-03-25T04:11:35Z",
-    "deck": "Friends view and contacts sync, LinkedIn capture, and feed card and reader actions",
-    "features": [
-      {
-        "text": "Friends view and contacts sync"
+        "text": "Friends and Map views scale better with dense data through lighter graph avatars, stable marker data while moving, faster map count preparation, and new performance budgets"
       },
       {
-        "text": "LinkedIn capture"
-      },
-      {
-        "text": "Feed card and reader actions"
+        "text": "Google Drive sync is more resilient with safer cloud clients, upload retries, and better progress handling for larger local documents"
       }
     ],
     "fixes": [
       {
-        "text": "Filter polluted social feed items and add Facebook group filters"
-      }
-    ],
-    "followUps": [
-      {
-        "text": "Surface update download progress inside the Settings card"
-      }
-    ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.2402",
-    "prNumbers": [
-      131,
-      133,
-      145,
-      146,
-      147,
-      148
-    ],
-    "builds": [
-      "26.3.2400",
-      "26.3.2402"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.3.2400",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.2400",
-        "channel": "production"
+        "text": "Dense Map views now skip avatar image layers for large marker sets and hide grid and edge overlays while the map is moving, adding headroom for 1,600-author views"
       },
       {
-        "version": "26.3.2402",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.2402",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.3.1300",
-    "tagName": "v26.3.1300",
-    "channel": "production",
-    "date": "2026-03-13T14:44:55Z",
-    "deck": "Instagram and Facebook story scraping interleaved with feed scrolling",
-    "features": [
-      {
-        "text": "IG/FB story scraping interleaved with feed scrolling"
-      }
-    ],
-    "fixes": [],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1300",
-    "prNumbers": [
-      136
-    ],
-    "builds": [
-      "26.3.1300"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.3.1300",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1300",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.3.1200",
-    "tagName": "v26.3.1200",
-    "channel": "production",
-    "date": "2026-03-13T03:50:50Z",
-    "deck": "Daily changelog grouping and fB/IG scraper windows instead of moving them off-screen now stays out of the way",
-    "features": [
-      {
-        "text": "Group changelog cards by CalVer day"
-      }
-    ],
-    "fixes": [],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1200",
-    "prNumbers": [
-      143,
-      144
-    ],
-    "builds": [
-      "26.3.1200"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.3.1200",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1200",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.3.1101",
-    "tagName": "v26.3.1101",
-    "channel": "production",
-    "date": "2026-03-11T20:13:18Z",
-    "deck": "File logging and freeze guards",
-    "features": [
-      {
-        "text": "Structured file logging and freeze guards"
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Clean CI test failures and automate PWA release deployment"
-      }
-    ],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1101",
-    "prNumbers": [
-      141,
-      142
-    ],
-    "builds": [
-      "26.3.1100",
-      "26.3.1101"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.3.1100",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1100",
-        "channel": "production"
+        "text": "Freed Desktop rebuilds compacted feed documents to cut WebKit memory pressure"
       },
       {
-        "version": "26.3.1101",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1101",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.3.1002",
-    "tagName": "v26.3.1002",
-    "channel": "production",
-    "date": "2026-03-11T06:10:34Z",
-    "deck": "Dual column reader view, capture hardening, and platform-specific install cautions",
-    "features": [
-      {
-        "text": "Dual column reader view"
+        "text": "Release validation now keeps Friends graph resize, compact-card, pinch, and position checks stable across CI timing differences"
       },
       {
-        "text": "Platform-specific install cautions"
+        "text": "Freed Desktop trims Friends graph allocations and keeps dense Map rendering fast"
       },
       {
-        "text": "Capture hardening"
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Release build and type-safety cleanup"
+        "text": "Freed Desktop trims oversized WebKit caches before social scrapes"
       },
       {
         "text": "Sync and update reliability fixes"
@@ -1422,802 +2503,316 @@
         "text": "Reader, feed, and header polish"
       },
       {
-        "text": "Connect button to be enabled before clicking in X E2E test now waits for the correct ready state"
+        "text": "Test coverage and performance hardening"
       },
       {
-        "text": "Scraper window after FB scrape, stop stealing focus on IG scrape now stays out of the way"
-      },
-      {
-        "text": "E2E social capture tests and post-migration perf baselines"
-      },
-      {
-        "text": "Stop Automerge undefined writes from crashing RSS and X sync"
-      },
-      {
-        "text": "PWA UI polish -- header, settings, update check, X settings"
-      },
-      {
-        "text": "Fix OAuth redirect URI, Google Drive client secret, offline status, and diagnostics panel"
-      },
-      {
-        "text": "Opaque surface background on update toast now uses the correct path"
+        "text": "Release build and type-safety cleanup"
       }
     ],
     "followUps": [
       {
-        "text": "Release workflow and build-system work"
+        "text": "Freed Desktop keeps Friends release validation stable across virtualized sidebar remounts"
+      },
+      {
+        "text": "Freed Desktop keeps reader transitions cheaper and Friends performance gates focused on visible rendering work"
+      },
+      {
+        "text": "More accurate memory pressure and smoother large views"
+      },
+      {
+        "text": "Freed Desktop keeps large social views responsive"
+      },
+      {
+        "text": "Freed Desktop keeps WebKit memory maintenance ahead of scrapes"
+      },
+      {
+        "text": "Freed Desktop improves dense Map rendering and keeps Google sync on native requests"
+      },
+      {
+        "text": "Freed Desktop keeps display preference changes on the fast path and stabilizes Friends graph release checks"
       },
       {
         "text": "Reader, sidebar, and settings UX work"
       },
       {
-        "text": "Capture, login, and scraping platform work"
+        "text": "Release workflow and build-system work"
+      },
+      {
+        "text": "Testing, diagnostics, and developer tooling"
       },
       {
         "text": "Sync, cloud, and pairing infrastructure"
       },
       {
-        "text": "Testing, diagnostics, and developer tooling"
+        "text": "Capture, login, and scraping platform work"
       },
       {
         "text": "Content and documentation work"
-      },
-      {
-        "text": "Bookmarked items cannot be archived"
-      },
-      {
-        "text": "Archive toolbar with delete action and retention settings"
       }
     ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1002",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.702",
     "prNumbers": [
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12,
-      13,
-      16,
-      27,
-      31,
-      32,
-      34,
-      35,
-      36,
-      37,
-      38,
-      39,
-      40,
-      41,
-      42,
-      43,
-      44,
-      45,
-      46,
-      47,
-      48,
-      49,
-      50,
-      51,
-      52,
-      55,
-      56,
-      57,
-      58,
-      59,
-      71,
-      72,
-      73,
-      74,
-      75,
-      76,
-      77,
-      78,
-      79,
-      80,
-      81,
-      82,
-      83,
-      84,
-      85,
-      86,
-      87,
-      89,
-      90,
-      91,
-      92,
-      93,
-      94,
-      95,
-      96,
-      97,
-      98,
-      100,
-      101,
-      102,
-      103,
-      104,
-      105,
-      106,
-      107,
-      108,
-      109,
-      110,
-      111,
-      112,
-      113,
-      114,
-      115,
-      116,
-      117,
-      118,
-      119,
-      120,
-      121,
-      122,
-      123,
-      124,
-      125,
-      126,
-      127,
-      128,
-      129,
-      130,
-      132,
-      134,
-      135,
-      137,
-      138,
-      139,
-      140
+      508,
+      514
     ],
     "builds": [
-      "26.3.1000",
-      "26.3.1001",
-      "26.3.1002"
+      "26.5.633-dev",
+      "26.5.700-dev",
+      "26.5.702"
     ],
     "buildLinks": [
       {
-        "version": "26.3.1000",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1000",
-        "channel": "production"
+        "version": "26.5.633-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.633-dev",
+        "channel": "dev"
       },
       {
-        "version": "26.3.1001",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1001",
-        "channel": "production"
+        "version": "26.5.700-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.700-dev",
+        "channel": "dev"
       },
       {
-        "version": "26.3.1002",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1002",
+        "version": "26.5.702",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.702",
         "channel": "production"
       }
     ]
   },
   {
-    "version": "26.3.904",
-    "tagName": "v26.3.904",
-    "channel": "production",
-    "date": "2026-03-10T01:01:55Z",
-    "deck": "Changelog page, remove frosted glass, fix update banner, unused user-agent import from fb-capture.ts, and capture-x build step from release CI",
-    "features": [
-      {
-        "text": "Changelog page, remove frosted glass, fix update banner"
-      },
-      {
-        "text": "Remove unused user-agent import from fb-capture.ts"
-      },
-      {
-        "text": "Remove capture-x build step from release CI"
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Scraper window after FB scrape, stop stealing focus on IG scrape now stays out of the way"
-      }
-    ],
-    "followUps": [
-      {
-        "text": "Anti-detection hardening for social media capture"
-      },
-      {
-        "text": "Switch reqwest and tauri-plugin-updater to rustls-tls"
-      }
-    ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.904",
-    "prNumbers": [
-      118,
-      119,
-      120,
-      121,
-      122
-    ],
-    "builds": [
-      "26.3.903",
-      "26.3.904"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.3.903",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.903",
-        "channel": "production"
-      },
-      {
-        "version": "26.3.904",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.904",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.3.804",
-    "tagName": "v26.3.804",
-    "channel": "production",
-    "date": "2026-03-09T03:27:30Z",
-    "deck": "Sidebar purple dots, dev auto-seed, and social sample data and social engagement via outbox pattern (like, seen-sync, comment links)",
-    "features": [
-      {
-        "text": "Sidebar purple dots, dev auto-seed, and social sample data"
-      },
-      {
-        "text": "Social engagement via outbox pattern (like, seen-sync, comment links)"
-      }
-    ],
-    "fixes": [],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.804",
-    "prNumbers": [],
-    "builds": [
-      "26.3.804"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.3.804",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.804",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.3.703",
-    "tagName": "v26.3.703",
-    "channel": "production",
-    "date": "2026-03-08T05:30:11Z",
-    "deck": "Playwright e2e smoke test infrastructure for desktop, dual-column split view, and uI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts",
-    "features": [
-      {
-        "text": "Playwright e2e smoke test infrastructure for desktop"
-      },
-      {
-        "text": "UI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts"
-      },
-      {
-        "text": "Overhaul dual-column split view"
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Archive cache staleness + scroll-read visibility model"
-      },
-      {
-        "text": "Redundant data wrapper from TimelineResponse type removed"
-      }
-    ],
-    "followUps": [
-      {
-        "text": "X and Facebook scrapers with Tauri WebView capture"
-      },
-      {
-        "text": "Manual cookie entry with native X login window"
-      },
-      {
-        "text": "Sample data seeding + fix PWA build and Automerge worker"
-      }
-    ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.703",
-    "prNumbers": [
-      98,
-      102,
-      103,
-      104,
-      105,
-      106,
-      107,
-      108,
-      109,
-      110
-    ],
-    "builds": [
-      "26.3.702",
-      "26.3.703"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.3.702",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.702",
-        "channel": "production"
-      },
-      {
-        "version": "26.3.703",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.703",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.3.601",
-    "tagName": "v26.3.601",
-    "channel": "production",
-    "date": "2026-03-06T22:40:26Z",
-    "deck": "Fix focus mode showing raw HTML brackets from RSS feed descriptions and double-cast window through unknown to satisfy strict TS in mock files",
+    "version": "26.5.633-dev",
+    "tagName": "v26.5.633-dev",
+    "channel": "dev",
+    "date": "2026-05-07T07:30:07Z",
+    "deck": "Dense surfaces and mobile validation repairs",
     "features": [],
-    "fixes": [],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.601",
-    "prNumbers": [],
-    "builds": [
-      "26.3.601"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.3.601",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.601",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.3.504",
-    "tagName": "v26.3.504",
-    "channel": "production",
-    "date": "2026-03-05T18:19:48Z",
-    "deck": "Complete X/Twitter integration end-to-end, build out the archive system end-to-end, and universal full-text search across all sources",
-    "features": [
-      {
-        "text": "Complete X/Twitter integration end-to-end"
-      },
-      {
-        "text": "Command bar foundation with settings navigation and lower-contrast search"
-      },
-      {
-        "text": "Mark items as read when scrolled past in the feed list"
-      }
-    ],
     "fixes": [
       {
-        "text": "Stop Automerge undefined writes from crashing RSS and X sync"
+        "text": "Friends back-navigation release validation now clicks the visible back button without losing it to sidebar remounts, unblocking the replacement dev build"
       },
       {
-        "text": "Align sidebar section headers to same height as items"
+        "text": "Reader open now skips compact rail wrapper allocation and full item-id joins, keeping large reader transitions on the cheaper read-on-scroll path"
       },
       {
-        "text": "PWA UI polish -- header, settings, update check, X settings"
+        "text": "Friends performance validation now measures visible graph mount separately from display preference persistence, so release gates catch rendering regressions instead of background save timing"
       },
       {
-        "text": "Increase header toolbar gap from 8px to 24px"
+        "text": "Friends back-navigation validation now selects the detail target after the virtualized overview sidebar is visible, avoiding row-remount races while preserving the selected detail and back path coverage"
       },
       {
-        "text": "Uniform header spacing and hide command palette on mobile"
+        "text": "Dense Map views now skip avatar image layers for large marker sets and hide grid and edge overlays while the map is moving, adding headroom for 1,600-author views"
       },
       {
-        "text": "Correct CSS @import order, hide swipe indicator at rest, polish search hover"
+        "text": "Freed Desktop rebuilds compacted feed documents to cut WebKit memory pressure"
       },
       {
-        "text": "Trigger update check when button enters viewport, not scrollspy threshold"
+        "text": "Feed-card regression coverage now protects that reader-only media policy so release validation catches accidental inline media work"
       },
       {
-        "text": "Init flash and reduce desktop startup serialization overhead removed"
+        "text": "Freed Desktop trims Friends graph allocations and keeps dense Map rendering fast"
       },
       {
-        "text": "Import invoke/isTauri from @tauri-apps/api/core instead of window.__TAURI__"
+        "text": "Freed Desktop trims oversized WebKit caches before social scrapes"
       },
       {
-        "text": "Auto-update service worker and add purple F favicon"
+        "text": "Reader, feed, and header polish"
       },
       {
-        "text": "Mobile feed to window scroll for Safari address bar collapse now uses the updated transport"
+        "text": "Release validation now resizes the Friends detail rail through the real browser pointer path, and the resize handle is visible and cleaned up across pointerup, cancel, blur, and unmount"
       },
       {
-        "text": "Highlight Updates nav item on individual post pages"
-      },
-      {
-        "text": "Open all How You Can Help links in new tab"
-      },
-      {
-        "text": "Never assign undefined into Automerge documents"
+        "text": "Sync and update reliability fixes"
       }
     ],
     "followUps": [
       {
-        "text": "Fix feed reader lockup and move PWA Automerge to a Web Worker"
+        "text": "Freed Desktop keeps Friends release validation stable across virtualized sidebar remounts"
       },
       {
-        "text": "PWA X settings page and fix duplicate search clear button"
+        "text": "Freed Desktop keeps reader transitions cheaper and Friends performance gates focused on visible rendering work"
       },
       {
-        "text": "Instant app launch with deferred migrations and skeleton loading"
+        "text": "More accurate memory pressure and smoother large views"
       },
       {
-        "text": "Enhance Ulysses Mode and Manifesto content for clarity and impact"
+        "text": "Freed Desktop keeps large social views responsive"
       },
       {
-        "text": "Unified two-column Settings dialog with scrollspy and I/O sections"
+        "text": "Freed Desktop keeps WebKit memory maintenance ahead of scrapes"
       },
       {
-        "text": "Consolidate global CSS into packages/UI/src/index.css"
+        "text": "Freed Desktop keeps Friends graph pinch, compact-card, and promotion checks stable for release validation"
       },
       {
-        "text": "Lockfile after installing plugin-fs and plugin-store"
+        "text": "Freed Desktop improves dense Map rendering and keeps Google sync on native requests"
       },
       {
-        "text": "Saved content modal, folder import, phased progress, unit tests"
+        "text": "Freed Desktop keeps display preference changes on the fast path and stabilizes Friends graph release checks"
       },
       {
-        "text": "Phase 8 friends CRM + social graph scaffolding"
+        "text": "Freed Desktop stabilizes Friends detail rail resizing before the replacement dev build ships"
       },
       {
-        "text": "Tighten introducing-freed post, cut technical architecture section"
+        "text": "Reader, sidebar, and settings UX work"
       },
       {
-        "text": "Fix UI freeze when entering reading mode"
+        "text": "Freed Desktop virtualizes large settings lists and exports the shared date-format helper used by dev release builds"
       },
       {
-        "text": "Move X connection to Settings > Sources > X page"
-      },
-      {
-        "text": "Hardcoded local path from .cargo/config.toml removed"
+        "text": "Recycle blocked scraper windows"
       }
     ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.504",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.633-dev",
     "prNumbers": [
-      48,
-      49,
-      50,
-      51,
-      52,
-      55,
-      56,
-      57,
-      58,
-      59,
-      71,
-      72,
-      73,
-      74,
-      75,
-      76,
-      77,
-      78,
-      79,
-      80,
-      81,
-      82,
-      83,
-      84,
-      85,
-      86,
-      87,
-      89,
-      90,
-      91,
-      92,
-      93,
-      94
+      458,
+      459,
+      460,
+      461,
+      462,
+      463,
+      464,
+      465,
+      466,
+      467,
+      468,
+      469,
+      471,
+      472,
+      473,
+      475,
+      476,
+      478,
+      480,
+      482,
+      483,
+      484,
+      485,
+      486,
+      487,
+      488,
+      489,
+      490,
+      491,
+      492,
+      494,
+      495,
+      496,
+      498,
+      500,
+      502,
+      504,
+      506,
+      509
     ],
     "builds": [
-      "26.3.502",
-      "26.3.503",
-      "26.3.504"
+      "26.5.600-dev",
+      "26.5.601-dev",
+      "26.5.602-dev",
+      "26.5.603-dev",
+      "26.5.604-dev",
+      "26.5.605-dev",
+      "26.5.607-dev",
+      "26.5.608-dev",
+      "26.5.609-dev",
+      "26.5.611-dev",
+      "26.5.613-dev",
+      "26.5.614-dev",
+      "26.5.615-dev",
+      "26.5.618-dev",
+      "26.5.619-dev",
+      "26.5.620-dev",
+      "26.5.621-dev",
+      "26.5.633-dev"
     ],
     "buildLinks": [
       {
-        "version": "26.3.502",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.502",
-        "channel": "production"
+        "version": "26.5.600-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.600-dev",
+        "channel": "dev"
       },
       {
-        "version": "26.3.503",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.503",
-        "channel": "production"
+        "version": "26.5.601-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.601-dev",
+        "channel": "dev"
       },
       {
-        "version": "26.3.504",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.504",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.3.303",
-    "tagName": "v26.3.303",
-    "channel": "production",
-    "date": "2026-03-04T00:57:10Z",
-    "deck": "Privacy policy page, heal untitled feed titles from live XML on sync, and syncConnectDialog UX",
-    "features": [
-      {
-        "text": "Privacy policy page"
+        "version": "26.5.602-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.602-dev",
+        "channel": "dev"
       },
       {
-        "text": "Heal untitled feed titles from live XML on sync"
+        "version": "26.5.603-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.603-dev",
+        "channel": "dev"
       },
       {
-        "text": "Subscribe to RSS feeds from the PWA with deferred metadata"
-      }
-    ],
-    "fixes": [],
-    "followUps": [
-      {
-        "text": "Startup feed-name healing, toolbar height, window drag"
+        "version": "26.5.604-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.604-dev",
+        "channel": "dev"
       },
       {
-        "text": "Fix OAuth redirect URI, Google Drive client secret, and offline status"
+        "version": "26.5.605-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.605-dev",
+        "channel": "dev"
       },
       {
-        "text": "Rewrite Google OAuth proxy as Node.js Lambda"
+        "version": "26.5.607-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.607-dev",
+        "channel": "dev"
       },
       {
-        "text": "Locale-aware unread count formatting and number formatting rule"
+        "version": "26.5.608-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.608-dev",
+        "channel": "dev"
       },
       {
-        "text": "OAuth client IDs to release workflow, adjust traffic light position"
+        "version": "26.5.609-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.609-dev",
+        "channel": "dev"
       },
       {
-        "text": "Bulk unsubscribe and factory reset features"
-      }
-    ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.303",
-    "prNumbers": [
-      31,
-      32,
-      34,
-      35,
-      36,
-      37,
-      38,
-      39
-    ],
-    "builds": [
-      "26.3.300",
-      "26.3.302",
-      "26.3.303"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.3.300",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.300",
-        "channel": "production"
+        "version": "26.5.611-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.611-dev",
+        "channel": "dev"
       },
       {
-        "version": "26.3.302",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.302",
-        "channel": "production"
+        "version": "26.5.613-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.613-dev",
+        "channel": "dev"
       },
       {
-        "version": "26.3.303",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.303",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.3.200",
-    "tagName": "v26.3.200",
-    "channel": "production",
-    "date": "2026-03-03T15:54:05Z",
-    "deck": "Sync section explains user-owned cloud storage + passphrase encryption and mDNS discovery, cloud file sync + desktop cloud sync",
-    "features": [
-      {
-        "text": "Sync section explains user-owned cloud storage + passphrase encryption"
+        "version": "26.5.614-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.614-dev",
+        "channel": "dev"
       },
       {
-        "text": "MDNS discovery, cloud file sync + desktop cloud sync"
-      }
-    ],
-    "fixes": [],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.200",
-    "prNumbers": [],
-    "builds": [
-      "26.3.200"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.3.200",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.200",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.3.104",
-    "tagName": "v26.3.104",
-    "channel": "production",
-    "date": "2026-03-02T05:30:02Z",
-    "deck": "Per-feed context menu with sync status, rename, and unsubscribe, system, CalVer DDBUILD, UI polish, and fix tab strip alignment in AddFeedDialog",
-    "features": [
-      {
-        "text": "Per-feed context menu with sync status, rename, and unsubscribe"
+        "version": "26.5.615-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.615-dev",
+        "channel": "dev"
       },
       {
-        "text": "Sync button opens status popover instead of immediate refresh"
+        "version": "26.5.618-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.618-dev",
+        "channel": "dev"
       },
       {
-        "text": "UI polish , settings cleanup, sync unification, sidebar refinements"
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Logo in desktop mobile-layout to clear macOS traffic lights now stays out of the way"
+        "version": "26.5.619-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.619-dev",
+        "channel": "dev"
       },
       {
-        "text": "Add top padding to first card in feed list"
+        "version": "26.5.620-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.620-dev",
+        "channel": "dev"
       },
       {
-        "text": "Reader toolbar full-width layout and macOS inset constant"
+        "version": "26.5.621-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.621-dev",
+        "channel": "dev"
       },
       {
-        "text": "RSS feed persistence, platform capability honesty, desktop UI polish"
-      },
-      {
-        "text": "Fix hero vertical centering and desktop text alignment"
-      },
-      {
-        "text": "Fix iOS keyboard occlusion and bottom viewport gap"
-      },
-      {
-        "text": "IPhone safe-area gaps, desktop sync to settings, traffic light alignment"
-      },
-      {
-        "text": "Auto-publish release after all builds complete"
-      },
-      {
-        "text": "Full iPhone mobile compatibility"
-      },
-      {
-        "text": "Read version from package.json instead of npm_package_version"
-      },
-      {
-        "text": "Newsletter modal subscribe button scrunched on mobile"
-      },
-      {
-        "text": "Case/esac instead of bash 4 associative arrays now uses the correct path"
-      },
-      {
-        "text": "Include PWA sources in desktop Tailwind content scan"
-      },
-      {
-        "text": "YY.M.D CalVer to stay within MSI 255 major version limit now uses the correct path"
-      }
-    ],
-    "followUps": [
-      {
-        "text": "Rename sidebar-scroll to minimal-scroll, apply to feed content area"
-      },
-      {
-        "text": "Lazy-load images, drop backdrop-filter blur, add scroll gutter"
-      },
-      {
-        "text": "Move X connect UI from sidebar into feed blank state"
-      },
-      {
-        "text": "Eliminate redundant re-renders on feed list scroll"
-      },
-      {
-        "text": "UI overhaul , unified header, draggable sidebar, modal consistency"
-      },
-      {
-        "text": "Early-build disclaimer and clarify app vs desktop roles"
-      },
-      {
-        "text": "Release.sh for CalVer and PWA version lockstep"
-      },
-      {
-        "text": "PWA and Desktop UI components via PlatformContext"
-      },
-      {
-        "text": "Deep-linkable /get modal, restore tooltip, disable subscribe"
-      },
-      {
-        "text": "Redesign Get Freed modal with app links and downloads"
-      }
-    ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.104",
-    "prNumbers": [
-      4,
-      5
-    ],
-    "builds": [
-      "26.3.100",
-      "26.3.101",
-      "26.3.102",
-      "26.3.103",
-      "26.3.104"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.3.100",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.100",
-        "channel": "production"
-      },
-      {
-        "version": "26.3.101",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.101",
-        "channel": "production"
-      },
-      {
-        "version": "26.3.102",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.102",
-        "channel": "production"
-      },
-      {
-        "version": "26.3.103",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.103",
-        "channel": "production"
-      },
-      {
-        "version": "26.3.104",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.104",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "0.2.0",
-    "tagName": "v0.2.0",
-    "channel": "production",
-    "date": "2026-03-02T01:16:53Z",
-    "deck": "@freed/capture-facebook and @freed/capture-instagram packages, sync, cloud, and pairing infrastructure, and content and documentation work",
-    "features": [
-      {
-        "text": "@freed/capture-facebook and @freed/capture-instagram packages"
-      },
-      {
-        "text": "Mark all as read + unread count in desktop header"
-      },
-      {
-        "text": "Per-feed RSS sidebar with unread counts in desktop app"
-      }
-    ],
-    "fixes": [
-      {
-        "text": "Force Automerge base64 entry and use real signing password"
-      },
-      {
-        "text": "Skip Automerge WASM patch and fix signing password"
-      },
-      {
-        "text": "Release build and type-safety cleanup"
-      },
-      {
-        "text": "Update button text and comment out motion paragraph"
-      },
-      {
-        "text": "Sync pipeline, X capture wiring, save quick action on cards"
-      },
-      {
-        "text": "Honest copy and interaction affordances"
-      },
-      {
-        "text": "Update descriptions in HowItWorks component for clarity"
-      }
-    ],
-    "followUps": [
-      {
-        "text": "Testing, diagnostics, and developer tooling"
-      }
-    ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v0.2.0",
-    "prNumbers": [],
-    "builds": [
-      "0.2.0"
-    ],
-    "buildLinks": [
-      {
-        "version": "0.2.0",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v0.2.0",
-        "channel": "production"
+        "version": "26.5.633-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.633-dev",
+        "channel": "dev"
       }
     ]
   }
