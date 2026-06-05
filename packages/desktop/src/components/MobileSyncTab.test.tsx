@@ -130,7 +130,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
         dropbox: { status: "idle" },
         gdrive: {
           status: "connected",
-          stage: "idle",
+          stage: "upload",
           error: "Freed blocked a sync merge because it would remove too much feed history.",
           statusMessage: "Watching for local document changes.",
         },
@@ -148,6 +148,8 @@ describe("MobileSyncTab cloud diagnostics", () => {
 
     expect(recovery?.textContent).toContain("Choose which copy should win.");
     expect(recovery?.textContent).toContain("Keep this device replaces the cloud backup.");
+    expect(container.textContent).toContain("Upload has not completed because sync needs attention.");
+    expect(container.textContent).not.toContain("Uploading now.");
     expect(keepLocal).toBeInstanceOf(HTMLButtonElement);
     expect(keepCloud).toBeInstanceOf(HTMLButtonElement);
 
@@ -198,6 +200,9 @@ describe("MobileSyncTab cloud diagnostics", () => {
       await Promise.resolve();
     });
 
+    expect(container.querySelector("[data-testid='cloud-sync-keep-local-spinner']")).toBeTruthy();
+    expect(keepLocal?.disabled).toBe(true);
+
     await act(async () => {
       useDebugStore.setState({
         cloudProviders: {
@@ -216,9 +221,11 @@ describe("MobileSyncTab cloud diagnostics", () => {
 
     const recovery = container.querySelector("[data-testid='cloud-sync-conflict-recovery']");
     const syncNow = container.querySelector<HTMLButtonElement>("[data-testid='cloud-sync-now-button']");
+    const localSpinner = container.querySelector("[data-testid='cloud-sync-keep-local-spinner']");
 
     expect(recovery?.textContent).toContain("Choose which copy should win.");
     expect(recovery?.textContent).toContain("Replacing...");
+    expect(localSpinner).toBeTruthy();
     expect(syncNow?.disabled).toBe(true);
 
     await act(async () => {

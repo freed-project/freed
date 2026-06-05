@@ -184,6 +184,38 @@ export async function gdriveUploadSafe(
   throw new Error("GDrive upload failed after max retries (concurrent write conflict)");
 }
 
+/**
+ * Authoritative upload used only after the user chooses this device as the
+ * conflict winner. Normal uploads must use gdriveUploadSafe so concurrent
+ * writes still merge. This path intentionally does not download or merge the
+ * remote binary because the user has already rejected that cloud copy.
+ */
+export async function gdriveUploadReplace(
+  token: string,
+  localBinary: Uint8Array,
+  googleFetch: GoogleDriveFetch = fetch,
+): Promise<CloudUploadResult> {
+  const fileId = await ensureFile(token, undefined, googleFetch);
+  const res = await googleFetch(`${GDRIVE_UPLOAD}/${fileId}?uploadType=media`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/octet-stream",
+    },
+    body: bytesToUploadBody(localBinary),
+  });
+
+  if (!res.ok) throw await gdriveError("GDrive replace failed", res);
+
+  return {
+    fileId,
+    uploadedBinary: localBinary,
+    uploadedBytes: localBinary.byteLength,
+    remoteBytes: 0,
+    mergedRemote: false,
+  };
+}
+
 export async function gdriveDownloadLatest(
   token: string,
   signal?: AbortSignal,

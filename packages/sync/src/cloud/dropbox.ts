@@ -97,6 +97,30 @@ export async function dropboxUploadSafe(token: string, localBinary: Uint8Array):
   throw new Error("Dropbox upload failed after max retries (concurrent write conflict)");
 }
 
+/**
+ * Authoritative upload used only after the user chooses this device as the
+ * conflict winner. Normal uploads must use dropboxUploadSafe so concurrent
+ * writes still merge.
+ */
+export async function dropboxUploadReplace(token: string, localBinary: Uint8Array): Promise<void> {
+  const res = await fetch(DBX_UPLOAD, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/octet-stream",
+      "Dropbox-API-Arg": JSON.stringify({
+        path: DBX_PATH,
+        mode: { ".tag": "overwrite" },
+      }),
+    },
+    body: localBinary as BodyInit,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Dropbox replace failed: ${res.status}`);
+  }
+}
+
 export async function dropboxDownloadLatest(
   token: string,
   signal?: AbortSignal,
