@@ -22,10 +22,13 @@ Create a product worktree branch from the latest remote `dev`, implement enough 
    - When you are spinning up multiple speculative threads at once, prefer `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --swarm --target <desktop|pwa|shared>` so bootstrap stays deferred until that thread actually needs verification or a preview.
 6. If the worktree was created with deferred bootstrap on purpose, recover with `./scripts/worktree-bootstrap.sh <worktree> --target <desktop|pwa|shared>`.
 7. Implement a runnable slice of the requested change.
-8. Launch the lightest useful local preview for the changed surface as soon as the branch can run:
-   - Default to `./scripts/worktree-preview.sh pwa` for normal product work, shared behavior, sync flows, reader UI, and most Desktop feature work.
-   - Use `./scripts/worktree-preview.sh desktop` only when you need the Desktop shell running in the mocked browser preview.
+8. Launch the lightest useful local preview for the changed surface as soon as the branch can run. Always start previews on an explicit fresh port so parallel agent threads do not reuse or stomp each other's previews.
+   - Compute a port first with `PORT=$(node scripts/lib/find-free-port.mjs <default-port>)`, then pass `--port "$PORT"` to `./scripts/worktree-preview.sh`.
+   - Use default port seed `1421` for PWA, `1422` for mocked Desktop, and `3000` for website only when this skill is intentionally routing a product-adjacent website check.
+   - Default to `PORT=$(node scripts/lib/find-free-port.mjs 1421) && ./scripts/worktree-preview.sh pwa --port "$PORT"` for normal product work, shared behavior, sync flows, reader UI, and most Desktop feature work.
+   - Use `PORT=$(node scripts/lib/find-free-port.mjs 1422) && ./scripts/worktree-preview.sh desktop --port "$PORT"` only when you need the Desktop shell running in the mocked browser preview.
    - Use `./scripts/worktree-preview.sh desktop --native` only when the change depends on real Tauri behavior such as native windowing, tray behavior, updater wiring, filesystem or process plugins, native OAuth windows, or Rust-side integrations.
+   - Do not run `./scripts/dev-session-clean.sh` just to relaunch a preview. That kills tracked previews for other work unless scoped, which is how parallel threads end up doing slapstick with ports.
    - When native Desktop preview is running, report the preview label so parallel native windows can be matched to the worktree and thread that launched them.
 9. Iterate against the preview. Use focused checks during iteration only when they answer an immediate implementation question, such as a targeted unit test, Desktop e2e test, browser check, or preview compile failure.
    - For queued UI polish, keep stacking the user's small visual fixes in the same worktree and PR.
@@ -42,7 +45,11 @@ Create a product worktree branch from the latest remote `dev`, implement enough 
    - Do not simplify test suites blindly. Profile specific slow commands first, then trim redundant coverage with evidence.
 12. Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run commands from the workspace directory itself, and when a hoisted binary is needed, prefix `PATH` with `<worktree>/node_modules/.bin`.
 13. Browser tooling is opt-in only. Do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging.
-14. When browser tooling was needed, clean the session before closeout with `./scripts/dev-session-clean.sh`.
+14. When browser tooling was needed, clean browser automation only after preserving any preview the user still needs. Do not run broad cleanup while the local preview should remain open.
+   - If cleanup is needed before PR merge or thread archive, scope it to this worktree with `./scripts/dev-session-clean.sh --worktree <worktree>`.
+   - Before reporting final status, list this thread's preview with `./scripts/worktree-processes.sh list --worktree <worktree>` so the URL and owner are clear.
+   - When the PR is merged, the worktree is removed, or the thread is archived, stop only this thread's preview with `./scripts/worktree-processes.sh stop --worktree <worktree> --target <pwa|desktop>`.
+   - Never stop previews from other worktrees unless the user explicitly asks for global cleanup.
 15. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
    - If the branch intentionally adds new files, stage them yourself first or re-run with `--include-untracked`.
 16. Confirm the branch is pushed to `origin` and the PR targeting `dev` stays in draft state. Include the local preview URL or native preview label in the closeout.

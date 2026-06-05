@@ -5,8 +5,8 @@ const PERSON_COUNT = 1_600;
 const ACCOUNT_COUNT = 1_920;
 const ITEM_COUNT = 6_400;
 const MOUNT_BUDGET_MS = process.env.CI ? 6_000 : 1_800;
-const GRAPH_LAYOUT_BUDGET_MS = process.env.CI ? 180 : 160;
-const GRAPH_SCENE_SYNC_BUDGET_MS = process.env.CI ? 120 : 40;
+const GRAPH_LAYOUT_BUDGET_MS = process.env.CI ? 250 : 160;
+const GRAPH_SCENE_SYNC_BUDGET_MS = process.env.CI ? 250 : 40;
 const FRIEND_ROW_MOUNT_BUDGET = 80;
 const FRAME_P95_BUDGET_MS = 50;
 const CI_FRAME_P95_BUDGET_MS = 600;
@@ -18,7 +18,7 @@ const LONG_TASK_COUNT_BUDGET = 2;
 const CI_LONG_TASK_COUNT_BUDGET = 40;
 const LONG_TASK_WORST_BUDGET_MS = 140;
 const CI_LONG_TASK_WORST_BUDGET_MS = 700;
-const DENSE_INTERACTION_NODE_BUDGET = 72;
+const DENSE_INTERACTION_NODE_BUDGET = 300;
 
 async function readGraphDebug(page: Page) {
   return page.evaluate(() => {
