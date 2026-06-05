@@ -327,9 +327,27 @@ const cloudTokenRefreshes = new Map<CloudProvider, Promise<string | null>>();
 const cloudAuthFailureRefreshes = new Map<CloudProvider, number>();
 const cloudUploadDeferredAttempts = new Map<CloudProvider, number>();
 const cloudInitialDownloadDeferredAttempts = new Map<CloudProvider, number>();
+const blockedDestructiveMergeProviders = new Map<CloudProvider, string>();
 
 function describeSyncError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isDestructiveMergeErrorMessage(message: string): boolean {
+  return message.includes("blocked a sync merge");
+}
+
+function preserveDestructiveMergeBlock(provider: CloudProvider): boolean {
+  const message = blockedDestructiveMergeProviders.get(provider);
+  if (!message) return false;
+  updateCloudProvider(provider, {
+    status: "error",
+    stage: "idle",
+    error: message,
+    statusMessage: message,
+    pendingReason: "Choose which copy should win before cloud sync retries.",
+  });
+  return true;
 }
 
 type CloudStage = "auth" | "download" | "merge" | "poll" | "upload" | "idle";
@@ -417,12 +435,18 @@ function markCloudSuccess(
 
 function markCloudError(provider: CloudProvider, stage: "auth" | "download" | "merge" | "poll" | "upload", error: unknown): void {
   const message = describeSyncError(error);
+  const destructiveMergeBlocked = isDestructiveMergeErrorMessage(message);
+  if (destructiveMergeBlocked) {
+    blockedDestructiveMergeProviders.set(provider, message);
+  }
   updateCloudProvider(provider, {
     status: "error",
     stage,
     error: message,
     statusMessage: message,
-    pendingReason: "Resolve this error, then reconnect or run Sync now.",
+    pendingReason: destructiveMergeBlocked
+      ? "Choose which copy should win before cloud sync retries."
+      : "Resolve this error, then reconnect or run Sync now.",
     lastErrorAt: Date.now(),
   });
   recordCloudStep(provider, "error", stage, message);
@@ -812,6 +836,7 @@ export function clearCloudProvider(provider: CloudProvider): void {
   localStorage.removeItem(CLOUD_TOKEN_KEY(provider));
   localStorage.removeItem(CLOUD_TOKEN_META_KEY(provider));
   cloudAuthFailureRefreshes.delete(provider);
+  blockedDestructiveMergeProviders.delete(provider);
   stopCloudSync(provider);
 }
 
@@ -1168,6 +1193,8 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
     }
   }
 
+  if (preserveDestructiveMergeBlock(provider)) return;
+
   const onRemoteChange = async (binary: Uint8Array) => {
     try {
       markCloudAttempt(provider, "merge");
@@ -1350,6 +1377,7 @@ export async function resolveCloudSyncConflict(
   const token = await getValidCloudToken(provider);
   if (!token) throw new Error("Cloud token missing. Reconnect the provider.");
 
+  blockedDestructiveMergeProviders.delete(provider);
   stopCloudSync(provider);
   updateCloudProvider(provider, {
     status: "connected",
@@ -1499,6 +1527,8 @@ async function performCloudUpload(provider: CloudProvider, token?: string): Prom
  * rapid edits.
  */
 export function scheduleCloudUpload(provider: CloudProvider, token?: string): void {
+  if (preserveDestructiveMergeBlock(provider)) return;
+
   const existing = uploadTimers.get(provider);
   if (existing) clearTimeout(existing);
   updateCloudProvider(provider, {
@@ -1563,6 +1593,10 @@ export function scheduleCloudUpload(provider: CloudProvider, token?: string): vo
 
 /** Run an immediate cloud sync pass without waiting for the debounce timer. */
 export async function syncCloudProviderNow(provider: CloudProvider): Promise<void> {
+  if (preserveDestructiveMergeBlock(provider)) {
+    throw new Error("Choose which copy should win before cloud sync retries.");
+  }
+
   const token = await getValidCloudToken(provider);
   if (!token) throw new Error("Cloud token missing. Reconnect the provider.");
 

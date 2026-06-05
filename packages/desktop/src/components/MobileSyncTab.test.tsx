@@ -167,4 +167,64 @@ describe("MobileSyncTab cloud diagnostics", () => {
     expect(mocks.resolveCloudSyncConflict).toHaveBeenCalledWith("gdrive", "cloud");
     confirmMock.mockRestore();
   });
+
+  it("keeps the destructive merge recovery visible while a winner is applying", async () => {
+    let finishRecovery!: () => void;
+    mocks.resolveCloudSyncConflict.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        finishRecovery = resolve;
+      }),
+    );
+    useDebugStore.setState({
+      cloudProviders: {
+        dropbox: { status: "idle" },
+        gdrive: {
+          status: "connected",
+          stage: "idle",
+          error: "Freed blocked a sync merge because it would remove too much feed history.",
+          statusMessage: "Watching for local document changes.",
+        },
+      },
+    });
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    await act(async () => {
+      root.render(<MobileSyncTab />);
+    });
+
+    const keepLocal = container.querySelector<HTMLButtonElement>("[data-testid='cloud-sync-keep-local-button']");
+    await act(async () => {
+      keepLocal?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      useDebugStore.setState({
+        cloudProviders: {
+          dropbox: { status: "idle" },
+          gdrive: {
+            status: "connected",
+            stage: "upload",
+            statusMessage: "Replacing the cloud backup with this device.",
+            pendingReason: "Applying the selected sync recovery path.",
+            error: undefined,
+          },
+        },
+      });
+      await Promise.resolve();
+    });
+
+    const recovery = container.querySelector("[data-testid='cloud-sync-conflict-recovery']");
+    const syncNow = container.querySelector<HTMLButtonElement>("[data-testid='cloud-sync-now-button']");
+
+    expect(recovery?.textContent).toContain("Choose which copy should win.");
+    expect(recovery?.textContent).toContain("Replacing...");
+    expect(syncNow?.disabled).toBe(true);
+
+    await act(async () => {
+      finishRecovery();
+      await Promise.resolve();
+    });
+    confirmMock.mockRestore();
+  });
 });

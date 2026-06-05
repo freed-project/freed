@@ -192,7 +192,7 @@ export function MobileSyncTab() {
   const isResolvingConflict = resolvingConflictWinner !== null;
   const uploadExplanation = describeUploadGap(activeCloudState ?? null);
   const diagnosticError = activeCloudState?.error ?? manualSyncError;
-  const showConflictRecovery = activeProvider !== null && isDestructiveMergeWarning(diagnosticError);
+  const showConflictRecovery = activeProvider !== null && (isResolvingConflict || isDestructiveMergeWarning(diagnosticError));
 
   const handleManualCloudSync = useCallback(async () => {
     if (!activeProvider) return;
@@ -288,7 +288,7 @@ export function MobileSyncTab() {
                   type="button"
                   data-testid="cloud-sync-now-button"
                   onClick={handleManualCloudSync}
-                  disabled={!activeProvider || isManualSyncing || isResolvingConflict}
+                  disabled={!activeProvider || isManualSyncing || isResolvingConflict || showConflictRecovery}
                   className="btn-secondary rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
                 >
                   {isManualSyncing ? "Syncing..." : "Sync now"}

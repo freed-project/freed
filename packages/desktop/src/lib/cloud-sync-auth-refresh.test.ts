@@ -391,6 +391,55 @@ describe("desktop cloud sync auth refresh", () => {
     }));
   });
 
+  it("pins a destructive merge recovery instead of retrying and hiding the choice", async () => {
+    const destructiveMergeMessage =
+      "Freed blocked a sync merge because it would remove too much feed history.";
+    const {
+      resolveCloudSyncConflict,
+      scheduleCloudUpload,
+      storeCloudToken,
+      syncCloudProviderNow,
+      stopAllCloudSyncs,
+    } = await import("./sync");
+    storeCloudToken("gdrive", {
+      accessToken: "valid-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 3_600_000,
+    });
+    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveUploadSafeMock.mockRejectedValueOnce(new Error(destructiveMergeMessage));
+
+    await expect(syncCloudProviderNow("gdrive")).rejects.toThrow(/blocked a sync merge/);
+    expect(gdriveUploadSafeMock).toHaveBeenCalledTimes(1);
+
+    updateCloudProviderMock.mockClear();
+    scheduleCloudUpload("gdrive");
+
+    expect(gdriveUploadSafeMock).toHaveBeenCalledTimes(1);
+    expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      error: destructiveMergeMessage,
+      pendingReason: "Choose which copy should win before cloud sync retries.",
+      status: "error",
+    }));
+
+    gdriveUploadSafeMock.mockResolvedValueOnce({
+      fileId: "file-1",
+      uploadedBinary: new Uint8Array([1, 2, 3]),
+      uploadedBytes: 3,
+      remoteBytes: 0,
+      mergedRemote: false,
+    });
+
+    await resolveCloudSyncConflict("gdrive", "local");
+    stopAllCloudSyncs();
+
+    expect(gdriveDeleteFileMock).toHaveBeenCalledWith("valid-access-token", undefined);
+    expect(gdriveUploadSafeMock).toHaveBeenCalledTimes(2);
+    expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      statusMessage: "This device replaced the cloud backup.",
+    }));
+  });
+
   it("resolves a destructive merge by making the cloud backup replace this device", async () => {
     const remote = new Uint8Array([9, 8, 7]);
     const { resolveCloudSyncConflict, storeCloudToken, stopAllCloudSyncs } = await import("./sync");
