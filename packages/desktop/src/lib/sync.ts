@@ -11,10 +11,12 @@ import { listen } from "@tauri-apps/api/event";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import {
   gdriveUploadSafe,
+  gdriveUploadReplace,
   gdriveStartPollLoop,
   gdriveDownloadLatest,
   gdriveDeleteFile,
   dropboxUploadSafe,
+  dropboxUploadReplace,
   dropboxStartLongpollLoop,
   dropboxDownloadLatest,
   dropboxDeleteFile,
@@ -312,6 +314,7 @@ const UPLOAD_DEFER_BACKOFF_MAX_MS = 120_000;
 const UPLOAD_ACTIVE_JOB_WAIT_MS = 30_000;
 const UPLOAD_ACTIVE_JOB_RETRY_MS = 5_000;
 const UPLOAD_WAIT_FOR_ACTIVE_JOB_KINDS = ["outbox", "social-scrape"] as const satisfies readonly BackgroundJobKind[];
+const CONFLICT_RECOVERY_ACTIVE_JOB_WAIT_MS = 120_000;
 const INITIAL_DOWNLOAD_DEFER_BACKOFF_BASE_MS = 15_000;
 const INITIAL_DOWNLOAD_DEFER_BACKOFF_MAX_MS = 180_000;
 const TOKEN_REFRESH_SKEW_MS = 60_000;
@@ -441,7 +444,7 @@ function markCloudError(provider: CloudProvider, stage: "auth" | "download" | "m
   }
   updateCloudProvider(provider, {
     status: "error",
-    stage,
+    stage: destructiveMergeBlocked ? "idle" : stage,
     error: message,
     statusMessage: message,
     pendingReason: destructiveMergeBlocked
@@ -1377,6 +1380,7 @@ export async function resolveCloudSyncConflict(
   const token = await getValidCloudToken(provider);
   if (!token) throw new Error("Cloud token missing. Reconnect the provider.");
 
+  const blockedMergeMessage = blockedDestructiveMergeProviders.get(provider);
   blockedDestructiveMergeProviders.delete(provider);
   stopCloudSync(provider);
   updateCloudProvider(provider, {
@@ -1403,11 +1407,9 @@ export async function resolveCloudSyncConflict(
         kind: "cloud-sync",
         source: `cloud:${provider}:conflict-local-wins`,
         timeoutMs: 180_000,
-        waitForActiveJobMs: UPLOAD_ACTIVE_JOB_WAIT_MS,
-        waitForActiveJobKinds: UPLOAD_WAIT_FOR_ACTIVE_JOB_KINDS,
+        waitForActiveJobMs: CONFLICT_RECOVERY_ACTIVE_JOB_WAIT_MS,
         run: async () => {
-          await deleteCloudFile(provider, token);
-          await performCloudUpload(provider, token);
+          await performCloudUpload(provider, token, { authoritativeReplace: true });
         },
       });
       await startCloudSync(provider, token);
@@ -1426,8 +1428,7 @@ export async function resolveCloudSyncConflict(
       kind: "cloud-sync",
       source: `cloud:${provider}:conflict-cloud-wins`,
       timeoutMs: 180_000,
-      waitForActiveJobMs: UPLOAD_ACTIVE_JOB_WAIT_MS,
-      waitForActiveJobKinds: UPLOAD_WAIT_FOR_ACTIVE_JOB_KINDS,
+      waitForActiveJobMs: CONFLICT_RECOVERY_ACTIVE_JOB_WAIT_MS,
       run: async () => {
         const remote = provider === "gdrive"
           ? await gdriveDownloadLatest(token, undefined, googleDriveFetch)
@@ -1446,12 +1447,30 @@ export async function resolveCloudSyncConflict(
     });
     recordCloudStep(provider, "success", "idle", "This device now uses the cloud backup.");
   } catch (error) {
+    if (isBackgroundRuntimeDeferredError(error) && blockedMergeMessage) {
+      const pendingReason = formatBackgroundRuntimeDeferredReason(error.reason);
+      blockedDestructiveMergeProviders.set(provider, blockedMergeMessage);
+      updateCloudProvider(provider, {
+        status: "error",
+        stage: "idle",
+        error: blockedMergeMessage,
+        statusMessage: blockedMergeMessage,
+        pendingReason,
+        lastErrorAt: Date.now(),
+      });
+      recordCloudStep(provider, "deferred", "idle", `Sync recovery deferred: ${pendingReason}`);
+      throw error;
+    }
     markCloudError(provider, winner === "local" ? "upload" : "download", error);
     throw error;
   }
 }
 
-async function performCloudUpload(provider: CloudProvider, token?: string): Promise<void> {
+async function performCloudUpload(
+  provider: CloudProvider,
+  token?: string,
+  options: { authoritativeReplace?: boolean } = {},
+): Promise<void> {
   const startedAt = Date.now();
   let byteLength = 0;
   try {
@@ -1461,7 +1480,9 @@ async function performCloudUpload(provider: CloudProvider, token?: string): Prom
     if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
     markCloudAttempt(provider, "upload", "Uploading local document to cloud storage.");
     if (provider === "gdrive") {
-      const result = await gdriveUploadSafe(uploadToken, binary, googleDriveFetch);
+      const result = options.authoritativeReplace
+        ? await gdriveUploadReplace(uploadToken, binary, googleDriveFetch)
+        : await gdriveUploadSafe(uploadToken, binary, googleDriveFetch);
       if (result.mergedRemote) {
         markCloudAttempt(provider, "merge", "Merging remote data discovered during upload.");
         await mergeDoc(result.uploadedBinary);
@@ -1479,7 +1500,11 @@ async function performCloudUpload(provider: CloudProvider, token?: string): Prom
         eventBytes: result.uploadedBytes,
       });
     } else {
-      await dropboxUploadSafe(uploadToken, binary);
+      if (options.authoritativeReplace) {
+        await dropboxUploadReplace(uploadToken, binary);
+      } else {
+        await dropboxUploadSafe(uploadToken, binary);
+      }
       markCloudSuccess(provider, {
         stage: "idle",
         lastUploadAt: Date.now(),
