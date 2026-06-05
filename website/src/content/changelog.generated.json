@@ -1,5 +1,93 @@
 [
   {
+    "version": "26.6.504",
+    "tagName": "v26.6.504",
+    "channel": "production",
+    "date": "2026-06-05T23:06:10Z",
+    "deck": "Recent story media now loads in Freed Desktop with safer feed memory handling, more reliable cloud merge recovery, and clearer sync UI feedback.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Recent story cards show captured media previews again"
+      },
+      {
+        "text": "Feed image shedding now follows native memory pressure limits instead of blanking media too early"
+      },
+      {
+        "text": "Cloud merge recovery and mobile sidebar behavior are more stable"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Stabilize update hover regression"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.504",
+    "prNumbers": [
+      763,
+      764,
+      766,
+      769,
+      772,
+      774,
+      775,
+      777,
+      780
+    ],
+    "builds": [
+      "26.6.504"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.504",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.504",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.6.502-dev",
+    "tagName": "v26.6.502-dev",
+    "channel": "dev",
+    "date": "2026-06-05T16:30:34Z",
+    "deck": "Recent story media now loads in Freed Desktop with safer feed media memory handling",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Recent story cards show captured media previews again"
+      },
+      {
+        "text": "Feed image shedding now follows native memory pressure limits instead of blanking media too early"
+      },
+      {
+        "text": "Cloud merge recovery and mobile sidebar behavior are more stable"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Polish activity popover placement"
+      },
+      {
+        "text": "Stabilize update hover regression"
+      },
+      {
+        "text": "Loosen changelog preview release assertion"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.502-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.6.502-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.502-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.502-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
     "version": "26.6.407",
     "tagName": "v26.6.407",
     "channel": "production",
