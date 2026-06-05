@@ -148,7 +148,7 @@ test("updates settings shows recent changelog entries and opens the full changel
   await expect(preview).toBeVisible({ timeout: 5_000 });
   await expect(settingsDialog.getByText(/Installed version:\s*v\d+\.\d+\.\d+(?:-dev)?/)).toBeVisible();
   await expect(preview.getByRole("article")).toHaveCount(5);
-  await expect(preview.getByText("v26.5.702")).toBeVisible();
+  await expect(preview.getByRole("article").first().getByText(/^v\d+\.\d+\.\d+$/)).toBeVisible();
   await expect(preview.getByText(/-dev/)).toHaveCount(0);
 
   await preview.getByRole("button", { name: "Show full changelog" }).click();
