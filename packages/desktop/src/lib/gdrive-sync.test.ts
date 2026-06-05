@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as A from "@automerge/automerge";
 import { addFeedItem, createEmptyDoc, type FreedDoc } from "@freed/shared/schema";
 import type { FeedItem } from "@freed/shared";
-import { gdriveDownloadLatest, gdriveStartPollLoop, gdriveUploadSafe } from "@freed/sync/cloud";
+import { gdriveDownloadLatest, gdriveStartPollLoop, gdriveUploadReplace, gdriveUploadSafe } from "@freed/sync/cloud";
 
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -159,6 +159,40 @@ describe("Google Drive cloud sync", () => {
       expect.stringContaining("/upload/drive/v3/files/file-1"),
       expect.anything(),
     );
+  });
+
+  it("replaces Drive contents without downloading remote history for conflict recovery", async () => {
+    const uploadHeaders: HeadersInit[] = [];
+    const uploadBodies: Array<BodyInit | null | undefined> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/files?")) {
+        return jsonResponse({ files: [{ id: "file-1" }] });
+      }
+      if (url.includes("/files/file-1?fields=") || url.includes("/files/file-1?alt=media")) {
+        throw new Error("Authoritative replace should not download the cloud backup.");
+      }
+      if (url.includes("/upload/drive/v3/files/file-1")) {
+        uploadHeaders.push(init?.headers ?? {});
+        uploadBodies.push(init?.body);
+        return jsonResponse({});
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await gdriveUploadReplace("token", new Uint8Array([7, 8, 9]));
+
+    expect(uploadHeaders).toHaveLength(1);
+    expect(uploadHeaders[0]).not.toHaveProperty("If-Match");
+    expect(uploadBodies[0]).toBeInstanceOf(ArrayBuffer);
+    expect(Array.from(new Uint8Array(uploadBodies[0] as ArrayBuffer))).toEqual([7, 8, 9]);
+    expect(result).toMatchObject({
+      fileId: "file-1",
+      uploadedBytes: 3,
+      remoteBytes: 0,
+      mergedRemote: false,
+    });
   });
 
   it("can route Drive downloads through a platform fetcher", async () => {

@@ -13,6 +13,7 @@
 export type { CloudProvider } from "./types.js";
 export {
   gdriveUploadSafe,
+  gdriveUploadReplace,
   gdriveDownloadLatest,
   gdriveStartPollLoop,
   gdriveDeleteFile,
@@ -21,6 +22,7 @@ export {
 } from "./gdrive.js";
 export {
   dropboxUploadSafe,
+  dropboxUploadReplace,
   dropboxDownloadLatest,
   dropboxStartLongpollLoop,
   dropboxDeleteFile,

@@ -11,6 +11,7 @@ const logErrorMock = vi.fn();
 const updateCloudProviderMock = vi.fn();
 const recordCloudProviderEventMock = vi.fn();
 const gdriveUploadSafeMock = vi.fn();
+const gdriveUploadReplaceMock = vi.fn();
 const gdriveDeleteFileMock = vi.fn();
 const replaceLocalDocMock = vi.fn();
 
@@ -30,10 +31,12 @@ vi.mock("@freed/sync/cloud", () => ({
   gdriveDownloadLatest: gdriveDownloadLatestMock,
   gdriveStartPollLoop: gdriveStartPollLoopMock,
   gdriveUploadSafe: gdriveUploadSafeMock,
+  gdriveUploadReplace: gdriveUploadReplaceMock,
   gdriveDeleteFile: gdriveDeleteFileMock,
   dropboxDownloadLatest: vi.fn(),
   dropboxStartLongpollLoop: vi.fn(),
   dropboxUploadSafe: vi.fn(),
+  dropboxUploadReplace: vi.fn(),
   dropboxDeleteFile: vi.fn(),
 }));
 
@@ -83,6 +86,7 @@ describe("desktop cloud sync auth refresh", () => {
     updateCloudProviderMock.mockReset();
     recordCloudProviderEventMock.mockReset();
     gdriveUploadSafeMock.mockReset();
+    gdriveUploadReplaceMock.mockReset();
     gdriveDeleteFileMock.mockReset();
     replaceLocalDocMock.mockReset();
     localStorage.clear();
@@ -367,7 +371,7 @@ describe("desktop cloud sync auth refresh", () => {
       refreshToken: "refresh-token",
       expiresAt: Date.now() + 3_600_000,
     });
-    gdriveUploadSafeMock.mockResolvedValue({
+    gdriveUploadReplaceMock.mockResolvedValue({
       fileId: "file-1",
       uploadedBinary: new Uint8Array([1, 2, 3]),
       uploadedBytes: 3,
@@ -379,13 +383,108 @@ describe("desktop cloud sync auth refresh", () => {
     await resolveCloudSyncConflict("gdrive", "local");
     stopAllCloudSyncs();
 
-    expect(gdriveDeleteFileMock).toHaveBeenCalledWith("valid-access-token", undefined);
-    expect(gdriveUploadSafeMock).toHaveBeenCalledWith(
+    expect(gdriveDeleteFileMock).not.toHaveBeenCalled();
+    expect(gdriveUploadSafeMock).not.toHaveBeenCalled();
+    expect(gdriveUploadReplaceMock).toHaveBeenCalledWith(
       "valid-access-token",
       expect.any(Uint8Array),
       undefined,
     );
     expect(replaceLocalDocMock).not.toHaveBeenCalled();
+    expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      statusMessage: "This device replaced the cloud backup.",
+    }));
+  });
+
+  it("pins a destructive merge recovery instead of retrying and hiding the choice", async () => {
+    const destructiveMergeMessage =
+      "Freed blocked a sync merge because it would remove too much feed history.";
+    const {
+      resolveCloudSyncConflict,
+      scheduleCloudUpload,
+      storeCloudToken,
+      syncCloudProviderNow,
+      stopAllCloudSyncs,
+    } = await import("./sync");
+    storeCloudToken("gdrive", {
+      accessToken: "valid-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 3_600_000,
+    });
+    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveUploadSafeMock.mockRejectedValueOnce(new Error(destructiveMergeMessage));
+
+    await expect(syncCloudProviderNow("gdrive")).rejects.toThrow(/blocked a sync merge/);
+    expect(gdriveUploadSafeMock).toHaveBeenCalledTimes(1);
+
+    updateCloudProviderMock.mockClear();
+    scheduleCloudUpload("gdrive");
+
+    expect(gdriveUploadSafeMock).toHaveBeenCalledTimes(1);
+    expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      error: destructiveMergeMessage,
+      pendingReason: "Choose which copy should win before cloud sync retries.",
+      stage: "idle",
+      status: "error",
+    }));
+
+    gdriveUploadReplaceMock.mockResolvedValueOnce({
+      fileId: "file-1",
+      uploadedBinary: new Uint8Array([1, 2, 3]),
+      uploadedBytes: 3,
+      remoteBytes: 0,
+      mergedRemote: false,
+    });
+
+    await resolveCloudSyncConflict("gdrive", "local");
+    stopAllCloudSyncs();
+
+    expect(gdriveDeleteFileMock).not.toHaveBeenCalled();
+    expect(gdriveUploadSafeMock).toHaveBeenCalledTimes(1);
+    expect(gdriveUploadReplaceMock).toHaveBeenCalledTimes(1);
+    expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      statusMessage: "This device replaced the cloud backup.",
+    }));
+  });
+
+  it("waits for active local indexing before applying a cloud conflict recovery", async () => {
+    const { resolveCloudSyncConflict, storeCloudToken, stopAllCloudSyncs } = await import("./sync");
+    const coordinator = await import("./background-runtime-coordinator");
+    coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: false });
+    storeCloudToken("gdrive", {
+      accessToken: "valid-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 3_600_000,
+    });
+    gdriveUploadReplaceMock.mockResolvedValue({
+      fileId: "file-1",
+      uploadedBinary: new Uint8Array([1, 2, 3]),
+      uploadedBytes: 3,
+      remoteBytes: 0,
+      mergedRemote: false,
+    });
+    gdriveDownloadLatestMock.mockResolvedValue(null);
+
+    let releaseIndexing!: () => void;
+    const indexing = coordinator.runBackgroundJob({
+      kind: "semantic-classifier",
+      source: "content-signals",
+      run: () => new Promise<void>((resolve) => {
+        releaseIndexing = resolve;
+      }),
+    });
+    await Promise.resolve();
+
+    const recovery = resolveCloudSyncConflict("gdrive", "local");
+    await Promise.resolve();
+    expect(gdriveUploadReplaceMock).not.toHaveBeenCalled();
+
+    releaseIndexing();
+    await indexing;
+    await recovery;
+    stopAllCloudSyncs();
+
+    expect(gdriveUploadReplaceMock).toHaveBeenCalledTimes(1);
     expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
       statusMessage: "This device replaced the cloud backup.",
     }));
