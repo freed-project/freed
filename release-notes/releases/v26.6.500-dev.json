@@ -1,0 +1,48 @@
+{
+  "tag": "v26.6.500-dev",
+  "version": "26.6.500-dev",
+  "channel": "dev",
+  "dayKey": "26.6.5",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-05T15:13:56.058Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.402-dev",
+    "previousPublishedDayTag": "v26.6.402-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.500-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.500-dev"
+    ],
+    "prNumbers": [
+      763,
+      764,
+      766,
+      769,
+      772,
+      774,
+      775
+    ],
+    "commitSubjects": [
+      "fix: restore story media previews (#775)",
+      "fix: stabilize cloud merge recovery (#763)",
+      "chore: reverse integrate v26.6.407 (#774)",
+      "fix: keep mobile sidebar above page content (#772)",
+      "fix: stabilize update hover regression (#769)",
+      "fix: polish activity popover placement (#766)",
+      "fix: loosen changelog preview release assertion (#764)"
+    ]
+  },
+  "release": {
+    "deck": "Polish activity popover placement, loosen changelog preview release assertion, and cloud merge recovery are now more stable",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.500-dev\n\nPolish activity popover placement, loosen changelog preview release assertion, and cloud merge recovery are now more stable\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
