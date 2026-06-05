@@ -1,0 +1,62 @@
+{
+  "tag": "v26.6.502-dev",
+  "version": "26.6.502-dev",
+  "channel": "dev",
+  "dayKey": "26.6.5",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-05T15:52:07.165Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.402-dev",
+    "previousPublishedDayTag": "v26.6.402-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.502-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.502-dev"
+    ],
+    "prNumbers": [
+      763,
+      764,
+      766,
+      769,
+      772,
+      774,
+      775
+    ],
+    "commitSubjects": [
+      "fix: relax friends graph ci layout budget",
+      "release: approve v26.6.501-dev",
+      "release: v26.6.501-dev",
+      "fix: update story media regression coverage",
+      "release: approve v26.6.500-dev",
+      "release: v26.6.500-dev",
+      "fix: restore story media previews (#775)",
+      "fix: stabilize cloud merge recovery (#763)",
+      "chore: reverse integrate v26.6.407 (#774)",
+      "fix: keep mobile sidebar above page content (#772)",
+      "fix: stabilize update hover regression (#769)",
+      "fix: polish activity popover placement (#766)",
+      "fix: loosen changelog preview release assertion (#764)"
+    ]
+  },
+  "release": {
+    "deck": "Recent story media now loads in Freed Desktop with safer feed media memory handling",
+    "features": [],
+    "fixes": [
+      "Recent story cards show captured media previews again",
+      "Feed image shedding now follows native memory pressure limits instead of blanking media too early",
+      "Cloud merge recovery and mobile sidebar behavior are more stable"
+    ],
+    "followUps": [
+      "Polish activity popover placement",
+      "Stabilize update hover regression",
+      "Loosen changelog preview release assertion"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.502-dev\n\nRecent story media now loads in Freed Desktop with safer feed media memory handling\n\n### Fixes\n\n- Recent story cards show captured media previews again\n- Feed image shedding now follows native memory pressure limits instead of blanking media too early\n- Cloud merge recovery and mobile sidebar behavior are more stable\n\n### Follow-ups\n\n- Polish activity popover placement\n- Stabilize update hover regression\n- Loosen changelog preview release assertion\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

@@ -298,8 +298,8 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(facebookImage).toHaveCount(0);
 
   const storyTile = app.page.locator('[data-feed-item-id="test-instagram-story-thumbnail"]');
-  const storyImage = storyTile.locator("img").first();
-  await expect(storyImage).toHaveCount(0);
+  const storyImage = storyTile.locator(`img[src="${STORY_MEDIA_URL}"]`).first();
+  await expect(storyImage).toBeVisible();
 
   const brokenCard = app.page.locator('[data-feed-item-id="test-broken-thumbnail-fallback"]');
   const brokenImage = brokenCard.locator("img").first();
