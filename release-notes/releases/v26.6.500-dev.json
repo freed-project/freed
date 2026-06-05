@@ -3,7 +3,7 @@
   "version": "26.6.500-dev",
   "channel": "dev",
   "dayKey": "26.6.5",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-05T15:13:56.058Z",
   "model": "heuristic",
@@ -39,10 +39,18 @@
     ]
   },
   "release": {
-    "deck": "Polish activity popover placement, loosen changelog preview release assertion, and cloud merge recovery are now more stable",
+    "deck": "Recent story media now loads in Freed Desktop with safer feed media memory handling",
     "features": [],
-    "fixes": [],
-    "followUps": []
+    "fixes": [
+      "Recent story cards show captured media previews again",
+      "Feed image shedding now follows native memory pressure limits instead of blanking media too early",
+      "Cloud merge recovery and mobile sidebar behavior are more stable"
+    ],
+    "followUps": [
+      "Polish activity popover placement",
+      "Stabilize update hover regression",
+      "Loosen changelog preview release assertion"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.500-dev\n\nPolish activity popover placement, loosen changelog preview release assertion, and cloud merge recovery are now more stable\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.500-dev\n\nRecent story media now loads in Freed Desktop with safer feed media memory handling\n\n### Fixes\n\n- Recent story cards show captured media previews again\n- Feed image shedding now follows native memory pressure limits instead of blanking media too early\n- Cloud merge recovery and mobile sidebar behavior are more stable\n\n### Follow-ups\n\n- Polish activity popover placement\n- Stabilize update hover regression\n- Loosen changelog preview release assertion\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
