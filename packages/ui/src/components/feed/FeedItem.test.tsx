@@ -216,7 +216,43 @@ describe("FeedItem story media", () => {
     expect(html).not.toContain("<video");
   });
 
-  it("suppresses feed media when the platform uses reader-only previews", async () => {
+  it("suppresses non-story feed media when the platform uses reader-only previews", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={readerOnlyPlatformConfig}>
+            <FeedItem
+              item={makeItem({
+                contentType: "post",
+                content: {
+                  text: "Post text",
+                  mediaUrls: ["https://example.com/post.jpg"],
+                  mediaTypes: ["image"],
+                },
+              })}
+              fixedHeight={220}
+            />
+          </PlatformProvider>,
+        );
+      });
+
+      expect(container.querySelector("img[src='https://example.com/post.jpg']")).toBeNull();
+      expect(container.textContent).toContain("Post text");
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
+
+  it("renders story media when the platform uses reader-only previews", async () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -231,8 +267,7 @@ describe("FeedItem story media", () => {
         );
       });
 
-      expect(container.querySelector("img[src='https://example.com/post.jpg']")).toBeNull();
-      expect(container.querySelector(".bg-gradient-to-br")).not.toBeNull();
+      expect(container.querySelector("img[src='https://example.com/story.jpg']")).toBeInstanceOf(HTMLImageElement);
     } finally {
       await act(async () => {
         root.unmount();
@@ -354,10 +389,100 @@ describe("FeedItem story media", () => {
     }
   });
 
-  it("suppresses inline media before app pressure reaches the high threshold", async () => {
+  it("keeps inline media below the native app pressure threshold", async () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     setMemoryPressure("normal", {
       appMemoryPressureBytes: Math.floor(2.5 * 1024 * 1024 * 1024),
+      memoryHighBytes: Math.floor(5.5 * 1024 * 1024 * 1024),
+    });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem item={makeItem()} />
+          </PlatformProvider>,
+        );
+      });
+
+      expect(container.querySelector("img[src='https://example.com/story.jpg']")).toBeInstanceOf(HTMLImageElement);
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
+
+  it("keeps inline media below the native WebKit pressure threshold", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    setMemoryPressure("normal", {
+      webkitTotalResidentBytes: Math.floor(1.7 * 1024 * 1024 * 1024),
+      memoryHighBytes: Math.floor(5.5 * 1024 * 1024 * 1024),
+    });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem item={makeItem()} />
+          </PlatformProvider>,
+        );
+      });
+
+      expect(container.querySelector("img[src='https://example.com/story.jpg']")).toBeInstanceOf(HTMLImageElement);
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
+
+  it("keeps inline media when WebKit resident is high but footprint is below pressure limits", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    setMemoryPressure("normal", {
+      appMemoryPressureBytes: Math.floor(2.6 * 1024 * 1024 * 1024),
+      memoryHighBytes: Math.floor(5.5 * 1024 * 1024 * 1024),
+      webkitTotalFootprintBytes: Math.floor(2.5 * 1024 * 1024 * 1024),
+      webkitLargestResidentBytes: Math.floor(4.7 * 1024 * 1024 * 1024),
+    });
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem item={makeItem()} />
+          </PlatformProvider>,
+        );
+      });
+
+      expect(container.querySelector("img[src='https://example.com/story.jpg']")).toBeInstanceOf(HTMLImageElement);
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
+
+  it("suppresses inline media near the adaptive native pressure threshold", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    setMemoryPressure("normal", {
+      appMemoryPressureBytes: Math.floor(5 * 1024 * 1024 * 1024),
+      memoryHighBytes: Math.floor(5.5 * 1024 * 1024 * 1024),
     });
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -383,10 +508,10 @@ describe("FeedItem story media", () => {
     }
   });
 
-  it("suppresses inline media when WebKit RSS approaches the live hidden-session pressure range", async () => {
+  it("uses the legacy fixed threshold when native pressure limits are unavailable", async () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     setMemoryPressure("normal", {
-      webkitTotalResidentBytes: Math.floor(1.7 * 1024 * 1024 * 1024),
+      appMemoryPressureBytes: Math.floor(2.5 * 1024 * 1024 * 1024),
     });
     const container = document.createElement("div");
     document.body.appendChild(container);

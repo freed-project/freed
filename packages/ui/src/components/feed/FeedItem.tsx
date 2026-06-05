@@ -65,6 +65,8 @@ const FIXED_CARD_TEXT_LIMIT = 900;
 const FULL_CARD_TEXT_LIMIT = 1_500;
 const FEED_IMAGE_SHED_APP_PRESSURE_BYTES = 2.25 * 1024 * 1024 * 1024;
 const FEED_IMAGE_SHED_WEBKIT_BYTES = 1.5 * 1024 * 1024 * 1024;
+const FEED_IMAGE_SHED_APP_HIGH_FRACTION = 0.85;
+const FEED_IMAGE_SHED_WEBKIT_HIGH_FRACTION = 0.75;
 const EVENT_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
@@ -142,16 +144,25 @@ function shouldShedFeedImages(memory: RuntimeMemorySnapshot | null): boolean {
   if (!memory) return false;
   if (memory.pressureLevel === "high" || memory.pressureLevel === "critical") return true;
   const appPressureBytes = memory.appMemoryPressureBytes ?? memory.appResidentBytes ?? memory.processResidentBytes;
-  if (appPressureBytes >= FEED_IMAGE_SHED_APP_PRESSURE_BYTES) return true;
-  const webkitBytes = Math.max(
+  const appShedBytes = memory.memoryHighBytes
+    ? memory.memoryHighBytes * FEED_IMAGE_SHED_APP_HIGH_FRACTION
+    : FEED_IMAGE_SHED_APP_PRESSURE_BYTES;
+  if (appPressureBytes >= appShedBytes) return true;
+  const webkitFootprintBytes = Math.max(
     memory.webkitTotalFootprintBytes ?? 0,
     memory.webkitLargestFootprintBytes ?? 0,
     memory.webkitFootprintBytes ?? 0,
+  );
+  const webkitResidentBytes = Math.max(
     memory.webkitTotalResidentBytes ?? 0,
     memory.webkitLargestResidentBytes ?? 0,
     memory.webkitResidentBytes ?? 0,
   );
-  return webkitBytes >= FEED_IMAGE_SHED_WEBKIT_BYTES;
+  const webkitBytes = webkitFootprintBytes > 0 ? webkitFootprintBytes : webkitResidentBytes;
+  const webkitShedBytes = memory.memoryHighBytes
+    ? memory.memoryHighBytes * FEED_IMAGE_SHED_WEBKIT_HIGH_FRACTION
+    : FEED_IMAGE_SHED_WEBKIT_BYTES;
+  return webkitBytes >= webkitShedBytes;
 }
 
 function useFeedImageBudget(feedMediaPreviews: "inline" | "reader-only"): {
@@ -217,7 +228,8 @@ export const FeedItem = memo(function FeedItem({
   fixedHeight,
 }: FeedItemProps) {
   const { feedMediaPreviews = "inline" } = usePlatform();
-  const { showInlineMedia, showAvatarImages } = useFeedImageBudget(feedMediaPreviews);
+  const feedMediaPreviewMode = item.contentType === "story" ? "inline" : feedMediaPreviews;
+  const { showInlineMedia, showAvatarImages } = useFeedImageBudget(feedMediaPreviewMode);
   const sharedTransitionStyle = {
     viewTransitionName: feedCardTransitionName(item.globalId),
   } as React.CSSProperties;
