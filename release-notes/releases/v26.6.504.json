@@ -1,0 +1,53 @@
+{
+  "tag": "v26.6.504",
+  "version": "26.6.504",
+  "channel": "production",
+  "dayKey": "26.6.5",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-05T22:27:30.350Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.6.407",
+    "previousPublishedDayTag": "v26.6.407",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.504"
+    ],
+    "relatedBuildTags": [
+      "v26.6.502-dev",
+      "v26.6.504"
+    ],
+    "prNumbers": [
+      763,
+      764,
+      766,
+      769,
+      772,
+      774,
+      775,
+      777,
+      780
+    ],
+    "commitSubjects": [
+      "chore: promote dev changelog preview fix (#780)",
+      "release: v26.6.503",
+      "chore: promote dev into main for production release (#777)"
+    ]
+  },
+  "release": {
+    "deck": "Recent story media now loads in Freed Desktop with safer feed memory handling, more reliable cloud merge recovery, and clearer sync UI feedback.",
+    "features": [],
+    "fixes": [
+      "Recent story cards show captured media previews again",
+      "Feed image shedding now follows native memory pressure limits instead of blanking media too early",
+      "Cloud merge recovery and mobile sidebar behavior are more stable"
+    ],
+    "followUps": [
+      "Stabilize update hover regression"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.504\n\nRecent story media now loads in Freed Desktop with safer feed memory handling, more reliable cloud merge recovery, and clearer sync UI feedback.\n\n### Fixes\n\n- Recent story cards show captured media previews again\n- Feed image shedding now follows native memory pressure limits instead of blanking media too early\n- Cloud merge recovery and mobile sidebar behavior are more stable\n\n### Follow-ups\n\n- Stabilize update hover regression\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
