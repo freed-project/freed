@@ -3,7 +3,7 @@
   "version": "26.6.603-dev",
   "channel": "dev",
   "dayKey": "26.6.6",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-06T17:39:47.337Z",
   "model": "heuristic",
@@ -42,10 +42,10 @@
     ]
   },
   "release": {
-    "deck": "Keep cloud conflict recovery responsive, changelog preview test are now more stable, and cloud conflict without remerging rejected backup resolved",
+    "deck": "Facebook and Instagram syncs now avoid unnecessary full-library cleanup work when a run finds only existing posts. The build also adds sharper timing diagnostics for social sync stages, improves renderer freeze evidence, keeps cloud conflict recovery responsive, and speeds up sample library seeding.",
     "features": [],
     "fixes": [],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.603-dev\n\nKeep cloud conflict recovery responsive, changelog preview test are now more stable, and cloud conflict without remerging rejected backup resolved\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.603-dev\n\nFacebook and Instagram syncs now avoid unnecessary full-library cleanup work when a run finds only existing posts. The build also adds sharper timing diagnostics for social sync stages, improves renderer freeze evidence, keeps cloud conflict recovery responsive, and speeds up sample library seeding.\n\n### Fixes\n\n- Reduced duplicate-only Facebook and Instagram sync work so no-new-content runs do less main-library churn.\n- Added local timing logs for Facebook and Instagram fetch, store write, and media vault stages.\n- Added background runtime state to renderer heartbeats so future freeze reports show what sync work was active.\n- Kept cloud conflict recovery responsive while a user chooses which copy should win.\n- Batched sample library seeding so test data population gives control back to the app sooner.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
