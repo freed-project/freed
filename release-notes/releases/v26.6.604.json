@@ -1,0 +1,67 @@
+{
+  "tag": "v26.6.604",
+  "version": "26.6.604",
+  "channel": "production",
+  "dayKey": "26.6.6",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-06T22:06:06.268Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.6.602",
+    "previousPublishedDayTag": "v26.6.504",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.601",
+      "v26.6.602",
+      "v26.6.604"
+    ],
+    "relatedBuildTags": [
+      "v26.6.601",
+      "v26.6.602",
+      "v26.6.603-dev",
+      "v26.6.604"
+    ],
+    "prNumbers": [
+      776,
+      779,
+      782,
+      783,
+      784,
+      786,
+      788,
+      789,
+      790,
+      791,
+      792,
+      794
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for production release (#794)",
+      "release: approve v26.6.602 notes",
+      "release: v26.6.602",
+      "chore: promote dev into main for production release (#790)",
+      "release: v26.6.601",
+      "chore: promote dev into main for production release (#786)",
+      "release: v26.6.600",
+      "chore: promote dev into main for cloud conflict recovery (#784)"
+    ]
+  },
+  "release": {
+    "deck": "Google Drive sync now imports existing phone libraries correctly, and sample data seeding no longer trips Automerge document state errors",
+    "features": [],
+    "fixes": [
+      "Connecting the mobile app to Google Drive now keeps the populated cloud library instead of resolving the first merge down to an empty document",
+      "Phone sync can download new Drive items on first connection without triggering the feed history loss guard",
+      "Populate sample data now writes through the latest Automerge document state, avoiding the outdated document error",
+      "Populate sample data now batches the generated library into one local persistence operation across Freed Desktop and the mobile app",
+      "Keep this device and Keep cloud copy now show progress immediately instead of waiting behind a blocking browser confirmation",
+      "Opening Sync settings no longer clears the cloud conflict warning before the recovery controls can run",
+      "The sample data button no longer waits on repeated feed, item, friend, and account saves before the interface can catch up"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.604\n\nGoogle Drive sync now imports existing phone libraries correctly, and sample data seeding no longer trips Automerge document state errors.\n\n### Fixes\n\n- Connecting the mobile app to Google Drive now keeps the populated cloud library instead of resolving the first merge down to an empty document\n- Phone sync can download new Drive items on first connection without triggering the feed history loss guard\n- Populate sample data now writes through the latest Automerge document state, avoiding the outdated document error\n- Populate sample data now batches the generated library into one local persistence operation across Freed Desktop and the mobile app\n- Keep this device and Keep cloud copy now show progress immediately instead of waiting behind a blocking browser confirmation\n- Opening Sync settings no longer clears the cloud conflict warning before the recovery controls can run\n- The sample data button no longer waits on repeated feed, item, friend, and account saves before the interface can catch up\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
