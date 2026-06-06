@@ -236,7 +236,12 @@ test("updates settings buttons do not move text on hover", async ({ app, page })
     const before = await measureButtonTextPosition(button, buttonName);
     expect(before).not.toBeNull();
 
-    await button.hover();
+    const buttonBox = await button.boundingBox();
+    expect(buttonBox).not.toBeNull();
+    await page.mouse.move(
+      (buttonBox?.x ?? 0) + (buttonBox?.width ?? 0) / 2,
+      (buttonBox?.y ?? 0) + (buttonBox?.height ?? 0) / 2,
+    );
     await expect.poll(async () => {
       return (await measureButtonTextPosition(button, buttonName))?.matchesHover ?? false;
     }).toBe(true);
