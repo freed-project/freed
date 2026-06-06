@@ -3,7 +3,7 @@
   "version": "26.6.604",
   "channel": "production",
   "dayKey": "26.6.6",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-06T22:06:06.268Z",
   "model": "heuristic",
@@ -50,19 +50,18 @@
     ]
   },
   "release": {
-    "deck": "Sample data population now finishes with one local document save, and cloud conflict recovery keeps its controls responsive",
+    "deck": "Google Drive sync now imports existing phone libraries correctly, and sample data seeding no longer trips Automerge document state errors",
     "features": [],
     "fixes": [
+      "Connecting the mobile app to Google Drive now keeps the populated cloud library instead of resolving the first merge down to an empty document",
+      "Phone sync can download new Drive items on first connection without triggering the feed history loss guard",
+      "Populate sample data now writes through the latest Automerge document state, avoiding the outdated document error",
+      "Populate sample data now batches the generated library into one local persistence operation across Freed Desktop and the mobile app",
       "Keep this device and Keep cloud copy now show progress immediately instead of waiting behind a blocking browser confirmation",
       "Opening Sync settings no longer clears the cloud conflict warning before the recovery controls can run",
-      "Populate sample data now batches the generated library into one local persistence operation across Freed Desktop and the mobile app",
       "The sample data button no longer waits on repeated feed, item, friend, and account saves before the interface can catch up"
     ],
-    "followUps": [
-      "Promote dev into main for production release",
-      "Cloud conflict recovery now responds immediately when choosing which copy should win",
-      "Facebook and Instagram syncs now avoid unnecessary full-library cleanup work when a run finds only existing posts. The build also adds sharper timing diagnostics for social sync stages, improves renderer freeze evidence, keeps cloud conflict recovery responsive, and speeds up sample library seeding"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.604\n\nSample data population now finishes with one local document save, and cloud conflict recovery keeps its controls responsive\n\n### Fixes\n\n- Keep this device and Keep cloud copy now show progress immediately instead of waiting behind a blocking browser confirmation\n- Opening Sync settings no longer clears the cloud conflict warning before the recovery controls can run\n- Populate sample data now batches the generated library into one local persistence operation across Freed Desktop and the mobile app\n- The sample data button no longer waits on repeated feed, item, friend, and account saves before the interface can catch up\n\n### Follow-ups\n\n- Promote dev into main for production release\n- Cloud conflict recovery now responds immediately when choosing which copy should win\n- Facebook and Instagram syncs now avoid unnecessary full-library cleanup work when a run finds only existing posts. The build also adds sharper timing diagnostics for social sync stages, improves renderer freeze evidence, keeps cloud conflict recovery responsive, and speeds up sample library seeding\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.604\n\nGoogle Drive sync now imports existing phone libraries correctly, and sample data seeding no longer trips Automerge document state errors.\n\n### Fixes\n\n- Connecting the mobile app to Google Drive now keeps the populated cloud library instead of resolving the first merge down to an empty document\n- Phone sync can download new Drive items on first connection without triggering the feed history loss guard\n- Populate sample data now writes through the latest Automerge document state, avoiding the outdated document error\n- Populate sample data now batches the generated library into one local persistence operation across Freed Desktop and the mobile app\n- Keep this device and Keep cloud copy now show progress immediately instead of waiting behind a blocking browser confirmation\n- Opening Sync settings no longer clears the cloud conflict warning before the recovery controls can run\n- The sample data button no longer waits on repeated feed, item, friend, and account saves before the interface can catch up\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
