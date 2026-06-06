@@ -891,8 +891,8 @@ function App() {
   // session. sessionStorage guard prevents re-seeding on hot-reload while
   // still running fresh on every full browser open (e.g. new worktree test).
   // Skip entirely under VITE_TEST_TAURI: E2E tests manage their own data
-  // setup, and the burst of addFeed/addItems state updates causes re-renders
-  // that detach DOM elements while Playwright is filling form fields.
+  // setup, and sample seeding changes the document while Playwright is filling
+  // form fields.
   useEffect(() => {
     if (!isInitialized || !import.meta.env.DEV || import.meta.env.VITE_TEST_TAURI === "1") return;
     if (sessionStorage.getItem("freed_dev_seeded")) return;
