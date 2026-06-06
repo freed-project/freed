@@ -1,5 +1,37 @@
 [
   {
+    "version": "26.6.601",
+    "tagName": "v26.6.601",
+    "channel": "production",
+    "date": "2026-06-06T15:03:20Z",
+    "deck": "Cloud conflict recovery now responds immediately when choosing which copy should win.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Keep this device and Keep cloud copy now show progress immediately instead of waiting behind a blocking browser confirmation."
+      },
+      {
+        "text": "Opening Sync settings no longer clears the cloud conflict warning before the recovery controls can run."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.601",
+    "prNumbers": [
+      784,
+      786
+    ],
+    "builds": [
+      "26.6.601"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.601",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.601",
+        "channel": "production"
+      }
+    ]
+  },
+  {
     "version": "26.6.504",
     "tagName": "v26.6.504",
     "channel": "production",
