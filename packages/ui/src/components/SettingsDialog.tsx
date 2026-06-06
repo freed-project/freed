@@ -880,9 +880,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const friends = useAppStore((s) => s.friends);
   const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
-  const addFeed = useAppStore((s) => s.addFeed);
-  const addItems = useAppStore((s) => s.addItems);
-  const addFriends = useAppStore((s) => s.addFriends);
+  const addSampleLibraryData = useAppStore((s) => s.addSampleLibraryData);
   const clearSampleData = useAppStore((s) => s.clearSampleData);
   const [clearingSampleData, setClearingSampleData] = useState(false);
   const existingFeedCount = Object.keys(feeds).length;
@@ -903,9 +901,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       await refreshSampleLibraryData({
         initialize,
         isInitialized,
-        addFeed,
-        addItems,
-        addFriends,
+        addSampleLibraryData,
         seedSocialConnections,
       });
       setSeedDone(true);
@@ -918,9 +914,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       setSeeding(false);
     }
   }, [
-    addFeed,
-    addFriends,
-    addItems,
+    addSampleLibraryData,
     initialize,
     isInitialized,
     seedSocialConnections,

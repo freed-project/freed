@@ -83,6 +83,14 @@ export type WorkerRequest =
   | { reqId: number; type: "CONFIRM_SEEN_SYNCED"; globalId: string; syncedAt?: number }
   | { reqId: number; type: "ADD_FEED_ITEM"; item: FeedItem }
   | { reqId: number; type: "ADD_FEED_ITEMS"; items: FeedItem[] }
+  | {
+      reqId: number;
+      type: "ADD_SAMPLE_LIBRARY_DATA";
+      feeds: RssFeed[];
+      items: FeedItem[];
+      persons: Person[];
+      accounts: Account[];
+    }
   | { reqId: number; type: "REMOVE_FEED_ITEM"; globalId: string }
   | { reqId: number; type: "CLEAR_SAMPLE_DATA" }
   | { reqId: number; type: "UPDATE_FEED_ITEM"; globalId: string; updates: Partial<FeedItem> }

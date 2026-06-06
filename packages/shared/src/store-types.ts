@@ -16,6 +16,7 @@ import type {
   UserPreferences,
   RssFeed,
 } from "./types.js";
+import type { SampleLibraryData } from "./sample-data.js";
 
 export interface RemoveFeedOptions {
   includeItems?: boolean;
@@ -118,6 +119,8 @@ export interface BaseAppState {
   removeItem: (id: string) => Promise<void>;
   /** Permanently remove generated sample data that carries the internal fingerprint. */
   clearSampleData: () => Promise<SampleDataClearSummary>;
+  /** Add a generated sample library in one persistence operation. */
+  addSampleLibraryData: (data: SampleLibraryData) => Promise<void>;
   /**
    * Record like intent in Automerge. On the desktop, the outbox processor
    * drains this to the source platform. On the PWA, it syncs to desktop first.
