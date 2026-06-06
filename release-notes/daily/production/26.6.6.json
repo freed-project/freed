@@ -2,16 +2,20 @@
   "channel": "production",
   "dayKey": "26.6.6",
   "date": "2026-06-06",
-  "preferredDeck": "Cloud conflict recovery now responds immediately when choosing which copy should win.",
+  "preferredDeck": "Sample data population now finishes with one local document save, and cloud conflict recovery keeps its controls responsive.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Populate sample data now batches the generated library into one local persistence operation across Freed Desktop and the mobile app.",
+    "The sample data button no longer waits on repeated feed, item, friend, and account saves before the interface can catch up.",
     "Keep this device and Keep cloud copy now show progress immediately instead of waiting behind a blocking browser confirmation.",
     "Opening Sync settings no longer clears the cloud conflict warning before the recovery controls can run."
   ],
-  "editorialNotes": [],
-  "updatedAt": "2026-06-06T16:08:37.507Z"
+  "editorialNotes": [
+    "Reviewed for production release v26.6.602. This latest-of-day build includes the sample data performance fix and the earlier same-day cloud conflict recovery fixes."
+  ],
+  "updatedAt": "2026-06-06T16:10:20.839Z"
 }
