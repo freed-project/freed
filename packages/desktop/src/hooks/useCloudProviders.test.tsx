@@ -103,4 +103,22 @@ describe("useCloudProviders", () => {
     expect(mocks.storeCloudToken).not.toHaveBeenCalled();
     expect(mocks.startCloudSync).not.toHaveBeenCalled();
   });
+
+  it("does not clear existing cloud sync errors when a provider is connected", async () => {
+    mocks.getCloudToken.mockImplementation((provider: string) =>
+      provider === "gdrive" ? "test-access-token" : null,
+    );
+
+    await act(async () => {
+      root.render(<Harness />);
+    });
+
+    expect(container.querySelector("[data-testid='gdrive-status']")?.textContent).toBe("connected");
+    expect(mocks.updateCloudProvider).toHaveBeenCalledWith("gdrive", { status: "connected" });
+    const gdriveCall = mocks.updateCloudProvider.mock.calls.find(
+      ([provider]) => provider === "gdrive",
+    );
+    expect(gdriveCall?.[1]).toEqual({ status: "connected" });
+    expect(Object.hasOwn(gdriveCall?.[1] ?? {}, "error")).toBe(false);
+  });
 });
