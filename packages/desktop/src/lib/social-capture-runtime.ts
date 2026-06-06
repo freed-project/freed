@@ -88,3 +88,11 @@ export async function applyLockedSessionDeferredDiag(
 export function isRuntimeDeferredStage(stage: string | null): boolean {
   return stage === RUNTIME_DEFERRED_STAGE;
 }
+
+export function socialCaptureDurationMs(startedAtMs: number): number {
+  return Math.max(0, Math.round(performance.now() - startedAtMs));
+}
+
+export function formatSocialCaptureDuration(ms: number): string {
+  return `${ms.toLocaleString()} ms`;
+}

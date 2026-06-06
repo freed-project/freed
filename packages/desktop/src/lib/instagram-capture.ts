@@ -39,6 +39,8 @@ import {
   applyLockedSessionDeferredDiag,
   applyNativeMemoryPressureDiag,
   isRuntimeDeferredStage,
+  formatSocialCaptureDuration,
+  socialCaptureDurationMs,
   SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
   SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
 } from "./social-capture-runtime";
@@ -383,7 +385,12 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
 
   try {
     addDebugEvent("change", "[IG] sync started");
+    const fetchStartedAt = performance.now();
     const result = await fetchIgFeed();
+    log.info(
+      `[IG] fetch finished duration=${formatSocialCaptureDuration(socialCaptureDurationMs(fetchStartedAt))} ` +
+        `items=${result.items.length.toLocaleString()} stage=${result.diag.errorStage ?? "ok"}`,
+    );
 
     if (result.diag.errorStage) {
       const runtimeDeferred = isRuntimeDeferredStage(result.diag.errorStage);
@@ -421,23 +428,31 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
         `[IG] writing ${result.items.length.toLocaleString()} candidate item${result.items.length === 1 ? "" : "s"} to the library`,
       );
       const before = store.items.filter((i) => i.platform === "instagram").length;
+      const writeStartedAt = performance.now();
       await store.addItems(result.items);
+      const writeDurationMs = socialCaptureDurationMs(writeStartedAt);
       const after = useAppStore
         .getState()
         .items.filter((i) => i.platform === "instagram").length;
       result.diag.itemsAdded = Math.max(0, after - before);
       log.info(
-        `[IG] store write complete candidates=${result.items.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${result.diag.itemsAdded.toLocaleString()}`,
+        `[IG] store write complete candidates=${result.items.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${result.diag.itemsAdded.toLocaleString()} duration=${formatSocialCaptureDuration(writeDurationMs)}`,
       );
+      const mediaStartedAt = performance.now();
       await upsertMediaVaultRosterFromItems("instagram", result.items);
       const archivedCount = await archiveRecentProviderMedia(
         "instagram",
         result.items,
       );
-      if (archivedCount > 0) {
+      const mediaDurationMs = socialCaptureDurationMs(mediaStartedAt);
+      const archivedTotal = archivedCount ?? 0;
+      log.info(
+        `[IG] media vault complete candidates=${result.items.length.toLocaleString()} archived=${archivedTotal.toLocaleString()} duration=${formatSocialCaptureDuration(mediaDurationMs)}`,
+      );
+      if (archivedTotal > 0) {
         addDebugEvent(
           "change",
-          `[IG] archived ${archivedCount.toLocaleString()} permanent media file${archivedCount === 1 ? "" : "s"}`,
+          `[IG] archived ${archivedTotal.toLocaleString()} permanent media file${archivedTotal === 1 ? "" : "s"}`,
         );
       }
       addDebugEvent(

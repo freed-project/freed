@@ -216,6 +216,7 @@ describe("automerge worker memory routing", () => {
     expect(workerSource).toContain("orderedItemIds");
     expect(workerSource).toContain("searchCorpusVersion");
     expect(workerSource).toContain("docItemCount");
+    expect(workerSource).toContain("changedIds.length > 0");
     expect(workerSource).toContain("reason=social_dedup");
   });
 
