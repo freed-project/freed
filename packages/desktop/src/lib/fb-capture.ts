@@ -42,6 +42,8 @@ import {
   applyLockedSessionDeferredDiag,
   applyNativeMemoryPressureDiag,
   isRuntimeDeferredStage,
+  formatSocialCaptureDuration,
+  socialCaptureDurationMs,
   SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
   SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
 } from "./social-capture-runtime";
@@ -788,7 +790,12 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
 
   try {
     addDebugEvent("change", "[FB] sync started");
+    const fetchStartedAt = performance.now();
     const result = await fetchFbFeed();
+    log.info(
+      `[FB] fetch finished duration=${formatSocialCaptureDuration(socialCaptureDurationMs(fetchStartedAt))} ` +
+        `items=${result.items.length.toLocaleString()} stage=${result.diag.errorStage ?? "ok"}`,
+    );
 
     if (result.diag.errorStage) {
       const runtimeDeferred = isRuntimeDeferredStage(result.diag.errorStage);
@@ -842,23 +849,31 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
         `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library (${existingCandidateCount.toLocaleString()} already present, ${result.diag.excludedItems.toLocaleString()} excluded)`,
       );
       const before = beforeFacebookItems.length;
+      const writeStartedAt = performance.now();
       await store.addItems(filteredItems);
+      const writeDurationMs = socialCaptureDurationMs(writeStartedAt);
       const after = useAppStore
         .getState()
         .items.filter((i) => i.platform === "facebook").length;
       result.diag.itemsAdded = Math.max(0, after - before);
       log.info(
-        `[FB] store write complete candidates=${filteredItems.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${result.diag.itemsAdded.toLocaleString()} existing=${result.diag.existingItems.toLocaleString()} excluded=${result.diag.excludedItems.toLocaleString()}`,
+        `[FB] store write complete candidates=${filteredItems.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${result.diag.itemsAdded.toLocaleString()} existing=${result.diag.existingItems.toLocaleString()} excluded=${result.diag.excludedItems.toLocaleString()} duration=${formatSocialCaptureDuration(writeDurationMs)}`,
       );
+      const mediaStartedAt = performance.now();
       await upsertMediaVaultRosterFromItems("facebook", filteredItems);
       const archivedCount = await archiveRecentProviderMedia(
         "facebook",
         filteredItems,
       );
-      if (archivedCount > 0) {
+      const mediaDurationMs = socialCaptureDurationMs(mediaStartedAt);
+      const archivedTotal = archivedCount ?? 0;
+      log.info(
+        `[FB] media vault complete candidates=${filteredItems.length.toLocaleString()} archived=${archivedTotal.toLocaleString()} duration=${formatSocialCaptureDuration(mediaDurationMs)}`,
+      );
+      if (archivedTotal > 0) {
         addDebugEvent(
           "change",
-          `[FB] archived ${archivedCount.toLocaleString()} permanent media file${archivedCount === 1 ? "" : "s"}`,
+          `[FB] archived ${archivedTotal.toLocaleString()} permanent media file${archivedTotal === 1 ? "" : "s"}`,
         );
       }
       addDebugEvent(

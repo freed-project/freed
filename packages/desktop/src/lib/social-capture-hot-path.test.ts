@@ -14,4 +14,13 @@ describe("social capture hot paths", () => {
       'archiveRecentProviderMedia(\n        "instagram",\n        result.items,',
     );
   });
+
+  it("keeps local social sync stages timed for freeze diagnostics", () => {
+    for (const source of [fbSource, igSource]) {
+      expect(source).toContain("fetch finished duration=");
+      expect(source).toContain("store write complete");
+      expect(source).toContain("media vault complete");
+      expect(source).toContain("formatSocialCaptureDuration");
+    }
+  });
 });

@@ -2044,6 +2044,36 @@ function countFeedItems(doc: FreedDoc): number {
   return Object.keys(doc.feedItems ?? {}).length;
 }
 
+function countDocumentLibraryEntries(doc: FreedDoc): number {
+  return (
+    Object.keys(doc.feedItems ?? {}).length +
+    Object.keys(doc.rssFeeds ?? {}).length +
+    Object.keys(doc.persons ?? {}).length +
+    Object.keys(doc.accounts ?? {}).length
+  );
+}
+
+export type PopulatedEmptyMergeInput = "local" | "incoming";
+
+/**
+ * When an empty first-sync document carries stale delete history, Automerge can
+ * merge a populated peer down to an empty result. In that exact case, keep the
+ * populated side instead of treating an empty library as a destructive winner.
+ */
+export function choosePopulatedInputForEmptyMerge(
+  localDoc: FreedDoc,
+  incomingDoc: FreedDoc,
+  mergedDoc: FreedDoc,
+): PopulatedEmptyMergeInput | null {
+  if (countDocumentLibraryEntries(mergedDoc) > 0) return null;
+
+  const localEntries = countDocumentLibraryEntries(localDoc);
+  const incomingEntries = countDocumentLibraryEntries(incomingDoc);
+  if (localEntries === 0 && incomingEntries > 0) return "incoming";
+  if (incomingEntries === 0 && localEntries > 0) return "local";
+  return null;
+}
+
 function formatDestructiveMergeMessage(
   report: Omit<DestructiveMergeGuardReport, "message">,
 ): string {

@@ -16,6 +16,7 @@ import { hashSavedUrl } from "@freed/capture-save/normalize";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
   assertNonDestructiveMerge,
+  choosePopulatedInputForEmptyMerge,
   createEmptyDoc,
   addAccount,
   addAccounts,
@@ -70,6 +71,7 @@ import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types"
 const storage = new IndexedDBStorage();
 let currentDoc: FreedDoc | null = null;
 let searchCorpusVersion = 0;
+let requestChain: Promise<void> = Promise.resolve();
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -299,9 +301,7 @@ async function applyChange(
 // Message handler
 // ---------------------------------------------------------------------------
 
-self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
-  const req = event.data;
-
+async function handleRequest(req: WorkerRequest): Promise<void> {
   try {
     switch (req.type) {
       case "INIT": {
@@ -650,10 +650,13 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const incomingDoc = A.load<FreedDoc>(req.binary);
         const mergedDoc = A.merge(currentDoc, incomingDoc);
-        const guard = assertNonDestructiveMerge(currentDoc, incomingDoc, mergedDoc, {
+        const populatedSide = choosePopulatedInputForEmptyMerge(currentDoc, incomingDoc, mergedDoc);
+        const resolvedDoc =
+          populatedSide === "local" ? currentDoc : populatedSide === "incoming" ? incomingDoc : mergedDoc;
+        const guard = assertNonDestructiveMerge(currentDoc, incomingDoc, resolvedDoc, {
           source: "PWA sync",
         });
-        currentDoc = mergedDoc;
+        currentDoc = populatedSide ? A.clone(resolvedDoc) : resolvedDoc;
         migrateLoadedIdentityGraph("Migrate legacy identity graph");
         const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const delta = afterCount - beforeCount;
@@ -663,6 +666,14 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           detail: delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} items` : "no new items",
           bytes: req.binary.byteLength,
         });
+        if (populatedSide) {
+          send({
+            type: "DEBUG_EVENT",
+            kind: "merge_ok",
+            detail: `adopted ${populatedSide} document because the other sync input was empty`,
+            bytes: req.binary.byteLength,
+          });
+        }
         if (guard.deletedItemCount > 0) {
           send({
             type: "DEBUG_EVENT",
@@ -693,6 +704,18 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   } catch (err) {
     ack(req.reqId, err instanceof Error ? err.message : String(err));
   }
+}
+
+function enqueueRequest(req: WorkerRequest): void {
+  requestChain = requestChain
+    .then(() => handleRequest(req))
+    .catch((err) => {
+      ack(req.reqId, err instanceof Error ? err.message : String(err));
+    });
+}
+
+self.onmessage = (event: MessageEvent<WorkerRequest>) => {
+  enqueueRequest(event.data);
 };
 
 // Signal the main thread that the module finished loading and the onmessage

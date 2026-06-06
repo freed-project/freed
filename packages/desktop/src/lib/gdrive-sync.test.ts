@@ -53,6 +53,27 @@ function makeTrustedAndDeleteHeavyDocs(): { trusted: Uint8Array; deleteHeavy: Ui
   };
 }
 
+function makePopulatedAndStaleEmptyDocs(): { populated: Uint8Array; staleEmpty: Uint8Array } {
+  let populatedDoc = createEmptyDoc();
+  populatedDoc = A.change(populatedDoc, (doc) => {
+    for (let i = 0; i < 600; i += 1) {
+      addFeedItem(doc, makeItem(`cloud-item-${i}`));
+    }
+  });
+
+  let staleEmptyDoc = A.clone(populatedDoc) as FreedDoc;
+  staleEmptyDoc = A.change(staleEmptyDoc, (doc) => {
+    for (const id of Object.keys(doc.feedItems)) {
+      delete doc.feedItems[id];
+    }
+  });
+
+  return {
+    populated: A.save(populatedDoc),
+    staleEmpty: A.save(staleEmptyDoc),
+  };
+}
+
 describe("Google Drive cloud sync", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -159,6 +180,40 @@ describe("Google Drive cloud sync", () => {
       expect.stringContaining("/upload/drive/v3/files/file-1"),
       expect.anything(),
     );
+  });
+
+  it("keeps the populated Drive document when the local first-sync doc is empty", async () => {
+    const { populated, staleEmpty } = makePopulatedAndStaleEmptyDocs();
+    const uploadBodies: Array<BodyInit | null | undefined> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/files?")) {
+        return jsonResponse({ files: [{ id: "file-1" }] });
+      }
+      if (url.includes("/files/file-1?fields=")) {
+        return jsonResponse(
+          { size: populated.byteLength.toLocaleString("en-US", { useGrouping: false }) },
+          { headers: { ETag: '"server-etag"' } },
+        );
+      }
+      if (url.includes("/files/file-1?alt=media")) {
+        return new Response(responseBodyFromBytes(populated));
+      }
+      if (url.includes("/upload/drive/v3/files/file-1")) {
+        uploadBodies.push(init?.body);
+        return jsonResponse({});
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await gdriveUploadSafe("token", staleEmpty);
+    expect(result.uploadedBytes).toBe(populated.byteLength);
+    expect(uploadBodies).toHaveLength(1);
+
+    const uploaded = new Uint8Array(uploadBodies[0] as ArrayBuffer);
+    const doc = A.load<FreedDoc>(uploaded);
+    expect(Object.keys(doc.feedItems)).toHaveLength(600);
   });
 
   it("replaces Drive contents without downloading remote history for conflict recovery", async () => {
