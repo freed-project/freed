@@ -210,20 +210,10 @@ export function MobileSyncTab() {
 
   const handleResolveCloudConflict = useCallback(async (winner: CloudConflictWinner) => {
     if (!activeProvider || resolvingConflictWinner) return;
-    const providerLabel = activeProvider === "gdrive" ? "Google Drive" : "Dropbox";
     flushSync(() => {
       setResolvingConflictWinner(winner);
       setManualSyncError(null);
     });
-    const confirmed = window.confirm(
-      winner === "local"
-        ? `Keep this device's library and replace the ${providerLabel} cloud backup?\n\nOther devices will sync from this copy after they reconnect.`
-        : `Keep the ${providerLabel} cloud backup and replace this device's library?\n\nLocal items that are missing from the cloud backup will be removed from this device.`,
-    );
-    if (!confirmed) {
-      setResolvingConflictWinner(null);
-      return;
-    }
 
     try {
       await resolveCloudSyncConflict(activeProvider, winner);

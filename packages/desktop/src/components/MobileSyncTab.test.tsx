@@ -136,7 +136,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
         },
       },
     });
-    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const confirmMock = vi.spyOn(window, "confirm");
 
     await act(async () => {
       root.render(<MobileSyncTab />);
@@ -158,7 +158,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
       await Promise.resolve();
     });
 
-    expect(confirmMock).toHaveBeenCalledWith(expect.stringContaining("replace the Google Drive cloud backup"));
+    expect(confirmMock).not.toHaveBeenCalled();
     expect(mocks.resolveCloudSyncConflict).toHaveBeenCalledWith("gdrive", "local");
 
     await act(async () => {
@@ -188,7 +188,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
         },
       },
     });
-    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const confirmMock = vi.spyOn(window, "confirm");
 
     await act(async () => {
       root.render(<MobileSyncTab />);
@@ -202,6 +202,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
 
     expect(container.querySelector("[data-testid='cloud-sync-keep-local-spinner']")).toBeTruthy();
     expect(keepLocal?.disabled).toBe(true);
+    expect(confirmMock).not.toHaveBeenCalled();
 
     await act(async () => {
       useDebugStore.setState({
