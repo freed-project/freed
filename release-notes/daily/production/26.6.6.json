@@ -1,0 +1,17 @@
+{
+  "channel": "production",
+  "dayKey": "26.6.6",
+  "date": "2026-06-06",
+  "preferredDeck": "Cloud conflict recovery now responds immediately when choosing which copy should win.",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Keep this device and Keep cloud copy now show progress immediately instead of waiting behind a blocking browser confirmation.",
+    "Opening Sync settings no longer clears the cloud conflict warning before the recovery controls can run."
+  ],
+  "editorialNotes": [],
+  "updatedAt": "2026-06-06T14:09:45.856Z"
+}
