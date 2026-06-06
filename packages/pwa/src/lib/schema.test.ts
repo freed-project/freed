@@ -25,6 +25,7 @@ import {
   hideItem,
   addRssFeed,
   assertNonDestructiveMerge,
+  choosePopulatedInputForEmptyMerge,
   evaluateDestructiveMergeGuard,
   removeRssFeed,
   updateAccount,
@@ -931,6 +932,34 @@ describe("Automerge merge / sync simulation", () => {
     expect(() =>
       assertNonDestructiveMerge(trusted, deleteHeavy, merged, { source: "test sync" }),
     ).toThrow(/Freed blocked a sync merge/);
+  });
+
+  it("adopts a populated peer when stale empty delete history wins first sync", () => {
+    let populated = createEmptyDoc();
+    populated = A.change(populated, (d) => {
+      addRssFeed(d, makeFeed({ url: "https://example.com/feed.xml", title: "Example" }));
+      for (let i = 0; i < 600; i += 1) {
+        addFeedItem(d, makeItem({ globalId: `cloud-item-${i}` }));
+      }
+    });
+
+    let staleEmpty = A.clone(populated);
+    staleEmpty = A.change(staleEmpty, (d) => {
+      for (const id of Object.keys(d.feedItems)) {
+        delete d.feedItems[id];
+      }
+      for (const url of Object.keys(d.rssFeeds)) {
+        delete d.rssFeeds[url];
+      }
+    });
+
+    const merged = A.merge(staleEmpty, populated);
+    expect(Object.keys(merged.feedItems)).toHaveLength(0);
+    expect(choosePopulatedInputForEmptyMerge(staleEmpty, populated, merged)).toBe("incoming");
+
+    expect(() =>
+      assertNonDestructiveMerge(staleEmpty, populated, populated, { source: "test sync" }),
+    ).not.toThrow();
   });
 
   it("serializes and deserializes without data loss", () => {

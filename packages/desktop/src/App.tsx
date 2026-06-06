@@ -98,6 +98,7 @@ import { publishStoryWallToGitHubPages } from "./lib/story-wall-publisher";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
 import { startMemoryMonitor, stopMemoryMonitor } from "./lib/memory-monitor";
 import {
+  getBackgroundRuntimeStatus,
   noteMemoryPressure,
   noteRendererHeartbeat,
   noteRendererRecoveryState,
@@ -495,6 +496,7 @@ function App() {
         lastInputAgeMs: Math.max(0, Math.round(now - lastInputAt)),
         settingsOpen: Boolean(document.querySelector(".theme-settings-shell")),
         dialogOpen: Boolean(document.querySelector(".theme-dialog-shell")),
+        backgroundRuntime: getBackgroundRuntimeStatus(),
         surfacePerf: collectSurfacePerf(),
       };
       expectedHeartbeatAt = now + RENDERER_HEARTBEAT_INTERVAL_MS;

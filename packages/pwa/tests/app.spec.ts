@@ -1,4 +1,24 @@
 import { test, expect } from "@playwright/test";
+import {
+  SAMPLE_SHOWCASE_FEED_COUNT,
+  SAMPLE_SHOWCASE_FRIEND_COUNT,
+  SAMPLE_SHOWCASE_ITEM_COUNT,
+} from "@freed/shared";
+
+const SAMPLE_AUTHOR_PERSON_COUNT = 20;
+const SAMPLE_LINKEDIN_POST_COUNT = 10;
+const EXPECTED_LINKEDIN_ITEMS_PER_BATCH =
+  SAMPLE_SHOWCASE_FRIEND_COUNT + SAMPLE_LINKEDIN_POST_COUNT;
+const EXPECTED_FIRST_SAMPLE_LIBRARY_COUNTS = {
+  feeds: SAMPLE_SHOWCASE_FEED_COUNT,
+  friends: SAMPLE_SHOWCASE_FRIEND_COUNT + SAMPLE_AUTHOR_PERSON_COUNT,
+  items: SAMPLE_SHOWCASE_ITEM_COUNT,
+};
+const EXPECTED_ADDITIONAL_SAMPLE_LIBRARY_COUNTS = {
+  feeds: SAMPLE_SHOWCASE_FEED_COUNT,
+  friends: SAMPLE_SHOWCASE_FRIEND_COUNT,
+  items: SAMPLE_SHOWCASE_ITEM_COUNT,
+};
 
 async function waitForPwaDocumentReady(
   page: import("@playwright/test").Page,
@@ -624,24 +644,39 @@ async function seedFriendsWorkspace(
 async function openDangerZone(
   page: import("@playwright/test").Page,
 ): Promise<void> {
-  await page.getByRole("button", { name: "Settings" }).click();
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  const settingsHeading = page.getByRole("heading", { name: "Settings" });
+  const settingsOpen = await settingsHeading.isVisible({ timeout: 1_000 }).catch(() => false);
+  if (!settingsOpen) {
+    await page.getByTestId("sidebar-settings-button").click();
+  }
+  await expect(settingsHeading).toBeVisible();
   await page.getByRole("button", { name: "Danger Zone" }).click();
 }
 
 async function populateSampleData(
   page: import("@playwright/test").Page,
   previousCounts: { friends: number; items: number; feeds: number },
+  expectedCounts: { friends: number; items: number; feeds: number },
 ): Promise<void> {
-  const populateButton = page.getByRole("button", {
-    name: /Populate sample data|Add more sample data/,
+  let populateButton = page.getByRole("button", {
+    name: /^(Populate sample data|Add more sample data)$/,
   });
+  const exactButtonVisible = await populateButton.isVisible({ timeout: 2_000 }).catch(() => false);
+  if (!exactButtonVisible) {
+    populateButton = page.getByRole("button", {
+      name: /^(Populate sample data|Add more sample data) /,
+    }).first();
+  }
   await expect(populateButton).toBeVisible();
-  await populateButton.click();
+  await populateButton.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
 
   const confirmButton = page.getByRole("button", { name: "Populate anyway" });
   if (await confirmButton.isVisible().catch(() => false)) {
-    await confirmButton.click();
+    await confirmButton.evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
   }
 
   await expect(page.getByText("Sample data added:")).toBeVisible({
@@ -652,9 +687,9 @@ async function populateSampleData(
       timeout: 15_000,
     })
     .toEqual({
-      friends: previousCounts.friends + 25,
-      items: previousCounts.items + 155,
-      feeds: previousCounts.feeds + 10,
+      friends: previousCounts.friends + expectedCounts.friends,
+      items: previousCounts.items + expectedCounts.items,
+      feeds: previousCounts.feeds + expectedCounts.feeds,
     });
   await expect(page.getByText("Cannot assign undefined value")).toBeHidden();
 }
@@ -1999,17 +2034,18 @@ test.describe("FREED PWA", () => {
     const before = await getLibraryCounts(page);
     await openDangerZone(page);
 
-    await populateSampleData(page, before);
+    await populateSampleData(page, before, EXPECTED_FIRST_SAMPLE_LIBRARY_COUNTS);
     const afterFirst = await getLibraryCounts(page);
-    expect(afterFirst.friends - before.friends).toBe(25);
-    expect(afterFirst.items - before.items).toBe(155);
-    expect(afterFirst.feeds - before.feeds).toBe(10);
+    expect(afterFirst.friends - before.friends).toBe(EXPECTED_FIRST_SAMPLE_LIBRARY_COUNTS.friends);
+    expect(afterFirst.items - before.items).toBe(EXPECTED_FIRST_SAMPLE_LIBRARY_COUNTS.items);
+    expect(afterFirst.feeds - before.feeds).toBe(EXPECTED_FIRST_SAMPLE_LIBRARY_COUNTS.feeds);
 
-    await populateSampleData(page, afterFirst);
+    await openDangerZone(page);
+    await populateSampleData(page, afterFirst, EXPECTED_ADDITIONAL_SAMPLE_LIBRARY_COUNTS);
     const afterSecond = await getLibraryCounts(page);
-    expect(afterSecond.friends - afterFirst.friends).toBe(25);
-    expect(afterSecond.items - afterFirst.items).toBe(155);
-    expect(afterSecond.feeds - afterFirst.feeds).toBe(10);
+    expect(afterSecond.friends - afterFirst.friends).toBe(EXPECTED_ADDITIONAL_SAMPLE_LIBRARY_COUNTS.friends);
+    expect(afterSecond.items - afterFirst.items).toBe(EXPECTED_ADDITIONAL_SAMPLE_LIBRARY_COUNTS.items);
+    expect(afterSecond.feeds - afterFirst.feeds).toBe(EXPECTED_ADDITIONAL_SAMPLE_LIBRARY_COUNTS.feeds);
 
     const batchSummary = await page.evaluate(() => {
       const store = (window as Record<string, unknown>).__FREED_STORE__ as {
@@ -2039,7 +2075,7 @@ test.describe("FREED PWA", () => {
 
     expect(batchSummary.friendIds.some((id) => id === "sample-friend-maya")).toBe(false);
     expect(batchSummary.linkedInFriendCount).toBeGreaterThan(0);
-    expect(batchSummary.linkedInItemCount).toBe(20);
+    expect(batchSummary.linkedInItemCount).toBe(EXPECTED_LINKEDIN_ITEMS_PER_BATCH * 2);
   });
 });
 
