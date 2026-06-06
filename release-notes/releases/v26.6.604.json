@@ -1,0 +1,68 @@
+{
+  "tag": "v26.6.604",
+  "version": "26.6.604",
+  "channel": "production",
+  "dayKey": "26.6.6",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-06T22:06:06.268Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.6.602",
+    "previousPublishedDayTag": "v26.6.504",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.601",
+      "v26.6.602",
+      "v26.6.604"
+    ],
+    "relatedBuildTags": [
+      "v26.6.601",
+      "v26.6.602",
+      "v26.6.603-dev",
+      "v26.6.604"
+    ],
+    "prNumbers": [
+      776,
+      779,
+      782,
+      783,
+      784,
+      786,
+      788,
+      789,
+      790,
+      791,
+      792,
+      794
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for production release (#794)",
+      "release: approve v26.6.602 notes",
+      "release: v26.6.602",
+      "chore: promote dev into main for production release (#790)",
+      "release: v26.6.601",
+      "chore: promote dev into main for production release (#786)",
+      "release: v26.6.600",
+      "chore: promote dev into main for cloud conflict recovery (#784)"
+    ]
+  },
+  "release": {
+    "deck": "Sample data population now finishes with one local document save, and cloud conflict recovery keeps its controls responsive",
+    "features": [],
+    "fixes": [
+      "Keep this device and Keep cloud copy now show progress immediately instead of waiting behind a blocking browser confirmation",
+      "Opening Sync settings no longer clears the cloud conflict warning before the recovery controls can run",
+      "Populate sample data now batches the generated library into one local persistence operation across Freed Desktop and the mobile app",
+      "The sample data button no longer waits on repeated feed, item, friend, and account saves before the interface can catch up"
+    ],
+    "followUps": [
+      "Promote dev into main for production release",
+      "Cloud conflict recovery now responds immediately when choosing which copy should win",
+      "Facebook and Instagram syncs now avoid unnecessary full-library cleanup work when a run finds only existing posts. The build also adds sharper timing diagnostics for social sync stages, improves renderer freeze evidence, keeps cloud conflict recovery responsive, and speeds up sample library seeding"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.604\n\nSample data population now finishes with one local document save, and cloud conflict recovery keeps its controls responsive\n\n### Fixes\n\n- Keep this device and Keep cloud copy now show progress immediately instead of waiting behind a blocking browser confirmation\n- Opening Sync settings no longer clears the cloud conflict warning before the recovery controls can run\n- Populate sample data now batches the generated library into one local persistence operation across Freed Desktop and the mobile app\n- The sample data button no longer waits on repeated feed, item, friend, and account saves before the interface can catch up\n\n### Follow-ups\n\n- Promote dev into main for production release\n- Cloud conflict recovery now responds immediately when choosing which copy should win\n- Facebook and Instagram syncs now avoid unnecessary full-library cleanup work when a run finds only existing posts. The build also adds sharper timing diagnostics for social sync stages, improves renderer freeze evidence, keeps cloud conflict recovery responsive, and speeds up sample library seeding\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
