@@ -16,9 +16,7 @@ import { toast } from "./Toast.js";
 export function SampleDataTestingSection() {
   const initialize = useAppStore((s) => s.initialize);
   const isInitialized = useAppStore((s) => s.isInitialized);
-  const addFeed = useAppStore((s) => s.addFeed);
-  const addItems = useAppStore((s) => s.addItems);
-  const addFriends = useAppStore((s) => s.addFriends);
+  const addSampleLibraryData = useAppStore((s) => s.addSampleLibraryData);
   const clearSampleData = useAppStore((s) => s.clearSampleData);
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
@@ -43,9 +41,7 @@ export function SampleDataTestingSection() {
       await refreshSampleLibraryData({
         initialize,
         isInitialized,
-        addFeed,
-        addItems,
-        addFriends,
+        addSampleLibraryData,
         seedSocialConnections,
       });
       setSeedDone(true);
@@ -58,9 +54,7 @@ export function SampleDataTestingSection() {
       setSeeding(false);
     }
   }, [
-    addFeed,
-    addFriends,
-    addItems,
+    addSampleLibraryData,
     initialize,
     isInitialized,
     seedSocialConnections,

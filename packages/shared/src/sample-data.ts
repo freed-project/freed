@@ -593,11 +593,13 @@ export function generateSampleFriends(options?: SampleDataOptions): Friend[] {
   }));
 }
 
-export function generateSampleLibraryData(options?: SampleDataOptions): {
+export interface SampleLibraryData {
   feeds: RssFeed[];
   items: FeedItem[];
   friends: Friend[];
-} {
+}
+
+export function generateSampleLibraryData(options?: SampleDataOptions): SampleLibraryData {
   const resolvedOptions = resolveSampleDataOptions(options);
   return {
     feeds: generateSampleFeeds(resolvedOptions),

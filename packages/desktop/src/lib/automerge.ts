@@ -657,6 +657,23 @@ export async function docAddFeedItems(items: FeedItem[]): Promise<void> {
   return request({ reqId, type: "ADD_FEED_ITEMS", items });
 }
 
+export async function docAddSampleLibraryData(data: {
+  feeds: RssFeed[];
+  items: FeedItem[];
+  persons: Person[];
+  accounts: Account[];
+}): Promise<void> {
+  const reqId = nextReqId++;
+  return request({
+    reqId,
+    type: "ADD_SAMPLE_LIBRARY_DATA",
+    feeds: data.feeds,
+    items: data.items,
+    persons: data.persons,
+    accounts: data.accounts,
+  });
+}
+
 export async function docRemoveFeedItem(globalId: string): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "REMOVE_FEED_ITEM", globalId });
