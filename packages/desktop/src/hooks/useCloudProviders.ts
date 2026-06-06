@@ -112,10 +112,10 @@ export function useCloudProviders() {
   // Keep the debug panel's cloud sync section in sync with live provider state.
   useEffect(() => {
     (["gdrive", "dropbox"] as const).forEach((provider) => {
-      updateCloudProvider(provider, {
-        status: providers[provider].status,
-        error: providers[provider].status === "error" ? providers[provider].error : undefined,
-      });
+      const providerState = providers[provider];
+      updateCloudProvider(provider, providerState.status === "error"
+        ? { status: providerState.status, error: providerState.error }
+        : { status: providerState.status });
     });
   }, [providers]);
 
