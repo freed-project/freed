@@ -630,6 +630,28 @@ test("startup emits renderer health before background work can run", async ({ ap
       }),
     )
     .toBeGreaterThanOrEqual(1);
+
+  const heartbeat = await page.evaluate(() => {
+    return (window as unknown as {
+      __FREED_LAST_RENDERER_HEARTBEAT__?: {
+        backgroundRuntime?: {
+          rendererReady?: boolean;
+          activeJob?: string | null;
+          activeSource?: string | null;
+          activeAgeMs?: number | null;
+        };
+      };
+    }).__FREED_LAST_RENDERER_HEARTBEAT__;
+  });
+
+  expect(heartbeat?.backgroundRuntime).toEqual(
+    expect.objectContaining({
+      rendererReady: expect.any(Boolean),
+      activeJob: null,
+      activeSource: null,
+      activeAgeMs: null,
+    }),
+  );
 });
 
 test("no console errors on startup", async ({ page }) => {

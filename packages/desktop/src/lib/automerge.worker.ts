@@ -825,7 +825,10 @@ async function applyAddFeedItemsPatchChange(items: FeedItem[], trace?: RequestTr
       changedIds.push(item.globalId);
       addKnownLinkPreviewUrl(item);
     }
-    if (items.some((item) => item.platform === "facebook" || item.platform === "instagram")) {
+    if (
+      changedIds.length > 0 &&
+      items.some((item) => item.platform === "facebook" || item.platform === "instagram")
+    ) {
       dedupedCount = deduplicateDocFeedItems(doc);
     }
   });
