@@ -1,36 +1,54 @@
 [
   {
-    "version": "26.6.602",
-    "tagName": "v26.6.602",
+    "version": "26.6.604",
+    "tagName": "v26.6.604",
     "channel": "production",
-    "date": "2026-06-06T16:50:39Z",
-    "deck": "Sample data population now finishes with one local document save, and cloud conflict recovery keeps its controls responsive",
+    "date": "2026-06-06T22:51:52Z",
+    "deck": "Google Drive sync now imports existing phone libraries correctly, and sample data seeding no longer trips Automerge document state errors",
     "features": [],
     "fixes": [
       {
-        "text": "Populate sample data now batches the generated library into one local persistence operation across Freed Desktop and the mobile app"
+        "text": "Connecting the mobile app to Google Drive now keeps the populated cloud library instead of resolving the first merge down to an empty document"
       },
       {
-        "text": "The sample data button no longer waits on repeated feed, item, friend, and account saves before the interface can catch up"
+        "text": "Phone sync can download new Drive items on first connection without triggering the feed history loss guard"
+      },
+      {
+        "text": "Populate sample data now writes through the latest Automerge document state, avoiding the outdated document error"
+      },
+      {
+        "text": "Populate sample data now batches the generated library into one local persistence operation across Freed Desktop and the mobile app"
       },
       {
         "text": "Keep this device and Keep cloud copy now show progress immediately instead of waiting behind a blocking browser confirmation"
       },
       {
         "text": "Opening Sync settings no longer clears the cloud conflict warning before the recovery controls can run"
+      },
+      {
+        "text": "The sample data button no longer waits on repeated feed, item, friend, and account saves before the interface can catch up"
       }
     ],
     "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.602",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.604",
     "prNumbers": [
+      776,
+      779,
+      782,
+      783,
       784,
       786,
+      788,
       789,
-      790
+      790,
+      791,
+      792,
+      794
     ],
     "builds": [
       "26.6.601",
-      "26.6.602"
+      "26.6.602",
+      "26.6.604"
     ],
     "buildLinks": [
       {
@@ -42,6 +60,49 @@
         "version": "26.6.602",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.602",
         "channel": "production"
+      },
+      {
+        "version": "26.6.604",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.604",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.6.603-dev",
+    "tagName": "v26.6.603-dev",
+    "channel": "dev",
+    "date": "2026-06-06T18:15:20Z",
+    "deck": "Facebook and Instagram syncs now avoid unnecessary full-library cleanup work when a run finds only existing posts. The build also adds sharper timing diagnostics for social sync stages, improves renderer freeze evidence, keeps cloud conflict recovery responsive, and speeds up sample library seeding.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Reduced duplicate-only Facebook and Instagram sync work so no-new-content runs do less main-library churn."
+      },
+      {
+        "text": "Added local timing logs for Facebook and Instagram fetch, store write, and media vault stages."
+      },
+      {
+        "text": "Added background runtime state to renderer heartbeats so future freeze reports show what sync work was active."
+      },
+      {
+        "text": "Kept cloud conflict recovery responsive while a user chooses which copy should win."
+      },
+      {
+        "text": "Batched sample library seeding so test data population gives control back to the app sooner."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.603-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.6.603-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.603-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.603-dev",
+        "channel": "dev"
       }
     ]
   },
