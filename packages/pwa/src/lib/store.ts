@@ -17,12 +17,13 @@ import {
   personFromLegacyFriend,
   resolveFeedSignalModesFromDisplay,
 } from "@freed/shared";
-import type { Account, BaseAppState, Friend, Person, ReachOutLog, RemoveFeedOptions } from "@freed/shared";
+import type { Account, BaseAppState, Friend, Person, ReachOutLog, RemoveFeedOptions, SampleLibraryData } from "@freed/shared";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
 import {
   initDoc,
   subscribe,
   docAddFeedItems,
+  docAddSampleLibraryData,
   docAddRssFeed,
   docRemoveRssFeed,
   docRemoveAllFeeds,
@@ -324,6 +325,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   clearSampleData: async () => {
     return docClearSampleData();
+  },
+
+  addSampleLibraryData: async (data: SampleLibraryData) => {
+    await docAddSampleLibraryData({
+      feeds: data.feeds,
+      items: data.items,
+      persons: data.friends.map((friend) => personFromLegacyFriend(friend as Friend)),
+      accounts: data.friends.flatMap((friend) => accountsFromLegacyFriend(friend as Friend)),
+    });
   },
 
   // Feed actions

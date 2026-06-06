@@ -411,6 +411,22 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         ack(req.reqId);
         break;
 
+      case "ADD_SAMPLE_LIBRARY_DATA":
+        await applyChange((doc) => {
+          for (const feed of req.feeds) {
+            addRssFeed(doc, feed);
+          }
+          for (const item of req.items) {
+            if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
+          }
+          for (const person of req.persons) {
+            addPerson(doc, person);
+          }
+          addAccounts(doc, req.accounts);
+        }, `Add sample library data: ${req.items.length.toLocaleString()} items`, true);
+        ack(req.reqId);
+        break;
+
       case "REMOVE_FEED_ITEM":
         await applyChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item", true);
         ack(req.reqId);

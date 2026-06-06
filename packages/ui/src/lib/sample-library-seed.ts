@@ -7,9 +7,7 @@ import type { BaseAppState, SampleDataClearSummary } from "@freed/shared";
 interface SampleSeedActions {
   initialize: BaseAppState["initialize"];
   isInitialized: boolean;
-  addFeed: BaseAppState["addFeed"];
-  addItems: BaseAppState["addItems"];
-  addFriends: BaseAppState["addFriends"];
+  addSampleLibraryData: BaseAppState["addSampleLibraryData"];
   seedSocialConnections?: () => void;
 }
 
@@ -41,23 +39,14 @@ export function formatSampleDataSummary(summary: SampleDataClearSummary): string
 export async function refreshSampleLibraryData({
   initialize,
   isInitialized,
-  addFeed,
-  addItems,
-  addFriends,
+  addSampleLibraryData,
   seedSocialConnections,
 }: SampleSeedActions): Promise<void> {
   if (!isInitialized) {
     await initialize();
   }
 
-  const { feeds: sampleFeeds, items: sampleItems, friends: sampleFriends } =
-    generateSampleLibraryData();
-
-  for (const feed of sampleFeeds) {
-    await addFeed(feed);
-  }
-  await addItems(sampleItems);
-  await addFriends(sampleFriends);
+  await addSampleLibraryData(generateSampleLibraryData());
 
   seedSocialConnections?.();
 }

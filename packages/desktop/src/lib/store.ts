@@ -10,7 +10,7 @@
 
 import { create } from "zustand";
 import { isTauri } from "@tauri-apps/api/core";
-import type { Account, FeedItem, FilterOptions, Friend, Person, ReachOutLog, SampleDataClearSummary, UserPreferences, RssFeed, RemoveFeedOptions } from "@freed/shared";
+import type { Account, FeedItem, FilterOptions, Friend, Person, ReachOutLog, SampleDataClearSummary, SampleLibraryData, UserPreferences, RssFeed, RemoveFeedOptions } from "@freed/shared";
 import {
   applyFeedSignalModesToFilter,
   accountsFromLegacyFriend,
@@ -25,6 +25,7 @@ import {
   subscribe,
   getDocState,
   docAddFeedItems,
+  docAddSampleLibraryData,
   docAddRssFeed,
   docRemoveRssFeed,
   docRemoveAllFeeds,
@@ -163,6 +164,7 @@ interface AppState {
   toggleSaved: (id: string) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
   clearSampleData: () => Promise<SampleDataClearSummary>;
+  addSampleLibraryData: (data: SampleLibraryData) => Promise<void>;
   toggleArchived: (id: string) => Promise<void>;
   archiveItems: (ids: string[]) => Promise<void>;
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
@@ -708,6 +710,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   clearSampleData: async () => {
     return docClearSampleData();
+  },
+
+  addSampleLibraryData: async (data: SampleLibraryData) => {
+    await docAddSampleLibraryData({
+      feeds: data.feeds,
+      items: data.items,
+      persons: data.friends.map((friend) => personFromLegacyFriend(friend as Friend)),
+      accounts: data.friends.flatMap((friend) => accountsFromLegacyFriend(friend as Friend)),
+    });
   },
 
   // Feed actions

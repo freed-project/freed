@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createDefaultPreferences, type ContentSignalBackfillSummary } from "@freed/shared";
+import { createDefaultPreferences, type ContentSignalBackfillSummary, type SampleLibraryData } from "@freed/shared";
 import type { DocState } from "./automerge-types";
 
 const automerge = vi.hoisted(() => {
@@ -8,6 +8,7 @@ const automerge = vi.hoisted(() => {
     initDoc: vi.fn(),
     subscribe: vi.fn(),
     docAddFeedItems: resolved(),
+    docAddSampleLibraryData: resolved(),
     docAddRssFeed: resolved(),
     docRemoveRssFeed: resolved(),
     docRemoveAllFeeds: resolved(),
@@ -138,5 +139,57 @@ describe("PWA store startup maintenance", () => {
 
     await expect(useAppStore.getState().clearSampleData()).resolves.toEqual(summary);
     expect(automerge.docClearSampleData).toHaveBeenCalledTimes(1);
+  });
+
+  it("delegates sample library data to one worker mutation", async () => {
+    const data: SampleLibraryData = {
+      feeds: [
+        {
+          url: "https://sample.freed.wtf/feed.xml",
+          title: "Sample Feed",
+          enabled: true,
+          trackUnread: true,
+          lastFetched: 1,
+        },
+      ],
+      items: [],
+      friends: [
+        {
+          id: "friend-1",
+          name: "Ada Lovelace",
+          relationshipStatus: "friend",
+          careLevel: 5,
+          bio: "Sample friend",
+          tags: ["sample"],
+          sources: [
+            {
+              platform: "instagram",
+              authorId: "ada",
+              handle: "ada",
+              displayName: "Ada Lovelace",
+              profileUrl: "https://instagram.com/ada",
+            },
+          ],
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    };
+
+    await useAppStore.getState().addSampleLibraryData(data);
+
+    expect(automerge.docAddSampleLibraryData).toHaveBeenCalledTimes(1);
+    expect(automerge.docAddRssFeed).not.toHaveBeenCalled();
+    expect(automerge.docAddFeedItems).not.toHaveBeenCalled();
+    expect(automerge.docAddPersons).not.toHaveBeenCalled();
+    expect(automerge.docAddAccounts).not.toHaveBeenCalled();
+    expect(automerge.docAddSampleLibraryData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        feeds: data.feeds,
+        items: data.items,
+        persons: expect.arrayContaining([expect.objectContaining({ id: "friend-1" })]),
+        accounts: expect.arrayContaining([expect.objectContaining({ provider: "instagram" })]),
+      }),
+    );
   });
 });

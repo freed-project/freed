@@ -26,6 +26,7 @@ vi.mock("./automerge", () => ({
   subscribe: mockSubscribe,
   getDocState: vi.fn(() => null),
   docAddFeedItems: vi.fn(),
+  docAddSampleLibraryData: vi.fn(),
   docAddRssFeed: vi.fn(),
   docRemoveRssFeed: vi.fn(),
   docRemoveAllFeeds: vi.fn(),
