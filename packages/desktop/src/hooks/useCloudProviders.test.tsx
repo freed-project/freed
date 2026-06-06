@@ -5,7 +5,7 @@ import { useCloudProviders } from "./useCloudProviders";
 
 const mocks = vi.hoisted(() => ({
   clearCloudProvider: vi.fn(),
-  getCloudToken: vi.fn(() => null),
+  getCloudToken: vi.fn((_provider: string): string | null => null),
   initiateDesktopOAuth: vi.fn(),
   isOAuthCanceledError: vi.fn((error: unknown) => error instanceof Error && error.name === "AbortError"),
   startCloudSync: vi.fn(),
