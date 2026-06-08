@@ -1697,6 +1697,7 @@ test.describe("FREED PWA", () => {
 
     const menuButton = page.getByRole("button", { name: "Close menu" });
     const geometry = await page.evaluate(() => {
+      const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
       const button = document.querySelector('button[aria-label="Close menu"]') as HTMLElement | null;
       const icon = button?.querySelector("[aria-hidden='true']") as HTMLElement | null;
       const sidebar = document.querySelector('[data-testid="app-sidebar-mobile"]') as HTMLElement | null;
@@ -1705,9 +1706,10 @@ test.describe("FREED PWA", () => {
       const firstControl = sidebar?.querySelector("input, button") as HTMLElement | null;
       const settingsFooter = sidebar?.querySelector('[data-testid="mobile-sidebar-settings-footer"]') as HTMLElement | null;
       const settingsButton = sidebar?.querySelector('[data-testid="mobile-sidebar-settings-button"]') as HTMLElement | null;
-      if (!button || !icon || !sidebar || !search || !firstSourceButton || !firstControl || !settingsFooter || !settingsButton) {
+      if (!toolbar || !button || !icon || !sidebar || !search || !firstSourceButton || !firstControl || !settingsFooter || !settingsButton) {
         throw new Error("Mobile menu geometry elements were not found");
       }
+      const toolbarRect = toolbar.getBoundingClientRect();
       const buttonRect = button.getBoundingClientRect();
       const iconRect = icon.getBoundingClientRect();
       const sidebarRect = sidebar.getBoundingClientRect();
@@ -1715,6 +1717,7 @@ test.describe("FREED PWA", () => {
       const firstSourceButtonRect = firstSourceButton.getBoundingClientRect();
       const footerRect = settingsFooter.getBoundingClientRect();
       const settingsButtonRect = settingsButton.getBoundingClientRect();
+      const toolbarStyle = window.getComputedStyle(toolbar);
       const sidebarStyle = window.getComputedStyle(sidebar);
       const sourceStyle = window.getComputedStyle(firstSourceButton);
       const settingsButtonStyle = window.getComputedStyle(settingsButton);
@@ -1727,14 +1730,26 @@ test.describe("FREED PWA", () => {
           (buttonRect.left + buttonRect.width / 2) -
           (iconRect.left + iconRect.width / 2),
         ),
+        menuEdgeGap: Math.round(buttonRect.left - toolbarRect.left),
         firstControlIsSearch: firstControl === search,
         sourceCenterHitsSidebar: !!hitElement && sidebar.contains(hitElement),
+        toolbarBorderBottomColor: toolbarStyle.borderBottomColor,
         sidebarZIndex: Number.parseInt(sidebarStyle.zIndex, 10),
+        sidebarWidth: Math.round(sidebarRect.width),
+        viewportWidth: window.innerWidth,
+        sidebarBoxShadow: sidebarStyle.boxShadow,
+        searchEdgeGap: Math.round(searchRect.left - sidebarRect.left),
+        searchHeight: Math.round(searchRect.height),
+        sourceEdgeGap: Math.round(firstSourceButtonRect.left - sidebarRect.left),
+        settingsEdgeGap: Math.round(settingsButtonRect.left - sidebarRect.left),
         searchTop: Math.round(searchRect.top),
         sidebarTop: Math.round(sidebarRect.top),
+        searchToFirstRowGap: Math.round(firstSourceButtonRect.top - searchRect.bottom),
         footerBottomGap: Math.round(sidebarRect.bottom - footerRect.bottom),
+        settingsButtonBottomGap: Math.round(sidebarRect.bottom - settingsButtonRect.bottom),
         footerBorderTopWidth: footerStyle.borderTopWidth,
         sourceFontSize: sourceStyle.fontSize,
+        sourceButtonHeight: Math.round(firstSourceButtonRect.height),
         sourcePaddingTop: sourceStyle.paddingTop,
         sourcePaddingBottom: sourceStyle.paddingBottom,
         sourceColumnGap: sourceStyle.columnGap,
@@ -1744,11 +1759,21 @@ test.describe("FREED PWA", () => {
       };
     });
     expect(geometry.centerDelta).toBeLessThanOrEqual(1);
+    expect(geometry.menuEdgeGap).toBeGreaterThanOrEqual(8);
     expect(geometry.firstControlIsSearch).toBe(true);
     expect(geometry.sourceCenterHitsSidebar).toBe(true);
+    expect(geometry.toolbarBorderBottomColor).toBe("rgba(0, 0, 0, 0)");
     expect(geometry.sidebarZIndex).toBeGreaterThan(50);
+    expect(geometry.sidebarWidth).toBe(geometry.viewportWidth);
+    expect(geometry.sidebarBoxShadow).toBe("none");
+    expect(geometry.searchEdgeGap).toBe(geometry.menuEdgeGap);
+    expect(Math.abs(geometry.searchHeight - geometry.sourceButtonHeight)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.sourceEdgeGap - geometry.menuEdgeGap)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.settingsEdgeGap - geometry.menuEdgeGap)).toBeLessThanOrEqual(1);
     expect(geometry.searchTop - geometry.sidebarTop).toBeGreaterThanOrEqual(8);
+    expect(geometry.searchToFirstRowGap).toBeGreaterThanOrEqual(16);
     expect(geometry.footerBottomGap).toBeLessThanOrEqual(1);
+    expect(geometry.settingsButtonBottomGap).toBeGreaterThanOrEqual(8);
     expect(geometry.footerBorderTopWidth).toBe("0px");
     expect(geometry.sourceFontSize).toBe("17px");
     expect(geometry.sourcePaddingTop).toBe("8px");
@@ -1756,7 +1781,7 @@ test.describe("FREED PWA", () => {
     expect(geometry.sourceColumnGap).toBe("8px");
     expect(geometry.settingsButtonFontSize).toBe("17px");
     expect(geometry.settingsButtonPaddingTop).toBe("8px");
-    expect(geometry.settingsButtonHeight).toBeLessThanOrEqual(44);
+    expect(geometry.settingsButtonHeight).toBeGreaterThanOrEqual(geometry.sourceButtonHeight);
 
     await menuButton.click();
     await expect(sidebar).toHaveClass(/-translate-x-full/);
@@ -1776,9 +1801,17 @@ test.describe("FREED PWA", () => {
       (element as HTMLButtonElement).click();
     });
 
-    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Freed Settings" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Appearance" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Appearance" })).toHaveCount(0);
+    await expect(page.getByTestId("settings-nav-panel")).toHaveCSS("border-bottom-width", "0px");
+    const settingsSearchHeight = await page.getByLabel("Search settings").evaluate((input) =>
+      Math.round(input.getBoundingClientRect().height),
+    );
+    const appearanceButtonHeight = await page.getByRole("button", { name: "Appearance" }).evaluate((button) =>
+      Math.round(button.getBoundingClientRect().height),
+    );
+    expect(settingsSearchHeight).toBe(appearanceButtonHeight);
     const overviewFontSize = await page.getByRole("button", { name: "Appearance" }).evaluate((button) =>
       Number.parseFloat(window.getComputedStyle(button).fontSize),
     );
@@ -1797,13 +1830,14 @@ test.describe("FREED PWA", () => {
     await page.getByRole("button", { name: "Settings" }).evaluate((element) => {
       (element as HTMLButtonElement).click();
     });
-    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Freed Settings" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Appearance" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Support", exact: true })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Appearance" })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Updates" }).click();
-    await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Updates");
+    await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Freed SettingsUpdates");
+    await expect(page.getByTestId("settings-mobile-breadcrumb-caret")).toHaveCount(1);
 
     const scrollContainer = page.getByTestId("settings-scroll-container");
     await scrollContainer.evaluate((container) => {
@@ -1831,9 +1865,16 @@ test.describe("FREED PWA", () => {
     expect(sectionMetrics.sectionGap).toBeLessThanOrEqual(64);
 
     await page.getByLabel("Back to settings").click();
-    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Freed Settings" })).toBeVisible();
+    await page.getByTestId("settings-nav-panel").getByRole("button", { name: "Saved" }).click();
+    await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Freed SettingsSourcesSaved");
+    await expect(page.getByTestId("settings-mobile-breadcrumb-caret")).toHaveCount(2);
+
+    await page.getByLabel("Back to settings").click();
+    await expect(page.getByRole("heading", { name: "Freed Settings" })).toBeVisible();
     await page.getByRole("button", { name: "Danger Zone" }).click();
-    await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Danger Zone");
+    await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Freed SettingsDanger Zone");
+    await expect(page.getByTestId("settings-mobile-breadcrumb-caret")).toHaveCount(1);
 
     await scrollContainer.evaluate((container) => {
       const danger = container.querySelector('[data-section="danger"]') as HTMLElement | null;
@@ -1901,6 +1942,9 @@ test.describe("FREED PWA", () => {
       const overflowRect = overflow.getBoundingClientRect();
       const formatRect = format.getBoundingClientRect();
       const formatIconRect = formatIcon.getBoundingClientRect();
+      const menuStyle = window.getComputedStyle(menu);
+      const overflowStyle = window.getComputedStyle(overflow);
+      const formatStyle = window.getComputedStyle(format);
       return {
         toolbarLeft: toolbarRect.left,
         toolbarRight: toolbarRect.right,
@@ -1908,19 +1952,23 @@ test.describe("FREED PWA", () => {
         menuRight: menuRect.right,
         menuIconLeft: menuIconRect.left,
         menuVisibleLeft,
+        menuEdgeGap: Math.round(menuRect.left - toolbarRect.left),
         menuBarWidths,
         overflowRight: overflowRect.right,
         formatLeft: formatRect.left,
         formatRight: formatRect.right,
         formatIconRight: formatIconRect.right,
+        menuBorderColor: menuStyle.borderColor,
+        overflowBorderColor: overflowStyle.borderColor,
+        formatBorderColor: formatStyle.borderColor,
         viewportRight: window.innerWidth,
         widths: [menuRect.width, overflowRect.width, formatRect.width],
       };
     });
-    expect(
-      Math.abs((geometry.menuVisibleLeft - geometry.toolbarLeft) - (geometry.toolbarRight - geometry.formatIconRight)),
-      JSON.stringify(geometry),
-    ).toBeLessThanOrEqual(2);
+    expect(geometry.menuEdgeGap).toBeGreaterThanOrEqual(8);
+    expect(geometry.menuBorderColor).toBe("rgba(0, 0, 0, 0)");
+    expect(geometry.overflowBorderColor).toBe("rgba(0, 0, 0, 0)");
+    expect(geometry.formatBorderColor).toBe("rgba(0, 0, 0, 0)");
     for (const barWidth of geometry.menuBarWidths) {
       expect(Math.abs(barWidth - geometry.menuBarWidths[0])).toBeLessThanOrEqual(1);
     }
@@ -1928,10 +1976,11 @@ test.describe("FREED PWA", () => {
     expect(geometry.overflowRight).toBeLessThanOrEqual(geometry.formatLeft);
     expect(geometry.formatRight).toBeGreaterThan(geometry.overflowRight);
     for (const width of geometry.widths) {
-      expect(Math.abs(width - 40)).toBeLessThanOrEqual(1);
+      expect(Math.abs(width - 36)).toBeLessThanOrEqual(1);
     }
 
     await overflowButton.click();
+    await expect(overflowButton).toHaveCSS("border-color", "rgba(0, 0, 0, 0)");
     const menuTop = await page.getByTestId("toolbar-overflow-menu").evaluate((menu) =>
       Math.round(menu.getBoundingClientRect().top),
     );
@@ -1941,6 +1990,13 @@ test.describe("FREED PWA", () => {
         Math.round(menu.getBoundingClientRect().top),
       ))
       .toBe(menuTop);
+
+    await page.keyboard.press("Escape");
+    await menuButton.click();
+    await expect(page.getByRole("button", { name: "Close menu" })).toHaveCSS("border-color", "rgba(0, 0, 0, 0)");
+    await expect(page.getByTestId("toolbar-overflow-button")).toHaveCount(0);
+    await expect(page.getByTestId("feed-signal-filter-button")).toHaveCount(0);
+    await expect(page.getByTestId("mobile-toolbar-filter-button")).toHaveCount(0);
   });
 
   test("mobile feed and reader spacing stay balanced", async ({ page }) => {
@@ -1983,6 +2039,25 @@ test.describe("FREED PWA", () => {
     expect(readerMetrics.bodyOverflow).toBe("hidden");
     expect(readerMetrics.paddingLeft).toBeGreaterThanOrEqual(20);
     expect(readerMetrics.paddingRight).toBeGreaterThanOrEqual(20);
+  });
+
+  test("mobile story cards open on first tap without quick actions", async ({ page }) => {
+    await emulateMobileDevice(page);
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await waitForPwaReady(page);
+    await seedSocialReaderItem(page);
+
+    const storyCard = page.getByRole("button", {
+      name: /Reader Author.*Social author navigation item/i,
+    });
+    await expect(storyCard).toBeVisible();
+    await expect(storyCard.locator('button[aria-label="Bookmark"]')).toHaveCount(0);
+    await expect(storyCard.locator('button[aria-label="Archive"]')).toHaveCount(0);
+
+    await storyCard.click();
+    await expect(page.getByTestId("reader-article")).toBeVisible();
   });
 
   test("inline reader does not add a second toolbar divider", async ({ page }) => {
