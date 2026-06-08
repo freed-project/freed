@@ -7,6 +7,7 @@ import { useAppStore } from "./store";
 
 describe("pwa bug reporting", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     resetBugReportState();
     useDebugStore.setState({ events: [], visible: false, docSnapshot: null, cloudProviders: null, perfSnapshot: null, perfResetGeneration: 0 });
     useAppStore.setState({
@@ -28,6 +29,39 @@ describe("pwa bug reporting", () => {
       fatal: true,
       error: new Error("PWA crash with token=super-secret"),
     });
+  });
+
+  it("includes persisted worker debug breadcrumbs in private bundles", async () => {
+    window.localStorage.setItem(
+      "freed:pwa:automerge-worker-debug:v1",
+      JSON.stringify([
+        {
+          ts: 1_783_000_000_000,
+          kind: "merge_ok",
+          detail: "[sync-worker] merge: hydrating state access_token=secret-value",
+          bytes: 1234,
+        },
+      ]),
+    );
+
+    const bundle = await pwaBugReporting.generateBundle({
+      privacyTier: "private",
+      draft: {
+        issueType: "crash",
+        title: "PWA crash",
+        description: "It crashed",
+        reproSteps: "Connect Google Drive",
+        expectedBehavior: "No crash",
+        actualBehavior: "Crash",
+        selectedArtifacts: ["diagnostic-events"],
+      },
+    });
+
+    const zip = await JSZip.loadAsync(bundle.blob);
+    const workerDebug = await zip.file("diagnostics/worker-debug-events.json")?.async("string");
+
+    expect(workerDebug).toContain("[sync-worker] merge: hydrating state");
+    expect(workerDebug).not.toContain("secret-value");
   });
 
   it("filters private artifacts out of public-safe bundles", async () => {
