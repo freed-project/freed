@@ -26,6 +26,7 @@ import {
   addRssFeed,
   assertNonDestructiveMerge,
   choosePopulatedInputForEmptyMerge,
+  choosePopulatedInputForFeedEmptyPreMerge,
   evaluateDestructiveMergeGuard,
   removeRssFeed,
   updateAccount,
@@ -955,6 +956,7 @@ describe("Automerge merge / sync simulation", () => {
 
     const merged = A.merge(staleEmpty, populated);
     expect(Object.keys(merged.feedItems)).toHaveLength(0);
+    expect(choosePopulatedInputForFeedEmptyPreMerge(staleEmpty, populated)).toBe("incoming");
     expect(choosePopulatedInputForEmptyMerge(staleEmpty, populated, merged)).toBe("incoming");
 
     expect(() =>
@@ -985,11 +987,26 @@ describe("Automerge merge / sync simulation", () => {
     const merged = A.merge(staleFeedEmpty, populated);
     expect(Object.keys(merged.feedItems)).toHaveLength(0);
     expect(Object.keys(merged.rssFeeds).length).toBeGreaterThan(0);
+    expect(choosePopulatedInputForFeedEmptyPreMerge(staleFeedEmpty, populated)).toBe("incoming");
     expect(choosePopulatedInputForEmptyMerge(staleFeedEmpty, populated, merged)).toBe("incoming");
 
     expect(() =>
       assertNonDestructiveMerge(staleFeedEmpty, populated, populated, { source: "test sync" }),
     ).not.toThrow();
+  });
+
+  it("does not bypass Automerge when both peers have feed items", () => {
+    let local = createEmptyDoc();
+    local = A.change(local, (d) => {
+      addFeedItem(d, makeItem({ globalId: "local-item" }));
+    });
+
+    let incoming = createEmptyDoc();
+    incoming = A.change(incoming, (d) => {
+      addFeedItem(d, makeItem({ globalId: "incoming-item" }));
+    });
+
+    expect(choosePopulatedInputForFeedEmptyPreMerge(local, incoming)).toBeNull();
   });
 
   it("serializes and deserializes without data loss", () => {

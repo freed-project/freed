@@ -16,6 +16,7 @@ import { hashSavedUrl } from "@freed/capture-save/normalize";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
   assertNonDestructiveMerge,
+  choosePopulatedInputForFeedEmptyPreMerge,
   choosePopulatedInputForEmptyMerge,
   createEmptyDoc,
   addAccount,
@@ -83,6 +84,10 @@ function send(msg: WorkerResponse): void {
 
 function ack(reqId: number, error?: string): void {
   send({ reqId, type: "ACK", error });
+}
+
+function sendSyncBreadcrumb(detail: string, bytes?: number): void {
+  send({ type: "DEBUG_EVENT", kind: "merge_ok", detail: `[sync-worker] ${detail}`, bytes });
 }
 
 function toLegacyContact(account: Account): LegacyDeviceContact {
@@ -262,11 +267,15 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
  * Persist the doc to IndexedDB and broadcast the hydrated state + binary to
  * the main thread. Called after every mutation.
  */
-async function saveAndBroadcast(): Promise<void> {
+async function saveAndBroadcast(syncBreadcrumbLabel?: string): Promise<void> {
   if (!currentDoc) return;
+  if (syncBreadcrumbLabel) sendSyncBreadcrumb(`${syncBreadcrumbLabel}: saving binary`);
   const binary = A.save(currentDoc);
+  if (syncBreadcrumbLabel) sendSyncBreadcrumb(`${syncBreadcrumbLabel}: writing IndexedDB`, binary.byteLength);
   await storage.save(binary);
+  if (syncBreadcrumbLabel) sendSyncBreadcrumb(`${syncBreadcrumbLabel}: hydrating state`, binary.byteLength);
   const state = hydrateFromDoc(currentDoc);
+  if (syncBreadcrumbLabel) sendSyncBreadcrumb(`${syncBreadcrumbLabel}: posting state`, binary.byteLength);
 
   const snapshot: Extract<WorkerResponse, { type: "DEBUG_SNAPSHOT" }> = {
     type: "DEBUG_SNAPSHOT",
@@ -648,15 +657,44 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
       case "MERGE_DOC": {
         if (!currentDoc) throw new Error("Document not initialized");
         const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
+        sendSyncBreadcrumb(
+          `loading remote document, local feed items: ${beforeCount.toLocaleString()}`,
+          req.binary.byteLength,
+        );
         const incomingDoc = A.load<FreedDoc>(req.binary);
-        const mergedDoc = A.merge(currentDoc, incomingDoc);
-        const populatedSide = choosePopulatedInputForEmptyMerge(currentDoc, incomingDoc, mergedDoc);
-        const resolvedDoc =
-          populatedSide === "local" ? currentDoc : populatedSide === "incoming" ? incomingDoc : mergedDoc;
+        const incomingCount = Object.keys(incomingDoc.feedItems ?? {}).length;
+        sendSyncBreadcrumb(
+          `loaded remote document, remote feed items: ${incomingCount.toLocaleString()}`,
+          req.binary.byteLength,
+        );
+        const preMergePopulatedSide = choosePopulatedInputForFeedEmptyPreMerge(currentDoc, incomingDoc);
+        if (!preMergePopulatedSide) {
+          sendSyncBreadcrumb("running Automerge merge", req.binary.byteLength);
+        }
+        const mergedDoc = preMergePopulatedSide ? null : A.merge(currentDoc, incomingDoc);
+        const populatedSide = preMergePopulatedSide ?? (
+          mergedDoc ? choosePopulatedInputForEmptyMerge(currentDoc, incomingDoc, mergedDoc) : null
+        );
+        const resolvedDoc = populatedSide === "local"
+          ? currentDoc
+          : populatedSide === "incoming"
+            ? incomingDoc
+            : mergedDoc;
+        if (!resolvedDoc) throw new Error("PWA sync merge did not produce a document");
         const guard = assertNonDestructiveMerge(currentDoc, incomingDoc, resolvedDoc, {
           source: "PWA sync",
         });
-        currentDoc = populatedSide ? A.clone(resolvedDoc) : resolvedDoc;
+        if (preMergePopulatedSide) {
+          sendSyncBreadcrumb(
+            `skipped Automerge merge and adopted ${preMergePopulatedSide} feed library`,
+            req.binary.byteLength,
+          );
+        }
+        currentDoc = preMergePopulatedSide
+          ? resolvedDoc
+          : populatedSide
+            ? A.clone(resolvedDoc)
+            : resolvedDoc;
         migrateLoadedIdentityGraph("Migrate legacy identity graph");
         const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const delta = afterCount - beforeCount;
@@ -683,7 +721,8 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
           });
         }
         bumpSearchCorpusVersion();
-        await saveAndBroadcast();
+        await saveAndBroadcast("merge");
+        sendSyncBreadcrumb("merge broadcast complete", req.binary.byteLength);
         ack(req.reqId);
         break;
       }
