@@ -235,6 +235,10 @@ function describeSyncError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isDestructiveMergeError(error: unknown): boolean {
+  return describeSyncError(error).includes("blocked a sync merge");
+}
+
 type CloudStage = "auth" | "download" | "merge" | "poll" | "upload" | "idle";
 
 function recordCloudStep(
@@ -307,11 +311,14 @@ function markCloudSuccess(
 
 function markCloudError(provider: CloudProvider, stage: "auth" | "download" | "merge" | "poll" | "upload", error: unknown): void {
   const message = describeSyncError(error);
+  const statusMessage = isDestructiveMergeError(error)
+    ? "Merge blocked."
+    : `${stage[0].toUpperCase()}${stage.slice(1)} failed.`;
   updateCloudProvider(provider, {
     status: "error",
     stage,
     error: message,
-    statusMessage: message,
+    statusMessage,
     pendingReason: "Resolve this error, then reconnect or run Sync now.",
     lastErrorAt: Date.now(),
   });
@@ -554,7 +561,12 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
     if (!signal.aborted) {
       console.error("[CloudSync] Initial download failed:", err);
       addDebugEvent("error", `[Cloud/${provider}] initial download failed: ${describeSyncError(err)}`);
-      markCloudError(provider, "download", err);
+      const failedStage = isDestructiveMergeError(err) ? "merge" : "download";
+      markCloudError(provider, failedStage, err);
+      if (failedStage === "merge") {
+        recordCloudStep(provider, "waiting", "merge", "Cloud sync paused until merge recovery is resolved.");
+        return;
+      }
     }
   }
 
@@ -813,9 +825,14 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
     error: undefined,
   });
 
-  await runInitialCloudDownload(provider, signal, async () => {
-    const currentToken = provider === "gdrive" ? await getValidCloudToken(provider) : token;
-    return currentToken ?? token;
-  });
-  await performCloudUpload(provider);
+  try {
+    await runInitialCloudDownload(provider, signal, async () => {
+      const currentToken = provider === "gdrive" ? await getValidCloudToken(provider) : token;
+      return currentToken ?? token;
+    });
+    await performCloudUpload(provider);
+  } catch (error) {
+    markCloudError(provider, isDestructiveMergeError(error) ? "merge" : "download", error);
+    throw error;
+  }
 }

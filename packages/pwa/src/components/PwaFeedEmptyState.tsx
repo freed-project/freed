@@ -1,13 +1,42 @@
 import { useAppStore } from "../lib/store";
+import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTestingSection";
 
 const openSyncSettings = () =>
   window.dispatchEvent(new CustomEvent("freed:open-settings", { detail: { scrollTo: "sync" } }));
 
+function isMergeBlocked(message?: string): boolean {
+  return message?.includes("blocked a sync merge") ?? false;
+}
+
+function SyncSpinner() {
+  return (
+    <div
+      aria-label="Syncing"
+      className="mb-4 h-10 w-10 animate-spin rounded-full border-2 border-[rgb(var(--theme-accent-secondary-rgb)/0.24)] border-t-[var(--theme-accent-secondary)]"
+    />
+  );
+}
+
 export function PwaFeedEmptyState() {
   const syncConnected = useAppStore((s) => s.syncConnected);
+  const isSyncing = useAppStore((s) => s.isSyncing);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const feeds = useAppStore((s) => s.feeds);
+  const cloudProviders = useDebugStore((s) => s.cloudProviders);
+  const cloudState = cloudProviders?.gdrive ?? cloudProviders?.dropbox ?? null;
+  const cloudError = cloudState?.error;
+  const syncBlocked = syncConnected && isMergeBlocked(cloudError);
+  const cloudStage = cloudState?.stage;
+  const cloudTransferRunning =
+    syncConnected &&
+    !syncBlocked &&
+    (isSyncing ||
+      cloudState?.status === "connecting" ||
+      cloudStage === "auth" ||
+      cloudStage === "download" ||
+      cloudStage === "merge" ||
+      cloudStage === "upload");
 
   // Per-feed view: a specific feed is selected but has no items yet.
   // `lastFetched` is absent until Freed Desktop polls the feed.
@@ -65,15 +94,18 @@ export function PwaFeedEmptyState() {
 
   return (
     <>
+      {cloudTransferRunning && <SyncSpinner />}
       <p className="text-lg font-medium mb-2">
-        {syncConnected ? "Waiting for content..." : "No content yet"}
+        {syncBlocked ? "Sync is blocked" : syncConnected ? "Waiting for content..." : "No content yet"}
       </p>
       <p className="max-w-xs text-sm text-[var(--theme-text-muted)]">
-        {syncConnected
+        {syncBlocked
+          ? "Open Sync settings to choose how to recover your Google Drive library."
+          : syncConnected
           ? "Freed Desktop is connected. New feed content will appear here once fetched."
           : "Connect to Freed Desktop to sync your feeds."}
       </p>
-      {!syncConnected && (
+      {(syncBlocked || !syncConnected) && (
       <button
         onClick={openSyncSettings}
         className="theme-accent-button mt-4 flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-colors"
@@ -91,7 +123,7 @@ export function PwaFeedEmptyState() {
             d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
           />
         </svg>
-        Connect
+        {syncBlocked ? "Open Sync settings" : "Connect"}
       </button>
       )}
       <SampleDataTestingSection />

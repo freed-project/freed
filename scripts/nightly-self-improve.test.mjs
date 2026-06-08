@@ -23,6 +23,7 @@ import {
   resolveReadableSoak,
   selectTargets,
   shouldRetainPeerWorktree,
+  summarizePeerWorktree,
   summarizeOutcomeLedger,
   summarizeDailyBugMemory,
   summarizeSoak,
@@ -580,6 +581,38 @@ test("duplicate work detector reports file and surface overlap", () => {
   assert.equal(duplicateWork.blockerCount, 1);
 });
 
+test("summarizePeerWorktree ignores behind-only detached snapshots as active changes", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-peer-summary-"));
+  const origin = path.join(dir, "origin.git");
+  const repo = path.join(dir, "repo");
+  const peer = path.join(dir, "peer");
+
+  execFileSync("git", ["init", "--bare", origin]);
+  execFileSync("git", ["clone", origin, repo]);
+  execFileSync("git", ["-C", repo, "config", "user.name", "Freed Tests"]);
+  execFileSync("git", ["-C", repo, "config", "user.email", "tests@example.com"]);
+  execFileSync("git", ["-C", repo, "checkout", "-b", "dev"]);
+  writeFileSync(path.join(repo, "notes.txt"), "first\n");
+  execFileSync("git", ["-C", repo, "add", "notes.txt"]);
+  execFileSync("git", ["-C", repo, "commit", "-m", "first"]);
+  const firstHead = execFileSync("git", ["-C", repo, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  execFileSync("git", ["-C", repo, "push", "-u", "origin", "dev"]);
+
+  writeFileSync(path.join(repo, "notes.txt"), "second\n");
+  execFileSync("git", ["-C", repo, "commit", "-am", "second"]);
+  execFileSync("git", ["-C", repo, "push"]);
+
+  execFileSync("git", ["clone", origin, peer]);
+  execFileSync("git", ["-C", peer, "fetch", "origin", "dev"]);
+  execFileSync("git", ["-C", peer, "checkout", "--detach", firstHead]);
+
+  const summary = summarizePeerWorktree(peer, repo);
+  assert.equal(summary?.branch, "HEAD");
+  assert.equal(summary?.aheadCount, 0);
+  assert.equal(summary?.behindCount, 1);
+  assert.equal(summary?.changedFileCount, 0);
+});
+
 test("duplicate work candidates are selected before generic roadmap fallback", () => {
   const duplicateWork = {
     findingCount: 1,
@@ -773,6 +806,29 @@ test("risk snapshot warns when the dev worktree is stale", () => {
   assert.equal(snapshot.risks.some((item) => item.id === "unexpected-repo-branch"), false);
   assert.equal(risk?.severity, "warning");
   assert.ok(risk?.actions.some((action) => action.id === "refresh-dev-worktree"));
+});
+
+test("risk snapshot allows detached HEAD when it matches origin/dev", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-detached-dev-risk-"));
+  mkdirSync(path.join(dir, "node_modules"), { recursive: true });
+  const snapshot = collectRiskSnapshot({
+    repoPath: dir,
+    repo: {
+      branch: "HEAD",
+      head: "abc1234",
+      originDev: "abc1234",
+      originMain: "def5678",
+      status: "",
+    },
+    soak: { exists: false },
+    crashAutomation: "",
+    dailyBugMemory: "",
+    devBotMemory: "",
+    expectedBranch: "dev",
+  });
+
+  assert.equal(snapshot.risks.some((item) => item.id === "unexpected-repo-branch"), false);
+  assert.equal(snapshot.risks.some((item) => item.id === "stale-dev-worktree"), false);
 });
 
 test("writeRunPlan emits report, targets, and task prompts", () => {
