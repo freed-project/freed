@@ -15,6 +15,9 @@ import {
 // ── Story grouping ────────────────────────────────────────────────────────────
 
 const FEED_CARD_GAP = 8;
+// Sidebar panels have a 1px top border. Story tiles are borderless, so the
+// first desktop feed row needs one extra pixel to match the panel interior.
+const DESKTOP_FIRST_ROW_TOP_PADDING = FEED_CARD_GAP + 1;
 const DESKTOP_FEED_CARD_HORIZONTAL_GUTTER = 0;
 const TILE_GAP = FEED_CARD_GAP;
 const MIN_TILE_W = 80; // minimum tile width before a column wraps
@@ -343,7 +346,7 @@ export function FeedList({
 
   const estimateDesktopRowSize = useCallback(
     (index: number) =>
-      desktopFeedCardHeight + FEED_CARD_GAP + (index === 0 ? FEED_CARD_GAP : 0),
+      desktopFeedCardHeight + FEED_CARD_GAP + (index === 0 ? DESKTOP_FIRST_ROW_TOP_PADDING : 0),
     [desktopFeedCardHeight],
   );
 
@@ -667,7 +670,7 @@ export function FeedList({
                 style={{
                   paddingInline: `${feedCardHorizontalGutter}px`,
                   paddingBottom: `${FEED_CARD_GAP}px`,
-                  paddingTop: virtualItem.index === 0 ? `${FEED_CARD_GAP}px` : undefined,
+                  paddingTop: virtualItem.index === 0 ? `${DESKTOP_FIRST_ROW_TOP_PADDING}px` : undefined,
                 }}
               >
                 {row.type === "stories" ? (() => {

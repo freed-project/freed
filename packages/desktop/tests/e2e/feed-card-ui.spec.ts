@@ -282,6 +282,19 @@ async function setDualColumnMode(
   }, enabled);
 }
 
+async function showStoriesFilter(page: import("@playwright/test").Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        setFilter: (filter: { socialContentFilter: "stories" }) => void;
+      };
+    };
+
+    store.getState().setFilter({ socialContentFilter: "stories" });
+  });
+}
+
 test("feed card overhaul actions and reader open flow work", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
@@ -333,6 +346,38 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
 
   const openReaderButton = app.page.getByRole("button", { name: "Open", exact: true }).first();
   await expect(openReaderButton).toBeVisible();
+});
+
+test("story grid top padding aligns with the sidebar panel", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1412, height: 930 });
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(page);
+  await showStoriesFilter(page);
+
+  const storyTile = page.locator('[data-feed-item-id="test-instagram-story-thumbnail"]').first();
+  await expect(storyTile).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Stories");
+
+  const geometry = await page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const story = document.querySelector('[data-feed-item-id="test-instagram-story-thumbnail"]') as HTMLElement | null;
+    const rowContent = document.querySelector('[data-feed-row-index="0"] > div') as HTMLElement | null;
+    if (!sidebar || !story || !rowContent) {
+      throw new Error("Missing feed or sidebar geometry");
+    }
+    const sidebarStyle = window.getComputedStyle(sidebar);
+    return {
+      sidebarInnerTop: Math.round(
+        sidebar.getBoundingClientRect().top + Number.parseFloat(sidebarStyle.borderTopWidth),
+      ),
+      storyTop: Math.round(story.getBoundingClientRect().top),
+      rowPaddingTop: window.getComputedStyle(rowContent).paddingTop,
+    };
+  });
+
+  expect(geometry.rowPaddingTop).toBe("9px");
+  expect(geometry.storyTop).toBe(geometry.sidebarInnerTop);
 });
 
 test("liking an X post keeps it in the unified feed", async ({ app, ipc }) => {
