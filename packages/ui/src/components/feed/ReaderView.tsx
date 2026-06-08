@@ -607,7 +607,7 @@ export function ReaderView({
           >
             <button
               onClick={onClose}
-              className="group -ml-1 flex min-w-0 max-w-[50%] items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-[var(--theme-bg-muted)]"
+              className="group -ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg px-2 py-2 transition-colors hover:bg-[var(--theme-bg-muted)]"
               style={headerDragRegion ? noDrag : undefined}
               aria-label="Back"
             >
@@ -619,14 +619,15 @@ export function ReaderView({
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              <span
-                data-testid="reader-view-toolbar-title"
-                className="cursor-default select-none truncate text-sm text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]"
-                {...getPassiveDragRegionProps(headerDragRegion)}
-              >
-                {item.author.displayName}
-              </span>
             </button>
+
+            <span
+              data-testid="reader-view-toolbar-title"
+              className="min-w-0 max-w-[50%] cursor-default select-none truncate text-sm text-[var(--theme-text-muted)]"
+              {...getPassiveDragRegionProps(headerDragRegion)}
+            >
+              {item.author.displayName}
+            </span>
 
             <div
               data-testid="reader-view-toolbar-spacer"
