@@ -30,21 +30,11 @@
     "deck": "Phone Google Drive sync now imports populated cloud libraries without reload loops, and blocked sync states are easier to recover from.",
     "features": [],
     "fixes": [
-      {
-        "text": "Phone Google Drive sync now keeps populated cloud feed history when stale local delete history would otherwise merge the phone down to zero items."
-      },
-      {
-        "text": "The mobile app now pauses Google Drive polling after a destructive merge block instead of retrying the same blocked merge in the background."
-      },
-      {
-        "text": "The Google Drive card now shows a short merge-blocked sentence while the full recovery details stay in Sync diagnostics."
-      },
-      {
-        "text": "The empty feed state now shows a spinner while cloud sync is actively running and links blocked sync states directly to Sync settings."
-      },
-      {
-        "text": "Populate sample data remains stable on the phone with the latest Automerge document state."
-      }
+      "Phone Google Drive sync now keeps populated cloud feed history when stale local delete history would otherwise merge the phone down to zero items.",
+      "The mobile app now pauses Google Drive polling after a destructive merge block instead of retrying the same blocked merge in the background.",
+      "The Google Drive card now shows a short merge-blocked sentence while the full recovery details stay in Sync diagnostics.",
+      "The empty feed state now shows a spinner while cloud sync is actively running and links blocked sync states directly to Sync settings.",
+      "Populate sample data remains stable on the phone with the latest Automerge document state."
     ],
     "followUps": []
   },

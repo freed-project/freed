@@ -3,7 +3,7 @@
   "version": "26.6.802",
   "channel": "production",
   "dayKey": "26.6.8",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-08T19:16:14.406Z",
   "model": "heuristic",
@@ -36,16 +36,21 @@
     ]
   },
   "release": {
-    "deck": "Phone Google Drive sync is safer, and mobile navigation now feels calmer on touch screens",
+    "deck": "Phone Google Drive sync is safer, mobile navigation is calmer on touch screens, and fullscreen reader windows keep their native drag area.",
     "features": [],
     "fixes": [
-      "Fullscreen reader drag region restored",
-      "[object Object]"
+      "Phone Google Drive sync now keeps populated cloud feed history when stale local delete history would otherwise merge the phone down to zero items.",
+      "The mobile app now pauses Google Drive polling after a destructive merge block instead of retrying the same blocked merge in the background.",
+      "The Google Drive card now shows a short merge-blocked sentence while the full recovery details stay in Sync diagnostics.",
+      "The empty feed state now shows a spinner while cloud sync is actively running and links blocked sync states directly to Sync settings.",
+      "Populate sample data remains stable on the phone with the latest Automerge document state.",
+      "Mobile top toolbar buttons no longer flash focus or active borders after touch taps.",
+      "The mobile navigation drawer now opens full width with aligned spacing, no shadow, and hidden action controls while open.",
+      "Mobile settings now uses a Freed Settings breadcrumb with compact caret separators, stable close-button placement, and mobile-only taller search sizing.",
+      "Touch devices now open feed and story cards on the first tap by removing hover-only quick actions from mobile cards.",
+      "Fullscreen reader windows now expose the title as a direct native drag region again, restoring production release validation."
     ],
-    "followUps": [
-      "Promote dev into main for production release",
-      "Phone Google Drive sync now imports populated cloud libraries without reload loops, and blocked sync states are easier to recover from"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.802\n\nPhone Google Drive sync is safer, and mobile navigation now feels calmer on touch screens\n\n### Fixes\n\n- Fullscreen reader drag region restored\n- [object Object]\n\n### Follow-ups\n\n- Promote dev into main for production release\n- Phone Google Drive sync now imports populated cloud libraries without reload loops, and blocked sync states are easier to recover from\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.802\n\nPhone Google Drive sync is safer, mobile navigation is calmer on touch screens, and fullscreen reader windows keep their native drag area.\n\n### Fixes\n\n- Phone Google Drive sync now keeps populated cloud feed history when stale local delete history would otherwise merge the phone down to zero items.\n- The mobile app now pauses Google Drive polling after a destructive merge block instead of retrying the same blocked merge in the background.\n- The Google Drive card now shows a short merge-blocked sentence while the full recovery details stay in Sync diagnostics.\n- The empty feed state now shows a spinner while cloud sync is actively running and links blocked sync states directly to Sync settings.\n- Populate sample data remains stable on the phone with the latest Automerge document state.\n- Mobile top toolbar buttons no longer flash focus or active borders after touch taps.\n- The mobile navigation drawer now opens full width with aligned spacing, no shadow, and hidden action controls while open.\n- Mobile settings now uses a Freed Settings breadcrumb with compact caret separators, stable close-button placement, and mobile-only taller search sizing.\n- Touch devices now open feed and story cards on the first tap by removing hover-only quick actions from mobile cards.\n- Fullscreen reader windows now expose the title as a direct native drag region again, restoring production release validation.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

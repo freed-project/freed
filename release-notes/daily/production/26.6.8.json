@@ -13,7 +13,8 @@
     "The mobile app now pauses Google Drive polling after a destructive merge block instead of retrying the same blocked merge in the background.",
     "The empty feed state now shows a spinner while cloud sync is actively running and links blocked sync states directly to Sync settings.",
     "Mobile navigation now opens full width with cleaner settings breadcrumbs, steadier close-button placement, and no touch-only toolbar focus flash.",
-    "Touch devices now open feed and story cards on the first tap instead of showing hover-only quick actions first."
+    "Touch devices now open feed and story cards on the first tap instead of showing hover-only quick actions first.",
+    "Fullscreen reader windows keep their native title drag area."
   ],
   "editorialNotes": [],
   "updatedAt": "2026-06-08T19:16:14.407Z"
