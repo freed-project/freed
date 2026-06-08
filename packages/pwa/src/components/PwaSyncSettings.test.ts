@@ -128,4 +128,34 @@ describe("PwaSyncSettings cloud diagnostics", () => {
       root.unmount();
     });
   });
+
+  it("summarizes blocked merge errors in the provider card and shows details only in diagnostics", () => {
+    const blockedMessage =
+      "Freed blocked a sync merge because it would remove too much feed history. Source: PWA sync. Largest input: 11,238 items. Merged result: 0 items. Potential loss: 11,238 items (100%). Restore from a trusted snapshot or reconnect sync after confirming which copy should win.";
+    useDebugStore.setState({
+      cloudProviders: {
+        dropbox: { status: "idle" },
+        gdrive: {
+          status: "error",
+          stage: "merge",
+          error: blockedMessage,
+          statusMessage: "Merge blocked.",
+          pendingReason: "Resolve this error, then reconnect or run Sync now.",
+          events: [],
+        },
+      },
+    });
+
+    const { container, root } = renderWithPlatform(createElement(PwaSyncSettings));
+    const text = container.textContent ?? "";
+    const diagnostics = container.querySelector("[data-testid='pwa-cloud-sync-diagnostics']");
+
+    expect(text).toContain("Merge blocked. Review Sync diagnostics below.");
+    expect(diagnostics?.textContent).toContain(blockedMessage);
+    expect((text.match(/Freed blocked a sync merge/g) ?? [])).toHaveLength(1);
+
+    act(() => {
+      root.unmount();
+    });
+  });
 });

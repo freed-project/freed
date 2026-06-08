@@ -115,6 +115,38 @@ describe("PWA cloud sync auth refresh", () => {
     }));
   });
 
+  it("pauses Google Drive sync after an initial destructive merge block", async () => {
+    const remote = new Uint8Array([9, 8, 7]);
+    const blocked = new Error(
+      "Freed blocked a sync merge because it would remove too much feed history. Source: PWA sync. Largest input: 11,238 items. Merged result: 0 items. Potential loss: 11,238 items (100%). Restore from a trusted snapshot or reconnect sync after confirming which copy should win.",
+    );
+    gdriveDownloadLatestMock.mockResolvedValue(remote);
+    mergeDocMock.mockRejectedValue(blocked);
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "valid-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 120_000,
+    }));
+
+    const { startCloudSync } = await import("./sync");
+    await startCloudSync("gdrive", "valid-access-token");
+
+    expect(mergeDocMock).toHaveBeenCalledWith(remote);
+    expect(gdriveStartPollLoopMock).not.toHaveBeenCalled();
+    expect(subscribeMock).not.toHaveBeenCalled();
+    expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      status: "error",
+      stage: "merge",
+      statusMessage: "Merge blocked.",
+      error: blocked.message,
+    }));
+    expect(recordCloudProviderEventMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
+      kind: "waiting",
+      stage: "merge",
+      message: "Cloud sync paused until merge recovery is resolved.",
+    }));
+  });
+
   it("runs an immediate Google Drive download and upload for manual sync", async () => {
     gdriveDownloadLatestMock.mockResolvedValue(null);
     gdriveUploadSafeMock.mockResolvedValue({

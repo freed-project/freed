@@ -962,6 +962,36 @@ describe("Automerge merge / sync simulation", () => {
     ).not.toThrow();
   });
 
+  it("adopts a feed-populated peer when stale feed delete history leaves other local data", () => {
+    let populated = createEmptyDoc();
+    populated = A.change(populated, (d) => {
+      addRssFeed(d, makeFeed({ url: "https://example.com/feed.xml", title: "Example" }));
+      for (let i = 0; i < 600; i += 1) {
+        addFeedItem(d, makeItem({ globalId: `cloud-item-${i}` }));
+      }
+    });
+
+    let staleFeedEmpty = A.clone(populated);
+    staleFeedEmpty = A.change(staleFeedEmpty, (d) => {
+      for (const id of Object.keys(d.feedItems)) {
+        delete d.feedItems[id];
+      }
+      d.rssFeeds["https://local.example/feed.xml"] = makeFeed({
+        url: "https://local.example/feed.xml",
+        title: "Local only",
+      });
+    });
+
+    const merged = A.merge(staleFeedEmpty, populated);
+    expect(Object.keys(merged.feedItems)).toHaveLength(0);
+    expect(Object.keys(merged.rssFeeds).length).toBeGreaterThan(0);
+    expect(choosePopulatedInputForEmptyMerge(staleFeedEmpty, populated, merged)).toBe("incoming");
+
+    expect(() =>
+      assertNonDestructiveMerge(staleFeedEmpty, populated, populated, { source: "test sync" }),
+    ).not.toThrow();
+  });
+
   it("serializes and deserializes without data loss", () => {
     let doc = createEmptyDoc();
     doc = A.change(doc, (d) => {
