@@ -1,0 +1,52 @@
+{
+  "tag": "v26.6.800",
+  "version": "26.6.800",
+  "channel": "production",
+  "dayKey": "26.6.8",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-08T17:34:14.838Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.6.604",
+    "previousPublishedDayTag": "v26.6.604",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.800"
+    ],
+    "relatedBuildTags": [
+      "v26.6.800"
+    ],
+    "prNumbers": [
+      798
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for PWA sync recovery (#798)"
+    ]
+  },
+  "release": {
+    "deck": "Phone Google Drive sync now imports populated cloud libraries without reload loops, and blocked sync states are easier to recover from.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Phone Google Drive sync now keeps populated cloud feed history when stale local delete history would otherwise merge the phone down to zero items."
+      },
+      {
+        "text": "The mobile app now pauses Google Drive polling after a destructive merge block instead of retrying the same blocked merge in the background."
+      },
+      {
+        "text": "The Google Drive card now shows a short merge-blocked sentence while the full recovery details stay in Sync diagnostics."
+      },
+      {
+        "text": "The empty feed state now shows a spinner while cloud sync is actively running and links blocked sync states directly to Sync settings."
+      },
+      {
+        "text": "Populate sample data remains stable on the phone with the latest Automerge document state."
+      }
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.800\n\nPhone Google Drive sync now imports populated cloud libraries without reload loops, and blocked sync states are easier to recover from.\n\n### Fixes\n\n- Phone Google Drive sync now keeps populated cloud feed history when stale local delete history would otherwise merge the phone down to zero items.\n- The mobile app now pauses Google Drive polling after a destructive merge block instead of retrying the same blocked merge in the background.\n- The Google Drive card now shows a short merge-blocked sentence while the full recovery details stay in Sync diagnostics.\n- The empty feed state now shows a spinner while cloud sync is actively running and links blocked sync states directly to Sync settings.\n- Populate sample data remains stable on the phone with the latest Automerge document state.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
