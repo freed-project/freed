@@ -2065,6 +2065,14 @@ export function choosePopulatedInputForEmptyMerge(
   incomingDoc: FreedDoc,
   mergedDoc: FreedDoc,
 ): PopulatedEmptyMergeInput | null {
+  const localItemCount = countFeedItems(localDoc);
+  const incomingItemCount = countFeedItems(incomingDoc);
+  const mergedItemCount = countFeedItems(mergedDoc);
+  if (mergedItemCount === 0) {
+    if (localItemCount === 0 && incomingItemCount > 0) return "incoming";
+    if (incomingItemCount === 0 && localItemCount > 0) return "local";
+  }
+
   if (countDocumentLibraryEntries(mergedDoc) > 0) return null;
 
   const localEntries = countDocumentLibraryEntries(localDoc);

@@ -78,6 +78,15 @@ function describeUploadGap(state: CloudProviderDebugState | null): string {
   return "No upload has completed yet. Use Sync now to force a full pass.";
 }
 
+function isMergeBlocked(message?: string): boolean {
+  return message?.includes("blocked a sync merge") ?? false;
+}
+
+function describeProviderError(message: string): string {
+  if (isMergeBlocked(message)) return "Merge blocked. Review Sync diagnostics below.";
+  return "Sync needs attention. Review Sync diagnostics below.";
+}
+
 function ProviderLogo({ provider }: { provider: Provider }) {
   switch (provider) {
     case "gdrive":
@@ -205,10 +214,15 @@ export function PwaSyncSettings() {
   }
 
   // Connected, polished status card.
-  const statusText = isSyncing ? "Syncing now" : "Connected";
-  const dotColor = isSyncing
-    ? "bg-[var(--theme-accent-secondary)] animate-pulse"
-    : "bg-[rgb(var(--theme-feedback-success-rgb))]";
+  const providerError = cloudProviderState?.error;
+  const statusText = providerError
+    ? isMergeBlocked(providerError) ? "Merge blocked" : "Needs attention"
+    : isSyncing ? "Syncing now" : "Connected";
+  const dotColor = providerError
+    ? "bg-[rgb(var(--theme-feedback-danger-rgb))]"
+    : isSyncing
+      ? "bg-[var(--theme-accent-secondary)] animate-pulse"
+      : "bg-[rgb(var(--theme-feedback-success-rgb))]";
 
   return (
     <div className="space-y-4">
@@ -225,9 +239,9 @@ export function PwaSyncSettings() {
               Last synced {formatRelativeTime(lastSyncTime)}
             </p>
           )}
-          {cloudProviderState?.error && (
+          {providerError && (
             <p className="theme-feedback-text-danger mt-2 break-words text-xs">
-              {cloudProviderState.error}
+              {describeProviderError(providerError)}
             </p>
           )}
         </div>

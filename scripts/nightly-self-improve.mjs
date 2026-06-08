@@ -847,8 +847,7 @@ export function summarizePeerWorktree(worktreePath, currentRepo) {
     "diff",
     "--name-only",
     "--diff-filter=ACDMRTUXB",
-    "origin/dev",
-    "HEAD",
+    "origin/dev...HEAD",
   ]);
   const workingFiles = unique([
     ...shortStatusPaths(status),
@@ -1037,6 +1036,19 @@ function riskItem({ id, severity, title, evidence, remediation, actions = [] }) 
   return { id, severity, title, evidence, remediation, actions };
 }
 
+function expectedBranchHead(repo, expectedBranch) {
+  if (expectedBranch === "dev") return repo.originDev || "";
+  if (expectedBranch === "main") return repo.originMain || "";
+  return "";
+}
+
+function matchesExpectedBranch(repo, expectedBranch) {
+  if (!expectedBranch) return true;
+  if (repo.branch === expectedBranch) return true;
+  const expectedHead = expectedBranchHead(repo, expectedBranch);
+  return repo.branch === "HEAD" && Boolean(repo.head) && Boolean(expectedHead) && repo.head === expectedHead;
+}
+
 export function collectRiskSnapshot({
   repoPath,
   repo,
@@ -1050,7 +1062,7 @@ export function collectRiskSnapshot({
   nowMs = Date.now(),
 }) {
   const risks = [];
-  if (expectedBranch && repo.branch !== expectedBranch) {
+  if (!matchesExpectedBranch(repo, expectedBranch)) {
     risks.push(
       riskItem({
         id: "unexpected-repo-branch",
