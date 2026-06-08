@@ -22,6 +22,7 @@ import type {
   UserPreferences,
 } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
+import { persistWorkerDebugEvent } from "./automerge-worker-debug";
 export type { DocState } from "./automerge-types";
 
 // ---------------------------------------------------------------------------
@@ -130,6 +131,7 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
 
   if (msg.type === "DEBUG_EVENT") {
     addDebugEvent(msg.kind as Parameters<typeof addDebugEvent>[0], msg.detail, msg.bytes);
+    persistWorkerDebugEvent({ kind: msg.kind, detail: msg.detail, bytes: msg.bytes });
     return;
   }
 

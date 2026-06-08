@@ -19,6 +19,7 @@ import {
 import type { BugReportingConfig } from "@freed/ui/context";
 import { getCloudProvider } from "./sync";
 import { useAppStore } from "./store";
+import { getPersistedWorkerDebugEvents } from "./automerge-worker-debug";
 
 const GITHUB_REPO = "freed-project/freed";
 const SUPPORT_EMAIL = "support@freed.wtf";
@@ -80,6 +81,14 @@ async function buildPwaBundle(input: {
       bytes: event.bytes,
       ts: event.ts,
     }));
+  const workerDebugEvents = getPersistedWorkerDebugEvents()
+    .slice(0, input.privacyTier === "private" ? 30 : 15)
+    .map((event) => ({
+      kind: event.kind,
+      detail: event.detail ? redactSensitiveText(event.detail) : undefined,
+      bytes: event.bytes,
+      ts: event.ts,
+    }));
   const stateSummary = createStateSummary();
   const manifest = buildBugReportManifest({
     appName: APP_NAME,
@@ -113,6 +122,7 @@ async function buildPwaBundle(input: {
   if (includedArtifacts.includes("diagnostic-events")) {
     diagnostics.reportEvents = reportEvents;
     diagnostics.debugEvents = debugEvents;
+    diagnostics.workerDebugEvents = workerDebugEvents;
   }
   if (includedArtifacts.includes("crash-context")) {
     diagnostics.fatalError = fatalError;
@@ -131,6 +141,7 @@ async function buildPwaBundle(input: {
   if (includedArtifacts.includes("diagnostic-events")) {
     addJson(zip, "diagnostics/report-events.json", reportEvents);
     addJson(zip, "diagnostics/debug-events.json", debugEvents);
+    addJson(zip, "diagnostics/worker-debug-events.json", workerDebugEvents);
   }
   if (includedArtifacts.includes("state-summary")) {
     addJson(zip, "diagnostics/state-summary.json", stateSummary);
