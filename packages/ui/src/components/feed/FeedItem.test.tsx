@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -108,7 +108,41 @@ function setMemoryPressure(
 
 beforeEach(() => {
   useDebugStore.setState({ runtimeMemory: null });
+  setMobileNavigator(false);
+  setTouchOnlyPointer(false);
 });
+
+function setMobileNavigator(mobile: boolean): void {
+  Object.defineProperty(navigator, "userAgentData", {
+    configurable: true,
+    value: { mobile },
+  });
+  Object.defineProperty(navigator, "maxTouchPoints", {
+    configurable: true,
+    value: mobile ? 5 : 0,
+  });
+}
+
+function setTouchOnlyPointer(touchOnly: boolean): void {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches: query === "(pointer: coarse)"
+        ? touchOnly
+        : query === "(any-hover: hover)"
+          ? !touchOnly
+          : false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }),
+  });
+}
 
 function renderFeedItemToStaticMarkup(
   item: FeedItemType,
@@ -197,6 +231,115 @@ describe("FeedItem story media", () => {
     const html = renderFeedItemToStaticMarkup(makeItem({ globalId: "ig:story/transition proof" }));
 
     expect(html).toContain("view-transition-name:feed-card-ig-story-transition-proof");
+  });
+
+  it("opens touch mobile story cards on the first tap without quick actions", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    setMobileNavigator(true);
+    const onClick = vi.fn();
+    const onSave = vi.fn();
+    const onArchive = vi.fn();
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem
+              item={makeItem()}
+              onClick={onClick}
+              onSave={onSave}
+              onArchive={onArchive}
+            />
+          </PlatformProvider>,
+        );
+      });
+
+      expect(container.querySelector('button[aria-label="Bookmark"]')).toBeNull();
+      expect(container.querySelector('button[aria-label="Archive"]')).toBeNull();
+
+      const card = container.querySelector('[role="button"]') as HTMLElement | null;
+      expect(card).toBeInstanceOf(HTMLElement);
+      await act(async () => {
+        card?.click();
+      });
+
+      expect(onClick).toHaveBeenCalledTimes(1);
+      expect(onSave).not.toHaveBeenCalled();
+      expect(onArchive).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      setMobileNavigator(false);
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
+
+  it("opens touch mobile regular cards without rendering quick action buttons", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    setTouchOnlyPointer(true);
+    const onClick = vi.fn();
+    const onSave = vi.fn();
+    const onArchive = vi.fn();
+    const onLike = vi.fn();
+    const onOpenCommentUrl = vi.fn();
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem
+              item={makeItem({
+                platform: "facebook",
+                contentType: "post",
+                sourceUrl: "https://example.com/post",
+                content: {
+                  text: "Post text",
+                  mediaUrls: [],
+                  mediaTypes: [],
+                },
+              })}
+              fixedHeight={220}
+              onClick={onClick}
+              onSave={onSave}
+              onArchive={onArchive}
+              onLike={onLike}
+              onOpenCommentUrl={onOpenCommentUrl}
+            />
+          </PlatformProvider>,
+        );
+      });
+
+      for (const label of ["Like", "Comment on Facebook", "Bookmark", "Archive", "Open"]) {
+        expect(container.querySelector(`button[aria-label="${label}"]`)).toBeNull();
+      }
+
+      const card = container.querySelector('[role="button"]') as HTMLElement | null;
+      expect(card).toBeInstanceOf(HTMLElement);
+      await act(async () => {
+        card?.click();
+      });
+
+      expect(onClick).toHaveBeenCalledTimes(1);
+      expect(onSave).not.toHaveBeenCalled();
+      expect(onArchive).not.toHaveBeenCalled();
+      expect(onLike).not.toHaveBeenCalled();
+      expect(onOpenCommentUrl).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      setMobileNavigator(false);
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
   });
 
   it("shares the feed card view transition name in compact story tiles", () => {
