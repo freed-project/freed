@@ -47,14 +47,16 @@ interface LocalReleaseArtifact {
   };
   release?: {
     deck?: string;
-    features?: string[];
-    fixes?: string[];
-    followUps?: string[];
+    features?: ReleaseArtifactItem[];
+    fixes?: ReleaseArtifactItem[];
+    followUps?: ReleaseArtifactItem[];
     summary?: string;
-    whatsNew?: string[];
-    performance?: string[];
+    whatsNew?: ReleaseArtifactItem[];
+    performance?: ReleaseArtifactItem[];
   };
 }
+
+type ReleaseArtifactItem = string | { text?: unknown };
 
 interface GitHubCompare {
   commits: Array<{
@@ -79,10 +81,23 @@ function dedupeItems(items: ReleaseItem[]): ReleaseItem[] {
   return Array.from(deduped.values());
 }
 
-function toReleaseItems(items: string[] | undefined): ReleaseItem[] {
+function getReleaseItemText(item: ReleaseArtifactItem): string | null {
+  if (typeof item === "string") {
+    return item;
+  }
+
+  if (item && typeof item.text === "string") {
+    return item.text;
+  }
+
+  return null;
+}
+
+function toReleaseItems(items: ReleaseArtifactItem[] | undefined): ReleaseItem[] {
   return dedupeItems(
     (items ?? [])
-      .filter((item) => typeof item === "string" && item.trim().length > 0)
+      .map(getReleaseItemText)
+      .filter((text): text is string => Boolean(text?.trim()))
       .map((text) => ({ text: text.trim() })),
   );
 }
