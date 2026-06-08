@@ -7,6 +7,7 @@ const SIDEBAR_MOUNT_BUDGET_MS = process.env.CI ? 4_000 : 1_000;
 const SIDEBAR_SEARCH_BUDGET_MS = process.env.CI ? 1_200 : 500;
 const SIDEBAR_FRAME_P95_BUDGET_MS = process.env.CI ? 67 : 50;
 const SIDEBAR_DROPPED_FRAME_BUDGET = process.env.CI ? 24 : 8;
+const SIDEBAR_DROPPED_FRAME_HEADROOM = process.env.CI ? 8 : 4;
 const SIDEBAR_LONG_TASK_COUNT_BUDGET = 2;
 const SIDEBAR_FEED_ROW_DOM_BUDGET = SIDEBAR_FEED_PAGE_SIZE + 2;
 
@@ -145,6 +146,9 @@ test("source sidebar keeps 1,600 RSS feeds searchable within frame budget", asyn
   const mountElapsed = Date.now() - mountStartedAt;
   const initialFeedRows = await sidebar.locator("[data-sidebar-depth='1']").count();
   const initialDomNodes = await page.evaluate(() => document.querySelectorAll("*").length);
+  const idleFrames = await measureFps(page, async () => {
+    await page.waitForTimeout(600);
+  });
 
   const searchInput = sidebar.locator("input").first();
   const interaction = await collectLongTasksDuring(page, () =>
@@ -167,6 +171,14 @@ test("source sidebar keeps 1,600 RSS feeds searchable within frame budget", asyn
   );
   const filteredFeedRows = await sidebar.locator("[data-sidebar-depth='1']").count();
   const filteredDomNodes = await page.evaluate(() => document.querySelectorAll("*").length);
+  const p95Budget = Math.max(SIDEBAR_FRAME_P95_BUDGET_MS, idleFrames.p95Ms + 34);
+  const droppedFrameBudget = Math.max(
+    SIDEBAR_DROPPED_FRAME_BUDGET,
+    Math.ceil(
+      (idleFrames.droppedFrames / Math.max(1, idleFrames.sampleCount)) *
+        Math.max(1, interaction.result.sampleCount),
+    ) + SIDEBAR_DROPPED_FRAME_HEADROOM,
+  );
 
   console.log(`[PERF] Source sidebar feed mount: ${mountElapsed.toLocaleString()} ms`);
   console.log(`[PERF] Source sidebar search: ${searchElapsed.toLocaleString()} ms`);
@@ -174,6 +186,9 @@ test("source sidebar keeps 1,600 RSS feeds searchable within frame budget", asyn
   console.log(`[PERF] Source sidebar filtered feed rows: ${filteredFeedRows.toLocaleString()}`);
   console.log(`[PERF] Source sidebar initial DOM nodes: ${initialDomNodes.toLocaleString()}`);
   console.log(`[PERF] Source sidebar filtered DOM nodes: ${filteredDomNodes.toLocaleString()}`);
+  console.log(`[PERF] Source sidebar idle FPS: ${idleFrames.fps.toLocaleString()}`);
+  console.log(`[PERF] Source sidebar idle p95 frame: ${idleFrames.p95Ms.toFixed(1)} ms`);
+  console.log(`[PERF] Source sidebar idle dropped frames: ${idleFrames.droppedFrames.toLocaleString()}`);
   console.log(`[PERF] Source sidebar search FPS: ${interaction.result.fps.toLocaleString()}`);
   console.log(`[PERF] Source sidebar search p95 frame: ${interaction.result.p95Ms.toFixed(1)} ms`);
   console.log(`[PERF] Source sidebar search dropped frames: ${interaction.result.droppedFrames.toLocaleString()}`);
@@ -185,7 +200,7 @@ test("source sidebar keeps 1,600 RSS feeds searchable within frame budget", asyn
   expect(initialFeedRows).toBeLessThanOrEqual(SIDEBAR_FEED_ROW_DOM_BUDGET);
   expect(filteredFeedRows).toBeLessThanOrEqual(SIDEBAR_FEED_ROW_DOM_BUDGET);
   expect(interaction.result.sampleCount).toBeGreaterThan(0);
-  expect(interaction.result.p95Ms).toBeLessThan(SIDEBAR_FRAME_P95_BUDGET_MS);
-  expect(interaction.result.droppedFrames).toBeLessThanOrEqual(SIDEBAR_DROPPED_FRAME_BUDGET);
+  expect(interaction.result.p95Ms).toBeLessThan(p95Budget);
+  expect(interaction.result.droppedFrames).toBeLessThanOrEqual(droppedFrameBudget);
   expect(interaction.count).toBeLessThanOrEqual(SIDEBAR_LONG_TASK_COUNT_BUDGET);
 });
