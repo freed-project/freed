@@ -1,0 +1,51 @@
+{
+  "tag": "v26.6.802",
+  "version": "26.6.802",
+  "channel": "production",
+  "dayKey": "26.6.8",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-08T19:16:14.406Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.6.800",
+    "previousPublishedDayTag": "v26.6.604",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.800",
+      "v26.6.802"
+    ],
+    "relatedBuildTags": [
+      "v26.6.800",
+      "v26.6.802"
+    ],
+    "prNumbers": [
+      798,
+      800
+    ],
+    "commitSubjects": [
+      "fix: restore fullscreen reader drag region",
+      "release: approve v26.6.801 notes",
+      "release: v26.6.801",
+      "chore: promote dev into main for production release (#800)",
+      "release: approve v26.6.800 notes",
+      "release: v26.6.800",
+      "chore: promote dev into main for PWA sync recovery (#798)"
+    ]
+  },
+  "release": {
+    "deck": "Phone Google Drive sync is safer, and mobile navigation now feels calmer on touch screens",
+    "features": [],
+    "fixes": [
+      "Fullscreen reader drag region restored",
+      "[object Object]"
+    ],
+    "followUps": [
+      "Promote dev into main for production release",
+      "Phone Google Drive sync now imports populated cloud libraries without reload loops, and blocked sync states are easier to recover from"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.802\n\nPhone Google Drive sync is safer, and mobile navigation now feels calmer on touch screens\n\n### Fixes\n\n- Fullscreen reader drag region restored\n- [object Object]\n\n### Follow-ups\n\n- Promote dev into main for production release\n- Phone Google Drive sync now imports populated cloud libraries without reload loops, and blocked sync states are easier to recover from\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
