@@ -1,10 +1,10 @@
 [
   {
-    "version": "26.6.800",
-    "tagName": "v26.6.800",
+    "version": "26.6.803",
+    "tagName": "v26.6.803",
     "channel": "production",
-    "date": "2026-06-08T18:21:49Z",
-    "deck": "Phone Google Drive sync now imports populated cloud libraries without reload loops, and blocked sync states are easier to recover from.",
+    "date": "2026-06-08T20:48:54Z",
+    "deck": "Phone Google Drive sync is safer, mobile navigation is calmer on touch screens, and fullscreen reader windows keep their native drag area.",
     "features": [],
     "fixes": [
       {
@@ -21,20 +21,42 @@
       },
       {
         "text": "Populate sample data remains stable on the phone with the latest Automerge document state."
+      },
+      {
+        "text": "Mobile top toolbar buttons no longer flash focus or active borders after touch taps."
+      },
+      {
+        "text": "The mobile navigation drawer now opens full width with aligned spacing, no shadow, and hidden action controls while open."
+      },
+      {
+        "text": "Mobile settings now uses a Freed Settings breadcrumb with compact caret separators, stable close-button placement, and mobile-only taller search sizing."
+      },
+      {
+        "text": "Touch devices now open feed and story cards on the first tap by removing hover-only quick actions from mobile cards."
+      },
+      {
+        "text": "Fullscreen reader windows now expose the title as a direct native drag region again, restoring production release validation."
       }
     ],
     "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.800",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.803",
     "prNumbers": [
-      798
+      798,
+      800
     ],
     "builds": [
-      "26.6.800"
+      "26.6.800",
+      "26.6.803"
     ],
     "buildLinks": [
       {
         "version": "26.6.800",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.800",
+        "channel": "production"
+      },
+      {
+        "version": "26.6.803",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.803",
         "channel": "production"
       }
     ]
