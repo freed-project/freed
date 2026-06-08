@@ -2056,6 +2056,22 @@ function countDocumentLibraryEntries(doc: FreedDoc): number {
 export type PopulatedEmptyMergeInput = "local" | "incoming";
 
 /**
+ * Skip Automerge's expensive merge when one feed library is empty and the
+ * other side already has feed history. This is intentionally feed-scoped:
+ * normal populated peers still go through CRDT merge semantics.
+ */
+export function choosePopulatedInputForFeedEmptyPreMerge(
+  localDoc: FreedDoc,
+  incomingDoc: FreedDoc,
+): PopulatedEmptyMergeInput | null {
+  const localItemCount = countFeedItems(localDoc);
+  const incomingItemCount = countFeedItems(incomingDoc);
+  if (localItemCount === 0 && incomingItemCount > 0) return "incoming";
+  if (incomingItemCount === 0 && localItemCount > 0) return "local";
+  return null;
+}
+
+/**
  * When an empty first-sync document carries stale delete history, Automerge can
  * merge a populated peer down to an empty result. In that exact case, keep the
  * populated side instead of treating an empty library as a destructive winner.
