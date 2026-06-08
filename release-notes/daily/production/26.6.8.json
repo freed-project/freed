@@ -2,13 +2,17 @@
   "channel": "production",
   "dayKey": "26.6.8",
   "date": "2026-06-08",
-  "preferredDeck": null,
+  "preferredDeck": "Phone Google Drive sync now imports populated cloud libraries without reload loops, and blocked sync states are easier to recover from.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
-  "pinnedHighlights": [],
+  "pinnedHighlights": [
+    "Phone Google Drive sync now keeps populated cloud feed history when stale local delete history would otherwise merge the phone down to zero items.",
+    "The mobile app now pauses Google Drive polling after a destructive merge block instead of retrying the same blocked merge in the background.",
+    "The empty feed state now shows a spinner while cloud sync is actively running and links blocked sync states directly to Sync settings."
+  ],
   "editorialNotes": [],
   "updatedAt": "2026-06-08T17:34:14.838Z"
 }
