@@ -1134,7 +1134,7 @@ export function SearchJumpField({
         style={narrowSidebar && !inputValue ? { paddingRight: 0 } : undefined}
         inputClassName={
           mobileSidebar
-            ? "h-12 rounded-xl pl-10 pr-8 text-base"
+            ? "h-10 rounded-lg pl-10 pr-8 text-base"
             : compactSidebar
             ? "pl-7 pr-6"
             : narrowSidebar

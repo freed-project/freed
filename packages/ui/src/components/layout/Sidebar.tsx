@@ -54,8 +54,6 @@ const FEEDS_PAGE_SIZE = 10;
 const SOURCE_ACTION_SLOT_WITH_COUNTS_CLASS = "ml-1.5 w-16";
 const RESIZE_HANDLE_HIT_AREA_WIDTH_PX = 16;
 const COMPACT_READER_RAIL_VISUAL_GAP_WIDTH_PX = 8;
-const MOBILE_SIDEBAR_WIDTH_PX = DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX + 50;
-const MOBILE_SIDEBAR_VIEWPORT_MARGIN_PX = 24;
 const MOBILE_MENU_TOP_PX = COMPACT_PRIMARY_SIDEBAR_WIDTH_PX + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
 
 function MoreIcon() {
@@ -772,7 +770,7 @@ export function Sidebar({
   const expandedSidebarUsesCondensedPadding =
     renderMode === "expanded" && desktopWidth < EXPANDED_SIDEBAR_PADDING_CROSSOVER_WIDTH_PX;
   const sidebarPaddingInlinePx = isMobileDevice
-    ? 12
+    ? 8
     : compactRail
     ? COMPACT_RAIL_OUTER_INSET_PX
     : expandedSidebarUsesCondensedPadding
@@ -844,8 +842,7 @@ export function Sidebar({
   const rowVerticalPaddingClass = isMobileDevice ? "py-2" : "py-1.5";
   const feedRowVerticalPaddingClass = "py-2";
   const countTextClass = isMobileDevice ? "text-xs" : "text-[10px]";
-  const mobileSidebarWidth = `min(${MOBILE_SIDEBAR_WIDTH_PX}px, calc(100vw - ${MOBILE_SIDEBAR_VIEWPORT_MARGIN_PX}px))`;
-  const inlineSearchGapPx = sidebarPaddingBlockPx;
+  const inlineSearchGapPx = isMobileDevice ? sidebarPaddingBlockPx + 8 : sidebarPaddingBlockPx;
   const desktopShellTransition = animationIntensity === "none" || (dragWidth !== null && !snapPreviewActive)
     ? "none"
     : snapPreviewActive
@@ -1866,7 +1863,8 @@ export function Sidebar({
           ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
         `}
         style={{
-          width: mobileSidebarWidth,
+          boxSizing: "border-box",
+          width: "100vw",
           top: `calc(env(safe-area-inset-top, 0px) + ${MOBILE_MENU_TOP_PX}px)`,
           height: `calc(100dvh - env(safe-area-inset-top, 0px) - ${MOBILE_MENU_TOP_PX}px)`,
           maxHeight: `calc(100dvh - env(safe-area-inset-top, 0px) - ${MOBILE_MENU_TOP_PX}px)`,
@@ -1879,7 +1877,7 @@ export function Sidebar({
           style={{
             paddingInline: `${sidebarPaddingInlinePx}px`,
             paddingTop: "4px",
-            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+            paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + ${sidebarPaddingBlockPx}px)`,
           }}
         >
           <div className={`flex w-full items-center rounded-lg text-base text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}>
@@ -1887,7 +1885,7 @@ export function Sidebar({
               type="button"
               data-testid="mobile-sidebar-settings-button"
               onClick={handleOpenSettingsFromMobileSidebar}
-              className={`flex min-w-0 flex-1 cursor-pointer items-center gap-2 ${rowPaddingClass} ${rowVerticalPaddingClass} text-left`}
+              className={`flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-2 ${rowPaddingClass} ${rowVerticalPaddingClass} text-left`}
             >
               {settingsButtonContent}
             </button>
