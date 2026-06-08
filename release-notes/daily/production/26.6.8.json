@@ -2,7 +2,7 @@
   "channel": "production",
   "dayKey": "26.6.8",
   "date": "2026-06-08",
-  "preferredDeck": "Phone Google Drive sync now imports populated cloud libraries without reload loops, and blocked sync states are easier to recover from.",
+  "preferredDeck": "Phone Google Drive sync is safer, and mobile navigation now feels calmer on touch screens.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -11,8 +11,11 @@
   "pinnedHighlights": [
     "Phone Google Drive sync now keeps populated cloud feed history when stale local delete history would otherwise merge the phone down to zero items.",
     "The mobile app now pauses Google Drive polling after a destructive merge block instead of retrying the same blocked merge in the background.",
-    "The empty feed state now shows a spinner while cloud sync is actively running and links blocked sync states directly to Sync settings."
+    "The empty feed state now shows a spinner while cloud sync is actively running and links blocked sync states directly to Sync settings.",
+    "Mobile navigation now opens full width with cleaner settings breadcrumbs, steadier close-button placement, and no touch-only toolbar focus flash.",
+    "Touch devices now open feed and story cards on the first tap instead of showing hover-only quick actions first.",
+    "Fullscreen reader windows keep their native title drag area."
   ],
   "editorialNotes": [],
-  "updatedAt": "2026-06-08T17:34:14.838Z"
+  "updatedAt": "2026-06-08T20:10:17.768Z"
 }
