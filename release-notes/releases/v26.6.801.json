@@ -3,7 +3,7 @@
   "version": "26.6.801",
   "channel": "production",
   "dayKey": "26.6.8",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-08T18:39:43.279Z",
   "model": "heuristic",
@@ -33,14 +33,23 @@
     ]
   },
   "release": {
-    "deck": "Phone Google Drive sync now imports populated cloud libraries without reload loops, and blocked sync states are easier to recover from",
+    "deck": "Mobile navigation now feels calmer on touch screens, with cleaner settings menus and single-tap story cards.",
     "features": [],
     "fixes": [
-      "[object Object]"
+      {
+        "text": "Mobile top toolbar buttons no longer flash focus or active borders after touch taps."
+      },
+      {
+        "text": "The mobile navigation drawer now opens full width with aligned spacing, no shadow, and hidden action controls while open."
+      },
+      {
+        "text": "Mobile settings now uses a Freed Settings breadcrumb with compact caret separators, stable close-button placement, and mobile-only taller search sizing."
+      },
+      {
+        "text": "Touch devices now open feed and story cards on the first tap by removing hover-only quick actions from mobile cards."
+      }
     ],
-    "followUps": [
-      "Promote dev into main for production release"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.801\n\nPhone Google Drive sync now imports populated cloud libraries without reload loops, and blocked sync states are easier to recover from\n\n### Fixes\n\n- [object Object]\n\n### Follow-ups\n\n- Promote dev into main for production release\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.801\n\nMobile navigation now feels calmer on touch screens, with cleaner settings menus and single-tap story cards.\n\n### Fixes\n\n- Mobile top toolbar buttons no longer flash focus or active borders after touch taps.\n- The mobile navigation drawer now opens full width with aligned spacing, no shadow, and hidden action controls while open.\n- Mobile settings now uses a Freed Settings breadcrumb with compact caret separators, stable close-button placement, and mobile-only taller search sizing.\n- Touch devices now open feed and story cards on the first tap by removing hover-only quick actions from mobile cards.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
