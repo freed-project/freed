@@ -1,0 +1,36 @@
+{
+  "tag": "v26.6.800",
+  "version": "26.6.800",
+  "channel": "production",
+  "dayKey": "26.6.8",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-08T17:34:14.838Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.6.604",
+    "previousPublishedDayTag": "v26.6.604",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.800"
+    ],
+    "relatedBuildTags": [
+      "v26.6.800"
+    ],
+    "prNumbers": [
+      798
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for PWA sync recovery (#798)"
+    ]
+  },
+  "release": {
+    "deck": "Promote dev into main for PWA sync recovery",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.800\n\nPromote dev into main for PWA sync recovery\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
