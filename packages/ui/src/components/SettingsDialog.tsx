@@ -71,6 +71,7 @@ import { ThemePreviewButton } from "./ThemePreviewButton.js";
 import { Tooltip } from "./Tooltip.js";
 import { ExternalLinkIcon, GoogleContactsIcon, StoryWallIcon } from "./icons.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
+import { useHasTouchOnlyPointer } from "../hooks/useHasTouchOnlyPointer.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -537,12 +538,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       sectionById,
     ],
   );
-
   // ── Preferences state ────────────────────────────────────────────────────
   const [display, setDisplay] = useState(() => preferences.display);
   const [themePreviewHovering, setThemePreviewHovering] = useState(false);
   const [themePreviewTouchActive, setThemePreviewTouchActive] = useState(false);
-  const [hasCoarsePointer, setHasCoarsePointer] = useState(false);
+  const hasCoarsePointer = useHasTouchOnlyPointer();
 
   useEffect(() => {
     committedThemeIdRef.current = preferences.display.themeId;
@@ -575,24 +575,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   useEffect(() => {
     setDisplay(preferences.display);
   }, [preferences.display]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const coarsePointerMedia = window.matchMedia("(pointer: coarse)");
-    const hoverCapableMedia = window.matchMedia("(any-hover: hover)");
-    const updatePointerMode = () => {
-      setHasCoarsePointer(coarsePointerMedia.matches && !hoverCapableMedia.matches);
-    };
-
-    updatePointerMode();
-    coarsePointerMedia.addEventListener?.("change", updatePointerMode);
-    hoverCapableMedia.addEventListener?.("change", updatePointerMode);
-    return () => {
-      coarsePointerMedia.removeEventListener?.("change", updatePointerMode);
-      hoverCapableMedia.removeEventListener?.("change", updatePointerMode);
-    };
-  }, []);
 
   const flushPendingThemeSelection = useCallback((themeId: ThemeId, saveSeq: number) => {
     pendingThemeIdRef.current = null;
@@ -962,6 +944,18 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
   const [scrollportHeight, setScrollportHeight] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeSectionBreadcrumb = useMemo(() => {
+    const section = allSections.find((candidate) => candidate.id === activeSection);
+    if (!section) return ["Freed Settings"];
+
+    for (const item of navStructure) {
+      if ("kind" in item && item.children.some((child) => child.id === section.id)) {
+        return ["Freed Settings", item.label, section.label];
+      }
+    }
+
+    return ["Freed Settings", section.label];
+  }, [activeSection, allSections, navStructure]);
   const activeSectionRef = useRef(activeSection);
   const scrollAnchorRef = useRef<SettingsScrollAnchor>({ sectionId: "appearance", offset: 0 });
   const renderedSectionIds = useMemo(() => {
@@ -1973,9 +1967,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       >
         {/* ── Left column ────────────────────────────────────────────────── */}
         <div
+          data-testid="settings-nav-panel"
           className={`
-            theme-dialog-divider flex shrink-0 flex-col border-b
-            sm:w-52 sm:border-b-0 sm:border-r
+            theme-dialog-divider flex shrink-0 flex-col
+            sm:w-52 sm:border-r
             ${mobileView === "section" ? "hidden sm:flex" : "flex"}
           `}
         >
@@ -1992,10 +1987,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             className="flex shrink-0 items-center justify-between px-4 pb-1.5 pt-2 sm:hidden"
             style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
           >
-            <h2 className="text-base font-semibold text-text-primary">Settings</h2>
+            <h2 className="text-base font-semibold text-text-primary">Freed Settings</h2>
             <CloseButton
               testId={isMobile && mobileView === "nav" ? "settings-close-button-mobile" : undefined}
-              className="-mr-1"
+              className="-mr-2"
             />
           </div>
 
@@ -2008,6 +2003,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               placeholder="Search settings"
               aria-label="Search settings"
               density="compact"
+              inputClassName="h-10 text-base sm:h-auto sm:text-sm"
             />
           </div>
 
@@ -2058,15 +2054,36 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
               <span
-                className="truncate text-sm font-medium text-text-primary"
+                className="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium text-text-primary"
                 data-testid="settings-mobile-section-title"
               >
-                {allSections.find((s) => s.id === activeSection)?.label}
+                {activeSectionBreadcrumb.map((label, index) => (
+                  <Fragment key={`${label}-${index}`}>
+                    {index > 0 ? (
+                      <svg
+                        aria-hidden="true"
+                        className="h-2.5 w-2.5 shrink-0 text-[color:color-mix(in_srgb,var(--theme-text-muted)_72%,transparent)]"
+                        data-testid="settings-mobile-breadcrumb-caret"
+                        fill="none"
+                        viewBox="0 0 12 12"
+                      >
+                        <path
+                          d="M4.5 2.75 7.25 6 4.5 9.25"
+                          stroke="currentColor"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="1.6"
+                        />
+                      </svg>
+                    ) : null}
+                    <span className="truncate">{label}</span>
+                  </Fragment>
+                ))}
               </span>
             </button>
             <CloseButton
               testId={isMobile && mobileView === "section" ? "settings-close-button-mobile" : undefined}
-              className="-mr-1 shrink-0"
+              className="-mr-2 shrink-0"
             />
           </div>
 

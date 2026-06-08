@@ -4,6 +4,8 @@ import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
 import { usePlatform } from "../../context/PlatformContext.js";
 import type { FeedCardDensity } from "../../lib/feed-card-density.js";
 import { useDebugStore, type RuntimeMemorySnapshot } from "../../lib/debug-store.js";
+import { useHasTouchOnlyPointer } from "../../hooks/useHasTouchOnlyPointer.js";
+import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { ChannelAvatar } from "../ChannelAvatar.js";
 import { Tooltip } from "../Tooltip.js";
 import {
@@ -230,6 +232,9 @@ export const FeedItem = memo(function FeedItem({
   const { feedMediaPreviews = "inline" } = usePlatform();
   const feedMediaPreviewMode = item.contentType === "story" ? "inline" : feedMediaPreviews;
   const { showInlineMedia, showAvatarImages } = useFeedImageBudget(feedMediaPreviewMode);
+  const isTouchMobileDevice = useIsMobileDevice();
+  const hasTouchOnlyPointer = useHasTouchOnlyPointer();
+  const quickActionsEnabled = !isTouchMobileDevice && !hasTouchOnlyPointer;
   const sharedTransitionStyle = {
     viewTransitionName: feedCardTransitionName(item.globalId),
   } as React.CSSProperties;
@@ -392,7 +397,7 @@ export const FeedItem = memo(function FeedItem({
 
   const swipeProgress = Math.min(Math.abs(swipeX) / SWIPE_THRESHOLD, 1);
   const pastThreshold = swipeX < -SWIPE_THRESHOLD;
-  const enableSwipe = !compact && !!onArchive && !item.userState.saved;
+  const enableSwipe = quickActionsEnabled && !compact && !!onArchive && !item.userState.saved;
   const handleActivateClick = (event: MouseEvent<HTMLElement>) => {
     event.currentTarget.focus();
     onClick?.();
@@ -419,7 +424,7 @@ export const FeedItem = memo(function FeedItem({
           data-focused={focused ? "true" : "false"}
           data-selected={selected ? "true" : "false"}
           data-feed-card-density={density}
-          className={`relative overflow-hidden rounded-[var(--feed-card-radius)] cursor-pointer group select-none w-full transition-opacity ${readVisualClass}`}
+          className={`relative overflow-hidden rounded-[var(--feed-card-radius)] cursor-pointer select-none w-full transition-opacity ${quickActionsEnabled ? "group" : ""} ${readVisualClass}`}
           style={{ height: storyHeight }}
           onClick={handleActivateClick}
           onMouseEnter={onMouseEnter}
@@ -445,7 +450,7 @@ export const FeedItem = memo(function FeedItem({
               loading="lazy"
               decoding="async"
               onError={() => setMediaFailed(true)}
-              className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+              className={`absolute inset-0 w-full h-full object-cover ${quickActionsEnabled ? "transition-transform duration-300 group-hover:scale-[1.03]" : ""}`}
             />
           ) : (
             <div className={`absolute inset-0 bg-gradient-to-br ${gradientFallback}`} />
@@ -493,7 +498,7 @@ export const FeedItem = memo(function FeedItem({
               )}
             </div>
 
-            {(onSave || onArchive) && (
+            {quickActionsEnabled && (onSave || onArchive) && (
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                 {onSave && (
                   <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"} side="top">
@@ -538,10 +543,12 @@ export const FeedItem = memo(function FeedItem({
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
           data-selected={selected ? "true" : "false"}
-          className={`feed-card group relative min-w-0 cursor-pointer aspect-square overflow-hidden p-3 flex flex-col transition-colors ${
+          className={`feed-card ${quickActionsEnabled ? "group" : ""} relative min-w-0 cursor-pointer aspect-square overflow-hidden p-3 flex flex-col transition-colors ${
             selected
               ? "border-l-2 border-l-[var(--theme-accent-secondary)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]"
-              : "hover:bg-[var(--theme-bg-muted)]"
+              : quickActionsEnabled
+                ? "hover:bg-[var(--theme-bg-muted)]"
+                : ""
           } ${readVisualClass}`}
           style={FEED_CARD_LAYOUT_CONTAINMENT_STYLE}
           onClick={handleActivateClick}
@@ -652,7 +659,7 @@ export const FeedItem = memo(function FeedItem({
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
           data-feed-card-density={density}
-          className={`feed-card group min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fixedCardDensity.article} ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
+          className={`feed-card ${quickActionsEnabled ? "group" : ""} min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fixedCardDensity.article} ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
           style={{
             ...FEED_CARD_LAYOUT_CONTAINMENT_STYLE,
             height: fixedHeight,
@@ -695,118 +702,120 @@ export const FeedItem = memo(function FeedItem({
                   </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-1">
-                  {onLike && (
-                    <div className="relative group/reactions">
-                      {hasReactionPalette && (
-                        <div className="pointer-events-none absolute right-0 bottom-full mb-2 flex translate-y-1 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-1 opacity-0 shadow-lg shadow-black/30 transition-all group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:translate-y-0 group-focus-within/reactions:opacity-100">
-                          {reactions.map((reaction) => (
-                            <Tooltip key={reaction.label} label={reaction.label} side="top">
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); onLike(e as unknown as React.MouseEvent); }}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-base transition-transform hover:scale-110 hover:bg-white/10"
-                                aria-label={reaction.label}
-                              >
-                                <span aria-hidden="true">{reaction.emoji}</span>
-                              </button>
-                            </Tooltip>
-                          ))}
-                        </div>
-                      )}
+                {quickActionsEnabled ? (
+                  <div className="flex shrink-0 items-center gap-1">
+                    {onLike && (
+                      <div className="relative group/reactions">
+                        {hasReactionPalette && (
+                          <div className="pointer-events-none absolute right-0 bottom-full mb-2 flex translate-y-1 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-1 opacity-0 shadow-lg shadow-black/30 transition-all group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:translate-y-0 group-focus-within/reactions:opacity-100">
+                            {reactions.map((reaction) => (
+                              <Tooltip key={reaction.label} label={reaction.label} side="top">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); onLike(e as unknown as React.MouseEvent); }}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-base transition-transform hover:scale-110 hover:bg-white/10"
+                                  aria-label={reaction.label}
+                                >
+                                  <span aria-hidden="true">{reaction.emoji}</span>
+                                </button>
+                              </Tooltip>
+                            ))}
+                          </div>
+                        )}
 
-                      <Tooltip label={likeLabel} side="top">
+                        <Tooltip label={likeLabel} side="top">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onLike(e); }}
+                            aria-label={likeLabel}
+                            className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
+                              likeStatus !== "none" ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                            } ${
+                              likeStatus === "synced"
+                                ? "text-red-400"
+                                : likeStatus === "noted"
+                                ? "text-amber-400"
+                                : likeStatus === "failed"
+                                ? "text-orange-400"
+                                : "text-[var(--theme-text-soft)] hover:text-red-400"
+                            }`}
+                          >
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={likeStatus !== "none" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                            </svg>
+                            {showEngagement && likeCount !== null && <span>{likeCount}</span>}
+                            {likeStatus === "noted" && (
+                              <svg className="w-2.5 h-2.5 animate-spin opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                            )}
+                            {likeStatus === "failed" && (
+                              <svg className="w-2.5 h-2.5 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                              </svg>
+                            )}
+                          </button>
+                        </Tooltip>
+                      </div>
+                    )}
+
+                    {onOpenCommentUrl && item.sourceUrl && (
+                      <Tooltip label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`} side="top">
                         <button
-                          onClick={(e) => { e.stopPropagation(); onLike(e); }}
-                          aria-label={likeLabel}
-                          className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
-                            likeStatus !== "none" ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                          } ${
-                            likeStatus === "synced"
-                              ? "text-red-400"
-                              : likeStatus === "noted"
-                              ? "text-amber-400"
-                              : likeStatus === "failed"
-                              ? "text-orange-400"
-                              : "text-[var(--theme-text-soft)] hover:text-red-400"
-                          }`}
+                          onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
+                          aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
+                          className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
                         >
-                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={likeStatus !== "none" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                           </svg>
-                          {showEngagement && likeCount !== null && <span>{likeCount}</span>}
-                          {likeStatus === "noted" && (
-                            <svg className="w-2.5 h-2.5 animate-spin opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
-                          )}
-                          {likeStatus === "failed" && (
-                            <svg className="w-2.5 h-2.5 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                            </svg>
-                          )}
+                          {showEngagement && commentCount !== null && <span>{commentCount}</span>}
                         </button>
                       </Tooltip>
-                    </div>
-                  )}
+                    )}
 
-                  {onOpenCommentUrl && item.sourceUrl && (
-                    <Tooltip label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`} side="top">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
-                        aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
-                        className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                        </svg>
-                        {showEngagement && commentCount !== null && <span>{commentCount}</span>}
-                      </button>
-                    </Tooltip>
-                  )}
+                    {onSave && (
+                      <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"} side="top">
+                        <button
+                          onClick={onSave}
+                          aria-label={item.userState.saved ? "Remove bookmark" : "Bookmark"}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            item.userState.saved
+                              ? "text-[var(--theme-accent-secondary)]"
+                              : "text-[var(--theme-text-soft)] hover:text-[var(--theme-accent-secondary)] opacity-0 group-hover:opacity-100"
+                          }`}
+                        >
+                          <svg className="w-4 h-4" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                          </svg>
+                        </button>
+                      </Tooltip>
+                    )}
 
-                  {onSave && (
-                    <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"} side="top">
-                      <button
-                        onClick={onSave}
-                        aria-label={item.userState.saved ? "Remove bookmark" : "Bookmark"}
-                        className={`p-1.5 rounded-lg transition-colors ${
-                          item.userState.saved
-                            ? "text-[var(--theme-accent-secondary)]"
-                            : "text-[var(--theme-text-soft)] hover:text-[var(--theme-accent-secondary)] opacity-0 group-hover:opacity-100"
-                        }`}
-                      >
-                        <svg className="w-4 h-4" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                        </svg>
-                      </button>
-                    </Tooltip>
-                  )}
+                    {onArchive && !item.userState.saved && (
+                      <Tooltip label="Archive" side="top">
+                        <button
+                          onClick={onArchive}
+                          aria-label="Archive"
+                          className="p-1.5 rounded-lg transition-colors text-[var(--theme-text-soft)] hover:text-[rgb(var(--theme-feedback-success-rgb))] opacity-0 group-hover:opacity-100"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                    )}
 
-                  {onArchive && !item.userState.saved && (
-                    <Tooltip label="Archive" side="top">
-                      <button
-                        onClick={onArchive}
-                        aria-label="Archive"
-                        className="p-1.5 rounded-lg transition-colors text-[var(--theme-text-soft)] hover:text-[rgb(var(--theme-feedback-success-rgb))] opacity-0 group-hover:opacity-100"
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
-                    </Tooltip>
-                  )}
-
-                  {onOpenCommentUrl && item.sourceUrl && (
-                    <Tooltip label="Open" side="top">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
-                        aria-label="Open"
-                        className="p-1.5 rounded-lg text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        <ExternalLinkIcon className="w-4 h-4" />
-                      </button>
-                    </Tooltip>
-                  )}
-                </div>
+                    {onOpenCommentUrl && item.sourceUrl && (
+                      <Tooltip label="Open" side="top">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
+                          aria-label="Open"
+                          className="p-1.5 rounded-lg text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <ExternalLinkIcon className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                    )}
+                  </div>
+                ) : null}
               </div>
 
               {item.content.linkPreview?.title && (
@@ -882,7 +891,7 @@ export const FeedItem = memo(function FeedItem({
         data-feed-item-id={item.globalId}
         data-focused={focused ? "true" : "false"}
         data-feed-card-density={density}
-        className={`feed-card group min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fullCardDensity.article} ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
+        className={`feed-card ${quickActionsEnabled ? "group" : ""} min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fullCardDensity.article} ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
         style={{
           ...FEED_CARD_LAYOUT_CONTAINMENT_STYLE,
           padding: fullCardDensity.padding,
@@ -923,118 +932,120 @@ export const FeedItem = memo(function FeedItem({
             </div>
           </div>
 
-          <div className="flex items-center gap-1 shrink-0">
-            {onLike && (
-              <div className="relative group/reactions">
-                {hasReactionPalette && (
-                  <div className="pointer-events-none absolute right-0 bottom-full mb-2 flex translate-y-1 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-1 opacity-0 shadow-lg shadow-black/30 transition-all group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:translate-y-0 group-focus-within/reactions:opacity-100">
-                    {reactions.map((reaction) => (
-                      <Tooltip key={reaction.label} label={reaction.label} side="top">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); onLike(e as unknown as React.MouseEvent); }}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-base transition-transform hover:scale-110 hover:bg-white/10"
-                          aria-label={reaction.label}
-                        >
-                          <span aria-hidden="true">{reaction.emoji}</span>
-                        </button>
-                      </Tooltip>
-                    ))}
-                  </div>
-                )}
+          {quickActionsEnabled ? (
+            <div className="flex items-center gap-1 shrink-0">
+              {onLike && (
+                <div className="relative group/reactions">
+                  {hasReactionPalette && (
+                    <div className="pointer-events-none absolute right-0 bottom-full mb-2 flex translate-y-1 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-1 opacity-0 shadow-lg shadow-black/30 transition-all group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:translate-y-0 group-focus-within/reactions:opacity-100">
+                      {reactions.map((reaction) => (
+                        <Tooltip key={reaction.label} label={reaction.label} side="top">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onLike(e as unknown as React.MouseEvent); }}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-base transition-transform hover:scale-110 hover:bg-white/10"
+                            aria-label={reaction.label}
+                          >
+                            <span aria-hidden="true">{reaction.emoji}</span>
+                          </button>
+                        </Tooltip>
+                      ))}
+                    </div>
+                  )}
 
-                <Tooltip label={likeLabel} side="top">
+                  <Tooltip label={likeLabel} side="top">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onLike(e); }}
+                      aria-label={likeLabel}
+                      className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
+                        likeStatus !== "none" ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                      } ${
+                        likeStatus === "synced"
+                          ? "text-red-400"
+                          : likeStatus === "noted"
+                          ? "text-amber-400"
+                          : likeStatus === "failed"
+                          ? "text-orange-400"
+                          : "text-[var(--theme-text-soft)] hover:text-red-400"
+                      }`}
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={likeStatus !== "none" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                      </svg>
+                      {showEngagement && likeCount !== null && <span>{likeCount}</span>}
+                      {likeStatus === "noted" && (
+                        <svg className="w-2.5 h-2.5 animate-spin opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      )}
+                      {likeStatus === "failed" && (
+                        <svg className="w-2.5 h-2.5 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      )}
+                    </button>
+                  </Tooltip>
+                </div>
+              )}
+
+              {onOpenCommentUrl && item.sourceUrl && (
+                <Tooltip label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`} side="top">
                   <button
-                    onClick={(e) => { e.stopPropagation(); onLike(e); }}
-                    aria-label={likeLabel}
-                    className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
-                      likeStatus !== "none" ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                    } ${
-                      likeStatus === "synced"
-                        ? "text-red-400"
-                        : likeStatus === "noted"
-                        ? "text-amber-400"
-                        : likeStatus === "failed"
-                        ? "text-orange-400"
-                        : "text-[var(--theme-text-soft)] hover:text-red-400"
-                    }`}
+                    onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
+                    aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
                   >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={likeStatus !== "none" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                     </svg>
-                    {showEngagement && likeCount !== null && <span>{likeCount}</span>}
-                    {likeStatus === "noted" && (
-                      <svg className="w-2.5 h-2.5 animate-spin opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                    )}
-                    {likeStatus === "failed" && (
-                      <svg className="w-2.5 h-2.5 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                    )}
+                    {showEngagement && commentCount !== null && <span>{commentCount}</span>}
                   </button>
                 </Tooltip>
-              </div>
-            )}
+              )}
 
-            {onOpenCommentUrl && item.sourceUrl && (
-              <Tooltip label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`} side="top">
-                <button
-                  onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
-                  aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
-                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
-                >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  {showEngagement && commentCount !== null && <span>{commentCount}</span>}
-                </button>
-              </Tooltip>
-            )}
+              {onSave && (
+                <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"} side="top">
+                  <button
+                    onClick={onSave}
+                    aria-label={item.userState.saved ? "Remove bookmark" : "Bookmark"}
+                    className={`p-1.5 rounded-lg transition-colors ${
+                      item.userState.saved
+                        ? "text-[var(--theme-accent-secondary)]"
+                        : "text-[var(--theme-text-soft)] hover:text-[var(--theme-accent-secondary)] opacity-0 group-hover:opacity-100"
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                    </svg>
+                  </button>
+                </Tooltip>
+              )}
 
-            {onSave && (
-              <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"} side="top">
-                <button
-                  onClick={onSave}
-                  aria-label={item.userState.saved ? "Remove bookmark" : "Bookmark"}
-                  className={`p-1.5 rounded-lg transition-colors ${
-                    item.userState.saved
-                      ? "text-[var(--theme-accent-secondary)]"
-                      : "text-[var(--theme-text-soft)] hover:text-[var(--theme-accent-secondary)] opacity-0 group-hover:opacity-100"
-                  }`}
-                >
-                  <svg className="w-4 h-4" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                  </svg>
-                </button>
-              </Tooltip>
-            )}
+              {onArchive && !item.userState.saved && (
+                <Tooltip label="Archive" side="top">
+                  <button
+                    onClick={onArchive}
+                    aria-label="Archive"
+                    className="p-1.5 rounded-lg transition-colors text-[var(--theme-text-soft)] hover:text-[rgb(var(--theme-feedback-success-rgb))] opacity-0 group-hover:opacity-100"
+                  >
+                    <TrashIcon className="w-4 h-4" />
+                  </button>
+                </Tooltip>
+              )}
 
-            {onArchive && !item.userState.saved && (
-              <Tooltip label="Archive" side="top">
-                <button
-                  onClick={onArchive}
-                  aria-label="Archive"
-                  className="p-1.5 rounded-lg transition-colors text-[var(--theme-text-soft)] hover:text-[rgb(var(--theme-feedback-success-rgb))] opacity-0 group-hover:opacity-100"
-                >
-                  <TrashIcon className="w-4 h-4" />
-                </button>
-              </Tooltip>
-            )}
-
-            {onOpenCommentUrl && item.sourceUrl && (
-              <Tooltip label="Open" side="top">
-                <button
-                  onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
-                  aria-label="Open"
-                  className="p-1.5 rounded-lg text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
-                >
-                  <ExternalLinkIcon className="w-4 h-4" />
-                </button>
-              </Tooltip>
-            )}
-          </div>
+              {onOpenCommentUrl && item.sourceUrl && (
+                <Tooltip label="Open" side="top">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
+                    aria-label="Open"
+                    className="p-1.5 rounded-lg text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    <ExternalLinkIcon className="w-4 h-4" />
+                  </button>
+                </Tooltip>
+              )}
+            </div>
+          ) : null}
         </div>
 
         {item.content.linkPreview?.title && (

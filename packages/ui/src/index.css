@@ -1472,13 +1472,15 @@ html[data-theme="scriptorium"] .feed-card {
     0 8px 18px rgb(84 58 35 / 0.03);
 }
 
-.feed-card:hover {
-  background: color-mix(in oklab, var(--theme-bg-surface) 94%, transparent);
-  border-color: color-mix(
-    in oklab,
-    var(--theme-border-strong) 68%,
-    var(--theme-border-subtle)
-  );
+@media (hover: hover) and (pointer: fine) {
+  .feed-card:hover {
+    background: color-mix(in oklab, var(--theme-bg-surface) 94%, transparent);
+    border-color: color-mix(
+      in oklab,
+      var(--theme-border-strong) 68%,
+      var(--theme-border-subtle)
+    );
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -1566,13 +1568,20 @@ html[data-theme="scriptorium"] .theme-floating-panel {
   background: var(--theme-attached-topbar-background);
 }
 
+html.freed-mobile-sidebar-open .theme-attached-topbar {
+  border-bottom-color: transparent;
+}
+
+html.freed-mobile-sidebar-open [data-testid="toolbar-overflow-button"],
+html.freed-mobile-sidebar-open [data-testid="feed-signal-filter-button"],
+html.freed-mobile-sidebar-open [data-testid="mobile-toolbar-filter-button"] {
+  display: none;
+}
+
 .theme-mobile-sidebar {
   background: var(--theme-attached-topbar-background);
   border-right: 1px solid var(--theme-header-border);
-  box-shadow: 28px 0 80px rgb(0 0 0 / 0.34);
-}
-
-.theme-mobile-sidebar[data-open="false"] {
+  border-top: 0;
   box-shadow: none;
 }
 
@@ -1650,10 +1659,12 @@ html.freed-mobile-sidebar-open body {
     border-color 0.18s ease;
 }
 
-.theme-toolbar-button-neutral:hover {
-  color: var(--theme-text-secondary);
-  background: var(--theme-bg-muted);
-  border-color: var(--theme-border-subtle);
+@media (hover: hover) and (pointer: fine) {
+  .theme-toolbar-button-neutral:hover {
+    color: var(--theme-text-secondary);
+    background: var(--theme-bg-muted);
+    border-color: var(--theme-border-subtle);
+  }
 }
 
 .theme-toolbar-button-ghost {
@@ -1667,10 +1678,12 @@ html.freed-mobile-sidebar-open body {
     border-color 0.18s ease;
 }
 
-.theme-toolbar-button-ghost:hover {
-  color: var(--theme-text-secondary);
-  background: var(--theme-bg-muted);
-  border-color: var(--theme-border-subtle);
+@media (hover: hover) and (pointer: fine) {
+  .theme-toolbar-button-ghost:hover {
+    color: var(--theme-text-secondary);
+    background: var(--theme-bg-muted);
+    border-color: var(--theme-border-subtle);
+  }
 }
 
 .theme-toolbar-button-active {
@@ -1686,9 +1699,11 @@ html.freed-mobile-sidebar-open body {
     box-shadow 0.18s ease;
 }
 
-.theme-toolbar-button-active:hover {
-  background: rgb(var(--theme-accent-secondary-rgb) / 0.2);
-  border-color: rgb(var(--theme-accent-secondary-rgb) / 0.82);
+@media (hover: hover) and (pointer: fine) {
+  .theme-toolbar-button-active:hover {
+    background: rgb(var(--theme-accent-secondary-rgb) / 0.2);
+    border-color: rgb(var(--theme-accent-secondary-rgb) / 0.82);
+  }
 }
 
 .theme-toolbar-button-success-active {
@@ -1702,9 +1717,34 @@ html.freed-mobile-sidebar-open body {
     border-color 0.18s ease;
 }
 
-.theme-toolbar-button-success-active:hover {
-  background: rgb(var(--theme-feedback-success-rgb) / 0.18);
-  border-color: rgb(var(--theme-feedback-success-rgb) / 0.72);
+@media (hover: hover) and (pointer: fine) {
+  .theme-toolbar-button-success-active:hover {
+    background: rgb(var(--theme-feedback-success-rgb) / 0.18);
+    border-color: rgb(var(--theme-feedback-success-rgb) / 0.72);
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .theme-attached-topbar .theme-toolbar-button-neutral,
+  .theme-attached-topbar .theme-toolbar-button-ghost,
+  .theme-attached-topbar .theme-toolbar-button-active,
+  .theme-attached-topbar .theme-toolbar-button-success-active {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .theme-attached-topbar .theme-toolbar-button-neutral:focus-visible,
+  .theme-attached-topbar .theme-toolbar-button-ghost:focus-visible,
+  .theme-attached-topbar .theme-toolbar-button-active:focus-visible,
+  .theme-attached-topbar .theme-toolbar-button-success-active:focus-visible,
+  .theme-attached-topbar .theme-toolbar-button-neutral:active,
+  .theme-attached-topbar .theme-toolbar-button-ghost:active,
+  .theme-attached-topbar .theme-toolbar-button-active:active,
+  .theme-attached-topbar .theme-toolbar-button-success-active:active {
+    outline: none;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
 }
 
 .theme-toolbar-icon-button {

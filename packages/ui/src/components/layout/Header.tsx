@@ -494,7 +494,9 @@ export function Header({
     showMapTimeControls && !collapseToolbarViewControls;
   const showInlineSocialContentControls =
     showSocialContentControls && !collapseToolbarViewControls;
+  const hideMobileDrawerToolbarActions = mobileSidebarOpen;
   const showCollapsedToolbarFilterMenu =
+    !hideMobileDrawerToolbarActions &&
     !selectedItem &&
     (
       (collapseToolbarViewControls && (
@@ -506,7 +508,9 @@ export function Header({
       ((isMobile || collapseToolbarViewControls) && showFeedSignalFilter)
     );
   const showInlineFeedSignalFilter =
-    showFeedSignalFilter && !showCollapsedToolbarFilterMenu;
+    !hideMobileDrawerToolbarActions &&
+    showFeedSignalFilter &&
+    !showCollapsedToolbarFilterMenu;
   const showInlineSavedSortControl =
     showSavedSortControl && !showCollapsedToolbarFilterMenu;
   const showFeedCardDensityControl =
@@ -993,8 +997,9 @@ export function Header({
     unreadCount,
   ]);
   const showToolbarOverflowMenuButton =
-    toolbarOverflowActions.length > 0 ||
-    showOverflowFeedCardDensityControl;
+    !hideMobileDrawerToolbarActions &&
+    (toolbarOverflowActions.length > 0 ||
+    showOverflowFeedCardDensityControl);
 
   const showReaderLayoutToggle =
     !isMobile &&
@@ -1211,6 +1216,12 @@ export function Header({
     setToolbarOverflowMenuOpen(false);
   }, [showOverflowFeedCardDensityControl, toolbarOverflowActions.length]);
 
+  useEffect(() => {
+    if (!hideMobileDrawerToolbarActions) return;
+    setToolbarOverflowMenuOpen(false);
+    setSignalFilterMenuOpen(false);
+  }, [hideMobileDrawerToolbarActions]);
+
   useLayoutEffect(() => {
     if (isMobileDevice) return undefined;
 
@@ -1400,7 +1411,7 @@ export function Header({
           style={toolbarContainerStyle}
         >
           <div
-            className="theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center"
+            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center ${isMobileDevice ? "pl-2" : ""}`}
           >
             <div
               ref={layoutControlHostRef}
@@ -1412,7 +1423,7 @@ export function Header({
                   <button
                     onClick={onMobileMenuToggle}
                     {...getToolbarControlProps()}
-                    className={`${TOOLBAR_ICON_BUTTON_CLASS} ${mobileSidebarOpen ? "theme-toolbar-button-neutral" : "theme-toolbar-button-ghost"}`}
+                    className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-ghost`}
                     aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
                     aria-pressed={mobileSidebarOpen}
                   >
@@ -1824,7 +1835,7 @@ export function Header({
                           onClick={toggleSignalFilterMenu}
                           {...getToolbarControlProps()}
                           data-testid="feed-signal-filter-button"
-                          className="theme-toolbar-button-neutral inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold shadow-sm"
+                          className={`${isMobile ? "theme-toolbar-button-ghost shadow-none" : "theme-toolbar-button-neutral shadow-sm"} inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold`}
                           aria-haspopup="menu"
                           aria-expanded={signalFilterMenuOpen}
                           aria-label="Filter feed"
