@@ -26,6 +26,7 @@ import {
   resolveMapMode,
 } from "@freed/shared";
 import { Tooltip } from "../Tooltip.js";
+import { BackgroundActivityPopover } from "../BackgroundActivityPopover.js";
 import {
   ArchiveIcon,
   CloseIcon,
@@ -40,6 +41,7 @@ import {
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
+import { useBackgroundActivityStore } from "../../lib/background-activity-store.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
@@ -440,6 +442,11 @@ export function Header({
     () => (selectedItemId ? items.find((item) => item.globalId === selectedItemId) ?? null : null),
     [items, selectedItemId],
   );
+  const activeBackgroundActivityCount = useBackgroundActivityStore((s) => Object.keys(s.active).length);
+  const backgroundActivityActive = activeBackgroundActivityCount > 0;
+  const [activityPopoverOpen, setActivityPopoverOpen] = useState(false);
+  const activityButtonRef = useRef<HTMLButtonElement | null>(null);
+  const showBackgroundActivityControl = backgroundActivityActive || activityPopoverOpen;
 
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds, accounts), [accounts, activeFilter, feeds]);
   const friendCount = useMemo(
@@ -526,12 +533,17 @@ export function Header({
     showFeedCardDensityControl && isBelowLargeToolbar;
   const showInlineReaderBookmark =
     !!selectedItem && !isBelowReaderBookmarkToolbar;
-  const collapsedReaderTitlePaddingClass = selectedItem?.sourceUrl
-    ? showInlineReaderBookmark ? "pr-[11rem]" : "pr-[8.5rem]"
-    : showInlineReaderBookmark ? "pr-[6.5rem]" : "pr-14";
-  const collapsedReaderActionWidthClass = selectedItem?.sourceUrl
-    ? showInlineReaderBookmark ? "w-[11rem]" : "w-[8.5rem]"
-    : showInlineReaderBookmark ? "w-[6.5rem]" : "w-14";
+  const collapsedReaderBaseActionWidthRem = selectedItem?.sourceUrl
+    ? showInlineReaderBookmark ? 11 : 8.5
+    : showInlineReaderBookmark ? 6.5 : 3.5;
+  const collapsedReaderActionWidthRem =
+    collapsedReaderBaseActionWidthRem + (showBackgroundActivityControl ? 2.75 : 0);
+  const collapsedReaderTitleStyle = selectedItem && isBelowLargeToolbar
+    ? ({ paddingRight: `${collapsedReaderActionWidthRem}rem` } as CSSProperties)
+    : undefined;
+  const collapsedReaderActionStyle = selectedItem && isBelowLargeToolbar
+    ? ({ width: `${collapsedReaderActionWidthRem}rem` } as CSSProperties)
+    : undefined;
 
   const {
     unreadCount,
@@ -791,8 +803,15 @@ export function Header({
   const toggleToolbarOverflowMenu = useCallback(() => {
     updateToolbarOverflowMenuPosition();
     setSignalFilterMenuOpen(false);
+    setActivityPopoverOpen(false);
     setToolbarOverflowMenuOpen((value) => !value);
   }, [updateToolbarOverflowMenuPosition]);
+
+  const handleToggleBackgroundActivity = useCallback(() => {
+    setSignalFilterMenuOpen(false);
+    setToolbarOverflowMenuOpen(false);
+    setActivityPopoverOpen((value) => !value);
+  }, []);
 
   const handleIdentityModeChange = useCallback((key: "friendsMode" | "mapMode", mode: MapMode) => {
     updateDisplayPreference({ [key]: mode });
@@ -1542,8 +1561,11 @@ export function Header({
           </div>
 
           <div
-            className={`min-w-0 basis-0 flex-1 overflow-hidden ${selectedItem && isBelowLargeToolbar ? collapsedReaderTitlePaddingClass : ""}`}
-            {...(headerDragRegion ? { "data-tauri-drag-region": true, style: dragStyle } : {})}
+            className="min-w-0 basis-0 flex-1 overflow-hidden"
+            style={headerDragRegion
+              ? ({ ...collapsedReaderTitleStyle, ...dragStyle } as CSSProperties)
+              : collapsedReaderTitleStyle}
+            {...(headerDragRegion ? { "data-tauri-drag-region": true } : {})}
           >
             {selectedItem ? (
               <button
@@ -1620,10 +1642,44 @@ export function Header({
           <div
             className={selectedItem
               ? isBelowLargeToolbar
-                ? `theme-toolbar-cluster theme-toolbar-cluster-tight absolute right-0 top-1/2 z-10 flex shrink-0 -translate-y-1/2 items-center justify-end pr-2 ${collapsedReaderActionWidthClass}`
+                ? "theme-toolbar-cluster theme-toolbar-cluster-tight absolute right-0 top-1/2 z-10 flex shrink-0 -translate-y-1/2 items-center justify-end pr-2"
                 : "theme-toolbar-cluster theme-toolbar-cluster-tight ml-auto flex min-w-max shrink-0 items-center pr-2"
               : "theme-toolbar-cluster theme-toolbar-cluster-tight flex min-w-max shrink-0 items-center pr-2"}
+            style={collapsedReaderActionStyle}
           >
+            <ToolbarAnimatedSlot
+              visible={showBackgroundActivityControl}
+              width={TOOLBAR_ICON_BUTTON_SIZE}
+            >
+              {showBackgroundActivityControl ? (
+                <Tooltip label="Background activity">
+                  <button
+                    ref={activityButtonRef}
+                    type="button"
+                    onClick={handleToggleBackgroundActivity}
+                    {...getToolbarControlProps()}
+                    data-testid="background-activity-trigger"
+                    className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                      activityPopoverOpen
+                        ? "theme-toolbar-button-active"
+                        : isMobileDevice
+                          ? "theme-toolbar-button-ghost"
+                          : "theme-toolbar-button-neutral"
+                    } text-[var(--theme-accent-secondary)]`}
+                    aria-haspopup="dialog"
+                    aria-expanded={activityPopoverOpen}
+                    aria-label="Show background activity"
+                  >
+                    <span
+                      className={`h-3.5 w-3.5 rounded-full border border-current border-t-transparent ${
+                        backgroundActivityActive ? "animate-spin" : ""
+                      }`}
+                    />
+                  </button>
+                </Tooltip>
+              ) : null}
+            </ToolbarAnimatedSlot>
+
             {selectedItem ? (
               <>
                 <ToolbarAnimatedSlot visible={!isMobile && !isBelowLargeToolbar} width="4.5rem" className="hidden lg:flex">
@@ -1958,6 +2014,12 @@ export function Header({
           </div>
         </div>
       </header>
+
+      <BackgroundActivityPopover
+        anchorElement={activityButtonRef.current}
+        open={activityPopoverOpen && activityButtonRef.current !== null}
+        onClose={() => setActivityPopoverOpen(false)}
+      />
 
       {toolbarOverflowMenuOpen && showToolbarOverflowMenuButton ? (
         <div

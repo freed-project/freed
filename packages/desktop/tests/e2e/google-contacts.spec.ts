@@ -235,10 +235,16 @@ test("slow Google Contacts sync appears in the global background activity popove
     (window as Window & { __resolveGoogleContactsSync?: () => void }).__resolveGoogleContactsSync?.();
   });
 
-  await expect(trigger).toHaveCount(0, { timeout: 5_000 });
+  await expect(popover).toBeVisible();
+  await expect(popover).toContainText("0 active", { timeout: 5_000 });
+  await expect(trigger).toBeVisible();
   const state = await readContactSyncState(app.page);
   expect(state?.syncStatus).toBe("idle");
   expect(state?.cachedContacts?.[0]?.name?.displayName).toBe("Grace Hopper");
+
+  await popover.getByRole("button", { name: "Close" }).click();
+  await expect(popover).toHaveCount(0);
+  await expect(trigger).toHaveCount(0);
 });
 
 test("People API failures surface reconnect state instead of failing silently", async ({ app }) => {

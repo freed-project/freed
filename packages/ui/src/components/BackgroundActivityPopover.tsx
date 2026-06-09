@@ -18,6 +18,7 @@ interface BackgroundActivityPopoverProps {
 
 const VIEWPORT_PADDING = 12;
 const POPOVER_GAP = 10;
+const POPOVER_MAX_HEIGHT = "min(44rem, calc(100dvh - 1rem))";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -43,14 +44,37 @@ function progressLabel(progress?: number): string | null {
   return `${Math.round(progress).toLocaleString()}%`;
 }
 
-function ActiveRow({ activity }: { activity: BackgroundActivityRecord }) {
+function elapsedLabel(startedAt: number, now: number): string {
+  const elapsedSeconds = Math.max(0, Math.floor((now - startedAt) / 1000));
+  if (elapsedSeconds < 60) return `${elapsedSeconds.toLocaleString()}s`;
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+  const remainingSeconds = elapsedSeconds % 60;
+  if (elapsedMinutes < 60) {
+    return `${elapsedMinutes.toLocaleString()}m ${remainingSeconds.toLocaleString()}s`;
+  }
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  const remainingMinutes = elapsedMinutes % 60;
+  return `${elapsedHours.toLocaleString()}h ${remainingMinutes.toLocaleString()}m`;
+}
+
+function ActiveRow({ activity, now }: { activity: BackgroundActivityRecord; now: number }) {
   const progress = progressLabel(activity.progress);
+  const elapsed = elapsedLabel(activity.startedAt, now);
   return (
-    <div className="rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] px-3 py-2">
+    <div
+      data-testid="background-activity-active-row"
+      className="rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] px-3 py-2"
+    >
       <div className="flex items-center gap-2">
         <span className="h-3 w-3 shrink-0 animate-spin rounded-full border border-[var(--theme-accent-secondary)] border-t-transparent" />
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--theme-text-primary)]">
           {activity.label}
+        </span>
+        <span
+          className="shrink-0 text-[10px] tabular-nums text-[var(--theme-text-soft)]"
+          aria-label={`Elapsed ${elapsed}`}
+        >
+          {elapsed}
         </span>
         {progress ? (
           <span className="shrink-0 text-[10px] tabular-nums text-[var(--theme-text-soft)]">
@@ -93,9 +117,10 @@ export function BackgroundActivityPopover({
   const [mounted, setMounted] = useState(false);
   const [query, setQuery] = useState("");
   const [position, setPosition] = useState<CSSProperties>({
-    left: VIEWPORT_PADDING,
+    right: VIEWPORT_PADDING,
     top: VIEWPORT_PADDING,
   });
+  const [now, setNow] = useState(() => Date.now());
 
   const activeRecords = useMemo(
     () => Object.values(active).sort((a, b) => a.startedAt - b.startedAt),
@@ -115,33 +140,25 @@ export function BackgroundActivityPopover({
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [open]);
+
   useLayoutEffect(() => {
     if (!open || !anchorElement) return undefined;
 
     const updatePosition = () => {
       const anchorRect = anchorElement.getBoundingClientRect();
-      const popoverRect = popoverRef.current?.getBoundingClientRect();
-      const width = popoverRect?.width ?? Math.min(380, window.innerWidth - VIEWPORT_PADDING * 2);
-      const height = popoverRect?.height ?? 360;
-      const maxLeft = Math.max(VIEWPORT_PADDING, window.innerWidth - VIEWPORT_PADDING - width);
-      const maxTop = Math.max(VIEWPORT_PADDING, window.innerHeight - VIEWPORT_PADDING - height);
-      const fitsRight = anchorRect.right + POPOVER_GAP + width + VIEWPORT_PADDING <= window.innerWidth;
-      const left = fitsRight
-        ? anchorRect.right + POPOVER_GAP
-        : clamp(anchorRect.right - width, VIEWPORT_PADDING, maxLeft);
-      const sideTop = clamp(anchorRect.bottom - height, VIEWPORT_PADDING, maxTop);
-      const belowTop = anchorRect.bottom + POPOVER_GAP;
-      const aboveTop = anchorRect.top - height - POPOVER_GAP;
-      const fallbackTop = belowTop + height + VIEWPORT_PADDING <= window.innerHeight
-        ? belowTop
-        : clamp(aboveTop, VIEWPORT_PADDING, maxTop);
-      const top = fitsRight ? sideTop : fallbackTop;
+      const top = clamp(anchorRect.bottom + POPOVER_GAP, VIEWPORT_PADDING, window.innerHeight - VIEWPORT_PADDING);
 
       setPosition({
-        left: Math.round(left),
         top: Math.round(top),
+        right: VIEWPORT_PADDING,
         "--theme-menu-top": `${Math.max(VIEWPORT_PADDING, Math.round(top))}px`,
-        "--theme-menu-max-height": "min(32rem, calc(100dvh - 1rem))",
+        "--theme-menu-max-height": POPOVER_MAX_HEIGHT,
       } as CSSProperties);
     };
 
@@ -191,7 +208,7 @@ export function BackgroundActivityPopover({
       role="dialog"
       aria-label="Background activity"
       data-testid="background-activity-popover"
-      className="theme-dialog-shell theme-menu-shell fixed z-[330] flex w-[min(24rem,calc(100vw-1.5rem))] flex-col !overflow-y-hidden rounded-[var(--card-radius)] border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-0 shadow-2xl shadow-black/45"
+      className="theme-dialog-shell theme-menu-shell fixed z-[330] flex w-[min(28rem,calc(100vw-1.5rem))] flex-col !overflow-y-hidden rounded-[var(--card-radius)] border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-0 shadow-2xl shadow-black/45"
       style={position}
     >
       <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] px-3 pb-2.5 pt-3">
@@ -231,7 +248,7 @@ export function BackgroundActivityPopover({
               Channel Syncs
             </p>
             {channelActivities.map((activity) => (
-              <ActiveRow key={activity.id} activity={activity} />
+              <ActiveRow key={activity.id} activity={activity} now={now} />
             ))}
           </section>
         ) : null}
@@ -242,7 +259,7 @@ export function BackgroundActivityPopover({
               Jobs
             </p>
             {jobActivities.map((activity) => (
-              <ActiveRow key={activity.id} activity={activity} />
+              <ActiveRow key={activity.id} activity={activity} now={now} />
             ))}
           </section>
         ) : null}
@@ -252,7 +269,7 @@ export function BackgroundActivityPopover({
             Live Log
           </p>
           <div
-            className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-1"
+            className="mt-2 max-h-[30rem] overflow-y-auto rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-1"
             data-testid="background-activity-log"
           >
             {filteredLog.length > 0 ? (
