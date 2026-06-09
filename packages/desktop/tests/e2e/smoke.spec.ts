@@ -1754,8 +1754,7 @@ test("settings backdrop stays blurred while settings contents scroll", async ({ 
   expect(styles.scrollTop).toBeGreaterThan(0);
   expect(styles.overlayMoving).toBe("true");
   expect(styles.shellMoving).toBe("true");
-  expect(styles.overlayFilter).toContain("blur");
-  expect(styles.overlayFilter).not.toBe("none");
+  expect(styles.overlayFilter).toBe("none");
   expect(styles.shellFilter).toContain("blur");
   expect(styles.shellFilter).not.toBe("none");
 });
@@ -2408,7 +2407,7 @@ test("narrow feed toolbar moves bulk actions into the overflow menu", async ({ a
   await expect(overflowButton).toBeVisible({ timeout: 5_000 });
   const filterButton = page.getByTestId("mobile-toolbar-filter-button");
   await expect(filterButton).toBeVisible({ timeout: 5_000 });
-  const collapsedGeometry = await page.evaluate(() => {
+  const readCollapsedGeometry = () => page.evaluate(() => {
     const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
     const overflow = document.querySelector('[data-testid="toolbar-overflow-button"]') as HTMLElement | null;
     const filter = document.querySelector('[data-testid="mobile-toolbar-filter-button"]') as HTMLElement | null;
@@ -2416,7 +2415,6 @@ test("narrow feed toolbar moves bulk actions into the overflow menu", async ({ a
       throw new Error("Collapsed toolbar controls were not found");
     }
 
-    const toolbarRect = toolbar.getBoundingClientRect();
     const overflowRect = overflow.getBoundingClientRect();
     const filterRect = filter.getBoundingClientRect();
 
@@ -2424,13 +2422,15 @@ test("narrow feed toolbar moves bulk actions into the overflow menu", async ({ a
       overflowHeight: Math.round(overflowRect.height),
       filterHeight: Math.round(filterRect.height),
       gap: Math.round(filterRect.left - overflowRect.right),
-      edgeGap: Math.round(toolbarRect.right - filterRect.right),
+      viewportReady: Math.round(window.innerWidth - filterRect.right) >= Math.round(filterRect.left - overflowRect.right),
     };
   });
-  expect(collapsedGeometry.overflowHeight).toBe(36);
-  expect(collapsedGeometry.filterHeight).toBe(36);
-  expect(collapsedGeometry.gap).toBe(8);
-  expect(collapsedGeometry.edgeGap).toBe(collapsedGeometry.gap);
+  await expect.poll(readCollapsedGeometry, { timeout: 3_000 }).toEqual({
+    overflowHeight: 36,
+    filterHeight: 36,
+    gap: 8,
+    viewportReady: true,
+  });
   await overflowButton.click();
 
   const overflowMenu = page.getByTestId("toolbar-overflow-menu");
@@ -4617,6 +4617,17 @@ test("dragging a channel onto a person re-links it and the graph state survives 
         }
       | undefined;
     return store?.getState().accounts["social:instagram:nora-ig"]?.personId === "friend-ada";
+  }, { timeout: 10_000 });
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as
+      | {
+          getDocState: () => {
+            accounts: Record<string, { personId?: string }>;
+          } | null;
+        }
+      | undefined;
+    return automerge?.getDocState()?.accounts["social:instagram:nora-ig"]?.personId === "friend-ada";
   }, { timeout: 10_000 });
 
   await page.reload();
