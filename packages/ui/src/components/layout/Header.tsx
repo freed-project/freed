@@ -26,6 +26,7 @@ import {
   resolveMapMode,
 } from "@freed/shared";
 import { Tooltip } from "../Tooltip.js";
+import { BackgroundActivityPopover } from "../BackgroundActivityPopover.js";
 import {
   ArchiveIcon,
   CloseIcon,
@@ -40,6 +41,7 @@ import {
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
+import { useBackgroundActivityStore } from "../../lib/background-activity-store.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
@@ -440,6 +442,11 @@ export function Header({
     () => (selectedItemId ? items.find((item) => item.globalId === selectedItemId) ?? null : null),
     [items, selectedItemId],
   );
+  const activeBackgroundActivityCount = useBackgroundActivityStore((s) => Object.keys(s.active).length);
+  const backgroundActivityActive = activeBackgroundActivityCount > 0;
+  const [activityPopoverOpen, setActivityPopoverOpen] = useState(false);
+  const activityButtonRef = useRef<HTMLButtonElement | null>(null);
+  const showBackgroundActivityControl = backgroundActivityActive || activityPopoverOpen;
 
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds, accounts), [accounts, activeFilter, feeds]);
   const friendCount = useMemo(
@@ -497,18 +504,26 @@ export function Header({
     showMapTimeControls && !collapseToolbarViewControls;
   const showInlineSocialContentControls =
     showSocialContentControls && !collapseToolbarViewControls;
+  const showFeedCardDensityControl =
+    activeView === "feed" &&
+    !selectedItem &&
+    !isMobile;
   const hideMobileDrawerToolbarActions = mobileSidebarOpen;
+  const showCollapsedFeedControlMenu =
+    showFeedSignalFilter ||
+    showSavedSortControl ||
+    showFeedCardDensityControl;
   const showCollapsedToolbarFilterMenu =
     !hideMobileDrawerToolbarActions &&
     !selectedItem &&
     (
+      showCollapsedFeedControlMenu ||
       (collapseToolbarViewControls && (
         showWorkspaceIdentityControls ||
         showMapTimeControls ||
         showSocialContentControls ||
         showSavedSortControl
-      )) ||
-      ((isMobile || collapseToolbarViewControls) && showFeedSignalFilter)
+      ))
     );
   const showInlineFeedSignalFilter =
     !hideMobileDrawerToolbarActions &&
@@ -516,22 +531,21 @@ export function Header({
     !showCollapsedToolbarFilterMenu;
   const showInlineSavedSortControl =
     showSavedSortControl && !showCollapsedToolbarFilterMenu;
-  const showFeedCardDensityControl =
-    activeView === "feed" &&
-    !selectedItem &&
-    !isMobile;
-  const showInlineFeedCardDensityControl =
-    showFeedCardDensityControl && !isBelowLargeToolbar;
-  const showOverflowFeedCardDensityControl =
-    showFeedCardDensityControl && isBelowLargeToolbar;
+  const showFilterMenuFeedCardDensityControl =
+    showFeedCardDensityControl;
   const showInlineReaderBookmark =
     !!selectedItem && !isBelowReaderBookmarkToolbar;
-  const collapsedReaderTitlePaddingClass = selectedItem?.sourceUrl
-    ? showInlineReaderBookmark ? "pr-[11rem]" : "pr-[8.5rem]"
-    : showInlineReaderBookmark ? "pr-[6.5rem]" : "pr-14";
-  const collapsedReaderActionWidthClass = selectedItem?.sourceUrl
-    ? showInlineReaderBookmark ? "w-[11rem]" : "w-[8.5rem]"
-    : showInlineReaderBookmark ? "w-[6.5rem]" : "w-14";
+  const collapsedReaderBaseActionWidthRem = selectedItem?.sourceUrl
+    ? showInlineReaderBookmark ? 11 : 8.5
+    : showInlineReaderBookmark ? 6.5 : 3.5;
+  const collapsedReaderActionWidthRem =
+    collapsedReaderBaseActionWidthRem + (showBackgroundActivityControl ? 2.75 : 0);
+  const collapsedReaderTitleStyle = selectedItem && isBelowLargeToolbar
+    ? ({ paddingRight: `${collapsedReaderActionWidthRem}rem` } as CSSProperties)
+    : undefined;
+  const collapsedReaderActionStyle = selectedItem && isBelowLargeToolbar
+    ? ({ width: `${collapsedReaderActionWidthRem}rem` } as CSSProperties)
+    : undefined;
 
   const {
     unreadCount,
@@ -791,8 +805,15 @@ export function Header({
   const toggleToolbarOverflowMenu = useCallback(() => {
     updateToolbarOverflowMenuPosition();
     setSignalFilterMenuOpen(false);
+    setActivityPopoverOpen(false);
     setToolbarOverflowMenuOpen((value) => !value);
   }, [updateToolbarOverflowMenuPosition]);
+
+  const handleToggleBackgroundActivity = useCallback(() => {
+    setSignalFilterMenuOpen(false);
+    setToolbarOverflowMenuOpen(false);
+    setActivityPopoverOpen((value) => !value);
+  }, []);
 
   const handleIdentityModeChange = useCallback((key: "friendsMode" | "mapMode", mode: MapMode) => {
     updateDisplayPreference({ [key]: mode });
@@ -1034,8 +1055,7 @@ export function Header({
   ]);
   const showToolbarOverflowMenuButton =
     !hideMobileDrawerToolbarActions &&
-    (toolbarOverflowActions.length > 0 ||
-    showOverflowFeedCardDensityControl);
+    toolbarOverflowActions.length > 0;
 
   const showReaderLayoutToggle =
     !isMobile &&
@@ -1248,9 +1268,8 @@ export function Header({
 
   useEffect(() => {
     if (toolbarOverflowActions.length > 0) return;
-    if (showOverflowFeedCardDensityControl) return;
     setToolbarOverflowMenuOpen(false);
-  }, [showOverflowFeedCardDensityControl, toolbarOverflowActions.length]);
+  }, [toolbarOverflowActions.length]);
 
   useEffect(() => {
     if (!hideMobileDrawerToolbarActions) return;
@@ -1542,8 +1561,11 @@ export function Header({
           </div>
 
           <div
-            className={`min-w-0 basis-0 flex-1 overflow-hidden ${selectedItem && isBelowLargeToolbar ? collapsedReaderTitlePaddingClass : ""}`}
-            {...(headerDragRegion ? { "data-tauri-drag-region": true, style: dragStyle } : {})}
+            className="min-w-0 basis-0 flex-1 overflow-hidden"
+            style={headerDragRegion
+              ? ({ ...collapsedReaderTitleStyle, ...dragStyle } as CSSProperties)
+              : collapsedReaderTitleStyle}
+            {...(headerDragRegion ? { "data-tauri-drag-region": true } : {})}
           >
             {selectedItem ? (
               <button
@@ -1620,10 +1642,44 @@ export function Header({
           <div
             className={selectedItem
               ? isBelowLargeToolbar
-                ? `theme-toolbar-cluster theme-toolbar-cluster-tight absolute right-0 top-1/2 z-10 flex shrink-0 -translate-y-1/2 items-center justify-end pr-2 ${collapsedReaderActionWidthClass}`
+                ? "theme-toolbar-cluster theme-toolbar-cluster-tight absolute right-0 top-1/2 z-10 flex shrink-0 -translate-y-1/2 items-center justify-end pr-2"
                 : "theme-toolbar-cluster theme-toolbar-cluster-tight ml-auto flex min-w-max shrink-0 items-center pr-2"
               : "theme-toolbar-cluster theme-toolbar-cluster-tight flex min-w-max shrink-0 items-center pr-2"}
+            style={collapsedReaderActionStyle}
           >
+            <ToolbarAnimatedSlot
+              visible={showBackgroundActivityControl}
+              width={TOOLBAR_ICON_BUTTON_SIZE}
+            >
+              {showBackgroundActivityControl ? (
+                <Tooltip label="Background activity">
+                  <button
+                    ref={activityButtonRef}
+                    type="button"
+                    onClick={handleToggleBackgroundActivity}
+                    {...getToolbarControlProps()}
+                    data-testid="background-activity-trigger"
+                    className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                      activityPopoverOpen
+                        ? "theme-toolbar-button-active"
+                        : isMobileDevice
+                          ? "theme-toolbar-button-ghost"
+                          : "theme-toolbar-button-neutral"
+                    } text-[var(--theme-accent-secondary)]`}
+                    aria-haspopup="dialog"
+                    aria-expanded={activityPopoverOpen}
+                    aria-label="Show background activity"
+                  >
+                    <span
+                      className={`h-3.5 w-3.5 rounded-full border border-current border-t-transparent ${
+                        backgroundActivityActive ? "animate-spin" : ""
+                      }`}
+                    />
+                  </button>
+                </Tooltip>
+              ) : null}
+            </ToolbarAnimatedSlot>
+
             {selectedItem ? (
               <>
                 <ToolbarAnimatedSlot visible={!isMobile && !isBelowLargeToolbar} width="4.5rem" className="hidden lg:flex">
@@ -1636,7 +1692,7 @@ export function Header({
                         ...(headerDragRegion ? toolbarControlStyle : undefined),
                         width: "4.5rem",
                       }}
-                      className={`h-9 w-full justify-center rounded-lg px-2.5 py-0 text-sm font-bold lg:inline-flex ${
+                      className={`inline-flex h-9 w-full items-center justify-center rounded-lg px-2.5 py-0 text-sm font-bold leading-none ${
                         display.reading.focusMode
                           ? "theme-toolbar-button-active"
                           : "theme-toolbar-button-neutral"
@@ -1644,7 +1700,7 @@ export function Header({
                       aria-pressed={display.reading.focusMode}
                       aria-label="Toggle focus reading mode"
                     >
-                      <span aria-hidden="true">
+                      <span className="inline-flex items-baseline leading-none" aria-hidden="true">
                         <span className="font-black">F</span>
                         <span className="text-xs font-light">ocus</span>
                       </span>
@@ -1841,16 +1897,6 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showInlineFeedCardDensityControl} width="7.25rem" className="hidden lg:flex">
-                  {showInlineFeedCardDensityControl ? (
-                    <FeedCardDensitySlider
-                      value={feedCardDensity}
-                      onChange={setFeedCardDensity}
-                      style={headerDragRegion ? toolbarControlStyle : undefined}
-                    />
-                  ) : null}
-                </ToolbarAnimatedSlot>
-
                 <ToolbarAnimatedSlot visible={showInlineSavedSortControl} width="10.75rem" className="hidden lg:flex">
                   {showInlineSavedSortControl ? (
                     <SavedSortSelect
@@ -1959,6 +2005,12 @@ export function Header({
         </div>
       </header>
 
+      <BackgroundActivityPopover
+        anchorElement={activityButtonRef.current}
+        open={activityPopoverOpen && activityButtonRef.current !== null}
+        onClose={() => setActivityPopoverOpen(false)}
+      />
+
       {toolbarOverflowMenuOpen && showToolbarOverflowMenuButton ? (
         <div
           ref={toolbarOverflowMenuRef}
@@ -1967,22 +2019,6 @@ export function Header({
           className="theme-dialog-shell theme-menu-shell fixed z-[300] w-[16rem] max-w-[calc(100vw-1rem)] py-1.5 shadow-2xl shadow-black/35"
           style={toolbarOverflowMenuStyle}
         >
-          {showOverflowFeedCardDensityControl ? (
-            <div
-              data-testid="toolbar-overflow-density-section"
-              className={`${toolbarOverflowActions.length > 0 ? "border-b border-[var(--theme-border-subtle)]" : ""} px-4 pb-3 pt-2`}
-            >
-              <p className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
-                Card density
-              </p>
-              <FeedCardDensitySlider
-                value={feedCardDensity}
-                onChange={setFeedCardDensity}
-                fullWidth
-                style={headerDragRegion ? toolbarControlStyle : undefined}
-              />
-            </div>
-          ) : null}
           {toolbarOverflowActions.length > 0 ? (
             <div data-testid="toolbar-overflow-actions-section" className="pt-2">
               <p className="px-4 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
@@ -2024,7 +2060,24 @@ export function Header({
           className="theme-dialog-shell theme-menu-shell fixed z-[300] w-[20rem] max-w-[calc(100vw-1rem)] py-2 shadow-2xl shadow-black/35"
           style={signalFilterMenuStyle}
         >
-          {showCollapsedToolbarFilterMenu && showSocialContentControls ? (
+          {showFilterMenuFeedCardDensityControl ? (
+            <div
+              data-testid="feed-filter-density-section"
+              className="border-b border-[var(--theme-border-subtle)] px-3 pb-3 pt-1"
+            >
+              <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Card density
+              </p>
+              <FeedCardDensitySlider
+                value={feedCardDensity}
+                onChange={setFeedCardDensity}
+                fullWidth
+                style={headerDragRegion ? toolbarControlStyle : undefined}
+              />
+            </div>
+          ) : null}
+
+          {collapseToolbarViewControls && showCollapsedToolbarFilterMenu && showSocialContentControls ? (
             <div className={`${showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 pb-3 pt-1`}>
               <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
                 Format
@@ -2044,7 +2097,7 @@ export function Header({
             </div>
           ) : null}
 
-          {showCollapsedToolbarFilterMenu && showWorkspaceIdentityControls ? (
+          {collapseToolbarViewControls && showCollapsedToolbarFilterMenu && showWorkspaceIdentityControls ? (
             <div className={`${showMapTimeControls || showSavedSortControl || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
               <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
                 Connections
@@ -2060,7 +2113,7 @@ export function Header({
             </div>
           ) : null}
 
-          {showCollapsedToolbarFilterMenu && showMapTimeControls ? (
+          {collapseToolbarViewControls && showCollapsedToolbarFilterMenu && showMapTimeControls ? (
             <div className={`${showSavedSortControl || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
               <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
                 Time

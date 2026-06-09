@@ -2182,9 +2182,6 @@ html.freed-mobile-sidebar-open body {
 }
 
 .theme-settings-overlay[data-moving="true"] {
-  background: rgb(var(--theme-shell-rgb) / 0.12);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   transition: none;
 }
 
@@ -2290,8 +2287,6 @@ html[data-theme="scriptorium"] .theme-settings-shell:not([data-moving="true"]) {
 
 .theme-dialog-shell.theme-settings-shell[data-moving="true"] {
   box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   transition: none;
 }
 
