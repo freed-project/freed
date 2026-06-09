@@ -73,6 +73,7 @@ const storage = new IndexedDBStorage();
 let currentDoc: FreedDoc | null = null;
 let searchCorpusVersion = 0;
 let requestChain: Promise<void> = Promise.resolve();
+const HYDRATED_FEED_ITEM_LIMIT = 2_500;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -184,12 +185,13 @@ function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean 
 }
 
 /**
- * Convert the Automerge proxy document to a plain-JS DocState for postMessage.
- * A.toJS() converts CRDT proxies to regular objects, safe for structured clone.
+ * Convert the Automerge document to a DocState for postMessage.
+ * A.view() creates a cheap immutable read view at the current heads. That avoids
+ * the extra eager root clone from A.toJS(), which is expensive on iOS during a
+ * large first cloud import.
  */
 function hydrateFromDoc(doc: FreedDoc): DocState {
-  // A.toJS must receive the document root, not a sub-property.
-  const plain = A.toJS(doc) as FreedDoc;
+  const plain = A.view(doc, A.getHeads(doc)) as FreedDoc;
   const plainItems = Object.values(plain.feedItems as Record<string, FeedItem>);
   const feeds = plain.rssFeeds as Record<string, RssFeed>;
   const persons = (plain.persons ?? {}) as Record<string, Person>;
@@ -205,6 +207,9 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
       { persons, accounts },
     ),
   );
+  const hydratedItems = rankedItems.length > HYDRATED_FEED_ITEM_LIMIT
+    ? rankedItems.slice(0, HYDRATED_FEED_ITEM_LIMIT)
+    : rankedItems;
 
   const feedUnreadCounts: Record<string, number> = {};
   const feedTotalCounts: Record<string, number> = {};
@@ -242,7 +247,7 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   }
 
   return {
-    items: rankedItems,
+    items: hydratedItems,
     searchCorpusVersion,
     feeds,
     persons,
@@ -267,10 +272,10 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
  * Persist the doc to IndexedDB and broadcast the hydrated state + binary to
  * the main thread. Called after every mutation.
  */
-async function saveAndBroadcast(syncBreadcrumbLabel?: string): Promise<void> {
+async function saveAndBroadcast(syncBreadcrumbLabel?: string, knownBinary?: Uint8Array): Promise<void> {
   if (!currentDoc) return;
   if (syncBreadcrumbLabel) sendSyncBreadcrumb(`${syncBreadcrumbLabel}: saving binary`);
-  const binary = A.save(currentDoc);
+  const binary = knownBinary ?? A.save(currentDoc);
   if (syncBreadcrumbLabel) sendSyncBreadcrumb(`${syncBreadcrumbLabel}: writing IndexedDB`, binary.byteLength);
   await storage.save(binary);
   if (syncBreadcrumbLabel) sendSyncBreadcrumb(`${syncBreadcrumbLabel}: hydrating state`, binary.byteLength);
@@ -285,6 +290,17 @@ async function saveAndBroadcast(syncBreadcrumbLabel?: string): Promise<void> {
     binarySize: binary.byteLength,
   };
   send(snapshot);
+
+  if (state.items.length < state.totalItemCount) {
+    send({
+      type: "DEBUG_EVENT",
+      kind: "change",
+      detail:
+        `[pwa] hydrated ${state.items.length.toLocaleString()} of ` +
+        `${state.totalItemCount.toLocaleString()} visible items for mobile memory safety`,
+      bytes: binary.byteLength,
+    });
+  }
 
   const stateUpdate: WorkerResponse = { type: "STATE_UPDATE", state };
   send(stateUpdate);
@@ -695,6 +711,8 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
           : populatedSide
             ? A.clone(resolvedDoc)
             : resolvedDoc;
+        const adoptedIncomingWithoutMigration =
+          preMergePopulatedSide === "incoming" && !hasLegacyIdentityGraphData(resolvedDoc);
         migrateLoadedIdentityGraph("Migrate legacy identity graph");
         const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const delta = afterCount - beforeCount;
@@ -721,7 +739,7 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
           });
         }
         bumpSearchCorpusVersion();
-        await saveAndBroadcast("merge");
+        await saveAndBroadcast("merge", adoptedIncomingWithoutMigration ? req.binary : undefined);
         sendSyncBreadcrumb("merge broadcast complete", req.binary.byteLength);
         ack(req.reqId);
         break;

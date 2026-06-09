@@ -401,6 +401,9 @@ export function Header({
 
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
+  const feedTotalCounts = useAppStore((s) => s.feedTotalCounts);
+  const totalItemCount = useAppStore((s) => s.totalItemCount);
+  const itemCountByPlatform = useAppStore((s) => s.itemCountByPlatform);
   const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
   const friends = useAppStore((s) => s.friends);
@@ -554,6 +557,38 @@ export function Header({
     return scopeLabel;
   }, [activeView, scopeLabel]);
 
+  const fullScopeItemCount = useMemo(() => {
+    if (
+      activeFilter.authorId ||
+      activeFilter.savedOnly ||
+      activeFilter.archivedOnly ||
+      activeFilter.socialContentFilter ||
+      (activeFilter.tags?.length ?? 0) > 0 ||
+      (activeFilter.signals?.length ?? 0) > 0
+    ) {
+      return null;
+    }
+    if (activeFilter.feedUrl) {
+      return feedTotalCounts[activeFilter.feedUrl] ?? null;
+    }
+    if (activeFilter.platform) {
+      return itemCountByPlatform[activeFilter.platform] ?? null;
+    }
+    return totalItemCount;
+  }, [
+    activeFilter.archivedOnly,
+    activeFilter.authorId,
+    activeFilter.feedUrl,
+    activeFilter.platform,
+    activeFilter.savedOnly,
+    activeFilter.signals,
+    activeFilter.socialContentFilter,
+    activeFilter.tags,
+    feedTotalCounts,
+    itemCountByPlatform,
+    totalItemCount,
+  ]);
+
   const currentListSubtitle = useMemo(() => {
     if (activeView === "friends") {
       if (pendingMatchCount > 0) {
@@ -576,12 +611,13 @@ export function Header({
     if (isSearching) {
       return `${resultCount.toLocaleString()} result${resultCount === 1 ? "" : "s"} in ${scopeLabel}`;
     }
-    return formatItemCount(filteredItems.length);
+    return formatItemCount(fullScopeItemCount ?? filteredItems.length);
   }, [
     activeView,
     effectiveFriendsMode,
     filteredItems.length,
     friendCount,
+    fullScopeItemCount,
     effectiveMapMode,
     isSearching,
     mappedAllContentCount,
