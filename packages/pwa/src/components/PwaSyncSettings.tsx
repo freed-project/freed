@@ -23,6 +23,7 @@ import {
   syncCloudProviderNow,
 } from "../lib/sync";
 import { SyncConnectContent } from "./SyncConnectDialog";
+import { useCloudSyncActivity } from "./cloudSyncActivity";
 
 type Provider = "gdrive" | "dropbox" | "local";
 
@@ -138,6 +139,8 @@ export function PwaSyncSettings() {
     ? cloudProviders?.[provider]
     : null;
   const activeCloudProvider = provider === "gdrive" || provider === "dropbox" ? provider : null;
+  const activeCloudProviderName = activeCloudProvider === "dropbox" ? "Dropbox" : "Google Drive";
+  const cloudActivity = useCloudSyncActivity(cloudProviderState, activeCloudProviderName);
   const isManualSyncing = manualSyncingProvider !== null;
   const uploadExplanation = describeUploadGap(cloudProviderState ?? null);
   const diagnosticError = cloudProviderState?.error ?? manualSyncError;
@@ -217,6 +220,7 @@ export function PwaSyncSettings() {
   const providerError = cloudProviderState?.error;
   const statusText = providerError
     ? isMergeBlocked(providerError) ? "Merge blocked" : "Needs attention"
+    : cloudActivity ? `${cloudActivity.shortLabel} ${cloudActivity.elapsedLabel}`
     : isSyncing ? "Syncing now" : "Connected";
   const dotColor = providerError
     ? "bg-[rgb(var(--theme-feedback-danger-rgb))]"
@@ -282,6 +286,23 @@ export function PwaSyncSettings() {
           data-testid="pwa-cloud-sync-status-message"
           className="mb-3 rounded-lg bg-[var(--theme-bg-muted)] px-3 py-2 text-xs text-[var(--theme-text-secondary)]"
         >
+          {cloudActivity && (
+            <div
+              data-testid="pwa-cloud-sync-active-counter"
+              className="mb-2 flex items-center gap-2 text-[var(--theme-text-secondary)]"
+            >
+              <span
+                aria-label="Syncing"
+                className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[rgb(var(--theme-accent-secondary-rgb)/0.24)] border-t-[var(--theme-accent-secondary)]"
+              />
+              <span className="font-medium text-[var(--theme-text-primary)]">
+                {cloudActivity.detailLabel}
+              </span>
+              <span className="shrink-0 font-mono tabular-nums text-[var(--theme-text-muted)]">
+                {cloudActivity.elapsedLabel}
+              </span>
+            </div>
+          )}
           <p className="font-medium text-[var(--theme-text-primary)]">
             {cloudProviderState?.statusMessage ?? "No cloud sync activity yet."}
           </p>
