@@ -1,5 +1,52 @@
 [
   {
+    "version": "26.6.901",
+    "tagName": "v26.6.901",
+    "channel": "production",
+    "date": "2026-06-09T20:26:21Z",
+    "deck": "Safe local mutations, sync recovery, and production validation fixes",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Safe local mutations now respond immediately while heavy Automerge work waits for the first async turn"
+      },
+      {
+        "text": "Background activity moved into the top toolbar with collapsed feed controls that stay reachable at narrow widths"
+      },
+      {
+        "text": "Cloud sync status now shows elapsed activity and clearer recovery states for Google Drive conflicts"
+      },
+      {
+        "text": "PWA sync hydration and Google Drive recovery now avoid destructive first-sync merges and blocked retry loops"
+      },
+      {
+        "text": "Settings scrolling disables the moving overlay blur so large settings lists stay within the frame budget"
+      },
+      {
+        "text": "Production validation now covers the collapsed filter menu and waits for durable graph persistence before reload checks"
+      },
+      {
+        "text": "Settings, reader, story grid, and mobile menu polish make dense app surfaces more consistent"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.901",
+    "prNumbers": [
+      824,
+      827
+    ],
+    "builds": [
+      "26.6.901"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.901",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.901",
+        "channel": "production"
+      }
+    ]
+  },
+  {
     "version": "26.6.805",
     "tagName": "v26.6.805",
     "channel": "production",

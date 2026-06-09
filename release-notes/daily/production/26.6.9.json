@@ -1,0 +1,14 @@
+{
+  "channel": "production",
+  "dayKey": "26.6.9",
+  "date": "2026-06-09",
+  "preferredDeck": null,
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [],
+  "editorialNotes": [],
+  "updatedAt": "2026-06-09T19:39:34.359Z"
+}
