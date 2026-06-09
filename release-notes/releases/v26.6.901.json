@@ -1,0 +1,62 @@
+{
+  "tag": "v26.6.901",
+  "version": "26.6.901",
+  "channel": "production",
+  "dayKey": "26.6.9",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-09T19:39:34.357Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.6.805",
+    "previousPublishedDayTag": "v26.6.805",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.901"
+    ],
+    "relatedBuildTags": [
+      "v26.6.901"
+    ],
+    "prNumbers": [
+      824,
+      827
+    ],
+    "commitSubjects": [
+      "fix: stabilize production validation (#827)",
+      "release: approve v26.6.900 notes",
+      "release: v26.6.900",
+      "chore: promote dev into main for production release (#824)"
+    ]
+  },
+  "release": {
+    "deck": "Safe local mutations, sync recovery, and production validation fixes",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Safe local mutations now respond immediately while heavy Automerge work waits for the first async turn"
+      },
+      {
+        "text": "Background activity moved into the top toolbar with collapsed feed controls that stay reachable at narrow widths"
+      },
+      {
+        "text": "Cloud sync status now shows elapsed activity and clearer recovery states for Google Drive conflicts"
+      },
+      {
+        "text": "PWA sync hydration and Google Drive recovery now avoid destructive first-sync merges and blocked retry loops"
+      },
+      {
+        "text": "Settings scrolling disables the moving overlay blur so large settings lists stay within the frame budget"
+      },
+      {
+        "text": "Production validation now covers the collapsed filter menu and waits for durable graph persistence before reload checks"
+      },
+      {
+        "text": "Settings, reader, story grid, and mobile menu polish make dense app surfaces more consistent"
+      }
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.901\n\nSafe local mutations, sync recovery, and production validation fixes\n\n### Fixes\n\n- Safe local mutations now respond immediately while heavy Automerge work waits for the first async turn\n- Background activity moved into the top toolbar with collapsed feed controls that stay reachable at narrow widths\n- Cloud sync status now shows elapsed activity and clearer recovery states for Google Drive conflicts\n- PWA sync hydration and Google Drive recovery now avoid destructive first-sync merges and blocked retry loops\n- Settings scrolling disables the moving overlay blur so large settings lists stay within the frame budget\n- Production validation now covers the collapsed filter menu and waits for durable graph persistence before reload checks\n- Settings, reader, story grid, and mobile menu polish make dense app surfaces more consistent\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
