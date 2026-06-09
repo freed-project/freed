@@ -1,0 +1,43 @@
+{
+  "tag": "v26.6.900",
+  "version": "26.6.900",
+  "channel": "production",
+  "dayKey": "26.6.9",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-09T18:47:28.448Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.6.805",
+    "previousPublishedDayTag": "v26.6.805",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.900"
+    ],
+    "relatedBuildTags": [
+      "v26.6.900"
+    ],
+    "prNumbers": [
+      824
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for production release (#824)"
+    ]
+  },
+  "release": {
+    "deck": "Sharper sync responsiveness and clearer toolbar activity",
+    "features": [
+      "Safe local mutations now respond immediately instead of waiting behind heavier sync work.",
+      "The background activity monitor now lives in the top toolbar, with collapsed feed controls keeping the toolbar usable at tighter widths.",
+      "Cloud sync now shows elapsed activity status so long-running work is easier to understand."
+    ],
+    "fixes": [
+      "Hardened PWA sync hydration and Google Drive recovery paths.",
+      "Kept settings, reader, story grid, and mobile menu interactions aligned with the latest product polish."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.900\n\nThis production build sharpens sync responsiveness and moves more status into the main toolbar so background work is easier to read while Freed stays responsive.\n\n### Improvements\n\n- Safe local mutations now respond immediately instead of waiting behind heavier sync work.\n- The background activity monitor now lives in the top toolbar, with collapsed feed controls keeping the toolbar usable at tighter widths.\n- Cloud sync now shows elapsed activity status so long-running work is easier to understand.\n\n### Fixes\n\n- Hardened PWA sync hydration and Google Drive recovery paths.\n- Kept settings, reader, story grid, and mobile menu interactions aligned with the latest product polish.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
