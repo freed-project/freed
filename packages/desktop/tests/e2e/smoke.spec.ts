@@ -1687,6 +1687,50 @@ test("settings backdrop stays blurred during high memory pressure", async ({ app
   expect(styles.shellFilter).not.toBe("none");
 });
 
+test("settings backdrop stays blurred while settings contents scroll", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openDefault();
+  }, SETTINGS_STORE_PATH);
+  await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
+
+  const scrollContainer = page.getByTestId("settings-scroll-container");
+  const styles = await scrollContainer.evaluate((element) => {
+    const maxScrollTop = element.scrollHeight - element.clientHeight;
+    element.scrollTop = Math.min(Math.max(maxScrollTop, 0), 360);
+    element.dispatchEvent(new Event("scroll", { bubbles: true }));
+
+    const overlay = document.querySelector(".theme-settings-overlay");
+    const shell = document.querySelector(".theme-settings-shell");
+    if (!(overlay instanceof HTMLElement) || !(shell instanceof HTMLElement)) {
+      throw new Error("Settings dialog styles were not mounted");
+    }
+
+    const overlayStyle = window.getComputedStyle(overlay);
+    const shellStyle = window.getComputedStyle(shell);
+    return {
+      maxScrollTop,
+      scrollTop: element.scrollTop,
+      overlayMoving: overlay.dataset.moving,
+      shellMoving: shell.dataset.moving,
+      overlayFilter: overlayStyle.backdropFilter || overlayStyle.webkitBackdropFilter,
+      shellFilter: shellStyle.backdropFilter || shellStyle.webkitBackdropFilter,
+    };
+  });
+
+  expect(styles.maxScrollTop).toBeGreaterThan(0);
+  expect(styles.scrollTop).toBeGreaterThan(0);
+  expect(styles.overlayMoving).toBe("true");
+  expect(styles.shellMoving).toBe("true");
+  expect(styles.overlayFilter).toContain("blur");
+  expect(styles.overlayFilter).not.toBe("none");
+  expect(styles.shellFilter).toContain("blur");
+  expect(styles.shellFilter).not.toBe("none");
+});
+
 test("settings dialog closes from the mobile header close button", async ({ app, page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await app.goto();
