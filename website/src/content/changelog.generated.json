@@ -1,12 +1,21 @@
 [
   {
-    "version": "26.6.803",
-    "tagName": "v26.6.803",
+    "version": "26.6.804",
+    "tagName": "v26.6.804",
     "channel": "production",
-    "date": "2026-06-08T20:48:54Z",
-    "deck": "Phone Google Drive sync is safer, mobile navigation is calmer on touch screens, and fullscreen reader windows keep their native drag area.",
+    "date": "2026-06-09T00:56:44Z",
+    "deck": "This build reduces phone import memory pressure and carries the latest same-day production fixes.",
     "features": [],
     "fixes": [
+      {
+        "text": "Phone Google Drive sync now avoids an eager Automerge root clone while hydrating large cloud libraries."
+      },
+      {
+        "text": "The mobile app now renders a bounded feed window after large imports while keeping the full synced document and item counts intact."
+      },
+      {
+        "text": "First-sync imports can reuse a trusted incoming Drive binary when no migration is needed, reducing extra save work during merge recovery."
+      },
       {
         "text": "Phone Google Drive sync now keeps populated cloud feed history when stale local delete history would otherwise merge the phone down to zero items."
       },
@@ -39,14 +48,16 @@
       }
     ],
     "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.803",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.804",
     "prNumbers": [
       798,
-      800
+      800,
+      814
     ],
     "builds": [
       "26.6.800",
-      "26.6.803"
+      "26.6.803",
+      "26.6.804"
     ],
     "buildLinks": [
       {
@@ -57,6 +68,11 @@
       {
         "version": "26.6.803",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.803",
+        "channel": "production"
+      },
+      {
+        "version": "26.6.804",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.804",
         "channel": "production"
       }
     ]
