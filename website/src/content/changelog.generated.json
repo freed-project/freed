@@ -1,63 +1,75 @@
 [
   {
-    "version": "26.6.804",
-    "tagName": "v26.6.804",
+    "version": "26.6.805",
+    "tagName": "v26.6.805",
     "channel": "production",
-    "date": "2026-06-09T00:56:44Z",
-    "deck": "This build reduces phone import memory pressure and carries the latest same-day production fixes.",
+    "date": "2026-06-09T02:05:25Z",
+    "deck": "This build tightens phone Google Drive imports and polishes story grid alignment.",
     "features": [],
     "fixes": [
       {
-        "text": "Phone Google Drive sync now avoids an eager Automerge root clone while hydrating large cloud libraries."
+        "text": "Preserve release note rollup validation"
       },
       {
-        "text": "The mobile app now renders a bounded feed window after large imports while keeping the full synced document and item counts intact."
+        "text": "Fullscreen reader drag region restored"
       },
       {
-        "text": "First-sync imports can reuse a trusted incoming Drive binary when no migration is needed, reducing extra save work during merge recovery."
+        "text": "Phone Google Drive sync now keeps populated cloud feed history when stale local delete history would otherwise merge the phone down to zero items"
       },
       {
-        "text": "Phone Google Drive sync now keeps populated cloud feed history when stale local delete history would otherwise merge the phone down to zero items."
+        "text": "The mobile app now pauses Google Drive polling after a destructive merge block instead of retrying the same blocked merge in the background"
       },
       {
-        "text": "The mobile app now pauses Google Drive polling after a destructive merge block instead of retrying the same blocked merge in the background."
+        "text": "The Google Drive card now shows a short merge-blocked sentence while the full recovery details stay in Sync diagnostics"
       },
       {
-        "text": "The Google Drive card now shows a short merge-blocked sentence while the full recovery details stay in Sync diagnostics."
+        "text": "The empty feed state now shows a spinner while cloud sync is actively running and links blocked sync states directly to Sync settings"
       },
       {
-        "text": "The empty feed state now shows a spinner while cloud sync is actively running and links blocked sync states directly to Sync settings."
+        "text": "Populate sample data remains stable on the phone with the latest Automerge document state"
       },
       {
-        "text": "Populate sample data remains stable on the phone with the latest Automerge document state."
+        "text": "Mobile top toolbar buttons no longer flash focus or active borders after touch taps"
       },
       {
-        "text": "Mobile top toolbar buttons no longer flash focus or active borders after touch taps."
+        "text": "The mobile navigation drawer now opens full width with aligned spacing, no shadow, and hidden action controls while open"
       },
       {
-        "text": "The mobile navigation drawer now opens full width with aligned spacing, no shadow, and hidden action controls while open."
+        "text": "Mobile settings now uses a Freed Settings breadcrumb with compact caret separators, stable close-button placement, and mobile-only taller search sizing"
       },
       {
-        "text": "Mobile settings now uses a Freed Settings breadcrumb with compact caret separators, stable close-button placement, and mobile-only taller search sizing."
+        "text": "Touch devices now open feed and story cards on the first tap by removing hover-only quick actions from mobile cards"
       },
       {
-        "text": "Touch devices now open feed and story cards on the first tap by removing hover-only quick actions from mobile cards."
+        "text": "Phone Google Drive sync now avoids an eager Automerge root clone while hydrating large cloud libraries"
       },
       {
-        "text": "Fullscreen reader windows now expose the title as a direct native drag region again, restoring production release validation."
+        "text": "The mobile app now renders a bounded feed window after large imports while keeping the full synced document and item counts intact"
+      },
+      {
+        "text": "First-sync imports can reuse a trusted incoming Drive binary when no migration is needed, reducing extra save work during merge recovery"
+      },
+      {
+        "text": "Story rows now line up with the sidebar panel edge, removing the one-pixel top offset in the story grid."
       }
     ],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.804",
+    "followUps": [
+      {
+        "text": "Phone Google Drive sync now imports populated cloud libraries without reload loops, and blocked sync states are easier to recover from"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.805",
     "prNumbers": [
       798,
       800,
-      814
+      814,
+      816
     ],
     "builds": [
       "26.6.800",
       "26.6.803",
-      "26.6.804"
+      "26.6.804",
+      "26.6.805"
     ],
     "buildLinks": [
       {
@@ -73,6 +85,11 @@
       {
         "version": "26.6.804",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.804",
+        "channel": "production"
+      },
+      {
+        "version": "26.6.805",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.805",
         "channel": "production"
       }
     ]
