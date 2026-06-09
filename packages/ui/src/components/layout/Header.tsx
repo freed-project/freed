@@ -504,18 +504,26 @@ export function Header({
     showMapTimeControls && !collapseToolbarViewControls;
   const showInlineSocialContentControls =
     showSocialContentControls && !collapseToolbarViewControls;
+  const showFeedCardDensityControl =
+    activeView === "feed" &&
+    !selectedItem &&
+    !isMobile;
   const hideMobileDrawerToolbarActions = mobileSidebarOpen;
+  const showCollapsedFeedControlMenu =
+    showFeedSignalFilter ||
+    showSavedSortControl ||
+    showFeedCardDensityControl;
   const showCollapsedToolbarFilterMenu =
     !hideMobileDrawerToolbarActions &&
     !selectedItem &&
     (
+      showCollapsedFeedControlMenu ||
       (collapseToolbarViewControls && (
         showWorkspaceIdentityControls ||
         showMapTimeControls ||
         showSocialContentControls ||
         showSavedSortControl
-      )) ||
-      ((isMobile || collapseToolbarViewControls) && showFeedSignalFilter)
+      ))
     );
   const showInlineFeedSignalFilter =
     !hideMobileDrawerToolbarActions &&
@@ -523,14 +531,8 @@ export function Header({
     !showCollapsedToolbarFilterMenu;
   const showInlineSavedSortControl =
     showSavedSortControl && !showCollapsedToolbarFilterMenu;
-  const showFeedCardDensityControl =
-    activeView === "feed" &&
-    !selectedItem &&
-    !isMobile;
-  const showInlineFeedCardDensityControl =
-    showFeedCardDensityControl && !isBelowLargeToolbar;
-  const showOverflowFeedCardDensityControl =
-    showFeedCardDensityControl && isBelowLargeToolbar;
+  const showFilterMenuFeedCardDensityControl =
+    showFeedCardDensityControl;
   const showInlineReaderBookmark =
     !!selectedItem && !isBelowReaderBookmarkToolbar;
   const collapsedReaderBaseActionWidthRem = selectedItem?.sourceUrl
@@ -1053,8 +1055,7 @@ export function Header({
   ]);
   const showToolbarOverflowMenuButton =
     !hideMobileDrawerToolbarActions &&
-    (toolbarOverflowActions.length > 0 ||
-    showOverflowFeedCardDensityControl);
+    toolbarOverflowActions.length > 0;
 
   const showReaderLayoutToggle =
     !isMobile &&
@@ -1267,9 +1268,8 @@ export function Header({
 
   useEffect(() => {
     if (toolbarOverflowActions.length > 0) return;
-    if (showOverflowFeedCardDensityControl) return;
     setToolbarOverflowMenuOpen(false);
-  }, [showOverflowFeedCardDensityControl, toolbarOverflowActions.length]);
+  }, [toolbarOverflowActions.length]);
 
   useEffect(() => {
     if (!hideMobileDrawerToolbarActions) return;
@@ -1692,7 +1692,7 @@ export function Header({
                         ...(headerDragRegion ? toolbarControlStyle : undefined),
                         width: "4.5rem",
                       }}
-                      className={`h-9 w-full justify-center rounded-lg px-2.5 py-0 text-sm font-bold lg:inline-flex ${
+                      className={`inline-flex h-9 w-full items-center justify-center rounded-lg px-2.5 py-0 text-sm font-bold leading-none ${
                         display.reading.focusMode
                           ? "theme-toolbar-button-active"
                           : "theme-toolbar-button-neutral"
@@ -1700,7 +1700,7 @@ export function Header({
                       aria-pressed={display.reading.focusMode}
                       aria-label="Toggle focus reading mode"
                     >
-                      <span aria-hidden="true">
+                      <span className="inline-flex items-baseline leading-none" aria-hidden="true">
                         <span className="font-black">F</span>
                         <span className="text-xs font-light">ocus</span>
                       </span>
@@ -1897,16 +1897,6 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showInlineFeedCardDensityControl} width="7.25rem" className="hidden lg:flex">
-                  {showInlineFeedCardDensityControl ? (
-                    <FeedCardDensitySlider
-                      value={feedCardDensity}
-                      onChange={setFeedCardDensity}
-                      style={headerDragRegion ? toolbarControlStyle : undefined}
-                    />
-                  ) : null}
-                </ToolbarAnimatedSlot>
-
                 <ToolbarAnimatedSlot visible={showInlineSavedSortControl} width="10.75rem" className="hidden lg:flex">
                   {showInlineSavedSortControl ? (
                     <SavedSortSelect
@@ -2029,22 +2019,6 @@ export function Header({
           className="theme-dialog-shell theme-menu-shell fixed z-[300] w-[16rem] max-w-[calc(100vw-1rem)] py-1.5 shadow-2xl shadow-black/35"
           style={toolbarOverflowMenuStyle}
         >
-          {showOverflowFeedCardDensityControl ? (
-            <div
-              data-testid="toolbar-overflow-density-section"
-              className={`${toolbarOverflowActions.length > 0 ? "border-b border-[var(--theme-border-subtle)]" : ""} px-4 pb-3 pt-2`}
-            >
-              <p className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
-                Card density
-              </p>
-              <FeedCardDensitySlider
-                value={feedCardDensity}
-                onChange={setFeedCardDensity}
-                fullWidth
-                style={headerDragRegion ? toolbarControlStyle : undefined}
-              />
-            </div>
-          ) : null}
           {toolbarOverflowActions.length > 0 ? (
             <div data-testid="toolbar-overflow-actions-section" className="pt-2">
               <p className="px-4 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
@@ -2086,7 +2060,24 @@ export function Header({
           className="theme-dialog-shell theme-menu-shell fixed z-[300] w-[20rem] max-w-[calc(100vw-1rem)] py-2 shadow-2xl shadow-black/35"
           style={signalFilterMenuStyle}
         >
-          {showCollapsedToolbarFilterMenu && showSocialContentControls ? (
+          {showFilterMenuFeedCardDensityControl ? (
+            <div
+              data-testid="feed-filter-density-section"
+              className="border-b border-[var(--theme-border-subtle)] px-3 pb-3 pt-1"
+            >
+              <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Card density
+              </p>
+              <FeedCardDensitySlider
+                value={feedCardDensity}
+                onChange={setFeedCardDensity}
+                fullWidth
+                style={headerDragRegion ? toolbarControlStyle : undefined}
+              />
+            </div>
+          ) : null}
+
+          {collapseToolbarViewControls && showCollapsedToolbarFilterMenu && showSocialContentControls ? (
             <div className={`${showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 pb-3 pt-1`}>
               <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
                 Format
@@ -2106,7 +2097,7 @@ export function Header({
             </div>
           ) : null}
 
-          {showCollapsedToolbarFilterMenu && showWorkspaceIdentityControls ? (
+          {collapseToolbarViewControls && showCollapsedToolbarFilterMenu && showWorkspaceIdentityControls ? (
             <div className={`${showMapTimeControls || showSavedSortControl || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
               <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
                 Connections
@@ -2122,7 +2113,7 @@ export function Header({
             </div>
           ) : null}
 
-          {showCollapsedToolbarFilterMenu && showMapTimeControls ? (
+          {collapseToolbarViewControls && showCollapsedToolbarFilterMenu && showMapTimeControls ? (
             <div className={`${showSavedSortControl || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
               <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
                 Time

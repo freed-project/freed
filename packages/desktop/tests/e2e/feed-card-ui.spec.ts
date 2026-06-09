@@ -445,7 +445,7 @@ test("liking an X post keeps it in the unified feed", async ({ app, ipc }) => {
   expect(userState?.likedSyncedAt).toEqual(expect.any(Number));
 });
 
-test("top toolbar card density slider persists locally", async ({ app, page }) => {
+test("filter menu card density slider persists locally", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() => {
     if (window.sessionStorage.getItem("feed-card-density-test-started") === "1") return;
@@ -456,7 +456,19 @@ test("top toolbar card density slider persists locally", async ({ app, page }) =
   await app.waitForReady();
   await injectCardUiItems(page);
 
-  const slider = page.getByTestId("feed-card-density-slider");
+  await expect(page.getByTestId("social-content-toolbar-filter")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("feed-toolbar-lens")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("feed-card-density-slider")).toHaveCount(0);
+
+  const filterButton = page.getByTestId("mobile-toolbar-filter-button");
+  await expect(filterButton).toBeVisible({ timeout: 5_000 });
+  await filterButton.click();
+
+  const filterMenu = page.getByTestId("feed-signal-filter-menu");
+  await expect(filterMenu.getByText("Format", { exact: true })).toHaveCount(0);
+  await expect(filterMenu.getByText("Connections", { exact: true })).toHaveCount(0);
+  await expect(filterMenu.getByText("Classification", { exact: true })).toBeVisible();
+  const slider = filterMenu.getByTestId("feed-card-density-slider");
   const card = page.locator('[data-feed-item-id="test-facebook-card-ui-overhaul"]').first();
 
   await expect(slider).toBeVisible();
@@ -480,10 +492,11 @@ test("top toolbar card density slider persists locally", async ({ app, page }) =
 
   await page.reload();
   await app.waitForReady();
-  await expect(page.getByTestId("feed-card-density-slider")).toHaveValue("2");
+  await page.getByTestId("mobile-toolbar-filter-button").click();
+  await expect(page.getByTestId("feed-signal-filter-menu").getByTestId("feed-card-density-slider")).toHaveValue("2");
 });
 
-test("narrow desktop toolbar exposes card density slider in overflow", async ({ app, page }) => {
+test("narrow desktop toolbar exposes card density slider in the filter menu", async ({ app, page }) => {
   await page.setViewportSize({ width: 1100, height: 800 });
   await page.addInitScript(() => {
     window.localStorage.removeItem("freed-feed-card-density");
@@ -499,15 +512,21 @@ test("narrow desktop toolbar exposes card density slider in overflow", async ({ 
   const overflowButton = page.getByTestId("toolbar-overflow-button");
   await expect(overflowButton).toBeVisible({ timeout: 5_000 });
   await overflowButton.click();
-
   const overflowMenu = page.getByTestId("toolbar-overflow-menu");
-  const densitySection = overflowMenu.getByTestId("toolbar-overflow-density-section");
-  const actionsSection = overflowMenu.getByTestId("toolbar-overflow-actions-section");
-  const densityControl = overflowMenu.getByTestId("feed-card-density-control");
-  const slider = overflowMenu.getByTestId("feed-card-density-slider");
+  await expect(overflowMenu.getByTestId("toolbar-overflow-density-section")).toHaveCount(0);
+  await expect(overflowMenu.getByTestId("toolbar-overflow-actions-section").getByText("Actions", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  const filterButton = page.getByTestId("mobile-toolbar-filter-button");
+  await expect(filterButton).toBeVisible({ timeout: 5_000 });
+  await filterButton.click();
+
+  const filterMenu = page.getByTestId("feed-signal-filter-menu");
+  const densitySection = filterMenu.getByTestId("feed-filter-density-section");
+  const densityControl = filterMenu.getByTestId("feed-card-density-control");
+  const slider = filterMenu.getByTestId("feed-card-density-slider");
   await expect(slider).toBeVisible();
   await expect(densitySection.getByText("Card density", { exact: true })).toBeVisible();
-  await expect(actionsSection.getByText("Actions", { exact: true })).toBeVisible();
 
   const menuGeometry = await densitySection.evaluate((section) => {
     const control = section.querySelector('[data-testid="feed-card-density-control"]') as HTMLElement | null;
