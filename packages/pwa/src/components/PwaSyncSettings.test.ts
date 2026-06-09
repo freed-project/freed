@@ -54,6 +54,8 @@ function renderWithPlatform(node: ReactNode): { container: HTMLDivElement; root:
 describe("PwaSyncSettings cloud diagnostics", () => {
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-09T12:00:30Z"));
     vi.clearAllMocks();
     useAppStore.setState({
       syncConnected: true,
@@ -92,6 +94,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     useAppStore.setState({
       syncConnected: false,
       isSyncing: false,
@@ -153,6 +156,48 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     expect(text).toContain("Merge blocked. Review Sync diagnostics below.");
     expect(diagnostics?.textContent).toContain(blockedMessage);
     expect((text.match(/Freed blocked a sync merge/g) ?? [])).toHaveLength(1);
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it("shows the active cloud sync stage and elapsed time while a merge is running", () => {
+    const startedAt = Date.now() - 30_000;
+    useDebugStore.setState({
+      cloudProviders: {
+        dropbox: { status: "idle" },
+        gdrive: {
+          status: "connected",
+          stage: "merge",
+          lastAttemptAt: startedAt,
+          statusMessage: "Merging remote document into the local library.",
+          events: [
+            {
+              id: "merge-started",
+              ts: startedAt,
+              kind: "started",
+              stage: "merge",
+              message: "Merging remote document into the local library.",
+            },
+          ],
+        },
+      },
+    });
+
+    const { container, root } = renderWithPlatform(createElement(PwaSyncSettings));
+    const activeCounter = container.querySelector("[data-testid='pwa-cloud-sync-active-counter']");
+
+    expect(container.textContent).toContain("Merging 30s");
+    expect(activeCounter?.textContent).toContain("Merging Google Drive data into this library");
+    expect(activeCounter?.textContent).toContain("30s");
+    expect(activeCounter?.querySelector("[aria-label='Syncing']")).toBeTruthy();
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(activeCounter?.textContent).toContain("31s");
 
     act(() => {
       root.unmount();

@@ -9,11 +9,9 @@ import {
 } from "@freed/shared";
 import { useAppStore, usePlatform, type SidebarSourceStatusSummary } from "../../context/PlatformContext.js";
 import { ProviderStatusIndicator } from "../ProviderStatusIndicator.js";
-import { BackgroundActivityPopover } from "../BackgroundActivityPopover.js";
 import { SettingsDialog } from "../SettingsDialog.js";
 import { toast } from "../Toast.js";
 import { Tooltip } from "../Tooltip.js";
-import { useBackgroundActivityStore } from "../../lib/background-activity-store.js";
 import { useDebugStore } from "../../lib/debug-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
@@ -619,16 +617,6 @@ export function Sidebar({
   const display = useAppStore((s) => s.preferences.display);
   const animationIntensity = resolveAnimationIntensity(display.animationIntensity);
   const health = useDebugStore((s) => s.health);
-  const activeBackgroundActivityCount = useBackgroundActivityStore((s) => Object.keys(s.active).length);
-  const backgroundActivityActive = activeBackgroundActivityCount > 0;
-  const [activityAnchorElement, setActivityAnchorElement] = useState<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!backgroundActivityActive) {
-      setActivityAnchorElement(null);
-    }
-  }, [backgroundActivityActive]);
-
   const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
   const archivedCount = useMemo(() => items.filter((i) => i.userState.archived).length, [items]);
   const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
@@ -1148,27 +1136,6 @@ export function Sidebar({
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   );
-
-  const renderActivityButton = (testId: string, extraClassName = "") => {
-    if (!backgroundActivityActive) return null;
-    return (
-      <button
-        type="button"
-        aria-label="Show background activity"
-        aria-expanded={activityAnchorElement !== null}
-        data-testid={testId}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          const target = event.currentTarget;
-          setActivityAnchorElement((current) => current === target ? null : target);
-        }}
-        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--theme-accent-secondary)] hover:bg-[var(--theme-bg-muted)] ${extraClassName}`}
-      >
-        <span className="h-3.5 w-3.5 animate-spin rounded-full border border-current border-t-transparent" />
-      </button>
-    );
-  };
 
   const handleOpenSettingsFromMobileSidebar = useCallback(() => {
     onMobileClose();
@@ -1820,24 +1787,18 @@ export function Sidebar({
                       {settingsIcon}
                     </span>
                   </button>
-                  {renderActivityButton("background-activity-trigger-compact", "absolute -right-1 -top-1 h-5 w-5 bg-[var(--theme-bg-elevated)]")}
                 </div>
               </Tooltip>
             ) : (
-              <div className="group/sidebar-row flex items-stretch gap-0 rounded-lg border border-transparent text-[color:var(--theme-text-secondary)] transition-all hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]">
-                <button
-                  type="button"
-                  onClick={openSettings}
-                  data-testid="sidebar-settings-button"
-                  className={`flex min-w-0 flex-1 cursor-pointer items-center ${rowGapClass} ${rowLeadingPaddingClass} ${rowVerticalPaddingClass} text-left ${rowTextClass} transition-all`}
-                >
-                  <span data-sidebar-icon-slot="true">{renderSidebarRowIcon(settingsIcon)}</span>
-                  <span className={sidebarLabelClass}>Settings</span>
-                </button>
-                <div className={`flex shrink-0 items-center ${rowTrailingPaddingClass}`}>
-                  {renderActivityButton("background-activity-trigger")}
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={openSettings}
+                data-testid="sidebar-settings-button"
+                className={`group/sidebar-row flex w-full min-w-0 cursor-pointer items-center ${rowGapClass} ${rowLeadingPaddingClass} ${rowTrailingPaddingClass} ${rowVerticalPaddingClass} rounded-lg border border-transparent text-left ${rowTextClass} text-[color:var(--theme-text-secondary)] transition-all hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]`}
+              >
+                <span data-sidebar-icon-slot="true">{renderSidebarRowIcon(settingsIcon)}</span>
+                <span className={sidebarLabelClass}>Settings</span>
+              </button>
             )}
             </div>
           ) : null}
@@ -1880,19 +1841,14 @@ export function Sidebar({
             paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + ${sidebarPaddingBlockPx}px)`,
           }}
         >
-          <div className={`flex w-full items-center rounded-lg text-base text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}>
-            <button
-              type="button"
-              data-testid="mobile-sidebar-settings-button"
-              onClick={handleOpenSettingsFromMobileSidebar}
-              className={`flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-2 ${rowPaddingClass} ${rowVerticalPaddingClass} text-left`}
-            >
-              {settingsButtonContent}
-            </button>
-            <div className="pr-2">
-              {renderActivityButton("background-activity-trigger-mobile")}
-            </div>
-          </div>
+          <button
+            type="button"
+            data-testid="mobile-sidebar-settings-button"
+            onClick={handleOpenSettingsFromMobileSidebar}
+            className={`flex min-h-11 w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg ${rowPaddingClass} ${rowVerticalPaddingClass} text-left text-base text-[color:var(--theme-text-secondary)] transition-all hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]`}
+          >
+            {settingsButtonContent}
+          </button>
         </div>
       </aside>
     </>
@@ -1943,11 +1899,6 @@ export function Sidebar({
       ) : null}
 
       <SettingsDialog open={showSettings} onClose={closeSettings} />
-      <BackgroundActivityPopover
-        anchorElement={activityAnchorElement}
-        open={activityAnchorElement !== null}
-        onClose={() => setActivityAnchorElement(null)}
-      />
 
       {/* Feed context menu — rendered outside scroll container to avoid clipping */}
       {openMenuFeedUrl && menuAnchorRect && feeds[openMenuFeedUrl] && (

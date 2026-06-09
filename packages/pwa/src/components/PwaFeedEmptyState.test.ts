@@ -36,6 +36,8 @@ function renderWithPlatform(node: ReactNode): { container: HTMLDivElement; root:
 describe("PwaFeedEmptyState", () => {
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-09T12:00:30Z"));
     vi.clearAllMocks();
     useAppStore.setState({
       syncConnected: true,
@@ -50,6 +52,7 @@ describe("PwaFeedEmptyState", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     useAppStore.setState({
       syncConnected: false,
       isSyncing: false,
@@ -105,14 +108,24 @@ describe("PwaFeedEmptyState", () => {
   });
 
   it("shows a spinner while cloud sync is actively downloading", () => {
+    const startedAt = Date.now() - 30_000;
     useDebugStore.setState({
       cloudProviders: {
         dropbox: { status: "idle" },
         gdrive: {
           status: "connecting",
           stage: "download",
+          lastAttemptAt: startedAt,
           statusMessage: "Checking cloud storage for remote changes.",
-          events: [],
+          events: [
+            {
+              id: "download-started",
+              ts: startedAt,
+              kind: "started",
+              stage: "download",
+              message: "Checking cloud storage for remote changes.",
+            },
+          ],
         },
       },
     });
@@ -121,7 +134,14 @@ describe("PwaFeedEmptyState", () => {
 
     expect(container.querySelector("[aria-label='Syncing']")).toBeTruthy();
     expect(container.textContent).toContain("Waiting for content...");
+    expect(container.textContent).toContain("Checking Google Drive for remote changes. Running for 30s.");
     expect(container.textContent).not.toContain("Sync is blocked");
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(container.textContent).toContain("Running for 31s.");
 
     act(() => {
       root.unmount();

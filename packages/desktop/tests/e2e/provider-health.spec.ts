@@ -1596,12 +1596,13 @@ test("provider sync button shows a spinner while that provider is active", async
     }
   }, { activityStorePath: BACKGROUND_ACTIVITY_STORE_PATH });
 
-  const activityTrigger = getDesktopSidebar(page).getByTestId("background-activity-trigger");
+  const activityTrigger = page.getByTestId("background-activity-trigger");
   await expect(activityTrigger).toBeVisible();
   await activityTrigger.click();
   const activityPopover = page.getByTestId("background-activity-popover");
   await expect(activityPopover).toBeVisible();
   await expect(activityPopover.getByRole("heading", { name: "Background Activity" })).toBeVisible();
+  await expect(activityPopover.getByTestId("background-activity-active-row").first()).toContainText(/\d+s|\d+m/);
   const popoverPlacement = await page.evaluate(() => {
     const trigger = document.querySelector('[data-testid="background-activity-trigger"]');
     const popover = document.querySelector('[data-testid="background-activity-popover"]');
@@ -1609,12 +1610,15 @@ test("provider sync button shows a spinner while that provider is active", async
     const triggerRect = trigger.getBoundingClientRect();
     const popoverRect = popover.getBoundingClientRect();
     return {
-      triggerRight: triggerRect.right,
-      popoverLeft: popoverRect.left,
+      triggerBottom: triggerRect.bottom,
+      popoverTop: popoverRect.top,
+      popoverRightGap: window.innerWidth - popoverRect.right,
     };
   });
   expect(popoverPlacement).not.toBeNull();
-  expect(popoverPlacement!.popoverLeft).toBeGreaterThan(popoverPlacement!.triggerRight);
+  expect(popoverPlacement!.popoverTop).toBeGreaterThanOrEqual(popoverPlacement!.triggerBottom);
+  expect(popoverPlacement!.popoverRightGap).toBeGreaterThanOrEqual(8);
+  expect(popoverPlacement!.popoverRightGap).toBeLessThanOrEqual(16);
   const scrollBody = activityPopover.getByTestId("background-activity-scroll");
   await scrollBody.evaluate((node) => {
     const element = node as HTMLElement;
@@ -1625,8 +1629,16 @@ test("provider sync button shows a spinner while that provider is active", async
   await expect(activityPopover).toContainText("X");
   await expect(activityPopover).toContainText("X sync started");
   await expect(activityPopover).toContainText("[X] requesting home timeline");
+  await page.evaluate(async ({ activityStorePath }) => {
+    const activity = await import(activityStorePath) as typeof import("../../../ui/src/lib/background-activity-store");
+    activity.finishBackgroundActivity("channel:x", "success", "X sync complete.");
+  }, { activityStorePath: BACKGROUND_ACTIVITY_STORE_PATH });
+  await expect(activityPopover).toBeVisible();
+  await expect(activityPopover).toContainText("0 active");
+  await expect(activityTrigger).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(activityPopover).toHaveCount(0);
+  await expect(activityTrigger).toHaveCount(0);
 
   await openSettingsSection(page, "X");
   const sidebar = getDesktopSidebar(page);
@@ -1664,7 +1676,7 @@ test("provider sync button shows a spinner while that provider is active", async
   expect(Math.abs(sourceIndicatorSizes!.syncingHeight - sourceIndicatorSizes!.healthyHeight)).toBeLessThanOrEqual(1);
 });
 
-test("compact sidebar activity badge opens job activity popover", async ({ app, page }) => {
+test("toolbar activity spinner opens job activity popover in compact sidebar mode", async ({ app, page }) => {
   await seedAcceptedDesktopConsent(page);
 
   await app.goto();
@@ -1699,8 +1711,7 @@ test("compact sidebar activity badge opens job activity popover", async ({ app, 
     });
   }, { activityStorePath: BACKGROUND_ACTIVITY_STORE_PATH });
 
-  const sidebar = getDesktopSidebar(page);
-  const trigger = sidebar.getByTestId("background-activity-trigger-compact");
+  const trigger = page.getByTestId("background-activity-trigger");
   await expect(trigger).toBeVisible({ timeout: 5_000 });
   await trigger.click();
 

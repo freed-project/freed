@@ -1,6 +1,6 @@
 # Phase 6: PWA Reader
 
-> **Status:** ✅ Complete (first-run legal gate shipped, public-safe bug reporting shipped, homescreen install flow shipped, offline article and image caching shipped, local reader cache modes shipped, mobile toolbar and reader polish shipped, document-init-gated Google Drive sync shipped, local-change Google Drive uploads shipped, manual Google Drive sync diagnostics shipped)
+> **Status:** ✅ Complete (first-run legal gate shipped, public-safe bug reporting shipped, homescreen install flow shipped, offline article and image caching shipped, local reader cache modes shipped, mobile toolbar and reader polish shipped, safe optimistic user mutations shipped, document-init-gated Google Drive sync shipped, local-change Google Drive uploads shipped, manual Google Drive sync diagnostics shipped)
 > **Dependencies:** Phase 4 (Sync Layer), Phase 5 (Desktop App)
 
 ---
@@ -22,6 +22,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 - **Cloud sync diagnostics:** PWA Settings shows local item count, local document size, Drive stage, last download, last merge, last upload, remote bytes, the last cloud error, why upload is waiting, recent Drive activity, and a manual `Sync now` action. Cloud-only PWA sessions now wait for the local document to initialize, then subscribe to local document changes and upload them without needing a LAN relay.
 - **Blank-state testing escape hatch** — PWA empty states now include a secondary sample-data section below the main handoff prompt for quick local testing
 - **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
+- **Safe optimistic user mutations:** Feed actions, read marks, item edits, feed renames, person edits, account edits, and preference changes update visible UI state immediately before Automerge worker reconciliation
 - **Mobile chrome polish:** The PWA mobile toolbar uses balanced menu and format controls, the mobile drawer starts with search, Settings stacks compact sections, and the reader keeps fixed menus plus sane article spacing
 
 ---
@@ -42,6 +43,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 3. **Custom ranking** — User-controlled weights, not engagement
 4. **Source filtering** — View by platform, author, or topic
 5. **Compact feed actions** — Header-level like, comment, save, archive, and open affordances keep cards scannable on small screens
+6. **Instant safe mutations** — Safe user-triggered data changes update visible content before worker reconciliation, while destructive paths still wait for confirmed source-of-truth state
 
 ---
 

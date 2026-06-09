@@ -1,6 +1,7 @@
 import { useAppStore } from "../lib/store";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTestingSection";
+import { useCloudSyncActivity } from "./cloudSyncActivity";
 
 const openSyncSettings = () =>
   window.dispatchEvent(new CustomEvent("freed:open-settings", { detail: { scrollTo: "sync" } }));
@@ -24,7 +25,10 @@ export function PwaFeedEmptyState() {
   const activeFilter = useAppStore((s) => s.activeFilter);
   const feeds = useAppStore((s) => s.feeds);
   const cloudProviders = useDebugStore((s) => s.cloudProviders);
-  const cloudState = cloudProviders?.gdrive ?? cloudProviders?.dropbox ?? null;
+  const activeCloudProvider = cloudProviders?.gdrive?.status !== "idle" ? "gdrive" : cloudProviders?.dropbox?.status !== "idle" ? "dropbox" : "gdrive";
+  const cloudState = activeCloudProvider === "gdrive" ? cloudProviders?.gdrive ?? null : cloudProviders?.dropbox ?? null;
+  const cloudProviderName = activeCloudProvider === "gdrive" ? "Google Drive" : "Dropbox";
+  const cloudActivity = useCloudSyncActivity(cloudState, cloudProviderName);
   const cloudError = cloudState?.error;
   const syncBlocked = syncConnected && isMergeBlocked(cloudError);
   const cloudStage = cloudState?.stage;
@@ -101,6 +105,8 @@ export function PwaFeedEmptyState() {
       <p className="max-w-xs text-sm text-[var(--theme-text-muted)]">
         {syncBlocked
           ? "Open Sync settings to choose how to recover your Google Drive library."
+          : cloudTransferRunning && cloudActivity
+          ? `${cloudActivity.detailLabel}. Running for ${cloudActivity.elapsedLabel}.`
           : syncConnected
           ? "Freed Desktop is connected. New feed content will appear here once fetched."
           : "Connect to Freed Desktop to sync your feeds."}
