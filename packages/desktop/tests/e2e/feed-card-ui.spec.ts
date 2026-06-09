@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures/app";
+import { fileURLToPath } from "node:url";
 
 const FACEBOOK_TITLE = "Card UI Overhaul Facebook Item";
 const RSS_TITLE = "Card UI Overhaul RSS Item";
@@ -11,6 +12,7 @@ const X_LIKE_URL = "https://x.com/coindesk/status/2049705418436600244";
 const FACEBOOK_MEDIA_URL = "/freed.svg?feed-card";
 const STORY_MEDIA_URL = "/freed.svg?story-tile";
 const BROKEN_MEDIA_URL = "/freed.svg?fallback";
+const BUG_REPORT_STORE_PATH = `/@fs${fileURLToPath(new URL("../../../ui/src/lib/bug-report.ts", import.meta.url))}`;
 
 async function injectCardUiItems(page: import("@playwright/test").Page): Promise<void> {
   await page.evaluate(
@@ -378,6 +380,80 @@ test("story grid top padding aligns with the sidebar panel", async ({ app, page 
 
   expect(geometry.rowPaddingTop).toBe("9px");
   expect(geometry.storyTop).toBe(geometry.sidebarInnerTop);
+});
+
+test("feed card archive removes the visible card immediately", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(app.page);
+
+  const card = app.page.locator('[data-feed-item-id="test-facebook-card-ui-overhaul"]').first();
+  await expect(card).toBeVisible();
+
+  const elapsedMs = await app.page.evaluate(async () => {
+    const selector = '[data-feed-item-id="test-facebook-card-ui-overhaul"]';
+    const cardElement = document.querySelector(selector) as HTMLElement | null;
+    const archiveButton = cardElement?.querySelector('button[aria-label="Archive"]') as HTMLButtonElement | null;
+    if (!archiveButton) {
+      throw new Error("Archive button was not found");
+    }
+
+    const startedAt = performance.now();
+    archiveButton.click();
+    while (document.querySelector(selector)) {
+      if (performance.now() - startedAt > 1_000) {
+        throw new Error("Archived card stayed visible too long");
+      }
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+    return performance.now() - startedAt;
+  });
+
+  expect(elapsedMs).toBeLessThan(100);
+  await expect(card).toHaveCount(0);
+});
+
+test("feed card archive rollback restores the visible card after a failed mutation", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(app.page);
+
+  await app.page.evaluate(() => {
+    (window as Window & {
+      __FREED_FAIL_OPTIMISTIC_MUTATION__?: (source: string) => string | false;
+    }).__FREED_FAIL_OPTIMISTIC_MUTATION__ = (source: string) =>
+      source === "desktop:toggleArchived" ? "forced archive failure" : false;
+  });
+
+  const card = app.page.locator('[data-feed-item-id="test-facebook-card-ui-overhaul"]').first();
+  await expect(card).toBeVisible();
+
+  const archiveButton = card.locator('button[aria-label="Archive"]').first();
+  await archiveButton.click({ force: true });
+
+  await expect.poll(async () =>
+    app.page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as
+        | { getState: () => { items: Array<{ globalId: string; userState: { archived?: boolean } }> } }
+        | undefined;
+      const item = store?.getState().items.find((candidate) =>
+        candidate.globalId === "test-facebook-card-ui-overhaul"
+      );
+      return item?.userState.archived ?? null;
+    }),
+  ).toBe(false);
+  await expect(card).toBeVisible();
+
+  const errorRecorded = await app.page.evaluate(async (bugReportStorePath) => {
+    const mod = await import(bugReportStorePath);
+    const events = mod.getRecentBugReportEvents() as Array<{ source?: string; level?: string; message?: string }>;
+    return events.some((event) =>
+      event.source === "desktop:toggleArchived" &&
+      event.level === "error" &&
+      event.message === "Optimistic mutation failed"
+    );
+  }, BUG_REPORT_STORE_PATH);
+  expect(errorRecorded).toBe(true);
 });
 
 test("liking an X post keeps it in the unified feed", async ({ app, ipc }) => {

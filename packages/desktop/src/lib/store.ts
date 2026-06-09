@@ -21,6 +21,22 @@ import {
   resolveFeedSignalModesFromDisplay,
 } from "@freed/shared";
 import {
+  projectArchiveAllReadUnsaved,
+  projectArchiveItems,
+  projectMarkAllAsRead,
+  projectMarkItemsAsRead,
+  projectRemoveItem,
+  projectRenameFeed,
+  projectToggleArchived,
+  projectToggleLiked,
+  projectToggleSaved,
+  projectUpdateAccount,
+  projectUpdateItem,
+  projectUpdatePerson,
+  rollbackOptimisticPatch,
+  type OptimisticPatch,
+} from "@freed/shared/optimistic-state";
+import {
   initDoc,
   subscribe,
   getDocState,
@@ -278,6 +294,79 @@ function mergeFacebookCapturePreferenceUpdate(
       ? { ...update.excludedGroupIds }
       : { ...current.excludedGroupIds },
   };
+}
+
+function optimisticBefore(state: AppState, patch: OptimisticPatch): OptimisticPatch {
+  const before: OptimisticPatch = {};
+  for (const key of Object.keys(patch) as Array<keyof OptimisticPatch>) {
+    before[key] = state[key] as never;
+  }
+  return before;
+}
+
+function optimisticMutationTestFailure(source: string): Error | null {
+  if (import.meta.env.VITE_TEST_TAURI !== "1") return null;
+  const hook = (globalThis as unknown as {
+    __FREED_FAIL_OPTIMISTIC_MUTATION__?: (source: string) => string | false | null | undefined;
+  }).__FREED_FAIL_OPTIMISTIC_MUTATION__;
+  const message = hook?.(source);
+  return message ? new Error(message) : null;
+}
+
+async function runOptimisticMutation(
+  getState: () => AppState,
+  setState: (patch: Partial<AppState>) => void,
+  source: string,
+  project: (state: AppState) => OptimisticPatch | null,
+  task: () => Promise<void>,
+  options: { recordFailure?: boolean; waitForPersistence?: boolean } = {},
+): Promise<void> {
+  const projected = project(getState());
+  if (!projected) {
+    if (options.waitForPersistence === false) {
+      void task().catch((error) => {
+        if (options.recordFailure !== false) {
+          const detail = error instanceof Error ? error.message : String(error);
+          recordRuntimeError({ source, error, fatal: false });
+          recordBugReportEvent(source, "error", "Optimistic mutation failed", detail);
+        }
+      });
+      return;
+    }
+    await task();
+    return;
+  }
+
+  const before = optimisticBefore(getState(), projected);
+  setState(projected as Partial<AppState>);
+
+  const persist = async () => {
+    try {
+      const testFailure = optimisticMutationTestFailure(source);
+      if (testFailure) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        throw testFailure;
+      }
+      await task();
+    } catch (error) {
+      const rollback = rollbackOptimisticPatch(getState(), before, projected);
+      if (rollback) {
+        setState(rollback as Partial<AppState>);
+      }
+      if (options.recordFailure !== false) {
+        const detail = error instanceof Error ? error.message : String(error);
+        recordRuntimeError({ source, error, fatal: false });
+        recordBugReportEvent(source, "error", "Optimistic mutation failed", detail);
+      }
+      throw error;
+    }
+  };
+
+  if (options.waitForPersistence === false) {
+    void persist().catch(() => {});
+    return;
+  }
+  await persist();
 }
 
 async function pruneConnectionPersonIfNeeded(
@@ -620,7 +709,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateItem: async (id, update) => {
-    await docUpdateFeedItem(id, update);
+    await runOptimisticMutation(
+      get,
+      set,
+      "desktop:updateItem",
+      (state) => projectUpdateItem(state, id, update),
+      () => docUpdateFeedItem(id, update),
+    );
   },
 
   markAsRead: async (id) => {
@@ -643,7 +738,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
 
     try {
-      await queueReadMarks(nextIds);
+      await runOptimisticMutation(
+        get,
+        set,
+        "desktop:readState",
+        (state) => projectMarkItemsAsRead(state, nextIds),
+        () => queueReadMarks(nextIds),
+        { recordFailure: false },
+      );
       recordReadStateInfo(
         `Flushed ${nextIds.length.toLocaleString()} read mark${nextIds.length === 1 ? "" : "s"}`,
         {
@@ -661,13 +763,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markAllAsRead: async (platform) => {
-    await docMarkAllAsRead(platform);
+    await runOptimisticMutation(
+      get,
+      set,
+      "desktop:markAllAsRead",
+      (state) => projectMarkAllAsRead(state, platform),
+      () => docMarkAllAsRead(platform),
+    );
   },
 
   toggleSaved: async (id) => {
     const item = get().items.find((candidate) => candidate.globalId === id);
     const shouldPin = !!item && !item.userState.saved;
-    await docToggleSaved(id);
+    await runOptimisticMutation(
+      get,
+      set,
+      "desktop:toggleSaved",
+      (state) => projectToggleSaved(state, id),
+      () => docToggleSaved(id),
+    );
     if (shouldPin) {
       void pinReaderItem(item).catch((error) => {
         recordRuntimeError({
@@ -680,20 +794,46 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleArchived: async (id) => {
-    await docToggleArchived(id);
+    await runOptimisticMutation(
+      get,
+      set,
+      "desktop:toggleArchived",
+      (state) => projectToggleArchived(state, id),
+      () => docToggleArchived(id),
+      { waitForPersistence: false },
+    );
   },
 
   archiveItems: async (ids) => {
-    await docArchiveItems(ids);
+    await runOptimisticMutation(
+      get,
+      set,
+      "desktop:archiveItems",
+      (state) => projectArchiveItems(state, ids),
+      () => docArchiveItems(ids),
+    );
   },
 
   toggleLiked: async (id) => {
-    await docToggleLiked(id);
+    await runOptimisticMutation(
+      get,
+      set,
+      "desktop:toggleLiked",
+      (state) => projectToggleLiked(state, id),
+      () => docToggleLiked(id),
+      { waitForPersistence: false },
+    );
     // The outbox processor will pick up the pending like on its next drain.
   },
 
   archiveAllReadUnsaved: async (platform, feedUrl) => {
-    await docArchiveAllReadUnsaved(platform, feedUrl);
+    await runOptimisticMutation(
+      get,
+      set,
+      "desktop:archiveAllReadUnsaved",
+      (state) => projectArchiveAllReadUnsaved(state, platform, feedUrl),
+      () => docArchiveAllReadUnsaved(platform, feedUrl),
+    );
   },
 
   unarchiveSavedItems: async () => {
@@ -705,7 +845,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   removeItem: async (id) => {
-    await docRemoveFeedItem(id);
+    await runOptimisticMutation(
+      get,
+      set,
+      "desktop:removeItem",
+      (state) => projectRemoveItem(state, id),
+      () => docRemoveFeedItem(id),
+    );
   },
 
   clearSampleData: async () => {
@@ -740,7 +886,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   renameFeed: async (url, title) => {
-    await docUpdateRssFeed(url, { title });
+    await runOptimisticMutation(
+      get,
+      set,
+      "desktop:renameFeed",
+      (state) => projectRenameFeed(state, url, title),
+      () => docUpdateRssFeed(url, { title }),
+    );
   },
 
   // Person actions
@@ -753,7 +905,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updatePerson: async (id: string, updates: Partial<Person>) => {
-    await docUpdatePerson(id, updates);
+    await runOptimisticMutation(
+      get,
+      set,
+      "desktop:updatePerson",
+      (state) => projectUpdatePerson(state, id, updates),
+      () => docUpdatePerson(id, updates),
+    );
   },
 
   removePerson: async (id: string) => {
@@ -769,10 +927,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!account) return;
     const previousPersonId = account.personId ?? null;
     if (previousPersonId === personId) return;
-    await docUpdateAccount(accountId, {
+    const updates = {
       personId: personId ?? undefined,
       updatedAt: Date.now(),
-    });
+    };
+    await runOptimisticMutation(
+      get,
+      set,
+      "desktop:linkAccountToPerson",
+      (state) => projectUpdateAccount(state, accountId, updates),
+      () => docUpdateAccount(accountId, updates),
+    );
     await pruneConnectionPersonIfNeeded(get, previousPersonId, [accountId]);
   },
 
@@ -850,7 +1015,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateAccount: async (id: string, updates: Partial<Account>) => {
-    await docUpdateAccount(id, updates);
+    await runOptimisticMutation(
+      get,
+      set,
+      "desktop:updateAccount",
+      (state) => projectUpdateAccount(state, id, updates),
+      () => docUpdateAccount(id, updates),
+    );
   },
 
   removeAccount: async (id: string) => {
@@ -869,10 +1040,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         update.fbCapture,
       );
     }
-    set({ preferences: nextPreferences });
 
     try {
-      await docUpdatePreferences(update);
+      await runOptimisticMutation(
+        get,
+        set,
+        "desktop:updatePreferences",
+        () => ({ preferences: nextPreferences }),
+        () => docUpdatePreferences(update),
+        { recordFailure: false },
+      );
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       recordRuntimeError({ source: "desktop:updatePreferences", error, fatal: false });

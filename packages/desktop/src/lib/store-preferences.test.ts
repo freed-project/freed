@@ -154,7 +154,7 @@ describe("store.updatePreferences", () => {
       "Preference update failed",
       error.message,
     );
-    expect(useAppStore.getState().preferences.display.sidebarWidth).toBe(320);
+    expect(useAppStore.getState().preferences.display.sidebarWidth).toBeUndefined();
   });
 
   it("passes map mode preference updates through to persistence", async () => {

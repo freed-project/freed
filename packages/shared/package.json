@@ -9,6 +9,7 @@
     "./schema": "./src/schema.ts",
     "./legal": "./src/legal.ts",
     "./legal-storage": "./src/legal-storage.ts",
+    "./optimistic-state": "./src/optimistic-state.ts",
     "./themes": "./src/themes.ts",
     "./opml": "./src/opml.ts",
     "./google-contacts": "./src/google-contacts.ts",
