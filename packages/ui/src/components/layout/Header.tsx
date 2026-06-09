@@ -112,6 +112,7 @@ const MENU_VIEWPORT_MARGIN_PX = 8;
 const CLOSED_SIDEBAR_TOGGLE_LEFT_PX = 12;
 const DEFAULT_LAYOUT_CONTROL_SAFE_LEFT_PX = 180;
 const DEFAULT_LAYOUT_CONTROL_RESERVED_WIDTH_PX = 280;
+const COLLAPSED_LAYOUT_CONTROL_EXTRA_WIDTH_PX = 72;
 const TOOLBAR_SLOT_WIDTH_CONTENT = "max-content";
 const TOOLBAR_COLLAPSE_BREAKPOINT_PX = 1200;
 const READER_BOOKMARK_INLINE_MIN_WIDTH_PX = 980;
@@ -1316,7 +1317,13 @@ export function Header({
       const idealSidebarToggleLeftPx = visibleDesktopSidebarMode === "closed"
         ? CLOSED_SIDEBAR_TOGGLE_LEFT_PX
         : handleCenterPx - readerLayoutControlPairWidthPx / 2;
-      const sidebarToggleLeftPx = Math.ceil(Math.max(idealSidebarToggleLeftPx, safeLeftPx));
+      const collapsedSidebarToggleLeftPx = Math.min(
+        idealSidebarToggleLeftPx,
+        safeLeftPx + COLLAPSED_LAYOUT_CONTROL_EXTRA_WIDTH_PX,
+      );
+      const sidebarToggleLeftPx = Math.ceil(
+        Math.max(isBelowLargeToolbar ? collapsedSidebarToggleLeftPx : idealSidebarToggleLeftPx, safeLeftPx),
+      );
       const previewToggleLeftPx = Math.ceil(
         sidebarToggleLeftPx + READER_LAYOUT_CONTROL_BUTTON_SIZE_PX + READER_LAYOUT_CONTROL_BUTTON_GAP_PX,
       );
@@ -1395,6 +1402,7 @@ export function Header({
       window.removeEventListener("pointermove", updateLayoutControlMetrics);
     };
   }, [
+    isBelowLargeToolbar,
     isMobileDevice,
     previewToggleMounted,
     selectedItem,
