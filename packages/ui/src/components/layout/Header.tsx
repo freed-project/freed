@@ -103,7 +103,6 @@ const TOOLBAR_ICON_BUTTON_CLASS =
 const TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS =
   "theme-toolbar-reader-layout-button rounded-lg";
 const TOOLBAR_ICON_BUTTON_SIZE = "2.25rem";
-const COLLAPSED_TOOLBAR_PAIR_WIDTH = "5rem";
 const READER_LAYOUT_CONTROL_BUTTON_SIZE_PX = 32;
 const READER_LAYOUT_CONTROL_ICON_SIZE_PX = 20;
 const READER_LAYOUT_CONTROL_BUTTON_GAP_PX = 0;
@@ -1961,7 +1960,11 @@ export function Header({
 
                 <ToolbarAnimatedSlot
                   visible={showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu}
-                  width={showToolbarOverflowMenuButton && showCollapsedToolbarFilterMenu ? COLLAPSED_TOOLBAR_PAIR_WIDTH : TOOLBAR_ICON_BUTTON_SIZE}
+                  width={
+                    showToolbarOverflowMenuButton && showCollapsedToolbarFilterMenu
+                      ? TOOLBAR_SLOT_WIDTH_CONTENT
+                      : TOOLBAR_ICON_BUTTON_SIZE
+                  }
                 >
                   {showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu ? (
                     <div className="flex items-center gap-2">
