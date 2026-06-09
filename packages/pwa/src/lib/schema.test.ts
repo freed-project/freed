@@ -1009,6 +1009,36 @@ describe("Automerge merge / sync simulation", () => {
     expect(choosePopulatedInputForFeedEmptyPreMerge(local, incoming)).toBeNull();
   });
 
+  it("creates structured-cloneable Automerge views for large PWA hydration", () => {
+    let doc = createEmptyDoc();
+    doc = A.change(doc, (d) => {
+      addRssFeed(d, makeFeed({ url: "https://example.com/feed.xml", title: "Example" }));
+      for (let i = 0; i < 1_500; i += 1) {
+        addFeedItem(d, makeItem({
+          globalId: `cloud-item-${i}`,
+          publishedAt: 10_000 - i,
+          content: {
+            text: `Cloud item ${i}`,
+            mediaUrls: [],
+            mediaTypes: [],
+          },
+        }));
+      }
+    });
+
+    const view = A.view(doc, A.getHeads(doc)) as FreedDoc;
+    const cloned = structuredClone({
+      items: Object.values(view.feedItems),
+      feeds: view.rssFeeds,
+      persons: view.persons,
+      accounts: view.accounts,
+    });
+
+    expect(cloned.items).toHaveLength(1_500);
+    expect(cloned.items[0]).toMatchObject({ globalId: "cloud-item-0" });
+    expect(Object.keys(cloned.feeds)).toEqual(["https://example.com/feed.xml"]);
+  });
+
   it("serializes and deserializes without data loss", () => {
     let doc = createEmptyDoc();
     doc = A.change(doc, (d) => {
