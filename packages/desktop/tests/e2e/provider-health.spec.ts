@@ -816,9 +816,13 @@ test("facebook groups settings separate last-active text, show active counts, an
     "Facebook group",
   );
   await expect(page.getByText("Included in future syncs")).toHaveCount(0);
-  await page.getByTestId("facebook-group-one-switch").hover();
+  const groupOneSwitch = page.getByTestId("facebook-group-one-switch");
+  const groupTwoSwitch = page.getByTestId("facebook-group-two-switch");
+  await groupOneSwitch.scrollIntoViewIfNeeded();
+  await groupOneSwitch.hover();
   await expect(page.getByRole("tooltip")).toHaveText("Included in future syncs");
-  await page.getByTestId("facebook-group-two-switch").hover();
+  await groupTwoSwitch.scrollIntoViewIfNeeded();
+  await groupTwoSwitch.hover();
   await expect(page.getByRole("tooltip")).toHaveText("Hidden from future syncs");
   const groupRowHeight = await page
     .getByTestId("facebook-group-one-label")
