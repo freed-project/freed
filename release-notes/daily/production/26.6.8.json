@@ -2,13 +2,16 @@
   "channel": "production",
   "dayKey": "26.6.8",
   "date": "2026-06-08",
-  "preferredDeck": "Phone Google Drive sync is safer, and mobile navigation now feels calmer on touch screens.",
+  "preferredDeck": "This build reduces phone import memory pressure and carries the latest same-day production fixes.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Phone Google Drive sync now avoids an eager Automerge root clone while hydrating large cloud libraries.",
+    "The mobile app now renders a bounded feed window after large imports while keeping the full synced document and item counts intact.",
+    "First-sync imports can reuse a trusted incoming Drive binary when no migration is needed, reducing extra save work during merge recovery.",
     "Phone Google Drive sync now keeps populated cloud feed history when stale local delete history would otherwise merge the phone down to zero items.",
     "The mobile app now pauses Google Drive polling after a destructive merge block instead of retrying the same blocked merge in the background.",
     "The empty feed state now shows a spinner while cloud sync is actively running and links blocked sync states directly to Sync settings.",
