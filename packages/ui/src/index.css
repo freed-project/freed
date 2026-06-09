@@ -2182,6 +2182,8 @@ html.freed-mobile-sidebar-open body {
 }
 
 .theme-settings-overlay[data-moving="true"] {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   transition: none;
 }
 
