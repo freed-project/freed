@@ -1157,6 +1157,35 @@ test("reader toolbar keeps back button clickable while title text is a drag targ
   await expect(page.locator("[data-feed-item-id]")).toHaveCount(8);
 });
 
+test("reader toolbar keeps the Focus toggle text vertically centered", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(4);
+
+  await page.locator("[data-feed-item-id]").first().click();
+  const focusButton = page.getByRole("button", { name: "Toggle focus reading mode" });
+  await expect(focusButton).toBeVisible({ timeout: 5_000 });
+
+  const geometry = await focusButton.evaluate((button) => {
+    const label = button.querySelector("[aria-hidden='true']") as HTMLElement | null;
+    if (!label) throw new Error("Focus toggle label is missing");
+
+    const buttonRect = button.getBoundingClientRect();
+    const labelRect = label.getBoundingClientRect();
+    return {
+      buttonHeight: Math.round(buttonRect.height),
+      centerDelta: Math.abs(
+        (labelRect.top + labelRect.height / 2) -
+        (buttonRect.top + buttonRect.height / 2),
+      ),
+    };
+  });
+
+  expect(geometry.buttonHeight).toBe(36);
+  expect(geometry.centerDelta).toBeLessThanOrEqual(1);
+});
+
 test("fullscreen reader toolbar passive targets expose direct native drag attributes", async ({ app, page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "userAgentData", {
@@ -2381,12 +2410,13 @@ test("narrow feed filter menu labels collapsed sections", async ({ app, page }) 
   await filterButton.click();
 
   const filterMenu = page.getByTestId("feed-signal-filter-menu");
+  await expect(filterMenu.getByText("Card density", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("Format", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("Connections", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("Classification", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("View", { exact: true })).toHaveCount(0);
   const headingLefts = await filterMenu.evaluate((menu) => {
-    const headings = ["Format", "Connections", "Classification"];
+    const headings = ["Card density", "Format", "Connections", "Classification"];
     return headings.map((heading) => {
       const element = Array.from(menu.querySelectorAll("p")).find((candidate) =>
         candidate.textContent?.trim() === heading
