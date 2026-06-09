@@ -6,6 +6,7 @@ import {
   collectReleaseArtifactsToValidate,
   describePlan,
   isDesktopPerfSensitiveSurface,
+  isSocialScrapeLoopPath,
   isSocialProviderFocusedSurface,
   parseArgs,
 } from "./validate-worktree.mjs";
@@ -181,6 +182,25 @@ test("feature plan for validation runner changes runs only runner tests", () => 
   assert.deepEqual(labels, [
     "validation runner tests",
   ]);
+});
+
+test("feature plan for social scrape loop changes runs only loop tests", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", [
+      "scripts/social-scrape-loop.mjs",
+      "scripts/social-scrape-loop.test.mjs",
+    ]),
+  );
+
+  assert.deepEqual(labels, [
+    "social scrape loop tests",
+  ]);
+});
+
+test("social scrape loop path detection is scoped to loop files", () => {
+  assert.equal(isSocialScrapeLoopPath("scripts/social-scrape-loop.mjs"), true);
+  assert.equal(isSocialScrapeLoopPath("scripts/social-scrape-loop.test.mjs"), true);
+  assert.equal(isSocialScrapeLoopPath("scripts/nightly-self-improve.mjs"), false);
 });
 
 test("desktop perf sensitivity is scoped to hot paths and perf harnesses", () => {

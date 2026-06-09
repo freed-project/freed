@@ -299,6 +299,13 @@ export function isValidateRunnerPath(filePath) {
   );
 }
 
+export function isSocialScrapeLoopPath(filePath) {
+  return (
+    filePath === "scripts/social-scrape-loop.mjs" ||
+    filePath === "scripts/social-scrape-loop.test.mjs"
+  );
+}
+
 function workspacePackageJson(workspacePath) {
   return path.join(REPO_ROOT, workspacePath, "package.json");
 }
@@ -471,6 +478,7 @@ export function buildValidationPlan(mode, changedFiles) {
   const websiteSurfaceChanged = changedFiles.some(isWebsiteSurface);
   const releaseToolingChanged = changedFiles.some(isReleaseToolingPath);
   const validateRunnerChanged = changedFiles.some(isValidateRunnerPath);
+  const socialScrapeLoopChanged = changedFiles.some(isSocialScrapeLoopPath);
   const captureWorkspaces = unique(
     changedFiles.map(captureWorkspaceForFile).filter(Boolean),
   ).sort();
@@ -480,12 +488,24 @@ export function buildValidationPlan(mode, changedFiles) {
   const validateRunnerOnlyChanged =
     changedFiles.length > 0 &&
     changedFiles.every(isValidateRunnerPath);
+  const socialScrapeLoopOnlyChanged =
+    changedFiles.length > 0 &&
+    changedFiles.every(isSocialScrapeLoopPath);
 
   if (validateRunnerOnlyChanged) {
     return [
       nodeCommand("validation runner tests", [
         "--test",
         path.join("scripts", "validate-worktree.test.mjs"),
+      ]),
+    ];
+  }
+
+  if (socialScrapeLoopOnlyChanged) {
+    return [
+      nodeCommand("social scrape loop tests", [
+        "--test",
+        path.join("scripts", "social-scrape-loop.test.mjs"),
       ]),
     ];
   }
@@ -547,6 +567,16 @@ export function buildValidationPlan(mode, changedFiles) {
       nodeCommand("validation runner tests", [
         "--test",
         path.join("scripts", "validate-worktree.test.mjs"),
+      ]),
+    );
+  }
+
+  if (socialScrapeLoopChanged) {
+    addCommand(
+      plan,
+      nodeCommand("social scrape loop tests", [
+        "--test",
+        path.join("scripts", "social-scrape-loop.test.mjs"),
       ]),
     );
   }

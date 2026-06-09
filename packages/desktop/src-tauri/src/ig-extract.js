@@ -23,6 +23,20 @@
     return value.trim();
   }
 
+  function elementHeight(node) {
+    if (!node) return 0;
+    var h = node.offsetHeight || 0;
+    if (h > 0) return h;
+    if (typeof node.getBoundingClientRect === "function") {
+      try {
+        h = node.getBoundingClientRect().height || 0;
+        if (h > 0) return h;
+      } catch (_) {}
+    }
+    var testHeight = parseInt(node.getAttribute && node.getAttribute("data-freed-test-height"), 10);
+    return isNaN(testHeight) ? 0 : testHeight;
+  }
+
   function parseEngagement(text) {
     if (!text) return null;
     var cleaned = text.replace(/[^0-9.,KMkm]/g, "").replace(",", "");
@@ -325,7 +339,7 @@
 
   function findArticles() {
     var articles = Array.prototype.slice.call(document.querySelectorAll("article"));
-    if (articles.length >= 2) return articles;
+    if (articles.length > 0) return articles;
 
     // Fallback: [role="article"]
     var roleArticles = Array.prototype.slice.call(document.querySelectorAll('[role="article"]'));
@@ -340,7 +354,7 @@
         for (var i = 0; i < divs.length; i++) {
           var d = divs[i];
           // Post-like: tall, has an image/video and a timestamp
-          if (d.offsetHeight > 300 &&
+          if (elementHeight(d) > 300 &&
               (d.querySelector('time') || d.querySelector('img[src*="cdninstagram"], img[src*="scontent"]'))) {
             candidates.push(d);
           }
@@ -376,7 +390,7 @@
       var article = articles[idx];
 
       // Skip tiny or invisible articles
-      if (article.offsetHeight < 100) {
+      if (elementHeight(article) < 100) {
         rejected.tinyOrInvisible++;
         continue;
       }

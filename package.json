@@ -17,6 +17,7 @@
     "lint": "node scripts/run-workspace-fanout.mjs lint",
     "nightly:self-improve": "node scripts/nightly-self-improve.mjs",
     "session:clean": "bash scripts/dev-session-clean.sh",
+    "social:scrape-loop": "node scripts/social-scrape-loop.mjs",
     "test": "node scripts/run-workspace-fanout.mjs test",
     "test:scripts": "bash -n scripts/*.sh scripts/lib/*.sh && node --test scripts/*.test.mjs",
     "typecheck": "node scripts/run-workspace-fanout.mjs typecheck",
