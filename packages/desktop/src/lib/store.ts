@@ -931,13 +931,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       personId: personId ?? undefined,
       updatedAt: Date.now(),
     };
-    await runOptimisticMutation(
-      get,
-      set,
-      "desktop:linkAccountToPerson",
-      (state) => projectUpdateAccount(state, accountId, updates),
-      () => docUpdateAccount(accountId, updates),
-    );
+    await docUpdateAccount(accountId, updates);
     await pruneConnectionPersonIfNeeded(get, previousPersonId, [accountId]);
   },
 

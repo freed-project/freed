@@ -90,19 +90,19 @@ test("Instagram source toolbar filters posts, stories, and all items", async ({ 
   await page.getByTestId("source-row-instagram").first().click();
   const filter = page.getByTestId("social-content-toolbar-filter");
   await expect(filter).toBeVisible();
-  const signalFilter = page.getByTestId("mobile-toolbar-filter-button");
-  await expect(signalFilter).toBeVisible();
+  const filterButton = page.getByTestId("mobile-toolbar-filter-button");
+  await expect(filterButton).toBeVisible();
+  await expect(page.getByTestId("feed-signal-filter-button")).toHaveCount(0);
 
   const filterBox = await filter.boundingBox();
-  const signalFilterBox = await signalFilter.boundingBox();
+  const filterButtonBox = await filterButton.boundingBox();
   expect(filterBox).not.toBeNull();
-  expect(signalFilterBox).not.toBeNull();
-  expect((signalFilterBox?.x ?? 0) - ((filterBox?.x ?? 0) + (filterBox?.width ?? 0))).toBeGreaterThanOrEqual(8);
+  expect(filterButtonBox).not.toBeNull();
+  expect((filterButtonBox?.x ?? 0) - ((filterBox?.x ?? 0) + (filterBox?.width ?? 0))).toBeGreaterThanOrEqual(8);
   const toolbarControlHeights = await page.getByTestId("workspace-toolbar").evaluate((toolbar) => {
     const selectors = [
       '[data-testid="feed-toolbar-lens"]',
       '[data-testid="social-content-toolbar-filter"]',
-      '[data-testid="feed-card-density-control"]',
       '[data-testid="mobile-toolbar-filter-button"]',
       '[data-testid="toolbar-overflow-button"]',
     ];
@@ -117,12 +117,12 @@ test("Instagram source toolbar filters posts, stories, and all items", async ({ 
   expect(toolbarControlHeights.length).toBeGreaterThanOrEqual(4);
   expect(new Set(toolbarControlHeights)).toEqual(new Set([36]));
 
-  await signalFilter.click();
-  const signalMenu = page.getByTestId("feed-signal-filter-menu");
-  await expect(signalMenu.getByRole("menuitemcheckbox", { name: /Everything/ })).toBeVisible();
-  await expect(signalMenu.getByRole("menuitemcheckbox", { name: /Inspiring/ })).toBeVisible();
-  await signalFilter.click();
-  await expect(signalMenu).toBeHidden();
+  await filterButton.click();
+  const filterMenu = page.getByTestId("feed-signal-filter-menu");
+  await expect(filterMenu.getByText("Classification", { exact: true })).toBeVisible();
+  await expect(filterMenu.getByRole("menuitemcheckbox", { name: /Everything/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(filterMenu).toBeHidden();
 
   await expect(page.getByText("Instagram filter post item")).toBeVisible();
   await expect(page.getByText("Instagram filter reel item")).toBeVisible();
