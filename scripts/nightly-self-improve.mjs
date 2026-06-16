@@ -32,6 +32,11 @@ const STALE_SOAK_MS = 2 * 60 * 60 * 1000;
 const MIN_PERFORMANCE_SOAK_SAMPLES = 3;
 const DEFAULT_MAX_TARGETS = 6;
 const DEFAULT_MINIMUM_NIGHT_MINUTES = 180;
+const KNOWN_GENERATED_ARTIFACT_PATHS = [
+  "packages/desktop/playwright-report",
+  "packages/desktop/test-results",
+  "packages/desktop/.playwright-mcp",
+];
 
 const GIB = 1024 * 1024 * 1024;
 const numberFormatter = new Intl.NumberFormat("en-US", {
@@ -768,6 +773,26 @@ function shortStatusPaths(statusText) {
     .filter(Boolean);
 }
 
+function normalizeRepoFilePath(filePath) {
+  return filePath.replace(/\\/g, "/").replace(/\/+$/u, "");
+}
+
+function isKnownGeneratedArtifactPath(filePath) {
+  const normalizedPath = normalizeRepoFilePath(filePath);
+  return KNOWN_GENERATED_ARTIFACT_PATHS.some(
+    (artifactPath) =>
+      normalizedPath === artifactPath || normalizedPath.startsWith(`${artifactPath}/`),
+  );
+}
+
+function filterGeneratedArtifactStatus(statusText) {
+  return statusText
+    .split(/\r?\n/)
+    .filter((line) => !isKnownGeneratedArtifactPath(line.slice(3).trim().replace(/^.* -> /, "")))
+    .filter(Boolean)
+    .join("\n")
+}
+
 function providerVisiblePath(filePath) {
   return (
     filePath.startsWith("packages/capture-") ||
@@ -842,7 +867,9 @@ export function summarizePeerWorktree(worktreePath, currentRepo) {
     git(resolved, ["rev-parse", "--abbrev-ref", "HEAD"]) ||
     "unknown";
   const head = git(resolved, ["rev-parse", "--short", "HEAD"]);
-  const status = git(resolved, ["status", "--short"]);
+  const status = filterGeneratedArtifactStatus(
+    git(resolved, ["status", "--short", "--untracked-files=all"]),
+  );
   const committedFiles = git(resolved, [
     "diff",
     "--name-only",
@@ -1136,11 +1163,7 @@ export function collectRiskSnapshot({
     );
   }
 
-  for (const relativePath of [
-    "packages/desktop/playwright-report",
-    "packages/desktop/test-results",
-    "packages/desktop/.playwright-mcp",
-  ]) {
+  for (const relativePath of KNOWN_GENERATED_ARTIFACT_PATHS) {
     const absolutePath = path.join(repoPath, relativePath);
     const fileCount = countFiles(absolutePath);
     if (fileCount > 0) {
