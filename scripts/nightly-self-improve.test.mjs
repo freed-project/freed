@@ -12,6 +12,7 @@ import {
   buildCandidates,
   buildExecutionPlan,
   collectDuplicateWork,
+  collectPeerWorktrees,
   collectRepoSnapshot,
   collectRiskSnapshot,
   findLatestReadableSoakDir,
@@ -611,6 +612,37 @@ test("summarizePeerWorktree ignores behind-only detached snapshots as active cha
   assert.equal(summary?.aheadCount, 0);
   assert.equal(summary?.behindCount, 1);
   assert.equal(summary?.changedFileCount, 0);
+});
+
+test("collectPeerWorktrees ignores peers with only generated validation artifacts", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-peer-artifacts-"));
+  const origin = path.join(dir, "origin.git");
+  const repo = path.join(dir, "repo");
+  const peer = path.join(dir, "peer");
+
+  execFileSync("git", ["init", "--bare", origin]);
+  execFileSync("git", ["clone", origin, repo]);
+  execFileSync("git", ["-C", repo, "config", "user.name", "Freed Tests"]);
+  execFileSync("git", ["-C", repo, "config", "user.email", "tests@example.com"]);
+  execFileSync("git", ["-C", repo, "checkout", "-b", "dev"]);
+  writeFileSync(path.join(repo, "notes.txt"), "first\n");
+  execFileSync("git", ["-C", repo, "add", "notes.txt"]);
+  execFileSync("git", ["-C", repo, "commit", "-m", "first"]);
+  execFileSync("git", ["-C", repo, "push", "-u", "origin", "dev"]);
+
+  execFileSync("git", ["clone", origin, peer]);
+  execFileSync("git", ["-C", peer, "checkout", "-b", "chore/nightly-peer", "origin/dev"]);
+  mkdirSync(path.join(peer, "packages/desktop/playwright-report"), { recursive: true });
+  mkdirSync(path.join(peer, "packages/desktop/test-results"), { recursive: true });
+  writeFileSync(path.join(peer, "packages/desktop/playwright-report/index.html"), "<html></html>");
+  writeFileSync(path.join(peer, "packages/desktop/test-results/out.txt"), "artifact\n");
+
+  const summary = summarizePeerWorktree(peer, repo);
+  assert.equal(summary?.status, "");
+  assert.equal(summary?.changedFileCount, 0);
+
+  const peers = collectPeerWorktrees(repo, [peer], false);
+  assert.deepEqual(peers, []);
 });
 
 test("duplicate work candidates are selected before generic roadmap fallback", () => {
