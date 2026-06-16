@@ -742,10 +742,13 @@ export function summarizeDailyBugMemory(memoryPath) {
     path: memoryPath,
     latestDate: latest.date,
     latestSection: latest.text,
-    latestHadNoNewCommits: /0`\s+commits|0 commits|no new repo evidence/i.test(latest.text),
+    latestHadNoNewCommits:
+      /(?:^|[^\d])`?0`?\s+(?:additional\s+)?commits\b|no new repo evidence/i.test(latest.text),
     latestHadFix:
       !latestHadNoFix &&
-      /outcome:\s+.*(fix applied|implemented|merged)|fix applied/i.test(latest.text),
+      /outcome:\s+.*(?:fix applied|implemented|merged)|fix\s+(?:applied|shipped|published)\b/i.test(
+        latest.text,
+      ),
   };
 }
 

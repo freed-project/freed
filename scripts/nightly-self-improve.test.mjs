@@ -199,6 +199,29 @@ test("daily bug memory does not treat a referenced old PR as a new fix", () => {
   assert.equal(summary.latestHadFix, false);
 });
 
+test("daily bug memory recognizes shipped fixes and zero additional continuation commits", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-bug-memory-continuation-"));
+  const memoryPath = path.join(dir, "memory.md");
+  writeFileSync(
+    memoryPath,
+    [
+      "# Daily Bug Scan Memory",
+      "",
+      "## 2026-06-15",
+      "- Fix shipped:",
+      "  - PR `#830`, `fix: ignore generated peer artifacts in nightly planner`, merged into `dev` at `2026-06-16T00:47:16Z`.",
+      "- Continuation result:",
+      "  - Fresh continuation evidence after the merge found `0` additional commits after `1944add4e6b44fcd32203363404aa0ddcb54e016` on `origin/dev`.",
+      "",
+    ].join("\n"),
+  );
+
+  const summary = summarizeDailyBugMemory(memoryPath);
+  assert.equal(summary.latestDate, "2026-06-15");
+  assert.equal(summary.latestHadNoNewCommits, true);
+  assert.equal(summary.latestHadFix, true);
+});
+
 test("candidate selection prioritizes memory work while preserving bug scans", () => {
   const candidates = buildCandidates({
     soak: {
