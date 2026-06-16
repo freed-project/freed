@@ -831,6 +831,15 @@ function peerWorktreeScore(peer) {
   if (peer.providerVisible) {
     score -= 15;
   }
+  if (peer.aheadCount === 0 && peer.changedFileCount > 0) {
+    score -= 16;
+    if (peer.behindCount >= 25) {
+      score -= 24;
+    }
+  }
+  if (peer.aheadCount > 0 && peer.behindCount >= 25) {
+    score -= 8;
+  }
   return Math.min(99, Math.max(1, score));
 }
 

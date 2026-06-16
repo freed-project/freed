@@ -637,6 +637,66 @@ test("summarizePeerWorktree ignores behind-only detached snapshots as active cha
   assert.equal(summary?.changedFileCount, 0);
 });
 
+test("stale dirty nightly peers stay visible but do not outrank fresh bug scans", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-stale-peer-score-"));
+  const origin = path.join(dir, "origin.git");
+  const repo = path.join(dir, "repo");
+  const peer = path.join(dir, "peer");
+
+  execFileSync("git", ["init", "--bare", origin]);
+  execFileSync("git", ["clone", origin, repo]);
+  execFileSync("git", ["-C", repo, "config", "user.name", "Freed Tests"]);
+  execFileSync("git", ["-C", repo, "config", "user.email", "tests@example.com"]);
+  execFileSync("git", ["-C", repo, "checkout", "-b", "dev"]);
+  mkdirSync(path.join(repo, "scripts"), { recursive: true });
+  mkdirSync(path.join(repo, "docs"), { recursive: true });
+  writeFileSync(path.join(repo, "scripts/nightly-self-improve.mjs"), "export const value = 1;\n");
+  writeFileSync(path.join(repo, "docs/NIGHTLY-SELF-IMPROVE.md"), "# Nightly\n");
+  execFileSync("git", ["-C", repo, "add", "scripts/nightly-self-improve.mjs", "docs/NIGHTLY-SELF-IMPROVE.md"]);
+  execFileSync("git", ["-C", repo, "commit", "-m", "base"]);
+  execFileSync("git", ["-C", repo, "push", "-u", "origin", "dev"]);
+
+  execFileSync("git", ["clone", origin, peer]);
+  execFileSync("git", ["-C", peer, "checkout", "-b", "fix/nightly-small-batch", "origin/dev"]);
+
+  for (let index = 0; index < 30; index += 1) {
+    writeFileSync(path.join(repo, "notes.txt"), `commit ${index}\n`);
+    execFileSync("git", ["-C", repo, "add", "notes.txt"]);
+    execFileSync("git", ["-C", repo, "commit", "-m", `advance ${index}`]);
+  }
+  execFileSync("git", ["-C", repo, "push"]);
+  execFileSync("git", ["-C", peer, "fetch", "origin", "dev"]);
+  writeFileSync(path.join(peer, "scripts/nightly-self-improve.mjs"), "export const value = 2;\n");
+
+  const peers = collectPeerWorktrees(repo, [peer], false);
+  assert.equal(peers.length, 1);
+  assert.equal(peers[0].branch, "fix/nightly-small-batch");
+  assert.equal(peers[0].aheadCount, 0);
+  assert.ok(peers[0].behindCount >= 25);
+  assert.ok(peers[0].score < 82);
+
+  const candidates = buildCandidates({
+    soak: { exists: false },
+    dailyBug: {
+      exists: true,
+      path: "/tmp/memory.md",
+      latestDate: "2026-06-14",
+      latestHadNoNewCommits: false,
+      latestHadFix: false,
+    },
+    repo: { branch: "dev", head: "abc1234", originDev: "abc1234", status: "" },
+    riskSnapshot: { blockerCount: 0, warningCount: 0, risks: [] },
+    duplicateWork: { findingCount: 0, blockerCount: 0, warningCount: 0, findings: [] },
+    peerWorktrees: peers,
+    crashAutomationExists: false,
+    devBotMemoryExists: false,
+    memoryBudgetBytes: 2.5 * GIB,
+  });
+
+  assert.equal(candidates[0].id, "daily-bug-fix-scan");
+  assert.equal(candidates[1].id, "peer-fix-nightly-small-batch");
+});
+
 test("collectPeerWorktrees ignores peers with only generated validation artifacts", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-peer-artifacts-"));
   const origin = path.join(dir, "origin.git");
