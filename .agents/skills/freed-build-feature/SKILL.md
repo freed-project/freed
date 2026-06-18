@@ -29,7 +29,8 @@ Create a product worktree branch from the latest remote `dev`, implement enough 
    - When native Desktop preview is running, report the preview label so parallel native windows can be matched to the worktree and thread that launched them.
 9. Iterate against the preview. Use focused checks during iteration only when they answer an immediate implementation question, such as a targeted unit test, Desktop e2e test, browser check, or preview compile failure.
    - For queued UI polish, keep stacking the user's small visual fixes in the same worktree and PR.
-   - For each small UI fix, run only the focused test or browser check that proves that behavior.
+   - For each small UI fix, prefer the cheapest thread-level proof that actually verifies the change: live preview, screenshot comparison, browser inspection, or a temporary geometry check.
+   - Do not add permanent tests for exact pixels, gaps, colors, shadows, padding, or one-off toolbar geometry unless the behavior is a shared layout contract, has already regressed, or cannot be checked reliably in-thread.
    - Do not run `npm run validate:feature` after every small visual adjustment.
    - If more queued tasks arrive while you are working, finish the current focused loop, then continue to the next queued task before publishing.
 10. Run `npm run validate:feature` from the worktree before publishing the draft PR, or earlier only when the user asks for a full validation checkpoint.
@@ -40,6 +41,7 @@ Create a product worktree branch from the latest remote `dev`, implement enough 
    - Shared schema, release tooling, shared UI primitives, and cross-app flows should earn broader validation before publish.
    - Reserve the heaviest validation and release-shape smoke tests for `dev` integration and release prep, not every branch.
    - Do not simplify test suites blindly. Profile specific slow commands first, then trim redundant coverage with evidence.
+   - Keep permanent tests only when they protect durable workflows, cross-boundary behavior, provider flows, recovery paths, stateful failures, performance budgets, maintained visual coverage, or shared layout contracts with known regression risk.
 12. Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run commands from the workspace directory itself, and when a hoisted binary is needed, prefix `PATH` with `<worktree>/node_modules/.bin`.
 13. Browser tooling is opt-in only. Do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging.
 14. Installed Desktop soaks on the user's primary machine should be terminal driven. Prefer logs, `runtime-health.jsonl`, process samples, and the native sync trigger over System Events clicks or foreground UI automation.

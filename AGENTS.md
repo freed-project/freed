@@ -100,7 +100,8 @@ Production builds should keep reliability and memory-recovery behavior enabled, 
 
 When a user queues several small UI fixes for the same product surface, keep the work in the active feature worktree and PR until the queue is done.
 
-- For each small UI fix, implement the narrow change, run the focused test or browser check that proves that behavior, then continue to the next queued task.
+- For each small UI fix, implement the narrow change, then verify it in the active thread with the cheapest proof that actually answers the question: live preview, screenshot comparison, browser inspection, or a temporary geometry check.
+- Do not add permanent e2e coverage for exact pixels, gaps, colors, shadows, padding, or one-off toolbar geometry unless the behavior is a shared layout contract, has already regressed, or cannot be checked reliably in-thread.
 - Do not run `npm run validate:feature` after every small visual adjustment. Run it at the publish checkpoint, or earlier only when the user asks for a full validation checkpoint.
 - Do not run desktop e2e between queued UI updates in the same thread unless the user asks for that checkpoint or the change is too risky to inspect with the live preview. Prefer keeping the preview running, applying the next queued visual fix, and doing one focused e2e pass after the queue settles.
 - When the user is actively sending browser comments or screenshots, treat the queue as still open. Give a short status update, keep the preview current, and wait to spend machine time on heavier verification until the user signals that the batch is ready or asks for tests.
@@ -199,16 +200,28 @@ Copy must read like a person wrote it. When in doubt, read it aloud. If it sound
 
 ## Desktop E2E Testing
 
-The Freed Desktop app has a Playwright test suite that runs in plain Chromium -- no Tauri binary, no
+The Freed Desktop app has a Playwright test suite that runs in plain Chromium, with no Tauri binary or
 native build required. Use this to reproduce UI bugs, verify fixes, and write regression tests
-without any manual clicking.
+when the test protects durable behavior. For the detailed policy, see
+`packages/desktop/tests/e2e/README.md`.
+
+Permanent desktop e2e coverage should earn its cost. Add or keep it for complete workflows across
+React state, Automerge state, and the Tauri mock boundary; provider auth, sync, reconnect, pause,
+or diagnostics behavior; startup, legal gate, crash recovery, updater, and renderer health paths;
+shared layout contracts with known regression risk; performance budgets; maintained visual
+snapshots; and rare or stateful failures where the next occurrence needs better evidence.
+
+Do not preserve temporary implementation probes as permanent tests. Exact pixel offsets, widths,
+gaps, colors, shadows, padding, one-off toolbar geometry checks, duplicate "button exists" checks,
+and fixture self-tests that are already exercised by real workflows should be deleted before
+publishing unless they are converted into a durable user-flow assertion or an explicit visual test.
 
 ### How it works
 
 `VITE_TEST_TAURI=1` swaps every `@tauri-apps/*` import for a thin mock module under
 `packages/desktop/src/__mocks__/@tauri-apps/`. Each mock tracks calls in `window.__TAURI_MOCK_*`
 globals. A self-contained init script (`tests/e2e/fixtures/tauri-init.ts`) is injected via
-`page.addInitScript()` before any page JavaScript runs -- it installs `window.__TAURI_INTERNALS__`
+`page.addInitScript()` before any page JavaScript runs. It installs `window.__TAURI_INTERNALS__`
 with default IPC handlers for every command the app calls on startup.
 
 ### Running the tests
@@ -231,7 +244,7 @@ tear it down after the run. No separate server startup needed.
 ### Writing a new test
 
 1. Add a spec file under `packages/desktop/tests/e2e/`.
-2. Import from `./fixtures/app` -- not from `@playwright/test` directly:
+2. Import from `./fixtures/app` instead of from `@playwright/test` directly:
 
 ```ts
 import { test, expect } from "./fixtures/app";
@@ -273,9 +286,9 @@ await page.goto("/");
 If the app starts calling a new `invoke()` command and tests fail because the handler is missing,
 add a default response in both places:
 
-1. `packages/desktop/tests/e2e/fixtures/tauri-init.ts` -- add an entry to `_defaults` inside the
+1. `packages/desktop/tests/e2e/fixtures/tauri-init.ts`: add an entry to `_defaults` inside the
    IIFE. This covers the init-script path (plain Chromium / CI).
-2. `packages/desktop/src/__mocks__/@tauri-apps/api/core.ts` -- add to the `handlers` map in the
+2. `packages/desktop/src/__mocks__/@tauri-apps/api/core.ts`: add to the `handlers` map in the
    module-level mock (only hits when `VITE_TEST_TAURI=1` aliases are active, i.e. dev server runs
    the real Vite mock modules instead of the injected init script).
 
@@ -285,12 +298,14 @@ for completeness and for any test that doesn't use `page.addInitScript`.
 ### Debugging a UI bug in the desktop app
 
 1. Create a worktree as usual.
-2. Write a failing test that reproduces the bug.
-3. Run with `--debug` to step through the browser state at each assertion.
-4. Fix the code, confirm the test goes green, then commit both together.
+2. Reproduce the bug with the cheapest useful tool: live preview, Playwright UI mode, a temporary
+   browser assertion, or a focused failing test when permanent coverage is justified.
+3. Use `--debug` when stepping through browser state will materially speed up the fix.
+4. Fix the code, confirm the relevant check goes green, and delete temporary probes before commit.
 
-This replaces manual testing. Never ask the user to click through the app to verify a fix -- write
-a test instead.
+Do not ask the user to click through the app to verify a fix when the repo can verify it locally.
+For simple visual polish, thread-level preview or browser verification is enough. Write a permanent
+test only when it delivers future value under the e2e policy above.
 
 ### Debugging rare or stateful failures
 
