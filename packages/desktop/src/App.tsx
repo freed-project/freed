@@ -1029,7 +1029,7 @@ function App() {
       },
       // Library import/export
       saveUrl: async (url, options) => {
-        await saveUrlInDesktop(url, options);
+        return saveUrlInDesktop(url, options);
       },
       importMarkdown: importMarkdownFiles,
       exportMarkdown: () => {

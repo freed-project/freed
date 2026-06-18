@@ -27,6 +27,7 @@ vi.mock("@freed/capture-save/browser", () => ({
 
 vi.mock("@freed/capture-save/normalize", () => ({
   buildSavedFeedItem: mockBuildSavedFeedItem,
+  hashSavedUrl: (url: string) => url === "https://example.com/article" ? "abc123" : "stub123",
 }));
 
 vi.mock("@freed/ui/lib/article-cache", () => ({
@@ -93,7 +94,7 @@ describe("saveUrlInPwa", () => {
   it("writes a full saved item and caches readable HTML when proxy fetch succeeds", async () => {
     const { saveUrlInPwa } = await import("./save-url");
 
-    await saveUrlInPwa("https://example.com/article", { tags: ["research"] });
+    const result = await saveUrlInPwa("https://example.com/article", { tags: ["research"] });
 
     expect(fetch).toHaveBeenCalledWith("/api/fetch-url", expect.objectContaining({
       method: "POST",
@@ -115,6 +116,7 @@ describe("saveUrlInPwa", () => {
       "<article><p>Readable body</p></article>",
       "https://example.com/article",
     );
+    expect(result).toEqual({ globalId: "saved:abc123" });
   });
 
   it("falls back to a stub item and shows an info toast when proxy fetch fails", async () => {
@@ -124,13 +126,14 @@ describe("saveUrlInPwa", () => {
     })));
 
     const { saveUrlInPwa } = await import("./save-url");
-    await saveUrlInPwa("https://example.com/article", { tags: ["research"] });
+    const result = await saveUrlInPwa("https://example.com/article", { tags: ["research"] });
 
     expect(mockDocAddFeedItem).not.toHaveBeenCalled();
     expect(mockDocAddStubItem).toHaveBeenCalledWith("https://example.com/article", ["research"]);
     expect(mockToastInfo).toHaveBeenCalledWith(
       "Saved a stub. Full article content will arrive after your next desktop sync.",
     );
+    expect(result.globalId).toMatch(/^saved:/);
   });
 
   it("rejects invalid URLs instead of silently creating a stub", async () => {

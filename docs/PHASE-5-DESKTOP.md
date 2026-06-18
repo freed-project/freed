@@ -262,7 +262,7 @@ export async function captureDomFeed(
 - [x] Desktop E2E gates are split into smoke, functional regression, performance, and visual lanes, with dev build validation running the performance and visual lanes instead of hiding them until production release prep
 - [x] Local desktop preview now defaults to the mocked browser harness, while tracked preview slots keep concurrent local threads to one desktop preview at a time unless native Tauri behavior is explicitly requested, and native preview windows carry a visible worktree and thread label
 - [x] Desktop navigation history supports browser-style back and forward shortcuts for views and reader state
-- [x] Freed Desktop registers a device-local OS-wide Save Content shortcut that opens the existing Save Content dialog and pre-fills the URL field from the clipboard when it holds an HTTP or HTTPS link
+- [x] Freed Desktop registers a device-local OS-wide Save Content shortcut that opens the existing Save Content dialog, pre-fills the URL field from the clipboard when it holds an HTTP or HTTPS link, and opens the saved item in reader mode after persistence
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Private diagnostic bundles are opt-in, redacted, and steered toward email instead of public GitHub attachment
 - [x] Bug report actions now label whether they download a public-safe or private bundle, bulk-toggle private diagnostics, and block public GitHub issue drafts while private diagnostics remain selected

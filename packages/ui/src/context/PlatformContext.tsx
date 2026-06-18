@@ -161,6 +161,10 @@ export interface ReaderHydrationResult {
   message?: string;
 }
 
+export interface SaveUrlResult {
+  globalId: string;
+}
+
 export interface LocalAIModelDownloadProgress {
   id: LocalAIModelId;
   downloadedBytes: number;
@@ -365,7 +369,7 @@ export interface PlatformConfig {
    * Desktop: fetches HTML via Tauri IPC, extracts content, writes to cache.
    * PWA: writes a stub item; desktop picks it up via relay and fetches content.
    */
-  saveUrl?: (url: string, options?: { tags?: string[] }) => Promise<void>;
+  saveUrl?: (url: string, options?: { tags?: string[] }) => Promise<SaveUrlResult>;
 
   /**
    * Import Freed Markdown archive files into the library.

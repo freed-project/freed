@@ -45,6 +45,10 @@ function SaveUrlTab({
 }) {
   const { saveUrl } = usePlatform();
   const setFilter = useAppStore((s) => s.setFilter);
+  const setActiveView = useAppStore((s) => s.setActiveView);
+  const setSelectedItem = useAppStore((s) => s.setSelectedItem);
+  const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
+  const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
   const [url, setUrl] = useState(initialUrl);
   const [loading, setLoading] = useState(false);
 
@@ -61,10 +65,14 @@ function SaveUrlTab({
 
     setLoading(true);
     try {
-      await saveUrl(trimmed);
+      const saved = await saveUrl(trimmed);
       setUrl("");
       toast.success("Saved to library");
+      setActiveView("feed");
       setFilter({ savedOnly: true });
+      setSelectedPerson(null);
+      setSelectedAccount(null);
+      setSelectedItem(saved.globalId);
       onClose();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save URL");

@@ -103,6 +103,52 @@ test("global clipboard shortcut opens Save Content blank for non-URL clipboard t
   await expect(page.getByLabel("Article or page URL")).toHaveValue("");
 });
 
+test("saving new content opens the saved item in reader mode", async ({ app, page, ipc }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await ipc.setHandler("fetch_url", () => `
+    <!doctype html>
+    <html>
+      <head>
+        <title>Saved Reader Transition</title>
+        <meta name="description" content="A saved article should open immediately." />
+      </head>
+      <body>
+        <article>
+          <h1>Saved Reader Transition</h1>
+          <p>This article proves the Save Content flow enters read mode after persistence.</p>
+          <p>The reader should render this body from the saved content cache.</p>
+        </article>
+      </body>
+    </html>
+  `);
+
+  const shortcut = await waitForRegisteredShortcut(page);
+  await page.evaluate(() => {
+    (window as unknown as { __TAURI_MOCK_CLIPBOARD_TEXT__?: string })
+      .__TAURI_MOCK_CLIPBOARD_TEXT__ = "https://example.com/saved-reader-transition";
+  });
+  await triggerShortcut(page, shortcut);
+
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+
+  await expect(page.getByText("Saved Reader Transition").first()).toBeVisible();
+  await expect(page.getByRole("article").getByText("A saved article should open immediately.")).toBeVisible();
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const state = (w.__FREED_STORE__ as { getState: () => {
+      activeFilter: { savedOnly?: boolean };
+      activeView: string;
+      selectedItemId: string | null;
+    } }).getState();
+    return state.activeView === "feed"
+      && state.activeFilter.savedOnly === true
+      && typeof state.selectedItemId === "string"
+      && state.selectedItemId.startsWith("saved:");
+  });
+});
+
 test("Settings records, disables, and resets the Save Content shortcut", async ({ app, page }) => {
   await page.setViewportSize({ width: 1492, height: 700 });
   const settingsDialog = await openSettingsDialog(app, page);
