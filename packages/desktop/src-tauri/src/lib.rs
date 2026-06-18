@@ -1089,6 +1089,17 @@ fn load_dev_sync_trigger_result_status(data_dir: &Path, id: &str) -> Option<Stri
     (result.id == id).then_some(result.status)
 }
 
+fn dev_sync_trigger_request_should_dispatch(
+    last_handled_id: Option<&str>,
+    request_id: &str,
+    current_status: Option<&str>,
+) -> bool {
+    if last_handled_id != Some(request_id) {
+        return true;
+    }
+    matches!(current_status, Some("waiting"))
+}
+
 fn is_current_dev_sync_trigger_request(data_dir: &Path, id: &str) -> bool {
     load_dev_sync_trigger_request(data_dir)
         .and_then(|request| request.id)
@@ -1245,7 +1256,34 @@ fn start_dev_sync_trigger_keepalive(app: tauri::AppHandle, data_dir: PathBuf, re
                 return;
             }
             if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-                let _ = window.eval("window.__FREED_DEV_SYNC_KEEPALIVE__ = Date.now();");
+                if let Err(error) = window.eval("window.__FREED_DEV_SYNC_KEEPALIVE__ = Date.now();")
+                {
+                    warn!(
+                        "[dev-sync-trigger] renderer keepalive failed for request {}: {}",
+                        request_id, error
+                    );
+                    write_current_dev_sync_trigger_result(
+                        &data_dir,
+                        &request_id,
+                        None,
+                        "waiting",
+                        Some("Renderer was rebuilt before the sync trigger finished. Retrying after recovery."),
+                    );
+                    return;
+                }
+            } else {
+                warn!(
+                    "[dev-sync-trigger] renderer keepalive lost main window for request {}",
+                    request_id
+                );
+                write_current_dev_sync_trigger_result(
+                    &data_dir,
+                    &request_id,
+                    None,
+                    "waiting",
+                    Some("Renderer was rebuilt before the sync trigger finished. Retrying after recovery."),
+                );
+                return;
             }
         }
     });
@@ -1278,7 +1316,14 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
             if let Some(request) = load_dev_sync_trigger_request(&data_dir) {
                 if request.enabled.unwrap_or(false) {
                     if let Some(request_id) = request.id.as_deref().map(str::trim) {
-                        if !request_id.is_empty() && last_handled_id.as_deref() != Some(request_id)
+                        let current_status =
+                            load_dev_sync_trigger_result_status(&data_dir, request_id);
+                        if !request_id.is_empty()
+                            && dev_sync_trigger_request_should_dispatch(
+                                last_handled_id.as_deref(),
+                                request_id,
+                                current_status.as_deref(),
+                            )
                         {
                             let provider = request.provider.as_deref().map(str::trim).unwrap_or("");
                             if let Some(detail) =
@@ -2707,6 +2752,19 @@ fn main_renderer_memory_recovery_reason(
         });
     }
 
+    if stats
+        .webkit_largest_resident_bytes
+        .map(|resident| resident >= stats.memory_high_bytes)
+        .unwrap_or(false)
+        && !webkit_resident_tail_is_probably_reclaimable(stats)
+    {
+        return Some(if effectively_visible {
+            "webkit_hot_resident_pressure"
+        } else {
+            "idle_webkit_hot_resident_pressure"
+        });
+    }
+
     None
 }
 
@@ -2985,6 +3043,52 @@ mod renderer_watchdog_tests {
             None
         );
         assert!(!main_renderer_memory_should_recover(true, "hidden", &stats));
+    }
+
+    #[test]
+    fn main_renderer_recovers_for_hot_webkit_resident_tail() {
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: 11 * BYTES_PER_GIB,
+            app_memory_pressure_bytes: 3 * BYTES_PER_GIB,
+            webkit_resident_bytes: Some(10 * BYTES_PER_GIB),
+            webkit_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: 10 * BYTES_PER_GIB,
+            webkit_total_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(10 * BYTES_PER_GIB),
+            webkit_largest_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(97.0),
+            webkit_largest_age_seconds: Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS),
+            webkit_largest_role: Some("freed-webcontent-age-matched".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
+            memory_high_bytes: 9 * BYTES_PER_GIB,
+            memory_critical_bytes: 12 * BYTES_PER_GIB,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert!(!webkit_resident_tail_is_probably_reclaimable(&stats));
+        assert_eq!(
+            main_renderer_memory_recovery_reason(true, "visible", &stats),
+            Some("webkit_hot_resident_pressure")
+        );
+        assert_eq!(
+            main_renderer_memory_recovery_reason(true, "hidden", &stats),
+            Some("idle_webkit_hot_resident_pressure")
+        );
     }
 
     #[test]
@@ -8667,6 +8771,13 @@ impl MainWindowPresentation {
         matches!(self, MainWindowPresentation::Foreground)
     }
 
+    fn quiet_focusable_restore_delay(self) -> Option<Duration> {
+        match self {
+            MainWindowPresentation::Foreground => None,
+            MainWindowPresentation::Quiet => Some(Duration::from_secs(4)),
+        }
+    }
+
     fn should_recover_startup_occlusion(self) -> bool {
         self.should_focus()
     }
@@ -8686,13 +8797,35 @@ fn present_webview_window(
     context: &str,
 ) {
     show_app_for_main_window(window, presentation, context);
-    let _ = window.show();
-    let _ = window.unminimize();
     if presentation.should_focus() {
+        set_main_window_focusable(window, true, context);
+        let _ = window.show();
+        let _ = window.unminimize();
         let _ = window.set_focus();
         force_show_webview_window(window, context);
     } else {
+        set_main_window_focusable(window, false, context);
         quietly_show_webview_window(window, context);
+        if let Some(delay) = presentation.quiet_focusable_restore_delay() {
+            schedule_main_window_focusable_restore(
+                &window.app_handle(),
+                delay,
+                "quiet-focusable-restore",
+            );
+        }
+    }
+}
+
+fn set_main_window_focusable(window: &tauri::WebviewWindow, focusable: bool, context: &str) {
+    match window.set_focusable(focusable) {
+        Ok(()) => info!(
+            "[main-window] set focusable context={} focusable={}",
+            context, focusable
+        ),
+        Err(error) => warn!(
+            "[main-window] failed to set focusable context={} focusable={} error={}",
+            context, focusable, error
+        ),
     }
 }
 
@@ -8903,6 +9036,29 @@ fn quiet_show_webview_window(window: &tauri::WebviewWindow, context: &str) {
 
 #[cfg(not(target_os = "macos"))]
 fn quiet_show_webview_window(_window: &tauri::WebviewWindow, _context: &str) {}
+
+fn schedule_main_window_focusable_restore(
+    app: &tauri::AppHandle,
+    delay: Duration,
+    context: &'static str,
+) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(delay).await;
+        let app_for_main = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let Some(window) = live_main_window(&app_for_main) else {
+                warn!(
+                    "[main-window] focusable restore found no live main window context={}",
+                    context
+                );
+                return;
+            };
+
+            set_main_window_focusable(&window, true, context);
+        });
+    });
+}
 
 fn schedule_main_window_visibility_probe(
     app: &tauri::AppHandle,
@@ -9985,6 +10141,12 @@ pub fn run() {
                                 "idle_webkit_footprint_pressure" => {
                                     "idle main renderer WebKit memory high"
                                 }
+                                "webkit_hot_resident_pressure" => {
+                                    "main renderer WebKit resident memory hot"
+                                }
+                                "idle_webkit_hot_resident_pressure" => {
+                                    "idle main renderer WebKit resident memory hot"
+                                }
                                 _ => "main renderer WebKit memory high",
                             };
                             background_runtime_for_memory_monitor.note_renderer_recovery_attempt(reason);
@@ -10620,6 +10782,14 @@ mod tests {
     fn main_window_presentation_focus_contract_is_explicit() {
         assert!(MainWindowPresentation::Foreground.should_focus());
         assert!(!MainWindowPresentation::Quiet.should_focus());
+        assert_eq!(
+            MainWindowPresentation::Foreground.quiet_focusable_restore_delay(),
+            None
+        );
+        assert_eq!(
+            MainWindowPresentation::Quiet.quiet_focusable_restore_delay(),
+            Some(Duration::from_secs(4))
+        );
         assert!(MainWindowPresentation::Foreground.should_recover_startup_occlusion());
         assert!(!MainWindowPresentation::Quiet.should_recover_startup_occlusion());
     }
@@ -10936,6 +11106,35 @@ mod tests {
             dev_sync_trigger_request_expiration_detail(&missing, 1_000),
             Some("Trigger request is missing createdAt. Re-run scripts/dev-sync-trigger.mjs.")
         );
+    }
+
+    #[test]
+    fn dev_sync_trigger_retries_same_request_only_after_renderer_waiting_state() {
+        assert!(dev_sync_trigger_request_should_dispatch(
+            None,
+            "facebook-1",
+            None
+        ));
+        assert!(dev_sync_trigger_request_should_dispatch(
+            Some("facebook-0"),
+            "facebook-1",
+            Some("started")
+        ));
+        assert!(!dev_sync_trigger_request_should_dispatch(
+            Some("facebook-1"),
+            "facebook-1",
+            Some("started")
+        ));
+        assert!(dev_sync_trigger_request_should_dispatch(
+            Some("facebook-1"),
+            "facebook-1",
+            Some("waiting")
+        ));
+        assert!(!dev_sync_trigger_request_should_dispatch(
+            Some("facebook-1"),
+            "facebook-1",
+            Some("completed")
+        ));
     }
 
     #[test]
