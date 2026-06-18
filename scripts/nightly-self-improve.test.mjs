@@ -1009,6 +1009,13 @@ test("writeRunPlan emits report, targets, and task prompts", () => {
   assert.equal(path.basename(result.executionPlanPath), "execution-plan.md");
   assert.equal(path.basename(result.outcomeCloseoutPath), "outcome-closeout.md");
   assert.equal(path.basename(result.outcomeTemplatePath), "outcome-template.jsonl");
+
+  const report = readFileSync(result.reportPath, "utf8");
+  const task = readFileSync(path.join(result.tasksDir, "01-daily-bug-fix-scan.md"), "utf8");
+  const closeout = readFileSync(result.outcomeCloseoutPath, "utf8");
+  assert.match(report, /Unattended App Interaction/);
+  assert.match(task, /10 minute response window/);
+  assert.match(closeout, /terminal trigger/);
 });
 
 test("execution plan includes peer review and release soak gates", () => {
@@ -1028,6 +1035,11 @@ test("execution plan includes peer review and release soak gates", () => {
   assert.ok(phases.some((phase) => phase.id === "peer-review"));
   assert.ok(phases.some((phase) => phase.id === "release-and-soak"));
   assert.ok(phases.every((phase) => phase.stopGate));
+  assert.ok(
+    phases
+      .find((phase) => phase.id === "release-and-soak")
+      ?.commands.some((command) => command.includes("dev-sync-trigger.mjs")),
+  );
 });
 
 test("argument parsing validates numeric budgets", () => {
