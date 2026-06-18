@@ -2,6 +2,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { log } from "./logger";
 import { readNativeJsonFile, writeNativeJsonFile } from "./native-json-store";
 import { refreshSocialProvider, type RetriableSocialProvider } from "./capture";
+import { loadDesktopReleaseChannelState } from "./release-channel";
 
 const DEV_SYNC_TRIGGER_FILE = "dev-sync-trigger.json";
 const DEV_SYNC_TRIGGER_RESULT_FILE = "dev-sync-trigger-result.json";
@@ -27,6 +28,19 @@ type DevSyncTriggerPollerOptions = {
   pollMs?: number;
 };
 
+async function resolveDevSyncTriggersEnabled(explicit: boolean | undefined): Promise<boolean> {
+  if (explicit !== undefined) return explicit;
+  if (DEV_SYNC_TRIGGERS_ENABLED) return true;
+  if (!isTauri()) return false;
+
+  try {
+    const state = await loadDesktopReleaseChannelState();
+    return state.selectedChannel === "dev" || state.installedChannel === "dev";
+  } catch {
+    return false;
+  }
+}
+
 async function writeResult(
   requestId: string,
   provider: RetriableSocialProvider | null,
@@ -49,17 +63,17 @@ async function writeResult(
 export function startDevSyncTriggerPoller(
   options: DevSyncTriggerPollerOptions = {},
 ): () => void {
-  const enabled = options.enabled ?? DEV_SYNC_TRIGGERS_ENABLED;
-  if (!enabled || !isTauri()) {
-    return () => {};
-  }
-
   let stopped = false;
   let inFlight = false;
   let lastHandledId: string | null = null;
+  let enabledPromise: Promise<boolean> | null = null;
 
   const poll = async () => {
     if (stopped || inFlight) return;
+
+    enabledPromise ??= resolveDevSyncTriggersEnabled(options.enabled);
+    const enabled = await enabledPromise;
+    if (!enabled || !isTauri()) return;
 
     let request: DevSyncTriggerRequest | null = null;
     try {
