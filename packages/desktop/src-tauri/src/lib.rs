@@ -8668,24 +8668,68 @@ fn apply_main_window_vibrancy(_window: &tauri::WebviewWindow, _context: &str) ->
     false
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MainWindowPresentation {
+    Foreground,
+    Quiet,
+}
+
+impl MainWindowPresentation {
+    fn should_focus(self) -> bool {
+        matches!(self, MainWindowPresentation::Foreground)
+    }
+}
+
 fn show_webview_window(window: &tauri::WebviewWindow) {
-    show_app_for_main_window(window, "show");
+    present_webview_window(window, MainWindowPresentation::Foreground, "show");
+}
+
+fn quietly_show_webview_window(window: &tauri::WebviewWindow, context: &str) {
+    quiet_show_webview_window(window, context);
+}
+
+fn present_webview_window(
+    window: &tauri::WebviewWindow,
+    presentation: MainWindowPresentation,
+    context: &str,
+) {
+    show_app_for_main_window(window, presentation, context);
     let _ = window.show();
     let _ = window.unminimize();
-    let _ = window.set_focus();
-    force_show_webview_window(window, "show");
+    if presentation.should_focus() {
+        let _ = window.set_focus();
+        force_show_webview_window(window, context);
+    } else {
+        quietly_show_webview_window(window, context);
+    }
 }
 
 #[cfg(target_os = "macos")]
-fn show_app_for_main_window(window: &tauri::WebviewWindow, context: &str) {
+fn show_app_for_main_window(
+    window: &tauri::WebviewWindow,
+    presentation: MainWindowPresentation,
+    context: &str,
+) {
     let app = window.app_handle();
     let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
-    let _ = app.show();
-    force_activate_ns_app(context);
+    if presentation.should_focus() {
+        let _ = app.show();
+        force_activate_ns_app(context);
+    } else {
+        info!(
+            "[main-window] quiet app presentation context={} activation_policy=regular",
+            context
+        );
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
-fn show_app_for_main_window(_window: &tauri::WebviewWindow, _context: &str) {}
+fn show_app_for_main_window(
+    _window: &tauri::WebviewWindow,
+    _presentation: MainWindowPresentation,
+    _context: &str,
+) {
+}
 
 #[cfg(target_os = "macos")]
 fn force_activate_ns_app(context: &str) {
@@ -8834,10 +8878,45 @@ fn force_show_webview_window(window: &tauri::WebviewWindow, context: &str) {
 #[cfg(not(target_os = "macos"))]
 fn force_show_webview_window(_window: &tauri::WebviewWindow, _context: &str) {}
 
+#[cfg(target_os = "macos")]
+fn quiet_show_webview_window(window: &tauri::WebviewWindow, context: &str) {
+    let Ok(ns_window) = window.ns_window() else {
+        warn!(
+            "[main-window] NSWindow unavailable during quiet show context={}",
+            context
+        );
+        return;
+    };
+
+    let was_visible = window.is_visible().ok();
+    let was_focused = window.is_focused().ok();
+    let ns_window = ns_window.cast::<AnyObject>();
+    unsafe {
+        let nil: *mut AnyObject = std::ptr::null_mut();
+        let _: () = msg_send![ns_window, setIsVisible: true];
+        let _: () = msg_send![ns_window, setReleasedWhenClosed: false];
+        let _: () = msg_send![ns_window, deminiaturize: nil];
+        let _: () = msg_send![ns_window, orderFront: nil];
+    }
+    log_main_window_native_state(window, context);
+    info!(
+        "[main-window] quiet native window show context={} was_visible={:?} was_focused={:?} now_visible={:?} now_focused={:?}",
+        context,
+        was_visible,
+        was_focused,
+        window.is_visible().ok(),
+        window.is_focused().ok()
+    );
+}
+
+#[cfg(not(target_os = "macos"))]
+fn quiet_show_webview_window(_window: &tauri::WebviewWindow, _context: &str) {}
+
 fn schedule_main_window_visibility_probe(
     app: &tauri::AppHandle,
     delay: Duration,
     context: &'static str,
+    presentation: MainWindowPresentation,
 ) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -8854,11 +8933,7 @@ fn schedule_main_window_visibility_probe(
 
             let before_visible = window.is_visible().ok();
             let before_focused = window.is_focused().ok();
-            show_app_for_main_window(&window, context);
-            let _ = window.show();
-            let _ = window.unminimize();
-            let _ = window.set_focus();
-            force_show_webview_window(&window, context);
+            present_webview_window(&window, presentation, context);
             info!(
                 "[main-window] visibility probe context={} before_visible={:?} before_focused={:?} after_visible={:?} after_focused={:?}",
                 context,
@@ -9002,9 +9077,12 @@ fn close_main_window_recovery_keepalive(app: &tauri::AppHandle, reason: &str) {
     }
 }
 
-fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
+fn start_main_window_with_presentation(
+    app: &tauri::AppHandle,
+    presentation: MainWindowPresentation,
+) -> Result<tauri::WebviewWindow, tauri::Error> {
     if let Some(window) = live_main_window(app) {
-        show_webview_window(&window);
+        present_webview_window(&window, presentation, "show-existing");
         return Ok(window);
     }
 
@@ -9014,10 +9092,15 @@ fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tau
     }
 
     let window = create_main_window(app)?;
-    show_webview_window(&window);
-    schedule_main_window_visibility_probe(app, Duration::from_millis(250), "startup-250ms");
-    schedule_main_window_visibility_probe(app, Duration::from_secs(1), "startup-1s");
-    schedule_main_window_visibility_probe(app, Duration::from_secs(3), "startup-3s");
+    present_webview_window(&window, presentation, "startup");
+    schedule_main_window_visibility_probe(
+        app,
+        Duration::from_millis(250),
+        "startup-250ms",
+        presentation,
+    );
+    schedule_main_window_visibility_probe(app, Duration::from_secs(1), "startup-1s", presentation);
+    schedule_main_window_visibility_probe(app, Duration::from_secs(3), "startup-3s", presentation);
     schedule_main_window_occlusion_recovery(
         app,
         MAIN_WINDOW_OCCLUSION_RECOVERY_AFTER,
@@ -9029,6 +9112,14 @@ fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tau
         vibrancy_applied
     );
     Ok(window)
+}
+
+fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
+    start_main_window_with_presentation(app, MainWindowPresentation::Foreground)
+}
+
+fn start_main_window_quietly(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
+    start_main_window_with_presentation(app, MainWindowPresentation::Quiet)
 }
 
 fn run_main_window_step_on_main_thread<F, T>(
@@ -9388,7 +9479,7 @@ pub fn run() {
                 );
                 let _ = open_or_focus_recovery_window(&app_handle)?;
             } else {
-                let _ = start_main_window(&app_handle)?;
+                let _ = start_main_window_quietly(&app_handle)?;
             }
 
             // Load (or generate) the persistent pairing token before the relay
@@ -10528,6 +10619,12 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn main_window_presentation_focus_contract_is_explicit() {
+        assert!(MainWindowPresentation::Foreground.should_focus());
+        assert!(!MainWindowPresentation::Quiet.should_focus());
+    }
 
     fn make_runtime_memory_stats_for_test(
         app_resident_bytes: u64,
