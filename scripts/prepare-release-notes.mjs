@@ -13,6 +13,7 @@ import {
   dayDateFromVersion,
   MAX_FEATURES,
   normalizeReleaseText,
+  removePreviousDayFeatureRepeats,
   renderReleaseBody,
   sanitizeReleaseShape,
   summarizeFallbackText,
@@ -1117,13 +1118,20 @@ async function main() {
   }
 
   const draftedRelease = sanitizeReleaseShape(structured?.release ?? cumulativeDraftRelease);
-  const finalRelease = withComputedDeck(
+  const generatedRelease = withComputedDeck(
     context.isLatestOfDay
       ? mergePriorSameDayReleases(draftedRelease, carriedForwardReleases)
       : draftedRelease,
     context,
     existingDaily,
   );
+  const finalRelease = previousDayRelease
+    ? withComputedDeck(
+        removePreviousDayFeatureRepeats(generatedRelease, previousDayRelease),
+        context,
+        existingDaily,
+      )
+    : generatedRelease;
   const validation = validateReleaseShape(finalRelease, {
     earlierReleases: context.isLatestOfDay ? carriedForwardReleases : [],
     previousDayRelease,

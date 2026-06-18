@@ -909,6 +909,27 @@ function releaseVisibleEntries(release) {
   ].filter((entry) => entry.text);
 }
 
+export function removePreviousDayFeatureRepeats(release, previousDayRelease) {
+  const normalized = sanitizeReleaseShape(release);
+  const previousDayFeatures = previousDayRelease
+    ? dedupeSimilarStrings(coerceReleaseShape(previousDayRelease).features)
+    : [];
+
+  if (previousDayFeatures.length === 0) {
+    return normalized;
+  }
+
+  const isNotPreviousDayFeature = (item) =>
+    !previousDayFeatures.some((feature) => areNearDuplicates(item, feature));
+
+  return sanitizeReleaseShape({
+    ...normalized,
+    features: normalized.features.filter(isNotPreviousDayFeature),
+    fixes: normalized.fixes.filter(isNotPreviousDayFeature),
+    followUps: normalized.followUps.filter(isNotPreviousDayFeature),
+  });
+}
+
 function isCoveredByConsolidation(priorEntry, normalizedRelease) {
   if (priorEntry.kind !== "fix" && priorEntry.kind !== "followUp") {
     return false;
@@ -1052,7 +1073,9 @@ export function validateReleaseShape(release, options = {}) {
   }
 
   if (options.previousDayRelease) {
-    const currentVisibleItems = releaseVisibleItems(normalized);
+    const currentVisibleItems = releaseVisibleEntries(normalized)
+      .filter((entry) => entry.kind !== "deck")
+      .map((entry) => entry.text);
 
     for (const feature of previousDayFeatures) {
       const isRepeated = currentVisibleItems.some((item) =>
