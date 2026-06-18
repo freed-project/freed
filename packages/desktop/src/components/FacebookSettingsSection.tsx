@@ -109,6 +109,7 @@ function Toggle({
   meta,
   testId,
   trailingAction,
+  labelAccessory,
 }: {
   label: string;
   checked: boolean;
@@ -117,16 +118,20 @@ function Toggle({
   meta?: string;
   testId?: string;
   trailingAction?: ReactNode;
+  labelAccessory?: ReactNode;
 }) {
   return (
     <div className="flex h-8 items-center justify-between gap-4">
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <p
-          data-testid={testId ? `${testId}-label` : undefined}
-          className="min-w-0 flex-1 truncate text-sm text-[#a1a1aa]"
-        >
-          {label}
-        </p>
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <p
+            data-testid={testId ? `${testId}-label` : undefined}
+            className="min-w-0 truncate text-sm text-[#a1a1aa]"
+          >
+            {label}
+          </p>
+          {labelAccessory}
+        </div>
         {meta ? (
           <p
             data-testid={testId ? `${testId}-meta` : undefined}
@@ -250,6 +255,7 @@ export function FacebookSettingsSection({
 
   const [checking, setChecking] = useState(false);
   const [refreshingGroups, setRefreshingGroups] = useState(false);
+  const [refreshingGroupId, setRefreshingGroupId] = useState<string | null>(null);
   const [lastDiag, setLastDiag] = useState<FbSyncDiag | null>(null);
   const [windowMode, setWindowMode] = useState(() => getFbScraperWindowMode());
   const [actionError, setActionError] = useState<string | null>(null);
@@ -490,13 +496,19 @@ export function FacebookSettingsSection({
   const handleRefreshGroups = useCallback(async () => {
     await confirm(async () => {
       setRefreshingGroups(true);
+      setRefreshingGroupId(null);
       setActionError(null);
       try {
-        await captureFbGroups();
+        await withProviderSyncing("facebook", () =>
+          captureFbGroups({
+            onCheckingGroup: setRefreshingGroupId,
+          }),
+        );
       } catch (err) {
         setActionError(err instanceof Error ? err.message : "Failed to refresh Facebook groups");
       } finally {
         setRefreshingGroups(false);
+        setRefreshingGroupId(null);
       }
     });
   }, [confirm]);
@@ -689,7 +701,7 @@ export function FacebookSettingsSection({
                     disabled={refreshingGroups}
                     className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
                   >
-                    {refreshingGroups ? "Refreshing..." : "Refresh"}
+                    Refresh groups
                   </button>
                 </>
               );
@@ -697,6 +709,7 @@ export function FacebookSettingsSection({
             renderItem={(group) => {
               const included = !excludedGroupIds[group.id];
               const checkingLeave = Boolean(checkingLeaveGroupIds[group.id]);
+              const refreshingGroup = refreshingGroupId === group.id;
               const { title, lastActiveText } = splitFacebookGroupName(
                 getFacebookGroupDisplayName(group),
               );
@@ -710,6 +723,15 @@ export function FacebookSettingsSection({
                   }}
                   meta={lastActiveText}
                   status={included ? "Included in future syncs" : "Hidden from future syncs"}
+                  labelAccessory={
+                    refreshingGroup ? (
+                      <span
+                        aria-label={`Refreshing group: ${title}`}
+                        data-testid={`facebook-group-${group.id}-refreshing`}
+                        className="h-3 w-3 shrink-0 rounded-full border border-[#8b5cf6]/50 border-t-[#c4b5fd] animate-spin"
+                      />
+                    ) : null
+                  }
                   trailingAction={
                     <Tooltip
                       label={checkingLeave ? "Checking leave status" : "Leave group via Facebook"}
