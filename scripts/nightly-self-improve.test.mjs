@@ -222,6 +222,26 @@ test("daily bug memory recognizes shipped fixes and zero additional continuation
   assert.equal(summary.latestHadFix, true);
 });
 
+test("daily bug memory recognizes no new repo commits without treating unmerged regressions as fixes", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-bug-memory-unmerged-"));
+  const memoryPath = path.join(dir, "memory.md");
+  writeFileSync(
+    memoryPath,
+    [
+      "# Daily Bug Scan Memory",
+      "",
+      "## 2026-06-17",
+      "- Outcome: no new repo commits landed after the last completed cutoff. The strongest surviving evidence-backed bug is still the unmerged nightly planner regression.",
+      "",
+    ].join("\n"),
+  );
+
+  const summary = summarizeDailyBugMemory(memoryPath);
+  assert.equal(summary.latestDate, "2026-06-17");
+  assert.equal(summary.latestHadNoNewCommits, true);
+  assert.equal(summary.latestHadFix, false);
+});
+
 test("candidate selection prioritizes memory work while preserving bug scans", () => {
   const candidates = buildCandidates({
     soak: {

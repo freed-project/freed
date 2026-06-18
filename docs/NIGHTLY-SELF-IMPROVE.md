@@ -96,7 +96,7 @@ Reports include an execution phase list so the night can move from evidence, to 
 
 The queue is no longer allowed to stop after one short task. The default selector keeps adding safe targets until it reaches the three-hour floor, the budget runs out, or the candidate list is exhausted.
 
-Stale dirty peer worktrees still stay in the evidence queue, but they no longer jump ahead of a fresh bug scan just because they touch nightly runner files. If a peer is read-only, behind current `dev`, and has no commits ahead of `origin/dev`, treat it as comparison material, not as the first thing to ship.
+Stale dirty peer worktrees still stay in the evidence queue, but they no longer jump ahead of a fresh bug scan just because they touch nightly runner files. If a peer is read-only, behind current `dev`, and has no commits ahead of `origin/dev`, treat it as comparison material, not as the first thing to ship. Daily bug scan summaries now also recognize explicit "no new repo commits" outcomes and avoid treating an unmerged regression note as if a fix already landed.
 
 ## Safety Gates
 
