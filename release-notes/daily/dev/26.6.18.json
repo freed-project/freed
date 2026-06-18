@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.6.18",
   "date": "2026-06-18",
-  "preferredDeck": null,
+  "preferredDeck": "Honest terminal sync results",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -10,5 +10,5 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [],
-  "updatedAt": "2026-06-18T09:56:00.000Z"
+  "updatedAt": "2026-06-18T10:52:40.000Z"
 }
