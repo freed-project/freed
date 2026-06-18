@@ -87,6 +87,8 @@ Use terminal-driven diagnostics first: app logs, `runtime-health.jsonl`, crash r
 
 Long-running or background work must not stop overnight because the next useful step would be a click in Freed Desktop. If a click is truly required to test efficiently, ask for permission with a 10 minute response window and then proceed if the user is unavailable. When the action is likely to recur, implement and ship a terminal trigger instead of depending on foreground UI automation. Sitting idle until morning is not acceptable when a trigger can be built or the user has given a timeout path.
 
+This is a workflow contract, not a suggestion for one specific script. Generated nightly tasks, release soak notes, morning closeout instructions, and agent handoff prompts must include the same rule whenever they mention app interaction. If the plan needs a button press to keep validating, the plan must name the terminal command or trigger to use, or it must state the 10 minute timeout path. A background run that can make progress must keep moving. Arthur Young did not build a universe of process tables so a machine could stare respectfully at a disabled button until breakfast.
+
 Production builds should keep reliability and memory-recovery behavior enabled, but the raw file-based sync trigger stays gated to dev-channel installs, debug builds, or explicit `FREED_ENABLE_DEV_SYNC_TRIGGERS=1` launches until it has a user-facing permission model. In the production channel, any local process that can write to the app data folder could otherwise start authenticated provider syncs, which changes observable Facebook, Instagram, or LinkedIn traffic without an explicit user action.
 
 ### Queued UI Polish

@@ -336,6 +336,7 @@ export async function captureDomFeed(
 - [x] Desktop now records rotating runtime-health diagnostics with renderer heartbeat state, memory preflight results, recovery attempts, and active background work so blank-renderer reports include the last bad minute of runtime context
 - [x] High-risk background work now waits for healthy renderer startup, active outbox drains, social scrapes, and memory pressure cooldowns before running content fetches, RSS polls, automatic snapshots, cloud uploads, cloud startup downloads, outbox drains, or native social scrapes
 - [x] Installed dev-channel builds can run Facebook, Instagram, and LinkedIn sync soaks from the terminal through a native app-data trigger, without System Events clicks or foreground focus theft
+- [x] Internal desktop soak guidance now treats terminal triggers and the 10 minute timeout path as the required unattended workflow, including generated nightly plans, release soak notes, and handoff prompts
 - [x] Renderer recovery now requires both native window visibility and renderer document visibility before treating heartbeat gaps as foreground stalls, so background provider work is not paused by normal hidden WebKit timer throttling
 - [x] Native renderer recovery now marks failed recovery state, requests relaunch, and forces the old process to exit if the main WebView label stays stuck after a destroyed renderer
 - [x] Native relay broadcasts now reuse shared document buffers and stop writing a full snapshot on every live document push, reducing clone pressure during heavy sync churn
