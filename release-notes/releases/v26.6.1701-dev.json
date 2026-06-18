@@ -3,7 +3,7 @@
   "version": "26.6.1701-dev",
   "channel": "dev",
   "dayKey": "26.6.17",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-18T05:24:12.100Z",
   "model": "heuristic",
@@ -72,17 +72,18 @@
     ]
   },
   "release": {
-    "deck": "Move activity monitor to top toolbar, clipboard save shortcut, and harden desktop sync recovery",
+    "deck": "Move activity monitor to top toolbar and add clipboard save shortcut",
     "features": [
       "Move activity monitor to top toolbar",
       "Clipboard save shortcut"
     ],
     "fixes": [
+      "Harden desktop sync recovery",
       "Show cloud sync elapsed status",
       "Harden PWA sync hydration",
       "Repair PWA Google Drive sync resolution"
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.1701-dev\n\nMove activity monitor to top toolbar, clipboard save shortcut, and harden desktop sync recovery\n\n### Features\n\n- Move activity monitor to top toolbar\n- Clipboard save shortcut\n\n### Fixes\n\n- Show cloud sync elapsed status\n- Harden PWA sync hydration\n- Repair PWA Google Drive sync resolution\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.1701-dev\n\nMove activity monitor to top toolbar and add clipboard save shortcut\n\n### Features\n\n- Move activity monitor to top toolbar\n- Clipboard save shortcut\n\n### Fixes\n\n- Harden desktop sync recovery\n- Show cloud sync elapsed status\n- Harden PWA sync hydration\n- Repair PWA Google Drive sync resolution\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
