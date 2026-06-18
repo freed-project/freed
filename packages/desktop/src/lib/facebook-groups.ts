@@ -44,7 +44,7 @@ export function isMissingFacebookGroupName(group: Pick<FbGroupInfo, "id" | "name
 export function getFacebookGroupDisplayName(group: FbGroupInfo): string {
   const cleaned = cleanFacebookGroupName(group.name);
   if (isUsableFacebookGroupName(cleaned, group.id)) return cleaned;
-  return "Facebook group";
+  return `Facebook group ...${group.id.slice(-8)}`;
 }
 
 interface FacebookGroupMergeResult {

@@ -594,7 +594,14 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
   }
 }
 
-export async function captureFbGroups(): Promise<FbGroupInfo[]> {
+interface CaptureFbGroupsOptions {
+  onCheckingGroup?: (groupId: string | null) => void;
+}
+
+export async function captureFbGroups(
+  options: CaptureFbGroupsOptions = {},
+): Promise<FbGroupInfo[]> {
+  addDebugEvent("change", "[FB] group refresh started");
   const memoryPrep = await prepareSocialScrapeMemory("facebook", "groups scrape");
   if (!memoryPrep.mayProceed) {
     addDebugEvent(
@@ -609,7 +616,7 @@ export async function captureFbGroups(): Promise<FbGroupInfo[]> {
   });
 
   const merge = await updateKnownFacebookGroups(groups);
-  const hydrated = await hydrateMissingFacebookGroupNames();
+  const hydrated = await hydrateMissingFacebookGroupNames(options);
 
   addDebugEvent(
     "change",
@@ -649,7 +656,9 @@ async function removeKnownFacebookGroup(groupId: string): Promise<boolean> {
   return existed;
 }
 
-async function hydrateMissingFacebookGroupNames(): Promise<{
+async function hydrateMissingFacebookGroupNames(
+  options: CaptureFbGroupsOptions = {},
+): Promise<{
   checkedCount: number;
   repairedNameCount: number;
   removedCount: number;
@@ -663,6 +672,7 @@ async function hydrateMissingFacebookGroupNames(): Promise<{
   let removedCount = 0;
 
   for (const group of missingGroups) {
+    options.onCheckingGroup?.(group.id);
     try {
       const check = await checkFacebookGroupMembership(group);
       if (check.stillJoined === false) {
@@ -693,6 +703,8 @@ async function hydrateMissingFacebookGroupNames(): Promise<{
         "error",
         `[FB] group name repair failed for ...${group.id.slice(-8)}: ${err instanceof Error ? err.message : String(err)}`,
       );
+    } finally {
+      options.onCheckingGroup?.(null);
     }
   }
 
