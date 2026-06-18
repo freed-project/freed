@@ -182,6 +182,25 @@ function RecentAttemptsList({
   );
 }
 
+function isSuccessfulAttempt(attempt: ProviderHealthAttempt): boolean {
+  return attempt.outcome === "success";
+}
+
+function describeAttemptOutcome(attempt: ProviderHealthAttempt): string {
+  if (attempt.reason) return attempt.reason;
+  if (attempt.outcome === "cooldown") return "Cooling down";
+  if (attempt.outcome === "provider_rate_limit") return "Rate limit detected";
+  if (attempt.outcome === "empty") return "No posts pulled";
+  return "Sync failed";
+}
+
+function latestVisibleIssue(attempts: ProviderHealthAttempt[]): ProviderHealthAttempt | undefined {
+  const directFailure = attempts.find(
+    (attempt) => !isSuccessfulAttempt(attempt) && attempt.outcome !== "cooldown",
+  );
+  return directFailure ?? attempts.find((attempt) => !isSuccessfulAttempt(attempt));
+}
+
 export function ProviderHealthSummary({
   snapshot,
   defaultRange = "daily",
@@ -216,6 +235,13 @@ export function ProviderHealthSummary({
     !!snapshot.currentMessage &&
     snapshot.status !== "healthy" &&
     snapshot.currentMessage !== snapshot.lastError;
+  const latestIssue =
+    snapshot.status === "healthy" ? undefined : latestVisibleIssue(snapshot.latestAttempts);
+  const latestIssueMessage = latestIssue ? describeAttemptOutcome(latestIssue) : undefined;
+  const showCurrentStatusMessage =
+    showMessages && showCurrentMessage && snapshot.currentMessage !== latestIssueMessage;
+  const showLastErrorMessage =
+    showMessages && !!snapshot.lastError && snapshot.lastError !== latestIssueMessage;
 
   const content = (
     <>
@@ -287,16 +313,26 @@ export function ProviderHealthSummary({
         <RecentAttemptsList attempts={snapshot.latestAttempts} />
       )}
 
+      {latestIssue && (
+        <div className="space-y-1 rounded-lg bg-[var(--theme-bg-muted)] px-2 py-2 text-xs">
+          <p className="font-medium text-[var(--theme-text-secondary)]">
+            Last failure {formatHealthRelative(latestIssue.finishedAt)} at{" "}
+            {formatShortClockTime(latestIssue.finishedAt)}
+          </p>
+          <p className="text-amber-400">{latestIssueMessage}</p>
+        </div>
+      )}
+
       {actions && (
         <div className="flex flex-wrap gap-2">
           {actions}
         </div>
       )}
 
-      {showMessages && showCurrentMessage && (
+      {showCurrentStatusMessage && (
         <p className="text-xs text-[var(--theme-text-muted)]">{snapshot.currentMessage}</p>
       )}
-      {showMessages && snapshot.lastError && (
+      {showLastErrorMessage && (
         <p className="text-xs text-amber-400">{snapshot.lastError}</p>
       )}
     </>

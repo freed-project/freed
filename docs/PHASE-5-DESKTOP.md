@@ -282,7 +282,7 @@ export async function captureDomFeed(
 - [x] Debug panel Health tab charts provider reliability plus daily and hourly pull volume across RSS, X, Facebook, Instagram, LinkedIn, Google Drive, and Dropbox, with an in-card duration dropdown for each provider
 - [x] Failing RSS feeds can be reviewed and unsubscribed from the health panel, with optional article/history deletion
 - [x] Provider status indicators switch to a live spinner while that provider is actively syncing
-- [x] Social provider sections surface a filtered inner scrape log with line-by-line progress while capture is running
+- [x] Social provider sections surface a filtered inner scrape log with line-by-line progress while capture is running, and paused or degraded summaries keep the latest failure reason plus timestamp visible outside the debug panel
 - [x] Settings modal includes an explicit close button in the sidebar on larger screens and at the mobile header edge on small screens
 - [x] Risk dialogs and other central overlay modals stay vertically scrollable on tiny mobile screens so action buttons remain reachable
 - [x] Desktop sync header and source settings surface degraded or paused provider health outside the debug panel

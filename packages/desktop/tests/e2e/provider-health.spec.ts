@@ -1073,6 +1073,21 @@ test("cooldown states use a specific label instead of generic attention copy", a
             bytesMoved: 0,
             signalType: "none",
           },
+          {
+            id: "instagram-extract-failure",
+            provider: "instagram",
+            scope: "provider",
+            outcome: "error",
+            stage: "extract",
+            reason: "Extractor saw the login prompt instead of posts.",
+            startedAt: now - 2 * 60_000,
+            finishedAt: now - 90_000,
+            durationMs: 30_000,
+            itemsSeen: 0,
+            itemsAdded: 0,
+            bytesMoved: 0,
+            signalType: "none",
+          },
         ],
         totalSeen7d: 0,
         totalAdded7d: 0,
@@ -1208,6 +1223,8 @@ test("cooldown states use a specific label instead of generic attention copy", a
   await openSettingsSection(page, "Instagram");
 
   await expect(page.getByText("Cooling down").first()).toBeVisible();
+  await expect(page.getByText(/Last failure .* at /)).toBeVisible();
+  await expect(page.getByText("Extractor saw the login prompt instead of posts.")).toBeVisible();
   await expect(page.getByTestId("settings-provider-status-instagram")).toHaveAttribute(
     "title",
     "Cooling down",
