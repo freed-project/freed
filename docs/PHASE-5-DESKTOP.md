@@ -341,7 +341,7 @@ export async function captureDomFeed(
 - [x] Installed Desktop cold startup now has a quiet presentation path for `open -g` and skips foreground-only occlusion recovery so terminal-driven soaks can launch the app without force-activating it
 - [x] Desktop terminal sync triggers now report real provider outcomes, fail zero-post or deferred runs, and ignore stale native timeouts instead of overwriting newer trigger results
 - [x] Desktop terminal sync trigger requests now expire after the helper timeout, so old request files do not replay authenticated provider traffic on the next app launch
-- [x] Idle desktop memory recovery now recycles an old hidden main WebKit renderer when it is retaining reclaimable multi-GB RSS, without forcing the app into focus
+- [x] Idle desktop memory recovery now ignores reclaimable WebKit RSS tail when physical footprint is healthy, so renderer recovery does not churn into safe mode and block provider syncs
 - [x] Renderer recovery now requires both native window visibility and renderer document visibility before treating heartbeat gaps as foreground stalls, so background provider work is not paused by normal hidden WebKit timer throttling
 - [x] Native renderer recovery now marks failed recovery state, requests relaunch, and forces the old process to exit if the main WebView label stays stuck after a destroyed renderer
 - [x] Native relay broadcasts now reuse shared document buffers and stop writing a full snapshot on every live document push, reducing clone pressure during heavy sync churn
