@@ -36,11 +36,40 @@ interface NamedLocationRequest {
   name: string;
 }
 
+interface NamedLocationGroup {
+  name: string;
+  requests: NamedLocationRequest[];
+}
+
 const EMPTY_STATE: ResolvedLocationsCacheState = {
   resolvedItems: [],
   lastResolvedAt: null,
   resolvingCount: 0,
 };
+
+function namedLocationKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function groupNamedLocationRequests(requests: NamedLocationRequest[]): NamedLocationGroup[] {
+  const groups = new Map<string, NamedLocationGroup>();
+
+  for (const request of requests) {
+    const key = namedLocationKey(request.name);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.requests.push(request);
+      continue;
+    }
+
+    groups.set(key, {
+      name: request.name,
+      requests: [request],
+    });
+  }
+
+  return Array.from(groups.values());
+}
 
 export function useResolvedLocations(
   feedItems: FeedItem[],
@@ -92,7 +121,8 @@ export function useResolvedLocations(
 
     return {
       coordinateItems,
-      namedRequests,
+      namedGroups: groupNamedLocationRequests(namedRequests),
+      namedRequestCount: namedRequests.length,
     };
   }, [feedItems, personBySourceKey]);
 
@@ -100,7 +130,7 @@ export function useResolvedLocations(
     let cancelled = false;
 
     async function resolveLocations() {
-      if (locationPlan.namedRequests.length === 0) {
+      if (locationPlan.namedRequestCount === 0) {
         setState((current) =>
           current.resolvedItems.length === 0 && current.resolvingCount === 0
             ? current
@@ -113,29 +143,40 @@ export function useResolvedLocations(
         return;
       }
 
-      setState((current) => ({ ...current, resolvingCount: locationPlan.namedRequests.length }));
-
-      const resolvedItems = (await Promise.all(
-        locationPlan.namedRequests.map(({ item, friend, name }) =>
-          geocode(name).then((geo): ResolvedLocationItem | null => {
-            if (!geo) return null;
-            return {
-              item,
-              friend,
-              lat: geo.latitude,
-              lng: geo.longitude,
-              label: geo.name ?? name,
-            };
-          })
-        )
-      )).filter((resolved): resolved is ResolvedLocationItem => resolved !== null);
-      if (cancelled) return;
-
       setState({
-        resolvedItems,
-        resolvingCount: 0,
-        lastResolvedAt: Date.now(),
+        resolvedItems: [],
+        resolvingCount: locationPlan.namedRequestCount,
+        lastResolvedAt: null,
       });
+
+      let remainingCount = locationPlan.namedRequestCount;
+
+      for (const group of locationPlan.namedGroups) {
+        void geocode(group.name).then((geo) => {
+          if (cancelled) return;
+
+          remainingCount = Math.max(0, remainingCount - group.requests.length);
+          const groupResolvedItems: ResolvedLocationItem[] = geo
+            ? group.requests.map(({ item, friend, name }) => ({
+                item,
+                friend,
+                lat: geo.latitude,
+                lng: geo.longitude,
+                label: geo.name ?? name,
+              }))
+            : [];
+          const completedAt = remainingCount === 0 ? Date.now() : null;
+
+          setState((current) => ({
+            resolvedItems:
+              groupResolvedItems.length === 0
+                ? current.resolvedItems
+                : [...current.resolvedItems, ...groupResolvedItems],
+            resolvingCount: remainingCount,
+            lastResolvedAt: completedAt ?? current.lastResolvedAt,
+          }));
+        });
+      }
     }
 
     void resolveLocations();
@@ -143,7 +184,7 @@ export function useResolvedLocations(
     return () => {
       cancelled = true;
     };
-  }, [locationPlan.namedRequests]);
+  }, [locationPlan.namedGroups, locationPlan.namedRequestCount]);
 
   const resolvedItems = useMemo(
     () => [...locationPlan.coordinateItems, ...state.resolvedItems],

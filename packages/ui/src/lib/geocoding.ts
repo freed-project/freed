@@ -5,6 +5,8 @@ const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const USER_AGENT = "Freed/1.0 (app.freed.wtf)";
 const MIN_INTERVAL_MS = 1100;
 const pendingQueue: Array<() => void> = [];
+const memoryCache = new Map<string, GeoLocation | null>();
+const inFlightRequests = new Map<string, Promise<GeoLocation | null>>();
 let lastRequestAt = 0;
 let draining = false;
 
@@ -53,9 +55,37 @@ function throttledFetch(url: string): Promise<Response> {
 }
 
 export async function geocode(query: string): Promise<GeoLocation | null> {
-  const cached = await getFromCache(query);
-  if (cached !== undefined) return cached;
+  if (memoryCache.has(query)) {
+    return memoryCache.get(query) ?? null;
+  }
 
+  const inFlight = inFlightRequests.get(query);
+  if (inFlight) return inFlight;
+
+  const request = geocodeWithCache(query);
+  inFlightRequests.set(query, request);
+
+  try {
+    const location = await request;
+    return location;
+  } finally {
+    inFlightRequests.delete(query);
+  }
+}
+
+async function geocodeWithCache(query: string): Promise<GeoLocation | null> {
+  const cached = await getFromCache(query);
+  if (cached !== undefined) {
+    memoryCache.set(query, cached);
+    return cached;
+  }
+
+  const location = await geocodeUncached(query);
+  memoryCache.set(query, location);
+  return location;
+}
+
+async function geocodeUncached(query: string): Promise<GeoLocation | null> {
   try {
     const url = `${NOMINATIM_URL}?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1`;
     const res = await throttledFetch(url);
