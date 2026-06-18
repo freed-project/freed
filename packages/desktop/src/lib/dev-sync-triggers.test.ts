@@ -5,6 +5,8 @@ const writeNativeJsonFile = vi.fn();
 const refreshSocialProvider = vi.fn();
 const loadDesktopReleaseChannelState = vi.fn();
 const getStoreState = vi.fn();
+const initializeStore = vi.fn();
+const hasAcceptedDesktopBundle = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
   isTauri: () => true,
@@ -23,6 +25,10 @@ vi.mock("./release-channel", () => ({
   loadDesktopReleaseChannelState,
 }));
 
+vi.mock("./legal-consent", () => ({
+  hasAcceptedDesktopBundle,
+}));
+
 vi.mock("./store", () => ({
   useAppStore: {
     getState: getStoreState,
@@ -38,7 +44,7 @@ vi.mock("./logger", () => ({
 }));
 
 async function flushImmediatePoll() {
-  for (let index = 0; index < 5; index += 1) {
+  for (let index = 0; index < 10; index += 1) {
     await Promise.resolve();
   }
 }
@@ -51,6 +57,9 @@ describe("dev sync triggers", () => {
     refreshSocialProvider.mockReset();
     loadDesktopReleaseChannelState.mockReset();
     getStoreState.mockReset();
+    initializeStore.mockReset();
+    hasAcceptedDesktopBundle.mockReset();
+    hasAcceptedDesktopBundle.mockResolvedValue(true);
     getStoreState.mockReturnValue({ isInitialized: true });
     loadDesktopReleaseChannelState.mockResolvedValue({
       selectedChannel: "production",
@@ -132,12 +141,13 @@ describe("dev sync triggers", () => {
     );
   });
 
-  it("waits for startup initialization before running a provider trigger", async () => {
+  it("initializes the store before running a provider trigger", async () => {
     const { installDevSyncTriggerBridge } = await import("./dev-sync-triggers");
     refreshSocialProvider.mockResolvedValue(undefined);
+    initializeStore.mockResolvedValue(undefined);
     getStoreState
-      .mockReturnValueOnce({ isInitialized: false })
-      .mockReturnValueOnce({ isInitialized: false })
+      .mockReturnValueOnce({ isInitialized: false, initialize: initializeStore })
+      .mockReturnValueOnce({ isInitialized: false, initialize: initializeStore })
       .mockReturnValue({ isInitialized: true });
 
     const stop = installDevSyncTriggerBridge();
@@ -145,10 +155,10 @@ describe("dev sync triggers", () => {
       id: "request-native-startup",
       provider: "facebook",
     });
-    await vi.advanceTimersByTimeAsync(500);
     await triggerPromise;
     stop();
 
+    expect(initializeStore).toHaveBeenCalled();
     expect(refreshSocialProvider).toHaveBeenCalledWith("facebook");
     expect(writeNativeJsonFile).toHaveBeenLastCalledWith(
       "dev-sync-trigger-result.json",
@@ -156,6 +166,30 @@ describe("dev sync triggers", () => {
         id: "request-native-startup",
         provider: "facebook",
         status: "completed",
+      }),
+      "dev-sync-trigger",
+    );
+  });
+
+  it("fails before provider traffic when Desktop legal consent is missing", async () => {
+    const { installDevSyncTriggerBridge } = await import("./dev-sync-triggers");
+    hasAcceptedDesktopBundle.mockResolvedValue(false);
+
+    const stop = installDevSyncTriggerBridge();
+    await window.__FREED_RUN_SOCIAL_SYNC__?.({
+      id: "request-native-legal",
+      provider: "facebook",
+    });
+    stop();
+
+    expect(initializeStore).not.toHaveBeenCalled();
+    expect(refreshSocialProvider).not.toHaveBeenCalled();
+    expect(writeNativeJsonFile).toHaveBeenCalledWith(
+      "dev-sync-trigger-result.json",
+      expect.objectContaining({
+        id: "request-native-legal",
+        provider: "facebook",
+        status: "error",
       }),
       "dev-sync-trigger",
     );

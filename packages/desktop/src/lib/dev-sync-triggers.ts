@@ -2,14 +2,13 @@ import { isTauri } from "@tauri-apps/api/core";
 import { log } from "./logger";
 import { readNativeJsonFile, writeNativeJsonFile } from "./native-json-store";
 import { refreshSocialProvider, type RetriableSocialProvider } from "./capture";
+import { hasAcceptedDesktopBundle } from "./legal-consent";
 import { loadDesktopReleaseChannelState } from "./release-channel";
 import { useAppStore } from "./store";
 
 const DEV_SYNC_TRIGGER_FILE = "dev-sync-trigger.json";
 const DEV_SYNC_TRIGGER_RESULT_FILE = "dev-sync-trigger-result.json";
 const DEV_SYNC_TRIGGER_POLL_MS = 5_000;
-const DEV_SYNC_TRIGGER_READY_TIMEOUT_MS = 120_000;
-const DEV_SYNC_TRIGGER_READY_POLL_MS = 250;
 const DEV_SYNC_TRIGGERS_ENABLED =
   import.meta.env.VITE_ENABLE_DEV_SYNC_TRIGGERS === "1" ||
   import.meta.env.VITE_TEST_TAURI === "1";
@@ -37,18 +36,9 @@ function parseProvider(value: unknown): RetriableSocialProvider | null {
     : null;
 }
 
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-async function waitForInitializedStore(
-  timeoutMs = DEV_SYNC_TRIGGER_READY_TIMEOUT_MS,
-): Promise<boolean> {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    if (useAppStore.getState().isInitialized) return true;
-    await wait(DEV_SYNC_TRIGGER_READY_POLL_MS);
-  }
+async function ensureInitializedStore(): Promise<boolean> {
+  if (useAppStore.getState().isInitialized) return true;
+  await useAppStore.getState().initialize();
   return useAppStore.getState().isInitialized;
 }
 
@@ -107,21 +97,31 @@ async function runDevSyncTrigger(request: DevSyncTriggerBridgeRequest): Promise<
     return;
   }
 
-  const ready = await waitForInitializedStore();
-  if (!ready) {
+  const accepted = await hasAcceptedDesktopBundle();
+  if (!accepted) {
     await writeResult(
       requestId,
       provider,
       "error",
-      "Freed did not finish initializing before the sync trigger timeout.",
+      "Freed Desktop legal consent has not been accepted.",
     );
     return;
   }
 
-  await writeResult(requestId, provider, "started");
-  log.info(`[dev-sync-trigger] starting ${provider} sync request ${requestId}`);
-
   try {
+    const ready = await ensureInitializedStore();
+    if (!ready) {
+      await writeResult(
+        requestId,
+        provider,
+        "error",
+        "Freed did not finish initializing before the sync trigger could run.",
+      );
+      return;
+    }
+
+    await writeResult(requestId, provider, "started");
+    log.info(`[dev-sync-trigger] starting ${provider} sync request ${requestId}`);
     await refreshSocialProvider(provider);
     await writeResult(requestId, provider, "completed");
     log.info(`[dev-sync-trigger] completed ${provider} sync request ${requestId}`);
