@@ -145,6 +145,7 @@ export function tauriInitScript(): string {
       },
       get_updater_target: () => 'darwin-aarch64',
       retry_startup_after_crash: () => null,
+      export_startup_diagnostics: () => '/Users/test/Downloads/freed-diagnostics-test.json',
       reset_pairing_token: () => null,
       get_recent_logs: () => [],
       get_recent_runtime_health: () => [],
