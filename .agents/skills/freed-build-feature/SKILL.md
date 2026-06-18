@@ -42,11 +42,11 @@ Create a product worktree branch from the latest remote `dev`, implement enough 
    - Do not simplify test suites blindly. Profile specific slow commands first, then trim redundant coverage with evidence.
 12. Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run commands from the workspace directory itself, and when a hoisted binary is needed, prefix `PATH` with `<worktree>/node_modules/.bin`.
 13. Browser tooling is opt-in only. Do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging.
-14. Installed Desktop soaks on the user's primary machine should be terminal driven. Prefer logs, `runtime-health.jsonl`, process samples, and the dev-only sync trigger over System Events clicks or foreground UI automation.
-   - Use a GitHub dev-channel prerelease or build soak builds with `VITE_ENABLE_DEV_SYNC_TRIGGERS=1` when a provider sync must be triggered from the terminal.
+14. Installed Desktop soaks on the user's primary machine should be terminal driven. Prefer logs, `runtime-health.jsonl`, process samples, and the native sync trigger over System Events clicks or foreground UI automation.
+   - Use a GitHub dev-channel prerelease or launch local soak builds with `FREED_ENABLE_DEV_SYNC_TRIGGERS=1` when a provider sync must be triggered from the terminal.
    - Use `node scripts/dev-sync-trigger.mjs facebook`, `instagram`, or `linkedin` to call the normal in-app social refresh path. It must keep auth, pause state, cooldowns, and rate limits intact.
-   - Do not enable the raw file trigger in production builds until it has a user-facing permission model.
-15. Long-running work must not stop until morning solely because a click would continue validation. If foreground app interaction is genuinely necessary, ask with a 10 minute response window, then proceed if the user is unavailable. If the action will recur, add and ship a dev-only trigger instead of depending on clicks.
+   - Keep the raw file trigger gated to dev-channel installs, debug builds, or explicit `FREED_ENABLE_DEV_SYNC_TRIGGERS=1` launches until it has a user-facing permission model.
+15. Long-running work must not stop until morning solely because a click would continue validation. If foreground app interaction is genuinely necessary, ask with a 10 minute response window, then proceed if the user is unavailable. If the action will recur, add and ship a terminal trigger instead of depending on clicks. Sitting idle until morning is not acceptable when a trigger can be built or the user has given a timeout path.
 16. When browser tooling was needed, clean the session before closeout with `./scripts/dev-session-clean.sh`.
 17. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
    - If the branch intentionally adds new files, stage them yourself first or re-run with `--include-untracked`.

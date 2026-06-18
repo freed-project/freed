@@ -26,10 +26,10 @@ Ship a new versioned build from the correct release branch using GitHub Actions.
    - Squash-merge the PR to `dev` for dev-release fixes, or to `main` for production-release fixes.
    - Initiate a follow-up build from the matching release branch.
 8. Repeat until all platform builds are successful.
-9. For installed-build soaks on the user's primary machine, keep validation terminal driven whenever possible. Use logs, runtime-health samples, process samples, and dev-only triggers instead of System Events clicks or foreground UI automation.
-   - Dev-channel prereleases compile in `VITE_ENABLE_DEV_SYNC_TRIGGERS=1`, and local soak builds can use the same env. Drive them with `node scripts/dev-sync-trigger.mjs facebook`, `instagram`, or `linkedin`.
+9. For installed-build soaks on the user's primary machine, keep validation terminal driven whenever possible. Use logs, runtime-health samples, process samples, and native triggers instead of System Events clicks or foreground UI automation.
+   - Dev-channel prereleases enable the native trigger automatically, and local soak builds can be launched with `FREED_ENABLE_DEV_SYNC_TRIGGERS=1`. Drive them with `node scripts/dev-sync-trigger.mjs facebook`, `instagram`, or `linkedin`.
    - The trigger must call the normal in-app provider refresh path and preserve auth, pause state, cooldowns, and rate limits.
-   - Production builds keep reliability and memory recovery behavior, but the raw file trigger stays out of production until it has a user-facing permission model.
-10. A long-running release or soak run must not pause until morning solely because a button click would continue validation. If a foreground click is genuinely necessary, ask with a 10 minute response window, then proceed if the user is unavailable. If the action will recur, add and ship a dev-only trigger.
+   - Production builds keep reliability and memory recovery behavior, but the raw file trigger stays gated to dev-channel installs, debug builds, or explicit `FREED_ENABLE_DEV_SYNC_TRIGGERS=1` launches until it has a user-facing permission model.
+10. A long-running release or soak run must not pause until morning solely because a button click would continue validation. If a foreground click is genuinely necessary, ask with a 10 minute response window, then proceed if the user is unavailable. If the action will recur, add and ship a terminal trigger. Sitting idle until morning is not acceptable when a trigger can be built or the user has given a timeout path.
 11. After every successful production release, create a dedicated reverse-integration branch from `origin/dev`, merge `origin/main` into it with a merge commit, run `npm run validate:dev`, and open a draft PR targeting `dev`.
 12. After a dev or production release ships successfully, use `freed-ship-www` in changelog refresh mode so the static public changelog can include the newly published release without merging `dev` into `www`.
