@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  applyPinnedHighlightsToRelease,
   buildReleaseDeck,
   compareTags,
   compareVersionDays,
@@ -223,6 +224,24 @@ test("normalizePinnedHighlightTexts supports string and object entries", () => {
     [
       "The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes",
       "Terminal trigger docs stay available for unattended soaks",
+    ],
+  );
+});
+
+test("applyPinnedHighlightsToRelease keeps missing pinned items visible", () => {
+  assert.deepEqual(
+    applyPinnedHighlightsToRelease(
+      {
+        deck: "More reliable unattended desktop validation",
+        fixes: ["Harden quiet startup and sync recovery"],
+        followUps: [],
+      },
+      [
+        "The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes",
+      ],
+    ).fixes,
+    [
+      "The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes",
     ],
   );
 });

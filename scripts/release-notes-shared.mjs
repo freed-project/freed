@@ -181,6 +181,35 @@ export function normalizePinnedHighlightTexts(items = []) {
     .filter(Boolean);
 }
 
+export function applyPinnedHighlightsToRelease(rawRelease = {}, pinnedHighlights = []) {
+  const release = sanitizeReleaseShape(rawRelease);
+  const pinnedTexts = normalizePinnedHighlightTexts(pinnedHighlights);
+
+  for (const pinnedText of pinnedTexts) {
+    const visibleItems = [
+      release.deck,
+      ...release.features,
+      ...release.fixes,
+      ...release.followUps,
+    ].filter(Boolean);
+    if (
+      visibleItems.some(
+        (item) =>
+          normalizeReleaseText(item).toLowerCase() ===
+          normalizeReleaseText(pinnedText).toLowerCase(),
+      )
+    ) {
+      continue;
+    }
+    release.features = release.features.filter((item) => !areNearDuplicates(item, pinnedText));
+    release.fixes = release.fixes.filter((item) => !areNearDuplicates(item, pinnedText));
+    release.followUps = release.followUps.filter((item) => !areNearDuplicates(item, pinnedText));
+    release.fixes.push(pinnedText);
+  }
+
+  return release;
+}
+
 function stripItemPrefix(text) {
   return normalizeReleaseText(text)
     .replace(COMMON_ITEM_PREFIX, "")

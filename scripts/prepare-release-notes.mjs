@@ -6,6 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import {
   areNearDuplicates,
+  applyPinnedHighlightsToRelease,
   buildReleaseDeck,
   compareTags,
   compareVersionDays,
@@ -1131,7 +1132,11 @@ async function main() {
         existingDaily,
       )
     : generatedRelease;
-  const validation = validateReleaseShape(finalRelease, {
+  const releaseWithPinnedHighlights = applyPinnedHighlightsToRelease(
+    finalRelease,
+    existingDaily.pinnedHighlights ?? [],
+  );
+  const validation = validateReleaseShape(releaseWithPinnedHighlights, {
     earlierReleases: context.isLatestOfDay ? carriedForwardReleases : [],
     previousDayRelease,
   });
