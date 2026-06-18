@@ -1138,9 +1138,11 @@ fn dispatch_dev_sync_trigger_to_renderer(
     let payload = serde_json::to_string(&payload).map_err(|error| error.to_string())?;
     let event_name = escape_js_string("dev-sync-trigger-native-result");
     let missing_detail = escape_js_string("renderer sync trigger bridge is not registered");
+    let bridge_wait_timeout_ms = 120_000;
     let script = format!(
         r#"(function() {{
   var request = {payload};
+  var startedAt = Date.now();
   var emitResult = function(status, detail) {{
     try {{
       if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {{
@@ -1154,14 +1156,22 @@ fn dispatch_dev_sync_trigger_to_renderer(
       }}
     }} catch (_) {{}}
   }};
-  var run = window.__FREED_RUN_SOCIAL_SYNC__;
-  if (typeof run !== "function") {{
-    emitResult("error", {missing_detail});
-    return;
-  }}
-  Promise.resolve(run(request)).catch(function(error) {{
-    emitResult("error", error && error.message ? error.message : String(error));
-  }});
+  var waitForBridge = function() {{
+    var run = window.__FREED_RUN_SOCIAL_SYNC__;
+    if (typeof run === "function") {{
+      Promise.resolve(run(request)).catch(function(error) {{
+        emitResult("error", error && error.message ? error.message : String(error));
+      }});
+      return;
+    }}
+    if (Date.now() - startedAt > {bridge_wait_timeout_ms}) {{
+      emitResult("error", {missing_detail});
+      return;
+    }}
+    emitResult("waiting", {missing_detail});
+    window.setTimeout(waitForBridge, 250);
+  }};
+  waitForBridge();
 }})();"#
     );
     window.eval(&script).map_err(|error| error.to_string())
@@ -1176,6 +1186,13 @@ fn start_dev_sync_trigger_keepalive(app: tauri::AppHandle, data_dir: PathBuf, re
                 warn!(
                     "[dev-sync-trigger] renderer keepalive timed out for request {}",
                     request_id
+                );
+                write_dev_sync_trigger_result(
+                    &data_dir,
+                    &request_id,
+                    None,
+                    "error",
+                    Some("Renderer did not finish the sync trigger before the native timeout."),
                 );
                 return;
             }
@@ -1222,9 +1239,9 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
                     if let Some(request_id) = request.id.as_deref().map(str::trim) {
                         if !request_id.is_empty() && last_handled_id.as_deref() != Some(request_id)
                         {
-                            last_handled_id = Some(request_id.to_string());
                             let provider = request.provider.as_deref().map(str::trim).unwrap_or("");
                             if !is_supported_dev_sync_provider(provider) {
+                                last_handled_id = Some(request_id.to_string());
                                 write_dev_sync_trigger_result(
                                     &data_dir,
                                     request_id,
@@ -1244,6 +1261,7 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
                                     &app, request_id, provider,
                                 ) {
                                     Ok(()) => {
+                                        last_handled_id = Some(request_id.to_string());
                                         info!(
                                             "[dev-sync-trigger] dispatched {} sync request {}",
                                             provider, request_id
@@ -1263,7 +1281,7 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
                                             &data_dir,
                                             request_id,
                                             Some(provider),
-                                            "error",
+                                            "waiting",
                                             Some(&error),
                                         );
                                     }

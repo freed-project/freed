@@ -3,10 +3,13 @@ import { log } from "./logger";
 import { readNativeJsonFile, writeNativeJsonFile } from "./native-json-store";
 import { refreshSocialProvider, type RetriableSocialProvider } from "./capture";
 import { loadDesktopReleaseChannelState } from "./release-channel";
+import { useAppStore } from "./store";
 
 const DEV_SYNC_TRIGGER_FILE = "dev-sync-trigger.json";
 const DEV_SYNC_TRIGGER_RESULT_FILE = "dev-sync-trigger-result.json";
 const DEV_SYNC_TRIGGER_POLL_MS = 5_000;
+const DEV_SYNC_TRIGGER_READY_TIMEOUT_MS = 120_000;
+const DEV_SYNC_TRIGGER_READY_POLL_MS = 250;
 const DEV_SYNC_TRIGGERS_ENABLED =
   import.meta.env.VITE_ENABLE_DEV_SYNC_TRIGGERS === "1" ||
   import.meta.env.VITE_TEST_TAURI === "1";
@@ -32,6 +35,21 @@ function parseProvider(value: unknown): RetriableSocialProvider | null {
   return value === "facebook" || value === "instagram" || value === "linkedin"
     ? value
     : null;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function waitForInitializedStore(
+  timeoutMs = DEV_SYNC_TRIGGER_READY_TIMEOUT_MS,
+): Promise<boolean> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (useAppStore.getState().isInitialized) return true;
+    await wait(DEV_SYNC_TRIGGER_READY_POLL_MS);
+  }
+  return useAppStore.getState().isInitialized;
 }
 
 type DevSyncTriggerPollerOptions = {
@@ -85,6 +103,17 @@ async function runDevSyncTrigger(request: DevSyncTriggerBridgeRequest): Promise<
       null,
       "ignored",
       "Unsupported provider. Use facebook, instagram, or linkedin.",
+    );
+    return;
+  }
+
+  const ready = await waitForInitializedStore();
+  if (!ready) {
+    await writeResult(
+      requestId,
+      provider,
+      "error",
+      "Freed did not finish initializing before the sync trigger timeout.",
     );
     return;
   }
