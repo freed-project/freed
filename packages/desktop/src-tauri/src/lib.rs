@@ -2707,18 +2707,6 @@ fn main_renderer_memory_recovery_reason(
         });
     }
 
-    if webkit_resident_tail_is_probably_reclaimable(stats)
-        && stats.webkit_largest_resident_bytes.unwrap_or(0)
-            >= POST_SOCIAL_SCRAPE_WEBKIT_RESIDENT_RECOVERY_BYTES
-        && stats.app_resident_bytes >= POST_SOCIAL_SCRAPE_WEBKIT_RESIDENT_RECOVERY_BYTES
-    {
-        return Some(if effectively_visible {
-            "webkit_resident_tail"
-        } else {
-            "idle_webkit_resident_tail"
-        });
-    }
-
     None
 }
 
@@ -2952,7 +2940,7 @@ mod renderer_watchdog_tests {
     }
 
     #[test]
-    fn visible_main_renderer_recovers_from_reclaimable_webkit_resident_tail() {
+    fn main_renderer_does_not_recover_for_reclaimable_webkit_resident_tail() {
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
@@ -2989,14 +2977,14 @@ mod renderer_watchdog_tests {
         assert!(webkit_resident_tail_is_probably_reclaimable(&stats));
         assert_eq!(
             main_renderer_memory_recovery_reason(true, "visible", &stats),
-            Some("webkit_resident_tail")
+            None
         );
-        assert!(main_renderer_memory_should_recover(true, "visible", &stats));
+        assert!(!main_renderer_memory_should_recover(true, "visible", &stats));
         assert_eq!(
             main_renderer_memory_recovery_reason(true, "hidden", &stats),
-            Some("idle_webkit_resident_tail")
+            None
         );
-        assert!(main_renderer_memory_should_recover(true, "hidden", &stats));
+        assert!(!main_renderer_memory_should_recover(true, "hidden", &stats));
     }
 
     #[test]
