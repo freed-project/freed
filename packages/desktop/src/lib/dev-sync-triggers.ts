@@ -17,6 +17,17 @@ type DevSyncTriggerRequest = {
   provider?: unknown;
 };
 
+type DevSyncTriggerBridgeRequest = {
+  id?: unknown;
+  provider?: unknown;
+};
+
+declare global {
+  interface Window {
+    __FREED_RUN_SOCIAL_SYNC__?: (request: DevSyncTriggerBridgeRequest) => Promise<void>;
+  }
+}
+
 function parseProvider(value: unknown): RetriableSocialProvider | null {
   return value === "facebook" || value === "instagram" || value === "linkedin"
     ? value
@@ -58,6 +69,49 @@ async function writeResult(
     },
     "dev-sync-trigger",
   );
+}
+
+async function runDevSyncTrigger(request: DevSyncTriggerBridgeRequest): Promise<void> {
+  const requestId =
+    typeof request.id === "string" && request.id.trim()
+      ? request.id.trim()
+      : null;
+  if (!requestId) return;
+
+  const provider = parseProvider(request.provider);
+  if (!provider) {
+    await writeResult(
+      requestId,
+      null,
+      "ignored",
+      "Unsupported provider. Use facebook, instagram, or linkedin.",
+    );
+    return;
+  }
+
+  await writeResult(requestId, provider, "started");
+  log.info(`[dev-sync-trigger] starting ${provider} sync request ${requestId}`);
+
+  try {
+    await refreshSocialProvider(provider);
+    await writeResult(requestId, provider, "completed");
+    log.info(`[dev-sync-trigger] completed ${provider} sync request ${requestId}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await writeResult(requestId, provider, "error", message);
+    log.error(
+      `[dev-sync-trigger] ${provider} sync request ${requestId} failed: ${message}`,
+    );
+  }
+}
+
+export function installDevSyncTriggerBridge(): () => void {
+  window.__FREED_RUN_SOCIAL_SYNC__ = (request) => runDevSyncTrigger(request);
+  return () => {
+    if (window.__FREED_RUN_SOCIAL_SYNC__) {
+      delete window.__FREED_RUN_SOCIAL_SYNC__;
+    }
+  };
 }
 
 export function startDevSyncTriggerPoller(
@@ -108,19 +162,8 @@ export function startDevSyncTriggerPoller(
     }
 
     inFlight = true;
-    await writeResult(requestId, provider, "started");
-    log.info(`[dev-sync-trigger] starting ${provider} sync request ${requestId}`);
-
     try {
-      await refreshSocialProvider(provider);
-      await writeResult(requestId, provider, "completed");
-      log.info(`[dev-sync-trigger] completed ${provider} sync request ${requestId}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      await writeResult(requestId, provider, "error", message);
-      log.error(
-        `[dev-sync-trigger] ${provider} sync request ${requestId} failed: ${message}`,
-      );
+      await runDevSyncTrigger({ id: requestId, provider });
     } finally {
       inFlight = false;
     }

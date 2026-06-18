@@ -50,7 +50,43 @@ describe("dev sync triggers", () => {
   });
 
   afterEach(() => {
+    delete window.__FREED_RUN_SOCIAL_SYNC__;
     vi.useRealTimers();
+  });
+
+  it("exposes a renderer bridge for native trigger dispatch", async () => {
+    const { installDevSyncTriggerBridge } = await import("./dev-sync-triggers");
+    refreshSocialProvider.mockResolvedValue(undefined);
+
+    const stop = installDevSyncTriggerBridge();
+    const runSocialSync = window.__FREED_RUN_SOCIAL_SYNC__;
+    expect(runSocialSync).toBeTypeOf("function");
+    if (!runSocialSync) throw new Error("bridge was not installed");
+    await runSocialSync({
+      id: "request-native-1",
+      provider: "facebook",
+    });
+    stop();
+
+    expect(refreshSocialProvider).toHaveBeenCalledWith("facebook");
+    expect(writeNativeJsonFile).toHaveBeenCalledWith(
+      "dev-sync-trigger-result.json",
+      expect.objectContaining({
+        id: "request-native-1",
+        provider: "facebook",
+        status: "started",
+      }),
+      "dev-sync-trigger",
+    );
+    expect(writeNativeJsonFile).toHaveBeenCalledWith(
+      "dev-sync-trigger-result.json",
+      expect.objectContaining({
+        id: "request-native-1",
+        provider: "facebook",
+        status: "completed",
+      }),
+      "dev-sync-trigger",
+    );
   });
 
   it("runs an approved provider through the normal social refresh path", async () => {

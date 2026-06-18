@@ -91,6 +91,11 @@ const POST_SOCIAL_SCRAPE_PRESSURE_RECOVERY_PERCENT: u64 = 35;
 const WEBKIT_PROCESS_START_GRACE_SECONDS: u64 = 10;
 const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
 const RUNTIME_HEALTH_FILE: &str = "runtime-health.jsonl";
+const DEV_SYNC_TRIGGER_FILE: &str = "dev-sync-trigger.json";
+const DEV_SYNC_TRIGGER_RESULT_FILE: &str = "dev-sync-trigger-result.json";
+const DEV_SYNC_TRIGGER_POLL_INTERVAL: Duration = Duration::from_secs(5);
+const DEV_SYNC_TRIGGER_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(2);
+const DEV_SYNC_TRIGGER_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const RUNTIME_HEALTH_MAX_BYTES: u64 = 5 * 1024 * 1024;
 const RUNTIME_DIAGNOSTICS_FILE: &str = "runtime-diagnostics.jsonl";
 const RUNTIME_DIAGNOSTICS_MAX_BYTES: u64 = 5 * 1024 * 1024;
@@ -1003,6 +1008,274 @@ fn append_runtime_health(app: &tauri::AppHandle, mut payload: serde_json::Value)
             error
         );
     }
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct DevSyncTriggerRequest {
+    enabled: Option<bool>,
+    id: Option<String>,
+    provider: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DevSyncTriggerResult {
+    id: String,
+    provider: Option<String>,
+    status: String,
+    detail: Option<String>,
+    updated_at: u64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopReleaseChannelState {
+    channel: Option<String>,
+    selected_channel: Option<String>,
+    installed_channel: Option<String>,
+}
+
+fn dev_sync_trigger_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(DEV_SYNC_TRIGGER_FILE)
+}
+
+fn dev_sync_trigger_result_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(DEV_SYNC_TRIGGER_RESULT_FILE)
+}
+
+fn load_dev_sync_trigger_request(data_dir: &Path) -> Option<DevSyncTriggerRequest> {
+    let raw = std::fs::read_to_string(dev_sync_trigger_path(data_dir)).ok()?;
+    match serde_json::from_str::<DevSyncTriggerRequest>(&raw) {
+        Ok(request) => Some(request),
+        Err(error) => {
+            warn!("[dev-sync-trigger] failed to parse request: {}", error);
+            None
+        }
+    }
+}
+
+fn write_dev_sync_trigger_result(
+    data_dir: &Path,
+    id: &str,
+    provider: Option<&str>,
+    status: &str,
+    detail: Option<&str>,
+) {
+    let result = DevSyncTriggerResult {
+        id: id.to_string(),
+        provider: provider.map(|value| value.to_string()),
+        status: status.to_string(),
+        detail: detail.map(|value| value.to_string()),
+        updated_at: now_unix_ms(),
+    };
+    let Ok(serialized) = serde_json::to_vec_pretty(&result) else {
+        warn!("[dev-sync-trigger] failed to serialize result id={}", id);
+        return;
+    };
+    if let Err(error) = std::fs::write(dev_sync_trigger_result_path(data_dir), serialized) {
+        warn!(
+            "[dev-sync-trigger] failed to write result id={} status={}: {}",
+            id, status, error
+        );
+    }
+}
+
+fn load_dev_sync_trigger_result_status(data_dir: &Path, id: &str) -> Option<String> {
+    let raw = std::fs::read_to_string(dev_sync_trigger_result_path(data_dir)).ok()?;
+    let result = serde_json::from_str::<DevSyncTriggerResult>(&raw).ok()?;
+    (result.id == id).then_some(result.status)
+}
+
+fn is_dev_sync_trigger_terminal_status(status: &str) -> bool {
+    matches!(status, "completed" | "error" | "ignored")
+}
+
+fn is_supported_dev_sync_provider(provider: &str) -> bool {
+    matches!(provider, "facebook" | "instagram" | "linkedin")
+}
+
+fn dev_sync_triggers_enabled(data_dir: &Path) -> bool {
+    if std::env::var("FREED_ENABLE_DEV_SYNC_TRIGGERS")
+        .ok()
+        .as_deref()
+        == Some("1")
+    {
+        return true;
+    }
+
+    if cfg!(debug_assertions) {
+        return true;
+    }
+
+    let raw = match std::fs::read_to_string(data_dir.join("release-channel.json")) {
+        Ok(raw) => raw,
+        Err(_) => return false,
+    };
+    let Ok(state) = serde_json::from_str::<DesktopReleaseChannelState>(&raw) else {
+        return false;
+    };
+    state.channel.as_deref() == Some("dev")
+        || state.selected_channel.as_deref() == Some("dev")
+        || state.installed_channel.as_deref() == Some("dev")
+}
+
+fn escape_js_string(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string())
+}
+
+fn dispatch_dev_sync_trigger_to_renderer(
+    app: &tauri::AppHandle,
+    request_id: &str,
+    provider: &str,
+) -> Result<(), String> {
+    let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
+        return Err("main renderer is not available".to_string());
+    };
+    let payload = serde_json::json!({
+        "id": request_id,
+        "provider": provider
+    });
+    let payload = serde_json::to_string(&payload).map_err(|error| error.to_string())?;
+    let event_name = escape_js_string("dev-sync-trigger-native-result");
+    let missing_detail = escape_js_string("renderer sync trigger bridge is not registered");
+    let script = format!(
+        r#"(function() {{
+  var request = {payload};
+  var emitResult = function(status, detail) {{
+    try {{
+      if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {{
+        window.__TAURI__.event.emit({event_name}, {{
+          id: request.id,
+          provider: request.provider,
+          status: status,
+          detail: detail || null,
+          updatedAt: Date.now()
+        }});
+      }}
+    }} catch (_) {{}}
+  }};
+  var run = window.__FREED_RUN_SOCIAL_SYNC__;
+  if (typeof run !== "function") {{
+    emitResult("error", {missing_detail});
+    return;
+  }}
+  Promise.resolve(run(request)).catch(function(error) {{
+    emitResult("error", error && error.message ? error.message : String(error));
+  }});
+}})();"#
+    );
+    window.eval(&script).map_err(|error| error.to_string())
+}
+
+fn start_dev_sync_trigger_keepalive(app: tauri::AppHandle, data_dir: PathBuf, request_id: String) {
+    tauri::async_runtime::spawn(async move {
+        let started_at = Instant::now();
+        loop {
+            tokio::time::sleep(DEV_SYNC_TRIGGER_KEEPALIVE_INTERVAL).await;
+            if started_at.elapsed() > DEV_SYNC_TRIGGER_KEEPALIVE_TIMEOUT {
+                warn!(
+                    "[dev-sync-trigger] renderer keepalive timed out for request {}",
+                    request_id
+                );
+                return;
+            }
+            if load_dev_sync_trigger_result_status(&data_dir, &request_id)
+                .as_deref()
+                .map(is_dev_sync_trigger_terminal_status)
+                .unwrap_or(false)
+            {
+                return;
+            }
+            if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+                let _ = window.eval("window.__FREED_DEV_SYNC_KEEPALIVE__ = Date.now();");
+            }
+        }
+    });
+}
+
+fn handle_dev_sync_trigger_result_event(data_dir: &Path, payload: &str) {
+    let Ok(result) = serde_json::from_str::<DevSyncTriggerResult>(payload) else {
+        warn!("[dev-sync-trigger] failed to parse renderer result payload");
+        return;
+    };
+    write_dev_sync_trigger_result(
+        data_dir,
+        &result.id,
+        result.provider.as_deref(),
+        &result.status,
+        result.detail.as_deref(),
+    );
+}
+
+fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
+    if !dev_sync_triggers_enabled(&data_dir) {
+        info!("[dev-sync-trigger] native trigger watcher disabled");
+        return;
+    }
+
+    info!("[dev-sync-trigger] native trigger watcher enabled");
+    tauri::async_runtime::spawn(async move {
+        let mut last_handled_id: Option<String> = None;
+        loop {
+            if let Some(request) = load_dev_sync_trigger_request(&data_dir) {
+                if request.enabled.unwrap_or(false) {
+                    if let Some(request_id) = request.id.as_deref().map(str::trim) {
+                        if !request_id.is_empty() && last_handled_id.as_deref() != Some(request_id)
+                        {
+                            last_handled_id = Some(request_id.to_string());
+                            let provider = request.provider.as_deref().map(str::trim).unwrap_or("");
+                            if !is_supported_dev_sync_provider(provider) {
+                                write_dev_sync_trigger_result(
+                                    &data_dir,
+                                    request_id,
+                                    None,
+                                    "ignored",
+                                    Some("Unsupported provider. Use facebook, instagram, or linkedin."),
+                                );
+                            } else {
+                                write_dev_sync_trigger_result(
+                                    &data_dir,
+                                    request_id,
+                                    Some(provider),
+                                    "started",
+                                    Some("Dispatched by native trigger watcher"),
+                                );
+                                match dispatch_dev_sync_trigger_to_renderer(
+                                    &app, request_id, provider,
+                                ) {
+                                    Ok(()) => {
+                                        info!(
+                                            "[dev-sync-trigger] dispatched {} sync request {}",
+                                            provider, request_id
+                                        );
+                                        start_dev_sync_trigger_keepalive(
+                                            app.clone(),
+                                            data_dir.clone(),
+                                            request_id.to_string(),
+                                        );
+                                    }
+                                    Err(error) => {
+                                        warn!(
+                                            "[dev-sync-trigger] failed to dispatch request {}: {}",
+                                            request_id, error
+                                        );
+                                        write_dev_sync_trigger_result(
+                                            &data_dir,
+                                            request_id,
+                                            Some(provider),
+                                            "error",
+                                            Some(&error),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            tokio::time::sleep(DEV_SYNC_TRIGGER_POLL_INTERVAL).await;
+        }
+    });
 }
 
 static LAST_DEEP_DIAGNOSTIC_AT: StdMutex<Option<Instant>> = StdMutex::new(None);
@@ -8967,6 +9240,11 @@ pub fn run() {
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
             std::fs::create_dir_all(&data_dir).ok();
+            let dev_sync_result_data_dir = data_dir.clone();
+            app.listen("dev-sync-trigger-native-result", move |event| {
+                handle_dev_sync_trigger_result_event(&dev_sync_result_data_dir, event.payload());
+            });
+            start_dev_sync_trigger_watcher(app_handle.clone(), data_dir.clone());
 
             #[cfg(target_os = "macos")]
             clear_saved_window_state(&app_handle);
@@ -10360,6 +10638,46 @@ mod tests {
             data_store_identifier_folder(LI_SCRAPER_DATA_STORE_IDENTIFIER),
             "66726565-641d-0003-9a7d-3701021d0003"
         );
+    }
+
+    #[test]
+    fn dev_sync_trigger_request_parses_supported_provider() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dev_sync_trigger_path(temp.path()),
+            r#"{"enabled":true,"id":"facebook-123","provider":"facebook"}"#,
+        )
+        .unwrap();
+
+        let request = load_dev_sync_trigger_request(temp.path()).unwrap();
+
+        assert_eq!(request.enabled, Some(true));
+        assert_eq!(request.id.as_deref(), Some("facebook-123"));
+        assert_eq!(request.provider.as_deref(), Some("facebook"));
+        assert!(is_supported_dev_sync_provider("facebook"));
+        assert!(!is_supported_dev_sync_provider("medium"));
+    }
+
+    #[test]
+    fn dev_sync_trigger_result_uses_terminal_helper_shape() {
+        let temp = tempfile::tempdir().unwrap();
+
+        write_dev_sync_trigger_result(
+            temp.path(),
+            "instagram-456",
+            Some("instagram"),
+            "completed",
+            None,
+        );
+
+        let raw = std::fs::read_to_string(dev_sync_trigger_result_path(temp.path())).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(parsed["id"], serde_json::json!("instagram-456"));
+        assert_eq!(parsed["provider"], serde_json::json!("instagram"));
+        assert_eq!(parsed["status"], serde_json::json!("completed"));
+        assert!(parsed.get("updatedAt").is_some());
+        assert!(is_dev_sync_trigger_terminal_status("completed"));
+        assert!(!is_dev_sync_trigger_terminal_status("started"));
     }
 
     #[test]
