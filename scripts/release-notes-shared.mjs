@@ -170,6 +170,17 @@ export function summarizeFallbackText(text) {
   return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : normalized;
 }
 
+export function normalizePinnedHighlightTexts(items = []) {
+  return items
+    .map((item) => {
+      if (typeof item === "string") {
+        return summarizeFallbackText(item);
+      }
+      return summarizeFallbackText(item?.text ?? "");
+    })
+    .filter(Boolean);
+}
+
 function stripItemPrefix(text) {
   return normalizeReleaseText(text)
     .replace(COMMON_ITEM_PREFIX, "")

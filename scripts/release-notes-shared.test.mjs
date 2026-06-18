@@ -7,6 +7,7 @@ import {
   compareVersionDays,
   coerceReleaseShape,
   dayDateFromVersion,
+  normalizePinnedHighlightTexts,
   removePreviousDayFeatureRepeats,
   renderReleaseBody,
   validateReleaseShape,
@@ -209,6 +210,21 @@ test("removePreviousDayFeatureRepeats strips generated stale feature repeats", (
   assert.deepEqual(release.followUps, [
     "Terminal trigger docs stay available for unattended soaks",
   ]);
+});
+
+test("normalizePinnedHighlightTexts supports string and object entries", () => {
+  assert.deepEqual(
+    normalizePinnedHighlightTexts([
+      "The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes",
+      { text: "Terminal trigger docs stay available for unattended soaks" },
+      { text: "" },
+      null,
+    ]),
+    [
+      "The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes",
+      "Terminal trigger docs stay available for unattended soaks",
+    ],
+  );
 });
 
 test("validateReleaseShape allows previous-day theme overlap in the deck", () => {

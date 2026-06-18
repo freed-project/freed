@@ -13,6 +13,7 @@ import {
   dayDateFromVersion,
   MAX_FEATURES,
   normalizeReleaseText,
+  normalizePinnedHighlightTexts,
   removePreviousDayFeatureRepeats,
   renderReleaseBody,
   sanitizeReleaseShape,
@@ -861,9 +862,7 @@ async function collectReleaseContext(tag, version, channel) {
 }
 
 function buildHeuristicRelease(context, existingDaily) {
-  const pinnedTexts = (existingDaily?.pinnedHighlights ?? [])
-    .map((item) => summarizeFallbackText(item?.text ?? ""))
-    .filter(Boolean);
+  const pinnedTexts = normalizePinnedHighlightTexts(existingDaily?.pinnedHighlights ?? []);
 
   const candidates = context.entries
     .map((entry, index) => {
