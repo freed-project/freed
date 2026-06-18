@@ -83,7 +83,7 @@ Prefer the lightest useful local preview before opening a draft PR:
 
 When validating an installed Freed Desktop build on the user's primary machine, avoid tools that steal focus. Do not use System Events, coordinate clicks, Computer Use, or browser automation to drive the installed app unless the user explicitly approves that disruption.
 
-Use terminal-driven diagnostics first: app logs, `runtime-health.jsonl`, crash reports, process samples, memory samples, and local app-data files. When a provider sync soak needs a manual kick, build the app with `VITE_ENABLE_DEV_SYNC_TRIGGERS=1` and run `node scripts/dev-sync-trigger.mjs facebook`, `instagram`, or `linkedin`. The trigger calls the same in-app social refresh path as the UI, so it keeps existing auth, pause state, provider cooldowns, and rate limits intact.
+Use terminal-driven diagnostics first: app logs, `runtime-health.jsonl`, crash reports, process samples, memory samples, and local app-data files. When a provider sync soak needs a manual kick, use a GitHub dev-channel prerelease or build the app with `VITE_ENABLE_DEV_SYNC_TRIGGERS=1`, then run `node scripts/dev-sync-trigger.mjs facebook`, `instagram`, or `linkedin`. The trigger calls the same in-app social refresh path as the UI, so it keeps existing auth, pause state, provider cooldowns, and rate limits intact.
 
 Long-running or background work must not stop overnight because the next useful step would be a click in Freed Desktop. If a click is truly required to test efficiently, ask for permission with a 10 minute response window and then proceed if the user is unavailable. When the action is likely to recur, implement and ship a dev-only trigger instead of depending on foreground UI automation.
 

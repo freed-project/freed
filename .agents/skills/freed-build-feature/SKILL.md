@@ -43,7 +43,7 @@ Create a product worktree branch from the latest remote `dev`, implement enough 
 12. Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run commands from the workspace directory itself, and when a hoisted binary is needed, prefix `PATH` with `<worktree>/node_modules/.bin`.
 13. Browser tooling is opt-in only. Do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging.
 14. Installed Desktop soaks on the user's primary machine should be terminal driven. Prefer logs, `runtime-health.jsonl`, process samples, and the dev-only sync trigger over System Events clicks or foreground UI automation.
-   - Build soak builds with `VITE_ENABLE_DEV_SYNC_TRIGGERS=1` when a provider sync must be triggered from the terminal.
+   - Use a GitHub dev-channel prerelease or build soak builds with `VITE_ENABLE_DEV_SYNC_TRIGGERS=1` when a provider sync must be triggered from the terminal.
    - Use `node scripts/dev-sync-trigger.mjs facebook`, `instagram`, or `linkedin` to call the normal in-app social refresh path. It must keep auth, pause state, cooldowns, and rate limits intact.
    - Do not enable the raw file trigger in production builds until it has a user-facing permission model.
 15. Long-running work must not stop until morning solely because a click would continue validation. If foreground app interaction is genuinely necessary, ask with a 10 minute response window, then proceed if the user is unavailable. If the action will recur, add and ship a dev-only trigger instead of depending on clicks.

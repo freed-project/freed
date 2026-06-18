@@ -41,7 +41,7 @@ node ../../scripts/dev-sync-trigger.mjs linkedin
 tail -f "$HOME/Library/Application Support/wtf.freed.desktop/runtime-health.jsonl"
 ```
 
-The trigger is intentionally dev-only. It still uses the same social refresh path as the UI, including auth checks, provider pause state, cooldowns, and rate limits. Production builds keep the reliability and memory recovery behavior, but should not expose a raw app-data file that lets another local process start authenticated Facebook, Instagram, or LinkedIn traffic without a user-facing permission model.
+The trigger is intentionally dev-only. Local soak builds can enable it with `VITE_ENABLE_DEV_SYNC_TRIGGERS=1`, and GitHub dev-channel prereleases compile it in automatically for installed-build soaks. It still uses the same social refresh path as the UI, including auth checks, provider pause state, cooldowns, and rate limits. Production builds keep the reliability and memory recovery behavior, but should not expose a raw app-data file that lets another local process start authenticated Facebook, Instagram, or LinkedIn traffic without a user-facing permission model.
 
 For long-running background validation, do not block the run until morning because the next step needs a UI button. Add a dev-only trigger when the action will be reused. If a one-off foreground click is still the fastest correct test, ask with a 10 minute window and continue if no response arrives.
 
