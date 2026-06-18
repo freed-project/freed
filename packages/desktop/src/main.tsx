@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { bootstrapDocumentTheme } from "@freed/ui/lib/theme";
 import App from "./App";
 import * as automerge from "./lib/automerge";
+import { installDevSyncTriggerBridge } from "./lib/dev-sync-triggers";
 import { useAppStore } from "./lib/store";
 import "./index.css";
 import { installConsoleBugReportCapture, installGlobalBugReportCapture } from "@freed/ui/lib/bug-report";
@@ -26,6 +27,7 @@ if (import.meta.env.VITE_TEST_TAURI) {
 
 installGlobalBugReportCapture("desktop");
 installConsoleBugReportCapture("desktop");
+installDevSyncTriggerBridge();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

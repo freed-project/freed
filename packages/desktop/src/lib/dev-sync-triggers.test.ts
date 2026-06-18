@@ -4,6 +4,7 @@ const readNativeJsonFile = vi.fn();
 const writeNativeJsonFile = vi.fn();
 const refreshSocialProvider = vi.fn();
 const loadDesktopReleaseChannelState = vi.fn();
+const getStoreState = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
   isTauri: () => true,
@@ -20,6 +21,12 @@ vi.mock("./capture", () => ({
 
 vi.mock("./release-channel", () => ({
   loadDesktopReleaseChannelState,
+}));
+
+vi.mock("./store", () => ({
+  useAppStore: {
+    getState: getStoreState,
+  },
 }));
 
 vi.mock("./logger", () => ({
@@ -43,6 +50,8 @@ describe("dev sync triggers", () => {
     writeNativeJsonFile.mockReset();
     refreshSocialProvider.mockReset();
     loadDesktopReleaseChannelState.mockReset();
+    getStoreState.mockReset();
+    getStoreState.mockReturnValue({ isInitialized: true });
     loadDesktopReleaseChannelState.mockResolvedValue({
       selectedChannel: "production",
       installedChannel: "production",
@@ -116,6 +125,35 @@ describe("dev sync triggers", () => {
       "dev-sync-trigger-result.json",
       expect.objectContaining({
         id: "request-1",
+        provider: "facebook",
+        status: "completed",
+      }),
+      "dev-sync-trigger",
+    );
+  });
+
+  it("waits for startup initialization before running a provider trigger", async () => {
+    const { installDevSyncTriggerBridge } = await import("./dev-sync-triggers");
+    refreshSocialProvider.mockResolvedValue(undefined);
+    getStoreState
+      .mockReturnValueOnce({ isInitialized: false })
+      .mockReturnValueOnce({ isInitialized: false })
+      .mockReturnValue({ isInitialized: true });
+
+    const stop = installDevSyncTriggerBridge();
+    const triggerPromise = window.__FREED_RUN_SOCIAL_SYNC__?.({
+      id: "request-native-startup",
+      provider: "facebook",
+    });
+    await vi.advanceTimersByTimeAsync(500);
+    await triggerPromise;
+    stop();
+
+    expect(refreshSocialProvider).toHaveBeenCalledWith("facebook");
+    expect(writeNativeJsonFile).toHaveBeenLastCalledWith(
+      "dev-sync-trigger-result.json",
+      expect.objectContaining({
+        id: "request-native-startup",
         provider: "facebook",
         status: "completed",
       }),

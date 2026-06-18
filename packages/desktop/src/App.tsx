@@ -119,7 +119,6 @@ import {
   resolveDesktopDownloadFallbackUrl,
 } from "./lib/desktop-updater";
 import { rendererHeartbeatTiming } from "./lib/renderer-heartbeat";
-import { installDevSyncTriggerBridge } from "./lib/dev-sync-triggers";
 import { DESKTOP_CHANGELOG_PREVIEW } from "./lib/changelog-preview";
 import { useClipboardSaveShortcut } from "./hooks/useClipboardSaveShortcut";
 
@@ -421,7 +420,6 @@ function App() {
     if (isTauri()) {
       void startSnapshotManager();
     }
-    const stopDevSyncTriggerBridge = installDevSyncTriggerBridge();
     // Start background content fetcher, which processes the article HTML queue.
     void contentCache.pruneOversized();
     startContentFetcher({ startupDelayMs: 5 * 60_000, memoryGuard: true });
@@ -444,7 +442,6 @@ function App() {
       stopContentFetcher();
       stopSemanticClassifier();
       stopMemoryMonitor();
-      stopDevSyncTriggerBridge();
     };
   }, [isInitialized, legalAccepted]);
 
