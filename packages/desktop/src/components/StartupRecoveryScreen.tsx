@@ -30,6 +30,7 @@ type RecoveryStatus =
   | { kind: "error"; message: string };
 
 const RETRY_COMMAND = "retry_startup_after_crash";
+const DIAGNOSTICS_COMMAND = "export_startup_diagnostics";
 const INTEGER_FORMATTER = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 
 export function StartupRecoveryScreen() {
@@ -46,6 +47,7 @@ export function StartupRecoveryScreen() {
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [retryBusy, setRetryBusy] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
+  const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,6 +163,22 @@ export function StartupRecoveryScreen() {
     }
   }, [fallbackDownloadUrl]);
 
+  const handleDownloadDiagnostics = useCallback(async () => {
+    setDiagnosticsBusy(true);
+    setActionNotice(null);
+    try {
+      const path = await invoke<string>(DIAGNOSTICS_COMMAND);
+      setActionNotice(`Diagnostics saved to ${path}`);
+    } catch (error) {
+      setStatus({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Could not save diagnostics.",
+      });
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  }, []);
+
   const updateLabel = useMemo(() => {
     if (!pendingUpdate) return null;
     return `Update available on ${
@@ -234,6 +252,16 @@ export function StartupRecoveryScreen() {
               className="rounded-[14px] border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.07)] px-5 py-3 text-base font-semibold text-[var(--theme-text-primary)] transition-colors hover:bg-[rgba(255,255,255,0.12)] disabled:cursor-wait disabled:opacity-70"
             >
               {downloadBusy ? "Opening browser..." : "Download latest Freed Desktop"}
+            </button>
+
+            <button
+              id="download-diagnostics"
+              type="button"
+              onClick={handleDownloadDiagnostics}
+              disabled={diagnosticsBusy}
+              className="rounded-[14px] border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.07)] px-5 py-3 text-base font-semibold text-[var(--theme-text-primary)] transition-colors hover:bg-[rgba(255,255,255,0.12)] disabled:cursor-wait disabled:opacity-70"
+            >
+              {diagnosticsBusy ? "Saving diagnostics..." : "Download diagnostics"}
             </button>
           </div>
 

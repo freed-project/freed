@@ -42,10 +42,15 @@ Create a product worktree branch from the latest remote `dev`, implement enough 
    - Do not simplify test suites blindly. Profile specific slow commands first, then trim redundant coverage with evidence.
 12. Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run commands from the workspace directory itself, and when a hoisted binary is needed, prefix `PATH` with `<worktree>/node_modules/.bin`.
 13. Browser tooling is opt-in only. Do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging.
-14. When browser tooling was needed, clean the session before closeout with `./scripts/dev-session-clean.sh`.
-15. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
+14. Installed Desktop soaks on the user's primary machine should be terminal driven. Prefer logs, `runtime-health.jsonl`, process samples, and the dev-only sync trigger over System Events clicks or foreground UI automation.
+   - Build soak builds with `VITE_ENABLE_DEV_SYNC_TRIGGERS=1` when a provider sync must be triggered from the terminal.
+   - Use `node scripts/dev-sync-trigger.mjs facebook`, `instagram`, or `linkedin` to call the normal in-app social refresh path. It must keep auth, pause state, cooldowns, and rate limits intact.
+   - Do not enable the raw file trigger in production builds until it has a user-facing permission model.
+15. Long-running work must not stop until morning solely because a click would continue validation. If foreground app interaction is genuinely necessary, ask with a 10 minute response window, then proceed if the user is unavailable. If the action will recur, add and ship a dev-only trigger instead of depending on clicks.
+16. When browser tooling was needed, clean the session before closeout with `./scripts/dev-session-clean.sh`.
+17. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
    - If the branch intentionally adds new files, stage them yourself first or re-run with `--include-untracked`.
-16. Confirm the branch is pushed to `origin` and the PR targeting `dev` stays in draft state. Include the local preview URL or native preview label in the closeout.
+18. Confirm the branch is pushed to `origin` and the PR targeting `dev` stays in draft state. Include the local preview URL or native preview label in the closeout.
    - When a changed surface includes buttons, dialogs, or native fallback HTML, follow the repo's established primary and secondary control styling. Do not add hover lift, vertical motion, bounce, or ad hoc glossy or gradient CTA treatments.
 
 ## Scope
