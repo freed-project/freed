@@ -57,6 +57,15 @@ async function flushImmediatePoll() {
   }
 }
 
+function freshTriggerRequest(id: string, provider: string) {
+  return {
+    enabled: true,
+    id,
+    provider,
+    createdAt: Date.now(),
+  };
+}
+
 describe("dev sync triggers", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -118,11 +127,9 @@ describe("dev sync triggers", () => {
 
   it("runs an approved provider through the normal social refresh path", async () => {
     const { startDevSyncTriggerPoller } = await import("./dev-sync-triggers");
-    readNativeJsonFile.mockResolvedValue({
-      enabled: true,
-      id: "request-1",
-      provider: "facebook",
-    });
+    readNativeJsonFile.mockResolvedValue(
+      freshTriggerRequest("request-1", "facebook"),
+    );
     refreshSocialProvider.mockResolvedValue(successfulFacebookResult);
 
     const stop = startDevSyncTriggerPoller({ enabled: true, pollMs: 10 });
@@ -214,8 +221,14 @@ describe("dev sync triggers", () => {
     refreshSocialProvider.mockResolvedValue(successfulFacebookResult);
     initializeStore.mockResolvedValue(undefined);
     getStoreState
-      .mockReturnValueOnce({ isInitialized: false, initialize: initializeStore })
-      .mockReturnValueOnce({ isInitialized: false, initialize: initializeStore })
+      .mockReturnValueOnce({
+        isInitialized: false,
+        initialize: initializeStore,
+      })
+      .mockReturnValueOnce({
+        isInitialized: false,
+        initialize: initializeStore,
+      })
       .mockReturnValue({ isInitialized: true });
 
     const stop = installDevSyncTriggerBridge();
@@ -265,11 +278,9 @@ describe("dev sync triggers", () => {
 
   it("ignores unsupported providers without calling a scraper", async () => {
     const { startDevSyncTriggerPoller } = await import("./dev-sync-triggers");
-    readNativeJsonFile.mockResolvedValue({
-      enabled: true,
-      id: "request-2",
-      provider: "medium",
-    });
+    readNativeJsonFile.mockResolvedValue(
+      freshTriggerRequest("request-2", "medium"),
+    );
 
     const stop = startDevSyncTriggerPoller({ enabled: true, pollMs: 10 });
     await flushImmediatePoll();
@@ -282,6 +293,57 @@ describe("dev sync triggers", () => {
         id: "request-2",
         provider: null,
         status: "ignored",
+      }),
+      "dev-sync-trigger",
+    );
+  });
+
+  it("expires old requests before calling a provider", async () => {
+    const { startDevSyncTriggerPoller } = await import("./dev-sync-triggers");
+    readNativeJsonFile.mockResolvedValue({
+      enabled: true,
+      id: "request-expired",
+      provider: "facebook",
+      createdAt: Date.now() - 10 * 60 * 1000 - 1,
+    });
+
+    const stop = startDevSyncTriggerPoller({ enabled: true, pollMs: 10 });
+    await flushImmediatePoll();
+    stop();
+
+    expect(refreshSocialProvider).not.toHaveBeenCalled();
+    expect(writeNativeJsonFile).toHaveBeenCalledWith(
+      "dev-sync-trigger-result.json",
+      expect.objectContaining({
+        id: "request-expired",
+        provider: "facebook",
+        status: "ignored",
+        detail: expect.stringContaining("expired"),
+      }),
+      "dev-sync-trigger",
+    );
+  });
+
+  it("rejects requests without a creation timestamp before calling a provider", async () => {
+    const { startDevSyncTriggerPoller } = await import("./dev-sync-triggers");
+    readNativeJsonFile.mockResolvedValue({
+      enabled: true,
+      id: "request-missing-created-at",
+      provider: "facebook",
+    });
+
+    const stop = startDevSyncTriggerPoller({ enabled: true, pollMs: 10 });
+    await flushImmediatePoll();
+    stop();
+
+    expect(refreshSocialProvider).not.toHaveBeenCalled();
+    expect(writeNativeJsonFile).toHaveBeenCalledWith(
+      "dev-sync-trigger-result.json",
+      expect.objectContaining({
+        id: "request-missing-created-at",
+        provider: "facebook",
+        status: "ignored",
+        detail: expect.stringContaining("missing createdAt"),
       }),
       "dev-sync-trigger",
     );
@@ -304,11 +366,9 @@ describe("dev sync triggers", () => {
       selectedChannel: "dev",
       installedChannel: "production",
     });
-    readNativeJsonFile.mockResolvedValue({
-      enabled: true,
-      id: "request-3",
-      provider: "facebook",
-    });
+    readNativeJsonFile.mockResolvedValue(
+      freshTriggerRequest("request-3", "facebook"),
+    );
     refreshSocialProvider.mockResolvedValue(successfulFacebookResult);
 
     const { startDevSyncTriggerPoller } = await import("./dev-sync-triggers");

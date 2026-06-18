@@ -96,6 +96,7 @@ const DEV_SYNC_TRIGGER_RESULT_FILE: &str = "dev-sync-trigger-result.json";
 const DEV_SYNC_TRIGGER_POLL_INTERVAL: Duration = Duration::from_secs(5);
 const DEV_SYNC_TRIGGER_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(2);
 const DEV_SYNC_TRIGGER_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+const DEV_SYNC_TRIGGER_REQUEST_MAX_AGE_MS: u64 = 10 * 60 * 1000;
 const RUNTIME_HEALTH_MAX_BYTES: u64 = 5 * 1024 * 1024;
 const RUNTIME_DIAGNOSTICS_FILE: &str = "runtime-diagnostics.jsonl";
 const RUNTIME_DIAGNOSTICS_MAX_BYTES: u64 = 5 * 1024 * 1024;
@@ -1011,10 +1012,12 @@ fn append_runtime_health(app: &tauri::AppHandle, mut payload: serde_json::Value)
 }
 
 #[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct DevSyncTriggerRequest {
     enabled: Option<bool>,
     id: Option<String>,
     provider: Option<String>,
+    created_at: Option<u64>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -1117,6 +1120,19 @@ fn is_dev_sync_trigger_terminal_status(status: &str) -> bool {
 
 fn is_supported_dev_sync_provider(provider: &str) -> bool {
     matches!(provider, "facebook" | "instagram" | "linkedin")
+}
+
+fn dev_sync_trigger_request_expiration_detail(
+    request: &DevSyncTriggerRequest,
+    now_ms: u64,
+) -> Option<&'static str> {
+    let Some(created_at) = request.created_at else {
+        return Some("Trigger request is missing createdAt. Re-run scripts/dev-sync-trigger.mjs.");
+    };
+    if now_ms.saturating_sub(created_at) > DEV_SYNC_TRIGGER_REQUEST_MAX_AGE_MS {
+        return Some("Trigger request expired before Freed Desktop picked it up. Re-run scripts/dev-sync-trigger.mjs.");
+    }
+    None
 }
 
 fn dev_sync_triggers_enabled(data_dir: &Path) -> bool {
@@ -1265,7 +1281,22 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
                         if !request_id.is_empty() && last_handled_id.as_deref() != Some(request_id)
                         {
                             let provider = request.provider.as_deref().map(str::trim).unwrap_or("");
-                            if !is_supported_dev_sync_provider(provider) {
+                            if let Some(detail) =
+                                dev_sync_trigger_request_expiration_detail(&request, now_unix_ms())
+                            {
+                                last_handled_id = Some(request_id.to_string());
+                                write_dev_sync_trigger_result(
+                                    &data_dir,
+                                    request_id,
+                                    (!provider.is_empty()).then_some(provider),
+                                    "ignored",
+                                    Some(detail),
+                                );
+                                info!(
+                                    "[dev-sync-trigger] ignored expired sync request {}",
+                                    request_id
+                                );
+                            } else if !is_supported_dev_sync_provider(provider) {
                                 last_handled_id = Some(request_id.to_string());
                                 write_dev_sync_trigger_result(
                                     &data_dir,
@@ -10688,7 +10719,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(
             dev_sync_trigger_path(temp.path()),
-            r#"{"enabled":true,"id":"facebook-123","provider":"facebook"}"#,
+            r#"{"enabled":true,"id":"facebook-123","provider":"facebook","createdAt":123456}"#,
         )
         .unwrap();
 
@@ -10697,8 +10728,48 @@ mod tests {
         assert_eq!(request.enabled, Some(true));
         assert_eq!(request.id.as_deref(), Some("facebook-123"));
         assert_eq!(request.provider.as_deref(), Some("facebook"));
+        assert_eq!(request.created_at, Some(123456));
         assert!(is_supported_dev_sync_provider("facebook"));
         assert!(!is_supported_dev_sync_provider("medium"));
+    }
+
+    #[test]
+    fn dev_sync_trigger_request_expiration_blocks_stale_or_malformed_requests() {
+        let fresh = DevSyncTriggerRequest {
+            enabled: Some(true),
+            id: Some("facebook-fresh".to_string()),
+            provider: Some("facebook".to_string()),
+            created_at: Some(1_000),
+        };
+        assert_eq!(
+            dev_sync_trigger_request_expiration_detail(&fresh, 1_000),
+            None
+        );
+
+        let expired = DevSyncTriggerRequest {
+            enabled: Some(true),
+            id: Some("facebook-expired".to_string()),
+            provider: Some("facebook".to_string()),
+            created_at: Some(1_000),
+        };
+        assert_eq!(
+            dev_sync_trigger_request_expiration_detail(
+                &expired,
+                1_000 + DEV_SYNC_TRIGGER_REQUEST_MAX_AGE_MS + 1,
+            ),
+            Some("Trigger request expired before Freed Desktop picked it up. Re-run scripts/dev-sync-trigger.mjs.")
+        );
+
+        let missing = DevSyncTriggerRequest {
+            enabled: Some(true),
+            id: Some("facebook-missing".to_string()),
+            provider: Some("facebook".to_string()),
+            created_at: None,
+        };
+        assert_eq!(
+            dev_sync_trigger_request_expiration_detail(&missing, 1_000),
+            Some("Trigger request is missing createdAt. Re-run scripts/dev-sync-trigger.mjs.")
+        );
     }
 
     #[test]
@@ -10765,7 +10836,10 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(parsed["id"], serde_json::json!("facebook-new"));
         assert_eq!(parsed["status"], serde_json::json!("completed"));
-        assert_eq!(parsed["detail"], serde_json::json!("Current request finished."));
+        assert_eq!(
+            parsed["detail"],
+            serde_json::json!("Current request finished.")
+        );
     }
 
     #[test]

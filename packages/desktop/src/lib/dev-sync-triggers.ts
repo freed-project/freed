@@ -13,6 +13,7 @@ import { useAppStore } from "./store";
 const DEV_SYNC_TRIGGER_FILE = "dev-sync-trigger.json";
 const DEV_SYNC_TRIGGER_RESULT_FILE = "dev-sync-trigger-result.json";
 const DEV_SYNC_TRIGGER_POLL_MS = 5_000;
+const DEV_SYNC_TRIGGER_REQUEST_MAX_AGE_MS = 10 * 60 * 1000;
 const DEV_SYNC_TRIGGERS_ENABLED =
   import.meta.env.VITE_ENABLE_DEV_SYNC_TRIGGERS === "1" ||
   import.meta.env.VITE_TEST_TAURI === "1";
@@ -21,6 +22,7 @@ type DevSyncTriggerRequest = {
   enabled?: unknown;
   id?: unknown;
   provider?: unknown;
+  createdAt?: unknown;
 };
 
 type DevSyncTriggerBridgeRequest = {
@@ -30,7 +32,9 @@ type DevSyncTriggerBridgeRequest = {
 
 declare global {
   interface Window {
-    __FREED_RUN_SOCIAL_SYNC__?: (request: DevSyncTriggerBridgeRequest) => Promise<void>;
+    __FREED_RUN_SOCIAL_SYNC__?: (
+      request: DevSyncTriggerBridgeRequest,
+    ) => Promise<void>;
   }
 }
 
@@ -38,6 +42,22 @@ function parseProvider(value: unknown): RetriableSocialProvider | null {
   return value === "facebook" || value === "instagram" || value === "linkedin"
     ? value
     : null;
+}
+
+function getRequestExpirationDetail(
+  request: DevSyncTriggerRequest,
+  now = Date.now(),
+): string | null {
+  if (
+    typeof request.createdAt !== "number" ||
+    !Number.isFinite(request.createdAt)
+  ) {
+    return "Trigger request is missing createdAt. Re-run scripts/dev-sync-trigger.mjs.";
+  }
+  if (now - request.createdAt > DEV_SYNC_TRIGGER_REQUEST_MAX_AGE_MS) {
+    return "Trigger request expired before Freed Desktop picked it up. Re-run scripts/dev-sync-trigger.mjs.";
+  }
+  return null;
 }
 
 async function ensureInitializedStore(): Promise<boolean> {
@@ -51,7 +71,9 @@ type DevSyncTriggerPollerOptions = {
   pollMs?: number;
 };
 
-async function resolveDevSyncTriggersEnabled(explicit: boolean | undefined): Promise<boolean> {
+async function resolveDevSyncTriggersEnabled(
+  explicit: boolean | undefined,
+): Promise<boolean> {
   if (explicit !== undefined) return explicit;
   if (DEV_SYNC_TRIGGERS_ENABLED) return true;
   if (!isTauri()) return false;
@@ -83,7 +105,9 @@ async function writeResult(
   );
 }
 
-async function runDevSyncTrigger(request: DevSyncTriggerBridgeRequest): Promise<void> {
+async function runDevSyncTrigger(
+  request: DevSyncTriggerBridgeRequest,
+): Promise<void> {
   const requestId =
     typeof request.id === "string" && request.id.trim()
       ? request.id.trim()
@@ -125,10 +149,17 @@ async function runDevSyncTrigger(request: DevSyncTriggerBridgeRequest): Promise<
     }
 
     await writeResult(requestId, provider, "started");
-    log.info(`[dev-sync-trigger] starting ${provider} sync request ${requestId}`);
+    log.info(
+      `[dev-sync-trigger] starting ${provider} sync request ${requestId}`,
+    );
     const result = await refreshSocialProvider(provider);
     const status = mapRefreshResultToTriggerStatus(result);
-    await writeResult(requestId, provider, status, formatRefreshResultDetail(result));
+    await writeResult(
+      requestId,
+      provider,
+      status,
+      formatRefreshResultDetail(result),
+    );
     log.info(
       `[dev-sync-trigger] ${provider} sync request ${requestId} finished status=${status} outcome=${result.status}`,
     );
@@ -149,7 +180,9 @@ function mapRefreshResultToTriggerStatus(
   return "error";
 }
 
-function formatRefreshResultDetail(result: SocialProviderRefreshResult): string {
+function formatRefreshResultDetail(
+  result: SocialProviderRefreshResult,
+): string {
   const counts =
     result.postsExtracted === undefined
       ? ""
@@ -203,6 +236,12 @@ export function startDevSyncTriggerPoller(
 
     const provider = parseProvider(request.provider);
     lastHandledId = requestId;
+
+    const expirationDetail = getRequestExpirationDetail(request);
+    if (expirationDetail) {
+      await writeResult(requestId, provider, "ignored", expirationDetail);
+      return;
+    }
 
     if (!provider) {
       await writeResult(
