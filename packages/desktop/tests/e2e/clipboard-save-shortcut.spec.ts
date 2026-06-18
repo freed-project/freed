@@ -110,6 +110,9 @@ test("Settings records, disables, and resets the Save Content shortcut", async (
 
   const recorder = settingsDialog.getByRole("button", { name: "Record Save Content shortcut" });
   const label = settingsDialog.getByText("Save Content", { exact: true });
+  const card = settingsDialog.getByTestId("settings-shortcuts-save-content-card");
+  await expect(card).toHaveClass(/theme-card-soft/);
+  await expect(card).not.toHaveClass(/border-border|bg-bg-surface/);
   await expect(recorder).toContainText("⌃⌥⌘S");
   await expect(recorder.locator("kbd")).toHaveText(["⌃", "⌥", "⌘", "S"]);
   await expectKeycapsInSingleRow(recorder);

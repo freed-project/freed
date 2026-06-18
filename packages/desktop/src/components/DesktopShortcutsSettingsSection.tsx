@@ -46,7 +46,7 @@ function ShortcutKeycaps({ keys }: { keys: string[] }) {
       {keys.map((key, index) => (
         <kbd
           key={`${key}-${index}`}
-          className="min-w-8 rounded-md border border-border bg-bg-surface px-2 py-1 text-center font-sans text-xs font-semibold leading-none text-text-primary shadow-sm"
+          className="min-w-8 rounded-md border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-2 py-1 text-center font-sans text-xs font-semibold leading-none text-text-primary shadow-[inset_0_1px_0_rgb(255_255_255_/_0.04)]"
         >
           {key}
         </kbd>
@@ -99,7 +99,7 @@ export function DesktopShortcutsSettingsSection({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-bg-surface/70 p-4">
+      <div data-testid="settings-shortcuts-save-content-card" className="theme-card-soft rounded-2xl p-4 sm:p-5">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-text-primary">Save Content</p>
