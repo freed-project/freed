@@ -2684,9 +2684,7 @@ fn main_renderer_memory_recovery_reason(
     last_visibility: &str,
     stats: &RuntimeMemoryStats,
 ) -> Option<&'static str> {
-    if !renderer_is_effectively_visible(is_visible, last_visibility) {
-        return None;
-    }
+    let effectively_visible = renderer_is_effectively_visible(is_visible, last_visibility);
     if stats.webkit_largest_role.as_deref() != Some("freed-webcontent-age-matched") {
         return None;
     }
@@ -2702,7 +2700,11 @@ fn main_renderer_memory_recovery_reason(
         .webkit_largest_footprint_bytes
         .unwrap_or_else(|| stats.webkit_largest_resident_bytes.unwrap_or(0));
     if main_webkit_pressure_bytes >= stats.memory_high_bytes {
-        return Some("webkit_footprint_pressure");
+        return Some(if effectively_visible {
+            "webkit_footprint_pressure"
+        } else {
+            "idle_webkit_footprint_pressure"
+        });
     }
 
     if webkit_resident_tail_is_probably_reclaimable(stats)
@@ -2710,7 +2712,11 @@ fn main_renderer_memory_recovery_reason(
             >= POST_SOCIAL_SCRAPE_WEBKIT_RESIDENT_RECOVERY_BYTES
         && stats.app_resident_bytes >= POST_SOCIAL_SCRAPE_WEBKIT_RESIDENT_RECOVERY_BYTES
     {
-        return Some("webkit_resident_tail");
+        return Some(if effectively_visible {
+            "webkit_resident_tail"
+        } else {
+            "idle_webkit_resident_tail"
+        });
     }
 
     None
@@ -2922,7 +2928,11 @@ mod renderer_watchdog_tests {
             main_renderer_memory_recovery_reason(true, "visible", &stats),
             Some("webkit_footprint_pressure")
         );
-        assert!(!main_renderer_memory_should_recover(true, "hidden", &stats));
+        assert_eq!(
+            main_renderer_memory_recovery_reason(true, "hidden", &stats),
+            Some("idle_webkit_footprint_pressure")
+        );
+        assert!(main_renderer_memory_should_recover(true, "hidden", &stats));
         assert!(!main_renderer_memory_should_recover(
             true,
             "visible",
@@ -2982,7 +2992,11 @@ mod renderer_watchdog_tests {
             Some("webkit_resident_tail")
         );
         assert!(main_renderer_memory_should_recover(true, "visible", &stats));
-        assert!(!main_renderer_memory_should_recover(true, "hidden", &stats));
+        assert_eq!(
+            main_renderer_memory_recovery_reason(true, "hidden", &stats),
+            Some("idle_webkit_resident_tail")
+        );
+        assert!(main_renderer_memory_should_recover(true, "hidden", &stats));
     }
 
     #[test]
@@ -8891,6 +8905,13 @@ fn schedule_main_window_occlusion_recovery(
 }
 
 fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
+    create_main_window_with_initial_visibility(app, true)
+}
+
+fn create_main_window_with_initial_visibility(
+    app: &tauri::AppHandle,
+    initially_visible: bool,
+) -> Result<tauri::WebviewWindow, tauri::Error> {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         if main_window_handle_available(&window) {
             return Ok(window);
@@ -8912,6 +8933,11 @@ fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, ta
     let builder = match std::env::var("FREED_TAURI_WINDOW_TITLE") {
         Ok(title) if !title.trim().is_empty() => builder.title(title),
         _ => builder,
+    };
+    let builder = if initially_visible {
+        builder
+    } else {
+        builder.visible(false).focused(false)
     };
 
     #[cfg(target_os = "macos")]
@@ -9055,7 +9081,29 @@ fn request_restart_after_recovery_failure(app: &tauri::AppHandle, reason: &str, 
     });
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MainWindowRecoveryPresentation {
+    RestoreIfVisible,
+    KeepHidden,
+}
+
 fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
+    recover_main_window_with_presentation(
+        app,
+        reason,
+        MainWindowRecoveryPresentation::RestoreIfVisible,
+    )
+}
+
+fn recover_main_window_hidden(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
+    recover_main_window_with_presentation(app, reason, MainWindowRecoveryPresentation::KeepHidden)
+}
+
+fn recover_main_window_with_presentation(
+    app: &tauri::AppHandle,
+    reason: &str,
+    presentation: MainWindowRecoveryPresentation,
+) -> Result<(), String> {
     let app_for_destroy = app.clone();
     let reason_for_destroy = reason.to_string();
     let outcome =
@@ -9069,7 +9117,15 @@ fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), Strin
             let app_for_create = app.clone();
             let reason_for_create = reason.to_string();
             run_main_window_step_on_main_thread(app, "renderer recovery rebuild", move || {
-                rebuild_main_window_after_recovery(&app_for_create, &reason_for_create, was_visible)
+                let restore_visible = match presentation {
+                    MainWindowRecoveryPresentation::RestoreIfVisible => was_visible,
+                    MainWindowRecoveryPresentation::KeepHidden => false,
+                };
+                rebuild_main_window_after_recovery(
+                    &app_for_create,
+                    &reason_for_create,
+                    restore_visible,
+                )
             })
         });
 
@@ -9109,7 +9165,8 @@ fn rebuild_main_window_after_recovery(
     reason: &str,
     was_visible: bool,
 ) -> Result<(), String> {
-    let window = create_main_window(app).map_err(|error| error.to_string())?;
+    let window = create_main_window_with_initial_visibility(app, was_visible)
+        .map_err(|error| error.to_string())?;
 
     if was_visible {
         show_webview_window(&window);
@@ -9804,14 +9861,18 @@ pub fn run() {
                                 .unwrap_or(true);
                             if cooldown_elapsed {
                                 let attempt = health.note_recovery_attempt(std::time::Instant::now());
+                                let last_visibility = health.last_visibility.clone();
+                                let recover_hidden =
+                                    !renderer_is_effectively_visible(is_main_visible, &last_visibility);
                                 Some((
                                     attempt,
                                     health.renderer_generation,
-                                    health.last_visibility.clone(),
+                                    last_visibility,
                                     health.last_page_load_id.clone(),
                                     health.last_app_phase.clone(),
                                     main_memory_recovery_reason,
                                     recovery_threshold,
+                                    recover_hidden,
                                 ))
                             } else {
                                 None
@@ -9826,10 +9887,17 @@ pub fn run() {
                             app_phase,
                             main_memory_recovery_reason,
                             recovery_threshold,
+                            recover_hidden,
                         )) = recovery
                         {
                             let reason = match main_memory_recovery_reason {
                                 "webkit_resident_tail" => "main renderer WebKit resident tail high",
+                                "idle_webkit_resident_tail" => {
+                                    "idle main renderer WebKit resident tail high"
+                                }
+                                "idle_webkit_footprint_pressure" => {
+                                    "idle main renderer WebKit memory high"
+                                }
                                 _ => "main renderer WebKit memory high",
                             };
                             background_runtime_for_memory_monitor.note_renderer_recovery_attempt(reason);
@@ -9853,6 +9921,7 @@ pub fn run() {
                                     "pageLoadId": page_load_id,
                                     "appPhase": app_phase,
                                     "rendererRecoveryAllowed": true,
+                                    "recoverHidden": recover_hidden,
                                     "appMemoryPressureBytes": stats.app_memory_pressure_bytes,
                                     "appResidentBytes": stats.app_resident_bytes,
                                     "nativeResidentBytes": stats.process_resident_bytes,
@@ -9904,10 +9973,12 @@ pub fn run() {
                                 &background_runtime_for_memory_monitor,
                                 reason,
                             );
-                            if let Err(error) = recover_main_window(
-                                &app_for_memory_monitor,
-                                reason,
-                            ) {
+                            let recovery_result = if recover_hidden {
+                                recover_main_window_hidden(&app_for_memory_monitor, reason)
+                            } else {
+                                recover_main_window(&app_for_memory_monitor, reason)
+                            };
+                            if let Err(error) = recovery_result {
                                 error!(
                                     "[main-window] memory recovery failed reason={} error={}",
                                     reason, error
