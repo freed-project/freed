@@ -783,7 +783,7 @@ const phases: Phase[] = [
     number: 10,
     title: "Polish",
     description:
-      "Onboarding, statistics, global animation controls, configurable keyboard shortcuts including the Freed Desktop Save Content shortcut, expanded local content signals with Desktop and PWA backfill, inclusive saved feed filter presets, compact event extraction, local semantic enrichment for friend suggestions, Freed Desktop AI provider settings, Light, Balanced, and Pro Integrated AI packs with semantic scan health, PWA settings that omit non-runnable AI controls, plugin API, community infrastructure, duplicate-aware nightly improvement planning with learned closeout, typed preflight actions, provider-visible peer guards, dev-branch context checks, fresh soak quality gates, self-repairing soak evidence, and deeper crash recovery hardening.",
+      "Onboarding, statistics, global animation controls, configurable keyboard shortcuts including the Freed Desktop Save Content shortcut, expanded local content signals with Desktop and PWA backfill, inclusive saved feed filter presets, compact event extraction, local semantic enrichment for friend suggestions, Freed Desktop AI provider settings, Light, Balanced, and Pro Integrated AI packs with semantic scan health, PWA settings that omit non-runnable AI controls, plugin API, community infrastructure, duplicate-aware nightly improvement planning with learned closeout, typed preflight actions, provider-visible peer guards, dev-branch context checks, unattended app-interaction continuation rules, fresh soak quality gates, self-repairing soak evidence, and deeper crash recovery hardening.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-10-POLISH.md",

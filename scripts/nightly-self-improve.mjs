@@ -32,6 +32,12 @@ const STALE_SOAK_MS = 2 * 60 * 60 * 1000;
 const MIN_PERFORMANCE_SOAK_SAMPLES = 3;
 const DEFAULT_MAX_TARGETS = 6;
 const DEFAULT_MINIMUM_NIGHT_MINUTES = 180;
+const UNATTENDED_APP_INTERACTION_RULES = [
+  "Do not stop an unattended run because the next useful validation step needs a Freed Desktop button press.",
+  "Use terminal diagnostics and shipped triggers first, including `node scripts/dev-sync-trigger.mjs <provider>` for installed dev-channel provider sync soaks.",
+  "If a foreground app click is truly the fastest path, ask for permission with a 10 minute response window and continue if the user is unavailable.",
+  "When the same app action is likely to recur, build and ship a terminal trigger instead of depending on System Events, coordinate clicks, Computer Use, or browser automation.",
+];
 const KNOWN_GENERATED_ARTIFACT_PATHS = [
   "packages/desktop/playwright-report",
   "packages/desktop/test-results",
@@ -1888,6 +1894,10 @@ function formatCandidate(candidate, index) {
     "",
     candidate.prompt,
     "",
+    "## Unattended App Interaction",
+    "",
+    ...UNATTENDED_APP_INTERACTION_RULES.map((item) => `- ${item}`),
+    "",
     "## Validation",
     "",
     ...candidate.validation.map((item) => `- ${item}`),
@@ -1952,6 +1962,10 @@ export function buildReport({ repo, soak, riskSnapshot, duplicateWork, outcomeLe
       `${index + 1}. ${candidate.title}`,
       `   Kind: ${candidate.kind}. Score: ${numberFormatter.format(candidate.score)}. Machine time: ${numberFormatter.format(candidate.estimatedMinutes)} min.`,
     ]),
+    "",
+    "## Unattended App Interaction",
+    "",
+    ...UNATTENDED_APP_INTERACTION_RULES.map((item) => `- ${item}`),
     "",
     "## Execution Phases",
     "",
@@ -2171,6 +2185,8 @@ export function buildExecutionPlan(selected) {
       commands: [
         "# Use freed-ship-build dev after fixes merge into dev.",
         "# Install the new dev build, restart the installed-build soak, and append outcome-template.jsonl to the outcome ledger.",
+        "# For installed provider sync soaks, prefer node scripts/dev-sync-trigger.mjs <provider> over foreground app clicks.",
+        "# If a foreground app click is required, ask with a 10 minute response window and continue if the user is unavailable.",
       ],
     },
   );
@@ -2213,6 +2229,10 @@ function renderOutcomeCloseoutMarkdown({ selected, outcomeLedger }) {
     `Outcome ledger: ${outcomeLedger}`,
     "",
     "Run one command per selected target after the target finishes. Use `shipped` only after the fix is merged, released when applicable, installed, and soaked enough to compare evidence.",
+    "",
+    "Unattended app interaction:",
+    "",
+    ...UNATTENDED_APP_INTERACTION_RULES.map((item) => `- ${item}`),
     "",
     ...selected.flatMap((candidate, index) => [
       `## ${index + 1}. ${candidate.title}`,
