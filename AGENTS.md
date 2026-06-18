@@ -79,6 +79,16 @@ Prefer the lightest useful local preview before opening a draft PR:
 - after browser tooling work, run `./scripts/dev-session-clean.sh`
 - `./scripts/worktree-publish.sh` now refuses stray untracked files unless you stage them yourself first or pass `--include-untracked`
 
+### Installed Desktop Soaks
+
+When validating an installed Freed Desktop build on the user's primary machine, avoid tools that steal focus. Do not use System Events, coordinate clicks, Computer Use, or browser automation to drive the installed app unless the user explicitly approves that disruption.
+
+Use terminal-driven diagnostics first: app logs, `runtime-health.jsonl`, crash reports, process samples, memory samples, and local app-data files. When a provider sync soak needs a manual kick, build the app with `VITE_ENABLE_DEV_SYNC_TRIGGERS=1` and run `node scripts/dev-sync-trigger.mjs facebook`, `instagram`, or `linkedin`. The trigger calls the same in-app social refresh path as the UI, so it keeps existing auth, pause state, provider cooldowns, and rate limits intact.
+
+Long-running or background work must not stop overnight because the next useful step would be a click in Freed Desktop. If a click is truly required to test efficiently, ask for permission with a 10 minute response window and then proceed if the user is unavailable. When the action is likely to recur, implement and ship a dev-only trigger instead of depending on foreground UI automation.
+
+Production builds should keep reliability and memory-recovery behavior enabled, but the raw file-based sync trigger stays dev-only until it has a user-facing permission model. In production, any local process that can write to the app data folder could otherwise start authenticated provider syncs, which changes observable Facebook, Instagram, or LinkedIn traffic without an explicit user action.
+
 ### Queued UI Polish
 
 When a user queues several small UI fixes for the same product surface, keep the work in the active feature worktree and PR until the queue is done.

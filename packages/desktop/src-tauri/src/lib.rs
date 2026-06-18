@@ -2140,7 +2140,6 @@ impl RendererHeartbeatStatus {
         self.stale_logged = false;
         self.throttle_logged = false;
         self.recovery_attempts = 0;
-        self.last_recovery_at = None;
 
         (first_heartbeat, gap_ms, recovered)
     }
@@ -2734,10 +2733,50 @@ mod renderer_watchdog_tests {
 
         assert!(recovered);
         assert_eq!(status.recovery_attempts, 0);
-        assert!(status.last_recovery_at.is_none());
+        assert!(status.last_recovery_at.is_some());
         assert_eq!(status.last_seq, 7);
         assert_eq!(status.last_page_load_id.as_deref(), Some("page-1"));
         assert_eq!(status.last_hidden_timer_throttled, Some(false));
+    }
+
+    #[test]
+    fn heartbeat_after_recovery_keeps_recovery_cooldown() {
+        let mut status = RendererHeartbeatStatus::new();
+        let recovery_at = std::time::Instant::now();
+        status.note_recovery_attempt(recovery_at);
+
+        let payload = RendererHeartbeatPayload {
+            seq: 7,
+            ts: 1_777_000_000_000,
+            reason: "startup".to_string(),
+            visibility: "visible".to_string(),
+            href: "tauri://localhost".to_string(),
+            page_load_id: Some("page-1".to_string()),
+            uptime_ms: Some(1_000),
+            app_phase: Some("ready".to_string()),
+            event_loop_lag_ms: Some(4.0),
+            hidden_timer_throttled: Some(false),
+            dom_node_count: Some(100),
+            renderer_heap_used_bytes: Some(1024),
+            renderer_heap_total_bytes: Some(2048),
+            last_input_age_ms: Some(50),
+            settings_open: Some(false),
+            dialog_open: Some(false),
+        };
+
+        let (_first_heartbeat, _gap_ms, recovered) =
+            status.note_heartbeat(&payload, recovery_at + Duration::from_secs(1));
+
+        assert!(recovered);
+        assert_eq!(status.last_recovery_at, Some(recovery_at));
+        assert_eq!(
+            renderer_recovery_threshold_for_count(
+                true,
+                "visible",
+                status.recent_recovery_count(BACKGROUND_SAFE_MODE_RECOVERY_WINDOW_SHORT)
+            ),
+            RENDERER_VISIBLE_RECOVERY_AFTER
+        );
     }
 
     #[test]

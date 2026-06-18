@@ -118,6 +118,7 @@ import {
   resolveDesktopDownloadFallbackUrl,
 } from "./lib/desktop-updater";
 import { rendererHeartbeatTiming } from "./lib/renderer-heartbeat";
+import { startDevSyncTriggerPoller } from "./lib/dev-sync-triggers";
 import { DESKTOP_CHANGELOG_PREVIEW } from "./lib/changelog-preview";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
@@ -378,6 +379,7 @@ function App() {
     if (isTauri()) {
       void startSnapshotManager();
     }
+    const stopDevSyncTriggerPoller = startDevSyncTriggerPoller();
     // Start background content fetcher, which processes the article HTML queue.
     void contentCache.pruneOversized();
     startContentFetcher({ startupDelayMs: 5 * 60_000, memoryGuard: true });
@@ -400,6 +402,7 @@ function App() {
       stopContentFetcher();
       stopSemanticClassifier();
       stopMemoryMonitor();
+      stopDevSyncTriggerPoller();
     };
   }, [isInitialized, legalAccepted]);
 

@@ -24,6 +24,27 @@ Native macOS/Windows/Linux desktop application built with Tauri.
 npm run tauri:build
 ```
 
+### Installed sync soaks without focus theft
+
+Use the file trigger when an installed development build needs a provider sync soak from the terminal. This avoids System Events clicks and keeps the user's current app focus alone.
+
+```bash
+# Build a development soak build with the terminal trigger enabled
+VITE_ENABLE_DEV_SYNC_TRIGGERS=1 npm run tauri:build
+
+# After installing and launching that build, trigger the normal in-app path
+node ../../scripts/dev-sync-trigger.mjs facebook
+node ../../scripts/dev-sync-trigger.mjs instagram
+node ../../scripts/dev-sync-trigger.mjs linkedin
+
+# Watch local runtime evidence while the app runs
+tail -f "$HOME/Library/Application Support/wtf.freed.desktop/runtime-health.jsonl"
+```
+
+The trigger is intentionally dev-only. It still uses the same social refresh path as the UI, including auth checks, provider pause state, cooldowns, and rate limits. Production builds keep the reliability and memory recovery behavior, but should not expose a raw app-data file that lets another local process start authenticated Facebook, Instagram, or LinkedIn traffic without a user-facing permission model.
+
+For long-running background validation, do not block the run until morning because the next step needs a UI button. Add a dev-only trigger when the action will be reused. If a one-off foreground click is still the fastest correct test, ask with a 10 minute window and continue if no response arrives.
+
 ## Building
 
 ### Debug build (faster, larger)

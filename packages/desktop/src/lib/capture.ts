@@ -108,7 +108,7 @@ const RSS_FAILURE_RETRY_MAX_MS = 24 * 60 * 60 * 1000;
 const SOCIAL_DEFERRED_RETRY_BASE_MS = 2 * 60 * 1000;
 const SOCIAL_DEFERRED_RETRY_MAX_MS = 10 * 60 * 1000;
 
-type RetriableSocialProvider = "facebook" | "instagram" | "linkedin";
+export type RetriableSocialProvider = "facebook" | "instagram" | "linkedin";
 
 const socialDeferredRetryTimers = new Map<
   RetriableSocialProvider,
@@ -207,7 +207,7 @@ function handleSocialResult(
   }
 }
 
-async function refreshSocialProvider(
+export async function refreshSocialProvider(
   provider: RetriableSocialProvider,
 ): Promise<void> {
   if (!isTauri() || isProviderPaused(provider)) {
