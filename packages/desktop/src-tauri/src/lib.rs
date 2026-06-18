@@ -112,6 +112,9 @@ const RENDERER_HIDDEN_STALE_LOG_AFTER: Duration = Duration::from_secs(570);
 const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(75);
 const RENDERER_HIDDEN_RECOVERY_AFTER: Duration = Duration::from_secs(900);
 const MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS: u64 = 5 * 60;
+const MAIN_RENDERER_HOT_WEBKIT_RESIDENT_RECOVERY_BYTES: u64 = 5 * BYTES_PER_GIB;
+const MAIN_RENDERER_HOT_WEBKIT_FOOTPRINT_RECOVERY_BYTES: u64 = 2 * BYTES_PER_GIB;
+const MAIN_RENDERER_HOT_WEBKIT_CPU_RECOVERY_PERCENT: f32 = 20.0;
 const RENDERER_EVENT_LOOP_LAG_RECOVERY_MS: f64 = 45_000.0;
 const BACKGROUND_REQUIRED_HEALTHY_HEARTBEATS: u64 = 2;
 const BACKGROUND_RECOVERY_COOLDOWN: Duration = Duration::from_secs(120);
@@ -2752,6 +2755,14 @@ fn main_renderer_memory_recovery_reason(
         });
     }
 
+    if main_renderer_hot_webkit_activity_should_recover(stats) {
+        return Some(if effectively_visible {
+            "webkit_hot_active_pressure"
+        } else {
+            "idle_webkit_hot_active_pressure"
+        });
+    }
+
     if stats
         .webkit_largest_resident_bytes
         .map(|resident| resident >= stats.memory_high_bytes)
@@ -2766,6 +2777,28 @@ fn main_renderer_memory_recovery_reason(
     }
 
     None
+}
+
+fn main_renderer_hot_webkit_activity_should_recover(stats: &RuntimeMemoryStats) -> bool {
+    let resident_hot = stats
+        .webkit_largest_resident_bytes
+        .map(|resident| resident >= MAIN_RENDERER_HOT_WEBKIT_RESIDENT_RECOVERY_BYTES)
+        .unwrap_or(false);
+    let footprint_hot = stats
+        .webkit_largest_footprint_bytes
+        .map(|footprint| footprint >= MAIN_RENDERER_HOT_WEBKIT_FOOTPRINT_RECOVERY_BYTES)
+        .unwrap_or(false);
+    let cpu_hot = stats
+        .webkit_largest_cpu_usage
+        .map(|cpu| cpu >= MAIN_RENDERER_HOT_WEBKIT_CPU_RECOVERY_PERCENT)
+        .unwrap_or(false);
+
+    let below_high_memory_limit = stats
+        .webkit_largest_resident_bytes
+        .map(|resident| resident < stats.memory_high_bytes)
+        .unwrap_or(false);
+
+    resident_hot && footprint_hot && cpu_hot && below_high_memory_limit
 }
 
 fn format_bytes_for_log(bytes: u64) -> String {
@@ -3037,7 +3070,9 @@ mod renderer_watchdog_tests {
             main_renderer_memory_recovery_reason(true, "visible", &stats),
             None
         );
-        assert!(!main_renderer_memory_should_recover(true, "visible", &stats));
+        assert!(!main_renderer_memory_should_recover(
+            true, "visible", &stats
+        ));
         assert_eq!(
             main_renderer_memory_recovery_reason(true, "hidden", &stats),
             None
@@ -3088,6 +3123,105 @@ mod renderer_watchdog_tests {
         assert_eq!(
             main_renderer_memory_recovery_reason(true, "hidden", &stats),
             Some("idle_webkit_hot_resident_pressure")
+        );
+    }
+
+    #[test]
+    fn main_renderer_recovers_for_hot_active_webkit_before_high_memory_limit() {
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: 6 * BYTES_PER_GIB,
+            app_memory_pressure_bytes: 3 * BYTES_PER_GIB,
+            webkit_resident_bytes: Some(5 * BYTES_PER_GIB),
+            webkit_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: 5 * BYTES_PER_GIB,
+            webkit_total_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(5 * BYTES_PER_GIB),
+            webkit_largest_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(28.0),
+            webkit_largest_age_seconds: Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS),
+            webkit_largest_role: Some("freed-webcontent-age-matched".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
+            memory_high_bytes: 9 * BYTES_PER_GIB,
+            memory_critical_bytes: 12 * BYTES_PER_GIB,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert_eq!(
+            main_renderer_memory_recovery_reason(true, "visible", &stats),
+            Some("webkit_hot_active_pressure")
+        );
+        assert_eq!(
+            main_renderer_memory_recovery_reason(true, "hidden", &stats),
+            Some("idle_webkit_hot_active_pressure")
+        );
+    }
+
+    #[test]
+    fn main_renderer_keeps_moderate_hot_webkit_activity_running() {
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: 5 * BYTES_PER_GIB,
+            app_memory_pressure_bytes: 2 * BYTES_PER_GIB,
+            webkit_resident_bytes: Some(4 * BYTES_PER_GIB),
+            webkit_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: 4 * BYTES_PER_GIB,
+            webkit_total_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(4 * BYTES_PER_GIB),
+            webkit_largest_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(28.0),
+            webkit_largest_age_seconds: Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS),
+            webkit_largest_role: Some("freed-webcontent-age-matched".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
+            memory_high_bytes: 9 * BYTES_PER_GIB,
+            memory_critical_bytes: 12 * BYTES_PER_GIB,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert_eq!(
+            main_renderer_memory_recovery_reason(true, "visible", &stats),
+            None
+        );
+        assert_eq!(
+            main_renderer_memory_recovery_reason(
+                true,
+                "visible",
+                &RuntimeMemoryStats {
+                    webkit_largest_resident_bytes: Some(5 * BYTES_PER_GIB),
+                    webkit_total_resident_bytes: 5 * BYTES_PER_GIB,
+                    webkit_largest_cpu_usage: Some(12.0),
+                    ..stats
+                },
+            ),
+            None
         );
     }
 
@@ -10140,6 +10274,12 @@ pub fn run() {
                                 }
                                 "idle_webkit_footprint_pressure" => {
                                     "idle main renderer WebKit memory high"
+                                }
+                                "webkit_hot_active_pressure" => {
+                                    "main renderer WebKit active memory pressure"
+                                }
+                                "idle_webkit_hot_active_pressure" => {
+                                    "idle main renderer WebKit active memory pressure"
                                 }
                                 "webkit_hot_resident_pressure" => {
                                     "main renderer WebKit resident memory hot"

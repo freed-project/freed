@@ -33,9 +33,9 @@ const MIN_PERFORMANCE_SOAK_SAMPLES = 3;
 const DEFAULT_MAX_TARGETS = 6;
 const DEFAULT_MINIMUM_NIGHT_MINUTES = 180;
 const UNATTENDED_APP_INTERACTION_RULES = [
-  "Do not stop an unattended run because the next useful validation step needs a Freed Desktop button press.",
+  "Do not stop an unattended run because the next useful validation or testing step needs a Freed Desktop button press.",
   "Use terminal diagnostics and shipped triggers first, including `node scripts/dev-sync-trigger.mjs <provider>` for installed dev-channel provider sync soaks.",
-  "If a foreground app click is truly the fastest path, ask for permission with a 10 minute response window and continue if the user is unavailable.",
+  "If a foreground app click is truly the fastest way to test properly, ask for permission with a 10 minute response window and continue if the user is unavailable.",
   "When the same app action is likely to recur, build and ship a terminal trigger instead of depending on System Events, coordinate clicks, Computer Use, or browser automation.",
 ];
 const KNOWN_GENERATED_ARTIFACT_PATHS = [
