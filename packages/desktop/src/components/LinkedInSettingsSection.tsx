@@ -6,9 +6,7 @@
  * authenticates, the WebView's cookies are shared with the scraper.
  */
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { isTauri } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { useState, useCallback } from "react";
 import type { SyncProviderSectionProps } from "@freed/ui/context";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
 import {
@@ -41,6 +39,7 @@ import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
 import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
 import { socialProviderCopy } from "../lib/social-provider-copy";
+import { usePostLoginAutoSync } from "../hooks/usePostLoginAutoSync";
 
 // =============================================================================
 // Diagnostic Panel
@@ -119,14 +118,10 @@ export function LinkedInSettingsSection({
   const [lastDiag, setLastDiag] = useState<LiSyncDiag | null>(null);
   const [windowMode, setWindowMode] = useState(() => getLiScraperWindowMode());
   const [actionError, setActionError] = useState<string | null>(null);
-  const [loginWindowPendingSync, setLoginWindowPendingSync] = useState(false);
-  const loginWindowPendingSyncRef = useRef(false);
   const copy = socialProviderCopy("linkedin");
   const { confirm, dialog } = useProviderRiskGate("linkedin");
 
   const runSync = useCallback(async () => {
-    loginWindowPendingSyncRef.current = false;
-    setLoginWindowPendingSync(false);
     setLastDiag(null);
     try {
       const result = await withProviderSyncing("linkedin", () => captureLiFeed());
@@ -136,36 +131,32 @@ export function LinkedInSettingsSection({
     }
   }, []);
 
-  // Auto-detect login success from the WebView's on_navigation callback
-  useEffect(() => {
-    if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return;
-
-    const unlisten = listen<{ loggedIn: boolean }>("li-auth-result", (event) => {
-      if (event.payload.loggedIn) {
+  const handleAuthResult = useCallback(
+    (loggedIn: boolean) => {
+      if (loggedIn) {
         const newState = { isAuthenticated: true, lastCheckedAt: Date.now() };
         setLiAuth(newState);
         storeLiAuthState(newState);
-        loginWindowPendingSyncRef.current = true;
-        setLoginWindowPendingSync(true);
+      } else {
+        const newState = { isAuthenticated: false, lastCheckedAt: Date.now() };
+        setLiAuth(newState);
+        storeLiAuthState(newState);
       }
-    });
-    return () => { unlisten.then((fn) => fn()); };
-  }, [setLiAuth]);
+    },
+    [setLiAuth],
+  );
 
-  useEffect(() => {
-    if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return;
-
-    const unlisten = listen<{ closed: boolean }>("li-login-window-closed", (event) => {
-      const shouldSync = event.payload.closed && useAppStore.getState().liAuth.isAuthenticated;
-      const pending = loginWindowPendingSyncRef.current;
-      loginWindowPendingSyncRef.current = false;
-      setLoginWindowPendingSync(false);
-      if (pending && shouldSync) {
-        void runSync();
-      }
-    });
-    return () => { unlisten.then((fn) => fn()); };
-  }, [runSync]);
+  const postLoginSync = usePostLoginAutoSync({
+    authEvent: "li-auth-result",
+    loginWindowClosedEvent: "li-login-window-closed",
+    scrapeHealthyEvent: "li-scrape-healthy",
+    scrapeStartFailedEvent: "li-scrape-start-failed",
+    hideLoginCommand: "li_hide_login",
+    providerLabel: "LinkedIn",
+    isAuthenticated: () => useAppStore.getState().liAuth.isAuthenticated,
+    onAuthResult: handleAuthResult,
+    runSync,
+  });
 
   const handleLogin = useCallback(async () => {
     await confirm(async () => {
@@ -266,9 +257,9 @@ export function LinkedInSettingsSection({
             </span>
           </div>
 
-          {loginWindowPendingSync && (
+          {postLoginSync.message && (
             <p className="text-xs text-[#a1a1aa] leading-relaxed">
-              Connected. Finish any LinkedIn prompts, then close the login window.
+              {postLoginSync.message}
             </p>
           )}
 
@@ -280,6 +271,7 @@ export function LinkedInSettingsSection({
                   return;
                 }
                 void confirm(async () => {
+                  postLoginSync.cancel();
                   if (isPaused) {
                     await clearProviderPause("linkedin");
                   }

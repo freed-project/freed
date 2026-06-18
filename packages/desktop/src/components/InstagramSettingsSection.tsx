@@ -6,9 +6,7 @@
  * authenticates, the WebView's cookies are shared with the scraper.
  */
 
-import { useState, useCallback, useEffect, useRef } from "react";
-import { isTauri } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { useState, useCallback } from "react";
 import type { SyncProviderSectionProps } from "@freed/ui/context";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
 import {
@@ -43,6 +41,7 @@ import { clearProviderPause, resetProviderPauseState } from "../lib/provider-hea
 import { MediaVaultSettingsCard } from "./MediaVaultSettingsCard";
 import { socialProviderCopy } from "../lib/social-provider-copy";
 import { isRuntimeDeferredStage } from "../lib/social-capture-runtime";
+import { usePostLoginAutoSync } from "../hooks/usePostLoginAutoSync";
 
 // =============================================================================
 // Diagnostic Panel
@@ -127,26 +126,45 @@ export function InstagramSettingsSection({
   const [lastDiag, setLastDiag] = useState<IgSyncDiag | null>(null);
   const [windowMode, setWindowMode] = useState(() => getIgScraperWindowMode());
   const [actionError, setActionError] = useState<string | null>(null);
-  const [loginWindowPendingSync, setLoginWindowPendingSync] = useState(false);
-  const loginWindowPendingSyncRef = useRef(false);
   const copy = socialProviderCopy("instagram");
   const { confirm, dialog } = useProviderRiskGate("instagram");
 
-  // Auto-detect login success from the WebView's on_navigation callback
-  useEffect(() => {
-    if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return;
+  const runSync = useCallback(async () => {
+    setLastDiag(null);
+    try {
+      const result = await withProviderSyncing("instagram", () => captureIgFeed());
+      setLastDiag(result.diag);
+    } catch (err) {
+      console.error("Instagram feed capture failed:", err);
+    }
+  }, []);
 
-    const unlisten = listen<{ loggedIn: boolean }>("ig-auth-result", (event) => {
-      if (event.payload.loggedIn) {
+  const handleAuthResult = useCallback(
+    (loggedIn: boolean) => {
+      if (loggedIn) {
         const newState = { isAuthenticated: true, lastCheckedAt: Date.now() };
         setIgAuth(newState);
         storeIgAuthState(newState);
-        loginWindowPendingSyncRef.current = true;
-        setLoginWindowPendingSync(true);
+      } else {
+        const newState = { isAuthenticated: false, lastCheckedAt: Date.now() };
+        setIgAuth(newState);
+        storeIgAuthState(newState);
       }
-    });
-    return () => { unlisten.then((fn) => fn()); };
-  }, [setIgAuth]);
+    },
+    [setIgAuth],
+  );
+
+  const postLoginSync = usePostLoginAutoSync({
+    authEvent: "ig-auth-result",
+    loginWindowClosedEvent: "ig-login-window-closed",
+    scrapeHealthyEvent: "ig-scrape-healthy",
+    scrapeStartFailedEvent: "ig-scrape-start-failed",
+    hideLoginCommand: "ig_hide_login",
+    providerLabel: "Instagram",
+    isAuthenticated: () => useAppStore.getState().igAuth.isAuthenticated,
+    onAuthResult: handleAuthResult,
+    runSync,
+  });
 
   const handleLogin = useCallback(async () => {
     await confirm(async () => {
@@ -179,33 +197,6 @@ export function InstagramSettingsSection({
       }
     });
   }, [confirm, setIgAuth]);
-
-  const runSync = useCallback(async () => {
-    loginWindowPendingSyncRef.current = false;
-    setLoginWindowPendingSync(false);
-    setLastDiag(null);
-    try {
-      const result = await withProviderSyncing("instagram", () => captureIgFeed());
-      setLastDiag(result.diag);
-    } catch (err) {
-      console.error("Instagram feed capture failed:", err);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return;
-
-    const unlisten = listen<{ closed: boolean }>("ig-login-window-closed", (event) => {
-      const shouldSync = event.payload.closed && useAppStore.getState().igAuth.isAuthenticated;
-      const pending = loginWindowPendingSyncRef.current;
-      loginWindowPendingSyncRef.current = false;
-      setLoginWindowPendingSync(false);
-      if (pending && shouldSync) {
-        void runSync();
-      }
-    });
-    return () => { unlisten.then((fn) => fn()); };
-  }, [runSync]);
 
   const handleDisconnect = useCallback(async () => {
     try {
@@ -274,9 +265,9 @@ export function InstagramSettingsSection({
             </span>
           </div>
 
-          {loginWindowPendingSync && (
+          {postLoginSync.message && (
             <p className="text-xs text-[#a1a1aa] leading-relaxed">
-              Connected. Finish any Instagram prompts, then close the login window.
+              {postLoginSync.message}
             </p>
           )}
 
@@ -288,6 +279,7 @@ export function InstagramSettingsSection({
                   return;
                 }
                 void confirm(async () => {
+                  postLoginSync.cancel();
                   if (isPaused) {
                     await clearProviderPause("instagram");
                   }

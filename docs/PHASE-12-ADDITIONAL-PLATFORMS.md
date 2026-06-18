@@ -266,7 +266,8 @@ packages/capture-youtube/
 - [x] LinkedIn desktop flows have regression coverage in Playwright
 - [x] LinkedIn shares the desktop provider health summaries, rate-limit pause state, resume controls, and the unified provider section used in Settings and Debug panel cards
 - [x] LinkedIn shares the same provider severity colors and per-provider sync spinner behavior as the other social sources
-- [x] LinkedIn login stays open after auth so users can finish platform prompts before sync starts
+- [x] LinkedIn login stays open after auth so users can finish platform prompts while sync starts, then closes only after scrape startup health is confirmed
+- [x] LinkedIn post-login sync uses the user's selected scraper window mode instead of switching modes for the first scrape
 - [ ] Mozi activity captured to FeedItem with plans, trips, attendance, or overlap-adjacent events
 - [ ] Mozi is visible in desktop Sources navigation and source status UI
 - [ ] Mozi desktop flows have regression coverage in Playwright

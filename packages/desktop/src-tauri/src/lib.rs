@@ -766,6 +766,36 @@ fn prepare_background_scraper_window(
     Ok(())
 }
 
+fn unix_millis_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn emit_social_scrape_lifecycle(
+    app: &tauri::AppHandle,
+    event_name: &str,
+    provider: &str,
+    window: Option<&tauri::WebviewWindow>,
+    window_mode: ScraperWindowMode,
+    reason: Option<&str>,
+) {
+    let _ = app.emit(
+        event_name,
+        serde_json::json!({
+            "provider": provider,
+            "windowMode": window_mode.as_str(),
+            "nativeVisible": window.and_then(|wv| wv.is_visible().ok()),
+            "nativeFocused": window.and_then(|wv| wv.is_focused().ok()),
+            "scrollInput": "script-scroll",
+            "clickInput": "script-click",
+            "reason": reason,
+            "emittedAt": unix_millis_now()
+        }),
+    );
+}
+
 async fn restore_scraper_feed(
     window: &tauri::WebviewWindow,
     feed_url: &str,
@@ -6280,6 +6310,14 @@ async fn fb_scrape_feed(
         scrape_run_id,
         window_mode.as_str()
     );
+    emit_social_scrape_lifecycle(
+        &app,
+        "fb-scrape-started",
+        "facebook",
+        Some(&wv),
+        window_mode,
+        None,
+    );
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(13000.0, 1500.0))).await;
 
@@ -6355,8 +6393,25 @@ async fn fb_scrape_feed(
                 }
             }),
         );
+        emit_social_scrape_lifecycle(
+            &app,
+            "fb-scrape-start-failed",
+            "facebook",
+            Some(&wv),
+            window_mode,
+            Some(message),
+        );
         return Err(message.to_string());
     }
+
+    emit_social_scrape_lifecycle(
+        &app,
+        "fb-scrape-healthy",
+        "facebook",
+        Some(&wv),
+        window_mode,
+        Some("authenticated feed rendered"),
+    );
 
     let scrape_plan_stats = collect_runtime_memory_stats(&app, 0, 0);
     let scrape_plan = social_scrape_plan_for_memory(&scrape_plan_stats, 6, 10);
@@ -7142,6 +7197,14 @@ async fn ig_scrape_feed(
         "[IG] scrape started (window_mode={}), waiting for feed to render...",
         window_mode.as_str()
     );
+    emit_social_scrape_lifecycle(
+        &app,
+        "ig-scrape-started",
+        "instagram",
+        Some(&wv),
+        window_mode,
+        None,
+    );
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(9000.0, 1200.0))).await;
 
@@ -7243,6 +7306,16 @@ async fn ig_scrape_feed(
             .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
 
         tokio::time::sleep(Duration::from_millis(300)).await;
+        if i == 0 {
+            emit_social_scrape_lifecycle(
+                &app,
+                "ig-scrape-healthy",
+                "instagram",
+                Some(&wv),
+                window_mode,
+                Some("first extraction pass injected"),
+            );
+        }
         cleanup_background_scraper_media(&wv);
         completed_passes = i + 1;
         if !social_scrape_may_continue(&app, "Instagram", "feed scrape", i + 1, num_passes) {
@@ -7822,6 +7895,14 @@ async fn li_scrape_feed(
         "[LI] scrape started (window_mode={}), waiting for feed to render...",
         window_mode.as_str()
     );
+    emit_social_scrape_lifecycle(
+        &app,
+        "li-scrape-started",
+        "linkedin",
+        Some(&wv),
+        window_mode,
+        None,
+    );
 
     // LinkedIn's feed takes slightly longer to hydrate than Facebook.
     // Use a longer initial wait with more variance.
@@ -7867,6 +7948,16 @@ async fn li_scrape_feed(
         let is_last = i + 1 == num_passes;
         inject_script(&wv, is_last)?;
         tokio::time::sleep(Duration::from_millis(300)).await;
+        if i == 0 {
+            emit_social_scrape_lifecycle(
+                &app,
+                "li-scrape-healthy",
+                "linkedin",
+                Some(&wv),
+                window_mode,
+                Some("first extraction pass injected"),
+            );
+        }
         cleanup_background_scraper_media(&wv);
         if !social_scrape_may_continue(&app, "LinkedIn", "feed scrape", i + 1, num_passes) {
             break;

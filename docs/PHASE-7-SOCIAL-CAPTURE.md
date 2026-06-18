@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, shared memory-preflight backoff, transient memory-pressure health recovery, memory-aware scrape pass planning, cloud-sync exclusion while social scrapes are active, Facebook group controls with stored-name repair and single-group leave verification, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, explicit reply links with opt-in beta inline hydration for X, Facebook, and Instagram reader posts, captured authors now feeding the Phase 8 account catalog for identity review, and a local permanent media vault for a user's own Meta media
+> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, shared memory-preflight backoff, transient memory-pressure health recovery, memory-aware scrape pass planning, cloud-sync exclusion while social scrapes are active, Facebook group controls with stored-name repair and single-group leave verification, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, explicit reply links with opt-in beta inline hydration for X, Facebook, and Instagram reader posts, captured authors now feeding the Phase 8 account catalog for identity review, post-login sync startup that closes login prompts only after scrape health is confirmed, and a local permanent media vault for a user's own Meta media
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -81,8 +81,11 @@ Both Facebook and Instagram use the same pattern:
 2. User authenticates through the real login flow (2FA, CAPTCHA, etc.)
 3. `on_navigation` handler detects redirect away from login page
 4. `*-auth-result` event is emitted while the WebView stays visible
-5. User finishes any platform prompts, closes the login window, and then sync begins
-6. Cookies persist in the WebView data store for future scraping sessions
+5. Freed marks the source connected and starts sync using the user's selected scraper window mode
+6. The login window stays open while the scrape starts so the user can finish platform prompts
+7. Freed closes the login window only after the scraper emits a healthy startup event
+8. If scrape startup fails, the login window remains open and the user can close it or click Sync Now
+9. Cookies persist in the WebView data store for future scraping sessions
 
 ### Feed Scraping
 
@@ -90,7 +93,8 @@ Both Facebook and Instagram use the same pattern:
 2. Waits for page load with randomized jitter (12-16s)
 3. Injects extraction script (`fb-extract.js` / `ig-extract.js`) at multiple scroll positions
 4. Script reads visible posts from the DOM and emits them via Tauri event IPC
-5. Frontend normalizes raw posts to `FeedItem[]` using `@freed/capture-*/browser`
+5. Native lifecycle events report scrape startup, healthy startup, and startup failure with window mode and interaction-method diagnostics
+6. Frontend normalizes raw posts to `FeedItem[]` using `@freed/capture-*/browser`
 
 ### Extraction Scripts
 
@@ -194,11 +198,12 @@ const RATE_LIMITS = {
 - [x] Instagram feed integrated into Desktop via Tauri WebView scraping
 - [x] Both platforms integrated into Desktop refreshAllFeeds()
 - [x] Settings UI for both platforms (login, check connection, sync, disconnect), with the same provider section also reused inside Debug panel health cards
-- [x] Facebook and Instagram login windows stay open after auth so users can finish platform prompts before sync starts
+- [x] Facebook and Instagram login windows stay open after auth so users can finish platform prompts while sync starts, then close only after scrape startup health is confirmed
 - [x] Feed pollution filtering blocks promoted X entries and suggested FB/IG posts
 - [x] Facebook Settings includes per-group include/exclude controls for joined groups inside a filtered inner scroller that prevents late group loads from shifting the outer Settings view, plus a browser handoff action for leaving a group on Facebook
 - [x] Facebook group discovery rejects activity-only labels and numeric ID fallbacks, scrolls the joined-groups directory during explicit refresh, reads nearby rendered card text and image alt text when group links only expose timestamps, preserves good stored names, repairs missing stored names from already captured group posts or individual group pages, verifies a single group after the leave handoff before removing it locally, and keeps joined-groups refresh behind explicit provider-risk confirmation
 - [x] Desktop Sources settings expose per-source scraper window modes: shown, cloaked, hidden
+- [x] Post-login sync uses the user's selected scraper window mode instead of switching modes for the first scrape
 - [x] Background FB and IG scraper WebViews force provider media silent during scrape and auth-check flows
 - [x] Social providers surface paused/degraded health summaries in settings and the sidebar source surfaces
 - [x] Explicit and heuristic rate-limit signals auto-pause social sync, notify the user, and allow manual resume
