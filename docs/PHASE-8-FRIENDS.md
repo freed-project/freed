@@ -198,7 +198,7 @@ Default nudge intervals by care level:
 ## 8D: Location / Map View
 
 ```
-FeedItems → extractLocationFromItem() + optional time window → geocode() (Nominatim) → cache → MapLibre markers → Friends mode or All content mode → timeline scrubber → derived overlap views
+FeedItems are passed through extractLocationFromItem() plus optional time windows. geocode() resolves Nominatim results into cache-backed location groups. MapLibre markers then power Friends mode, All content mode, the timeline scrubber, and derived overlap views.
 ```
 
 Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare), text patterns ("📍 Paris"), **and IG/FB story location stickers** (Phase 7.11). Low-confidence story labels are recovered from preserved Instagram location URLs when possible, or dropped when they cannot be trusted. Planned future sources such as Mozi add another class of signal: place windows that may sit in the future instead of the past.
@@ -227,7 +227,7 @@ Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare),
 ### Files
 
 - `packages/shared/src/location.ts` — `GeoLocation` type, `extractLocationFromItem()`
-- `packages/ui/src/lib/geocoding.ts` — Nominatim integration with 1 req/s rate limiter
+- `packages/ui/src/lib/geocoding.ts`: Nominatim integration with 1 req/s rate limiter, in-memory reuse, and in-flight dedupe
 - `packages/ui/src/lib/geocoding-cache.ts` — IndexedDB cache (30-day TTL for hits, 7-day for misses)
 - `packages/ui/src/hooks/useResolvedLocations.ts` — shared async location resolution for map and friend detail
 - `packages/ui/src/components/map/MapView.tsx` — shared MapLibre map view for PWA and Freed Desktop
@@ -239,6 +239,7 @@ Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare),
 - `packages/ui/src/components/Toast.tsx` — shared success/error feedback for sample refresh and other cross-shell actions
 
 `maplibre-gl` now lives in `@freed/ui` so both PWA and Freed Desktop use the same map runtime. The shared surface now uses theme-native cartography, not a one-size-fits-none filter pass, so each theme gets its own land, water, boundary, and label palette while the avatars stay readable.
+Named location resolution now groups identical place labels and streams each resolved group into the map as soon as it returns, so cached pins no longer wait behind slower uncached geocoding requests.
 Sample data batches now append friend-linked LinkedIn posts too, so repeated populates keep expanding the social graph instead of reseeding the same tiny cast.
 New sample data batches now carry an internal cleanup marker on generated feeds, items, people, and accounts, so the app can clear sample records without guessing from names or URLs.
 Friends and Map now use the same shared content header pattern as the rest of the app, instead of shipping bespoke top bars that wander off into their own little kingdoms.
