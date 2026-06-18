@@ -3,7 +3,7 @@
   "version": "26.6.1703-dev",
   "channel": "dev",
   "dayKey": "26.6.17",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-18T06:22:36.052Z",
   "model": "heuristic",
@@ -88,8 +88,9 @@
     ]
   },
   "release": {
-    "deck": "Move activity monitor to top toolbar, clipboard save shortcut, and reverse integrate v26.6.901 into dev",
+    "deck": "Run installed sync soaks from the terminal",
     "features": [
+      "Dev-channel prereleases now include a terminal helper for installed-build sync soaks",
       "Move activity monitor to top toolbar",
       "Clipboard save shortcut"
     ],
@@ -102,7 +103,7 @@
       "Prioritize nightly bug scans over stale peers",
       "Ignore generated peer artifacts in nightly planner",
       "Nightly validation regressions restored",
-      "Production validation are now more stable",
+      "Production validation is now more stable",
       "Make safe mutations respond instantly",
       "Collapse toolbar feed controls",
       "Keep settings backdrop blurred while scrolling",
@@ -114,5 +115,5 @@
       "Merge latest dev after v26.6.1701-dev release prep"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.1703-dev\n\nMove activity monitor to top toolbar, clipboard save shortcut, and reverse integrate v26.6.901 into dev\n\n### Features\n\n- Move activity monitor to top toolbar\n- Clipboard save shortcut\n\n### Fixes\n\n- Enable dev release sync triggers\n- Harden desktop sync recovery\n- Show cloud sync elapsed status\n- Harden PWA sync hydration\n- Repair PWA Google Drive sync resolution\n- Prioritize nightly bug scans over stale peers\n- Ignore generated peer artifacts in nightly planner\n- Nightly validation regressions restored\n- Production validation are now more stable\n- Make safe mutations respond instantly\n- Collapse toolbar feed controls\n- Keep settings backdrop blurred while scrolling\n- Align story grid top padding\n- Polish mobile menu touch interactions\n- Relax nightly preflight false blockers\n\n### Follow-ups\n\n- Merge latest dev after v26.6.1701-dev release prep\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.1703-dev\n\nRun installed sync soaks from the terminal\n\n### Features\n\n- Dev-channel prereleases now include a terminal helper for installed-build sync soaks\n- Move activity monitor to top toolbar\n- Clipboard save shortcut\n\n### Fixes\n\n- Enable dev release sync triggers\n- Harden desktop sync recovery\n- Show cloud sync elapsed status\n- Harden PWA sync hydration\n- Repair PWA Google Drive sync resolution\n- Prioritize nightly bug scans over stale peers\n- Ignore generated peer artifacts in nightly planner\n- Nightly validation regressions restored\n- Production validation is now more stable\n- Make safe mutations respond instantly\n- Collapse toolbar feed controls\n- Keep settings backdrop blurred while scrolling\n- Align story grid top padding\n- Polish mobile menu touch interactions\n- Relax nightly preflight false blockers\n\n### Follow-ups\n\n- Merge latest dev after v26.6.1701-dev release prep\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
