@@ -242,6 +242,9 @@ export interface PlatformConfig {
   /** Rendered after built-in settings sections (e.g. Mobile Sync tab) */
   SettingsExtraSections: ComponentType | null;
 
+  /** Rendered in Settings > Shortcuts. Desktop only. */
+  ShortcutsSettingsContent?: ComponentType | null;
+
   /** Rendered inside Settings > Legal for local consent details. */
   LegalSettingsContent: ComponentType | null;
 

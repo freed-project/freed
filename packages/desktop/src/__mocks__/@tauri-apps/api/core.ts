@@ -249,6 +249,7 @@ const handlers: Record<string, Handler> = {
   get_recent_logs: () => [],
   start_relay: () => null,
   stop_relay: () => null,
+  show_window: () => null,
   list_snapshots: () => [],
   save_url_content: () => null,
   get_x_cookies: () => null,

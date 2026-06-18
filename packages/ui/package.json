@@ -35,6 +35,7 @@
     "./lib/background-activity-store": "./src/lib/background-activity-store.ts",
     "./lib/bug-report": "./src/lib/bug-report.ts",
     "./lib/build-info": "./src/lib/build-info.ts",
+    "./lib/command-surface-store": "./src/lib/command-surface-store.ts",
     "./lib/date-format": "./src/lib/date-format.ts",
     "./lib/article-cache": "./src/lib/article-cache.ts",
     "./lib/map-navigation": "./src/lib/map-navigation.ts",

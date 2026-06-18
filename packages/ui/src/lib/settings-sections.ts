@@ -8,6 +8,7 @@
 export type SectionId =
   | "legal"
   | "appearance"
+  | "shortcuts"
   | "feeds"
   | "saved"
   | "storyWall"
@@ -33,6 +34,7 @@ export interface SettingsSectionAvailability {
   hasGoogleContacts: boolean;
   hasGoogleContactsManagement: boolean;
   hasAISettings: boolean;
+  hasShortcuts: boolean;
   hasX: boolean;
   hasFacebook: boolean;
   hasInstagram: boolean;
@@ -92,6 +94,16 @@ export const UPDATES_SECTION_META: SectionMeta = {
   id: "updates",
   label: "Updates",
   keywords: ["update", "version", "upgrade", "check for updates", "install", "restart", "release", "production", "dev", "channel"],
+};
+
+/** Shown only when the platform provides desktop shortcut controls. */
+export const SHORTCUTS_SECTION_META: SectionMeta = {
+  id: "shortcuts",
+  label: "Shortcuts",
+  keywords: [
+    "shortcut", "shortcuts", "keyboard", "hotkey", "save content",
+    "clipboard", "global shortcut", "system shortcut",
+  ],
 };
 
 /** Shown only when the platform provides an X/Twitter settings component (desktop). */
@@ -156,12 +168,13 @@ export function buildSettingsSectionMetas(
   const baseSectionById = Object.fromEntries(
     BASE_SECTION_METAS.map((section) => [section.id, section]),
   ) as Record<
-    Exclude<SectionId, "ai" | "updates" | "danger" | "googleContacts" | "x" | "facebook" | "instagram" | "linkedin">,
+    Exclude<SectionId, "ai" | "shortcuts" | "updates" | "danger" | "googleContacts" | "x" | "facebook" | "instagram" | "linkedin">,
     SectionMeta
   >;
 
   return [
     baseSectionById.appearance,
+    ...(availability.hasShortcuts ? [SHORTCUTS_SECTION_META] : []),
     baseSectionById.sync,
     baseSectionById.saved,
     ...(availability.hasGoogleContacts ? [GOOGLE_CONTACTS_SECTION_META] : []),

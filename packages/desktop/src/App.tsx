@@ -84,6 +84,7 @@ import { LinkedInSettingsSection } from "./components/LinkedInSettingsSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
 import { DesktopLegalSettingsSection } from "./components/DesktopLegalSettingsSection";
+import { DesktopShortcutsSettingsSection } from "./components/DesktopShortcutsSettingsSection";
 import { refreshSampleLibraryData } from "@freed/ui/lib/sample-library-seed";
 import { acceptDesktopBundle, hasAcceptedDesktopBundle } from "./lib/legal-consent";
 import { clearProviderPause, forgetRssFeedHealth, initProviderHealth } from "./lib/provider-health";
@@ -119,6 +120,7 @@ import {
 } from "./lib/desktop-updater";
 import { rendererHeartbeatTiming } from "./lib/renderer-heartbeat";
 import { DESKTOP_CHANGELOG_PREVIEW } from "./lib/changelog-preview";
+import { useClipboardSaveShortcut } from "./hooks/useClipboardSaveShortcut";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1";
@@ -245,6 +247,19 @@ const onRender: ProfilerOnRenderCallback = (id, phase, actual, base) => {
   if (arr) arr.push({ id, phase, actualDuration: actual, baseDuration: base });
 };
 
+function isTouchOnlyInputSurface(): boolean {
+  if (window.__FREED_E2E_TOUCH_ONLY__) return true;
+  if (typeof window.matchMedia !== "function") return false;
+
+  const coarsePrimaryPointer = window.matchMedia("(pointer: coarse)").matches;
+  const primaryPointerCannotHover = window.matchMedia("(hover: none)").matches;
+  const hasFinePointer = window.matchMedia("(any-pointer: fine)").matches;
+  const hasHoverInput = window.matchMedia("(any-hover: hover)").matches;
+  const hasTouch = navigator.maxTouchPoints > 0;
+
+  return hasTouch && coarsePrimaryPointer && primaryPointerCannotHover && !hasFinePointer && !hasHoverInput;
+}
+
 function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
@@ -262,9 +277,36 @@ function App() {
     bootstrapDesktopReleaseChannel(),
   );
   const [releaseChannelResolved, setReleaseChannelResolved] = useState(IS_LOCAL_PREVIEW);
+  const [hasKeyboardShortcutSettingsSurface, setHasKeyboardShortcutSettingsSurface] = useState(
+    () => !isTouchOnlyInputSurface(),
+  );
   const fatalError = useFatalRuntimeError();
 
   useDesktopNavigationHistory(legalAccepted);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+
+    const queries = [
+      window.matchMedia("(pointer: coarse)"),
+      window.matchMedia("(hover: none)"),
+      window.matchMedia("(any-pointer: fine)"),
+      window.matchMedia("(any-hover: hover)"),
+    ];
+    const refresh = () => setHasKeyboardShortcutSettingsSurface(!isTouchOnlyInputSurface());
+
+    for (const query of queries) {
+      query.addEventListener?.("change", refresh);
+      query.addListener?.(refresh);
+    }
+
+    return () => {
+      for (const query of queries) {
+        query.removeEventListener?.("change", refresh);
+        query.removeListener?.(refresh);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!tauriRuntimeAvailable) {
@@ -756,6 +798,44 @@ function App() {
     setReleaseChannelState(channel);
   }, [releaseChannel]);
 
+  const handleOpenClipboardSaveDialog = useCallback(
+    (initialUrl?: string) => {
+      window.dispatchEvent(
+        new CustomEvent("freed:open-save-content-dialog", {
+          detail: { initialUrl },
+        }),
+      );
+    },
+    [],
+  );
+
+  const {
+    config: clipboardSaveShortcutConfig,
+    status: clipboardSaveShortcutStatus,
+    setConfig: setClipboardSaveShortcutConfig,
+    resetConfig: resetClipboardSaveShortcutConfig,
+  } = useClipboardSaveShortcut(handleOpenClipboardSaveDialog);
+
+  const ShortcutsSettingsContent = useMemo(
+    () =>
+      function ShortcutsSettingsSlot() {
+        return (
+          <DesktopShortcutsSettingsSection
+            config={clipboardSaveShortcutConfig}
+            status={clipboardSaveShortcutStatus}
+            setConfig={setClipboardSaveShortcutConfig}
+            resetConfig={resetClipboardSaveShortcutConfig}
+          />
+        );
+      },
+    [
+      clipboardSaveShortcutConfig,
+      clipboardSaveShortcutStatus,
+      resetClipboardSaveShortcutConfig,
+      setClipboardSaveShortcutConfig,
+    ],
+  );
+
   const handleFactoryReset = useCallback(async (deleteFromCloud: boolean) => {
     const providers = getActiveProviders();
     if (deleteFromCloud) {
@@ -921,6 +1001,10 @@ function App() {
       SourceIndicator: XSourceIndicator,
       HeaderSyncIndicator: null,
       SettingsExtraSections: MobileSyncTab,
+      ShortcutsSettingsContent:
+        tauriRuntimeAvailable && hasKeyboardShortcutSettingsSurface
+          ? ShortcutsSettingsContent
+          : null,
       LegalSettingsContent: DesktopLegalSettingsSection,
       FeedEmptyState: FeedEmptyState,
       XSettingsContent: XSettingsSection,
@@ -1055,7 +1139,7 @@ function App() {
       })(),
       bugReporting: desktopBugReporting,
     }),
-     [checkForUpdates, applyUpdate, connectGoogleContacts, fetchGoogleContactsForDesktop, handleFactoryReset, installedReleaseChannel, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, tauriRuntimeAvailable, updateState],
+     [checkForUpdates, applyUpdate, connectGoogleContacts, fetchGoogleContactsForDesktop, handleFactoryReset, hasKeyboardShortcutSettingsSurface, installedReleaseChannel, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, ShortcutsSettingsContent, tauriRuntimeAvailable, updateState],
   );
 
   if (lockedStartupState !== "ready") {
@@ -1169,6 +1253,7 @@ export default App;
 
 declare global {
   interface Window {
+    __FREED_E2E_TOUCH_ONLY__?: boolean;
     __TAURI__?: {
       core: {
         invoke: (

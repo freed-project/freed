@@ -130,6 +130,8 @@ The runner can choose multiple targets in one night. Bug fixes are first-class t
 
 ### Keyboard Shortcuts
 
+Freed Desktop now includes a device-local OS-wide shortcut for Save Content. It opens the existing Save Content dialog, reads the clipboard only when the shortcut fires, and pre-fills the URL field when the clipboard contains an HTTP or HTTPS link. Users can change, disable, or reset the shortcut from Settings > Shortcuts.
+
 ```typescript
 // packages/pwa/src/hooks/useKeyboardShortcuts.ts
 export function useKeyboardShortcuts() {
@@ -398,7 +400,7 @@ Reward security researchers for responsible disclosure.
 | 10.2  | Statistics dashboard               | Medium     |
 | 10.3  | Export to JSON                     | Low        |
 | 10.4  | Export to CSV                      | Low        |
-| 10.5  | Keyboard shortcuts                 | Medium     |
+| 10.5  | Keyboard shortcuts                 | Medium     | ✓ Complete (PWA reader keys, command palette, navigation history keys, and Freed Desktop Save Content shortcut) |
 | 10.6  | Screen reader support              | Medium     |
 | 10.7  | Reduced motion support             | Low        | ✓ Complete (Appearance animation intensity controls plus global app motion gating)
 | 10.8  | Color contrast audit               | Low        |
