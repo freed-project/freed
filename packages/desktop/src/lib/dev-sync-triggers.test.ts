@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const readNativeJsonFile = vi.fn();
 const writeNativeJsonFile = vi.fn();
 const refreshSocialProvider = vi.fn();
+const loadDesktopReleaseChannelState = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
   isTauri: () => true,
@@ -15,6 +16,10 @@ vi.mock("./native-json-store", () => ({
 
 vi.mock("./capture", () => ({
   refreshSocialProvider,
+}));
+
+vi.mock("./release-channel", () => ({
+  loadDesktopReleaseChannelState,
 }));
 
 vi.mock("./logger", () => ({
@@ -37,6 +42,11 @@ describe("dev sync triggers", () => {
     readNativeJsonFile.mockReset();
     writeNativeJsonFile.mockReset();
     refreshSocialProvider.mockReset();
+    loadDesktopReleaseChannelState.mockReset();
+    loadDesktopReleaseChannelState.mockResolvedValue({
+      selectedChannel: "production",
+      installedChannel: "production",
+    });
   });
 
   afterEach(() => {
@@ -110,5 +120,28 @@ describe("dev sync triggers", () => {
 
     expect(readNativeJsonFile).not.toHaveBeenCalled();
     expect(refreshSocialProvider).not.toHaveBeenCalled();
+  });
+
+  it("runs for installed apps on the dev release channel", async () => {
+    vi.resetModules();
+    loadDesktopReleaseChannelState.mockResolvedValue({
+      selectedChannel: "dev",
+      installedChannel: "production",
+    });
+    readNativeJsonFile.mockResolvedValue({
+      enabled: true,
+      id: "request-3",
+      provider: "facebook",
+    });
+    refreshSocialProvider.mockResolvedValue(undefined);
+
+    const { startDevSyncTriggerPoller } = await import("./dev-sync-triggers");
+
+    const stop = startDevSyncTriggerPoller({ pollMs: 10 });
+    await flushImmediatePoll();
+    stop();
+
+    expect(loadDesktopReleaseChannelState).toHaveBeenCalled();
+    expect(refreshSocialProvider).toHaveBeenCalledWith("facebook");
   });
 });
