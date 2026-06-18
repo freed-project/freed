@@ -27,7 +27,7 @@ Ship a new versioned build from the correct release branch using GitHub Actions.
    - Initiate a follow-up build from the matching release branch.
 8. Repeat until all platform builds are successful.
 9. For installed-build soaks on the user's primary machine, keep validation terminal driven whenever possible. Use logs, runtime-health samples, process samples, and dev-only triggers instead of System Events clicks or foreground UI automation.
-   - Dev soak builds can be compiled with `VITE_ENABLE_DEV_SYNC_TRIGGERS=1`, then driven with `node scripts/dev-sync-trigger.mjs facebook`, `instagram`, or `linkedin`.
+   - Dev-channel prereleases compile in `VITE_ENABLE_DEV_SYNC_TRIGGERS=1`, and local soak builds can use the same env. Drive them with `node scripts/dev-sync-trigger.mjs facebook`, `instagram`, or `linkedin`.
    - The trigger must call the normal in-app provider refresh path and preserve auth, pause state, cooldowns, and rate limits.
    - Production builds keep reliability and memory recovery behavior, but the raw file trigger stays out of production until it has a user-facing permission model.
 10. A long-running release or soak run must not pause until morning solely because a button click would continue validation. If a foreground click is genuinely necessary, ask with a 10 minute response window, then proceed if the user is unavailable. If the action will recur, add and ship a dev-only trigger.
