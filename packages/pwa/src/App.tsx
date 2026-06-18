@@ -290,7 +290,7 @@ function App() {
       // PWA save URL: fetches and caches article content when possible, then
       // falls back to a desktop-healed stub for sites that refuse extraction.
       saveUrl: async (url, options) => {
-        await saveUrlInPwa(url, options);
+        return saveUrlInPwa(url, options);
       },
       // PWA local content: check the Workbox Cache API
       getLocalContent: async (globalId: string) => {

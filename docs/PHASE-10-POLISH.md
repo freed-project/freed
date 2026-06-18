@@ -130,7 +130,7 @@ The runner can choose multiple targets in one night. Bug fixes are first-class t
 
 ### Keyboard Shortcuts
 
-Freed Desktop now includes a device-local OS-wide shortcut for Save Content. It opens the existing Save Content dialog, reads the clipboard only when the shortcut fires, and pre-fills the URL field when the clipboard contains an HTTP or HTTPS link. Users can change, disable, or reset the shortcut from Settings > Shortcuts.
+Freed Desktop now includes a device-local OS-wide shortcut for Save Content. It opens the existing Save Content dialog, reads the clipboard only when the shortcut fires, pre-fills the URL field when the clipboard contains an HTTP or HTTPS link, and opens the saved item in reader mode after persistence. Users can change, disable, or reset the shortcut from Settings > Shortcuts.
 
 ```typescript
 // packages/pwa/src/hooks/useKeyboardShortcuts.ts

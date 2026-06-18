@@ -2,7 +2,7 @@ import {
   extractContentBrowser,
   extractMetadataBrowser,
 } from "@freed/capture-save/browser";
-import { buildSavedFeedItem } from "@freed/capture-save/normalize";
+import { buildSavedFeedItem, hashSavedUrl } from "@freed/capture-save/normalize";
 import { cacheArticleHtml, warmArticleImageCache } from "@freed/ui/lib/article-cache";
 import { toast } from "@freed/ui/components/Toast";
 import { docAddFeedItem, docAddStubItem } from "./automerge";
@@ -11,6 +11,10 @@ const FETCH_ENDPOINT = "/api/fetch-url";
 
 export interface SaveUrlOptions {
   tags?: string[];
+}
+
+export interface SaveUrlResult {
+  globalId: string;
 }
 
 async function fetchArticleHtml(url: string): Promise<string> {
@@ -31,7 +35,7 @@ async function fetchArticleHtml(url: string): Promise<string> {
 export async function saveUrlInPwa(
   url: string,
   options: SaveUrlOptions = {},
-): Promise<void> {
+): Promise<SaveUrlResult> {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -60,10 +64,11 @@ export async function saveUrlInPwa(
   } catch {
     await docAddStubItem(stableUrl, options.tags);
     toast.info("Saved a stub. Full article content will arrive after your next desktop sync.");
-    return;
+    return { globalId: `saved:${hashSavedUrl(stableUrl)}` };
   }
 
   await cacheArticleHtml(stableUrl, item.globalId, articleHtml, { pinned: true });
   void warmArticleImageCache(articleHtml, stableUrl);
   await docAddFeedItem(item);
+  return { globalId: item.globalId };
 }

@@ -40,6 +40,8 @@ architecture is now:
 - **Saved cache pinning:** saved URL creation writes readable HTML into the
   permanent device-local cache tier. Unsaving does not immediately remove the
   local reader copy.
+- **Post-save reader handoff:** after a URL save succeeds, Freed switches to
+  Saved and opens the newly saved item in reader mode.
 - **PWA fallback:** when proxy fetch or extraction fails, the app writes a stub
   saved item so desktop sync can heal it later.
 
@@ -74,8 +76,8 @@ architecture is now:
 | ---- | ----------- | ------ | ----- |
 | 3.1 | Create `@freed/capture-save` package scaffold | ✓ Complete | Package exists in `packages/capture-save/` |
 | 3.2 | Implement browser-safe metadata and article extraction | ✓ Complete | Shared browser parser used by desktop and PWA |
-| 3.3 | Implement desktop full save flow with local HTML cache | ✓ Complete | Uses Tauri `fetch_url` + FS cache |
-| 3.4 | Implement PWA full save flow with fallback stub mode | ✓ Complete | Uses `/api/fetch-url` plus Cache API |
+| 3.3 | Implement desktop full save flow with local HTML cache | ✓ Complete | Uses Tauri `fetch_url` + FS cache, then opens the saved item in reader mode |
+| 3.4 | Implement PWA full save flow with fallback stub mode | ✓ Complete | Uses `/api/fetch-url` plus Cache API and returns a saved item id for reader navigation |
 | 3.5 | Layered reader fallback for offline reading | ✓ Complete | Cache → preserved text → live fetch |
 | 3.6 | Hierarchical tag navigation | ✓ Complete | Sidebar tag tree is live |
 | 3.7 | Freed Markdown import/export | ✓ Complete | Import, export, and background fetch healing shipped |

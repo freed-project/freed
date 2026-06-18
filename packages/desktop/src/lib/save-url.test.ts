@@ -89,6 +89,7 @@ describe("saveUrlInDesktop", () => {
     const item = await saveUrlInDesktop(SAMPLE_URL);
     expect(item.platform).toBe("saved");
     expect(item.userState.saved).toBe(true);
+    expect(item.globalId).toMatch(/^saved:/);
     expect(mockDocAdd).toHaveBeenCalledWith(item);
   });
 
