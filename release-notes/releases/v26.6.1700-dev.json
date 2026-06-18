@@ -1,0 +1,95 @@
+{
+  "tag": "v26.6.1700-dev",
+  "version": "26.6.1700-dev",
+  "channel": "dev",
+  "dayKey": "26.6.17",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-18T05:10:08.840Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.603-dev",
+    "previousPublishedDayTag": "v26.6.603-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.1700-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.1700-dev"
+    ],
+    "prNumbers": [
+      793,
+      795,
+      796,
+      797,
+      799,
+      801,
+      804,
+      806,
+      809,
+      810,
+      811,
+      812,
+      818,
+      819,
+      820,
+      823,
+      826,
+      829,
+      830,
+      831
+    ],
+    "commitSubjects": [
+      "feat: add clipboard save shortcut",
+      "fix: prioritize nightly bug scans over stale peers",
+      "fix: correct nightly bug scan summary parsing (#831)",
+      "fix: ignore generated peer artifacts in nightly planner (#830)",
+      "fix: restore nightly validation regressions (#823)",
+      "chore: reverse integrate v26.6.901 into dev (#829)",
+      "fix: stabilize production validation (#826)",
+      "fix: make safe mutations respond instantly (#809)",
+      "fix: collapse toolbar feed controls",
+      "feat: move activity monitor to top toolbar (#820)",
+      "fix: show cloud sync elapsed status",
+      "fix: keep settings backdrop blurred while scrolling (#819)",
+      "chore: reverse integrate v26.6.805 (#818)",
+      "chore: reverse integrate v26.6.804 (#810)",
+      "fix: align story grid top padding (#811)",
+      "fix: harden PWA sync hydration (#812)",
+      "fix: stabilize PWA Drive merge import (#806)",
+      "fix: restore fullscreen reader drag region (#804)",
+      "chore: reverse integrate v26.6.800 (#801)",
+      "fix: polish mobile menu touch interactions (#799)",
+      "fix: stabilize PWA Google Drive sync recovery (#797)",
+      "fix: relax nightly preflight false blockers (#796)",
+      "chore: reverse integrate v26.6.604 (#795)",
+      "fix: repair PWA Google Drive sync resolution (#793)"
+    ]
+  },
+  "release": {
+    "deck": "Move activity monitor to top toolbar, clipboard save shortcut, and correct nightly bug scan summary parsing",
+    "features": [
+      "Move activity monitor to top toolbar",
+      "Clipboard save shortcut"
+    ],
+    "fixes": [
+      "Prioritize nightly bug scans over stale peers",
+      "Ignore generated peer artifacts in nightly planner",
+      "Nightly validation regressions restored",
+      "Production validation are now more stable",
+      "Make safe mutations respond instantly",
+      "Collapse toolbar feed controls",
+      "Show cloud sync elapsed status",
+      "Keep settings backdrop blurred while scrolling",
+      "Align story grid top padding",
+      "Harden PWA sync hydration",
+      "Polish mobile menu touch interactions",
+      "Relax nightly preflight false blockers",
+      "Repair PWA Google Drive sync resolution"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.1700-dev\n\nMove activity monitor to top toolbar, clipboard save shortcut, and correct nightly bug scan summary parsing\n\n### Features\n\n- Move activity monitor to top toolbar\n- Clipboard save shortcut\n\n### Fixes\n\n- Prioritize nightly bug scans over stale peers\n- Ignore generated peer artifacts in nightly planner\n- Nightly validation regressions restored\n- Production validation are now more stable\n- Make safe mutations respond instantly\n- Collapse toolbar feed controls\n- Show cloud sync elapsed status\n- Keep settings backdrop blurred while scrolling\n- Align story grid top padding\n- Harden PWA sync hydration\n- Polish mobile menu touch interactions\n- Relax nightly preflight false blockers\n- Repair PWA Google Drive sync resolution\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
