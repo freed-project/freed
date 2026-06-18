@@ -47,10 +47,11 @@ Create a product worktree branch from the latest remote `dev`, implement enough 
    - Use `node scripts/dev-sync-trigger.mjs facebook`, `instagram`, or `linkedin` to call the normal in-app social refresh path. It must keep auth, pause state, cooldowns, and rate limits intact.
    - Keep the raw file trigger gated to dev-channel installs, debug builds, or explicit `FREED_ENABLE_DEV_SYNC_TRIGGERS=1` launches until it has a user-facing permission model.
 15. Long-running work must not stop until morning solely because a click would continue validation. If foreground app interaction is genuinely necessary, ask with a 10 minute response window, then proceed if the user is unavailable. If the action will recur, add and ship a terminal trigger instead of depending on clicks. Sitting idle until morning is not acceptable when a trigger can be built or the user has given a timeout path.
-16. When browser tooling was needed, clean the session before closeout with `./scripts/dev-session-clean.sh`.
-17. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
+16. Carry that rule into generated task prompts, soak notes, and handoff instructions. If a background plan says "click Sync Now" or equivalent, rewrite it to use an existing terminal trigger, add the missing trigger, or name the 10 minute timeout path before continuing.
+17. When browser tooling was needed, clean the session before closeout with `./scripts/dev-session-clean.sh`.
+18. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
    - If the branch intentionally adds new files, stage them yourself first or re-run with `--include-untracked`.
-18. Confirm the branch is pushed to `origin` and the PR targeting `dev` stays in draft state. Include the local preview URL or native preview label in the closeout.
+19. Confirm the branch is pushed to `origin` and the PR targeting `dev` stays in draft state. Include the local preview URL or native preview label in the closeout.
    - When a changed surface includes buttons, dialogs, or native fallback HTML, follow the repo's established primary and secondary control styling. Do not add hover lift, vertical motion, bounce, or ad hoc glossy or gradient CTA treatments.
 
 ## Scope
