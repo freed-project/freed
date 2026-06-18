@@ -119,6 +119,8 @@ export function AppShell({ children }: AppShellProps) {
   const addFeedOpen = useCommandSurfaceStore((s) => s.addFeedOpen);
   const closeAddFeedDialog = useCommandSurfaceStore((s) => s.closeAddFeedDialog);
   const savedContentOpen = useCommandSurfaceStore((s) => s.savedContentOpen);
+  const savedContentInitialUrl = useCommandSurfaceStore((s) => s.savedContentInitialUrl);
+  const openSavedContentDialog = useCommandSurfaceStore((s) => s.openSavedContentDialog);
   const closeSavedContentDialog = useCommandSurfaceStore((s) => s.closeSavedContentDialog);
   const libraryDialogOpen = useCommandSurfaceStore((s) => s.libraryDialogOpen);
   const libraryDialogTab = useCommandSurfaceStore((s) => s.libraryDialogTab);
@@ -169,6 +171,17 @@ export function AppShell({ children }: AppShellProps) {
     setActiveView("feed");
     openSettingsTo("storyWall");
   }, [activeView, openSettingsTo, setActiveView]);
+
+  useEffect(() => {
+    const handleOpenSavedContent = (event: Event) => {
+      const detail = (event as CustomEvent<{ initialUrl?: string }>).detail;
+      openSavedContentDialog(detail?.initialUrl);
+    };
+
+    window.addEventListener("freed:open-save-content-dialog", handleOpenSavedContent);
+    return () => window.removeEventListener("freed:open-save-content-dialog", handleOpenSavedContent);
+  }, [openSavedContentDialog]);
+
   const forceCompactDesktopSidebar = !isMobileDevice && isMobileViewport;
   const effectiveDesktopSidebarDisplayMode =
     forceCompactDesktopSidebar && desktopSidebarMode !== "closed"
@@ -585,7 +598,11 @@ export function AppShell({ children }: AppShellProps) {
           </div>
         )}
         <AddFeedDialog open={addFeedOpen} onClose={closeAddFeedDialog} />
-        <SavedContentDialog open={savedContentOpen} onClose={closeSavedContentDialog} />
+        <SavedContentDialog
+          open={savedContentOpen}
+          initialUrl={savedContentInitialUrl}
+          onClose={closeSavedContentDialog}
+        />
         {libraryDialogOpen ? (
           <LibraryDialog
             onClose={closeLibraryDialog}

@@ -10,6 +10,10 @@
     "store:default",
     "updater:default",
     "process:default",
+    "global-shortcut:allow-is-registered",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "clipboard-manager:allow-read-text",
     "fs:allow-appdata-read-recursive",
     "fs:allow-appdata-write-recursive",
     "fs:allow-appdata-meta-recursive"

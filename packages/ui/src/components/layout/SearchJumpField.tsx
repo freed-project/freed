@@ -305,6 +305,7 @@ export function SearchJumpField({
     InstagramSettingsContent,
     LinkedInSettingsContent,
     GoogleContactsSettingsContent,
+    ShortcutsSettingsContent,
     googleContacts,
     secureStorage,
     localAIModels,
@@ -442,6 +443,7 @@ export function SearchJumpField({
         hasGoogleContacts: !!GoogleContactsSettingsContent,
         hasGoogleContactsManagement: !!googleContacts,
         hasAISettings: !!(secureStorage || localAIModels),
+        hasShortcuts: !!ShortcutsSettingsContent,
         hasX: !!XSettingsContent,
         hasFacebook: !!FacebookSettingsContent,
         hasInstagram: !!InstagramSettingsContent,
@@ -461,6 +463,7 @@ export function SearchJumpField({
       importOPMLFeeds,
       localAIModels,
       secureStorage,
+      ShortcutsSettingsContent,
       exportFeedsAsOPML,
     ],
   );

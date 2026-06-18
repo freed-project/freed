@@ -5,35 +5,54 @@
  * Import and export live in Settings > Saved Content.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BottomSheet } from "./BottomSheet.js";
 import { toast } from "./Toast.js";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
 
 interface SavedContentDialogProps {
   open: boolean;
+  initialUrl?: string;
   onClose: () => void;
 }
 
-export function SavedContentDialog({ open, onClose }: SavedContentDialogProps) {
+export function SavedContentDialog({
+  open,
+  initialUrl = "",
+  onClose,
+}: SavedContentDialogProps) {
   const { saveUrl } = usePlatform();
 
   const handleClose = () => onClose();
 
   return (
     <BottomSheet open={open} onClose={handleClose} title="Save Content" maxWidth="sm:max-w-lg" headerDivider={false}>
-      {saveUrl && <SaveUrlTab onClose={handleClose} />}
+      {saveUrl && <SaveUrlTab initialUrl={initialUrl} open={open} onClose={handleClose} />}
     </BottomSheet>
   );
 }
 
 // ── Save URL tab ──────────────────────────────────────────────────────────────
 
-function SaveUrlTab({ onClose }: { onClose: () => void }) {
+function SaveUrlTab({
+  initialUrl,
+  open,
+  onClose,
+}: {
+  initialUrl: string;
+  open: boolean;
+  onClose: () => void;
+}) {
   const { saveUrl } = usePlatform();
   const setFilter = useAppStore((s) => s.setFilter);
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setUrl(initialUrl);
+    }
+  }, [initialUrl, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
