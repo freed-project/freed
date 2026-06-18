@@ -1,0 +1,98 @@
+{
+  "tag": "v26.6.1702-dev",
+  "version": "26.6.1702-dev",
+  "channel": "dev",
+  "dayKey": "26.6.17",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-18T05:29:22.821Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.603-dev",
+    "previousPublishedDayTag": "v26.6.603-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.1702-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.1702-dev"
+    ],
+    "prNumbers": [
+      793,
+      795,
+      796,
+      797,
+      799,
+      801,
+      804,
+      806,
+      809,
+      810,
+      811,
+      812,
+      818,
+      819,
+      820,
+      823,
+      826,
+      829,
+      830,
+      831,
+      832,
+      836
+    ],
+    "commitSubjects": [
+      "fix: keep provider login prompts open (#832)",
+      "chore: merge latest dev after v26.6.1701-dev release prep",
+      "release: approve v26.6.1701-dev notes",
+      "perf: stream map location pins (#836)",
+      "release: v26.6.1701-dev",
+      "fix: harden desktop sync recovery",
+      "release: approve v26.6.1700-dev notes",
+      "release: v26.6.1700-dev",
+      "feat: add clipboard save shortcut",
+      "fix: prioritize nightly bug scans over stale peers",
+      "fix: correct nightly bug scan summary parsing (#831)",
+      "fix: ignore generated peer artifacts in nightly planner (#830)",
+      "fix: restore nightly validation regressions (#823)",
+      "chore: reverse integrate v26.6.901 into dev (#829)",
+      "fix: stabilize production validation (#826)",
+      "fix: make safe mutations respond instantly (#809)",
+      "fix: collapse toolbar feed controls",
+      "feat: move activity monitor to top toolbar (#820)",
+      "fix: show cloud sync elapsed status",
+      "fix: keep settings backdrop blurred while scrolling (#819)",
+      "chore: reverse integrate v26.6.805 (#818)",
+      "chore: reverse integrate v26.6.804 (#810)",
+      "fix: align story grid top padding (#811)",
+      "fix: harden PWA sync hydration (#812)",
+      "fix: stabilize PWA Drive merge import (#806)",
+      "fix: restore fullscreen reader drag region (#804)",
+      "chore: reverse integrate v26.6.800 (#801)",
+      "fix: polish mobile menu touch interactions (#799)",
+      "fix: stabilize PWA Google Drive sync recovery (#797)",
+      "fix: relax nightly preflight false blockers (#796)",
+      "chore: reverse integrate v26.6.604 (#795)",
+      "fix: repair PWA Google Drive sync resolution (#793)"
+    ]
+  },
+  "release": {
+    "deck": "Move activity monitor to top toolbar, clipboard save shortcut, and reverse integrate v26.6.901 into dev",
+    "features": [
+      "Move activity monitor to top toolbar",
+      "Clipboard save shortcut"
+    ],
+    "fixes": [
+      "Harden desktop sync recovery",
+      "Show cloud sync elapsed status",
+      "Harden PWA sync hydration",
+      "Repair PWA Google Drive sync resolution"
+    ],
+    "followUps": [
+      "Merge latest dev after v26.6.1701-dev release prep"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.1702-dev\n\nMove activity monitor to top toolbar, clipboard save shortcut, and reverse integrate v26.6.901 into dev\n\n### Features\n\n- Move activity monitor to top toolbar\n- Clipboard save shortcut\n\n### Fixes\n\n- Harden desktop sync recovery\n- Show cloud sync elapsed status\n- Harden PWA sync hydration\n- Repair PWA Google Drive sync resolution\n\n### Follow-ups\n\n- Merge latest dev after v26.6.1701-dev release prep\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
