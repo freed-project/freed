@@ -3,7 +3,7 @@
   "version": "26.6.1810-dev",
   "channel": "dev",
   "dayKey": "26.6.18",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-18T17:53:04.992Z",
   "model": "heuristic",
@@ -96,9 +96,12 @@
     ]
   },
   "release": {
-    "deck": "Dev build 1807",
+    "deck": "Hot WebKit recovery and unattended sync validation",
     "features": [],
     "fixes": [
+      "Freed Desktop now recovers CPU-hot multi-GB WebKit renderer growth before the global high-memory ceiling",
+      "Facebook group refresh now reports group-list refresh state separately from Facebook post sync",
+      "Release notes now honor pinned same-day highlights so latest dev builds keep required carry-forward items",
       "Release build and type-safety cleanup",
       "Reader, feed, and header polish",
       "Capture and scraper reliability fixes",
@@ -114,5 +117,5 @@
       "Honest terminal sync results"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.1810-dev\n\nDev build 1807\n\n### Fixes\n\n- Release build and type-safety cleanup\n- Reader, feed, and header polish\n- Capture and scraper reliability fixes\n- Terminal Facebook, Instagram, and LinkedIn sync triggers now fail zero-post, deferred, paused, or unauthenticated runs instead of reporting false success\n- Sync trigger output now includes provider outcome details, post counts, added-item counts, and failure stage data so unattended runs can tell whether Facebook actually returned posts\n- The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes\n\n### Follow-ups\n\n- Testing guidance policy\n- Let installed dev sync soaks run without stealing focus\n- No-focus sync validation hardening\n- Consent-gated auth loading\n- Honest terminal sync results\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.1810-dev\n\nHot WebKit recovery and unattended sync validation\n\n### Fixes\n\n- Freed Desktop now recovers CPU-hot multi-GB WebKit renderer growth before the global high-memory ceiling\n- Facebook group refresh now reports group-list refresh state separately from Facebook post sync\n- Release notes now honor pinned same-day highlights so latest dev builds keep required carry-forward items\n- Release build and type-safety cleanup\n- Reader, feed, and header polish\n- Capture and scraper reliability fixes\n- Terminal Facebook, Instagram, and LinkedIn sync triggers now fail zero-post, deferred, paused, or unauthenticated runs instead of reporting false success\n- Sync trigger output now includes provider outcome details, post counts, added-item counts, and failure stage data so unattended runs can tell whether Facebook actually returned posts\n- The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes\n\n### Follow-ups\n\n- Testing guidance policy\n- Let installed dev sync soaks run without stealing focus\n- No-focus sync validation hardening\n- Consent-gated auth loading\n- Honest terminal sync results\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
