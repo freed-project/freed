@@ -8,6 +8,14 @@ const getStoreState = vi.fn();
 const initializeStore = vi.fn();
 const hasAcceptedDesktopBundle = vi.fn();
 
+const successfulFacebookResult = {
+  provider: "facebook",
+  status: "success",
+  postsExtracted: 3,
+  itemsAdded: 1,
+  detail: "Facebook sync saw 3 posts and added 1 item.",
+} as const;
+
 vi.mock("@tauri-apps/api/core", () => ({
   isTauri: () => true,
 }));
@@ -74,7 +82,7 @@ describe("dev sync triggers", () => {
 
   it("exposes a renderer bridge for native trigger dispatch", async () => {
     const { installDevSyncTriggerBridge } = await import("./dev-sync-triggers");
-    refreshSocialProvider.mockResolvedValue(undefined);
+    refreshSocialProvider.mockResolvedValue(successfulFacebookResult);
 
     const stop = installDevSyncTriggerBridge();
     const runSocialSync = window.__FREED_RUN_SOCIAL_SYNC__;
@@ -102,6 +110,7 @@ describe("dev sync triggers", () => {
         id: "request-native-1",
         provider: "facebook",
         status: "completed",
+        detail: expect.stringContaining("Posts: 3"),
       }),
       "dev-sync-trigger",
     );
@@ -114,7 +123,7 @@ describe("dev sync triggers", () => {
       id: "request-1",
       provider: "facebook",
     });
-    refreshSocialProvider.mockResolvedValue(undefined);
+    refreshSocialProvider.mockResolvedValue(successfulFacebookResult);
 
     const stop = startDevSyncTriggerPoller({ enabled: true, pollMs: 10 });
     await flushImmediatePoll();
@@ -136,6 +145,65 @@ describe("dev sync triggers", () => {
         id: "request-1",
         provider: "facebook",
         status: "completed",
+        detail: expect.stringContaining("Posts: 3"),
+      }),
+      "dev-sync-trigger",
+    );
+  });
+
+  it("treats empty provider results as a failed terminal trigger", async () => {
+    const { installDevSyncTriggerBridge } = await import("./dev-sync-triggers");
+    refreshSocialProvider.mockResolvedValue({
+      provider: "facebook",
+      status: "empty",
+      stage: "empty",
+      postsExtracted: 0,
+      itemsAdded: 0,
+      detail: "Facebook sync returned 0 posts.",
+    });
+
+    const stop = installDevSyncTriggerBridge();
+    await window.__FREED_RUN_SOCIAL_SYNC__?.({
+      id: "request-native-empty",
+      provider: "facebook",
+    });
+    stop();
+
+    expect(writeNativeJsonFile).toHaveBeenLastCalledWith(
+      "dev-sync-trigger-result.json",
+      expect.objectContaining({
+        id: "request-native-empty",
+        provider: "facebook",
+        status: "error",
+        detail: expect.stringContaining("Posts: 0"),
+      }),
+      "dev-sync-trigger",
+    );
+  });
+
+  it("surfaces unauthenticated provider triggers as ignored", async () => {
+    const { installDevSyncTriggerBridge } = await import("./dev-sync-triggers");
+    refreshSocialProvider.mockResolvedValue({
+      provider: "facebook",
+      status: "ignored",
+      stage: "auth",
+      detail: "Facebook is not authenticated.",
+    });
+
+    const stop = installDevSyncTriggerBridge();
+    await window.__FREED_RUN_SOCIAL_SYNC__?.({
+      id: "request-native-auth",
+      provider: "facebook",
+    });
+    stop();
+
+    expect(writeNativeJsonFile).toHaveBeenLastCalledWith(
+      "dev-sync-trigger-result.json",
+      expect.objectContaining({
+        id: "request-native-auth",
+        provider: "facebook",
+        status: "ignored",
+        detail: expect.stringContaining("not authenticated"),
       }),
       "dev-sync-trigger",
     );
@@ -143,7 +211,7 @@ describe("dev sync triggers", () => {
 
   it("initializes the store before running a provider trigger", async () => {
     const { installDevSyncTriggerBridge } = await import("./dev-sync-triggers");
-    refreshSocialProvider.mockResolvedValue(undefined);
+    refreshSocialProvider.mockResolvedValue(successfulFacebookResult);
     initializeStore.mockResolvedValue(undefined);
     getStoreState
       .mockReturnValueOnce({ isInitialized: false, initialize: initializeStore })
@@ -241,7 +309,7 @@ describe("dev sync triggers", () => {
       id: "request-3",
       provider: "facebook",
     });
-    refreshSocialProvider.mockResolvedValue(undefined);
+    refreshSocialProvider.mockResolvedValue(successfulFacebookResult);
 
     const { startDevSyncTriggerPoller } = await import("./dev-sync-triggers");
 
