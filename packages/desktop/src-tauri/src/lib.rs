@@ -1086,6 +1086,31 @@ fn load_dev_sync_trigger_result_status(data_dir: &Path, id: &str) -> Option<Stri
     (result.id == id).then_some(result.status)
 }
 
+fn is_current_dev_sync_trigger_request(data_dir: &Path, id: &str) -> bool {
+    load_dev_sync_trigger_request(data_dir)
+        .and_then(|request| request.id)
+        .as_deref()
+        == Some(id)
+}
+
+fn write_current_dev_sync_trigger_result(
+    data_dir: &Path,
+    id: &str,
+    provider: Option<&str>,
+    status: &str,
+    detail: Option<&str>,
+) -> bool {
+    if !is_current_dev_sync_trigger_request(data_dir, id) {
+        info!(
+            "[dev-sync-trigger] ignored stale result id={} status={}",
+            id, status
+        );
+        return false;
+    }
+    write_dev_sync_trigger_result(data_dir, id, provider, status, detail);
+    true
+}
+
 fn is_dev_sync_trigger_terminal_status(status: &str) -> bool {
     matches!(status, "completed" | "error" | "ignored")
 }
@@ -1187,7 +1212,7 @@ fn start_dev_sync_trigger_keepalive(app: tauri::AppHandle, data_dir: PathBuf, re
                     "[dev-sync-trigger] renderer keepalive timed out for request {}",
                     request_id
                 );
-                write_dev_sync_trigger_result(
+                write_current_dev_sync_trigger_result(
                     &data_dir,
                     &request_id,
                     None,
@@ -1215,7 +1240,7 @@ fn handle_dev_sync_trigger_result_event(data_dir: &Path, payload: &str) {
         warn!("[dev-sync-trigger] failed to parse renderer result payload");
         return;
     };
-    write_dev_sync_trigger_result(
+    write_current_dev_sync_trigger_result(
         data_dir,
         &result.id,
         result.provider.as_deref(),
@@ -10696,6 +10721,51 @@ mod tests {
         assert!(parsed.get("updatedAt").is_some());
         assert!(is_dev_sync_trigger_terminal_status("completed"));
         assert!(!is_dev_sync_trigger_terminal_status("started"));
+    }
+
+    #[test]
+    fn dev_sync_trigger_stale_results_do_not_replace_current_result() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dev_sync_trigger_path(temp.path()),
+            r#"{"enabled":true,"id":"facebook-new","provider":"facebook"}"#,
+        )
+        .unwrap();
+
+        write_dev_sync_trigger_result(
+            temp.path(),
+            "facebook-new",
+            Some("facebook"),
+            "started",
+            None,
+        );
+
+        assert!(!write_current_dev_sync_trigger_result(
+            temp.path(),
+            "facebook-old",
+            Some("facebook"),
+            "error",
+            Some("Old renderer timeout."),
+        ));
+
+        let raw = std::fs::read_to_string(dev_sync_trigger_result_path(temp.path())).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(parsed["id"], serde_json::json!("facebook-new"));
+        assert_eq!(parsed["status"], serde_json::json!("started"));
+
+        assert!(write_current_dev_sync_trigger_result(
+            temp.path(),
+            "facebook-new",
+            Some("facebook"),
+            "completed",
+            Some("Current request finished."),
+        ));
+
+        let raw = std::fs::read_to_string(dev_sync_trigger_result_path(temp.path())).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(parsed["id"], serde_json::json!("facebook-new"));
+        assert_eq!(parsed["status"], serde_json::json!("completed"));
+        assert_eq!(parsed["detail"], serde_json::json!("Current request finished."));
     }
 
     #[test]

@@ -1,7 +1,11 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { log } from "./logger";
 import { readNativeJsonFile, writeNativeJsonFile } from "./native-json-store";
-import { refreshSocialProvider, type RetriableSocialProvider } from "./capture";
+import {
+  refreshSocialProvider,
+  type RetriableSocialProvider,
+  type SocialProviderRefreshResult,
+} from "./capture";
 import { hasAcceptedDesktopBundle } from "./legal-consent";
 import { loadDesktopReleaseChannelState } from "./release-channel";
 import { useAppStore } from "./store";
@@ -122,9 +126,12 @@ async function runDevSyncTrigger(request: DevSyncTriggerBridgeRequest): Promise<
 
     await writeResult(requestId, provider, "started");
     log.info(`[dev-sync-trigger] starting ${provider} sync request ${requestId}`);
-    await refreshSocialProvider(provider);
-    await writeResult(requestId, provider, "completed");
-    log.info(`[dev-sync-trigger] completed ${provider} sync request ${requestId}`);
+    const result = await refreshSocialProvider(provider);
+    const status = mapRefreshResultToTriggerStatus(result);
+    await writeResult(requestId, provider, status, formatRefreshResultDetail(result));
+    log.info(
+      `[dev-sync-trigger] ${provider} sync request ${requestId} finished status=${status} outcome=${result.status}`,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await writeResult(requestId, provider, "error", message);
@@ -132,6 +139,23 @@ async function runDevSyncTrigger(request: DevSyncTriggerBridgeRequest): Promise<
       `[dev-sync-trigger] ${provider} sync request ${requestId} failed: ${message}`,
     );
   }
+}
+
+function mapRefreshResultToTriggerStatus(
+  result: SocialProviderRefreshResult,
+): "completed" | "error" | "ignored" {
+  if (result.status === "success") return "completed";
+  if (result.status === "ignored") return "ignored";
+  return "error";
+}
+
+function formatRefreshResultDetail(result: SocialProviderRefreshResult): string {
+  const counts =
+    result.postsExtracted === undefined
+      ? ""
+      : ` Posts: ${result.postsExtracted.toLocaleString()}. Added: ${(result.itemsAdded ?? 0).toLocaleString()}.`;
+  const stage = result.stage ? ` Stage: ${result.stage}.` : "";
+  return `${result.detail ?? `${result.provider} sync finished with ${result.status}.`}${stage}${counts}`;
 }
 
 export function installDevSyncTriggerBridge(): () => void {
