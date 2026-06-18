@@ -8678,6 +8678,10 @@ impl MainWindowPresentation {
     fn should_focus(self) -> bool {
         matches!(self, MainWindowPresentation::Foreground)
     }
+
+    fn should_recover_startup_occlusion(self) -> bool {
+        self.should_focus()
+    }
 }
 
 fn show_webview_window(window: &tauri::WebviewWindow) {
@@ -9101,11 +9105,15 @@ fn start_main_window_with_presentation(
     );
     schedule_main_window_visibility_probe(app, Duration::from_secs(1), "startup-1s", presentation);
     schedule_main_window_visibility_probe(app, Duration::from_secs(3), "startup-3s", presentation);
-    schedule_main_window_occlusion_recovery(
-        app,
-        MAIN_WINDOW_OCCLUSION_RECOVERY_AFTER,
-        "startup-occlusion",
-    );
+    if presentation.should_recover_startup_occlusion() {
+        schedule_main_window_occlusion_recovery(
+            app,
+            MAIN_WINDOW_OCCLUSION_RECOVERY_AFTER,
+            "startup-occlusion",
+        );
+    } else {
+        info!("[main-window] skipped startup occlusion recovery for quiet presentation");
+    }
     let vibrancy_applied = apply_main_window_vibrancy(&window, "startup");
     info!(
         "[main-window] startup window ready vibrancy_applied={}",
@@ -10624,6 +10632,8 @@ mod tests {
     fn main_window_presentation_focus_contract_is_explicit() {
         assert!(MainWindowPresentation::Foreground.should_focus());
         assert!(!MainWindowPresentation::Quiet.should_focus());
+        assert!(MainWindowPresentation::Foreground.should_recover_startup_occlusion());
+        assert!(!MainWindowPresentation::Quiet.should_recover_startup_occlusion());
     }
 
     fn make_runtime_memory_stats_for_test(
