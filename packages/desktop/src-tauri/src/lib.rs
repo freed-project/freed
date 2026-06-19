@@ -756,9 +756,13 @@ fn prepare_background_scraper_window(
             let _ = window.set_shadow(false);
             let _ = window.set_always_on_bottom(true);
             let _ = window.set_focusable(false);
-            let _ = window.set_ignore_cursor_events(true);
             let _ = set_background_scraper_window_cloak(window, true);
+            // show() must come before set_ignore_cursor_events: both go through
+            // the tao async request channel, so ordering them ensures the GTK
+            // window is realized before input_shape_combine_region is called
+            // (on Linux, calling it on an unrealized window panics).
             window.show().map_err(|e| e.to_string())?;
+            let _ = window.set_ignore_cursor_events(true);
         }
         ScraperWindowMode::Hidden => {
             let _ = window.set_skip_taskbar(true);
@@ -767,6 +771,10 @@ fn prepare_background_scraper_window(
             let _ = window.set_shadow(false);
             let _ = window.set_always_on_bottom(true);
             let _ = window.set_focusable(false);
+            // On Linux, set_ignore_cursor_events requires the window to be
+            // realized (shown) first; skip it for hidden windows since an
+            // invisible window cannot receive cursor events regardless.
+            #[cfg(not(target_os = "linux"))]
             let _ = window.set_ignore_cursor_events(true);
             let _ = set_background_scraper_window_cloak(window, false);
             let _ = window.hide();
