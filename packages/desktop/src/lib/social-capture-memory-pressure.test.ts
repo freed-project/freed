@@ -49,6 +49,8 @@ const mocks = vi.hoisted(() => {
     invoke: vi.fn(),
     listen: vi.fn(),
     prepareSocialScrapeMemory: vi.fn(),
+    runBackgroundJob: vi.fn(async <T>(task: { run: () => Promise<T> | T }) => await task.run()),
+    resetBackgroundRuntimeForTests: vi.fn(),
     recordProviderHealthEvent,
     storeState,
     resetStoreState: () => {
@@ -121,6 +123,18 @@ vi.mock("./provider-health", () => ({
   recordProviderHealthEvent: mocks.recordProviderHealthEvent,
 }));
 
+vi.mock("./background-runtime-coordinator", async () => {
+  const actual =
+    await vi.importActual<typeof import("./background-runtime-coordinator")>(
+      "./background-runtime-coordinator",
+    );
+  return {
+    ...actual,
+    runBackgroundJob: mocks.runBackgroundJob,
+    resetBackgroundRuntimeForTests: mocks.resetBackgroundRuntimeForTests,
+  };
+});
+
 vi.mock("./fb-auth", () => ({ storeFbAuthState: vi.fn() }));
 vi.mock("./instagram-auth", () => ({ storeIgAuthState: vi.fn() }));
 vi.mock("./li-auth", () => ({ storeLiAuthState: vi.fn() }));
@@ -134,6 +148,11 @@ beforeEach(() => {
   mocks.resetStoreState();
   mocks.invoke.mockReset();
   mocks.listen.mockReset();
+  mocks.runBackgroundJob.mockReset();
+  mocks.runBackgroundJob.mockImplementation(async <T>(task: { run: () => Promise<T> | T }) =>
+    await task.run(),
+  );
+  mocks.resetBackgroundRuntimeForTests.mockReset();
   mocks.fbPostsToFeedItems.mockClear();
   mocks.fbPostsToFeedItems.mockImplementation((posts: Array<{ id?: string }>) =>
     posts.map((post, index) => ({
@@ -693,10 +712,20 @@ describe("social capture completion", () => {
     mocks.listen.mockResolvedValue(vi.fn());
     mocks.invoke.mockResolvedValue(null);
 
-    const coordinator = await import("./background-runtime-coordinator");
-    coordinator.resetBackgroundRuntimeForTests();
     let releaseSemantic: () => void = () => {};
-    const semantic = coordinator.runBackgroundJob({
+    mocks.runBackgroundJob.mockImplementation(async <T>(task: {
+      kind: string;
+      run: () => Promise<T> | T;
+    }) => {
+      if (task.kind === "semantic-classifier") {
+        return await new Promise<T>((resolve) => {
+          releaseSemantic = () => resolve(undefined as T);
+        });
+      }
+      return await task.run();
+    });
+    const { runBackgroundJob } = await import("./background-runtime-coordinator");
+    const semantic = runBackgroundJob({
       kind: "semantic-classifier",
       source: "content-signals",
       blocking: false,
@@ -849,18 +878,18 @@ describe("social capture completion", () => {
     });
     mocks.listen.mockResolvedValue(vi.fn());
 
-    const coordinator = await import("./background-runtime-coordinator");
-    coordinator.resetBackgroundRuntimeForTests();
-    let releaseScrape: () => void = () => {};
-    const activeScrape = coordinator.runBackgroundJob({
-      kind: "social-scrape",
-      source: "facebook:feed",
-      run: () => new Promise<void>((resolve) => {
-        releaseScrape = resolve;
-      }),
+    const { BackgroundRuntimeDeferredError } = await import("./background-runtime-coordinator");
+    mocks.runBackgroundJob.mockImplementation(async <T>(task: {
+      kind: string;
+      source: string;
+      run: () => Promise<T> | T;
+    }) => {
+      if (task.kind === "social-scrape" && task.source === "instagram:feed") {
+        throw new BackgroundRuntimeDeferredError("active:social-scrape:facebook:feed");
+      }
+      return await task.run();
     });
 
-    await Promise.resolve();
     const { captureIgFeed } = await import("./instagram-capture");
     const result = await captureIgFeed();
 
@@ -873,9 +902,6 @@ describe("social capture completion", () => {
     );
     expect(mocks.storeState.setIgAuth).not.toHaveBeenCalled();
     expect(mocks.recordProviderHealthEvent).not.toHaveBeenCalled();
-
-    releaseScrape();
-    await activeScrape;
   });
 });
 
