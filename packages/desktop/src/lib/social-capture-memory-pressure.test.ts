@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { BackgroundRuntimeTask } from "./background-runtime-coordinator";
 
 const mocks = vi.hoisted(() => {
   const recordProviderHealthEvent = vi.fn();
@@ -49,7 +50,9 @@ const mocks = vi.hoisted(() => {
     invoke: vi.fn(),
     listen: vi.fn(),
     prepareSocialScrapeMemory: vi.fn(),
-    runBackgroundJob: vi.fn(async <T>(task: { run: () => Promise<T> | T }) => await task.run()),
+    runBackgroundJob: vi.fn(
+      async <T>(task: BackgroundRuntimeTask<T>) => await task.run(),
+    ),
     resetBackgroundRuntimeForTests: vi.fn(),
     recordProviderHealthEvent,
     storeState,
@@ -149,8 +152,8 @@ beforeEach(() => {
   mocks.invoke.mockReset();
   mocks.listen.mockReset();
   mocks.runBackgroundJob.mockReset();
-  mocks.runBackgroundJob.mockImplementation(async <T>(task: { run: () => Promise<T> | T }) =>
-    await task.run(),
+  mocks.runBackgroundJob.mockImplementation(
+    async <T>(task: BackgroundRuntimeTask<T>) => await task.run(),
   );
   mocks.resetBackgroundRuntimeForTests.mockReset();
   mocks.fbPostsToFeedItems.mockClear();
