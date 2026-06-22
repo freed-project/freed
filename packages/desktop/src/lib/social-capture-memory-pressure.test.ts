@@ -147,6 +147,7 @@ vi.mock("./media-vault", () => ({
 }));
 
 beforeEach(() => {
+  vi.useRealTimers();
   vi.resetModules();
   mocks.resetStoreState();
   mocks.invoke.mockReset();
@@ -716,10 +717,7 @@ describe("social capture completion", () => {
     mocks.invoke.mockResolvedValue(null);
 
     let releaseSemantic: () => void = () => {};
-    mocks.runBackgroundJob.mockImplementation(async <T>(task: {
-      kind: string;
-      run: () => Promise<T> | T;
-    }) => {
+    mocks.runBackgroundJob.mockImplementation(async <T>(task: BackgroundRuntimeTask<T>) => {
       if (task.kind === "semantic-classifier") {
         return await new Promise<T>((resolve) => {
           releaseSemantic = () => resolve(undefined as T);
@@ -882,11 +880,7 @@ describe("social capture completion", () => {
     mocks.listen.mockResolvedValue(vi.fn());
 
     const { BackgroundRuntimeDeferredError } = await import("./background-runtime-coordinator");
-    mocks.runBackgroundJob.mockImplementation(async <T>(task: {
-      kind: string;
-      source: string;
-      run: () => Promise<T> | T;
-    }) => {
+    mocks.runBackgroundJob.mockImplementation(async <T>(task: BackgroundRuntimeTask<T>) => {
       if (task.kind === "social-scrape" && task.source === "instagram:feed") {
         throw new BackgroundRuntimeDeferredError("active:social-scrape:facebook:feed");
       }
