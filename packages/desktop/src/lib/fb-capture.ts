@@ -46,6 +46,7 @@ import {
   socialCaptureDurationMs,
   SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
   SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
+  waitForSocialScrapeEvents,
 } from "./social-capture-runtime";
 import {
   facebookGroupsFromFeedItems,
@@ -527,7 +528,7 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
       waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
       run: () => invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() }),
     });
-    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+    await waitForSocialScrapeEvents();
   } catch (err) {
     if (!diag.errorStage) {
       if (applyRuntimeDeferredDiag(diag, err)) {

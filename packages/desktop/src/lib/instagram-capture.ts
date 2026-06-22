@@ -43,6 +43,7 @@ import {
   socialCaptureDurationMs,
   SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
   SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
+  waitForSocialScrapeEvents,
 } from "./social-capture-runtime";
 
 // =============================================================================
@@ -289,8 +290,7 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
       run: () => invoke("ig_scrape_feed", { windowMode: getIgScraperWindowMode() }),
     });
 
-    // Brief wait for any in-flight events to arrive after invoke resolves
-    await new Promise<void>((r) => setTimeout(r, 500));
+    await waitForSocialScrapeEvents();
   } catch (err) {
     if (applyRuntimeDeferredDiag(diag, err)) {
       return { items: [], diag };
