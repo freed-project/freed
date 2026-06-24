@@ -98,6 +98,8 @@ The queue is no longer allowed to stop after one short task. The default selecto
 
 Stale dirty peer worktrees still stay in the evidence queue, but they no longer jump ahead of a fresh bug scan just because they touch nightly runner files. If a peer is read-only, behind current `dev`, and has no commits ahead of `origin/dev`, treat it as comparison material, not as the first thing to ship. Daily bug scan summaries now also recognize explicit "no new repo commits" outcomes and avoid treating an unmerged regression note as if a fix already landed.
 
+Peer worktrees whose branch name and exact head SHA already match a merged `dev` PR are now dropped from the automatic candidate list. If the same path still matters, pass it explicitly so the runner treats it as deliberate evidence instead of reheating already-shipped work.
+
 ## Safety Gates
 
 The runner excludes provider-visible tasks by default. Provider-visible peer worktrees are still pulled into the evidence queue so they cannot hide in the local swarm. Do not allow autonomous changes that alter authenticated WebView loads, provider navigation, provider API call frequency, scripted scrolling, cookies, headers, or scraping timing without explicit approval.

@@ -717,6 +717,37 @@ test("stale dirty nightly peers stay visible but do not outrank fresh bug scans"
   assert.equal(candidates[1].id, "peer-fix-nightly-small-batch");
 });
 
+test("collectPeerWorktrees skips peers whose exact head already landed through a merged PR", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-merged-peer-"));
+  const origin = path.join(dir, "origin.git");
+  const repo = path.join(dir, "repo");
+  const peer = path.join(dir, "peer");
+
+  execFileSync("git", ["init", "--bare", origin]);
+  execFileSync("git", ["clone", origin, repo]);
+  execFileSync("git", ["-C", repo, "config", "user.name", "Freed Tests"]);
+  execFileSync("git", ["-C", repo, "config", "user.email", "tests@example.com"]);
+  execFileSync("git", ["-C", repo, "checkout", "-b", "dev"]);
+  mkdirSync(path.join(repo, "scripts"), { recursive: true });
+  writeFileSync(path.join(repo, "scripts/nightly-self-improve.mjs"), "export const value = 1;\n");
+  execFileSync("git", ["-C", repo, "add", "scripts/nightly-self-improve.mjs"]);
+  execFileSync("git", ["-C", repo, "commit", "-m", "base"]);
+  execFileSync("git", ["-C", repo, "push", "-u", "origin", "dev"]);
+
+  execFileSync("git", ["-C", repo, "worktree", "add", peer, "-b", "fix/nightly-peer", "origin/dev"]);
+  writeFileSync(path.join(peer, "scripts/nightly-self-improve.mjs"), "export const value = 2;\n");
+  const peerHead = execFileSync("git", ["-C", peer, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+
+  const mergedHeads = new Map([["fix/nightly-peer", new Set([peerHead])]]);
+  const peers = collectPeerWorktrees(repo, [], true, mergedHeads);
+
+  assert.deepEqual(peers, []);
+
+  const explicitPeers = collectPeerWorktrees(repo, [peer], false, mergedHeads);
+  assert.equal(explicitPeers.length, 1);
+  assert.equal(explicitPeers[0].branch, "fix/nightly-peer");
+});
+
 test("collectPeerWorktrees ignores peers with only generated validation artifacts", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-peer-artifacts-"));
   const origin = path.join(dir, "origin.git");
