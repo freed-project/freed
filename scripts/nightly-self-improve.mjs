@@ -772,6 +772,54 @@ function git(repo, args) {
   }
 }
 
+function gh(repo, args) {
+  try {
+    return execFileSync("gh", args, {
+      cwd: repo,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trimEnd();
+  } catch {
+    return "";
+  }
+}
+
+function collectMergedPullRequestHeads(repo) {
+  const output = gh(repo, [
+    "pr",
+    "list",
+    "--state",
+    "merged",
+    "--base",
+    "dev",
+    "--limit",
+    "200",
+    "--json",
+    "headRefName,headRefOid",
+  ]);
+  if (!output) {
+    return new Map();
+  }
+
+  try {
+    const pullRequests = JSON.parse(output);
+    const mergedHeads = new Map();
+    for (const pullRequest of pullRequests) {
+      const branch = String(pullRequest.headRefName ?? "");
+      const headOid = String(pullRequest.headRefOid ?? "");
+      if (!branch || !headOid) {
+        continue;
+      }
+      const branchHeads = mergedHeads.get(branch) ?? new Set();
+      branchHeads.add(headOid);
+      mergedHeads.set(branch, branchHeads);
+    }
+    return mergedHeads;
+  } catch {
+    return new Map();
+  }
+}
+
 function unique(values) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -886,7 +934,8 @@ export function summarizePeerWorktree(worktreePath, currentRepo) {
     git(resolved, ["branch", "--show-current"]) ||
     git(resolved, ["rev-parse", "--abbrev-ref", "HEAD"]) ||
     "unknown";
-  const head = git(resolved, ["rev-parse", "--short", "HEAD"]);
+  const headOid = git(resolved, ["rev-parse", "HEAD"]);
+  const head = headOid ? headOid.slice(0, 8) : git(resolved, ["rev-parse", "--short", "HEAD"]);
   const status = filterGeneratedArtifactStatus(
     git(resolved, ["status", "--short", "--untracked-files=all"]),
   );
@@ -923,6 +972,7 @@ export function summarizePeerWorktree(worktreePath, currentRepo) {
     path: resolved,
     branch,
     head,
+    headOid,
     status,
     aheadCount: Number.isFinite(aheadCount) ? aheadCount : 0,
     behindCount: Number.isFinite(behindCount) ? behindCount : 0,
@@ -936,7 +986,19 @@ export function summarizePeerWorktree(worktreePath, currentRepo) {
   };
 }
 
-export function collectPeerWorktrees(repo, explicitWorktrees = [], scan = true) {
+function matchesMergedPullRequestHead(peer, mergedPullRequestHeads) {
+  if (!peer?.branch || !peer?.headOid) {
+    return false;
+  }
+  return mergedPullRequestHeads.get(peer.branch)?.has(peer.headOid) ?? false;
+}
+
+export function collectPeerWorktrees(
+  repo,
+  explicitWorktrees = [],
+  scan = true,
+  mergedPullRequestHeads = null,
+) {
   const explicitPaths = new Set(
     explicitWorktrees.flatMap((worktreePath) => {
       try {
@@ -946,6 +1008,7 @@ export function collectPeerWorktrees(repo, explicitWorktrees = [], scan = true) 
       }
     }),
   );
+  const mergedHeads = mergedPullRequestHeads ?? collectMergedPullRequestHeads(repo);
   const worktreePaths = [...explicitWorktrees];
   if (scan) {
     const worktreeList = git(repo, ["worktree", "list", "--porcelain"]);
@@ -957,7 +1020,12 @@ export function collectPeerWorktrees(repo, explicitWorktrees = [], scan = true) 
   return unique(worktreePaths)
     .map((worktreePath) => summarizePeerWorktree(worktreePath, repo))
     .filter(Boolean)
-    .map((peer) => ({ ...peer, explicit: explicitPaths.has(peer.path) }))
+    .map((peer) => ({
+      ...peer,
+      explicit: explicitPaths.has(peer.path),
+      mergedToDev: matchesMergedPullRequestHead(peer, mergedHeads),
+    }))
+    .filter((peer) => peer.explicit || !peer.mergedToDev)
     .filter(shouldRetainPeerWorktree)
     .filter((peer) => peer.changedFileCount > 0 || peer.aheadCount > 0)
     .map((peer) => ({ ...peer, score: peerWorktreeScore(peer) }))
