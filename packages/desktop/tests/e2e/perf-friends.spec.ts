@@ -419,6 +419,7 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   expect(denseInteractionNodeCount).toBeGreaterThan(0);
   expect(denseInteractionNodeCount).toBeLessThanOrEqual(DENSE_INTERACTION_NODE_BUDGET);
   expect(maxInteractiveProviderLabelCount).toBe(0);
+  expect(afterInteraction!.metrics.denseInteractionRebuildCount).toBeGreaterThan(1);
   expect(afterInteraction!.metrics.denseInteractionRebuildCount).toBeLessThanOrEqual(16);
   expect(pinnedNodeCount).toBe(0);
   expect(interaction.result.p95Ms).toBeLessThanOrEqual(p95Budget);

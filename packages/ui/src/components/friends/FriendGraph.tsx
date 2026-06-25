@@ -970,6 +970,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const denseInteractionRebuildCountRef = useRef(0);
   const lastSelectionStyleKeyRef = useRef("");
   const lastLabelLayoutKeyRef = useRef("");
+  const lastDatasetKeyRef = useRef("");
   const visibleLabelIdsRef = useRef<string[]>([]);
   const textStyleCacheRef = useRef<Map<string, TextStyle>>(new Map());
   const avatarTextureCacheRef = useRef<Map<string, AvatarTextureCacheEntry>>(new Map());
@@ -1429,9 +1430,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           layoutVersion,
           themeId ?? "",
           qualityMode,
-          qualityMode === "interactive" ? "stable" : Math.round(transform.scale * scaleBucketFactor),
-          qualityMode === "interactive" ? "stable" : Math.round(transform.x / transformBucketSize),
-          qualityMode === "interactive" ? "stable" : Math.round(transform.y / transformBucketSize),
+          Math.round(transform.scale * scaleBucketFactor),
+          Math.round(transform.x / transformBucketSize),
+          Math.round(transform.y / transformBucketSize),
           canvasSize.width,
           canvasSize.height,
         ].join("|");
@@ -1830,12 +1831,23 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
     if (containerRef.current) {
       const counts = layoutCountsRef.current;
-      containerRef.current.dataset.graphNodeCount = String(counts.nodeCount);
-      containerRef.current.dataset.graphLinkCount = String(counts.linkCount);
-      containerRef.current.dataset.graphPersonCount = String(counts.personCount);
-      containerRef.current.dataset.graphChannelCount = String(counts.channelCount);
-      containerRef.current.dataset.visibleLabelCount = String(visibleLabelCount);
-      containerRef.current.dataset.graphQualityMode = qualityMode;
+      const datasetKey = [
+        counts.nodeCount,
+        counts.linkCount,
+        counts.personCount,
+        counts.channelCount,
+        visibleLabelCount,
+        qualityMode,
+      ].join("|");
+      if (lastDatasetKeyRef.current !== datasetKey) {
+        lastDatasetKeyRef.current = datasetKey;
+        containerRef.current.dataset.graphNodeCount = String(counts.nodeCount);
+        containerRef.current.dataset.graphLinkCount = String(counts.linkCount);
+        containerRef.current.dataset.graphPersonCount = String(counts.personCount);
+        containerRef.current.dataset.graphChannelCount = String(counts.channelCount);
+        containerRef.current.dataset.visibleLabelCount = String(visibleLabelCount);
+        containerRef.current.dataset.graphQualityMode = qualityMode;
+      }
     }
     (window as typeof window & {
       __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot;
