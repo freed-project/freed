@@ -28,10 +28,15 @@ import {
 import { socialProviderCopy } from "./social-provider-copy";
 import { safeUnlisten } from "./safe-unlisten";
 import {
+  applyRuntimeDeferredDiag,
   applyLockedSessionDeferredDiag,
   applyNativeMemoryPressureDiag,
   isRuntimeDeferredStage,
+  SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
+  SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
+  waitForSocialScrapeEvents,
 } from "./social-capture-runtime";
+import { runBackgroundJob } from "./background-runtime-coordinator";
 
 // =============================================================================
 // Rate Limiting
@@ -168,10 +173,20 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
       },
     );
 
-    await invoke("li_scrape_feed", { windowMode: getLiScraperWindowMode() });
-    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+    await runBackgroundJob({
+      kind: "social-scrape",
+      source: "linkedin:feed",
+      timeoutMs: 600_000,
+      waitForActiveJobMs: SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
+      waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
+      run: () => invoke("li_scrape_feed", { windowMode: getLiScraperWindowMode() }),
+    });
+    await waitForSocialScrapeEvents();
   } catch (err) {
     if (!diag.errorStage) {
+      if (applyRuntimeDeferredDiag(diag, err)) {
+        return { items: [], diag };
+      }
       if (applyNativeMemoryPressureDiag(diag, err, "linkedin")) {
         return { items: [], diag };
       }

@@ -1,5 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { toast } from "@freed/ui/components/Toast";
+import { formatProviderStatusMessage } from "@freed/ui/lib/provider-status";
 import {
   setProviderHealth,
   type HealthDailyBucket,
@@ -832,10 +833,10 @@ function messageFor(providerState: PersistedProviderHealth): string | undefined 
   const latest = latestStatusAttempt(providerState);
   if (!latest) return undefined;
   if (providerState.pause && providerState.pause.pausedUntil > Date.now()) {
-    return providerState.pause.pauseReason;
+    return formatProviderStatusMessage(providerState.pause.pauseReason);
   }
   if (latest.outcome === "success") return undefined;
-  if (latest.reason) return latest.reason;
+  if (latest.reason) return formatProviderStatusMessage(latest.reason);
   if (latest.outcome === "cooldown") return "Cooling down";
   if (latest.outcome === "provider_rate_limit") return "Rate limit detected";
   if (latest.outcome === "empty") return "No posts pulled";
@@ -886,7 +887,7 @@ function snapshotForProvider(providerState: PersistedProviderHealth): ProviderHe
     lastAttemptAt: latestAttempt?.finishedAt,
     lastSuccessfulAt: lastSuccessfulAt(providerState.latestAttempts),
     lastOutcome: latestAttempt?.outcome,
-    lastError: latestWasSuccessful ? undefined : latestAttempt?.reason,
+    lastError: latestWasSuccessful ? undefined : formatProviderStatusMessage(latestAttempt?.reason),
     currentMessage: messageFor(providerState),
     pause: providerState.pause,
     dailyBuckets: providerState.dailyBuckets,

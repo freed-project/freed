@@ -900,6 +900,40 @@ describe("social capture completion", () => {
     expect(mocks.storeState.setIgAuth).not.toHaveBeenCalled();
     expect(mocks.recordProviderHealthEvent).not.toHaveBeenCalled();
   });
+
+  it("does not poison LinkedIn health when app recovery defers the scrape", async () => {
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockResolvedValue(vi.fn());
+
+    const { BackgroundRuntimeDeferredError } = await import("./background-runtime-coordinator");
+    mocks.runBackgroundJob.mockImplementation(async <T>(task: BackgroundRuntimeTask<T>) => {
+      if (task.kind === "social-scrape" && task.source === "linkedin:feed") {
+        throw new BackgroundRuntimeDeferredError("renderer_safe_mode:487586");
+      }
+      return await task.run();
+    });
+
+    const { captureLiFeed } = await import("./li-capture");
+    const result = await captureLiFeed();
+
+    expect(result.diag.errorStage).toBe("runtime_deferred");
+    expect(result.diag.errorMessage).toBe(
+      "Freed paused background work while the app recovers. Try syncing again in a moment.",
+    );
+    expect(mocks.invoke).not.toHaveBeenCalledWith("li_scrape_feed", expect.anything());
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(null);
+    expect(mocks.storeState.setError).not.toHaveBeenCalledWith(
+      expect.stringContaining("renderer"),
+    );
+    expect(mocks.storeState.setLiAuth).not.toHaveBeenCalled();
+    expect(mocks.recordProviderHealthEvent).not.toHaveBeenCalled();
+  });
 });
 
 describe("social capture memory pressure gate", () => {
