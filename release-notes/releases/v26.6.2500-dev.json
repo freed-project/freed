@@ -3,7 +3,7 @@
   "version": "26.6.2500-dev",
   "channel": "dev",
   "dayKey": "26.6.25",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-25T20:18:54.976Z",
   "model": "heuristic",
@@ -41,10 +41,10 @@
     ]
   },
   "release": {
-    "deck": "Keep nightly bug scan ahead of bootstrap, social scrape validation are now more stable, and prevent Linux crash when opening social scraper window",
+    "deck": "Nightly bug scans now stay ahead of bootstrap warnings, social scrape checks are steadier, and Linux no longer crashes when opening the social scraper window.",
     "features": [],
     "fixes": [],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2500-dev\n\nKeep nightly bug scan ahead of bootstrap, social scrape validation are now more stable, and prevent Linux crash when opening social scraper window\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2500-dev\n\nNightly bug scans now stay ahead of bootstrap warnings, social scrape checks are steadier, and Linux no longer crashes when opening the social scraper window.\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
