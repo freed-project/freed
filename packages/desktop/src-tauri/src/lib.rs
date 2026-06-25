@@ -257,6 +257,26 @@ impl ScraperWindowMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ScraperCursorIgnoreActivation {
+    BeforeVisibilityChange,
+    AfterShow,
+    Skip,
+}
+
+fn scraper_cursor_ignore_activation(
+    window_mode: ScraperWindowMode,
+    is_linux: bool,
+) -> ScraperCursorIgnoreActivation {
+    match window_mode {
+        ScraperWindowMode::Shown => ScraperCursorIgnoreActivation::Skip,
+        ScraperWindowMode::Cloaked if is_linux => ScraperCursorIgnoreActivation::AfterShow,
+        ScraperWindowMode::Cloaked => ScraperCursorIgnoreActivation::BeforeVisibilityChange,
+        ScraperWindowMode::Hidden if is_linux => ScraperCursorIgnoreActivation::Skip,
+        ScraperWindowMode::Hidden => ScraperCursorIgnoreActivation::BeforeVisibilityChange,
+    }
+}
+
 fn stored_or_default_user_agent(agent: &std::sync::Mutex<String>) -> String {
     let stored = agent.lock().unwrap();
     if stored.trim().is_empty() {
@@ -736,6 +756,8 @@ fn prepare_background_scraper_window(
     window_mode: ScraperWindowMode,
 ) -> Result<(), String> {
     set_background_scraper_media_guard(window, true)?;
+    let cursor_ignore_activation =
+        scraper_cursor_ignore_activation(window_mode, cfg!(target_os = "linux"));
     match window_mode {
         ScraperWindowMode::Shown => {
             let _ = window.set_ignore_cursor_events(false);
@@ -756,13 +778,18 @@ fn prepare_background_scraper_window(
             let _ = window.set_shadow(false);
             let _ = window.set_always_on_bottom(true);
             let _ = window.set_focusable(false);
+            if cursor_ignore_activation == ScraperCursorIgnoreActivation::BeforeVisibilityChange {
+                let _ = window.set_ignore_cursor_events(true);
+            }
             let _ = set_background_scraper_window_cloak(window, true);
             // show() must come before set_ignore_cursor_events: both go through
             // the tao async request channel, so ordering them ensures the GTK
             // window is realized before input_shape_combine_region is called
             // (on Linux, calling it on an unrealized window panics).
             window.show().map_err(|e| e.to_string())?;
-            let _ = window.set_ignore_cursor_events(true);
+            if cursor_ignore_activation == ScraperCursorIgnoreActivation::AfterShow {
+                let _ = window.set_ignore_cursor_events(true);
+            }
         }
         ScraperWindowMode::Hidden => {
             let _ = window.set_skip_taskbar(true);
@@ -771,11 +798,9 @@ fn prepare_background_scraper_window(
             let _ = window.set_shadow(false);
             let _ = window.set_always_on_bottom(true);
             let _ = window.set_focusable(false);
-            // On Linux, set_ignore_cursor_events requires the window to be
-            // realized (shown) first; skip it for hidden windows since an
-            // invisible window cannot receive cursor events regardless.
-            #[cfg(not(target_os = "linux"))]
-            let _ = window.set_ignore_cursor_events(true);
+            if cursor_ignore_activation == ScraperCursorIgnoreActivation::BeforeVisibilityChange {
+                let _ = window.set_ignore_cursor_events(true);
+            }
             let _ = set_background_scraper_window_cloak(window, false);
             let _ = window.hide();
         }
@@ -10940,6 +10965,38 @@ mod tests {
         );
         assert!(MainWindowPresentation::Foreground.should_recover_startup_occlusion());
         assert!(!MainWindowPresentation::Quiet.should_recover_startup_occlusion());
+    }
+
+    #[test]
+    fn linux_background_scraper_cursor_ignore_waits_for_cloaked_show() {
+        assert_eq!(
+            scraper_cursor_ignore_activation(ScraperWindowMode::Shown, true),
+            ScraperCursorIgnoreActivation::Skip
+        );
+        assert_eq!(
+            scraper_cursor_ignore_activation(ScraperWindowMode::Cloaked, true),
+            ScraperCursorIgnoreActivation::AfterShow
+        );
+        assert_eq!(
+            scraper_cursor_ignore_activation(ScraperWindowMode::Hidden, true),
+            ScraperCursorIgnoreActivation::Skip
+        );
+    }
+
+    #[test]
+    fn non_linux_background_scraper_cursor_ignore_stays_before_visibility_change() {
+        assert_eq!(
+            scraper_cursor_ignore_activation(ScraperWindowMode::Shown, false),
+            ScraperCursorIgnoreActivation::Skip
+        );
+        assert_eq!(
+            scraper_cursor_ignore_activation(ScraperWindowMode::Cloaked, false),
+            ScraperCursorIgnoreActivation::BeforeVisibilityChange
+        );
+        assert_eq!(
+            scraper_cursor_ignore_activation(ScraperWindowMode::Hidden, false),
+            ScraperCursorIgnoreActivation::BeforeVisibilityChange
+        );
     }
 
     fn make_runtime_memory_stats_for_test(
