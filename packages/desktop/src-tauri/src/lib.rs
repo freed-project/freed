@@ -8945,6 +8945,14 @@ fn main_window_release_timeout_ms() -> u128 {
 
 #[cfg(target_os = "macos")]
 fn apply_main_window_vibrancy(window: &tauri::WebviewWindow, context: &str) -> bool {
+    if std::env::var("FREED_ENABLE_MAIN_WINDOW_VIBRANCY").ok().as_deref() != Some("1") {
+        info!(
+            "[main-window] vibrancy disabled for stable WebView compositing context={}",
+            context
+        );
+        return false;
+    }
+
     match apply_vibrancy(
         window,
         NSVisualEffectMaterial::UnderWindowBackground,
