@@ -7,6 +7,7 @@
 - **Time estimates:** Machine time only ("one conversation", "~10 min"). Never quote human hours/days.
 - **IDs:** Display tail — `...${id.slice(-8)}`.
 - **Number formatting:** All user-facing numbers must use `Number.toLocaleString()` (or `Intl.NumberFormat`) — never raw `.toString()` or string interpolation. This ensures locale-appropriate grouping separators (e.g. commas in `en-US`) for counts, totals, and stats.
+- **Node toolchain:** Use the repo-pinned Node toolchain from `.nvmrc`. Shell scripts must resolve `node`, `npm`, and `npx` from the same install, never by mixing a global `npm`/`npx` with a different `node` on `PATH`.
 - **Before creating any new component or hook:** `SemanticSearch` or `Grep` the package for existing code that does the same thing. Duplication is never acceptable — if two surfaces need the same UI or logic, extract a shared primitive and have both import it.
 - **Before shipping any feature:** Verify that every exported function/class you added or touched is actually _called_ from an appropriate entry point. Exported-but-never-called code is a bug. Grep for each new export name to confirm it appears in a consumer.
 - **Platform copy:** Never write "for Mac", "for Windows", or "for desktop" in user-facing strings. The correct product name is "Freed Desktop". Use that.
