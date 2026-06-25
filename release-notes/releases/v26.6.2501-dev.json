@@ -1,0 +1,59 @@
+{
+  "tag": "v26.6.2501-dev",
+  "version": "26.6.2501-dev",
+  "channel": "dev",
+  "dayKey": "26.6.25",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-25T20:34:06.859Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.1810-dev",
+    "previousPublishedDayTag": "v26.6.1810-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.2501-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.2501-dev"
+    ],
+    "prNumbers": [
+      858,
+      861,
+      862,
+      863,
+      864,
+      865,
+      866,
+      867,
+      868
+    ],
+    "commitSubjects": [
+      "release: v26.6.2501-dev",
+      "fix: clean up renderer safe mode sync deferrals (#868)",
+      "release: approve v26.6.2500-dev notes",
+      "release: v26.6.2500-dev",
+      "fix: prevent Linux crash when opening social scraper window (#867)",
+      "fix: prevent Linux crash when opening social scraper window (#864)",
+      "fix: keep nightly bug scan ahead of bootstrap (#866)",
+      "fix: skip merged nightly peer branches (#865)",
+      "fix: stabilize social scrape validation (#863)",
+      "fix: restore nightly dev build typing (#862)",
+      "fix: stabilize nightly desktop validation (#861)",
+      "fix: show latest provider scrape failure (#858)"
+    ]
+  },
+  "release": {
+    "deck": "Freed now handles app recovery pauses without blocking social sync retries or exposing raw internal timing to users.",
+    "features": [],
+    "fixes": [
+      "Cleaned up app recovery deferrals so Facebook, Instagram, and LinkedIn no longer show raw millisecond safe-mode errors in provider status.",
+      "Aligned LinkedIn feed sync with the shared social scrape queue so app recovery pauses do not poison provider health or stop later retries.",
+      "Keeps the same-day dev fixes for social scraper validation, nightly runner duplicate filtering, and Linux social scraper window startup."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2501-dev\n\nFreed now handles app recovery pauses without blocking social sync retries or exposing raw internal timing to users.\n\n### Fixes\n\n- Cleaned up app recovery deferrals so Facebook, Instagram, and LinkedIn no longer show raw millisecond safe-mode errors in provider status.\n- Aligned LinkedIn feed sync with the shared social scrape queue so app recovery pauses do not poison provider health or stop later retries.\n- Keeps the same-day dev fixes for social scraper validation, nightly runner duplicate filtering, and Linux social scraper window startup.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
