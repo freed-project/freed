@@ -406,6 +406,86 @@ test("preflight blockers outrank measured performance work", () => {
   assert.equal(selected[0].id, "nightly-preflight-risk");
 });
 
+test("missing root dependencies stay visible without outranking the bug scan", () => {
+  const repoPath = mkdtempSync(path.join(os.tmpdir(), "freed-nightly-missing-modules-"));
+  const repo = {
+    branch: "dev",
+    head: "abc1234",
+    originDev: "abc1234",
+    originMain: "def5678",
+    status: "",
+  };
+
+  const riskSnapshot = collectRiskSnapshot({
+    repoPath,
+    repo,
+    soak: {
+      exists: false,
+      soakDir: "",
+      sampleCount: 0,
+      maxWebKitResidentBytes: null,
+      maxEventLoopLagMs: null,
+      maxDomNodes: null,
+      staleHeartbeatCount: 0,
+      throttledHeartbeatCount: 0,
+      lastEvent: "",
+      firstTimestamp: "",
+      lastTimestamp: "",
+    },
+    peerWorktrees: [],
+    duplicateWork: { findingCount: 0, blockerCount: 0, warningCount: 0, findings: [] },
+    crashAutomation: "",
+    dailyBugMemory: "",
+    devBotMemory: "",
+    expectedBranch: "dev",
+  });
+
+  assert.equal(riskSnapshot.blockerCount, 0);
+  assert.equal(riskSnapshot.warningCount, 1);
+  assert.equal(riskSnapshot.risks[0]?.id, "missing-root-node-modules");
+  assert.equal(riskSnapshot.risks[0]?.severity, "warning");
+
+  const candidates = buildCandidates({
+    soak: {
+      exists: false,
+      soakDir: "",
+      sampleCount: 0,
+      maxWebKitResidentBytes: null,
+      maxEventLoopLagMs: null,
+      maxDomNodes: null,
+      staleHeartbeatCount: 0,
+      throttledHeartbeatCount: 0,
+      lastEvent: "",
+      firstTimestamp: "",
+      lastTimestamp: "",
+    },
+    dailyBug: {
+      exists: true,
+      path: "/tmp/daily-bug-memory.md",
+      latestDate: "2026-06-24",
+      latestHadNoNewCommits: false,
+      latestHadFix: true,
+    },
+    repo,
+    riskSnapshot,
+    duplicateWork: { findingCount: 0, blockerCount: 0, warningCount: 0, findings: [] },
+    peerWorktrees: [],
+    crashAutomationExists: false,
+    devBotMemoryExists: false,
+    memoryBudgetBytes: 2.5 * GIB,
+  });
+
+  const selected = selectTargets(candidates, {
+    maxTargets: 2,
+    durationMinutes: 480,
+    minimumNightMinutes: 180,
+    allowProviderVisible: false,
+  });
+
+  assert.equal(selected[0].id, "daily-bug-fix-scan");
+  assert.equal(selected[1].id, "nightly-preflight-risk");
+});
+
 test("parseGitWorktreePorcelain reads branch entries", () => {
   const entries = parseGitWorktreePorcelain(
     [
