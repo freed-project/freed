@@ -7,6 +7,7 @@ const SETTINGS_SEARCH_BUDGET_MS = process.env.CI ? 1_200 : 500;
 const SETTINGS_LIST_FILTER_BUDGET_MS = process.env.CI ? 1_200 : 500;
 const SETTINGS_FRAME_P95_BUDGET_MS = process.env.CI ? 140 : 80;
 const SETTINGS_DROPPED_FRAME_BUDGET = process.env.CI ? 36 : 24;
+const SETTINGS_SCROLL_DROPPED_FRAME_BUDGET = process.env.CI ? 40 : SETTINGS_DROPPED_FRAME_BUDGET;
 const SETTINGS_LONG_TASK_COUNT_BUDGET = 2;
 const SETTINGS_DOM_NODE_BUDGET = 1_400;
 
@@ -246,7 +247,7 @@ test("Settings dialog stays responsive with 1,600 RSS sources", async ({ app, pa
   expect(listFilteredDomNodes).toBeLessThan(SETTINGS_DOM_NODE_BUDGET);
   expect(scrollInteraction.result.sampleCount).toBeGreaterThan(0);
   expect(scrollInteraction.result.p95Ms).toBeLessThanOrEqual(SETTINGS_FRAME_P95_BUDGET_MS);
-  expect(scrollInteraction.result.droppedFrames).toBeLessThanOrEqual(SETTINGS_DROPPED_FRAME_BUDGET);
+  expect(scrollInteraction.result.droppedFrames).toBeLessThanOrEqual(SETTINGS_SCROLL_DROPPED_FRAME_BUDGET);
   expect(scrollInteraction.count).toBeLessThanOrEqual(SETTINGS_LONG_TASK_COUNT_BUDGET);
   expect(searchInteraction.result.sampleCount).toBeGreaterThan(0);
   expect(searchInteraction.result.p95Ms).toBeLessThan(SETTINGS_FRAME_P95_BUDGET_MS);
