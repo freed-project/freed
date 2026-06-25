@@ -1283,11 +1283,11 @@ export function collectRiskSnapshot({
     risks.push(
       riskItem({
         id: "missing-root-node-modules",
-        severity: "blocker",
+        severity: "warning",
         title: "Root dependencies are not installed",
         evidence: [path.join(repoPath, "node_modules")],
         remediation:
-          "Bootstrap the worktree before running validation or planning work that depends on repo scripts.",
+          "Keep bug scanning and planning moving, then bootstrap the worktree before any validation or fix path that depends on repo packages.",
         actions: [
           riskAction({
             id: "bootstrap-root-dependencies",
