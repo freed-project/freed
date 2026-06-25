@@ -7,7 +7,10 @@ import type {
   ProviderHealthSnapshot,
 } from "../lib/debug-store.js";
 import { formatShortClockTime } from "../lib/date-format.js";
-import { getHealthStatusLabel } from "../lib/provider-status.js";
+import {
+  formatProviderStatusMessage,
+  getHealthStatusLabel,
+} from "../lib/provider-status.js";
 
 export function providerHealthLabel(provider: HealthProviderId): string {
   return {
@@ -187,7 +190,7 @@ function isSuccessfulAttempt(attempt: ProviderHealthAttempt): boolean {
 }
 
 function describeAttemptOutcome(attempt: ProviderHealthAttempt): string {
-  if (attempt.reason) return attempt.reason;
+  if (attempt.reason) return formatProviderStatusMessage(attempt.reason) ?? attempt.reason;
   if (attempt.outcome === "cooldown") return "Cooling down";
   if (attempt.outcome === "provider_rate_limit") return "Rate limit detected";
   if (attempt.outcome === "empty") return "No posts pulled";
@@ -238,10 +241,12 @@ export function ProviderHealthSummary({
   const latestIssue =
     snapshot.status === "healthy" ? undefined : latestVisibleIssue(snapshot.latestAttempts);
   const latestIssueMessage = latestIssue ? describeAttemptOutcome(latestIssue) : undefined;
+  const currentStatusMessage = formatProviderStatusMessage(snapshot.currentMessage);
+  const lastErrorMessage = formatProviderStatusMessage(snapshot.lastError);
   const showCurrentStatusMessage =
-    showMessages && showCurrentMessage && snapshot.currentMessage !== latestIssueMessage;
+    showMessages && showCurrentMessage && currentStatusMessage !== latestIssueMessage;
   const showLastErrorMessage =
-    showMessages && !!snapshot.lastError && snapshot.lastError !== latestIssueMessage;
+    showMessages && !!lastErrorMessage && lastErrorMessage !== latestIssueMessage;
 
   const content = (
     <>
@@ -330,10 +335,10 @@ export function ProviderHealthSummary({
       )}
 
       {showCurrentStatusMessage && (
-        <p className="text-xs text-[var(--theme-text-muted)]">{snapshot.currentMessage}</p>
+        <p className="text-xs text-[var(--theme-text-muted)]">{currentStatusMessage}</p>
       )}
       {showLastErrorMessage && (
-        <p className="text-xs text-amber-400">{snapshot.lastError}</p>
+        <p className="text-xs text-amber-400">{lastErrorMessage}</p>
       )}
     </>
   );

@@ -541,4 +541,28 @@ describe("provider health", () => {
     expect(provider?.lastError).toBeUndefined();
     expect(provider?.currentMessage).toBeUndefined();
   });
+
+  it("sanitizes active runtime-deferred provider attempts before exposing status", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, debugStore } = await loadProviderHealthModule();
+
+    await mod.recordProviderHealthEvent({
+      provider: "linkedin",
+      outcome: "error",
+      stage: "runtime_deferred",
+      reason: "background work is paused for 487586 ms while renderer safe mode is active",
+      finishedAt: now.getTime(),
+    });
+
+    const provider = debugStore.useDebugStore.getState().health?.providers.linkedin;
+    const expected =
+      "Freed paused background work while the app recovers. Try syncing again in a moment.";
+    expect(provider?.status).toBe("degraded");
+    expect(provider?.lastError).toBe(expected);
+    expect(provider?.currentMessage).toBe(expected);
+    expect(provider?.latestAttempts[0]?.reason).toContain("487586 ms");
+  });
 });

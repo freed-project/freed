@@ -2131,10 +2131,10 @@ impl BackgroundRuntimeCoordinator {
 
         if let Some(cooldown_until) = state.cooldown_until {
             if cooldown_until > now {
-                let wait_ms = cooldown_until.duration_since(now).as_millis();
+                let wait = format_duration_for_user(cooldown_until.duration_since(now));
                 return Err(format!(
-                    "background work is cooling down for {} ms after renderer recovery",
-                    wait_ms
+                    "background work is cooling down for {} after renderer recovery",
+                    wait
                 ));
             }
             state.cooldown_until = None;
@@ -2142,14 +2142,14 @@ impl BackgroundRuntimeCoordinator {
 
         if let Some(memory_cooldown_until) = state.memory_cooldown_until {
             if memory_cooldown_until > now {
-                let wait_ms = memory_cooldown_until.duration_since(now).as_millis();
+                let wait = format_duration_for_user(memory_cooldown_until.duration_since(now));
                 let reason = state
                     .last_memory_pressure_reason
                     .as_deref()
                     .unwrap_or("recent memory pressure");
                 return Err(format!(
-                    "background work is cooling down for {} ms after {}",
-                    wait_ms, reason
+                    "background work is cooling down for {} after {}",
+                    wait, reason
                 ));
             }
             state.memory_cooldown_until = None;
@@ -2158,10 +2158,10 @@ impl BackgroundRuntimeCoordinator {
 
         if let Some(safe_mode_until) = state.safe_mode_until {
             if safe_mode_until > now {
-                let wait_ms = safe_mode_until.duration_since(now).as_millis();
+                let wait = format_duration_for_user(safe_mode_until.duration_since(now));
                 return Err(format!(
-                    "background work is paused for {} ms while renderer safe mode is active",
-                    wait_ms
+                    "background work is paused for {} while the app recovers",
+                    wait
                 ));
             }
             state.safe_mode_until = None;
@@ -2851,6 +2851,24 @@ fn format_bytes_for_log(bytes: u64) -> String {
     }
 }
 
+fn format_duration_for_user(duration: Duration) -> String {
+    let total_seconds = duration.as_secs().max(1);
+    if total_seconds < 60 {
+        format!(
+            "{} second{}",
+            total_seconds,
+            if total_seconds == 1 { "" } else { "s" }
+        )
+    } else {
+        let minutes = ((total_seconds + 59) / 60).max(1);
+        format!(
+            "about {} minute{}",
+            minutes,
+            if minutes == 1 { "" } else { "s" }
+        )
+    }
+}
+
 #[cfg(test)]
 mod renderer_watchdog_tests {
     use super::*;
@@ -3460,7 +3478,29 @@ mod renderer_watchdog_tests {
         assert!(safe_mode_remaining_ms.unwrap_or(0) > 0);
         assert_eq!(recoveries_short, 2);
         assert_eq!(recoveries_long, 2);
-        assert!(runtime.begin_job("fb_scrape_feed").is_err());
+        runtime.note_renderer_heartbeat();
+        runtime.note_renderer_heartbeat();
+        let err = runtime.begin_job("fb_scrape_feed").unwrap_err();
+        assert!(err.contains("about 10 minutes"));
+        assert!(err.contains("while the app recovers"));
+        assert!(!err.contains(" ms"));
+        assert!(!err.contains("renderer safe mode"));
+    }
+
+    #[test]
+    fn user_duration_formatter_avoids_raw_milliseconds() {
+        assert_eq!(
+            format_duration_for_user(Duration::from_millis(500)),
+            "1 second"
+        );
+        assert_eq!(
+            format_duration_for_user(Duration::from_secs(42)),
+            "42 seconds"
+        );
+        assert_eq!(
+            format_duration_for_user(Duration::from_millis(487_586)),
+            "about 9 minutes"
+        );
     }
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatProviderStatusMessage,
   getProviderStatusDetail,
   getProviderStatusLabel,
   getProviderStatusTone,
@@ -24,6 +25,17 @@ function snapshot(
 }
 
 describe("provider status transient failures", () => {
+  it("formats raw renderer recovery details for user-facing provider copy", () => {
+    expect(
+      formatProviderStatusMessage(
+        "background work is paused for 487586 ms while renderer safe mode is active",
+      ),
+    ).toBe("Freed paused background work while the app recovers. Try syncing again in a moment.");
+    expect(formatProviderStatusMessage("renderer_safe_mode:515828")).toBe(
+      "Freed paused background work while the app recovers. Try syncing again in a moment.",
+    );
+  });
+
   it("does not turn stale memory-pressure auth errors into sidebar warnings", () => {
     const authError =
       "Facebook sync did not start because Freed Desktop memory is high. App RSS is 2.62 GB after cleanup.";
@@ -102,6 +114,20 @@ describe("provider status transient failures", () => {
         }),
       }),
     ).toBe(currentMessage);
+  });
+
+  it("shows app recovery copy instead of raw renderer safe-mode milliseconds", () => {
+    expect(
+      getProviderStatusDetail({
+        isConnected: true,
+        snapshot: snapshot({
+          status: "degraded",
+          lastOutcome: "error",
+          currentMessage:
+            "background work is paused for 515828 ms while renderer safe mode is active",
+        }),
+      }),
+    ).toBe("Freed paused background work while the app recovers. Try syncing again in a moment.");
   });
 
   it("keeps empty social syncs out of the healthy connected state", () => {

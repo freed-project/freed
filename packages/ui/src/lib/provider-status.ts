@@ -82,6 +82,27 @@ export function isTransientProviderIssue(error?: string | null): boolean {
   return isTransientMemoryPressureIssue(error) || isTransientRuntimeDeferredIssue(error);
 }
 
+export function formatProviderStatusMessage(message?: string | null): string | undefined {
+  if (!message) return undefined;
+  const normalized = message.toLocaleLowerCase();
+
+  if (
+    normalized.includes("renderer_safe_mode") ||
+    normalized.includes("renderer safe mode") ||
+    normalized.includes("background work is paused") ||
+    normalized.includes("background work is cooling down") ||
+    normalized.includes("app recovers")
+  ) {
+    return "Freed paused background work while the app recovers. Try syncing again in a moment.";
+  }
+
+  if (normalized.includes("app window to report healthy")) {
+    return "Freed is waiting for the app window to report healthy. Try syncing again in a moment.";
+  }
+
+  return message;
+}
+
 export function getProviderStatusTone({
   isConnected,
   authError,
@@ -157,7 +178,7 @@ export function getProviderStatusDetail({
   snapshot?: ProviderHealthSnapshot | null;
 }): string | undefined {
   if (snapshot?.currentMessage) {
-    return snapshot.currentMessage;
+    return formatProviderStatusMessage(snapshot.currentMessage);
   }
   const usableAuthError = isTransientProviderIssue(authError)
     ? undefined
@@ -168,11 +189,11 @@ export function getProviderStatusDetail({
   }
 
   if (snapshot?.lastError) {
-    return snapshot.lastError;
+    return formatProviderStatusMessage(snapshot.lastError);
   }
 
   if (usableAuthError) {
-    return usableAuthError;
+    return formatProviderStatusMessage(usableAuthError);
   }
 
   if (snapshot?.status === "healthy" || isConnected) {
