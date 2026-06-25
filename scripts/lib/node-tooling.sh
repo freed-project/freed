@@ -2,10 +2,47 @@
 
 set -euo pipefail
 
+node_tooling_repo_root() {
+  cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd
+}
+
+node_tooling_nvm_version() {
+  local repo_root
+  local nvmrc_path
+
+  repo_root="$(node_tooling_repo_root)"
+  nvmrc_path="${repo_root}/.nvmrc"
+
+  if [[ ! -f "${nvmrc_path}" ]]; then
+    return 0
+  fi
+
+  tr -d '[:space:]' <"${nvmrc_path}"
+}
+
 resolve_node_bin() {
-  if [[ -n "${NODE_BIN:-}" && -x "${NODE_BIN}" ]]; then
+  local requested_version
+  local version_without_prefix
+  local candidate
+
+  if [[ -n "${NODE_BIN:-}" ]]; then
+    if [[ ! -x "${NODE_BIN}" ]]; then
+      echo "Error: NODE_BIN points to a non-executable path: ${NODE_BIN}" >&2
+      return 1
+    fi
+
     printf '%s\n' "${NODE_BIN}"
     return 0
+  fi
+
+  requested_version="$(node_tooling_nvm_version)"
+  if [[ -n "${requested_version}" ]]; then
+    version_without_prefix="${requested_version#v}"
+    candidate="${HOME}/.nvm/versions/node/v${version_without_prefix}/bin/node"
+    if [[ -x "${candidate}" ]]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
   fi
 
   if command -v node >/dev/null 2>&1; then
@@ -13,7 +50,6 @@ resolve_node_bin() {
     return 0
   fi
 
-  local candidate
   for candidate in \
     "${HOME}/.nvm/versions/node/v24.14.1/bin/node" \
     "${HOME}/.nvm/versions/node/v22.12.0/bin/node"
@@ -39,12 +75,7 @@ resolve_npm_bin() {
     return 0
   fi
 
-  if command -v npm >/dev/null 2>&1; then
-    command -v npm
-    return 0
-  fi
-
-  echo "Error: could not find npm next to ${node_bin} or on PATH." >&2
+  echo "Error: could not find npm next to ${node_bin}." >&2
   return 1
 }
 
@@ -59,12 +90,7 @@ resolve_npx_bin() {
     return 0
   fi
 
-  if command -v npx >/dev/null 2>&1; then
-    command -v npx
-    return 0
-  fi
-
-  echo "Error: could not find npx next to ${node_bin} or on PATH." >&2
+  echo "Error: could not find npx next to ${node_bin}." >&2
   return 1
 }
 
@@ -72,6 +98,7 @@ use_resolved_node_path() {
   local node_bin node_dir
   node_bin="$(resolve_node_bin)"
   node_dir="$(cd "$(dirname "${node_bin}")" && pwd)"
+  export NODE_BIN="${node_bin}"
   export PATH="${node_dir}:${PATH}"
 }
 

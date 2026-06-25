@@ -15,7 +15,7 @@ fi
 
 TARGET="$1"
 VERCEL_TOKEN="${2:-${VERCEL_TOKEN:-}}"
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/freed-vercel-production.XXXXXX")"
 ROOT_BIN_DIR="${TEMP_DIR}/node_modules/.bin"
 
@@ -98,7 +98,7 @@ fi
 echo "Verifying production bundle for $TARGET from $TEMP_DIR"
 (
   cd "$TEMP_DIR"
-  "$NPM_BIN" ci
+  "${NPM_BIN}" install
   if [[ "$TARGET" == "website" ]]; then
     (
       cd website
@@ -118,7 +118,7 @@ if [[ -n "$VERCEL_TOKEN" ]]; then
 fi
 
 echo "Pulling Vercel settings for $TARGET"
-"$NPX_BIN" vercel pull --yes --environment production --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
+"${NPX_BIN}" vercel pull --yes --environment production --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
 
 if [[ "$TARGET" == "website" ]]; then
   echo "Building $TARGET production bundle with Vercel"
@@ -128,8 +128,8 @@ if [[ "$TARGET" == "website" ]]; then
   "$NPX_BIN" vercel deploy --prebuilt --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" -y --prod
 else
   echo "Building $TARGET production bundle with Vercel"
-  "$NPX_BIN" vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" --prod
+  "${NPX_BIN}" vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" --prod
 
   echo "Deploying $TARGET production build to Vercel"
-  "$NPX_BIN" vercel deploy --prebuilt --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" -y --prod
+  "${NPX_BIN}" vercel deploy --prebuilt --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" -y --prod
 fi
