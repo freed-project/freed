@@ -1,0 +1,66 @@
+{
+  "tag": "v26.6.2600-dev",
+  "version": "26.6.2600-dev",
+  "channel": "dev",
+  "dayKey": "26.6.26",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-26T15:18:57.278Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.1810-dev",
+    "previousPublishedDayTag": "v26.6.1810-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.2600-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.2600-dev"
+    ],
+    "prNumbers": [
+      858,
+      861,
+      862,
+      863,
+      864,
+      865,
+      866,
+      867,
+      868,
+      869,
+      870,
+      871,
+      872,
+      873
+    ],
+    "commitSubjects": [
+      "fix: keep perf comments from failing validation (#873)",
+      "release: v26.6.2502-dev",
+      "fix: stabilize settings perf validation (#872)",
+      "fix: stabilize desktop window compositing (#870)",
+      "perf: reduce friends graph interaction churn (#869)",
+      "fix: pin script node toolchain (#871)",
+      "release: v26.6.2501-dev",
+      "fix: clean up renderer safe mode sync deferrals (#868)",
+      "release: approve v26.6.2500-dev notes",
+      "release: v26.6.2500-dev",
+      "fix: prevent Linux crash when opening social scraper window (#867)",
+      "fix: prevent Linux crash when opening social scraper window (#864)",
+      "fix: keep nightly bug scan ahead of bootstrap (#866)",
+      "fix: skip merged nightly peer branches (#865)",
+      "fix: stabilize social scrape validation (#863)",
+      "fix: restore nightly dev build typing (#862)",
+      "fix: stabilize nightly desktop validation (#861)",
+      "fix: show latest provider scrape failure (#858)"
+    ]
+  },
+  "release": {
+    "deck": "Keep nightly bug scan ahead of bootstrap and prevent Linux crash when opening social scraper window",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2600-dev\n\nKeep nightly bug scan ahead of bootstrap and prevent Linux crash when opening social scraper window\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
