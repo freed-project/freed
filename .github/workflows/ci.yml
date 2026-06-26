@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: read
+  issues: write
   pull-requests: write
 
 env:
@@ -117,18 +118,9 @@ jobs:
 
       - name: Comment perf comparison on PR
         if: always() && hashFiles('perf-comparison.md') != ''
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            if (!fs.existsSync('perf-comparison.md')) return;
-            const body = fs.readFileSync('perf-comparison.md', 'utf8');
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request?.number ?? context.issue.number,
-              body: `(AI Generated).\n\n## Performance Benchmark Results\n\n\`\`\`\n${body}\n\`\`\``,
-            });
+        run: node scripts/post-perf-comment.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Upload perf results
         if: always()
