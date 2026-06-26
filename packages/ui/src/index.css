@@ -705,8 +705,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .theme-shell,
-  .app-theme-shell {
+  html[data-theme-transition] .theme-shell,
+  html[data-theme-transition] .app-theme-shell {
     transition: none;
   }
 }
@@ -850,6 +850,10 @@ html[data-theme="scriptorium"] .theme-page-heading-accent {
   background-repeat: no-repeat;
   background-size: cover;
   color: var(--theme-text-primary);
+}
+
+html[data-theme-transition] .theme-shell,
+html[data-theme-transition] .app-theme-shell {
   filter:
     blur(var(--theme-transition-blur))
     saturate(var(--theme-transition-saturate));

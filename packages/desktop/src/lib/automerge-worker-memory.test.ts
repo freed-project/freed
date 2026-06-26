@@ -213,9 +213,10 @@ describe("automerge worker memory routing", () => {
     expect(workerSource).toContain("async function applyAddFeedItemsPatchChange");
     expect(workerSource).toContain("await persistAndBroadcastWithoutHydration(trace)");
     expect(workerSource).toContain("type: \"ITEM_PATCH\"");
-    expect(workerSource).toContain("orderedItemIds");
+    expect(workerSource).toContain("preservePriorityOrder: true");
+    expect(workerSource).toContain("cloneRankedFeedItemPatches");
+    expect(workerSource).not.toContain("rankedVisibleItemIdsFromDoc");
     expect(workerSource).toContain("searchCorpusVersion");
-    expect(workerSource).toContain("docItemCount");
     expect(workerSource).toContain("changedIds.length > 0");
     expect(workerSource).toContain("reason=social_dedup");
   });
