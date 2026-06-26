@@ -3,7 +3,7 @@
   "version": "26.6.2600-dev",
   "channel": "dev",
   "dayKey": "26.6.26",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-26T15:18:57.278Z",
   "model": "heuristic",
@@ -57,10 +57,16 @@
     ]
   },
   "release": {
-    "deck": "Keep nightly bug scan ahead of bootstrap and prevent Linux crash when opening social scraper window",
+    "deck": "Freed now ships safer app recovery and steadier desktop validation.",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Prevented the Linux social scraper window from crashing as it opens.",
+      "Cleaned up app recovery deferrals so Facebook, Instagram, and LinkedIn no longer show raw safe-mode timing noise in provider status.",
+      "Aligned LinkedIn feed sync with the shared social scrape queue so recovery pauses do not poison provider health or block later retries.",
+      "Reduced Friends graph interaction churn and stabilized desktop window compositing during recovery.",
+      "Pinned release-script Node routing, relaxed the scripted settings perf buffer that blocked the last dev build, and kept perf comparison comments from failing validation on read-only pull request tokens."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2600-dev\n\nKeep nightly bug scan ahead of bootstrap and prevent Linux crash when opening social scraper window\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2600-dev\n\nFreed now ships safer app recovery and steadier desktop validation.\n\n### Fixes\n\n- Prevented the Linux social scraper window from crashing as it opens.\n- Cleaned up app recovery deferrals so Facebook, Instagram, and LinkedIn no longer show raw safe-mode timing noise in provider status.\n- Aligned LinkedIn feed sync with the shared social scrape queue so recovery pauses do not poison provider health or block later retries.\n- Reduced Friends graph interaction churn and stabilized desktop window compositing during recovery.\n- Pinned release-script Node routing, relaxed the scripted settings perf buffer that blocked the last dev build, and kept perf comparison comments from failing validation on read-only pull request tokens.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
