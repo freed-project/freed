@@ -65,7 +65,7 @@ import {
   sortByPriority,
 } from "@freed/shared";
 import type { Account, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
-import type { DocState, RssFeedPatch, WorkerRequest, WorkerResponse } from "./automerge-types";
+import type { DocState, FeedItemPatch, RssFeedPatch, WorkerRequest, WorkerResponse } from "./automerge-types";
 import {
   createPersistenceState,
   persistDoc,
@@ -482,20 +482,32 @@ function healUntitledFeedTitles(doc: FreedDoc): number {
   return changed;
 }
 
-function rankedVisibleItemIdsFromDoc(doc: FreedDoc): string[] {
+function rankedPatchItemsFromDoc(doc: FreedDoc, items: FeedItem[]): FeedItem[] {
   const preferences = mergeDefaultPreferences(doc.preferences as Partial<UserPreferences> | undefined);
   const persons = doc.persons as Record<string, Person> | undefined;
   const accounts = doc.accounts as Record<string, Account> | undefined;
-  const visibleItems = (Object.values(doc.feedItems ?? {}) as FeedItem[])
-    .filter((item) => !item.userState.hidden)
-    .sort((a, b) => b.publishedAt - a.publishedAt);
 
-  return sortByPriority(
-    rankFeedItems(visibleItems, preferences.weights, {
+  return rankFeedItems(
+    [...items].sort((a, b) => {
+      const timeDelta = (b.publishedAt || b.capturedAt) - (a.publishedAt || a.capturedAt);
+      return timeDelta || a.globalId.localeCompare(b.globalId);
+    }),
+    preferences.weights,
+    {
       persons: persons ?? {},
       accounts: accounts ?? {},
-    }),
-  ).map((item) => item.globalId);
+    },
+  );
+}
+
+function cloneRankedFeedItemPatches(doc: FreedDoc | null, changedIds: string[]): FeedItemPatch[] {
+  const items = changedIds
+    .map((globalId) => doc?.feedItems[globalId] as FeedItem | undefined)
+    .filter((item): item is FeedItem => Boolean(item))
+    .map((item) => cloneFeedItemForPatch(item));
+  if (!doc || items.length === 0) return items.map((item) => ({ item }));
+
+  return rankedPatchItemsFromDoc(doc, items).map((item) => ({ item }));
 }
 
 /**
@@ -859,19 +871,15 @@ async function applyAddFeedItemsPatchChange(items: FeedItem[], trace?: RequestTr
 
   await persistAndBroadcastWithoutHydration(trace);
   const doc = currentDoc;
-  const patches = changedIds
-    .map((globalId) => doc?.feedItems[globalId] as FeedItem | undefined)
-    .filter((item): item is FeedItem => Boolean(item))
-    .map((item) => ({ item: cloneFeedItemForPatch(item) }));
+  const patches = cloneRankedFeedItemPatches(doc, changedIds);
 
   if (patches.length > 0) {
     send({
       type: "ITEM_PATCH",
       patches,
       changedItemIds: changedIds,
-      orderedItemIds: doc ? rankedVisibleItemIdsFromDoc(doc) : undefined,
+      preservePriorityOrder: true,
       searchCorpusVersion,
-      docItemCount: doc ? Object.keys(doc.feedItems ?? {}).length : undefined,
       mutation: trace?.opType,
     });
   }
@@ -938,18 +946,14 @@ async function applyBatchRefreshFeedsPatchChange(
   }
 
   const doc = currentDoc;
-  const patches = changedIds
-    .map((globalId) => doc?.feedItems[globalId] as FeedItem | undefined)
-    .filter((item): item is FeedItem => Boolean(item))
-    .map((item) => ({ item: cloneFeedItemForPatch(item) }));
+  const patches = cloneRankedFeedItemPatches(doc, changedIds);
   if (patches.length > 0) {
     send({
       type: "ITEM_PATCH",
       patches,
       changedItemIds: changedIds,
-      orderedItemIds: doc ? rankedVisibleItemIdsFromDoc(doc) : undefined,
+      preservePriorityOrder: true,
       searchCorpusVersion,
-      docItemCount: doc ? Object.keys(doc.feedItems ?? {}).length : undefined,
       mutation: trace?.opType,
     });
   }

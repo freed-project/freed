@@ -16,28 +16,39 @@ const appDataDir =
   path.join(os.homedir(), "Library", "Application Support", "wtf.freed.desktop");
 const requestPath = path.join(appDataDir, "dev-sync-trigger.json");
 const resultPath = path.join(appDataDir, "dev-sync-trigger-result.json");
-const requestId = `${provider}-${Date.now()}`;
+let requestId = `${provider}-${Date.now()}`;
 
 await mkdir(appDataDir, { recursive: true });
-await writeFile(
-  requestPath,
-  `${JSON.stringify(
-    {
-      enabled: true,
-      id: requestId,
-      provider,
-      createdAt: Date.now(),
-    },
-    null,
-    2,
-  )}\n`,
-);
 
-console.log(`Queued ${provider} dev sync trigger ${requestId}`);
+async function queueRequest() {
+  await writeFile(
+    requestPath,
+    `${JSON.stringify(
+      {
+        enabled: true,
+        id: requestId,
+        provider,
+        createdAt: Date.now(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  console.log(`Queued ${provider} dev sync trigger ${requestId}`);
+}
+
+function isRuntimeDeferredResult(parsed) {
+  if (parsed?.status !== "error") return false;
+  const detail = typeof parsed.detail === "string" ? parsed.detail : "";
+  return detail.includes("runtime_deferred") || detail.includes("Mac is locked");
+}
+
+await queueRequest();
 console.log(`Request: ${requestPath}`);
 console.log(`Result: ${resultPath}`);
 
 const deadline = Date.now() + 10 * 60 * 1000;
+const runtimeDeferredRetryMs = 30_000;
 let lastStatus = "";
 
 while (Date.now() < deadline) {
@@ -55,6 +66,14 @@ while (Date.now() < deadline) {
     lastStatus = statusLine;
   }
   if (parsed.status === "completed") process.exit(0);
+  if (isRuntimeDeferredResult(parsed) && Date.now() + runtimeDeferredRetryMs < deadline) {
+    console.log(`Runtime deferred, retrying ${provider} after ${Math.round(runtimeDeferredRetryMs / 1000)} seconds.`);
+    await new Promise((resolve) => setTimeout(resolve, runtimeDeferredRetryMs));
+    requestId = `${provider}-${Date.now()}`;
+    lastStatus = "";
+    await queueRequest();
+    continue;
+  }
   if (parsed.status === "error" || parsed.status === "ignored") process.exit(1);
 }
 

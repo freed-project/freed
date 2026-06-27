@@ -329,6 +329,7 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     const changedItems = msg.patches.map((patch) => patch.item);
     const patched = applyItemPatchesToState(lastDocState, msg.patches, lastItemIndexById, {
       orderedItemIds: msg.orderedItemIds,
+      preservePriorityOrder: msg.preservePriorityOrder,
       searchCorpusVersion: msg.searchCorpusVersion,
       docItemCount: msg.docItemCount,
     });

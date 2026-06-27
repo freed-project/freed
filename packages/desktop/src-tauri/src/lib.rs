@@ -1247,9 +1247,16 @@ fn dispatch_dev_sync_trigger_to_renderer(
   var waitForBridge = function() {{
     var run = window.__FREED_RUN_SOCIAL_SYNC__;
     if (typeof run === "function") {{
-      Promise.resolve(run(request)).catch(function(error) {{
-        emitResult("error", error && error.message ? error.message : String(error));
-      }});
+      window.__FREED_DEV_SYNC_ACTIVE_REQUEST_ID__ = request.id;
+      Promise.resolve(run(request))
+        .then(function() {{
+          if (window.__FREED_DEV_SYNC_ACTIVE_REQUEST_ID__ === request.id) {{
+            delete window.__FREED_DEV_SYNC_ACTIVE_REQUEST_ID__;
+          }}
+        }})
+        .catch(function(error) {{
+          emitResult("error", error && error.message ? error.message : String(error));
+        }});
       return;
     }}
     if (Date.now() - startedAt > {bridge_wait_timeout_ms}) {{
@@ -1265,9 +1272,41 @@ fn dispatch_dev_sync_trigger_to_renderer(
     window.eval(&script).map_err(|error| error.to_string())
 }
 
+fn dev_sync_trigger_keepalive_script(request_id: &str) -> String {
+    let request_id = escape_js_string(request_id);
+    let event_name = escape_js_string("dev-sync-trigger-native-result");
+    let retry_detail = escape_js_string(
+        "Renderer was rebuilt before the sync trigger finished. Retrying after recovery.",
+    );
+    format!(
+        r#"(function() {{
+  var requestId = {request_id};
+  var emitWaiting = function() {{
+    try {{
+      if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {{
+        window.__TAURI__.event.emit({event_name}, {{
+          id: requestId,
+          provider: null,
+          status: "waiting",
+          detail: {retry_detail},
+          updatedAt: Date.now()
+        }});
+      }}
+    }} catch (_) {{}}
+  }};
+  if (window.__FREED_DEV_SYNC_ACTIVE_REQUEST_ID__ !== requestId) {{
+    emitWaiting();
+    return;
+  }}
+  window.__FREED_DEV_SYNC_KEEPALIVE__ = Date.now();
+}})();"#
+    )
+}
+
 fn start_dev_sync_trigger_keepalive(app: tauri::AppHandle, data_dir: PathBuf, request_id: String) {
     tauri::async_runtime::spawn(async move {
         let started_at = Instant::now();
+        let keepalive_script = dev_sync_trigger_keepalive_script(&request_id);
         loop {
             tokio::time::sleep(DEV_SYNC_TRIGGER_KEEPALIVE_INTERVAL).await;
             if started_at.elapsed() > DEV_SYNC_TRIGGER_KEEPALIVE_TIMEOUT {
@@ -1284,16 +1323,17 @@ fn start_dev_sync_trigger_keepalive(app: tauri::AppHandle, data_dir: PathBuf, re
                 );
                 return;
             }
-            if load_dev_sync_trigger_result_status(&data_dir, &request_id)
-                .as_deref()
-                .map(is_dev_sync_trigger_terminal_status)
-                .unwrap_or(false)
+            if let Some(current_status) =
+                load_dev_sync_trigger_result_status(&data_dir, &request_id)
             {
-                return;
+                if is_dev_sync_trigger_terminal_status(&current_status)
+                    || current_status == "waiting"
+                {
+                    return;
+                }
             }
             if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-                if let Err(error) = window.eval("window.__FREED_DEV_SYNC_KEEPALIVE__ = Date.now();")
-                {
+                if let Err(error) = window.eval(&keepalive_script) {
                     warn!(
                         "[dev-sync-trigger] renderer keepalive failed for request {}: {}",
                         request_id, error
@@ -11388,6 +11428,15 @@ mod tests {
             "facebook-1",
             Some("completed")
         ));
+    }
+
+    #[test]
+    fn dev_sync_trigger_keepalive_checks_active_renderer_request() {
+        let script = dev_sync_trigger_keepalive_script("instagram-123");
+        assert!(script.contains("__FREED_DEV_SYNC_ACTIVE_REQUEST_ID__"));
+        assert!(script.contains("instagram-123"));
+        assert!(script.contains("status: \"waiting\""));
+        assert!(script.contains("Renderer was rebuilt before the sync trigger finished"));
     }
 
     #[test]

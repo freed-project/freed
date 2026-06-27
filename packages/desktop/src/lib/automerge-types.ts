@@ -175,6 +175,7 @@ export type WorkerResponse =
       changedItemIds: string[];
       mutation?: WorkerRequest["type"];
       orderedItemIds?: string[];
+      preservePriorityOrder?: boolean;
       searchCorpusVersion?: number;
       docItemCount?: number;
     }
