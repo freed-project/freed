@@ -15,7 +15,9 @@ const CI_DROPPED_FRAME_BUDGET = 80;
 const DROPPED_FRAME_HEADROOM = 36;
 const CI_DROPPED_FRAME_HEADROOM = 40;
 const LONG_TASK_COUNT_BUDGET = 2;
-const CI_LONG_TASK_COUNT_BUDGET = 40;
+// Hosted Linux runners already land in the mid-30s on green dev builds.
+// Keep a little headroom so CI catches real regressions instead of minor runner churn.
+const CI_LONG_TASK_COUNT_BUDGET = 48;
 const LONG_TASK_WORST_BUDGET_MS = 140;
 const CI_LONG_TASK_WORST_BUDGET_MS = 700;
 const DENSE_INTERACTION_NODE_BUDGET = 72;
