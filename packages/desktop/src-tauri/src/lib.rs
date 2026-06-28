@@ -1173,15 +1173,26 @@ fn dev_sync_trigger_started_result_recoverable(data_dir: &Path, id: &str, now_ms
     latest_runtime_health_background_job_active(data_dir, now_ms) == Some(false)
 }
 
+fn dev_sync_trigger_waiting_result_recoverable(data_dir: &Path, id: &str, now_ms: u64) -> bool {
+    let Some(result) = load_dev_sync_trigger_result(data_dir, id) else {
+        return false;
+    };
+    if result.status != "waiting" {
+        return false;
+    }
+    latest_runtime_health_background_job_active(data_dir, now_ms) == Some(false)
+}
+
 fn dev_sync_trigger_request_should_dispatch(
     last_handled_id: Option<&str>,
     request_id: &str,
     current_status: Option<&str>,
+    waiting_recoverable: bool,
 ) -> bool {
     if last_handled_id != Some(request_id) {
         return true;
     }
-    matches!(current_status, Some("waiting"))
+    matches!(current_status, Some("waiting")) && waiting_recoverable
 }
 
 fn is_current_dev_sync_trigger_request(data_dir: &Path, id: &str) -> bool {
@@ -1456,11 +1467,18 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
                     if let Some(request_id) = request.id.as_deref().map(str::trim) {
                         let current_status =
                             load_dev_sync_trigger_result_status(&data_dir, request_id);
+                        let waiting_recoverable = current_status.as_deref() == Some("waiting")
+                            && dev_sync_trigger_waiting_result_recoverable(
+                                &data_dir,
+                                request_id,
+                                now_unix_ms(),
+                            );
                         if !request_id.is_empty()
                             && dev_sync_trigger_request_should_dispatch(
                                 last_handled_id.as_deref(),
                                 request_id,
                                 current_status.as_deref(),
+                                waiting_recoverable,
                             )
                         {
                             let provider = request.provider.as_deref().map(str::trim).unwrap_or("");
@@ -11534,27 +11552,38 @@ mod tests {
         assert!(dev_sync_trigger_request_should_dispatch(
             None,
             "facebook-1",
-            None
+            None,
+            false
         ));
         assert!(dev_sync_trigger_request_should_dispatch(
             Some("facebook-0"),
             "facebook-1",
-            Some("started")
+            Some("started"),
+            false
         ));
         assert!(!dev_sync_trigger_request_should_dispatch(
             Some("facebook-1"),
             "facebook-1",
-            Some("started")
+            Some("started"),
+            false
+        ));
+        assert!(!dev_sync_trigger_request_should_dispatch(
+            Some("facebook-1"),
+            "facebook-1",
+            Some("waiting"),
+            false
         ));
         assert!(dev_sync_trigger_request_should_dispatch(
             Some("facebook-1"),
             "facebook-1",
-            Some("waiting")
+            Some("waiting"),
+            true
         ));
         assert!(!dev_sync_trigger_request_should_dispatch(
             Some("facebook-1"),
             "facebook-1",
-            Some("completed")
+            Some("completed"),
+            true
         ));
     }
 
@@ -11708,6 +11737,39 @@ mod tests {
         assert!(dev_sync_trigger_started_result_recoverable(
             temp.path(),
             "facebook-stale",
+            47000
+        ));
+    }
+
+    #[test]
+    fn dev_sync_trigger_waiting_recovery_waits_for_idle_background_work() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dev_sync_trigger_result_path(temp.path()),
+            r#"{"id":"facebook-waiting","provider":"facebook","status":"waiting","detail":null,"updatedAt":1000}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            runtime_health_path(temp.path()),
+            r#"{"activeBackgroundJob":"fb_scrape_feed","tsMs":47000}"#,
+        )
+        .unwrap();
+
+        assert!(!dev_sync_trigger_waiting_result_recoverable(
+            temp.path(),
+            "facebook-waiting",
+            47000
+        ));
+
+        std::fs::write(
+            runtime_health_path(temp.path()),
+            r#"{"activeBackgroundJob":null,"tsMs":47000}"#,
+        )
+        .unwrap();
+
+        assert!(dev_sync_trigger_waiting_result_recoverable(
+            temp.path(),
+            "facebook-waiting",
             47000
         ));
     }
