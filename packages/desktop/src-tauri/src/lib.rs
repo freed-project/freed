@@ -97,6 +97,7 @@ const DEV_SYNC_TRIGGER_POLL_INTERVAL: Duration = Duration::from_secs(5);
 const DEV_SYNC_TRIGGER_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(2);
 const DEV_SYNC_TRIGGER_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const DEV_SYNC_TRIGGER_REQUEST_MAX_AGE_MS: u64 = 10 * 60 * 1000;
+const DEV_SYNC_TRIGGER_STALE_STARTED_RECOVERY_MS: u64 = 45_000;
 const RUNTIME_HEALTH_MAX_BYTES: u64 = 5 * 1024 * 1024;
 const RUNTIME_DIAGNOSTICS_FILE: &str = "runtime-diagnostics.jsonl";
 const RUNTIME_DIAGNOSTICS_MAX_BYTES: u64 = 5 * 1024 * 1024;
@@ -1068,6 +1069,13 @@ struct DevSyncTriggerResult {
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct RuntimeHealthHeartbeat {
+    active_background_job: Option<String>,
+    ts_ms: Option<u64>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct DesktopReleaseChannelState {
     channel: Option<String>,
     selected_channel: Option<String>,
@@ -1119,10 +1127,49 @@ fn write_dev_sync_trigger_result(
     }
 }
 
-fn load_dev_sync_trigger_result_status(data_dir: &Path, id: &str) -> Option<String> {
+fn load_dev_sync_trigger_result(data_dir: &Path, id: &str) -> Option<DevSyncTriggerResult> {
     let raw = std::fs::read_to_string(dev_sync_trigger_result_path(data_dir)).ok()?;
     let result = serde_json::from_str::<DevSyncTriggerResult>(&raw).ok()?;
-    (result.id == id).then_some(result.status)
+    (result.id == id).then_some(result)
+}
+
+fn load_dev_sync_trigger_result_status(data_dir: &Path, id: &str) -> Option<String> {
+    load_dev_sync_trigger_result(data_dir, id).map(|result| result.status)
+}
+
+fn latest_runtime_health_background_job_active(data_dir: &Path, now_ms: u64) -> Option<bool> {
+    let raw = std::fs::read_to_string(runtime_health_path(data_dir)).ok()?;
+    for line in raw.lines().rev() {
+        let Ok(heartbeat) = serde_json::from_str::<RuntimeHealthHeartbeat>(line) else {
+            continue;
+        };
+        let Some(ts_ms) = heartbeat.ts_ms else {
+            continue;
+        };
+        if now_ms.saturating_sub(ts_ms) > DEV_SYNC_TRIGGER_STALE_STARTED_RECOVERY_MS {
+            return None;
+        }
+        return Some(
+            heartbeat
+                .active_background_job
+                .as_deref()
+                .is_some_and(|job| !job.trim().is_empty()),
+        );
+    }
+    None
+}
+
+fn dev_sync_trigger_started_result_recoverable(data_dir: &Path, id: &str, now_ms: u64) -> bool {
+    let Some(result) = load_dev_sync_trigger_result(data_dir, id) else {
+        return false;
+    };
+    if result.status != "started" {
+        return false;
+    }
+    if now_ms.saturating_sub(result.updated_at) < DEV_SYNC_TRIGGER_STALE_STARTED_RECOVERY_MS {
+        return false;
+    }
+    latest_runtime_health_background_job_active(data_dir, now_ms) == Some(false)
 }
 
 fn dev_sync_trigger_request_should_dispatch(
@@ -1331,6 +1378,20 @@ fn start_dev_sync_trigger_keepalive(app: tauri::AppHandle, data_dir: PathBuf, re
                 {
                     return;
                 }
+            }
+            if dev_sync_trigger_started_result_recoverable(&data_dir, &request_id, now_unix_ms()) {
+                warn!(
+                    "[dev-sync-trigger] renderer request {} was left started after background work ended",
+                    request_id
+                );
+                write_current_dev_sync_trigger_result(
+                    &data_dir,
+                    &request_id,
+                    None,
+                    "waiting",
+                    Some("Renderer was rebuilt after the sync trigger finished. Retrying after recovery."),
+                );
+                return;
             }
             if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
                 if let Err(error) = window.eval(&keepalive_script) {
@@ -8985,7 +9046,11 @@ fn main_window_release_timeout_ms() -> u128 {
 
 #[cfg(target_os = "macos")]
 fn apply_main_window_vibrancy(window: &tauri::WebviewWindow, context: &str) -> bool {
-    if std::env::var("FREED_ENABLE_MAIN_WINDOW_VIBRANCY").ok().as_deref() != Some("1") {
+    if std::env::var("FREED_ENABLE_MAIN_WINDOW_VIBRANCY")
+        .ok()
+        .as_deref()
+        != Some("1")
+    {
         info!(
             "[main-window] vibrancy disabled for stable WebView compositing context={}",
             context
@@ -11507,6 +11572,81 @@ mod tests {
             parsed["detail"],
             serde_json::json!("Current request finished.")
         );
+    }
+
+    #[test]
+    fn dev_sync_trigger_recovers_stale_started_result_only_when_work_is_idle() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dev_sync_trigger_result_path(temp.path()),
+            r#"{"id":"facebook-stale","provider":"facebook","status":"started","detail":null,"updatedAt":1000}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            runtime_health_path(temp.path()),
+            r#"{"activeBackgroundJob":"fb_scrape_feed","tsMs":47000}"#,
+        )
+        .unwrap();
+
+        assert!(!dev_sync_trigger_started_result_recoverable(
+            temp.path(),
+            "facebook-stale",
+            47000
+        ));
+
+        std::fs::write(
+            runtime_health_path(temp.path()),
+            r#"{"activeBackgroundJob":null,"tsMs":47000}"#,
+        )
+        .unwrap();
+
+        assert!(dev_sync_trigger_started_result_recoverable(
+            temp.path(),
+            "facebook-stale",
+            47000
+        ));
+    }
+
+    #[test]
+    fn dev_sync_trigger_stale_started_recovery_requires_fresh_runtime_health() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dev_sync_trigger_result_path(temp.path()),
+            r#"{"id":"facebook-stale","provider":"facebook","status":"started","detail":null,"updatedAt":1000}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            runtime_health_path(temp.path()),
+            r#"{"activeBackgroundJob":null,"tsMs":1000}"#,
+        )
+        .unwrap();
+
+        assert!(!dev_sync_trigger_started_result_recoverable(
+            temp.path(),
+            "facebook-stale",
+            47000
+        ));
+    }
+
+    #[test]
+    fn dev_sync_trigger_stale_started_recovery_skips_malformed_health_lines() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dev_sync_trigger_result_path(temp.path()),
+            r#"{"id":"facebook-stale","provider":"facebook","status":"started","detail":null,"updatedAt":1000}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            runtime_health_path(temp.path()),
+            "not-json\n{\"activeBackgroundJob\":null,\"tsMs\":47000}\n{\"activeBackgroundJob\":null}\n",
+        )
+        .unwrap();
+
+        assert!(dev_sync_trigger_started_result_recoverable(
+            temp.path(),
+            "facebook-stale",
+            47000
+        ));
     }
 
     #[test]
