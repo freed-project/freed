@@ -2875,19 +2875,28 @@ fn renderer_event_loop_lag_should_recover(
 fn main_renderer_memory_should_recover(
     is_visible: bool,
     last_visibility: &str,
+    last_uptime_ms: Option<u64>,
     stats: &RuntimeMemoryStats,
 ) -> bool {
-    main_renderer_memory_recovery_reason(is_visible, last_visibility, stats).is_some()
+    main_renderer_memory_recovery_reason(is_visible, last_visibility, last_uptime_ms, stats)
+        .is_some()
 }
 
 fn main_renderer_memory_recovery_reason(
     is_visible: bool,
     last_visibility: &str,
+    last_uptime_ms: Option<u64>,
     stats: &RuntimeMemoryStats,
 ) -> Option<&'static str> {
     let effectively_visible = renderer_is_effectively_visible(is_visible, last_visibility);
-    if stats.webkit_largest_role.as_deref() != Some("freed-webcontent-age-matched") {
-        return None;
+    match stats.webkit_largest_role.as_deref() {
+        Some("freed-webcontent") => {}
+        Some("freed-webcontent-age-matched")
+            if webkit_process_matches_renderer_uptime(
+                stats.webkit_largest_age_seconds,
+                last_uptime_ms,
+            ) => {}
+        _ => return None,
     }
     if !stats
         .webkit_largest_age_seconds
@@ -3159,6 +3168,7 @@ mod renderer_watchdog_tests {
 
     #[test]
     fn visible_main_renderer_recovers_from_high_webkit_footprint() {
+        let current_uptime_ms = Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS * 1000);
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
@@ -3192,19 +3202,30 @@ mod renderer_watchdog_tests {
             relay_client_count: 0,
         };
 
-        assert!(main_renderer_memory_should_recover(true, "visible", &stats));
+        assert!(main_renderer_memory_should_recover(
+            true,
+            "visible",
+            current_uptime_ms,
+            &stats,
+        ));
         assert_eq!(
-            main_renderer_memory_recovery_reason(true, "visible", &stats),
+            main_renderer_memory_recovery_reason(true, "visible", current_uptime_ms, &stats),
             Some("webkit_footprint_pressure")
         );
         assert_eq!(
-            main_renderer_memory_recovery_reason(true, "hidden", &stats),
+            main_renderer_memory_recovery_reason(true, "hidden", current_uptime_ms, &stats),
             Some("idle_webkit_footprint_pressure")
         );
-        assert!(main_renderer_memory_should_recover(true, "hidden", &stats));
+        assert!(main_renderer_memory_should_recover(
+            true,
+            "hidden",
+            current_uptime_ms,
+            &stats,
+        ));
         assert!(!main_renderer_memory_should_recover(
             true,
             "visible",
+            current_uptime_ms,
             &RuntimeMemoryStats {
                 webkit_largest_role: Some("ig-scraper".to_string()),
                 ..stats.clone()
@@ -3213,6 +3234,7 @@ mod renderer_watchdog_tests {
         assert!(!main_renderer_memory_should_recover(
             true,
             "visible",
+            current_uptime_ms,
             &RuntimeMemoryStats {
                 webkit_largest_age_seconds: Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS - 1,),
                 ..stats
@@ -3222,6 +3244,7 @@ mod renderer_watchdog_tests {
 
     #[test]
     fn main_renderer_recovers_idle_reclaimable_webkit_resident_tail() {
+        let current_uptime_ms = Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS * 1000);
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
@@ -3257,21 +3280,30 @@ mod renderer_watchdog_tests {
 
         assert!(webkit_resident_tail_is_probably_reclaimable(&stats));
         assert_eq!(
-            main_renderer_memory_recovery_reason(true, "visible", &stats),
+            main_renderer_memory_recovery_reason(true, "visible", current_uptime_ms, &stats),
             None
         );
         assert!(!main_renderer_memory_should_recover(
-            true, "visible", &stats
+            true,
+            "visible",
+            current_uptime_ms,
+            &stats
         ));
         assert_eq!(
-            main_renderer_memory_recovery_reason(true, "hidden", &stats),
+            main_renderer_memory_recovery_reason(true, "hidden", current_uptime_ms, &stats),
             Some("idle_webkit_resident_tail")
         );
-        assert!(main_renderer_memory_should_recover(true, "hidden", &stats));
+        assert!(main_renderer_memory_should_recover(
+            true,
+            "hidden",
+            current_uptime_ms,
+            &stats,
+        ));
     }
 
     #[test]
     fn main_renderer_keeps_moderate_idle_webkit_resident_tail() {
+        let current_uptime_ms = Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS * 1000);
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
@@ -3307,14 +3339,20 @@ mod renderer_watchdog_tests {
 
         assert!(webkit_resident_tail_is_probably_reclaimable(&stats));
         assert_eq!(
-            main_renderer_memory_recovery_reason(true, "hidden", &stats),
+            main_renderer_memory_recovery_reason(true, "hidden", current_uptime_ms, &stats),
             None
         );
-        assert!(!main_renderer_memory_should_recover(true, "hidden", &stats));
+        assert!(!main_renderer_memory_should_recover(
+            true,
+            "hidden",
+            current_uptime_ms,
+            &stats,
+        ));
     }
 
     #[test]
     fn main_renderer_recovers_for_hot_webkit_resident_tail() {
+        let current_uptime_ms = Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS * 1000);
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
@@ -3350,17 +3388,18 @@ mod renderer_watchdog_tests {
 
         assert!(!webkit_resident_tail_is_probably_reclaimable(&stats));
         assert_eq!(
-            main_renderer_memory_recovery_reason(true, "visible", &stats),
+            main_renderer_memory_recovery_reason(true, "visible", current_uptime_ms, &stats),
             Some("webkit_hot_resident_pressure")
         );
         assert_eq!(
-            main_renderer_memory_recovery_reason(true, "hidden", &stats),
+            main_renderer_memory_recovery_reason(true, "hidden", current_uptime_ms, &stats),
             Some("idle_webkit_hot_resident_pressure")
         );
     }
 
     #[test]
     fn main_renderer_recovers_for_hot_active_webkit_before_high_memory_limit() {
+        let current_uptime_ms = Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS * 1000);
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
@@ -3395,17 +3434,18 @@ mod renderer_watchdog_tests {
         };
 
         assert_eq!(
-            main_renderer_memory_recovery_reason(true, "visible", &stats),
+            main_renderer_memory_recovery_reason(true, "visible", current_uptime_ms, &stats),
             Some("webkit_hot_active_pressure")
         );
         assert_eq!(
-            main_renderer_memory_recovery_reason(true, "hidden", &stats),
+            main_renderer_memory_recovery_reason(true, "hidden", current_uptime_ms, &stats),
             Some("idle_webkit_hot_active_pressure")
         );
     }
 
     #[test]
     fn main_renderer_keeps_moderate_hot_webkit_activity_running() {
+        let current_uptime_ms = Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS * 1000);
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
@@ -3440,13 +3480,14 @@ mod renderer_watchdog_tests {
         };
 
         assert_eq!(
-            main_renderer_memory_recovery_reason(true, "visible", &stats),
+            main_renderer_memory_recovery_reason(true, "visible", current_uptime_ms, &stats),
             None
         );
         assert_eq!(
             main_renderer_memory_recovery_reason(
                 true,
                 "visible",
+                current_uptime_ms,
                 &RuntimeMemoryStats {
                     webkit_largest_resident_bytes: Some(5 * BYTES_PER_GIB),
                     webkit_total_resident_bytes: 5 * BYTES_PER_GIB,
@@ -3454,6 +3495,47 @@ mod renderer_watchdog_tests {
                     ..stats
                 },
             ),
+            None
+        );
+    }
+
+    #[test]
+    fn main_renderer_ignores_stale_age_matched_webkit_after_recovery() {
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: 11 * BYTES_PER_GIB,
+            app_memory_pressure_bytes: 3 * BYTES_PER_GIB,
+            webkit_resident_bytes: Some(10 * BYTES_PER_GIB),
+            webkit_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: 10 * BYTES_PER_GIB,
+            webkit_total_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(10 * BYTES_PER_GIB),
+            webkit_largest_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(97.0),
+            webkit_largest_age_seconds: Some(1_688),
+            webkit_largest_role: Some("freed-webcontent-age-matched".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
+            memory_high_bytes: 9 * BYTES_PER_GIB,
+            memory_critical_bytes: 12 * BYTES_PER_GIB,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert_eq!(
+            main_renderer_memory_recovery_reason(true, "visible", Some(300_057), &stats),
             None
         );
     }
@@ -4805,6 +4887,20 @@ fn webkit_process_started_after_app_start(webkit_age_seconds: u64, app_age_secon
 
 fn webkit_process_started_with_app(webkit_age_seconds: u64, app_age_seconds: u64) -> bool {
     webkit_age_seconds.abs_diff(app_age_seconds) <= WEBKIT_PROCESS_START_GRACE_SECONDS
+}
+
+fn webkit_process_matches_renderer_uptime(
+    webkit_age_seconds: Option<u64>,
+    renderer_uptime_ms: Option<u64>,
+) -> bool {
+    let Some(webkit_age_seconds) = webkit_age_seconds else {
+        return false;
+    };
+    let Some(renderer_uptime_ms) = renderer_uptime_ms else {
+        return false;
+    };
+    let renderer_age_seconds = renderer_uptime_ms / 1000;
+    webkit_process_started_with_app(webkit_age_seconds, renderer_age_seconds)
 }
 
 fn freed_webkit_process_role(
@@ -10477,13 +10573,15 @@ pub fn run() {
                     }
                     append_runtime_health(&app_for_memory_monitor, health_payload);
 
+                    let (last_visibility_for_memory_monitor, last_uptime_ms_for_memory_monitor) = {
+                        let health = renderer_health_for_memory_monitor.read().unwrap();
+                        (health.last_visibility.clone(), health.last_uptime_ms)
+                    };
                     let main_memory_recovery_reason = if active_job.is_none() {
                         main_renderer_memory_recovery_reason(
                             is_main_visible,
-                            &renderer_health_for_memory_monitor
-                                .read()
-                                .unwrap()
-                                .last_visibility,
+                            &last_visibility_for_memory_monitor,
+                            last_uptime_ms_for_memory_monitor,
                             &stats,
                         )
                     } else {
@@ -10504,16 +10602,22 @@ pub fn run() {
                                 .map(|last| last.elapsed() > recovery_threshold)
                                 .unwrap_or(true);
                             if cooldown_elapsed {
-                                let attempt = health.note_recovery_attempt(std::time::Instant::now());
                                 let last_visibility = health.last_visibility.clone();
+                                let last_uptime_ms = health.last_uptime_ms;
+                                let page_load_id = health.last_page_load_id.clone();
+                                let app_phase = health.last_app_phase.clone();
+                                let renderer_generation =
+                                    health.renderer_generation.saturating_add(1);
                                 let recover_hidden =
                                     !renderer_is_effectively_visible(is_main_visible, &last_visibility);
+                                let attempt = health.note_recovery_attempt(std::time::Instant::now());
                                 Some((
                                     attempt,
-                                    health.renderer_generation,
+                                    renderer_generation,
                                     last_visibility,
-                                    health.last_page_load_id.clone(),
-                                    health.last_app_phase.clone(),
+                                    last_uptime_ms,
+                                    page_load_id,
+                                    app_phase,
                                     main_memory_recovery_reason,
                                     recovery_threshold,
                                     recover_hidden,
@@ -10527,6 +10631,7 @@ pub fn run() {
                             attempt,
                             renderer_generation,
                             last_visibility,
+                            last_uptime_ms,
                             page_load_id,
                             app_phase,
                             main_memory_recovery_reason,
@@ -10574,6 +10679,7 @@ pub fn run() {
                                     "thresholdMs": recovery_threshold.as_millis(),
                                     "visible": is_main_visible,
                                     "lastVisibility": last_visibility,
+                                    "lastUptimeMs": last_uptime_ms,
                                     "pageLoadId": page_load_id,
                                     "appPhase": app_phase,
                                     "rendererRecoveryAllowed": true,
