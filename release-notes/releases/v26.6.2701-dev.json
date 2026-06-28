@@ -1,0 +1,42 @@
+{
+  "tag": "v26.6.2701-dev",
+  "version": "26.6.2701-dev",
+  "channel": "dev",
+  "dayKey": "26.6.27",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-28T02:33:40.842Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.2700-dev",
+    "previousPublishedDayTag": "v26.6.2600-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.2700-dev",
+      "v26.6.2701-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.2700-dev",
+      "v26.6.2701-dev"
+    ],
+    "prNumbers": [
+      874,
+      875
+    ],
+    "commitSubjects": [
+      "fix: recover dev sync triggers after renderer recycle (#875)",
+      "docs: review release notes for v26.6.2700-dev",
+      "release: v26.6.2700-dev",
+      "fix: reduce desktop sync renderer pressure (#874)"
+    ]
+  },
+  "release": {
+    "deck": "Improves desktop sync reliability after long social sync runs",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2701-dev\n\nImproves desktop sync reliability after long social sync runs\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
