@@ -3,7 +3,7 @@
   "version": "26.6.2700-dev",
   "channel": "dev",
   "dayKey": "26.6.27",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-28T01:19:38.967Z",
   "model": "heuristic",
@@ -27,10 +27,10 @@
     ]
   },
   "release": {
-    "deck": "Optimized desktop sync renderer pressure",
+    "deck": "Improves desktop sync reliability after long social sync runs.",
     "features": [],
     "fixes": [],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2700-dev\n\nOptimized desktop sync renderer pressure\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2700-dev\n\nImproves desktop sync reliability after long social sync runs.\n\n### Fixes\n\n- Reduces renderer memory pressure after Facebook, Instagram, and RSS sync writes.\n- Keeps app shell compositor effects off while the interface is idle.\n- Makes dev sync triggers recover when the renderer reloads during a provider soak.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
