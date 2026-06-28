@@ -3,7 +3,7 @@
   "version": "26.6.2800-dev",
   "channel": "dev",
   "dayKey": "26.6.28",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-28T23:35:35.275Z",
   "model": "heuristic",
@@ -27,10 +27,13 @@
     ]
   },
   "release": {
-    "deck": "Stop repeated renderer memory recoveries",
+    "deck": "Renderer memory recovery stability",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Freed Desktop now destroys and rebuilds the main WebView when idle WebKit memory is reclaimable but still resident.",
+      "Renderer recovery now ignores stale age-matched WebKit processes after a rebuild, which prevents repeated recovery loops and unnecessary background safe mode."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2800-dev\n\nStop repeated renderer memory recoveries\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2800-dev\n\nRenderer memory recovery stability\n\n### Fixes\n\n- Freed Desktop now destroys and rebuilds the main WebView when idle WebKit memory is reclaimable but still resident.\n- Renderer recovery now ignores stale age-matched WebKit processes after a rebuild, which prevents repeated recovery loops and unnecessary background safe mode.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
