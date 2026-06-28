@@ -3,7 +3,7 @@
   "version": "26.6.2703-dev",
   "channel": "dev",
   "dayKey": "26.6.27",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-28T04:48:12.696Z",
   "model": "heuristic",
@@ -48,12 +48,12 @@
     "deck": "Improves social sync reliability after renderer recovery",
     "features": [],
     "fixes": [
-      "Prevent duplicate dev sync trigger dispatch",
-      "Recover idle WebKit memory tail",
-      "Recover dev sync triggers after renderer recycle",
-      "Optimized desktop sync renderer pressure"
+      "Prevents dev sync trigger recovery from launching a duplicate Facebook, Instagram, or LinkedIn sync while the original provider job is still finishing.",
+      "Recovers hidden main renderers when WebKit resident memory grows past the idle cap, so stale WebKit memory does not block social sync preflight.",
+      "Recovers dev sync triggers that were left waiting after Freed Desktop rebuilt the renderer at the end of a social sync.",
+      "Reduces desktop sync renderer pressure after long social sync runs."
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2703-dev\n\nImproves social sync reliability after renderer recovery\n\n### Fixes\n\n- Prevent duplicate dev sync trigger dispatch\n- Recover idle WebKit memory tail\n- Recover dev sync triggers after renderer recycle\n- Optimized desktop sync renderer pressure\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2703-dev\n\nImproves social sync reliability after renderer recovery\n\n### Fixes\n\n- Prevents dev sync trigger recovery from launching a duplicate Facebook, Instagram, or LinkedIn sync while the original provider job is still finishing.\n- Recovers hidden main renderers when WebKit resident memory grows past the idle cap, so stale WebKit memory does not block social sync preflight.\n- Recovers dev sync triggers that were left waiting after Freed Desktop rebuilt the renderer at the end of a social sync.\n- Reduces desktop sync renderer pressure after long social sync runs.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
