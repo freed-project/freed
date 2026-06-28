@@ -113,6 +113,7 @@ const RENDERER_HIDDEN_STALE_LOG_AFTER: Duration = Duration::from_secs(570);
 const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(75);
 const RENDERER_HIDDEN_RECOVERY_AFTER: Duration = Duration::from_secs(900);
 const MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS: u64 = 5 * 60;
+const MAIN_RENDERER_IDLE_WEBKIT_RESIDENT_RECOVERY_BYTES: u64 = 4 * BYTES_PER_GIB;
 const MAIN_RENDERER_HOT_WEBKIT_RESIDENT_RECOVERY_BYTES: u64 = 5 * BYTES_PER_GIB;
 const MAIN_RENDERER_HOT_WEBKIT_FOOTPRINT_RECOVERY_BYTES: u64 = 2 * BYTES_PER_GIB;
 const MAIN_RENDERER_HOT_WEBKIT_CPU_RECOVERY_PERCENT: f32 = 20.0;
@@ -2897,6 +2898,10 @@ fn main_renderer_memory_recovery_reason(
         });
     }
 
+    if !effectively_visible && main_renderer_idle_webkit_resident_tail_should_recover(stats) {
+        return Some("idle_webkit_resident_tail");
+    }
+
     if stats
         .webkit_largest_resident_bytes
         .map(|resident| resident >= stats.memory_high_bytes)
@@ -2911,6 +2916,21 @@ fn main_renderer_memory_recovery_reason(
     }
 
     None
+}
+
+fn main_renderer_idle_webkit_resident_tail_should_recover(stats: &RuntimeMemoryStats) -> bool {
+    if !webkit_resident_tail_is_probably_reclaimable(stats) {
+        return false;
+    }
+    let resident_hot = stats
+        .webkit_largest_resident_bytes
+        .map(|resident| resident >= MAIN_RENDERER_IDLE_WEBKIT_RESIDENT_RECOVERY_BYTES)
+        .unwrap_or(false);
+    let cpu_idle = stats
+        .webkit_largest_cpu_usage
+        .map(|cpu| cpu <= 10.0)
+        .unwrap_or(true);
+    resident_hot && cpu_idle
 }
 
 fn main_renderer_hot_webkit_activity_should_recover(stats: &RuntimeMemoryStats) -> bool {
@@ -3183,7 +3203,7 @@ mod renderer_watchdog_tests {
     }
 
     #[test]
-    fn main_renderer_does_not_recover_for_reclaimable_webkit_resident_tail() {
+    fn main_renderer_recovers_idle_reclaimable_webkit_resident_tail() {
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
@@ -3225,6 +3245,49 @@ mod renderer_watchdog_tests {
         assert!(!main_renderer_memory_should_recover(
             true, "visible", &stats
         ));
+        assert_eq!(
+            main_renderer_memory_recovery_reason(true, "hidden", &stats),
+            Some("idle_webkit_resident_tail")
+        );
+        assert!(main_renderer_memory_should_recover(true, "hidden", &stats));
+    }
+
+    #[test]
+    fn main_renderer_keeps_moderate_idle_webkit_resident_tail() {
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: 4 * BYTES_PER_GIB,
+            app_memory_pressure_bytes: 2 * BYTES_PER_GIB,
+            webkit_resident_bytes: Some(3 * BYTES_PER_GIB),
+            webkit_footprint_bytes: Some(BYTES_PER_GIB),
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: 3 * BYTES_PER_GIB,
+            webkit_total_footprint_bytes: Some(BYTES_PER_GIB),
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(3 * BYTES_PER_GIB),
+            webkit_largest_footprint_bytes: Some(BYTES_PER_GIB),
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(0.0),
+            webkit_largest_age_seconds: Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS),
+            webkit_largest_role: Some("freed-webcontent-age-matched".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
+            memory_high_bytes: 9 * BYTES_PER_GIB,
+            memory_critical_bytes: 12 * BYTES_PER_GIB,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert!(webkit_resident_tail_is_probably_reclaimable(&stats));
         assert_eq!(
             main_renderer_memory_recovery_reason(true, "hidden", &stats),
             None
