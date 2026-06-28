@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.6.27",
   "date": "2026-06-27",
-  "preferredDeck": null,
+  "preferredDeck": "Improves social sync reliability after renderer recovery",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -10,5 +10,5 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [],
-  "updatedAt": "2026-06-28T03:46:25.971Z"
+  "updatedAt": "2026-06-28T03:49:24.200Z"
 }
