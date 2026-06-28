@@ -3,7 +3,7 @@
   "version": "26.6.2701-dev",
   "channel": "dev",
   "dayKey": "26.6.27",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-28T02:33:40.842Z",
   "model": "heuristic",
@@ -33,10 +33,12 @@
     ]
   },
   "release": {
-    "deck": "Improves desktop sync reliability after long social sync runs",
+    "deck": "Improves desktop sync reliability after renderer recovery",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Recovers dev sync triggers that were left waiting after Freed Desktop rebuilt the renderer at the end of a social sync."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2701-dev\n\nImproves desktop sync reliability after long social sync runs\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2701-dev\n\nImproves desktop sync reliability after renderer recovery\n\n### Fixes\n\n- Recovers dev sync triggers that were left waiting after Freed Desktop rebuilt the renderer at the end of a social sync.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
