@@ -600,6 +600,18 @@ fn get_desktop_session_state() -> DesktopSessionState {
     }
 }
 
+fn dev_sync_trigger_lock_deferral_detail(
+    session_state: &DesktopSessionState,
+) -> Option<&'static str> {
+    if session_state.available && session_state.screen_locked {
+        Some(
+            "Freed paused provider sync because the Mac is locked. Unlock the Mac and try syncing again. Stage: runtime_deferred. Posts: 0. Added: 0.",
+        )
+    } else {
+        None
+    }
+}
+
 fn recycle_webview_window(app: &tauri::AppHandle, label: &str, reason: &str) {
     if let Some(window) = app.get_webview_window(label) {
         scrub_webview_before_destroy(&window);
@@ -1513,6 +1525,21 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
                                     None,
                                     "ignored",
                                     Some("Unsupported provider. Use facebook, instagram, or linkedin."),
+                                );
+                            } else if let Some(detail) =
+                                dev_sync_trigger_lock_deferral_detail(&get_desktop_session_state())
+                            {
+                                last_handled_id = Some(request_id.to_string());
+                                write_dev_sync_trigger_result(
+                                    &data_dir,
+                                    request_id,
+                                    Some(provider),
+                                    "error",
+                                    Some(detail),
+                                );
+                                info!(
+                                    "[dev-sync-trigger] deferred {} sync request {} while screen is locked",
+                                    provider, request_id
                                 );
                             } else {
                                 write_dev_sync_trigger_result(
@@ -12019,6 +12046,35 @@ mod tests {
             dev_sync_trigger_request_expiration_detail(&missing, 1_000),
             Some("Trigger request is missing createdAt. Re-run scripts/dev-sync-trigger.mjs.")
         );
+    }
+
+    #[test]
+    fn dev_sync_trigger_defers_locked_sessions_before_renderer_dispatch() {
+        let locked = DesktopSessionState {
+            available: true,
+            screen_locked: true,
+            error: None,
+        };
+        assert_eq!(
+            dev_sync_trigger_lock_deferral_detail(&locked),
+            Some(
+                "Freed paused provider sync because the Mac is locked. Unlock the Mac and try syncing again. Stage: runtime_deferred. Posts: 0. Added: 0."
+            )
+        );
+
+        let unlocked = DesktopSessionState {
+            available: true,
+            screen_locked: false,
+            error: None,
+        };
+        assert_eq!(dev_sync_trigger_lock_deferral_detail(&unlocked), None);
+
+        let unavailable = DesktopSessionState {
+            available: false,
+            screen_locked: true,
+            error: Some("ioreg unavailable".to_string()),
+        };
+        assert_eq!(dev_sync_trigger_lock_deferral_detail(&unavailable), None);
     }
 
     #[test]
