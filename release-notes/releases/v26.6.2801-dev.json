@@ -1,0 +1,42 @@
+{
+  "tag": "v26.6.2801-dev",
+  "version": "26.6.2801-dev",
+  "channel": "dev",
+  "dayKey": "26.6.28",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-29T00:46:04.166Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.2800-dev",
+    "previousPublishedDayTag": "v26.6.2703-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.2800-dev",
+      "v26.6.2801-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.2800-dev",
+      "v26.6.2801-dev"
+    ],
+    "prNumbers": [
+      878,
+      879
+    ],
+    "commitSubjects": [
+      "fix: verify renderer memory recovery (#879)",
+      "docs: approve v26.6.2800-dev notes",
+      "release: v26.6.2800-dev",
+      "fix: stop repeated renderer memory recoveries (#878)"
+    ]
+  },
+  "release": {
+    "deck": "Renderer memory recovery stability, freed Desktop now destroys and rebuilds the main WebView when idle WebKit memory is reclaimable but still resident, and renderer recovery now ignores stale age-matched WebKit processes after a rebuild, which prevents repeated recovery loops and unnecessary background safe mode",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2801-dev\n\nRenderer memory recovery stability, freed Desktop now destroys and rebuilds the main WebView when idle WebKit memory is reclaimable but still resident, and renderer recovery now ignores stale age-matched WebKit processes after a rebuild, which prevents repeated recovery loops and unnecessary background safe mode\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
