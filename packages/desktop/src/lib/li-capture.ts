@@ -47,6 +47,7 @@ let lastScrapeAt = 0;
 // than Facebook to regular scraping patterns.
 const MIN_INTERVAL_MS = 30 * 60 * 1000;
 const INTERVAL_JITTER_MS = 6 * 60 * 1000;
+const LI_ZERO_EVENT_DRAIN_MS = import.meta.env.MODE === "test" ? 0 : 2_500;
 
 function isRateLimited(): boolean {
   if (lastScrapeAt === 0) return false;
@@ -137,6 +138,17 @@ function formatLiEmptyMessage(diag: LiSyncDiag): string {
     parts.push(`url=${diag.lastUrl}`);
   }
   return `${parts.join(", ")}.`;
+}
+
+function formatLiNoEventsMessage(diag: LiSyncDiag): string {
+  return `LinkedIn scraper finished before Freed received any extraction events. url=${diag.lastUrl ?? "unknown"}.`;
+}
+
+function waitForLiZeroEventDrain(): Promise<void> {
+  if (LI_ZERO_EVENT_DRAIN_MS <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => setTimeout(resolve, LI_ZERO_EVENT_DRAIN_MS));
 }
 
 // =============================================================================
@@ -241,7 +253,11 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
       waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
       run: () => invoke("li_scrape_feed", { windowMode: getLiScraperWindowMode() }),
     });
-    await waitForSocialScrapeEvents();
+    if (diag.extractionPasses === 0) {
+      await waitForLiZeroEventDrain();
+    } else {
+      await waitForSocialScrapeEvents();
+    }
   } catch (err) {
     if (!diag.errorStage) {
       if (applyRuntimeDeferredDiag(diag, err)) {
@@ -263,6 +279,12 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
   }
 
   diag.postsExtracted = allRawPosts.length;
+
+  if (diag.extractionPasses === 0) {
+    diag.errorStage = "event_timeout";
+    diag.errorMessage = formatLiNoEventsMessage(diag);
+    return { items: [], diag };
+  }
 
   if (allRawPosts.length === 0) {
     diag.errorStage = "empty";

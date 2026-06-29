@@ -1042,4 +1042,26 @@ describe("social capture memory pressure gate", () => {
     expect(result.diag.errorMessage).toContain("LinkedIn sync did not start");
     expect(mocks.invoke).toHaveBeenCalledWith("li_scrape_feed", expect.anything());
   });
+
+  it("classifies LinkedIn scrapes with no extraction events as IPC timeouts", async () => {
+    allowRendererMemoryPreflight();
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "li_scrape_feed") {
+        return null;
+      }
+      return null;
+    });
+
+    const { fetchLiFeed } = await import("./li-capture");
+    const result = await fetchLiFeed();
+
+    expect(result.items).toEqual([]);
+    expect(result.diag.extractionPasses).toBe(0);
+    expect(result.diag.errorStage).toBe("event_timeout");
+    expect(result.diag.errorMessage).toBe(
+      "LinkedIn scraper finished before Freed received any extraction events. url=unknown.",
+    );
+    expect(mocks.invoke).toHaveBeenCalledWith("li_scrape_feed", expect.anything());
+  });
 });
