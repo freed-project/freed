@@ -98,6 +98,8 @@ const DEV_SYNC_TRIGGER_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(2);
 const DEV_SYNC_TRIGGER_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const DEV_SYNC_TRIGGER_REQUEST_MAX_AGE_MS: u64 = 10 * 60 * 1000;
 const DEV_SYNC_TRIGGER_STALE_STARTED_RECOVERY_MS: u64 = 45_000;
+const SYNC_RELAY_BIND_RETRY_DELAY: Duration = Duration::from_secs(5);
+const SYNC_RELAY_BIND_MAX_RETRIES: usize = 60;
 const RUNTIME_HEALTH_MAX_BYTES: u64 = 5 * 1024 * 1024;
 const RUNTIME_DIAGNOSTICS_FILE: &str = "runtime-diagnostics.jsonl";
 const RUNTIME_DIAGNOSTICS_MAX_BYTES: u64 = 5 * 1024 * 1024;
@@ -1900,6 +1902,57 @@ fn advertise_mdns(port: u16) -> Option<mdns_sd::ServiceDaemon> {
 
     info!("[mDNS] Advertising _freed-sync._tcp.local on port {}", port);
     Some(daemon)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SyncRelayBindRetryPolicy {
+    max_retries: usize,
+    retry_delay: Duration,
+}
+
+const DEFAULT_SYNC_RELAY_BIND_RETRY_POLICY: SyncRelayBindRetryPolicy = SyncRelayBindRetryPolicy {
+    max_retries: SYNC_RELAY_BIND_MAX_RETRIES,
+    retry_delay: SYNC_RELAY_BIND_RETRY_DELAY,
+};
+
+fn sync_relay_bind_retry_delay(
+    policy: SyncRelayBindRetryPolicy,
+    error: &std::io::Error,
+    retries_used: usize,
+) -> Option<Duration> {
+    if error.kind() != std::io::ErrorKind::AddrInUse || retries_used >= policy.max_retries {
+        return None;
+    }
+
+    Some(policy.retry_delay)
+}
+
+async fn bind_sync_relay_listener_with_policy(
+    addr: &str,
+    policy: SyncRelayBindRetryPolicy,
+) -> std::io::Result<(TcpListener, usize)> {
+    let mut retries_used = 0;
+    loop {
+        match TcpListener::bind(addr).await {
+            Ok(listener) => return Ok((listener, retries_used)),
+            Err(error) => {
+                let Some(retry_delay) = sync_relay_bind_retry_delay(policy, &error, retries_used)
+                else {
+                    return Err(error);
+                };
+
+                retries_used += 1;
+                warn!(
+                    "[Sync] Relay port is still busy on {}. retry_attempt={}/{} retry_delay_ms={}",
+                    addr,
+                    retries_used,
+                    policy.max_retries,
+                    retry_delay.as_millis()
+                );
+                tokio::time::sleep(retry_delay).await;
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -9385,15 +9438,25 @@ async fn handle_connection(
 async fn start_sync_relay(state: RelayState, app: tauri::AppHandle) {
     let addr = format!("0.0.0.0:{}", state.port);
 
-    let listener = match TcpListener::bind(&addr).await {
-        Ok(l) => l,
-        Err(e) => {
-            error!("[Sync] Failed to bind to {}: {}", addr, e);
-            return;
-        }
-    };
+    let (listener, retries_used) =
+        match bind_sync_relay_listener_with_policy(&addr, DEFAULT_SYNC_RELAY_BIND_RETRY_POLICY)
+            .await
+        {
+            Ok(listener) => listener,
+            Err(e) => {
+                error!("[Sync] Failed to bind to {}: {}", addr, e);
+                return;
+            }
+        };
 
-    info!("[Sync] Relay server listening on {}", addr);
+    if retries_used == 0 {
+        info!("[Sync] Relay server listening on {}", addr);
+    } else {
+        info!(
+            "[Sync] Relay server listening on {} after {} retry attempt(s)",
+            addr, retries_used
+        );
+    }
 
     while let Ok((stream, addr)) = listener.accept().await {
         let state = state.clone();
@@ -11685,6 +11748,66 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sync_relay_bind_retry_delay_only_retries_addr_in_use() {
+        let policy = SyncRelayBindRetryPolicy {
+            max_retries: 3,
+            retry_delay: Duration::from_millis(25),
+        };
+
+        let addr_in_use = std::io::Error::new(std::io::ErrorKind::AddrInUse, "busy");
+        assert_eq!(
+            sync_relay_bind_retry_delay(policy, &addr_in_use, 0),
+            Some(Duration::from_millis(25))
+        );
+        assert_eq!(sync_relay_bind_retry_delay(policy, &addr_in_use, 3), None);
+
+        let permission_denied = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "nope");
+        assert_eq!(
+            sync_relay_bind_retry_delay(policy, &permission_denied, 0),
+            None
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn sync_relay_bind_listener_retries_until_the_port_is_released() {
+        let policy = SyncRelayBindRetryPolicy {
+            max_retries: 10,
+            retry_delay: Duration::from_millis(10),
+        };
+        let occupied = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = occupied.local_addr().unwrap();
+        let addr_string = addr.to_string();
+
+        let release_task = tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(35)).await;
+            drop(occupied);
+        });
+
+        let (listener, retries_used) = bind_sync_relay_listener_with_policy(&addr_string, policy)
+            .await
+            .unwrap();
+        assert!(retries_used > 0);
+        drop(listener);
+        release_task.await.unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn sync_relay_bind_listener_stops_after_retry_budget() {
+        let policy = SyncRelayBindRetryPolicy {
+            max_retries: 2,
+            retry_delay: Duration::from_millis(5),
+        };
+        let occupied = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr_string = occupied.local_addr().unwrap().to_string();
+
+        let error = bind_sync_relay_listener_with_policy(&addr_string, policy)
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
+        drop(occupied);
+    }
 
     #[test]
     fn main_window_presentation_focus_contract_is_explicit() {
