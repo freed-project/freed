@@ -5844,7 +5844,7 @@ fn post_social_scrape_memory_recovery_reason(
 
     if webkit_resident_tail_is_probably_reclaimable(after)
         && after.webkit_total_resident_bytes >= POST_SOCIAL_SCRAPE_WEBKIT_RESIDENT_RECOVERY_BYTES
-        && after.app_resident_bytes >= POST_SOCIAL_SCRAPE_WEBKIT_RESIDENT_RECOVERY_BYTES
+        && after.app_resident_bytes >= after.memory_high_bytes
     {
         return Some("webkit_resident_tail");
     }
@@ -13197,7 +13197,7 @@ mod tests {
     }
 
     #[test]
-    fn post_social_scrape_recovery_triggers_on_huge_reclaimable_resident_tail() {
+    fn post_social_scrape_recovery_ignores_reclaimable_resident_tail_below_high_memory() {
         let before = runtime_stats_with_webkit(
             800 * 1024 * 1024,
             700 * 1024 * 1024,
@@ -13208,6 +13208,29 @@ mod tests {
             7 * BYTES_PER_GIB,
             1200 * 1024 * 1024,
             7 * BYTES_PER_GIB,
+            Some(512 * 1024 * 1024),
+        );
+
+        assert!(webkit_resident_tail_is_probably_reclaimable(&after));
+        assert_eq!(
+            post_social_scrape_memory_recovery_reason(&before, &after),
+            None
+        );
+    }
+
+    #[test]
+    fn post_social_scrape_recovery_triggers_on_high_reclaimable_resident_tail() {
+        let before = runtime_stats_with_webkit(
+            800 * 1024 * 1024,
+            700 * 1024 * 1024,
+            800 * 1024 * 1024,
+            Some(512 * 1024 * 1024),
+        );
+        let high_memory = make_runtime_memory_stats_for_test(0, 0).memory_high_bytes;
+        let after = runtime_stats_with_webkit(
+            high_memory + BYTES_PER_GIB,
+            1200 * 1024 * 1024,
+            high_memory + BYTES_PER_GIB,
             Some(512 * 1024 * 1024),
         );
 
