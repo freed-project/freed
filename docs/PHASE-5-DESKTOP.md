@@ -342,6 +342,7 @@ export async function captureDomFeed(
 - [x] Desktop terminal sync triggers now report real provider outcomes, fail zero-post or deferred runs, and ignore stale native timeouts instead of overwriting newer trigger results
 - [x] Desktop terminal sync trigger requests now expire after the helper timeout, so old request files do not replay authenticated provider traffic on the next app launch
 - [x] Desktop terminal sync triggers now retry the same request only after native keepalive proves the renderer was rebuilt mid-run, so unattended soaks do not hang on a lost bridge
+- [x] Desktop terminal sync trigger helpers and the native trigger watcher now use provider-safe deferral backoff and stop after post-completion renderer rebuilds, so installed soaks do not create duplicate Instagram or LinkedIn traffic while diagnosing recovery
 - [x] Idle desktop memory recovery now ignores reclaimable WebKit RSS tail when physical footprint is healthy, but still recovers the main renderer when the high-RSS WebKit process is hot on CPU, including active multi-GB WebKit growth below the global high-memory ceiling
 - [x] Renderer recovery now requires both native window visibility and renderer document visibility before treating heartbeat gaps as foreground stalls, so background provider work is not paused by normal hidden WebKit timer throttling
 - [x] Native renderer recovery now marks failed recovery state, requests relaunch, and forces the old process to exit if the main WebView label stays stuck after a destroyed renderer

@@ -1182,6 +1182,12 @@ fn dev_sync_trigger_waiting_result_recoverable(data_dir: &Path, id: &str, now_ms
     if result.status != "waiting" {
         return false;
     }
+    let Some(detail) = result.detail.as_deref() else {
+        return false;
+    };
+    if !detail.contains("Renderer was rebuilt before the sync trigger finished") {
+        return false;
+    }
     latest_runtime_health_background_job_active(data_dir, now_ms) == Some(false)
 }
 
@@ -12214,7 +12220,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(
             dev_sync_trigger_result_path(temp.path()),
-            r#"{"id":"facebook-waiting","provider":"facebook","status":"waiting","detail":null,"updatedAt":1000}"#,
+            r#"{"id":"facebook-waiting","provider":"facebook","status":"waiting","detail":"Renderer was rebuilt before the sync trigger finished. Retrying after recovery.","updatedAt":1000}"#,
         )
         .unwrap();
         std::fs::write(
@@ -12238,6 +12244,27 @@ mod tests {
         assert!(dev_sync_trigger_waiting_result_recoverable(
             temp.path(),
             "facebook-waiting",
+            47000
+        ));
+    }
+
+    #[test]
+    fn dev_sync_trigger_waiting_recovery_does_not_replay_finished_provider_work() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dev_sync_trigger_result_path(temp.path()),
+            r#"{"id":"instagram-waiting","provider":"instagram","status":"waiting","detail":"Renderer was rebuilt after the sync trigger finished. Retrying after recovery.","updatedAt":1000}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            runtime_health_path(temp.path()),
+            r#"{"activeBackgroundJob":null,"tsMs":47000}"#,
+        )
+        .unwrap();
+
+        assert!(!dev_sync_trigger_waiting_result_recoverable(
+            temp.path(),
+            "instagram-waiting",
             47000
         ));
     }

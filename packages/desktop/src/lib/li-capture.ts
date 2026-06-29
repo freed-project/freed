@@ -69,6 +69,10 @@ export interface LiSyncDiag {
   itemsAdded: number;
   errorStage: string | null;
   errorMessage: string | null;
+  extractionPasses: number;
+  lastCandidateCount: number | null;
+  lastUrl: string | null;
+  lastPageState: LiExtractionPageState | null;
 }
 
 export interface LiSyncResult {
@@ -86,8 +90,53 @@ function createEmptyLiSyncResult(): LiSyncResult {
       itemsAdded: 0,
       errorStage: null,
       errorMessage: null,
+      extractionPasses: 0,
+      lastCandidateCount: null,
+      lastUrl: null,
+      lastPageState: null,
     },
   };
+}
+
+interface LiExtractionPageState {
+  url?: string | null;
+  title?: string | null;
+  readyState?: string | null;
+  scrollHeight?: number | null;
+  bodyTextLength?: number | null;
+  mainFound?: boolean | null;
+  loginChrome?: boolean | null;
+  loggedInCookie?: boolean | null;
+  candidateCount?: number | null;
+  extractedPostCount?: number | null;
+  feedContainerCount?: number | null;
+  dataUrnCount?: number | null;
+  activityUrnCount?: number | null;
+  articleCount?: number | null;
+}
+
+function formatLiEmptyMessage(diag: LiSyncDiag): string {
+  const page = diag.lastPageState;
+  const parts = [
+    `LinkedIn returned no posts after ${diag.extractionPasses.toLocaleString()} extraction pass${diag.extractionPasses === 1 ? "" : "es"}`,
+    `candidate_count=${(diag.lastCandidateCount ?? 0).toLocaleString()}`,
+  ];
+  if (page) {
+    parts.push(
+      `activity_urns=${(page.activityUrnCount ?? 0).toLocaleString()}`,
+      `data_urns=${(page.dataUrnCount ?? 0).toLocaleString()}`,
+      `articles=${(page.articleCount ?? 0).toLocaleString()}`,
+      `feed_containers=${(page.feedContainerCount ?? 0).toLocaleString()}`,
+      `main_found=${page.mainFound === true ? "true" : "false"}`,
+      `login_chrome=${page.loginChrome === true ? "true" : "false"}`,
+      `logged_in_cookie=${page.loggedInCookie === true ? "true" : "false"}`,
+      `ready_state=${page.readyState ?? "unknown"}`,
+      `url=${page.url ?? diag.lastUrl ?? "unknown"}`,
+    );
+  } else if (diag.lastUrl) {
+    parts.push(`url=${diag.lastUrl}`);
+  }
+  return `${parts.join(", ")}.`;
 }
 
 // =============================================================================
@@ -144,10 +193,21 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
       candidateCount?: number;
       scrollY?: number;
       done?: boolean;
+      pageState?: LiExtractionPageState;
     }>(
       "li-feed-data",
       (event) => {
-        const { posts, error, candidateCount, done } = event.payload;
+        const { posts, error, candidateCount, done, pageState, url } = event.payload;
+        diag.extractionPasses += 1;
+        if (typeof candidateCount === "number") {
+          diag.lastCandidateCount = candidateCount;
+        }
+        if (typeof url === "string" && url) {
+          diag.lastUrl = url;
+        }
+        if (pageState) {
+          diag.lastPageState = pageState;
+        }
 
         addDebugEvent(
           "change",
@@ -205,6 +265,8 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
   diag.postsExtracted = allRawPosts.length;
 
   if (allRawPosts.length === 0) {
+    diag.errorStage = "empty";
+    diag.errorMessage = formatLiEmptyMessage(diag);
     return { items: [], diag };
   }
 
@@ -250,11 +312,15 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
         itemsAdded: 0,
         errorStage: "provider_rate_limit",
         errorMessage: providerPause.pauseReason,
+        extractionPasses: 0,
+        lastCandidateCount: null,
+        lastUrl: null,
+        lastPageState: null,
       },
     };
   }
 
-  if (isRateLimited()) {
+    if (isRateLimited()) {
     const minutesRemaining = Math.ceil(
       (MIN_INTERVAL_MS - (Date.now() - lastScrapeAt)) / 60_000,
     );
@@ -279,6 +345,10 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
         itemsAdded: 0,
         errorStage: "cooldown",
         errorMessage: `Cooling down. Try again in ~${minutesRemaining} minutes.`,
+        extractionPasses: 0,
+        lastCandidateCount: null,
+        lastUrl: null,
+        lastPageState: null,
       },
     };
   }

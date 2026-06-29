@@ -268,6 +268,7 @@ packages/capture-youtube/
 - [x] LinkedIn shares the same provider severity colors and per-provider sync spinner behavior as the other social sources
 - [x] LinkedIn login stays open after auth so users can finish platform prompts while sync starts, then closes only after scrape startup health is confirmed
 - [x] LinkedIn post-login sync uses the user's selected scraper window mode instead of switching modes for the first scrape
+- [x] LinkedIn zero-post runs now fail with local DOM diagnostics for candidate counts, activity URNs, login chrome, feed containers, and URL instead of clearing the last capture error as a successful empty sync
 - [ ] Mozi activity captured to FeedItem with plans, trips, attendance, or overlap-adjacent events
 - [ ] Mozi is visible in desktop Sources navigation and source status UI
 - [ ] Mozi desktop flows have regression coverage in Playwright
