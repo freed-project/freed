@@ -3,7 +3,7 @@
   "version": "26.6.2801-dev",
   "channel": "dev",
   "dayKey": "26.6.28",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-29T00:46:04.166Z",
   "model": "heuristic",
@@ -33,10 +33,16 @@
     ]
   },
   "release": {
-    "deck": "Renderer memory recovery stability, freed Desktop now destroys and rebuilds the main WebView when idle WebKit memory is reclaimable but still resident, and renderer recovery now ignores stale age-matched WebKit processes after a rebuild, which prevents repeated recovery loops and unnecessary background safe mode",
+    "deck": "Freed Desktop now has a stricter renderer memory recovery loop for high-memory main WebKit processes.",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Destroy and rebuild the main WebView when idle WebKit memory is reclaimable but still resident.",
+      "Recover visible main-renderer WebKit resident tails once they cross the high-memory threshold.",
+      "Ignore stale age-matched WebKit process telemetry after a rebuild, which prevents repeated recovery loops and unnecessary background safe mode.",
+      "Record post-recovery memory verification so failed WebKit reclaim can be diagnosed from the health log.",
+      "Restart Freed Desktop when a renderer rebuild leaves the same main WebKit process above the high-memory line."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2801-dev\n\nRenderer memory recovery stability, freed Desktop now destroys and rebuilds the main WebView when idle WebKit memory is reclaimable but still resident, and renderer recovery now ignores stale age-matched WebKit processes after a rebuild, which prevents repeated recovery loops and unnecessary background safe mode\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2801-dev\n\nFreed Desktop now has a stricter renderer memory recovery loop for high-memory main WebKit processes.\n\n### Fixes\n\n- Destroy and rebuild the main WebView when idle WebKit memory is reclaimable but still resident.\n- Recover visible main-renderer WebKit resident tails once they cross the high-memory threshold.\n- Ignore stale age-matched WebKit process telemetry after a rebuild, which prevents repeated recovery loops and unnecessary background safe mode.\n- Record post-recovery memory verification so failed WebKit reclaim can be diagnosed from the health log.\n- Restart Freed Desktop when a renderer rebuild leaves the same main WebKit process above the high-memory line.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
