@@ -87,6 +87,7 @@ const SCRAPE_MINIMAL_PASS_MARGIN_BYTES: u64 = 768 * 1024 * 1024;
 const POST_SOCIAL_SCRAPE_WEBKIT_FOOTPRINT_RECOVERY_BYTES: u64 = 2 * BYTES_PER_GIB;
 const POST_SOCIAL_SCRAPE_WEBKIT_FOOTPRINT_GROWTH_BYTES: u64 = 768 * 1024 * 1024;
 const POST_SOCIAL_SCRAPE_WEBKIT_RESIDENT_RECOVERY_BYTES: u64 = 4 * BYTES_PER_GIB;
+const POST_SOCIAL_SCRAPE_WEBKIT_TAIL_FOOTPRINT_RECOVERY_BYTES: u64 = BYTES_PER_GIB;
 const POST_SOCIAL_SCRAPE_PRESSURE_RECOVERY_PERCENT: u64 = 35;
 const WEBKIT_PROCESS_START_GRACE_SECONDS: u64 = 10;
 const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
@@ -5930,7 +5931,9 @@ fn post_social_scrape_memory_recovery_reason(
 
     if webkit_resident_tail_is_probably_reclaimable(after)
         && after.webkit_total_resident_bytes >= POST_SOCIAL_SCRAPE_WEBKIT_RESIDENT_RECOVERY_BYTES
-        && after.app_resident_bytes >= after.memory_high_bytes
+        && (after.app_resident_bytes >= after.memory_high_bytes
+            || after.webkit_total_footprint_bytes.unwrap_or(0)
+                >= POST_SOCIAL_SCRAPE_WEBKIT_TAIL_FOOTPRINT_RECOVERY_BYTES)
     {
         return Some("webkit_resident_tail");
     }
@@ -5982,6 +5985,7 @@ async fn maybe_recover_after_social_feed_scrape(
             "webkitFootprintRecoveryBytes": POST_SOCIAL_SCRAPE_WEBKIT_FOOTPRINT_RECOVERY_BYTES,
             "webkitFootprintGrowthRecoveryBytes": POST_SOCIAL_SCRAPE_WEBKIT_FOOTPRINT_GROWTH_BYTES,
             "webkitResidentRecoveryBytes": POST_SOCIAL_SCRAPE_WEBKIT_RESIDENT_RECOVERY_BYTES,
+            "webkitTailFootprintRecoveryBytes": POST_SOCIAL_SCRAPE_WEBKIT_TAIL_FOOTPRINT_RECOVERY_BYTES,
             "pressureRecoveryBytes": pressure_recovery_bytes,
             "memoryHighBytes": after.memory_high_bytes,
             "memoryCriticalBytes": after.memory_critical_bytes
@@ -8397,8 +8401,9 @@ async fn ig_scrape_feed(
         None,
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await?;
+    let scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await?;
     let recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "feed scrape complete");
+    let scrape_start_stats = collect_runtime_memory_stats(&app, 0, 0);
 
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => {
@@ -8494,6 +8499,16 @@ async fn ig_scrape_feed(
                 initial_feed_state.diagnostic_summary()
             );
             warn!("[IG] {}", message);
+            drop(wv);
+            drop(recycle_guard);
+            drop(scraper_session);
+            maybe_recover_after_social_feed_scrape(
+                &app,
+                &capture.background_runtime,
+                "Instagram",
+                &scrape_start_stats,
+            )
+            .await;
             return Err(message);
         }
         info!(
@@ -8654,6 +8669,7 @@ async fn ig_scrape_feed(
     );
     drop(wv);
     drop(recycle_guard);
+    drop(scraper_session);
     maybe_recover_after_social_feed_scrape(
         &app,
         &capture.background_runtime,
@@ -9102,7 +9118,7 @@ async fn li_scrape_feed(
         None,
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(&capture, "li_scrape_feed").await?;
+    let scraper_session = acquire_background_scraper_session(&capture, "li_scrape_feed").await?;
     let recycle_guard = WebviewRecycleGuard::new(app.clone(), "li-scraper", "feed scrape complete");
 
     let wv = match app.get_webview_window("li-scraper") {
@@ -9285,6 +9301,7 @@ async fn li_scrape_feed(
     );
     drop(wv);
     drop(recycle_guard);
+    drop(scraper_session);
     maybe_recover_after_social_feed_scrape(
         &app,
         &capture.background_runtime,
@@ -13421,6 +13438,28 @@ mod tests {
         assert_eq!(
             post_social_scrape_memory_recovery_reason(&before, &after),
             None
+        );
+    }
+
+    #[test]
+    fn post_social_scrape_recovery_triggers_on_reclaimable_tail_with_large_footprint() {
+        let before = runtime_stats_with_webkit(
+            800 * 1024 * 1024,
+            700 * 1024 * 1024,
+            800 * 1024 * 1024,
+            Some(512 * 1024 * 1024),
+        );
+        let after = runtime_stats_with_webkit(
+            7 * BYTES_PER_GIB,
+            1200 * 1024 * 1024,
+            7 * BYTES_PER_GIB,
+            Some(1200 * 1024 * 1024),
+        );
+
+        assert!(webkit_resident_tail_is_probably_reclaimable(&after));
+        assert_eq!(
+            post_social_scrape_memory_recovery_reason(&before, &after),
+            Some("webkit_resident_tail")
         );
     }
 
