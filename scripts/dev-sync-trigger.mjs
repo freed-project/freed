@@ -5,7 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const allowedProviders = new Set(["facebook", "instagram", "linkedin"]);
-export const lockedRetryMs = 30_000;
+export const defaultLockedRetryMs = 10 * 60 * 1000;
+export const defaultTriggerTimeoutMs = 10 * 60 * 1000;
 export const runtimeDeferredRetryMsByProvider = Object.freeze({
   facebook: 2 * 60 * 1000,
   instagram: 10 * 60 * 1000,
@@ -33,13 +34,21 @@ export function getDeferredReason(parsed) {
   return null;
 }
 
+export function parsePositiveDurationMs(value, fallback) {
+  if (value == null || value === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.round(parsed);
+}
+
 export function isPostCompletionRendererRebuildResult(parsed) {
   if (parsed?.status !== "waiting") return false;
   const detail = typeof parsed.detail === "string" ? parsed.detail : "";
   return detail.includes("Renderer was rebuilt after the sync trigger finished");
 }
 
-export function getDeferredRetryMs(provider, reason) {
+export function getDeferredRetryMs(provider, reason, options = {}) {
+  const lockedRetryMs = options.lockedRetryMs ?? defaultLockedRetryMs;
   if (reason === "locked") return lockedRetryMs;
   return runtimeDeferredRetryMsByProvider[provider] ?? runtimeDeferredRetryMsByProvider.facebook;
 }
@@ -50,10 +59,11 @@ export function getDeferredRetryDecision({
   sawPostCompletionRendererRebuild,
   now,
   deadline,
+  lockedRetryMs,
 }) {
   const reason = getDeferredReason(parsed);
   if (!reason) return { action: "none" };
-  const retryMs = getDeferredRetryMs(provider, reason);
+  const retryMs = getDeferredRetryMs(provider, reason, { lockedRetryMs });
   if (sawPostCompletionRendererRebuild) {
     return {
       action: "stop",
@@ -72,7 +82,10 @@ export function getDeferredRetryDecision({
     code: 3,
     reason,
     retryMs,
-    detail: `Runtime work is deferred. Not retrying inside this helper window because the provider-safe backoff is ${formatDurationMs(retryMs)}.`,
+    detail:
+      reason === "locked"
+        ? `The Mac is locked. Not retrying inside this helper window because the locked-machine backoff is ${formatDurationMs(retryMs)}.`
+        : `Runtime work is deferred. Not retrying inside this helper window because the provider-safe backoff is ${formatDurationMs(retryMs)}.`,
   };
 }
 
@@ -93,6 +106,14 @@ export async function runDevSyncTrigger({
   const appDataDir =
     env.FREED_APP_DATA_DIR ??
     path.join(os.homedir(), "Library", "Application Support", "wtf.freed.desktop");
+  const lockedRetryMs = parsePositiveDurationMs(
+    env.FREED_DEV_SYNC_LOCKED_RETRY_MS,
+    defaultLockedRetryMs,
+  );
+  const timeoutMs = parsePositiveDurationMs(
+    env.FREED_DEV_SYNC_TRIGGER_TIMEOUT_MS,
+    defaultTriggerTimeoutMs,
+  );
   const requestPath = path.join(appDataDir, "dev-sync-trigger.json");
   const resultPath = path.join(appDataDir, "dev-sync-trigger-result.json");
   let requestId = `${provider}-${now()}`;
@@ -120,7 +141,7 @@ export async function runDevSyncTrigger({
   log(`Request: ${requestPath}`);
   log(`Result: ${resultPath}`);
 
-  const deadline = now() + 10 * 60 * 1000;
+  const deadline = now() + timeoutMs;
   let lastStatus = "";
   let sawPostCompletionRendererRebuild = false;
 
@@ -149,6 +170,7 @@ export async function runDevSyncTrigger({
       sawPostCompletionRendererRebuild,
       now: now(),
       deadline,
+      lockedRetryMs,
     });
     if (retryDecision.action === "retry") {
       log(
