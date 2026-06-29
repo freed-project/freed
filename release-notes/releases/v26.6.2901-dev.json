@@ -3,7 +3,7 @@
   "version": "26.6.2901-dev",
   "channel": "dev",
   "dayKey": "26.6.29",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-06-29T22:52:59.491Z",
   "model": "heuristic",
@@ -35,10 +35,14 @@
     ]
   },
   "release": {
-    "deck": "Retry sync relay bind after overlapping restart",
+    "deck": "Social sync memory cleanup now runs after failed provider scrapes",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Run post-sync memory cleanup after Instagram placeholder-feed failures",
+      "Recover reclaimable WebKit memory tails after social scrapes before later providers stall",
+      "Report LinkedIn zero-event scrapes as IPC timeouts instead of successful empty feeds"
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2901-dev\n\nRetry sync relay bind after overlapping restart\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2901-dev\n\nSocial sync memory cleanup now runs after failed provider scrapes\n\n### Fixes\n\n- Run post-sync memory cleanup after Instagram placeholder-feed failures\n- Recover reclaimable WebKit memory tails after social scrapes before later providers stall\n- Report LinkedIn zero-event scrapes as IPC timeouts instead of successful empty feeds\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
