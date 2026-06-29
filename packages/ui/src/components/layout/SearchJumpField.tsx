@@ -15,7 +15,7 @@ import {
 } from "@freed/shared";
 
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
-import { prepareSearchIndex, useSearchResults } from "../../hooks/useSearchResults.js";
+import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { buildCommandPaletteActions } from "../../lib/command-palette-registry.js";
 import {
   filterCommandPaletteActions,
@@ -479,9 +479,6 @@ export function SearchJumpField({
     setConfirmValue("");
     setIsTriggerOpen(false);
   }, []);
-  const prepareSearch = useCallback(() => {
-    void prepareSearchIndex(items, searchCorpusVersion, accounts);
-  }, [accounts, items, searchCorpusVersion]);
   const clearQueryForNavigation = useCallback(() => {
     setSearchQuery("");
     setInputValue("");
@@ -638,7 +635,6 @@ export function SearchJumpField({
       openSavedContentDialog,
       openSettingsTo,
       openUrl,
-      prepareSearch,
       importMarkdown,
       exportMarkdown,
       saveUrl,
@@ -969,7 +965,6 @@ export function SearchJumpField({
                 autoFocus
                 value={inputValue}
                 onChange={(event) => setInputValue(event.target.value)}
-                onFocus={prepareSearch}
                 onKeyDown={handleInputKeyDown}
                 onClear={clearSearch}
                 placeholder="Search or run"
@@ -1067,7 +1062,6 @@ export function SearchJumpField({
             type="button"
             data-testid="compact-sidebar-search-trigger"
             onClick={() => {
-              prepareSearch();
               setIsTriggerOpen((value) => !value);
             }}
             className={compactSidebar
@@ -1120,7 +1114,6 @@ export function SearchJumpField({
         value={inputValue}
         onChange={(event) => setInputValue(event.target.value)}
         onFocus={() => {
-          prepareSearch();
           setIsFocused(true);
         }}
         onBlur={() => {
