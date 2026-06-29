@@ -153,6 +153,27 @@
     return all;
   }
 
+  function collectPageState(containers, posts) {
+    var bodyText = (document.body && document.body.textContent ? document.body.textContent : "").toLowerCase();
+    var main = document.querySelector("main, main[role='main'], #main-content");
+    return {
+      url: window.location.href,
+      title: document.title || null,
+      readyState: document.readyState,
+      scrollHeight: document.documentElement ? document.documentElement.scrollHeight : null,
+      bodyTextLength: bodyText.length,
+      mainFound: Boolean(main),
+      loginChrome: /sign in|join now|email or phone|password/.test(bodyText.slice(0, 5000)),
+      loggedInCookie: document.cookie.indexOf("li_at=") >= 0,
+      candidateCount: containers.length,
+      extractedPostCount: posts.length,
+      feedContainerCount: document.querySelectorAll(".scaffold-finite-scroll__content, main[role='main'], #main-content").length,
+      dataUrnCount: document.querySelectorAll("[data-urn]").length,
+      activityUrnCount: document.querySelectorAll("[data-urn*='urn:li:activity'], [data-urn*='urn:li:ugcPost'], [data-urn*='urn:li:reshare']").length,
+      articleCount: document.querySelectorAll("article").length,
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // Extract a single post
   // ---------------------------------------------------------------------------
@@ -395,6 +416,7 @@
         extractedAt: Date.now(),
         url: window.location.href,
         candidateCount: containers.length,
+        pageState: collectPageState(containers, posts),
         scrollY: window.scrollY,
       });
     }
@@ -406,6 +428,7 @@
         extractedAt: Date.now(),
         url: window.location.href,
         candidateCount: 0,
+        pageState: collectPageState([], []),
         scrollY: window.scrollY,
       });
     }
