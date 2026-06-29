@@ -117,6 +117,8 @@ const MAIN_RENDERER_IDLE_WEBKIT_RESIDENT_RECOVERY_BYTES: u64 = 4 * BYTES_PER_GIB
 const MAIN_RENDERER_HOT_WEBKIT_RESIDENT_RECOVERY_BYTES: u64 = 5 * BYTES_PER_GIB;
 const MAIN_RENDERER_HOT_WEBKIT_FOOTPRINT_RECOVERY_BYTES: u64 = 2 * BYTES_PER_GIB;
 const MAIN_RENDERER_HOT_WEBKIT_CPU_RECOVERY_PERCENT: f32 = 20.0;
+const MAIN_RENDERER_RECOVERY_VERIFY_AFTER: Duration = Duration::from_secs(3);
+const MAIN_RENDERER_RECOVERY_MIN_RECLAIM_BYTES: u64 = 512 * 1024 * 1024;
 const RENDERER_EVENT_LOOP_LAG_RECOVERY_MS: f64 = 45_000.0;
 const BACKGROUND_REQUIRED_HEALTHY_HEARTBEATS: u64 = 2;
 const BACKGROUND_RECOVERY_COOLDOWN: Duration = Duration::from_secs(120);
@@ -2929,6 +2931,10 @@ fn main_renderer_memory_recovery_reason(
         return Some("idle_webkit_resident_tail");
     }
 
+    if effectively_visible && main_renderer_visible_webkit_resident_tail_should_recover(stats) {
+        return Some("webkit_resident_tail");
+    }
+
     if stats
         .webkit_largest_resident_bytes
         .map(|resident| resident >= stats.memory_high_bytes)
@@ -2960,6 +2966,21 @@ fn main_renderer_idle_webkit_resident_tail_should_recover(stats: &RuntimeMemoryS
     resident_hot && cpu_idle
 }
 
+fn main_renderer_visible_webkit_resident_tail_should_recover(stats: &RuntimeMemoryStats) -> bool {
+    if !webkit_resident_tail_is_probably_reclaimable(stats) {
+        return false;
+    }
+    let over_high_memory = stats
+        .webkit_largest_resident_bytes
+        .map(|resident| resident >= stats.memory_high_bytes)
+        .unwrap_or(false);
+    let cpu_idle = stats
+        .webkit_largest_cpu_usage
+        .map(|cpu| cpu <= 10.0)
+        .unwrap_or(true);
+    over_high_memory && cpu_idle
+}
+
 fn main_renderer_hot_webkit_activity_should_recover(stats: &RuntimeMemoryStats) -> bool {
     let resident_hot = stats
         .webkit_largest_resident_bytes
@@ -2980,6 +3001,48 @@ fn main_renderer_hot_webkit_activity_should_recover(stats: &RuntimeMemoryStats) 
         .unwrap_or(false);
 
     resident_hot && footprint_hot && cpu_hot && below_high_memory_limit
+}
+
+fn main_renderer_webkit_role_can_recover(role: Option<&str>) -> bool {
+    matches!(
+        role,
+        Some("freed-webcontent") | Some("freed-webcontent-age-matched")
+    )
+}
+
+fn main_renderer_recovery_verification_should_restart(
+    before: &RuntimeMemoryStats,
+    after: &RuntimeMemoryStats,
+) -> bool {
+    if !main_renderer_webkit_role_can_recover(before.webkit_largest_role.as_deref())
+        || !main_renderer_webkit_role_can_recover(after.webkit_largest_role.as_deref())
+    {
+        return false;
+    }
+
+    let Some(before_process_id) = before.webkit_largest_process_id else {
+        return false;
+    };
+    let Some(after_process_id) = after.webkit_largest_process_id else {
+        return false;
+    };
+    if before_process_id != after_process_id {
+        return false;
+    }
+
+    let before_resident = before.webkit_largest_resident_bytes.unwrap_or(0);
+    let after_resident = after.webkit_largest_resident_bytes.unwrap_or(0);
+    if before_resident < before.memory_high_bytes && after_resident < after.memory_high_bytes {
+        return false;
+    }
+
+    let reclaimed = before_resident.saturating_sub(after_resident);
+    let still_high = after_resident >= after.memory_high_bytes
+        || after.app_resident_bytes >= after.memory_high_bytes;
+    let barely_reclaimed =
+        before_resident <= after_resident || reclaimed < MAIN_RENDERER_RECOVERY_MIN_RECLAIM_BYTES;
+
+    still_high && barely_reclaimed
 }
 
 fn format_bytes_for_log(bytes: u64) -> String {
@@ -3298,6 +3361,181 @@ mod renderer_watchdog_tests {
             "hidden",
             current_uptime_ms,
             &stats,
+        ));
+    }
+
+    #[test]
+    fn main_renderer_recovers_visible_reclaimable_webkit_tail_above_high_memory() {
+        let current_uptime_ms = Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS * 1000);
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: 10 * BYTES_PER_GIB,
+            app_memory_pressure_bytes: 3 * BYTES_PER_GIB,
+            webkit_resident_bytes: Some(10 * BYTES_PER_GIB),
+            webkit_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: 10 * BYTES_PER_GIB,
+            webkit_total_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(10 * BYTES_PER_GIB),
+            webkit_largest_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(0.0),
+            webkit_largest_age_seconds: Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS),
+            webkit_largest_role: Some("freed-webcontent-age-matched".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
+            memory_high_bytes: 9 * BYTES_PER_GIB,
+            memory_critical_bytes: 12 * BYTES_PER_GIB,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert!(webkit_resident_tail_is_probably_reclaimable(&stats));
+        assert_eq!(
+            main_renderer_memory_recovery_reason(true, "visible", current_uptime_ms, &stats),
+            Some("webkit_resident_tail")
+        );
+        assert!(main_renderer_memory_should_recover(
+            true,
+            "visible",
+            current_uptime_ms,
+            &stats
+        ));
+    }
+
+    #[test]
+    fn main_renderer_recovery_verification_restarts_when_same_process_stays_high() {
+        let before = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: 10 * BYTES_PER_GIB,
+            app_memory_pressure_bytes: 3 * BYTES_PER_GIB,
+            webkit_resident_bytes: Some(10 * BYTES_PER_GIB),
+            webkit_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: 10 * BYTES_PER_GIB,
+            webkit_total_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(10 * BYTES_PER_GIB),
+            webkit_largest_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(0.0),
+            webkit_largest_age_seconds: Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS),
+            webkit_largest_role: Some("freed-webcontent-age-matched".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
+            memory_high_bytes: 9 * BYTES_PER_GIB,
+            memory_critical_bytes: 12 * BYTES_PER_GIB,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+        let after = before.clone();
+
+        assert!(main_renderer_recovery_verification_should_restart(
+            &before, &after
+        ));
+    }
+
+    #[test]
+    fn main_renderer_recovery_verification_allows_successful_reclaim() {
+        let before = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: 10 * BYTES_PER_GIB,
+            app_memory_pressure_bytes: 3 * BYTES_PER_GIB,
+            webkit_resident_bytes: Some(10 * BYTES_PER_GIB),
+            webkit_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: 10 * BYTES_PER_GIB,
+            webkit_total_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(10 * BYTES_PER_GIB),
+            webkit_largest_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(0.0),
+            webkit_largest_age_seconds: Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS),
+            webkit_largest_role: Some("freed-webcontent-age-matched".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
+            memory_high_bytes: 9 * BYTES_PER_GIB,
+            memory_critical_bytes: 12 * BYTES_PER_GIB,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+        let mut after = before.clone();
+        after.app_resident_bytes = 2 * BYTES_PER_GIB;
+        after.webkit_largest_resident_bytes = Some(BYTES_PER_GIB);
+        after.webkit_total_resident_bytes = BYTES_PER_GIB;
+
+        assert!(!main_renderer_recovery_verification_should_restart(
+            &before, &after
+        ));
+    }
+
+    #[test]
+    fn main_renderer_recovery_verification_ignores_scraper_webkit() {
+        let before = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_footprint_bytes: Some(128),
+            process_virtual_bytes: 256,
+            app_resident_bytes: 10 * BYTES_PER_GIB,
+            app_memory_pressure_bytes: 3 * BYTES_PER_GIB,
+            webkit_resident_bytes: Some(10 * BYTES_PER_GIB),
+            webkit_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_virtual_bytes: None,
+            webkit_process_id: Some(123),
+            webkit_total_resident_bytes: 10 * BYTES_PER_GIB,
+            webkit_total_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_process_count: 1,
+            webkit_largest_resident_bytes: Some(10 * BYTES_PER_GIB),
+            webkit_largest_footprint_bytes: Some(2 * BYTES_PER_GIB),
+            webkit_largest_process_id: Some(123),
+            webkit_largest_cpu_usage: Some(0.0),
+            webkit_largest_age_seconds: Some(MAIN_RENDERER_MEMORY_RECOVERY_MIN_AGE_SECONDS),
+            webkit_largest_role: Some("fb-scraper".to_string()),
+            webkit_processes: Vec::new(),
+            webkit_telemetry_available: true,
+            webkit_attribution_precise: true,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            storage_sizes_sampled: true,
+            sample_duration_ms: 0,
+            memory_high_bytes: 9 * BYTES_PER_GIB,
+            memory_critical_bytes: 12 * BYTES_PER_GIB,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+        let after = before.clone();
+
+        assert!(!main_renderer_recovery_verification_should_restart(
+            &before, &after
         ));
     }
 
@@ -9821,6 +10059,120 @@ fn request_restart_after_recovery_failure(app: &tauri::AppHandle, reason: &str, 
     });
 }
 
+fn request_restart_after_recovery_verification_failure(
+    app: &tauri::AppHandle,
+    reason: &str,
+    before: &RuntimeMemoryStats,
+    after: &RuntimeMemoryStats,
+) {
+    append_runtime_health(
+        app,
+        serde_json::json!({
+            "event": "renderer_recovery_restart_requested",
+            "reason": reason,
+            "verificationFailure": "main renderer WebKit memory was not reclaimed",
+            "beforeWebkitLargestProcessId": before.webkit_largest_process_id,
+            "beforeWebkitLargestResidentBytes": before.webkit_largest_resident_bytes,
+            "beforeWebkitLargestFootprintBytes": before.webkit_largest_footprint_bytes,
+            "beforeWebkitLargestRole": before.webkit_largest_role,
+            "beforeAppResidentBytes": before.app_resident_bytes,
+            "afterWebkitLargestProcessId": after.webkit_largest_process_id,
+            "afterWebkitLargestResidentBytes": after.webkit_largest_resident_bytes,
+            "afterWebkitLargestFootprintBytes": after.webkit_largest_footprint_bytes,
+            "afterWebkitLargestRole": after.webkit_largest_role,
+            "afterAppResidentBytes": after.app_resident_bytes,
+            "memoryHighBytes": after.memory_high_bytes,
+            "memoryCriticalBytes": after.memory_critical_bytes
+        }),
+    );
+    app.request_restart();
+
+    let app_for_exit = app.clone();
+    let reason_for_exit = reason.to_string();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(FORCE_EXIT_AFTER_RESTART_REQUEST).await;
+        warn!(
+            "[main-window] forcing old process exit after failed recovery verification reason={}",
+            reason_for_exit
+        );
+        app_for_exit.exit(0);
+    });
+}
+
+fn schedule_main_window_recovery_verification(
+    app: &tauri::AppHandle,
+    reason: &str,
+    before: RuntimeMemoryStats,
+) {
+    let app_for_verify = app.clone();
+    let reason_for_verify = reason.to_string();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(MAIN_RENDERER_RECOVERY_VERIFY_AFTER).await;
+        let after = collect_runtime_memory_stats_with_options(
+            &app_for_verify,
+            0,
+            0,
+            RuntimeMemoryStatsOptions {
+                include_storage_sizes: false,
+                precise_webkit_attribution: true,
+            },
+        );
+        let verification = scraper_recycle_verification_from_processes(
+            &before.webkit_processes,
+            before.webkit_total_resident_bytes,
+            &after.webkit_processes,
+            after.webkit_total_resident_bytes,
+            MAIN_RENDERER_RECOVERY_VERIFY_AFTER.as_millis(),
+        );
+        let should_restart = main_renderer_recovery_verification_should_restart(&before, &after);
+
+        append_runtime_health(
+            &app_for_verify,
+            serde_json::json!({
+                "event": "main_renderer_recovery_verification",
+                "reason": reason_for_verify,
+                "shouldRestartApp": should_restart,
+                "beforeAppResidentBytes": before.app_resident_bytes,
+                "beforeAppMemoryPressureBytes": before.app_memory_pressure_bytes,
+                "beforeWebkitResidentBytes": before.webkit_total_resident_bytes,
+                "beforeWebkitFootprintBytes": before.webkit_total_footprint_bytes,
+                "beforeWebkitLargestProcessId": before.webkit_largest_process_id,
+                "beforeWebkitLargestResidentBytes": before.webkit_largest_resident_bytes,
+                "beforeWebkitLargestFootprintBytes": before.webkit_largest_footprint_bytes,
+                "beforeWebkitLargestRole": before.webkit_largest_role,
+                "afterAppResidentBytes": after.app_resident_bytes,
+                "afterAppMemoryPressureBytes": after.app_memory_pressure_bytes,
+                "afterWebkitResidentBytes": after.webkit_total_resident_bytes,
+                "afterWebkitFootprintBytes": after.webkit_total_footprint_bytes,
+                "afterWebkitLargestProcessId": after.webkit_largest_process_id,
+                "afterWebkitLargestResidentBytes": after.webkit_largest_resident_bytes,
+                "afterWebkitLargestFootprintBytes": after.webkit_largest_footprint_bytes,
+                "afterWebkitLargestRole": after.webkit_largest_role,
+                "memoryHighBytes": after.memory_high_bytes,
+                "memoryCriticalBytes": after.memory_critical_bytes,
+                "verification": verification
+            }),
+        );
+
+        if should_restart {
+            warn!(
+                "[main-window] recovery did not reclaim WebKit memory reason={} before_pid={:?} before_rss={} after_pid={:?} after_rss={}",
+                reason_for_verify,
+                before.webkit_largest_process_id,
+                format_bytes_for_log(before.webkit_largest_resident_bytes.unwrap_or(0)),
+                after.webkit_largest_process_id,
+                format_bytes_for_log(after.webkit_largest_resident_bytes.unwrap_or(0))
+            );
+            request_restart_after_recovery_verification_failure(
+                &app_for_verify,
+                &reason_for_verify,
+                &before,
+                &after,
+            );
+        }
+    });
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum MainWindowRecoveryPresentation {
     RestoreIfVisible,
@@ -9844,6 +10196,15 @@ fn recover_main_window_with_presentation(
     reason: &str,
     presentation: MainWindowRecoveryPresentation,
 ) -> Result<(), String> {
+    let before_recovery_stats = collect_runtime_memory_stats_with_options(
+        app,
+        0,
+        0,
+        RuntimeMemoryStatsOptions {
+            include_storage_sizes: false,
+            precise_webkit_attribution: true,
+        },
+    );
     let app_for_destroy = app.clone();
     let reason_for_destroy = reason.to_string();
     let outcome =
@@ -9870,6 +10231,7 @@ fn recover_main_window_with_presentation(
         });
 
     if outcome.is_ok() {
+        schedule_main_window_recovery_verification(app, reason, before_recovery_stats);
         close_main_window_recovery_keepalive(app, reason);
     } else if let Err(error) = &outcome {
         error!(
