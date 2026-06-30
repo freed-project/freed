@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, incremental RSS feed metadata updates shipped, safe optimistic user mutations shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, idle Automerge worker recycling shipped, bounded scheduled RSS refresh shipped, density-aware fixed-height unified feed rows shipped, settings changelog preview shipped, fingerprinted sample-data cleanup shipped, visible cloud transfer diagnostics shipped, destructive cloud merge recovery shipped, manual Drive sync and activity timelines shipped, cloud upload waits behind active outbox work shipped, production-default Google token proxy fallback shipped, recoverable Google Contacts refresh failures shipped, global background activity monitoring shipped, native terminal sync soaks shipped, and sync relay port handoff retries shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, incremental RSS feed metadata updates shipped, safe optimistic user mutations shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, idle Automerge worker recycling shipped, bounded scheduled RSS refresh shipped, density-aware fixed-height unified feed rows shipped, settings changelog preview shipped, fingerprinted sample-data cleanup shipped, visible cloud transfer diagnostics shipped, destructive cloud merge recovery shipped, manual Drive sync and activity timelines shipped, cloud upload waits behind active outbox work shipped, production-default Google token proxy fallback shipped, recoverable Google Contacts refresh failures shipped, global background activity monitoring shipped, native terminal sync soaks shipped, and sync relay port handoff retries shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -216,7 +216,7 @@ export async function captureDomFeed(
 | 5.22 | Auto-updater (tauri-plugin-updater)                                     | Medium     |
 | 5.23 | CI/CD release pipeline (GH Actions)                                     | Medium     |
 | 5.24 | macOS code signing + notarization                                       | High       |
-| 5.25 | Windows code signing                                                    | Medium     |
+| 5.25 | Windows code signing with Microsoft Artifact Signing                    | Medium     |
 | 5.26 | Independent update server domain                                        | Medium     |
 | 5.27 | First-run legal gate and local-only acceptance storage                  | Medium     |
 | 5.28 | Provider-specific risk interstitials for social capture                 | Medium     |
@@ -371,16 +371,18 @@ export async function captureDomFeed(
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
 - [x] Search now builds a shared MiniSearch index asynchronously in chunks, drops it after the query clears, rebuilds only when the worker says the searchable corpus changed, and indexes a smaller preserved-text window so one exploratory search cannot pin duplicate full-text copies of the library in renderer memory
 - [x] Desktop perf memory checks now use CDP heap-usage sampling instead of the broken zero-value metric path, and they include a heavy preserved-text search scenario so renderer retention regressions show up in CI
-- [ ] Windows installer is code-signed (requires EV certificate)
+- [ ] Windows installer is code-signed (Microsoft Artifact Signing plan scaffolded)
 - [x] Update server runs on a Freed-owned domain instead of pointing the updater directly at GitHub Releases
 - [x] Desktop settings can switch this install between production and dev release channels, and the dev channel will install a newer production release when no newer dev build exists without switching the saved channel
 
 > **Current state:**
 > macOS release builds are signed and notarized in GitHub Actions when the
 > required Apple secrets are present. The release workflow now fails fast
-> instead of silently shipping an unsigned macOS artifact. Windows
-> SmartScreen warnings will still appear until an EV certificate is
-> obtained or enough installs build reputation. The shared desktop toolbar
+> instead of silently shipping an unsigned macOS artifact. Windows signing is
+> planned through Microsoft Artifact Signing, and the repo now includes
+> `docs/WINDOWS-SIGNING.md` plus an inert Tauri `signCommand` scaffold for the
+> future implementation. Windows SmartScreen warnings will still appear until
+> that path is provisioned, enabled, and verified in a signed release. The shared desktop toolbar
 > now behaves like a real title bar again, including threshold-based window
 > dragging from toolbar controls plus normal cursor and selection treatment
 > for static toolbar labels. Desktop now also keeps dev installs on the
