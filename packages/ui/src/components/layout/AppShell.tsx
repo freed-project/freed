@@ -547,8 +547,8 @@ export function AppShell({ children }: AppShellProps) {
           </div>
           <main
             ref={mainRef}
-            className={`relative z-10 min-w-0 flex-1 ${activeView === "map" ? "pointer-events-none" : ""} ${
-              isMobileDevice ? "" : "min-h-0 overflow-hidden"
+            className={`relative min-w-0 flex-1 ${activeView === "friends" ? "z-0" : "z-10"} ${activeView === "map" ? "pointer-events-none" : ""} ${
+              isMobileDevice ? "" : activeView === "friends" ? "min-h-0 overflow-visible" : "min-h-0 overflow-hidden"
             }`}
           >
             {activeView === "friends"

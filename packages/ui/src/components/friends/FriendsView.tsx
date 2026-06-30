@@ -42,6 +42,7 @@ import {
   type AccountLinkSuggestion,
 } from "../../lib/account-link-suggestions.js";
 import { accountSubtitle, accountTitle, providerLabel } from "../../lib/account-labels.js";
+import { buildIdentityGraphActivitySummaries } from "../../lib/identity-graph-activity-summary.js";
 import { px } from "../layout/layoutConstants.js";
 
 const DEFAULT_SIDEBAR_WIDTH = 360;
@@ -587,6 +588,10 @@ export function FriendsView({
     for (const item of items) map[item.globalId] = item;
     return map;
   }, [items]);
+  const graphActivitySummaries = useMemo(
+    () => buildIdentityGraphActivitySummaries(feedItems),
+    [feedItems],
+  );
   const friendsWorkspaceIndexes = useMemo(
     () => buildFriendsWorkspaceIndexes(accounts, feedItems),
     [accounts, feedItems],
@@ -1719,31 +1724,33 @@ export function FriendsView({
         className={`relative flex min-h-0 flex-1 ${isMobile ? "flex-col pt-[var(--feed-card-gap,8px)]" : "flex-row"}`}
       >
         {showGraphSurface ? (
-          <div className="relative min-h-0 min-w-0 flex-1">
-            {(effectiveMode === "friends" && friendList.length === 0) || (effectiveMode === "all_content" && socialAccountCount === 0 && friendList.length === 0) ? (
-              renderGraphEmptyState()
-            ) : (
-              <FriendGraph
-                ref={graphRef}
-                persons={allPersons}
-                accounts={accounts}
-                feeds={feeds}
-                feedItems={feedItems}
-                mode={effectiveMode}
-                selectedPersonId={selectedPerson?.id ?? null}
-                selectedAccountId={selectedAccount?.id ?? null}
-                onSelectPerson={(person) => handleSelectPerson(person, false)}
-                onSelectAccount={(account) => handleSelectAccount(account, false)}
-                onClearSelection={showCollapsedSelectionCard ? handleClearSelection : undefined}
-                onLinkAccountToPerson={handleLinkAccountToPerson}
-                onPinPersonPosition={handlePinPersonPosition}
-                onPinAccountPosition={handlePinAccountPosition}
-                onDropNodeToRelationshipTier={handleDropGraphNodeToRelationshipTier}
-                friendSuggestionStrengthByPerson={friendSuggestionStrengthByPerson}
-                friendSuggestionStrengthByAccount={friendSuggestionStrengthByAccount}
-                themeId={themeId}
-              />
-            )}
+          <div className="relative min-h-0 min-w-0 flex-1 overflow-visible">
+            <div className={`absolute inset-y-0 right-0 ${isMobile ? "left-0" : "left-[calc(-1*var(--freed-sidebar-shell-width,0px)-var(--feed-card-gap,8px))]"}`}>
+              {(effectiveMode === "friends" && friendList.length === 0) || (effectiveMode === "all_content" && socialAccountCount === 0 && friendList.length === 0) ? (
+                renderGraphEmptyState()
+              ) : (
+                <FriendGraph
+                  ref={graphRef}
+                  persons={allPersons}
+                  accounts={accounts}
+                  feeds={feeds}
+                  activitySummaries={graphActivitySummaries}
+                  mode={effectiveMode}
+                  selectedPersonId={selectedPerson?.id ?? null}
+                  selectedAccountId={selectedAccount?.id ?? null}
+                  onSelectPerson={(person) => handleSelectPerson(person, false)}
+                  onSelectAccount={(account) => handleSelectAccount(account, false)}
+                  onClearSelection={showCollapsedSelectionCard ? handleClearSelection : undefined}
+                  onLinkAccountToPerson={handleLinkAccountToPerson}
+                  onPinPersonPosition={handlePinPersonPosition}
+                  onPinAccountPosition={handlePinAccountPosition}
+                  onDropNodeToRelationshipTier={handleDropGraphNodeToRelationshipTier}
+                  friendSuggestionStrengthByPerson={friendSuggestionStrengthByPerson}
+                  friendSuggestionStrengthByAccount={friendSuggestionStrengthByAccount}
+                  themeId={themeId}
+                />
+              )}
+            </div>
           </div>
         ) : null}
 
