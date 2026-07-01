@@ -1965,7 +1965,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           )}
         </div>
       ) : null}
-      <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+      <div
+        data-testid="friend-graph-controls"
+        className="absolute right-4 top-4 z-10 flex items-center gap-2"
+      >
         <button type="button" className={CONTROL_BASE} onClick={fitAll}>
           Fit all
         </button>
