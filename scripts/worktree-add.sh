@@ -24,6 +24,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/node-tooling.sh
+source "${SCRIPT_DIR}/lib/node-tooling.sh"
 # shellcheck source=./lib/worktree-runtime.sh
 source "${SCRIPT_DIR}/lib/worktree-runtime.sh"
 
