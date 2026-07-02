@@ -2584,7 +2584,7 @@ html[data-theme="scriptorium"] .btn-primary:hover {
 .theme-toolbar-segment-active {
   background: rgb(var(--theme-accent-secondary-rgb) / 0.16);
   color: var(--theme-text-primary);
-  box-shadow: 0 0 0 1px rgb(var(--theme-accent-secondary-rgb) / 0.72);
+  box-shadow: none;
   z-index: 1;
 }
 

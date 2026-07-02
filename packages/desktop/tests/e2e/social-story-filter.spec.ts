@@ -144,6 +144,47 @@ test("Instagram source toolbar filters posts, stories, and all items", async ({ 
   await expect(page.getByText("Instagram filter story item")).toBeVisible();
 });
 
+test("toolbar segmented dividers match the control border", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+  await injectInstagramItems(page);
+
+  await page.getByTestId("source-row-instagram").first().click();
+  await expect(page.getByTestId("feed-toolbar-lens")).toBeVisible();
+  await expect(page.getByTestId("social-content-toolbar-filter")).toBeVisible();
+
+  const styles = await page.evaluate(() => {
+    const controls = [
+      document.querySelector('[data-testid="feed-toolbar-lens"]'),
+      document.querySelector('[data-testid="social-content-toolbar-filter"]'),
+    ].filter((control): control is HTMLElement => control instanceof HTMLElement);
+
+    return controls.map((control) => {
+      const controlStyle = window.getComputedStyle(control);
+      const segments = Array.from(control.querySelectorAll<HTMLElement>(".theme-toolbar-segment"));
+      return {
+        borderColor: controlStyle.borderTopColor,
+        activeShadows: segments
+          .filter((segment) => segment.classList.contains("theme-toolbar-segment-active"))
+          .map((segment) => window.getComputedStyle(segment).boxShadow),
+        dividerColors: segments
+          .slice(1)
+          .map((segment) => window.getComputedStyle(segment, "::before").backgroundColor),
+        dividerWidths: segments
+          .slice(1)
+          .map((segment) => window.getComputedStyle(segment, "::before").width),
+      };
+    });
+  });
+
+  expect(styles).toHaveLength(2);
+  for (const style of styles) {
+    expect(style.activeShadows).toEqual(["none"]);
+    expect(new Set(style.dividerColors)).toEqual(new Set([style.borderColor]));
+    expect(new Set(style.dividerWidths)).toEqual(new Set(["1px"]));
+  }
+});
+
 test("mobile source toolbar collapses social and signal filters into one menu", async ({ app, page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await app.goto();
