@@ -8,6 +8,8 @@ disable-model-invocation: true
 
 Create a product worktree branch from the latest remote `dev`, implement enough of the feature or fix to run, launch the lightest useful local preview early, iterate against that preview, then validate with the shared feature-tier runner before committing the work, pushing the branch, and opening a draft PR to `dev`.
 
+Feature threads inherit the stability program rules in [docs/STABILITY-PROGRAM.md](../../../docs/STABILITY-PROGRAM.md) ("Program rules"): the watchdog freeze (no threshold, recovery-reason, or process-attribution changes), one product PR per soak cycle for behavioral changes, and the provider-visible lane (anything changing WebView loads, provider navigation, request frequency, cookies, headers, or extractor scripts stops for explicit owner approval first).
+
 ## Workflow
 
 1. Confirm the work is product work targeting `dev`.
@@ -37,33 +39,35 @@ Create a product worktree branch from the latest remote `dev`, implement enough 
    - Do not add permanent tests for exact pixels, gaps, colors, shadows, padding, or one-off toolbar geometry unless the behavior is a shared layout contract, has already regressed, or cannot be checked reliably in-thread.
    - Do not run `npm run validate:feature` after every small visual adjustment.
    - If more queued tasks arrive while you are working, finish the current focused loop, then continue to the next queued task before publishing.
-10. Run `npm run validate:feature` from the worktree before publishing the draft PR, or earlier only when the user asks for a full validation checkpoint.
+10. If this change affects sync, capture, memory, or recovery behavior, name the runtime-health counter or soak assertion that will prove it (see the scorecard in docs/STABILITY-PROGRAM.md) and state the expected direction in the PR body. If no counter exists, add one in the same PR or justify in the PR body why a test suffices. Verification is counters, not vibes.
+11. Run `npm run validate:feature` from the worktree before publishing the draft PR, or earlier only when the user asks for a full validation checkpoint.
    - Let the validator derive changed files from git by default.
    - Use `npm run validate:feature -- --changed-files <file>...` only when you need to pin an explicit file list for debugging or tests.
    - This is a pre publish gate, not an after-every-command inner loop.
-11. Escalate to broader checks only when the change crosses package boundaries or affects shared behavior.
+12. Escalate to broader checks only when the change crosses package boundaries or affects shared behavior.
    - Shared schema, release tooling, shared UI primitives, and cross-app flows should earn broader validation before publish.
    - Reserve the heaviest validation and release-shape smoke tests for `dev` integration and release prep, not every branch.
    - Do not simplify test suites blindly. Profile specific slow commands first, then trim redundant coverage with evidence.
    - Keep permanent tests only when they protect durable workflows, cross-boundary behavior, provider flows, recovery paths, stateful failures, performance budgets, maintained visual coverage, or shared layout contracts with known regression risk.
-12. Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run commands from the workspace directory itself, and when a hoisted binary is needed, prefix `PATH` with `<worktree>/node_modules/.bin`.
-13. Browser tooling is opt-in only. Do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging.
-14. Installed Desktop soaks on the user's primary machine should be terminal driven. Prefer logs, `runtime-health.jsonl`, process samples, and the native sync trigger over System Events clicks or foreground UI automation.
+13. Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run commands from the workspace directory itself, and when a hoisted binary is needed, prefix `PATH` with `<worktree>/node_modules/.bin`.
+14. Browser tooling is opt-in only. Do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging.
+15. Installed Desktop soaks on the user's primary machine should be terminal driven. Prefer logs, `runtime-health.jsonl`, process samples, and the native sync trigger over System Events clicks or foreground UI automation.
    - Use a GitHub dev-channel prerelease or launch local soak builds with `FREED_ENABLE_DEV_SYNC_TRIGGERS=1` when a provider sync must be triggered from the terminal.
    - Use `node scripts/dev-sync-trigger.mjs facebook`, `instagram`, or `linkedin` to call the normal in-app social refresh path. It must keep auth, pause state, cooldowns, and rate limits intact.
    - Launch installed app soaks with `open -g /Applications/Freed.app`. Freed Desktop should respect background cold startup, while explicit user actions like tray Show and dock reopen still foreground the app.
    - Keep the raw file trigger gated to dev-channel installs, debug builds, or explicit `FREED_ENABLE_DEV_SYNC_TRIGGERS=1` launches until it has a user-facing permission model.
-15. Long-running work must not stop until morning solely because a click would continue validation or make proper testing more efficient. If foreground app interaction is genuinely necessary, ask with a 10 minute response window, then proceed if the user is unavailable. If the action will recur, add and ship a terminal trigger instead of depending on clicks. Sitting idle until morning is not acceptable when a trigger can be built or the user has given a timeout path.
-16. Carry that rule into generated task prompts, soak notes, and handoff instructions. If a background plan says "click Sync Now" or equivalent, rewrite it to use an existing terminal trigger, add the missing trigger, or name the 10 minute timeout path before continuing.
-17. When browser tooling was needed, clean browser automation only after preserving any preview the user still needs. Do not run broad cleanup while the local preview should remain open.
+16. Long-running work must not stop until morning solely because a click would continue validation or make proper testing more efficient. If foreground app interaction is genuinely necessary, ask with a 10 minute response window, then proceed if the user is unavailable. If the action will recur, add and ship a terminal trigger instead of depending on clicks. Sitting idle until morning is not acceptable when a trigger can be built or the user has given a timeout path.
+17. Carry that rule into generated task prompts, soak notes, and handoff instructions. If a background plan says "click Sync Now" or equivalent, rewrite it to use an existing terminal trigger, add the missing trigger, or name the 10 minute timeout path before continuing.
+18. When browser tooling was needed, clean browser automation only after preserving any preview the user still needs. Do not run broad cleanup while the local preview should remain open.
    - If cleanup is needed before PR merge or thread archive, scope it to this worktree with `./scripts/dev-session-clean.sh --worktree <worktree>`.
    - Before reporting final status, list this thread's preview with `./scripts/worktree-processes.sh list --worktree <worktree>` so the URL and owner are clear.
    - When the PR is merged, the worktree is removed, or the thread is archived, stop only this thread's preview with `./scripts/worktree-processes.sh stop --worktree <worktree> --target <pwa|desktop>`.
    - Never stop previews from other worktrees unless the user explicitly asks for global cleanup.
-18. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
+19. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
    - If the branch intentionally adds new files, stage them yourself first or re-run with `--include-untracked`.
-19. Confirm the branch is pushed to `origin` and the PR targeting `dev` stays in draft state. Include the local preview URL or native preview label in the closeout.
+20. Confirm the branch is pushed to `origin` and the PR targeting `dev` stays in draft state. Include the local preview URL or native preview label in the closeout.
    - When a changed surface includes buttons, dialogs, or native fallback HTML, follow the repo's established primary and secondary control styling. Do not add hover lift, vertical motion, bounce, or ad hoc glossy or gradient CTA treatments.
+21. When the PR merges, append an outcome ledger entry via the W1-01 helper so the nightly planner learns from the result (see "Outcome recording" in docs/STABILITY-PROGRAM.md and docs/stability-tasks/W1-01-automation-state-out-of-tmp.md). Until the W1-01 helper (`scripts/record-outcome.mjs`) has landed, append the ledger line manually with the target or task id, PR number, build, and status.
 
 ## Scope
 
