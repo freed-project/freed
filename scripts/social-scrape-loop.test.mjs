@@ -225,6 +225,55 @@ test("buildOptimizationPlan flags recovered providers without a later scrape pla
   assert.match(staleHealthAction.nextStep, /Do not enqueue extra provider traffic/);
 });
 
+test("buildOptimizationPlan flags provider-health empty feed attempts", () => {
+  const summary = summarizeSocialScrapeHealth([
+    {
+      event: "scrape_memory_preflight",
+      provider: "Instagram",
+      pressureLevel: "normal",
+      afterWebkitResidentBytes: GIB,
+      tsMs: 100,
+    },
+    {
+      event: "social_scrape_plan",
+      provider: "Instagram",
+      tsMs: 120,
+    },
+  ]);
+  applyProviderHealthStore(
+    summary,
+    {
+      "provider-health": {
+        providers: {
+          instagram: {
+            pause: null,
+            latestAttempts: [
+              {
+                outcome: "error",
+                stage: "extract_empty",
+                reason: "Instagram feed returned 0 posts.",
+                finishedAt: 160,
+                itemsSeen: 0,
+                itemsAdded: 0,
+              },
+            ],
+          },
+        },
+      },
+    },
+    200,
+  );
+
+  const plan = buildOptimizationPlan(summary, { memoryBudgetGib: 4 });
+  const action = plan.actions.find((candidate) => candidate.id === "instagram-empty-feed-health");
+
+  assert.ok(action);
+  assert.equal(action.scope, "local-only");
+  assert.match(action.evidence, /Provider-health latest attempt is error stage extract_empty/);
+  assert.match(action.evidence, /Instagram feed returned 0 posts/);
+  assert.match(action.nextStep, /Do not add extra provider loads/);
+});
+
 test("buildReport writes provider summaries from health and diagnostics logs", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-social-loop-report-"));
   const healthLog = path.join(dir, "runtime-health.jsonl");

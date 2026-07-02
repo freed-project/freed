@@ -706,6 +706,15 @@ function latestProviderHealthAttemptIsMemoryRelated(stats) {
   );
 }
 
+function latestProviderHealthAttemptIsEmptyRelated(stats) {
+  const haystack = `${stats.healthLatestAttemptStage} ${stats.healthLatestAttemptReason}`.toLowerCase();
+  return (
+    stats.healthLatestAttemptOutcome === "empty" ||
+    (stats.healthLatestAttemptOutcome === "error" &&
+      (haystack.includes("extract_empty") || haystack.includes("returned 0 posts")))
+  );
+}
+
 export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
   const actions = [];
   const blockedProviderRisk = [];
@@ -767,6 +776,23 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
         title: `Keep ${label} auth failures recoverable and explicit.`,
         evidence: `${label} recorded ${numberFormatter.format(stats.authFailures)} auth-stage failures.`,
         nextStep: "Check auth cookie diagnostics and settings copy without changing login window cadence.",
+      });
+    }
+
+    if (stats.emptyExtractions > 0 || latestProviderHealthAttemptIsEmptyRelated(stats)) {
+      const diagnosticsEvidence = stats.emptyExtractions > 0
+        ? `${label} recorded ${numberFormatter.format(stats.emptyExtractions)} empty extraction failures.`
+        : "";
+      const healthEvidence = latestProviderHealthAttemptIsEmptyRelated(stats)
+        ? `${diagnosticsEvidence ? " " : ""}Provider-health latest attempt is ${stats.healthLatestAttemptOutcome || "unknown"}${stats.healthLatestAttemptStage ? ` stage ${stats.healthLatestAttemptStage}` : ""}: ${compactReason(stats.healthLatestAttemptReason)}.`
+        : "";
+      addAction(actions, {
+        id: `${provider}-empty-feed-health`,
+        priority: "high",
+        scope: "local-only",
+        title: `Explain why ${label} is returning zero posts after a scrape plan.`,
+        evidence: `${diagnosticsEvidence}${healthEvidence}`,
+        nextStep: "Inspect local extractor diagnostics, DOM fixture coverage, and failure-stage mapping. Do not add extra provider loads or scripted traversal without explicit approval.",
       });
     }
 
