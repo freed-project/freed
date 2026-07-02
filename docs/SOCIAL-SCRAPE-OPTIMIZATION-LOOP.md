@@ -26,7 +26,7 @@ Useful options:
 ```bash
 npm run social:scrape-loop -- --tail 10000
 npm run social:scrape-loop -- --json
-npm run social:scrape-loop -- --watch --interval-minutes 30
+npm run social:scrape-loop -- --watch --interval-minutes 15
 ```
 
 ## Locking
@@ -53,6 +53,7 @@ Locks older than 120 minutes are treated as stale by default so a crashed run do
 
 - WebKit resident memory peaks and renderer recovery attempts.
 - Social scrape preflights, scrape plans, blocked preflights, and cooldowns.
+- Post-block memory recovery for each provider, including the lowest later WebKit RSS sample.
 - Provider-specific silent extraction, empty extraction, auth, and placeholder failures when those stages are present in logs.
 - Missing provider evidence, such as no X preflights in the analyzed window.
 - Preflight-without-plan evidence, such as a provider repeatedly reaching preflight but never recording a scrape plan.

@@ -77,6 +77,12 @@ test("summarizeSocialScrapeHealth groups provider memory and scrape failures", (
       domNodeCount: 900,
       tsMs: 130,
     },
+    {
+      event: "native_runtime_memory_sample",
+      webkitResidentBytes: 0,
+      appResidentBytes: GIB,
+      tsMs: 140,
+    },
   ];
 
   const summary = summarizeSocialScrapeHealth(rows);
@@ -88,6 +94,9 @@ test("summarizeSocialScrapeHealth groups provider memory and scrape failures", (
   assert.equal(summary.maxWebkitResidentBytes, 9 * GIB);
   assert.equal(summary.maxEventLoopLagMs, 45);
   assert.equal(summary.maxDomNodeCount, 900);
+  assert.equal(summary.providers.instagram.lastBlockedPreflightTsMs, 100);
+  assert.equal(summary.providers.instagram.minMemorySampleAfterBlockedWebkitResidentBytes, 0);
+  assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedTsMs, 140);
 });
 
 test("buildOptimizationPlan ranks local memory work before missing coverage", () => {
@@ -99,12 +108,19 @@ test("buildOptimizationPlan ranks local memory work before missing coverage", ()
       afterWebkitResidentBytes: 6 * GIB,
       tsMs: 100,
     },
+    {
+      event: "native_runtime_memory_sample",
+      webkitResidentBytes: 2 * GIB,
+      tsMs: 150,
+    },
   ]);
 
   const plan = buildOptimizationPlan(summary, { memoryBudgetGib: 4 });
   assert.equal(plan.actions[0].id, "local-memory-preflight");
   assert.equal(plan.actions[0].scope, "local-only");
-  assert.ok(plan.actions.some((action) => action.id === "linkedin-preflight-without-plan"));
+  const linkedinAction = plan.actions.find((action) => action.id === "linkedin-preflight-without-plan");
+  assert.ok(linkedinAction);
+  assert.match(linkedinAction.evidence, /Lowest WebKit RSS after the last blocked preflight was 2 GiB/);
   assert.ok(plan.blockedProviderRisk.some((risk) => risk.id === "scripted-scroll-click-recovery"));
 });
 
@@ -176,6 +192,7 @@ test("cli can write a JSON report", async () => {
       "--output",
       output,
       "--json",
+      "--no-lock",
     ]);
   } finally {
     console.log = originalLog;

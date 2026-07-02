@@ -360,6 +360,14 @@ function emptyProviderStats() {
     maxWebkitResidentBytes: 0,
     maxAppResidentBytes: 0,
     lastEventTsMs: 0,
+    lastPreflightTsMs: 0,
+    lastPlanTsMs: 0,
+    lastBlockedPreflightTsMs: 0,
+    lastBlockedPreflightPressureLevel: "",
+    lastBlockedPreflightWebkitResidentBytes: 0,
+    lastMemorySampleAfterBlockedTsMs: 0,
+    lastMemorySampleAfterBlockedWebkitResidentBytes: 0,
+    minMemorySampleAfterBlockedWebkitResidentBytes: null,
   };
 }
 
@@ -370,6 +378,7 @@ function updateProviderStats(stats, row) {
 
   if (row.event === "scrape_memory_preflight") {
     stats.preflights += 1;
+    stats.lastPreflightTsMs = Math.max(stats.lastPreflightTsMs, Number(row.tsMs ?? 0));
     const pressureLevel = String(row.pressureLevel ?? "").toLowerCase();
     if (pressureLevel === "high") {
       stats.highPreflights += 1;
@@ -379,11 +388,21 @@ function updateProviderStats(stats, row) {
     }
     if (row.mayProceed === false || pressureLevel === "high" || pressureLevel === "critical") {
       stats.blockedPreflights += 1;
+      const tsMs = Number(row.tsMs ?? 0);
+      if (tsMs >= stats.lastBlockedPreflightTsMs) {
+        stats.lastBlockedPreflightTsMs = tsMs;
+        stats.lastBlockedPreflightPressureLevel = pressureLevel;
+        stats.lastBlockedPreflightWebkitResidentBytes = rowWebkitResidentBytes(row);
+        stats.lastMemorySampleAfterBlockedTsMs = 0;
+        stats.lastMemorySampleAfterBlockedWebkitResidentBytes = 0;
+        stats.minMemorySampleAfterBlockedWebkitResidentBytes = null;
+      }
     }
   }
 
   if (row.event === "social_scrape_plan") {
     stats.plans += 1;
+    stats.lastPlanTsMs = Math.max(stats.lastPlanTsMs, Number(row.tsMs ?? 0));
   }
 
   if (row.event === "background_scraper_memory_cooldown") {
@@ -413,7 +432,13 @@ export function summarizeSocialScrapeHealth(healthRows, diagnosticsRows = []) {
   let maxDomNodeCount = 0;
   let lastTsMs = 0;
 
-  for (const row of [...healthRows, ...diagnosticsRows]) {
+  const rows = [...healthRows, ...diagnosticsRows].sort((left, right) => {
+    const leftTsMs = Number(left.tsMs ?? 0);
+    const rightTsMs = Number(right.tsMs ?? 0);
+    return leftTsMs - rightTsMs;
+  });
+
+  for (const row of rows) {
     const event = String(row.event ?? "unknown");
     events.set(event, (events.get(event) ?? 0) + 1);
     maxWebkitResidentBytes = Math.max(maxWebkitResidentBytes, rowWebkitResidentBytes(row));
@@ -432,6 +457,25 @@ export function summarizeSocialScrapeHealth(healthRows, diagnosticsRows = []) {
     const provider = providerFromRow(row);
     if (provider) {
       updateProviderStats(providers[provider], row);
+    }
+
+    if (event === "native_runtime_memory_sample") {
+      const tsMs = Number(row.tsMs ?? 0);
+      const webkitResidentBytes = rowWebkitResidentBytes(row);
+      for (const stats of Object.values(providers)) {
+        if (stats.lastBlockedPreflightTsMs <= 0 || tsMs <= stats.lastBlockedPreflightTsMs) {
+          continue;
+        }
+
+        stats.lastMemorySampleAfterBlockedTsMs = tsMs;
+        stats.lastMemorySampleAfterBlockedWebkitResidentBytes = webkitResidentBytes;
+        if (
+          stats.minMemorySampleAfterBlockedWebkitResidentBytes === null ||
+          webkitResidentBytes < stats.minMemorySampleAfterBlockedWebkitResidentBytes
+        ) {
+          stats.minMemorySampleAfterBlockedWebkitResidentBytes = webkitResidentBytes;
+        }
+      }
     }
   }
 
@@ -487,13 +531,22 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
   }
 
   if (totalCooldowns > 0 || totalBlockedPreflights > 0) {
+    const recoveredProviders = Object.values(summary.providers)
+      .filter((provider) => (
+        provider.lastBlockedPreflightTsMs > 0 &&
+        provider.minMemorySampleAfterBlockedWebkitResidentBytes !== null &&
+        provider.minMemorySampleAfterBlockedWebkitResidentBytes < memoryBudgetBytes
+      )).length;
+    const blockedEvidence = recoveredProviders > 0
+      ? `${numberFormatter.format(totalCooldowns)} cooldowns and ${numberFormatter.format(totalBlockedPreflights)} blocked preflights were observed; ${numberFormatter.format(recoveredProviders)} provider${recoveredProviders === 1 ? "" : "s"} later had WebKit RSS recover under the loop budget.`
+      : `${numberFormatter.format(totalCooldowns)} cooldowns and ${numberFormatter.format(totalBlockedPreflights)} blocked preflights were observed.`;
     addAction(actions, {
       id: "cooldown-recovery",
       priority: "high",
       scope: "local-only",
       title: "Verify memory cooldowns clear as soon as memory returns to normal.",
-      evidence: `${numberFormatter.format(totalCooldowns)} cooldowns and ${numberFormatter.format(totalBlockedPreflights)} blocked preflights were observed.`,
-      nextStep: "Compare blocked preflight timestamps with later native_runtime_memory_sample rows and add a regression test for any stale pause reason.",
+      evidence: blockedEvidence,
+      nextStep: "Use the report's post-block memory samples to prove whether a provider pause is stale before changing provider cadence.",
     });
   }
 
@@ -531,13 +584,16 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
         nextStep: "Add passive health reporting or fixture coverage first. Do not synthesize provider requests just to fill the metric.",
       });
     } else if (stats.plans === 0) {
+      const recoveryEvidence = stats.lastBlockedPreflightTsMs > 0 && stats.minMemorySampleAfterBlockedWebkitResidentBytes !== null
+        ? ` Lowest WebKit RSS after the last blocked preflight was ${formatBytes(stats.minMemorySampleAfterBlockedWebkitResidentBytes)}.`
+        : "";
       addAction(actions, {
         id: `${provider}-preflight-without-plan`,
         priority: "high",
         scope: "local-only",
         title: `Explain why ${label} preflights do not become scrape plans.`,
-        evidence: `${label} had ${numberFormatter.format(stats.preflights)} preflights and no recorded scrape plans.`,
-        nextStep: "Correlate preflight rows with cooldown, auth, and runtime deferral rows before changing provider cadence.",
+        evidence: `${label} had ${numberFormatter.format(stats.preflights)} preflights and no recorded scrape plans.${recoveryEvidence}`,
+        nextStep: "Inspect local deferral and pause state after the latest preflight before changing provider cadence.",
       });
     }
   }
@@ -597,8 +653,11 @@ export function formatTextReport(report) {
   lines.push("");
   lines.push("Provider coverage:");
   for (const [provider, stats] of Object.entries(report.summary.providers)) {
+    const recovery = stats.lastBlockedPreflightTsMs > 0
+      ? `, post-block min WebKit ${formatBytes(stats.minMemorySampleAfterBlockedWebkitResidentBytes)}`
+      : "";
     lines.push(
-      `- ${PROVIDER_LABELS[provider]}: ${numberFormatter.format(stats.preflights)} preflights, ${numberFormatter.format(stats.plans)} plans, ${numberFormatter.format(stats.memoryCooldowns)} cooldowns, peak WebKit ${formatBytes(stats.maxWebkitResidentBytes)}`,
+      `- ${PROVIDER_LABELS[provider]}: ${numberFormatter.format(stats.preflights)} preflights, ${numberFormatter.format(stats.plans)} plans, ${numberFormatter.format(stats.memoryCooldowns)} cooldowns, peak WebKit ${formatBytes(stats.maxWebkitResidentBytes)}${recovery}`,
     );
   }
   lines.push("");
