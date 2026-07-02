@@ -24,6 +24,8 @@ Native macOS/Windows/Linux desktop application built with Tauri.
 npm run tauri:build
 ```
 
+Desktop previews launched through `worktree-preview.sh` are marked as feature previews. They accept local legal gates and seed sample data before the app opens.
+
 ### Installed sync soaks without focus theft
 
 Use the file trigger when an installed development build needs a provider sync soak from the terminal. This avoids System Events clicks and keeps the user's current app focus alone.

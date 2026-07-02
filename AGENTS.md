@@ -72,6 +72,7 @@ Prefer the lightest useful local preview before opening a draft PR:
 - website work uses `PORT=$(node scripts/lib/find-free-port.mjs 3000) && ./scripts/worktree-preview.sh website --port "$PORT"`
 - use `./scripts/worktree-preview.sh desktop --native` only when real Tauri behavior matters, and report the preview label when you do
 - for mocked Desktop preview, use `PORT=$(node scripts/lib/find-free-port.mjs 1422) && ./scripts/worktree-preview.sh desktop --port "$PORT"`
+- product previews launched through `./scripts/worktree-preview.sh` mark the app as a feature preview, auto-accept local legal gates, and populate sample data so the first screen is ready to inspect
 - never run `./scripts/dev-session-clean.sh` just to relaunch a preview. Launch on a fresh explicit port instead.
 - never run `npm run <script> --workspace=...` from the repo root in this monorepo, run from the workspace directory instead
 - root `npm run dev` now fails fast on purpose, use `./scripts/worktree-preview.sh <target>` or run `npm run dev` from the workspace directory you actually want

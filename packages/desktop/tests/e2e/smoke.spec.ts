@@ -38,6 +38,10 @@ const NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX = 16;
 const DEFAULT_REOPENED_SIDEBAR_MIN_WIDTH_PX = 250;
 const DEFAULT_REOPENED_SIDEBAR_MAX_WIDTH_PX = 262;
 const SOFT_VIEWPORT_RADIUS = "20px";
+const mapRangeFormatter = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+});
 
 async function dismissCloudSyncNudgeIfPresent(page: Page) {
   const dismissButton = page.getByRole("button", { name: "Dismiss", exact: true });
@@ -236,7 +240,7 @@ async function waitForDesktopSidebarMode(page: Page, mode: "expanded" | "compact
   }, mode);
 }
 
-async function persistDisplayPreference(page: Page, key: "mapMode" | "mapTimeMode", value: string) {
+async function persistDisplayPreference(page: Page, key: "mapMode", value: string) {
   await page.waitForFunction(
     ({ key, value }) => {
       const w = window as Record<string, unknown>;
@@ -263,6 +267,48 @@ async function persistDisplayPreference(page: Page, key: "mapMode" | "mapTimeMod
     },
     { key, value },
   );
+}
+
+async function setMapTimeRange(page: Page, startAt: number, endAt: number) {
+  const startInput = page.getByTestId("map-time-range-start");
+  const endInput = page.getByTestId("map-time-range-end");
+  await expect(startInput).toBeVisible({ timeout: 10_000 });
+  await expect(endInput).toBeVisible({ timeout: 10_000 });
+
+  const currentStart = Number(await startInput.inputValue());
+  const currentEnd = Number(await endInput.inputValue());
+
+  if (startAt > currentEnd) {
+    await setRangeInputValue(endInput, endAt);
+    await setRangeInputValue(startInput, startAt);
+    return;
+  }
+
+  if (endAt < currentStart) {
+    await setRangeInputValue(startInput, startAt);
+    await setRangeInputValue(endInput, endAt);
+    return;
+  }
+
+  await setRangeInputValue(startInput, startAt);
+  await setRangeInputValue(endInput, endAt);
+}
+
+async function setRangeInputValue(input: Locator, value: number) {
+  await input.evaluate((element, nextValue) => {
+    const rangeInput = element as HTMLInputElement;
+    const valueSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    valueSetter?.call(rangeInput, String(nextValue));
+    rangeInput.dispatchEvent(new Event("input", { bubbles: true }));
+    rangeInput.dispatchEvent(new Event("change", { bubbles: true }));
+  }, value);
+}
+
+function formatMapRangeDate(value: number): string {
+  return mapRangeFormatter.format(value);
 }
 
 async function readDesktopSidebarPadding(page: Page) {
@@ -3270,13 +3316,13 @@ test("recoverable story locations appear in All content mode and the mode persis
   });
 });
 
-test("map time filters switch between current and future location windows", async ({ app, page }) => {
+test("map time range defaults to all available location windows", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
 
-  await page.evaluate(async () => {
+  const seededNow = await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as {
       docAddFeedItems: (items: unknown[]) => Promise<void>;
@@ -3342,43 +3388,58 @@ test("map time filters switch between current and future location windows", asyn
         }
       }, 50);
     });
+
+    return now;
   });
 
   await page.getByRole("button", { name: /^Map/ }).click();
-  await expect(page.getByRole("button", { name: "Current", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-    { timeout: 10_000 },
-  );
+  await expect(page.getByTestId("map-time-range-slider")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("map-time-preset-all")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("map-time-preset-today")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("map-time-preset-last-week")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("map-time-range-slider").locator("button")).toHaveText([
+    "last week",
+    "today",
+    "all time",
+  ]);
+  await expect(page.getByRole("button", { name: "Current", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Future", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Past", exact: true })).toHaveCount(0);
 
   await openVisibleMapMarker(page, "Ada Lovelace");
-  await expect(page.getByText("Paris", { exact: true })).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText("Lisbon", { exact: true })).toHaveCount(0);
-
-  const futureButton = page.getByRole("button", { name: "Future", exact: true });
-  await futureButton.click();
-  await expect(futureButton).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
-  await persistDisplayPreference(page, "mapTimeMode", "future");
   await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
+
+  await page.getByTestId("map-time-preset-today").click();
+  await expect(page.getByTestId("map-time-preset-today")).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("map-time-preset-all").click();
+  await expect(page.getByTestId("map-time-preset-all")).toHaveAttribute("aria-pressed", "true");
 
   await page.reload();
   await app.waitForReady();
   await dismissCloudSyncNudgeIfPresent(page);
   await page.getByRole("button", { name: /^Map/ }).click();
-  await expect(page.getByRole("button", { name: "Future", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-    { timeout: 10_000 },
-  );
+  await expect(page.getByTestId("map-time-range-slider")).toBeVisible({ timeout: 10_000 });
+
+  const startAt = seededNow - 24 * 60 * 60_000;
+  const endAt = seededNow + 24 * 60 * 60_000;
+  await setMapTimeRange(page, startAt, endAt);
+  const clampedStartAt = Number(await page.getByTestId("map-time-range-start").inputValue());
+  const clampedEndAt = Number(await page.getByTestId("map-time-range-end").inputValue());
+  await expect(page.getByTestId("map-time-range-start-label")).toHaveText(formatMapRangeDate(clampedStartAt));
+  await expect(page.getByTestId("map-time-range-end-label")).toHaveText(formatMapRangeDate(clampedEndAt));
+  await expect(page.getByTestId("map-time-preset-all")).toHaveAttribute("aria-pressed", "false");
+  await openVisibleMapMarker(page, "Ada Lovelace");
+  await expect(page.getByText("Paris", { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Lisbon", { exact: true })).toHaveCount(0);
 });
 
-test("map timeline playback surfaces future and historical markers", async ({ app, page }) => {
+test("map range slider narrows future and historical markers", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
   await dismissCloudSyncNudgeIfPresent(page);
 
-  await page.evaluate(async () => {
+  const seededNow = await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as {
       docAddFeedItems: (items: unknown[]) => Promise<void>;
@@ -3539,23 +3600,31 @@ test("map timeline playback surfaces future and historical markers", async ({ ap
         }
       }, 50);
     });
+
+    return now;
   });
 
   await page.getByRole("button", { name: /^Map/ }).click();
+  await expect(page.getByTestId("map-time-range-slider")).toBeVisible({ timeout: 10_000 });
 
-  const futureButton = page.getByRole("button", { name: "Future", exact: true });
-  await futureButton.click();
-  await expect(page.getByTestId("map-timeline-scrubber")).toBeVisible({ timeout: 10_000 });
+  await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
+  await expect(page.getByText("Tokyo", { exact: true })).toBeVisible({ timeout: 10_000 });
 
+  await setMapTimeRange(
+    page,
+    seededNow + 2 * 24 * 60 * 60_000,
+    seededNow + 4 * 24 * 60 * 60_000,
+  );
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
   await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
 
-  const pastButton = page.getByRole("button", { name: "Past", exact: true });
-  await pastButton.click();
-  await expect(page.getByTestId("map-timeline-scrubber")).toBeVisible({ timeout: 10_000 });
-
+  await setMapTimeRange(
+    page,
+    seededNow - 11 * 24 * 60 * 60_000,
+    seededNow - 9 * 24 * 60 * 60_000,
+  );
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
-  await expect(page.getByText("Paris", { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Rome", { exact: true })).toBeVisible({ timeout: 10_000 });
 });
 
 test("Friends detail rail visibility preference hides and restores the desktop sidebar without losing width", async ({ app, page }) => {

@@ -97,6 +97,25 @@ describe("sample data batches", () => {
     )).toBe(true);
   });
 
+  it("includes timestamped map entries for past, current, and future location tests", () => {
+    const now = Date.now();
+    const batch = generateSampleLibraryData({ batchId: "batch-map-time", seed: 10 });
+    const locationItems = batch.items.filter((item) =>
+      item.globalId.includes("sample-location-window:")
+    );
+
+    expect(locationItems).toHaveLength(6);
+    expect(locationItems.every((item) => item.location?.coordinates)).toBe(true);
+    expect(locationItems.every((item) => item.timeRange)).toBe(true);
+    expect(locationItems.some((item) => item.timeRange && item.timeRange.endsAt && item.timeRange.endsAt < now)).toBe(true);
+    expect(locationItems.some((item) =>
+      item.timeRange &&
+      item.timeRange.startsAt <= now &&
+      (item.timeRange.endsAt ?? item.timeRange.startsAt) >= now
+    )).toBe(true);
+    expect(locationItems.some((item) => item.timeRange && item.timeRange.startsAt > now)).toBe(true);
+  });
+
   it("can generate the benchmark stress identity graph population", () => {
     const batch = generateSampleLibraryData({
       batchId: "batch-stress",

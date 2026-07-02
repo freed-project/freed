@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  filterResolvedLocationsByTime,
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
+  getLocationTimelineBounds,
   getLocationTimelineMoments,
   type FeedItem,
   type Person,
@@ -204,6 +206,64 @@ describe("map playback selectors", () => {
     });
     expect(tokyoMarkers).toHaveLength(1);
     expect(tokyoMarkers[0]?.label).toBe("Tokyo");
+  });
+
+  it("filters locations by an arbitrary draggable time range", () => {
+    const rome = createItem(
+      "ig:ada:rome",
+      NOW - 10 * 24 * 60 * 60_000,
+      "Rome",
+      { lat: 41.9028, lng: 12.4964 },
+    );
+    const chicago = createItem(
+      "ig:ada:chicago",
+      NOW - 60_000,
+      "Chicago",
+      { lat: 41.8781, lng: -87.6298 },
+      {
+        startsAt: NOW - 2 * 24 * 60 * 60_000,
+        endsAt: NOW + 2 * 24 * 60 * 60_000,
+        kind: "overlap",
+      },
+    );
+    const tokyo = createItem(
+      "ig:ada:tokyo-plan",
+      NOW + 6 * 24 * 60 * 60_000,
+      "Tokyo",
+      { lat: 35.6764, lng: 139.65 },
+      {
+        startsAt: NOW + 6 * 24 * 60 * 60_000,
+        endsAt: NOW + 7 * 24 * 60 * 60_000,
+        kind: "travel",
+      },
+    );
+    const resolvedItems = [
+      resolved(rome, { lat: 41.9028, lng: 12.4964 }),
+      resolved(chicago, { lat: 41.8781, lng: -87.6298 }),
+      resolved(tokyo, { lat: 35.6764, lng: 139.65 }),
+    ];
+
+    expect(getLocationTimelineBounds(resolvedItems)).toEqual({
+      startAt: NOW - 10 * 24 * 60 * 60_000,
+      endAt: NOW + 7 * 24 * 60 * 60_000,
+    });
+
+    const filteredItems = filterResolvedLocationsByTime(resolvedItems, {
+      timeRange: {
+        startAt: NOW - 3 * 24 * 60 * 60_000,
+        endAt: NOW + 3 * 24 * 60 * 60_000,
+      },
+    });
+    expect(filteredItems.map((item) => item.label)).toEqual(["Chicago"]);
+
+    const markers = getLatestFriendLocationMarkers(resolvedItems, {
+      timeRange: {
+        startAt: NOW - 11 * 24 * 60 * 60_000,
+        endAt: NOW + 8 * 24 * 60 * 60_000,
+      },
+    });
+    expect(markers).toHaveLength(1);
+    expect(markers[0]?.label).toBe("Tokyo");
   });
 
   it("keeps marker group counts correct without rescanning every location for every marker", () => {

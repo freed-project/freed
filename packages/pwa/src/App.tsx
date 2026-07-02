@@ -56,6 +56,7 @@ import {
 import { saveUrlInPwa } from "./lib/save-url";
 import { getCachedArticleHtml } from "@freed/ui/lib/article-cache";
 import { hydrateReaderItemInPwa, pinReaderItemInPwa } from "./lib/reader-cache";
+import { refreshSampleLibraryData, summarizeSampleData } from "@freed/ui/lib/sample-library-seed";
 import {
   clearInstallNoticeDismissal,
   dismissInstallNotice,
@@ -64,6 +65,7 @@ import {
   type InstallNotice,
 } from "./lib/pwa-install";
 
+const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
 const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
 
 function OAuthRouter() {
@@ -143,6 +145,13 @@ function App() {
   }, [legalAccepted]);
 
   useEffect(() => {
+    if (IS_FEATURE_PREVIEW) {
+      acceptPwaBundle();
+      setLegalAccepted(true);
+      setLegalResolved(true);
+      return;
+    }
+
     setLegalAccepted(hasAcceptedPwaBundle());
     setLegalResolved(true);
   }, []);
@@ -151,6 +160,27 @@ function App() {
     if (!legalAccepted) return;
     initialize();
   }, [initialize, legalAccepted]);
+
+  useEffect(() => {
+    if (!isInitialized || !IS_FEATURE_PREVIEW) return;
+
+    const state = useAppStore.getState();
+    const sampleSummary = summarizeSampleData(state);
+    const hasTimeWindowMapSamples = state.items.some((item) =>
+      item.globalId.includes("sample-location-window:") && item.location?.coordinates && item.timeRange
+    );
+    if (sampleSummary.total > 0 && hasTimeWindowMapSamples) return;
+
+    void (async () => {
+      if (sampleSummary.total > 0 && !hasTimeWindowMapSamples) {
+        await state.clearSampleData();
+      }
+
+      await refreshSampleLibraryData(useAppStore.getState());
+    })().catch((error) => {
+      console.error("[sample-data] failed to seed local preview data:", error);
+    });
+  }, [isInitialized]);
 
   useEffect(() => {
     if (!legalAccepted || !isInitialized) return;

@@ -141,6 +141,10 @@ cd freed
 npm run setup
 ```
 
+### Local Feature Previews
+
+Use `./scripts/worktree-preview.sh pwa` or `./scripts/worktree-preview.sh desktop` from a product worktree. The helper marks PWA and Freed Desktop previews as feature previews, accepts local legal gates, and seeds sample data so the app opens ready for inspection.
+
 ### Marketing Website (freed.wtf)
 
 ```bash

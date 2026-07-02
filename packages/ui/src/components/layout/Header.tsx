@@ -19,7 +19,6 @@ import {
   type DisplayPreferences,
   type FeedSignalMode,
   type MapMode,
-  type MapTimeMode,
   type SavedContentSortMode,
   type SidebarMode,
   type SocialContentFilter,
@@ -479,7 +478,6 @@ export function Header({
     activeView === "friends" ||
     activeView === "map" ||
     (activeView === "feed" && !selectedItem);
-  const showMapTimeControls = activeView === "map";
   const showFeedBulkActions = activeView === "feed";
   const showFeedSignalFilter = activeView === "feed" && !selectedItem;
   const showSavedSortControl = showFeedSignalFilter && activeFilter.savedOnly === true;
@@ -500,8 +498,6 @@ export function Header({
     (isMobile || isBelowLargeToolbar);
   const showInlineWorkspaceIdentityControls =
     showWorkspaceIdentityControls && !collapseToolbarViewControls;
-  const showInlineMapTimeControls =
-    showMapTimeControls && !collapseToolbarViewControls;
   const showInlineSocialContentControls =
     showSocialContentControls && !collapseToolbarViewControls;
   const showFeedCardDensityControl =
@@ -520,7 +516,6 @@ export function Header({
       showCollapsedFeedControlMenu ||
       (collapseToolbarViewControls && (
         showWorkspaceIdentityControls ||
-        showMapTimeControls ||
         showSocialContentControls ||
         showSavedSortControl
       ))
@@ -831,10 +826,6 @@ export function Header({
       onFriendsMobileSurfaceChange("graph");
     });
   }, [handleIdentityModeChange, onFriendsMobileSurfaceChange]);
-
-  const handleMapTimeModeChange = useCallback((mode: MapTimeMode) => {
-    updateDisplayPreference({ mapTimeMode: mode });
-  }, [updateDisplayPreference]);
 
   const handleSavedContentSortModeChange = useCallback((mode: SavedContentSortMode) => {
     updateDisplayPreference({ savedContentSortMode: mode });
@@ -1830,23 +1821,6 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showInlineMapTimeControls} width={TOOLBAR_SLOT_WIDTH_CONTENT}>
-                  {showInlineMapTimeControls ? (
-                    <ToolbarToggleGroup
-                      dataTestId="map-toolbar-timeframe"
-                      options={[
-                        { value: "current", label: "Current" },
-                        { value: "future", label: "Future" },
-                        { value: "past", label: "Past" },
-                      ]}
-                      value={display.mapTimeMode ?? "current"}
-                      onChange={handleMapTimeModeChange}
-                      compact
-                      getButtonProps={getToolbarControlProps}
-                    />
-                  ) : null}
-                </ToolbarAnimatedSlot>
-
                 <ToolbarAnimatedSlot visible={showArchivedToolbar && !isBelowLargeToolbar} width={TOOLBAR_SLOT_WIDTH_CONTENT} className="hidden xl:flex">
                   {showArchivedToolbar && !isBelowLargeToolbar ? (
                     <span className="text-xs text-[var(--theme-text-muted)]">
@@ -2109,7 +2083,7 @@ export function Header({
           ) : null}
 
           {collapseToolbarViewControls && showCollapsedToolbarFilterMenu && showWorkspaceIdentityControls ? (
-            <div className={`${showMapTimeControls || showSavedSortControl || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
+            <div className={`${showSavedSortControl || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
               <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
                 Connections
               </p>
@@ -2118,26 +2092,6 @@ export function Header({
                 options={identityToolbarOptions}
                 value={identityToolbarValue}
                 onChange={(mode) => handleToolbarIdentityModeChange(mode as FriendsToolbarMode)}
-                compact
-                fullWidth
-              />
-            </div>
-          ) : null}
-
-          {collapseToolbarViewControls && showCollapsedToolbarFilterMenu && showMapTimeControls ? (
-            <div className={`${showSavedSortControl || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
-              <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
-                Time
-              </p>
-              <ToolbarToggleGroup
-                dataTestId="mobile-map-toolbar-timeframe"
-                options={[
-                  { value: "current", label: "Current" },
-                  { value: "future", label: "Future" },
-                  { value: "past", label: "Past" },
-                ]}
-                value={display.mapTimeMode ?? "current"}
-                onChange={handleMapTimeModeChange}
                 compact
                 fullWidth
               />
