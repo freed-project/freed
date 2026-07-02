@@ -698,6 +698,14 @@ function providerHealthEvidence(stats) {
   return pieces.length > 0 ? ` Provider-health state: ${pieces.join("; ")}.` : "";
 }
 
+function latestProviderHealthAttemptIsMemoryRelated(stats) {
+  const haystack = `${stats.healthLatestAttemptStage} ${stats.healthLatestAttemptReason}`.toLowerCase();
+  return (
+    stats.healthLatestAttemptOutcome === "error" &&
+    (haystack.includes("memory") || haystack.includes("webkit") || haystack.includes("rss"))
+  );
+}
+
 export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
   const actions = [];
   const blockedProviderRisk = [];
@@ -776,6 +784,26 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
         title: `Find why ${label} did not plan another scrape after memory recovered.`,
         evidence: `${label} last blocked at ${stats.lastBlockedPreflightPressureLevel || "unknown"} memory pressure, later WebKit RSS reached ${formatBytes(stats.minMemorySampleAfterBlockedWebkitResidentBytes)}, but no later scrape plan was recorded.${postBlockRuntimeEvidence(stats)}${providerHealthEvidence(stats)}`,
         nextStep: "Inspect local scheduler pause, cooldown, and trigger state after recovery before changing provider cadence.",
+      });
+    }
+
+    if (
+      stats.lastBlockedPreflightTsMs > 0 &&
+      stats.minMemorySampleAfterBlockedWebkitResidentBytes !== null &&
+      stats.minMemorySampleAfterBlockedWebkitResidentBytes < memoryBudgetBytes &&
+      stats.lastMemorySampleAfterBlockedBackgroundWorkPaused === false &&
+      stats.lastMemorySampleAfterBlockedSafeModeActive === false &&
+      !stats.lastMemorySampleAfterBlockedActiveJob &&
+      !stats.healthPauseActive &&
+      latestProviderHealthAttemptIsMemoryRelated(stats)
+    ) {
+      addAction(actions, {
+        id: `${provider}-stale-memory-health-after-recovery`,
+        priority: "high",
+        scope: "local-only",
+        title: `Clear up stale ${label} memory health after runtime recovery.`,
+        evidence: `${label} recovered under the memory budget and the scheduler was idle, but the latest provider-health attempt is still ${stats.healthLatestAttemptStage || "memory"}: ${compactReason(stats.healthLatestAttemptReason)}.`,
+        nextStep: "Audit local health projection and retry bookkeeping. Do not enqueue extra provider traffic without explicit approval.",
       });
     }
 

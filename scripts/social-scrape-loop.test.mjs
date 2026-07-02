@@ -215,6 +215,14 @@ test("buildOptimizationPlan flags recovered providers without a later scrape pla
   assert.match(action.evidence, /provider health is not actively paused/);
   assert.match(action.evidence, /latest provider-health attempt was error stage invoke/);
   assert.match(action.nextStep, /scheduler pause/);
+
+  const staleHealthAction = plan.actions.find(
+    (candidate) => candidate.id === "facebook-stale-memory-health-after-recovery",
+  );
+  assert.ok(staleHealthAction);
+  assert.equal(staleHealthAction.scope, "local-only");
+  assert.match(staleHealthAction.evidence, /latest provider-health attempt is still invoke/);
+  assert.match(staleHealthAction.nextStep, /Do not enqueue extra provider traffic/);
 });
 
 test("buildReport writes provider summaries from health and diagnostics logs", () => {

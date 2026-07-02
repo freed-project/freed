@@ -58,6 +58,7 @@ Locks older than 120 minutes are treated as stale by default so a crashed run do
 - Providers that recovered under budget after a blocked preflight but did not record a later scrape plan.
 - Post-block runtime state, including whether background work was paused, safe mode was active, or another background job occupied the scheduler.
 - Provider-health pause and latest attempt state from the local health store.
+- Stale provider-health memory errors after runtime memory recovered and the scheduler was idle.
 - Provider-specific silent extraction, empty extraction, auth, and placeholder failures when those stages are present in logs.
 - Missing provider evidence, such as no X preflights in the analyzed window.
 - Preflight-without-plan evidence, such as a provider repeatedly reaching preflight but never recording a scrape plan.
