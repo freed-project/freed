@@ -4857,6 +4857,21 @@ test("pinning a person from the graph context menu survives reload", async ({ ap
   }, { timeout: 10_000 });
   const expectedPinnedPosition = await storedPinnedPosition.jsonValue() as { graphX: number; graphY: number };
 
+  await page.waitForFunction((expected) => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as
+      | {
+          getDocState: () => {
+            persons: Record<string, { graphPinned?: boolean; graphX?: number; graphY?: number }>;
+          } | null;
+        }
+      | undefined;
+    const person = automerge?.getDocState()?.persons["friend-pinned"];
+    return person?.graphPinned === true &&
+      person.graphX === expected.graphX &&
+      person.graphY === expected.graphY;
+  }, expectedPinnedPosition, { timeout: 10_000 });
+
   await page.reload();
   await app.waitForReady();
   await page.waitForFunction((expected) => {
