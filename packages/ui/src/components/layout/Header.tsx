@@ -46,6 +46,7 @@ import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   MACOS_TRAFFIC_LIGHT_INSET,
+  MACOS_TRAFFIC_LIGHT_ROW_CENTER_Y,
   useAppStore,
   usePlatform,
 } from "../../context/PlatformContext.js";
@@ -1153,6 +1154,16 @@ export function Header({
     pointerEvents: "auto",
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
+  const layoutControlCenterlineStyle = headerDragRegion
+    ? ({
+        position: "absolute",
+        top: px(MACOS_TRAFFIC_LIGHT_ROW_CENTER_Y),
+        transform: "translateY(-50%)",
+      } as CSSProperties)
+    : undefined;
+  const layoutControlWrapperClass = headerDragRegion
+    ? "absolute inline-flex"
+    : "absolute top-1/2 inline-flex -translate-y-1/2";
   const toolbarContainerStyle = {
     ...(headerDragRegion ? dragStyle : {}),
     boxSizing: "border-box",
@@ -1473,7 +1484,7 @@ export function Header({
           style={toolbarContainerStyle}
         >
           <div
-            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center ${isMobileDevice ? "pl-2" : ""}`}
+            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex h-full shrink-0 items-center ${isMobileDevice ? "pl-2" : ""}`}
           >
             <div
               ref={layoutControlHostRef}
@@ -1515,51 +1526,47 @@ export function Header({
                   className="absolute inset-y-0"
                   style={layoutControlClusterStyle}
                 >
-                  <span
-                    className="absolute top-1/2 inline-flex -translate-y-1/2"
-                    style={sidebarTogglePositionStyle}
+                  <Tooltip
+                    label={desktopSidebarToggleLabel}
+                    className={layoutControlWrapperClass}
+                    triggerStyle={{ ...sidebarTogglePositionStyle, ...layoutControlCenterlineStyle }}
                   >
+                    <button
+                      onClick={onDesktopSidebarToggle}
+                      {...getToolbarControlProps()}
+                      data-testid="desktop-sidebar-toggle"
+                      className={TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS}
+                      aria-label={desktopSidebarToggleLabel}
+                    >
+                      {visibleDesktopSidebarMode === "closed" ? (
+                        <SidebarExpandIcon className="h-5 w-5" />
+                      ) : (
+                        <SidebarCollapseIcon className="h-5 w-5" />
+                      )}
+                    </button>
+                  </Tooltip>
+
+                  {showDesktopReaderLayoutToggle ? (
                     <Tooltip
-                      label={desktopSidebarToggleLabel}
+                      label={display.reading.dualColumnMode ? "Hide Previews" : "Show Previews"}
+                      className={layoutControlWrapperClass}
+                      triggerStyle={{ ...previewTogglePositionStyle, ...layoutControlCenterlineStyle }}
                     >
                       <button
-                        onClick={onDesktopSidebarToggle}
+                        ref={handlePreviewToggleButtonRef}
+                        onClick={handleToggleDualColumn}
                         {...getToolbarControlProps()}
-                        data-testid="desktop-sidebar-toggle"
                         className={TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS}
-                        aria-label={desktopSidebarToggleLabel}
+                        aria-pressed={display.reading.dualColumnMode}
+                        aria-label={display.reading.dualColumnMode ? "Hide Previews" : "Show Previews"}
                       >
-                        {visibleDesktopSidebarMode === "closed" ? (
-                          <SidebarExpandIcon className="h-5 w-5" />
+                        {display.reading.dualColumnMode ? (
+                          <ReaderRailHideIcon className="h-5 w-5" />
                         ) : (
-                          <SidebarCollapseIcon className="h-5 w-5" />
+                          <ReaderRailShowIcon className="h-5 w-5" />
                         )}
                       </button>
                     </Tooltip>
-                  </span>
-
-                  {showDesktopReaderLayoutToggle ? (
-                    <span
-                      className="absolute top-1/2 inline-flex -translate-y-1/2"
-                      style={previewTogglePositionStyle}
-                    >
-                      <Tooltip label={display.reading.dualColumnMode ? "Hide Previews" : "Show Previews"}>
-                        <button
-                          ref={handlePreviewToggleButtonRef}
-                          onClick={handleToggleDualColumn}
-                          {...getToolbarControlProps()}
-                          className={TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS}
-                          aria-pressed={display.reading.dualColumnMode}
-                          aria-label={display.reading.dualColumnMode ? "Hide Previews" : "Show Previews"}
-                        >
-                          {display.reading.dualColumnMode ? (
-                            <ReaderRailHideIcon className="h-5 w-5" />
-                          ) : (
-                            <ReaderRailShowIcon className="h-5 w-5" />
-                          )}
-                        </button>
-                      </Tooltip>
-                    </span>
                   ) : null}
 
                 </div>
