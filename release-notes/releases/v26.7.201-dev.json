@@ -3,7 +3,7 @@
   "version": "26.7.201-dev",
   "channel": "dev",
   "dayKey": "26.7.2",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-07-02T20:44:35.937Z",
   "model": "heuristic",
@@ -42,10 +42,14 @@
     ]
   },
   "release": {
-    "deck": "Map time range slider",
-    "features": [],
-    "fixes": [],
+    "deck": "Map time range slider and release validation fix",
+    "features": [
+      "Map now uses a lower-left time range slider with draggable start and end handles, all time selected by default, and quick range links for all time, today, and last week."
+    ],
+    "fixes": [
+      "Release validation now removes a stale Azure CLI apt source before installing Playwright browser dependencies on GitHub-hosted Ubuntu runners."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.201-dev\n\nMap time range slider\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.201-dev\n\nMap time range slider and release validation fix\n\n### Features\n\n- Map now uses a lower-left time range slider with draggable start and end handles, all time selected by default, and quick range links for all time, today, and last week.\n\n### Fixes\n\n- Release validation now removes a stale Azure CLI apt source before installing Playwright browser dependencies on GitHub-hosted Ubuntu runners.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
