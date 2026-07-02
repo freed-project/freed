@@ -349,6 +349,48 @@ describe("social capture completion", () => {
     expect(mocks.storeState.fbAuth.lastCapturedAt).toBe(123_456);
   });
 
+  it("records silent Facebook extraction as a sync failure", async () => {
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "fb_scrape_feed") return null;
+      return null;
+    });
+
+    const { captureFbFeed } = await import("./fb-capture");
+    const { recordProviderHealthEvent } = await import("./provider-health");
+
+    const result = await captureFbFeed();
+    const expectedMessage =
+      "Facebook extraction returned no scrape batches. The WebView may be on a stale page, the injected script may not have emitted, or the renderer may have stalled before extraction finished.";
+
+    expect(result.items).toEqual([]);
+    expect(result.diag.errorStage).toBe("extract_silent");
+    expect(result.diag.errorMessage).toBe(expectedMessage);
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(expectedMessage);
+    expect(mocks.storeState.setFbAuth).toHaveBeenCalledWith({
+      isAuthenticated: true,
+      lastCapturedAt: 123_456,
+      lastCaptureError: expectedMessage,
+    });
+    expect(recordProviderHealthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "facebook",
+        outcome: "error",
+        stage: "extract_silent",
+        reason: expectedMessage,
+        itemsSeen: 0,
+        itemsAdded: 0,
+      }),
+    );
+  });
+
   it("fails Facebook sync locally when the isolated WebView has no auth cookies", async () => {
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command === "get_social_provider_cookie_state") {
@@ -821,6 +863,46 @@ describe("social capture completion", () => {
         provider: "instagram",
         outcome: "error",
         stage: "extract_empty",
+        reason: expectedMessage,
+        itemsSeen: 0,
+        itemsAdded: 0,
+      }),
+    );
+  });
+
+  it("records silent Instagram extraction as a sync failure", async () => {
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "ig_scrape_feed") return null;
+      return null;
+    });
+
+    const { captureIgFeed } = await import("./instagram-capture");
+    const { recordProviderHealthEvent } = await import("./provider-health");
+
+    const result = await captureIgFeed();
+    const expectedMessage =
+      "Instagram extraction returned no scrape batches. The WebView may be on a stale page, the injected script may not have emitted, or the renderer may have stalled before extraction finished.";
+
+    expect(result.items).toEqual([]);
+    expect(result.diag.errorStage).toBe("extract_silent");
+    expect(result.diag.errorMessage).toBe(expectedMessage);
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(expectedMessage);
+    expect(mocks.storeState.setIgAuth).toHaveBeenCalledWith(
+      expect.objectContaining({ lastCaptureError: expectedMessage }),
+    );
+    expect(recordProviderHealthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "instagram",
+        outcome: "error",
+        stage: "extract_silent",
         reason: expectedMessage,
         itemsSeen: 0,
         itemsAdded: 0,

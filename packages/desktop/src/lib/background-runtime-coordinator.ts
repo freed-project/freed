@@ -173,6 +173,10 @@ function markCooldown(durationMs: number, reason: string): void {
   addDebugEvent("error", message);
 }
 
+function isMemoryCooldownReason(reason: string | null): boolean {
+  return reason === "critical_memory_pressure" || reason === "high_memory_pressure";
+}
+
 export function noteRendererHeartbeat(_payload: RendererHeartbeatNote): void {
   healthyHeartbeats += 1;
   if (
@@ -219,6 +223,9 @@ export function noteMemoryPressure(snapshot: RuntimeMemorySnapshot): void {
     markCooldown(CRITICAL_PRESSURE_COOLDOWN_MS, "critical_memory_pressure");
   } else if (pressureLevel === "high") {
     markCooldown(HIGH_PRESSURE_COOLDOWN_MS, "high_memory_pressure");
+  } else if (isMemoryCooldownReason(cooldownReason)) {
+    cooldownUntil = 0;
+    cooldownReason = null;
   }
 }
 

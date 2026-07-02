@@ -178,6 +178,13 @@ function formatInstagramEmptySyncMessage(diag: IgSyncDiag): string {
     : "Instagram feed returned 0 posts.";
 }
 
+function formatInstagramSilentExtractionMessage(): string {
+  return (
+    "Instagram extraction returned no scrape batches. The WebView may be on a stale page, " +
+    "the injected script may not have emitted, or the renderer may have stalled before extraction finished."
+  );
+}
+
 function errorMessageFromUnknown(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -310,6 +317,12 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
 
   diag.postsExtracted = allRawPosts.length;
   addDebugEvent("change", `[IG] extraction complete: ${allRawPosts.length} unique posts across all passes`);
+
+  if (diag.extractionPasses === 0) {
+    diag.errorStage = "extract_silent";
+    diag.errorMessage = formatInstagramSilentExtractionMessage();
+    return { items: [], diag };
+  }
 
   if (allRawPosts.length === 0) {
     diag.errorStage = "extract_empty";

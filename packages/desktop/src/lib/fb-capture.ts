@@ -284,6 +284,13 @@ function formatFacebookEmptySyncMessage(diag: FbSyncDiag): string {
     : socialProviderCopy("facebook").feedReturnedEmpty;
 }
 
+function formatFacebookSilentExtractionMessage(): string {
+  return (
+    "Facebook extraction returned no scrape batches. The WebView may be on a stale page, " +
+    "the injected script may not have emitted, or the renderer may have stalled before extraction finished."
+  );
+}
+
 function formatFacebookParseFailureMessage(diag: FbSyncDiag): string {
   const rejected = diag.totalRejected;
   const details = [
@@ -551,6 +558,12 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
   }
 
   diag.postsExtracted = allRawPosts.length;
+
+  if (diag.extractionPasses === 0) {
+    diag.errorStage = "extract_silent";
+    diag.errorMessage = formatFacebookSilentExtractionMessage();
+    return { items: [], diag };
+  }
 
   if (allRawPosts.length === 0) {
     const parseRejectCount =
