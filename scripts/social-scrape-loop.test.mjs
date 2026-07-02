@@ -6,10 +6,12 @@ import test from "node:test";
 
 import {
   acquireRunLock,
+  applyProviderHealthStore,
   buildOptimizationPlan,
   buildReport,
   formatBytes,
   parseArgs,
+  readJsonFile,
   readJsonl,
   releaseRunLock,
   summarizeSocialScrapeHealth,
@@ -44,6 +46,23 @@ test("readJsonl tails rows and counts parse errors", () => {
   assert.equal(result.exists, true);
   assert.equal(result.parseErrors, 1);
   assert.deepEqual(result.rows.map((row) => row.event), ["newer", "newest"]);
+});
+
+test("readJsonFile reads optional provider health stores", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-social-loop-json-"));
+  const filePath = path.join(dir, "sync-health.json");
+  writeFileSync(filePath, JSON.stringify({ ok: true }));
+
+  assert.deepEqual(readJsonFile(filePath), {
+    exists: true,
+    value: { ok: true },
+    parseError: false,
+  });
+  assert.deepEqual(readJsonFile(path.join(dir, "missing.json")), {
+    exists: false,
+    value: null,
+    parseError: false,
+  });
 });
 
 test("summarizeSocialScrapeHealth groups provider memory and scrape failures", () => {
@@ -160,6 +179,29 @@ test("buildOptimizationPlan flags recovered providers without a later scrape pla
       tsMs: 300,
     },
   ]);
+  applyProviderHealthStore(
+    summary,
+    {
+      "provider-health": {
+        providers: {
+          facebook: {
+            pause: null,
+            latestAttempts: [
+              {
+                outcome: "error",
+                stage: "invoke",
+                reason: "Facebook sync paused because Freed Desktop memory remains critically high after cleanup.",
+                finishedAt: 250,
+                itemsSeen: 0,
+                itemsAdded: 0,
+              },
+            ],
+          },
+        },
+      },
+    },
+    400,
+  );
 
   const plan = buildOptimizationPlan(summary, { memoryBudgetGib: 4 });
   const action = plan.actions.find((candidate) => candidate.id === "facebook-recovered-without-later-plan");
@@ -170,6 +212,8 @@ test("buildOptimizationPlan flags recovered providers without a later scrape pla
   assert.match(action.evidence, /background work was not paused/);
   assert.match(action.evidence, /safe mode was not active/);
   assert.match(action.evidence, /no background job was active/);
+  assert.match(action.evidence, /provider health is not actively paused/);
+  assert.match(action.evidence, /latest provider-health attempt was error stage invoke/);
   assert.match(action.nextStep, /scheduler pause/);
 });
 
@@ -199,6 +243,7 @@ test("buildReport writes provider summaries from health and diagnostics logs", (
   const report = buildReport({
     healthLog,
     diagnosticsLog,
+    providerHealth: path.join(dir, "missing-sync-health.json"),
     tail: 5000,
     memoryBudgetGib: 4,
   });

@@ -27,6 +27,7 @@ const DEFAULT_APP_SUPPORT_DIR = path.join(
 );
 const DEFAULT_HEALTH_LOG = path.join(DEFAULT_APP_SUPPORT_DIR, "runtime-health.jsonl");
 const DEFAULT_DIAGNOSTICS_LOG = path.join(DEFAULT_APP_SUPPORT_DIR, "runtime-diagnostics.jsonl");
+const DEFAULT_PROVIDER_HEALTH_STORE = path.join(DEFAULT_APP_SUPPORT_DIR, "sync-health.json");
 const DEFAULT_OUTPUT = path.join("/tmp", "freed-social-scrape-loop", "latest-report.json");
 const DEFAULT_LOCK_PATH = path.join("/tmp", "freed-social-scrape-loop", "run.lock");
 const PROVIDERS = ["facebook", "instagram", "linkedin", "x"];
@@ -47,6 +48,7 @@ function usage() {
 Options:
   --health-log <path>        runtime-health.jsonl path.
   --diagnostics-log <path>   runtime-diagnostics.jsonl path.
+  --provider-health <path>   sync-health.json path.
   --output <path>            JSON report path. Defaults to ${DEFAULT_OUTPUT}.
   --tail <count>             Analyze only the last count JSONL rows. Defaults to 5,000.
   --memory-budget-gib <n>    WebKit resident memory budget before memory work is urgent. Defaults to 4.
@@ -67,6 +69,7 @@ export function parseArgs(argv) {
   const args = {
     healthLog: DEFAULT_HEALTH_LOG,
     diagnosticsLog: DEFAULT_DIAGNOSTICS_LOG,
+    providerHealth: DEFAULT_PROVIDER_HEALTH_STORE,
     output: DEFAULT_OUTPUT,
     tail: 5000,
     memoryBudgetGib: 4,
@@ -91,6 +94,10 @@ export function parseArgs(argv) {
         break;
       case "--diagnostics-log":
         args.diagnosticsLog = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--provider-health":
+        args.providerHealth = argv[index + 1] ?? "";
         index += 1;
         break;
       case "--output":
@@ -374,6 +381,15 @@ function emptyProviderStats() {
     lastMemorySampleAfterBlockedSafeModeActive: null,
     lastMemorySampleAfterBlockedActiveJob: null,
     lastMemorySampleAfterBlockedActiveJobAgeMs: null,
+    healthPauseActive: false,
+    healthPauseUntilMs: null,
+    healthPauseReason: "",
+    healthLatestAttemptFinishedAtMs: 0,
+    healthLatestAttemptOutcome: "",
+    healthLatestAttemptStage: "",
+    healthLatestAttemptReason: "",
+    healthLatestAttemptItemsSeen: null,
+    healthLatestAttemptItemsAdded: null,
   };
 }
 
@@ -516,6 +532,71 @@ export function summarizeSocialScrapeHealth(healthRows, diagnosticsRows = []) {
   };
 }
 
+export function readJsonFile(filePath) {
+  if (!filePath || !existsSync(filePath)) {
+    return { exists: false, value: null, parseError: false };
+  }
+
+  try {
+    return { exists: true, value: JSON.parse(readFileSync(filePath, "utf8")), parseError: false };
+  } catch {
+    return { exists: true, value: null, parseError: true };
+  }
+}
+
+function providerHealthRoot(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  return value["provider-health"] && typeof value["provider-health"] === "object"
+    ? value["provider-health"]
+    : value;
+}
+
+function sortedHealthAttempts(state) {
+  const attempts = Array.isArray(state?.latestAttempts) ? state.latestAttempts : [];
+  return attempts
+    .filter((attempt) => attempt && typeof attempt === "object")
+    .sort((left, right) => Number(right.finishedAt ?? 0) - Number(left.finishedAt ?? 0));
+}
+
+export function applyProviderHealthStore(summary, providerHealthValue, nowMs = Date.now()) {
+  const root = providerHealthRoot(providerHealthValue);
+  const providerStates = root?.providers && typeof root.providers === "object" ? root.providers : {};
+
+  for (const provider of PROVIDERS) {
+    const state = providerStates[provider];
+    const stats = summary.providers[provider];
+    if (!state || !stats) {
+      continue;
+    }
+
+    const pause = state.pause && typeof state.pause === "object" ? state.pause : null;
+    const pausedUntil = Number(pause?.pausedUntil ?? NaN);
+    stats.healthPauseActive = Number.isFinite(pausedUntil) && pausedUntil > nowMs;
+    stats.healthPauseUntilMs = Number.isFinite(pausedUntil) ? pausedUntil : null;
+    stats.healthPauseReason = String(pause?.pauseReason ?? "");
+
+    const latestAttempt = sortedHealthAttempts(state)[0];
+    if (!latestAttempt) {
+      continue;
+    }
+
+    stats.healthLatestAttemptFinishedAtMs = Number(latestAttempt.finishedAt ?? 0);
+    stats.healthLatestAttemptOutcome = String(latestAttempt.outcome ?? "");
+    stats.healthLatestAttemptStage = String(latestAttempt.stage ?? "");
+    stats.healthLatestAttemptReason = String(latestAttempt.reason ?? "");
+    stats.healthLatestAttemptItemsSeen = Number.isFinite(latestAttempt.itemsSeen)
+      ? latestAttempt.itemsSeen
+      : null;
+    stats.healthLatestAttemptItemsAdded = Number.isFinite(latestAttempt.itemsAdded)
+      ? latestAttempt.itemsAdded
+      : null;
+  }
+
+  return summary;
+}
+
 function priority(level) {
   return {
     critical: 100,
@@ -580,6 +661,41 @@ function postBlockRuntimeEvidence(stats) {
   }
 
   return pieces.length > 0 ? ` Latest post-block runtime sample: ${pieces.join(", ")}.` : "";
+}
+
+function compactReason(reason) {
+  const normalized = String(reason ?? "").replace(/\s+/g, " ").trim();
+  const trimmed = normalized.length <= 180
+    ? normalized
+    : `${normalized.slice(0, 177)}...`;
+  if (trimmed.endsWith(".") && !trimmed.endsWith("...")) {
+    return trimmed.slice(0, -1);
+  }
+  return trimmed;
+}
+
+function providerHealthEvidence(stats) {
+  const pieces = [];
+  if (stats.healthPauseActive) {
+    const remaining = stats.healthPauseUntilMs === null
+      ? ""
+      : ` until ${new Date(stats.healthPauseUntilMs).toISOString()}`;
+    const reason = stats.healthPauseReason ? `, reason: ${compactReason(stats.healthPauseReason)}` : "";
+    pieces.push(`provider health is actively paused${remaining}${reason}`);
+  } else if (stats.healthPauseUntilMs !== null || stats.healthLatestAttemptFinishedAtMs > 0) {
+    pieces.push("provider health is not actively paused");
+  }
+
+  if (stats.healthLatestAttemptFinishedAtMs > 0) {
+    const outcome = stats.healthLatestAttemptOutcome || "unknown";
+    const stage = stats.healthLatestAttemptStage ? ` stage ${stats.healthLatestAttemptStage}` : "";
+    const reason = stats.healthLatestAttemptReason
+      ? `, reason: ${compactReason(stats.healthLatestAttemptReason)}`
+      : "";
+    pieces.push(`latest provider-health attempt was ${outcome}${stage}${reason}`);
+  }
+
+  return pieces.length > 0 ? ` Provider-health state: ${pieces.join("; ")}.` : "";
 }
 
 export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
@@ -658,7 +774,7 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
         priority: "high",
         scope: "local-only",
         title: `Find why ${label} did not plan another scrape after memory recovered.`,
-        evidence: `${label} last blocked at ${stats.lastBlockedPreflightPressureLevel || "unknown"} memory pressure, later WebKit RSS reached ${formatBytes(stats.minMemorySampleAfterBlockedWebkitResidentBytes)}, but no later scrape plan was recorded.${postBlockRuntimeEvidence(stats)}`,
+        evidence: `${label} last blocked at ${stats.lastBlockedPreflightPressureLevel || "unknown"} memory pressure, later WebKit RSS reached ${formatBytes(stats.minMemorySampleAfterBlockedWebkitResidentBytes)}, but no later scrape plan was recorded.${postBlockRuntimeEvidence(stats)}${providerHealthEvidence(stats)}`,
         nextStep: "Inspect local scheduler pause, cooldown, and trigger state after recovery before changing provider cadence.",
       });
     }
@@ -681,7 +797,7 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
         priority: "high",
         scope: "local-only",
         title: `Explain why ${label} preflights do not become scrape plans.`,
-        evidence: `${label} had ${numberFormatter.format(stats.preflights)} preflights and no recorded scrape plans.${recoveryEvidence}`,
+        evidence: `${label} had ${numberFormatter.format(stats.preflights)} preflights and no recorded scrape plans.${recoveryEvidence}${providerHealthEvidence(stats)}`,
         nextStep: "Inspect local deferral and pause state after the latest preflight before changing provider cadence.",
       });
     }
@@ -767,16 +883,23 @@ export function formatTextReport(report) {
 export function buildReport(args) {
   const health = readJsonl(args.healthLog, { tail: args.tail });
   const diagnostics = readJsonl(args.diagnosticsLog, { tail: args.tail });
-  const summary = summarizeSocialScrapeHealth(health.rows, diagnostics.rows);
+  const providerHealth = readJsonFile(args.providerHealth);
+  const summary = applyProviderHealthStore(
+    summarizeSocialScrapeHealth(health.rows, diagnostics.rows),
+    providerHealth.value,
+  );
   const plan = buildOptimizationPlan(summary, { memoryBudgetGib: args.memoryBudgetGib });
   return {
     inputs: {
       healthLog: args.healthLog,
       diagnosticsLog: args.diagnosticsLog,
+      providerHealth: args.providerHealth,
       healthLogExists: health.exists,
       diagnosticsLogExists: diagnostics.exists,
+      providerHealthExists: providerHealth.exists,
       healthParseErrors: health.parseErrors,
       diagnosticsParseErrors: diagnostics.parseErrors,
+      providerHealthParseError: providerHealth.parseError,
       tail: args.tail,
       memoryBudgetGib: args.memoryBudgetGib,
       lockPath: args.lockPath,
