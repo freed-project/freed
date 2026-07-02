@@ -847,7 +847,9 @@ function isMemoryPressureAttempt(attempt: ProviderHealthAttempt): boolean {
   const reason = attempt.reason?.toLocaleLowerCase() ?? "";
   return (
     attempt.stage === "memory_pressure" ||
-    (reason.includes("memory is high") && reason.includes("after cleanup"))
+    (reason.includes("memory") &&
+      (reason.includes("is high") || reason.includes("remains critically high")) &&
+      reason.includes("after cleanup"))
   );
 }
 
