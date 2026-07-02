@@ -124,6 +124,37 @@ test("buildOptimizationPlan ranks local memory work before missing coverage", ()
   assert.ok(plan.blockedProviderRisk.some((risk) => risk.id === "scripted-scroll-click-recovery"));
 });
 
+test("buildOptimizationPlan flags recovered providers without a later scrape plan", () => {
+  const summary = summarizeSocialScrapeHealth([
+    {
+      event: "social_scrape_plan",
+      provider: "Facebook",
+      tsMs: 100,
+    },
+    {
+      event: "scrape_memory_preflight",
+      provider: "Facebook",
+      pressureLevel: "critical",
+      mayProceed: false,
+      afterWebkitResidentBytes: 6 * GIB,
+      tsMs: 200,
+    },
+    {
+      event: "native_runtime_memory_sample",
+      webkitResidentBytes: 0,
+      tsMs: 300,
+    },
+  ]);
+
+  const plan = buildOptimizationPlan(summary, { memoryBudgetGib: 4 });
+  const action = plan.actions.find((candidate) => candidate.id === "facebook-recovered-without-later-plan");
+
+  assert.ok(action);
+  assert.equal(action.scope, "local-only");
+  assert.match(action.evidence, /later WebKit RSS reached 0 B/);
+  assert.match(action.nextStep, /scheduler pause/);
+});
+
 test("buildReport writes provider summaries from health and diagnostics logs", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-social-loop-report-"));
   const healthLog = path.join(dir, "runtime-health.jsonl");

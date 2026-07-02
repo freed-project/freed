@@ -574,6 +574,23 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
       });
     }
 
+    if (
+      stats.plans > 0 &&
+      stats.lastBlockedPreflightTsMs > 0 &&
+      stats.lastPlanTsMs < stats.lastBlockedPreflightTsMs &&
+      stats.minMemorySampleAfterBlockedWebkitResidentBytes !== null &&
+      stats.minMemorySampleAfterBlockedWebkitResidentBytes < memoryBudgetBytes
+    ) {
+      addAction(actions, {
+        id: `${provider}-recovered-without-later-plan`,
+        priority: "high",
+        scope: "local-only",
+        title: `Find why ${label} did not plan another scrape after memory recovered.`,
+        evidence: `${label} last blocked at ${stats.lastBlockedPreflightPressureLevel || "unknown"} memory pressure, later WebKit RSS reached ${formatBytes(stats.minMemorySampleAfterBlockedWebkitResidentBytes)}, but no later scrape plan was recorded.`,
+        nextStep: "Inspect local scheduler pause, cooldown, and trigger state after recovery before changing provider cadence.",
+      });
+    }
+
     if (stats.preflights === 0) {
       addAction(actions, {
         id: `${provider}-missing-coverage`,
