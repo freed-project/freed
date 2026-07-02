@@ -3,6 +3,7 @@
 import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -27,8 +28,33 @@ const DEFAULT_CRASH_AUTOMATION =
   "/Users/aubreyfalconer/.codex/automations/crash-watch/automation.toml";
 const DEFAULT_DEV_BOT_MEMORY =
   "/Users/aubreyfalconer/.codex/automations/hourly-dev-bot/memory.md";
-const DEFAULT_SOAK_POINTER = "/tmp/freed-perf-soak/current-soak-dir";
-const DEFAULT_OUTCOME_LEDGER = "/tmp/freed-nightly-self-improve/outcomes.jsonl";
+// Planner learning state lives under the home directory so it survives
+// reboots; macOS periodically clears /tmp, which made the outcome ledger and
+// active-soak pointer amnesiac. The /tmp paths remain readable as a legacy
+// fallback for one release (see resolveStatePathWithLegacyFallback).
+export const AUTOMATION_STATE_DIR = path.join(os.homedir(), ".freed-automation");
+const LEGACY_SOAK_POINTER = "/tmp/freed-perf-soak/current-soak-dir";
+const LEGACY_OUTCOME_LEDGER = "/tmp/freed-nightly-self-improve/outcomes.jsonl";
+const DEFAULT_SOAK_POINTER = path.join(AUTOMATION_STATE_DIR, "current-soak-dir");
+const DEFAULT_OUTCOME_LEDGER = path.join(AUTOMATION_STATE_DIR, "outcomes.jsonl");
+const LEGACY_SOAK_ROOT = "/tmp/freed-perf-soak";
+
+export function resolveStatePathWithLegacyFallback(preferredPath, legacyPath, fsOps = {}) {
+  const ops = { existsSync, mkdirSync, copyFileSync, ...fsOps };
+  if (ops.existsSync(preferredPath)) {
+    return preferredPath;
+  }
+  if (legacyPath && ops.existsSync(legacyPath)) {
+    try {
+      ops.mkdirSync(path.dirname(preferredPath), { recursive: true });
+      ops.copyFileSync(legacyPath, preferredPath);
+      return preferredPath;
+    } catch {
+      return legacyPath;
+    }
+  }
+  return preferredPath;
+}
 const MAX_PEER_EVIDENCE_FILES = 12;
 const STALE_SOAK_MS = 2 * 60 * 60 * 1000;
 const MIN_PERFORMANCE_SOAK_SAMPLES = 3;
@@ -259,16 +285,21 @@ export function parseArgs(argv) {
   }
 
   args.repo = path.resolve(args.repo);
+  if (args.soakPointer === DEFAULT_SOAK_POINTER) {
+    args.soakPointer = resolveStatePathWithLegacyFallback(DEFAULT_SOAK_POINTER, LEGACY_SOAK_POINTER);
+  }
+  if (args.outcomeLedger === DEFAULT_OUTCOME_LEDGER) {
+    args.outcomeLedger = resolveStatePathWithLegacyFallback(
+      DEFAULT_OUTCOME_LEDGER,
+      LEGACY_OUTCOME_LEDGER,
+    );
+  }
   args.soakPointer = path.resolve(args.soakPointer);
   args.outcomeLedger = path.resolve(args.outcomeLedger);
   args.peerWorktrees = args.peerWorktrees.filter(Boolean).map((item) => path.resolve(item));
   args.runDir =
     args.runDir ||
-    path.join(
-      os.tmpdir(),
-      "freed-nightly-self-improve",
-      new Date().toISOString().replace(/[:.]/g, ""),
-    );
+    path.join(AUTOMATION_STATE_DIR, "runs", new Date().toISOString().replace(/[:.]/g, ""));
 
   return args;
 }
@@ -671,7 +702,16 @@ export function resolveReadableSoak(soakDir = "", pointerPath = DEFAULT_SOAK_POI
     return preferred;
   }
 
-  const fallbackDir = findLatestReadableSoakDir(path.dirname(preferredDir || DEFAULT_SOAK_POINTER), preferredDir);
+  // Only default invocations may widen the search to the machine-global soak
+  // roots (including the legacy /tmp root, kept readable for one release).
+  // Explicit --soak-dir/--soak-pointer callers stay scoped to their own root.
+  const usingDefaults = !soakDir && pointerPath === DEFAULT_SOAK_POINTER;
+  const fallbackDir =
+    findLatestReadableSoakDir(path.dirname(preferredDir || pointerPath), preferredDir) ||
+    (usingDefaults
+      ? findLatestReadableSoakDir(path.join(AUTOMATION_STATE_DIR, "soaks"), preferredDir) ||
+        findLatestReadableSoakDir(LEGACY_SOAK_ROOT, preferredDir)
+      : "");
   if (!fallbackDir) {
     return preferred;
   }
@@ -697,7 +737,12 @@ export function repairSoakPointer(pointerPath = DEFAULT_SOAK_POINTER, options = 
   }
 
   const rootDir = path.dirname(currentDir || pointerPath);
-  const readableDir = findLatestReadableSoakDir(rootDir, currentDir);
+  const readableDir =
+    findLatestReadableSoakDir(rootDir, currentDir) ||
+    (pointerPath === DEFAULT_SOAK_POINTER
+      ? findLatestReadableSoakDir(path.join(AUTOMATION_STATE_DIR, "soaks"), currentDir) ||
+        findLatestReadableSoakDir(LEGACY_SOAK_ROOT, currentDir)
+      : "");
   if (!readableDir) {
     return {
       repaired: false,
