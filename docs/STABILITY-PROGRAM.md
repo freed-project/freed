@@ -38,7 +38,7 @@ Every claim above cites code in [stability-findings.json](stability-findings.jso
 | [W1-05](stability-tasks/W1-05-build-feature-skill-counters.md) | freed-build-feature: verification-counters step + outcome recording | no | ☑ |
 | [W1-06](stability-tasks/W1-06-provider-visible-single-source.md) | Single-source provider-visible path list; publish-time enforcement | no | ☑ |
 | [W1-07](stability-tasks/W1-07-docs-truth-pass.md) | Regenerate ARCHITECTURE.md; fix AGENTS.md roadmap rule; canonical soak doc | yes | ☑ |
-| [P0-01](stability-tasks/P0-01-perf-gate-pipefail.md) | Make the CI perf gate actually fail (tee swallows exit code) | yes | ☐ |
+| [P0-01](stability-tasks/P0-01-perf-gate-pipefail.md) | Make the CI perf gate actually fail (tee swallows exit code) | yes | ☑ |
 | [P0-02](stability-tasks/P0-02-window-kill-records.md) | Structured window_destroyed kill records | no | ☑ |
 | [P0-03](stability-tasks/P0-03-loop-counters.md) | Loop counters: uploads w/ heads-unchanged, broadcasts, worker INITs, scrape outcomes | no | ☑ |
 | [P0-04](stability-tasks/P0-04-runtime-health-rotation.md) | Daily runtime-health rotation replacing the 5 MiB halving cap | no | ☑ |
