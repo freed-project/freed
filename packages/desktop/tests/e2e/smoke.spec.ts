@@ -734,6 +734,29 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   await expectDesktopSidebarClosed(page, 3_000);
 });
 
+test("desktop titlebar controls align with the macOS stoplight row", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const geometry = await page.evaluate(() => {
+    const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+    const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
+    if (!toolbar || !sidebarToggle) return null;
+
+    const toolbarRect = toolbar.getBoundingClientRect();
+    const toggleRect = sidebarToggle.getBoundingClientRect();
+    return {
+      toolbarHeight: Math.round(toolbarRect.height),
+      toggleCenterY: Math.round(toggleRect.top + toggleRect.height / 2 - toolbarRect.top),
+    };
+  });
+
+  expect(geometry).not.toBeNull();
+  expect(geometry?.toolbarHeight).toBe(52);
+  expect(geometry?.toggleCenterY).toBe(18);
+});
+
 test("narrow desktop viewports keep the desktop compact rail instead of switching to the mobile drawer", async ({ app, page }) => {
   await page.setViewportSize({ width: 700, height: 900 });
   await app.goto();

@@ -39,6 +39,7 @@ import type { ReaderOfflineCacheMode } from "../lib/reader-cache-settings.js";
  * `headerDragRegion` is true. Apply as `paddingLeft` on the first toolbar row.
  */
 export const MACOS_TRAFFIC_LIGHT_INSET = 100;
+export const MACOS_TRAFFIC_LIGHT_ROW_CENTER_Y = 18;
 
 /**
  * A zustand store hook that can be called with a selector.
