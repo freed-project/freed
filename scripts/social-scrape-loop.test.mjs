@@ -81,6 +81,12 @@ test("summarizeSocialScrapeHealth groups provider memory and scrape failures", (
       event: "native_runtime_memory_sample",
       webkitResidentBytes: 0,
       appResidentBytes: GIB,
+      backgroundWorkPaused: true,
+      backgroundPauseReason: "memory",
+      backgroundPauseRemainingMs: 90_000,
+      safeModeActive: true,
+      activeBackgroundJob: "content-fetch",
+      activeBackgroundJobAgeMs: 30_000,
       tsMs: 140,
     },
   ];
@@ -97,6 +103,12 @@ test("summarizeSocialScrapeHealth groups provider memory and scrape failures", (
   assert.equal(summary.providers.instagram.lastBlockedPreflightTsMs, 100);
   assert.equal(summary.providers.instagram.minMemorySampleAfterBlockedWebkitResidentBytes, 0);
   assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedTsMs, 140);
+  assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedBackgroundWorkPaused, true);
+  assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedPauseReason, "memory");
+  assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedPauseRemainingMs, 90_000);
+  assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedSafeModeActive, true);
+  assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedActiveJob, "content-fetch");
+  assert.equal(summary.providers.instagram.lastMemorySampleAfterBlockedActiveJobAgeMs, 30_000);
 });
 
 test("buildOptimizationPlan ranks local memory work before missing coverage", () => {
@@ -142,6 +154,9 @@ test("buildOptimizationPlan flags recovered providers without a later scrape pla
     {
       event: "native_runtime_memory_sample",
       webkitResidentBytes: 0,
+      backgroundWorkPaused: false,
+      safeModeActive: false,
+      activeBackgroundJob: null,
       tsMs: 300,
     },
   ]);
@@ -152,6 +167,9 @@ test("buildOptimizationPlan flags recovered providers without a later scrape pla
   assert.ok(action);
   assert.equal(action.scope, "local-only");
   assert.match(action.evidence, /later WebKit RSS reached 0 B/);
+  assert.match(action.evidence, /background work was not paused/);
+  assert.match(action.evidence, /safe mode was not active/);
+  assert.match(action.evidence, /no background job was active/);
   assert.match(action.nextStep, /scheduler pause/);
 });
 

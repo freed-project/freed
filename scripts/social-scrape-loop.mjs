@@ -368,6 +368,12 @@ function emptyProviderStats() {
     lastMemorySampleAfterBlockedTsMs: 0,
     lastMemorySampleAfterBlockedWebkitResidentBytes: 0,
     minMemorySampleAfterBlockedWebkitResidentBytes: null,
+    lastMemorySampleAfterBlockedBackgroundWorkPaused: null,
+    lastMemorySampleAfterBlockedPauseReason: "",
+    lastMemorySampleAfterBlockedPauseRemainingMs: null,
+    lastMemorySampleAfterBlockedSafeModeActive: null,
+    lastMemorySampleAfterBlockedActiveJob: null,
+    lastMemorySampleAfterBlockedActiveJobAgeMs: null,
   };
 }
 
@@ -396,6 +402,12 @@ function updateProviderStats(stats, row) {
         stats.lastMemorySampleAfterBlockedTsMs = 0;
         stats.lastMemorySampleAfterBlockedWebkitResidentBytes = 0;
         stats.minMemorySampleAfterBlockedWebkitResidentBytes = null;
+        stats.lastMemorySampleAfterBlockedBackgroundWorkPaused = null;
+        stats.lastMemorySampleAfterBlockedPauseReason = "";
+        stats.lastMemorySampleAfterBlockedPauseRemainingMs = null;
+        stats.lastMemorySampleAfterBlockedSafeModeActive = null;
+        stats.lastMemorySampleAfterBlockedActiveJob = null;
+        stats.lastMemorySampleAfterBlockedActiveJobAgeMs = null;
       }
     }
   }
@@ -469,6 +481,16 @@ export function summarizeSocialScrapeHealth(healthRows, diagnosticsRows = []) {
 
         stats.lastMemorySampleAfterBlockedTsMs = tsMs;
         stats.lastMemorySampleAfterBlockedWebkitResidentBytes = webkitResidentBytes;
+        stats.lastMemorySampleAfterBlockedBackgroundWorkPaused =
+          typeof row.backgroundWorkPaused === "boolean" ? row.backgroundWorkPaused : null;
+        stats.lastMemorySampleAfterBlockedPauseReason = String(row.backgroundPauseReason ?? "");
+        stats.lastMemorySampleAfterBlockedPauseRemainingMs =
+          Number.isFinite(row.backgroundPauseRemainingMs) ? row.backgroundPauseRemainingMs : null;
+        stats.lastMemorySampleAfterBlockedSafeModeActive =
+          typeof row.safeModeActive === "boolean" ? row.safeModeActive : null;
+        stats.lastMemorySampleAfterBlockedActiveJob = row.activeBackgroundJob ?? null;
+        stats.lastMemorySampleAfterBlockedActiveJobAgeMs =
+          Number.isFinite(row.activeBackgroundJobAgeMs) ? row.activeBackgroundJobAgeMs : null;
         if (
           stats.minMemorySampleAfterBlockedWebkitResidentBytes === null ||
           webkitResidentBytes < stats.minMemorySampleAfterBlockedWebkitResidentBytes
@@ -508,6 +530,56 @@ function addAction(actions, action) {
     ...action,
     priorityScore: priority(action.priority),
   });
+}
+
+function formatDurationMs(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return "0s";
+  }
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) {
+    return `${numberFormatter.format(seconds)}s`;
+  }
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) {
+    return `${numberFormatter.format(minutes)}m`;
+  }
+  const hours = Math.round(minutes / 60);
+  return `${numberFormatter.format(hours)}h`;
+}
+
+function postBlockRuntimeEvidence(stats) {
+  if (stats.lastMemorySampleAfterBlockedTsMs <= 0) {
+    return "";
+  }
+
+  const pieces = [];
+  if (stats.lastMemorySampleAfterBlockedBackgroundWorkPaused === true) {
+    const reason = stats.lastMemorySampleAfterBlockedPauseReason || "unknown";
+    const remaining = stats.lastMemorySampleAfterBlockedPauseRemainingMs === null
+      ? ""
+      : ` for ${formatDurationMs(stats.lastMemorySampleAfterBlockedPauseRemainingMs)}`;
+    pieces.push(`background work was still paused by ${reason}${remaining}`);
+  } else if (stats.lastMemorySampleAfterBlockedBackgroundWorkPaused === false) {
+    pieces.push("background work was not paused");
+  }
+
+  if (stats.lastMemorySampleAfterBlockedSafeModeActive === true) {
+    pieces.push("safe mode was active");
+  } else if (stats.lastMemorySampleAfterBlockedSafeModeActive === false) {
+    pieces.push("safe mode was not active");
+  }
+
+  if (stats.lastMemorySampleAfterBlockedActiveJob) {
+    const age = stats.lastMemorySampleAfterBlockedActiveJobAgeMs === null
+      ? ""
+      : ` for ${formatDurationMs(stats.lastMemorySampleAfterBlockedActiveJobAgeMs)}`;
+    pieces.push(`${stats.lastMemorySampleAfterBlockedActiveJob} was active${age}`);
+  } else {
+    pieces.push("no background job was active");
+  }
+
+  return pieces.length > 0 ? ` Latest post-block runtime sample: ${pieces.join(", ")}.` : "";
 }
 
 export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
@@ -586,7 +658,7 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
         priority: "high",
         scope: "local-only",
         title: `Find why ${label} did not plan another scrape after memory recovered.`,
-        evidence: `${label} last blocked at ${stats.lastBlockedPreflightPressureLevel || "unknown"} memory pressure, later WebKit RSS reached ${formatBytes(stats.minMemorySampleAfterBlockedWebkitResidentBytes)}, but no later scrape plan was recorded.`,
+        evidence: `${label} last blocked at ${stats.lastBlockedPreflightPressureLevel || "unknown"} memory pressure, later WebKit RSS reached ${formatBytes(stats.minMemorySampleAfterBlockedWebkitResidentBytes)}, but no later scrape plan was recorded.${postBlockRuntimeEvidence(stats)}`,
         nextStep: "Inspect local scheduler pause, cooldown, and trigger state after recovery before changing provider cadence.",
       });
     }
