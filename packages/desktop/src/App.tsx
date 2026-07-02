@@ -2,6 +2,7 @@ import { useEffect, useMemo, useCallback, useRef, useState, Profiler, type Profi
 import {
   formatReleaseVersion,
   getWebsiteHostForChannel,
+  type ProviderRiskId,
   type ReleaseChannel,
 } from "@freed/shared";
 import { AppShell } from "@freed/ui/components/layout";
@@ -85,8 +86,8 @@ import { XSourceIndicator } from "./components/XSourceIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
 import { DesktopLegalSettingsSection } from "./components/DesktopLegalSettingsSection";
 import { DesktopShortcutsSettingsSection } from "./components/DesktopShortcutsSettingsSection";
-import { refreshSampleLibraryData } from "@freed/ui/lib/sample-library-seed";
-import { acceptDesktopBundle, hasAcceptedDesktopBundle } from "./lib/legal-consent";
+import { refreshSampleLibraryData, summarizeSampleData } from "@freed/ui/lib/sample-library-seed";
+import { acceptDesktopBundle, acceptProviderRisk, hasAcceptedDesktopBundle } from "./lib/legal-consent";
 import { clearProviderPause, forgetRssFeedHealth, initProviderHealth } from "./lib/provider-health";
 import { getDesktopSourceStatus } from "./lib/source-status";
 import { clearContactSyncState, setContactSyncError } from "./lib/contact-sync-storage";
@@ -123,8 +124,10 @@ import { DESKTOP_CHANGELOG_PREVIEW } from "./lib/changelog-preview";
 import { useClipboardSaveShortcut } from "./hooks/useClipboardSaveShortcut";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
-const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1";
+const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
+const IS_LOCAL_PREVIEW = IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
 const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
+const PREVIEW_PROVIDER_RISKS: ProviderRiskId[] = ["x", "facebook", "instagram", "linkedin"];
 const RENDERER_HEARTBEAT_INTERVAL_MS = 15 * 1000;
 const LOCKED_STARTUP_RECHECK_MS = 30 * 1000;
 
@@ -371,11 +374,24 @@ function App() {
   }, []);
 
   useEffect(() => {
-    void hasAcceptedDesktopBundle()
+    let cancelled = false;
+    const resolveLegalAcceptance = async (): Promise<boolean> => {
+      if (!IS_FEATURE_PREVIEW) {
+        return hasAcceptedDesktopBundle();
+      }
+
+      await acceptDesktopBundle();
+      await Promise.all(PREVIEW_PROVIDER_RISKS.map((provider) => acceptProviderRisk(provider)));
+      return true;
+    };
+
+    void resolveLegalAcceptance()
       .then((accepted) => {
+        if (cancelled) return;
         setLegalAccepted(accepted);
       })
       .catch((error) => {
+        if (cancelled) return;
         log.error(
           `[legal] failed to resolve desktop bundle consent: ${
             error instanceof Error ? error.message : String(error)
@@ -384,8 +400,13 @@ function App() {
         setLegalAccepted(false);
       })
       .finally(() => {
+        if (cancelled) return;
         setLegalResolved(true);
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -969,20 +990,39 @@ function App() {
     setLiAuth(liState);
   }, []);
 
-  // In dev mode, auto-seed sample data on first page load of each browser
-  // session. sessionStorage guard prevents re-seeding on hot-reload while
-  // still running fresh on every full browser open (e.g. new worktree test).
-  // Skip entirely under VITE_TEST_TAURI: E2E tests manage their own data
-  // setup, and sample seeding changes the document while Playwright is filling
-  // form fields.
+  // Local feature previews should open with a useful library. E2E tests keep
+  // deterministic control unless the preview helper opts in explicitly.
   useEffect(() => {
-    if (!isInitialized || !import.meta.env.DEV || import.meta.env.VITE_TEST_TAURI === "1") return;
-    if (sessionStorage.getItem("freed_dev_seeded")) return;
-    sessionStorage.setItem("freed_dev_seeded", "1");
+    const shouldAutoSeedPreview =
+      IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
+    if (!isInitialized || !shouldAutoSeedPreview) return;
 
-    void refreshSampleLibraryData({
-      ...useAppStore.getState(),
-      seedSocialConnections,
+    const state = useAppStore.getState();
+    const sampleSummary = summarizeSampleData(state);
+    const hasTimeWindowMapSamples = state.items.some((item) =>
+      item.globalId.includes("sample-location-window:") && item.location?.coordinates && item.timeRange
+    );
+    if (sampleSummary.total > 0 && hasTimeWindowMapSamples) return;
+
+    const guardKey = "freed_dev_seeded";
+    if (!IS_FEATURE_PREVIEW && sessionStorage.getItem(guardKey)) return;
+
+    void (async () => {
+      if (IS_FEATURE_PREVIEW && sampleSummary.total > 0 && !hasTimeWindowMapSamples) {
+        await state.clearSampleData();
+      }
+
+      await refreshSampleLibraryData({
+        ...useAppStore.getState(),
+        seedSocialConnections,
+      });
+      sessionStorage.setItem(guardKey, "1");
+    })().catch((error) => {
+      log.error(
+        `[sample-data] failed to seed local preview data: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     });
   }, [isInitialized, seedSocialConnections]);
 

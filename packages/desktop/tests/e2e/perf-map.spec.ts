@@ -163,13 +163,12 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        updatePreferences: (patch: { display: { mapMode: "all_content"; mapTimeMode: "current"; themeId: string } }) => Promise<void>;
+        updatePreferences: (patch: { display: { mapMode: "all_content"; themeId: string } }) => Promise<void>;
       };
     };
     await store.getState().updatePreferences({
       display: {
         mapMode: "all_content",
-        mapTimeMode: "current",
         themeId: "scriptorium",
       },
     });
