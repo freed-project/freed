@@ -3,7 +3,7 @@
   "version": "26.7.202-dev",
   "channel": "dev",
   "dayKey": "26.7.2",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-07-02T22:27:53.223Z",
   "model": "heuristic",
@@ -48,12 +48,17 @@
     ]
   },
   "release": {
-    "deck": "Map time range slider, Friends graph lane interactions restored, and release validation now removes a stale Azure CLI apt source before installing Playwright browser dependencies on GitHub-hosted Ubuntu runners",
+    "deck": "Social scraping now has stronger memory recovery diagnostics, local loop locking, and zero-post failure reporting, with the Map time range slider included from earlier dev work",
     "features": [
       "Map time range slider"
     ],
-    "fixes": [],
+    "fixes": [
+      "Social scrape memory preflight now records recovery state and avoids treating stale local memory deferrals as durable provider failures",
+      "Facebook, Instagram, LinkedIn, and X scrape diagnostics now rank safe local next actions without increasing provider-visible traffic",
+      "Instagram zero-post failures now surface in the local optimization loop even when runtime diagnostics are sparse",
+      "Release validation now removes a stale Azure CLI apt source before installing Playwright browser dependencies on GitHub-hosted Ubuntu runners."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.202-dev\n\nMap time range slider, Friends graph lane interactions restored, and release validation now removes a stale Azure CLI apt source before installing Playwright browser dependencies on GitHub-hosted Ubuntu runners\n\n### Features\n\n- Map time range slider\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.202-dev\n\nSocial scraping now has stronger memory recovery diagnostics, local loop locking, and zero-post failure reporting, with the Map time range slider included from earlier dev work\n\n### Features\n\n- Map time range slider\n\n### Fixes\n\n- Social scrape memory preflight now records recovery state and avoids treating stale local memory deferrals as durable provider failures\n- Facebook, Instagram, LinkedIn, and X scrape diagnostics now rank safe local next actions without increasing provider-visible traffic\n- Instagram zero-post failures now surface in the local optimization loop even when runtime diagnostics are sparse\n- Release validation now removes a stale Azure CLI apt source before installing Playwright browser dependencies on GitHub-hosted Ubuntu runners.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
