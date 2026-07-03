@@ -105,6 +105,8 @@ jobs:
         env:
           CI: "true"
 
+      # Write the comparison to a file instead of piping through `tee`: the
+      # pipe swallowed perf-compare's exit(1), so the gate could never fail.
       - name: Run perf regression check
         if: always()
         run: |
@@ -113,10 +115,14 @@ jobs:
               packages/desktop/playwright-report/perf-results.json \
               packages/desktop/tests/e2e/perf-baselines.json \
               packages/desktop/tests/e2e/perf-budgets.json \
-              | tee perf-comparison.md
+              > perf-comparison.md
           else
             echo "No perf results found - skipping comparison"
           fi
+
+      - name: Print perf comparison
+        if: always() && hashFiles('perf-comparison.md') != ''
+        run: cat perf-comparison.md
 
       - name: Comment perf comparison on PR
         if: always() && hashFiles('perf-comparison.md') != ''
