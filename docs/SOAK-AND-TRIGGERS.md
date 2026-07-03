@@ -6,7 +6,7 @@ Canonical contract for validating installed Freed Desktop builds on the user's p
 
 An installed soak observes a real Freed Desktop build over hours using terminal evidence only.
 
-- Start collection with `node scripts/soak-collect.mjs` (`--detach` to survive terminal close). It samples the app process, the machine-wide WebKit process table, and `runtime-health.jsonl` offsets into a soak directory under `~/.freed-automation/soaks/`, and points `~/.freed-automation/current-soak-dir` at it.
+- Start collection with `node scripts/soak-collect.mjs` (`--detach` to survive terminal close). It samples the app process, the machine-wide WebKit process table, and `runtime-health.jsonl` offsets into a soak directory under `~/.freed/automation/soaks/`, and points `~/.freed/automation/current-soak-dir` at it.
 - Judge the soak with `node scripts/soak-assert.mjs`. It writes `soak-verdict.json` with named assertions (footprint slope, renderer recoveries, stale heartbeats, WebKit baseline return, and the P0-02/P0-03 counters once they exist), each citing violating file:line evidence. Loops gate on the verdict, not on eyeballed TSVs.
 - The nightly planner (docs/NIGHTLY-SELF-IMPROVE.md) reads the same pointer and soak files as evidence.
 
