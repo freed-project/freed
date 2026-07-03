@@ -9,7 +9,12 @@ source "${SCRIPT_DIR}/lib/node-tooling.sh"
 usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/worktree-publish.sh --title "<conventional-commit title>" [--summary "<bullet>"]... [--test "<bullet>"]... [--base <branch>] [--body-file <path>] [--include-untracked] [--approved-provider-risk "<one-line owner approval reference>"]
+  ./scripts/worktree-publish.sh --title "<conventional-commit title>" [--summary "<bullet>"]... [--test "<bullet>"]... [--base <branch>] [--body-file <path>] [--include-untracked] [--ready] [--approved-provider-risk "<one-line owner approval reference>"]
+
+Draft is the default so interim publishes never look reviewable. Pass --ready at
+closeout, once validation has passed and the work is complete, to mark the PR
+ready for review. Re-running without --ready after the branch changes demotes a
+ready PR back to draft on purpose: the content moved since the owner saw it.
 
 Stages local changes, commits them when needed, pushes the current branch to origin,
 and opens a draft pull request.
@@ -145,6 +150,7 @@ TITLE=""
 BASE_BRANCH="dev"
 BODY_FILE=""
 INCLUDE_UNTRACKED=false
+READY_FOR_REVIEW=false
 PROVIDER_RISK_APPROVAL=""
 SUMMARY_ARGS=()
 TEST_ARGS=()
@@ -178,6 +184,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --include-untracked)
       INCLUDE_UNTRACKED=true
+      shift
+      ;;
+    --ready)
+      READY_FOR_REVIEW=true
       shift
       ;;
     --approved-provider-risk)
@@ -323,6 +333,16 @@ EXISTING_PR_URL="$(pr_field "${EXISTING_PR_JSON}" "url")"
 EXISTING_PR_IS_DRAFT="$(pr_field "${EXISTING_PR_JSON}" "isDraft")"
 
 if [[ -n "${EXISTING_PR_NUMBER}" ]]; then
+  if ${READY_FOR_REVIEW}; then
+    gh pr edit "${EXISTING_PR_NUMBER}" --title "${TITLE}" --body "${BODY_CONTENT}" >/dev/null
+    if [[ "${EXISTING_PR_IS_DRAFT}" == "true" ]]; then
+      gh pr ready "${EXISTING_PR_NUMBER}" >/dev/null
+    fi
+    printf 'Updated PR (ready for review): %s\n' "${EXISTING_PR_URL}"
+    exit 0
+  fi
+  # Without --ready, a changed branch demotes a ready PR back to draft so the
+  # owner knows the content moved since they last looked.
   if [[ "${EXISTING_PR_IS_DRAFT}" != "true" ]]; then
     gh pr ready "${EXISTING_PR_NUMBER}" --undo >/dev/null
   fi
@@ -331,9 +351,13 @@ if [[ -n "${EXISTING_PR_NUMBER}" ]]; then
   exit 0
 fi
 
-gh pr create \
-  --draft \
-  --base "${BASE_BRANCH}" \
-  --head "${BRANCH_NAME}" \
-  --title "${TITLE}" \
+CREATE_ARGS=(
+  --base "${BASE_BRANCH}"
+  --head "${BRANCH_NAME}"
+  --title "${TITLE}"
   --body "${BODY_CONTENT}"
+)
+if ! ${READY_FOR_REVIEW}; then
+  CREATE_ARGS=(--draft "${CREATE_ARGS[@]}")
+fi
+gh pr create "${CREATE_ARGS[@]}"

@@ -334,3 +334,78 @@ test("worktree-publish requires a value for --approved-provider-risk", async (t)
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /--approved-provider-risk requires/);
 });
+
+test("worktree-publish --ready promotes an existing draft PR after updating it", async (t) => {
+  const fixture = await createPublishFixture(t);
+
+  await fs.writeFile(
+    fixture.ghStateFile,
+    JSON.stringify(
+      {
+        prList: [
+          {
+            number: 321,
+            url: "https://github.com/freed-project/freed/pull/321",
+            isDraft: true,
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+  );
+
+  await fs.writeFile(path.join(fixture.worktree, "README.md"), "ready closeout\n");
+
+  const result = run(
+    "bash",
+    [
+      publishScript,
+      "--title",
+      "fix: closeout ready publish helper",
+      "--summary",
+      "Close out the publish helper",
+      "--ready",
+    ],
+    {
+      cwd: fixture.worktree,
+      env: fixture.env,
+    },
+  );
+
+  assertSuccess(result);
+  assert.match(result.stdout, /Updated PR \(ready for review\)/);
+
+  const ghCalls = await readGhLog(fixture.ghLogFile);
+  const readyCalls = ghCalls.filter((call) => call.args[1] === "ready");
+  assert.deepEqual(readyCalls, [{ args: ["pr", "ready", "321"] }]);
+  const editIndex = ghCalls.findIndex((call) => call.args[1] === "edit");
+  const readyIndex = ghCalls.findIndex((call) => call.args[1] === "ready");
+  assert.ok(editIndex < readyIndex, "edit must run before the promotion");
+});
+
+test("worktree-publish --ready creates a new PR without --draft", async (t) => {
+  const fixture = await createPublishFixture(t);
+  await fs.writeFile(path.join(fixture.worktree, "README.md"), "fresh ready create\n");
+
+  const result = run(
+    "bash",
+    [
+      publishScript,
+      "--title",
+      "fix: create a ready publish helper",
+      "--summary",
+      "Create the ready publish helper",
+      "--ready",
+    ],
+    {
+      cwd: fixture.worktree,
+      env: fixture.env,
+    },
+  );
+
+  assertSuccess(result);
+  const ghCalls = await readGhLog(fixture.ghLogFile);
+  assert.equal(ghCalls.at(-1).args[1], "create");
+  assert.equal(ghCalls.at(-1).args.includes("--draft"), false);
+});

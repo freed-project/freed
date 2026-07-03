@@ -83,7 +83,7 @@ Prefer the lightest useful local preview before opening a draft PR:
 - the root fanout scripts now fail fast if you try the dangerous workspace-dispatch pattern, treat that error as a routing mistake and re-run from the workspace
 - if a workspace command needs a hoisted binary, prefix `PATH` with the worktree root `node_modules/.bin`
 - expect the worktree helpers to print the resolved `node` and `npm` pair before they do real work, and treat a surprising path there as a machine issue to fix before debugging the repo
-- rerunning `./scripts/worktree-publish.sh` should update the existing draft PR body and title, and push a ready PR back to draft when the local branch changes underneath it
+- rerunning `./scripts/worktree-publish.sh` should update the existing draft PR body and title, and push a ready PR back to draft when the local branch changes underneath it. At closeout, publish with `--ready` so a finished, validated PR is marked ready for review; draft means "still iterating, blocked, or needs discussion", not "authored by automation"
 - browser tooling is opt-in only, do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging
 - after browser tooling work, do not run broad cleanup while the preview should remain open. If cleanup is needed, scope it with `./scripts/dev-session-clean.sh --worktree <worktree>`.
 - when a PR is merged, the worktree is removed, or the thread is archived, close only that thread's preview with `./scripts/worktree-processes.sh stop --worktree <worktree> --target <pwa|desktop|website>`.
