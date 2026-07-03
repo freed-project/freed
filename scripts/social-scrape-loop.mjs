@@ -6,6 +6,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -30,6 +31,8 @@ const DEFAULT_DIAGNOSTICS_LOG = path.join(DEFAULT_APP_SUPPORT_DIR, "runtime-diag
 const DEFAULT_PROVIDER_HEALTH_STORE = path.join(DEFAULT_APP_SUPPORT_DIR, "sync-health.json");
 const DEFAULT_OUTPUT = path.join("/tmp", "freed-social-scrape-loop", "latest-report.json");
 const DEFAULT_LOCK_PATH = path.join("/tmp", "freed-social-scrape-loop", "run.lock");
+const DEFAULT_JSONL_TAIL_BYTES = 8 * 1024 * 1024;
+const HEAVY_DIAGNOSTIC_FIELDS = ["sampleSummary", "vmmapSummary"];
 const PROVIDERS = ["facebook", "instagram", "linkedin", "x"];
 const PROVIDER_LABELS = {
   facebook: "Facebook",
@@ -270,22 +273,57 @@ export function releaseRunLock({ lockPath = DEFAULT_LOCK_PATH, token }) {
   return { released: true, reason: "released" };
 }
 
+function readTailText(filePath, maxBytes = DEFAULT_JSONL_TAIL_BYTES) {
+  const size = statSync(filePath).size;
+  if (size <= maxBytes) {
+    return readFileSync(filePath, "utf8");
+  }
+
+  const fd = openSync(filePath, "r");
+  try {
+    const start = Math.max(0, size - maxBytes);
+    const buffer = Buffer.alloc(size - start);
+    readSync(fd, buffer, 0, buffer.length, start);
+    const text = buffer.toString("utf8");
+    const firstNewline = text.indexOf("\n");
+    return firstNewline >= 0 ? text.slice(firstNewline + 1) : "";
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function tailLines(text, count) {
   const lines = text.split(/\r?\n/).filter(Boolean);
   return count >= lines.length ? lines : lines.slice(lines.length - count);
 }
 
-export function readJsonl(filePath, { tail = 5000 } = {}) {
+function compactRuntimeRow(row) {
+  if (!row || typeof row !== "object") {
+    return row;
+  }
+
+  const compacted = { ...row };
+  for (const field of HEAVY_DIAGNOSTIC_FIELDS) {
+    if (typeof compacted[field] !== "string") {
+      continue;
+    }
+    compacted[`${field}Bytes`] = Buffer.byteLength(compacted[field]);
+    delete compacted[field];
+  }
+  return compacted;
+}
+
+export function readJsonl(filePath, { tail = 5000, maxBytes = DEFAULT_JSONL_TAIL_BYTES } = {}) {
   if (!filePath || !existsSync(filePath)) {
     return { exists: false, rows: [], parseErrors: 0 };
   }
 
-  const lines = tailLines(readFileSync(filePath, "utf8"), tail);
+  const lines = tailLines(readTailText(filePath, maxBytes), tail);
   const rows = [];
   let parseErrors = 0;
   for (const line of lines) {
     try {
-      rows.push(JSON.parse(line));
+      rows.push(compactRuntimeRow(JSON.parse(line)));
     } catch {
       parseErrors += 1;
     }

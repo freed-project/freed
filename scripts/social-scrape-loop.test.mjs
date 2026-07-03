@@ -48,6 +48,48 @@ test("readJsonl tails rows and counts parse errors", () => {
   assert.deepEqual(result.rows.map((row) => row.event), ["newer", "newest"]);
 });
 
+test("readJsonl reads only the byte tail for large logs", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-social-loop-jsonl-tail-"));
+  const filePath = path.join(dir, "runtime-diagnostics.jsonl");
+  writeFileSync(
+    filePath,
+    [
+      JSON.stringify({ event: "old", detail: "x".repeat(1024) }),
+      JSON.stringify({ event: "recent-a" }),
+      JSON.stringify({ event: "recent-b" }),
+      "",
+    ].join("\n"),
+  );
+
+  const result = readJsonl(filePath, { tail: 10, maxBytes: 96 });
+
+  assert.equal(result.exists, true);
+  assert.equal(result.parseErrors, 0);
+  assert.deepEqual(result.rows.map((row) => row.event), ["recent-a", "recent-b"]);
+});
+
+test("readJsonl compacts heavyweight diagnostic text fields", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-social-loop-jsonl-compact-"));
+  const filePath = path.join(dir, "runtime-diagnostics.jsonl");
+  writeFileSync(
+    filePath,
+    `${JSON.stringify({
+      event: "renderer_memory_recovery_attempt",
+      sampleSummary: "sample".repeat(100),
+      vmmapSummary: "vmmap".repeat(100),
+    })}\n`,
+  );
+
+  const result = readJsonl(filePath);
+
+  assert.equal(result.exists, true);
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].sampleSummary, undefined);
+  assert.equal(result.rows[0].vmmapSummary, undefined);
+  assert.equal(result.rows[0].sampleSummaryBytes, 600);
+  assert.equal(result.rows[0].vmmapSummaryBytes, 500);
+});
+
 test("readJsonFile reads optional provider health stores", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-social-loop-json-"));
   const filePath = path.join(dir, "sync-health.json");
