@@ -35,7 +35,7 @@ const MB = 1024 * 1024;
 const SLOPE_LIMIT_MB_PER_HOUR = 25;
 const SLOPE_MIN_HOURS = 4;
 
-const DEFAULT_POINTER = path.join(os.homedir(), ".freed-automation", "current-soak-dir");
+const DEFAULT_POINTER = path.join(os.homedir(), ".freed", "automation", "current-soak-dir");
 const DEFAULT_APP_DATA_DIR = path.join(
   os.homedir(),
   "Library",

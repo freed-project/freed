@@ -4,7 +4,7 @@
 //
 // Samples the installed Freed Desktop app on an interval into a versioned
 // TSV/JSONL schema under a soak directory, and points the active-soak pointer
-// (~/.freed-automation/current-soak-dir) at it so the nightly planner and
+// (~/.freed/automation/current-soak-dir) at it so the nightly planner and
 // scripts/soak-assert.mjs can find the evidence.
 //
 // What it records per sample:
@@ -59,15 +59,15 @@ const DEFAULT_APP_DATA_DIR = path.join(
   "Application Support",
   "wtf.freed.desktop",
 );
-const AUTOMATION_STATE_DIR = path.join(os.homedir(), ".freed-automation");
+const AUTOMATION_STATE_DIR = path.join(os.homedir(), ".freed", "automation");
 
 function usage() {
   return `Usage:
   node scripts/soak-collect.mjs [options]
 
 Options:
-  --soak-dir <path>          Soak directory. Defaults to ~/.freed-automation/soaks/<timestamp>.
-  --pointer <path>           Active-soak pointer file. Defaults to ~/.freed-automation/current-soak-dir.
+  --soak-dir <path>          Soak directory. Defaults to ~/.freed/automation/soaks/<timestamp>.
+  --pointer <path>           Active-soak pointer file. Defaults to ~/.freed/automation/current-soak-dir.
   --app-data <path>          App data dir holding runtime-health.jsonl. Defaults to the installed Freed Desktop dir.
   --app-binary <substring>   Main process match. Defaults to "Freed.app/Contents/MacOS".
   --interval-seconds <n>     Sample interval. Defaults to 60.
