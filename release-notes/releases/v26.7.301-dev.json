@@ -3,8 +3,10 @@
   "version": "26.7.301-dev",
   "channel": "dev",
   "dayKey": "26.7.3",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed 2026-07-03: same reviewed copy as the failed v26.7.300-dev tag (Linux matrix build failed; this is the follow-up build) plus the Linux libc/cfg(unix) compile fix."
+  ],
   "generatedAt": "2026-07-03T22:07:26.168Z",
   "model": "heuristic",
   "source": {
@@ -60,24 +62,26 @@
     ]
   },
   "release": {
-    "deck": "--ready closeout flag to worktree-publish so finished PRs leave draft, structured window_destroyed kill records (stability P0-02), and bound social loop diagnostics parsing",
+    "deck": "Stability-instrumentation build: structured window-kill records, sync and worker loop counters, and daily runtime-health rotation to baseline the stability program's first overnight soak",
     "features": [
-      "--ready closeout flag to worktree-publish so finished PRs leave draft",
-      "Scripts/doctor.mjs machine preflight for loops and worktree helpers",
-      "Structured window_destroyed kill records (stability P0-02)"
+      "Structured window_destroyed kill records: every watchdog window teardown now logs a structured runtime-health record with the destruction reason (stability P0-02)",
+      "Loop counters for cloud uploads (including uploads with unchanged heads), relay broadcasts, Automerge worker INITs, and scrape outcomes (stability P0-03)",
+      "Daily runtime-health rotation replacing the 5 MiB halving cap, so long soaks keep a full evidence window (stability P0-04)"
     ],
     "fixes": [
-      "Make runtime-health rotation compile on Linux by scoping libc to cfg(unix)",
-      "Mirror runtime-health into the soak dir so rotation cannot shrink the evidence window",
-      "Make the CI perf regression gate actually fail on regressions"
+      "Runtime-health rotation now compiles on Linux (libc scoped to all unix targets)",
+      "The CI perf regression gate now fails on real regressions instead of always passing",
+      "Runtime-health is mirrored into the active soak directory so rotation cannot shrink soak evidence",
+      "Bounded social loop diagnostics parsing",
+      "Map time presets refined; content details save in the background"
     ],
     "followUps": [
-      "Move automation loop state out of /tmp and auto-record merge outcomes",
-      "Loop counters , cloud uploads w/ heads-unchanged, relay broadcasts, worker INITs, scrape outcomes (stability P0-03)",
-      "Check in soak collector and soak-assert with machine-readable verdict",
-      "Daily runtime-health rotation replacing the 5 MiB halving cap (stability P0-04)",
-      "Single-source provider-visible path list with publish-time enforcement (W1-06)"
+      "Soak collector and soak-assert scripts with a machine-readable verdict",
+      "scripts/doctor.mjs machine preflight for loops and worktree helpers",
+      "Automation loop state moved out of /tmp into ~/.freed/automation, with merge outcomes auto-recorded",
+      "Single-source provider-visible path list with publish-time enforcement (W1-06)",
+      "worktree-publish --ready closeout flag so finished PRs leave draft"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.301-dev\n\n--ready closeout flag to worktree-publish so finished PRs leave draft, structured window_destroyed kill records (stability P0-02), and bound social loop diagnostics parsing\n\n### Features\n\n- --ready closeout flag to worktree-publish so finished PRs leave draft\n- Scripts/doctor.mjs machine preflight for loops and worktree helpers\n- Structured window_destroyed kill records (stability P0-02)\n\n### Fixes\n\n- Make runtime-health rotation compile on Linux by scoping libc to cfg(unix)\n- Mirror runtime-health into the soak dir so rotation cannot shrink the evidence window\n- Make the CI perf regression gate actually fail on regressions\n\n### Follow-ups\n\n- Move automation loop state out of /tmp and auto-record merge outcomes\n- Loop counters , cloud uploads w/ heads-unchanged, relay broadcasts, worker INITs, scrape outcomes (stability P0-03)\n- Check in soak collector and soak-assert with machine-readable verdict\n- Daily runtime-health rotation replacing the 5 MiB halving cap (stability P0-04)\n- Single-source provider-visible path list with publish-time enforcement (W1-06)\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.301-dev\n\nStability-instrumentation build: structured window-kill records, sync and worker loop counters, and daily runtime-health rotation to baseline the stability program's first overnight soak.\n\n### Features\n\n- Structured window_destroyed kill records: every watchdog window teardown now logs a structured runtime-health record with the destruction reason (stability P0-02)\n- Loop counters for cloud uploads (including uploads with unchanged heads), relay broadcasts, Automerge worker INITs, and scrape outcomes (stability P0-03)\n- Daily runtime-health rotation replacing the 5 MiB halving cap, so long soaks keep a full evidence window (stability P0-04)\n\n### Fixes\n\n- Runtime-health rotation now compiles on Linux (libc scoped to all unix targets)\n- The CI perf regression gate now fails on real regressions instead of always passing\n- Runtime-health is mirrored into the active soak directory so rotation cannot shrink soak evidence\n- Bounded social loop diagnostics parsing\n- Map time presets refined; content details save in the background\n\n### Follow-ups\n\n- Soak collector and soak-assert scripts with a machine-readable verdict\n- scripts/doctor.mjs machine preflight for loops and worktree helpers\n- Automation loop state moved out of /tmp into ~/.freed/automation, with merge outcomes auto-recorded\n- Single-source provider-visible path list with publish-time enforcement (W1-06)\n- worktree-publish --ready closeout flag so finished PRs leave draft\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
