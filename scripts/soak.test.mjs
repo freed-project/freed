@@ -10,8 +10,10 @@ import {
   buildSample,
   METRICS_COLUMNS,
   metricsRowToTsv,
+  mirrorHealthDelta,
   parsePsTable,
   parseArgs as parseCollectArgs,
+  readLastHealthOffset,
 } from "./soak-collect.mjs";
 import {
   assertEventCountZero,
@@ -102,6 +104,101 @@ test("soak-collect --once writes metrics, offsets, info, and the pointer", () =>
   const info = JSON.parse(readFileSync(path.join(soakDir, "soak-info.json"), "utf8"));
   assert.equal(info.schemaVersion, 1);
   assert.deepEqual(info.metricsColumns, METRICS_COLUMNS);
+});
+
+function runCollectOnce(root, soakDir, pointer) {
+  execFileSync(
+    process.execPath,
+    [
+      path.join(__dirname, "soak-collect.mjs"),
+      "--once",
+      "--soak-dir",
+      soakDir,
+      "--pointer",
+      pointer,
+      "--app-data",
+      root,
+    ],
+    { encoding: "utf8" },
+  );
+}
+
+test("soak-collect mirrors runtime-health incrementally across samples", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-soak-mirror-"));
+  const soakDir = path.join(root, "soak");
+  const pointer = path.join(root, "state", "current-soak-dir");
+  const healthPath = path.join(root, "runtime-health.jsonl");
+  const mirrorPath = path.join(soakDir, "runtime-health.jsonl");
+
+  writeFileSync(healthPath, '{"event":"a","tsMs":1}\n{"event":"b","tsMs":2}\n');
+  runCollectOnce(root, soakDir, pointer);
+  assert.equal(readFileSync(mirrorPath, "utf8"), readFileSync(healthPath, "utf8"));
+
+  // Each --once is a fresh process, so the cursor round-trips through
+  // health-offsets.jsonl; only the appended line may be copied again.
+  writeFileSync(healthPath, readFileSync(healthPath, "utf8") + '{"event":"c","tsMs":3}\n');
+  runCollectOnce(root, soakDir, pointer);
+  assert.equal(
+    readFileSync(mirrorPath, "utf8"),
+    '{"event":"a","tsMs":1}\n{"event":"b","tsMs":2}\n{"event":"c","tsMs":3}\n',
+  );
+
+  const offsets = readFileSync(path.join(soakDir, "health-offsets.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.equal(offsets.length, 2);
+  assert.equal(offsets[0].rotated, false);
+  assert.equal(offsets[1].bytes, readFileSync(healthPath).length);
+  assert.equal(offsets[1].appendedBytes, '{"event":"c","tsMs":3}\n'.length);
+  assert.equal(readLastHealthOffset(path.join(soakDir, "health-offsets.jsonl")), offsets[1].bytes);
+});
+
+test("soak-collect re-mirrors from byte 0 after rotation without duplicating", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-soak-rotate-"));
+  const soakDir = path.join(root, "soak");
+  const pointer = path.join(root, "state", "current-soak-dir");
+  const healthPath = path.join(root, "runtime-health.jsonl");
+  const mirrorPath = path.join(soakDir, "runtime-health.jsonl");
+
+  writeFileSync(healthPath, '{"event":"old-1","tsMs":1}\n{"event":"old-2","tsMs":2}\n');
+  runCollectOnce(root, soakDir, pointer);
+
+  // Daily rotation truncates the live file; the mirror keeps the old window
+  // and appends the whole rotated file exactly once.
+  writeFileSync(healthPath, '{"event":"new-1","tsMs":3}\n');
+  runCollectOnce(root, soakDir, pointer);
+  assert.equal(
+    readFileSync(mirrorPath, "utf8"),
+    '{"event":"old-1","tsMs":1}\n{"event":"old-2","tsMs":2}\n{"event":"new-1","tsMs":3}\n',
+  );
+
+  const offsets = readFileSync(path.join(soakDir, "health-offsets.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.equal(offsets[1].rotated, true);
+  assert.equal(offsets[1].bytes, '{"event":"new-1","tsMs":3}\n'.length);
+});
+
+test("mirrorHealthDelta completes a partially written line on the next sample", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-soak-partial-"));
+  const healthPath = path.join(root, "runtime-health.jsonl");
+  const mirrorPath = path.join(root, "mirror.jsonl");
+
+  writeFileSync(healthPath, '{"event":"a","tsMs":1}\n{"event":"b"');
+  const first = mirrorHealthDelta({ healthPath, mirrorPath, lastBytes: 0 });
+  assert.equal(first.rotated, false);
+
+  writeFileSync(healthPath, '{"event":"a","tsMs":1}\n{"event":"b","tsMs":2}\n');
+  const second = mirrorHealthDelta({ healthPath, mirrorPath, lastBytes: first.bytes });
+  assert.equal(second.rotated, false);
+  assert.equal(readFileSync(mirrorPath, "utf8"), readFileSync(healthPath, "utf8"));
+
+  // Unchanged file appends nothing.
+  const third = mirrorHealthDelta({ healthPath, mirrorPath, lastBytes: second.bytes });
+  assert.equal(third.appendedBytes, 0);
+  assert.equal(readFileSync(mirrorPath, "utf8"), readFileSync(healthPath, "utf8"));
 });
 
 test("footprintSlopeMbPerHour measures a linear leak", () => {

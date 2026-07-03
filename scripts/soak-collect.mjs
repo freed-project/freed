@@ -10,7 +10,11 @@
 // What it records per sample:
 //   metrics.tsv            one row per sample (see COLUMNS below)
 //   webkit-processes.tsv   machine-wide WebKit XPC process table
-//   health-offsets.jsonl   byte/line offsets of the app's runtime-health.jsonl
+//   runtime-health.jsonl   incremental mirror of the app's runtime-health.jsonl,
+//                          appended from the last recorded byte offset so daily
+//                          rotation (P0-04) cannot shrink a long soak's evidence
+//                          window; soak-assert prefers this copy
+//   health-offsets.jsonl   byte/line cursor of the app's runtime-health.jsonl
 //   soak-info.json         schema version + config, written once at start
 //
 // WebKit attribution caveat: WebKit XPC processes are children of launchd
@@ -30,7 +34,6 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -207,23 +210,53 @@ export function metricsRowToTsv(sample) {
   return `${METRICS_COLUMNS.map((column) => String(sample[column] ?? "")).join("\t")}\n`;
 }
 
-function readHealthOffsets(appData) {
-  const healthPath = path.join(appData, "runtime-health.jsonl");
+// Appends everything past lastBytes in the app's runtime-health.jsonl to the
+// soak-dir mirror. Rotation (P0-04 truncates daily) shows up as the file
+// shrinking below the cursor; then the whole new file is appended from byte 0.
+// Copying raw bytes from the exact prior offset means a partially written last
+// line is completed by the next sample, never duplicated.
+export function mirrorHealthDelta({ healthPath, mirrorPath, lastBytes }) {
   if (!existsSync(healthPath)) {
-    return { bytes: 0, lines: 0 };
+    return { bytes: 0, lines: 0, appendedBytes: 0, rotated: false };
+  }
+  let buffer;
+  try {
+    buffer = readFileSync(healthPath);
+  } catch {
+    // Keep the cursor where it was so a transient read failure cannot cause a
+    // duplicate append on the next sample.
+    return { bytes: lastBytes, lines: 0, appendedBytes: 0, rotated: false };
+  }
+  const bytes = buffer.length;
+  const rotated = bytes < lastBytes;
+  const delta = buffer.subarray(rotated ? 0 : lastBytes);
+  if (delta.length > 0) {
+    appendFileSync(mirrorPath, delta);
+  }
+  return {
+    bytes,
+    lines: buffer.toString("utf8").split("\n").filter(Boolean).length,
+    appendedBytes: delta.length,
+    rotated,
+  };
+}
+
+// Restores the mirror cursor from the last health-offsets.jsonl entry so a
+// restarted collector continues appending instead of re-copying the file.
+export function readLastHealthOffset(offsetsPath) {
+  if (!existsSync(offsetsPath)) {
+    return 0;
   }
   try {
-    const stat = statSync(healthPath);
-    // The app rotates this file (5 MiB cap today), so a full read per sample
-    // is cheap.
-    const content = readFileSync(healthPath, "utf8");
-    return { bytes: stat.size, lines: content.split("\n").filter(Boolean).length };
+    const lines = readFileSync(offsetsPath, "utf8").split("\n").filter(Boolean);
+    const bytes = Number(JSON.parse(lines.at(-1) ?? "{}").bytes);
+    return Number.isFinite(bytes) && bytes >= 0 ? bytes : 0;
   } catch {
-    return { bytes: 0, lines: 0 };
+    return 0;
   }
 }
 
-function takeSample(args, now = Date.now()) {
+function takeSample(args, cursor, now = Date.now()) {
   let psOutput = "";
   try {
     psOutput = execFileSync("ps", ["axo", "pid=,ppid=,rss=,command="], {
@@ -237,7 +270,12 @@ function takeSample(args, now = Date.now()) {
     appBinary: args.appBinary,
     tsMs: now,
   });
-  const offsets = readHealthOffsets(args.appData);
+  const offsets = mirrorHealthDelta({
+    healthPath: path.join(args.appData, "runtime-health.jsonl"),
+    mirrorPath: path.join(args.soakDir, "runtime-health.jsonl"),
+    lastBytes: cursor.healthBytes,
+  });
+  cursor.healthBytes = offsets.bytes;
   sample.healthFileBytes = offsets.bytes;
   sample.healthFileLines = offsets.lines;
 
@@ -311,8 +349,11 @@ function main() {
   }
 
   initSoakDir(args);
+  const cursor = {
+    healthBytes: readLastHealthOffset(path.join(args.soakDir, "health-offsets.jsonl")),
+  };
   const startedAt = Date.now();
-  const sample = takeSample(args);
+  const sample = takeSample(args, cursor);
   process.stdout.write(
     `Soak dir ${args.soakDir}: sampling every ${args.intervalSeconds}s (app pid ${sample.appPid || "not running"}).\n`,
   );
@@ -321,7 +362,7 @@ function main() {
   }
 
   const timer = setInterval(() => {
-    takeSample(args);
+    takeSample(args, cursor);
     if (args.durationMinutes > 0 && Date.now() - startedAt >= args.durationMinutes * 60_000) {
       clearInterval(timer);
       process.stdout.write("Soak duration reached; collector exiting.\n");
