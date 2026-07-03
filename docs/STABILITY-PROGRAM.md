@@ -41,7 +41,7 @@ Every claim above cites code in [stability-findings.json](stability-findings.jso
 | [P0-01](stability-tasks/P0-01-perf-gate-pipefail.md) | Make the CI perf gate actually fail (tee swallows exit code) | yes | ☐ |
 | [P0-02](stability-tasks/P0-02-window-kill-records.md) | Structured window_destroyed kill records | no | ☐ |
 | [P0-03](stability-tasks/P0-03-loop-counters.md) | Loop counters: uploads w/ heads-unchanged, broadcasts, worker INITs, scrape outcomes | no | ☐ |
-| [P0-04](stability-tasks/P0-04-runtime-health-rotation.md) | Daily runtime-health rotation replacing the 5 MiB halving cap | no | ☐ |
+| [P0-04](stability-tasks/P0-04-runtime-health-rotation.md) | Daily runtime-health rotation replacing the 5 MiB halving cap | no | ☑ |
 
 Done when: every counter in the scorecard below has a baseline number from one overnight soak.
 

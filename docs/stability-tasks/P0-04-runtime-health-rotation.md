@@ -11,6 +11,8 @@ Findings: telemetry-perf map — "5 MiB cap with halving destroys multi-day tren
 
 Rotate instead of halve: write to `runtime-health-YYYYMMDD.jsonl` (local date), keep the most recent 14 files, delete older on rollover. Keep a `runtime-health.jsonl` symlink or a small pointer file for existing readers, or update the readers (dev-sync-trigger idle checks, bug-report bundler, soak tools) to resolve the newest file — grep all readers and update them in the same PR. Bug reports (see `bug-report.ts` ~142) should gzip the full current + previous day rather than the last 120 lines.
 
+Implementation notes (2026-07-02): the symlink option was chosen — `runtime-health.jsonl` becomes a symlink to the current day's file, repointed on rollover, so scripts (`social-scrape-loop.mjs`, `nightly-self-improve.mjs`) and any external tail keep working unchanged. The legacy plain file is migrated into the first day's dated file so no history is dropped at upgrade. In-app readers were additionally upgraded to read current+previous day (`read_runtime_health_recent_days`): dev-sync-trigger idle check, `get_recent_runtime_health`, and startup diagnostics export; a new `get_runtime_health_history` command (tail-capped at 8 MiB) feeds bug reports the full current+previous day inside the DEFLATE-compressed bundle. Non-unix builds keep the old 5 MiB bounded single file (no reliable unprivileged symlinks on Windows).
+
 ## Verify
 
 - Unit test rollover + retention with fixture dirs.

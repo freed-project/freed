@@ -102,6 +102,9 @@ const DEV_SYNC_TRIGGER_REQUEST_MAX_AGE_MS: u64 = 10 * 60 * 1000;
 const DEV_SYNC_TRIGGER_STALE_STARTED_RECOVERY_MS: u64 = 45_000;
 const SYNC_RELAY_BIND_RETRY_DELAY: Duration = Duration::from_secs(5);
 const SYNC_RELAY_BIND_MAX_RETRIES: usize = 60;
+/// Only bounds the non-unix single-file fallback; unix installs rotate
+/// runtime-health daily instead (see append_runtime_health_line).
+#[cfg(not(unix))]
 const RUNTIME_HEALTH_MAX_BYTES: u64 = 5 * 1024 * 1024;
 const RUNTIME_DIAGNOSTICS_FILE: &str = "runtime-diagnostics.jsonl";
 const RUNTIME_DIAGNOSTICS_MAX_BYTES: u64 = 5 * 1024 * 1024;
@@ -1037,6 +1040,221 @@ fn runtime_health_path(data_dir: &Path) -> PathBuf {
     data_dir.join(RUNTIME_HEALTH_FILE)
 }
 
+// ---------------------------------------------------------------------------
+// Runtime-health daily rotation (stability program P0-04)
+//
+// Events append to runtime-health-YYYYMMDD.jsonl (local date). The legacy
+// runtime-health.jsonl becomes a symlink to the current day so existing
+// readers (dev-sync-trigger idle checks, soak tooling, bug reports) keep
+// resolving without knowing about rotation. The old 5 MiB halving cap read
+// and rewrote the whole file inside event handling and destroyed multi-day
+// trend evidence; rotation replaces it with plain appends + 14-day retention.
+// ---------------------------------------------------------------------------
+
+const RUNTIME_HEALTH_RETAIN_DAYS: usize = 14;
+const RUNTIME_HEALTH_HISTORY_MAX_BYTES: u64 = 8 * 1024 * 1024;
+
+static RUNTIME_HEALTH_ACTIVE_DATE: StdMutex<Option<String>> = StdMutex::new(None);
+
+fn runtime_health_dated_file_name(date: &str) -> String {
+    format!("runtime-health-{}.jsonl", date)
+}
+
+fn runtime_health_dated_path(data_dir: &Path, date: &str) -> PathBuf {
+    data_dir.join(runtime_health_dated_file_name(date))
+}
+
+fn runtime_health_dated_file_date(file_name: &str) -> Option<&str> {
+    let date = file_name
+        .strip_prefix("runtime-health-")?
+        .strip_suffix(".jsonl")?;
+    (date.len() == 8 && date.bytes().all(|byte| byte.is_ascii_digit())).then_some(date)
+}
+
+/// Days-since-epoch to (year, month, day). Howard Hinnant's civil_from_days.
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let year = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if month <= 2 { year + 1 } else { year }, month, day)
+}
+
+fn utc_date_yyyymmdd() -> String {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let (year, month, day) = civil_from_days((secs / 86_400) as i64);
+    format!("{:04}{:02}{:02}", year, month, day)
+}
+
+/// Local calendar date as YYYYMMDD; runtime-health files rotate on this.
+#[cfg(unix)]
+fn local_date_yyyymmdd() -> String {
+    let now = unsafe { libc::time(std::ptr::null_mut()) };
+    let mut tm = MaybeUninit::<libc::tm>::uninit();
+    let tm = unsafe {
+        if libc::localtime_r(&now, tm.as_mut_ptr()).is_null() {
+            return utc_date_yyyymmdd();
+        }
+        tm.assume_init()
+    };
+    format!(
+        "{:04}{:02}{:02}",
+        tm.tm_year + 1900,
+        tm.tm_mon + 1,
+        tm.tm_mday
+    )
+}
+
+#[cfg(not(unix))]
+fn local_date_yyyymmdd() -> String {
+    utc_date_yyyymmdd()
+}
+
+fn list_runtime_health_dated_files(data_dir: &Path) -> Vec<(String, PathBuf)> {
+    std::fs::read_dir(data_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            runtime_health_dated_file_date(&name).map(|date| (date.to_string(), entry.path()))
+        })
+        .collect()
+}
+
+/// Delete dated runtime-health files beyond the newest `keep`.
+fn prune_runtime_health_files(data_dir: &Path, keep: usize) -> Vec<PathBuf> {
+    let mut dated = list_runtime_health_dated_files(data_dir);
+    dated.sort_by(|a, b| b.0.cmp(&a.0));
+    let mut deleted = Vec::new();
+    for (_, path) in dated.into_iter().skip(keep) {
+        if std::fs::remove_file(&path).is_ok() {
+            deleted.push(path);
+        }
+    }
+    deleted
+}
+
+/// Start (or resume) the dated file for `date`: migrate the legacy plain
+/// file once, repoint the runtime-health.jsonl symlink for existing readers,
+/// and enforce retention. Runs on the first append of each local day.
+#[cfg(unix)]
+fn roll_runtime_health_files(data_dir: &Path, date: &str) -> std::io::Result<PathBuf> {
+    let dated = runtime_health_dated_path(data_dir, date);
+    let legacy = runtime_health_path(data_dir);
+
+    if let Ok(metadata) = std::fs::symlink_metadata(&legacy) {
+        if metadata.file_type().is_symlink() {
+            std::fs::remove_file(&legacy)?;
+        } else if !dated.exists() {
+            std::fs::rename(&legacy, &dated)?;
+        } else {
+            // Both exist (crash between rotation steps): fold the legacy
+            // tail into today's file so no lines are lost.
+            let legacy_content = std::fs::read_to_string(&legacy).unwrap_or_default();
+            if !legacy_content.is_empty() {
+                use std::io::Write;
+                let mut file = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&dated)?;
+                file.write_all(legacy_content.as_bytes())?;
+            }
+            std::fs::remove_file(&legacy)?;
+        }
+    }
+
+    std::os::unix::fs::symlink(runtime_health_dated_file_name(date), &legacy)?;
+    prune_runtime_health_files(data_dir, RUNTIME_HEALTH_RETAIN_DAYS);
+    Ok(dated)
+}
+
+/// Plain append to today's dated file — no size cap and no whole-file
+/// rewrite on the event path (retention bounds total disk use instead).
+#[cfg(unix)]
+fn append_runtime_health_line(data_dir: &Path, line: &str) -> std::io::Result<()> {
+    let date = local_date_yyyymmdd();
+    let needs_roll = {
+        let mut active = RUNTIME_HEALTH_ACTIVE_DATE.lock().unwrap();
+        if active.as_deref() == Some(date.as_str()) {
+            false
+        } else {
+            *active = Some(date.clone());
+            true
+        }
+    };
+    if needs_roll {
+        if let Err(error) = roll_runtime_health_files(data_dir, &date) {
+            warn!("[runtime-health] rotation failed for {}: {}", date, error);
+        }
+    }
+
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(runtime_health_dated_path(data_dir, &date))?;
+    use std::io::Write;
+    writeln!(file, "{}", line)
+}
+
+/// Windows has no reliable unprivileged symlinks for the reader-compat
+/// shim, so it keeps the legacy bounded single-file behavior.
+#[cfg(not(unix))]
+fn append_runtime_health_line(data_dir: &Path, line: &str) -> std::io::Result<()> {
+    append_bounded_jsonl(
+        &runtime_health_path(data_dir),
+        line,
+        RUNTIME_HEALTH_MAX_BYTES,
+    )
+}
+
+/// Newest `days` runtime-health day files concatenated oldest-first, falling
+/// back to the legacy plain file when no dated file exists yet (pre-rotation
+/// installs and the non-unix single-file mode).
+fn read_runtime_health_recent_days(data_dir: &Path, days: usize) -> String {
+    let mut dated = list_runtime_health_dated_files(data_dir);
+    dated.sort_by(|a, b| b.0.cmp(&a.0));
+    let mut newest: Vec<PathBuf> = dated
+        .into_iter()
+        .take(days.max(1))
+        .map(|(_, path)| path)
+        .collect();
+    if newest.is_empty() {
+        return std::fs::read_to_string(runtime_health_path(data_dir)).unwrap_or_default();
+    }
+    newest.reverse();
+
+    let mut combined = String::new();
+    for path in newest {
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            combined.push_str(&content);
+            if !combined.is_empty() && !combined.ends_with('\n') {
+                combined.push('\n');
+            }
+        }
+    }
+    combined
+}
+
+/// Tail of `raw` within `max_bytes`, cut at a line boundary.
+fn tail_lines_within_bytes(raw: &str, max_bytes: u64) -> &str {
+    if raw.len() as u64 <= max_bytes {
+        return raw;
+    }
+    let keep_from = raw.len().saturating_sub(max_bytes as usize);
+    raw.get(keep_from..)
+        .and_then(|tail| tail.find('\n').map(|offset| &tail[offset + 1..]))
+        .unwrap_or("")
+}
+
 fn runtime_diagnostics_path(data_dir: &Path) -> PathBuf {
     data_dir.join(RUNTIME_DIAGNOSTICS_FILE)
 }
@@ -1075,11 +1293,10 @@ fn append_runtime_health(app: &tauri::AppHandle, mut payload: serde_json::Value)
     let Ok(line) = serde_json::to_string(&payload) else {
         return;
     };
-    let path = runtime_health_path(&data_dir);
-    if let Err(error) = append_bounded_jsonl(&path, &line, RUNTIME_HEALTH_MAX_BYTES) {
+    if let Err(error) = append_runtime_health_line(&data_dir, &line) {
         warn!(
-            "[runtime-health] failed to append {}: {}",
-            path.display(),
+            "[runtime-health] failed to append in {}: {}",
+            data_dir.display(),
             error
         );
     }
@@ -1175,7 +1392,13 @@ fn load_dev_sync_trigger_result_status(data_dir: &Path, id: &str) -> Option<Stri
 }
 
 fn latest_runtime_health_background_job_active(data_dir: &Path, now_ms: u64) -> Option<bool> {
-    let raw = std::fs::read_to_string(runtime_health_path(data_dir)).ok()?;
+    // Two days so a heartbeat written just before the daily rollover is
+    // still visible in the minutes after it (F-series trigger findings —
+    // this idle check green-lights dev-sync trigger replays).
+    let raw = read_runtime_health_recent_days(data_dir, 2);
+    if raw.is_empty() {
+        return None;
+    }
     for line in raw.lines().rev() {
         let Ok(heartbeat) = serde_json::from_str::<RuntimeHealthHeartbeat>(line) else {
             continue;
@@ -1839,15 +2062,17 @@ fn write_startup_diagnostics_bundle(
 
     let filename = format!("freed-diagnostics-{}.json", now_unix_ms());
     let output_path = downloads_dir.join(filename);
+    let runtime_health_tail = {
+        let raw = read_runtime_health_recent_days(data_dir, 2);
+        let tail = tail_lines_within_bytes(&raw, STARTUP_DIAGNOSTICS_MAX_FILE_BYTES);
+        (!tail.is_empty()).then(|| tail.to_string())
+    };
     let diagnostics = serde_json::json!({
         "createdAtMs": now_unix_ms(),
         "version": version,
         "platform": platform,
         "startupRecovery": load_startup_recovery_state(data_dir),
-        "runtimeHealth": read_recent_text_file(
-            &runtime_health_path(data_dir),
-            STARTUP_DIAGNOSTICS_MAX_FILE_BYTES,
-        ),
+        "runtimeHealth": runtime_health_tail,
         "runtimeDiagnostics": read_recent_text_file(
             &runtime_diagnostics_path(data_dir),
             STARTUP_DIAGNOSTICS_MAX_FILE_BYTES,
@@ -6480,16 +6705,28 @@ async fn get_recent_runtime_health(
         .path()
         .app_data_dir()
         .map_err(|error| error.to_string())?;
-    let path = runtime_health_path(&data_dir);
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(raw) => raw,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(error.to_string()),
-    };
+    let raw = read_runtime_health_recent_days(&data_dir, 2);
     let limit = limit.unwrap_or(120).clamp(1, 1_000);
     let lines: Vec<String> = raw.lines().map(|line| line.to_string()).collect();
     let start = lines.len().saturating_sub(limit);
     Ok(lines[start..].to_vec())
+}
+
+/// Full current + previous day of runtime-health for bug-report bundles
+/// (stability P0-04), tail-capped so the IPC payload stays bounded.
+#[tauri::command]
+async fn get_runtime_health_history(
+    app: tauri::AppHandle,
+    days: Option<usize>,
+) -> Result<Vec<String>, String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let days = days.unwrap_or(2).clamp(1, RUNTIME_HEALTH_RETAIN_DAYS);
+    let raw = read_runtime_health_recent_days(&data_dir, days);
+    let raw = tail_lines_within_bytes(&raw, RUNTIME_HEALTH_HISTORY_MAX_BYTES);
+    Ok(raw.lines().map(|line| line.to_string()).collect())
 }
 
 #[tauri::command]
@@ -11885,6 +12122,7 @@ pub fn run() {
             get_runtime_memory_stats,
             trim_webkit_network_cache_now,
             get_recent_runtime_health,
+            get_runtime_health_history,
             get_ai_hardware_profile,
             get_desktop_session_state,
             get_social_provider_cookie_state,
@@ -11941,6 +12179,154 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_health_rotation_migrates_legacy_file_and_prunes_old_days() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(runtime_health_path(temp.path()), "legacy-line\n").unwrap();
+        for day in 1..=15 {
+            std::fs::write(
+                runtime_health_dated_path(temp.path(), &format!("202606{:02}", day)),
+                format!("june-{}\n", day),
+            )
+            .unwrap();
+        }
+
+        let dated = roll_runtime_health_files(temp.path(), "20260702").unwrap();
+
+        // Legacy content moved into today's dated file...
+        assert_eq!(std::fs::read_to_string(&dated).unwrap(), "legacy-line\n");
+        // ...and the legacy path is now a symlink resolving to it.
+        let legacy = runtime_health_path(temp.path());
+        assert!(std::fs::symlink_metadata(&legacy)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(std::fs::read_to_string(&legacy).unwrap(), "legacy-line\n");
+
+        // 16 dated files existed after migration; retention keeps 14.
+        let mut remaining: Vec<String> = list_runtime_health_dated_files(temp.path())
+            .into_iter()
+            .map(|(date, _)| date)
+            .collect();
+        remaining.sort();
+        assert_eq!(remaining.len(), RUNTIME_HEALTH_RETAIN_DAYS);
+        assert_eq!(remaining.first().map(String::as_str), Some("20260603"));
+        assert_eq!(remaining.last().map(String::as_str), Some("20260702"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_health_rotation_repoints_symlink_on_next_day() {
+        let temp = tempfile::tempdir().unwrap();
+
+        roll_runtime_health_files(temp.path(), "20260701").unwrap();
+        std::fs::write(
+            runtime_health_dated_path(temp.path(), "20260701"),
+            "day-one\n",
+        )
+        .unwrap();
+
+        roll_runtime_health_files(temp.path(), "20260702").unwrap();
+        std::fs::write(
+            runtime_health_dated_path(temp.path(), "20260702"),
+            "day-two\n",
+        )
+        .unwrap();
+
+        let legacy = runtime_health_path(temp.path());
+        assert_eq!(std::fs::read_to_string(&legacy).unwrap(), "day-two\n");
+        // The previous day survives untouched for trend evidence.
+        assert_eq!(
+            std::fs::read_to_string(runtime_health_dated_path(temp.path(), "20260701")).unwrap(),
+            "day-one\n"
+        );
+    }
+
+    #[test]
+    fn runtime_health_recent_days_concatenates_newest_files_oldest_first() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            runtime_health_dated_path(temp.path(), "20260630"),
+            "old\n",
+        )
+        .unwrap();
+        std::fs::write(
+            runtime_health_dated_path(temp.path(), "20260701"),
+            "middle\n",
+        )
+        .unwrap();
+        std::fs::write(
+            runtime_health_dated_path(temp.path(), "20260702"),
+            "new\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_runtime_health_recent_days(temp.path(), 2),
+            "middle\nnew\n"
+        );
+    }
+
+    #[test]
+    fn runtime_health_recent_days_falls_back_to_legacy_plain_file() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(runtime_health_path(temp.path()), "legacy-only\n").unwrap();
+
+        assert_eq!(
+            read_runtime_health_recent_days(temp.path(), 2),
+            "legacy-only\n"
+        );
+    }
+
+    #[test]
+    fn runtime_health_dated_file_date_accepts_only_dated_names() {
+        assert_eq!(
+            runtime_health_dated_file_date("runtime-health-20260702.jsonl"),
+            Some("20260702")
+        );
+        assert_eq!(runtime_health_dated_file_date("runtime-health.jsonl"), None);
+        assert_eq!(
+            runtime_health_dated_file_date("runtime-health-2026070.jsonl"),
+            None
+        );
+        assert_eq!(
+            runtime_health_dated_file_date("runtime-health-2026070a.jsonl"),
+            None
+        );
+    }
+
+    #[test]
+    fn tail_lines_within_bytes_cuts_at_line_boundaries() {
+        let raw = "first\nsecond\nthird\n";
+        assert_eq!(tail_lines_within_bytes(raw, 1_000), raw);
+        assert_eq!(tail_lines_within_bytes(raw, 14), "second\nthird\n");
+        assert_eq!(tail_lines_within_bytes(raw, 8), "third\n");
+    }
+
+    #[test]
+    fn civil_from_days_matches_known_dates() {
+        assert_eq!(civil_from_days(0), (1970, 1, 1));
+        assert_eq!(civil_from_days(19_723), (2024, 1, 1)); // leap year start
+        assert_eq!(civil_from_days(20_636), (2026, 7, 2));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dev_sync_trigger_idle_check_reads_dated_runtime_health_files() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            runtime_health_dated_path(temp.path(), "20260702"),
+            "{\"activeBackgroundJob\":null,\"tsMs\":47000}\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            latest_runtime_health_background_job_active(temp.path(), 47_000),
+            Some(false)
+        );
+    }
 
     #[test]
     fn sync_relay_bind_retry_delay_only_retries_addr_in_use() {
