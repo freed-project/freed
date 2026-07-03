@@ -311,6 +311,37 @@ function formatMapRangeDate(value: number): string {
   return mapRangeFormatter.format(value);
 }
 
+function startOfLocalDay(value: number): number {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+function endOfLocalDay(value: number): number {
+  const date = new Date(value);
+  date.setHours(23, 59, 59, 999);
+  return date.getTime();
+}
+
+function addLocalDays(value: number, days: number): number {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return date.getTime();
+}
+
+function boxesOverlap(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
+}
+
 async function readDesktopSidebarPadding(page: Page) {
   return page.evaluate(() => {
     const sidebarBody = document.querySelector('[data-testid="app-sidebar-body"]') as HTMLElement | null;
@@ -3359,6 +3390,35 @@ test("map time range defaults to all available location windows", async ({ app, 
     const now = Date.now();
     await automerge.docAddFeedItems([
       {
+        globalId: "ig:grace:rome-memory",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now - 14 * 24 * 60 * 60_000,
+        publishedAt: now - 14 * 24 * 60 * 60_000,
+        author: {
+          id: "grace-ig",
+          handle: "grace",
+          displayName: "Grace Hopper",
+        },
+        content: {
+          text: "Still thinking about Rome.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        location: {
+          name: "Rome",
+          coordinates: { lat: 41.9028, lng: 12.4964 },
+          source: "geo_tag",
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+      },
+      {
         globalId: "ig:ada:lisbon-plan",
         platform: "instagram",
         contentType: "post",
@@ -3419,10 +3479,12 @@ test("map time range defaults to all available location windows", async ({ app, 
   await expect(page.getByTestId("map-time-range-slider")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId("map-time-preset-all")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("map-time-preset-today")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("map-time-preset-today-future")).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByTestId("map-time-preset-last-week")).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByTestId("map-time-range-slider").locator("button")).toHaveText([
     "last week",
     "today",
+    "today + future",
     "all time",
   ]);
   await expect(page.getByRole("button", { name: "Current", exact: true })).toHaveCount(0);
@@ -3434,6 +3496,26 @@ test("map time range defaults to all available location windows", async ({ app, 
 
   await page.getByTestId("map-time-preset-today").click();
   await expect(page.getByTestId("map-time-preset-today")).toHaveAttribute("aria-pressed", "true");
+  const todayStartAt = Number(await page.getByTestId("map-time-range-start").inputValue());
+  const todayEndAt = Number(await page.getByTestId("map-time-range-end").inputValue());
+  const maxRangeAt = Number(await page.getByTestId("map-time-range-end").getAttribute("max"));
+  expect(todayStartAt).toBe(addLocalDays(seededNow, -1));
+  expect(todayEndAt).toBe(endOfLocalDay(seededNow));
+  expect(todayEndAt).toBeLessThan(maxRangeAt);
+  await expect(page.getByTestId("map-time-range-start-label")).toHaveText(formatMapRangeDate(addLocalDays(seededNow, -1)));
+  await expect(page.getByTestId("map-time-range-end-label")).toHaveText(formatMapRangeDate(seededNow));
+  const startLabelBox = await page.getByTestId("map-time-range-start-label").boundingBox();
+  const endLabelBox = await page.getByTestId("map-time-range-end-label").boundingBox();
+  expect(startLabelBox).not.toBeNull();
+  expect(endLabelBox).not.toBeNull();
+  expect(boxesOverlap(startLabelBox!, endLabelBox!)).toBe(false);
+  expect(Math.abs(startLabelBox!.y - endLabelBox!.y)).toBeLessThan(2);
+  expect(startLabelBox!.x).toBeLessThan(endLabelBox!.x);
+
+  await page.getByTestId("map-time-preset-today-future").click();
+  await expect(page.getByTestId("map-time-preset-today-future")).toHaveAttribute("aria-pressed", "true");
+  expect(Number(await page.getByTestId("map-time-range-end").inputValue())).toBe(maxRangeAt);
+
   await page.getByTestId("map-time-preset-all").click();
   await expect(page.getByTestId("map-time-preset-all")).toHaveAttribute("aria-pressed", "true");
 
@@ -3448,6 +3530,8 @@ test("map time range defaults to all available location windows", async ({ app, 
   await setMapTimeRange(page, startAt, endAt);
   const clampedStartAt = Number(await page.getByTestId("map-time-range-start").inputValue());
   const clampedEndAt = Number(await page.getByTestId("map-time-range-end").inputValue());
+  expect(clampedStartAt).toBe(startOfLocalDay(startAt));
+  expect(clampedEndAt).toBe(endOfLocalDay(endAt));
   await expect(page.getByTestId("map-time-range-start-label")).toHaveText(formatMapRangeDate(clampedStartAt));
   await expect(page.getByTestId("map-time-range-end-label")).toHaveText(formatMapRangeDate(clampedEndAt));
   await expect(page.getByTestId("map-time-preset-all")).toHaveAttribute("aria-pressed", "false");

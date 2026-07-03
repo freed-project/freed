@@ -274,7 +274,7 @@ Map popovers now use a wider card layout and deliberately omit the old MapLibre 
 Friends and Map now consume the same shared theme tokens, button treatments, shell backgrounds, surface recipes, and theme-native map palettes as the rest of Freed, so themes like Neon, Midas, Vesper, Ember, and Scriptorium land consistently across the graph, sidebars, popovers, mini-map cards, editor, contact-sync flows, and map basemap itself.
 The shared map now includes a persisted `Friends` / `All content` toggle. It restores the user's last mode from preferences and defaults to `All content` when the library has geolocatable followed accounts but no friend-linked pins yet.
 That same `Friends` / `All content` lens now lives in the shared toolbar for feed surfaces too, so the operator can collapse Freed down to real-world people without leaving the main reading views.
-The shared map now exposes a persistent lower-left time range slider. The left handle starts at the earliest location timestamp, the right handle starts at the farthest future timestamp, and all available time is visible by default. Dragging either handle narrows the visible location windows without sending the operator back to the toolbar, and the handle labels travel underneath the selected start and end points. The card header also exposes `all time`, `today`, and `last week` text presets, with the active range highlighted.
+The shared map now exposes a persistent lower-left time range slider. The left handle starts at the earliest location day, the right handle starts at the farthest future location day, and all available time is visible by default. Dragging either handle snaps to whole-day values and narrows the visible location windows without sending the operator back to the toolbar. Handle labels travel underneath the selected start and end points, offset sideways on tight ranges so they stay on one row without overlapping. The card header also exposes `all time`, `today + future`, `today`, and `last week` text presets, with the active range highlighted.
 Friends and Map now use the shared top toolbar for identity controls, and feed-only bulk actions no longer appear in those workspaces.
 The Friends graph now auto-discovers likely human identities as provisional `connection` people from unlinked social accounts, persists those middle-ring nodes across sessions, and removes empty provisional identities when all linked channels move away.
 The Friends graph also now renders followed RSS feeds in the same graph, so the operator can see confirmed people, provisional people, linked channels, stray channels, and feed subscriptions in one zoomable workspace instead of splitting the world across separate mental models.
@@ -317,7 +317,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.19 | Google Contacts source, refreshable sync lifecycle, matching, and Friend creation flow | Medium | Done |
 | 8.20 | Wire Map to live sidebar navigation | Low | Done |
 | 8.21 | Add future-aware map filtering for location-bearing items | Medium | Done |
-| 8.22 | Replace map time mode buttons with an always-visible time range slider, handle labels, and quick presets for past, current, and future playback | Medium | Done |
+| 8.22 | Replace map time mode buttons with an always-visible time range slider, non-overlapping handle labels, and quick presets for past, current, today plus future, and all-time playback | Medium | Done |
 | 8.23 | Replace embedded Friend identity with canonical `Person` + `Account` schema and Automerge migration | High | Done |
 | 8.24 | Backfill followed-account catalog from captured authors and stories | Medium | Done |
 | 8.25 | Google Contacts imports create friend persons with linked contact accounts | Medium | Done |
@@ -419,7 +419,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Map promoted to live sidebar navigation
 - [x] Future-aware map filtering supports past, current, and future location windows
 - [x] Range filtering works across historical posts and future planning items
-- [x] Time-card presets and handle-following labels work across historical posts and future planning items
+- [x] Time-card presets, including today plus future, and handle-following labels work across historical posts and future planning items without label collisions
 - [ ] Overlaps render as derived read-time views, not persisted source records
 - [ ] Mozi-backed friend/location events appear in Friend identity and map flows
 

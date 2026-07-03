@@ -122,6 +122,7 @@ export function AppShell({ children }: AppShellProps) {
   const savedContentInitialUrl = useCommandSurfaceStore((s) => s.savedContentInitialUrl);
   const openSavedContentDialog = useCommandSurfaceStore((s) => s.openSavedContentDialog);
   const closeSavedContentDialog = useCommandSurfaceStore((s) => s.closeSavedContentDialog);
+  const [savedContentError, setSavedContentError] = useState("");
   const libraryDialogOpen = useCommandSurfaceStore((s) => s.libraryDialogOpen);
   const libraryDialogTab = useCommandSurfaceStore((s) => s.libraryDialogTab);
   const closeLibraryDialog = useCommandSurfaceStore((s) => s.closeLibraryDialog);
@@ -174,13 +175,28 @@ export function AppShell({ children }: AppShellProps) {
 
   useEffect(() => {
     const handleOpenSavedContent = (event: Event) => {
-      const detail = (event as CustomEvent<{ initialUrl?: string }>).detail;
+      const detail = (event as CustomEvent<{ initialUrl?: string; errorMessage?: string }>).detail;
+      setSavedContentError(detail?.errorMessage ?? "");
+      openSavedContentDialog(detail?.initialUrl);
+    };
+    const handleSaveDetailsError = (event: Event) => {
+      const detail = (event as CustomEvent<{ initialUrl?: string; errorMessage?: string }>).detail;
+      setSavedContentError(detail?.errorMessage ?? "Freed could not save details for this URL.");
       openSavedContentDialog(detail?.initialUrl);
     };
 
     window.addEventListener("freed:open-save-content-dialog", handleOpenSavedContent);
-    return () => window.removeEventListener("freed:open-save-content-dialog", handleOpenSavedContent);
+    window.addEventListener("freed:save-content-details-error", handleSaveDetailsError);
+    return () => {
+      window.removeEventListener("freed:open-save-content-dialog", handleOpenSavedContent);
+      window.removeEventListener("freed:save-content-details-error", handleSaveDetailsError);
+    };
   }, [openSavedContentDialog]);
+
+  const handleCloseSavedContentDialog = useCallback(() => {
+    setSavedContentError("");
+    closeSavedContentDialog();
+  }, [closeSavedContentDialog]);
 
   const forceCompactDesktopSidebar = !isMobileDevice && isMobileViewport;
   const effectiveDesktopSidebarDisplayMode =
@@ -601,7 +617,8 @@ export function AppShell({ children }: AppShellProps) {
         <SavedContentDialog
           open={savedContentOpen}
           initialUrl={savedContentInitialUrl}
-          onClose={closeSavedContentDialog}
+          initialError={savedContentError}
+          onClose={handleCloseSavedContentDialog}
         />
         {libraryDialogOpen ? (
           <LibraryDialog

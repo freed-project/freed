@@ -11,14 +11,12 @@ import { useResolvedLocations } from "../../hooks/useResolvedLocations.js";
 import { openAccountFromMap, openFriendFromMap, openPostFromMap } from "../../lib/map-navigation.js";
 import { MapSurface } from "./MapSurface.js";
 
-const RANGE_STEP_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
 const timeRangeFormatter = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
 });
 
-type TimePreset = "all" | "today" | "last-week";
+type TimePreset = "all" | "today-future" | "today" | "last-week";
 
 type MapViewportInsets = {
   top: number;
@@ -59,6 +57,13 @@ function endOfLocalDay(value: number): number {
   return date.getTime();
 }
 
+function addLocalDays(value: number, days: number): number {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return date.getTime();
+}
+
 function clampTimeRangeToBounds(range: LocationTimeRange, bounds: LocationTimeRange): LocationTimeRange {
   const startAt = clamp(range.startAt, bounds.startAt, bounds.endAt);
   const endAt = clamp(range.endAt, bounds.startAt, bounds.endAt);
@@ -72,18 +77,57 @@ function presetTimeRange(preset: Exclude<TimePreset, "all">, bounds: LocationTim
   const now = Date.now();
   if (preset === "today") {
     return clampTimeRangeToBounds({
-      startAt: startOfLocalDay(now),
+      startAt: addLocalDays(now, -1),
       endAt: endOfLocalDay(now),
+    }, bounds);
+  }
+  if (preset === "today-future") {
+    return clampTimeRangeToBounds({
+      startAt: addLocalDays(now, -1),
+      endAt: bounds.endAt,
     }, bounds);
   }
 
   return clampTimeRangeToBounds({
-    startAt: startOfLocalDay(now - 6 * DAY_MS),
+    startAt: addLocalDays(now, -7),
     endAt: endOfLocalDay(now),
   }, bounds);
 }
 
-function labelPositionStyle(percent: number): { left: string; transform: string } {
+function snapTimeBoundsToDays(bounds: LocationTimeRange): LocationTimeRange {
+  return {
+    startAt: startOfLocalDay(bounds.startAt),
+    endAt: endOfLocalDay(bounds.endAt),
+  };
+}
+
+function snapRangeStartToDay(value: number): number {
+  return startOfLocalDay(value);
+}
+
+function snapRangeEndToDay(value: number): number {
+  return endOfLocalDay(value);
+}
+
+function labelPositionStyle(
+  percent: number,
+  edge: "start" | "end",
+  offsetForCollision = false,
+): { left: string; transform: string } {
+  if (offsetForCollision) {
+    if (edge === "start") {
+      if (percent <= 8) {
+        return { left: `${percent}%`, transform: "translateX(0)" };
+      }
+      return { left: `${percent}%`, transform: "translateX(calc(-100% - 0.375rem))" };
+    }
+
+    if (percent >= 92) {
+      return { left: `${percent}%`, transform: "translateX(-100%)" };
+    }
+    return { left: `${percent}%`, transform: "translateX(0.375rem)" };
+  }
+
   if (percent <= 2) {
     return { left: "0%", transform: "translateX(0)" };
   }
@@ -109,7 +153,11 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const [rangeSelection, setRangeSelection] = useState<LocationTimeRange | null>(null);
 
   const { resolvedItems } = useResolvedLocations(items, persons, accounts);
-  const timeBounds = useMemo(() => getLocationTimelineBounds(resolvedItems), [resolvedItems]);
+  const rawTimeBounds = useMemo(() => getLocationTimelineBounds(resolvedItems), [resolvedItems]);
+  const timeBounds = useMemo(
+    () => (rawTimeBounds ? snapTimeBoundsToDays(rawTimeBounds) : null),
+    [rawTimeBounds],
+  );
   const effectiveTimeRange = useMemo<LocationTimeRange | null>(() => {
     if (!timeBounds) return null;
     if (!rangeSelection) return timeBounds;
@@ -165,8 +213,9 @@ export function MapView({ viewportInsets }: MapViewProps) {
 
     setRangeSelection((current) => {
       const currentRange = current ?? timeBounds;
+      const maxStartAt = startOfLocalDay(currentRange.endAt);
       const next = {
-        startAt: clamp(value, timeBounds.startAt, currentRange.endAt),
+        startAt: clamp(snapRangeStartToDay(value), timeBounds.startAt, maxStartAt),
         endAt: currentRange.endAt,
       };
       return isFullTimeRange(next, timeBounds) ? null : next;
@@ -178,9 +227,10 @@ export function MapView({ viewportInsets }: MapViewProps) {
 
     setRangeSelection((current) => {
       const currentRange = current ?? timeBounds;
+      const minEndAt = endOfLocalDay(currentRange.startAt);
       const next = {
         startAt: currentRange.startAt,
-        endAt: clamp(value, currentRange.startAt, timeBounds.endAt),
+        endAt: clamp(snapRangeEndToDay(value), minEndAt, timeBounds.endAt),
       };
       return isFullTimeRange(next, timeBounds) ? null : next;
     });
@@ -212,22 +262,26 @@ export function MapView({ viewportInsets }: MapViewProps) {
       ? ((effectiveTimeRange.endAt - timeBounds.startAt) / rangeDuration) * 100
       : 100;
   const rangeWidthPercent = Math.max(0, rangeEndPercent - rangeStartPercent);
+  const labelsAreClose = Math.abs(rangeEndPercent - rangeStartPercent) < 12;
   const minRangeValue = timeBounds?.startAt ?? 0;
   const maxRangeValue = timeBounds?.endAt ?? 0;
-  const rangeStep = timeBounds ? Math.max(1, Math.min(RANGE_STEP_MS, rangeDuration)) : 1;
+  const rangeStep = timeBounds ? "any" : 1;
   const activePreset =
     timeBounds && effectiveTimeRange
       ? isFullTimeRange(effectiveTimeRange, timeBounds)
         ? "all"
         : sameTimeRange(effectiveTimeRange, presetTimeRange("today", timeBounds))
           ? "today"
-          : sameTimeRange(effectiveTimeRange, presetTimeRange("last-week", timeBounds))
-            ? "last-week"
-            : null
+          : sameTimeRange(effectiveTimeRange, presetTimeRange("today-future", timeBounds))
+            ? "today-future"
+            : sameTimeRange(effectiveTimeRange, presetTimeRange("last-week", timeBounds))
+              ? "last-week"
+              : null
       : null;
   const timePresets: Array<{ value: TimePreset; label: string; testId: string }> = [
     { value: "last-week", label: "last week", testId: "map-time-preset-last-week" },
     { value: "today", label: "today", testId: "map-time-preset-today" },
+    { value: "today-future", label: "today + future", testId: "map-time-preset-today-future" },
     { value: "all", label: "all time", testId: "map-time-preset-all" },
   ];
   const emptyTitle = effectiveMode === "friends" ? "No friend pins in this time range." : "No location pins in this time range.";
@@ -246,12 +300,12 @@ export function MapView({ viewportInsets }: MapViewProps) {
         }}
       >
         <div
-          className="pointer-events-auto theme-floating-panel w-[min(26rem,calc(100vw-2rem))] px-4 py-3"
+          className="pointer-events-auto theme-floating-panel w-[min(32rem,calc(100vw-2rem))] px-4 py-3"
           data-testid="map-time-range-slider"
         >
           <div className="flex items-center justify-between gap-3 text-[10px] font-medium text-[color:var(--theme-text-muted)]">
             <span>Time</span>
-            <div className="flex items-center gap-1 text-right">
+            <div className="flex flex-wrap items-center justify-end gap-1 text-right">
               {timePresets.map((preset) => {
                 const active = activePreset === preset.value;
                 return (
@@ -310,14 +364,14 @@ export function MapView({ viewportInsets }: MapViewProps) {
             <span
               className="absolute top-8 whitespace-nowrap text-[10px] text-[color:var(--theme-text-soft)]"
               data-testid="map-time-range-start-label"
-              style={labelPositionStyle(rangeStartPercent)}
+              style={labelPositionStyle(rangeStartPercent, "start", labelsAreClose)}
             >
               {effectiveTimeRange ? formatRangeEdge(effectiveTimeRange.startAt) : "Start"}
             </span>
             <span
               className="absolute top-8 whitespace-nowrap text-[10px] text-[color:var(--theme-text-soft)]"
               data-testid="map-time-range-end-label"
-              style={labelPositionStyle(rangeEndPercent)}
+              style={labelPositionStyle(rangeEndPercent, "end", labelsAreClose)}
             >
               {effectiveTimeRange ? formatRangeEdge(effectiveTimeRange.endAt) : "End"}
             </span>

@@ -560,6 +560,42 @@ describe("content fetcher", () => {
     );
   });
 
+  it("bypasses startup delay and reopens the save dialog when manual detail fetch fails", async () => {
+    vi.useFakeTimers();
+    const events: Array<{ initialUrl?: string; errorMessage?: string }> = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent<{ initialUrl?: string; errorMessage?: string }>).detail);
+    };
+    window.addEventListener("freed:save-content-details-error", listener);
+    const { mod, mockInvoke } = await loadContentFetcherModuleWithAi({
+      autoSummarize: false,
+      extractTopics: false,
+      invokeImpl: () => Promise.reject(new Error("Network unreachable")),
+    });
+
+    mod.start({ startupDelayMs: 60_000 });
+    mod.enqueue([makeStubItem("saved:1")], {
+      priority: true,
+      force: true,
+      bypassStartupDelay: true,
+      reopenSaveDialogOnError: true,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    mod.stop();
+    window.removeEventListener("freed:save-content-details-error", listener);
+
+    expect(mockInvoke).toHaveBeenCalledWith(
+      "fetch_url",
+      expect.objectContaining({ url: SAMPLE_URL }),
+    );
+    expect(events).toEqual([
+      {
+        initialUrl: SAMPLE_URL,
+        errorMessage: "Network unreachable",
+      },
+    ]);
+  });
+
   it("defers content parsing when the main WebKit process is already large", async () => {
     vi.useFakeTimers();
     let highMemory = true;
