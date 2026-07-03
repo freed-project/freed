@@ -28,9 +28,9 @@ Create a marketing worktree branch from `www`, implement the website change, ver
    - Before reporting final status, list this thread's preview with `./scripts/worktree-processes.sh list --worktree <worktree>` so the URL and owner are clear.
    - When the PR is merged, the worktree is removed, or the thread is archived, stop only this thread's preview with `./scripts/worktree-processes.sh stop --worktree <worktree> --target website`.
    - Never stop previews from other worktrees unless the user explicitly asks for global cleanup.
-11. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --base www --summary "<user-facing change>" --test "cd website && PATH=../node_modules/.bin:$PATH npm run build"`.
+11. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --base www --summary "<user-facing change>" --test "cd website && PATH=../node_modules/.bin:$PATH npm run build" --ready` (omit `--ready` for interim publishes so the PR stays draft while iterating).
    - If the branch intentionally adds new files, stage them yourself first or re-run `./scripts/worktree-publish.sh` with `--include-untracked`.
-12. Confirm the branch is pushed to `origin`, the draft PR targets `www`, and the closeout includes the local preview URL.
+12. Confirm the branch is pushed to `origin`, the PR targets `www` and is marked ready for review (or intentionally left draft with the reason stated), and the closeout includes the local preview URL.
 
 Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run website commands from `website/`, and prefix `PATH` with the worktree root `node_modules/.bin` when a hoisted binary like `next` or `tsx` is required.
 

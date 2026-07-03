@@ -1,12 +1,12 @@
 ---
 name: freed-build-feature
-description: Scaffold product work in a dev-based worktree, implement a runnable slice, launch the lightest useful local preview early, validate it with the shared feature-tier runner before publish, and finish by committing, pushing, and opening a draft PR targeting dev. Use for Desktop, PWA, shared packages, sync, capture packages, release tooling, app behavior, and product docs targeting dev. Do not use for public marketing changes targeting www.
+description: Scaffold product work in a dev-based worktree, implement a runnable slice, launch the lightest useful local preview early, validate it with the shared feature-tier runner before publish, and finish by committing, pushing, and opening a PR targeting dev (draft while iterating, marked ready for review at closeout). Use for Desktop, PWA, shared packages, sync, capture packages, release tooling, app behavior, and product docs targeting dev. Do not use for public marketing changes targeting www.
 disable-model-invocation: true
 ---
 
 # Build Feature
 
-Create a product worktree branch from the latest remote `dev`, implement enough of the feature or fix to run, launch the lightest useful local preview early, iterate against that preview, then validate with the shared feature-tier runner before committing the work, pushing the branch, and opening a draft PR to `dev`.
+Create a product worktree branch from the latest remote `dev`, implement enough of the feature or fix to run, launch the lightest useful local preview early, iterate against that preview, then validate with the shared feature-tier runner before committing the work, pushing the branch, and publishing the PR to `dev` (draft during iteration; `--ready` at closeout).
 
 Feature threads inherit the stability program rules in [docs/STABILITY-PROGRAM.md](../../../docs/STABILITY-PROGRAM.md) ("Program rules"): the watchdog freeze (no threshold, recovery-reason, or process-attribution changes), one product PR per soak cycle for behavioral changes, and the provider-visible lane (anything changing WebView loads, provider navigation, request frequency, cookies, headers, or extractor scripts stops for explicit owner approval first).
 
@@ -57,9 +57,10 @@ Feature threads inherit the stability program rules in [docs/STABILITY-PROGRAM.m
    - Before reporting final status, list this thread's preview with `./scripts/worktree-processes.sh list --worktree <worktree>` so the URL and owner are clear.
    - When the PR is merged, the worktree is removed, or the thread is archived, stop only this thread's preview with `./scripts/worktree-processes.sh stop --worktree <worktree> --target <pwa|desktop>`.
    - Never stop previews from other worktrees unless the user explicitly asks for global cleanup.
-17. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
+17. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>" --ready`.
+   - Pass `--ready` only at closeout, once validation has passed and the work is complete. Interim publishes omit it so the PR stays draft while the thread iterates.
    - If the branch intentionally adds new files, stage them yourself first or re-run with `--include-untracked`.
-18. Confirm the branch is pushed to `origin` and the PR targeting `dev` stays in draft state. Include the local preview URL or native preview label in the closeout.
+18. Confirm the branch is pushed to `origin` and the PR targeting `dev` is marked ready for review (or intentionally left draft if the thread is still iterating, blocked, or needs discussion — say which in the closeout). Include the local preview URL or native preview label in the closeout.
    - When a changed surface includes buttons, dialogs, or native fallback HTML, follow the repo's established primary and secondary control styling. Do not add hover lift, vertical motion, bounce, or ad hoc glossy or gradient CTA treatments.
 19. When the PR merges, append an outcome ledger entry via the W1-01 helper so the nightly planner learns from the result (see "Outcome recording" in docs/STABILITY-PROGRAM.md and docs/stability-tasks/W1-01-automation-state-out-of-tmp.md). Until the W1-01 helper (`scripts/record-outcome.mjs`) has landed, append the ledger line manually with the target or task id, PR number, build, and status.
 
