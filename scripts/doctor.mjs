@@ -334,7 +334,7 @@ export function runChecks(options = {}) {
   const repoRoot = options.repoRoot ?? REPO_ROOT;
   const machineArch = options.machineArch ?? os.arch();
   const platform = options.platform ?? os.platform();
-  const stateDir = options.stateDir ?? path.join(home, ".freed-automation");
+  const stateDir = options.stateDir ?? path.join(home, ".freed", "automation");
 
   const checks = [
     checkPinnedToolchain(home, repoRoot),

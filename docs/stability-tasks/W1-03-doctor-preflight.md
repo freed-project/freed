@@ -12,7 +12,7 @@ On the primary dev machine, `gh` was an x86_64 binary that failed to load arm64-
    - `node`/`npm`/`npx` resolve from the repo-pinned toolchain (.nvmrc) and match each other.
    - `gh` exists, runs (`gh --version`), and its binary architecture matches the machine (`file $(which gh)` on darwin); if broken, print the exact remediation (reinstall arm64 gh) and the curl-based GitHub API fallback pattern.
    - `git`, `curl`, `/usr/bin/python3` are usable.
-   - Sandbox-sensitive paths exist (`~/.freed-automation/` per W1-01).
+   - Sandbox-sensitive paths exist (`~/.freed/automation/` per W1-01).
 2. Wire it as the first step of `scripts/nightly-self-improve.mjs`, `scripts/worktree-add.sh`, and `scripts/worktree-publish.sh` in warn-only mode (hard-fail only in loop/CI contexts via `--strict`).
 3. Add a short "Machine preflight" section to AGENTS.md pointing at it.
 
