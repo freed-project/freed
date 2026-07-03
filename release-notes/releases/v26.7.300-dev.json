@@ -1,0 +1,78 @@
+{
+  "tag": "v26.7.300-dev",
+  "version": "26.7.300-dev",
+  "channel": "dev",
+  "dayKey": "26.7.3",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-03T21:09:32.493Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.203-dev",
+    "previousPublishedDayTag": "v26.7.203-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.300-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.300-dev"
+    ],
+    "prNumbers": [
+      894,
+      897,
+      899,
+      903,
+      904,
+      905,
+      906,
+      908,
+      909,
+      910,
+      911,
+      912,
+      913
+    ],
+    "commitSubjects": [
+      "fix: mirror runtime-health into the soak dir so rotation cannot shrink the evidence window (#913)",
+      "feat: add --ready closeout flag to worktree-publish so finished PRs leave draft (#911)",
+      "fix: make the CI perf regression gate actually fail on regressions (#899)",
+      "chore: nest automation state under ~/.freed/automation (#912)",
+      "feat: add scripts/doctor.mjs machine preflight for loops and worktree helpers (#906)",
+      "chore: move automation loop state out of /tmp and auto-record merge outcomes (#903)",
+      "feat: loop counters for cloud uploads, relay broadcasts, worker INITs, scrape outcomes (stability P0-03) (#909)",
+      "feat: structured window_destroyed kill records (stability P0-02) (#905)",
+      "docs: rewrite ARCHITECTURE.md from current code, fix roadmap rule, add canonical soak doc (#907)",
+      "feat: check in soak collector and soak-assert with machine-readable verdict (#908)",
+      "feat: daily runtime-health rotation replacing the 5 MiB halving cap (stability P0-04) (#910)",
+      "feat: single-source provider-visible path list with publish-time enforcement (W1-06) (#904)",
+      "docs: add verification-counters step and outcome recording to freed-build-feature skill (W1-05) (#902)",
+      "docs: rewrite freed-ship-build skill against actual release scripts (W1-04) (#901)",
+      "fix: refine map time presets (#894)",
+      "fix: save content details in the background",
+      "fix: bound social loop diagnostics parsing (#897)",
+      "docs: add stability program plan with verified findings and task queue (#896)"
+    ]
+  },
+  "release": {
+    "deck": "--ready closeout flag to worktree-publish so finished PRs leave draft, structured window_destroyed kill records (stability P0-02), and bound social loop diagnostics parsing",
+    "features": [
+      "--ready closeout flag to worktree-publish so finished PRs leave draft",
+      "Scripts/doctor.mjs machine preflight for loops and worktree helpers",
+      "Structured window_destroyed kill records (stability P0-02)"
+    ],
+    "fixes": [
+      "Mirror runtime-health into the soak dir so rotation cannot shrink the evidence window",
+      "Make the CI perf regression gate actually fail on regressions"
+    ],
+    "followUps": [
+      "Move automation loop state out of /tmp and auto-record merge outcomes",
+      "Loop counters , cloud uploads w/ heads-unchanged, relay broadcasts, worker INITs, scrape outcomes (stability P0-03)",
+      "Check in soak collector and soak-assert with machine-readable verdict",
+      "Daily runtime-health rotation replacing the 5 MiB halving cap (stability P0-04)",
+      "Single-source provider-visible path list with publish-time enforcement (W1-06)"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.300-dev\n\n--ready closeout flag to worktree-publish so finished PRs leave draft, structured window_destroyed kill records (stability P0-02), and bound social loop diagnostics parsing\n\n### Features\n\n- --ready closeout flag to worktree-publish so finished PRs leave draft\n- Scripts/doctor.mjs machine preflight for loops and worktree helpers\n- Structured window_destroyed kill records (stability P0-02)\n\n### Fixes\n\n- Mirror runtime-health into the soak dir so rotation cannot shrink the evidence window\n- Make the CI perf regression gate actually fail on regressions\n\n### Follow-ups\n\n- Move automation loop state out of /tmp and auto-record merge outcomes\n- Loop counters , cloud uploads w/ heads-unchanged, relay broadcasts, worker INITs, scrape outcomes (stability P0-03)\n- Check in soak collector and soak-assert with machine-readable verdict\n- Daily runtime-health rotation replacing the 5 MiB halving cap (stability P0-04)\n- Single-source provider-visible path list with publish-time enforcement (W1-06)\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
