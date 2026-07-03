@@ -243,3 +243,89 @@ test("worktree-publish creates a new draft PR when none exists", async (t) => {
   assert.equal(ghCalls.at(-1).args[1], "create");
   assert.ok(ghCalls.at(-1).args.includes("--draft"));
 });
+
+test("worktree-publish refuses a committed provider-visible diff without approval", async (t) => {
+  const fixture = await createPublishFixture(t);
+
+  const extractorPath = path.join(fixture.worktree, "packages/desktop/src-tauri/src/fb-extract.js");
+  await fs.mkdir(path.dirname(extractorPath), { recursive: true });
+  await fs.writeFile(extractorPath, "// scraped DOM extraction change\n");
+  assertSuccess(run("git", ["add", "packages/desktop/src-tauri/src/fb-extract.js"], { cwd: fixture.worktree }));
+  assertSuccess(run("git", ["commit", "-m", "fix: adjust fb extractor"], { cwd: fixture.worktree }));
+
+  const result = run(
+    "bash",
+    [
+      publishScript,
+      "--title",
+      "fix: adjust fb extractor",
+      "--summary",
+      "Adjust the fb extractor",
+    ],
+    {
+      cwd: fixture.worktree,
+      env: fixture.env,
+    },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /provider-visible paths/);
+  assert.match(result.stderr, /packages\/desktop\/src-tauri\/src\/fb-extract\.js/);
+  assert.match(result.stderr, /--approved-provider-risk/);
+
+  const ghCalls = await readGhLog(fixture.ghLogFile);
+  assert.equal(ghCalls.length, 0);
+});
+
+test("worktree-publish accepts a provider-visible diff with --approved-provider-risk and records it", async (t) => {
+  const fixture = await createPublishFixture(t);
+
+  const extractorPath = path.join(fixture.worktree, "packages/desktop/src-tauri/src/fb-extract.js");
+  await fs.mkdir(path.dirname(extractorPath), { recursive: true });
+  await fs.writeFile(extractorPath, "// scraped DOM extraction change\n");
+
+  const result = run(
+    "bash",
+    [
+      publishScript,
+      "--title",
+      "fix: adjust fb extractor",
+      "--summary",
+      "Adjust the fb extractor",
+      "--include-untracked",
+      "--approved-provider-risk",
+      "Owner approved 2026-07-02: fb extractor DOM drift fix",
+    ],
+    {
+      cwd: fixture.worktree,
+      env: fixture.env,
+    },
+  );
+
+  assertSuccess(result);
+
+  const ghCalls = await readGhLog(fixture.ghLogFile);
+  const createCall = ghCalls.at(-1);
+  assert.equal(createCall.args[1], "create");
+  const body = createCall.args[createCall.args.indexOf("--body") + 1];
+  assert.match(body, /## Provider-Visible Approval/);
+  assert.match(body, /Owner approved 2026-07-02: fb extractor DOM drift fix/);
+  assert.match(body, /packages\/desktop\/src-tauri\/src\/fb-extract\.js/);
+});
+
+test("worktree-publish requires a value for --approved-provider-risk", async (t) => {
+  const fixture = await createPublishFixture(t);
+  await fs.writeFile(path.join(fixture.worktree, "README.md"), "flag misuse\n");
+
+  const result = run(
+    "bash",
+    [publishScript, "--title", "fix: flag misuse", "--approved-provider-risk"],
+    {
+      cwd: fixture.worktree,
+      env: fixture.env,
+    },
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /--approved-provider-risk requires/);
+});

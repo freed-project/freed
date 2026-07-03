@@ -15,6 +15,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isProviderVisiblePath } from "./lib/provider-visible-paths.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 export const REPO_ROOT = path.resolve(__dirname, "..");
@@ -852,20 +854,10 @@ function filterGeneratedArtifactStatus(statusText) {
     .join("\n")
 }
 
-function providerVisiblePath(filePath) {
-  return (
-    filePath.startsWith("packages/capture-") ||
-    filePath.includes("/capture-") ||
-    filePath.includes("facebook") ||
-    filePath.includes("fb-extract") ||
-    filePath.includes("instagram") ||
-    filePath.includes("linkedin") ||
-    filePath.includes("x-capture") ||
-    filePath.includes("li-capture") ||
-    filePath.includes("scraper-prefs") ||
-    filePath.includes("scraper-window")
-  );
-}
+// Provider-visible classification is single-sourced in
+// scripts/lib/provider-visible-paths.mjs (stability task W1-06). The old
+// substring heuristic here diverged from validate-worktree's classification.
+const providerVisiblePath = isProviderVisiblePath;
 
 function peerWorktreeScore(peer) {
   let score = 46;
