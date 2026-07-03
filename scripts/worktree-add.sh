@@ -115,6 +115,8 @@ if [[ ${#PASSTHROUGH_ARGS[@]} -eq 0 ]]; then
 fi
 
 print_node_tooling_preflight
+# Machine preflight, warn-only: report broken tooling before worktree work.
+"$(resolve_node_bin)" "${SCRIPT_DIR}/doctor.mjs" || true
 
 EXISTING_WORKTREES=()
 while IFS= read -r line; do

@@ -2489,6 +2489,16 @@ export function main(argv = process.argv.slice(2)) {
     return;
   }
 
+  // Machine preflight, warn-only: report broken tooling on stderr before
+  // planning. Loops that must stop on a broken machine run doctor --strict.
+  try {
+    execFileSync(process.execPath, [path.join(__dirname, "doctor.mjs")], {
+      stdio: ["ignore", 2, 2],
+    });
+  } catch {
+    // Never block the planner on preflight reporting.
+  }
+
   if (args.repairSoakPointer) {
     const repair = repairSoakPointer(args.soakPointer, { dryRun: args.dryRun });
     if (args.json) {

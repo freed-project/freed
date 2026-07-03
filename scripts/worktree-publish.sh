@@ -205,6 +205,9 @@ fi
 require_command git
 require_command gh
 print_node_tooling_preflight
+# Machine preflight, warn-only: surface broken gh/credential helpers with
+# remediation before the publish flow trips over them.
+"$(resolve_node_bin)" "${SCRIPT_DIR}/doctor.mjs" || true
 
 ensure_conventional_title "${TITLE}"
 

@@ -113,10 +113,15 @@ process.exit(1);
 
 async function readGhLog(logFile) {
   const raw = await fs.readFile(logFile, "utf8");
-  return raw
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
+  return (
+    raw
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      // The doctor preflight probes `gh --version`; these assertions only
+      // care about the publish flow's PR interactions.
+      .filter((call) => call.args[0] === "pr")
+  );
 }
 
 test("worktree-publish converts an existing ready PR back to draft and updates it", async (t) => {

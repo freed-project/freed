@@ -23,6 +23,10 @@
     - Website: `./scripts/vercel-deploy-preview.sh website`
     - PWA: `./scripts/vercel-deploy-preview.sh pwa`
 
+## Machine Preflight
+
+`node scripts/doctor.mjs` checks the machine before loop or worktree work: the pinned Node toolchain from `.nvmrc`, PATH `node` consistency, `gh` (presence, that it runs, and binary architecture on macOS), git credential helpers that point at missing binaries, `git`, `curl`, `python3`, and `~/.freed-automation/`. It prints exact remediation for anything broken, including the curl-based GitHub API fallback when `gh` is unusable. `worktree-add.sh`, `worktree-publish.sh`, and the nightly runner run it automatically in warn-only mode; loops and CI gates should run `node scripts/doctor.mjs --strict` and stop on failures. A surprising `node`/`npm` path or a broken `gh` is a machine issue to fix before debugging the repo.
+
 ## Versioning
 
 CalVer `YY.M.DDBUILD` — patch segment encodes the day and build number:
