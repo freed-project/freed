@@ -129,10 +129,10 @@ export function InstagramSettingsSection({
   const copy = socialProviderCopy("instagram");
   const { confirm, dialog } = useProviderRiskGate("instagram");
 
-  const runSync = useCallback(async () => {
+  const runSync = useCallback(async (trigger: "manual" | "post_login" = "manual") => {
     setLastDiag(null);
     try {
-      const result = await withProviderSyncing("instagram", () => captureIgFeed());
+      const result = await withProviderSyncing("instagram", () => captureIgFeed(trigger));
       setLastDiag(result.diag);
     } catch (err) {
       console.error("Instagram feed capture failed:", err);

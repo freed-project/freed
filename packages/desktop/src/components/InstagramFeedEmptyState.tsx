@@ -40,7 +40,7 @@ export function InstagramFeedEmptyState() {
     setActionError(null);
     setSyncing(true);
     try {
-      await captureIgFeed();
+      await captureIgFeed("manual");
     } catch (err) {
       console.error("Instagram sync failed:", err);
       setActionError(err instanceof Error ? err.message : "Instagram sync failed");

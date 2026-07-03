@@ -31,6 +31,7 @@ import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getPlatformUA, extractChromeVersion, osPlatformHeader } from "./user-agent";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
+import { recordScrapeOutcome, type SocialScrapeTrigger } from "./runtime-health-events";
 import { clearStoredCookies } from "./x-auth";
 
 // =============================================================================
@@ -469,10 +470,41 @@ export async function unfavoriteTweet(
  *
  * @param cookies   Valid X session cookies.
  * @param requester Optional transport override for testing.
+ * @param trigger   What initiated this capture, for the scrape_outcome counter.
  */
 export async function captureXTimeline(
   cookies: XCookies,
   requester: XRequester = defaultRequester,
+  trigger: SocialScrapeTrigger = "unknown",
+): Promise<XSyncResult> {
+  const scrapeStartedAt = Date.now();
+  try {
+    const result = await captureXTimelineInternal(cookies, requester);
+    recordScrapeOutcome({
+      provider: "x",
+      trigger,
+      itemsExtracted: result.diag.tweetsExtracted,
+      itemsPersisted: result.diag.itemsAdded,
+      stage: result.diag.errorStage ?? "ok",
+      durationMs: Date.now() - scrapeStartedAt,
+    });
+    return result;
+  } catch (error) {
+    recordScrapeOutcome({
+      provider: "x",
+      trigger,
+      itemsExtracted: 0,
+      itemsPersisted: 0,
+      stage: "exception",
+      durationMs: Date.now() - scrapeStartedAt,
+    });
+    throw error;
+  }
+}
+
+async function captureXTimelineInternal(
+  cookies: XCookies,
+  requester: XRequester,
 ): Promise<XSyncResult> {
   const store = useAppStore.getState();
   const startedAt = Date.now();

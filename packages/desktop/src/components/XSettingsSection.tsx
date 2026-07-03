@@ -206,7 +206,7 @@ export function XSettingsSection({
   const runSync = async (cookies: Parameters<typeof captureXTimeline>[0]) => {
     setLastDiag(null);
     try {
-      const result = await withProviderSyncing("x", () => captureXTimeline(cookies));
+      const result = await withProviderSyncing("x", () => captureXTimeline(cookies, undefined, "manual"));
       setLastDiag(result.diag);
     } catch (err) {
       console.error("X timeline capture failed:", err);

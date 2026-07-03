@@ -27,6 +27,7 @@ import {
   type RssRefreshPlanOptions,
 } from "./rss-refresh-plan";
 import { isRuntimeDeferredStage } from "./social-capture-runtime";
+import type { SocialScrapeTrigger } from "./runtime-health-events";
 
 export type SocialProviderRefreshStatus =
   | "success"
@@ -207,7 +208,7 @@ function scheduleSocialDeferredRetry(
   );
   const timer = setTimeout(() => {
     socialDeferredRetryTimers.delete(provider);
-    void refreshSocialProvider(provider);
+    void refreshSocialProvider(provider, "deferred_retry");
   }, retryMs);
   socialDeferredRetryTimers.set(provider, timer);
 }
@@ -225,6 +226,7 @@ function handleSocialResult(
 
 export async function refreshSocialProvider(
   provider: RetriableSocialProvider,
+  trigger: SocialScrapeTrigger = "unknown",
 ): Promise<SocialProviderRefreshResult> {
   if (!isTauri()) {
     clearSocialDeferredRetry(provider);
@@ -248,17 +250,17 @@ export async function refreshSocialProvider(
   const store = useAppStore.getState();
   try {
     if (provider === "facebook" && store.fbAuth.isAuthenticated) {
-      const result = await withProviderSyncing("facebook", () => captureFbFeed());
+      const result = await withProviderSyncing("facebook", () => captureFbFeed(trigger));
       handleSocialResult("facebook", result.diag.errorStage);
       return summarizeSocialRefreshResult("facebook", result.diag);
     }
     if (provider === "instagram" && store.igAuth.isAuthenticated) {
-      const result = await withProviderSyncing("instagram", () => captureIgFeed());
+      const result = await withProviderSyncing("instagram", () => captureIgFeed(trigger));
       handleSocialResult("instagram", result.diag.errorStage);
       return summarizeSocialRefreshResult("instagram", result.diag);
     }
     if (provider === "linkedin" && store.liAuth.isAuthenticated) {
-      const result = await withProviderSyncing("linkedin", () => captureLiFeed());
+      const result = await withProviderSyncing("linkedin", () => captureLiFeed(trigger));
       handleSocialResult("linkedin", result.diag.errorStage);
       return summarizeSocialRefreshResult("linkedin", result.diag);
     }
@@ -558,7 +560,7 @@ export async function refreshAllFeeds(
       !isProviderPaused("x")
     ) {
       try {
-        await withProviderSyncing("x", () => captureXTimeline(xCookies));
+        await withProviderSyncing("x", () => captureXTimeline(xCookies, undefined, "scheduled"));
       } catch (xError) {
         const msg =
           xError instanceof Error ? xError.message : "X timeline sync failed";
@@ -570,9 +572,9 @@ export async function refreshAllFeeds(
       }
     }
 
-    await refreshSocialProvider("facebook");
-    await refreshSocialProvider("instagram");
-    await refreshSocialProvider("linkedin");
+    await refreshSocialProvider("facebook", "scheduled");
+    await refreshSocialProvider("instagram", "scheduled");
+    await refreshSocialProvider("linkedin", "scheduled");
   } finally {
     store.setSyncing(false);
   }

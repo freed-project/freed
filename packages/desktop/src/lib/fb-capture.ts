@@ -27,6 +27,7 @@ import { getFbScraperWindowMode } from "./scraper-prefs";
 import { storeFbAuthState } from "./fb-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
+import { recordScrapeOutcome, type SocialScrapeTrigger } from "./runtime-health-events";
 import {
   formatBytesForMemoryLog,
   formatScrapeMemoryPressureDetails,
@@ -771,7 +772,35 @@ export async function verifyFacebookGroupLeave(
  * Capture Facebook feed and add items to the store.
  * Respects rate limiting to avoid triggering Facebook's anti-bot measures.
  */
-export async function captureFbFeed(): Promise<FbSyncResult> {
+export async function captureFbFeed(
+  trigger: SocialScrapeTrigger = "unknown",
+): Promise<FbSyncResult> {
+  const scrapeStartedAt = Date.now();
+  try {
+    const result = await captureFbFeedInternal();
+    recordScrapeOutcome({
+      provider: "facebook",
+      trigger,
+      itemsExtracted: result.diag.postsExtracted,
+      itemsPersisted: result.diag.itemsAdded,
+      stage: result.diag.errorStage ?? "ok",
+      durationMs: Date.now() - scrapeStartedAt,
+    });
+    return result;
+  } catch (error) {
+    recordScrapeOutcome({
+      provider: "facebook",
+      trigger,
+      itemsExtracted: 0,
+      itemsPersisted: 0,
+      stage: "exception",
+      durationMs: Date.now() - scrapeStartedAt,
+    });
+    throw error;
+  }
+}
+
+async function captureFbFeedInternal(): Promise<FbSyncResult> {
   const startedAt = Date.now();
   const providerPause = getProviderPause("facebook");
   if (providerPause) {

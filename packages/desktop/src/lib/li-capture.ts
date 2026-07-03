@@ -21,6 +21,7 @@ import { getLiScraperWindowMode } from "./scraper-prefs";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { storeLiAuthState } from "./li-auth";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
+import { recordScrapeOutcome, type SocialScrapeTrigger } from "./runtime-health-events";
 import {
   formatScrapeMemoryPressureDetails,
   prepareSocialScrapeMemory,
@@ -315,12 +316,40 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
  * Capture LinkedIn feed and add items to the store.
  * Respects rate limiting to avoid triggering LinkedIn's anti-bot measures.
  */
-export async function captureLiFeed(): Promise<LiSyncResult> {
+export async function captureLiFeed(
+  trigger: SocialScrapeTrigger = "unknown",
+): Promise<LiSyncResult> {
   if (!isTauri()) {
     addDebugEvent("change", "[LI] browser preview skips native LinkedIn capture");
     return createEmptyLiSyncResult();
   }
 
+  const scrapeStartedAt = Date.now();
+  try {
+    const result = await captureLiFeedInternal();
+    recordScrapeOutcome({
+      provider: "linkedin",
+      trigger,
+      itemsExtracted: result.diag.postsExtracted,
+      itemsPersisted: result.diag.itemsAdded,
+      stage: result.diag.errorStage ?? "ok",
+      durationMs: Date.now() - scrapeStartedAt,
+    });
+    return result;
+  } catch (error) {
+    recordScrapeOutcome({
+      provider: "linkedin",
+      trigger,
+      itemsExtracted: 0,
+      itemsPersisted: 0,
+      stage: "exception",
+      durationMs: Date.now() - scrapeStartedAt,
+    });
+    throw error;
+  }
+}
+
+async function captureLiFeedInternal(): Promise<LiSyncResult> {
   const startedAt = Date.now();
   const providerPause = getProviderPause("linkedin");
   if (providerPause) {

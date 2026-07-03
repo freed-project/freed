@@ -1099,7 +1099,7 @@ function App() {
           if (isPaused) {
             await clearProviderPause("x");
           }
-          await withProviderSyncing("x", () => captureXTimeline(state.xAuth.cookies!));
+          await withProviderSyncing("x", () => captureXTimeline(state.xAuth.cookies!, undefined, "manual"));
           return;
         }
 
@@ -1107,7 +1107,7 @@ function App() {
           if (isPaused) {
             await clearProviderPause("facebook");
           }
-          await withProviderSyncing("facebook", () => captureFbFeed());
+          await withProviderSyncing("facebook", () => captureFbFeed("manual"));
           return;
         }
 
@@ -1115,7 +1115,7 @@ function App() {
           if (isPaused) {
             await clearProviderPause("instagram");
           }
-          await withProviderSyncing("instagram", () => captureIgFeed());
+          await withProviderSyncing("instagram", () => captureIgFeed("manual"));
           return;
         }
 
@@ -1123,7 +1123,7 @@ function App() {
           if (isPaused) {
             await clearProviderPause("linkedin");
           }
-          await withProviderSyncing("linkedin", () => captureLiFeed());
+          await withProviderSyncing("linkedin", () => captureLiFeed("manual"));
         }
       },
       getSourceStatus: (sourceId) => {

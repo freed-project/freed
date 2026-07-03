@@ -14,7 +14,7 @@ interface UsePostLoginAutoSyncOptions {
   providerLabel: string;
   isAuthenticated: () => boolean;
   onAuthResult: (loggedIn: boolean) => void;
-  runSync: () => Promise<void>;
+  runSync: (trigger?: "post_login") => Promise<void>;
 }
 
 interface PostLoginAutoSyncState {
@@ -111,7 +111,7 @@ export function usePostLoginAutoSync({
       statusRef.current = "starting";
       setPending(true);
       setStatus("starting");
-      void runSyncRef.current().then(() => {
+      void runSyncRef.current("post_login").then(() => {
         if (!pendingRef.current || statusRef.current === "healthy") return;
         statusRef.current = "failed";
         setStatus("failed");

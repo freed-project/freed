@@ -12,7 +12,7 @@
  * protected by optimistic locking — see @freed/sync/cloud for details.
  */
 
-import { getDocBinary, initDoc, mergeDoc, subscribe } from "./automerge";
+import { getDocBinary, getDocHeads, initDoc, mergeDoc, subscribe } from "./automerge";
 import {
   addDebugEvent,
   recordCloudProviderEvent,
@@ -681,9 +681,42 @@ export function stopCloudSync(): void {
   }
 }
 
-async function performCloudUpload(provider: CloudProvider, token?: string): Promise<void> {
+type CloudUploadCause = "subscriber" | "manual" | "poll";
+
+/**
+ * Heads at the previous upload attempt. An attempt whose heads match is the
+ * cloud-loop signature (stability P0-03, F01/F06). Logged to the PWA debug
+ * channel with the same field names as the desktop runtime-health event.
+ */
+let lastUploadHeadsKey: string | null = null;
+
+async function recordCloudUploadAttempt(
+  provider: CloudProvider,
+  cause: CloudUploadCause,
+): Promise<void> {
+  try {
+    const heads = await getDocHeads();
+    const headsKey = heads && heads.length > 0 ? heads.join(",") : null;
+    const previousKey = lastUploadHeadsKey;
+    if (headsKey !== null) lastUploadHeadsKey = headsKey;
+    const headsUnchanged = headsKey !== null && headsKey === previousKey;
+    addDebugEvent(
+      "change",
+      `cloud_upload_attempt ${JSON.stringify({ provider, cause, headsBefore: heads, headsUnchanged })}`,
+    );
+  } catch {
+    // Counters never block or fail an upload.
+  }
+}
+
+async function performCloudUpload(
+  provider: CloudProvider,
+  token?: string,
+  cause: CloudUploadCause = "subscriber",
+): Promise<void> {
   await ensureDocumentReady();
   const binary = await getDocBinary();
+  await recordCloudUploadAttempt(provider, cause);
   try {
     const uploadToken = token ?? await getValidCloudToken(provider);
     if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
@@ -830,7 +863,7 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
       const currentToken = provider === "gdrive" ? await getValidCloudToken(provider) : token;
       return currentToken ?? token;
     });
-    await performCloudUpload(provider);
+    await performCloudUpload(provider, undefined, "manual");
   } catch (error) {
     markCloudError(provider, isDestructiveMergeError(error) ? "merge" : "download", error);
     throw error;

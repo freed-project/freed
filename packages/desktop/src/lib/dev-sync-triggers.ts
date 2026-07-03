@@ -152,7 +152,7 @@ async function runDevSyncTrigger(
     log.info(
       `[dev-sync-trigger] starting ${provider} sync request ${requestId}`,
     );
-    const result = await refreshSocialProvider(provider);
+    const result = await refreshSocialProvider(provider, "dev_trigger");
     const status = mapRefreshResultToTriggerStatus(result);
     await writeResult(
       requestId,
