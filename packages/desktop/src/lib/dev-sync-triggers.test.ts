@@ -103,7 +103,7 @@ describe("dev sync triggers", () => {
     });
     stop();
 
-    expect(refreshSocialProvider).toHaveBeenCalledWith("facebook");
+    expect(refreshSocialProvider).toHaveBeenCalledWith("facebook", "dev_trigger");
     expect(writeNativeJsonFile).toHaveBeenCalledWith(
       "dev-sync-trigger-result.json",
       expect.objectContaining({
@@ -136,7 +136,7 @@ describe("dev sync triggers", () => {
     await flushImmediatePoll();
     stop();
 
-    expect(refreshSocialProvider).toHaveBeenCalledWith("facebook");
+    expect(refreshSocialProvider).toHaveBeenCalledWith("facebook", "dev_trigger");
     expect(writeNativeJsonFile).toHaveBeenCalledWith(
       "dev-sync-trigger-result.json",
       expect.objectContaining({
@@ -240,7 +240,7 @@ describe("dev sync triggers", () => {
     stop();
 
     expect(initializeStore).toHaveBeenCalled();
-    expect(refreshSocialProvider).toHaveBeenCalledWith("facebook");
+    expect(refreshSocialProvider).toHaveBeenCalledWith("facebook", "dev_trigger");
     expect(writeNativeJsonFile).toHaveBeenLastCalledWith(
       "dev-sync-trigger-result.json",
       expect.objectContaining({
@@ -378,6 +378,6 @@ describe("dev sync triggers", () => {
     stop();
 
     expect(loadDesktopReleaseChannelState).toHaveBeenCalled();
-    expect(refreshSocialProvider).toHaveBeenCalledWith("facebook");
+    expect(refreshSocialProvider).toHaveBeenCalledWith("facebook", "dev_trigger");
   });
 });

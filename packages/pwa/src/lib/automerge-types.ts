@@ -98,6 +98,7 @@ export type WorkerRequest =
   | { reqId: number; type: "BACKFILL_CONTENT_SIGNALS"; batchSize?: number }
   | { reqId: number; type: "MERGE_DOC"; binary: Uint8Array }
   | { reqId: number; type: "GET_DOC_BINARY" }
+  | { reqId: number; type: "GET_HEADS" }
   | { reqId: number; type: "CLEAR_LOCAL" };
 
 // ---------------------------------------------------------------------------
@@ -110,6 +111,10 @@ export type WorkerResponse =
   /** Broadcast on every doc mutation — main thread uses this to update UI */
   | { type: "STATE_UPDATE"; state: DocState; binary?: Uint8Array }
   | { reqId: number; type: "DOC_BINARY"; binary: Uint8Array }
+  /** Current Automerge heads for upload-loop accounting; null before INIT. */
+  | { reqId: number; type: "DOC_HEADS"; heads: string[] | null }
+  /** Sent once per INIT with its cost, for the worker-INIT debug counter. */
+  | { type: "INIT_STATS"; durationMs: number; docBytes: number }
   /** Debug panel event forwarding */
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
   /** Doc size snapshot for the debug panel */

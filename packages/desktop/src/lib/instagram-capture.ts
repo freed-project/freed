@@ -25,6 +25,7 @@ import { getIgScraperWindowMode } from "./scraper-prefs";
 import { storeIgAuthState } from "./instagram-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
+import { recordScrapeOutcome, type SocialScrapeTrigger } from "./runtime-health-events";
 import {
   formatScrapeMemoryPressureDetails,
   prepareSocialScrapeMemory,
@@ -353,7 +354,35 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
  * Capture Instagram feed and add items to the store.
  * Respects rate limiting to avoid triggering Instagram's anti-bot measures.
  */
-export async function captureIgFeed(): Promise<IgSyncResult> {
+export async function captureIgFeed(
+  trigger: SocialScrapeTrigger = "unknown",
+): Promise<IgSyncResult> {
+  const scrapeStartedAt = Date.now();
+  try {
+    const result = await captureIgFeedInternal();
+    recordScrapeOutcome({
+      provider: "instagram",
+      trigger,
+      itemsExtracted: result.diag.postsExtracted,
+      itemsPersisted: result.diag.itemsAdded,
+      stage: result.diag.errorStage ?? "ok",
+      durationMs: Date.now() - scrapeStartedAt,
+    });
+    return result;
+  } catch (error) {
+    recordScrapeOutcome({
+      provider: "instagram",
+      trigger,
+      itemsExtracted: 0,
+      itemsPersisted: 0,
+      stage: "exception",
+      durationMs: Date.now() - scrapeStartedAt,
+    });
+    throw error;
+  }
+}
+
+async function captureIgFeedInternal(): Promise<IgSyncResult> {
   const startedAt = Date.now();
   const providerPause = getProviderPause("instagram");
   if (providerPause) {

@@ -123,6 +123,7 @@ export type WorkerRequest =
   | { reqId: number; type: "BACKFILL_CONTENT_SIGNALS"; batchSize?: number }
   | { reqId: number; type: "GET_ALL_ITEM_IDS" }
   | { reqId: number; type: "GET_DOC_BINARY" }
+  | { reqId: number; type: "GET_HEADS" }
   | { reqId: number; type: "GET_ITEM_PRESERVED_TEXT"; globalId: string }
   // Relay management (fire-and-forget, reqId ignored)
   | { reqId: number; type: "UPDATE_RELAY_CLIENT_COUNT"; count: number };
@@ -198,6 +199,13 @@ export type WorkerResponse =
   | { reqId: number; type: "ALL_ITEM_IDS"; ids: string[] }
   /** On-demand full document binary for relay, snapshots, and cloud uploads. */
   | { reqId: number; type: "DOC_BINARY"; binary: Uint8Array }
+  /**
+   * Current Automerge heads (or heads at last save when the doc is idle-
+   * unloaded). Never forces a document load; null before the first INIT.
+   */
+  | { reqId: number; type: "DOC_HEADS"; heads: string[] | null }
+  /** Sent once per INIT with its cost, for the worker-INIT runtime counter. */
+  | { type: "INIT_STATS"; durationMs: number; docBytes: number }
   /** On-demand preserved article text for the active reader item. */
   | { reqId: number; type: "ITEM_PRESERVED_TEXT"; globalId: string; text: string | null }
   /** One-batch content signal backfill summary. */

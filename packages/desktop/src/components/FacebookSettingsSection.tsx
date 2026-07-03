@@ -274,10 +274,10 @@ export function FacebookSettingsSection({
   );
   const activeGroupCount = groups.filter((group) => !excludedGroupIds[group.id]).length;
 
-  const runSync = useCallback(async () => {
+  const runSync = useCallback(async (trigger: "manual" | "post_login" = "manual") => {
     setLastDiag(null);
     try {
-      const result = await withProviderSyncing("facebook", () => captureFbFeed());
+      const result = await withProviderSyncing("facebook", () => captureFbFeed(trigger));
       setLastDiag(result.diag);
     } catch (err) {
       console.error("Facebook feed capture failed:", err);

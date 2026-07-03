@@ -219,6 +219,21 @@ function bumpSearchCorpusVersion(): void {
   searchCorpusVersion += 1;
 }
 
+/**
+ * Heads as of the last save/load, answered by GET_HEADS without forcing a
+ * full A.load when the document is idle-unloaded (an unloaded doc cannot
+ * have diverged from its last save). Null until the first INIT.
+ */
+let lastSavedHeads: string[] | null = null;
+
+function refreshLastSavedHeads(doc: FreedDoc | null): void {
+  try {
+    lastSavedHeads = doc ? A.getHeads(doc) : null;
+  } catch {
+    lastSavedHeads = null;
+  }
+}
+
 function cancelDocIdleUnload(): void {
   // Kept as a named lifecycle hook so request startup documents the intent.
 }
@@ -287,6 +302,7 @@ function compactLoadedFeedText(
   const bytesSaved = previousBinaryBytes - rebuiltBinary.byteLength;
   currentDoc = rebuiltDoc;
   currentBinary = rebuiltBinary;
+  refreshLastSavedHeads(rebuiltDoc);
   persistenceState = createPersistenceState(rebuiltBinary);
   emitWorkerTrace(
     `[automerge-worker] rebuilt compacted document` +
@@ -612,6 +628,7 @@ async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
   const binary = persisted.binary;
   persistenceState = persisted.persistence;
   currentBinary = binary;
+  refreshLastSavedHeads(doc);
   const afterSerializeAt = performance.now();
   await storage.save(binary);
   const afterPersistAt = performance.now();
@@ -693,6 +710,7 @@ async function persistAndBroadcastWithoutHydration(trace?: RequestTrace): Promis
   const binary = persisted.binary;
   persistenceState = persisted.persistence;
   currentBinary = binary;
+  refreshLastSavedHeads(doc);
   const afterSerializeAt = performance.now();
   await storage.save(binary);
   const afterPersistAt = performance.now();
@@ -985,7 +1003,8 @@ async function handleRequest(
     req.type !== "INIT" &&
     req.type !== "CLEAR_LOCAL" &&
     req.type !== "REPLACE_DOC" &&
-    req.type !== "GET_DOC_BINARY"
+    req.type !== "GET_DOC_BINARY" &&
+    req.type !== "GET_HEADS"
   ) {
     ensureCurrentDocLoaded(req.type);
   }
@@ -1028,6 +1047,7 @@ async function handleRequest(
           persistenceState = createPersistenceState(binary);
           await storage.save(binary);
         }
+        refreshLastSavedHeads(currentDoc);
         searchCorpusVersion = 1;
         const initializedDoc = currentDoc;
         if (!initializedDoc) throw new Error("Document not initialized");
@@ -1038,6 +1058,11 @@ async function handleRequest(
         } else {
           await hydrateAndBroadcastWithoutPersist(trace);
         }
+        send({
+          type: "INIT_STATS",
+          durationMs: Math.round(performance.now() - startedAt),
+          docBytes: currentBinary?.byteLength ?? 0,
+        });
         ack(req.reqId);
         break;
       }
@@ -1047,6 +1072,7 @@ async function handleRequest(
         await storage.clear();
         currentDoc = null;
         currentBinary = null;
+        refreshLastSavedHeads(null);
         persistenceState = createPersistenceState(null);
         linkPreviewUrlCounts = new Map();
         searchCorpusVersion = 0;
@@ -1056,6 +1082,7 @@ async function handleRequest(
       case "REPLACE_DOC":
         currentDoc = A.load<FreedDoc>(req.binary);
         currentBinary = req.binary;
+        refreshLastSavedHeads(currentDoc);
         persistenceState = createPersistenceState(req.binary);
         migrateLoadedIdentityGraph("Migrate legacy identity graph");
         compactLoadedFeedText("Compact oversized synced feed text", {
@@ -1071,9 +1098,18 @@ async function handleRequest(
         if (!currentBinary) {
           const doc = ensureCurrentDocLoaded(req.type);
           currentBinary = A.save(doc);
+          refreshLastSavedHeads(doc);
           persistenceState = createPersistenceState(currentBinary);
         }
         send({ reqId: req.reqId, type: "DOC_BINARY", binary: currentBinary });
+        break;
+
+      case "GET_HEADS":
+        send({
+          reqId: req.reqId,
+          type: "DOC_HEADS",
+          heads: currentDoc ? A.getHeads(currentDoc) : lastSavedHeads,
+        });
         break;
 
       case "MERGE_DOC": {

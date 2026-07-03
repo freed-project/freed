@@ -6801,6 +6801,41 @@ async fn trim_webkit_network_cache_now(
     Ok(result)
 }
 
+/// Renderer-originated runtime-health counters (stability program P0-03):
+/// cloud_upload_attempt, scrape_outcome, worker_init/worker_spawn. Accepts
+/// only small fixed-shape JSON objects with an `event` string so the
+/// renderer cannot flood or malform the health log.
+#[tauri::command]
+fn record_runtime_health_event(
+    app: tauri::AppHandle,
+    payload: serde_json::Value,
+) -> Result<(), String> {
+    const MAX_RENDERER_HEALTH_EVENT_BYTES: usize = 4096;
+
+    let serde_json::Value::Object(fields) = &payload else {
+        return Err("payload must be a JSON object".to_string());
+    };
+    if !fields
+        .get("event")
+        .map(|value| value.is_string())
+        .unwrap_or(false)
+    {
+        return Err("payload.event must be a string".to_string());
+    }
+    let serialized_len = serde_json::to_string(&payload)
+        .map(|line| line.len())
+        .unwrap_or(usize::MAX);
+    if serialized_len > MAX_RENDERER_HEALTH_EVENT_BYTES {
+        return Err(format!(
+            "payload too large ({} > {} bytes)",
+            serialized_len, MAX_RENDERER_HEALTH_EVENT_BYTES
+        ));
+    }
+
+    append_runtime_health(&app, payload);
+    Ok(())
+}
+
 #[tauri::command]
 async fn get_recent_runtime_health(
     app: tauri::AppHandle,
@@ -6891,16 +6926,82 @@ async fn get_ai_hardware_profile(
     })
 }
 
+/// Relay broadcast volume counters (stability program P0-03, F07/F10).
+/// Aggregated over ~60 s windows so the counter itself cannot bloat
+/// runtime-health.jsonl at full-doc-per-mutation broadcast rates.
+struct RelayBroadcastAggregate {
+    window_started_at: Instant,
+    count: u64,
+    total_bytes: u64,
+}
+
+static RELAY_BROADCAST_AGGREGATE: StdMutex<Option<RelayBroadcastAggregate>> = StdMutex::new(None);
+const RELAY_BROADCAST_AGGREGATE_WINDOW: Duration = Duration::from_secs(60);
+
+/// Fold one broadcast into the current window. Returns the finished window
+/// to flush when this broadcast starts a new one. The trailing window is
+/// flushed by the first broadcast after it closes; a final partial window
+/// with no successor is dropped (acceptable for a rate counter).
+fn relay_broadcast_aggregate_update(
+    slot: &mut Option<RelayBroadcastAggregate>,
+    now: Instant,
+    doc_bytes: u64,
+) -> Option<RelayBroadcastAggregate> {
+    match slot {
+        Some(aggregate)
+            if now.duration_since(aggregate.window_started_at)
+                < RELAY_BROADCAST_AGGREGATE_WINDOW =>
+        {
+            aggregate.count += 1;
+            aggregate.total_bytes = aggregate.total_bytes.saturating_add(doc_bytes);
+            None
+        }
+        _ => {
+            let finished = slot.take();
+            *slot = Some(RelayBroadcastAggregate {
+                window_started_at: now,
+                count: 1,
+                total_bytes: doc_bytes,
+            });
+            finished
+        }
+    }
+}
+
+fn note_relay_broadcast(app: &tauri::AppHandle, doc_bytes: u64, client_count: u64) {
+    let now = Instant::now();
+    let finished = {
+        let mut slot = RELAY_BROADCAST_AGGREGATE.lock().unwrap();
+        relay_broadcast_aggregate_update(&mut slot, now, doc_bytes)
+    };
+    if let Some(aggregate) = finished {
+        append_runtime_health(
+            app,
+            serde_json::json!({
+                "event": "relay_broadcast_aggregate",
+                "count": aggregate.count,
+                "totalBytes": aggregate.total_bytes,
+                "clientCount": client_count,
+                "windowMs": now.duration_since(aggregate.window_started_at).as_millis(),
+            }),
+        );
+    }
+}
+
 /// Push a document update to all connected clients.
-#[cfg_attr(feature = "perf", tracing::instrument(skip(state, doc_bytes), fields(bytes = doc_bytes.len())))]
+#[cfg_attr(feature = "perf", tracing::instrument(skip(app, state, doc_bytes), fields(bytes = doc_bytes.len())))]
 #[tauri::command]
 async fn broadcast_doc(
+    app: tauri::AppHandle,
     state: tauri::State<'_, RelayState>,
     doc_bytes: Vec<u8>,
 ) -> Result<(), String> {
+    let byte_len = doc_bytes.len() as u64;
     let doc_bytes = Arc::new(doc_bytes);
     *state.current_doc.write().await = Some(doc_bytes.clone());
     let _ = state.broadcast_tx.send(doc_bytes);
+    let client_count = *state.client_count.read().await as u64;
+    note_relay_broadcast(&app, byte_len, client_count);
     Ok(())
 }
 
@@ -12344,6 +12445,7 @@ pub fn run() {
             trim_webkit_network_cache_now,
             get_recent_runtime_health,
             get_runtime_health_history,
+            record_runtime_health_event,
             get_ai_hardware_profile,
             get_desktop_session_state,
             get_social_provider_cookie_state,
@@ -12591,6 +12693,38 @@ mod tests {
         assert!(take_window_age_seconds(label).is_some());
         // The destroy consumed the entry.
         assert_eq!(take_window_age_seconds(label), None);
+    }
+
+    #[test]
+    fn relay_broadcast_aggregate_flushes_on_window_rollover() {
+        let mut slot: Option<RelayBroadcastAggregate> = None;
+        let start = Instant::now();
+
+        assert!(relay_broadcast_aggregate_update(&mut slot, start, 100).is_none());
+        assert!(relay_broadcast_aggregate_update(
+            &mut slot,
+            start + Duration::from_secs(10),
+            200
+        )
+        .is_none());
+        {
+            let aggregate = slot.as_ref().unwrap();
+            assert_eq!(aggregate.count, 2);
+            assert_eq!(aggregate.total_bytes, 300);
+        }
+
+        let finished = relay_broadcast_aggregate_update(
+            &mut slot,
+            start + RELAY_BROADCAST_AGGREGATE_WINDOW + Duration::from_secs(1),
+            50,
+        )
+        .expect("window rollover flushes the finished aggregate");
+        assert_eq!(finished.count, 2);
+        assert_eq!(finished.total_bytes, 300);
+
+        let successor = slot.as_ref().unwrap();
+        assert_eq!(successor.count, 1);
+        assert_eq!(successor.total_bytes, 50);
     }
 
     #[test]

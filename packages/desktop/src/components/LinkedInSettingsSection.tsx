@@ -121,10 +121,10 @@ export function LinkedInSettingsSection({
   const copy = socialProviderCopy("linkedin");
   const { confirm, dialog } = useProviderRiskGate("linkedin");
 
-  const runSync = useCallback(async () => {
+  const runSync = useCallback(async (trigger: "manual" | "post_login" = "manual") => {
     setLastDiag(null);
     try {
-      const result = await withProviderSyncing("linkedin", () => captureLiFeed());
+      const result = await withProviderSyncing("linkedin", () => captureLiFeed(trigger));
       setLastDiag(result.diag);
     } catch (err) {
       console.error("LinkedIn feed capture failed:", err);
