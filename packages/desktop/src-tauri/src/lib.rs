@@ -619,22 +619,107 @@ fn dev_sync_trigger_lock_deferral_detail(
     }
 }
 
-fn recycle_webview_window(app: &tauri::AppHandle, label: &str, reason: &str) {
+/// Structured reason for a `window_destroyed` runtime-health record
+/// (stability program P0-02). Serialized snake_case; the free-form
+/// destruction detail travels alongside as `requestedBy`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum WindowDestroyedReason {
+    PreflightRecycle,
+    PostScrapeRecovery,
+    WatchdogStale,
+    WatchdogMemory,
+    CriticalPressure,
+    User,
+    LoginFlow,
+    JobComplete,
+    StartupRecovery,
+}
+
+static WINDOW_CREATED_AT: std::sync::LazyLock<StdMutex<HashMap<String, Instant>>> =
+    std::sync::LazyLock::new(|| StdMutex::new(HashMap::new()));
+
+/// Record when a tracked webview window was (re)created so kill records can
+/// report the victim's age. Insert-if-absent: ensure-window paths call this
+/// after the window handle is obtained, which must not reset the age when the
+/// window already existed. Windows destroyed outside the instrumented paths
+/// (e.g. an OS-level close) leave a stale entry behind, so the next cycle's
+/// age can be overstated — acceptable for telemetry.
+fn observe_window_created(label: &str) {
+    let mut created = WINDOW_CREATED_AT.lock().unwrap();
+    created
+        .entry(label.to_string())
+        .or_insert_with(Instant::now);
+}
+
+fn take_window_age_seconds(label: &str) -> Option<u64> {
+    let mut created = WINDOW_CREATED_AT.lock().unwrap();
+    created
+        .remove(label)
+        .map(|created_at| created_at.elapsed().as_secs())
+}
+
+/// Append the one-line structured kill record for a destroyed window.
+/// `victimPid` stays null until deterministic PID→window attribution exists
+/// (Wave 6); the WebKit sampler's age heuristic must not be reused here.
+fn record_window_destroyed(
+    app: &tauri::AppHandle,
+    label: &str,
+    reason: WindowDestroyedReason,
+    requested_by: &str,
+) {
+    let (scraper_session_held, js_active_job) = app
+        .try_state::<CaptureState>()
+        .map(|capture| {
+            let held = capture.scraper_session.try_lock().is_err();
+            let (job, _age_ms) = capture.background_runtime.active_job_for_health();
+            (held, job)
+        })
+        .unwrap_or((false, None));
+
+    append_runtime_health(
+        app,
+        serde_json::json!({
+            "event": "window_destroyed",
+            "label": label,
+            "reasonEnum": reason,
+            "requestedBy": requested_by,
+            "victimPid": serde_json::Value::Null,
+            "victimAgeS": take_window_age_seconds(label),
+            "scraperSessionHeld": scraper_session_held,
+            "jsActiveJob": js_active_job,
+        }),
+    );
+}
+
+fn recycle_webview_window(
+    app: &tauri::AppHandle,
+    label: &str,
+    reason: WindowDestroyedReason,
+    detail: &str,
+) {
     if let Some(window) = app.get_webview_window(label) {
         scrub_webview_before_destroy(&window);
         match window.destroy() {
-            Ok(()) => info!("[window] recycled {} ({})", label, reason),
+            Ok(()) => {
+                record_window_destroyed(app, label, reason, detail);
+                info!("[window] recycled {} ({})", label, detail);
+            }
             Err(error) => error!(
                 "[window] failed to recycle {} ({}): {}",
-                label, reason, error
+                label, detail, error
             ),
         }
     }
 }
 
-fn recycle_social_scraper_windows(app: &tauri::AppHandle, reason: &str) {
+fn recycle_social_scraper_windows(
+    app: &tauri::AppHandle,
+    reason: WindowDestroyedReason,
+    detail: &str,
+) {
     for label in SOCIAL_SCRAPER_WINDOW_LABELS {
-        recycle_webview_window(app, label, reason);
+        recycle_webview_window(app, label, reason, detail);
     }
 }
 
@@ -651,20 +736,21 @@ fn active_job_uses_social_scraper(active_job: Option<&str>) -> bool {
 fn recycle_social_scraper_windows_unless_active(
     app: &tauri::AppHandle,
     runtime: &BackgroundRuntimeCoordinator,
-    reason: &str,
+    reason: WindowDestroyedReason,
+    detail: &str,
 ) {
     let (active_job, active_job_age_ms) = runtime.active_job_for_health();
     if active_job_uses_social_scraper(active_job) {
         info!(
             "[window] deferred scraper recycle ({}) active_op={} active_age_ms={}",
-            reason,
+            detail,
             active_job.unwrap_or("unknown"),
             active_job_age_ms.unwrap_or(0)
         );
         return;
     }
 
-    recycle_social_scraper_windows(app, reason);
+    recycle_social_scraper_windows(app, reason, detail);
 }
 
 struct WebviewRecycleGuard {
@@ -681,7 +767,12 @@ impl WebviewRecycleGuard {
 
 impl Drop for WebviewRecycleGuard {
     fn drop(&mut self) {
-        recycle_webview_window(&self.app, self.label, self.reason);
+        recycle_webview_window(
+            &self.app,
+            self.label,
+            WindowDestroyedReason::JobComplete,
+            self.reason,
+        );
     }
 }
 
@@ -760,6 +851,7 @@ fn build_hidden_scraper_window(
     .visible(false)
     .build()
     .map_err(|e| e.to_string())
+    .inspect(|_| observe_window_created(label))
 }
 
 fn set_background_scraper_window_cloak(
@@ -6285,7 +6377,11 @@ async fn maybe_recover_after_social_feed_scrape(
     );
     background_runtime.note_renderer_recovery_attempt(&recovery_reason);
 
-    match recover_main_window(app, &recovery_reason) {
+    match recover_main_window(
+        app,
+        WindowDestroyedReason::PostScrapeRecovery,
+        &recovery_reason,
+    ) {
         Ok(()) => {
             tokio::time::sleep(Duration::from_millis(700)).await;
             let recovered = collect_runtime_memory_stats(app, 0, 0);
@@ -6329,7 +6425,8 @@ async fn maybe_recover_after_social_feed_scrape(
 fn recycle_social_scraper_windows_except(
     app: &tauri::AppHandle,
     preserve_label: Option<&str>,
-    reason: &str,
+    reason: WindowDestroyedReason,
+    detail: &str,
 ) -> bool {
     let mut recycled = false;
     for label in SOCIAL_SCRAPER_WINDOW_LABELS {
@@ -6339,7 +6436,7 @@ fn recycle_social_scraper_windows_except(
         if app.get_webview_window(label).is_some() {
             recycled = true;
         }
-        recycle_webview_window(app, label, reason);
+        recycle_webview_window(app, label, reason, detail);
     }
     recycled
 }
@@ -6392,7 +6489,11 @@ async fn recover_main_renderer_after_blocked_social_scrape(
         }),
     );
 
-    match recover_main_window(app, &recovery_reason) {
+    match recover_main_window(
+        app,
+        WindowDestroyedReason::CriticalPressure,
+        &recovery_reason,
+    ) {
         Ok(()) => {
             tokio::time::sleep(Duration::from_millis(700)).await;
             let recovered = collect_runtime_memory_stats(app, 0, 0);
@@ -6441,8 +6542,12 @@ async fn prepare_social_scrape_memory_internal(
     let before = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
     let reason = format!("{} {} memory preflight", provider, operation);
     let recycle_started_at = Instant::now();
-    let recycled_scraper_windows =
-        recycle_social_scraper_windows_except(app, preserve_label, &reason);
+    let recycled_scraper_windows = recycle_social_scraper_windows_except(
+        app,
+        preserve_label,
+        WindowDestroyedReason::PreflightRecycle,
+        &reason,
+    );
     let cache_trim_result = trim_webkit_network_cache(app);
     let cache_trimmed = cache_trim_result.cache_trimmed;
 
@@ -6608,13 +6713,13 @@ async fn ensure_social_scrape_memory(
     let critical = pressure_label == "critically high";
     if critical {
         let reason = format!("{} {} critical memory preflight", provider, operation);
-        recycle_social_scraper_windows(app, &reason);
+        recycle_social_scraper_windows(app, WindowDestroyedReason::CriticalPressure, &reason);
     }
     let mut recycled_preserved_scraper_window = false;
     if let Some(label) = blocked_preflight_preserved_scraper_label(preserve_label, critical) {
         let reason = format!("{} {} blocked memory preflight", provider, operation);
         recycled_preserved_scraper_window = app.get_webview_window(label).is_some();
-        recycle_webview_window(app, label, &reason);
+        recycle_webview_window(app, label, WindowDestroyedReason::PreflightRecycle, &reason);
     }
     let cooldown_ms = background_runtime.note_memory_pressure(provider, operation, critical);
     warn!(
@@ -7021,6 +7126,12 @@ fn retry_startup_after_crash(app: tauri::AppHandle) -> Result<(), String> {
         window
             .destroy()
             .map_err(|error| format!("failed to reset main window: {}", error))?;
+        record_window_destroyed(
+            &app,
+            MAIN_WINDOW_LABEL,
+            WindowDestroyedReason::StartupRecovery,
+            "startup recovery retry",
+        );
         wait_for_main_window_release(&app, "startup recovery retry")?;
     }
 
@@ -7086,6 +7197,7 @@ async fn open_x_login_window(app: tauri::AppHandle) -> Result<(), String> {
     .center()
     .build()
     .map_err(|e| e.to_string())?;
+    observe_window_created("x-login");
 
     Ok(())
 }
@@ -7122,6 +7234,12 @@ async fn check_x_login_cookies(app: tauri::AppHandle) -> Result<XLoginCheckResul
 async fn close_x_login_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("x-login") {
         window.destroy().map_err(|e| e.to_string())?;
+        record_window_destroyed(
+            &app,
+            "x-login",
+            WindowDestroyedReason::LoginFlow,
+            "x login closed",
+        );
     }
     Ok(())
 }
@@ -7507,7 +7625,12 @@ async fn fb_show_login(
     use tauri::WebviewWindowBuilder;
 
     info!("[FB] opening login window");
-    recycle_webview_window(&app, "fb-scraper", "facebook reconnect");
+    recycle_webview_window(
+        &app,
+        "fb-scraper",
+        WindowDestroyedReason::User,
+        "facebook reconnect",
+    );
 
     if let Some(existing) = app.get_webview_window("fb-login") {
         let _ = set_background_scraper_window_cloak(&existing, false);
@@ -7570,6 +7693,7 @@ async fn fb_show_login(
     })
     .build()
     .map_err(|e| e.to_string())?;
+    observe_window_created("fb-login");
     let close_app = app.clone();
     login_window.on_window_event(move |event| {
         if let tauri::WindowEvent::CloseRequested { .. } = event {
@@ -7593,7 +7717,12 @@ async fn fb_hide_login(app: tauri::AppHandle) -> Result<(), String> {
         "fb-login-window-closed",
         serde_json::json!({ "closed": true }),
     );
-    recycle_webview_window(&app, "fb-login", "login dismissed");
+    recycle_webview_window(
+        &app,
+        "fb-login",
+        WindowDestroyedReason::LoginFlow,
+        "login dismissed",
+    );
     Ok(())
 }
 
@@ -7637,6 +7766,7 @@ async fn fb_check_auth(
         .build()
         .map_err(|e| e.to_string())?,
     };
+    observe_window_created("fb-scraper");
     set_background_scraper_media_guard(&wv, true)?;
 
     tokio::time::sleep(Duration::from_secs(6)).await;
@@ -7957,6 +8087,7 @@ async fn fb_scrape_feed(
             builder.build().map_err(|e| e.to_string())?
         }
     };
+    observe_window_created("fb-scraper");
 
     info!(
         "[FB] scrape started (run_id={}, window_mode={}), waiting for page load...",
@@ -8278,6 +8409,7 @@ async fn fb_scrape_groups(
             builder.build().map_err(|e| e.to_string())?
         }
     };
+    observe_window_created("fb-scraper");
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(3500.0, 500.0))).await;
 
@@ -8436,6 +8568,7 @@ async fn fb_check_group_membership(
             builder.build().map_err(|e| e.to_string())?
         }
     };
+    observe_window_created("fb-scraper");
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(4500.0, 700.0))).await;
 
@@ -8599,7 +8732,14 @@ async fn fb_scrape_comments(
 async fn fb_disconnect(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(wv) = app.get_webview_window("fb-scraper") {
         wv.clear_all_browsing_data().map_err(|e| e.to_string())?;
-        let _ = wv.destroy();
+        if wv.destroy().is_ok() {
+            record_window_destroyed(
+                &app,
+                "fb-scraper",
+                WindowDestroyedReason::User,
+                "facebook disconnect",
+            );
+        }
     }
     Ok(())
 }
@@ -8627,7 +8767,12 @@ async fn ig_show_login(
 ) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
-    recycle_webview_window(&app, "ig-scraper", "login restart");
+    recycle_webview_window(
+        &app,
+        "ig-scraper",
+        WindowDestroyedReason::LoginFlow,
+        "login restart",
+    );
 
     let app_handle = app.clone();
     // Track whether we've already emitted the auth result (one-shot)
@@ -8672,6 +8817,7 @@ async fn ig_show_login(
     })
     .build()
     .map_err(|e| e.to_string())?;
+    observe_window_created("ig-scraper");
     let close_app = app.clone();
     login_window.on_window_event(move |event| {
         if let tauri::WindowEvent::CloseRequested { .. } = event {
@@ -8694,7 +8840,12 @@ async fn ig_hide_login(app: tauri::AppHandle) -> Result<(), String> {
         "ig-login-window-closed",
         serde_json::json!({ "closed": true }),
     );
-    recycle_webview_window(&app, "ig-scraper", "login dismissed");
+    recycle_webview_window(
+        &app,
+        "ig-scraper",
+        WindowDestroyedReason::LoginFlow,
+        "login dismissed",
+    );
     Ok(())
 }
 
@@ -8737,6 +8888,7 @@ async fn ig_check_auth(
         .build()
         .map_err(|e| e.to_string())?,
     };
+    observe_window_created("ig-scraper");
     set_background_scraper_media_guard(&wv, true)?;
 
     tokio::time::sleep(Duration::from_secs(6)).await;
@@ -8846,6 +8998,7 @@ async fn ig_scrape_feed(
             builder.build().map_err(|e| e.to_string())?
         }
     };
+    observe_window_created("ig-scraper");
 
     info!(
         "[IG] scrape started (window_mode={}), waiting for feed to render...",
@@ -9119,7 +9272,14 @@ async fn ig_scrape_comments(
 async fn ig_disconnect(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(wv) = app.get_webview_window("ig-scraper") {
         wv.clear_all_browsing_data().map_err(|e| e.to_string())?;
-        let _ = wv.destroy();
+        if wv.destroy().is_ok() {
+            record_window_destroyed(
+                &app,
+                "ig-scraper",
+                WindowDestroyedReason::User,
+                "instagram disconnect",
+            );
+        }
     }
     Ok(())
 }
@@ -9331,7 +9491,12 @@ async fn li_show_login(
 ) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
-    recycle_webview_window(&app, "li-scraper", "login restart");
+    recycle_webview_window(
+        &app,
+        "li-scraper",
+        WindowDestroyedReason::LoginFlow,
+        "login restart",
+    );
 
     let app_handle = app.clone();
     // Track whether we've already emitted the auth result (one-shot)
@@ -9377,6 +9542,7 @@ async fn li_show_login(
     })
     .build()
     .map_err(|e| e.to_string())?;
+    observe_window_created("li-scraper");
     let close_app = app.clone();
     login_window.on_window_event(move |event| {
         if let tauri::WindowEvent::CloseRequested { .. } = event {
@@ -9399,7 +9565,12 @@ async fn li_hide_login(app: tauri::AppHandle) -> Result<(), String> {
         "li-login-window-closed",
         serde_json::json!({ "closed": true }),
     );
-    recycle_webview_window(&app, "li-scraper", "login dismissed");
+    recycle_webview_window(
+        &app,
+        "li-scraper",
+        WindowDestroyedReason::LoginFlow,
+        "login dismissed",
+    );
     Ok(())
 }
 
@@ -9447,6 +9618,7 @@ async fn li_check_auth(
         .build()
         .map_err(|e| e.to_string())?,
     };
+    observe_window_created("li-scraper");
     set_background_scraper_media_guard(&wv, true)?;
 
     tokio::time::sleep(Duration::from_secs(6)).await;
@@ -9555,6 +9727,7 @@ async fn li_scrape_feed(
             builder.build().map_err(|e| e.to_string())?
         }
     };
+    observe_window_created("li-scraper");
 
     println!(
         "[LI] scrape started (window_mode={}), waiting for feed to render...",
@@ -9705,7 +9878,14 @@ async fn li_scrape_feed(
 async fn li_disconnect(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(wv) = app.get_webview_window("li-scraper") {
         wv.clear_all_browsing_data().map_err(|e| e.to_string())?;
-        let _ = wv.destroy();
+        if wv.destroy().is_ok() {
+            record_window_destroyed(
+                &app,
+                "li-scraper",
+                WindowDestroyedReason::User,
+                "linkedin disconnect",
+            );
+        }
     }
     Ok(())
 }
@@ -10358,7 +10538,11 @@ fn schedule_main_window_occlusion_recovery(
             delay.as_millis(),
             occlusion_state
         );
-        let _ = recover_main_window(&app, "startup native occlusion");
+        let _ = recover_main_window(
+            &app,
+            WindowDestroyedReason::StartupRecovery,
+            "startup native occlusion",
+        );
     });
 }
 
@@ -10402,6 +10586,7 @@ fn create_main_window_with_initial_visibility(
     let builder = builder.with_webview_configuration(main_window_webview_configuration());
 
     let window = builder.build()?;
+    observe_window_created(MAIN_WINDOW_LABEL);
 
     #[cfg(target_os = "macos")]
     disable_window_restoration(&window);
@@ -10679,20 +10864,35 @@ enum MainWindowRecoveryPresentation {
     KeepHidden,
 }
 
-fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
+fn recover_main_window(
+    app: &tauri::AppHandle,
+    reason_enum: WindowDestroyedReason,
+    reason: &str,
+) -> Result<(), String> {
     recover_main_window_with_presentation(
         app,
+        reason_enum,
         reason,
         MainWindowRecoveryPresentation::RestoreIfVisible,
     )
 }
 
-fn recover_main_window_hidden(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
-    recover_main_window_with_presentation(app, reason, MainWindowRecoveryPresentation::KeepHidden)
+fn recover_main_window_hidden(
+    app: &tauri::AppHandle,
+    reason_enum: WindowDestroyedReason,
+    reason: &str,
+) -> Result<(), String> {
+    recover_main_window_with_presentation(
+        app,
+        reason_enum,
+        reason,
+        MainWindowRecoveryPresentation::KeepHidden,
+    )
 }
 
 fn recover_main_window_with_presentation(
     app: &tauri::AppHandle,
+    reason_enum: WindowDestroyedReason,
     reason: &str,
     presentation: MainWindowRecoveryPresentation,
 ) -> Result<(), String> {
@@ -10710,7 +10910,7 @@ fn recover_main_window_with_presentation(
     let outcome =
         run_main_window_step_on_main_thread(app, "renderer recovery destroy", move || {
             open_main_window_recovery_keepalive(&app_for_destroy, &reason_for_destroy)?;
-            destroy_main_window_for_recovery(&app_for_destroy, &reason_for_destroy)
+            destroy_main_window_for_recovery(&app_for_destroy, reason_enum, &reason_for_destroy)
         })
         .and_then(|was_visible| {
             wait_for_main_window_release(app, reason)?;
@@ -10745,7 +10945,11 @@ fn recover_main_window_with_presentation(
     outcome
 }
 
-fn destroy_main_window_for_recovery(app: &tauri::AppHandle, reason: &str) -> Result<bool, String> {
+fn destroy_main_window_for_recovery(
+    app: &tauri::AppHandle,
+    reason_enum: WindowDestroyedReason,
+    reason: &str,
+) -> Result<bool, String> {
     let was_visible = app
         .get_webview_window(MAIN_WINDOW_LABEL)
         .and_then(|window| window.is_visible().ok())
@@ -10756,6 +10960,7 @@ fn destroy_main_window_for_recovery(app: &tauri::AppHandle, reason: &str) -> Res
         window
             .destroy()
             .map_err(|error| format!("destroy failed: {}", error))?;
+        record_window_destroyed(app, MAIN_WINDOW_LABEL, reason_enum, reason);
         info!("[main-window] destroyed stale renderer ({})", reason);
     }
 
@@ -10967,6 +11172,10 @@ pub fn run() {
 
     builder.setup(move |app| {
             let app_handle = app.handle().clone();
+
+            // The config-declared main window already exists by the time setup
+            // runs; seed its created-at so the first kill record has an age.
+            observe_window_created(MAIN_WINDOW_LABEL);
 
             let data_dir = app
                 .path()
@@ -11621,12 +11830,21 @@ pub fn run() {
                             recycle_social_scraper_windows_unless_active(
                                 &app_for_memory_monitor,
                                 &background_runtime_for_memory_monitor,
+                                WindowDestroyedReason::WatchdogMemory,
                                 reason,
                             );
                             let recovery_result = if recover_hidden {
-                                recover_main_window_hidden(&app_for_memory_monitor, reason)
+                                recover_main_window_hidden(
+                                    &app_for_memory_monitor,
+                                    WindowDestroyedReason::WatchdogMemory,
+                                    reason,
+                                )
                             } else {
-                                recover_main_window(&app_for_memory_monitor, reason)
+                                recover_main_window(
+                                    &app_for_memory_monitor,
+                                    WindowDestroyedReason::WatchdogMemory,
+                                    reason,
+                                )
                             };
                             if let Err(error) = recovery_result {
                                 error!(
@@ -12004,6 +12222,7 @@ pub fn run() {
                         recycle_social_scraper_windows_unless_active(
                             &app_for_renderer_watchdog,
                             &background_runtime_for_watchdog,
+                            WindowDestroyedReason::WatchdogStale,
                             "main renderer heartbeat stale",
                         );
                     }
@@ -12011,6 +12230,7 @@ pub fn run() {
                     if should_recover_main {
                         if let Err(error) = recover_main_window(
                             &app_for_renderer_watchdog,
+                            WindowDestroyedReason::WatchdogStale,
                             "renderer watchdog recovery",
                         ) {
                             error!(
@@ -12028,6 +12248,7 @@ pub fn run() {
                             recycle_social_scraper_windows_unless_active(
                                 &app_for_renderer_watchdog,
                                 &background_runtime_for_watchdog,
+                                WindowDestroyedReason::WatchdogStale,
                                 "main renderer recovered",
                             );
                         }
@@ -12326,6 +12547,50 @@ mod tests {
             latest_runtime_health_background_job_active(temp.path(), 47_000),
             Some(false)
         );
+    }
+
+    #[test]
+    fn window_destroyed_reason_serializes_snake_case() {
+        let cases = [
+            (WindowDestroyedReason::PreflightRecycle, "preflight_recycle"),
+            (
+                WindowDestroyedReason::PostScrapeRecovery,
+                "post_scrape_recovery",
+            ),
+            (WindowDestroyedReason::WatchdogStale, "watchdog_stale"),
+            (WindowDestroyedReason::WatchdogMemory, "watchdog_memory"),
+            (WindowDestroyedReason::CriticalPressure, "critical_pressure"),
+            (WindowDestroyedReason::User, "user"),
+            (WindowDestroyedReason::LoginFlow, "login_flow"),
+            (WindowDestroyedReason::JobComplete, "job_complete"),
+            (WindowDestroyedReason::StartupRecovery, "startup_recovery"),
+        ];
+        for (reason, expected) in cases {
+            assert_eq!(
+                serde_json::to_value(reason).unwrap(),
+                serde_json::json!(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn window_created_registry_preserves_age_and_clears_on_destroy() {
+        let label = "window-created-registry-test";
+
+        assert_eq!(take_window_age_seconds(label), None);
+
+        observe_window_created(label);
+        // Re-observing an existing window must not reset the creation time.
+        let first = *WINDOW_CREATED_AT.lock().unwrap().get(label).unwrap();
+        observe_window_created(label);
+        assert_eq!(
+            *WINDOW_CREATED_AT.lock().unwrap().get(label).unwrap(),
+            first
+        );
+
+        assert!(take_window_age_seconds(label).is_some());
+        // The destroy consumed the entry.
+        assert_eq!(take_window_age_seconds(label), None);
     }
 
     #[test]
