@@ -8,7 +8,7 @@ use log::{error, info, warn};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque};
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
