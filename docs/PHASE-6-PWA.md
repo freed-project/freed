@@ -13,7 +13,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 
 - **Shared codebase** — Same React app embedded in Desktop WebView and deployed to [app.freed.wtf](https://app.freed.wtf), with the dev channel on `dev-app.freed.wtf`
 - **Thin client** — Displays pre-computed rankings from Desktop/OpenClaw, minimal local computation
-- **Light saves** — Can save URLs with metadata extraction (og tags); full article extraction requires Desktop
+- **Light saves:** Saves URL stubs immediately; full detail extraction requires Freed Desktop
 - **Offline-first:** Service worker caches feed data, saved reader HTML, and images for offline reading
 - **Versioned first-run consent** — PWA startup is blocked until the current legal bundle is accepted locally in the browser
 - **URL-driven navigation** — Active view, feed scope, and open reader state serialize into the URL so browser back and forward behave naturally

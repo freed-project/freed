@@ -380,6 +380,12 @@ export function ReaderView({
   const [threadReplyMessage, setThreadReplyMessage] = useState<string | null>(null);
 
   const articleUrl = item.content.linkPreview?.url;
+  const pendingSavedUrlDetails =
+    item.platform === "saved" &&
+    item.userState.saved &&
+    Boolean(articleUrl) &&
+    !item.preservedContent?.text &&
+    item.content.text === articleUrl;
   const displayMediaUrls = readerMediaUrls ?? item.content.mediaUrls;
   const displayMediaTypes = readerMediaTypes ?? item.content.mediaTypes;
   const isStory = item.contentType === "story";
@@ -483,6 +489,7 @@ export function ReaderView({
       const shouldHydrateLive =
         Boolean(hydrateReaderItem) &&
         navigator.onLine &&
+        !pendingSavedUrlDetails &&
         (!hasReaderContent || (readerContentSource !== "cache" && shouldPin));
 
       if (shouldHydrateLive && hydrateReaderItem) {
@@ -530,7 +537,7 @@ export function ReaderView({
       }
 
       // Layer 4: browser fetch fallback for platforms without a native hydrator.
-      if (articleUrl && navigator.onLine) {
+      if (articleUrl && navigator.onLine && !pendingSavedUrlDetails) {
         setIsCaching(true);
         liveFetch(
           articleUrl,
@@ -558,6 +565,10 @@ export function ReaderView({
         if (!cancelled) {
           setHtml(null);
           setContentSource(null);
+          if (pendingSavedUrlDetails) {
+            setHydrationStatus("partial");
+            setHydrationMessage("Freed is saving details for this URL in the background.");
+          }
           if (isStory && displayMediaUrls.length === 0) {
             setHydrationStatus("expired");
             setHydrationMessage("This story media was not captured before the source expired it.");
@@ -583,6 +594,7 @@ export function ReaderView({
     pinReaderItem,
     item.preservedContent?.text,
     item.userState.saved,
+    pendingSavedUrlDetails,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoadThreadReplies = useCallback(async () => {
@@ -953,7 +965,7 @@ export function ReaderView({
         )}
 
         {/* Content */}
-        {isLoading ? (
+        {isLoading || pendingSavedUrlDetails ? (
           <div className="flex justify-center py-16">
             <div className="w-8 h-8 rounded-full border-2 border-[var(--theme-border-quiet)] border-t-[var(--theme-accent-secondary)] animate-spin" />
           </div>

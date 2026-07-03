@@ -2,60 +2,50 @@
  * Desktop URL save flow
  *
  * Architecture:
- *  1. Fetch raw HTML via `fetch_url` Tauri IPC (bypasses CORS + uses native HTTP)
- *  2. Extract metadata + article content in the renderer (DOMParser + Readability)
- *  3. Write full HTML to the device content cache (Layer 2 -- NOT Automerge)
- *  4. Build a FeedItem with only preservedContent.text (no html) in Automerge
- *  5. Write the item to Automerge via docAddFeedItem()
+ *  1. Validate and normalize the URL.
+ *  2. Write a lightweight saved stub to Automerge.
+ *  3. Queue background detail fetching and cache hydration.
  */
 
-import { invoke } from "@tauri-apps/api/core";
-import {
-  extractMetadataBrowser,
-  extractContentBrowser,
-} from "@freed/capture-save/browser";
-import { buildSavedFeedItem } from "@freed/capture-save/normalize";
-import type { FeedItem } from "@freed/shared";
-import { contentCache } from "./content-cache.js";
-import { docAddFeedItem } from "./automerge.js";
-import { toSyncedPreservedText } from "./preserved-text.js";
+import { docAddStubItem } from "./automerge.js";
+import { enqueue } from "./content-fetcher.js";
 
 export interface SaveUrlOptions {
   tags?: string[];
 }
 
+export interface SaveUrlResult {
+  globalId: string;
+}
+
 /**
  * Save a URL to the Freed desktop library.
  *
- * Fetches, extracts, caches HTML locally, then writes metadata to Automerge.
- * Full HTML never touches Automerge -- that keeps the CRDT small and sync fast.
+ * The user-visible save path only writes a stub. Detail fetching runs through
+ * the background content fetcher so the modal can close immediately.
  */
 export async function saveUrlInDesktop(
   url: string,
   options: SaveUrlOptions = {},
-): Promise<FeedItem> {
-  // Step 1: Fetch raw HTML via Tauri IPC
-  const html = await invoke<string>("fetch_url", { url });
+): Promise<SaveUrlResult> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("Invalid URL");
+  }
 
-  // Step 2: Extract metadata and content in the renderer (browser-safe)
-  const metadata = {
-    ...extractMetadataBrowser(html, url),
-    url,
-  };
-  const content = extractContentBrowser(html, url);
-  const item = buildSavedFeedItem(metadata, content, {
-    tags: options.tags,
-    includeSourceUrl: true,
-    preservedText: toSyncedPreservedText(content.text),
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error("Only http and https URLs are supported");
+  }
+
+  const stableUrl = parsed.toString();
+  const item = await docAddStubItem(stableUrl, options.tags);
+  enqueue([item], {
+    priority: true,
+    force: true,
+    bypassStartupDelay: true,
+    reopenSaveDialogOnError: true,
   });
-
-  // Step 3: Write Readability-extracted article HTML to device content cache.
-  // Intentionally NOT the raw page HTML -- that contains <style>, <script>,
-  // and other full-page elements that would leak into the app DOM.
-  await contentCache.set(item.globalId, content.html);
-
-  // Step 5: Write to Automerge (syncs to all devices via relay)
-  await docAddFeedItem(item);
-
-  return item;
+  return { globalId: item.globalId };
 }
