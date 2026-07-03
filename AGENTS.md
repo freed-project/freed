@@ -3,7 +3,7 @@
 ## Rules
 
 - **After implementing ANY new features:** Update `docs/PHASE-*.md` immediately — do not wait to be asked. Check every phase whose success criteria or task table is affected and update checkboxes + status lines in the same commit as the feature work.
-- **Roadmap sync:** When `docs/PHASE-*.md` changes, update `website/src/pages/Roadmap.tsx` to match (`✓ Complete` → `"complete"`, `🚧 In Progress` → `"current"`, else `"upcoming"`).
+- **Roadmap sync:** When `docs/PHASE-*.md` changes, update the roadmap data in `website/src/app/roadmap/RoadmapContent.tsx` to match (`✓ Complete` → `"complete"`, `🚧 In Progress` → `"current"`, else `"upcoming"`). The roadmap is public marketing surface: route the website edit through the `www` lane (`freed-build-www`), not through `dev`.
 - **Time estimates:** Machine time only ("one conversation", "~10 min"). Never quote human hours/days.
 - **IDs:** Display tail — `...${id.slice(-8)}`.
 - **Number formatting:** All user-facing numbers must use `Number.toLocaleString()` (or `Intl.NumberFormat`) — never raw `.toString()` or string interpolation. This ensures locale-appropriate grouping separators (e.g. commas in `en-US`) for counts, totals, and stats.
@@ -87,21 +87,7 @@ Prefer the lightest useful local preview before opening a draft PR:
 
 ### Installed Desktop Soaks
 
-When validating an installed Freed Desktop build on the user's primary machine, avoid tools that steal focus. Do not use System Events, coordinate clicks, Computer Use, or browser automation to drive the installed app unless the user explicitly approves that disruption.
-
-Use terminal-driven diagnostics first: app logs, `runtime-health.jsonl`, crash reports, process samples, memory samples, and local app-data files. When a provider sync soak needs a manual kick, use a GitHub dev-channel prerelease, or launch a local build with `FREED_ENABLE_DEV_SYNC_TRIGGERS=1`, then run `node scripts/dev-sync-trigger.mjs facebook`, `instagram`, or `linkedin`. The native trigger calls the same in-app social refresh path as the UI, so it keeps existing auth, pause state, provider cooldowns, and rate limits intact. It is picked up from the native process so it still works when WebKit has suspended a backgrounded renderer.
-
-Launch installed builds with `open -g /Applications/Freed.app` when you need the app running without stealing the primary workstation's focus. Freed Desktop should respect that background launch during cold startup. Explicit user actions like tray Show, dock reopen, and recovery retry still present the app in the foreground.
-
-The file trigger expires after the helper timeout. If a stale request is ignored, re-run `node scripts/dev-sync-trigger.mjs <provider>` instead of expecting Freed Desktop to replay old provider traffic on the next launch.
-
-When the Mac is locked, the helper should wait sparsely because no provider scrape can start and frequent retries still churn local renderer state. The default locked retry is 10 minutes. For long unattended soaks, run `FREED_DEV_SYNC_TRIGGER_TIMEOUT_MS=21600000 node scripts/dev-sync-trigger.mjs <provider>` so the helper can keep waiting without 30 second local churn.
-
-Long-running or background work must not stop overnight because the next useful step would be a click in Freed Desktop. If a click is truly required to test the work properly and efficiently, ask for permission with a 10 minute response window and then proceed if the user is unavailable. When the action is likely to recur, implement and ship a terminal trigger instead of depending on foreground UI automation. Sitting idle until morning is not acceptable when a trigger can be built or the user has given a timeout path.
-
-This is a workflow contract, not a suggestion for one specific script. Generated nightly tasks, release soak notes, morning closeout instructions, and agent handoff prompts must include the same rule whenever they mention app interaction. If the plan needs a button press to keep validating, the plan must name the terminal command or trigger to use, or it must state the 10 minute timeout path. A background run that can make progress must keep moving. Arthur Young did not build a universe of process tables so a machine could stare respectfully at a disabled button until breakfast.
-
-Production builds should keep reliability and memory-recovery behavior enabled, but the raw file-based sync trigger stays gated to dev-channel installs, debug builds, or explicit `FREED_ENABLE_DEV_SYNC_TRIGGERS=1` launches until it has a user-facing permission model. In the production channel, any local process that can write to the app data folder could otherwise start authenticated provider syncs, which changes observable Facebook, Instagram, or LinkedIn traffic without an explicit user action.
+The canonical soak and trigger contract is [docs/SOAK-AND-TRIGGERS.md](docs/SOAK-AND-TRIGGERS.md). One-line summary: installed soaks are terminal-driven (no focus stealing; `open -g`, logs, `runtime-health.jsonl`, `node scripts/dev-sync-trigger.mjs <provider>`), the trigger stays gated outside dev-channel builds, and background work never stalls overnight for a click — ask with a 10 minute response window, then proceed, and ship a terminal trigger for anything recurring.
 
 ### Queued UI Polish
 

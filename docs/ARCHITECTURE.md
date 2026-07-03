@@ -1,512 +1,90 @@
 # Freed Technical Architecture
 
-## Overview
-
-Freed is a privacy-first, local-first system for capturing social media content and presenting it through a user-controlled unified feed.
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        CAPTURE LAYER                                     │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                      │
-│  │   Chrome    │  │  Safari iOS │  │   Firefox   │                      │
-│  │  Extension  │  │  Extension  │  │  Android    │                      │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘                      │
-└─────────┼────────────────┼────────────────┼─────────────────────────────┘
-          │                │                │
-          ▼                ▼                ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                      PROCESSING LAYER                                    │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐          │
-│  │    Location     │  │    Geocoding    │  │    Topic        │          │
-│  │   Extraction    │──│   (Nominatim)   │  │   Extraction    │          │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘          │
-└─────────────────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        STORAGE LAYER                                     │
-│  ┌─────────────────────────────────────────────────────────────┐        │
-│  │                    Automerge CRDT Document                   │        │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │        │
-│  │  │  FeedItems  │  │ Preferences │  │   Friends   │          │        │
-│  │  └─────────────┘  └─────────────┘  └─────────────┘          │        │
-│  └─────────────────────────────────────────────────────────────┘        │
-│                              │                                           │
-│              ┌───────────────┼───────────────┐                          │
-│              ▼               ▼               ▼                          │
-│  ┌─────────────────┐  ┌─────────────┐  ┌─────────────┐                  │
-│  │    IndexedDB    │  │  WebRTC P2P │  │   Cloud     │                  │
-│  │    (Local)      │  │    Sync     │  │   Backup    │                  │
-│  └─────────────────┘  └─────────────┘  └─────────────┘                  │
-└─────────────────────────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         READER LAYER                                     │
-│  ┌─────────────────────────────┐  ┌─────────────────────────────┐       │
-│  │      PWA (app.freed.wtf)    │  │    Tauri Mobile (Phase 2)   │       │
-│  │  ┌─────────┐  ┌──────────┐  │  │                             │       │
-│  │  │  Feed   │  │   Map    │  │  │                             │       │
-│  │  │  View   │  │   View   │  │  │                             │       │
-│  │  └─────────┘  └──────────┘  │  │                             │       │
-│  └─────────────────────────────┘  └─────────────────────────────┘       │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Tech Stack
-
-### Core
-
-- **Language:** TypeScript throughout
-- **Runtime:** Bun (package management, scripts)
-- **Build:** Vite (apps), Next.js (website)
-- **Monorepo:** Bun workspaces
-
-### Marketing Website (freed.wtf)
-
-- **Framework:** Next.js 15 (App Router)
-- **Rendering:** Static Site Generation (SSG)
-- **Styling:** Tailwind CSS v4
-- **Animations:** Framer Motion
-- **Hosting:** Vercel
-
-### Browser Extensions
-
-- **Chrome:** Manifest V3
-- **Safari iOS:** Safari Web Extension (webextension-polyfill)
-- **Firefox Android:** WebExtensions API
-- **Build Tool:** Vite + CRXJS plugin
-
-### Storage & Sync
-
-- **Local DB:** IndexedDB via Dexie.js
-- **CRDT:** Automerge (conflict-free sync)
-- **P2P Sync:** WebRTC
-- **Cloud Backup:** User's own storage (Google Drive, iCloud, Dropbox)
-
-### PWA Reader
-
-- **Framework:** React 18
-- **Styling:** Tailwind CSS v4
-- **Animations:** Framer Motion
-- **Maps:** react-maplibre + MapLibre GL JS
-- **Offline:** Workbox service worker
-
-### Geocoding
-
-- **Service:** Nominatim (OpenStreetMap)
-- **Approach:** Cache-first, rate-limited
-
-### Native Mobile (Phase 2)
-
-- **Framework:** Tauri 2.0
-- **Backend:** Rust
-- **Frontend:** Shared React components
-
----
-
-## Data Model
-
-### FeedItem
-
-```typescript
-interface FeedItem {
-  globalId: string; // "platform:itemId" e.g., "x:1234567890"
-  platform: "x" | "facebook" | "instagram" | "mozi";
-  contentType: "post" | "story";
-  capturedAt: number; // Unix timestamp
-  publishedAt: number;
-  storyExpiresAt?: number; // For stories (publishedAt + 24h)
-
-  author: {
-    id: string;
-    handle: string;
-    displayName: string;
-    avatarUrl?: string;
-  };
-
-  content: {
-    text?: string;
-    mediaUrls: string[]; // URLs only, not binary data
-    mediaTypes: ("image" | "video" | "link")[];
-    linkPreview?: {
-      url: string;
-      title?: string;
-      description?: string;
-    };
-  };
-
-  engagement: {
-    likes?: number;
-    reposts?: number;
-    comments?: number;
-  };
-
-  location?: {
-    name: string; // "Blue Bottle Coffee"
-    address?: string;
-    coordinates?: { lat: number; lng: number };
-    placeId?: string;
-    source: "geo_tag" | "check_in" | "sticker" | "text_extraction";
-    confidence: number; // 0-1
-  };
-
-  // Planned schema evolution for future-aware sources such as Mozi.
-  // Historical feeds can omit this. Planning-oriented items can attach
-  // a time window so the map and Friend views can reason about upcoming travel,
-  // event attendance, and in-town overlaps without inventing source-specific types.
-  timeRange?: {
-    startsAt: number;
-    endsAt?: number;
-    kind: "event" | "travel" | "overlap";
-  };
-
-  userState: {
-    hidden: boolean;
-    bookmarked: boolean;
-    readAt?: number;
-  };
-
-  topics: string[];
-}
-```
-
-### UserPreferences
-
-```typescript
-interface UserPreferences {
-  weights: {
-    recency: number; // 0-100
-    platforms: Record<string, number>; // Platform -> weight
-    topics: Record<string, number>; // Topic -> weight
-    authors: Record<string, number>; // Author -> weight
-  };
-
-  ulysses: {
-    enabled: boolean;
-    blockedPlatforms: string[];
-    allowedPaths: Record<string, string[]>;
-  };
-
-  sync: {
-    cloudProvider?: "gdrive" | "icloud" | "dropbox";
-    autoBackup: boolean;
-    backupFrequency: "hourly" | "daily" | "manual";
-  };
-
-  display: {
-    itemsPerPage: number;
-    showEngagementCounts: boolean;
-    compactMode: boolean;
-  };
-}
-```
-
-### FriendLocation
-
-```typescript
-interface FriendLocation {
-  authorId: string;
-  handle: string;
-  displayName: string;
-  avatarUrl?: string;
-
-  lastLocation: {
-    name: string;
-    coordinates: { lat: number; lng: number };
-    timestamp: number;
-    sourcePostId: string;
-  };
+Accurate as of 2026-07-02 (dev @ v26.7.203-dev). This document describes the system as shipped, not as aspired to. Known defects and program-tracked limitations cite finding IDs from [stability-findings.json](stability-findings.json); the remediation plan is [STABILITY-PROGRAM.md](STABILITY-PROGRAM.md).
 
-  locationHistory: Array<{
-    name: string;
-    coordinates: { lat: number; lng: number };
-    timestamp: number;
-  }>;
-}
-```
+## What Freed is
 
-### Planned time-aware location model
+Freed Desktop captures the user's own social feeds (X, Facebook, Instagram, LinkedIn, RSS, saved articles) on their machine using their own authenticated sessions, stores everything locally in one Automerge document, and presents a user-controlled unified feed. A companion PWA at `app.freed.wtf` is the mobile reader. There is no Freed server: sync rides on a LAN relay inside the desktop app and on the user's own cloud storage (Google Drive, Dropbox).
 
-The current location model is historical-first, but future planning sources require one more layer: location plus time. The intended direction is a generic optional `timeRange` on `FeedItem`, not a Mozi-only schema branch. That keeps the data model reusable for any future source that exposes travel windows, event attendance, or planned presence in a place.
+Earlier drafts of this document described a browser add-on capture layer and direct peer-to-peer device sync; neither was ever shipped, and nothing here is aspirational.
 
-Important distinction:
+## Repo layout
 
-- Canonical captured items are stored in the Automerge document
-- Overlap views are derived at read time by comparing Friend-linked items with intersecting place and time windows
-- Derived overlaps should not be persisted as if they were source-authored records
+npm workspaces monorepo (`packages/*`, `skills/*`, `website`), Node pinned by `.nvmrc`. Boundary rules live in AGENTS.md and are binding:
 
----
+| Package | Role |
+| ------- | ---- |
+| `packages/shared` | Pure functions + types, including the Automerge schema (`src/schema.ts`, backward-compatible changes only). Zero runtime deps. No React. |
+| `packages/ui` | Platform-agnostic React UI (feed, reader, map via MapLibre, search via MiniSearch, zustand stores). Ships raw `.tsx`; no build step. No platform stores, no Tauri APIs. |
+| `packages/sync` | Storage-agnostic sync: IndexedDB and filesystem storage adapters, cloud providers (`cloud/gdrive.ts`, `cloud/dropbox.ts`, `cloud/merge.ts`), LAN relay client (`network/local-relay.ts`). Works in browser and Node. |
+| `packages/capture-x` | X GraphQL response types, endpoint definitions (`https://x.com/i/api/graphql`), and normalizers. |
+| `packages/capture-facebook` / `capture-instagram` / `capture-linkedin` | Per-provider extraction and normalization helpers. Capture packages never import each other. |
+| `packages/capture-rss` | RSS/Atom parsing (rss-parser, fast-xml-parser). |
+| `packages/capture-save` | Save-for-later article capture (Readability, zip import/export). |
+| `packages/desktop` | Tauri shell: React renderer plus `src-tauri/src/lib.rs` (~13k lines of Rust). Imports all capture packages, `@freed/ui`, `@freed/shared`, `@freed/sync`. |
+| `packages/pwa` | Mobile reader app shell (Vite + React + vite-plugin-pwa/Workbox). Never imports Tauri APIs. |
+| `website` | Marketing site (Next.js App Router) at `freed.wtf`. Lives on the `www` branch lane. |
+| `skills/`, `scripts/` | Agent skills and the automation/release tooling (see AGENTS.md and docs/NIGHTLY-SELF-IMPROVE.md). |
 
-## Platform Capture Strategies
+## Desktop app
 
-### X (Twitter)
+Tauri 2 (Rust backend, WKWebView renderer on macOS). Two runtime halves:
 
-**Difficulty:** Hard (frequent DOM changes, anti-scraping)
+**The React renderer is the orchestrator.** The main window runs the scheduler (`background-runtime-coordinator.ts` job kinds include `rss-poll`, content fetching, cloud upload), the RSS poller, the content fetcher, provider capture drivers (`fb-capture.ts`, `instagram-capture.ts`, `li-capture.ts`, X via `capture.ts`), provider health tracking, and the Automerge worker host. This is a load-bearing architectural fact: killing the main renderer kills every in-flight background job (finding F03; Wave 6 of the stability program moves orchestration into Rust).
 
-**Approach:**
+**Rust (`src-tauri/src/lib.rs`) owns native substrate:** window management including hidden scraper WebViews, the LAN sync relay, the renderer watchdog and memory recovery, `runtime-health.jsonl` telemetry, the dev sync trigger watcher, tray/updater/global-shortcut plumbing, and utility commands such as `fetch_binary_url`.
 
-- MutationObserver on feed container
-- Target `data-testid` attributes (more stable than classes)
-- Fallback to structural XPath
-- Extract tweet ID from URL patterns
+### Capture strategies per provider
 
-**Key Selectors:**
+All capture uses the user's own authenticated sessions in app-managed WebViews. Anything that would change provider-visible behavior (loads, navigation, frequency, cookies, headers, extractor scripts) requires the explicit approval lane in AGENTS.md and STABILITY-PROGRAM.md.
 
-```javascript
-'article[data-testid="tweet"]'; // Tweet container
-'[data-testid="User-Name"]'; // Author info
-'[data-testid="tweetText"]'; // Tweet text
-```
+- **X:** hidden authenticated WebView calls X's own GraphQL API (`x.com/i/api/graphql`, endpoint definitions in `capture-x/src/endpoints.ts`) and normalizes timeline responses. No DOM scraping.
+- **Facebook / Instagram / LinkedIn:** hidden scraper windows (labels `fb-scraper`, `ig-scraper`, `li-scraper`, each with an isolated WebKit data store) load the provider feed and run DOM extract scripts (`fb-extract-dom`, `instagram-extract-script`, `li-extract-dom`, plus stories and FB groups variants). Results are normalized by the matching `capture-*` package. Facebook extractors have a measured ~2-day half-life against DOM churn; the program forbids hardening passes and prescribes diagnostics (canary classification) instead.
+- **RSS:** `rss-poller.ts` on the renderer scheduler; parsing in `capture-rss`.
+- **Save-for-later:** URL/clipboard capture through `capture-save` (Readability extraction); also used by the PWA.
+- Social scrapes are currently nested inside the `rss-poll` job, which serializes them behind a Rust mutex and causes the recurring "job timed out kind=rss-poll" cycle (F17; un-nesting is Wave 4).
 
-### Facebook
+### Auth state
 
-**Difficulty:** Very Hard (obfuscated classes, aggressive anti-scraping)
+Session cookies live in the scraper WebViews' data stores. Known misclassifications tracked by the program: X 401/403 is treated as transport and retried forever (F15); logged-out IG/LI sessions are never classified as auth failures and keep spinning full scrapes (F16). Wave 4 addresses both.
 
-**Approach:**
+## Data model and sync
 
-- Navigate via ARIA roles
-- XPath-based relative positioning
-- Ignore obfuscation spans for text extraction
-- ID from timestamp link patterns
-
-**Key Selectors:**
-
-```javascript
-'[role="feed"]'; // Feed container
-'[role="article"]'; // Individual posts
-```
-
-### Instagram
+One Automerge document holds items, preferences, and social graph data (`packages/shared/src/schema.ts`). Schema changes must be backward compatible: add optional fields, never delete.
 
-**Difficulty:** Medium-Hard (SPA, but predictable structure)
-
-**Approach:**
-
-- Article elements in feed
-- Media via standard img/video tags
-- Author info in post header
-- Works on both feed and individual posts
+- **Worker ownership:** each app runs the document inside a dedicated worker (`automerge.worker.ts` in desktop and PWA). Mutations go through worker messages; `STATE_UPDATE` fans hydrated state back to subscribers. Persistence is IndexedDB with incremental appends plus periodic snapshots (`automerge-persistence.ts`, `snapshots.ts`).
+- **LAN relay:** the desktop Rust side runs a WebSocket relay (default port 8765, `FREED_SYNC_PORT` override). The PWA pairs via QR code and connects as a client. Today the relay broadcasts desktop state to clients but never merges client pushes into the desktop document, and the PWA pushes only once per connection — phone→desktop convergence over LAN does not exist yet and rides on cloud sync instead (F02/F23; Wave 3 builds the inbound path).
+- **Cloud sync:** full-document snapshots to the user's Google Drive or Dropbox with download-merge-upload (`sync/src/cloud/`). Program-tracked defects: every upload re-merges the remote and re-triggers itself through an unfiltered doc-change subscriber, forming a self-sustaining idle upload loop on desktop and PWA (F01/F06); the GDrive changes poll has no self-write filter (F12 lists more); the CRDT merge runs on the main renderer thread (F14). Wave 2 dampers (P1-01..P1-03) break these loops.
+- **Transport cost:** every synced mutation ships the whole document binary as a boxed `number[]` through two JS heaps plus JSON Tauri IPC (~16-20x document size transient, F07/F10), history grows without bound (F08), and archive pruning — the only automatic eviction — is disabled whenever cloud credentials exist (F09). Wave 5 is the demand-side fix (raw-bytes transport, worker lifecycle, eviction re-enable).
 
-### Mozi
+## Watchdog and recovery
 
-**Difficulty:** High (authenticated planning app, future-oriented data)
+The Rust watchdog supervises the renderer via heartbeats (`renderer-heartbeat.ts` → `renderer_heartbeat` events), native memory samples, and WebKit process telemetry, appending structured events to `runtime-health.jsonl` in the app data dir (currently halved at a 5 MiB cap; P0-04 replaces this with daily rotation). Recovery actions include renderer restart and scraper-window recycling.
 
-**Planned approach:**
+Known limitations (verified, frozen by program rule until Wave 6): WebKit process attribution is a heuristic that cannot distinguish the main renderer from scrapers — WebKit XPC processes are children of launchd, not the app (F27); `cpu_usage` is always 0.0 so CPU-gated recovery paths are dead code (F28); diagnostics run un-timed subprocesses under the renderer-health write lock (F25); post-scrape recovery can destroy the renderer before a scrape invoke returns (F03/F26); the memory preflight recycles scraper windows without an active-session check (F04/F30). **Do not tune watchdog thresholds**; every threshold change re-opens the fix treadmill the stability program exists to stop.
 
-- Desktop WebView-authenticated capture against `app.mozi.app`
-- Prefer structured payloads or embedded page data over brittle DOM scraping
-- Fall back to DOM extraction for visible trip, event, and overlap details the payload does not provide
-- Normalize planning activity into standard `FeedItem` records with optional location and time window metadata
+## PWA reader
 
----
+Vite + React + `vite-plugin-pwa` (Workbox) at `app.freed.wtf` (Vercel). Imports `@freed/ui`, `@freed/shared`, `@freed/sync`, `@freed/capture-save`. Runs its own Automerge worker and IndexedDB persistence, connects to the desktop relay over LAN (QR pairing), and can sync against the same cloud snapshot. It shares the cloud-loop defect with the desktop (F06/F22).
 
-## Stories Capture
+## Website
 
-Stories are ephemeral (24h lifespan) and appear in carousels.
+Next.js App Router marketing site at `freed.wtf` (`website/`), deployed to Vercel under the `aubreyfs-projects` scope only. Public roadmap data lives in `website/src/app/roadmap/RoadmapContent.tsx` and mirrors `docs/PHASE-*.md` statuses. Marketing changes ride the `www` branch lane, never `dev`.
 
-### Instagram Stories
+## Release lanes and shipping
 
-- Stories tray at top of feed
-- Capture during story viewing (MutationObserver on modal)
-- Extract: media, author, location stickers, timestamp
+Three long-lived branches: `dev` (product work, default), `main` (production releases), `www` (public marketing + published changelog). Versioning is CalVer `YY.M.DDBUILD` (AGENTS.md has the encoding). The ship flow is `release.sh` (version + draft notes) → manual note approval → `release-publish.sh` (tag) → tag push triggers `.github/workflows/release.yml` (validation, four-platform build matrix, updater manifest `latest.json`, publish, website/PWA deploys). Desktop self-updates via `tauri-plugin-updater`. The full operator flow is the `freed-ship-build` skill.
 
-### Facebook Stories
+## Testing and validation
 
-- Similar carousel UI
-- Capture during viewing
-- Location check-ins and stickers
+- Desktop e2e: Playwright against plain Chromium with a mocked Tauri layer (`VITE_TEST_TAURI=1`; see AGENTS.md "Desktop E2E Testing" and `packages/desktop/tests/e2e/README.md`), including a perf suite gated in CI against `perf-baselines.json` / `perf-budgets.json`.
+- Validation tiers: `npm run validate:feature` (path-scoped, feature branches), `validate:dev` (integration), `validate:release` (release prep). CI is `.github/workflows/ci.yml`.
+- Tooling smoke: `npm run test:scripts` covers the automation scripts in `scripts/`.
 
-### X/Twitter
+## Automation substrate
 
-- No stories (Fleets discontinued)
-
----
-
-## Location Extraction Pipeline
-
-### Sources (by confidence)
-
-1. **Explicit Geo-Tags** (1.0) — Platform-provided structured data
-2. **Location Stickers** (0.9) — Visual elements on stories
-3. **Text Extraction** (0.5-0.8) — Regex patterns
-4. **Planning Windows** (planned) — Source-provided place plus start/end windows from future-aware apps
-
-### Text Extraction Patterns
-
-```typescript
-const LOCATION_PATTERNS = [
-  /(?:at|@)\s+([A-Z][^,.\n]+)/i, // "at Blue Bottle Coffee"
-  /checking in (?:at|to)\s+([^,.\n]+)/i, // "checking in at..."
-  /currently in\s+([A-Z][^,.\n]+)/i, // "currently in Tokyo"
-  /visiting\s+([A-Z][^,.\n]+)/i, // "visiting San Francisco"
-  /📍\s*([^,.\n]+)/, // "📍 Brooklyn, NY"
-];
-```
-
-### Geocoding
-
-```typescript
-// Nominatim with caching
-const geocodeCache = new Map<string, Coordinates>();
-
-async function geocode(placeName: string): Promise<Coordinates | null> {
-  if (geocodeCache.has(placeName)) {
-    return geocodeCache.get(placeName);
-  }
-
-  // Rate limit: 1 req/sec for public Nominatim
-  const response = await fetch(
-    `https://nominatim.openstreetmap.org/search?` +
-      `q=${encodeURIComponent(placeName)}&format=json&limit=1`
-  );
-  const results = await response.json();
-
-  if (results.length > 0) {
-    const coords = {
-      lat: parseFloat(results[0].lat),
-      lng: parseFloat(results[0].lon),
-    };
-    geocodeCache.set(placeName, coords);
-    return coords;
-  }
-  return null;
-}
-```
-
-### Planned map playback and overlap derivation
-
-Map rendering is evolving from "show where someone posted from" to "show where someone was, is, or plans to be." The model is:
-
-- `location` provides the place signal
-- `timeRange` provides the relevant time window when a source has one
-- the map filters markers against a selected timeline position or window
-- overlap badges and Friend-level overlap summaries are computed from captured items at read time
-
-This keeps the storage layer simple while still supporting future-aware social planning.
-
----
-
-## Sync Architecture
-
-### Local P2P Sync (Primary)
-
-When devices are discoverable:
-
-1. Each device maintains an Automerge document
-2. WebRTC establishes peer connection
-3. Automerge sync protocol exchanges changes
-4. CRDTs merge automatically
-
-### Cloud Backup (Secondary)
-
-For cross-network sync and disaster recovery:
-
-1. Automerge document serialized to binary
-2. Encrypted with user-provided passphrase (AES-256-GCM)
-3. Uploaded to user's chosen cloud storage
-4. Other devices pull and merge on startup
-
----
-
-## Feed Ranking Algorithm
-
-```typescript
-function calculateWeight(item: FeedItem, prefs: UserPreferences): number {
-  let weight = 1.0;
-
-  // Recency decay (exponential)
-  const hoursAgo = (Date.now() - item.publishedAt) / (1000 * 60 * 60);
-  const recencyFactor = Math.exp(-hoursAgo / 24) * (prefs.weights.recency / 50);
-  weight *= recencyFactor;
-
-  // Platform weight
-  weight *= (prefs.weights.platforms[item.platform] || 50) / 50;
-
-  // Topic boosting
-  for (const topic of item.topics) {
-    const topicWeight = prefs.weights.topics[topic];
-    if (topicWeight) {
-      weight *= topicWeight / 50;
-    }
-  }
-
-  // Author boosting
-  const authorWeight = prefs.weights.authors[item.author.id];
-  if (authorWeight) {
-    weight *= authorWeight / 50;
-  }
-
-  return weight;
-}
-```
-
----
-
-## Ulysses Mode
-
-When enabled, content scripts:
-
-1. Detect feed pages via URL patterns
-2. Overlay block screen with redirect to Freed PWA
-3. Allow escape paths (DMs, notifications, settings)
-
-```typescript
-const ULYSSES_ALLOWED_PATHS = {
-  x: ["/messages", "/notifications", "/compose", "/settings", "/i/"],
-  facebook: ["/messages", "/notifications", "/settings", "/marketplace"],
-  instagram: ["/direct", "/accounts", "/explore/tags"],
-};
-```
-
----
-
-## Security Considerations
-
-### Data Privacy
-
-- All data stored locally in IndexedDB
-- No telemetry or analytics
-- Cloud backup is user-initiated and encrypted
-
-### Extension Permissions
-
-- Minimal permissions requested
-- Content scripts only on target platforms
-- No background network requests to our servers (we have none)
-
-### Legal Posture
-
-- Client-side only (like ad blockers)
-- User's own authenticated session
-- No access control circumvention
-- Open source for transparency
-
----
-
-## Future: Complete Sovereignty Loop
-
-Freed handles **consumption**. For **publishing**, we plan to integrate with [POSSE Party](https://posseparty.com/).
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    DIGITAL SOVEREIGNTY                       │
-│                                                              │
-│   YOUR SITE ──POSSE──→ Platforms ──Freed──→ YOUR FEED       │
-│      ↑                                          │            │
-│      └──────────────── YOU ─────────────────────┘            │
-│                                                              │
-│   Write once, syndicate everywhere, read on your terms.      │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**POSSE** = Publish (on your) Own Site, Syndicate Everywhere
-
-This completes the loop:
-
-- **Read** through Freed (your algorithm, your data)
-- **Write** through POSSE (your site first, then platforms)
-- Your content lives on YOUR domain, not just platform servers
-- Full IndieWeb alignment
+- `scripts/nightly-self-improve.mjs`: nightly planner that turns soak/scan evidence into ranked overnight tasks (docs/NIGHTLY-SELF-IMPROVE.md). Learning state lives in `~/.freed-automation/`.
+- `scripts/doctor.mjs`: machine preflight (pinned Node toolchain, gh, credential helpers, python3) run warn-only by the worktree helpers.
+- `scripts/soak-collect.mjs` / `scripts/soak-assert.mjs`: installed-soak evidence collection and machine-readable verdicts (docs/SOAK-AND-TRIGGERS.md is the canonical soak contract).
+- `scripts/dev-sync-trigger.mjs`: terminal-driven provider sync trigger for installed dev builds (same doc).
+- The stability program (docs/STABILITY-PROGRAM.md) is the active engineering queue; agents pick tasks from its wave tables under its binding rules.
