@@ -8,7 +8,7 @@ The nightly self-improve planner learns from an outcome ledger and an active-soa
 
 ## Change
 
-1. Move default state locations to `~/.freed-automation/` (create on demand): `outcomes.jsonl`, `current-soak-dir`, and any other /tmp-resident planner state. Keep CLI flags as overrides. Migrate/read legacy /tmp paths as fallback for one release.
+1. Move default state locations to `~/.freed/automation/` (create on demand): `outcomes.jsonl`, `current-soak-dir`, and any other /tmp-resident planner state. Keep CLI flags as overrides. Migrate/read legacy /tmp paths as fallback for one release.
 2. Auto-record outcomes: when a PR merges via the normal flow, append a ledger line automatically. Implement as a small `scripts/record-outcome.mjs` invoked from `scripts/worktree-publish.sh`'s merge-adjacent path or a post-merge helper the loops call; entry carries target id (e.g. this repo's stability task id or nightly target id), PR number, build, status.
 3. Update `docs/NIGHTLY-SELF-IMPROVE.md` paths.
 
