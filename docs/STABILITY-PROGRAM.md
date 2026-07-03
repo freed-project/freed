@@ -32,7 +32,7 @@ Every claim above cites code in [stability-findings.json](stability-findings.jso
 | Task | Title | runner-safe | Status |
 | ---- | ----- | ----------- | ------ |
 | [W1-01](stability-tasks/W1-01-automation-state-out-of-tmp.md) | Move loop state out of /tmp; auto-record outcomes on merge | yes | ☐ |
-| [W1-02](stability-tasks/W1-02-soak-collector-and-assert.md) | Check in soak collector + soak-assert with machine-readable verdict | yes | ☐ |
+| [W1-02](stability-tasks/W1-02-soak-collector-and-assert.md) | Check in soak collector + soak-assert with machine-readable verdict | yes | ☑ |
 | [W1-03](stability-tasks/W1-03-doctor-preflight.md) | scripts/doctor.mjs machine preflight for all loops | yes | ☐ |
 | [W1-04](stability-tasks/W1-04-fix-ship-build-skill.md) | Rewrite freed-ship-build skill against actual release scripts | no | ☑ |
 | [W1-05](stability-tasks/W1-05-build-feature-skill-counters.md) | freed-build-feature: verification-counters step + outcome recording | no | ☑ |
