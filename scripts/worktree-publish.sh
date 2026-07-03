@@ -9,10 +9,15 @@ source "${SCRIPT_DIR}/lib/node-tooling.sh"
 usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/worktree-publish.sh --title "<conventional-commit title>" [--summary "<bullet>"]... [--test "<bullet>"]... [--base <branch>] [--body-file <path>] [--include-untracked]
+  ./scripts/worktree-publish.sh --title "<conventional-commit title>" [--summary "<bullet>"]... [--test "<bullet>"]... [--base <branch>] [--body-file <path>] [--include-untracked] [--approved-provider-risk "<one-line owner approval reference>"]
 
 Stages local changes, commits them when needed, pushes the current branch to origin,
 and opens a draft pull request.
+
+Branches whose diff touches provider-visible paths (canonical list:
+scripts/lib/provider-visible-paths.mjs) are refused unless
+--approved-provider-risk records the owner's approval; the reference is
+included in the PR body.
 EOF
 }
 
@@ -140,6 +145,7 @@ TITLE=""
 BASE_BRANCH="dev"
 BODY_FILE=""
 INCLUDE_UNTRACKED=false
+PROVIDER_RISK_APPROVAL=""
 SUMMARY_ARGS=()
 TEST_ARGS=()
 
@@ -174,6 +180,11 @@ while [[ $# -gt 0 ]]; do
       INCLUDE_UNTRACKED=true
       shift
       ;;
+    --approved-provider-risk)
+      [[ $# -ge 2 && -n "$2" ]] || { echo "Error: --approved-provider-risk requires a one-line owner approval reference." >&2; exit 1; }
+      PROVIDER_RISK_APPROVAL="$2"
+      shift 2
+      ;;
     --help|-h)
       usage
       exit 0
@@ -206,6 +217,35 @@ git fetch origin "${BASE_BRANCH}" >/dev/null 2>&1
 
 BRANCH_NAME="$(current_branch)"
 ensure_publishable_branch "${BRANCH_NAME}"
+
+# Provider-visible gate (stability task W1-06): refuse to publish a branch
+# whose diff touches provider-visible paths unless the owner's approval is
+# recorded via --approved-provider-risk. Canonical list + predicate:
+# scripts/lib/provider-visible-paths.mjs
+use_resolved_node_path
+PROVIDER_VISIBLE_FILES="$(
+  {
+    git diff --name-only "origin/${BASE_BRANCH}...HEAD"
+    git diff --name-only HEAD
+    if ${INCLUDE_UNTRACKED}; then
+      list_untracked_files
+    fi
+  } | sort -u | "${NODE_BIN}" "${SCRIPT_DIR}/lib/provider-visible-paths.mjs" --stdin
+)"
+
+if [[ -n "${PROVIDER_VISIBLE_FILES}" && -z "${PROVIDER_RISK_APPROVAL}" ]]; then
+  echo "Error: this branch touches provider-visible paths:" >&2
+  echo "" >&2
+  printf '%s\n' "${PROVIDER_VISIBLE_FILES}" >&2
+  echo "" >&2
+  echo "Changes to provider-visible surfaces (WebView loads, provider navigation," >&2
+  echo "request frequency, cookies, headers, extractor scripts) require explicit" >&2
+  echo "owner approval before publish. See AGENTS.md and docs/STABILITY-PROGRAM.md." >&2
+  echo "" >&2
+  echo "After obtaining approval, re-run with:" >&2
+  echo "  --approved-provider-risk \"<one-line owner approval reference>\"" >&2
+  exit 1
+fi
 
 if has_worktree_changes; then
   UNTRACKED_FILES="$(list_untracked_files)"
@@ -252,6 +292,19 @@ else
     BODY_ARGS+=(--test "${item}")
   done
   BODY_CONTENT="$(build_body "${TITLE}" "${BODY_ARGS[@]}")"
+fi
+
+if [[ -n "${PROVIDER_RISK_APPROVAL}" ]]; then
+  APPROVAL_SECTION="$(
+    printf '## Provider-Visible Approval\n- %s\n' "${PROVIDER_RISK_APPROVAL}"
+    if [[ -n "${PROVIDER_VISIBLE_FILES}" ]]; then
+      printf '\nProvider-visible paths in this diff:\n'
+      printf '%s\n' "${PROVIDER_VISIBLE_FILES}" | while IFS= read -r provider_file; do
+        printf -- '- `%s`\n' "${provider_file}"
+      done
+    fi
+  )"
+  BODY_CONTENT="$(printf '%s\n\n%s' "${BODY_CONTENT}" "${APPROVAL_SECTION}")"
 fi
 
 EXISTING_PR_JSON="$(

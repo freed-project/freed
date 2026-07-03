@@ -36,7 +36,7 @@ Every claim above cites code in [stability-findings.json](stability-findings.jso
 | [W1-03](stability-tasks/W1-03-doctor-preflight.md) | scripts/doctor.mjs machine preflight for all loops | yes | ☐ |
 | [W1-04](stability-tasks/W1-04-fix-ship-build-skill.md) | Rewrite freed-ship-build skill against actual release scripts | no | ☐ |
 | [W1-05](stability-tasks/W1-05-build-feature-skill-counters.md) | freed-build-feature: verification-counters step + outcome recording | no | ☐ |
-| [W1-06](stability-tasks/W1-06-provider-visible-single-source.md) | Single-source provider-visible path list; publish-time enforcement | no | ☐ |
+| [W1-06](stability-tasks/W1-06-provider-visible-single-source.md) | Single-source provider-visible path list; publish-time enforcement | no | ☑ |
 | [W1-07](stability-tasks/W1-07-docs-truth-pass.md) | Regenerate ARCHITECTURE.md; fix AGENTS.md roadmap rule; canonical soak doc | yes | ☐ |
 | [P0-01](stability-tasks/P0-01-perf-gate-pipefail.md) | Make the CI perf gate actually fail (tee swallows exit code) | yes | ☐ |
 | [P0-02](stability-tasks/P0-02-window-kill-records.md) | Structured window_destroyed kill records | no | ☐ |
