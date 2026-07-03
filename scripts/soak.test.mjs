@@ -64,9 +64,9 @@ test("parsePsTable and buildSample split app, WebContent, and other WebKit proce
   assert.equal(tsv.trim().split("\t").length, METRICS_COLUMNS.length);
 });
 
-test("soak-collect parseArgs derives a soaks dir under ~/.freed-automation", () => {
+test("soak-collect parseArgs derives a soaks dir under ~/.freed/automation", () => {
   const args = parseCollectArgs([], new Date("2026-07-02T10:00:00Z"));
-  assert.ok(args.soakDir.includes(path.join(".freed-automation", "soaks")));
+  assert.ok(args.soakDir.includes(path.join(".freed", "automation", "soaks")));
   assert.ok(args.pointer.endsWith("current-soak-dir"));
   assert.throws(() => parseCollectArgs(["--interval-seconds", "1"]), /at least 5/);
 });

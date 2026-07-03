@@ -83,7 +83,7 @@ Three long-lived branches: `dev` (product work, default), `main` (production rel
 
 ## Automation substrate
 
-- `scripts/nightly-self-improve.mjs`: nightly planner that turns soak/scan evidence into ranked overnight tasks (docs/NIGHTLY-SELF-IMPROVE.md). Learning state lives in `~/.freed-automation/`.
+- `scripts/nightly-self-improve.mjs`: nightly planner that turns soak/scan evidence into ranked overnight tasks (docs/NIGHTLY-SELF-IMPROVE.md). Learning state lives in `~/.freed/automation/`.
 - `scripts/doctor.mjs`: machine preflight (pinned Node toolchain, gh, credential helpers, python3) run warn-only by the worktree helpers.
 - `scripts/soak-collect.mjs` / `scripts/soak-assert.mjs`: installed-soak evidence collection and machine-readable verdicts (docs/SOAK-AND-TRIGGERS.md is the canonical soak contract).
 - `scripts/dev-sync-trigger.mjs`: terminal-driven provider sync trigger for installed dev builds (same doc).
