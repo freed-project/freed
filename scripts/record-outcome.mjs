@@ -12,7 +12,7 @@
 //     [--status shipped|validated|blocked|failed] [--pr <number-or-url>] \
 //     [--build <version>] [--notes <text>] [--ledger <path>]
 //
-// The ledger defaults to ~/.freed-automation/outcomes.jsonl (see W1-01 in
+// The ledger defaults to ~/.freed/automation/outcomes.jsonl (see W1-01 in
 // docs/STABILITY-PROGRAM.md); it is created on demand.
 
 import path from "node:path";

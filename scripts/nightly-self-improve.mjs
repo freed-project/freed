@@ -32,7 +32,7 @@ const DEFAULT_DEV_BOT_MEMORY =
 // reboots; macOS periodically clears /tmp, which made the outcome ledger and
 // active-soak pointer amnesiac. The /tmp paths remain readable as a legacy
 // fallback for one release (see resolveStatePathWithLegacyFallback).
-export const AUTOMATION_STATE_DIR = path.join(os.homedir(), ".freed-automation");
+export const AUTOMATION_STATE_DIR = path.join(os.homedir(), ".freed", "automation");
 const LEGACY_SOAK_POINTER = "/tmp/freed-perf-soak/current-soak-dir";
 const LEGACY_OUTCOME_LEDGER = "/tmp/freed-nightly-self-improve/outcomes.jsonl";
 const DEFAULT_SOAK_POINTER = path.join(AUTOMATION_STATE_DIR, "current-soak-dir");

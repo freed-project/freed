@@ -57,7 +57,7 @@ test("record-outcome parseArgs requires an id and applies defaults", () => {
   assert.equal(args.kind, "task");
   assert.equal(args.status, "shipped");
   assert.equal(args.pr, "897");
-  assert.ok(args.ledger.includes(".freed-automation"));
+  assert.ok(args.ledger.includes(path.join(".freed", "automation")));
   assert.throws(() => parseArgs(["--id", "x", "--bogus"]), /Unknown argument/);
 });
 

@@ -6,9 +6,9 @@ The first rule is simple: evidence first, code second. If a target has weak evid
 
 ## What It Reads
 
-- Active soak pointer at `~/.freed-automation/current-soak-dir` (legacy `/tmp/freed-perf-soak/current-soak-dir` is still read and migrated for one release)
+- Active soak pointer at `~/.freed/automation/current-soak-dir` (legacy `/tmp/freed-perf-soak/current-soak-dir` is still read and migrated for one release)
 - Soak files such as `metrics.tsv` and `runtime-health.jsonl`
-- The newest readable soak under `~/.freed-automation/soaks` (or the legacy `/tmp/freed-perf-soak`) when the active pointer has no samples
+- The newest readable soak under `~/.freed/automation/soaks` (or the legacy `/tmp/freed-perf-soak`) when the active pointer has no samples
 - Daily bug scan memory at `/Users/aubreyfalconer/.codex/automations/daily-bug-scan/memory.md`
 - Crash-watch automation state
 - Hourly dev bot memory as a roadmap fallback
@@ -16,7 +16,7 @@ The first rule is simple: evidence first, code second. If a target has weak evid
 - Local git worktrees with unmerged or uncommitted changes
 - Duplicate peer work indicators such as shared changed files, shared package surfaces, and shared provider-visible risk
 - Provider-visible peer worktrees, even when they are not runner branches
-- Prior outcome ledger at `~/.freed-automation/outcomes.jsonl` (legacy `/tmp/freed-nightly-self-improve/outcomes.jsonl` is still read and migrated for one release)
+- Prior outcome ledger at `~/.freed/automation/outcomes.jsonl` (legacy `/tmp/freed-nightly-self-improve/outcomes.jsonl` is still read and migrated for one release)
 - Preflight risks such as dirty worktrees, generated artifacts, stale or thin soak samples, missing dependencies, missing evidence files, and paused automations
 - Preflight actions that separate safe local commands from manual or agent-tool-only remediation
 
@@ -71,13 +71,13 @@ node scripts/nightly-self-improve.mjs --repair-soak-pointer
 Use a custom outcome ledger:
 
 ```bash
-node scripts/nightly-self-improve.mjs --outcome-ledger ~/.freed-automation/outcomes.jsonl
+node scripts/nightly-self-improve.mjs --outcome-ledger ~/.freed/automation/outcomes.jsonl
 ```
 
 Record a finished target directly into the ledger:
 
 ```bash
-node scripts/nightly-self-improve.mjs --outcome-ledger ~/.freed-automation/outcomes.jsonl --record-outcome webkit-memory-pressure --record-kind performance --record-status shipped --record-pr 617 --record-build v26.5.2900-dev --record-notes "Merged, installed, and soaked."
+node scripts/nightly-self-improve.mjs --outcome-ledger ~/.freed/automation/outcomes.jsonl --record-outcome webkit-memory-pressure --record-kind performance --record-status shipped --record-pr 617 --record-build v26.5.2900-dev --record-notes "Merged, installed, and soaked."
 ```
 
 The short form for post-merge recording is `scripts/record-outcome.mjs`. `scripts/worktree-cleanup.sh` calls it automatically when it removes a merged worktree or branch, so routine merges land in the ledger without a manual step:
@@ -86,7 +86,7 @@ The short form for post-merge recording is `scripts/record-outcome.mjs`. `script
 node scripts/record-outcome.mjs --id W1-01 --status shipped --pr 897 --build v26.7.204-dev
 ```
 
-State files live under `~/.freed-automation/` (`outcomes.jsonl`, `current-soak-dir`, and generated run directories under `runs/`) so they survive reboots; macOS clears `/tmp`, which used to erase the planner's memory.
+State files live under `~/.freed/automation/` (`outcomes.jsonl`, `current-soak-dir`, and generated run directories under `runs/`) so they survive reboots; macOS clears `/tmp`, which used to erase the planner's memory.
 
 The generated run directory contains:
 
