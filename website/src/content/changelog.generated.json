@@ -1,11 +1,467 @@
 [
   {
-    "version": "26.6.1702-dev",
-    "tagName": "v26.6.1702-dev",
+    "version": "26.7.301-dev",
+    "tagName": "v26.7.301-dev",
     "channel": "dev",
-    "date": "2026-06-18T06:07:29Z",
-    "deck": "Move activity monitor to top toolbar, clipboard save shortcut, and reverse integrate v26.6.901 into dev",
+    "date": "2026-07-03T22:39:53Z",
+    "deck": "Stability-instrumentation build: structured window-kill records, sync and worker loop counters, and daily runtime-health rotation to baseline the stability program's first overnight soak",
     "features": [
+      {
+        "text": "Structured window_destroyed kill records: every watchdog window teardown now logs a structured runtime-health record with the destruction reason (stability P0-02)"
+      },
+      {
+        "text": "Loop counters for cloud uploads (including uploads with unchanged heads), relay broadcasts, Automerge worker INITs, and scrape outcomes (stability P0-03)"
+      },
+      {
+        "text": "Daily runtime-health rotation replacing the 5 MiB halving cap, so long soaks keep a full evidence window (stability P0-04)"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Runtime-health rotation now compiles on Linux (libc scoped to all unix targets)"
+      },
+      {
+        "text": "The CI perf regression gate now fails on real regressions instead of always passing"
+      },
+      {
+        "text": "Runtime-health is mirrored into the active soak directory so rotation cannot shrink soak evidence"
+      },
+      {
+        "text": "Bounded social loop diagnostics parsing"
+      },
+      {
+        "text": "Map time presets refined; content details save in the background"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Soak collector and soak-assert scripts with a machine-readable verdict"
+      },
+      {
+        "text": "scripts/doctor.mjs machine preflight for loops and worktree helpers"
+      },
+      {
+        "text": "Automation loop state moved out of /tmp into ~/.freed/automation, with merge outcomes auto-recorded"
+      },
+      {
+        "text": "Single-source provider-visible path list with publish-time enforcement (W1-06)"
+      },
+      {
+        "text": "worktree-publish --ready closeout flag so finished PRs leave draft"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.301-dev",
+    "prNumbers": [
+      894,
+      897,
+      899,
+      903,
+      904,
+      905,
+      906,
+      908,
+      909,
+      910,
+      911,
+      912,
+      913,
+      914
+    ],
+    "builds": [
+      "26.7.301-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.7.301-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.301-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.7.203-dev",
+    "tagName": "v26.7.203-dev",
+    "channel": "dev",
+    "date": "2026-07-02T23:31:18Z",
+    "deck": "Social scraping now has stronger memory recovery diagnostics, local loop locking, and zero-post failure reporting, with graph pin release validation stabilized",
+    "features": [
+      {
+        "text": "Map time range slider"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Social scrape memory preflight now records recovery state and avoids treating stale local memory deferrals as durable provider failures"
+      },
+      {
+        "text": "Facebook, Instagram, LinkedIn, and X scrape diagnostics now rank safe local next actions without increasing provider-visible traffic"
+      },
+      {
+        "text": "Instagram zero-post failures now surface in the local optimization loop even when runtime diagnostics are sparse"
+      },
+      {
+        "text": "Graph pin release validation now waits for Automerge persistence before reloading"
+      },
+      {
+        "text": "Worktree creation now sources the shared Node tooling helpers before running its preflight"
+      },
+      {
+        "text": "Release validation now removes a stale Azure CLI apt source before installing Playwright browser dependencies on GitHub-hosted Ubuntu runners"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.203-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.7.201-dev",
+      "26.7.203-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.7.201-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.201-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.7.203-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.203-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.6.2901-dev",
+    "tagName": "v26.6.2901-dev",
+    "channel": "dev",
+    "date": "2026-06-29T23:38:31Z",
+    "deck": "Social sync memory cleanup now runs after failed provider scrapes",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Run post-sync memory cleanup after Instagram placeholder-feed failures"
+      },
+      {
+        "text": "Recover reclaimable WebKit memory tails after social scrapes before later providers stall"
+      },
+      {
+        "text": "Report LinkedIn zero-event scrapes as IPC timeouts instead of successful empty feeds"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2901-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.6.2900-dev",
+      "26.6.2901-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.2900-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2900-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.2901-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2901-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.6.2804-dev",
+    "tagName": "v26.6.2804-dev",
+    "channel": "dev",
+    "date": "2026-06-29T05:38:56Z",
+    "deck": "Freed Desktop keeps locked installed sync soaks quiet and avoids waking WebKit while waiting for the workstation to unlock.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Destroy and rebuild the main WebView when idle WebKit memory is reclaimable but still resident."
+      },
+      {
+        "text": "Recover visible main-renderer WebKit resident tails once they cross the high-memory threshold."
+      },
+      {
+        "text": "Ignore stale age-matched WebKit process telemetry after a rebuild, which prevents repeated recovery loops and unnecessary background safe mode."
+      },
+      {
+        "text": "Record post-recovery memory verification so failed WebKit reclaim can be diagnosed from the health log."
+      },
+      {
+        "text": "Restart Freed Desktop when a renderer rebuild leaves the same main WebKit process above the high-memory line."
+      },
+      {
+        "text": "Keep post-scrape reclaimable WebKit resident-tail cleanup below the high-memory threshold from rebuilding the main renderer, so Instagram and LinkedIn retries do not trip recovery backoff while memory is still under budget."
+      },
+      {
+        "text": "Prevent the installed sync trigger helper from requeueing Instagram or LinkedIn during provider-safe cooldown windows."
+      },
+      {
+        "text": "Stop the native trigger watcher from replaying a request when the renderer rebuild happens after the provider run already finished."
+      },
+      {
+        "text": "Fail LinkedIn zero-post runs with local DOM diagnostics for candidate counts, activity URNs, login chrome, feed containers, and URL instead of treating them as successful empty syncs."
+      },
+      {
+        "text": "Slow locked-machine terminal sync trigger retries to 10 minutes, with an explicit long-soak timeout override for unattended testing."
+      },
+      {
+        "text": "Short-circuit locked-machine terminal sync triggers in native code before waking the main renderer, so locked soak retries do not inflate WebKit memory."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2804-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.6.2800-dev",
+      "26.6.2801-dev",
+      "26.6.2802-dev",
+      "26.6.2803-dev",
+      "26.6.2804-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.2800-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2800-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.2801-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2801-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.2802-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2802-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.2803-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2803-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.2804-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2804-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.6.2703-dev",
+    "tagName": "v26.6.2703-dev",
+    "channel": "dev",
+    "date": "2026-06-28T05:21:40Z",
+    "deck": "Improves social sync reliability after renderer recovery",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Prevents dev sync trigger recovery from launching a duplicate Facebook, Instagram, or LinkedIn sync while the original provider job is still finishing."
+      },
+      {
+        "text": "Recovers hidden main renderers when WebKit resident memory grows past the idle cap, so stale WebKit memory does not block social sync preflight."
+      },
+      {
+        "text": "Recovers dev sync triggers that were left waiting after Freed Desktop rebuilt the renderer at the end of a social sync."
+      },
+      {
+        "text": "Reduces desktop sync renderer pressure after long social sync runs."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2703-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.6.2700-dev",
+      "26.6.2701-dev",
+      "26.6.2702-dev",
+      "26.6.2703-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.2700-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2700-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.2701-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2701-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.2702-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2702-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.2703-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2703-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.6.2600-dev",
+    "tagName": "v26.6.2600-dev",
+    "channel": "dev",
+    "date": "2026-06-26T15:56:05Z",
+    "deck": "Freed now ships safer app recovery and steadier desktop validation.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Prevented the Linux social scraper window from crashing as it opens."
+      },
+      {
+        "text": "Cleaned up app recovery deferrals so Facebook, Instagram, and LinkedIn no longer show raw safe-mode timing noise in provider status."
+      },
+      {
+        "text": "Aligned LinkedIn feed sync with the shared social scrape queue so recovery pauses do not poison provider health or block later retries."
+      },
+      {
+        "text": "Reduced Friends graph interaction churn and stabilized desktop window compositing during recovery."
+      },
+      {
+        "text": "Pinned release-script Node routing, relaxed the scripted settings perf buffer that blocked the last dev build, and kept perf comparison comments from failing validation on read-only pull request tokens."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2600-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.6.2600-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.2600-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2600-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.6.1810-dev",
+    "tagName": "v26.6.1810-dev",
+    "channel": "dev",
+    "date": "2026-06-18T18:33:53Z",
+    "deck": "Hot WebKit recovery and unattended sync validation",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Freed Desktop now recovers CPU-hot multi-GB WebKit renderer growth before the global high-memory ceiling"
+      },
+      {
+        "text": "Facebook group refresh now reports group-list refresh state separately from Facebook post sync"
+      },
+      {
+        "text": "Release notes now honor pinned same-day highlights so latest dev builds keep required carry-forward items"
+      },
+      {
+        "text": "Release build and type-safety cleanup"
+      },
+      {
+        "text": "Reader, feed, and header polish"
+      },
+      {
+        "text": "Capture and scraper reliability fixes"
+      },
+      {
+        "text": "Terminal Facebook, Instagram, and LinkedIn sync triggers now fail zero-post, deferred, paused, or unauthenticated runs instead of reporting false success"
+      },
+      {
+        "text": "Sync trigger output now includes provider outcome details, post counts, added-item counts, and failure stage data so unattended runs can tell whether Facebook actually returned posts"
+      },
+      {
+        "text": "The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Testing guidance policy"
+      },
+      {
+        "text": "Let installed dev sync soaks run without stealing focus"
+      },
+      {
+        "text": "No-focus sync validation hardening"
+      },
+      {
+        "text": "Consent-gated auth loading"
+      },
+      {
+        "text": "Honest terminal sync results"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1810-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.6.1801-dev",
+      "26.6.1802-dev",
+      "26.6.1803-dev",
+      "26.6.1804-dev",
+      "26.6.1805-dev",
+      "26.6.1806-dev",
+      "26.6.1807-dev",
+      "26.6.1808-dev",
+      "26.6.1810-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.6.1801-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1801-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.1802-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1802-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.1803-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1803-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.1804-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1804-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.1805-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1805-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.1806-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1806-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.1807-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1807-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.1808-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1808-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.1810-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1810-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.6.1703-dev",
+    "tagName": "v26.6.1703-dev",
+    "channel": "dev",
+    "date": "2026-06-18T07:16:24Z",
+    "deck": "Run installed sync soaks from the terminal",
+    "features": [
+      {
+        "text": "Dev-channel prereleases now include a terminal helper for installed-build sync soaks"
+      },
       {
         "text": "Move activity monitor to top toolbar"
       },
@@ -14,6 +470,9 @@
       }
     ],
     "fixes": [
+      {
+        "text": "Enable dev release sync triggers"
+      },
       {
         "text": "Harden desktop sync recovery"
       },
@@ -25,6 +484,36 @@
       },
       {
         "text": "Repair PWA Google Drive sync resolution"
+      },
+      {
+        "text": "Prioritize nightly bug scans over stale peers"
+      },
+      {
+        "text": "Ignore generated peer artifacts in nightly planner"
+      },
+      {
+        "text": "Nightly validation regressions restored"
+      },
+      {
+        "text": "Production validation is now more stable"
+      },
+      {
+        "text": "Make safe mutations respond instantly"
+      },
+      {
+        "text": "Collapse toolbar feed controls"
+      },
+      {
+        "text": "Keep settings backdrop blurred while scrolling"
+      },
+      {
+        "text": "Align story grid top padding"
+      },
+      {
+        "text": "Polish mobile menu touch interactions"
+      },
+      {
+        "text": "Relax nightly preflight false blockers"
       }
     ],
     "followUps": [
@@ -32,7 +521,7 @@
         "text": "Merge latest dev after v26.6.1701-dev release prep"
       }
     ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1702-dev",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1703-dev",
     "prNumbers": [
       793,
       795,
@@ -60,7 +549,8 @@
     "builds": [
       "26.6.1700-dev",
       "26.6.1701-dev",
-      "26.6.1702-dev"
+      "26.6.1702-dev",
+      "26.6.1703-dev"
     ],
     "buildLinks": [
       {
@@ -76,6 +566,11 @@
       {
         "version": "26.6.1702-dev",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1702-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.6.1703-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1703-dev",
         "channel": "dev"
       }
     ]
