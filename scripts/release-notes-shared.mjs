@@ -1116,7 +1116,10 @@ export function validateReleaseShape(release, options = {}) {
       );
 
       if (!isPresent && !isCoveredByConsolidation(priorEntry, normalized)) {
-        if (priorEntry.kind === "feature" && options.allowEarlierFeatureOmission) {
+        if (
+          options.allowEarlierItemOmission ||
+          (priorEntry.kind === "feature" && options.allowEarlierFeatureOmission)
+        ) {
           continue;
         }
         errors.push(`Latest-of-day release is missing earlier same-day item: ${priorEntry.text}`);
