@@ -129,6 +129,48 @@ test("validateReleaseShape allows same-day consolidation for follow-ups", () => 
   assert.equal(result.errors.length, 0);
 });
 
+test("validateReleaseShape allows production carry-forward feature consolidation", () => {
+  const result = validateReleaseShape(
+    {
+      deck: "Capture stability and map controls",
+      features: [
+        "Map now uses a lower-left time range slider",
+        "Provider capture controls stay consent-gated",
+      ],
+      fixes: [],
+      followUps: [
+        "Capture, login, and scraping platform work",
+        "Reader, sidebar, and settings UX work",
+        "Testing, diagnostics, and developer tooling",
+      ],
+    },
+    {
+      earlierReleases: [
+        {
+          deck: "Consent-gated auth loading",
+          features: ["Consent-gated auth loading"],
+          fixes: [],
+          followUps: [],
+        },
+        {
+          deck: "Map time range slider",
+          features: ["Map time range slider"],
+          fixes: [],
+          followUps: [],
+        },
+        {
+          deck: "Structured window_destroyed kill records",
+          features: ["Structured window_destroyed kill records"],
+          fixes: [],
+          followUps: [],
+        },
+      ],
+    },
+  );
+
+  assert.equal(result.errors.length, 0);
+});
+
 test("validateReleaseShape rejects previous-day feature repeats", () => {
   const result = validateReleaseShape(
     {
