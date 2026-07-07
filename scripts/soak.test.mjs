@@ -16,6 +16,7 @@ import {
   readLastHealthOffset,
 } from "./soak-collect.mjs";
 import {
+  assertAlarmCounts,
   assertEventCountZero,
   assertFootprintSlope,
   assertGuardedCounters,
@@ -343,6 +344,26 @@ test("guarded P0-02/P0-03 counter assertions no-op until the counters exist", ()
     ],
   );
   assert.equal(judged[0].violations[0].line, 1);
+});
+
+test("invariant alarm counts are informational and break down by name", () => {
+  const none = [{ entry: { event: "renderer_heartbeat", tsMs: 1 }, line: 1, raw: "{}" }];
+  const empty = assertAlarmCounts(none, "runtime-health.jsonl");
+  assert.equal(empty.id, "invariant_alarms");
+  assert.equal(empty.status, "pass");
+  assert.match(empty.detail, /0 invariant_alarm events/);
+
+  const withAlarms = [
+    { entry: { event: "invariant_alarm", name: "cloud_loop", tsMs: 1 }, line: 1, raw: "{a1}" },
+    { entry: { event: "invariant_alarm", name: "cloud_loop", tsMs: 2 }, line: 2, raw: "{a2}" },
+    { entry: { event: "invariant_alarm", name: "watchdog_thrash", tsMs: 3 }, line: 3, raw: "{a3}" },
+  ];
+  const judged = assertAlarmCounts(withAlarms, "runtime-health.jsonl");
+  // A firing alarm is the expected positive control, so it must never fail the verdict.
+  assert.equal(judged.status, "pass");
+  assert.match(judged.detail, /cloud_loop=2/);
+  assert.match(judged.detail, /watchdog_thrash=1/);
+  assert.equal(judged.violations.length, 3);
 });
 
 test("buildVerdict produces a machine-readable verdict with real numbers", () => {
