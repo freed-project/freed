@@ -1139,6 +1139,7 @@ async function main() {
   const validation = validateReleaseShape(releaseWithPinnedHighlights, {
     earlierReleases: context.isLatestOfDay ? carriedForwardReleases : [],
     previousDayRelease,
+    allowEarlierFeatureOmission: channel === "production",
   });
 
   if (validation.errors.length > 0) {
