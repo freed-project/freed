@@ -171,6 +171,37 @@ test("validateReleaseShape allows production carry-forward feature consolidation
   assert.equal(result.errors.length, 0);
 });
 
+test("validateReleaseShape can relax production carry-forward feature omissions", () => {
+  const release = {
+    deck: "Capture stability and map controls",
+    features: ["Provider capture controls stay consent-gated"],
+    fixes: [],
+    followUps: ["Release workflow and build-system work"],
+  };
+  const options = {
+    earlierReleases: [
+      {
+        deck: "Mobile pairing shipped",
+        features: ["Google Drive sync recovery"],
+        fixes: [],
+        followUps: [],
+      },
+    ],
+  };
+
+  assert.match(
+    validateReleaseShape(release, options).errors.join("\n"),
+    /missing earlier same-day item/i,
+  );
+  assert.equal(
+    validateReleaseShape(release, {
+      ...options,
+      allowEarlierFeatureOmission: true,
+    }).errors.length,
+    0,
+  );
+});
+
 test("validateReleaseShape rejects previous-day feature repeats", () => {
   const result = validateReleaseShape(
     {
