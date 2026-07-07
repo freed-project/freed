@@ -54,7 +54,7 @@ Done when: every counter in the scorecard below has a baseline number from one o
 | [P1-03](stability-tasks/P1-03-gdrive-self-write-filter.md) | GDrive self-write filtering + no-op upload skip | no | ☐ |
 | [P1-04](stability-tasks/P1-04-preflight-recycle-guard.md) | Preflight recycle guard + login-in-progress latch | no | ☐ |
 | [P1-05](stability-tasks/P1-05-recovery-invoke-latch.md) | Recovery never outruns a scrape invoke; persist lastScrapeAt | no | ☐ |
-| [W2-01](stability-tasks/W2-01-invariant-alarms.md) | Invariant alarms: cloud_loop, scrape_zero_persist, preflight_kill, auth_zombie, relay_divergence, watchdog_thrash | no | ☐ |
+| [W2-01](stability-tasks/W2-01-invariant-alarms.md) | Invariant alarms: cloud_loop, scrape_zero_persist, preflight_kill, auth_zombie, relay_divergence, watchdog_thrash | no | ◐ observing (breakers + relay_divergence deferred) |
 | [W2-02](stability-tasks/W2-02-triage-loop.md) | Triage loop: alarms + canary + red CI → ranked task files; CI-failure issue hook | yes | ☐ |
 | [W2-03](stability-tasks/W2-03-canary-replay-bisect.md) | canary-summarize, watchdog-replay, bisect-regression scripts | yes | ☐ |
 | [W2-04](stability-tasks/W2-04-new-skills.md) | New skills: freed-soak, freed-triage, freed-canary | yes | ☐ |
@@ -112,6 +112,7 @@ Baseline measured 2026-07-07 from a 6.05 h idle overnight soak of v26.7.301-dev 
 | Dead-session WebView spins/day/provider | night's single scheduled sweep: li 1 full 100 s WebView spin → event_timeout, x 1 api_error (auth misclassification, F-auth theme) | ≤3 then pause+prompt |
 | Worker INITs/hour during content backlog | 19.3/h while idle (117 / 6.05 h); 82/h during launch-hour backlog | <10 |
 | Renderer recoveries/day (thresholds frozen) | 1 attempt / 6 h idle (≈4/day); launch hour: 5 attempts + 3 restart requests in 57 min, ending in silent app death | →0 |
+| invariant_alarms/day by name (W2-01) | pending first alarm-build soak (cloud_loop expected to fire as positive control) | each →0 as its damper lands |
 | fix:/perf: share of non-release commits | ~78% | trending down |
 
 ## What NOT to do

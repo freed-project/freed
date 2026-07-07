@@ -1392,6 +1392,400 @@ fn append_runtime_health(app: &tauri::AppHandle, mut payload: serde_json::Value)
             error
         );
     }
+
+    // Feed the just-written event to the invariant-alarm monitor (W2-01). The
+    // monitor is a passive observer over the same stream; it may append its own
+    // `invariant_alarm` records via the low-level writer, never recursing back
+    // through append_runtime_health.
+    observe_invariant_alarm_event(&data_dir, &payload);
+}
+
+// ---------------------------------------------------------------------------
+// Invariant alarms (stability program W2-01)
+//
+// A passive monitor over the runtime-health event stream. It consumes the same
+// events append_runtime_health writes -- P0-02 window_destroyed, P0-03
+// cloud_upload_attempt / scrape_outcome, and renderer_recovery_attempt -- and,
+// when a verified pathology signature trips, appends a one-line
+// `invariant_alarm` record carrying a short runbook string so the app degrades
+// loudly instead of looping silently. Post-fix, each alarm is the permanent
+// regression tripwire.
+//
+// This pass is OBSERVATION ONLY. The two circuit breakers named in the task
+// (cloud_loop -> pause cloud sync; watchdog_thrash -> stop recovering) are
+// deliberately NOT wired here: they are behavioral changes, the stop-recovering
+// one touches the frozen watchdog, and program rules cap the soak cycle at one
+// behavioral change and want the alarm to observe the live pathology as a
+// positive control first. The breakers land next, one per soak cycle, each
+// gated and owner-reviewed. `relay_divergence` is likewise deferred -- the
+// relay does not yet emit a per-client-push event to key it on (Wave 3 adds the
+// inbound path), so an alarm for it today could never fire.
+// ---------------------------------------------------------------------------
+
+const ALARM_CLOUD_LOOP_WINDOW_MS: u64 = 15 * 60 * 1000;
+const ALARM_CLOUD_LOOP_THRESHOLD: usize = 5;
+const ALARM_WATCHDOG_THRASH_WINDOW_MS: u64 = 6 * 60 * 60 * 1000;
+const ALARM_WATCHDOG_THRASH_THRESHOLD: usize = 3;
+const ALARM_SCRAPE_ZERO_PERSIST_MIN_EXTRACTED: u64 = 5;
+const ALARM_AUTH_ZOMBIE_RECHECK_STREAK: u32 = 3;
+const ALARM_AUTH_ZOMBIE_RECONNECT_STREAK: u32 = 6;
+// One alarm of a given key per cooldown; the unfixed loops would otherwise emit
+// an alarm on every event once over threshold.
+const ALARM_REFIRE_COOLDOWN_MS: u64 = 15 * 60 * 1000;
+
+#[derive(Debug, Default)]
+struct InvariantAlarmState {
+    /// tsMs of recent cloud uploads whose heads were unchanged.
+    cloud_unchanged_uploads: VecDeque<u64>,
+    /// tsMs of recent main-renderer recovery attempts.
+    main_recoveries: VecDeque<u64>,
+    /// provider -> consecutive "ok but empty" scrape outcomes.
+    auth_empty_streak: HashMap<String, u32>,
+    /// alarm key -> tsMs it last fired, for refire cooldown.
+    last_fired_ms: HashMap<String, u64>,
+}
+
+/// A tripped invariant, ready to serialize as an `invariant_alarm` record.
+struct InvariantAlarm {
+    name: &'static str,
+    provider: Option<String>,
+    detail: String,
+    runbook: &'static str,
+}
+
+static INVARIANT_ALARM_STATE: std::sync::LazyLock<StdMutex<InvariantAlarmState>> =
+    std::sync::LazyLock::new(|| StdMutex::new(InvariantAlarmState::default()));
+
+fn prune_before(times: &mut VecDeque<u64>, cutoff: u64) {
+    while times.front().is_some_and(|&front| front < cutoff) {
+        times.pop_front();
+    }
+}
+
+impl InvariantAlarmState {
+    /// True if `key` has not fired within the cooldown; records `now` when it
+    /// returns true so the caller can emit exactly once per window.
+    fn take_refire_slot(&mut self, key: &str, now: u64) -> bool {
+        let ready = self
+            .last_fired_ms
+            .get(key)
+            .map(|&last| now.saturating_sub(last) >= ALARM_REFIRE_COOLDOWN_MS)
+            .unwrap_or(true);
+        if ready {
+            self.last_fired_ms.insert(key.to_string(), now);
+        }
+        ready
+    }
+
+    fn observe_cloud_upload(&mut self, payload: &serde_json::Value, ts: u64, out: &mut Vec<InvariantAlarm>) {
+        if payload.get("headsUnchanged").and_then(|v| v.as_bool()) != Some(true) {
+            return;
+        }
+        self.cloud_unchanged_uploads.push_back(ts);
+        prune_before(&mut self.cloud_unchanged_uploads, ts.saturating_sub(ALARM_CLOUD_LOOP_WINDOW_MS));
+        let count = self.cloud_unchanged_uploads.len();
+        if count >= ALARM_CLOUD_LOOP_THRESHOLD && self.take_refire_slot("cloud_loop", ts) {
+            out.push(InvariantAlarm {
+                name: "cloud_loop",
+                provider: payload.get("provider").and_then(|v| v.as_str()).map(str::to_string),
+                detail: format!(
+                    "{} cloud uploads with unchanged heads in the last {} min (F01/F06 cloud loop)",
+                    count,
+                    ALARM_CLOUD_LOOP_WINDOW_MS / 60_000
+                ),
+                runbook: "Idle cloud upload loop: uploads carry no new heads. Check the desktop upload subscriber and the heads guard (P1-01/P1-03).",
+            });
+        }
+    }
+
+    fn observe_scrape_outcome(&mut self, payload: &serde_json::Value, ts: u64, out: &mut Vec<InvariantAlarm>) {
+        let provider = payload.get("provider").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let extracted = payload.get("itemsExtracted").and_then(|v| v.as_u64());
+        let persisted = payload.get("itemsPersisted").and_then(|v| v.as_u64());
+        let stage = payload.get("stage").and_then(|v| v.as_str()).unwrap_or("");
+
+        // scrape_zero_persist: extracted a real batch, persisted nothing (F03).
+        if let (Some(extracted), Some(persisted)) = (extracted, persisted) {
+            if extracted >= ALARM_SCRAPE_ZERO_PERSIST_MIN_EXTRACTED
+                && persisted == 0
+                && self.take_refire_slot(&format!("scrape_zero_persist:{provider}"), ts)
+            {
+                out.push(InvariantAlarm {
+                    name: "scrape_zero_persist",
+                    provider: Some(provider.to_string()),
+                    detail: format!("{provider} scrape extracted {extracted} items but persisted 0 (F03)"),
+                    runbook: "Post-scrape recovery likely destroyed the renderer before persistence; inspect the recovery/invoke ordering (P1-05).",
+                });
+            }
+        }
+
+        // auth_zombie: consecutive ok-but-empty scrapes for an authenticated
+        // provider. NOTE: scrape_outcome does not yet carry isAuthenticated, so
+        // this keys on stage=="ok" && extracted==0 as a heuristic. A clean
+        // implementation adds isAuthenticated to the JS event (Wave 4); until
+        // then this is a coarse tripwire and the escalation to needs-reconnect
+        // stays observation-only.
+        if stage == "ok" {
+            let streak = self.auth_empty_streak.entry(provider.to_string()).or_insert(0);
+            if extracted == Some(0) {
+                *streak += 1;
+                let streak = *streak;
+                if streak == ALARM_AUTH_ZOMBIE_RECHECK_STREAK
+                    && self.take_refire_slot(&format!("auth_zombie:recheck:{provider}"), ts)
+                {
+                    out.push(InvariantAlarm {
+                        name: "auth_zombie",
+                        provider: Some(provider.to_string()),
+                        detail: format!("{provider}: {streak} consecutive ok-empty scrapes (possible logged-out zombie; recheck auth)"),
+                        runbook: "Force an auth recheck for this provider. If it stays empty, expect the needs-reconnect escalation at 6 (Wave 4).",
+                    });
+                } else if streak >= ALARM_AUTH_ZOMBIE_RECONNECT_STREAK
+                    && self.take_refire_slot(&format!("auth_zombie:reconnect:{provider}"), ts)
+                {
+                    out.push(InvariantAlarm {
+                        name: "auth_zombie",
+                        provider: Some(provider.to_string()),
+                        detail: format!("{provider}: {streak} consecutive ok-empty scrapes; flip to needs-reconnect + notify (Wave 4)"),
+                        runbook: "Provider is scraping empty while believed authenticated. Escalate to needs-reconnect and stop the hidden-WebView spins.",
+                    });
+                }
+            } else if extracted.is_some_and(|n| n > 0) {
+                *streak = 0;
+            }
+        }
+    }
+
+    fn observe_window_destroyed(&mut self, payload: &serde_json::Value, ts: u64, out: &mut Vec<InvariantAlarm>) {
+        let reason = payload.get("reasonEnum").and_then(|v| v.as_str()).unwrap_or("");
+        let session_held = payload.get("scraperSessionHeld").and_then(|v| v.as_bool()).unwrap_or(false);
+        let is_preflight_or_login = matches!(reason, "preflight_recycle" | "login_flow");
+        if (session_held || is_preflight_or_login)
+            && self.take_refire_slot("preflight_kill", ts)
+        {
+            out.push(InvariantAlarm {
+                name: "preflight_kill",
+                provider: None,
+                detail: format!(
+                    "window_destroyed reason={reason} scraperSessionHeld={session_held} (killed an in-flight scrape/login, F04)"
+                ),
+                runbook: "Memory preflight or a recycle tore down a held scraper/login window; add the active-session guard (P1-04).",
+            });
+        }
+    }
+
+    fn observe_main_recovery(&mut self, ts: u64, out: &mut Vec<InvariantAlarm>) {
+        self.main_recoveries.push_back(ts);
+        prune_before(&mut self.main_recoveries, ts.saturating_sub(ALARM_WATCHDOG_THRASH_WINDOW_MS));
+        let count = self.main_recoveries.len();
+        if count >= ALARM_WATCHDOG_THRASH_THRESHOLD && self.take_refire_slot("watchdog_thrash", ts) {
+            out.push(InvariantAlarm {
+                name: "watchdog_thrash",
+                provider: None,
+                detail: format!(
+                    "{} main-renderer recovery attempts in {}h; a large renderer beats recovery churn that discards scrapes",
+                    count,
+                    ALARM_WATCHDOG_THRASH_WINDOW_MS / 3_600_000
+                ),
+                runbook: "Watchdog is thrashing the main renderer. The stop-recovering breaker + one deep-diagnostics bundle is the next gated step (thresholds stay frozen).",
+            });
+        }
+    }
+}
+
+/// Passive observer over the runtime-health stream. Called from
+/// append_runtime_health after the event is written. Never recurses: alarms are
+/// appended with the low-level writer.
+fn observe_invariant_alarm_event(data_dir: &Path, payload: &serde_json::Value) {
+    let Some(event) = payload.get("event").and_then(|v| v.as_str()) else {
+        return;
+    };
+    if event == "invariant_alarm" {
+        return;
+    }
+    let ts = payload
+        .get("tsMs")
+        .and_then(|v| v.as_u64())
+        .unwrap_or_else(now_unix_ms);
+
+    let mut alarms: Vec<InvariantAlarm> = Vec::new();
+    {
+        let Ok(mut state) = INVARIANT_ALARM_STATE.lock() else {
+            return;
+        };
+        match event {
+            "cloud_upload_attempt" => state.observe_cloud_upload(payload, ts, &mut alarms),
+            "scrape_outcome" => state.observe_scrape_outcome(payload, ts, &mut alarms),
+            "window_destroyed" => state.observe_window_destroyed(payload, ts, &mut alarms),
+            "renderer_recovery_attempt" => state.observe_main_recovery(ts, &mut alarms),
+            _ => {}
+        }
+    }
+
+    for alarm in alarms {
+        let record = serde_json::json!({
+            "event": "invariant_alarm",
+            "name": alarm.name,
+            "provider": alarm.provider,
+            "detail": alarm.detail,
+            "runbook": alarm.runbook,
+            "action": "observe",
+            "tsMs": now_unix_ms(),
+        });
+        if let Ok(line) = serde_json::to_string(&record) {
+            if let Err(error) = append_runtime_health_line(data_dir, &line) {
+                warn!("[invariant-alarm] failed to append in {}: {}", data_dir.display(), error);
+            } else {
+                warn!("[invariant-alarm] {} {}", alarm.name, record["detail"]);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod invariant_alarm_tests {
+    use super::*;
+
+    fn upload(unchanged: bool) -> serde_json::Value {
+        serde_json::json!({ "event": "cloud_upload_attempt", "provider": "gdrive", "headsUnchanged": unchanged })
+    }
+
+    fn scrape(provider: &str, stage: &str, extracted: u64, persisted: u64) -> serde_json::Value {
+        serde_json::json!({
+            "event": "scrape_outcome",
+            "provider": provider,
+            "stage": stage,
+            "itemsExtracted": extracted,
+            "itemsPersisted": persisted,
+        })
+    }
+
+    fn names(alarms: &[InvariantAlarm]) -> Vec<&'static str> {
+        alarms.iter().map(|a| a.name).collect()
+    }
+
+    #[test]
+    fn cloud_loop_fires_at_threshold_and_ignores_changed_heads() {
+        let mut state = InvariantAlarmState::default();
+        let mut out = Vec::new();
+        // Four unchanged uploads: below threshold.
+        for i in 0..4 {
+            state.observe_cloud_upload(&upload(true), 1_000 + i, &mut out);
+        }
+        assert!(out.is_empty(), "should not fire below threshold");
+        // A changed-heads upload does not count toward the loop.
+        state.observe_cloud_upload(&upload(false), 1_004, &mut out);
+        assert!(out.is_empty());
+        // Fifth unchanged upload trips it.
+        state.observe_cloud_upload(&upload(true), 1_005, &mut out);
+        assert_eq!(names(&out), vec!["cloud_loop"]);
+    }
+
+    #[test]
+    fn cloud_loop_prunes_outside_window_and_respects_cooldown() {
+        let mut state = InvariantAlarmState::default();
+        let mut out = Vec::new();
+        for i in 0..5 {
+            state.observe_cloud_upload(&upload(true), 1_000 + i, &mut out);
+        }
+        assert_eq!(out.len(), 1, "fires once");
+        out.clear();
+        // Another unchanged upload immediately after: still over threshold but
+        // within cooldown, so it must not refire.
+        state.observe_cloud_upload(&upload(true), 1_006, &mut out);
+        assert!(out.is_empty(), "cooldown suppresses refire");
+        // Far in the future, old timestamps prune out; a fresh burst refires.
+        let base = 1_006 + ALARM_REFIRE_COOLDOWN_MS + 1;
+        out.clear();
+        for i in 0..5 {
+            state.observe_cloud_upload(&upload(true), base + i, &mut out);
+        }
+        assert_eq!(names(&out), vec!["cloud_loop"], "refires after cooldown with a fresh window");
+    }
+
+    #[test]
+    fn scrape_zero_persist_fires_only_on_real_extract_without_persist() {
+        let mut state = InvariantAlarmState::default();
+        let mut out = Vec::new();
+        state.observe_scrape_outcome(&scrape("facebook", "ok", 7, 4), 10, &mut out);
+        assert!(out.is_empty(), "persisted>0 is fine");
+        state.observe_scrape_outcome(&scrape("facebook", "ok", 3, 0), 20, &mut out);
+        assert!(out.is_empty(), "extracted<5 is below the signature threshold");
+        state.observe_scrape_outcome(&scrape("facebook", "ok", 9, 0), 30, &mut out);
+        assert_eq!(names(&out), vec!["scrape_zero_persist"]);
+    }
+
+    #[test]
+    fn auth_zombie_counts_consecutive_ok_empty_and_resets_on_hit() {
+        let mut state = InvariantAlarmState::default();
+        let mut out = Vec::new();
+        state.observe_scrape_outcome(&scrape("instagram", "ok", 0, 0), 10, &mut out);
+        state.observe_scrape_outcome(&scrape("instagram", "ok", 0, 0), 20, &mut out);
+        assert!(out.is_empty(), "two empties is below the recheck streak");
+        state.observe_scrape_outcome(&scrape("instagram", "ok", 0, 0), 30, &mut out);
+        assert_eq!(names(&out), vec!["auth_zombie"], "third consecutive ok-empty fires recheck");
+        out.clear();
+        // A real extract resets the streak.
+        state.observe_scrape_outcome(&scrape("instagram", "ok", 5, 5), 40, &mut out);
+        assert!(out.is_empty());
+        assert_eq!(*state.auth_empty_streak.get("instagram").unwrap(), 0);
+    }
+
+    #[test]
+    fn auth_zombie_escalates_to_reconnect_at_six() {
+        let mut state = InvariantAlarmState::default();
+        let mut out = Vec::new();
+        // Space events past the refire cooldown so recheck (at 3) and reconnect
+        // (at 6) both get to fire.
+        for i in 0..6u64 {
+            let ts = 10 + i * (ALARM_REFIRE_COOLDOWN_MS + 1);
+            state.observe_scrape_outcome(&scrape("linkedin", "ok", 0, 0), ts, &mut out);
+        }
+        assert_eq!(out.len(), 2, "recheck at 3 and reconnect at 6");
+        assert!(out.iter().all(|a| a.name == "auth_zombie"));
+        assert!(out[1].detail.contains("needs-reconnect"));
+    }
+
+    #[test]
+    fn preflight_kill_fires_on_held_session_or_login_reason() {
+        let mut state = InvariantAlarmState::default();
+        let mut out = Vec::new();
+        let held = serde_json::json!({
+            "event": "window_destroyed", "reasonEnum": "watchdog_memory", "scraperSessionHeld": true
+        });
+        state.observe_window_destroyed(&held, 10, &mut out);
+        assert_eq!(names(&out), vec!["preflight_kill"]);
+        out.clear();
+        // A plain job_complete teardown with no held session is not an alarm.
+        let benign = serde_json::json!({
+            "event": "window_destroyed", "reasonEnum": "job_complete", "scraperSessionHeld": false
+        });
+        // Past cooldown so suppression is not the reason it stays quiet.
+        state.observe_window_destroyed(&benign, 10 + ALARM_REFIRE_COOLDOWN_MS + 1, &mut out);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn watchdog_thrash_fires_at_three_recoveries_in_window() {
+        let mut state = InvariantAlarmState::default();
+        let mut out = Vec::new();
+        state.observe_main_recovery(10, &mut out);
+        state.observe_main_recovery(20, &mut out);
+        assert!(out.is_empty());
+        state.observe_main_recovery(30, &mut out);
+        assert_eq!(names(&out), vec!["watchdog_thrash"]);
+    }
+
+    #[test]
+    fn watchdog_thrash_prunes_recoveries_older_than_window() {
+        let mut state = InvariantAlarmState::default();
+        let mut out = Vec::new();
+        state.observe_main_recovery(1, &mut out);
+        state.observe_main_recovery(2, &mut out);
+        // Third recovery far enough ahead that the first two fall outside 6h.
+        let later = 3 + ALARM_WATCHDOG_THRASH_WINDOW_MS;
+        state.observe_main_recovery(later, &mut out);
+        assert!(out.is_empty(), "only one recovery inside the window");
+    }
 }
 
 #[derive(Debug, serde::Deserialize)]

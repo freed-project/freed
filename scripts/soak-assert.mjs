@@ -330,6 +330,32 @@ export function assertGuardedCounters(healthLines, healthPath) {
   return results;
 }
 
+// Invariant alarms (W2-01). A firing alarm is the EXPECTED positive control
+// before its damper lands, so this is an informational measurement line
+// (alarms/day), never a fail gate. The count and per-name breakdown feed the
+// scorecard; the damper cycle is what flips a given alarm to zero.
+export function assertAlarmCounts(healthLines, healthPath) {
+  const alarmLines = healthLines.filter(({ entry }) => entry.event === "invariant_alarm");
+  if (alarmLines.length === 0) {
+    return assertion("invariant_alarms", "pass", "0 invariant_alarm events in the soak window.");
+  }
+  const byName = {};
+  for (const { entry } of alarmLines) {
+    const name = typeof entry.name === "string" ? entry.name : "unknown";
+    byName[name] = (byName[name] ?? 0) + 1;
+  }
+  const breakdown = Object.entries(byName)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => `${name}=${count}`)
+    .join(", ");
+  return assertion(
+    "invariant_alarms",
+    "pass",
+    `${alarmLines.length} invariant_alarm event${alarmLines.length === 1 ? "" : "s"} (${breakdown}). Informational: alarms observe pathologies as positive controls before their dampers land.`,
+    alarmLines.slice(0, 10).map(({ line, raw }) => cite(healthPath, line, raw)),
+  );
+}
+
 export function buildVerdict({ soakDir, metricsText, metricsPath, healthLines, healthPath }) {
   const metricsRows = parseMetricsTsv(metricsText);
   const windowStart = metricsRows[0]?.tsMs ?? healthLines[0]?.entry?.tsMs ?? 0;
@@ -341,6 +367,7 @@ export function buildVerdict({ soakDir, metricsText, metricsPath, healthLines, h
     assertEventCountZero("stale_heartbeats", healthLines, healthPath, "renderer_heartbeat_stale"),
     assertWebkitReturnsToBaseline(metricsRows, metricsPath),
     ...assertGuardedCounters(healthLines, healthPath),
+    assertAlarmCounts(healthLines, healthPath),
   ];
 
   return {
