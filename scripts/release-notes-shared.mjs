@@ -54,6 +54,14 @@ const COMMON_ITEM_PREFIX =
   /^(feat|fix|perf|refactor|style|chore|docs|test|build|ci)(\([^)]+\))?!?:\s*/i;
 
 const SECTION_CONSOLIDATIONS = {
+  feature: {
+    build: "Release workflow and build-system work",
+    capture: "Capture, login, and scraping platform work",
+    ui: "Reader, sidebar, and settings UX work",
+    sync: "Sync, cloud, and pairing infrastructure",
+    tests: "Testing, diagnostics, and developer tooling",
+    content: "Content and documentation work",
+  },
   fix: {
     build: "Release build and type-safety cleanup",
     capture: "Capture and scraper reliability fixes",
@@ -971,7 +979,7 @@ export function removePreviousDayFeatureRepeats(release, previousDayRelease) {
 }
 
 function isCoveredByConsolidation(priorEntry, normalizedRelease) {
-  if (priorEntry.kind !== "fix" && priorEntry.kind !== "followUp") {
+  if (!["feature", "fix", "followUp"].includes(priorEntry.kind)) {
     return false;
   }
 
@@ -981,8 +989,9 @@ function isCoveredByConsolidation(priorEntry, normalizedRelease) {
     return false;
   }
 
-  const candidates =
-    priorEntry.kind === "fix" ? normalizedRelease.fixes : normalizedRelease.followUps;
+  const candidates = priorEntry.kind === "fix"
+    ? normalizedRelease.fixes
+    : [...normalizedRelease.features, ...normalizedRelease.followUps];
 
   return candidates.some((item) => areNearDuplicates(item, consolidatedText));
 }
