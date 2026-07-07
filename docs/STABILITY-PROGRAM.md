@@ -1,6 +1,6 @@
 # Stability Program: Provider Sync + Memory
 
-Status: **Active — Wave 1**
+Status: **Active — Wave 1 baseline recorded 2026-07-07; Wave 2 is next**
 Created: 2026-07-02 (dev @ v26.7.203-dev)
 Evidence: [stability-findings.json](stability-findings.json) — 37 findings, each adversarially verified at file:line
 Task queue: [stability-tasks/](stability-tasks/) — one self-contained prompt per task
@@ -100,16 +100,18 @@ Must land AFTER the P1 dampers or the relay and cloud loops amplify each other.
 
 All from runtime-health counters, idle overnight soak unless noted.
 
+Baseline measured 2026-07-07 from a 6.05 h idle overnight soak of v26.7.301-dev (`~/.freed/automation/soaks/2026-07-07-0655`, machine awake via caffeinate, GDrive connected, no PWA relay client). `soak-assert` verdict: **fail** on `uploads_unchanged_heads` (the F01/F06 cloud-loop signature), all other assertions pass. A prior launch-hour window (2026-07-05, 57 min, same build) supplies the under-load numbers cited below; that run ended with the app self-restarting under memory pressure (app resident 8.9–9.6 GB, largest WebKit process 7.6 GB) and then exiting silently ~90 s later with no crash report — recorded in `soaks/2026-07-05-2251/soak-context.md`, deliberately not diagnosed further in Wave 1.
+
 | Metric | Baseline (fill from first Wave-1 soak) | Target |
 | ------ | -------------------------------------- | ------ |
-| Idle cloud uploads/hour | | <5 |
-| Scrapes extracted>0, persisted==0 | | 0 |
-| Windows destroyed while session active | | 0 |
-| LAN convergence phone↔desktop, cloud off | impossible | <10s both ways |
-| "job timed out kind=rss-poll" per day | every cycle | 0 |
-| Dead-session WebView spins/day/provider | | ≤3 then pause+prompt |
-| Worker INITs/hour during content backlog | | <10 |
-| Renderer recoveries/day (thresholds frozen) | | →0 |
+| Idle cloud uploads/hour | 11.1/h, 96% heads-unchanged (67 uploads / 6.05 h idle); launch hour: 45/h, 77% unchanged | <5 |
+| Scrapes extracted>0, persisted==0 | 0 of 4 scrapes (fb 7→4, ig 2→2, x+li extracted 0) | 0 |
+| Windows destroyed while session active | 0 active-session kills; 4 idle-window kills (3 job_complete, 1 watchdog_memory); launch hour: 12 kills (7 job_complete, 5 watchdog_memory incl. main renderer at age 2059 s) | 0 |
+| LAN convergence phone↔desktop, cloud off | impossible (no relay client connected during soak; relay port LISTEN only) | <10s both ways |
+| "job timed out kind=rss-poll" per day | 0 records in runtime-health/diagnostics over the window — not yet counter-instrumented, needs W2-01 for an authoritative number | 0 |
+| Dead-session WebView spins/day/provider | night's single scheduled sweep: li 1 full 100 s WebView spin → event_timeout, x 1 api_error (auth misclassification, F-auth theme) | ≤3 then pause+prompt |
+| Worker INITs/hour during content backlog | 19.3/h while idle (117 / 6.05 h); 82/h during launch-hour backlog | <10 |
+| Renderer recoveries/day (thresholds frozen) | 1 attempt / 6 h idle (≈4/day); launch hour: 5 attempts + 3 restart requests in 57 min, ending in silent app death | →0 |
 | fix:/perf: share of non-release commits | ~78% | trending down |
 
 ## What NOT to do
