@@ -1,12 +1,14 @@
 ---
 name: freed-build-feature
-description: Scaffold product work in a dev-based worktree, implement a runnable slice, launch the lightest useful local preview early, validate it with the shared feature-tier runner before publish, and finish by committing, pushing, and opening a draft PR targeting dev. Use for Desktop, PWA, shared packages, sync, capture packages, release tooling, app behavior, and product docs targeting dev. Do not use for public marketing changes targeting www.
+description: Scaffold product work in a dev-based worktree, implement a runnable slice, launch the lightest useful local preview early, validate it with the shared feature-tier runner before publish, and finish by committing, pushing, and opening a PR targeting dev (draft while iterating, marked ready for review at closeout). Use for Desktop, PWA, shared packages, sync, capture packages, release tooling, app behavior, and product docs targeting dev. Do not use for public marketing changes targeting www.
 disable-model-invocation: true
 ---
 
 # Build Feature
 
-Create a product worktree branch from the latest remote `dev`, implement enough of the feature or fix to run, launch the lightest useful local preview early, iterate against that preview, then validate with the shared feature-tier runner before committing the work, pushing the branch, and opening a draft PR to `dev`.
+Create a product worktree branch from the latest remote `dev`, implement enough of the feature or fix to run, launch the lightest useful local preview early, iterate against that preview, then validate with the shared feature-tier runner before committing the work, pushing the branch, and publishing the PR to `dev` (draft during iteration; `--ready` at closeout).
+
+Feature threads inherit the stability program rules in [docs/STABILITY-PROGRAM.md](../../../docs/STABILITY-PROGRAM.md) ("Program rules"): the watchdog freeze (no threshold, recovery-reason, or process-attribution changes), one product PR per soak cycle for behavioral changes, and the provider-visible lane (anything changing WebView loads, provider navigation, request frequency, cookies, headers, or extractor scripts stops for explicit owner approval first).
 
 ## Workflow
 
@@ -22,31 +24,45 @@ Create a product worktree branch from the latest remote `dev`, implement enough 
    - When you are spinning up multiple speculative threads at once, prefer `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --swarm --target <desktop|pwa|shared>` so bootstrap stays deferred until that thread actually needs verification or a preview.
 6. If the worktree was created with deferred bootstrap on purpose, recover with `./scripts/worktree-bootstrap.sh <worktree> --target <desktop|pwa|shared>`.
 7. Implement a runnable slice of the requested change.
-8. Launch the lightest useful local preview for the changed surface as soon as the branch can run:
-   - Default to `./scripts/worktree-preview.sh pwa` for normal product work, shared behavior, sync flows, reader UI, and most Desktop feature work.
-   - Use `./scripts/worktree-preview.sh desktop` only when you need the Desktop shell running in the mocked browser preview.
+8. Launch the lightest useful local preview for the changed surface as soon as the branch can run. Always start previews on an explicit fresh port so parallel agent threads do not reuse or stomp each other's previews.
+   - Compute a port first with `PORT=$(node scripts/lib/find-free-port.mjs <default-port>)`, then pass `--port "$PORT"` to `./scripts/worktree-preview.sh`.
+   - Use default port seed `1421` for PWA, `1422` for mocked Desktop, and `3000` for website only when this skill is intentionally routing a product-adjacent website check.
+   - Default to `PORT=$(node scripts/lib/find-free-port.mjs 1421) && ./scripts/worktree-preview.sh pwa --port "$PORT"` for normal product work, shared behavior, sync flows, reader UI, and most Desktop feature work.
+   - Use `PORT=$(node scripts/lib/find-free-port.mjs 1422) && ./scripts/worktree-preview.sh desktop --port "$PORT"` only when you need the Desktop shell running in the mocked browser preview.
    - Use `./scripts/worktree-preview.sh desktop --native` only when the change depends on real Tauri behavior such as native windowing, tray behavior, updater wiring, filesystem or process plugins, native OAuth windows, or Rust-side integrations.
+   - Product previews launched through the helper set the feature-preview flag, auto-accept local legal gates, and seed sample data before inspection.
+   - Do not run `./scripts/dev-session-clean.sh` just to relaunch a preview. That kills tracked previews for other work unless scoped, which is how parallel threads end up doing slapstick with ports.
    - When native Desktop preview is running, report the preview label so parallel native windows can be matched to the worktree and thread that launched them.
 9. Iterate against the preview. Use focused checks during iteration only when they answer an immediate implementation question, such as a targeted unit test, Desktop e2e test, browser check, or preview compile failure.
    - For queued UI polish, keep stacking the user's small visual fixes in the same worktree and PR.
-   - For each small UI fix, run only the focused test or browser check that proves that behavior.
+   - For each small UI fix, prefer the cheapest thread-level proof that actually verifies the change: live preview, screenshot comparison, browser inspection, or a temporary geometry check.
+   - Do not add permanent tests for exact pixels, gaps, colors, shadows, padding, or one-off toolbar geometry unless the behavior is a shared layout contract, has already regressed, or cannot be checked reliably in-thread.
    - Do not run `npm run validate:feature` after every small visual adjustment.
    - If more queued tasks arrive while you are working, finish the current focused loop, then continue to the next queued task before publishing.
-10. Run `npm run validate:feature` from the worktree before publishing the draft PR, or earlier only when the user asks for a full validation checkpoint.
+10. If this change affects sync, capture, memory, or recovery behavior, name the runtime-health counter or soak assertion that will prove it (see the scorecard in docs/STABILITY-PROGRAM.md) and state the expected direction in the PR body. If no counter exists, add one in the same PR or justify in the PR body why a test suffices. Verification is counters, not vibes.
+11. Run `npm run validate:feature` from the worktree before publishing the draft PR, or earlier only when the user asks for a full validation checkpoint.
    - Let the validator derive changed files from git by default.
    - Use `npm run validate:feature -- --changed-files <file>...` only when you need to pin an explicit file list for debugging or tests.
    - This is a pre publish gate, not an after-every-command inner loop.
-11. Escalate to broader checks only when the change crosses package boundaries or affects shared behavior.
+12. Escalate to broader checks only when the change crosses package boundaries or affects shared behavior.
    - Shared schema, release tooling, shared UI primitives, and cross-app flows should earn broader validation before publish.
    - Reserve the heaviest validation and release-shape smoke tests for `dev` integration and release prep, not every branch.
    - Do not simplify test suites blindly. Profile specific slow commands first, then trim redundant coverage with evidence.
-12. Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run commands from the workspace directory itself, and when a hoisted binary is needed, prefix `PATH` with `<worktree>/node_modules/.bin`.
-13. Browser tooling is opt-in only. Do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging.
-14. When browser tooling was needed, clean the session before closeout with `./scripts/dev-session-clean.sh`.
-15. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
+   - Keep permanent tests only when they protect durable workflows, cross-boundary behavior, provider flows, recovery paths, stateful failures, performance budgets, maintained visual coverage, or shared layout contracts with known regression risk.
+13. Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run commands from the workspace directory itself, and when a hoisted binary is needed, prefix `PATH` with `<worktree>/node_modules/.bin`.
+14. Browser tooling is opt-in only. Do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging.
+15. Installed Desktop soaks and provider sync triggers follow the canonical contract in [docs/SOAK-AND-TRIGGERS.md](../../../docs/SOAK-AND-TRIGGERS.md). One-line summary: terminal-driven evidence only (`open -g`, logs, `runtime-health.jsonl`, `node scripts/dev-sync-trigger.mjs <provider>` with its gating), and never stall overnight for a click — ask with a 10 minute response window, then proceed, and ship a terminal trigger for anything recurring. Carry the same contract into generated task prompts, soak notes, and handoff instructions.
+16. When browser tooling was needed, clean browser automation only after preserving any preview the user still needs. Do not run broad cleanup while the local preview should remain open.
+   - If cleanup is needed before PR merge or thread archive, scope it to this worktree with `./scripts/dev-session-clean.sh --worktree <worktree>`.
+   - Before reporting final status, list this thread's preview with `./scripts/worktree-processes.sh list --worktree <worktree>` so the URL and owner are clear.
+   - When the PR is merged, the worktree is removed, or the thread is archived, stop only this thread's preview with `./scripts/worktree-processes.sh stop --worktree <worktree> --target <pwa|desktop>`.
+   - Never stop previews from other worktrees unless the user explicitly asks for global cleanup.
+17. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>" --ready`.
+   - Pass `--ready` only at closeout, once validation has passed and the work is complete. Interim publishes omit it so the PR stays draft while the thread iterates.
    - If the branch intentionally adds new files, stage them yourself first or re-run with `--include-untracked`.
-16. Confirm the branch is pushed to `origin` and the PR targeting `dev` stays in draft state. Include the local preview URL or native preview label in the closeout.
+18. Confirm the branch is pushed to `origin` and the PR targeting `dev` is marked ready for review (or intentionally left draft if the thread is still iterating, blocked, or needs discussion — say which in the closeout). Include the local preview URL or native preview label in the closeout.
    - When a changed surface includes buttons, dialogs, or native fallback HTML, follow the repo's established primary and secondary control styling. Do not add hover lift, vertical motion, bounce, or ad hoc glossy or gradient CTA treatments.
+19. When the PR merges, append an outcome ledger entry via the W1-01 helper so the nightly planner learns from the result (see "Outcome recording" in docs/STABILITY-PROGRAM.md and docs/stability-tasks/W1-01-automation-state-out-of-tmp.md). Until the W1-01 helper (`scripts/record-outcome.mjs`) has landed, append the ledger line manually with the target or task id, PR number, build, and status.
 
 ## Scope
 

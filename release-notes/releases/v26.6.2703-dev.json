@@ -1,0 +1,59 @@
+{
+  "tag": "v26.6.2703-dev",
+  "version": "26.6.2703-dev",
+  "channel": "dev",
+  "dayKey": "26.6.27",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-28T04:48:12.696Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.2702-dev",
+    "previousPublishedDayTag": "v26.6.2600-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.2700-dev",
+      "v26.6.2701-dev",
+      "v26.6.2702-dev",
+      "v26.6.2703-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.2700-dev",
+      "v26.6.2701-dev",
+      "v26.6.2702-dev",
+      "v26.6.2703-dev"
+    ],
+    "prNumbers": [
+      874,
+      875,
+      876,
+      877
+    ],
+    "commitSubjects": [
+      "fix: prevent duplicate dev sync trigger dispatch (#877)",
+      "docs: review release notes for v26.6.2702-dev",
+      "release: v26.6.2702-dev",
+      "fix: recover idle WebKit memory tail (#876)",
+      "docs: review release notes for v26.6.2701-dev",
+      "release: v26.6.2701-dev",
+      "fix: recover dev sync triggers after renderer recycle (#875)",
+      "docs: review release notes for v26.6.2700-dev",
+      "release: v26.6.2700-dev",
+      "fix: reduce desktop sync renderer pressure (#874)"
+    ]
+  },
+  "release": {
+    "deck": "Improves social sync reliability after renderer recovery",
+    "features": [],
+    "fixes": [
+      "Prevents dev sync trigger recovery from launching a duplicate Facebook, Instagram, or LinkedIn sync while the original provider job is still finishing.",
+      "Recovers hidden main renderers when WebKit resident memory grows past the idle cap, so stale WebKit memory does not block social sync preflight.",
+      "Recovers dev sync triggers that were left waiting after Freed Desktop rebuilt the renderer at the end of a social sync.",
+      "Reduces desktop sync renderer pressure after long social sync runs."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2703-dev\n\nImproves social sync reliability after renderer recovery\n\n### Fixes\n\n- Prevents dev sync trigger recovery from launching a duplicate Facebook, Instagram, or LinkedIn sync while the original provider job is still finishing.\n- Recovers hidden main renderers when WebKit resident memory grows past the idle cap, so stale WebKit memory does not block social sync preflight.\n- Recovers dev sync triggers that were left waiting after Freed Desktop rebuilt the renderer at the end of a social sync.\n- Reduces desktop sync renderer pressure after long social sync runs.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

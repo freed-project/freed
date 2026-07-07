@@ -34,6 +34,7 @@ import type {
 import type { DocChangeEvent, DocState, DocStats, WorkerRequest, WorkerResponse } from "./automerge-types";
 import { applyItemPatchesToState, createItemIndex, type ItemIndex } from "./automerge-state-patches";
 import { log } from "./logger.js";
+import { recordRuntimeHealthEvent, recordWorkerInit } from "./runtime-health-events";
 export type { DocChangeEvent, DocState } from "./automerge-types";
 
 /**
@@ -71,6 +72,7 @@ function startWorker(): void {
   worker = nextWorker;
   workerDocumentInitialized = false;
   log.info("[automerge-worker] started worker");
+  recordRuntimeHealthEvent({ event: "worker_spawn" });
   workerReady = new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new Error("Automerge worker failed to start within 15 seconds"));
@@ -109,6 +111,7 @@ function hasPendingWorkerRequests(): boolean {
     pending.size > 0 ||
     pendingAllItemIds.size > 0 ||
     pendingDocBinary.size > 0 ||
+    pendingDocHeads.size > 0 ||
     pendingPreservedText.size > 0 ||
     pendingContentSignalBackfill.size > 0 ||
     pendingSampleDataClear.size > 0
@@ -173,6 +176,14 @@ const pendingDocBinary = new Map<
   number,
   {
     resolve: (binary: Uint8Array) => void;
+    reject: (err: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }
+>();
+const pendingDocHeads = new Map<
+  number,
+  {
+    resolve: (heads: string[] | null) => void;
     reject: (err: Error) => void;
     timer: ReturnType<typeof setTimeout>;
   }
@@ -329,6 +340,7 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     const changedItems = msg.patches.map((patch) => patch.item);
     const patched = applyItemPatchesToState(lastDocState, msg.patches, lastItemIndexById, {
       orderedItemIds: msg.orderedItemIds,
+      preservePriorityOrder: msg.preservePriorityOrder,
       searchCorpusVersion: msg.searchCorpusVersion,
       docItemCount: msg.docItemCount,
     });
@@ -390,6 +402,11 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     return;
   }
 
+  if (msg.type === "INIT_STATS") {
+    recordWorkerInit({ durationMs: msg.durationMs, docBytes: msg.docBytes });
+    return;
+  }
+
   if (msg.type === "DEBUG_SNAPSHOT") {
     lastDocStats = { binaryBytes: msg.binarySize, itemCount: msg.itemCount };
     setDocSnapshot({
@@ -417,6 +434,15 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     clearTimeout(pendingBinary.timer);
     pendingDocBinary.delete(msg.reqId);
     pendingBinary.resolve(msg.binary);
+    return;
+  }
+
+  if (msg.type === "DOC_HEADS") {
+    const pendingHeads = pendingDocHeads.get(msg.reqId);
+    if (!pendingHeads) return;
+    clearTimeout(pendingHeads.timer);
+    pendingDocHeads.delete(msg.reqId);
+    pendingHeads.resolve(msg.heads);
     return;
   }
 
@@ -581,6 +607,31 @@ export async function getDocBinary(): Promise<Uint8Array> {
 
     pendingDocBinary.set(reqId, { resolve, reject, timer });
     activeWorker.postMessage({ reqId, type: "GET_DOC_BINARY" } satisfies WorkerRequest);
+  });
+}
+
+/**
+ * Current document heads for upload-loop accounting (stability P0-03).
+ * Never forces a document load or a worker re-INIT: an idle worker answers
+ * with the heads at last save, and a fresh worker answers null.
+ */
+export async function getDocHeads(): Promise<string[] | null> {
+  await ensureWorkerReady();
+  const activeWorker = getWorker();
+  return new Promise((resolve, reject) => {
+    const reqId = nextReqId++;
+    const timer = setTimeout(() => {
+      if (!pendingDocHeads.has(reqId)) return;
+      pendingDocHeads.delete(reqId);
+      reject(
+        new Error(
+          `[automerge-worker] request TIMEOUT op=GET_HEADS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
+        ),
+      );
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pendingDocHeads.set(reqId, { resolve, reject, timer });
+    activeWorker.postMessage({ reqId, type: "GET_HEADS" } satisfies WorkerRequest);
   });
 }
 

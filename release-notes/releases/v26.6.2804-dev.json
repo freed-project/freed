@@ -1,0 +1,73 @@
+{
+  "tag": "v26.6.2804-dev",
+  "version": "26.6.2804-dev",
+  "channel": "dev",
+  "dayKey": "26.6.28",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-29T04:47:00.000Z",
+  "model": "manual",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.2803-dev",
+    "previousPublishedDayTag": "v26.6.2703-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.2800-dev",
+      "v26.6.2801-dev",
+      "v26.6.2802-dev",
+      "v26.6.2803-dev",
+      "v26.6.2804-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.2800-dev",
+      "v26.6.2801-dev",
+      "v26.6.2802-dev",
+      "v26.6.2803-dev",
+      "v26.6.2804-dev"
+    ],
+    "prNumbers": [
+      878,
+      879,
+      880,
+      881,
+      882,
+      883
+    ],
+    "commitSubjects": [
+      "fix: avoid renderer wake on locked sync triggers (#883)",
+      "fix: slow locked sync trigger retries (#882)",
+      "release: v26.6.2803-dev",
+      "fix: prevent duplicate installed sync trigger retries (#881)",
+      "docs: approve v26.6.2802-dev notes",
+      "release: v26.6.2802-dev",
+      "fix: keep social cleanup below memory high waterline (#880)",
+      "docs: approve v26.6.2801-dev notes",
+      "release: v26.6.2801-dev",
+      "fix: verify renderer memory recovery (#879)",
+      "docs: approve v26.6.2800-dev notes",
+      "release: v26.6.2800-dev",
+      "fix: stop repeated renderer memory recoveries (#878)"
+    ]
+  },
+  "release": {
+    "deck": "Freed Desktop keeps locked installed sync soaks quiet and avoids waking WebKit while waiting for the workstation to unlock.",
+    "features": [],
+    "fixes": [
+      "Destroy and rebuild the main WebView when idle WebKit memory is reclaimable but still resident.",
+      "Recover visible main-renderer WebKit resident tails once they cross the high-memory threshold.",
+      "Ignore stale age-matched WebKit process telemetry after a rebuild, which prevents repeated recovery loops and unnecessary background safe mode.",
+      "Record post-recovery memory verification so failed WebKit reclaim can be diagnosed from the health log.",
+      "Restart Freed Desktop when a renderer rebuild leaves the same main WebKit process above the high-memory line.",
+      "Keep post-scrape reclaimable WebKit resident-tail cleanup below the high-memory threshold from rebuilding the main renderer, so Instagram and LinkedIn retries do not trip recovery backoff while memory is still under budget.",
+      "Prevent the installed sync trigger helper from requeueing Instagram or LinkedIn during provider-safe cooldown windows.",
+      "Stop the native trigger watcher from replaying a request when the renderer rebuild happens after the provider run already finished.",
+      "Fail LinkedIn zero-post runs with local DOM diagnostics for candidate counts, activity URNs, login chrome, feed containers, and URL instead of treating them as successful empty syncs.",
+      "Slow locked-machine terminal sync trigger retries to 10 minutes, with an explicit long-soak timeout override for unattended testing.",
+      "Short-circuit locked-machine terminal sync triggers in native code before waking the main renderer, so locked soak retries do not inflate WebKit memory."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2804-dev\n\nFreed Desktop keeps locked installed sync soaks quiet and avoids waking WebKit while waiting for the workstation to unlock.\n\n### Fixes\n\n- Destroy and rebuild the main WebView when idle WebKit memory is reclaimable but still resident.\n- Recover visible main-renderer WebKit resident tails once they cross the high-memory threshold.\n- Ignore stale age-matched WebKit process telemetry after a rebuild, which prevents repeated recovery loops and unnecessary background safe mode.\n- Record post-recovery memory verification so failed WebKit reclaim can be diagnosed from the health log.\n- Restart Freed Desktop when a renderer rebuild leaves the same main WebKit process above the high-memory line.\n- Keep post-scrape reclaimable WebKit resident-tail cleanup below the high-memory threshold from rebuilding the main renderer, so Instagram and LinkedIn retries do not trip recovery backoff while memory is still under budget.\n- Prevent the installed sync trigger helper from requeueing Instagram or LinkedIn during provider-safe cooldown windows.\n- Stop the native trigger watcher from replaying a request when the renderer rebuild happens after the provider run already finished.\n- Fail LinkedIn zero-post runs with local DOM diagnostics for candidate counts, activity URNs, login chrome, feed containers, and URL instead of treating them as successful empty syncs.\n- Slow locked-machine terminal sync trigger retries to 10 minutes, with an explicit long-soak timeout override for unattended testing.\n- Short-circuit locked-machine terminal sync triggers in native code before waking the main renderer, so locked soak retries do not inflate WebKit memory.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

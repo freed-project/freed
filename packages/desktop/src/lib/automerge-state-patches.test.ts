@@ -170,6 +170,51 @@ describe("Automerge item patch state updates", () => {
     expect(result.state.totalArchivableCount).toBe(1);
   });
 
+  it("merges ranked patch additions into priority order without full ordered ids", () => {
+    const high = { ...makeItem("rss:high"), priority: 90, publishedAt: 30 };
+    const mid = { ...makeItem("rss:mid"), priority: 50, publishedAt: 20 };
+    const low = { ...makeItem("rss:low"), priority: 10, publishedAt: 10 };
+    const state = {
+      ...makeState([high, mid, low]),
+      feedUnreadCounts: { [FEED_URL]: 3 },
+      feedTotalCounts: { [FEED_URL]: 3 },
+      totalUnreadCount: 3,
+      unreadCountByPlatform: { rss: 3 },
+      totalItemCount: 3,
+      itemCountByPlatform: { rss: 3 },
+      totalArchivableCount: 0,
+      archivableCountByPlatform: {},
+      archivableFeedCounts: {},
+    };
+    const index = createItemIndex(state.items);
+    const addedTop = { ...makeItem("rss:top"), priority: 95, publishedAt: 40 };
+    const addedMiddle = { ...makeItem("rss:middle"), priority: 40, publishedAt: 15 };
+
+    const result = applyItemPatchesToState(
+      state,
+      [{ item: addedMiddle }, { item: addedTop }],
+      index,
+      {
+        preservePriorityOrder: true,
+        searchCorpusVersion: 2,
+      },
+    );
+
+    expect(result.state.items.map((item) => item.globalId)).toEqual([
+      "rss:top",
+      "rss:high",
+      "rss:mid",
+      "rss:middle",
+      "rss:low",
+    ]);
+    expect(result.itemIndex.get("rss:top")).toBe(0);
+    expect(result.itemIndex.get("rss:middle")).toBe(3);
+    expect(result.state.searchCorpusVersion).toBe(2);
+    expect(result.state.docItemCount).toBe(5);
+    expect(result.state.totalItemCount).toBe(5);
+    expect(result.state.totalUnreadCount).toBe(5);
+  });
+
   it("keeps a synced X like patch count-neutral and in place", () => {
     const { rssSource: _rssSource, ...baseXPost } = makeItem("x:2049705418436600244");
     const xPost = {

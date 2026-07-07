@@ -39,6 +39,7 @@ import type { ReaderOfflineCacheMode } from "../lib/reader-cache-settings.js";
  * `headerDragRegion` is true. Apply as `paddingLeft` on the first toolbar row.
  */
 export const MACOS_TRAFFIC_LIGHT_INSET = 100;
+export const MACOS_TRAFFIC_LIGHT_ROW_CENTER_Y = 18;
 
 /**
  * A zustand store hook that can be called with a selector.
@@ -161,6 +162,10 @@ export interface ReaderHydrationResult {
   message?: string;
 }
 
+export interface SaveUrlResult {
+  globalId: string;
+}
+
 export interface LocalAIModelDownloadProgress {
   id: LocalAIModelId;
   downloadedBytes: number;
@@ -241,6 +246,9 @@ export interface PlatformConfig {
 
   /** Rendered after built-in settings sections (e.g. Mobile Sync tab) */
   SettingsExtraSections: ComponentType | null;
+
+  /** Rendered in Settings > Shortcuts. Desktop only. */
+  ShortcutsSettingsContent?: ComponentType | null;
 
   /** Rendered inside Settings > Legal for local consent details. */
   LegalSettingsContent: ComponentType | null;
@@ -362,7 +370,7 @@ export interface PlatformConfig {
    * Desktop: fetches HTML via Tauri IPC, extracts content, writes to cache.
    * PWA: writes a stub item; desktop picks it up via relay and fetches content.
    */
-  saveUrl?: (url: string, options?: { tags?: string[] }) => Promise<void>;
+  saveUrl?: (url: string, options?: { tags?: string[] }) => Promise<SaveUrlResult>;
 
   /**
    * Import Freed Markdown archive files into the library.

@@ -27,6 +27,23 @@ import {
   type RssRefreshPlanOptions,
 } from "./rss-refresh-plan";
 import { isRuntimeDeferredStage } from "./social-capture-runtime";
+import type { SocialScrapeTrigger } from "./runtime-health-events";
+
+export type SocialProviderRefreshStatus =
+  | "success"
+  | "empty"
+  | "deferred"
+  | "error"
+  | "ignored";
+
+export type SocialProviderRefreshResult = {
+  provider: RetriableSocialProvider;
+  status: SocialProviderRefreshStatus;
+  stage?: string;
+  detail?: string;
+  postsExtracted?: number;
+  itemsAdded?: number;
+};
 
 /**
  * Fetch URL via Tauri backend (bypasses CORS)
@@ -108,7 +125,7 @@ const RSS_FAILURE_RETRY_MAX_MS = 24 * 60 * 60 * 1000;
 const SOCIAL_DEFERRED_RETRY_BASE_MS = 2 * 60 * 1000;
 const SOCIAL_DEFERRED_RETRY_MAX_MS = 10 * 60 * 1000;
 
-type RetriableSocialProvider = "facebook" | "instagram" | "linkedin";
+export type RetriableSocialProvider = "facebook" | "instagram" | "linkedin";
 
 const socialDeferredRetryTimers = new Map<
   RetriableSocialProvider,
@@ -191,7 +208,7 @@ function scheduleSocialDeferredRetry(
   );
   const timer = setTimeout(() => {
     socialDeferredRetryTimers.delete(provider);
-    void refreshSocialProvider(provider);
+    void refreshSocialProvider(provider, "deferred_retry");
   }, retryMs);
   socialDeferredRetryTimers.set(provider, timer);
 }
@@ -207,32 +224,53 @@ function handleSocialResult(
   }
 }
 
-async function refreshSocialProvider(
+export async function refreshSocialProvider(
   provider: RetriableSocialProvider,
-): Promise<void> {
-  if (!isTauri() || isProviderPaused(provider)) {
+  trigger: SocialScrapeTrigger = "unknown",
+): Promise<SocialProviderRefreshResult> {
+  if (!isTauri()) {
     clearSocialDeferredRetry(provider);
-    return;
+    return {
+      provider,
+      status: "ignored",
+      detail: "Native provider sync is only available in Freed Desktop.",
+    };
+  }
+
+  if (isProviderPaused(provider)) {
+    clearSocialDeferredRetry(provider);
+    return {
+      provider,
+      status: "ignored",
+      stage: "paused",
+      detail: `${socialDebugLabels[provider]} sync is currently paused.`,
+    };
   }
 
   const store = useAppStore.getState();
   try {
     if (provider === "facebook" && store.fbAuth.isAuthenticated) {
-      const result = await withProviderSyncing("facebook", () => captureFbFeed());
+      const result = await withProviderSyncing("facebook", () => captureFbFeed(trigger));
       handleSocialResult("facebook", result.diag.errorStage);
-      return;
+      return summarizeSocialRefreshResult("facebook", result.diag);
     }
     if (provider === "instagram" && store.igAuth.isAuthenticated) {
-      const result = await withProviderSyncing("instagram", () => captureIgFeed());
+      const result = await withProviderSyncing("instagram", () => captureIgFeed(trigger));
       handleSocialResult("instagram", result.diag.errorStage);
-      return;
+      return summarizeSocialRefreshResult("instagram", result.diag);
     }
     if (provider === "linkedin" && store.liAuth.isAuthenticated) {
-      const result = await withProviderSyncing("linkedin", () => captureLiFeed());
+      const result = await withProviderSyncing("linkedin", () => captureLiFeed(trigger));
       handleSocialResult("linkedin", result.diag.errorStage);
-      return;
+      return summarizeSocialRefreshResult("linkedin", result.diag);
     }
     clearSocialDeferredRetry(provider);
+    return {
+      provider,
+      status: "ignored",
+      stage: "auth",
+      detail: `${socialDebugLabels[provider]} is not authenticated.`,
+    };
   } catch (error) {
     const msg =
       error instanceof Error
@@ -244,7 +282,59 @@ async function refreshSocialProvider(
       store.setError(msg);
     }
     clearSocialDeferredRetry(provider);
+    return {
+      provider,
+      status: "error",
+      stage: "exception",
+      detail: msg,
+    };
   }
+}
+
+function summarizeSocialRefreshResult(
+  provider: RetriableSocialProvider,
+  diag: {
+    errorStage?: string | null;
+    errorMessage?: string | null;
+    postsExtracted?: number;
+    itemsAdded?: number;
+  },
+): SocialProviderRefreshResult {
+  const postsExtracted = diag.postsExtracted ?? 0;
+  const itemsAdded = diag.itemsAdded ?? 0;
+
+  if (diag.errorStage) {
+    const runtimeDeferred = isRuntimeDeferredStage(diag.errorStage);
+    return {
+      provider,
+      status: runtimeDeferred ? "deferred" : "error",
+      stage: diag.errorStage,
+      detail:
+        diag.errorMessage ??
+        `${socialDebugLabels[provider]} sync ${runtimeDeferred ? "deferred" : "failed"} at ${diag.errorStage}.`,
+      postsExtracted,
+      itemsAdded,
+    };
+  }
+
+  if (postsExtracted <= 0) {
+    return {
+      provider,
+      status: "empty",
+      stage: "empty",
+      detail: `${socialDebugLabels[provider]} sync returned 0 posts.`,
+      postsExtracted,
+      itemsAdded,
+    };
+  }
+
+  return {
+    provider,
+    status: "success",
+    detail: `${socialDebugLabels[provider]} sync saw ${postsExtracted.toLocaleString()} post${postsExtracted === 1 ? "" : "s"} and added ${itemsAdded.toLocaleString()} item${itemsAdded === 1 ? "" : "s"}.`,
+    postsExtracted,
+    itemsAdded,
+  };
 }
 
 async function refreshEnabledRssFeeds(
@@ -470,7 +560,7 @@ export async function refreshAllFeeds(
       !isProviderPaused("x")
     ) {
       try {
-        await withProviderSyncing("x", () => captureXTimeline(xCookies));
+        await withProviderSyncing("x", () => captureXTimeline(xCookies, undefined, "scheduled"));
       } catch (xError) {
         const msg =
           xError instanceof Error ? xError.message : "X timeline sync failed";
@@ -482,9 +572,9 @@ export async function refreshAllFeeds(
       }
     }
 
-    await refreshSocialProvider("facebook");
-    await refreshSocialProvider("instagram");
-    await refreshSocialProvider("linkedin");
+    await refreshSocialProvider("facebook", "scheduled");
+    await refreshSocialProvider("instagram", "scheduled");
+    await refreshSocialProvider("linkedin", "scheduled");
   } finally {
     store.setSyncing(false);
   }

@@ -19,6 +19,7 @@ export const SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS = [
 
 export const RUNTIME_DEFERRED_STAGE = "runtime_deferred";
 export const NATIVE_MEMORY_PRESSURE_STAGE = "memory_pressure";
+const SOCIAL_SCRAPE_EVENT_DRAIN_MS = import.meta.env.MODE === "test" ? 0 : 500;
 
 export interface RuntimeDeferredDiag {
   errorStage: string | null;
@@ -95,4 +96,11 @@ export function socialCaptureDurationMs(startedAtMs: number): number {
 
 export function formatSocialCaptureDuration(ms: number): string {
   return `${ms.toLocaleString()} ms`;
+}
+
+export function waitForSocialScrapeEvents(): Promise<void> {
+  if (SOCIAL_SCRAPE_EVENT_DRAIN_MS <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => setTimeout(resolve, SOCIAL_SCRAPE_EVENT_DRAIN_MS));
 }

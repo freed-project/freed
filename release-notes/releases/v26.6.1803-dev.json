@@ -1,0 +1,45 @@
+{
+  "tag": "v26.6.1803-dev",
+  "version": "26.6.1803-dev",
+  "channel": "dev",
+  "dayKey": "26.6.18",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-18T09:56:00.000Z",
+  "model": "manual",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.1802-dev",
+    "previousPublishedDayTag": "v26.6.1802-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.1800-dev",
+      "v26.6.1801-dev",
+      "v26.6.1802-dev",
+      "v26.6.1803-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.1803-dev"
+    ],
+    "prNumbers": [
+      843
+    ],
+    "commitSubjects": [
+      "fix: initialize desktop sync trigger store"
+    ]
+  },
+  "release": {
+    "deck": "Consent-gated auth loading",
+    "features": [],
+    "fixes": [
+      "Moved the sync trigger pickup into the native desktop process so backgrounded dev-channel builds can start Facebook, Instagram, and LinkedIn soaks from the terminal even when WebKit has suspended the renderer",
+      "Installed dev-channel builds now install the sync trigger bridge as soon as the renderer bundle starts, so terminal Facebook, Instagram, and LinkedIn soaks no longer fail before background services finish initializing",
+      "The native trigger watcher now waits and retries while the main renderer or sync bridge is unavailable, then reports a timeout instead of leaving an unattended run stuck",
+      "Nightly self-improvement parsing now treats the explicit bug-scan outcome as the source of truth, so background runs can continue instead of misreading unfinished output",
+      "Terminal sync triggers now verify Desktop consent and initialize the app store before invoking provider refresh, so hidden installed builds use persisted Facebook, Instagram, and LinkedIn auth instead of timing out on a React startup flag"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.1803-dev\n\nConsent-gated auth loading\n\n### Fixes\n\n- Moved the sync trigger pickup into the native desktop process so backgrounded dev-channel builds can start Facebook, Instagram, and LinkedIn soaks from the terminal even when WebKit has suspended the renderer\n- Installed dev-channel builds now install the sync trigger bridge as soon as the renderer bundle starts, so terminal Facebook, Instagram, and LinkedIn soaks no longer fail before background services finish initializing\n- The native trigger watcher now waits and retries while the main renderer or sync bridge is unavailable, then reports a timeout instead of leaving an unattended run stuck\n- Nightly self-improvement parsing now treats the explicit bug-scan outcome as the source of truth, so background runs can continue instead of misreading unfinished output\n- Terminal sync triggers now verify Desktop consent and initialize the app store before invoking provider refresh, so hidden installed builds use persisted Facebook, Instagram, and LinkedIn auth instead of timing out on a React startup flag\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

@@ -6,6 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import {
   areNearDuplicates,
+  applyPinnedHighlightsToRelease,
   buildReleaseDeck,
   compareTags,
   compareVersionDays,
@@ -13,6 +14,8 @@ import {
   dayDateFromVersion,
   MAX_FEATURES,
   normalizeReleaseText,
+  normalizePinnedHighlightTexts,
+  removePreviousDayFeatureRepeats,
   renderReleaseBody,
   sanitizeReleaseShape,
   summarizeFallbackText,
@@ -860,9 +863,7 @@ async function collectReleaseContext(tag, version, channel) {
 }
 
 function buildHeuristicRelease(context, existingDaily) {
-  const pinnedTexts = (existingDaily?.pinnedHighlights ?? [])
-    .map((item) => summarizeFallbackText(item?.text ?? ""))
-    .filter(Boolean);
+  const pinnedTexts = normalizePinnedHighlightTexts(existingDaily?.pinnedHighlights ?? []);
 
   const candidates = context.entries
     .map((entry, index) => {
@@ -1117,14 +1118,25 @@ async function main() {
   }
 
   const draftedRelease = sanitizeReleaseShape(structured?.release ?? cumulativeDraftRelease);
-  const finalRelease = withComputedDeck(
+  const generatedRelease = withComputedDeck(
     context.isLatestOfDay
       ? mergePriorSameDayReleases(draftedRelease, carriedForwardReleases)
       : draftedRelease,
     context,
     existingDaily,
   );
-  const validation = validateReleaseShape(finalRelease, {
+  const finalRelease = previousDayRelease
+    ? withComputedDeck(
+        removePreviousDayFeatureRepeats(generatedRelease, previousDayRelease),
+        context,
+        existingDaily,
+      )
+    : generatedRelease;
+  const releaseWithPinnedHighlights = applyPinnedHighlightsToRelease(
+    finalRelease,
+    existingDaily.pinnedHighlights ?? [],
+  );
+  const validation = validateReleaseShape(releaseWithPinnedHighlights, {
     earlierReleases: context.isLatestOfDay ? carriedForwardReleases : [],
     previousDayRelease,
   });

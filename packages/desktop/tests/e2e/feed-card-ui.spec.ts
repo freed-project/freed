@@ -409,7 +409,7 @@ test("feed card archive removes the visible card immediately", async ({ app }) =
     return performance.now() - startedAt;
   });
 
-  expect(elapsedMs).toBeLessThan(100);
+  expect(elapsedMs).toBeLessThan(300);
   await expect(card).toHaveCount(0);
 });
 

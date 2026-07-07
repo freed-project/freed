@@ -50,6 +50,14 @@ type ContentBlock =
   | { kind: "code"; content: string }
   | { kind: "list"; ordered: boolean; items: string[] };
 
+type ReaderLeadImage = { src: string; alt: string };
+
+type ReaderPresentation = {
+  title: string;
+  leadImage: ReaderLeadImage | null;
+  bodyBlocks: ContentBlock[];
+};
+
 const BLOCK_TAGS = new Set([
   "p", "div", "h1", "h2", "h3", "h4", "h5", "h6",
   "blockquote", "pre", "ul", "ol", "figure", "section",
@@ -193,6 +201,113 @@ function htmlToPlainText(html: string): string {
   return doc.body.textContent ?? "";
 }
 
+function normalizeReaderText(value: string | null | undefined): string {
+  return (value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+function normalizeImageSrc(src: string): string {
+  try {
+    const parsed = new URL(src);
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return src.trim();
+  }
+}
+
+function sameImageSrc(left: string | null | undefined, right: string | null | undefined): boolean {
+  if (!left || !right) return false;
+  return normalizeImageSrc(left) === normalizeImageSrc(right);
+}
+
+function findLeadingTitleIndex(blocks: readonly ContentBlock[]): number | null {
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    if (block.kind === "heading" && block.level <= 2) return index;
+    if (block.kind === "image") continue;
+    return null;
+  }
+  return null;
+}
+
+function findLeadingImageIndex(blocks: readonly ContentBlock[], titleIndex: number | null): number | null {
+  for (let index = 0; index < blocks.length; index += 1) {
+    if (index === titleIndex) continue;
+    const block = blocks[index];
+    if (block.kind === "image") return index;
+    if (block.kind === "heading" && block.level <= 2) continue;
+    return null;
+  }
+  return null;
+}
+
+function fallbackReaderTitle(item: FeedItemType): string {
+  return item.content.linkPreview?.title || item.content.text?.slice(0, 100) || "Untitled";
+}
+
+function buildReaderPresentation(
+  blocks: readonly ContentBlock[],
+  item: FeedItemType,
+  isStory: boolean,
+): ReaderPresentation {
+  const titleIndex = findLeadingTitleIndex(blocks);
+  const titleBlock = titleIndex === null ? null : blocks[titleIndex];
+  const articleTitle = titleBlock?.kind === "heading" ? titleBlock.content : null;
+  const title = articleTitle || fallbackReaderTitle(item);
+  const titleKey = normalizeReaderText(title);
+
+  const leadingImageIndex = findLeadingImageIndex(blocks, titleIndex);
+  const leadingImageBlock = leadingImageIndex === null ? null : blocks[leadingImageIndex];
+  const articleLeadImage =
+    leadingImageBlock?.kind === "image"
+      ? { src: leadingImageBlock.src, alt: leadingImageBlock.alt }
+      : null;
+  const previewLeadImage = !isStory && item.content.mediaUrls[0]
+    ? { src: item.content.mediaUrls[0], alt: "" }
+    : null;
+  const leadImage = articleLeadImage ?? previewLeadImage;
+
+  const bodyBlocks = blocks.filter((block, index) => {
+    if (
+      index === titleIndex &&
+      block.kind === "heading" &&
+      normalizeReaderText(block.content) === titleKey
+    ) {
+      return false;
+    }
+
+    if (
+      index === leadingImageIndex &&
+      block.kind === "image" &&
+      sameImageSrc(block.src, leadImage?.src)
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return { title, leadImage, bodyBlocks };
+}
+
+function plainTextFromBlocks(blocks: readonly ContentBlock[]): string {
+  return blocks
+    .flatMap((block) => {
+      switch (block.kind) {
+        case "text":
+        case "heading":
+        case "blockquote":
+        case "code":
+          return [block.content];
+        case "list":
+          return block.items;
+        case "image":
+          return block.caption ? [block.caption] : [];
+      }
+    })
+    .join("\n\n");
+}
+
 // ─── Heading size classes by level ───────────────────────────────────────────
 
 const HEADING_CLASSES: Record<number, string> = {
@@ -265,6 +380,12 @@ export function ReaderView({
   const [threadReplyMessage, setThreadReplyMessage] = useState<string | null>(null);
 
   const articleUrl = item.content.linkPreview?.url;
+  const pendingSavedUrlDetails =
+    item.platform === "saved" &&
+    item.userState.saved &&
+    Boolean(articleUrl) &&
+    !item.preservedContent?.text &&
+    item.content.text === articleUrl;
   const displayMediaUrls = readerMediaUrls ?? item.content.mediaUrls;
   const displayMediaTypes = readerMediaTypes ?? item.content.mediaTypes;
   const isStory = item.contentType === "story";
@@ -368,6 +489,7 @@ export function ReaderView({
       const shouldHydrateLive =
         Boolean(hydrateReaderItem) &&
         navigator.onLine &&
+        !pendingSavedUrlDetails &&
         (!hasReaderContent || (readerContentSource !== "cache" && shouldPin));
 
       if (shouldHydrateLive && hydrateReaderItem) {
@@ -415,7 +537,7 @@ export function ReaderView({
       }
 
       // Layer 4: browser fetch fallback for platforms without a native hydrator.
-      if (articleUrl && navigator.onLine) {
+      if (articleUrl && navigator.onLine && !pendingSavedUrlDetails) {
         setIsCaching(true);
         liveFetch(
           articleUrl,
@@ -443,6 +565,10 @@ export function ReaderView({
         if (!cancelled) {
           setHtml(null);
           setContentSource(null);
+          if (pendingSavedUrlDetails) {
+            setHydrationStatus("partial");
+            setHydrationMessage("Freed is saving details for this URL in the background.");
+          }
           if (isStory && displayMediaUrls.length === 0) {
             setHydrationStatus("expired");
             setHydrationMessage("This story media was not captured before the source expired it.");
@@ -468,6 +594,7 @@ export function ReaderView({
     pinReaderItem,
     item.preservedContent?.text,
     item.userState.saved,
+    pendingSavedUrlDetails,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoadThreadReplies = useCallback(async () => {
@@ -570,11 +697,16 @@ export function ReaderView({
     return [];
   }, [html, preservedText, item.content.text]);
 
-  // Plain text for focus mode rendering
-  const plainText = useMemo(
-    () => htmlToPlainText(html ?? preservedText ?? item.content.text ?? ""),
-    [html, preservedText, item.content.text],
+  const readerPresentation = useMemo(
+    () => buildReaderPresentation(articleBlocks, item, isStory),
+    [articleBlocks, item, isStory],
   );
+
+  // Plain text for focus mode rendering
+  const plainText = useMemo(() => {
+    const bodyText = plainTextFromBlocks(readerPresentation.bodyBlocks);
+    return bodyText || htmlToPlainText(preservedText ?? item.content.text ?? "");
+  }, [readerPresentation.bodyBlocks, preservedText, item.content.text]);
 
   useEffect(() => {
     if (inline) return;
@@ -775,7 +907,7 @@ export function ReaderView({
           </div>
 
           <h1 className="theme-display-large text-2xl sm:text-3xl font-bold mb-4 leading-tight">
-            {item.content.linkPreview?.title || item.content.text?.slice(0, 100)}
+            {readerPresentation.title}
           </h1>
 
           {articleUrl && (
@@ -796,10 +928,10 @@ export function ReaderView({
         {/* Media */}
         {isStory && displayMediaUrls.length > 0 ? (
           <StoryMediaGallery urls={displayMediaUrls} types={displayMediaTypes} />
-        ) : !isStory && item.content.mediaUrls[0] ? (
+        ) : !isStory && readerPresentation.leadImage ? (
           <img
-            src={item.content.mediaUrls[0]}
-            alt=""
+            src={readerPresentation.leadImage.src}
+            alt={readerPresentation.leadImage.alt}
             loading="lazy"
             decoding="async"
             className="mb-8 w-full rounded-xl bg-[var(--theme-bg-muted)] ring-1 ring-[var(--theme-border-subtle)]"
@@ -833,7 +965,7 @@ export function ReaderView({
         )}
 
         {/* Content */}
-        {isLoading ? (
+        {isLoading || pendingSavedUrlDetails ? (
           <div className="flex justify-center py-16">
             <div className="w-8 h-8 rounded-full border-2 border-[var(--theme-border-quiet)] border-t-[var(--theme-accent-secondary)] animate-spin" />
           </div>
@@ -841,8 +973,8 @@ export function ReaderView({
           <div className="text-lg leading-relaxed text-[var(--theme-text-secondary)]">
             <FocusText text={plainText ?? ""} options={focusOptions} />
           </div>
-        ) : articleBlocks.length > 0 ? (
-          <ArticleContent blocks={articleBlocks} />
+        ) : readerPresentation.bodyBlocks.length > 0 ? (
+          <ArticleContent blocks={readerPresentation.bodyBlocks} />
         ) : (
           <div className="text-lg leading-relaxed text-[var(--theme-text-secondary)]">
             {item.content.text || (

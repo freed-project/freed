@@ -38,7 +38,7 @@ export function FacebookFeedEmptyState() {
     setActionError(null);
     setSyncing(true);
     try {
-      await captureFbFeed();
+      await captureFbFeed("manual");
     } catch (err) {
       console.error("Facebook sync failed:", err);
       setActionError(err instanceof Error ? err.message : "Facebook sync failed");

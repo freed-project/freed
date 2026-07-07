@@ -261,6 +261,25 @@ describe("store optimistic mutations", () => {
     await preferencesPromise;
   });
 
+  it("waits for account relink persistence before exposing the new person", async () => {
+    const accountUpdate = deferred();
+    mockDocUpdateAccount.mockReturnValueOnce(accountUpdate.promise);
+    useAppStore.setState({
+      accounts: { account: makeAccount("account") },
+    });
+
+    const relinkPromise = useAppStore.getState().linkAccountToPerson("account", "person");
+
+    expect(useAppStore.getState().accounts.account?.personId).toBeUndefined();
+    expect(mockDocUpdateAccount).toHaveBeenCalledWith(
+      "account",
+      expect.objectContaining({ personId: "person" }),
+    );
+
+    accountUpdate.resolve();
+    await relinkPromise;
+  });
+
   it("projects batched read marks after the batch timer flushes", async () => {
     vi.useFakeTimers();
     const readUpdate = deferred();

@@ -5,6 +5,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import {
+  SOCIAL_PROVIDER_DESKTOP_FILES,
+  SOCIAL_PROVIDER_PACKAGE_PREFIXES,
+} from "./lib/provider-visible-paths.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 export const REPO_ROOT = path.resolve(__dirname, "..");
@@ -162,39 +167,8 @@ export function isPwaSurface(filePath) {
   return filePath.startsWith("packages/pwa/");
 }
 
-const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
-  "packages/desktop/src/lib/capture.ts",
-  "packages/desktop/src/lib/fb-auth.ts",
-  "packages/desktop/src/lib/fb-capture.ts",
-  "packages/desktop/src/lib/instagram-auth.ts",
-  "packages/desktop/src/lib/instagram-capture.ts",
-  "packages/desktop/src/lib/li-auth.ts",
-  "packages/desktop/src/lib/li-capture.ts",
-  "packages/desktop/src/lib/provider-auth-errors.ts",
-  "packages/desktop/src/lib/provider-health.ts",
-  "packages/desktop/src/lib/scraper-media-diag.ts",
-  "packages/desktop/src/lib/scraper-prefs.ts",
-  "packages/desktop/src/lib/social-auth-cookie-state.ts",
-  "packages/desktop/src/lib/social-capture-runtime.ts",
-  "packages/desktop/src/lib/social-comment-hydration.ts",
-  "packages/desktop/src/lib/social-provider-copy.ts",
-  "packages/desktop/src/lib/x-auth.ts",
-  "packages/desktop/src/lib/x-capture.ts",
-  "packages/desktop/src-tauri/src/fb-comments-extract.js",
-  "packages/desktop/src-tauri/src/fb-extract.js",
-  "packages/desktop/src-tauri/src/fb-groups-extract.js",
-  "packages/desktop/src-tauri/src/fb-stories-extract.js",
-  "packages/desktop/src-tauri/src/ig-comments-extract.js",
-  "packages/desktop/src-tauri/src/ig-extract.js",
-  "packages/desktop/src-tauri/src/ig-stories-extract.js",
-  "packages/desktop/src-tauri/src/li-extract.js",
-]);
-
-const SOCIAL_PROVIDER_PACKAGE_PREFIXES = [
-  "packages/capture-facebook/",
-  "packages/capture-instagram/",
-  "packages/capture-x/",
-];
+// The provider path classification is single-sourced (stability task W1-06).
+// Add new provider surfaces in scripts/lib/provider-visible-paths.mjs, not here.
 
 const SOCIAL_PROVIDER_FOCUSED_TEST_FILES = [
   "facebook-extract-script.test.ts",
@@ -296,6 +270,13 @@ export function isValidateRunnerPath(filePath) {
   return (
     filePath === "scripts/validate-worktree.mjs" ||
     filePath === "scripts/validate-worktree.test.mjs"
+  );
+}
+
+export function isSocialScrapeLoopPath(filePath) {
+  return (
+    filePath === "scripts/social-scrape-loop.mjs" ||
+    filePath === "scripts/social-scrape-loop.test.mjs"
   );
 }
 
@@ -471,6 +452,7 @@ export function buildValidationPlan(mode, changedFiles) {
   const websiteSurfaceChanged = changedFiles.some(isWebsiteSurface);
   const releaseToolingChanged = changedFiles.some(isReleaseToolingPath);
   const validateRunnerChanged = changedFiles.some(isValidateRunnerPath);
+  const socialScrapeLoopChanged = changedFiles.some(isSocialScrapeLoopPath);
   const captureWorkspaces = unique(
     changedFiles.map(captureWorkspaceForFile).filter(Boolean),
   ).sort();
@@ -480,12 +462,24 @@ export function buildValidationPlan(mode, changedFiles) {
   const validateRunnerOnlyChanged =
     changedFiles.length > 0 &&
     changedFiles.every(isValidateRunnerPath);
+  const socialScrapeLoopOnlyChanged =
+    changedFiles.length > 0 &&
+    changedFiles.every(isSocialScrapeLoopPath);
 
   if (validateRunnerOnlyChanged) {
     return [
       nodeCommand("validation runner tests", [
         "--test",
         path.join("scripts", "validate-worktree.test.mjs"),
+      ]),
+    ];
+  }
+
+  if (socialScrapeLoopOnlyChanged) {
+    return [
+      nodeCommand("social scrape loop tests", [
+        "--test",
+        path.join("scripts", "social-scrape-loop.test.mjs"),
       ]),
     ];
   }
@@ -547,6 +541,16 @@ export function buildValidationPlan(mode, changedFiles) {
       nodeCommand("validation runner tests", [
         "--test",
         path.join("scripts", "validate-worktree.test.mjs"),
+      ]),
+    );
+  }
+
+  if (socialScrapeLoopChanged) {
+    addCommand(
+      plan,
+      nodeCommand("social scrape loop tests", [
+        "--test",
+        path.join("scripts", "social-scrape-loop.test.mjs"),
       ]),
     );
   }

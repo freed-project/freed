@@ -2,11 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  applyPinnedHighlightsToRelease,
   buildReleaseDeck,
   compareTags,
   compareVersionDays,
   coerceReleaseShape,
   dayDateFromVersion,
+  normalizePinnedHighlightTexts,
+  removePreviousDayFeatureRepeats,
   renderReleaseBody,
   validateReleaseShape,
   versionDayKey,
@@ -170,6 +173,98 @@ test("validateReleaseShape does not force stale previous-day features forward", 
           followUps: [],
         },
       ],
+    },
+  );
+
+  assert.equal(result.errors.length, 0);
+});
+
+test("removePreviousDayFeatureRepeats strips generated stale feature repeats", () => {
+  const release = removePreviousDayFeatureRepeats(
+    {
+      deck: "Dev build 1808",
+      features: [
+        "Dev-channel prereleases now include a terminal helper for installed-build sync soaks",
+      ],
+      fixes: [
+        "Renderer recovery now ignores reclaimable WebKit RSS tail while footprint is healthy",
+        "Dev-channel prereleases now include a terminal helper for installed-build sync soaks",
+      ],
+      followUps: [
+        "Terminal trigger docs stay available for unattended soaks",
+      ],
+    },
+    {
+      deck: "Dev-channel prereleases and terminal sync soaks",
+      features: [
+        "Dev-channel prereleases now include a terminal helper for installed-build sync soaks",
+      ],
+      fixes: [],
+      followUps: [],
+    },
+  );
+
+  assert.deepEqual(release.features, []);
+  assert.deepEqual(release.fixes, [
+    "Renderer recovery now ignores reclaimable WebKit RSS tail while footprint is healthy",
+  ]);
+  assert.deepEqual(release.followUps, [
+    "Terminal trigger docs stay available for unattended soaks",
+  ]);
+});
+
+test("normalizePinnedHighlightTexts supports string and object entries", () => {
+  assert.deepEqual(
+    normalizePinnedHighlightTexts([
+      "The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes",
+      { text: "Terminal trigger docs stay available for unattended soaks" },
+      { text: "" },
+      null,
+    ]),
+    [
+      "The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes",
+      "Terminal trigger docs stay available for unattended soaks",
+    ],
+  );
+});
+
+test("applyPinnedHighlightsToRelease keeps missing pinned items visible", () => {
+  assert.deepEqual(
+    applyPinnedHighlightsToRelease(
+      {
+        deck: "More reliable unattended desktop validation",
+        fixes: ["Harden quiet startup and sync recovery"],
+        followUps: [],
+      },
+      [
+        "The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes",
+      ],
+    ).fixes,
+    [
+      "The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes",
+    ],
+  );
+});
+
+test("validateReleaseShape allows previous-day theme overlap in the deck", () => {
+  const result = validateReleaseShape(
+    {
+      deck: "Dev-channel prereleases and renderer recovery",
+      features: [],
+      fixes: [
+        "Renderer recovery now ignores reclaimable WebKit RSS tail while footprint is healthy",
+      ],
+      followUps: [],
+    },
+    {
+      previousDayRelease: {
+        deck: "Dev-channel prereleases",
+        features: [
+          "Dev-channel prereleases now include a terminal helper for installed-build sync soaks",
+        ],
+        fixes: [],
+        followUps: [],
+      },
     },
   );
 

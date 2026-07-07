@@ -3,6 +3,7 @@
 import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -15,6 +16,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isProviderVisiblePath } from "./lib/provider-visible-paths.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 export const REPO_ROOT = path.resolve(__dirname, "..");
@@ -25,13 +28,49 @@ const DEFAULT_CRASH_AUTOMATION =
   "/Users/aubreyfalconer/.codex/automations/crash-watch/automation.toml";
 const DEFAULT_DEV_BOT_MEMORY =
   "/Users/aubreyfalconer/.codex/automations/hourly-dev-bot/memory.md";
-const DEFAULT_SOAK_POINTER = "/tmp/freed-perf-soak/current-soak-dir";
-const DEFAULT_OUTCOME_LEDGER = "/tmp/freed-nightly-self-improve/outcomes.jsonl";
+// Planner learning state lives under the home directory so it survives
+// reboots; macOS periodically clears /tmp, which made the outcome ledger and
+// active-soak pointer amnesiac. The /tmp paths remain readable as a legacy
+// fallback for one release (see resolveStatePathWithLegacyFallback).
+export const AUTOMATION_STATE_DIR = path.join(os.homedir(), ".freed", "automation");
+const LEGACY_SOAK_POINTER = "/tmp/freed-perf-soak/current-soak-dir";
+const LEGACY_OUTCOME_LEDGER = "/tmp/freed-nightly-self-improve/outcomes.jsonl";
+const DEFAULT_SOAK_POINTER = path.join(AUTOMATION_STATE_DIR, "current-soak-dir");
+const DEFAULT_OUTCOME_LEDGER = path.join(AUTOMATION_STATE_DIR, "outcomes.jsonl");
+const LEGACY_SOAK_ROOT = "/tmp/freed-perf-soak";
+
+export function resolveStatePathWithLegacyFallback(preferredPath, legacyPath, fsOps = {}) {
+  const ops = { existsSync, mkdirSync, copyFileSync, ...fsOps };
+  if (ops.existsSync(preferredPath)) {
+    return preferredPath;
+  }
+  if (legacyPath && ops.existsSync(legacyPath)) {
+    try {
+      ops.mkdirSync(path.dirname(preferredPath), { recursive: true });
+      ops.copyFileSync(legacyPath, preferredPath);
+      return preferredPath;
+    } catch {
+      return legacyPath;
+    }
+  }
+  return preferredPath;
+}
 const MAX_PEER_EVIDENCE_FILES = 12;
 const STALE_SOAK_MS = 2 * 60 * 60 * 1000;
 const MIN_PERFORMANCE_SOAK_SAMPLES = 3;
 const DEFAULT_MAX_TARGETS = 6;
 const DEFAULT_MINIMUM_NIGHT_MINUTES = 180;
+const UNATTENDED_APP_INTERACTION_RULES = [
+  "Do not stop an unattended run because the next useful validation or testing step needs a Freed Desktop button press.",
+  "Use terminal diagnostics and shipped triggers first, including `node scripts/dev-sync-trigger.mjs <provider>` for installed dev-channel provider sync soaks.",
+  "If a foreground app click is truly the fastest way to test properly, ask for permission with a 10 minute response window and continue if the user is unavailable.",
+  "When the same app action is likely to recur, build and ship a terminal trigger instead of depending on System Events, coordinate clicks, Computer Use, or browser automation.",
+];
+const KNOWN_GENERATED_ARTIFACT_PATHS = [
+  "packages/desktop/playwright-report",
+  "packages/desktop/test-results",
+  "packages/desktop/.playwright-mcp",
+];
 
 const GIB = 1024 * 1024 * 1024;
 const numberFormatter = new Intl.NumberFormat("en-US", {
@@ -246,16 +285,21 @@ export function parseArgs(argv) {
   }
 
   args.repo = path.resolve(args.repo);
+  if (args.soakPointer === DEFAULT_SOAK_POINTER) {
+    args.soakPointer = resolveStatePathWithLegacyFallback(DEFAULT_SOAK_POINTER, LEGACY_SOAK_POINTER);
+  }
+  if (args.outcomeLedger === DEFAULT_OUTCOME_LEDGER) {
+    args.outcomeLedger = resolveStatePathWithLegacyFallback(
+      DEFAULT_OUTCOME_LEDGER,
+      LEGACY_OUTCOME_LEDGER,
+    );
+  }
   args.soakPointer = path.resolve(args.soakPointer);
   args.outcomeLedger = path.resolve(args.outcomeLedger);
   args.peerWorktrees = args.peerWorktrees.filter(Boolean).map((item) => path.resolve(item));
   args.runDir =
     args.runDir ||
-    path.join(
-      os.tmpdir(),
-      "freed-nightly-self-improve",
-      new Date().toISOString().replace(/[:.]/g, ""),
-    );
+    path.join(AUTOMATION_STATE_DIR, "runs", new Date().toISOString().replace(/[:.]/g, ""));
 
   return args;
 }
@@ -658,7 +702,16 @@ export function resolveReadableSoak(soakDir = "", pointerPath = DEFAULT_SOAK_POI
     return preferred;
   }
 
-  const fallbackDir = findLatestReadableSoakDir(path.dirname(preferredDir || DEFAULT_SOAK_POINTER), preferredDir);
+  // Only default invocations may widen the search to the machine-global soak
+  // roots (including the legacy /tmp root, kept readable for one release).
+  // Explicit --soak-dir/--soak-pointer callers stay scoped to their own root.
+  const usingDefaults = !soakDir && pointerPath === DEFAULT_SOAK_POINTER;
+  const fallbackDir =
+    findLatestReadableSoakDir(path.dirname(preferredDir || pointerPath), preferredDir) ||
+    (usingDefaults
+      ? findLatestReadableSoakDir(path.join(AUTOMATION_STATE_DIR, "soaks"), preferredDir) ||
+        findLatestReadableSoakDir(LEGACY_SOAK_ROOT, preferredDir)
+      : "");
   if (!fallbackDir) {
     return preferred;
   }
@@ -684,7 +737,12 @@ export function repairSoakPointer(pointerPath = DEFAULT_SOAK_POINTER, options = 
   }
 
   const rootDir = path.dirname(currentDir || pointerPath);
-  const readableDir = findLatestReadableSoakDir(rootDir, currentDir);
+  const readableDir =
+    findLatestReadableSoakDir(rootDir, currentDir) ||
+    (pointerPath === DEFAULT_SOAK_POINTER
+      ? findLatestReadableSoakDir(path.join(AUTOMATION_STATE_DIR, "soaks"), currentDir) ||
+        findLatestReadableSoakDir(LEGACY_SOAK_ROOT, currentDir)
+      : "");
   if (!readableDir) {
     return {
       repaired: false,
@@ -737,10 +795,15 @@ export function summarizeDailyBugMemory(memoryPath) {
     path: memoryPath,
     latestDate: latest.date,
     latestSection: latest.text,
-    latestHadNoNewCommits: /0`\s+commits|0 commits|no new repo evidence/i.test(latest.text),
+    latestHadNoNewCommits:
+      /(?:^|[^\d])`?0`?\s+(?:additional\s+)?commits\b|no new repo (?:evidence|commits)\b/i.test(
+        latest.text,
+      ),
     latestHadFix:
       !latestHadNoFix &&
-      /outcome:\s+.*(fix applied|implemented|merged)|fix applied/i.test(latest.text),
+      /outcome:\s+.*(?:fix applied|implemented|\bmerged\b)|fix\s+(?:applied|shipped|published)\b/i.test(
+        latest.text,
+      ),
   };
 }
 
@@ -756,6 +819,54 @@ function git(repo, args) {
   }
 }
 
+function gh(repo, args) {
+  try {
+    return execFileSync("gh", args, {
+      cwd: repo,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trimEnd();
+  } catch {
+    return "";
+  }
+}
+
+function collectMergedPullRequestHeads(repo) {
+  const output = gh(repo, [
+    "pr",
+    "list",
+    "--state",
+    "merged",
+    "--base",
+    "dev",
+    "--limit",
+    "200",
+    "--json",
+    "headRefName,headRefOid",
+  ]);
+  if (!output) {
+    return new Map();
+  }
+
+  try {
+    const pullRequests = JSON.parse(output);
+    const mergedHeads = new Map();
+    for (const pullRequest of pullRequests) {
+      const branch = String(pullRequest.headRefName ?? "");
+      const headOid = String(pullRequest.headRefOid ?? "");
+      if (!branch || !headOid) {
+        continue;
+      }
+      const branchHeads = mergedHeads.get(branch) ?? new Set();
+      branchHeads.add(headOid);
+      mergedHeads.set(branch, branchHeads);
+    }
+    return mergedHeads;
+  } catch {
+    return new Map();
+  }
+}
+
 function unique(values) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -768,20 +879,30 @@ function shortStatusPaths(statusText) {
     .filter(Boolean);
 }
 
-function providerVisiblePath(filePath) {
-  return (
-    filePath.startsWith("packages/capture-") ||
-    filePath.includes("/capture-") ||
-    filePath.includes("facebook") ||
-    filePath.includes("fb-extract") ||
-    filePath.includes("instagram") ||
-    filePath.includes("linkedin") ||
-    filePath.includes("x-capture") ||
-    filePath.includes("li-capture") ||
-    filePath.includes("scraper-prefs") ||
-    filePath.includes("scraper-window")
+function normalizeRepoFilePath(filePath) {
+  return filePath.replace(/\\/g, "/").replace(/\/+$/u, "");
+}
+
+function isKnownGeneratedArtifactPath(filePath) {
+  const normalizedPath = normalizeRepoFilePath(filePath);
+  return KNOWN_GENERATED_ARTIFACT_PATHS.some(
+    (artifactPath) =>
+      normalizedPath === artifactPath || normalizedPath.startsWith(`${artifactPath}/`),
   );
 }
+
+function filterGeneratedArtifactStatus(statusText) {
+  return statusText
+    .split(/\r?\n/)
+    .filter((line) => !isKnownGeneratedArtifactPath(line.slice(3).trim().replace(/^.* -> /, "")))
+    .filter(Boolean)
+    .join("\n")
+}
+
+// Provider-visible classification is single-sourced in
+// scripts/lib/provider-visible-paths.mjs (stability task W1-06). The old
+// substring heuristic here diverged from validate-worktree's classification.
+const providerVisiblePath = isProviderVisiblePath;
 
 function peerWorktreeScore(peer) {
   let score = 46;
@@ -802,6 +923,15 @@ function peerWorktreeScore(peer) {
   }
   if (peer.providerVisible) {
     score -= 15;
+  }
+  if (peer.aheadCount === 0 && peer.changedFileCount > 0) {
+    score -= 16;
+    if (peer.behindCount >= 25) {
+      score -= 24;
+    }
+  }
+  if (peer.aheadCount > 0 && peer.behindCount >= 25) {
+    score -= 8;
   }
   return Math.min(99, Math.max(1, score));
 }
@@ -841,8 +971,11 @@ export function summarizePeerWorktree(worktreePath, currentRepo) {
     git(resolved, ["branch", "--show-current"]) ||
     git(resolved, ["rev-parse", "--abbrev-ref", "HEAD"]) ||
     "unknown";
-  const head = git(resolved, ["rev-parse", "--short", "HEAD"]);
-  const status = git(resolved, ["status", "--short"]);
+  const headOid = git(resolved, ["rev-parse", "HEAD"]);
+  const head = headOid ? headOid.slice(0, 8) : git(resolved, ["rev-parse", "--short", "HEAD"]);
+  const status = filterGeneratedArtifactStatus(
+    git(resolved, ["status", "--short", "--untracked-files=all"]),
+  );
   const committedFiles = git(resolved, [
     "diff",
     "--name-only",
@@ -876,6 +1009,7 @@ export function summarizePeerWorktree(worktreePath, currentRepo) {
     path: resolved,
     branch,
     head,
+    headOid,
     status,
     aheadCount: Number.isFinite(aheadCount) ? aheadCount : 0,
     behindCount: Number.isFinite(behindCount) ? behindCount : 0,
@@ -889,7 +1023,19 @@ export function summarizePeerWorktree(worktreePath, currentRepo) {
   };
 }
 
-export function collectPeerWorktrees(repo, explicitWorktrees = [], scan = true) {
+function matchesMergedPullRequestHead(peer, mergedPullRequestHeads) {
+  if (!peer?.branch || !peer?.headOid) {
+    return false;
+  }
+  return mergedPullRequestHeads.get(peer.branch)?.has(peer.headOid) ?? false;
+}
+
+export function collectPeerWorktrees(
+  repo,
+  explicitWorktrees = [],
+  scan = true,
+  mergedPullRequestHeads = null,
+) {
   const explicitPaths = new Set(
     explicitWorktrees.flatMap((worktreePath) => {
       try {
@@ -899,6 +1045,7 @@ export function collectPeerWorktrees(repo, explicitWorktrees = [], scan = true) 
       }
     }),
   );
+  const mergedHeads = mergedPullRequestHeads ?? collectMergedPullRequestHeads(repo);
   const worktreePaths = [...explicitWorktrees];
   if (scan) {
     const worktreeList = git(repo, ["worktree", "list", "--porcelain"]);
@@ -910,7 +1057,12 @@ export function collectPeerWorktrees(repo, explicitWorktrees = [], scan = true) 
   return unique(worktreePaths)
     .map((worktreePath) => summarizePeerWorktree(worktreePath, repo))
     .filter(Boolean)
-    .map((peer) => ({ ...peer, explicit: explicitPaths.has(peer.path) }))
+    .map((peer) => ({
+      ...peer,
+      explicit: explicitPaths.has(peer.path),
+      mergedToDev: matchesMergedPullRequestHead(peer, mergedHeads),
+    }))
+    .filter((peer) => peer.explicit || !peer.mergedToDev)
     .filter(shouldRetainPeerWorktree)
     .filter((peer) => peer.changedFileCount > 0 || peer.aheadCount > 0)
     .map((peer) => ({ ...peer, score: peerWorktreeScore(peer) }))
@@ -1136,11 +1288,7 @@ export function collectRiskSnapshot({
     );
   }
 
-  for (const relativePath of [
-    "packages/desktop/playwright-report",
-    "packages/desktop/test-results",
-    "packages/desktop/.playwright-mcp",
-  ]) {
+  for (const relativePath of KNOWN_GENERATED_ARTIFACT_PATHS) {
     const absolutePath = path.join(repoPath, relativePath);
     const fileCount = countFiles(absolutePath);
     if (fileCount > 0) {
@@ -1172,11 +1320,11 @@ export function collectRiskSnapshot({
     risks.push(
       riskItem({
         id: "missing-root-node-modules",
-        severity: "blocker",
+        severity: "warning",
         title: "Root dependencies are not installed",
         evidence: [path.join(repoPath, "node_modules")],
         remediation:
-          "Bootstrap the worktree before running validation or planning work that depends on repo scripts.",
+          "Keep bug scanning and planning moving, then bootstrap the worktree before any validation or fix path that depends on repo packages.",
         actions: [
           riskAction({
             id: "bootstrap-root-dependencies",
@@ -1851,6 +1999,10 @@ function formatCandidate(candidate, index) {
     "",
     candidate.prompt,
     "",
+    "## Unattended App Interaction",
+    "",
+    ...UNATTENDED_APP_INTERACTION_RULES.map((item) => `- ${item}`),
+    "",
     "## Validation",
     "",
     ...candidate.validation.map((item) => `- ${item}`),
@@ -1915,6 +2067,10 @@ export function buildReport({ repo, soak, riskSnapshot, duplicateWork, outcomeLe
       `${index + 1}. ${candidate.title}`,
       `   Kind: ${candidate.kind}. Score: ${numberFormatter.format(candidate.score)}. Machine time: ${numberFormatter.format(candidate.estimatedMinutes)} min.`,
     ]),
+    "",
+    "## Unattended App Interaction",
+    "",
+    ...UNATTENDED_APP_INTERACTION_RULES.map((item) => `- ${item}`),
     "",
     "## Execution Phases",
     "",
@@ -2134,6 +2290,8 @@ export function buildExecutionPlan(selected) {
       commands: [
         "# Use freed-ship-build dev after fixes merge into dev.",
         "# Install the new dev build, restart the installed-build soak, and append outcome-template.jsonl to the outcome ledger.",
+        "# For installed provider sync soaks, prefer node scripts/dev-sync-trigger.mjs <provider> over foreground app clicks.",
+        "# If a foreground app click is required, ask with a 10 minute response window and continue if the user is unavailable.",
       ],
     },
   );
@@ -2176,6 +2334,10 @@ function renderOutcomeCloseoutMarkdown({ selected, outcomeLedger }) {
     `Outcome ledger: ${outcomeLedger}`,
     "",
     "Run one command per selected target after the target finishes. Use `shipped` only after the fix is merged, released when applicable, installed, and soaked enough to compare evidence.",
+    "",
+    "Unattended app interaction:",
+    "",
+    ...UNATTENDED_APP_INTERACTION_RULES.map((item) => `- ${item}`),
     "",
     ...selected.flatMap((candidate, index) => [
       `## ${index + 1}. ${candidate.title}`,
@@ -2370,6 +2532,16 @@ export function main(argv = process.argv.slice(2)) {
       );
     }
     return;
+  }
+
+  // Machine preflight, warn-only: report broken tooling on stderr before
+  // planning. Loops that must stop on a broken machine run doctor --strict.
+  try {
+    execFileSync(process.execPath, [path.join(__dirname, "doctor.mjs")], {
+      stdio: ["ignore", 2, 2],
+    });
+  } catch {
+    // Never block the planner on preflight reporting.
   }
 
   if (args.repairSoakPointer) {

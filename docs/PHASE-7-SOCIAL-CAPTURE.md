@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, shared memory-preflight backoff, transient memory-pressure health recovery, memory-aware scrape pass planning, cloud-sync exclusion while social scrapes are active, Facebook group controls with stored-name repair and single-group leave verification, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, explicit reply links with opt-in beta inline hydration for X, Facebook, and Instagram reader posts, captured authors now feeding the Phase 8 account catalog for identity review, and a local permanent media vault for a user's own Meta media
+> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, stricter Instagram story viewer validation, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, shared memory-preflight backoff, transient memory-pressure health recovery, memory-aware scrape pass planning, cloud-sync exclusion while social scrapes are active, Facebook group controls with stored-name repair, ID-tail fallback labels, and single-group leave verification, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, Instagram media-key duplicate repair, same-platform social story duplicate repair, explicit reply links with opt-in beta inline hydration for X, Facebook, and Instagram reader posts, captured authors now feeding the Phase 8 account catalog for identity review, post-login sync startup that closes login prompts only after scrape health is confirmed, a local permanent media vault for a user's own Meta media, and a local social scrape optimization loop that ranks safe next actions and post-block memory recovery from runtime logs without adding provider-visible behavior
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -81,8 +81,11 @@ Both Facebook and Instagram use the same pattern:
 2. User authenticates through the real login flow (2FA, CAPTCHA, etc.)
 3. `on_navigation` handler detects redirect away from login page
 4. `*-auth-result` event is emitted while the WebView stays visible
-5. User finishes any platform prompts, closes the login window, and then sync begins
-6. Cookies persist in the WebView data store for future scraping sessions
+5. Freed marks the source connected and starts sync using the user's selected scraper window mode
+6. The login window stays open while the scrape starts so the user can finish platform prompts
+7. Freed closes the login window only after the scraper emits a healthy startup event
+8. If scrape startup fails, the login window remains open and the user can close it or click Sync Now
+9. Cookies persist in the WebView data store for future scraping sessions
 
 ### Feed Scraping
 
@@ -90,7 +93,8 @@ Both Facebook and Instagram use the same pattern:
 2. Waits for page load with randomized jitter (12-16s)
 3. Injects extraction script (`fb-extract.js` / `ig-extract.js`) at multiple scroll positions
 4. Script reads visible posts from the DOM and emits them via Tauri event IPC
-5. Frontend normalizes raw posts to `FeedItem[]` using `@freed/capture-*/browser`
+5. Native lifecycle events report scrape startup, healthy startup, and startup failure with window mode and interaction-method diagnostics
+6. Frontend normalizes raw posts to `FeedItem[]` using `@freed/capture-*/browser`
 
 ### Extraction Scripts
 
@@ -115,6 +119,8 @@ Social memory preflight now has shared backoff across Facebook, Instagram, and L
 Provider health now treats memory-pressure preflight blocks as transient deferrals instead of durable provider failures. The attempts stay in local diagnostics for review, but after the recovery window they stop driving sidebar warnings or stale source-menu copy.
 
 Facebook and Instagram feed scrapes now build a memory-aware pass plan after the WebView has loaded. When memory is healthy they keep the normal randomized session. When Freed Desktop is close to the scrape budget, they skip story collection and reduce scroll passes instead of opening a full story-plus-feed session that is likely to pause or trigger memory recovery. Each plan is written to runtime health diagnostics with the provider, pass range, story decision, margin, and memory budgets.
+
+`npm run social:scrape-loop` reads local runtime health, diagnostics, and provider-health logs, ranks safe local-only next actions, and reports provider-visible decisions that remain blocked pending approval. The loop watches WebKit RSS peaks, renderer recovery attempts, preflights, scrape plans, blocked preflights, cooldowns, extractor failure stages, missing provider coverage, providers that preflight without recording a plan, the lowest later WebKit RSS sample after a provider block, providers that recovered under budget but never recorded a later scrape plan, the latest post-block runtime state, stale provider-health memory errors after recovery, provider-health zero-post attempts, and the provider-health pause plus latest attempt state so stale memory pauses and empty-feed failures are visible without opening provider pages.
 
 ### Permanent Media Archive
 
@@ -180,6 +186,7 @@ const RATE_LIMITS = {
 | 7.20 | Explicit reply links and opt-in beta inline hydration for reader posts | ✓ Complete |
 | 7.21 | Shared social memory-preflight backoff      | ✓ Complete  |
 | 7.22 | Story Wall grouped settings section and GitHub Pages publisher | 🚧 In Progress |
+| 7.23 | Local social scrape optimization loop       | ✓ Complete  |
 
 ---
 
@@ -194,11 +201,12 @@ const RATE_LIMITS = {
 - [x] Instagram feed integrated into Desktop via Tauri WebView scraping
 - [x] Both platforms integrated into Desktop refreshAllFeeds()
 - [x] Settings UI for both platforms (login, check connection, sync, disconnect), with the same provider section also reused inside Debug panel health cards
-- [x] Facebook and Instagram login windows stay open after auth so users can finish platform prompts before sync starts
+- [x] Facebook and Instagram login windows stay open after auth so users can finish platform prompts while sync starts, then close only after scrape startup health is confirmed
 - [x] Feed pollution filtering blocks promoted X entries and suggested FB/IG posts
-- [x] Facebook Settings includes per-group include/exclude controls for joined groups inside a filtered inner scroller that prevents late group loads from shifting the outer Settings view, plus a browser handoff action for leaving a group on Facebook
-- [x] Facebook group discovery rejects activity-only labels and numeric ID fallbacks, scrolls the joined-groups directory during explicit refresh, reads nearby rendered card text and image alt text when group links only expose timestamps, preserves good stored names, repairs missing stored names from already captured group posts or individual group pages, verifies a single group after the leave handoff before removing it locally, and keeps joined-groups refresh behind explicit provider-risk confirmation
+- [x] Facebook Settings includes per-group include/exclude controls for joined groups inside a filtered inner scroller that prevents late group loads from shifting the outer Settings view, ID-tail fallback labels for groups whose names are still missing, plus a browser handoff action for leaving a group on Facebook
+- [x] Facebook group discovery rejects activity-only labels and numeric ID fallbacks, scrolls the joined-groups directory during explicit refresh, logs group refreshes in the provider activity log, shows row-level progress while a missing-name group is being checked, reads nearby rendered card text and image alt text when group links only expose timestamps, preserves good stored names, repairs missing stored names from already captured group posts or individual group pages, verifies a single group after the leave handoff before removing it locally, and keeps joined-groups refresh behind explicit provider-risk confirmation
 - [x] Desktop Sources settings expose per-source scraper window modes: shown, cloaked, hidden
+- [x] Post-login sync uses the user's selected scraper window mode instead of switching modes for the first scrape
 - [x] Background FB and IG scraper WebViews force provider media silent during scrape and auth-check flows
 - [x] Social providers surface paused/degraded health summaries in settings and the sidebar source surfaces
 - [x] Explicit and heuristic rate-limit signals auto-pause social sync, notify the user, and allow manual resume
@@ -206,12 +214,13 @@ const RATE_LIMITS = {
 - [x] Settings Sources nav shows visible right-edge status dots, while the primary Sources sidebar keeps smaller inline status dots after each social provider name
 - [x] Social sync actions show an inline spinner only while that specific provider is actively syncing
 - [x] Social provider status dots switch to a live spinner while that provider is actively syncing
-- [x] Social provider sections include a filtered line-by-line scrape log so users can see what the scraper is doing in real time without expanding the outer Settings view
+- [x] Social provider sections include a filtered line-by-line scrape log so users can see what the scraper is doing in real time without expanding the outer Settings view, and paused or degraded health summaries keep the latest failure reason plus timestamp visible after the live log expires
 - [x] Desktop social scraper commands serialize behind a shared native session lock so background WebKit jobs cannot overlap and starve the main renderer
 - [x] Social memory preflight blocks fan-out across providers when Freed Desktop memory remains high after cleanup
 - [x] Memory-pressure preflight deferrals stay in diagnostics but age out of the current sidebar and source-menu warning state
 - [x] Facebook and Instagram feed scrapes now register with the shared background runtime so cloud sync, content fetches, RSS polls, snapshots, outbox drains, and semantic classifiers do not compete with active WebKit scraping
 - [x] Social scrape memory preflight uses adaptive high-memory budgets, native hidden-window runtime samples, and launch-delayed semantic enrichment so provider WebKit sessions get priority during long background runs
+- [x] Local social scrape optimization loop ranks runtime-log evidence into safe local next actions and explicit provider-visible risk decisions
 - [x] Facebook, Instagram, and LinkedIn extractors expand common long-text controls before normalization
 - [x] Social provider source menus surface a quick status explanation for warning or reconnect states before routing into full settings
 - [x] Captured social authors can backfill the Phase 8 account catalog so followed accounts exist before identity confirmation

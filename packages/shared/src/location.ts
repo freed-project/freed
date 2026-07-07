@@ -48,6 +48,12 @@ export interface LocationMarkerOptions {
   timeMode?: MapTimeMode;
   now?: number;
   playbackAt?: number | null;
+  timeRange?: LocationTimeRange | null;
+}
+
+export interface LocationTimeRange {
+  startAt: number;
+  endAt: number;
 }
 
 interface NamedLocationSignal {
@@ -240,6 +246,39 @@ function normalizeTimeRange(timeRange: TimeRange): { startsAt: number; endsAt: n
   };
 }
 
+function locationItemTimeRange(item: FeedItem): LocationTimeRange {
+  if (!item.timeRange) {
+    return {
+      startAt: item.publishedAt,
+      endAt: item.publishedAt,
+    };
+  }
+
+  const normalized = normalizeTimeRange(item.timeRange);
+  return {
+    startAt: normalized.startsAt,
+    endAt: normalized.endsAt,
+  };
+}
+
+function locationSortTimestampForOptions(
+  item: FeedItem,
+  options: LocationMarkerOptions,
+): number {
+  if (options.timeRange) {
+    return locationItemTimeRange(item).endAt;
+  }
+  return locationSortTimestamp(item, options.timeMode ?? "current");
+}
+
+function isLocationItemVisibleInRange(
+  item: FeedItem,
+  timeRange: LocationTimeRange,
+): boolean {
+  const itemRange = locationItemTimeRange(item);
+  return itemRange.startAt <= timeRange.endAt && itemRange.endAt >= timeRange.startAt;
+}
+
 export function isLocationItemVisibleInTimeMode(
   item: FeedItem,
   timeMode: MapTimeMode = "current",
@@ -287,6 +326,11 @@ export function filterResolvedLocationsByTime(
   resolvedItems: ResolvedLocationItem[],
   options: LocationMarkerOptions = {},
 ): ResolvedLocationItem[] {
+  const timeRange = options.timeRange ?? null;
+  if (timeRange) {
+    return resolvedItems.filter((resolved) => isLocationItemVisibleInRange(resolved.item, timeRange));
+  }
+
   const timeMode = options.timeMode ?? "current";
   const now = options.now ?? Date.now();
   const playbackAt = options.playbackAt ?? null;
@@ -338,6 +382,26 @@ export function getLocationTimelineMoments(
   return Array.from(moments).sort((a, b) => a - b);
 }
 
+export function getLocationTimelineBounds(
+  resolvedItems: ResolvedLocationItem[],
+): LocationTimeRange | null {
+  let startAt = Number.POSITIVE_INFINITY;
+  let endAt = Number.NEGATIVE_INFINITY;
+
+  for (const resolved of resolvedItems) {
+    const range = locationItemTimeRange(resolved.item);
+    startAt = Math.min(startAt, range.startAt);
+    endAt = Math.max(endAt, range.endAt);
+  }
+
+  if (!Number.isFinite(startAt) || !Number.isFinite(endAt)) return null;
+
+  return {
+    startAt,
+    endAt,
+  };
+}
+
 export function groupResolvedLocations(
   resolvedItems: ResolvedLocationItem[]
 ): LocationMarkerSummary[] {
@@ -383,7 +447,6 @@ export function getLatestFriendLocationMarkers(
   resolvedItems: ResolvedLocationItem[],
   options: LocationMarkerOptions = {},
 ): LocationMarkerSummary[] {
-  const timeMode = options.timeMode ?? "current";
   const filteredItems = filterResolvedLocationsByTime(resolvedItems, options).filter(
     (resolved) => resolved.friend?.relationshipStatus === "friend",
   );
@@ -398,7 +461,8 @@ export function getLatestFriendLocationMarkers(
     const existing = latestByFriend.get(resolved.friend.id);
     if (
       !existing ||
-      locationSortTimestamp(resolved.item, timeMode) > locationSortTimestamp(existing.item, timeMode)
+      locationSortTimestampForOptions(resolved.item, options) >
+        locationSortTimestampForOptions(existing.item, options)
     ) {
       latestByFriend.set(resolved.friend.id, resolved);
     }
@@ -417,7 +481,7 @@ export function getLatestFriendLocationMarkers(
         lng: resolved.lng,
         label: resolved.label,
         groupCount: groupCounts.get(groupKey) ?? 1,
-        seenAt: locationSortTimestamp(resolved.item, timeMode),
+        seenAt: locationSortTimestampForOptions(resolved.item, options),
       };
     })
     .sort((a, b) => b.seenAt - a.seenAt);
@@ -427,7 +491,6 @@ export function getLatestAuthorLocationMarkers(
   resolvedItems: ResolvedLocationItem[],
   options: LocationMarkerOptions = {},
 ): LocationMarkerSummary[] {
-  const timeMode = options.timeMode ?? "current";
   const filteredItems = filterResolvedLocationsByTime(resolvedItems, options);
   const latestByAuthor = new Map<string, ResolvedLocationItem>();
   const groupCounts = new Map<string, number>();
@@ -440,7 +503,8 @@ export function getLatestAuthorLocationMarkers(
     const existing = latestByAuthor.get(authorKey);
     if (
       !existing ||
-      locationSortTimestamp(resolved.item, timeMode) > locationSortTimestamp(existing.item, timeMode)
+      locationSortTimestampForOptions(resolved.item, options) >
+        locationSortTimestampForOptions(existing.item, options)
     ) {
       latestByAuthor.set(authorKey, resolved);
     }
@@ -459,7 +523,7 @@ export function getLatestAuthorLocationMarkers(
         lng: resolved.lng,
         label: resolved.label,
         groupCount: groupCounts.get(groupKey) ?? 1,
-        seenAt: locationSortTimestamp(resolved.item, timeMode),
+        seenAt: locationSortTimestampForOptions(resolved.item, options),
       };
     })
     .sort((a, b) => b.seenAt - a.seenAt);

@@ -24,6 +24,34 @@ Native macOS/Windows/Linux desktop application built with Tauri.
 npm run tauri:build
 ```
 
+Desktop previews launched through `worktree-preview.sh` are marked as feature previews. They accept local legal gates and seed sample data before the app opens.
+
+### Installed sync soaks without focus theft
+
+Use the file trigger when an installed development build needs a provider sync soak from the terminal. This avoids System Events clicks and keeps the user's current app focus alone.
+
+```bash
+# Build a development soak build with the terminal trigger enabled
+VITE_ENABLE_DEV_SYNC_TRIGGERS=1 npm run tauri:build
+
+# After installing and launching that build, trigger the normal in-app path
+node ../../scripts/dev-sync-trigger.mjs facebook
+node ../../scripts/dev-sync-trigger.mjs instagram
+node ../../scripts/dev-sync-trigger.mjs linkedin
+
+# For unattended locked-machine soaks, keep retries sparse and extend the helper window
+FREED_DEV_SYNC_TRIGGER_TIMEOUT_MS=21600000 node ../../scripts/dev-sync-trigger.mjs facebook
+
+# Watch local runtime evidence while the app runs
+tail -f "$HOME/Library/Application Support/wtf.freed.desktop/runtime-health.jsonl"
+```
+
+The trigger is intentionally dev-only. Local soak builds can enable it with `VITE_ENABLE_DEV_SYNC_TRIGGERS=1`, and GitHub dev-channel prereleases compile it in automatically for installed-build soaks. It still uses the same social refresh path as the UI, including auth checks, provider pause state, cooldowns, and rate limits. Production builds keep the reliability and memory recovery behavior, but should not expose a raw app-data file that lets another local process start authenticated Facebook, Instagram, or LinkedIn traffic without a user-facing permission model.
+
+The helper backs off by provider when the runtime is deferred. A locked Mac is different because no provider scrape has started, and the native watcher returns the locked result before waking the main renderer. Locked retries are still intentionally sparse so unattended soaks do not churn local state while the workstation is unavailable. The default locked retry is 10 minutes, and `FREED_DEV_SYNC_TRIGGER_TIMEOUT_MS` can extend the helper window for a longer soak. It does not keep queueing new Instagram or LinkedIn requests during provider cooldown windows. If the renderer is rebuilt after a provider run already finished, the native watcher also refuses to replay that request. Inspect the health log or retry later instead of forcing another scrape immediately.
+
+For long-running background validation, do not block the run until morning because the next step needs a UI button. Add a dev-only trigger when the action will be reused. If a one-off foreground click is still the fastest correct test, ask with a 10 minute window and continue if no response arrives.
+
 ## Building
 
 ### Debug build (faster, larger)

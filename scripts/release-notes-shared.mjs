@@ -170,6 +170,46 @@ export function summarizeFallbackText(text) {
   return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : normalized;
 }
 
+export function normalizePinnedHighlightTexts(items = []) {
+  return items
+    .map((item) => {
+      if (typeof item === "string") {
+        return summarizeFallbackText(item);
+      }
+      return summarizeFallbackText(item?.text ?? "");
+    })
+    .filter(Boolean);
+}
+
+export function applyPinnedHighlightsToRelease(rawRelease = {}, pinnedHighlights = []) {
+  const release = sanitizeReleaseShape(rawRelease);
+  const pinnedTexts = normalizePinnedHighlightTexts(pinnedHighlights);
+
+  for (const pinnedText of pinnedTexts) {
+    const visibleItems = [
+      release.deck,
+      ...release.features,
+      ...release.fixes,
+      ...release.followUps,
+    ].filter(Boolean);
+    if (
+      visibleItems.some(
+        (item) =>
+          normalizeReleaseText(item).toLowerCase() ===
+          normalizeReleaseText(pinnedText).toLowerCase(),
+      )
+    ) {
+      continue;
+    }
+    release.features = release.features.filter((item) => !areNearDuplicates(item, pinnedText));
+    release.fixes = release.fixes.filter((item) => !areNearDuplicates(item, pinnedText));
+    release.followUps = release.followUps.filter((item) => !areNearDuplicates(item, pinnedText));
+    release.fixes.push(pinnedText);
+  }
+
+  return release;
+}
+
 function stripItemPrefix(text) {
   return normalizeReleaseText(text)
     .replace(COMMON_ITEM_PREFIX, "")
@@ -909,6 +949,27 @@ function releaseVisibleEntries(release) {
   ].filter((entry) => entry.text);
 }
 
+export function removePreviousDayFeatureRepeats(release, previousDayRelease) {
+  const normalized = sanitizeReleaseShape(release);
+  const previousDayFeatures = previousDayRelease
+    ? dedupeSimilarStrings(coerceReleaseShape(previousDayRelease).features)
+    : [];
+
+  if (previousDayFeatures.length === 0) {
+    return normalized;
+  }
+
+  const isNotPreviousDayFeature = (item) =>
+    !previousDayFeatures.some((feature) => areNearDuplicates(item, feature));
+
+  return sanitizeReleaseShape({
+    ...normalized,
+    features: normalized.features.filter(isNotPreviousDayFeature),
+    fixes: normalized.fixes.filter(isNotPreviousDayFeature),
+    followUps: normalized.followUps.filter(isNotPreviousDayFeature),
+  });
+}
+
 function isCoveredByConsolidation(priorEntry, normalizedRelease) {
   if (priorEntry.kind !== "fix" && priorEntry.kind !== "followUp") {
     return false;
@@ -1052,7 +1113,9 @@ export function validateReleaseShape(release, options = {}) {
   }
 
   if (options.previousDayRelease) {
-    const currentVisibleItems = releaseVisibleItems(normalized);
+    const currentVisibleItems = releaseVisibleEntries(normalized)
+      .filter((entry) => entry.kind !== "deck")
+      .map((entry) => entry.text);
 
     for (const feature of previousDayFeatures) {
       const isRepeated = currentVisibleItems.some((item) =>

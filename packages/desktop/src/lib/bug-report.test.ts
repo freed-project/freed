@@ -9,6 +9,7 @@ const { mockInvoke } = vi.hoisted(() => ({
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: mockInvoke,
+  isTauri: () => true,
 }));
 
 vi.mock("@tauri-apps/plugin-shell", () => ({

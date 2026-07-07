@@ -9,10 +9,20 @@ source "${SCRIPT_DIR}/lib/node-tooling.sh"
 usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/worktree-publish.sh --title "<conventional-commit title>" [--summary "<bullet>"]... [--test "<bullet>"]... [--base <branch>] [--body-file <path>] [--include-untracked]
+  ./scripts/worktree-publish.sh --title "<conventional-commit title>" [--summary "<bullet>"]... [--test "<bullet>"]... [--base <branch>] [--body-file <path>] [--include-untracked] [--ready] [--approved-provider-risk "<one-line owner approval reference>"]
+
+Draft is the default so interim publishes never look reviewable. Pass --ready at
+closeout, once validation has passed and the work is complete, to mark the PR
+ready for review. Re-running without --ready after the branch changes demotes a
+ready PR back to draft on purpose: the content moved since the owner saw it.
 
 Stages local changes, commits them when needed, pushes the current branch to origin,
 and opens a draft pull request.
+
+Branches whose diff touches provider-visible paths (canonical list:
+scripts/lib/provider-visible-paths.mjs) are refused unless
+--approved-provider-risk records the owner's approval; the reference is
+included in the PR body.
 EOF
 }
 
@@ -140,6 +150,8 @@ TITLE=""
 BASE_BRANCH="dev"
 BODY_FILE=""
 INCLUDE_UNTRACKED=false
+READY_FOR_REVIEW=false
+PROVIDER_RISK_APPROVAL=""
 SUMMARY_ARGS=()
 TEST_ARGS=()
 
@@ -174,6 +186,15 @@ while [[ $# -gt 0 ]]; do
       INCLUDE_UNTRACKED=true
       shift
       ;;
+    --ready)
+      READY_FOR_REVIEW=true
+      shift
+      ;;
+    --approved-provider-risk)
+      [[ $# -ge 2 && -n "$2" ]] || { echo "Error: --approved-provider-risk requires a one-line owner approval reference." >&2; exit 1; }
+      PROVIDER_RISK_APPROVAL="$2"
+      shift 2
+      ;;
     --help|-h)
       usage
       exit 0
@@ -194,6 +215,9 @@ fi
 require_command git
 require_command gh
 print_node_tooling_preflight
+# Machine preflight, warn-only: surface broken gh/credential helpers with
+# remediation before the publish flow trips over them.
+"$(resolve_node_bin)" "${SCRIPT_DIR}/doctor.mjs" || true
 
 ensure_conventional_title "${TITLE}"
 
@@ -206,6 +230,35 @@ git fetch origin "${BASE_BRANCH}" >/dev/null 2>&1
 
 BRANCH_NAME="$(current_branch)"
 ensure_publishable_branch "${BRANCH_NAME}"
+
+# Provider-visible gate (stability task W1-06): refuse to publish a branch
+# whose diff touches provider-visible paths unless the owner's approval is
+# recorded via --approved-provider-risk. Canonical list + predicate:
+# scripts/lib/provider-visible-paths.mjs
+use_resolved_node_path
+PROVIDER_VISIBLE_FILES="$(
+  {
+    git diff --name-only "origin/${BASE_BRANCH}...HEAD"
+    git diff --name-only HEAD
+    if ${INCLUDE_UNTRACKED}; then
+      list_untracked_files
+    fi
+  } | sort -u | "${NODE_BIN}" "${SCRIPT_DIR}/lib/provider-visible-paths.mjs" --stdin
+)"
+
+if [[ -n "${PROVIDER_VISIBLE_FILES}" && -z "${PROVIDER_RISK_APPROVAL}" ]]; then
+  echo "Error: this branch touches provider-visible paths:" >&2
+  echo "" >&2
+  printf '%s\n' "${PROVIDER_VISIBLE_FILES}" >&2
+  echo "" >&2
+  echo "Changes to provider-visible surfaces (WebView loads, provider navigation," >&2
+  echo "request frequency, cookies, headers, extractor scripts) require explicit" >&2
+  echo "owner approval before publish. See AGENTS.md and docs/STABILITY-PROGRAM.md." >&2
+  echo "" >&2
+  echo "After obtaining approval, re-run with:" >&2
+  echo "  --approved-provider-risk \"<one-line owner approval reference>\"" >&2
+  exit 1
+fi
 
 if has_worktree_changes; then
   UNTRACKED_FILES="$(list_untracked_files)"
@@ -254,6 +307,19 @@ else
   BODY_CONTENT="$(build_body "${TITLE}" "${BODY_ARGS[@]}")"
 fi
 
+if [[ -n "${PROVIDER_RISK_APPROVAL}" ]]; then
+  APPROVAL_SECTION="$(
+    printf '## Provider-Visible Approval\n- %s\n' "${PROVIDER_RISK_APPROVAL}"
+    if [[ -n "${PROVIDER_VISIBLE_FILES}" ]]; then
+      printf '\nProvider-visible paths in this diff:\n'
+      printf '%s\n' "${PROVIDER_VISIBLE_FILES}" | while IFS= read -r provider_file; do
+        printf -- '- `%s`\n' "${provider_file}"
+      done
+    fi
+  )"
+  BODY_CONTENT="$(printf '%s\n\n%s' "${BODY_CONTENT}" "${APPROVAL_SECTION}")"
+fi
+
 EXISTING_PR_JSON="$(
   gh pr list \
     --head "${BRANCH_NAME}" \
@@ -267,6 +333,16 @@ EXISTING_PR_URL="$(pr_field "${EXISTING_PR_JSON}" "url")"
 EXISTING_PR_IS_DRAFT="$(pr_field "${EXISTING_PR_JSON}" "isDraft")"
 
 if [[ -n "${EXISTING_PR_NUMBER}" ]]; then
+  if ${READY_FOR_REVIEW}; then
+    gh pr edit "${EXISTING_PR_NUMBER}" --title "${TITLE}" --body "${BODY_CONTENT}" >/dev/null
+    if [[ "${EXISTING_PR_IS_DRAFT}" == "true" ]]; then
+      gh pr ready "${EXISTING_PR_NUMBER}" >/dev/null
+    fi
+    printf 'Updated PR (ready for review): %s\n' "${EXISTING_PR_URL}"
+    exit 0
+  fi
+  # Without --ready, a changed branch demotes a ready PR back to draft so the
+  # owner knows the content moved since they last looked.
   if [[ "${EXISTING_PR_IS_DRAFT}" != "true" ]]; then
     gh pr ready "${EXISTING_PR_NUMBER}" --undo >/dev/null
   fi
@@ -275,9 +351,13 @@ if [[ -n "${EXISTING_PR_NUMBER}" ]]; then
   exit 0
 fi
 
-gh pr create \
-  --draft \
-  --base "${BASE_BRANCH}" \
-  --head "${BRANCH_NAME}" \
-  --title "${TITLE}" \
+CREATE_ARGS=(
+  --base "${BASE_BRANCH}"
+  --head "${BRANCH_NAME}"
+  --title "${TITLE}"
   --body "${BODY_CONTENT}"
+)
+if ! ${READY_FOR_REVIEW}; then
+  CREATE_ARGS=(--draft "${CREATE_ARGS[@]}")
+fi
+gh pr create "${CREATE_ARGS[@]}"

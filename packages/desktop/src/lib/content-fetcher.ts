@@ -71,6 +71,13 @@ interface QueueEntry {
   url: string;
 }
 
+interface EnqueueOptions {
+  priority?: boolean;
+  force?: boolean;
+  bypassStartupDelay?: boolean;
+  reopenSaveDialogOnError?: boolean;
+}
+
 interface ContentFetchMemoryStats {
   appResidentBytes?: number;
   webkitFootprintBytes?: number;
@@ -88,6 +95,7 @@ interface ContentFetchMemoryStats {
 const queue: QueueEntry[] = [];
 const inFlight = new Set<string>();
 const failed = new Map<string, number>();
+const reopenSaveDialogOnErrorIds = new Set<string>();
 let completed = 0;
 let running = false;
 let workerTimer: ReturnType<typeof setTimeout> | null = null;
@@ -220,14 +228,22 @@ function hasRecentFailure(globalId: string, now = Date.now()): boolean {
  * Add items to the fetch queue.
  * Skips items already queued, already failed, or that already have content.
  */
-export function enqueue(items: FeedItem[], options: { priority?: boolean; force?: boolean } = {}): void {
+export function enqueue(items: FeedItem[], options: EnqueueOptions = {}): void {
   const newEntries = newStubItems(items, { force: options.force });
+  if (options.reopenSaveDialogOnError) {
+    for (const entry of newEntries) {
+      reopenSaveDialogOnErrorIds.add(entry.globalId);
+    }
+  }
   if (options.priority) {
     queue.unshift(...newEntries.reverse());
   } else {
     queue.push(...newEntries);
   }
   if (newEntries.length > 0) {
+    if (options.bypassStartupDelay) {
+      clearStartupDelay();
+    }
     notifyStatus();
     if (running && activeStartedAt === null && workerTimer === null) {
       scheduleWorker(0);
@@ -335,6 +351,19 @@ function isAiTimeoutError(error: unknown): boolean {
 
 function isResponseTooLargeError(message: string): boolean {
   return message.startsWith(RESPONSE_TOO_LARGE_PREFIX);
+}
+
+function dispatchSaveContentError(entry: QueueEntry, message: string): void {
+  if (!reopenSaveDialogOnErrorIds.delete(entry.globalId)) return;
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("freed:save-content-details-error", {
+      detail: {
+        initialUrl: entry.url,
+        errorMessage: message,
+      },
+    }),
+  );
 }
 
 function scheduleWorker(delayMs: number): void {
@@ -553,6 +582,7 @@ async function processNext(): Promise<ProcessOutcome> {
     });
 
     completed++;
+    reopenSaveDialogOnErrorIds.delete(entry.globalId);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const isTimeout = msg === "fetch_url TIMEOUT";
@@ -570,12 +600,14 @@ async function processNext(): Promise<ProcessOutcome> {
       failed.set(entry.globalId, Date.now());
       pruneFailed();
       addDebugEvent("error", `[Fetcher] skipped oversized article: ${entry.url}`);
+      dispatchSaveContentError(entry, "Freed could not save details for this URL because the response was too large.");
       outcome = "skipped";
     } else {
       log.warn(`[content-fetcher] fetch failed url=${entry.url} err=${msg}`);
       failed.set(entry.globalId, Date.now());
       pruneFailed();
       addDebugEvent("error", `[Fetcher] failed to fetch ${entry.url}: ${msg}`);
+      dispatchSaveContentError(entry, msg || "Freed could not save details for this URL.");
       outcome = "backoff";
     }
   } finally {

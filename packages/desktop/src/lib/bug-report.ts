@@ -45,9 +45,9 @@ async function getRecentLogs(limit: number): Promise<string[]> {
   }
 }
 
-async function getRecentRuntimeHealth(limit: number): Promise<string[]> {
+async function getRuntimeHealthHistory(days: number): Promise<string[]> {
   try {
-    return await invoke<string[]>("get_recent_runtime_health", { limit });
+    return await invoke<string[]>("get_runtime_health_history", { days });
   } catch {
     return [];
   }
@@ -138,8 +138,11 @@ async function buildDesktopBundle(input: {
   const logLines = includedArtifacts.some((artifact) => artifact === "expanded-logs")
     ? sanitizeLogLines(await getRecentLogs(240), "private")
     : sanitizeLogLines(await getRecentLogs(100), "public-safe");
+  // Full current + previous day (stability P0-04) — multi-hour incidents
+  // were unreconstructible from the old 120-line tail. The zip bundle is
+  // DEFLATE-compressed, so the extra volume costs little.
   const runtimeHealthLines = includedArtifacts.includes("diagnostic-events")
-    ? sanitizeLogLines(await getRecentRuntimeHealth(120), input.privacyTier)
+    ? sanitizeLogLines(await getRuntimeHealthHistory(2), input.privacyTier)
     : [];
   const snapshotNames =
     input.privacyTier === "private" && includedArtifacts.includes("snapshot-metadata")

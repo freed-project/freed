@@ -1,0 +1,38 @@
+{
+  "tag": "v26.6.2900-dev",
+  "version": "26.6.2900-dev",
+  "channel": "dev",
+  "dayKey": "26.6.29",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-29T22:00:23.999Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.2804-dev",
+    "previousPublishedDayTag": "v26.6.2804-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.2900-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.2900-dev"
+    ],
+    "prNumbers": [
+      884,
+      885
+    ],
+    "commitSubjects": [
+      "perf: defer feed search index preparation (#885)",
+      "fix: retry sync relay bind after overlapping restart (#884)"
+    ]
+  },
+  "release": {
+    "deck": "Defer feed search index preparation and retry sync relay bind after overlapping restart",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2900-dev\n\nDefer feed search index preparation and retry sync relay bind after overlapping restart\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

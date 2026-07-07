@@ -57,14 +57,14 @@ describe("facebook group records", () => {
     );
   });
 
-  it("uses a non-numeric visible fallback for missing display names", () => {
+  it("uses a visible fallback with the group id tail for missing display names", () => {
     const group = {
       id: "377650389038228",
       name: "5m",
       url: "https://www.facebook.com/groups/377650389038228",
     };
 
-    expect(getFacebookGroupDisplayName(group)).toBe("Facebook group");
+    expect(getFacebookGroupDisplayName(group)).toBe("Facebook group ...89038228");
   });
 
   it("collects usable group names from already captured feed items", () => {

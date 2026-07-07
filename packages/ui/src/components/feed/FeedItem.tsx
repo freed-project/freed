@@ -59,6 +59,10 @@ function feedCardTransitionName(globalId: string): string {
 }
 
 const cls = "w-3.5 h-3.5";
+const feedActionButtonClass = "inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-lg px-1.5 text-xs leading-none transition-colors";
+const feedIconActionButtonClass = "inline-flex h-7 w-7 items-center justify-center rounded-lg p-0 transition-colors";
+const feedActionIconClass = "block h-4 w-4 shrink-0";
+const feedActionStatusIconClass = "block h-2.5 w-2.5 shrink-0";
 const SWIPE_THRESHOLD = 72;
 const EVENT_CHIP_THRESHOLD = 0.7;
 const STORY_CARD_TEXT_LIMIT = 240;
@@ -727,7 +731,7 @@ export const FeedItem = memo(function FeedItem({
                           <button
                             onClick={(e) => { e.stopPropagation(); onLike(e); }}
                             aria-label={likeLabel}
-                            className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
+                            className={`${feedActionButtonClass} ${
                               likeStatus !== "none" ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
                             } ${
                               likeStatus === "synced"
@@ -736,20 +740,20 @@ export const FeedItem = memo(function FeedItem({
                                 ? "text-amber-400"
                                 : likeStatus === "failed"
                                 ? "text-orange-400"
-                                : "text-[var(--theme-text-soft)] hover:text-red-400"
+                              : "text-[var(--theme-text-soft)] hover:text-red-400"
                             }`}
                           >
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={likeStatus !== "none" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
+                            <svg className={feedActionIconClass} viewBox="0 0 24 24" fill={likeStatus !== "none" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                             </svg>
                             {showEngagement && likeCount !== null && <span>{likeCount}</span>}
                             {likeStatus === "noted" && (
-                              <svg className="w-2.5 h-2.5 animate-spin opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                              <svg className={`${feedActionStatusIconClass} animate-spin opacity-70`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                               </svg>
                             )}
                             {likeStatus === "failed" && (
-                              <svg className="w-2.5 h-2.5 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                              <svg className={`${feedActionStatusIconClass} opacity-70`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                               </svg>
                             )}
@@ -763,9 +767,9 @@ export const FeedItem = memo(function FeedItem({
                         <button
                           onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
                           aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
-                          className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
+                          className={`${feedActionButtonClass} text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] opacity-0 group-hover:opacity-100`}
                         >
-                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <svg className={feedActionIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                           </svg>
                           {showEngagement && commentCount !== null && <span>{commentCount}</span>}
@@ -778,13 +782,13 @@ export const FeedItem = memo(function FeedItem({
                         <button
                           onClick={onSave}
                           aria-label={item.userState.saved ? "Remove bookmark" : "Bookmark"}
-                          className={`p-1.5 rounded-lg transition-colors ${
+                          className={`${feedIconActionButtonClass} ${
                             item.userState.saved
                               ? "text-[var(--theme-accent-secondary)]"
                               : "text-[var(--theme-text-soft)] hover:text-[var(--theme-accent-secondary)] opacity-0 group-hover:opacity-100"
                           }`}
                         >
-                          <svg className="w-4 h-4" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+                          <svg className={feedActionIconClass} fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
                           </svg>
                         </button>
@@ -796,9 +800,9 @@ export const FeedItem = memo(function FeedItem({
                         <button
                           onClick={onArchive}
                           aria-label="Archive"
-                          className="p-1.5 rounded-lg transition-colors text-[var(--theme-text-soft)] hover:text-[rgb(var(--theme-feedback-success-rgb))] opacity-0 group-hover:opacity-100"
+                          className={`${feedIconActionButtonClass} text-[var(--theme-text-soft)] hover:text-[rgb(var(--theme-feedback-success-rgb))] opacity-0 group-hover:opacity-100`}
                         >
-                          <TrashIcon className="w-4 h-4" />
+                          <TrashIcon className={feedActionIconClass} />
                         </button>
                       </Tooltip>
                     )}
@@ -808,9 +812,9 @@ export const FeedItem = memo(function FeedItem({
                         <button
                           onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
                           aria-label="Open"
-                          className="p-1.5 rounded-lg text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
+                          className={`${feedIconActionButtonClass} text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] opacity-0 group-hover:opacity-100`}
                         >
-                          <ExternalLinkIcon className="w-4 h-4" />
+                          <ExternalLinkIcon className={feedActionIconClass} />
                         </button>
                       </Tooltip>
                     )}
@@ -957,7 +961,7 @@ export const FeedItem = memo(function FeedItem({
                     <button
                       onClick={(e) => { e.stopPropagation(); onLike(e); }}
                       aria-label={likeLabel}
-                      className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
+                      className={`${feedActionButtonClass} ${
                         likeStatus !== "none" ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
                       } ${
                         likeStatus === "synced"
@@ -966,20 +970,20 @@ export const FeedItem = memo(function FeedItem({
                           ? "text-amber-400"
                           : likeStatus === "failed"
                           ? "text-orange-400"
-                          : "text-[var(--theme-text-soft)] hover:text-red-400"
+                        : "text-[var(--theme-text-soft)] hover:text-red-400"
                       }`}
                     >
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={likeStatus !== "none" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
+                      <svg className={feedActionIconClass} viewBox="0 0 24 24" fill={likeStatus !== "none" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                       </svg>
                       {showEngagement && likeCount !== null && <span>{likeCount}</span>}
                       {likeStatus === "noted" && (
-                        <svg className="w-2.5 h-2.5 animate-spin opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                        <svg className={`${feedActionStatusIconClass} animate-spin opacity-70`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                       )}
                       {likeStatus === "failed" && (
-                        <svg className="w-2.5 h-2.5 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                        <svg className={`${feedActionStatusIconClass} opacity-70`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                         </svg>
                       )}
@@ -993,9 +997,9 @@ export const FeedItem = memo(function FeedItem({
                   <button
                     onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
                     aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
-                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
+                    className={`${feedActionButtonClass} text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] opacity-0 group-hover:opacity-100`}
                   >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <svg className={feedActionIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                     </svg>
                     {showEngagement && commentCount !== null && <span>{commentCount}</span>}
@@ -1008,13 +1012,13 @@ export const FeedItem = memo(function FeedItem({
                   <button
                     onClick={onSave}
                     aria-label={item.userState.saved ? "Remove bookmark" : "Bookmark"}
-                    className={`p-1.5 rounded-lg transition-colors ${
+                    className={`${feedIconActionButtonClass} ${
                       item.userState.saved
                         ? "text-[var(--theme-accent-secondary)]"
                         : "text-[var(--theme-text-soft)] hover:text-[var(--theme-accent-secondary)] opacity-0 group-hover:opacity-100"
                     }`}
                   >
-                    <svg className="w-4 h-4" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className={feedActionIconClass} fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
                     </svg>
                   </button>
@@ -1026,9 +1030,9 @@ export const FeedItem = memo(function FeedItem({
                   <button
                     onClick={onArchive}
                     aria-label="Archive"
-                    className="p-1.5 rounded-lg transition-colors text-[var(--theme-text-soft)] hover:text-[rgb(var(--theme-feedback-success-rgb))] opacity-0 group-hover:opacity-100"
+                    className={`${feedIconActionButtonClass} text-[var(--theme-text-soft)] hover:text-[rgb(var(--theme-feedback-success-rgb))] opacity-0 group-hover:opacity-100`}
                   >
-                    <TrashIcon className="w-4 h-4" />
+                    <TrashIcon className={feedActionIconClass} />
                   </button>
                 </Tooltip>
               )}
@@ -1038,9 +1042,9 @@ export const FeedItem = memo(function FeedItem({
                   <button
                     onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
                     aria-label="Open"
-                    className="p-1.5 rounded-lg text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
+                    className={`${feedIconActionButtonClass} text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] opacity-0 group-hover:opacity-100`}
                   >
-                    <ExternalLinkIcon className="w-4 h-4" />
+                    <ExternalLinkIcon className={feedActionIconClass} />
                   </button>
                 </Tooltip>
               )}

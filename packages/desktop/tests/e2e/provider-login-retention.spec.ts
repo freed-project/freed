@@ -6,11 +6,15 @@ type ProviderCase = {
   loginButton: string;
   authEvent: string;
   closeEvent: string;
+  healthyEvent: string;
+  failedEvent: string;
   showCommand: string;
   hideCommand: string;
   scrapeCommand: string;
-  promptCopy: string;
-  closeEvidenceText?: string;
+  browserPreviewSyncText?: string;
+  startingCopy: string;
+  healthyCopy: string;
+  failedCopy: string;
 };
 
 const providers: ProviderCase[] = [
@@ -20,10 +24,14 @@ const providers: ProviderCase[] = [
     loginButton: "Log in with Facebook",
     authEvent: "fb-auth-result",
     closeEvent: "fb-login-window-closed",
+    healthyEvent: "fb-scrape-healthy",
+    failedEvent: "fb-scrape-start-failed",
     showCommand: "fb_show_login",
     hideCommand: "fb_hide_login",
     scrapeCommand: "fb_scrape_feed",
-    promptCopy: "Connected. Finish any Facebook prompts, then close the login window.",
+    startingCopy: "Connected. Starting sync. Finish any Facebook prompts while Freed checks the session.",
+    healthyCopy: "Connected. Sync started. Finish any Facebook prompts while Freed closes the login window.",
+    failedCopy: "Connected, but sync did not start. Finish any Facebook prompts, then close the login window or click Sync Now.",
   },
   {
     provider: "instagram",
@@ -31,10 +39,14 @@ const providers: ProviderCase[] = [
     loginButton: "Log in with Instagram",
     authEvent: "ig-auth-result",
     closeEvent: "ig-login-window-closed",
+    healthyEvent: "ig-scrape-healthy",
+    failedEvent: "ig-scrape-start-failed",
     showCommand: "ig_show_login",
     hideCommand: "ig_hide_login",
     scrapeCommand: "ig_scrape_feed",
-    promptCopy: "Connected. Finish any Instagram prompts, then close the login window.",
+    startingCopy: "Connected. Starting sync. Finish any Instagram prompts while Freed checks the session.",
+    healthyCopy: "Connected. Sync started. Finish any Instagram prompts while Freed closes the login window.",
+    failedCopy: "Connected, but sync did not start. Finish any Instagram prompts, then close the login window or click Sync Now.",
   },
   {
     provider: "linkedin",
@@ -42,11 +54,15 @@ const providers: ProviderCase[] = [
     loginButton: "Log in with LinkedIn",
     authEvent: "li-auth-result",
     closeEvent: "li-login-window-closed",
+    healthyEvent: "li-scrape-healthy",
+    failedEvent: "li-scrape-start-failed",
     showCommand: "li_show_login",
     hideCommand: "li_hide_login",
     scrapeCommand: "li_scrape_feed",
-    promptCopy: "Connected. Finish any LinkedIn prompts, then close the login window.",
-    closeEvidenceText: "[LI] browser preview skips native LinkedIn capture",
+    browserPreviewSyncText: "[LI] browser preview skips native LinkedIn capture",
+    startingCopy: "Connected. Starting sync. Finish any LinkedIn prompts while Freed checks the session.",
+    healthyCopy: "Connected. Sync started. Finish any LinkedIn prompts while Freed closes the login window.",
+    failedCopy: "Connected, but sync did not start. Finish any LinkedIn prompts, then close the login window or click Sync Now.",
   },
 ];
 
@@ -94,7 +110,7 @@ async function emitTauriEvent(
 }
 
 for (const providerCase of providers) {
-  test(`${providerCase.label} login stays open after auth and syncs after close`, async ({
+  test(`${providerCase.label} auth starts sync and closes login after healthy scrape`, async ({
     app,
     page,
     ipc,
@@ -111,26 +127,109 @@ for (const providerCase of providers) {
     )).toBe(true);
 
     await emitTauriEvent(page, providerCase.authEvent, { loggedIn: true });
-    await expect(page.getByText(providerCase.promptCopy)).toBeVisible({ timeout: 5_000 });
+    if (providerCase.browserPreviewSyncText) {
+      await emitTauriEvent(page, providerCase.healthyEvent, {
+        provider: providerCase.provider,
+        windowMode: "hidden",
+      });
+    } else {
+      await expect(page.getByText(providerCase.startingCopy)).toBeVisible({ timeout: 5_000 });
+    }
     await expect(page.getByTestId(`provider-sync-action-${providerCase.provider}`)).toBeVisible({
       timeout: 5_000,
     });
 
     const afterAuthInvocations = await ipc.invocations();
     expect(afterAuthInvocations.some((call) => call.cmd === providerCase.hideCommand)).toBe(false);
-    expect(afterAuthInvocations.some((call) => call.cmd === providerCase.scrapeCommand)).toBe(false);
-    if (providerCase.closeEvidenceText) {
-      await expect(page.getByText(providerCase.closeEvidenceText)).toHaveCount(0);
+
+    if (providerCase.browserPreviewSyncText) {
+      await expect(page.getByText(providerCase.browserPreviewSyncText)).toBeVisible({
+        timeout: 5_000,
+      });
+    } else {
+      await expect.poll(async () => {
+        const scrapeCall = (await ipc.invocations()).find(
+          (call) => call.cmd === providerCase.scrapeCommand,
+        );
+        return (scrapeCall?.args as { windowMode?: string } | undefined)?.windowMode;
+      }).toBe("hidden");
     }
 
-    await emitTauriEvent(page, providerCase.closeEvent, { closed: true });
-    if (providerCase.closeEvidenceText) {
-      await expect(page.getByText(providerCase.closeEvidenceText)).toBeVisible({ timeout: 5_000 });
-    } else {
-      await expect.poll(async () => (await ipc.invocations()).some(
-        (call) => call.cmd === providerCase.scrapeCommand,
-      )).toBe(true);
+    if (!providerCase.browserPreviewSyncText) {
+      await emitTauriEvent(page, providerCase.healthyEvent, {
+        provider: providerCase.provider,
+        windowMode: "hidden",
+      });
     }
-    await expect(page.getByText(providerCase.promptCopy)).toBeHidden({ timeout: 5_000 });
+    await expect(page.getByText(providerCase.healthyCopy)).toBeVisible({ timeout: 5_000 });
+    await expect.poll(async () => (await ipc.invocations()).some(
+      (call) => call.cmd === providerCase.hideCommand,
+    ), { timeout: 7_000 }).toBe(true);
+    await expect(page.getByText(providerCase.healthyCopy)).toBeHidden({ timeout: 7_000 });
+  });
+
+  test(`${providerCase.label} failed scrape startup leaves login prompt open`, async ({
+    app,
+    page,
+    ipc,
+  }) => {
+    await app.goto();
+    await app.waitForReady();
+    await ipc.setHandler(providerCase.scrapeCommand, () => null);
+
+    await openSettingsSection(page, providerCase.label);
+    await page.getByText(providerCase.loginButton).click();
+    await app.acceptProviderRiskIfPresent(providerCase.provider);
+    await expect.poll(async () => (await ipc.invocations()).some(
+      (call) => call.cmd === providerCase.showCommand,
+    )).toBe(true);
+
+    await emitTauriEvent(page, providerCase.authEvent, { loggedIn: true });
+    if (providerCase.browserPreviewSyncText) {
+      await expect(page.getByText(providerCase.failedCopy)).toBeVisible({ timeout: 5_000 });
+    } else {
+      await expect(page.getByText(providerCase.startingCopy)).toBeVisible({ timeout: 5_000 });
+    }
+
+    await emitTauriEvent(page, providerCase.failedEvent, {
+      provider: providerCase.provider,
+      windowMode: "hidden",
+      reason: "test failure",
+    });
+    await expect(page.getByText(providerCase.failedCopy)).toBeVisible({ timeout: 5_000 });
+    expect((await ipc.invocations()).some((call) => call.cmd === providerCase.hideCommand)).toBe(false);
+  });
+
+  test(`${providerCase.label} explicit close clears retained login prompt`, async ({
+    app,
+    page,
+    ipc,
+  }) => {
+    await app.goto();
+    await app.waitForReady();
+    await ipc.setHandler(providerCase.scrapeCommand, () => null);
+
+    await openSettingsSection(page, providerCase.label);
+    await page.getByText(providerCase.loginButton).click();
+    await app.acceptProviderRiskIfPresent(providerCase.provider);
+    await expect.poll(async () => (await ipc.invocations()).some(
+      (call) => call.cmd === providerCase.showCommand,
+    )).toBe(true);
+
+    await emitTauriEvent(page, providerCase.authEvent, { loggedIn: true });
+    if (providerCase.browserPreviewSyncText) {
+      await expect(page.getByText(providerCase.failedCopy)).toBeVisible({ timeout: 5_000 });
+    } else {
+      await expect(page.getByText(providerCase.startingCopy)).toBeVisible({ timeout: 5_000 });
+    }
+    await emitTauriEvent(page, providerCase.closeEvent, { closed: true });
+    await expect(page.getByText(
+      providerCase.browserPreviewSyncText ? providerCase.failedCopy : providerCase.startingCopy,
+    )).toBeHidden({ timeout: 5_000 });
+    await emitTauriEvent(page, providerCase.healthyEvent, {
+      provider: providerCase.provider,
+      windowMode: "hidden",
+    });
+    expect((await ipc.invocations()).some((call) => call.cmd === providerCase.hideCommand)).toBe(false);
   });
 }

@@ -342,6 +342,59 @@ describe("FeedItem story media", () => {
     }
   });
 
+  it("renders regular card actions in a shared centered icon box", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem
+              item={makeItem({
+                platform: "instagram",
+                contentType: "post",
+                sourceUrl: "https://example.com/post",
+                content: {
+                  text: "Post text",
+                  mediaUrls: [],
+                  mediaTypes: [],
+                },
+              })}
+              fixedHeight={220}
+              onLike={vi.fn()}
+              onSave={vi.fn()}
+              onArchive={vi.fn()}
+              onOpenCommentUrl={vi.fn()}
+            />
+          </PlatformProvider>,
+        );
+      });
+
+      const actionLabels = ["Like", "Comment on Instagram", "Bookmark", "Archive", "Open"];
+      for (const label of actionLabels) {
+        const button = container.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement | null;
+        expect(button).toBeInstanceOf(HTMLButtonElement);
+        expect(button?.className).toContain("h-7");
+        expect(button?.className).toContain("items-center");
+        expect(button?.className).toContain("justify-center");
+
+        const icon = button?.querySelector("svg");
+        expect(icon?.getAttribute("class")).toContain("h-4");
+        expect(icon?.getAttribute("class")).toContain("w-4");
+        expect(icon?.getAttribute("class")).toContain("shrink-0");
+      }
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
+
   it("shares the feed card view transition name in compact story tiles", () => {
     const html = renderFeedItemToStaticMarkup(
       makeItem({ globalId: "ig:story/compact transition proof" }),

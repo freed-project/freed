@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/node-tooling.sh
+source "${SCRIPT_DIR}/lib/node-tooling.sh"
+use_resolved_node_path
+
 # Bumps version across PWA + Desktop package files, then prepares draft
 # release-note artifacts for human review before any tag is created.
 #
@@ -23,11 +28,6 @@ TAURI_CONF="${DESKTOP_DIR}/src-tauri/tauri.conf.json"
 CARGO_TOML="${DESKTOP_DIR}/src-tauri/Cargo.toml"
 DESKTOP_PKG="${DESKTOP_DIR}/package.json"
 PWA_PKG="packages/pwa/package.json"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Keep release prep on the same Node toolchain as worktree/bootstrap/deploy.
-source "${SCRIPT_DIR}/lib/node-tooling.sh"
-NODE_BIN="$(resolve_node_bin)"
-use_resolved_node_path
 CHANNEL=""
 VERSION_INPUT=""
 

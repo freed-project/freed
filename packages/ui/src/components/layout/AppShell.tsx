@@ -119,7 +119,10 @@ export function AppShell({ children }: AppShellProps) {
   const addFeedOpen = useCommandSurfaceStore((s) => s.addFeedOpen);
   const closeAddFeedDialog = useCommandSurfaceStore((s) => s.closeAddFeedDialog);
   const savedContentOpen = useCommandSurfaceStore((s) => s.savedContentOpen);
+  const savedContentInitialUrl = useCommandSurfaceStore((s) => s.savedContentInitialUrl);
+  const openSavedContentDialog = useCommandSurfaceStore((s) => s.openSavedContentDialog);
   const closeSavedContentDialog = useCommandSurfaceStore((s) => s.closeSavedContentDialog);
+  const [savedContentError, setSavedContentError] = useState("");
   const libraryDialogOpen = useCommandSurfaceStore((s) => s.libraryDialogOpen);
   const libraryDialogTab = useCommandSurfaceStore((s) => s.libraryDialogTab);
   const closeLibraryDialog = useCommandSurfaceStore((s) => s.closeLibraryDialog);
@@ -169,6 +172,32 @@ export function AppShell({ children }: AppShellProps) {
     setActiveView("feed");
     openSettingsTo("storyWall");
   }, [activeView, openSettingsTo, setActiveView]);
+
+  useEffect(() => {
+    const handleOpenSavedContent = (event: Event) => {
+      const detail = (event as CustomEvent<{ initialUrl?: string; errorMessage?: string }>).detail;
+      setSavedContentError(detail?.errorMessage ?? "");
+      openSavedContentDialog(detail?.initialUrl);
+    };
+    const handleSaveDetailsError = (event: Event) => {
+      const detail = (event as CustomEvent<{ initialUrl?: string; errorMessage?: string }>).detail;
+      setSavedContentError(detail?.errorMessage ?? "Freed could not save details for this URL.");
+      openSavedContentDialog(detail?.initialUrl);
+    };
+
+    window.addEventListener("freed:open-save-content-dialog", handleOpenSavedContent);
+    window.addEventListener("freed:save-content-details-error", handleSaveDetailsError);
+    return () => {
+      window.removeEventListener("freed:open-save-content-dialog", handleOpenSavedContent);
+      window.removeEventListener("freed:save-content-details-error", handleSaveDetailsError);
+    };
+  }, [openSavedContentDialog]);
+
+  const handleCloseSavedContentDialog = useCallback(() => {
+    setSavedContentError("");
+    closeSavedContentDialog();
+  }, [closeSavedContentDialog]);
+
   const forceCompactDesktopSidebar = !isMobileDevice && isMobileViewport;
   const effectiveDesktopSidebarDisplayMode =
     forceCompactDesktopSidebar && desktopSidebarMode !== "closed"
@@ -534,8 +563,8 @@ export function AppShell({ children }: AppShellProps) {
           </div>
           <main
             ref={mainRef}
-            className={`relative z-10 min-w-0 flex-1 ${activeView === "map" ? "pointer-events-none" : ""} ${
-              isMobileDevice ? "" : "min-h-0 overflow-hidden"
+            className={`relative min-w-0 flex-1 ${activeView === "friends" ? "z-0" : "z-10"} ${activeView === "map" ? "pointer-events-none" : ""} ${
+              isMobileDevice ? "" : activeView === "friends" ? "min-h-0 overflow-visible" : "min-h-0 overflow-hidden"
             }`}
           >
             {activeView === "friends"
@@ -585,7 +614,12 @@ export function AppShell({ children }: AppShellProps) {
           </div>
         )}
         <AddFeedDialog open={addFeedOpen} onClose={closeAddFeedDialog} />
-        <SavedContentDialog open={savedContentOpen} onClose={closeSavedContentDialog} />
+        <SavedContentDialog
+          open={savedContentOpen}
+          initialUrl={savedContentInitialUrl}
+          initialError={savedContentError}
+          onClose={handleCloseSavedContentDialog}
+        />
         {libraryDialogOpen ? (
           <LibraryDialog
             onClose={closeLibraryDialog}

@@ -1,0 +1,16 @@
+{
+  "channel": "dev",
+  "dayKey": "26.6.18",
+  "date": "2026-06-18",
+  "preferredDeck": "Hot WebKit recovery and unattended sync validation",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes"
+  ],
+  "editorialNotes": [],
+  "updatedAt": "2026-06-18T17:53:46.376Z"
+}

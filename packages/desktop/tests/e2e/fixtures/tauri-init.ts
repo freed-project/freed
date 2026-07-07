@@ -145,11 +145,13 @@ export function tauriInitScript(): string {
       },
       get_updater_target: () => 'darwin-aarch64',
       retry_startup_after_crash: () => null,
+      export_startup_diagnostics: () => '/Users/test/Downloads/freed-diagnostics-test.json',
       reset_pairing_token: () => null,
       get_recent_logs: () => [],
       get_recent_runtime_health: () => [],
       start_relay: () => null,
       stop_relay: () => null,
+      show_window: () => null,
       list_snapshots: () => [],
       save_url_content: () => null,
       get_x_cookies: () => null,
@@ -202,6 +204,8 @@ export function tauriInitScript(): string {
     window.__TAURI_MOCK_INVOCATIONS__ = [];
     window.__TAURI_MOCK_OPENED_URLS__ = [];
     window.__TAURI_MOCK_WINDOW_DRAG_CALLS__ = [];
+    window.__TAURI_MOCK_GLOBAL_SHORTCUTS__ = {};
+    window.__TAURI_MOCK_GLOBAL_SHORTCUT_CALLS__ = [];
     window.__TAURI_MOCK_CALLBACKS__ = {};
     window.__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ = {};
     window.__TAURI_MOCK_UPDATE_CHECK_CALLS__ = [];

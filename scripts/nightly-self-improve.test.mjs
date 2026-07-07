@@ -12,6 +12,7 @@ import {
   buildCandidates,
   buildExecutionPlan,
   collectDuplicateWork,
+  collectPeerWorktrees,
   collectRepoSnapshot,
   collectRiskSnapshot,
   findLatestReadableSoakDir,
@@ -198,6 +199,49 @@ test("daily bug memory does not treat a referenced old PR as a new fix", () => {
   assert.equal(summary.latestHadFix, false);
 });
 
+test("daily bug memory recognizes shipped fixes and zero additional continuation commits", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-bug-memory-continuation-"));
+  const memoryPath = path.join(dir, "memory.md");
+  writeFileSync(
+    memoryPath,
+    [
+      "# Daily Bug Scan Memory",
+      "",
+      "## 2026-06-15",
+      "- Fix shipped:",
+      "  - PR `#830`, `fix: ignore generated peer artifacts in nightly planner`, merged into `dev` at `2026-06-16T00:47:16Z`.",
+      "- Continuation result:",
+      "  - Fresh continuation evidence after the merge found `0` additional commits after `1944add4e6b44fcd32203363404aa0ddcb54e016` on `origin/dev`.",
+      "",
+    ].join("\n"),
+  );
+
+  const summary = summarizeDailyBugMemory(memoryPath);
+  assert.equal(summary.latestDate, "2026-06-15");
+  assert.equal(summary.latestHadNoNewCommits, true);
+  assert.equal(summary.latestHadFix, true);
+});
+
+test("daily bug memory recognizes no new repo commits without treating unmerged regressions as fixes", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-bug-memory-unmerged-"));
+  const memoryPath = path.join(dir, "memory.md");
+  writeFileSync(
+    memoryPath,
+    [
+      "# Daily Bug Scan Memory",
+      "",
+      "## 2026-06-17",
+      "- Outcome: no new repo commits landed after the last completed cutoff. The strongest surviving evidence-backed bug is still the unmerged nightly planner regression.",
+      "",
+    ].join("\n"),
+  );
+
+  const summary = summarizeDailyBugMemory(memoryPath);
+  assert.equal(summary.latestDate, "2026-06-17");
+  assert.equal(summary.latestHadNoNewCommits, true);
+  assert.equal(summary.latestHadFix, false);
+});
+
 test("candidate selection prioritizes memory work while preserving bug scans", () => {
   const candidates = buildCandidates({
     soak: {
@@ -360,6 +404,86 @@ test("preflight blockers outrank measured performance work", () => {
   });
 
   assert.equal(selected[0].id, "nightly-preflight-risk");
+});
+
+test("missing root dependencies stay visible without outranking the bug scan", () => {
+  const repoPath = mkdtempSync(path.join(os.tmpdir(), "freed-nightly-missing-modules-"));
+  const repo = {
+    branch: "dev",
+    head: "abc1234",
+    originDev: "abc1234",
+    originMain: "def5678",
+    status: "",
+  };
+
+  const riskSnapshot = collectRiskSnapshot({
+    repoPath,
+    repo,
+    soak: {
+      exists: false,
+      soakDir: "",
+      sampleCount: 0,
+      maxWebKitResidentBytes: null,
+      maxEventLoopLagMs: null,
+      maxDomNodes: null,
+      staleHeartbeatCount: 0,
+      throttledHeartbeatCount: 0,
+      lastEvent: "",
+      firstTimestamp: "",
+      lastTimestamp: "",
+    },
+    peerWorktrees: [],
+    duplicateWork: { findingCount: 0, blockerCount: 0, warningCount: 0, findings: [] },
+    crashAutomation: "",
+    dailyBugMemory: "",
+    devBotMemory: "",
+    expectedBranch: "dev",
+  });
+
+  assert.equal(riskSnapshot.blockerCount, 0);
+  assert.equal(riskSnapshot.warningCount, 1);
+  assert.equal(riskSnapshot.risks[0]?.id, "missing-root-node-modules");
+  assert.equal(riskSnapshot.risks[0]?.severity, "warning");
+
+  const candidates = buildCandidates({
+    soak: {
+      exists: false,
+      soakDir: "",
+      sampleCount: 0,
+      maxWebKitResidentBytes: null,
+      maxEventLoopLagMs: null,
+      maxDomNodes: null,
+      staleHeartbeatCount: 0,
+      throttledHeartbeatCount: 0,
+      lastEvent: "",
+      firstTimestamp: "",
+      lastTimestamp: "",
+    },
+    dailyBug: {
+      exists: true,
+      path: "/tmp/daily-bug-memory.md",
+      latestDate: "2026-06-24",
+      latestHadNoNewCommits: false,
+      latestHadFix: true,
+    },
+    repo,
+    riskSnapshot,
+    duplicateWork: { findingCount: 0, blockerCount: 0, warningCount: 0, findings: [] },
+    peerWorktrees: [],
+    crashAutomationExists: false,
+    devBotMemoryExists: false,
+    memoryBudgetBytes: 2.5 * GIB,
+  });
+
+  const selected = selectTargets(candidates, {
+    maxTargets: 2,
+    durationMinutes: 480,
+    minimumNightMinutes: 180,
+    allowProviderVisible: false,
+  });
+
+  assert.equal(selected[0].id, "daily-bug-fix-scan");
+  assert.equal(selected[1].id, "nightly-preflight-risk");
 });
 
 test("parseGitWorktreePorcelain reads branch entries", () => {
@@ -611,6 +735,128 @@ test("summarizePeerWorktree ignores behind-only detached snapshots as active cha
   assert.equal(summary?.aheadCount, 0);
   assert.equal(summary?.behindCount, 1);
   assert.equal(summary?.changedFileCount, 0);
+});
+
+test("stale dirty nightly peers stay visible but do not outrank fresh bug scans", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-stale-peer-score-"));
+  const origin = path.join(dir, "origin.git");
+  const repo = path.join(dir, "repo");
+  const peer = path.join(dir, "peer");
+
+  execFileSync("git", ["init", "--bare", origin]);
+  execFileSync("git", ["clone", origin, repo]);
+  execFileSync("git", ["-C", repo, "config", "user.name", "Freed Tests"]);
+  execFileSync("git", ["-C", repo, "config", "user.email", "tests@example.com"]);
+  execFileSync("git", ["-C", repo, "checkout", "-b", "dev"]);
+  mkdirSync(path.join(repo, "scripts"), { recursive: true });
+  mkdirSync(path.join(repo, "docs"), { recursive: true });
+  writeFileSync(path.join(repo, "scripts/nightly-self-improve.mjs"), "export const value = 1;\n");
+  writeFileSync(path.join(repo, "docs/NIGHTLY-SELF-IMPROVE.md"), "# Nightly\n");
+  execFileSync("git", ["-C", repo, "add", "scripts/nightly-self-improve.mjs", "docs/NIGHTLY-SELF-IMPROVE.md"]);
+  execFileSync("git", ["-C", repo, "commit", "-m", "base"]);
+  execFileSync("git", ["-C", repo, "push", "-u", "origin", "dev"]);
+
+  execFileSync("git", ["clone", origin, peer]);
+  execFileSync("git", ["-C", peer, "checkout", "-b", "fix/nightly-small-batch", "origin/dev"]);
+
+  for (let index = 0; index < 30; index += 1) {
+    writeFileSync(path.join(repo, "notes.txt"), `commit ${index}\n`);
+    execFileSync("git", ["-C", repo, "add", "notes.txt"]);
+    execFileSync("git", ["-C", repo, "commit", "-m", `advance ${index}`]);
+  }
+  execFileSync("git", ["-C", repo, "push"]);
+  execFileSync("git", ["-C", peer, "fetch", "origin", "dev"]);
+  writeFileSync(path.join(peer, "scripts/nightly-self-improve.mjs"), "export const value = 2;\n");
+
+  const peers = collectPeerWorktrees(repo, [peer], false);
+  assert.equal(peers.length, 1);
+  assert.equal(peers[0].branch, "fix/nightly-small-batch");
+  assert.equal(peers[0].aheadCount, 0);
+  assert.ok(peers[0].behindCount >= 25);
+  assert.ok(peers[0].score < 82);
+
+  const candidates = buildCandidates({
+    soak: { exists: false },
+    dailyBug: {
+      exists: true,
+      path: "/tmp/memory.md",
+      latestDate: "2026-06-14",
+      latestHadNoNewCommits: false,
+      latestHadFix: false,
+    },
+    repo: { branch: "dev", head: "abc1234", originDev: "abc1234", status: "" },
+    riskSnapshot: { blockerCount: 0, warningCount: 0, risks: [] },
+    duplicateWork: { findingCount: 0, blockerCount: 0, warningCount: 0, findings: [] },
+    peerWorktrees: peers,
+    crashAutomationExists: false,
+    devBotMemoryExists: false,
+    memoryBudgetBytes: 2.5 * GIB,
+  });
+
+  assert.equal(candidates[0].id, "daily-bug-fix-scan");
+  assert.equal(candidates[1].id, "peer-fix-nightly-small-batch");
+});
+
+test("collectPeerWorktrees skips peers whose exact head already landed through a merged PR", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-merged-peer-"));
+  const origin = path.join(dir, "origin.git");
+  const repo = path.join(dir, "repo");
+  const peer = path.join(dir, "peer");
+
+  execFileSync("git", ["init", "--bare", origin]);
+  execFileSync("git", ["clone", origin, repo]);
+  execFileSync("git", ["-C", repo, "config", "user.name", "Freed Tests"]);
+  execFileSync("git", ["-C", repo, "config", "user.email", "tests@example.com"]);
+  execFileSync("git", ["-C", repo, "checkout", "-b", "dev"]);
+  mkdirSync(path.join(repo, "scripts"), { recursive: true });
+  writeFileSync(path.join(repo, "scripts/nightly-self-improve.mjs"), "export const value = 1;\n");
+  execFileSync("git", ["-C", repo, "add", "scripts/nightly-self-improve.mjs"]);
+  execFileSync("git", ["-C", repo, "commit", "-m", "base"]);
+  execFileSync("git", ["-C", repo, "push", "-u", "origin", "dev"]);
+
+  execFileSync("git", ["-C", repo, "worktree", "add", peer, "-b", "fix/nightly-peer", "origin/dev"]);
+  writeFileSync(path.join(peer, "scripts/nightly-self-improve.mjs"), "export const value = 2;\n");
+  const peerHead = execFileSync("git", ["-C", peer, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+
+  const mergedHeads = new Map([["fix/nightly-peer", new Set([peerHead])]]);
+  const peers = collectPeerWorktrees(repo, [], true, mergedHeads);
+
+  assert.deepEqual(peers, []);
+
+  const explicitPeers = collectPeerWorktrees(repo, [peer], false, mergedHeads);
+  assert.equal(explicitPeers.length, 1);
+  assert.equal(explicitPeers[0].branch, "fix/nightly-peer");
+});
+
+test("collectPeerWorktrees ignores peers with only generated validation artifacts", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-peer-artifacts-"));
+  const origin = path.join(dir, "origin.git");
+  const repo = path.join(dir, "repo");
+  const peer = path.join(dir, "peer");
+
+  execFileSync("git", ["init", "--bare", origin]);
+  execFileSync("git", ["clone", origin, repo]);
+  execFileSync("git", ["-C", repo, "config", "user.name", "Freed Tests"]);
+  execFileSync("git", ["-C", repo, "config", "user.email", "tests@example.com"]);
+  execFileSync("git", ["-C", repo, "checkout", "-b", "dev"]);
+  writeFileSync(path.join(repo, "notes.txt"), "first\n");
+  execFileSync("git", ["-C", repo, "add", "notes.txt"]);
+  execFileSync("git", ["-C", repo, "commit", "-m", "first"]);
+  execFileSync("git", ["-C", repo, "push", "-u", "origin", "dev"]);
+
+  execFileSync("git", ["clone", origin, peer]);
+  execFileSync("git", ["-C", peer, "checkout", "-b", "chore/nightly-peer", "origin/dev"]);
+  mkdirSync(path.join(peer, "packages/desktop/playwright-report"), { recursive: true });
+  mkdirSync(path.join(peer, "packages/desktop/test-results"), { recursive: true });
+  writeFileSync(path.join(peer, "packages/desktop/playwright-report/index.html"), "<html></html>");
+  writeFileSync(path.join(peer, "packages/desktop/test-results/out.txt"), "artifact\n");
+
+  const summary = summarizePeerWorktree(peer, repo);
+  assert.equal(summary?.status, "");
+  assert.equal(summary?.changedFileCount, 0);
+
+  const peers = collectPeerWorktrees(repo, [peer], false);
+  assert.deepEqual(peers, []);
 });
 
 test("duplicate work candidates are selected before generic roadmap fallback", () => {
@@ -874,6 +1120,13 @@ test("writeRunPlan emits report, targets, and task prompts", () => {
   assert.equal(path.basename(result.executionPlanPath), "execution-plan.md");
   assert.equal(path.basename(result.outcomeCloseoutPath), "outcome-closeout.md");
   assert.equal(path.basename(result.outcomeTemplatePath), "outcome-template.jsonl");
+
+  const report = readFileSync(result.reportPath, "utf8");
+  const task = readFileSync(path.join(result.tasksDir, "01-daily-bug-fix-scan.md"), "utf8");
+  const closeout = readFileSync(result.outcomeCloseoutPath, "utf8");
+  assert.match(report, /Unattended App Interaction/);
+  assert.match(task, /10 minute response window/);
+  assert.match(closeout, /terminal trigger/);
 });
 
 test("execution plan includes peer review and release soak gates", () => {
@@ -893,6 +1146,11 @@ test("execution plan includes peer review and release soak gates", () => {
   assert.ok(phases.some((phase) => phase.id === "peer-review"));
   assert.ok(phases.some((phase) => phase.id === "release-and-soak"));
   assert.ok(phases.every((phase) => phase.stopGate));
+  assert.ok(
+    phases
+      .find((phase) => phase.id === "release-and-soak")
+      ?.commands.some((command) => command.includes("dev-sync-trigger.mjs")),
+  );
 });
 
 test("argument parsing validates numeric budgets", () => {

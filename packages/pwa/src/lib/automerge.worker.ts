@@ -330,10 +330,13 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
   try {
     switch (req.type) {
       case "INIT": {
+        const initStartedAt = performance.now();
+        let docBytes = 0;
         const saved = await storage.load();
         if (saved) {
           try {
             currentDoc = A.load<FreedDoc>(saved);
+            docBytes = saved.byteLength;
             migrateLoadedIdentityGraph("Migrate legacy identity graph");
           } catch {
             await storage.clear();
@@ -343,12 +346,18 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
         if (!currentDoc) {
           currentDoc = createEmptyDoc();
           const binary = A.save(currentDoc);
+          docBytes = binary.byteLength;
           await storage.save(binary);
         }
         searchCorpusVersion = 1;
         const deviceId = (currentDoc.meta?.deviceId as string | undefined) ?? "unknown";
         send({ type: "DEBUG_EVENT", kind: "init", detail: `device ...${deviceId.slice(-8)}` });
         await saveAndBroadcast();
+        send({
+          type: "INIT_STATS",
+          durationMs: Math.round(performance.now() - initStartedAt),
+          docBytes,
+        });
         ack(req.reqId);
         break;
       }
@@ -469,6 +478,15 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
       case "GET_DOC_BINARY": {
         if (!currentDoc) throw new Error("Document not initialized");
         send({ reqId: req.reqId, type: "DOC_BINARY", binary: A.save(currentDoc) });
+        break;
+      }
+
+      case "GET_HEADS": {
+        send({
+          reqId: req.reqId,
+          type: "DOC_HEADS",
+          heads: currentDoc ? A.getHeads(currentDoc) : null,
+        });
         break;
       }
 
