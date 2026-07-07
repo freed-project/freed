@@ -19,7 +19,6 @@ import {
   type DisplayPreferences,
   type FeedSignalMode,
   type MapMode,
-  type MapTimeMode,
   type SavedContentSortMode,
   type SidebarMode,
   type SocialContentFilter,
@@ -46,6 +45,7 @@ import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   MACOS_TRAFFIC_LIGHT_INSET,
+  MACOS_TRAFFIC_LIGHT_ROW_CENTER_Y,
   useAppStore,
   usePlatform,
 } from "../../context/PlatformContext.js";
@@ -103,7 +103,6 @@ const TOOLBAR_ICON_BUTTON_CLASS =
 const TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS =
   "theme-toolbar-reader-layout-button rounded-lg";
 const TOOLBAR_ICON_BUTTON_SIZE = "2.25rem";
-const COLLAPSED_TOOLBAR_PAIR_WIDTH = "5rem";
 const READER_LAYOUT_CONTROL_BUTTON_SIZE_PX = 32;
 const READER_LAYOUT_CONTROL_ICON_SIZE_PX = 20;
 const READER_LAYOUT_CONTROL_BUTTON_GAP_PX = 0;
@@ -480,7 +479,6 @@ export function Header({
     activeView === "friends" ||
     activeView === "map" ||
     (activeView === "feed" && !selectedItem);
-  const showMapTimeControls = activeView === "map";
   const showFeedBulkActions = activeView === "feed";
   const showFeedSignalFilter = activeView === "feed" && !selectedItem;
   const showSavedSortControl = showFeedSignalFilter && activeFilter.savedOnly === true;
@@ -501,8 +499,6 @@ export function Header({
     (isMobile || isBelowLargeToolbar);
   const showInlineWorkspaceIdentityControls =
     showWorkspaceIdentityControls && !collapseToolbarViewControls;
-  const showInlineMapTimeControls =
-    showMapTimeControls && !collapseToolbarViewControls;
   const showInlineSocialContentControls =
     showSocialContentControls && !collapseToolbarViewControls;
   const showFeedCardDensityControl =
@@ -521,7 +517,6 @@ export function Header({
       showCollapsedFeedControlMenu ||
       (collapseToolbarViewControls && (
         showWorkspaceIdentityControls ||
-        showMapTimeControls ||
         showSocialContentControls ||
         showSavedSortControl
       ))
@@ -832,10 +827,6 @@ export function Header({
       onFriendsMobileSurfaceChange("graph");
     });
   }, [handleIdentityModeChange, onFriendsMobileSurfaceChange]);
-
-  const handleMapTimeModeChange = useCallback((mode: MapTimeMode) => {
-    updateDisplayPreference({ mapTimeMode: mode });
-  }, [updateDisplayPreference]);
 
   const handleSavedContentSortModeChange = useCallback((mode: SavedContentSortMode) => {
     updateDisplayPreference({ savedContentSortMode: mode });
@@ -1154,6 +1145,16 @@ export function Header({
     pointerEvents: "auto",
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
+  const layoutControlCenterlineStyle = headerDragRegion
+    ? ({
+        position: "absolute",
+        top: px(MACOS_TRAFFIC_LIGHT_ROW_CENTER_Y),
+        transform: "translateY(-50%)",
+      } as CSSProperties)
+    : undefined;
+  const layoutControlWrapperClass = headerDragRegion
+    ? "absolute inline-flex"
+    : "absolute top-1/2 inline-flex -translate-y-1/2";
   const toolbarContainerStyle = {
     ...(headerDragRegion ? dragStyle : {}),
     boxSizing: "border-box",
@@ -1474,7 +1475,7 @@ export function Header({
           style={toolbarContainerStyle}
         >
           <div
-            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center ${isMobileDevice ? "pl-2" : ""}`}
+            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex h-full shrink-0 items-center ${isMobileDevice ? "pl-2" : ""}`}
           >
             <div
               ref={layoutControlHostRef}
@@ -1516,51 +1517,47 @@ export function Header({
                   className="absolute inset-y-0"
                   style={layoutControlClusterStyle}
                 >
-                  <span
-                    className="absolute top-1/2 inline-flex -translate-y-1/2"
-                    style={sidebarTogglePositionStyle}
+                  <Tooltip
+                    label={desktopSidebarToggleLabel}
+                    className={layoutControlWrapperClass}
+                    triggerStyle={{ ...sidebarTogglePositionStyle, ...layoutControlCenterlineStyle }}
                   >
+                    <button
+                      onClick={onDesktopSidebarToggle}
+                      {...getToolbarControlProps()}
+                      data-testid="desktop-sidebar-toggle"
+                      className={TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS}
+                      aria-label={desktopSidebarToggleLabel}
+                    >
+                      {visibleDesktopSidebarMode === "closed" ? (
+                        <SidebarExpandIcon className="h-5 w-5" />
+                      ) : (
+                        <SidebarCollapseIcon className="h-5 w-5" />
+                      )}
+                    </button>
+                  </Tooltip>
+
+                  {showDesktopReaderLayoutToggle ? (
                     <Tooltip
-                      label={desktopSidebarToggleLabel}
+                      label={display.reading.dualColumnMode ? "Hide Previews" : "Show Previews"}
+                      className={layoutControlWrapperClass}
+                      triggerStyle={{ ...previewTogglePositionStyle, ...layoutControlCenterlineStyle }}
                     >
                       <button
-                        onClick={onDesktopSidebarToggle}
+                        ref={handlePreviewToggleButtonRef}
+                        onClick={handleToggleDualColumn}
                         {...getToolbarControlProps()}
-                        data-testid="desktop-sidebar-toggle"
                         className={TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS}
-                        aria-label={desktopSidebarToggleLabel}
+                        aria-pressed={display.reading.dualColumnMode}
+                        aria-label={display.reading.dualColumnMode ? "Hide Previews" : "Show Previews"}
                       >
-                        {visibleDesktopSidebarMode === "closed" ? (
-                          <SidebarExpandIcon className="h-5 w-5" />
+                        {display.reading.dualColumnMode ? (
+                          <ReaderRailHideIcon className="h-5 w-5" />
                         ) : (
-                          <SidebarCollapseIcon className="h-5 w-5" />
+                          <ReaderRailShowIcon className="h-5 w-5" />
                         )}
                       </button>
                     </Tooltip>
-                  </span>
-
-                  {showDesktopReaderLayoutToggle ? (
-                    <span
-                      className="absolute top-1/2 inline-flex -translate-y-1/2"
-                      style={previewTogglePositionStyle}
-                    >
-                      <Tooltip label={display.reading.dualColumnMode ? "Hide Previews" : "Show Previews"}>
-                        <button
-                          ref={handlePreviewToggleButtonRef}
-                          onClick={handleToggleDualColumn}
-                          {...getToolbarControlProps()}
-                          className={TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS}
-                          aria-pressed={display.reading.dualColumnMode}
-                          aria-label={display.reading.dualColumnMode ? "Hide Previews" : "Show Previews"}
-                        >
-                          {display.reading.dualColumnMode ? (
-                            <ReaderRailHideIcon className="h-5 w-5" />
-                          ) : (
-                            <ReaderRailShowIcon className="h-5 w-5" />
-                          )}
-                        </button>
-                      </Tooltip>
-                    </span>
                   ) : null}
 
                 </div>
@@ -1831,23 +1828,6 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showInlineMapTimeControls} width={TOOLBAR_SLOT_WIDTH_CONTENT}>
-                  {showInlineMapTimeControls ? (
-                    <ToolbarToggleGroup
-                      dataTestId="map-toolbar-timeframe"
-                      options={[
-                        { value: "current", label: "Current" },
-                        { value: "future", label: "Future" },
-                        { value: "past", label: "Past" },
-                      ]}
-                      value={display.mapTimeMode ?? "current"}
-                      onChange={handleMapTimeModeChange}
-                      compact
-                      getButtonProps={getToolbarControlProps}
-                    />
-                  ) : null}
-                </ToolbarAnimatedSlot>
-
                 <ToolbarAnimatedSlot visible={showArchivedToolbar && !isBelowLargeToolbar} width={TOOLBAR_SLOT_WIDTH_CONTENT} className="hidden xl:flex">
                   {showArchivedToolbar && !isBelowLargeToolbar ? (
                     <span className="text-xs text-[var(--theme-text-muted)]">
@@ -1961,7 +1941,11 @@ export function Header({
 
                 <ToolbarAnimatedSlot
                   visible={showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu}
-                  width={showToolbarOverflowMenuButton && showCollapsedToolbarFilterMenu ? COLLAPSED_TOOLBAR_PAIR_WIDTH : TOOLBAR_ICON_BUTTON_SIZE}
+                  width={
+                    showToolbarOverflowMenuButton && showCollapsedToolbarFilterMenu
+                      ? TOOLBAR_SLOT_WIDTH_CONTENT
+                      : TOOLBAR_ICON_BUTTON_SIZE
+                  }
                 >
                   {showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu ? (
                     <div className="flex items-center gap-2">
@@ -2106,7 +2090,7 @@ export function Header({
           ) : null}
 
           {collapseToolbarViewControls && showCollapsedToolbarFilterMenu && showWorkspaceIdentityControls ? (
-            <div className={`${showMapTimeControls || showSavedSortControl || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
+            <div className={`${showSavedSortControl || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
               <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
                 Connections
               </p>
@@ -2115,26 +2099,6 @@ export function Header({
                 options={identityToolbarOptions}
                 value={identityToolbarValue}
                 onChange={(mode) => handleToolbarIdentityModeChange(mode as FriendsToolbarMode)}
-                compact
-                fullWidth
-              />
-            </div>
-          ) : null}
-
-          {collapseToolbarViewControls && showCollapsedToolbarFilterMenu && showMapTimeControls ? (
-            <div className={`${showSavedSortControl || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
-              <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
-                Time
-              </p>
-              <ToolbarToggleGroup
-                dataTestId="mobile-map-toolbar-timeframe"
-                options={[
-                  { value: "current", label: "Current" },
-                  { value: "future", label: "Future" },
-                  { value: "past", label: "Past" },
-                ]}
-                value={display.mapTimeMode ?? "current"}
-                onChange={handleMapTimeModeChange}
                 compact
                 fullWidth
               />

@@ -1,22 +1,17 @@
-import {
-  Application,
-  Assets,
-  Container,
-  Graphics,
-  Sprite,
-  Texture,
-  Text,
-  TextStyle,
-} from "pixi.js";
+/// <reference path="../../types/troika-three-text.d.ts" />
+
 import {
   forwardRef,
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import * as THREE from "three";
+import { Text as TroikaText } from "troika-three-text";
 import type {
   Account,
   FeedItem,
@@ -26,32 +21,23 @@ import type {
   RssFeed,
 } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
-import { recordRuntimeError } from "../../lib/bug-report.js";
 import {
-  buildIdentityGraphLayout,
-  buildSpatialIndex,
-  findHitNode,
-  fitTransformToNodes,
+  buildIdentityGraphActivitySummaries,
+  type IdentityGraphActivitySummaries,
+} from "../../lib/identity-graph-activity-summary.js";
+import {
+  buildIdentityGraphAtlas,
+  fitTransformToAtlasBounds,
+  type BuildIdentityGraphAtlasInput,
+  type IdentityGraphAtlas,
+  type IdentityGraphAtlasBounds,
+  type IdentityGraphAtlasNode,
+  type IdentityGraphAtlasQuality,
+} from "../../lib/identity-graph-atlas.js";
+import {
   FRIEND_GRAPH_DEFAULT_TRANSFORM,
-  type GraphLayoutQuality,
-  type IdentityGraphLayout,
-  type IdentityGraphLayoutNode,
-  type SpatialIndex,
   type ViewTransform,
-  type ViewportPadding,
 } from "../../lib/identity-graph-layout.js";
-import {
-  buildIdentityGraphModel,
-  createIdentityGraphModelSignature,
-  type IdentityGraphModel,
-  type IdentityGraphMode,
-} from "../../lib/identity-graph-model.js";
-import {
-  graphLabelSortValue,
-  isSelectedGraphNode,
-  shouldShowGraphLabel,
-  type GraphQualityMode,
-} from "../../lib/identity-graph-render.js";
 
 export interface FriendGraphHandle {
   fitAll: () => void;
@@ -62,7 +48,8 @@ interface FriendGraphProps {
   persons: Person[];
   accounts: Record<string, Account>;
   feeds: Record<string, RssFeed>;
-  feedItems: Record<string, FeedItem>;
+  feedItems?: Record<string, FeedItem>;
+  activitySummaries?: IdentityGraphActivitySummaries;
   mode: MapMode;
   selectedPersonId?: string | null;
   selectedAccountId?: string | null;
@@ -82,42 +69,16 @@ interface FriendGraphProps {
   themeId?: ThemeId;
 }
 
-type PanState = {
-  kind: "pan";
-  pointerId: number;
-  startX: number;
-  startY: number;
-  originX: number;
-  originY: number;
-  moved: boolean;
-};
-
-type AccountDragState = {
-  kind: "account-drag";
-  pointerId: number;
-  nodeId: string;
-  accountId: string;
-  startX: number;
-  startY: number;
-  moved: boolean;
-  dropTargetPersonId: string | null;
-  currentWorldX: number;
-  currentWorldY: number;
-};
-
-type PersonDragState = {
-  kind: "person-drag";
-  pointerId: number;
-  nodeId: string;
-  personId: string;
-  startX: number;
-  startY: number;
-  moved: boolean;
-  currentWorldX: number;
-  currentWorldY: number;
-};
-
-type DragState = PanState | AccountDragState | PersonDragState;
+type DragState =
+  {
+    kind: "pan";
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    moved: boolean;
+  };
 
 type TouchPoint = {
   x: number;
@@ -133,80 +94,27 @@ type PinchState = {
   moved: boolean;
 };
 
-interface PixiScene {
-  app: Application;
-  world: Container;
-  regionLayer: Graphics;
-  regionLabelLayer: Container;
-  edgeLayer: Graphics;
-  edgeHighlightLayer: Graphics;
-  denseNodeLayer: Graphics;
-  denseInteractionNodeLayer: Graphics;
-  nodeLayer: Container;
-  hoverLayer: Graphics;
-  labelLayer: Container;
-  nodeDisplays: Map<string, NodeDisplay>;
-  regionDisplays: Map<string, RegionDisplay>;
-  labelDisplays: Map<string, LabelDisplay>;
+type StarfieldVariation = "nebula-rings" | "nebula" | "rings";
+
+type GraphContextMenuState = {
+  x: number;
+  y: number;
+  worldX: number;
+  worldY: number;
+  node: IdentityGraphAtlasNode;
+};
+
+interface GraphDebugNode {
+  id: string;
+  personId?: string;
+  accountId?: string;
+  feedUrl?: string;
+  linkedPersonId?: string | null;
+  kind: string;
+  x: number;
+  y: number;
+  radius: number;
 }
-
-interface NodeDisplay {
-  container: Container;
-  outer: Graphics;
-  avatarSprite: Sprite | null;
-  avatarMask: Graphics | null;
-  inner: Graphics | null;
-  initials: Text | null;
-  providerDot: Graphics | null;
-  highlightRing: Graphics;
-}
-
-type AvatarTextureCacheEntry =
-  | { state: "loading" }
-  | { state: "loaded"; texture: Texture }
-  | { state: "failed" };
-
-interface LabelDisplay {
-  container: Container;
-  background: Graphics;
-  text: Text;
-}
-
-interface RegionDisplay {
-  container: Container;
-  background: Graphics;
-  text: Text;
-}
-
-function destroyPixiScene(scene: PixiScene): void {
-  for (const display of scene.nodeDisplays.values()) {
-    if (display.avatarSprite) {
-      display.avatarSprite.mask = null;
-    }
-  }
-  scene.nodeDisplays.clear();
-  scene.regionDisplays.clear();
-  scene.labelDisplays.clear();
-  scene.app.stop();
-  if (scene.app.canvas.isConnected) {
-    scene.app.canvas.remove();
-  }
-  try {
-    scene.app.destroy(true);
-  } catch (error) {
-    recordRuntimeError({
-      source: "friends:graph:pixi-destroy",
-      error,
-      fatal: false,
-    });
-    console.warn("[friends-graph] ignored Pixi teardown error", error);
-  }
-}
-
-type GraphDebugNode = Pick<
-  IdentityGraphLayoutNode,
-  "id" | "personId" | "accountId" | "feedUrl" | "linkedPersonId" | "kind" | "x" | "y" | "radius"
->;
 
 type GraphViewportInsets = {
   top: number;
@@ -214,108 +122,6 @@ type GraphViewportInsets = {
   bottom: number;
   left: number;
 };
-
-const EMPTY_GRAPH_VIEWPORT_INSETS: GraphViewportInsets = {
-  top: 0,
-  right: 0,
-  bottom: 0,
-  left: 0,
-};
-
-const DEFAULT_HEIGHT = 560;
-const FIT_PADDING = 84;
-const MIN_SCALE = 0.2;
-const MAX_SCALE = 2.8;
-const TRACKPAD_PINCH_ZOOM_SPEED = 0.005;
-const GRAPH_INTERACTION_SETTLE_DELAY_MS = 140;
-const DENSE_GRAPH_INTERACTION_SETTLE_DELAY_MS = 700;
-const GRAPH_LAYOUT_WORKER_TIMEOUT_MS = 4_000;
-const INTERACTIVE_LABEL_LIMIT = 16;
-const SETTLED_LABEL_LIMIT = 32;
-const FAST_LAYOUT_NODE_THRESHOLD = 1_600;
-const NODE_LAYER_TEXTURE_CACHE_MAX_NODES = 1_200;
-const INTERACTIVE_NODE_CULL_THRESHOLD = 1_200;
-const DENSE_GRAPH_SINGLE_LAYER_THRESHOLD = 1_200;
-const DENSE_INTERACTION_CULL_THRESHOLD = 1_600;
-const DENSE_INTERACTION_NODE_LIMIT = 64;
-const DENSE_SETTLED_VIEWPORT_NODE_LIMIT = 560;
-const DENSE_INTERACTION_VIEWPORT_PADDING = 72;
-const DENSE_INTERACTION_TRANSFORM_BUCKET_PX = 900;
-const DENSE_INTERACTION_SCALE_BUCKET_FACTOR = 2;
-const DENSE_SETTLED_VIEWPORT_SCALE_THRESHOLD = 0.55;
-const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
-const RELATIONSHIP_TIER_DROP_SELECTOR = "[data-friend-tier-drop-value]";
-
-function readCanvasViewportInset(element: HTMLElement, name: string): number {
-  const raw = window.getComputedStyle(element).getPropertyValue(name).trim();
-  const parsed = Number.parseFloat(raw);
-  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
-}
-
-function readCanvasViewportInsets(element: HTMLElement): GraphViewportInsets {
-  return {
-    top: readCanvasViewportInset(element, "--freed-canvas-viewport-inset-top"),
-    right: readCanvasViewportInset(element, "--freed-canvas-viewport-inset-right"),
-    bottom: readCanvasViewportInset(element, "--freed-canvas-viewport-inset-bottom"),
-    left: readCanvasViewportInset(element, "--freed-canvas-viewport-inset-left"),
-  };
-}
-
-function sameGraphViewportInsets(
-  left: GraphViewportInsets,
-  right: GraphViewportInsets,
-): boolean {
-  return (
-    left.top === right.top &&
-    left.right === right.right &&
-    left.bottom === right.bottom &&
-    left.left === right.left
-  );
-}
-
-function graphViewportPadding(insets: GraphViewportInsets): ViewportPadding {
-  return {
-    top: FIT_PADDING + insets.top,
-    right: FIT_PADDING + insets.right,
-    bottom: FIT_PADDING + insets.bottom,
-    left: FIT_PADDING + insets.left,
-  };
-}
-
-function graphViewportCenter(
-  canvasSize: { width: number; height: number },
-  insets: GraphViewportInsets,
-): { x: number; y: number } {
-  return {
-    x: insets.left + Math.max(1, canvasSize.width - insets.left - insets.right) / 2,
-    y: insets.top + Math.max(1, canvasSize.height - insets.top - insets.bottom) / 2,
-  };
-}
-
-interface RgbColor {
-  r: number;
-  g: number;
-  b: number;
-}
-
-interface GraphThemePalette {
-  friendFill: number;
-  friendStroke: number;
-  friendText: number;
-  connectionFill: number;
-  connectionStroke: number;
-  connectionText: number;
-  channelStroke: number;
-  labelFill: number;
-  labelStroke: number;
-  labelText: number;
-  labelSelectedText: number;
-  edge: number;
-  selection: number;
-  highlight: number;
-  reconnect: number;
-  providerColors: Record<string, number>;
-}
 
 interface GraphPerfSnapshot {
   modelBuildMs: number;
@@ -337,7 +143,18 @@ interface GraphPerfSnapshot {
   denseInteractionNodeCount: number;
   denseInteractionCulled: boolean;
   denseInteractionRebuildCount: number;
-  qualityMode: GraphQualityMode;
+  qualityMode: "interactive" | "settled";
+  sourceNodeCount: number;
+  visibleNodeCount: number;
+  renderedPrimitiveCount: number;
+  firstVisibleMs: number;
+  frameP95Ms: number;
+  longTaskCount: number;
+  memoryEstimateBytes: number;
+  rendererType: "three-starfield" | "canvas-starfield-fallback";
+  touchInputMode: "pointer-events";
+  lod: string;
+  capped: boolean;
 }
 
 interface GraphSurfacePerfSnapshot extends GraphPerfSnapshot {
@@ -348,55 +165,46 @@ interface GraphSurfacePerfSnapshot extends GraphPerfSnapshot {
   transformScale: number;
 }
 
-interface GraphLayoutCounts {
-  nodeCount: number;
-  linkCount: number;
-  personCount: number;
-  channelCount: number;
+interface AtlasResponse {
+  requestId: number;
+  atlas: IdentityGraphAtlas;
+  durationMs: number;
 }
 
-function shouldExposeGraphDebug(): boolean {
-  return typeof window !== "undefined" &&
-    (window as typeof window & { __FREED_GRAPH_DEBUG_ENABLED__?: boolean })
-      .__FREED_GRAPH_DEBUG_ENABLED__ === true;
+interface GraphPalette {
+  surface: string;
+  text: string;
+  mutedText: string;
+  edge: string;
+  friendFill: string;
+  friendStroke: string;
+  connectionFill: string;
+  connectionStroke: string;
+  accountFill: string;
+  feedFill: string;
+  providerFill: string;
+  selection: string;
+  highlight: string;
+  labelFill: string;
+  labelStroke: string;
+  providerColors: Record<string, string>;
 }
 
-function buildGraphLayoutCounts(layout: IdentityGraphLayout): GraphLayoutCounts {
-  let personCount = 0;
-  let channelCount = 0;
-  for (const node of layout.nodes) {
-    if (node.personId) {
-      personCount += 1;
-    }
-    if (node.accountId || node.feedUrl) {
-      channelCount += 1;
-    }
-  }
-  return {
-    nodeCount: layout.nodes.length,
-    linkCount: layout.edges.length,
-    personCount,
-    channelCount,
-  };
-}
-
-function relationshipTierDropLevelAt(clientX: number, clientY: number): 1 | 3 | 5 | null {
-  const element = document.elementFromPoint(clientX, clientY);
-  const target = element?.closest<HTMLElement>(RELATIONSHIP_TIER_DROP_SELECTOR);
-  const value = target?.dataset.friendTierDropValue;
-  if (value === "1" || value === "3" || value === "5") {
-    return Number(value) as 1 | 3 | 5;
-  }
-  return null;
-}
-
-function emitRelationshipTierDragOver(level: 1 | 3 | 5 | null): void {
-  window.dispatchEvent(new CustomEvent("freed-friend-tier-dragover", { detail: { level } }));
-}
-
-function clampScale(scale: number): number {
-  return Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
-}
+const MIN_SCALE = 0.18;
+const MAX_SCALE = 3.2;
+const FIT_PADDING = 96;
+const TRACKPAD_PINCH_ZOOM_SPEED = 0.0035;
+const WHEEL_ZOOM_SPEED = 0.0014;
+const INTERACTION_SETTLE_DELAY_MS = 180;
+const DENSE_INTERACTION_SETTLE_DELAY_MS = 420;
+const GRAPH_LAYOUT_WORKER_TIMEOUT_MS = 2_400;
+const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
+const EMPTY_GRAPH_VIEWPORT_INSETS: GraphViewportInsets = {
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+};
 
 function nowMs(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -405,90 +213,12 @@ function nowMs(): number {
   return Date.now();
 }
 
-function estimateLabelWidth(label: string, fontSize: number): number {
-  return Math.max(44, Math.round(label.length * fontSize * 0.57 + 20));
-}
-
-function graphNodeLabelFontSize(node: IdentityGraphLayoutNode, scale: number): number {
-  if (node.kind === "friend_person") return scale >= 1.12 ? 13 : 12;
-  if (node.kind === "connection_person") return scale >= 1.16 ? 12 : 11;
-  return 10.5;
-}
-
-function providerLabelMetrics(scale: number): {
-  fontSize: number;
-  height: number;
-  paddingX: number;
-  alpha: number;
-  gap: number;
-} {
-  if (scale < 0.55) {
-    return { fontSize: 16, height: 30, paddingX: 14, alpha: 0.96, gap: 18 };
-  }
-  if (scale < 0.9) {
-    return { fontSize: 14, height: 26, paddingX: 12, alpha: 0.9, gap: 16 };
-  }
-  return { fontSize: 12, height: 22, paddingX: 10, alpha: 0.76, gap: 14 };
-}
-
-function buildHighlightedNodeIds(
-  layout: IdentityGraphLayout,
-  selectedPersonId?: string | null,
-  selectedAccountId?: string | null,
-): Set<string> {
-  if (!selectedPersonId && !selectedAccountId) {
-    return new Set();
-  }
-
-  const next = new Set<string>();
-  for (const node of layout.nodes) {
-    if (selectedPersonId && node.personId === selectedPersonId) {
-      next.add(node.id);
-    }
-    if (selectedAccountId && node.accountId === selectedAccountId) {
-      next.add(node.id);
-      if (node.linkedPersonId) {
-        next.add(`person:${node.linkedPersonId}`);
-      }
-    }
-  }
-
-  for (const edge of layout.edges) {
-    if (next.has(edge.sourceId) || next.has(edge.targetId)) {
-      next.add(edge.sourceId);
-      next.add(edge.targetId);
-    }
-  }
-
-  return next;
-}
-
-function nodeAlpha(
-  node: IdentityGraphLayoutNode,
-  highlighted: Set<string>,
-  dragTargetPersonId: string | null,
-): number {
-  if (dragTargetPersonId && node.personId === dragTargetPersonId) {
-    return 1;
-  }
-  if (highlighted.size > 0) {
-    return highlighted.has(node.id) ? 1 : node.kind === "feed" ? 0.08 : 0.14;
-  }
-  if (node.kind === "friend_person") return 0.98;
-  if (node.kind === "connection_person") return 0.92;
-  if (node.kind === "feed") return 0.7;
-  return 0.88;
-}
-
-function screenPointForPosition(position: { x: number; y: number }, transform: ViewTransform) {
-  return {
-    x: position.x * transform.scale + transform.x,
-    y: position.y * transform.scale + transform.y,
-  };
+function clampScale(scale: number): number {
+  return Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
 }
 
 function distanceBetween(first: TouchPoint, second: TouchPoint): number {
-  return Math.hypot(second.x - first.x, second.y - first.y);
+  return Math.hypot(first.x - second.x, first.y - second.y);
 }
 
 function midpointBetween(first: TouchPoint, second: TouchPoint): TouchPoint {
@@ -498,292 +228,95 @@ function midpointBetween(first: TouchPoint, second: TouchPoint): TouchPoint {
   };
 }
 
-function rgbToNumber(color: RgbColor): number {
-  return (color.r << 16) + (color.g << 8) + color.b;
+function sameGraphViewportInsets(left: GraphViewportInsets, right: GraphViewportInsets): boolean {
+  return left.top === right.top &&
+    left.right === right.right &&
+    left.bottom === right.bottom &&
+    left.left === right.left;
 }
 
-function mixColor(left: RgbColor, right: RgbColor, rightWeight: number): RgbColor {
-  const leftWeight = 1 - rightWeight;
+function fitTransformToVisibleAtlasBounds(
+  bounds: IdentityGraphAtlasBounds,
+  width: number,
+  height: number,
+  padding: number,
+  viewportInsets: GraphViewportInsets,
+): ViewTransform {
+  const visibleWidth = Math.max(1, width - viewportInsets.left - viewportInsets.right);
+  const visibleHeight = Math.max(1, height - viewportInsets.top - viewportInsets.bottom);
+  const transform = fitTransformToAtlasBounds(bounds, visibleWidth, visibleHeight, padding);
   return {
-    r: Math.round(left.r * leftWeight + right.r * rightWeight),
-    g: Math.round(left.g * leftWeight + right.g * rightWeight),
-    b: Math.round(left.b * leftWeight + right.b * rightWeight),
+    x: transform.x + viewportInsets.left,
+    y: transform.y + viewportInsets.top,
+    scale: transform.scale,
   };
 }
 
-function parseRgbVariable(style: CSSStyleDeclaration, name: string, fallback: RgbColor): RgbColor {
-  const value = style.getPropertyValue(name).trim();
-  const parts = value.split(/\s+/).map((part) => Number(part));
-  if (parts.length >= 3 && parts.every((part) => Number.isFinite(part))) {
-    return {
-      r: Math.max(0, Math.min(255, Math.round(parts[0]!))),
-      g: Math.max(0, Math.min(255, Math.round(parts[1]!))),
-      b: Math.max(0, Math.min(255, Math.round(parts[2]!))),
-    };
-  }
-  return fallback;
+function visibleViewportCenter(width: number, height: number, viewportInsets: GraphViewportInsets): TouchPoint {
+  return {
+    x: viewportInsets.left + Math.max(1, width - viewportInsets.left - viewportInsets.right) / 2,
+    y: viewportInsets.top + Math.max(1, height - viewportInsets.top - viewportInsets.bottom) / 2,
+  };
 }
 
-function readGraphThemePalette(element: HTMLElement | null): GraphThemePalette {
-  const style = element ? getComputedStyle(element) : null;
-  const primary = style
-    ? parseRgbVariable(style, "--theme-accent-primary-rgb", { r: 59, g: 130, b: 246 })
-    : { r: 59, g: 130, b: 246 };
-  const secondary = style
-    ? parseRgbVariable(style, "--theme-accent-secondary-rgb", { r: 139, g: 92, b: 246 })
-    : { r: 139, g: 92, b: 246 };
-  const tertiary = style
-    ? parseRgbVariable(style, "--theme-accent-tertiary-rgb", { r: 6, g: 182, b: 212 })
-    : { r: 6, g: 182, b: 212 };
-  const shell = style
-    ? parseRgbVariable(style, "--theme-shell-rgb", { r: 10, g: 12, b: 20 })
-    : { r: 10, g: 12, b: 20 };
-  const warning = style
-    ? parseRgbVariable(style, "--theme-feedback-warning-rgb", { r: 245, g: 158, b: 11 })
-    : { r: 245, g: 158, b: 11 };
-  const surface = mixColor(shell, { r: 255, g: 255, b: 255 }, shell.r + shell.g + shell.b > 382 ? 0.08 : 0.82);
-  const isLight = shell.r + shell.g + shell.b > 382;
-  const text = isLight ? { r: 36, g: 24, b: 14 } : { r: 248, g: 250, b: 252 };
-  const mutedText = mixColor(text, shell, isLight ? 0.32 : 0.18);
+function cssRgbVar(style: CSSStyleDeclaration, name: string, fallback: string): string {
+  const raw = style.getPropertyValue(name).trim();
+  if (!raw) return fallback;
+  const parts = raw.split(/\s+/).map((part) => Number(part)).filter(Number.isFinite);
+  if (parts.length < 3) return fallback;
+  return `${parts[0]} ${parts[1]} ${parts[2]}`;
+}
 
+function rgb(rgbParts: string, alpha = 1): string {
+  return `rgb(${rgbParts} / ${alpha})`;
+}
+
+function readGraphPalette(element: HTMLElement | null): GraphPalette {
+  const style = element ? getComputedStyle(element) : getComputedStyle(document.documentElement);
+  const primary = cssRgbVar(style, "--theme-accent-primary-rgb", "59 130 246");
+  const secondary = cssRgbVar(style, "--theme-accent-secondary-rgb", "139 92 246");
+  const tertiary = cssRgbVar(style, "--theme-accent-tertiary-rgb", "6 182 212");
+  const shell = cssRgbVar(style, "--theme-shell-rgb", "6 7 13");
   return {
-    friendFill: rgbToNumber(mixColor(primary, secondary, 0.28)),
-    friendStroke: rgbToNumber(mixColor(text, primary, 0.18)),
-    friendText: rgbToNumber(text),
-    connectionFill: rgbToNumber(mixColor(secondary, surface, 0.34)),
-    connectionStroke: rgbToNumber(mixColor(mutedText, secondary, 0.28)),
-    connectionText: rgbToNumber(text),
-    channelStroke: rgbToNumber(mixColor(text, shell, 0.28)),
-    labelFill: rgbToNumber(mixColor(surface, text, isLight ? 0.04 : 0.1)),
-    labelStroke: rgbToNumber(mixColor(secondary, text, 0.16)),
-    labelText: rgbToNumber(text),
-    labelSelectedText: rgbToNumber(isLight ? { r: 255, g: 252, b: 245 } : { r: 8, g: 12, b: 18 }),
-    edge: rgbToNumber(mixColor(mutedText, secondary, 0.2)),
-    selection: rgbToNumber(mixColor(text, primary, 0.2)),
-    highlight: rgbToNumber(mixColor(primary, tertiary, 0.42)),
-    reconnect: rgbToNumber(warning),
+    surface: rgb(shell, 0.2),
+    text: style.getPropertyValue("--theme-text") || rgb("255 255 255", 0.9),
+    mutedText: style.getPropertyValue("--theme-text-muted") || rgb("255 255 255", 0.62),
+    edge: rgb(primary, 0.32),
+    friendFill: rgb(primary, 0.42),
+    friendStroke: rgb(primary, 0.82),
+    connectionFill: rgb(secondary, 0.34),
+    connectionStroke: rgb(secondary, 0.72),
+    accountFill: rgb(tertiary, 0.46),
+    feedFill: rgb("245 158 11", 0.42),
+    providerFill: rgb(secondary, 0.24),
+    selection: rgb(tertiary, 0.92),
+    highlight: rgb(secondary, 0.9),
+    labelFill: rgb(shell, 0.86),
+    labelStroke: rgb(primary, 0.34),
     providerColors: {
-      instagram: rgbToNumber(mixColor(secondary, warning, 0.22)),
-      facebook: rgbToNumber(mixColor(primary, tertiary, 0.18)),
-      x: rgbToNumber(mixColor(mutedText, primary, 0.16)),
-      linkedin: rgbToNumber(mixColor(primary, secondary, 0.16)),
-      rss: rgbToNumber(mixColor(warning, secondary, 0.2)),
-      other: rgbToNumber(mixColor(tertiary, mutedText, 0.28)),
+      instagram: rgb("236 72 153", 0.78),
+      facebook: rgb("59 130 246", 0.78),
+      linkedin: rgb("14 165 233", 0.78),
+      x: rgb("226 232 240", 0.78),
+      rss: rgb("245 158 11", 0.8),
+      substack: rgb("249 115 22", 0.78),
+      medium: rgb("34 197 94", 0.72),
+      other: rgb(tertiary, 0.72),
     },
   };
 }
 
-function providerColor(provider: string | undefined, palette: GraphThemePalette): number {
+function providerColor(provider: string | undefined, palette: GraphPalette): string {
   return palette.providerColors[provider ?? "other"] ?? palette.providerColors.other;
 }
 
-function kindColor(node: IdentityGraphLayoutNode, palette: GraphThemePalette) {
-  if (node.kind === "friend_person") {
-    return {
-      fill: palette.friendFill,
-      stroke: palette.friendStroke,
-      text: palette.friendText,
-    };
-  }
-  if (node.kind === "connection_person") {
-    return {
-      fill: palette.connectionFill,
-      stroke: node.friendSuggestionConfidence ? palette.highlight : palette.connectionStroke,
-      text: palette.connectionText,
-    };
-  }
-  if (node.kind === "feed") {
-    return {
-      fill: providerColor("rss", palette),
-      stroke: palette.channelStroke,
-      text: palette.labelText,
-    };
-  }
-  return {
-    fill: providerColor(node.provider, palette),
-    stroke: node.friendSuggestionConfidence ? palette.highlight : palette.channelStroke,
-    text: palette.labelText,
-  };
+function shouldExposeGraphDebug(): boolean {
+  return typeof window !== "undefined" &&
+    (window as typeof window & { __FREED_GRAPH_DEBUG_ENABLED__?: boolean })
+      .__FREED_GRAPH_DEBUG_ENABLED__ === true;
 }
 
-function nodePosition(
-  node: IdentityGraphLayoutNode,
-  drag: DragState | null,
-): { x: number; y: number } {
-  if (
-    drag?.kind === "account-drag" &&
-    node.accountId &&
-    drag.accountId === node.accountId
-  ) {
-    return { x: drag.currentWorldX, y: drag.currentWorldY };
-  }
-  if (
-    drag?.kind === "person-drag" &&
-    node.personId &&
-    drag.personId === node.personId
-  ) {
-    return { x: drag.currentWorldX, y: drag.currentWorldY };
-  }
-  return { x: node.x, y: node.y };
-}
-
-function createNodeDisplay(
-  node: IdentityGraphLayoutNode,
-): NodeDisplay {
-  const container = new Container();
-  const outer = new Graphics();
-  container.addChild(outer);
-
-  let inner: Graphics | null = null;
-  if (node.kind === "friend_person" || node.kind === "connection_person") {
-    inner = new Graphics();
-    container.addChild(inner);
-  }
-
-  let providerDot: Graphics | null = null;
-  if (node.kind === "account") {
-    providerDot = new Graphics();
-    container.addChild(providerDot);
-  }
-
-  const highlightRing = new Graphics();
-  container.addChild(highlightRing);
-
-  return {
-    container,
-    outer,
-    avatarSprite: null,
-    avatarMask: null,
-    inner,
-    initials: null,
-    providerDot,
-    highlightRing,
-  };
-}
-
-function ensureAvatarDisplay(
-  display: NodeDisplay,
-): { avatarSprite: Sprite; avatarMask: Graphics } {
-  if (display.avatarSprite && display.avatarMask) {
-    return {
-      avatarSprite: display.avatarSprite,
-      avatarMask: display.avatarMask,
-    };
-  }
-
-  const avatarSprite = new Sprite(Texture.EMPTY);
-  avatarSprite.anchor.set(0.5);
-  avatarSprite.visible = false;
-
-  const avatarMask = new Graphics();
-  avatarSprite.mask = avatarMask;
-
-  const outerIndex = display.outer.parent === display.container
-    ? display.container.getChildIndex(display.outer)
-    : -1;
-  const spriteIndex = Math.min(display.container.children.length, Math.max(0, outerIndex + 1));
-  display.container.addChildAt(avatarSprite, spriteIndex);
-  const maskIndex = Math.min(display.container.children.length, spriteIndex + 1);
-  display.container.addChildAt(avatarMask, maskIndex);
-
-  display.avatarSprite = avatarSprite;
-  display.avatarMask = avatarMask;
-  return { avatarSprite, avatarMask };
-}
-
-function ensureInitialsDisplay(
-  display: NodeDisplay,
-): Text {
-  if (display.initials) return display.initials;
-
-  const initials = new Text("", new TextStyle({ fontSize: 10 }));
-  initials.anchor.set(0.5);
-  const insertIndex = display.highlightRing.parent === display.container
-    ? display.container.getChildIndex(display.highlightRing)
-    : display.container.children.length;
-  display.container.addChildAt(initials, insertIndex);
-  display.initials = initials;
-  return initials;
-}
-
-function createLabelDisplay(themeId?: ThemeId): LabelDisplay {
-  const container = new Container();
-  const background = new Graphics();
-  const text = new Text(
-    "",
-    new TextStyle({
-      fill: 0xffffff,
-      fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
-      fontSize: 12,
-      fontWeight: "600",
-    }),
-  );
-  text.anchor.set(0.5, 0);
-  text.position.set(0, 4);
-  container.addChild(background);
-  container.addChild(text);
-
-  return {
-    container,
-    background,
-    text,
-  };
-}
-
-function createRegionDisplay(themeId?: ThemeId): RegionDisplay {
-  const container = new Container();
-  const background = new Graphics();
-  const text = new Text(
-    "",
-    new TextStyle({
-      fill: 0xffffff,
-      fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
-      fontSize: 11,
-      fontWeight: "700",
-      letterSpacing: 1,
-    }),
-  );
-  text.anchor.set(0.5);
-  container.addChild(background);
-  container.addChild(text);
-
-  return {
-    container,
-    background,
-    text,
-  };
-}
-
-function edgeFadeAlpha(left: number, top: number, width: number, height: number, viewportWidth: number, viewportHeight: number): number {
-  const fadeDistance = 28;
-  const right = left + width;
-  const bottom = top + height;
-  const distances = [
-    right,
-    viewportWidth - left,
-    bottom,
-    viewportHeight - top,
-  ];
-  const nearest = Math.min(...distances);
-  return Math.max(0, Math.min(1, nearest / fadeDistance));
-}
-
-function graphFitItems(layout: IdentityGraphLayout): Array<{ x: number; y: number; radius: number }> {
-  return [
-    ...layout.nodes,
-    ...layout.regions.map((region) => ({
-      x: region.x,
-      y: region.y,
-      radius: Math.max(region.radiusX, region.radiusY),
-    })),
-  ];
-}
-
-function buildNodeById(nodes: IdentityGraphLayoutNode[]): Map<string, IdentityGraphLayoutNode> {
-  return new Map(nodes.map((node) => [node.id, node]));
-}
-
-function buildGraphDebugNodes(nodes: IdentityGraphLayoutNode[]): GraphDebugNode[] {
+function buildGraphDebugNodes(nodes: IdentityGraphAtlasNode[]): GraphDebugNode[] {
   return nodes.map((node) => ({
     id: node.id,
     personId: node.personId,
@@ -797,117 +330,590 @@ function buildGraphDebugNodes(nodes: IdentityGraphLayoutNode[]): GraphDebugNode[
   }));
 }
 
-function isNodeNearViewport(
-  node: IdentityGraphLayoutNode,
-  transform: ViewTransform,
-  width: number,
-  height: number,
-  padding: number,
-): boolean {
-  const point = screenPointForPosition(node, transform);
-  const screenRadius = node.radius * transform.scale;
-  return (
-    point.x + screenRadius >= -padding &&
-    point.x - screenRadius <= width + padding &&
-    point.y + screenRadius >= -padding &&
-    point.y - screenRadius <= height + padding
-  );
+function buildSuggestionRecord(
+  map: Map<string, FriendCandidateConfidence> | undefined,
+): Record<string, FriendCandidateConfidence> {
+  if (!map) return {};
+  return Object.fromEntries(map.entries());
 }
 
-function shouldLoadNodeAvatar({
-  node,
-  transform,
-  width,
-  height,
-  selectedOrHighlighted,
-  qualityMode,
-}: {
-  node: IdentityGraphLayoutNode;
-  transform: ViewTransform;
-  width: number;
-  height: number;
-  selectedOrHighlighted: boolean;
-  qualityMode: GraphQualityMode;
-}): boolean {
-  if (selectedOrHighlighted) return true;
-  if (qualityMode === "interactive") return false;
-  if (node.radius * transform.scale < 14) return false;
-  if (transform.scale < 0.68) return false;
-  return isNodeNearViewport(node, transform, width, height, 120);
+function estimateMemoryBytes(atlas: IdentityGraphAtlas): number {
+  return atlas.nodes.length * 160 +
+    atlas.edges.length * 64 +
+    atlas.labels.length * 96 +
+    atlas.regions.length * 112 +
+    atlas.hitBuckets.reduce((sum, bucket) => sum + bucket.nodeIds.length * 24, 0);
 }
 
-function shouldShowNodeInitials({
-  node,
-  transform,
-  width,
-  height,
-  selectedOrHighlighted,
-  qualityMode,
-}: {
-  node: IdentityGraphLayoutNode;
-  transform: ViewTransform;
-  width: number;
-  height: number;
-  selectedOrHighlighted: boolean;
-  qualityMode: GraphQualityMode;
-}): boolean {
-  if (selectedOrHighlighted) return true;
-  if (qualityMode === "interactive") return false;
-  if (node.radius * transform.scale < 18) return false;
-  return isNodeNearViewport(node, transform, width, height, 80);
+function buildHitBucketMap(atlas: IdentityGraphAtlas): Map<string, string[]> {
+  return new Map(atlas.hitBuckets.map((bucket) => [bucket.key, bucket.nodeIds]));
 }
 
-function drawDenseGraphNode(
-  layer: Graphics,
-  node: IdentityGraphLayoutNode,
-  graphPalette: GraphThemePalette,
-) {
-  const palette = kindColor(node, graphPalette);
-  const fillAlpha = node.kind === "feed" ? 0.66 : node.kind === "account" ? 0.84 : 0.9;
-  layer.lineStyle(1.1, palette.stroke, 0.58);
-  layer.beginFill(palette.fill, fillAlpha);
-  layer.drawCircle(node.x, node.y, node.radius);
-  layer.endFill();
-  if (node.friendSuggestionConfidence) {
-    layer.lineStyle(
-      node.friendSuggestionConfidence === "high" ? 2 : 1.4,
-      graphPalette.highlight,
-      node.friendSuggestionConfidence === "high" ? 0.44 : 0.3,
-    );
-    layer.drawCircle(node.x, node.y, node.radius + 5);
+function findHitNode(
+  atlas: IdentityGraphAtlas,
+  hitBuckets: Map<string, string[]>,
+  x: number,
+  y: number,
+): IdentityGraphAtlasNode | null {
+  const nodeById = new Map(atlas.nodes.map((node) => [node.id, node]));
+  const cellX = Math.floor(x / 96);
+  const cellY = Math.floor(y / 96);
+  let best: IdentityGraphAtlasNode | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let xOffset = -1; xOffset <= 1; xOffset += 1) {
+    for (let yOffset = -1; yOffset <= 1; yOffset += 1) {
+      const bucket = hitBuckets.get(`${cellX + xOffset}:${cellY + yOffset}`);
+      if (!bucket) continue;
+      for (const nodeId of bucket) {
+        const node = nodeById.get(nodeId);
+        if (!node) continue;
+        const dx = node.x - x;
+        const dy = node.y - y;
+        const distance = dx * dx + dy * dy;
+        if (distance > node.radius * node.radius) continue;
+        if (distance < bestDistance) {
+          best = node;
+          bestDistance = distance;
+        }
+      }
+    }
   }
+  return best;
 }
 
-function countLinkedAccountChanges(
-  previousModel: IdentityGraphModel | null,
-  nextModel: IdentityGraphModel,
+function hashValue(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = Math.imul(31, hash) + value.charCodeAt(index) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function seededUnit(value: string): number {
+  return (hashValue(value) % 10_000) / 10_000;
+}
+
+function colorFromCss(value: string, fallback = "#7dd3fc"): THREE.Color {
+  const match = value.match(/rgb\((\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/);
+  if (!match) return new THREE.Color(fallback);
+  return new THREE.Color(Number(match[1]) / 255, Number(match[2]) / 255, Number(match[3]) / 255);
+}
+
+function nodeDepth(node: IdentityGraphAtlasNode): number {
+  if (node.kind === "friend_person") {
+    const tierBoost = node.priority >= 980 ? 90 : node.priority >= 880 ? 64 : 36;
+    return tierBoost + Math.min(46, Math.sqrt(node.activityCount + 1) * 2.8);
+  }
+  if (node.kind === "connection_person") return 16 + Math.min(22, Math.sqrt(node.activityCount + 1) * 1.3);
+  if (node.kind === "account") return -30 - seededUnit(node.id) * 46;
+  if (node.kind === "feed") return -48 - seededUnit(node.id) * 52;
+  return -128;
+}
+
+function nodePointSize(
+  node: IdentityGraphAtlasNode,
+  selected: boolean,
+  hovered: boolean,
+  quality: IdentityGraphAtlasQuality,
 ): number {
-  if (!previousModel) return Number.MAX_SAFE_INTEGER;
-  if (
-    previousModel.nodes.length !== nextModel.nodes.length ||
-    previousModel.edges.length !== nextModel.edges.length
-  ) {
-    return Number.MAX_SAFE_INTEGER;
-  }
+  const roleSize = node.kind === "friend_person"
+    ? 34
+    : node.kind === "connection_person"
+      ? 28
+      : node.kind === "provider_cluster"
+        ? 40
+        : node.kind === "feed"
+          ? 20
+          : 22;
+  const size = roleSize + node.radius * 1.05 + (selected ? 22 : hovered ? 12 : 0);
+  return Math.max(8, size * (quality === "interactive" ? 0.78 : 1));
+}
 
-  const previousLinks = new Map<string, string | null>();
-  for (const node of previousModel.nodes) {
-    if (node.kind !== "account") continue;
-    previousLinks.set(node.id, node.linkedPersonId ?? null);
-  }
+function graphNodeColor(
+  node: IdentityGraphAtlasNode,
+  palette: GraphPalette,
+  selected: boolean,
+  linkedToSelected: boolean,
+  hovered: boolean,
+): THREE.Color {
+  if (selected) return colorFromCss(palette.selection, "#67e8f9");
+  if (hovered || linkedToSelected) return colorFromCss(palette.highlight, "#f0abfc");
+  if (node.kind === "friend_person") return colorFromCss(palette.friendStroke, "#60a5fa");
+  if (node.kind === "connection_person") return colorFromCss(palette.connectionStroke, "#c084fc");
+  if (node.kind === "feed") return new THREE.Color("#f59e0b");
+  return colorFromCss(providerColor(node.provider, palette), "#38bdf8");
+}
 
-  let changed = 0;
-  for (const node of nextModel.nodes) {
-    if (node.kind !== "account") continue;
-    if (!previousLinks.has(node.id)) {
-      return Number.MAX_SAFE_INTEGER;
+function makePointMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    depthTest: true,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      pixelRatio: { value: Math.min(1.5, window.devicePixelRatio || 1) },
+    },
+    vertexShader: `
+      attribute float pointSize;
+      varying vec3 vColor;
+      varying float vAlpha;
+
+      void main() {
+        vColor = color;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        float depthScale = clamp(940.0 / max(280.0, -mvPosition.z), 0.68, 2.35);
+        gl_PointSize = pointSize * depthScale;
+        gl_Position = projectionMatrix * mvPosition;
+        vAlpha = clamp(pointSize / 48.0, 0.36, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vColor;
+      varying float vAlpha;
+
+      void main() {
+        vec2 center = gl_PointCoord - vec2(0.5);
+        float distanceFromCenter = length(center);
+        float core = smoothstep(0.34, 0.02, distanceFromCenter);
+        float halo = smoothstep(0.5, 0.08, distanceFromCenter) * 0.52;
+        float alpha = max(core, halo) * vAlpha;
+        if (alpha < 0.02) discard;
+        gl_FragColor = vec4(vColor, alpha);
+      }
+    `,
+    vertexColors: true,
+  });
+}
+
+function makeStarGeometry(count: number, width: number, height: number, palette: GraphPalette): THREE.BufferGeometry {
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+  const themeColors = [
+    colorFromCss(palette.text, "#f8fafc"),
+    colorFromCss(palette.friendStroke, "#93c5fd"),
+    colorFromCss(palette.connectionStroke, "#c4b5fd"),
+    colorFromCss(palette.accountFill, "#67e8f9"),
+    colorFromCss(palette.feedFill, "#fbbf24"),
+  ];
+  const span = Math.max(width, height, 1) * 8.5;
+  for (let index = 0; index < count; index += 1) {
+    const seed = `star:${index}`;
+    const angle = seededUnit(`${seed}:angle`) * Math.PI * 2;
+    const radius = Math.sqrt(seededUnit(`${seed}:radius`)) * span;
+    const arm = Math.sin(angle * 3 + seededUnit(`${seed}:arm`) * 4) * span * 0.055;
+    positions[index * 3] = Math.cos(angle) * radius + Math.cos(angle + Math.PI / 2) * arm;
+    positions[index * 3 + 1] = Math.sin(angle) * radius * 0.64 + Math.sin(angle + Math.PI / 2) * arm;
+    positions[index * 3 + 2] = -360 - seededUnit(`${seed}:depth`) * 2_600;
+    const color = themeColors[Math.floor(seededUnit(`${seed}:color`) * themeColors.length)] ?? themeColors[0]!;
+    const brightness = 0.2 + seededUnit(`${seed}:brightness`) * 0.68;
+    colors[index * 3] = color.r * brightness;
+    colors[index * 3 + 1] = color.g * brightness;
+    colors[index * 3 + 2] = color.b * brightness;
+    sizes[index] = 1.2 + seededUnit(`${seed}:size`) * 4.4;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute("pointSize", new THREE.BufferAttribute(sizes, 1));
+  return geometry;
+}
+
+function drawFallbackStarfield(
+  canvas: HTMLCanvasElement,
+  atlas: IdentityGraphAtlas,
+  transform: ViewTransform,
+  palette: GraphPalette,
+  selectedPersonId: string | null | undefined,
+  selectedAccountId: string | null | undefined,
+): void {
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  const pixelRatio = Math.min(1.5, window.devicePixelRatio || 1);
+  const pixelWidth = Math.max(1, Math.floor(width * pixelRatio));
+  const pixelHeight = Math.max(1, Math.floor(height * pixelRatio));
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.clearRect(0, 0, width, height);
+  const gradient = context.createRadialGradient(width * 0.5, height * 0.45, 0, width * 0.5, height * 0.45, Math.max(width, height) * 0.85);
+  gradient.addColorStop(0, palette.surface);
+  gradient.addColorStop(1, "transparent");
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, width, height);
+
+  for (let index = 0; index < 2_800; index += 1) {
+    const x = seededUnit(`fallback-star-x:${index}`) * width;
+    const y = seededUnit(`fallback-star-y:${index}`) * height;
+    const depth = seededUnit(`fallback-star-z:${index}`);
+    context.globalAlpha = 0.08 + depth * 0.34;
+    context.fillStyle = index % 7 === 0 ? palette.friendStroke : palette.mutedText;
+    context.fillRect(x, y, 1 + depth * 1.8, 1 + depth * 1.8);
+  }
+  context.globalAlpha = 1;
+
+  context.save();
+  context.translate(transform.x, transform.y);
+  context.scale(transform.scale, transform.scale);
+  for (const region of atlas.regions) {
+    context.beginPath();
+    context.ellipse(region.x, region.y, region.radiusX, region.radiusY, 0, 0, Math.PI * 2);
+    context.fillStyle = providerColor(region.provider, palette).replace(/\/ 0\.\d+\)/, "/ 0.12)");
+    context.strokeStyle = providerColor(region.provider, palette).replace(/\/ 0\.\d+\)/, "/ 0.38)");
+    context.lineWidth = 1.2 / transform.scale;
+    context.fill();
+    context.stroke();
+  }
+  for (const node of atlas.nodes) {
+    const selected =
+      (!!node.personId && node.personId === selectedPersonId) ||
+      (!!node.accountId && node.accountId === selectedAccountId);
+    const depth = nodeDepth(node);
+    const parallax = 1 + Math.max(-0.24, Math.min(0.42, depth / 260));
+    const radius = Math.max(5, node.radius * 0.82 * parallax + (selected ? 7 : 0));
+    context.beginPath();
+    context.arc(node.x, node.y, radius, 0, Math.PI * 2);
+    context.fillStyle = node.kind === "friend_person"
+      ? palette.friendStroke
+      : node.kind === "connection_person"
+        ? palette.connectionStroke
+        : providerColor(node.provider, palette);
+    context.shadowBlur = selected ? 20 / transform.scale : 8 / transform.scale;
+    context.shadowColor = context.fillStyle;
+    context.fill();
+    context.shadowBlur = 0;
+  }
+  context.restore();
+}
+
+class StarfieldGraphRenderer {
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly scene = new THREE.Scene();
+  private readonly camera = new THREE.PerspectiveCamera(42, 1, 1, 8_000);
+  private readonly graphGroup = new THREE.Group();
+  private readonly regionGroup = new THREE.Group();
+  private readonly labelGroup = new THREE.Group();
+  private readonly nodeGeometry = new THREE.BufferGeometry();
+  private readonly nodeMaterial = makePointMaterial();
+  private readonly nodePoints: THREE.Points;
+  private readonly edgeGeometry = new THREE.BufferGeometry();
+  private readonly edgeMaterial = new THREE.LineBasicMaterial({
+    color: 0x7dd3fc,
+    transparent: true,
+    opacity: 0.58,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    depthTest: false,
+  });
+  private readonly edgeLines: THREE.LineSegments;
+  private readonly starMaterial = makePointMaterial();
+  private starPoints: THREE.Points | null = null;
+  private labels: TroikaText[] = [];
+  private width = 1;
+  private height = 1;
+  private starCount = 0;
+  private paletteKey = "";
+  private pixelRatio = 0;
+  private disposed = false;
+
+  constructor(canvas: HTMLCanvasElement) {
+    const context = canvas.getContext("webgl2", {
+      alpha: true,
+      antialias: false,
+      powerPreference: "high-performance",
+      premultipliedAlpha: true,
+    }) as WebGL2RenderingContext | null;
+    if (!context) {
+      throw new Error("WebGL unavailable");
     }
-    if ((previousLinks.get(node.id) ?? null) !== (node.linkedPersonId ?? null)) {
-      changed += 1;
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      context,
+      alpha: true,
+      antialias: false,
+      powerPreference: "high-performance",
+      premultipliedAlpha: true,
+    });
+    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.sortObjects = false;
+    this.scene.add(this.graphGroup);
+    this.scene.add(this.labelGroup);
+    this.graphGroup.add(this.regionGroup);
+    this.edgeLines = new THREE.LineSegments(this.edgeGeometry, this.edgeMaterial);
+    this.edgeLines.frustumCulled = false;
+    this.graphGroup.add(this.edgeLines);
+    this.nodePoints = new THREE.Points(this.nodeGeometry, this.nodeMaterial);
+    this.nodePoints.frustumCulled = false;
+    this.graphGroup.add(this.nodePoints);
+  }
+
+  resize(width: number, height: number): void {
+    if (this.disposed) return;
+    const nextWidth = Math.max(1, Math.floor(width));
+    const nextHeight = Math.max(1, Math.floor(height));
+    const pixelRatio = Math.min(1.5, window.devicePixelRatio || 1);
+    if (this.width === nextWidth && this.height === nextHeight && this.pixelRatio === pixelRatio) {
+      return;
+    }
+    this.width = nextWidth;
+    this.height = nextHeight;
+    this.pixelRatio = pixelRatio;
+    this.renderer.setPixelRatio(pixelRatio);
+    this.renderer.setSize(this.width, this.height, false);
+    this.camera.aspect = this.width / this.height;
+    this.camera.position.set(0, 0, this.height / 2 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
+    this.camera.lookAt(0, 0, 0);
+    this.camera.updateProjectionMatrix();
+    this.nodeMaterial.uniforms.pixelRatio.value = pixelRatio;
+    this.starMaterial.uniforms.pixelRatio.value = pixelRatio;
+  }
+
+  syncScene(
+    atlas: IdentityGraphAtlas,
+    palette: GraphPalette,
+    selectedPersonId: string | null | undefined,
+    selectedAccountId: string | null | undefined,
+    hoveredNodeId: string | null,
+    variation: StarfieldVariation,
+    quality: IdentityGraphAtlasQuality,
+  ): void {
+    if (this.disposed) return;
+    const nextPaletteKey = [
+      palette.surface,
+      palette.text,
+      palette.friendStroke,
+      palette.connectionStroke,
+      palette.accountFill,
+      palette.feedFill,
+    ].join("|");
+    const smallViewport = this.width <= 720 || this.height <= 620;
+    const starBudget = smallViewport
+      ? { min: 3_000, max: 7_000, perSource: 2 }
+      : { min: 5_000, max: 12_000, perSource: 3 };
+    const nextStarCount = Math.max(
+      starBudget.min,
+      Math.min(starBudget.max, atlas.metrics.sourceNodeCount * starBudget.perSource),
+    );
+    if (nextStarCount !== this.starCount || nextPaletteKey !== this.paletteKey || !this.starPoints) {
+      if (this.starPoints) {
+        this.scene.remove(this.starPoints);
+        this.starPoints.geometry.dispose();
+      }
+      this.starPoints = new THREE.Points(makeStarGeometry(nextStarCount, this.width, this.height, palette), this.starMaterial);
+      this.starPoints.frustumCulled = false;
+      this.scene.add(this.starPoints);
+      this.starCount = nextStarCount;
+      this.paletteKey = nextPaletteKey;
+    }
+    this.syncRegions(atlas, palette, variation);
+    this.edgeMaterial.color.copy(colorFromCss(palette.edge, "#7dd3fc"));
+    this.edgeMaterial.opacity = quality === "interactive" ? 0.26 : 0.58;
+    this.syncEdges(atlas);
+    this.syncNodes(atlas, palette, selectedPersonId, selectedAccountId, hoveredNodeId, quality);
+    this.syncLabels(atlas, palette, quality);
+  }
+
+  render(transform: ViewTransform, quality: IdentityGraphAtlasQuality): void {
+    if (this.disposed) return;
+    this.applyTransform(transform);
+    if (this.starPoints) {
+      this.starPoints.visible = quality !== "interactive";
+      this.starPoints.position.set(
+        (transform.x - this.width / 2) * 0.055,
+        (this.height / 2 - transform.y) * 0.055,
+        0,
+      );
+      this.starPoints.scale.setScalar(1.01 + transform.scale * 0.018);
+    }
+    this.regionGroup.visible = quality !== "interactive";
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.clearRegions();
+    this.clearLabels();
+    this.nodeGeometry.dispose();
+    this.nodeMaterial.dispose();
+    this.edgeGeometry.dispose();
+    this.edgeMaterial.dispose();
+    if (this.starPoints) {
+      this.starPoints.geometry.dispose();
+    }
+    this.starMaterial.dispose();
+    this.renderer.dispose();
+  }
+
+  private applyTransform(transform: ViewTransform): void {
+    this.graphGroup.position.set(transform.x - this.width / 2, this.height / 2 - transform.y, 0);
+    this.graphGroup.scale.set(transform.scale, transform.scale, transform.scale);
+    this.labelGroup.position.copy(this.graphGroup.position);
+    this.labelGroup.scale.copy(this.graphGroup.scale);
+    for (const label of this.labels) {
+      label.quaternion.copy(this.camera.quaternion);
     }
   }
 
-  return changed;
+  private nodePosition(node: IdentityGraphAtlasNode): THREE.Vector3 {
+    return new THREE.Vector3(node.x, -node.y, nodeDepth(node));
+  }
+
+  private clearRegions(): void {
+    for (const child of this.regionGroup.children) {
+      if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+        child.geometry.dispose();
+        const material = child.material;
+        if (Array.isArray(material)) {
+          material.forEach((entry) => entry.dispose());
+        } else {
+          material.dispose();
+        }
+      }
+    }
+    this.regionGroup.clear();
+  }
+
+  private syncRegions(atlas: IdentityGraphAtlas, palette: GraphPalette, variation: StarfieldVariation): void {
+    this.clearRegions();
+    for (const region of atlas.regions) {
+      const color = colorFromCss(providerColor(region.provider, palette), "#38bdf8");
+      if (variation === "nebula-rings" || variation === "nebula") {
+        const haze = new THREE.Mesh(
+          new THREE.CircleGeometry(1, 128),
+          new THREE.MeshBasicMaterial({
+            color,
+            transparent: true,
+            opacity: 0.105,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+          }),
+        );
+        haze.position.set(region.x, -region.y, -170);
+        haze.scale.set(region.radiusX, region.radiusY, 1);
+        this.regionGroup.add(haze);
+      }
+      if (variation === "nebula-rings" || variation === "rings") {
+        const points = Array.from({ length: 97 }, (_, index) => {
+          const angle = (index / 96) * Math.PI * 2;
+          return new THREE.Vector3(
+            region.x + Math.cos(angle) * region.radiusX,
+            -region.y + Math.sin(angle) * region.radiusY,
+            -92,
+          );
+        });
+        const ring = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints(points),
+          new THREE.LineBasicMaterial({
+            color,
+            transparent: true,
+            opacity: 0.42,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+          }),
+        );
+        this.regionGroup.add(ring);
+      }
+    }
+  }
+
+  private syncEdges(atlas: IdentityGraphAtlas): void {
+    const nodeById = new Map(atlas.nodes.map((node) => [node.id, node]));
+    const positions = new Float32Array(atlas.edges.length * 6);
+    let offset = 0;
+    for (const edge of atlas.edges) {
+      const source = nodeById.get(edge.sourceId);
+      const target = nodeById.get(edge.targetId);
+      if (!source || !target) continue;
+      const sourcePoint = this.nodePosition(source);
+      const targetPoint = this.nodePosition(target);
+      positions[offset] = sourcePoint.x;
+      positions[offset + 1] = sourcePoint.y;
+      positions[offset + 2] = sourcePoint.z - 8;
+      positions[offset + 3] = targetPoint.x;
+      positions[offset + 4] = targetPoint.y;
+      positions[offset + 5] = targetPoint.z - 8;
+      offset += 6;
+    }
+    this.edgeGeometry.setAttribute("position", new THREE.BufferAttribute(positions.slice(0, offset), 3));
+    this.edgeGeometry.computeBoundingSphere();
+  }
+
+  private syncNodes(
+    atlas: IdentityGraphAtlas,
+    palette: GraphPalette,
+    selectedPersonId: string | null | undefined,
+    selectedAccountId: string | null | undefined,
+    hoveredNodeId: string | null,
+    quality: IdentityGraphAtlasQuality,
+  ): void {
+    const positions = new Float32Array(atlas.nodes.length * 3);
+    const colors = new Float32Array(atlas.nodes.length * 3);
+    const sizes = new Float32Array(atlas.nodes.length);
+    for (let index = 0; index < atlas.nodes.length; index += 1) {
+      const node = atlas.nodes[index]!;
+      const selected =
+        (!!node.personId && node.personId === selectedPersonId) ||
+        (!!node.accountId && node.accountId === selectedAccountId);
+      const linkedToSelected = !!selectedPersonId && node.linkedPersonId === selectedPersonId;
+      const hovered = node.id === hoveredNodeId;
+      const point = this.nodePosition(node);
+      const color = graphNodeColor(node, palette, selected, linkedToSelected, hovered);
+      const muted = selectedPersonId || selectedAccountId
+        ? selected || linkedToSelected || hovered ? 1 : 0.34
+        : 1;
+      positions[index * 3] = point.x;
+      positions[index * 3 + 1] = point.y;
+      positions[index * 3 + 2] = point.z;
+      colors[index * 3] = color.r * muted;
+      colors[index * 3 + 1] = color.g * muted;
+      colors[index * 3 + 2] = color.b * muted;
+      sizes[index] = nodePointSize(node, selected, hovered, quality);
+    }
+    this.nodeGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    this.nodeGeometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    this.nodeGeometry.setAttribute("pointSize", new THREE.BufferAttribute(sizes, 1));
+    this.nodeGeometry.computeBoundingSphere();
+  }
+
+  private clearLabels(): void {
+    for (const label of this.labels) {
+      this.labelGroup.remove(label);
+      label.dispose();
+    }
+    this.labels = [];
+  }
+
+  private syncLabels(atlas: IdentityGraphAtlas, palette: GraphPalette, quality: IdentityGraphAtlasQuality): void {
+    this.clearLabels();
+    if (quality === "interactive") return;
+    const cap = window.innerWidth < 720 ? 44 : 110;
+    for (const label of atlas.labels.slice(0, cap)) {
+      const text = new TroikaText();
+      text.text = label.text;
+      text.fontSize = label.kind === "provider_cluster"
+        ? 26
+        : label.kind === "friend_person"
+          ? 19
+          : label.kind === "connection_person"
+            ? 17
+            : 15;
+      text.anchorX = "center";
+      text.anchorY = "middle";
+      text.color = colorFromCss(palette.text, "#f8fafc");
+      text.outlineColor = colorFromCss(palette.labelFill, "#020617");
+      text.outlineWidth = label.kind === "provider_cluster" ? "8%" : "10%";
+      text.position.set(label.x, -label.y - 24 / Math.max(0.7, label.priority / 600), label.kind === "provider_cluster" ? -38 : 86);
+      text.renderOrder = 10;
+      text.sync();
+      this.labels.push(text);
+      this.labelGroup.add(text);
+    }
+  }
 }
 
 export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(function FriendGraph(
@@ -916,6 +922,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     accounts,
     feeds,
     feedItems,
+    activitySummaries: activitySummariesProp,
     mode,
     selectedPersonId,
     selectedAccountId,
@@ -933,1183 +940,556 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasHostRef = useRef<HTMLDivElement>(null);
-  const canvasOverlayRef = useRef<HTMLDivElement>(null);
-  const pixiRef = useRef<PixiScene | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const rendererRef = useRef<StarfieldGraphRenderer | null>(null);
   const workerRef = useRef<Worker | null>(null);
-  const layoutRef = useRef<IdentityGraphLayout>({ nodes: [], edges: [], regions: [] });
-  const layoutCountsRef = useRef<GraphLayoutCounts>({
-    nodeCount: 0,
-    linkCount: 0,
-    personCount: 0,
-    channelCount: 0,
-  });
-  const layoutNodeByIdRef = useRef<Map<string, IdentityGraphLayoutNode>>(new Map());
-  const layoutDebugNodesRef = useRef<GraphDebugNode[]>([]);
-  const spatialIndexRef = useRef<SpatialIndex>({ cellSize: 96, buckets: new Map() });
+  const atlasRef = useRef<IdentityGraphAtlas | null>(null);
+  const webglUnavailableRef = useRef(false);
+  const hitBucketsRef = useRef<Map<string, string[]>>(new Map());
+  const transformRef = useRef<ViewTransform>({ ...FRIEND_GRAPH_DEFAULT_TRANSFORM });
   const dragStateRef = useRef<DragState | null>(null);
   const pinchStateRef = useRef<PinchState | null>(null);
   const activeTouchPointsRef = useRef<Map<number, TouchPoint>>(new Map());
   const hoveredNodeIdRef = useRef<string | null>(null);
-  const transformRef = useRef<ViewTransform>({ ...FRIEND_GRAPH_DEFAULT_TRANSFORM });
-  const hasFittedInitialLayoutRef = useRef(false);
-  const pendingFitAllRef = useRef(false);
-  const hasUserAdjustedTransformRef = useRef(false);
-  const latestLayoutRequestIdRef = useRef(0);
-  const latestResolvedLayoutRequestIdRef = useRef(0);
-  const pendingLayoutTimeoutsRef = useRef<Map<number, number>>(new Map());
+  const latestRequestIdRef = useRef(0);
+  const latestResolvedRequestIdRef = useRef(0);
+  const pendingWorkerTimeoutsRef = useRef<Map<number, number>>(new Map());
+  const atlasRafRef = useRef(0);
   const drawRafRef = useRef(0);
-  const drawRafPendingRef = useRef(false);
+  const drawPendingRef = useRef(false);
+  const sceneDirtyRef = useRef(true);
   const settleTimerRef = useRef<number | null>(null);
-  const lastStaticRenderKeyRef = useRef("");
-  const lastDenseInteractionRenderKeyRef = useRef("");
-  const lastDenseInteractionStatsRef = useRef({
-    nodeCount: 0,
-    culled: false,
-  });
-  const denseInteractionRebuildCountRef = useRef(0);
-  const lastSelectionStyleKeyRef = useRef("");
-  const lastLabelLayoutKeyRef = useRef("");
-  const visibleLabelIdsRef = useRef<string[]>([]);
-  const textStyleCacheRef = useRef<Map<string, TextStyle>>(new Map());
-  const avatarTextureCacheRef = useRef<Map<string, AvatarTextureCacheEntry>>(new Map());
-  const paletteCacheRef = useRef<{ key: string; value: GraphThemePalette } | null>(null);
-  const highlightedNodeIdsRef = useRef<{
-    key: string;
-    value: Set<string>;
-  }>({ key: "", value: new Set() });
-  const previousRequestedModelRef = useRef<IdentityGraphModel | null>(null);
-  const previousRequestSnapshotRef = useRef<{
-    signature: string;
-    width: number;
-    height: number;
-  } | null>(null);
-  const lastLayoutMsRef = useRef(0);
-  const graphQualityModeRef = useRef<GraphQualityMode>("settled");
-  const layoutReadyRef = useRef(false);
-  const syncSceneRef = useRef<() => void>(() => {});
-  const syncSceneErrorLoggedRef = useRef(false);
-  const canvasSizeRef = useRef({ width: 900, height: DEFAULT_HEIGHT });
-  const graphViewportInsetsRef = useRef<GraphViewportInsets>(EMPTY_GRAPH_VIEWPORT_INSETS);
-  const perfSnapshotRef = useRef<GraphPerfSnapshot>({
-    modelBuildMs: 0,
-    layoutMs: 0,
-    sceneSyncMs: 0,
-    labelPassMs: 0,
-    sceneSyncCount: 0,
-    contentSyncCount: 0,
-    transformOnlySyncCount: 0,
-    edgeRebuildCount: 0,
-    nodeRestyleCount: 0,
-    labelLayoutCount: 0,
-    avatarDisplayCount: 0,
-    visibleLabelCount: 0,
-    visibleNodeLabelCount: 0,
-    visibleProviderLabelCount: 0,
-    denseRenderMode: "containers",
-    denseInteractionEligible: false,
-    denseInteractionNodeCount: 0,
-    denseInteractionCulled: false,
-    denseInteractionRebuildCount: 0,
-    qualityMode: "settled",
-  });
-  const [canvasSize, setCanvasSize] = useState({ width: 900, height: DEFAULT_HEIGHT });
-  const [graphViewportInsets, setGraphViewportInsets] =
-    useState<GraphViewportInsets>(EMPTY_GRAPH_VIEWPORT_INSETS);
-  canvasSizeRef.current = canvasSize;
-  graphViewportInsetsRef.current = graphViewportInsets;
-  const [layoutReady, setLayoutReady] = useState(false);
-  const [layoutVersion, setLayoutVersion] = useState(0);
+  const longPressTimerRef = useRef<number | null>(null);
+  const hasFittedInitialAtlasRef = useRef(false);
+  const hasUserAdjustedTransformRef = useRef(false);
+  const mountedAtRef = useRef(nowMs());
+  const firstVisibleMsRef = useRef(0);
+  const frameSamplesRef = useRef<number[]>([]);
+  const lastFrameAtRef = useRef<number | null>(null);
+  const longTaskCountRef = useRef(0);
+  const latestQualityRef = useRef<IdentityGraphAtlasQuality>("settled");
+  const paletteKeyRef = useRef("");
+  const paletteRef = useRef<GraphPalette | null>(null);
+  const viewportInsetsRef = useRef<GraphViewportInsets>(EMPTY_GRAPH_VIEWPORT_INSETS);
+  const [canvasSize, setCanvasSize] = useState({ width: 900, height: 640 });
+  const [viewportInsets, setViewportInsets] = useState<GraphViewportInsets>(EMPTY_GRAPH_VIEWPORT_INSETS);
+  const [atlasReady, setAtlasReady] = useState(false);
+  const [contextMenu, setContextMenu] = useState<GraphContextMenuState | null>(null);
+  const [linkPickerAccountId, setLinkPickerAccountId] = useState<string | null>(null);
+  const [linkPickerQuery, setLinkPickerQuery] = useState("");
+  const [starfieldVariation, setStarfieldVariation] = useState<StarfieldVariation>("nebula-rings");
 
-  const setInteractionCursor = useCallback((interacting: boolean) => {
-    const overlay = canvasOverlayRef.current;
-    if (!overlay) return;
-    overlay.classList.toggle("cursor-grabbing", interacting);
-    overlay.classList.toggle("cursor-grab", !interacting);
-  }, []);
+  const activitySummaries = useMemo(
+    () => activitySummariesProp ?? buildIdentityGraphActivitySummaries(feedItems ?? {}),
+    [activitySummariesProp, feedItems],
+  );
   const personsById = useMemo(
     () => Object.fromEntries(persons.map((person) => [person.id, person])),
     [persons],
   );
-
-  const model = useMemo(
+  const personPickerOptions = useMemo(() => {
+    const query = linkPickerQuery.trim().toLowerCase();
+    return persons
+      .filter((person) => {
+        if (!query) return true;
+        return person.name.toLowerCase().includes(query) ||
+          person.notes?.toLowerCase().includes(query);
+      })
+      .sort((left, right) => {
+        const leftFriend = left.relationshipStatus === "friend" ? 0 : 1;
+        const rightFriend = right.relationshipStatus === "friend" ? 0 : 1;
+        if (leftFriend !== rightFriend) return leftFriend - rightFriend;
+        return left.name.localeCompare(right.name);
+      })
+      .slice(0, 12);
+  }, [linkPickerQuery, persons]);
+  const personCount = persons.length;
+  const channelCount = Object.values(accounts).filter((account) => account.kind === "social").length +
+    Object.values(feeds).filter((feed) => feed.enabled !== false).length;
+  const canonicalNodeCount = personCount + channelCount;
+  const visiblePersonIds = useMemo(
+    () => new Set(persons.filter((person) => mode === "all_content" || person.relationshipStatus === "friend").map((person) => person.id)),
+    [mode, persons],
+  );
+  const canonicalLinkCount = useMemo(
     () =>
-      buildIdentityGraphModel({
-        persons,
-        accounts,
-        feeds,
-        feedItems,
-        mode: mode as IdentityGraphMode,
-        friendSuggestionStrengthByPerson,
-        friendSuggestionStrengthByAccount,
-      }),
-    [
-      accounts,
-      feedItems,
-      feeds,
-      friendSuggestionStrengthByAccount,
-      friendSuggestionStrengthByPerson,
-      mode,
-      persons,
-    ],
+      Object.values(accounts).filter((account) =>
+        account.kind === "social" &&
+        !!account.personId &&
+        visiblePersonIds.has(account.personId),
+      ).length,
+    [accounts, visiblePersonIds],
   );
-  const modelSignature = useMemo(
-    () => createIdentityGraphModelSignature(model),
-    [model],
+  const friendSuggestionStrengthByPersonRecord = useMemo(
+    () => buildSuggestionRecord(friendSuggestionStrengthByPerson),
+    [friendSuggestionStrengthByPerson],
+  );
+  const friendSuggestionStrengthByAccountRecord = useMemo(
+    () => buildSuggestionRecord(friendSuggestionStrengthByAccount),
+    [friendSuggestionStrengthByAccount],
   );
 
-  const getCachedTextStyle = useCallback(
-    (cacheKey: string, options: ConstructorParameters<typeof TextStyle>[0]) => {
-      const existing = textStyleCacheRef.current.get(cacheKey);
-      if (existing) return existing;
-      const style = new TextStyle(options);
-      textStyleCacheRef.current.set(cacheKey, style);
-      return style;
-    },
-    [],
-  );
-
-  const syncScene = useCallback(() => {
-    const scene = pixiRef.current;
-    if (!scene) return;
-
-    try {
-    const sceneStart = nowMs();
-    const drag = dragStateRef.current;
-    const transform = transformRef.current;
-    const qualityMode = graphQualityModeRef.current;
-    const paletteKey = themeId ?? "default";
-    if (paletteCacheRef.current?.key !== paletteKey) {
-      paletteCacheRef.current = {
-        key: paletteKey,
-        value: readGraphThemePalette(containerRef.current),
-      };
+  const getPalette = useCallback(() => {
+    const key = themeId ?? "default";
+    if (!paletteRef.current || paletteKeyRef.current !== key) {
+      paletteKeyRef.current = key;
+      paletteRef.current = readGraphPalette(containerRef.current);
     }
-    const graphPalette = paletteCacheRef.current.value;
-    const hoveredNodeId = hoveredNodeIdRef.current;
-    const highlightKey = [
-      layoutVersion,
-      selectedPersonId ?? "",
-      selectedAccountId ?? "",
-    ].join("|");
-    if (highlightedNodeIdsRef.current.key !== highlightKey) {
-      highlightedNodeIdsRef.current = {
-        key: highlightKey,
-        value: buildHighlightedNodeIds(
-          layoutRef.current,
-          selectedPersonId,
-          selectedAccountId,
-        ),
-      };
-    }
-    const highlighted = highlightedNodeIdsRef.current.value;
-    const accountDrag = drag?.kind === "account-drag" ? drag : null;
-    const nodeById = layoutNodeByIdRef.current;
-    const avatarCache = avatarTextureCacheRef.current;
-    const graphNodeCount = layoutRef.current.nodes.length;
-    const denseRenderMode =
-      graphNodeCount >= DENSE_GRAPH_SINGLE_LAYER_THRESHOLD &&
-      !accountDrag &&
-      highlighted.size === 0
-        ? "dense"
-        : "containers";
-    const denseInteractionEligible =
-      denseRenderMode === "dense" &&
-      graphNodeCount >= DENSE_INTERACTION_CULL_THRESHOLD &&
-      !accountDrag &&
-      highlighted.size === 0;
-    const useDenseInteractionLayer =
-      denseInteractionEligible &&
-      (qualityMode === "interactive" ||
-        transform.scale >= DENSE_SETTLED_VIEWPORT_SCALE_THRESHOLD);
-    const queueAvatarRefresh = () => {
-      lastStaticRenderKeyRef.current = "";
-      requestAnimationFrame(() => syncSceneRef.current());
+    return paletteRef.current;
+  }, [themeId]);
+
+  const exposeDiagnostics = useCallback((atlas: IdentityGraphAtlas, sceneSyncMs: number) => {
+    const sourceNodeCount = canonicalNodeCount;
+    const visibleNodeCount = atlas.metrics.visibleNodeCount;
+    const p95Samples = [...frameSamplesRef.current].sort((left, right) => left - right);
+    const frameP95Ms = p95Samples[Math.floor(p95Samples.length * 0.95)] ?? 0;
+    const perf: GraphSurfacePerfSnapshot = {
+      modelBuildMs: activitySummaries.buildMs,
+      layoutMs: atlas.metrics.buildMs,
+      sceneSyncMs,
+      labelPassMs: 0,
+      sceneSyncCount: ((window as typeof window & { __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot }).__FREED_GRAPH_PERF__?.sceneSyncCount ?? 0) + 1,
+      contentSyncCount: 1,
+      transformOnlySyncCount: latestQualityRef.current === "interactive" ? 1 : 0,
+      edgeRebuildCount: atlas.edges.length > 0 ? 1 : 0,
+      nodeRestyleCount: visibleNodeCount,
+      labelLayoutCount: atlas.labels.length > 0 ? 1 : 0,
+      avatarDisplayCount: 0,
+      visibleLabelCount: atlas.labels.length,
+      visibleNodeLabelCount: atlas.labels.filter((label) => label.kind !== "provider_cluster").length,
+      visibleProviderLabelCount: atlas.labels.filter((label) => label.kind === "provider_cluster").length,
+      denseRenderMode: sourceNodeCount >= 1_200 ? "dense" : "containers",
+      denseInteractionEligible: sourceNodeCount >= 1_200,
+      denseInteractionNodeCount: latestQualityRef.current === "interactive" ? visibleNodeCount : 0,
+      denseInteractionCulled: atlas.metrics.capped,
+      denseInteractionRebuildCount: atlas.metrics.capped ? 1 : 0,
+      qualityMode: latestQualityRef.current,
+      sourceNodeCount,
+      visibleNodeCount,
+      renderedPrimitiveCount: atlas.metrics.renderedPrimitiveCount,
+      firstVisibleMs: firstVisibleMsRef.current,
+      frameP95Ms,
+      longTaskCount: longTaskCountRef.current,
+      memoryEstimateBytes: estimateMemoryBytes(atlas),
+      rendererType: webglUnavailableRef.current ? "canvas-starfield-fallback" : "three-starfield",
+      touchInputMode: "pointer-events",
+      lod: atlas.metrics.lod,
+      capped: atlas.metrics.capped,
+      nodeCount: sourceNodeCount,
+      linkCount: canonicalLinkCount,
+      personCount,
+      channelCount,
+      transformScale: transformRef.current.scale,
     };
-    const staticRenderKey = [
-      layoutVersion,
-      themeId ?? "",
-      accountDrag?.accountId ?? "",
-      accountDrag?.dropTargetPersonId ?? "",
-      denseRenderMode,
-    ].join("|");
-    let didStaticRender = false;
-    let didLabelLayout = false;
-
-    scene.world.position.set(transform.x, transform.y);
-    scene.world.scale.set(transform.scale);
-    let denseInteractionNodeCount = 0;
-    let denseInteractionCulled = false;
-    const isInteractivePaint = qualityMode === "interactive" && !accountDrag;
-    const shouldCacheNodeLayer =
-      isInteractivePaint &&
-      denseRenderMode !== "dense" &&
-      drag?.kind !== "person-drag" &&
-      graphNodeCount >= 600 &&
-      graphNodeCount <= NODE_LAYER_TEXTURE_CACHE_MAX_NODES;
-    const selectionStyleKey = [
-      layoutVersion,
-      selectedPersonId ?? "",
-      selectedAccountId ?? "",
-      themeId ?? "",
-      accountDrag?.dropTargetPersonId ?? "",
-    ].join("|");
-    const nodeStyleWillChange =
-      lastStaticRenderKeyRef.current !== staticRenderKey ||
-      lastSelectionStyleKeyRef.current !== selectionStyleKey ||
-      !!accountDrag;
-    if (scene.nodeLayer.isCachedAsTexture && (!shouldCacheNodeLayer || nodeStyleWillChange)) {
-      scene.nodeLayer.cacheAsTexture(false);
+    const container = containerRef.current;
+    if (container) {
+      container.dataset.graphNodeCount = String(sourceNodeCount);
+      container.dataset.graphLinkCount = String(canonicalLinkCount);
+      container.dataset.graphPersonCount = String(personCount);
+      container.dataset.graphChannelCount = String(channelCount);
+      container.dataset.visibleLabelCount = String(atlas.labels.length);
+      container.dataset.graphQualityMode = latestQualityRef.current;
+      container.dataset.graphVisibleNodeCount = String(visibleNodeCount);
+      container.dataset.graphRenderer = webglUnavailableRef.current ? "canvas-starfield-fallback" : "three-starfield";
     }
-    scene.edgeLayer.visible = !isInteractivePaint;
-    scene.edgeLayer.renderable = !isInteractivePaint;
-    scene.edgeHighlightLayer.visible = highlighted.size > 0;
-    scene.edgeHighlightLayer.renderable = highlighted.size > 0;
-    scene.regionLabelLayer.visible = !isInteractivePaint;
-    scene.regionLabelLayer.renderable = !isInteractivePaint;
-
-    if (lastStaticRenderKeyRef.current !== staticRenderKey || !!accountDrag) {
-      didStaticRender = true;
-      scene.regionLayer.clear();
-      const staleRegionIds = new Set(scene.regionDisplays.keys());
-      for (const region of layoutRef.current.regions) {
-        staleRegionIds.delete(region.id);
-        const fill = providerColor(region.provider, graphPalette);
-        const alpha = region.unlinkedCount > 0 ? 0.12 : 0.075;
-        scene.regionLayer.lineStyle(1.4, fill, highlighted.size > 0 ? 0.14 : 0.34);
-        scene.regionLayer.beginFill(fill, highlighted.size > 0 ? alpha * 0.5 : alpha);
-        scene.regionLayer.drawEllipse(region.x, region.y, region.radiusX, region.radiusY);
-        scene.regionLayer.endFill();
-
-        let display = scene.regionDisplays.get(region.id);
-        if (!display) {
-          display = createRegionDisplay(themeId);
-          scene.regionDisplays.set(region.id, display);
-          scene.regionLabelLayer.addChild(display.container);
-        }
-      }
-      for (const staleRegionId of staleRegionIds) {
-        const staleDisplay = scene.regionDisplays.get(staleRegionId);
-        if (!staleDisplay) continue;
-        scene.regionLabelLayer.removeChild(staleDisplay.container);
-        staleDisplay.container.destroy({ children: true });
-        scene.regionDisplays.delete(staleRegionId);
-      }
-
-      scene.edgeLayer.clear();
-      scene.edgeLayer.alpha = 1;
-      for (const edge of layoutRef.current.edges) {
-        const source = nodeById.get(edge.sourceId);
-        const target = nodeById.get(edge.targetId);
-        if (!source || !target) continue;
-        const sourcePoint = nodePosition(source, drag);
-        const targetPoint = nodePosition(target, drag);
-        scene.edgeLayer.lineStyle(
-          1.45,
-          graphPalette.edge,
-          0.52,
-        );
-        scene.edgeLayer.moveTo(sourcePoint.x, sourcePoint.y);
-        scene.edgeLayer.lineTo(targetPoint.x, targetPoint.y);
-      }
-      perfSnapshotRef.current.edgeRebuildCount += 1;
-
-      scene.denseNodeLayer.visible = denseRenderMode === "dense" && !useDenseInteractionLayer;
-      scene.denseNodeLayer.renderable = denseRenderMode === "dense" && !useDenseInteractionLayer;
-      scene.denseInteractionNodeLayer.visible = useDenseInteractionLayer;
-      scene.denseInteractionNodeLayer.renderable = useDenseInteractionLayer;
-      scene.nodeLayer.visible = denseRenderMode !== "dense";
-      scene.nodeLayer.renderable = denseRenderMode !== "dense";
-      if (denseRenderMode === "dense") {
-        scene.denseNodeLayer.clear();
-        scene.denseInteractionNodeLayer.clear();
-        for (const staleDisplay of scene.nodeDisplays.values()) {
-          scene.nodeLayer.removeChild(staleDisplay.container);
-          staleDisplay.container.destroy({ children: true });
-        }
-        scene.nodeDisplays.clear();
-        for (const node of layoutRef.current.nodes) {
-          drawDenseGraphNode(scene.denseNodeLayer, node, graphPalette);
-        }
-      } else {
-        scene.denseNodeLayer.clear();
-        scene.denseInteractionNodeLayer.clear();
-        const staleNodeIds = new Set(scene.nodeDisplays.keys());
-        for (const node of layoutRef.current.nodes) {
-          staleNodeIds.delete(node.id);
-          let display = scene.nodeDisplays.get(node.id);
-          if (!display) {
-            display = createNodeDisplay(node);
-            scene.nodeDisplays.set(node.id, display);
-            scene.nodeLayer.addChild(display.container);
-          }
-
-          const palette = kindColor(node, graphPalette);
-          const alpha = nodeAlpha(
-            node,
-            highlighted,
-            accountDrag?.dropTargetPersonId ?? null,
-          );
-          const position = nodePosition(node, drag);
-          display.container.position.set(position.x, position.y);
-          display.container.alpha = alpha;
-
-          display.outer.clear();
-          display.outer.lineStyle(
-            1.4,
-            palette.stroke,
-            0.72,
-          );
-          display.outer.beginFill(
-            palette.fill,
-            node.kind === "feed" ? 0.72 : node.kind === "account" ? 0.9 : 0.96,
-          );
-          display.outer.drawCircle(0, 0, node.radius);
-          display.outer.endFill();
-
-          let avatarTexture: Texture | null = null;
-          const avatarUrl = node.avatarUrl ?? null;
-          const selectedOrHighlighted = highlighted.has(node.id) ||
-            isSelectedGraphNode(node, selectedPersonId, selectedAccountId);
-          if (
-            avatarUrl &&
-            shouldLoadNodeAvatar({
-              node,
-              transform,
-              width: canvasSize.width,
-              height: canvasSize.height,
-              selectedOrHighlighted,
-              qualityMode,
-            })
-          ) {
-            const cached = avatarCache.get(avatarUrl);
-            if (cached?.state === "loaded") {
-              avatarTexture = cached.texture;
-            } else if (!cached) {
-              avatarCache.set(avatarUrl, { state: "loading" });
-              void Assets.load<Texture>(avatarUrl)
-                .then((texture) => {
-                  avatarCache.set(avatarUrl, { state: "loaded", texture });
-                  queueAvatarRefresh();
-                })
-                .catch(() => {
-                  avatarCache.set(avatarUrl, { state: "failed" });
-                  queueAvatarRefresh();
-                });
-            }
-          }
-
-          if (avatarTexture) {
-            const { avatarSprite, avatarMask } = ensureAvatarDisplay(display);
-            avatarMask.clear();
-            avatarMask.beginFill(0xffffff, 1);
-            avatarMask.drawCircle(0, 0, node.radius);
-            avatarMask.endFill();
-            avatarSprite.texture = avatarTexture;
-            avatarSprite.width = node.radius * 2;
-            avatarSprite.height = node.radius * 2;
-            avatarSprite.visible = true;
-            if (display.initials) {
-              display.initials.visible = false;
-            }
-          } else {
-            if (display.avatarSprite) {
-              display.avatarSprite.visible = false;
-            }
-            const showInitials = shouldShowNodeInitials({
-              node,
-              transform,
-              width: canvasSize.width,
-              height: canvasSize.height,
-              selectedOrHighlighted,
-              qualityMode,
-            });
-            if (showInitials) {
-              const initials = ensureInitialsDisplay(display);
-              initials.visible = true;
-              initials.text = node.initials ?? "";
-              initials.style = getCachedTextStyle(
-                [
-                  "initials",
-                  themeId ?? "default",
-                  palette.text,
-                  Math.max(9, Math.round(node.radius * 0.48)),
-                  node.kind,
-                ].join(":"),
-                {
-                  fill: palette.text,
-                  fontFamily:
-                    themeId === "scriptorium"
-                      ? "Georgia, serif"
-                      : "system-ui, sans-serif",
-                  fontSize: Math.max(9, node.radius * 0.48),
-                  fontWeight: "700",
-                  letterSpacing: node.kind === "account" || node.kind === "feed" ? 0 : 1,
-                },
-              );
-            } else if (display.initials) {
-              display.initials.visible = false;
-            }
-          }
-
-          if (display.inner) {
-            display.inner.clear();
-            display.inner.beginFill(0xffffff, 0.08);
-            display.inner.drawCircle(
-              -node.radius * 0.22,
-              -node.radius * 0.24,
-              node.radius * 0.42,
-            );
-            display.inner.endFill();
-          }
-
-          if (display.providerDot) {
-            display.providerDot.clear();
-            display.providerDot.beginFill(graphPalette.selection, 0.72);
-            display.providerDot.drawCircle(
-              node.radius * 0.52,
-              -node.radius * 0.52,
-              Math.max(3, node.radius * 0.22),
-            );
-            display.providerDot.endFill();
-          }
-
-          display.highlightRing.clear();
-          if (accountDrag?.dropTargetPersonId && node.personId === accountDrag.dropTargetPersonId) {
-            display.highlightRing.lineStyle(4, graphPalette.highlight, 0.8);
-            display.highlightRing.drawCircle(0, 0, node.radius + 6);
-          } else if (node.friendSuggestionConfidence) {
-            display.highlightRing.lineStyle(
-              node.friendSuggestionConfidence === "high" ? 2.2 : 1.6,
-              graphPalette.highlight,
-              node.friendSuggestionConfidence === "high" ? 0.48 : 0.34,
-            );
-            display.highlightRing.drawCircle(0, 0, node.radius + 5);
-          }
-        }
-
-        for (const staleNodeId of staleNodeIds) {
-          const staleDisplay = scene.nodeDisplays.get(staleNodeId);
-          if (!staleDisplay) continue;
-          scene.nodeLayer.removeChild(staleDisplay.container);
-          staleDisplay.container.destroy({ children: true });
-          scene.nodeDisplays.delete(staleNodeId);
-        }
-      }
-
-      perfSnapshotRef.current.nodeRestyleCount += layoutRef.current.nodes.length;
-      if (!accountDrag) {
-        lastStaticRenderKeyRef.current = staticRenderKey;
-      }
-      if (!layoutReadyRef.current && (scene.nodeDisplays.size > 0 || denseRenderMode === "dense")) {
-        layoutReadyRef.current = true;
-        setLayoutReady(true);
-      }
-    }
-
-    if (denseRenderMode === "dense") {
-      scene.denseNodeLayer.visible = !useDenseInteractionLayer;
-      scene.denseNodeLayer.renderable = !useDenseInteractionLayer;
-      scene.denseInteractionNodeLayer.visible = useDenseInteractionLayer;
-      scene.denseInteractionNodeLayer.renderable = useDenseInteractionLayer;
-      if (useDenseInteractionLayer) {
-        const denseNodeLimit =
-          qualityMode === "interactive"
-            ? DENSE_INTERACTION_NODE_LIMIT
-            : DENSE_SETTLED_VIEWPORT_NODE_LIMIT;
-        const transformBucketSize =
-          qualityMode === "interactive"
-            ? DENSE_INTERACTION_TRANSFORM_BUCKET_PX
-            : Math.max(220, DENSE_INTERACTION_TRANSFORM_BUCKET_PX / 2);
-        const scaleBucketFactor =
-          qualityMode === "interactive"
-            ? DENSE_INTERACTION_SCALE_BUCKET_FACTOR
-            : DENSE_INTERACTION_SCALE_BUCKET_FACTOR * 2;
-        const denseInteractionRenderKey = [
-          layoutVersion,
-          themeId ?? "",
-          qualityMode,
-          qualityMode === "interactive" ? "stable" : Math.round(transform.scale * scaleBucketFactor),
-          qualityMode === "interactive" ? "stable" : Math.round(transform.x / transformBucketSize),
-          qualityMode === "interactive" ? "stable" : Math.round(transform.y / transformBucketSize),
-          canvasSize.width,
-          canvasSize.height,
-        ].join("|");
-        if (lastDenseInteractionRenderKeyRef.current !== denseInteractionRenderKey) {
-          let drawnVisibleNodes = 0;
-          let didCullDenseInteraction = false;
-          scene.denseInteractionNodeLayer.clear();
-          for (const node of layoutRef.current.nodes) {
-            if (
-              !isNodeNearViewport(
-                node,
-                transform,
-                canvasSize.width,
-                canvasSize.height,
-                DENSE_INTERACTION_VIEWPORT_PADDING,
-              )
-            ) {
-              continue;
-            }
-            drawDenseGraphNode(scene.denseInteractionNodeLayer, node, graphPalette);
-            drawnVisibleNodes += 1;
-            if (drawnVisibleNodes >= denseNodeLimit) {
-              didCullDenseInteraction = true;
-              break;
-            }
-          }
-          lastDenseInteractionRenderKeyRef.current = denseInteractionRenderKey;
-          lastDenseInteractionStatsRef.current = {
-            nodeCount: drawnVisibleNodes,
-            culled: didCullDenseInteraction,
-          };
-          denseInteractionRebuildCountRef.current += 1;
-        }
-        denseInteractionNodeCount = lastDenseInteractionStatsRef.current.nodeCount;
-        denseInteractionCulled = lastDenseInteractionStatsRef.current.culled;
-      } else {
-        if (lastDenseInteractionRenderKeyRef.current) {
-          scene.denseInteractionNodeLayer.clear();
-          lastDenseInteractionRenderKeyRef.current = "";
-          lastDenseInteractionStatsRef.current = {
-            nodeCount: 0,
-            culled: false,
-          };
-        }
-      }
-    } else {
-      scene.denseInteractionNodeLayer.visible = false;
-      scene.denseInteractionNodeLayer.renderable = false;
-      if (lastDenseInteractionRenderKeyRef.current) {
-        scene.denseInteractionNodeLayer.clear();
-        lastDenseInteractionRenderKeyRef.current = "";
-        lastDenseInteractionStatsRef.current = {
-          nodeCount: 0,
-          culled: false,
-        };
-      }
-    }
-
-    if (lastSelectionStyleKeyRef.current !== selectionStyleKey || didStaticRender || !!accountDrag) {
-      scene.edgeLayer.alpha = highlighted.size > 0 ? 0.42 : 1;
-      scene.edgeHighlightLayer.clear();
-      if (highlighted.size > 0) {
-        for (const edge of layoutRef.current.edges) {
-          const source = nodeById.get(edge.sourceId);
-          const target = nodeById.get(edge.targetId);
-          if (!source || !target) continue;
-          if (!highlighted.has(source.id) || !highlighted.has(target.id)) continue;
-          const sourcePoint = nodePosition(source, drag);
-          const targetPoint = nodePosition(target, drag);
-          scene.edgeHighlightLayer.lineStyle(2.4, graphPalette.highlight, 0.72);
-          scene.edgeHighlightLayer.moveTo(sourcePoint.x, sourcePoint.y);
-          scene.edgeHighlightLayer.lineTo(targetPoint.x, targetPoint.y);
-        }
-      }
-
-      for (const node of layoutRef.current.nodes) {
-        const display = scene.nodeDisplays.get(node.id);
-        if (!display) continue;
-        const palette = kindColor(node, graphPalette);
-        const selected = isSelectedGraphNode(node, selectedPersonId, selectedAccountId);
-        display.container.alpha = nodeAlpha(
-          node,
-          highlighted,
-          accountDrag?.dropTargetPersonId ?? null,
-        );
-        display.outer.clear();
-        display.outer.lineStyle(
-          selected ? 3 : 1.4,
-          selected ? graphPalette.selection : palette.stroke,
-          selected ? 0.95 : 0.72,
-        );
-        display.outer.beginFill(
-          palette.fill,
-          node.kind === "feed" ? 0.72 : node.kind === "account" ? 0.9 : 0.96,
-        );
-        display.outer.drawCircle(0, 0, node.radius);
-        display.outer.endFill();
-        if (display.avatarMask) {
-          display.avatarMask.clear();
-          display.avatarMask.beginFill(0xffffff, 1);
-          display.avatarMask.drawCircle(0, 0, node.radius);
-          display.avatarMask.endFill();
-        }
-      }
-      lastSelectionStyleKeyRef.current = selectionStyleKey;
-    }
-    if (shouldCacheNodeLayer && !scene.nodeLayer.isCachedAsTexture) {
-      scene.nodeLayer.cacheAsTexture({ resolution: 1, antialias: false });
-    }
-
-    const shouldCullNodes =
-      isInteractivePaint &&
-      denseRenderMode !== "dense" &&
-      graphNodeCount >= INTERACTIVE_NODE_CULL_THRESHOLD;
-    const nodeCullPadding = 140;
-    for (const node of layoutRef.current.nodes) {
-      const display = scene.nodeDisplays.get(node.id);
-      if (!display) continue;
-      if (!shouldCullNodes) {
-        display.container.visible = true;
-        continue;
-      }
-      const selectedOrHighlighted =
-        highlighted.has(node.id) ||
-        isSelectedGraphNode(node, selectedPersonId, selectedAccountId);
-      if (selectedOrHighlighted) {
-        display.container.visible = true;
-        continue;
-      }
-      const point = screenPointForPosition(nodePosition(node, drag), transform);
-      const screenRadius = node.radius * transform.scale;
-      display.container.visible =
-        point.x >= -nodeCullPadding - screenRadius &&
-        point.x <= canvasSize.width + nodeCullPadding + screenRadius &&
-        point.y >= -nodeCullPadding - screenRadius &&
-        point.y <= canvasSize.height + nodeCullPadding + screenRadius;
-    }
-
-    const providerMetrics = providerLabelMetrics(transform.scale);
-    const providerLabelScale = 1 / transform.scale;
-    let visibleProviderLabelCount = 0;
-    if (!isInteractivePaint) {
-      for (const region of layoutRef.current.regions) {
-        const display = scene.regionDisplays.get(region.id);
-        if (!display) continue;
-        const fill = providerColor(region.provider, graphPalette);
-        const point = screenPointForPosition({ x: region.x, y: region.y }, transform);
-        const onScreen =
-          point.x >= -160 &&
-          point.x <= canvasSize.width + 160 &&
-          point.y >= -160 &&
-          point.y <= canvasSize.height + 160;
-        display.container.visible = onScreen;
-        if (!onScreen) continue;
-
-        visibleProviderLabelCount += 1;
-        const label = `${region.label} ${region.count.toLocaleString()}`;
-        const labelWidth = estimateLabelWidth(label, providerMetrics.fontSize) +
-          providerMetrics.paddingX * 2;
-        display.container.position.set(
-          region.x,
-          region.y - region.radiusY - providerMetrics.gap / transform.scale,
-        );
-        display.container.scale.set(providerLabelScale);
-        display.container.alpha = highlighted.size > 0
-          ? providerMetrics.alpha * 0.52
-          : providerMetrics.alpha;
-        display.background.clear();
-        display.background.lineStyle(1.2, fill, 0.58);
-        display.background.beginFill(graphPalette.labelFill, 0.88);
-        display.background.drawRoundedRect(
-          -labelWidth / 2,
-          -providerMetrics.height / 2,
-          labelWidth,
-          providerMetrics.height,
-          providerMetrics.height / 2,
-        );
-        display.background.endFill();
-        display.text.text = label;
-        display.text.style = getCachedTextStyle(
-          [
-            "region",
-            themeId ?? "default",
-            region.provider,
-            providerMetrics.fontSize,
-          ].join(":"),
-          {
-            fill,
-            fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
-            fontSize: providerMetrics.fontSize,
-            fontWeight: "700",
-            letterSpacing: 1,
-          },
-        );
-      }
-    }
-
-    scene.hoverLayer.clear();
-    if (hoveredNodeId) {
-      const hoveredNode = nodeById.get(hoveredNodeId);
-      if (hoveredNode && !isSelectedGraphNode(hoveredNode, selectedPersonId, selectedAccountId)) {
-        const position = nodePosition(hoveredNode, drag);
-        scene.hoverLayer.lineStyle(2, graphPalette.highlight, 0.44);
-        scene.hoverLayer.drawCircle(position.x, position.y, hoveredNode.radius + 4);
-      }
-    }
-
-    const transformBucketSize = qualityMode === "interactive" ? 220 : 64;
-    const scaleBucketFactor = qualityMode === "interactive" ? 6 : 12;
-    const labelLayoutKey = [
-      layoutVersion,
-      selectedPersonId ?? "",
-      selectedAccountId ?? "",
-      themeId ?? "",
-      qualityMode,
-      accountDrag?.dropTargetPersonId ?? "",
-      qualityMode === "interactive" ? "stable" : Math.round(transform.scale * scaleBucketFactor),
-      qualityMode === "interactive" ? "stable" : Math.round(transform.x / transformBucketSize),
-      qualityMode === "interactive" ? "stable" : Math.round(transform.y / transformBucketSize),
-    ].join("|");
-
-    if (lastLabelLayoutKeyRef.current !== labelLayoutKey) {
-      didLabelLayout = true;
-      const labelStart = nowMs();
-      const visibleLabels: Array<{
-        node: IdentityGraphLayoutNode;
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-        fontSize: number;
-      }> = [];
-      const viewportPadding = qualityMode === "interactive" ? 72 : 120;
-      for (const node of layoutRef.current.nodes) {
-        if (!shouldShowGraphLabel({
-          node,
-          scale: transform.scale,
-          highlighted,
-          selectedPersonId,
-          selectedAccountId,
-          qualityMode,
-        })) {
-          continue;
-        }
-
-        const point = screenPointForPosition(nodePosition(node, drag), transform);
-        if (
-          point.x < -viewportPadding ||
-          point.x > canvasSize.width + viewportPadding ||
-          point.y < -viewportPadding ||
-          point.y > canvasSize.height + viewportPadding
-        ) {
-          continue;
-        }
-
-        const fontSize = graphNodeLabelFontSize(node, transform.scale);
-        const width = estimateLabelWidth(node.label, fontSize);
-        const height = fontSize + 10;
-        visibleLabels.push({
-          node,
-          x: point.x,
-          y: point.y + node.radius * transform.scale + 14,
-          width,
-          height,
-          fontSize,
-        });
-      }
-
-      visibleLabels.sort(
-        (left, right) =>
-          graphLabelSortValue(right.node, highlighted, selectedPersonId, selectedAccountId) -
-            graphLabelSortValue(left.node, highlighted, selectedPersonId, selectedAccountId),
-      );
-
-      const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = [];
-      const nextVisibleLabelIds: string[] = [];
-      const labelLimit =
-        qualityMode === "interactive" ? INTERACTIVE_LABEL_LIMIT : SETTLED_LABEL_LIMIT;
-      for (const label of visibleLabels) {
-        if (nextVisibleLabelIds.length >= labelLimit) break;
-        const bounds = {
-          left: label.x - label.width / 2,
-          right: label.x + label.width / 2,
-          top: label.y,
-          bottom: label.y + label.height,
-        };
-        const collides = occupied.some((rect) =>
-          !(bounds.right < rect.left || bounds.left > rect.right || bounds.bottom < rect.top || bounds.top > rect.bottom),
-        );
-        if (collides) continue;
-        occupied.push(bounds);
-        nextVisibleLabelIds.push(label.node.id);
-        const selected = isSelectedGraphNode(label.node, selectedPersonId, selectedAccountId);
-        let display = scene.labelDisplays.get(label.node.id);
-        if (!display) {
-          display = createLabelDisplay(themeId);
-          scene.labelDisplays.set(label.node.id, display);
-          scene.labelLayer.addChild(display.container);
-        }
-        display.container.visible = true;
-        display.container.position.set(label.x, label.y);
-        display.background.clear();
-        display.background.lineStyle(1.15, graphPalette.labelStroke, selected ? 0.78 : 0.46);
-        display.background.beginFill(
-          selected ? graphPalette.highlight : graphPalette.labelFill,
-          selected ? 0.94 : 0.96,
-        );
-        display.background.drawRoundedRect(-label.width / 2, 0, label.width, label.height, 10);
-        display.background.endFill();
-        display.text.text = label.node.label;
-        display.text.style = getCachedTextStyle(
-          [
-            "label",
-            themeId ?? "default",
-            selected ? "selected" : "default",
-            label.node.kind,
-            label.fontSize,
-          ].join(":"),
-          {
-            fill: selected ? graphPalette.labelSelectedText : graphPalette.labelText,
-            fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
-            fontSize: label.fontSize,
-            fontWeight: selected || label.node.kind === "friend_person" ? "700" : "600",
-          },
-        );
-      }
-
-      visibleLabelIdsRef.current = nextVisibleLabelIds;
-      lastLabelLayoutKeyRef.current = labelLayoutKey;
-      perfSnapshotRef.current.labelLayoutCount += 1;
-      perfSnapshotRef.current.labelPassMs = nowMs() - labelStart;
-    }
-
-    const currentVisibleLabelIds = new Set(visibleLabelIdsRef.current);
-    for (const labelId of visibleLabelIdsRef.current) {
-      const node = nodeById.get(labelId);
-      const display = scene.labelDisplays.get(labelId);
-      if (!node || !display) continue;
-      const point = screenPointForPosition(nodePosition(node, drag), transform);
-      const fontSize = graphNodeLabelFontSize(node, transform.scale);
-      const labelWidth = estimateLabelWidth(node.label, fontSize);
-      const labelHeight = fontSize + 10;
-      const labelX = point.x;
-      const labelY = point.y + node.radius * transform.scale + 14;
-      const baseAlpha = nodeAlpha(
-        node,
-        highlighted,
-        drag?.kind === "account-drag" ? drag.dropTargetPersonId : null,
-      );
-      display.container.visible = true;
-      display.container.position.set(
-        labelX,
-        labelY,
-      );
-      display.container.alpha = baseAlpha * edgeFadeAlpha(
-        labelX - labelWidth / 2,
-        labelY,
-        labelWidth,
-        labelHeight,
-        canvasSize.width,
-        canvasSize.height,
-      );
-    }
-
-    for (const [labelId, display] of scene.labelDisplays.entries()) {
-      if (!currentVisibleLabelIds.has(labelId)) {
-        display.container.visible = false;
-      }
-    }
-
-    perfSnapshotRef.current.sceneSyncCount += 1;
-    perfSnapshotRef.current.qualityMode = qualityMode;
-    const visibleLabelCount = visibleLabelIdsRef.current.length + visibleProviderLabelCount;
-    perfSnapshotRef.current.visibleLabelCount = visibleLabelCount;
-    perfSnapshotRef.current.visibleNodeLabelCount = visibleLabelIdsRef.current.length;
-    perfSnapshotRef.current.visibleProviderLabelCount = visibleProviderLabelCount;
-    perfSnapshotRef.current.denseRenderMode = denseRenderMode;
-    perfSnapshotRef.current.denseInteractionEligible = denseInteractionEligible;
-    perfSnapshotRef.current.denseInteractionNodeCount = denseInteractionNodeCount;
-    perfSnapshotRef.current.denseInteractionCulled = denseInteractionCulled;
-    perfSnapshotRef.current.denseInteractionRebuildCount = denseInteractionRebuildCountRef.current;
-    let avatarDisplayCount = 0;
-    for (const display of scene.nodeDisplays.values()) {
-      if (display.avatarSprite) avatarDisplayCount += 1;
-    }
-    perfSnapshotRef.current.avatarDisplayCount = avatarDisplayCount;
-    if (didStaticRender || didLabelLayout) {
-      perfSnapshotRef.current.contentSyncCount += 1;
-    } else {
-      perfSnapshotRef.current.transformOnlySyncCount += 1;
-    }
-    perfSnapshotRef.current.modelBuildMs = model.buildMs;
-    perfSnapshotRef.current.layoutMs = lastLayoutMsRef.current;
-    perfSnapshotRef.current.sceneSyncMs = nowMs() - sceneStart;
-    scene.app.render();
-
-    if (containerRef.current) {
-      const counts = layoutCountsRef.current;
-      containerRef.current.dataset.graphNodeCount = String(counts.nodeCount);
-      containerRef.current.dataset.graphLinkCount = String(counts.linkCount);
-      containerRef.current.dataset.graphPersonCount = String(counts.personCount);
-      containerRef.current.dataset.graphChannelCount = String(counts.channelCount);
-      containerRef.current.dataset.visibleLabelCount = String(visibleLabelCount);
-      containerRef.current.dataset.graphQualityMode = qualityMode;
-    }
-    (window as typeof window & {
-      __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot;
-    }).__FREED_GRAPH_PERF__ = {
-      ...perfSnapshotRef.current,
-      ...layoutCountsRef.current,
-      transformScale: transform.scale,
-    };
+    (window as typeof window & { __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot }).__FREED_GRAPH_PERF__ = perf;
     if (shouldExposeGraphDebug()) {
-      const debugNodes = drag && drag.kind !== "pan"
-        ? layoutRef.current.nodes.map((node) => ({
-            id: node.id,
-            personId: node.personId,
-            accountId: node.accountId,
-            feedUrl: node.feedUrl,
-            linkedPersonId: node.linkedPersonId,
-            kind: node.kind,
-            x: nodePosition(node, drag).x,
-            y: nodePosition(node, drag).y,
-            radius: node.radius,
-          }))
-        : layoutDebugNodesRef.current;
       (window as typeof window & {
         __FREED_GRAPH_DEBUG__?: {
-          nodes: Array<Pick<IdentityGraphLayoutNode, "id" | "personId" | "accountId" | "feedUrl" | "linkedPersonId" | "kind" | "x" | "y" | "radius">>;
-          regions: IdentityGraphLayout["regions"];
+          nodes: GraphDebugNode[];
+          regions: IdentityGraphAtlas["regions"];
           transform: ViewTransform;
-          qualityMode: GraphQualityMode;
+          qualityMode: "interactive" | "settled";
           metrics: GraphPerfSnapshot;
         };
       }).__FREED_GRAPH_DEBUG__ = {
-        nodes: debugNodes,
-        regions: layoutRef.current.regions,
+        nodes: buildGraphDebugNodes(atlas.nodes),
+        regions: atlas.regions,
         transform: transformRef.current,
-        qualityMode,
-        metrics: { ...perfSnapshotRef.current },
+        qualityMode: latestQualityRef.current,
+        metrics: perf,
       };
     }
-    syncSceneErrorLoggedRef.current = false;
-    } catch (error) {
-      if (!syncSceneErrorLoggedRef.current) {
-        syncSceneErrorLoggedRef.current = true;
-        recordRuntimeError({
-          source: "friends:graph:pixi-sync",
-          error,
-          fatal: false,
-        });
-        console.warn("[friends-graph] ignored Pixi scene sync error", error);
+  }, [activitySummaries.buildMs, canonicalLinkCount, canonicalNodeCount, channelCount, personCount]);
+
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    const atlas = atlasRef.current;
+    if (!canvas || !atlas) return;
+    try {
+      let renderer = rendererRef.current;
+      if (!renderer && !webglUnavailableRef.current) {
+        renderer = new StarfieldGraphRenderer(canvas);
+        rendererRef.current = renderer;
       }
+      const frameAt = nowMs();
+      if (lastFrameAtRef.current !== null) {
+        const delta = frameAt - lastFrameAtRef.current;
+        frameSamplesRef.current.push(delta);
+        if (frameSamplesRef.current.length > 160) {
+          frameSamplesRef.current.shift();
+        }
+      }
+      lastFrameAtRef.current = frameAt;
+      const startedAt = nowMs();
+      if (renderer) {
+        renderer.resize(canvasSize.width, canvasSize.height);
+        if (sceneDirtyRef.current) {
+          renderer.syncScene(
+            atlas,
+            getPalette(),
+            selectedPersonId,
+            selectedAccountId,
+            hoveredNodeIdRef.current,
+            starfieldVariation,
+            latestQualityRef.current,
+          );
+          sceneDirtyRef.current = false;
+        }
+        renderer.render(transformRef.current, latestQualityRef.current);
+      } else {
+        drawFallbackStarfield(
+          canvas,
+          atlas,
+          transformRef.current,
+          getPalette(),
+          selectedPersonId,
+          selectedAccountId,
+        );
+      }
+      if (!firstVisibleMsRef.current && atlas.nodes.length > 0) {
+        firstVisibleMsRef.current = nowMs() - mountedAtRef.current;
+      }
+      exposeDiagnostics(atlas, nowMs() - startedAt);
+    } catch (error) {
+      if (error instanceof Error && error.message === "WebGL unavailable") {
+        webglUnavailableRef.current = true;
+        drawFallbackStarfield(
+          canvas,
+          atlas,
+          transformRef.current,
+          getPalette(),
+          selectedPersonId,
+          selectedAccountId,
+        );
+        if (!firstVisibleMsRef.current && atlas.nodes.length > 0) {
+          firstVisibleMsRef.current = nowMs() - mountedAtRef.current;
+        }
+        exposeDiagnostics(atlas, 0);
+        return;
+      }
+      (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string }).__FREED_GRAPH_DRAW_ERROR__ =
+        error instanceof Error ? error.message : String(error);
+      console.warn("[friends-graph] starfield draw failed", error);
     }
   }, [
     canvasSize.height,
     canvasSize.width,
-    getCachedTextStyle,
-    model.buildMs,
+    exposeDiagnostics,
+    getPalette,
     selectedAccountId,
     selectedPersonId,
-    themeId,
+    starfieldVariation,
   ]);
-  syncSceneRef.current = syncScene;
 
-  const scheduleSyncScene = useCallback(() => {
-    if (drawRafPendingRef.current) return;
-    drawRafPendingRef.current = true;
+  const scheduleDraw = useCallback(() => {
+    if (drawPendingRef.current) return;
+    drawPendingRef.current = true;
     drawRafRef.current = requestAnimationFrame(() => {
-      drawRafPendingRef.current = false;
-      syncScene();
+      drawPendingRef.current = false;
+      draw();
     });
-  }, [syncScene]);
+  }, [draw]);
+
+  const applyAtlas = useCallback((requestId: number, atlas: IdentityGraphAtlas, durationMs: number) => {
+    if (requestId < latestResolvedRequestIdRef.current) return;
+    const timeout = pendingWorkerTimeoutsRef.current.get(requestId);
+    if (timeout !== undefined) {
+      window.clearTimeout(timeout);
+      pendingWorkerTimeoutsRef.current.delete(requestId);
+    }
+    latestResolvedRequestIdRef.current = requestId;
+    atlas.metrics.buildMs = durationMs;
+    atlasRef.current = atlas;
+    hitBucketsRef.current = buildHitBucketMap(atlas);
+    sceneDirtyRef.current = true;
+    if (!hasFittedInitialAtlasRef.current && !hasUserAdjustedTransformRef.current) {
+      transformRef.current = fitTransformToVisibleAtlasBounds(
+        atlas.bounds,
+        canvasSize.width,
+        canvasSize.height,
+        FIT_PADDING,
+        viewportInsetsRef.current,
+      );
+      hasFittedInitialAtlasRef.current = true;
+    }
+    setAtlasReady(true);
+    draw();
+    scheduleDraw();
+  }, [canvasSize.height, canvasSize.width, draw, scheduleDraw]);
+
+  const runAtlasOnMainThread = useCallback((requestId: number, input: BuildIdentityGraphAtlasInput) => {
+    window.setTimeout(() => {
+      const startedAt = nowMs();
+      const atlas = buildIdentityGraphAtlas(input);
+      applyAtlas(requestId, atlas, nowMs() - startedAt);
+    }, 0);
+  }, [applyAtlas]);
+
+  const requestAtlas = useCallback((quality: IdentityGraphAtlasQuality) => {
+    latestQualityRef.current = quality;
+    const requestId = latestRequestIdRef.current + 1;
+    latestRequestIdRef.current = requestId;
+    const input: BuildIdentityGraphAtlasInput = {
+      persons,
+      accounts,
+      feeds,
+      activitySummaries,
+      mode,
+      transform: transformRef.current,
+      width: canvasSize.width,
+      height: canvasSize.height,
+      quality,
+      selectedPersonId,
+      selectedAccountId,
+      friendSuggestionStrengthByPerson: friendSuggestionStrengthByPersonRecord,
+      friendSuggestionStrengthByAccount: friendSuggestionStrengthByAccountRecord,
+    };
+    const worker = workerRef.current;
+    if (!worker) {
+      runAtlasOnMainThread(requestId, input);
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      pendingWorkerTimeoutsRef.current.delete(requestId);
+      if (requestId < latestResolvedRequestIdRef.current) return;
+      if (workerRef.current === worker) {
+        worker.terminate();
+        workerRef.current = null;
+      }
+      runAtlasOnMainThread(requestId, input);
+    }, GRAPH_LAYOUT_WORKER_TIMEOUT_MS);
+    pendingWorkerTimeoutsRef.current.set(requestId, timeout);
+    worker.postMessage({ requestId, ...input });
+  }, [
+    accounts,
+    activitySummaries,
+    canvasSize.height,
+    canvasSize.width,
+    feeds,
+    friendSuggestionStrengthByAccountRecord,
+    friendSuggestionStrengthByPersonRecord,
+    mode,
+    persons,
+    runAtlasOnMainThread,
+    selectedAccountId,
+    selectedPersonId,
+  ]);
+
+  const scheduleAtlas = useCallback((quality: IdentityGraphAtlasQuality) => {
+    window.cancelAnimationFrame(atlasRafRef.current);
+    atlasRafRef.current = window.requestAnimationFrame(() => requestAtlas(quality));
+  }, [requestAtlas]);
 
   const markInteractive = useCallback(() => {
-    if (graphQualityModeRef.current !== "interactive") {
-      graphQualityModeRef.current = "interactive";
-      scheduleSyncScene();
+    const wasInteractive = latestQualityRef.current === "interactive";
+    latestQualityRef.current = "interactive";
+    scheduleDraw();
+    if (!wasInteractive) {
+      sceneDirtyRef.current = true;
+      scheduleAtlas("interactive");
     }
     if (settleTimerRef.current !== null) {
       window.clearTimeout(settleTimerRef.current);
     }
-    const settleDelay =
-      layoutRef.current.nodes.length >= DENSE_INTERACTION_CULL_THRESHOLD
-        ? DENSE_GRAPH_INTERACTION_SETTLE_DELAY_MS
-        : GRAPH_INTERACTION_SETTLE_DELAY_MS;
+    const sourceCount = atlasRef.current?.metrics.sourceNodeCount ?? 0;
+    const delay = sourceCount >= 1_200 ? DENSE_INTERACTION_SETTLE_DELAY_MS : INTERACTION_SETTLE_DELAY_MS;
     const settleWhenIdle = () => {
-      if (
-        dragStateRef.current ||
-        pinchStateRef.current ||
-        activeTouchPointsRef.current.size > 0
-      ) {
-        settleTimerRef.current = window.setTimeout(
-          settleWhenIdle,
-          settleDelay,
-        );
+      if (dragStateRef.current || pinchStateRef.current || activeTouchPointsRef.current.size > 0) {
+        settleTimerRef.current = window.setTimeout(settleWhenIdle, delay);
         return;
       }
-      graphQualityModeRef.current = "settled";
+      latestQualityRef.current = "settled";
       settleTimerRef.current = null;
-      scheduleSyncScene();
+      requestAtlas("settled");
     };
-    settleTimerRef.current = window.setTimeout(
-      settleWhenIdle,
-      settleDelay,
-    );
-  }, [scheduleSyncScene]);
+    settleTimerRef.current = window.setTimeout(settleWhenIdle, delay);
+  }, [requestAtlas, scheduleAtlas, scheduleDraw]);
+
+  const viewportToWorld = useCallback((clientX: number, clientY: number) => {
+    const container = containerRef.current;
+    if (!container) return { x: 0, y: 0 };
+    const rect = container.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left - transformRef.current.x) / transformRef.current.scale,
+      y: (clientY - rect.top - transformRef.current.y) / transformRef.current.scale,
+    };
+  }, []);
+
+  const hitNodeAt = useCallback((clientX: number, clientY: number) => {
+    const atlas = atlasRef.current;
+    if (!atlas) return null;
+    const point = viewportToWorld(clientX, clientY);
+    return findHitNode(atlas, hitBucketsRef.current, point.x, point.y);
+  }, [viewportToWorld]);
+
+  const openNodeContextMenu = useCallback((clientX: number, clientY: number) => {
+    const node = hitNodeAt(clientX, clientY);
+    if (!node || node.kind === "provider_cluster") {
+      setContextMenu(null);
+      return false;
+    }
+    const container = containerRef.current;
+    const rect = container?.getBoundingClientRect();
+    const point = viewportToWorld(clientX, clientY);
+    setContextMenu({
+      x: rect ? clientX - rect.left : clientX,
+      y: rect ? clientY - rect.top : clientY,
+      worldX: point.x,
+      worldY: point.y,
+      node,
+    });
+    setLinkPickerAccountId(null);
+    setLinkPickerQuery("");
+    return true;
+  }, [hitNodeAt, viewportToWorld]);
 
   const fitAll = useCallback(() => {
-    if (layoutRef.current.nodes.length === 0) {
-      pendingFitAllRef.current = true;
-      return;
-    }
-    transformRef.current = fitTransformToNodes(
-      graphFitItems(layoutRef.current),
+    const atlas = atlasRef.current;
+    if (!atlas) return;
+    transformRef.current = fitTransformToVisibleAtlasBounds(
+      atlas.bounds,
       canvasSize.width,
       canvasSize.height,
-      graphViewportPadding(graphViewportInsets),
+      FIT_PADDING,
+      viewportInsetsRef.current,
     );
-    scheduleSyncScene();
-  }, [canvasSize.height, canvasSize.width, graphViewportInsets, scheduleSyncScene]);
+    hasUserAdjustedTransformRef.current = true;
+    requestAtlas("settled");
+    scheduleDraw();
+  }, [canvasSize.height, canvasSize.width, requestAtlas, scheduleDraw]);
 
   const focusNode = useCallback((id: string) => {
-    const hit = layoutRef.current.nodes.find(
-      (node) => node.id === id || node.personId === id || node.accountId === id,
-    );
+    const atlas = atlasRef.current;
+    if (!atlas) return;
+    const hit = atlas.nodes.find((node) => node.id === id || node.personId === id || node.accountId === id);
     if (!hit) return;
-    const scale = transformRef.current.scale;
-    const center = graphViewportCenter(canvasSize, graphViewportInsets);
+    const scale = Math.max(transformRef.current.scale, 0.92);
+    const center = visibleViewportCenter(canvasSize.width, canvasSize.height, viewportInsetsRef.current);
     transformRef.current = {
       x: center.x - hit.x * scale,
       y: center.y - hit.y * scale,
       scale,
     };
-    scheduleSyncScene();
-  }, [canvasSize, graphViewportInsets, scheduleSyncScene]);
+    hasUserAdjustedTransformRef.current = true;
+    requestAtlas("settled");
+    scheduleDraw();
+  }, [canvasSize.height, canvasSize.width, requestAtlas, scheduleDraw]);
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      fitAll,
-      focusNode,
-    }),
-    [fitAll, focusNode],
-  );
+  useImperativeHandle(ref, () => ({ fitAll, focusNode }), [fitAll, focusNode]);
 
   useEffect(() => {
-    const container = containerRef.current;
-    const canvasHost = canvasHostRef.current;
-    if (!container || !canvasHost) return;
-
-    let cancelled = false;
-    const app = new Application();
-
-    void (async () => {
-      await app.init({
-        backgroundAlpha: 0,
-        antialias: false,
-        preference: "webgl",
-        autoStart: false,
-      });
-      if (cancelled) {
-        try {
-          app.destroy(true);
-        } catch (error) {
-          recordRuntimeError({
-            source: "friends:graph:pixi-init-cancel",
-            error,
-            fatal: false,
-          });
-        }
-        return;
-      }
-
-      app.canvas.setAttribute("data-testid", "friend-graph-canvas");
-      app.canvas.style.width = "100%";
-      app.canvas.style.height = "100%";
-      app.canvas.style.pointerEvents = "none";
-      app.ticker.stop();
-      app.renderer.resize(canvasSizeRef.current.width, canvasSizeRef.current.height);
-      canvasHost.appendChild(app.canvas);
-
-      const world = new Container();
-      const regionLayer = new Graphics();
-      const regionLabelLayer = new Container();
-      const edgeLayer = new Graphics();
-      const edgeHighlightLayer = new Graphics();
-      const denseNodeLayer = new Graphics();
-      const denseInteractionNodeLayer = new Graphics();
-      const nodeLayer = new Container();
-      const hoverLayer = new Graphics();
-      const labelLayer = new Container();
-      world.addChild(regionLayer);
-      world.addChild(edgeLayer);
-      world.addChild(edgeHighlightLayer);
-      world.addChild(denseNodeLayer);
-      world.addChild(denseInteractionNodeLayer);
-      world.addChild(nodeLayer);
-      world.addChild(hoverLayer);
-      world.addChild(regionLabelLayer);
-      app.stage.addChild(world);
-      app.stage.addChild(labelLayer);
-      pixiRef.current = {
-        app,
-        world,
-        regionLayer,
-        regionLabelLayer,
-        edgeLayer,
-        edgeHighlightLayer,
-        denseNodeLayer,
-        denseInteractionNodeLayer,
-        nodeLayer,
-        hoverLayer,
-        labelLayer,
-        nodeDisplays: new Map(),
-        regionDisplays: new Map(),
-        labelDisplays: new Map(),
-      };
-      syncSceneRef.current();
-    })();
-
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(drawRafRef.current);
-      drawRafPendingRef.current = false;
-      if (settleTimerRef.current !== null) {
-        window.clearTimeout(settleTimerRef.current);
-        settleTimerRef.current = null;
-      }
-      syncSceneRef.current = () => {};
-      const scene = pixiRef.current;
-      pixiRef.current = null;
-      if (scene) {
-        destroyPixiScene(scene);
+    const worker = new Worker(
+      new URL("../../lib/identity-graph-atlas.worker.ts", import.meta.url),
+      { type: "module" },
+    );
+    workerRef.current = worker;
+    worker.onmessage = (event: MessageEvent<AtlasResponse>) => {
+      applyAtlas(event.data.requestId, event.data.atlas, event.data.durationMs);
+    };
+    worker.onerror = () => {
+      if (workerRef.current === worker) {
+        workerRef.current = null;
       }
     };
-  }, []);
+    return () => {
+      for (const timeout of pendingWorkerTimeoutsRef.current.values()) {
+        window.clearTimeout(timeout);
+      }
+      pendingWorkerTimeoutsRef.current.clear();
+      worker.terminate();
+      if (workerRef.current === worker) {
+        workerRef.current = null;
+      }
+    };
+  }, [applyAtlas]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
     const updateSize = () => {
-      const nextInsets = readCanvasViewportInsets(container);
-      setCanvasSize({
-        width: Math.max(320, container.clientWidth),
-        height: Math.max(320, container.clientHeight || DEFAULT_HEIGHT),
-      });
-      setGraphViewportInsets((current) =>
+      const containerRect = container.getBoundingClientRect();
+      const mainRect = container.closest("main")?.getBoundingClientRect();
+      const nextInsets = mainRect
+        ? {
+            top: Math.max(0, Math.round(mainRect.top - containerRect.top)),
+            right: Math.max(0, Math.round(containerRect.right - mainRect.right)),
+            bottom: Math.max(0, Math.round(containerRect.bottom - mainRect.bottom)),
+            left: Math.max(0, Math.round(mainRect.left - containerRect.left)),
+          }
+        : EMPTY_GRAPH_VIEWPORT_INSETS;
+      viewportInsetsRef.current = nextInsets;
+      setViewportInsets((current) =>
         sameGraphViewportInsets(current, nextInsets) ? current : nextInsets,
       );
+      setCanvasSize({
+        width: Math.max(320, container.clientWidth),
+        height: Math.max(320, container.clientHeight || 640),
+      });
     };
-
     updateSize();
     const observer = new ResizeObserver(updateSize);
     observer.observe(container);
+    const main = container.closest("main");
+    if (main) observer.observe(main);
     return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
-    const scene = pixiRef.current;
-    if (!scene) return;
-    scene.app.renderer.resize(canvasSize.width, canvasSize.height);
-    scheduleSyncScene();
-  }, [canvasSize.height, canvasSize.width, scheduleSyncScene]);
+    requestAtlas("settled");
+  }, [requestAtlas]);
+
+  useEffect(() => {
+    if (!atlasReady) return;
+    rendererRef.current?.resize(canvasSize.width, canvasSize.height);
+    scheduleDraw();
+  }, [atlasReady, canvasSize.height, canvasSize.width, scheduleDraw]);
+
+  useEffect(() => {
+    if (!atlasReady) return;
+    const atlas = atlasRef.current;
+    if (atlas && !hasUserAdjustedTransformRef.current) {
+      transformRef.current = fitTransformToVisibleAtlasBounds(
+        atlas.bounds,
+        canvasSize.width,
+        canvasSize.height,
+        FIT_PADDING,
+        viewportInsets,
+      );
+    }
+    requestAtlas("settled");
+    scheduleDraw();
+  }, [atlasReady, canvasSize.height, canvasSize.width, requestAtlas, scheduleDraw, viewportInsets]);
+
+  useEffect(() => {
+    paletteKeyRef.current = "";
+    sceneDirtyRef.current = true;
+    scheduleDraw();
+  }, [scheduleDraw, themeId]);
+
+  useEffect(() => {
+    sceneDirtyRef.current = true;
+    scheduleDraw();
+  }, [scheduleDraw, selectedAccountId, selectedPersonId, starfieldVariation]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
-    const preventGestureDefault = (event: Event) => {
-      event.preventDefault();
-    };
-
+    const preventGestureDefault = (event: Event) => event.preventDefault();
     container.addEventListener("gesturestart", preventGestureDefault, { passive: false });
     container.addEventListener("gesturechange", preventGestureDefault, { passive: false });
     container.addEventListener("gestureend", preventGestureDefault, { passive: false });
-
     return () => {
       container.removeEventListener("gesturestart", preventGestureDefault);
       container.removeEventListener("gesturechange", preventGestureDefault);
@@ -2117,160 +1497,33 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     };
   }, []);
 
-  const applyLayoutResult = useCallback((
-    requestId: number,
-    layout: IdentityGraphLayout,
-    durationMs: number,
-  ) => {
-    if (requestId < latestResolvedLayoutRequestIdRef.current) return;
-    const timeoutId = pendingLayoutTimeoutsRef.current.get(requestId);
-    if (timeoutId !== undefined) {
-      window.clearTimeout(timeoutId);
-      pendingLayoutTimeoutsRef.current.delete(requestId);
-    }
-    latestResolvedLayoutRequestIdRef.current = requestId;
-    layoutRef.current = layout;
-    layoutCountsRef.current = buildGraphLayoutCounts(layout);
-    layoutNodeByIdRef.current = buildNodeById(layout.nodes);
-    layoutDebugNodesRef.current = buildGraphDebugNodes(layout.nodes);
-    spatialIndexRef.current = buildSpatialIndex(layout.nodes);
-    lastLayoutMsRef.current = durationMs;
-    if (!hasFittedInitialLayoutRef.current || pendingFitAllRef.current) {
-      const latestCanvasSize = canvasSizeRef.current;
-      transformRef.current = fitTransformToNodes(
-        graphFitItems(layout),
-        latestCanvasSize.width,
-        latestCanvasSize.height,
-        graphViewportPadding(graphViewportInsetsRef.current),
-      );
-      hasFittedInitialLayoutRef.current = true;
-      pendingFitAllRef.current = false;
-    }
-    setLayoutVersion((value) => value + 1);
-    requestAnimationFrame(() => syncSceneRef.current());
-  }, []);
-
-  const runLayoutOnMainThread = useCallback((
-    requestId: number,
-    requestModel: IdentityGraphModel,
-    width: number,
-    height: number,
-    quality: GraphLayoutQuality,
-  ) => {
-    window.setTimeout(() => {
-      if (requestId < latestResolvedLayoutRequestIdRef.current) return;
-      const startMs = nowMs();
-      const layout = buildIdentityGraphLayout({
-        model: requestModel,
-        width,
-        height,
-        quality,
+  useEffect(() => {
+    if (typeof PerformanceObserver === "undefined") return;
+    try {
+      const observer = new PerformanceObserver((list) => {
+        longTaskCountRef.current += list.getEntries().length;
       });
-      applyLayoutResult(requestId, layout, nowMs() - startMs);
-    }, 0);
-  }, [applyLayoutResult]);
-
-  useEffect(() => {
-    const worker = new Worker(
-      new URL("../../lib/identity-graph-layout.worker.ts", import.meta.url),
-      { type: "module" },
-    );
-    workerRef.current = worker;
-    worker.onmessage = (event: MessageEvent<{ requestId: number; layout: IdentityGraphLayout; durationMs: number }>) => {
-      applyLayoutResult(event.data.requestId, event.data.layout, event.data.durationMs);
-    };
-    worker.onerror = (event) => {
-      console.warn("[FriendGraph] layout worker failed", event.message);
-      if (workerRef.current === worker) {
-        workerRef.current = null;
-      }
-    };
-
-    return () => {
-      for (const timeoutId of pendingLayoutTimeoutsRef.current.values()) {
-        window.clearTimeout(timeoutId);
-      }
-      pendingLayoutTimeoutsRef.current.clear();
-      worker.terminate();
-      if (workerRef.current === worker) {
-        workerRef.current = null;
-      }
-    };
-  }, [applyLayoutResult]);
-
-  useEffect(() => {
-    if (canvasSize.width <= 0 || canvasSize.height <= 0) return;
-    const previousSnapshot = previousRequestSnapshotRef.current;
-    const sizeOnlyResize =
-      previousSnapshot &&
-      previousSnapshot.signature === modelSignature &&
-      Math.abs(previousSnapshot.width - canvasSize.width) / Math.max(previousSnapshot.width, 1) <= 0.12 &&
-      Math.abs(previousSnapshot.height - canvasSize.height) / Math.max(previousSnapshot.height, 1) <= 0.12;
-    const relinkOnly =
-      countLinkedAccountChanges(previousRequestedModelRef.current, model) === 1;
-    const largeGraph = model.nodes.length >= FAST_LAYOUT_NODE_THRESHOLD;
-    const quality: GraphLayoutQuality = sizeOnlyResize || relinkOnly || largeGraph ? "fast" : "full";
-    const requestId = latestLayoutRequestIdRef.current + 1;
-    latestLayoutRequestIdRef.current = requestId;
-    previousRequestSnapshotRef.current = {
-      signature: modelSignature,
-      width: canvasSize.width,
-      height: canvasSize.height,
-    };
-    previousRequestedModelRef.current = model;
-    const layoutRequest = {
-      requestId,
-      model,
-      width: canvasSize.width,
-      height: canvasSize.height,
-      quality,
-    };
-    const worker = workerRef.current;
-    if (!worker) {
-      runLayoutOnMainThread(requestId, model, canvasSize.width, canvasSize.height, quality);
-      return;
+      observer.observe({ type: "longtask", buffered: false });
+      return () => observer.disconnect();
+    } catch {
+      return undefined;
     }
-    const timeoutId = window.setTimeout(() => {
-      pendingLayoutTimeoutsRef.current.delete(requestId);
-      if (requestId < latestResolvedLayoutRequestIdRef.current) return;
-      if (workerRef.current === worker) {
-        worker.terminate();
-        workerRef.current = null;
-      }
-      runLayoutOnMainThread(requestId, model, canvasSize.width, canvasSize.height, quality);
-    }, GRAPH_LAYOUT_WORKER_TIMEOUT_MS);
-    pendingLayoutTimeoutsRef.current.set(requestId, timeoutId);
-    worker.postMessage(layoutRequest);
-  }, [canvasSize.height, canvasSize.width, model, modelSignature, runLayoutOnMainThread]);
-
-  useEffect(() => {
-    if (!layoutReady && layoutRef.current.nodes.length > 0) {
-      if (!hasUserAdjustedTransformRef.current) {
-        fitAll();
-      } else {
-        scheduleSyncScene();
-      }
-      return;
-    }
-    scheduleSyncScene();
-  }, [fitAll, layoutReady, layoutVersion, modelSignature, scheduleSyncScene, selectedAccountId, selectedPersonId]);
-
-  const viewportToWorld = useCallback((clientX: number, clientY: number) => {
-    const container = containerRef.current;
-    if (!container) return { x: 0, y: 0 };
-    const rect = container.getBoundingClientRect();
-    const localX = clientX - rect.left;
-    const localY = clientY - rect.top;
-    return {
-      x: (localX - transformRef.current.x) / transformRef.current.scale,
-      y: (localY - transformRef.current.y) / transformRef.current.scale,
-    };
   }, []);
 
-  const hitNodeAt = useCallback((clientX: number, clientY: number) => {
-    const point = viewportToWorld(clientX, clientY);
-    return findHitNode(spatialIndexRef.current, point.x, point.y);
-  }, [viewportToWorld]);
+  useEffect(() => {
+    return () => {
+      window.cancelAnimationFrame(atlasRafRef.current);
+      window.cancelAnimationFrame(drawRafRef.current);
+      if (settleTimerRef.current !== null) {
+        window.clearTimeout(settleTimerRef.current);
+      }
+      if (longPressTimerRef.current !== null) {
+        window.clearTimeout(longPressTimerRef.current);
+      }
+      rendererRef.current?.dispose();
+      rendererRef.current = null;
+    };
+  }, []);
 
   const zoomAtPoint = useCallback((clientX: number, clientY: number, nextScale: number) => {
     const container = containerRef.current;
@@ -2287,133 +1540,113 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       x: localX - worldX * scale,
       y: localY - worldY * scale,
     };
-    scheduleSyncScene();
-  }, [scheduleSyncScene]);
+    hasUserAdjustedTransformRef.current = true;
+    markInteractive();
+  }, [markInteractive]);
 
   const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
-    hasUserAdjustedTransformRef.current = true;
-    markInteractive();
     if (event.ctrlKey || event.metaKey) {
       const delta = Math.exp(-event.deltaY * TRACKPAD_PINCH_ZOOM_SPEED);
       zoomAtPoint(event.clientX, event.clientY, transformRef.current.scale * delta);
       return;
     }
-
+    if (event.shiftKey) {
+      const delta = Math.exp(-event.deltaY * WHEEL_ZOOM_SPEED);
+      zoomAtPoint(event.clientX, event.clientY, transformRef.current.scale * delta);
+      return;
+    }
     transformRef.current = {
       ...transformRef.current,
       x: transformRef.current.x - event.deltaX,
       y: transformRef.current.y - event.deltaY,
     };
-    scheduleSyncScene();
-  }, [markInteractive, scheduleSyncScene, zoomAtPoint]);
+    hasUserAdjustedTransformRef.current = true;
+    markInteractive();
+  }, [markInteractive, zoomAtPoint]);
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const container = containerRef.current;
     if (!container) return;
     container.setPointerCapture(event.pointerId);
+    setContextMenu(null);
+    setLinkPickerAccountId(null);
 
     if (event.pointerType === "touch") {
-      activeTouchPointsRef.current.set(event.pointerId, {
-        x: event.clientX,
-        y: event.clientY,
-      });
-
+      activeTouchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (longPressTimerRef.current !== null) {
+        window.clearTimeout(longPressTimerRef.current);
+      }
       if (activeTouchPointsRef.current.size >= 2) {
+        if (longPressTimerRef.current !== null) {
+          window.clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
         const [firstEntry, secondEntry] = [...activeTouchPointsRef.current.entries()];
         if (firstEntry && secondEntry) {
           const initialDistance = distanceBetween(firstEntry[1], secondEntry[1]);
-          if (initialDistance > 0) {
-            const initialMidpoint = midpointBetween(firstEntry[1], secondEntry[1]);
-            pinchStateRef.current = {
-              pointerIds: [firstEntry[0], secondEntry[0]],
-              initialDistance,
-              initialScale: transformRef.current.scale,
-              initialMidpoint,
-              initialWorldPoint: viewportToWorld(initialMidpoint.x, initialMidpoint.y),
-              moved: false,
-            };
-            dragStateRef.current = null;
-            setInteractionCursor(true);
-            markInteractive();
-            event.preventDefault();
-            return;
-          }
+          const initialMidpoint = midpointBetween(firstEntry[1], secondEntry[1]);
+          pinchStateRef.current = {
+            pointerIds: [firstEntry[0], secondEntry[0]],
+            initialDistance,
+            initialScale: transformRef.current.scale,
+            initialMidpoint,
+            initialWorldPoint: viewportToWorld(initialMidpoint.x, initialMidpoint.y),
+            moved: false,
+          };
+          dragStateRef.current = null;
         }
+      } else {
+        longPressTimerRef.current = window.setTimeout(() => {
+          if (activeTouchPointsRef.current.has(event.pointerId)) {
+            dragStateRef.current = null;
+            openNodeContextMenu(event.clientX, event.clientY);
+            scheduleDraw();
+          }
+        }, 520);
+        dragStateRef.current = {
+          kind: "pan",
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          originX: transformRef.current.x,
+          originY: transformRef.current.y,
+          moved: false,
+        };
       }
+      overlayRef.current?.classList.add("cursor-grabbing");
+      markInteractive();
+      event.preventDefault();
+      return;
     }
 
-    const hit = hitNodeAt(event.clientX, event.clientY);
-    const shouldStartNodeDrag = !!hit && (
-      layoutRef.current.nodes.length < DENSE_INTERACTION_CULL_THRESHOLD ||
-      isSelectedGraphNode(hit, selectedPersonId, selectedAccountId)
-    );
-
-    if (shouldStartNodeDrag && hit?.accountId) {
-      const point = viewportToWorld(event.clientX, event.clientY);
-      dragStateRef.current = {
-        kind: "account-drag",
-        pointerId: event.pointerId,
-        nodeId: hit.id,
-        accountId: hit.accountId,
-        startX: event.clientX,
-        startY: event.clientY,
-        moved: false,
-        dropTargetPersonId: null,
-        currentWorldX: point.x,
-        currentWorldY: point.y,
-      };
-    } else if (shouldStartNodeDrag && hit?.personId) {
-      const point = viewportToWorld(event.clientX, event.clientY);
-      dragStateRef.current = {
-        kind: "person-drag",
-        pointerId: event.pointerId,
-        nodeId: hit.id,
-        personId: hit.personId,
-        startX: event.clientX,
-        startY: event.clientY,
-        moved: false,
-        currentWorldX: point.x,
-        currentWorldY: point.y,
-      };
-    } else {
-      dragStateRef.current = {
-        kind: "pan",
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        originX: transformRef.current.x,
-        originY: transformRef.current.y,
-        moved: false,
-      };
-    }
-    setInteractionCursor(true);
+    dragStateRef.current = {
+      kind: "pan",
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: transformRef.current.x,
+      originY: transformRef.current.y,
+      moved: false,
+    };
+    overlayRef.current?.classList.add("cursor-grabbing");
     markInteractive();
-  }, [hitNodeAt, markInteractive, selectedAccountId, selectedPersonId, setInteractionCursor, viewportToWorld]);
+  }, [markInteractive, openNodeContextMenu, scheduleDraw, viewportToWorld]);
 
   const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch") {
-      activeTouchPointsRef.current.set(event.pointerId, {
-        x: event.clientX,
-        y: event.clientY,
-      });
+      activeTouchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     }
-
     const pinch = pinchStateRef.current;
     if (pinch && pinch.pointerIds.includes(event.pointerId)) {
       const first = activeTouchPointsRef.current.get(pinch.pointerIds[0]);
       const second = activeTouchPointsRef.current.get(pinch.pointerIds[1]);
-      if (!first || !second) return;
-
+      if (!first || !second || pinch.initialDistance <= 0) return;
       const currentDistance = distanceBetween(first, second);
-      if (currentDistance <= 0) return;
-
       const midpoint = midpointBetween(first, second);
-      const midpointDelta = distanceBetween(midpoint, pinch.initialMidpoint);
-      pinch.moved =
-        pinch.moved ||
+      pinch.moved = pinch.moved ||
         Math.abs(currentDistance - pinch.initialDistance) > 4 ||
-        midpointDelta > 4;
+        distanceBetween(midpoint, pinch.initialMidpoint) > 4;
       const container = containerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
@@ -2426,7 +1659,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         y: localY - pinch.initialWorldPoint.y * scale,
       };
       hasUserAdjustedTransformRef.current = true;
-      scheduleSyncScene();
       markInteractive();
       event.preventDefault();
       return;
@@ -2436,189 +1668,172 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (!drag) {
       if (event.pointerType === "mouse" || event.pointerType === "pen") {
         const hit = hitNodeAt(event.clientX, event.clientY);
-        const nextHoveredNodeId = hit?.id ?? null;
-        if (hoveredNodeIdRef.current !== nextHoveredNodeId) {
-          hoveredNodeIdRef.current = nextHoveredNodeId;
-          scheduleSyncScene();
+        const nextHovered = hit?.id ?? null;
+        if (hoveredNodeIdRef.current !== nextHovered) {
+          hoveredNodeIdRef.current = nextHovered;
+          sceneDirtyRef.current = true;
+          scheduleDraw();
         }
       }
       return;
     }
     if (drag.pointerId !== event.pointerId) return;
-
-    if (drag.kind === "pan") {
-      const deltaX = event.clientX - drag.startX;
-      const deltaY = event.clientY - drag.startY;
-      if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
-        drag.moved = true;
-      }
-      transformRef.current = {
-        ...transformRef.current,
-        x: drag.originX + deltaX,
-        y: drag.originY + deltaY,
-      };
-      hasUserAdjustedTransformRef.current = true;
-      if (event.pointerType === "touch") {
-        event.preventDefault();
-      }
-      markInteractive();
-      scheduleSyncScene();
-      return;
+    const moved = Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3;
+    drag.moved = drag.moved || moved;
+    if (drag.moved && longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
-
-    const point = viewportToWorld(event.clientX, event.clientY);
-    drag.currentWorldX = point.x;
-    drag.currentWorldY = point.y;
-    if (Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3) {
-      drag.moved = true;
-    }
-
-    if (drag.moved && onDropNodeToRelationshipTier) {
-      emitRelationshipTierDragOver(relationshipTierDropLevelAt(event.clientX, event.clientY));
-    }
-
-    if (drag.kind === "person-drag") {
-      if (event.pointerType === "touch") {
-        event.preventDefault();
-      }
-      markInteractive();
-      scheduleSyncScene();
-      return;
-    }
-
-    const hit = hitNodeAt(event.clientX, event.clientY);
-    drag.dropTargetPersonId = hit?.personId ?? null;
-    if (event.pointerType === "touch") {
-      event.preventDefault();
-    }
+    transformRef.current = {
+      ...transformRef.current,
+      x: drag.originX + event.clientX - drag.startX,
+      y: drag.originY + event.clientY - drag.startY,
+    };
+    hasUserAdjustedTransformRef.current = true;
     markInteractive();
-    scheduleSyncScene();
-  }, [hitNodeAt, markInteractive, scheduleSyncScene, viewportToWorld]);
+    if (event.pointerType === "touch") event.preventDefault();
+  }, [hitNodeAt, markInteractive, scheduleDraw]);
 
-  const handlePointerUp = useCallback(async (event: React.PointerEvent<HTMLDivElement>) => {
+  const handlePointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch") {
       activeTouchPointsRef.current.delete(event.pointerId);
     }
-
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
     const pinch = pinchStateRef.current;
     if (pinch && pinch.pointerIds.includes(event.pointerId)) {
       pinchStateRef.current = null;
       dragStateRef.current = null;
-      emitRelationshipTierDragOver(null);
-      setInteractionCursor(activeTouchPointsRef.current.size > 0);
-      scheduleSyncScene();
+      overlayRef.current?.classList.toggle("cursor-grabbing", activeTouchPointsRef.current.size > 0);
+      requestAtlas("settled");
       return;
     }
 
     const drag = dragStateRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     dragStateRef.current = null;
-    setInteractionCursor(false);
-    emitRelationshipTierDragOver(null);
-
-    if (
-      drag.moved &&
-      (drag.kind === "account-drag" || drag.kind === "person-drag") &&
-      onDropNodeToRelationshipTier
-    ) {
-      const level = relationshipTierDropLevelAt(event.clientX, event.clientY);
-      if (level) {
-        await onDropNodeToRelationshipTier({
-          personId: drag.kind === "person-drag" ? drag.personId : undefined,
-          accountId: drag.kind === "account-drag" ? drag.accountId : undefined,
-          level,
-        });
-        scheduleSyncScene();
-        return;
-      }
-    }
-
-    if (drag.kind === "account-drag") {
-      if (drag.moved && drag.dropTargetPersonId && onLinkAccountToPerson) {
-        await onLinkAccountToPerson(drag.accountId, drag.dropTargetPersonId);
-      } else if (drag.moved) {
-        await onPinAccountPosition?.(drag.accountId, drag.currentWorldX, drag.currentWorldY);
-      } else if (!drag.moved) {
-        const account = accounts[drag.accountId];
-        if (account) {
-          onSelectAccount(account);
-        }
-      }
-      scheduleSyncScene();
-      return;
-    }
-
-    if (drag.kind === "person-drag") {
-      if (drag.moved) {
-        await onPinPersonPosition?.(drag.personId, drag.currentWorldX, drag.currentWorldY);
-      } else {
-        const person = personsById[drag.personId];
-        if (person) {
-          onSelectPerson(person);
-        }
-      }
-      scheduleSyncScene();
-      return;
-    }
+    overlayRef.current?.classList.remove("cursor-grabbing");
 
     if (drag.moved) {
+      requestAtlas("settled");
       return;
     }
 
     const hit = hitNodeAt(event.clientX, event.clientY);
     if (!hit) {
       onClearSelection?.();
-      scheduleSyncScene();
+      scheduleDraw();
       return;
     }
     if (hit.personId) {
       const person = personsById[hit.personId];
-      if (person) {
-        onSelectPerson(person);
-      }
+      if (person) onSelectPerson(person);
     } else if (hit.accountId) {
       const account = accounts[hit.accountId];
-      if (account) {
-        onSelectAccount(account);
-      }
+      if (account) onSelectAccount(account);
     }
-    scheduleSyncScene();
-  }, [accounts, hitNodeAt, onClearSelection, onDropNodeToRelationshipTier, onLinkAccountToPerson, onPinAccountPosition, onPinPersonPosition, onSelectAccount, onSelectPerson, personsById, scheduleSyncScene, setInteractionCursor]);
+    scheduleDraw();
+  }, [
+    accounts,
+    hitNodeAt,
+    onClearSelection,
+    onSelectAccount,
+    onSelectPerson,
+    personsById,
+    requestAtlas,
+    scheduleDraw,
+  ]);
 
   const handlePointerLeave = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (hoveredNodeIdRef.current) {
       hoveredNodeIdRef.current = null;
-      scheduleSyncScene();
+      sceneDirtyRef.current = true;
+      scheduleDraw();
     }
     if (event.pointerType === "touch") {
       activeTouchPointsRef.current.delete(event.pointerId);
     }
-    const pinch = pinchStateRef.current;
-    if (pinch && pinch.pointerIds.includes(event.pointerId)) {
-      pinchStateRef.current = null;
-      dragStateRef.current = null;
-      emitRelationshipTierDragOver(null);
-      setInteractionCursor(activeTouchPointsRef.current.size > 0);
-      scheduleSyncScene();
-      return;
-    }
-    const drag = dragStateRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    if (
-      onDropNodeToRelationshipTier &&
-      (drag.kind === "account-drag" || drag.kind === "person-drag")
-    ) {
-      return;
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
     dragStateRef.current = null;
-    emitRelationshipTierDragOver(null);
-    setInteractionCursor(false);
-    scheduleSyncScene();
-  }, [onDropNodeToRelationshipTier, scheduleSyncScene, setInteractionCursor]);
+    pinchStateRef.current = null;
+    overlayRef.current?.classList.remove("cursor-grabbing");
+  }, [scheduleDraw]);
 
-  const handleDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
+  const handleCopyDiagnostics = useCallback(async () => {
+    const debug = {
+      perf: (window as typeof window & { __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot }).__FREED_GRAPH_PERF__ ?? null,
+      debug: shouldExposeGraphDebug()
+        ? (window as typeof window & { __FREED_GRAPH_DEBUG__?: unknown }).__FREED_GRAPH_DEBUG__ ?? null
+        : null,
+    };
+    await navigator.clipboard?.writeText(JSON.stringify(debug, null, 2));
   }, []);
+
+  const handleContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    openNodeContextMenu(event.clientX, event.clientY);
+  }, [openNodeContextMenu]);
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+    setLinkPickerAccountId(null);
+    setLinkPickerQuery("");
+  }, []);
+
+  const handleOpenContextDetails = useCallback(() => {
+    const node = contextMenu?.node;
+    if (!node) return;
+    if (node.personId) {
+      const person = personsById[node.personId];
+      if (person) onSelectPerson(person);
+    } else if (node.accountId) {
+      const account = accounts[node.accountId];
+      if (account) onSelectAccount(account);
+    }
+    closeContextMenu();
+  }, [accounts, closeContextMenu, contextMenu, onSelectAccount, onSelectPerson, personsById]);
+
+  const handlePinContextNode = useCallback(async () => {
+    const menu = contextMenu;
+    if (!menu) return;
+    if (menu.node.personId) {
+      await onPinPersonPosition?.(menu.node.personId, menu.worldX, menu.worldY);
+    } else if (menu.node.accountId) {
+      await onPinAccountPosition?.(menu.node.accountId, menu.worldX, menu.worldY);
+    }
+    closeContextMenu();
+    requestAtlas("settled");
+  }, [closeContextMenu, contextMenu, onPinAccountPosition, onPinPersonPosition, requestAtlas]);
+
+  const handlePromoteContextNode = useCallback(async (level: 1 | 3 | 5) => {
+    const node = contextMenu?.node;
+    if (!node || !onDropNodeToRelationshipTier) return;
+    await onDropNodeToRelationshipTier({
+      personId: node.personId,
+      accountId: node.accountId,
+      level,
+    });
+    closeContextMenu();
+    requestAtlas("settled");
+  }, [closeContextMenu, contextMenu, onDropNodeToRelationshipTier, requestAtlas]);
+
+  const handleStartLinkPicker = useCallback(() => {
+    if (!contextMenu?.node.accountId) return;
+    setLinkPickerAccountId(contextMenu.node.accountId);
+    setLinkPickerQuery("");
+  }, [contextMenu]);
+
+  const handleLinkAccountToPickerPerson = useCallback(async (personId: string) => {
+    if (!linkPickerAccountId || !onLinkAccountToPerson) return;
+    await onLinkAccountToPerson(linkPickerAccountId, personId);
+    closeContextMenu();
+    requestAtlas("settled");
+  }, [closeContextMenu, linkPickerAccountId, onLinkAccountToPerson, requestAtlas]);
 
   return (
     <div
@@ -2631,12 +1846,17 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerLeave}
       onPointerLeave={handlePointerLeave}
-      onDoubleClick={handleDoubleClick}
+      onContextMenu={handleContextMenu}
+      onDoubleClick={(event) => event.preventDefault()}
       aria-label="Friends identity graph"
     >
       <div className="theme-soft-viewport-content">
-        <div ref={canvasHostRef} className="absolute inset-0" />
-        {!layoutReady ? (
+        <canvas
+          ref={canvasRef}
+          data-testid="friend-graph-canvas"
+          className="absolute inset-0 h-full w-full"
+        />
+        {!atlasReady ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
             <div className="rounded-full border border-[color:rgb(var(--theme-border-rgb)/0.25)] bg-[color:rgb(var(--theme-surface-rgb)/0.8)] px-4 py-2 text-xs text-[color:var(--theme-text-muted)] backdrop-blur-sm">
               Building graph...
@@ -2644,24 +1864,116 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           </div>
         ) : null}
         <div
-          ref={canvasOverlayRef}
+          ref={overlayRef}
           data-testid="friend-graph-canvas-overlay"
           className="absolute inset-0 cursor-grab"
         />
       </div>
-      <div
-        className="absolute z-10 flex items-center gap-2"
-        style={{
-          right: "calc(var(--freed-canvas-viewport-inset-right, 0px) + 1rem)",
-          top: "calc(var(--freed-canvas-viewport-inset-top, 0px) + 1rem)",
-        }}
-      >
-        <button
-          type="button"
-          className={CONTROL_BASE}
-          onClick={fitAll}
+      {import.meta.env.DEV ? (
+        <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-xl border border-[color:rgb(var(--theme-border-rgb)/0.22)] bg-[color:rgb(var(--theme-surface-rgb)/0.78)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)] shadow-lg backdrop-blur-md">
+          <span className="font-semibold text-[color:var(--theme-text-primary)]">Starfield</span>
+          <select
+            className="rounded-lg border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:var(--theme-bg-card)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)]"
+            value={starfieldVariation}
+            onChange={(event) => setStarfieldVariation(event.target.value as StarfieldVariation)}
+            aria-label="Starfield variation"
+          >
+            <option value="nebula-rings">Nebula and rings</option>
+            <option value="nebula">Nebula</option>
+            <option value="rings">Rings</option>
+          </select>
+        </div>
+      ) : null}
+      {contextMenu ? (
+        <div
+          className="theme-menu-shell absolute z-30 w-64 rounded-xl border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:rgb(var(--theme-surface-rgb)/0.94)] p-2 text-sm text-[color:var(--theme-text-primary)] shadow-2xl backdrop-blur-xl"
+          style={{
+            left: Math.min(contextMenu.x, Math.max(12, canvasSize.width - 272)),
+            top: Math.min(contextMenu.y, Math.max(12, canvasSize.height - 360)),
+          }}
+          role="menu"
+          data-testid="friend-graph-context-menu"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
         >
+          <div className="px-2 pb-2">
+            <p className="truncate text-sm font-semibold">{contextMenu.node.label}</p>
+            <p className="text-xs text-[color:var(--theme-text-muted)]">
+              {contextMenu.node.kind === "friend_person" ? "Person" : contextMenu.node.kind === "connection_person" ? "Connection" : contextMenu.node.provider ?? "Account"}
+            </p>
+          </div>
+          {linkPickerAccountId ? (
+            <div className="space-y-2">
+              <input
+                className="w-full rounded-lg border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:var(--theme-bg-card)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none"
+                value={linkPickerQuery}
+                onChange={(event) => setLinkPickerQuery(event.target.value)}
+                placeholder="Search people"
+                autoFocus
+              />
+              <div className="max-h-64 space-y-1 overflow-auto">
+                {personPickerOptions.map((person) => (
+                  <button
+                    key={person.id}
+                    type="button"
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[color:var(--theme-bg-card-hover)]"
+                    onClick={() => void handleLinkAccountToPickerPerson(person.id)}
+                  >
+                    <span className="block truncate font-medium">{person.name}</span>
+                    <span className="block text-xs text-[color:var(--theme-text-muted)]">
+                      {person.relationshipStatus === "friend" ? "Friend" : "Connection"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <button type="button" className={`${CONTROL_BASE} w-full`} onClick={() => setLinkPickerAccountId(null)}>
+                Back
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={handleOpenContextDetails}>
+                Open details
+              </button>
+              {(contextMenu.node.personId || contextMenu.node.accountId) && (onPinPersonPosition || onPinAccountPosition) ? (
+                <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={() => void handlePinContextNode()}>
+                  Pin here
+                </button>
+              ) : null}
+              {contextMenu.node.accountId && onLinkAccountToPerson ? (
+                <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={handleStartLinkPicker}>
+                  Link to person
+                </button>
+              ) : null}
+              {onDropNodeToRelationshipTier ? (
+                <>
+                  <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={() => void handlePromoteContextNode(1)}>
+                    Mark followed
+                  </button>
+                  <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={() => void handlePromoteContextNode(3)}>
+                    Promote to Friend
+                  </button>
+                  <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={() => void handlePromoteContextNode(5)}>
+                    Promote to Fam
+                  </button>
+                </>
+              ) : null}
+              <button type="button" className="w-full rounded-lg px-3 py-2 text-left text-[color:var(--theme-text-muted)] hover:bg-[color:var(--theme-bg-card-hover)]" onClick={closeContextMenu}>
+                Close
+              </button>
+            </div>
+          )}
+        </div>
+      ) : null}
+      <div
+        data-testid="friend-graph-controls"
+        className="absolute right-4 top-4 z-10 flex items-center gap-2"
+      >
+        <button type="button" className={CONTROL_BASE} onClick={fitAll}>
           Fit all
+        </button>
+        <button type="button" className={CONTROL_BASE} onClick={handleCopyDiagnostics}>
+          Copy diagnostics
         </button>
       </div>
     </div>

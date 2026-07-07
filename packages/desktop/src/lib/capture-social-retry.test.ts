@@ -131,4 +131,63 @@ describe("scheduled social capture retries", () => {
       expect.any(Function),
     );
   });
+
+  it("returns success details when Facebook sees posts", async () => {
+    mocks.captureFbFeed.mockResolvedValueOnce({
+      items: [],
+      diag: {
+        errorStage: null,
+        errorMessage: null,
+        postsExtracted: 4,
+        itemsAdded: 0,
+      },
+    });
+
+    const { refreshSocialProvider } = await import("./capture");
+    const result = await refreshSocialProvider("facebook");
+
+    expect(result).toMatchObject({
+      provider: "facebook",
+      status: "success",
+      postsExtracted: 4,
+      itemsAdded: 0,
+    });
+  });
+
+  it("returns empty when Facebook sees no posts", async () => {
+    mocks.captureFbFeed.mockResolvedValueOnce({
+      items: [],
+      diag: {
+        errorStage: null,
+        errorMessage: null,
+        postsExtracted: 0,
+        itemsAdded: 0,
+      },
+    });
+
+    const { refreshSocialProvider } = await import("./capture");
+    const result = await refreshSocialProvider("facebook");
+
+    expect(result).toMatchObject({
+      provider: "facebook",
+      status: "empty",
+      stage: "empty",
+      postsExtracted: 0,
+      itemsAdded: 0,
+    });
+  });
+
+  it("returns ignored when Facebook is not authenticated", async () => {
+    mocks.state.fbAuth = { isAuthenticated: false };
+
+    const { refreshSocialProvider } = await import("./capture");
+    const result = await refreshSocialProvider("facebook");
+
+    expect(mocks.captureFbFeed).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      provider: "facebook",
+      status: "ignored",
+      stage: "auth",
+    });
+  });
 });

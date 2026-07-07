@@ -1,0 +1,55 @@
+{
+  "tag": "v26.7.201-dev",
+  "version": "26.7.201-dev",
+  "channel": "dev",
+  "dayKey": "26.7.2",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-02T20:44:35.937Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.2901-dev",
+    "previousPublishedDayTag": "v26.6.2901-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.201-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.201-dev"
+    ],
+    "prNumbers": [
+      746,
+      887,
+      888,
+      889,
+      890,
+      892,
+      893
+    ],
+    "commitSubjects": [
+      "fix: harden Playwright browser install in CI (#893)",
+      "release: approve v26.7.200-dev",
+      "release: v26.7.200-dev",
+      "feat: add map time range slider (#892)",
+      "fix: align feed card action icons (#890)",
+      "fix: align desktop titlebar controls (#889)",
+      "fix: quiet toolbar segment dividers (#888)",
+      "fix: restore friends graph lane interactions (#887)",
+      "perf: rebuild friends graph as atlas renderer (#746)",
+      "docs: add Windows signing implementation plan (#221)"
+    ]
+  },
+  "release": {
+    "deck": "Map time range slider and release validation fix",
+    "features": [
+      "Map now uses a lower-left time range slider with draggable start and end handles, all time selected by default, and quick range links for all time, today, and last week."
+    ],
+    "fixes": [
+      "Release validation now removes a stale Azure CLI apt source before installing Playwright browser dependencies on GitHub-hosted Ubuntu runners."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.201-dev\n\nMap time range slider and release validation fix\n\n### Features\n\n- Map now uses a lower-left time range slider with draggable start and end handles, all time selected by default, and quick range links for all time, today, and last week.\n\n### Fixes\n\n- Release validation now removes a stale Azure CLI apt source before installing Playwright browser dependencies on GitHub-hosted Ubuntu runners.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

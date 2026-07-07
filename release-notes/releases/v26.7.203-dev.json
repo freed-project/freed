@@ -1,0 +1,70 @@
+{
+  "tag": "v26.7.203-dev",
+  "version": "26.7.203-dev",
+  "channel": "dev",
+  "dayKey": "26.7.2",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-02T22:50:42.883Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.201-dev",
+    "previousPublishedDayTag": "v26.6.2901-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.201-dev",
+      "v26.7.203-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.201-dev",
+      "v26.7.203-dev"
+    ],
+    "prNumbers": [
+      746,
+      887,
+      888,
+      889,
+      890,
+      891,
+      892,
+      893,
+      895
+    ],
+    "commitSubjects": [
+      "fix: stabilize graph pin release validation (#895)",
+      "release: approve v26.7.202-dev",
+      "release: v26.7.202-dev",
+      "fix: improve Meta feed scrape diagnostics (#891)",
+      "release: approve v26.7.201-dev",
+      "release: v26.7.201-dev",
+      "fix: harden Playwright browser install in CI (#893)",
+      "release: approve v26.7.200-dev",
+      "release: v26.7.200-dev",
+      "feat: add map time range slider (#892)",
+      "fix: align feed card action icons (#890)",
+      "fix: align desktop titlebar controls (#889)",
+      "fix: quiet toolbar segment dividers (#888)",
+      "fix: restore friends graph lane interactions (#887)",
+      "perf: rebuild friends graph as atlas renderer (#746)",
+      "docs: add Windows signing implementation plan (#221)"
+    ]
+  },
+  "release": {
+    "deck": "Social scraping now has stronger memory recovery diagnostics, local loop locking, and zero-post failure reporting, with graph pin release validation stabilized",
+    "features": [
+      "Map time range slider"
+    ],
+    "fixes": [
+      "Social scrape memory preflight now records recovery state and avoids treating stale local memory deferrals as durable provider failures",
+      "Facebook, Instagram, LinkedIn, and X scrape diagnostics now rank safe local next actions without increasing provider-visible traffic",
+      "Instagram zero-post failures now surface in the local optimization loop even when runtime diagnostics are sparse",
+      "Graph pin release validation now waits for Automerge persistence before reloading",
+      "Worktree creation now sources the shared Node tooling helpers before running its preflight",
+      "Release validation now removes a stale Azure CLI apt source before installing Playwright browser dependencies on GitHub-hosted Ubuntu runners"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.203-dev\n\nSocial scraping now has stronger memory recovery diagnostics, local loop locking, and zero-post failure reporting, with graph pin release validation stabilized\n\n### Features\n\n- Map time range slider\n\n### Fixes\n\n- Social scrape memory preflight now records recovery state and avoids treating stale local memory deferrals as durable provider failures\n- Facebook, Instagram, LinkedIn, and X scrape diagnostics now rank safe local next actions without increasing provider-visible traffic\n- Instagram zero-post failures now surface in the local optimization loop even when runtime diagnostics are sparse\n- Graph pin release validation now waits for Automerge persistence before reloading\n- Worktree creation now sources the shared Node tooling helpers before running its preflight\n- Release validation now removes a stale Azure CLI apt source before installing Playwright browser dependencies on GitHub-hosted Ubuntu runners\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

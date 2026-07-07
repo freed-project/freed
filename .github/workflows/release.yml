@@ -170,7 +170,9 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/azure-cli.sources
+          npx playwright install --with-deps chromium
         working-directory: packages/desktop
 
       - name: Run channel validation
@@ -367,6 +369,7 @@ jobs:
           VITE_GDRIVE_DESKTOP_CLIENT_ID: 304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com
           VITE_GDRIVE_TOKEN_PROXY_URL: https://app.freed.wtf/api/oauth/google
           VITE_GDRIVE_FORCE_TOKEN_PROXY: "1"
+          VITE_ENABLE_DEV_SYNC_TRIGGERS: ${{ needs.notes.outputs.release_channel == 'dev' && '1' || '0' }}
         with:
           projectPath: packages/desktop
           tauriScript: npx tauri

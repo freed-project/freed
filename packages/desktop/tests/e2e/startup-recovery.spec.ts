@@ -25,6 +25,11 @@ test("startup recovery checks immediately and opens the channel-aware fallback d
   await expect.poll(async () => (await ipc.openedUrls())[0]).toBe(
     "https://dev.freed.wtf/api/downloads/mac-arm",
   );
+
+  await page.getByRole("button", { name: "Download diagnostics" }).click();
+  await expect(
+    page.getByText("Diagnostics saved to /Users/test/Downloads/freed-diagnostics-test.json"),
+  ).toBeVisible();
 });
 
 test("startup recovery installs pending updates in place and surfaces install errors", async ({

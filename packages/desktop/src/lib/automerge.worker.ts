@@ -65,7 +65,7 @@ import {
   sortByPriority,
 } from "@freed/shared";
 import type { Account, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
-import type { DocState, RssFeedPatch, WorkerRequest, WorkerResponse } from "./automerge-types";
+import type { DocState, FeedItemPatch, RssFeedPatch, WorkerRequest, WorkerResponse } from "./automerge-types";
 import {
   createPersistenceState,
   persistDoc,
@@ -219,6 +219,21 @@ function bumpSearchCorpusVersion(): void {
   searchCorpusVersion += 1;
 }
 
+/**
+ * Heads as of the last save/load, answered by GET_HEADS without forcing a
+ * full A.load when the document is idle-unloaded (an unloaded doc cannot
+ * have diverged from its last save). Null until the first INIT.
+ */
+let lastSavedHeads: string[] | null = null;
+
+function refreshLastSavedHeads(doc: FreedDoc | null): void {
+  try {
+    lastSavedHeads = doc ? A.getHeads(doc) : null;
+  } catch {
+    lastSavedHeads = null;
+  }
+}
+
 function cancelDocIdleUnload(): void {
   // Kept as a named lifecycle hook so request startup documents the intent.
 }
@@ -287,6 +302,7 @@ function compactLoadedFeedText(
   const bytesSaved = previousBinaryBytes - rebuiltBinary.byteLength;
   currentDoc = rebuiltDoc;
   currentBinary = rebuiltBinary;
+  refreshLastSavedHeads(rebuiltDoc);
   persistenceState = createPersistenceState(rebuiltBinary);
   emitWorkerTrace(
     `[automerge-worker] rebuilt compacted document` +
@@ -482,20 +498,32 @@ function healUntitledFeedTitles(doc: FreedDoc): number {
   return changed;
 }
 
-function rankedVisibleItemIdsFromDoc(doc: FreedDoc): string[] {
+function rankedPatchItemsFromDoc(doc: FreedDoc, items: FeedItem[]): FeedItem[] {
   const preferences = mergeDefaultPreferences(doc.preferences as Partial<UserPreferences> | undefined);
   const persons = doc.persons as Record<string, Person> | undefined;
   const accounts = doc.accounts as Record<string, Account> | undefined;
-  const visibleItems = (Object.values(doc.feedItems ?? {}) as FeedItem[])
-    .filter((item) => !item.userState.hidden)
-    .sort((a, b) => b.publishedAt - a.publishedAt);
 
-  return sortByPriority(
-    rankFeedItems(visibleItems, preferences.weights, {
+  return rankFeedItems(
+    [...items].sort((a, b) => {
+      const timeDelta = (b.publishedAt || b.capturedAt) - (a.publishedAt || a.capturedAt);
+      return timeDelta || a.globalId.localeCompare(b.globalId);
+    }),
+    preferences.weights,
+    {
       persons: persons ?? {},
       accounts: accounts ?? {},
-    }),
-  ).map((item) => item.globalId);
+    },
+  );
+}
+
+function cloneRankedFeedItemPatches(doc: FreedDoc | null, changedIds: string[]): FeedItemPatch[] {
+  const items = changedIds
+    .map((globalId) => doc?.feedItems[globalId] as FeedItem | undefined)
+    .filter((item): item is FeedItem => Boolean(item))
+    .map((item) => cloneFeedItemForPatch(item));
+  if (!doc || items.length === 0) return items.map((item) => ({ item }));
+
+  return rankedPatchItemsFromDoc(doc, items).map((item) => ({ item }));
 }
 
 /**
@@ -600,6 +628,7 @@ async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
   const binary = persisted.binary;
   persistenceState = persisted.persistence;
   currentBinary = binary;
+  refreshLastSavedHeads(doc);
   const afterSerializeAt = performance.now();
   await storage.save(binary);
   const afterPersistAt = performance.now();
@@ -681,6 +710,7 @@ async function persistAndBroadcastWithoutHydration(trace?: RequestTrace): Promis
   const binary = persisted.binary;
   persistenceState = persisted.persistence;
   currentBinary = binary;
+  refreshLastSavedHeads(doc);
   const afterSerializeAt = performance.now();
   await storage.save(binary);
   const afterPersistAt = performance.now();
@@ -859,19 +889,15 @@ async function applyAddFeedItemsPatchChange(items: FeedItem[], trace?: RequestTr
 
   await persistAndBroadcastWithoutHydration(trace);
   const doc = currentDoc;
-  const patches = changedIds
-    .map((globalId) => doc?.feedItems[globalId] as FeedItem | undefined)
-    .filter((item): item is FeedItem => Boolean(item))
-    .map((item) => ({ item: cloneFeedItemForPatch(item) }));
+  const patches = cloneRankedFeedItemPatches(doc, changedIds);
 
   if (patches.length > 0) {
     send({
       type: "ITEM_PATCH",
       patches,
       changedItemIds: changedIds,
-      orderedItemIds: doc ? rankedVisibleItemIdsFromDoc(doc) : undefined,
+      preservePriorityOrder: true,
       searchCorpusVersion,
-      docItemCount: doc ? Object.keys(doc.feedItems ?? {}).length : undefined,
       mutation: trace?.opType,
     });
   }
@@ -938,18 +964,14 @@ async function applyBatchRefreshFeedsPatchChange(
   }
 
   const doc = currentDoc;
-  const patches = changedIds
-    .map((globalId) => doc?.feedItems[globalId] as FeedItem | undefined)
-    .filter((item): item is FeedItem => Boolean(item))
-    .map((item) => ({ item: cloneFeedItemForPatch(item) }));
+  const patches = cloneRankedFeedItemPatches(doc, changedIds);
   if (patches.length > 0) {
     send({
       type: "ITEM_PATCH",
       patches,
       changedItemIds: changedIds,
-      orderedItemIds: doc ? rankedVisibleItemIdsFromDoc(doc) : undefined,
+      preservePriorityOrder: true,
       searchCorpusVersion,
-      docItemCount: doc ? Object.keys(doc.feedItems ?? {}).length : undefined,
       mutation: trace?.opType,
     });
   }
@@ -981,7 +1003,8 @@ async function handleRequest(
     req.type !== "INIT" &&
     req.type !== "CLEAR_LOCAL" &&
     req.type !== "REPLACE_DOC" &&
-    req.type !== "GET_DOC_BINARY"
+    req.type !== "GET_DOC_BINARY" &&
+    req.type !== "GET_HEADS"
   ) {
     ensureCurrentDocLoaded(req.type);
   }
@@ -1024,6 +1047,7 @@ async function handleRequest(
           persistenceState = createPersistenceState(binary);
           await storage.save(binary);
         }
+        refreshLastSavedHeads(currentDoc);
         searchCorpusVersion = 1;
         const initializedDoc = currentDoc;
         if (!initializedDoc) throw new Error("Document not initialized");
@@ -1034,6 +1058,11 @@ async function handleRequest(
         } else {
           await hydrateAndBroadcastWithoutPersist(trace);
         }
+        send({
+          type: "INIT_STATS",
+          durationMs: Math.round(performance.now() - startedAt),
+          docBytes: currentBinary?.byteLength ?? 0,
+        });
         ack(req.reqId);
         break;
       }
@@ -1043,6 +1072,7 @@ async function handleRequest(
         await storage.clear();
         currentDoc = null;
         currentBinary = null;
+        refreshLastSavedHeads(null);
         persistenceState = createPersistenceState(null);
         linkPreviewUrlCounts = new Map();
         searchCorpusVersion = 0;
@@ -1052,6 +1082,7 @@ async function handleRequest(
       case "REPLACE_DOC":
         currentDoc = A.load<FreedDoc>(req.binary);
         currentBinary = req.binary;
+        refreshLastSavedHeads(currentDoc);
         persistenceState = createPersistenceState(req.binary);
         migrateLoadedIdentityGraph("Migrate legacy identity graph");
         compactLoadedFeedText("Compact oversized synced feed text", {
@@ -1067,9 +1098,18 @@ async function handleRequest(
         if (!currentBinary) {
           const doc = ensureCurrentDocLoaded(req.type);
           currentBinary = A.save(doc);
+          refreshLastSavedHeads(doc);
           persistenceState = createPersistenceState(currentBinary);
         }
         send({ reqId: req.reqId, type: "DOC_BINARY", binary: currentBinary });
+        break;
+
+      case "GET_HEADS":
+        send({
+          reqId: req.reqId,
+          type: "DOC_HEADS",
+          heads: currentDoc ? A.getHeads(currentDoc) : lastSavedHeads,
+        });
         break;
 
       case "MERGE_DOC": {

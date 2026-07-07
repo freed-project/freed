@@ -23,7 +23,8 @@ import {
   type CloudProvider,
   type GoogleDriveFetch,
 } from "@freed/sync/cloud";
-import { getDocBinary, mergeDoc, replaceLocalDoc, subscribe, setRelayClientCount } from "./automerge";
+import { getDocBinary, getDocHeads, mergeDoc, replaceLocalDoc, subscribe, setRelayClientCount } from "./automerge";
+import { recordCloudUploadAttempt, type CloudUploadCause } from "./runtime-health-events";
 import {
   addDebugEvent,
   recordCloudProviderEvent,
@@ -1409,7 +1410,7 @@ export async function resolveCloudSyncConflict(
         timeoutMs: 180_000,
         waitForActiveJobMs: CONFLICT_RECOVERY_ACTIVE_JOB_WAIT_MS,
         run: async () => {
-          await performCloudUpload(provider, token, { authoritativeReplace: true });
+          await performCloudUpload(provider, token, { authoritativeReplace: true, cause: "manual" });
         },
       });
       await startCloudSync(provider, token);
@@ -1466,16 +1467,43 @@ export async function resolveCloudSyncConflict(
   }
 }
 
+/**
+ * Heads at the previous upload attempt, per provider. An attempt whose heads
+ * match is the cloud-loop signature counted by cloud_upload_attempt (F01/F06).
+ */
+const lastUploadHeadsByProvider = new Map<CloudProvider, string>();
+
+async function recordCloudUploadAttemptCounters(
+  provider: CloudProvider,
+  cause: CloudUploadCause,
+): Promise<void> {
+  try {
+    const heads = await getDocHeads();
+    const headsKey = heads && heads.length > 0 ? heads.join(",") : null;
+    const previousKey = lastUploadHeadsByProvider.get(provider) ?? null;
+    if (headsKey !== null) lastUploadHeadsByProvider.set(provider, headsKey);
+    recordCloudUploadAttempt({
+      provider,
+      cause,
+      headsBefore: heads,
+      headsUnchanged: headsKey !== null && headsKey === previousKey,
+    });
+  } catch {
+    // Counters never block or fail an upload.
+  }
+}
+
 async function performCloudUpload(
   provider: CloudProvider,
   token?: string,
-  options: { authoritativeReplace?: boolean } = {},
+  options: { authoritativeReplace?: boolean; cause?: CloudUploadCause } = {},
 ): Promise<void> {
   const startedAt = Date.now();
   let byteLength = 0;
   try {
     const binary = await getDocBinary();
     byteLength = binary.byteLength;
+    await recordCloudUploadAttemptCounters(provider, options.cause ?? "subscriber");
     const uploadToken = token ?? await getValidCloudToken(provider);
     if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
     markCloudAttempt(provider, "upload", "Uploading local document to cloud storage.");
@@ -1661,7 +1689,7 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
       timeoutMs: 180_000,
       waitForActiveJobMs: UPLOAD_ACTIVE_JOB_WAIT_MS,
       waitForActiveJobKinds: UPLOAD_WAIT_FOR_ACTIVE_JOB_KINDS,
-      run: () => performCloudUpload(provider),
+      run: () => performCloudUpload(provider, undefined, { cause: "manual" }),
     });
   } catch (error) {
     if (isBackgroundRuntimeDeferredError(error)) {

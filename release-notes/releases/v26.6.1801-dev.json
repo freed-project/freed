@@ -1,0 +1,39 @@
+{
+  "tag": "v26.6.1801-dev",
+  "version": "26.6.1801-dev",
+  "channel": "dev",
+  "dayKey": "26.6.18",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-18T08:14:00.000Z",
+  "model": "manual",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.1800-dev",
+    "previousPublishedDayTag": "v26.6.1800-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.1800-dev",
+      "v26.6.1801-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.1801-dev"
+    ],
+    "prNumbers": [
+      840
+    ],
+    "commitSubjects": [
+      "fix: run sync triggers from native desktop"
+    ]
+  },
+  "release": {
+    "deck": "Let installed dev sync soaks run without stealing focus",
+    "features": [],
+    "fixes": [
+      "Moved the sync trigger pickup into the native desktop process so backgrounded dev-channel builds can start Facebook, Instagram, and LinkedIn soaks from the terminal even when WebKit has suspended the renderer"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.1801-dev\n\nLet installed dev sync soaks run without stealing focus\n\n### Fixes\n\n- Moved the sync trigger pickup into the native desktop process so backgrounded dev-channel builds can start Facebook, Instagram, and LinkedIn soaks from the terminal even when WebKit has suspended the renderer\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

@@ -43,7 +43,7 @@ export function XFeedEmptyState() {
     setActionError(null);
     setSyncing(true);
     try {
-      await captureXTimeline(cookies);
+      await captureXTimeline(cookies, undefined, "manual");
     } catch (err) {
       console.error("X sync failed:", err);
       setActionError(err instanceof Error ? err.message : "X sync failed");

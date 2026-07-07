@@ -6,6 +6,7 @@ const BASE_AVAILABILITY = {
   hasGoogleContacts: false,
   hasGoogleContactsManagement: false,
   hasAISettings: false,
+  hasShortcuts: false,
   hasX: false,
   hasFacebook: false,
   hasInstagram: false,
@@ -28,6 +29,15 @@ describe("settings section availability", () => {
     });
 
     expect(sections.map((section) => section.id)).toContain("ai");
+  });
+
+  it("keeps Shortcuts after Appearance when the platform has shortcut controls", () => {
+    const sections = buildSettingsSectionMetas({
+      ...BASE_AVAILABILITY,
+      hasShortcuts: true,
+    });
+
+    expect(sections.map((section) => section.id).slice(0, 2)).toEqual(["appearance", "shortcuts"]);
   });
 
   it("keeps Google Contacts visible without management keywords", () => {

@@ -1,0 +1,53 @@
+{
+  "tag": "v26.6.1804-dev",
+  "version": "26.6.1804-dev",
+  "channel": "dev",
+  "dayKey": "26.6.18",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-18T10:52:40.000Z",
+  "model": "manual",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.1803-dev",
+    "previousPublishedDayTag": "v26.6.1803-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.1800-dev",
+      "v26.6.1801-dev",
+      "v26.6.1802-dev",
+      "v26.6.1803-dev",
+      "v26.6.1804-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.1804-dev"
+    ],
+    "prNumbers": [
+      844,
+      845
+    ],
+    "commitSubjects": [
+      "docs: document unattended desktop trigger workflow",
+      "fix: report terminal sync trigger outcomes"
+    ]
+  },
+  "release": {
+    "deck": "Honest terminal sync results",
+    "features": [],
+    "fixes": [
+      "Enable sync triggers from dev channel",
+      "Moved the sync trigger pickup into the native desktop process so backgrounded dev-channel builds can start Facebook, Instagram, and LinkedIn soaks from the terminal even when WebKit has suspended the renderer",
+      "Installed dev-channel builds now install the sync trigger bridge as soon as the renderer bundle starts, so terminal Facebook, Instagram, and LinkedIn soaks no longer fail before background services finish initializing",
+      "The native trigger watcher now waits and retries while the main renderer or sync bridge is unavailable, then reports a timeout instead of leaving an unattended run stuck",
+      "Nightly self-improvement parsing now treats the explicit bug-scan outcome as the source of truth, so background runs can continue instead of misreading unfinished output",
+      "Terminal sync triggers now verify Desktop consent and initialize the app store before invoking provider refresh, so hidden installed builds use persisted Facebook, Instagram, and LinkedIn auth instead of timing out on a React startup flag",
+      "Terminal Facebook, Instagram, and LinkedIn sync triggers now fail zero-post, deferred, paused, or unauthenticated runs instead of reporting false success",
+      "Native trigger timeouts now ignore stale requests, so an older hung renderer cannot overwrite the result for a newer terminal sync",
+      "Sync trigger output now includes provider outcome details, post counts, added-item counts, and failure stage data so unattended runs can tell whether Facebook actually returned posts",
+      "Internal unattended-run guidance now requires generated nightly plans, release soak notes, and handoff prompts to use terminal triggers or the 10 minute timeout path instead of waiting overnight on app clicks"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.1804-dev\n\nHonest terminal sync results\n\n### Fixes\n\n- Enable sync triggers from dev channel\n- Moved the sync trigger pickup into the native desktop process so backgrounded dev-channel builds can start Facebook, Instagram, and LinkedIn soaks from the terminal even when WebKit has suspended the renderer\n- Installed dev-channel builds now install the sync trigger bridge as soon as the renderer bundle starts, so terminal Facebook, Instagram, and LinkedIn soaks no longer fail before background services finish initializing\n- The native trigger watcher now waits and retries while the main renderer or sync bridge is unavailable, then reports a timeout instead of leaving an unattended run stuck\n- Nightly self-improvement parsing now treats the explicit bug-scan outcome as the source of truth, so background runs can continue instead of misreading unfinished output\n- Terminal sync triggers now verify Desktop consent and initialize the app store before invoking provider refresh, so hidden installed builds use persisted Facebook, Instagram, and LinkedIn auth instead of timing out on a React startup flag\n- Terminal Facebook, Instagram, and LinkedIn sync triggers now fail zero-post, deferred, paused, or unauthenticated runs instead of reporting false success\n- Native trigger timeouts now ignore stale requests, so an older hung renderer cannot overwrite the result for a newer terminal sync\n- Sync trigger output now includes provider outcome details, post counts, added-item counts, and failure stage data so unattended runs can tell whether Facebook actually returned posts\n- Internal unattended-run guidance now requires generated nightly plans, release soak notes, and handoff prompts to use terminal triggers or the 10 minute timeout path instead of waiting overnight on app clicks\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

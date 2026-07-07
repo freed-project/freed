@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { BackgroundRuntimeTask } from "./background-runtime-coordinator";
 
 const mocks = vi.hoisted(() => {
   const recordProviderHealthEvent = vi.fn();
@@ -49,6 +50,10 @@ const mocks = vi.hoisted(() => {
     invoke: vi.fn(),
     listen: vi.fn(),
     prepareSocialScrapeMemory: vi.fn(),
+    runBackgroundJob: vi.fn(
+      async <T>(task: BackgroundRuntimeTask<T>) => await task.run(),
+    ),
+    resetBackgroundRuntimeForTests: vi.fn(),
     recordProviderHealthEvent,
     storeState,
     resetStoreState: () => {
@@ -121,6 +126,18 @@ vi.mock("./provider-health", () => ({
   recordProviderHealthEvent: mocks.recordProviderHealthEvent,
 }));
 
+vi.mock("./background-runtime-coordinator", async () => {
+  const actual =
+    await vi.importActual<typeof import("./background-runtime-coordinator")>(
+      "./background-runtime-coordinator",
+    );
+  return {
+    ...actual,
+    runBackgroundJob: mocks.runBackgroundJob,
+    resetBackgroundRuntimeForTests: mocks.resetBackgroundRuntimeForTests,
+  };
+});
+
 vi.mock("./fb-auth", () => ({ storeFbAuthState: vi.fn() }));
 vi.mock("./instagram-auth", () => ({ storeIgAuthState: vi.fn() }));
 vi.mock("./li-auth", () => ({ storeLiAuthState: vi.fn() }));
@@ -130,10 +147,16 @@ vi.mock("./media-vault", () => ({
 }));
 
 beforeEach(() => {
+  vi.useRealTimers();
   vi.resetModules();
   mocks.resetStoreState();
   mocks.invoke.mockReset();
   mocks.listen.mockReset();
+  mocks.runBackgroundJob.mockReset();
+  mocks.runBackgroundJob.mockImplementation(
+    async <T>(task: BackgroundRuntimeTask<T>) => await task.run(),
+  );
+  mocks.resetBackgroundRuntimeForTests.mockReset();
   mocks.fbPostsToFeedItems.mockClear();
   mocks.fbPostsToFeedItems.mockImplementation((posts: Array<{ id?: string }>) =>
     posts.map((post, index) => ({
@@ -324,6 +347,48 @@ describe("social capture completion", () => {
       }),
     );
     expect(mocks.storeState.fbAuth.lastCapturedAt).toBe(123_456);
+  });
+
+  it("records silent Facebook extraction as a sync failure", async () => {
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "fb_scrape_feed") return null;
+      return null;
+    });
+
+    const { captureFbFeed } = await import("./fb-capture");
+    const { recordProviderHealthEvent } = await import("./provider-health");
+
+    const result = await captureFbFeed();
+    const expectedMessage =
+      "Facebook extraction returned no scrape batches. The WebView may be on a stale page, the injected script may not have emitted, or the renderer may have stalled before extraction finished.";
+
+    expect(result.items).toEqual([]);
+    expect(result.diag.errorStage).toBe("extract_silent");
+    expect(result.diag.errorMessage).toBe(expectedMessage);
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(expectedMessage);
+    expect(mocks.storeState.setFbAuth).toHaveBeenCalledWith({
+      isAuthenticated: true,
+      lastCapturedAt: 123_456,
+      lastCaptureError: expectedMessage,
+    });
+    expect(recordProviderHealthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "facebook",
+        outcome: "error",
+        stage: "extract_silent",
+        reason: expectedMessage,
+        itemsSeen: 0,
+        itemsAdded: 0,
+      }),
+    );
   });
 
   it("fails Facebook sync locally when the isolated WebView has no auth cookies", async () => {
@@ -693,10 +758,17 @@ describe("social capture completion", () => {
     mocks.listen.mockResolvedValue(vi.fn());
     mocks.invoke.mockResolvedValue(null);
 
-    const coordinator = await import("./background-runtime-coordinator");
-    coordinator.resetBackgroundRuntimeForTests();
     let releaseSemantic: () => void = () => {};
-    const semantic = coordinator.runBackgroundJob({
+    mocks.runBackgroundJob.mockImplementation(async <T>(task: BackgroundRuntimeTask<T>) => {
+      if (task.kind === "semantic-classifier") {
+        return await new Promise<T>((resolve) => {
+          releaseSemantic = () => resolve(undefined as T);
+        });
+      }
+      return await task.run();
+    });
+    const { runBackgroundJob } = await import("./background-runtime-coordinator");
+    const semantic = runBackgroundJob({
       kind: "semantic-classifier",
       source: "content-signals",
       blocking: false,
@@ -798,6 +870,46 @@ describe("social capture completion", () => {
     );
   });
 
+  it("records silent Instagram extraction as a sync failure", async () => {
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "ig_scrape_feed") return null;
+      return null;
+    });
+
+    const { captureIgFeed } = await import("./instagram-capture");
+    const { recordProviderHealthEvent } = await import("./provider-health");
+
+    const result = await captureIgFeed();
+    const expectedMessage =
+      "Instagram extraction returned no scrape batches. The WebView may be on a stale page, the injected script may not have emitted, or the renderer may have stalled before extraction finished.";
+
+    expect(result.items).toEqual([]);
+    expect(result.diag.errorStage).toBe("extract_silent");
+    expect(result.diag.errorMessage).toBe(expectedMessage);
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(expectedMessage);
+    expect(mocks.storeState.setIgAuth).toHaveBeenCalledWith(
+      expect.objectContaining({ lastCaptureError: expectedMessage }),
+    );
+    expect(recordProviderHealthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "instagram",
+        outcome: "error",
+        stage: "extract_silent",
+        reason: expectedMessage,
+        itemsSeen: 0,
+        itemsAdded: 0,
+      }),
+    );
+  });
+
   it("records Instagram placeholder feed recovery failures with a specific stage", async () => {
     mocks.prepareSocialScrapeMemory.mockResolvedValue({
       before: {},
@@ -849,18 +961,14 @@ describe("social capture completion", () => {
     });
     mocks.listen.mockResolvedValue(vi.fn());
 
-    const coordinator = await import("./background-runtime-coordinator");
-    coordinator.resetBackgroundRuntimeForTests();
-    let releaseScrape: () => void = () => {};
-    const activeScrape = coordinator.runBackgroundJob({
-      kind: "social-scrape",
-      source: "facebook:feed",
-      run: () => new Promise<void>((resolve) => {
-        releaseScrape = resolve;
-      }),
+    const { BackgroundRuntimeDeferredError } = await import("./background-runtime-coordinator");
+    mocks.runBackgroundJob.mockImplementation(async <T>(task: BackgroundRuntimeTask<T>) => {
+      if (task.kind === "social-scrape" && task.source === "instagram:feed") {
+        throw new BackgroundRuntimeDeferredError("active:social-scrape:facebook:feed");
+      }
+      return await task.run();
     });
 
-    await Promise.resolve();
     const { captureIgFeed } = await import("./instagram-capture");
     const result = await captureIgFeed();
 
@@ -873,9 +981,40 @@ describe("social capture completion", () => {
     );
     expect(mocks.storeState.setIgAuth).not.toHaveBeenCalled();
     expect(mocks.recordProviderHealthEvent).not.toHaveBeenCalled();
+  });
 
-    releaseScrape();
-    await activeScrape;
+  it("does not poison LinkedIn health when app recovery defers the scrape", async () => {
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockResolvedValue(vi.fn());
+
+    const { BackgroundRuntimeDeferredError } = await import("./background-runtime-coordinator");
+    mocks.runBackgroundJob.mockImplementation(async <T>(task: BackgroundRuntimeTask<T>) => {
+      if (task.kind === "social-scrape" && task.source === "linkedin:feed") {
+        throw new BackgroundRuntimeDeferredError("renderer_safe_mode:487586");
+      }
+      return await task.run();
+    });
+
+    const { captureLiFeed } = await import("./li-capture");
+    const result = await captureLiFeed();
+
+    expect(result.diag.errorStage).toBe("runtime_deferred");
+    expect(result.diag.errorMessage).toBe(
+      "Freed paused background work while the app recovers. Try syncing again in a moment.",
+    );
+    expect(mocks.invoke).not.toHaveBeenCalledWith("li_scrape_feed", expect.anything());
+    expect(mocks.storeState.setError).toHaveBeenCalledWith(null);
+    expect(mocks.storeState.setError).not.toHaveBeenCalledWith(
+      expect.stringContaining("renderer"),
+    );
+    expect(mocks.storeState.setLiAuth).not.toHaveBeenCalled();
+    expect(mocks.recordProviderHealthEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -983,6 +1122,28 @@ describe("social capture memory pressure gate", () => {
 
     expect(result.diag.errorStage).toBe("memory_pressure");
     expect(result.diag.errorMessage).toContain("LinkedIn sync did not start");
+    expect(mocks.invoke).toHaveBeenCalledWith("li_scrape_feed", expect.anything());
+  });
+
+  it("classifies LinkedIn scrapes with no extraction events as IPC timeouts", async () => {
+    allowRendererMemoryPreflight();
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "li_scrape_feed") {
+        return null;
+      }
+      return null;
+    });
+
+    const { fetchLiFeed } = await import("./li-capture");
+    const result = await fetchLiFeed();
+
+    expect(result.items).toEqual([]);
+    expect(result.diag.extractionPasses).toBe(0);
+    expect(result.diag.errorStage).toBe("event_timeout");
+    expect(result.diag.errorMessage).toBe(
+      "LinkedIn scraper finished before Freed received any extraction events. url=unknown.",
+    );
     expect(mocks.invoke).toHaveBeenCalledWith("li_scrape_feed", expect.anything());
   });
 });

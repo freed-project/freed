@@ -93,12 +93,57 @@ function applyCountState(state: DocState, counts: CountState): DocState {
   };
 }
 
+function priorityValue(item: FeedItem): number {
+  return item.priority ?? 0;
+}
+
+function orderTimestamp(item: FeedItem): number {
+  return item.publishedAt || item.capturedAt;
+}
+
+function comparePriorityOrder(left: FeedItem, right: FeedItem): number {
+  const priorityDelta = priorityValue(right) - priorityValue(left);
+  if (priorityDelta !== 0) return priorityDelta;
+
+  const timeDelta = orderTimestamp(right) - orderTimestamp(left);
+  if (timeDelta !== 0) return timeDelta;
+
+  return left.globalId.localeCompare(right.globalId);
+}
+
+function mergePriorityOrderedItems(existingItems: FeedItem[], addedItems: FeedItem[]): FeedItem[] {
+  if (addedItems.length === 0) return existingItems;
+
+  const orderedAddedItems = [...addedItems].sort(comparePriorityOrder);
+  const merged: FeedItem[] = [];
+  let addedIndex = 0;
+
+  for (const existingItem of existingItems) {
+    while (
+      addedIndex < orderedAddedItems.length &&
+      comparePriorityOrder(orderedAddedItems[addedIndex], existingItem) < 0
+    ) {
+      merged.push(orderedAddedItems[addedIndex]);
+      addedIndex += 1;
+    }
+    merged.push(existingItem);
+  }
+
+  while (addedIndex < orderedAddedItems.length) {
+    merged.push(orderedAddedItems[addedIndex]);
+    addedIndex += 1;
+  }
+
+  return merged;
+}
+
 export function applyItemPatchesToState(
   state: DocState,
   patches: FeedItemPatch[],
   itemIndex: ItemIndex,
   options: {
     orderedItemIds?: string[];
+    preservePriorityOrder?: boolean;
     searchCorpusVersion?: number;
     docItemCount?: number;
   } = {},
@@ -121,6 +166,8 @@ export function applyItemPatchesToState(
   let nextItems: FeedItem[] | null = null;
   let counts: CountState | null = null;
   let indexNeedsRebuild = false;
+  const priorityOrderedAdditions: FeedItem[] = [];
+  let addedDocItemCount = 0;
 
   const ensureItems = () => {
     nextItems ??= state.items.slice();
@@ -137,9 +184,16 @@ export function applyItemPatchesToState(
 
     if (existingIndex === undefined) {
       if (item.userState.hidden) continue;
-      const items = ensureItems();
-      items.push(item);
-      itemIndex.set(item.globalId, items.length - 1);
+      addedDocItemCount += 1;
+      if (options.preservePriorityOrder) {
+        ensureItems();
+        priorityOrderedAdditions.push(item);
+        indexNeedsRebuild = true;
+      } else {
+        const items = ensureItems();
+        items.push(item);
+        itemIndex.set(item.globalId, items.length - 1);
+      }
       applyItemContribution(ensureCounts(), item, 1);
       continue;
     }
@@ -166,6 +220,11 @@ export function applyItemPatchesToState(
     }
   }
 
+  if (priorityOrderedAdditions.length > 0) {
+    nextItems = mergePriorityOrderedItems(ensureItems(), priorityOrderedAdditions);
+    indexNeedsRebuild = true;
+  }
+
   const itemsForOrdering = nextItems as FeedItem[] | null;
   if (itemsForOrdering && options.orderedItemIds) {
     const itemById = new Map<string, FeedItem>(
@@ -185,19 +244,23 @@ export function applyItemPatchesToState(
   }
 
   if (!nextItems) {
+    const docItemCount = options.docItemCount ??
+      (addedDocItemCount > 0 ? state.docItemCount + addedDocItemCount : state.docItemCount);
     return {
       state: {
         ...state,
         searchCorpusVersion: options.searchCorpusVersion ?? state.searchCorpusVersion,
-        docItemCount: options.docItemCount ?? state.docItemCount,
+        docItemCount,
       },
       itemIndex,
     };
   }
   const nextIndex = indexNeedsRebuild ? createItemIndex(nextItems) : itemIndex;
+  const docItemCount = options.docItemCount ??
+    (addedDocItemCount > 0 ? state.docItemCount + addedDocItemCount : state.docItemCount);
   const metadataState = {
     searchCorpusVersion: options.searchCorpusVersion ?? state.searchCorpusVersion,
-    docItemCount: options.docItemCount ?? state.docItemCount,
+    docItemCount,
   };
   return {
     state: counts

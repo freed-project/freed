@@ -469,17 +469,20 @@ test("friends graph controls align to the graph lane between sidebars", async ({
       const fitAll = Array.from(document.querySelectorAll("button")).find((button) =>
         button.textContent?.trim() === "Fit all",
       );
+      const controls = document.querySelector('[data-testid="friend-graph-controls"]');
       const sidebar = document.querySelector('[data-testid="app-sidebar"]');
       const handle = document.querySelector('[aria-label="Resize friends sidebar"]');
       const header = document.querySelector("header");
       if (!(graph instanceof HTMLElement)) return null;
       if (!(fitAll instanceof HTMLElement)) return null;
+      if (!(controls instanceof HTMLElement)) return null;
       if (!(sidebar instanceof HTMLElement)) return null;
       if (!(handle instanceof HTMLElement)) return null;
       if (!(header instanceof HTMLElement)) return null;
 
       const graphRect = graph.getBoundingClientRect();
       const fitAllRect = fitAll.getBoundingClientRect();
+      const controlsRect = controls.getBoundingClientRect();
       const sidebarRect = sidebar.getBoundingClientRect();
       const handleRect = handle.getBoundingClientRect();
       const headerRect = header.getBoundingClientRect();
@@ -489,7 +492,7 @@ test("friends graph controls align to the graph lane between sidebars", async ({
         rightGapPx: Math.round(handleRect.left - graphRect.right),
         bottomGapPx: Math.round(window.innerHeight - graphRect.bottom),
         fitAllTopGapPx: Math.round(fitAllRect.top - graphRect.top),
-        fitAllRightGapPx: Math.round(graphRect.right - fitAllRect.right),
+        controlsRightGapPx: Math.round(graphRect.right - controlsRect.right),
       };
     });
   }).toEqual({
@@ -498,6 +501,6 @@ test("friends graph controls align to the graph lane between sidebars", async ({
     rightGapPx: 0,
     bottomGapPx: 0,
     fitAllTopGapPx: 16,
-    fitAllRightGapPx: 16,
+    controlsRightGapPx: 16,
   });
 });

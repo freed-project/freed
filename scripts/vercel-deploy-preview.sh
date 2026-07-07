@@ -92,7 +92,7 @@ done
 echo "Verifying preview bundle for $TARGET from $TEMP_DIR"
 (
   cd "$TEMP_DIR"
-  "$NPM_BIN" ci
+  "${NPM_BIN}" install
   if [[ "$TARGET" == "website" ]]; then
     (
       cd website

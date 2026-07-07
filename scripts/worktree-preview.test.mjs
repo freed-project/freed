@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 import { findFreePort } from "./lib/find-free-port.mjs";
@@ -64,4 +65,21 @@ test("worktree-preview help prints usage", () => {
   assert.equal(result.status, 0);
   assert.match(result.stdout, /Usage:/);
   assert.match(result.stdout, /desktop\|pwa\|website/);
+});
+
+test("worktree-preview marks product previews as feature previews", () => {
+  const script = readFileSync(path.join(repoRoot, "scripts/worktree-preview.sh"), "utf8");
+
+  assert.equal(
+    (script.match(/VITE_FREED_FEATURE_PREVIEW=1/g) ?? []).length,
+    6,
+  );
+  assert.match(
+    script,
+    /VITE_TEST_TAURI=1 VITE_FREED_FEATURE_PREVIEW=1 VITE_FREED_PREVIEW_LABEL=/,
+  );
+  assert.match(
+    script,
+    /cd packages\/pwa && PATH=.*VITE_FREED_FEATURE_PREVIEW=1 VITE_FREED_PREVIEW_LABEL=/,
+  );
 });

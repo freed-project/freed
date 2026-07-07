@@ -27,6 +27,7 @@ import { getFbScraperWindowMode } from "./scraper-prefs";
 import { storeFbAuthState } from "./fb-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
+import { recordScrapeOutcome, type SocialScrapeTrigger } from "./runtime-health-events";
 import {
   formatBytesForMemoryLog,
   formatScrapeMemoryPressureDetails,
@@ -46,6 +47,7 @@ import {
   socialCaptureDurationMs,
   SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
   SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
+  waitForSocialScrapeEvents,
 } from "./social-capture-runtime";
 import {
   facebookGroupsFromFeedItems,
@@ -281,6 +283,13 @@ function formatFacebookEmptySyncMessage(diag: FbSyncDiag): string {
   return details.length > 0
     ? `${socialProviderCopy("facebook").feedReturnedEmpty} ${details.join(", ")}.`
     : socialProviderCopy("facebook").feedReturnedEmpty;
+}
+
+function formatFacebookSilentExtractionMessage(): string {
+  return (
+    "Facebook extraction returned no scrape batches. The WebView may be on a stale page, " +
+    "the injected script may not have emitted, or the renderer may have stalled before extraction finished."
+  );
 }
 
 function formatFacebookParseFailureMessage(diag: FbSyncDiag): string {
@@ -527,7 +536,7 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
       waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
       run: () => invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() }),
     });
-    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+    await waitForSocialScrapeEvents();
   } catch (err) {
     if (!diag.errorStage) {
       if (applyRuntimeDeferredDiag(diag, err)) {
@@ -550,6 +559,12 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
   }
 
   diag.postsExtracted = allRawPosts.length;
+
+  if (diag.extractionPasses === 0) {
+    diag.errorStage = "extract_silent";
+    diag.errorMessage = formatFacebookSilentExtractionMessage();
+    return { items: [], diag };
+  }
 
   if (allRawPosts.length === 0) {
     const parseRejectCount =
@@ -594,7 +609,14 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
   }
 }
 
-export async function captureFbGroups(): Promise<FbGroupInfo[]> {
+interface CaptureFbGroupsOptions {
+  onCheckingGroup?: (groupId: string | null) => void;
+}
+
+export async function captureFbGroups(
+  options: CaptureFbGroupsOptions = {},
+): Promise<FbGroupInfo[]> {
+  addDebugEvent("change", "[FB] group refresh started");
   const memoryPrep = await prepareSocialScrapeMemory("facebook", "groups scrape");
   if (!memoryPrep.mayProceed) {
     addDebugEvent(
@@ -609,7 +631,7 @@ export async function captureFbGroups(): Promise<FbGroupInfo[]> {
   });
 
   const merge = await updateKnownFacebookGroups(groups);
-  const hydrated = await hydrateMissingFacebookGroupNames();
+  const hydrated = await hydrateMissingFacebookGroupNames(options);
 
   addDebugEvent(
     "change",
@@ -649,7 +671,9 @@ async function removeKnownFacebookGroup(groupId: string): Promise<boolean> {
   return existed;
 }
 
-async function hydrateMissingFacebookGroupNames(): Promise<{
+async function hydrateMissingFacebookGroupNames(
+  options: CaptureFbGroupsOptions = {},
+): Promise<{
   checkedCount: number;
   repairedNameCount: number;
   removedCount: number;
@@ -663,6 +687,7 @@ async function hydrateMissingFacebookGroupNames(): Promise<{
   let removedCount = 0;
 
   for (const group of missingGroups) {
+    options.onCheckingGroup?.(group.id);
     try {
       const check = await checkFacebookGroupMembership(group);
       if (check.stillJoined === false) {
@@ -693,6 +718,8 @@ async function hydrateMissingFacebookGroupNames(): Promise<{
         "error",
         `[FB] group name repair failed for ...${group.id.slice(-8)}: ${err instanceof Error ? err.message : String(err)}`,
       );
+    } finally {
+      options.onCheckingGroup?.(null);
     }
   }
 
@@ -745,7 +772,35 @@ export async function verifyFacebookGroupLeave(
  * Capture Facebook feed and add items to the store.
  * Respects rate limiting to avoid triggering Facebook's anti-bot measures.
  */
-export async function captureFbFeed(): Promise<FbSyncResult> {
+export async function captureFbFeed(
+  trigger: SocialScrapeTrigger = "unknown",
+): Promise<FbSyncResult> {
+  const scrapeStartedAt = Date.now();
+  try {
+    const result = await captureFbFeedInternal();
+    recordScrapeOutcome({
+      provider: "facebook",
+      trigger,
+      itemsExtracted: result.diag.postsExtracted,
+      itemsPersisted: result.diag.itemsAdded,
+      stage: result.diag.errorStage ?? "ok",
+      durationMs: Date.now() - scrapeStartedAt,
+    });
+    return result;
+  } catch (error) {
+    recordScrapeOutcome({
+      provider: "facebook",
+      trigger,
+      itemsExtracted: 0,
+      itemsPersisted: 0,
+      stage: "exception",
+      durationMs: Date.now() - scrapeStartedAt,
+    });
+    throw error;
+  }
+}
+
+async function captureFbFeedInternal(): Promise<FbSyncResult> {
   const startedAt = Date.now();
   const providerPause = getProviderPause("facebook");
   if (providerPause) {

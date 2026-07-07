@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, incremental RSS feed metadata updates shipped, safe optimistic user mutations shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, idle Automerge worker recycling shipped, bounded scheduled RSS refresh shipped, density-aware fixed-height unified feed rows shipped, settings changelog preview shipped, fingerprinted sample-data cleanup shipped, visible cloud transfer diagnostics shipped, destructive cloud merge recovery shipped, manual Drive sync and activity timelines shipped, cloud upload waits behind active outbox work shipped, production-default Google token proxy fallback shipped, recoverable Google Contacts refresh failures shipped, and global background activity monitoring shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, event-aware outbox drains shipped, incremental item-patch state updates shipped, incremental RSS feed metadata updates shipped, safe optimistic user mutations shipped, visible-scope bulk archive shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, idle Automerge worker recycling shipped, bounded scheduled RSS refresh shipped, density-aware fixed-height unified feed rows shipped, settings changelog preview shipped, fingerprinted sample-data cleanup shipped, visible cloud transfer diagnostics shipped, destructive cloud merge recovery shipped, manual Drive sync and activity timelines shipped, cloud upload waits behind active outbox work shipped, production-default Google token proxy fallback shipped, recoverable Google Contacts refresh failures shipped, global background activity monitoring shipped, native terminal sync soaks shipped, and sync relay port handoff retries shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -45,7 +45,10 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Google token proxy fallback:** Freed Desktop defaults missing or empty Google proxy build env to the production token proxy so dev and local builds cannot silently drift into direct Google token exchange
 - **Background runtime coordination:** Desktop gates high-risk background work behind healthy renderer startup, shared memory pressure cooldowns, renderer recovery safe mode, and a native social-scrape lease so WebKit pressure cannot keep blanking the main window
 - **Global background activity monitor:** The top toolbar shows a live activity spinner while provider syncs, Google Contacts sync, cloud sync, runtime jobs, updater downloads, or local AI model downloads are active. Opening the spinner docks the monitor to the right edge, shows active work with elapsed timers, and keeps the bounded live log open until the user closes it without starting new provider traffic.
-- **Deep local WebKit diagnostics:** Renderer stalls, memory preflight blocks, and recovery attempts write bounded local diagnostics with WebKit process identity, RSS, CPU, process age, WebView labels, cache sizes, vmmap summaries, short process samples, and scraper recycle PID verification
+- **Native terminal sync soaks:** Dev-channel installed builds can pick up local sync trigger files from the native process, wake the existing renderer sync bridge without stealing focus, retry a pending trigger after renderer recovery, and keep the renderer alive while the normal Facebook, Instagram, or LinkedIn refresh path runs.
+- **Relay port handoff retries:** When a restarted Freed Desktop instance reaches startup before the previous relay listener releases port `8765`, the native relay now keeps retrying the bind in the background instead of giving up after the first `Address already in use` error.
+- **Quiet installed startup:** Freed Desktop now keeps cold startup quiet when launched with `open -g`, holds the main window non-focusable through startup visibility probes, skips foreground-only startup occlusion recovery on that path, and lets installed-build soaks start the app without interrupting the primary workstation. Explicit Show, dock reopen, recovery retry, and other foreground actions still raise the app.
+- **Deep local WebKit diagnostics:** Renderer stalls, memory preflight blocks, and recovery attempts write bounded local diagnostics with WebKit process identity, RSS, CPU, process age, WebView labels, cache sizes, vmmap summaries, short process samples, and scraper recycle PID verification. Main renderer recovery now treats high WebKit RSS plus high CPU as active pressure instead of reclaimable tail memory, and recycles the main renderer when multi-GB WebKit resident and footprint growth stay CPU-hot before the global high-memory ceiling is reached.
 - **Adaptive social memory budgets:** Freed Desktop now scales high and critical scrape guardrails on high-memory machines, records native memory samples even when the renderer is hidden, and keeps low-priority semantic enrichment out of the launch path so Facebook and Instagram get memory first
 - **Bounded scheduled RSS refresh:** Background RSS polling now refreshes only due stale feeds in capped batches, while manual RSS refresh keeps the full enabled-feed sweep
 
@@ -213,7 +216,7 @@ export async function captureDomFeed(
 | 5.22 | Auto-updater (tauri-plugin-updater)                                     | Medium     |
 | 5.23 | CI/CD release pipeline (GH Actions)                                     | Medium     |
 | 5.24 | macOS code signing + notarization                                       | High       |
-| 5.25 | Windows code signing                                                    | Medium     |
+| 5.25 | Windows code signing with Microsoft Artifact Signing                    | Medium     |
 | 5.26 | Independent update server domain                                        | Medium     |
 | 5.27 | First-run legal gate and local-only acceptance storage                  | Medium     |
 | 5.28 | Provider-specific risk interstitials for social capture                 | Medium     |
@@ -239,6 +242,7 @@ export async function captureDomFeed(
 - [x] Desktop app launches with native vibrancy on macOS
 - [x] Captures from X, RSS in background (refreshAllFeeds covers both)
 - [x] Local WebSocket relay enables instant phone sync (binary protocol)
+- [x] Local sync relay retries `AddrInUse` startup races so overlapping restarts can recover the port without needing another relaunch
 - [x] QR code pairing works (token-authenticated; local SVG render, no third-party QR API)
 - [x] System tray shows sync status
 - [x] App runs in background after window close
@@ -258,8 +262,9 @@ export async function captureDomFeed(
 - [x] Freed Desktop keeps rotating local database snapshots with a restore flow in Settings
 - [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
 - [x] Desktop E2E gates are split into smoke, functional regression, performance, and visual lanes, with dev build validation running the performance and visual lanes instead of hiding them until production release prep
-- [x] Local desktop preview now defaults to the mocked browser harness, while tracked preview slots keep concurrent local threads to one desktop preview at a time unless native Tauri behavior is explicitly requested, and native preview windows carry a visible worktree and thread label
+- [x] Local desktop preview now defaults to the mocked browser harness, while tracked preview slots keep concurrent local threads to one desktop preview at a time unless native Tauri behavior is explicitly requested, native preview windows carry a visible worktree and thread label, and feature previews auto-accept local legal gates plus seed sample data
 - [x] Desktop navigation history supports browser-style back and forward shortcuts for views and reader state
+- [x] Freed Desktop registers a device-local OS-wide Save Content shortcut that opens the existing Save Content dialog, pre-fills the URL field from the clipboard when it holds an HTTP or HTTPS link, opens the saved item in reader mode after stub persistence, and pulls readable details in the background
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Private diagnostic bundles are opt-in, redacted, and steered toward email instead of public GitHub attachment
 - [x] Bug report actions now label whether they download a public-safe or private bundle, bulk-toggle private diagnostics, and block public GitHub issue drafts while private diagnostics remain selected
@@ -279,7 +284,7 @@ export async function captureDomFeed(
 - [x] Debug panel Health tab charts provider reliability plus daily and hourly pull volume across RSS, X, Facebook, Instagram, LinkedIn, Google Drive, and Dropbox, with an in-card duration dropdown for each provider
 - [x] Failing RSS feeds can be reviewed and unsubscribed from the health panel, with optional article/history deletion
 - [x] Provider status indicators switch to a live spinner while that provider is actively syncing
-- [x] Social provider sections surface a filtered inner scrape log with line-by-line progress while capture is running
+- [x] Social provider sections surface a filtered inner scrape log with line-by-line progress while capture is running, and paused or degraded summaries keep the latest failure reason plus timestamp visible outside the debug panel
 - [x] Settings modal includes an explicit close button in the sidebar on larger screens and at the mobile header edge on small screens
 - [x] Risk dialogs and other central overlay modals stay vertically scrollable on tiny mobile screens so action buttons remain reachable
 - [x] Desktop sync header and source settings surface degraded or paused provider health outside the debug panel
@@ -296,7 +301,7 @@ export async function captureDomFeed(
 - [x] Clicking `Sync now` shows a visible `Syncing Initiated` acknowledgment while the menu stays open, even if the provider is already syncing
 - [x] `Cooling down` uses a small amber emoji indicator instead of an amber spinner so the paused state feels distinct at a glance
 - [x] LinkedIn and the other social source rows keep a sidebar status indicator even if auth state lags behind, falling back to the provider's actual item counts before hiding the dot
-- [x] Facebook group settings show active group counts in the header, keep refresh with the bulk actions, keep each group row to one line, split scraped `Last active ...` text into its own smaller right-aligned column, provide a browser handoff action for leaving a group on Facebook, verify that single group after the leave handoff before removing it locally, repair stored missing group names from captured posts, refreshed group data, or individual group pages, and keep late-loaded groups inside a filtered inner scroller capped to the Settings modal
+- [x] Facebook group settings show active group counts in the header, keep refresh with the bulk actions as `Refresh groups`, keep each group row to one line, split scraped `Last active ...` text into its own smaller right-aligned column, show ID-tail fallback labels for groups whose names are still missing, show row-level progress while a missing-name group is being checked, provide a browser handoff action for leaving a group on Facebook, verify that single group after the leave handoff before removing it locally, repair stored missing group names from captured posts, refreshed group data, or individual group pages, and keep late-loaded groups inside a filtered inner scroller capped to the Settings modal
 - [x] The redundant desktop header sync dropdown has been removed, leaving the sidebar source menus and provider settings as the canonical sync status and action surfaces
 - [x] Desktop view chrome now routes through one shared top toolbar, so feed, reader, and Friends stop stacking separate bars on top of each other
 - [x] Desktop top-toolbar controls now keep normal click behavior, but a full drag gesture from the wordmark, title area, or toolbar buttons repositions the native window the way a title bar should
@@ -333,6 +338,16 @@ export async function captureDomFeed(
 - [x] Social scrape memory preflight now records whether recycled WebKit process IDs exited, were retained, or were replaced, plus the RSS delta after cleanup
 - [x] Desktop now records rotating runtime-health diagnostics with renderer heartbeat state, memory preflight results, recovery attempts, and active background work so blank-renderer reports include the last bad minute of runtime context
 - [x] High-risk background work now waits for healthy renderer startup, active outbox drains, social scrapes, and memory pressure cooldowns before running content fetches, RSS polls, automatic snapshots, cloud uploads, cloud startup downloads, outbox drains, or native social scrapes
+- [x] Installed dev-channel builds can run Facebook, Instagram, and LinkedIn sync soaks from the terminal through a native app-data trigger, without System Events clicks or foreground focus theft
+- [x] Internal desktop soak guidance now treats terminal triggers and the 10 minute timeout path as the required unattended workflow, including generated nightly plans, release soak notes, and handoff prompts
+- [x] Installed Desktop cold startup now has a quiet presentation path for `open -g`, keeps the main window non-focusable through startup visibility probes, and skips foreground-only occlusion recovery so terminal-driven soaks can launch the app without force-activating it
+- [x] Desktop terminal sync triggers now report real provider outcomes, fail zero-post or deferred runs, and ignore stale native timeouts instead of overwriting newer trigger results
+- [x] Desktop terminal sync trigger requests now expire after the helper timeout, so old request files do not replay authenticated provider traffic on the next app launch
+- [x] Desktop terminal sync triggers now retry the same request only after native keepalive proves the renderer was rebuilt mid-run, so unattended soaks do not hang on a lost bridge
+- [x] Desktop terminal sync triggers now use sparse 10 minute locked-machine retries with an explicit long-soak timeout override, so unattended runs do not churn the renderer every 30 seconds while the workstation is locked
+- [x] Desktop terminal sync triggers now short-circuit locked-machine requests in native code before waking the main renderer, so locked soak retries do not inflate WebKit memory
+- [x] Desktop terminal sync trigger helpers and the native trigger watcher now use provider-safe deferral backoff and stop after post-completion renderer rebuilds, so installed soaks do not create duplicate Instagram or LinkedIn traffic while diagnosing recovery
+- [x] Idle desktop memory recovery now ignores reclaimable WebKit RSS tail when physical footprint is healthy, but still recovers the main renderer when the high-RSS WebKit process is hot on CPU, including active multi-GB WebKit growth below the global high-memory ceiling
 - [x] Renderer recovery now requires both native window visibility and renderer document visibility before treating heartbeat gaps as foreground stalls, so background provider work is not paused by normal hidden WebKit timer throttling
 - [x] Native renderer recovery now marks failed recovery state, requests relaunch, and forces the old process to exit if the main WebView label stays stuck after a destroyed renderer
 - [x] Native relay broadcasts now reuse shared document buffers and stop writing a full snapshot on every live document push, reducing clone pressure during heavy sync churn
@@ -356,16 +371,18 @@ export async function captureDomFeed(
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
 - [x] Search now builds a shared MiniSearch index asynchronously in chunks, drops it after the query clears, rebuilds only when the worker says the searchable corpus changed, and indexes a smaller preserved-text window so one exploratory search cannot pin duplicate full-text copies of the library in renderer memory
 - [x] Desktop perf memory checks now use CDP heap-usage sampling instead of the broken zero-value metric path, and they include a heavy preserved-text search scenario so renderer retention regressions show up in CI
-- [ ] Windows installer is code-signed (requires EV certificate)
+- [ ] Windows installer is code-signed (Microsoft Artifact Signing plan scaffolded)
 - [x] Update server runs on a Freed-owned domain instead of pointing the updater directly at GitHub Releases
 - [x] Desktop settings can switch this install between production and dev release channels, and the dev channel will install a newer production release when no newer dev build exists without switching the saved channel
 
 > **Current state:**
 > macOS release builds are signed and notarized in GitHub Actions when the
 > required Apple secrets are present. The release workflow now fails fast
-> instead of silently shipping an unsigned macOS artifact. Windows
-> SmartScreen warnings will still appear until an EV certificate is
-> obtained or enough installs build reputation. The shared desktop toolbar
+> instead of silently shipping an unsigned macOS artifact. Windows signing is
+> planned through Microsoft Artifact Signing, and the repo now includes
+> `docs/WINDOWS-SIGNING.md` plus an inert Tauri `signCommand` scaffold for the
+> future implementation. Windows SmartScreen warnings will still appear until
+> that path is provisioned, enabled, and verified in a signed release. The shared desktop toolbar
 > now behaves like a real title bar again, including threshold-based window
 > dragging from toolbar controls plus normal cursor and selection treatment
 > for static toolbar labels. Desktop now also keeps dev installs on the

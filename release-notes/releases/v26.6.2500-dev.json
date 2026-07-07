@@ -1,0 +1,50 @@
+{
+  "tag": "v26.6.2500-dev",
+  "version": "26.6.2500-dev",
+  "channel": "dev",
+  "dayKey": "26.6.25",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-25T20:18:54.976Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.1810-dev",
+    "previousPublishedDayTag": "v26.6.1810-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.2500-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.2500-dev"
+    ],
+    "prNumbers": [
+      858,
+      861,
+      862,
+      863,
+      864,
+      865,
+      866,
+      867
+    ],
+    "commitSubjects": [
+      "fix: prevent Linux crash when opening social scraper window (#867)",
+      "fix: prevent Linux crash when opening social scraper window (#864)",
+      "fix: keep nightly bug scan ahead of bootstrap (#866)",
+      "fix: skip merged nightly peer branches (#865)",
+      "fix: stabilize social scrape validation (#863)",
+      "fix: restore nightly dev build typing (#862)",
+      "fix: stabilize nightly desktop validation (#861)",
+      "fix: show latest provider scrape failure (#858)"
+    ]
+  },
+  "release": {
+    "deck": "Nightly bug scans now stay ahead of bootstrap warnings, social scrape checks are steadier, and Linux no longer crashes when opening the social scraper window.",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.2500-dev\n\nNightly bug scans now stay ahead of bootstrap warnings, social scrape checks are steadier, and Linux no longer crashes when opening the social scraper window.\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

@@ -18,12 +18,19 @@ Create a marketing worktree branch from `www`, implement the website change, ver
 5. Keep changes scoped to marketing paths unless the user explicitly changes the destination.
 6. Run website checks from the workspace directory, at minimum `cd website && PATH=../node_modules/.bin:$PATH npm run build`.
 7. Browser tooling is opt-in only. Do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging.
-8. Before opening the draft PR, launch the local website preview with `./scripts/worktree-preview.sh website`.
+8. Before opening the draft PR, launch the local website preview on an explicit fresh port so parallel agent threads do not reuse or stomp each other's previews.
+   - Compute a port first with `PORT=$(node scripts/lib/find-free-port.mjs 3000)`.
+   - Launch with `./scripts/worktree-preview.sh website --port "$PORT"`.
+   - Do not run `./scripts/dev-session-clean.sh` just to relaunch a preview. That kills tracked previews for other work unless scoped.
 9. Deploy `./scripts/vercel-deploy-preview.sh website` only when a shareable remote preview is needed.
-10. If browser tooling was needed, clean the session before closeout with `./scripts/dev-session-clean.sh`.
-11. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --base www --summary "<user-facing change>" --test "cd website && PATH=../node_modules/.bin:$PATH npm run build"`.
+10. If browser tooling was needed, clean browser automation only after preserving any preview the user still needs. Do not run broad cleanup while the local preview should remain open.
+   - If cleanup is needed before PR merge or thread archive, scope it to this worktree with `./scripts/dev-session-clean.sh --worktree <worktree>`.
+   - Before reporting final status, list this thread's preview with `./scripts/worktree-processes.sh list --worktree <worktree>` so the URL and owner are clear.
+   - When the PR is merged, the worktree is removed, or the thread is archived, stop only this thread's preview with `./scripts/worktree-processes.sh stop --worktree <worktree> --target website`.
+   - Never stop previews from other worktrees unless the user explicitly asks for global cleanup.
+11. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --base www --summary "<user-facing change>" --test "cd website && PATH=../node_modules/.bin:$PATH npm run build" --ready` (omit `--ready` for interim publishes so the PR stays draft while iterating).
    - If the branch intentionally adds new files, stage them yourself first or re-run `./scripts/worktree-publish.sh` with `--include-untracked`.
-12. Confirm the branch is pushed to `origin`, the draft PR targets `www`, and the closeout includes the local preview URL.
+12. Confirm the branch is pushed to `origin`, the PR targets `www` and is marked ready for review (or intentionally left draft with the reason stated), and the closeout includes the local preview URL.
 
 Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run website commands from `website/`, and prefix `PATH` with the worktree root `node_modules/.bin` when a hoisted binary like `next` or `tsx` is required.
 

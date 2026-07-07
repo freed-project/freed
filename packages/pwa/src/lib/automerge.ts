@@ -78,6 +78,13 @@ const pendingDocBinary = new Map<
     reject: (err: Error) => void;
   }
 >();
+const pendingDocHeads = new Map<
+  number,
+  {
+    resolve: (heads: string[] | null) => void;
+    reject: (err: Error) => void;
+  }
+>();
 
 async function request(msg: WorkerRequest): Promise<void> {
   await workerReady;
@@ -126,6 +133,23 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     pendingDocBinary.delete(msg.reqId);
     lastBinary = msg.binary;
     pendingBinary.resolve(msg.binary);
+    return;
+  }
+
+  if (msg.type === "DOC_HEADS") {
+    const pendingHeads = pendingDocHeads.get(msg.reqId);
+    if (!pendingHeads) return;
+    pendingDocHeads.delete(msg.reqId);
+    pendingHeads.resolve(msg.heads);
+    return;
+  }
+
+  if (msg.type === "INIT_STATS") {
+    // Worker-INIT counter (stability P0-03) on the PWA debug channel, same
+    // field names as the desktop runtime-health worker_init event.
+    const detail = `worker_init durationMs=${msg.durationMs.toLocaleString()} docBytes=${msg.docBytes.toLocaleString()}`;
+    addDebugEvent("change", detail, msg.docBytes);
+    persistWorkerDebugEvent({ kind: "worker_init", detail, bytes: msg.docBytes });
     return;
   }
 
@@ -267,6 +291,19 @@ export async function getDocBinary(): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     pendingDocBinary.set(reqId, { resolve, reject });
     worker.postMessage({ reqId, type: "GET_DOC_BINARY" } satisfies WorkerRequest);
+  });
+}
+
+/**
+ * Current document heads for upload-loop accounting (stability P0-03).
+ * Null before the first INIT completes.
+ */
+export async function getDocHeads(): Promise<string[] | null> {
+  await workerReady;
+  const reqId = nextReqId++;
+  return new Promise((resolve, reject) => {
+    pendingDocHeads.set(reqId, { resolve, reject });
+    worker.postMessage({ reqId, type: "GET_HEADS" } satisfies WorkerRequest);
   });
 }
 

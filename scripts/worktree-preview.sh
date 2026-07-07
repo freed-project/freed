@@ -101,20 +101,6 @@ PROCESS_SCRIPT="${SCRIPT_DIR}/worktree-processes.sh"
 PREVIEW_LABEL="${PREVIEW_LABEL:-$(preview_label_for_worktree "${WORKTREE_PATH}")}"
 print_node_tooling_preflight
 
-if existing_manifest="$(existing_process_for_target "${WORKTREE_PATH}" "${TARGET}")"; then
-  unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH PREVIEW_LABEL STARTED_AT
-  # shellcheck disable=SC1090
-  source "${existing_manifest}"
-  echo "Preview already running for ${TARGET} in ${WORKTREE_PATH}: pid ${PID}, port ${PORT:-"-"}"
-  if [[ -n "${PREVIEW_LABEL:-}" ]]; then
-    echo "Label: ${PREVIEW_LABEL}"
-  fi
-  if [[ -n "${LOG_PATH:-}" ]]; then
-    echo "Log: ${LOG_PATH}"
-  fi
-  exit 0
-fi
-
 "${SCRIPT_DIR}/worktree-bootstrap.sh" "${WORKTREE_PATH}" --target "${TARGET}"
 
 NPM_BIN="$(resolve_npm_bin)"
@@ -143,11 +129,12 @@ case "${TARGET}" in
       fi
       ENV_VARS=(
         "PATH=${ROOT_BIN_DIR}:${PATH}"
+        "VITE_FREED_FEATURE_PREVIEW=1"
         "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
         "FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL}"
       )
       RUN_ARGS=("${NPM_BIN}" "run" "tauri:dev")
-      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL} npm run tauri:dev"
+      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_FEATURE_PREVIEW=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL} npm run tauri:dev"
       URL="http://localhost:1420"
     else
       DEFAULT_PORT="1422"
@@ -155,10 +142,11 @@ case "${TARGET}" in
       ENV_VARS=(
         "PATH=${ROOT_BIN_DIR}:${PATH}"
         "VITE_TEST_TAURI=1"
+        "VITE_FREED_FEATURE_PREVIEW=1"
         "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
       )
       RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--port" "${PORT}")
-      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_TEST_TAURI=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
+      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_TEST_TAURI=1 VITE_FREED_FEATURE_PREVIEW=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
       URL="http://localhost:${PORT}"
     fi
     ;;
@@ -169,10 +157,11 @@ case "${TARGET}" in
     RUN_CWD="$(workspace_path_for_target "${WORKTREE_PATH}" "pwa")"
     ENV_VARS=(
       "PATH=${ROOT_BIN_DIR}:${PATH}"
+      "VITE_FREED_FEATURE_PREVIEW=1"
       "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
     )
     RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--port" "${PORT}")
-    COMMAND_DISPLAY="cd packages/pwa && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
+    COMMAND_DISPLAY="cd packages/pwa && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_FEATURE_PREVIEW=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
     URL="http://localhost:${PORT}"
     ;;
   website)
@@ -189,9 +178,6 @@ case "${TARGET}" in
     URL="http://localhost:${PORT}"
     ;;
 esac
-
-"${PROCESS_SCRIPT}" claim --kind "${SLOT_KIND}" --worktree "${WORKTREE_PATH}" --pid "$$"
-trap '"${PROCESS_SCRIPT}" release --kind "${SLOT_KIND}" --pid "$$" >/dev/null 2>&1 || true' EXIT
 
 ensure_runtime_dirs
 LOG_PATH="$(log_state_dir)/${TARGET}-$(date -u +%Y%m%dT%H%M%SZ)-$(worktree_id_for_path "${WORKTREE_PATH}").log"
@@ -255,8 +241,6 @@ if ! is_pid_running "${PID_VALUE}"; then
   echo "Error: preview exited immediately. Check ${LOG_PATH}." >&2
   exit 1
 fi
-
-trap - EXIT
 
 echo "Started ${TARGET} preview."
 echo "Worktree: ${WORKTREE_PATH}"

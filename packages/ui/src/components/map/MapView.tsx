@@ -1,29 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  getLocationTimelineBounds,
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
-  getLocationTimelineMoments,
   resolveMapMode,
-  type MapTimeMode,
+  type LocationTimeRange,
 } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useResolvedLocations } from "../../hooks/useResolvedLocations.js";
 import { openAccountFromMap, openFriendFromMap, openPostFromMap } from "../../lib/map-navigation.js";
 import { MapSurface } from "./MapSurface.js";
 
-const MAP_TIME_REFRESH_MS = 60_000;
-const timelineMomentFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-const timelineEdgeFormatter = new Intl.DateTimeFormat(undefined, {
+const timeRangeFormatter = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
 });
-const DEFAULT_TIMELINE_INDEX: Record<Exclude<MapTimeMode, "current">, number> = {
-  past: -1,
-  future: 0,
-};
+
+type TimePreset = "all" | "today-future" | "today" | "last-week";
 
 type MapViewportInsets = {
   top: number;
@@ -36,24 +29,112 @@ interface MapViewProps {
   viewportInsets?: MapViewportInsets;
 }
 
-function getMapTimeRefreshMs(): number {
-  if (typeof window === "undefined") return MAP_TIME_REFRESH_MS;
-  const override = (
-    window as Window & {
-      __FREED_E2E_MAP_TIME_REFRESH_MS__?: number;
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function sameTimeRange(a: LocationTimeRange, b: LocationTimeRange): boolean {
+  return a.startAt === b.startAt && a.endAt === b.endAt;
+}
+
+function formatRangeEdge(value: number): string {
+  return timeRangeFormatter.format(value);
+}
+
+function isFullTimeRange(range: LocationTimeRange, bounds: LocationTimeRange): boolean {
+  return range.startAt <= bounds.startAt && range.endAt >= bounds.endAt;
+}
+
+function startOfLocalDay(value: number): number {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+function endOfLocalDay(value: number): number {
+  const date = new Date(value);
+  date.setHours(23, 59, 59, 999);
+  return date.getTime();
+}
+
+function addLocalDays(value: number, days: number): number {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return date.getTime();
+}
+
+function clampTimeRangeToBounds(range: LocationTimeRange, bounds: LocationTimeRange): LocationTimeRange {
+  const startAt = clamp(range.startAt, bounds.startAt, bounds.endAt);
+  const endAt = clamp(range.endAt, bounds.startAt, bounds.endAt);
+  if (startAt <= endAt) {
+    return { startAt, endAt };
+  }
+  return { startAt: endAt, endAt };
+}
+
+function presetTimeRange(preset: Exclude<TimePreset, "all">, bounds: LocationTimeRange): LocationTimeRange {
+  const now = Date.now();
+  if (preset === "today") {
+    return clampTimeRangeToBounds({
+      startAt: addLocalDays(now, -1),
+      endAt: endOfLocalDay(now),
+    }, bounds);
+  }
+  if (preset === "today-future") {
+    return clampTimeRangeToBounds({
+      startAt: addLocalDays(now, -1),
+      endAt: bounds.endAt,
+    }, bounds);
+  }
+
+  return clampTimeRangeToBounds({
+    startAt: addLocalDays(now, -7),
+    endAt: endOfLocalDay(now),
+  }, bounds);
+}
+
+function snapTimeBoundsToDays(bounds: LocationTimeRange): LocationTimeRange {
+  return {
+    startAt: startOfLocalDay(bounds.startAt),
+    endAt: endOfLocalDay(bounds.endAt),
+  };
+}
+
+function snapRangeStartToDay(value: number): number {
+  return startOfLocalDay(value);
+}
+
+function snapRangeEndToDay(value: number): number {
+  return endOfLocalDay(value);
+}
+
+function labelPositionStyle(
+  percent: number,
+  edge: "start" | "end",
+  offsetForCollision = false,
+): { left: string; transform: string } {
+  if (offsetForCollision) {
+    if (edge === "start") {
+      if (percent <= 8) {
+        return { left: `${percent}%`, transform: "translateX(0)" };
+      }
+      return { left: `${percent}%`, transform: "translateX(calc(-100% - 0.375rem))" };
     }
-  ).__FREED_E2E_MAP_TIME_REFRESH_MS__;
-  return typeof override === "number" && Number.isFinite(override) && override > 0
-    ? override
-    : MAP_TIME_REFRESH_MS;
-}
 
-function formatTimelineMoment(value: number): string {
-  return timelineMomentFormatter.format(value);
-}
+    if (percent >= 92) {
+      return { left: `${percent}%`, transform: "translateX(-100%)" };
+    }
+    return { left: `${percent}%`, transform: "translateX(0.375rem)" };
+  }
 
-function formatTimelineEdge(value: number): string {
-  return timelineEdgeFormatter.format(value);
+  if (percent <= 2) {
+    return { left: "0%", transform: "translateX(0)" };
+  }
+  if (percent >= 98) {
+    return { left: "100%", transform: "translateX(-100%)" };
+  }
+  return { left: `${percent}%`, transform: "translateX(-50%)" };
 }
 
 export function MapView({ viewportInsets }: MapViewProps) {
@@ -69,54 +150,35 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const setSearchQuery = useAppStore((state) => state.setSearchQuery);
   const display = useAppStore((state) => state.preferences.display);
   const themeId = display.themeId;
-  const savedTimeMode = display.mapTimeMode ?? "current";
-  const [referenceNow, setReferenceNow] = useState(() => Date.now());
-  const [timelineIndexes, setTimelineIndexes] = useState<Record<Exclude<MapTimeMode, "current">, number | null>>({
-    past: null,
-    future: null,
-  });
+  const [rangeSelection, setRangeSelection] = useState<LocationTimeRange | null>(null);
 
   const { resolvedItems } = useResolvedLocations(items, persons, accounts);
-  const timelineMoments = useMemo(
-    () => getLocationTimelineMoments(resolvedItems, { timeMode: savedTimeMode, now: referenceNow }),
-    [referenceNow, resolvedItems, savedTimeMode],
+  const rawTimeBounds = useMemo(() => getLocationTimelineBounds(resolvedItems), [resolvedItems]);
+  const timeBounds = useMemo(
+    () => (rawTimeBounds ? snapTimeBoundsToDays(rawTimeBounds) : null),
+    [rawTimeBounds],
   );
-  const selectedTimelineIndex =
-    savedTimeMode === "current"
-      ? null
-      : timelineIndexes[savedTimeMode];
-  const fallbackTimelineIndex =
-    savedTimeMode === "current"
-      ? null
-      : DEFAULT_TIMELINE_INDEX[savedTimeMode] < 0
-        ? Math.max(0, timelineMoments.length - 1)
-        : DEFAULT_TIMELINE_INDEX[savedTimeMode];
-  const effectiveTimelineIndex =
-    savedTimeMode === "current" || timelineMoments.length === 0
-      ? null
-      : Math.min(
-          selectedTimelineIndex ?? fallbackTimelineIndex ?? 0,
-          timelineMoments.length - 1,
-        );
-  const playbackAt =
-    effectiveTimelineIndex === null ? null : timelineMoments[effectiveTimelineIndex] ?? null;
+  const effectiveTimeRange = useMemo<LocationTimeRange | null>(() => {
+    if (!timeBounds) return null;
+    if (!rangeSelection) return timeBounds;
+
+    const startAt = clamp(rangeSelection.startAt, timeBounds.startAt, timeBounds.endAt);
+    const endAt = clamp(rangeSelection.endAt, startAt, timeBounds.endAt);
+    return { startAt, endAt };
+  }, [rangeSelection, timeBounds]);
   const friendMarkers = useMemo(
     () =>
       getLatestFriendLocationMarkers(resolvedItems, {
-        timeMode: savedTimeMode,
-        now: referenceNow,
-        playbackAt,
+        timeRange: effectiveTimeRange,
       }),
-    [playbackAt, referenceNow, resolvedItems, savedTimeMode],
+    [effectiveTimeRange, resolvedItems],
   );
   const allContentMarkers = useMemo(
     () =>
       getLatestAuthorLocationMarkers(resolvedItems, {
-        timeMode: savedTimeMode,
-        now: referenceNow,
-        playbackAt,
+        timeRange: effectiveTimeRange,
       }),
-    [playbackAt, referenceNow, resolvedItems, savedTimeMode],
+    [effectiveTimeRange, resolvedItems],
   );
   const effectiveMode = resolveMapMode(
     display.mapMode,
@@ -126,89 +188,196 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const markers = effectiveMode === "friends" ? friendMarkers : allContentMarkers;
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      setReferenceNow(Date.now());
-    }, getMapTimeRefreshMs());
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, []);
+    if (!timeBounds) {
+      setRangeSelection(null);
+      return;
+    }
+
+    setRangeSelection((current) => {
+      if (!current) return current;
+
+      const next = {
+        startAt: clamp(current.startAt, timeBounds.startAt, timeBounds.endAt),
+        endAt: clamp(current.endAt, timeBounds.startAt, timeBounds.endAt),
+      };
+      if (next.startAt > next.endAt) {
+        next.startAt = next.endAt;
+      }
+      if (isFullTimeRange(next, timeBounds)) return null;
+      return sameTimeRange(current, next) ? current : next;
+    });
+  }, [timeBounds]);
+
+  const handleRangeStartChange = useCallback((value: number) => {
+    if (!timeBounds) return;
+
+    setRangeSelection((current) => {
+      const currentRange = current ?? timeBounds;
+      const maxStartAt = startOfLocalDay(currentRange.endAt);
+      const next = {
+        startAt: clamp(snapRangeStartToDay(value), timeBounds.startAt, maxStartAt),
+        endAt: currentRange.endAt,
+      };
+      return isFullTimeRange(next, timeBounds) ? null : next;
+    });
+  }, [timeBounds]);
+
+  const handleRangeEndChange = useCallback((value: number) => {
+    if (!timeBounds) return;
+
+    setRangeSelection((current) => {
+      const currentRange = current ?? timeBounds;
+      const minEndAt = endOfLocalDay(currentRange.startAt);
+      const next = {
+        startAt: currentRange.startAt,
+        endAt: clamp(snapRangeEndToDay(value), minEndAt, timeBounds.endAt),
+      };
+      return isFullTimeRange(next, timeBounds) ? null : next;
+    });
+  }, [timeBounds]);
+
+  const handlePresetChange = useCallback((preset: TimePreset) => {
+    if (!timeBounds) return;
+    if (preset === "all") {
+      setRangeSelection(null);
+      return;
+    }
+
+    const next = presetTimeRange(preset, timeBounds);
+    setRangeSelection(isFullTimeRange(next, timeBounds) ? null : next);
+  }, [timeBounds]);
 
   const focusedMarker = useMemo(
     () => markers.find((marker) => marker.friend?.id === selectedPersonId) ?? null,
     [markers, selectedPersonId]
   );
 
-  const handleTimelineScrub = (nextIndex: number) => {
-    if (savedTimeMode === "current") return;
-    setTimelineIndexes((current) => ({
-      ...current,
-      [savedTimeMode]: nextIndex,
-    }));
-  };
-
-  const emptyState = (() => {
-    if (savedTimeMode === "future") {
-      return {
-        title: "No future location windows yet.",
-        body: "Future-dated travel or event plans will appear here once captured.",
-      };
-    }
-    if (savedTimeMode === "past") {
-      return {
-        title: effectiveMode === "friends" ? "No friend location history yet." : "No past location pins yet.",
-        body:
-          effectiveMode === "friends"
-            ? "Switch to Current or All content to see active last-seen pins."
-            : "Captured historical check-ins and posts will appear here.",
-      };
-    }
-    return {
-      title: effectiveMode === "friends" ? "No friend pins yet." : "No location pins yet.",
-      body:
-        effectiveMode === "friends"
-          ? "Switch to All content to see the latest locations from followed accounts."
-          : "Followed accounts with valid location data will appear here.",
-    };
-  })();
+  const rangeDuration = timeBounds ? Math.max(1, timeBounds.endAt - timeBounds.startAt) : 1;
+  const rangeStartPercent =
+    timeBounds && effectiveTimeRange
+      ? ((effectiveTimeRange.startAt - timeBounds.startAt) / rangeDuration) * 100
+      : 0;
+  const rangeEndPercent =
+    timeBounds && effectiveTimeRange
+      ? ((effectiveTimeRange.endAt - timeBounds.startAt) / rangeDuration) * 100
+      : 100;
+  const rangeWidthPercent = Math.max(0, rangeEndPercent - rangeStartPercent);
+  const labelsAreClose = Math.abs(rangeEndPercent - rangeStartPercent) < 12;
+  const minRangeValue = timeBounds?.startAt ?? 0;
+  const maxRangeValue = timeBounds?.endAt ?? 0;
+  const rangeStep = timeBounds ? "any" : 1;
+  const activePreset =
+    timeBounds && effectiveTimeRange
+      ? isFullTimeRange(effectiveTimeRange, timeBounds)
+        ? "all"
+        : sameTimeRange(effectiveTimeRange, presetTimeRange("today", timeBounds))
+          ? "today"
+          : sameTimeRange(effectiveTimeRange, presetTimeRange("today-future", timeBounds))
+            ? "today-future"
+            : sameTimeRange(effectiveTimeRange, presetTimeRange("last-week", timeBounds))
+              ? "last-week"
+              : null
+      : null;
+  const timePresets: Array<{ value: TimePreset; label: string; testId: string }> = [
+    { value: "last-week", label: "last week", testId: "map-time-preset-last-week" },
+    { value: "today", label: "today", testId: "map-time-preset-today" },
+    { value: "today-future", label: "today + future", testId: "map-time-preset-today-future" },
+    { value: "all", label: "all time", testId: "map-time-preset-all" },
+  ];
+  const emptyTitle = effectiveMode === "friends" ? "No friend pins in this time range." : "No location pins in this time range.";
+  const emptyBody =
+    effectiveMode === "friends"
+      ? "Expand the time range or switch to All content to see more location history."
+      : "Expand the time range to include more captured posts and planning windows.";
 
   return (
     <div className="app-theme-shell relative h-full overflow-hidden">
-      {savedTimeMode !== "current" && timelineMoments.length > 0 && effectiveTimelineIndex !== null ? (
+      <div
+        className="pointer-events-none absolute bottom-4 z-20 flex justify-start"
+        style={{
+          left: "calc(var(--freed-canvas-viewport-inset-left, 0px) + 1rem)",
+          maxWidth: "calc(100% - var(--freed-canvas-viewport-inset-left, 0px) - var(--freed-canvas-viewport-inset-right, 0px) - 2rem)",
+        }}
+      >
         <div
-          className="pointer-events-none absolute bottom-4 z-20 flex justify-start"
-          style={{
-            left: "calc(var(--freed-canvas-viewport-inset-left, 0px) + 1rem)",
-            maxWidth: "calc(100% - var(--freed-canvas-viewport-inset-left, 0px) - var(--freed-canvas-viewport-inset-right, 0px) - 2rem)",
-          }}
+          className="pointer-events-auto theme-floating-panel w-[min(32rem,calc(100vw-2rem))] px-4 py-3"
+          data-testid="map-time-range-slider"
         >
-          <div
-            className="pointer-events-auto theme-floating-panel w-[min(25rem,calc(100vw-2rem))] px-4 py-3"
-            data-testid="map-timeline-scrubber"
-          >
-            <div className="flex items-center justify-between gap-3 text-[10px] font-medium text-[color:var(--theme-text-muted)]">
-              <span>{savedTimeMode === "past" ? "History" : "Future"}</span>
-              <span className="text-right text-[color:var(--theme-text-secondary)]">
-                {formatTimelineMoment(timelineMoments[effectiveTimelineIndex])}
-              </span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={Math.max(0, timelineMoments.length - 1)}
-              step={1}
-              value={effectiveTimelineIndex}
-              aria-label="Map timeline scrubber"
-              className="mt-3 h-2 w-full accent-[var(--theme-accent-secondary)]"
-              onChange={(event) => handleTimelineScrub(Number.parseInt(event.currentTarget.value, 10))}
-            />
-            <div className="mt-2 flex items-center justify-between text-[10px] text-[color:var(--theme-text-soft)]">
-              <span>{formatTimelineEdge(timelineMoments[0])}</span>
-              <span>{formatTimelineEdge(timelineMoments[timelineMoments.length - 1])}</span>
+          <div className="flex items-center justify-between gap-3 text-[10px] font-medium text-[color:var(--theme-text-muted)]">
+            <span>Time</span>
+            <div className="flex flex-wrap items-center justify-end gap-1 text-right">
+              {timePresets.map((preset) => {
+                const active = activePreset === preset.value;
+                return (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    data-testid={preset.testId}
+                    aria-pressed={active}
+                    disabled={!timeBounds}
+                    className={`rounded-full border px-2 py-1 text-[10px] font-medium transition-colors ${
+                      active
+                        ? "border-[color:rgb(var(--theme-accent-secondary-rgb)/0.28)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.14)] text-[color:var(--theme-text-primary)]"
+                        : "border-transparent text-[color:var(--theme-text-muted)] hover:bg-[color:var(--theme-bg-soft)] hover:text-[color:var(--theme-text-secondary)]"
+                    } disabled:pointer-events-none disabled:opacity-50`}
+                    onClick={() => handlePresetChange(preset.value)}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
+          <div className="relative mt-3 h-11">
+            <div className="absolute left-0 right-0 top-3.5 h-1 -translate-y-1/2 rounded-full bg-[color:var(--theme-border-subtle)]" />
+            <div
+              className="absolute top-3.5 h-1 -translate-y-1/2 rounded-full bg-[color:var(--theme-accent-secondary)]"
+              style={{
+                left: `${rangeStartPercent}%`,
+                width: `${rangeWidthPercent}%`,
+              }}
+            />
+            <input
+              type="range"
+              min={minRangeValue}
+              max={maxRangeValue}
+              step={rangeStep}
+              value={effectiveTimeRange?.startAt ?? minRangeValue}
+              aria-label="Map time range start"
+              data-testid="map-time-range-start"
+              disabled={!timeBounds || !effectiveTimeRange}
+              className="freed-map-range-input"
+              onChange={(event) => handleRangeStartChange(Number.parseInt(event.currentTarget.value, 10))}
+            />
+            <input
+              type="range"
+              min={minRangeValue}
+              max={maxRangeValue}
+              step={rangeStep}
+              value={effectiveTimeRange?.endAt ?? maxRangeValue}
+              aria-label="Map time range end"
+              data-testid="map-time-range-end"
+              disabled={!timeBounds || !effectiveTimeRange}
+              className="freed-map-range-input"
+              onChange={(event) => handleRangeEndChange(Number.parseInt(event.currentTarget.value, 10))}
+            />
+            <span
+              className="absolute top-8 whitespace-nowrap text-[10px] text-[color:var(--theme-text-soft)]"
+              data-testid="map-time-range-start-label"
+              style={labelPositionStyle(rangeStartPercent, "start", labelsAreClose)}
+            >
+              {effectiveTimeRange ? formatRangeEdge(effectiveTimeRange.startAt) : "Start"}
+            </span>
+            <span
+              className="absolute top-8 whitespace-nowrap text-[10px] text-[color:var(--theme-text-soft)]"
+              data-testid="map-time-range-end-label"
+              style={labelPositionStyle(rangeEndPercent, "end", labelsAreClose)}
+            >
+              {effectiveTimeRange ? formatRangeEdge(effectiveTimeRange.endAt) : "End"}
+            </span>
+          </div>
         </div>
-      ) : null}
+      </div>
 
       <MapSurface
         markers={markers}
@@ -249,8 +418,8 @@ export function MapView({ viewportInsets }: MapViewProps) {
             setSearchQuery,
           });
         }}
-        emptyTitle={emptyState.title}
-        emptyBody={emptyState.body}
+        emptyTitle={emptyTitle}
+        emptyBody={emptyBody}
       />
     </div>
   );

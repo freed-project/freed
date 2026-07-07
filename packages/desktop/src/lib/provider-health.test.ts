@@ -315,6 +315,39 @@ describe("provider health", () => {
     expect(provider?.latestAttempts[0]?.stage).toBe("memory_pressure");
   });
 
+  it("keeps old post-cleanup critical memory deferrals out of current provider status", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, debugStore } = await loadProviderHealthModule();
+
+    await mod.recordProviderHealthEvent({
+      provider: "instagram",
+      outcome: "success",
+      finishedAt: now.getTime() - 60 * 60 * 1000,
+      itemsSeen: 5,
+      itemsAdded: 3,
+    });
+
+    await mod.recordProviderHealthEvent({
+      provider: "instagram",
+      outcome: "error",
+      stage: "invoke",
+      reason:
+        "Instagram sync paused because Freed Desktop memory remains critically high after cleanup.",
+      finishedAt: now.getTime() - 20 * 60 * 1000,
+    });
+
+    const provider = debugStore.useDebugStore.getState().health?.providers.instagram;
+
+    expect(provider?.status).toBe("healthy");
+    expect(provider?.lastOutcome).toBe("success");
+    expect(provider?.lastError).toBeUndefined();
+    expect(provider?.currentMessage).toBeUndefined();
+    expect(provider?.latestAttempts[0]?.stage).toBe("invoke");
+  });
+
   it("auto-pauses on explicit provider rate limits and exposes the toast action", async () => {
     vi.useFakeTimers();
     const now = new Date("2026-04-02T19:15:00.000Z");
@@ -540,5 +573,29 @@ describe("provider health", () => {
     expect(provider?.lastOutcome).toBeUndefined();
     expect(provider?.lastError).toBeUndefined();
     expect(provider?.currentMessage).toBeUndefined();
+  });
+
+  it("sanitizes active runtime-deferred provider attempts before exposing status", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, debugStore } = await loadProviderHealthModule();
+
+    await mod.recordProviderHealthEvent({
+      provider: "linkedin",
+      outcome: "error",
+      stage: "runtime_deferred",
+      reason: "background work is paused for 487586 ms while renderer safe mode is active",
+      finishedAt: now.getTime(),
+    });
+
+    const provider = debugStore.useDebugStore.getState().health?.providers.linkedin;
+    const expected =
+      "Freed paused background work while the app recovers. Try syncing again in a moment.";
+    expect(provider?.status).toBe("degraded");
+    expect(provider?.lastError).toBe(expected);
+    expect(provider?.currentMessage).toBe(expected);
+    expect(provider?.latestAttempts[0]?.reason).toContain("487586 ms");
   });
 });

@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: read
+  issues: write
   pull-requests: write
 
 env:
@@ -94,7 +95,9 @@ jobs:
 
       - name: Install Playwright browsers
         if: steps.feature-plan.outputs.needs_playwright == 'true'
-        run: npx playwright install --with-deps chromium
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/azure-cli.sources
+          npx playwright install --with-deps chromium
         working-directory: packages/desktop
 
       - name: Run feature validation
@@ -102,6 +105,8 @@ jobs:
         env:
           CI: "true"
 
+      # Write the comparison to a file instead of piping through `tee`: the
+      # pipe swallowed perf-compare's exit(1), so the gate could never fail.
       - name: Run perf regression check
         if: always()
         run: |
@@ -110,25 +115,20 @@ jobs:
               packages/desktop/playwright-report/perf-results.json \
               packages/desktop/tests/e2e/perf-baselines.json \
               packages/desktop/tests/e2e/perf-budgets.json \
-              | tee perf-comparison.md
+              > perf-comparison.md
           else
             echo "No perf results found - skipping comparison"
           fi
 
+      - name: Print perf comparison
+        if: always() && hashFiles('perf-comparison.md') != ''
+        run: cat perf-comparison.md
+
       - name: Comment perf comparison on PR
         if: always() && hashFiles('perf-comparison.md') != ''
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            if (!fs.existsSync('perf-comparison.md')) return;
-            const body = fs.readFileSync('perf-comparison.md', 'utf8');
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request?.number ?? context.issue.number,
-              body: `(AI Generated).\n\n## Performance Benchmark Results\n\n\`\`\`\n${body}\n\`\`\``,
-            });
+        run: node scripts/post-perf-comment.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Upload perf results
         if: always()
@@ -176,7 +176,9 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/azure-cli.sources
+          npx playwright install --with-deps chromium
         working-directory: packages/desktop
 
       - name: Run dev validation

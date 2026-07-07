@@ -306,6 +306,43 @@ describe("background runtime coordinator", () => {
     ).resolves.toBe("ready");
   });
 
+  it("clears memory pressure cooldown when memory returns to normal", async () => {
+    vi.useFakeTimers();
+    const coordinator = await loadCoordinator();
+    coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: true });
+    coordinator.noteRendererHeartbeat(heartbeat(1));
+    coordinator.noteRendererHeartbeat(heartbeat(2));
+
+    const baseSnapshot = {
+      processResidentBytes: 10,
+      processVirtualBytes: 20,
+      appResidentBytes: 30,
+      relayDocBytes: 0,
+      relayClientCount: 0,
+      contentQueuePending: 0,
+      contentCompleted: 0,
+      contentFailed: 0,
+      contentActive: false,
+      contentBackoffLevel: 0,
+      sampleTs: Date.now(),
+    };
+
+    coordinator.noteMemoryPressure({
+      ...baseSnapshot,
+      pressureLevel: "critical",
+    });
+    expect(coordinator.canStartBackgroundJob("content-fetch")).toEqual({
+      ok: false,
+      reason: expect.stringContaining("cooldown:"),
+    });
+
+    coordinator.noteMemoryPressure({
+      ...baseSnapshot,
+      pressureLevel: "normal",
+    });
+    expect(coordinator.canStartBackgroundJob("content-fetch")).toEqual({ ok: true });
+  });
+
   it("pauses non-snapshot jobs during renderer safe mode", async () => {
     vi.useFakeTimers();
     const coordinator = await loadCoordinator();

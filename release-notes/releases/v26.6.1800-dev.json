@@ -1,0 +1,38 @@
+{
+  "tag": "v26.6.1800-dev",
+  "version": "26.6.1800-dev",
+  "channel": "dev",
+  "dayKey": "26.6.18",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-06-18T07:18:00.000Z",
+  "model": "manual",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.6.1703-dev",
+    "previousPublishedDayTag": null,
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.6.1800-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.6.1800-dev"
+    ],
+    "prNumbers": [
+      839
+    ],
+    "commitSubjects": [
+      "fix: enable sync triggers from dev channel"
+    ]
+  },
+  "release": {
+    "deck": "Make installed dev sync soaks respond",
+    "features": [],
+    "fixes": [
+      "Enable sync triggers from dev channel"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.6.1800-dev\n\nMake installed dev sync soaks respond\n\n### Fixes\n\n- Enable sync triggers from dev channel\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

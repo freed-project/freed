@@ -7,8 +7,6 @@
  */
 
 import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
-import { isTauri } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { usePlatform, type SyncProviderSectionProps } from "@freed/ui/context";
 import { addDebugEvent, useDebugStore } from "@freed/ui/lib/debug-store";
 import {
@@ -54,6 +52,7 @@ import { MediaVaultSettingsCard } from "./MediaVaultSettingsCard";
 import { socialProviderCopy } from "../lib/social-provider-copy";
 import { isRuntimeDeferredStage } from "../lib/social-capture-runtime";
 import { log } from "../lib/logger";
+import { usePostLoginAutoSync } from "../hooks/usePostLoginAutoSync";
 
 const FACEBOOK_LEAVE_CHECK_DELAY_MS = import.meta.env.VITE_TEST_TAURI === "1" ? 100 : 60_000;
 const FACEBOOK_LEAVE_CHECK_FOCUS_GRACE_MS = import.meta.env.VITE_TEST_TAURI === "1" ? 0 : 5_000;
@@ -110,6 +109,7 @@ function Toggle({
   meta,
   testId,
   trailingAction,
+  labelAccessory,
 }: {
   label: string;
   checked: boolean;
@@ -118,16 +118,20 @@ function Toggle({
   meta?: string;
   testId?: string;
   trailingAction?: ReactNode;
+  labelAccessory?: ReactNode;
 }) {
   return (
     <div className="flex h-8 items-center justify-between gap-4">
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <p
-          data-testid={testId ? `${testId}-label` : undefined}
-          className="min-w-0 flex-1 truncate text-sm text-[#a1a1aa]"
-        >
-          {label}
-        </p>
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <p
+            data-testid={testId ? `${testId}-label` : undefined}
+            className="min-w-0 truncate text-sm text-[#a1a1aa]"
+          >
+            {label}
+          </p>
+          {labelAccessory}
+        </div>
         {meta ? (
           <p
             data-testid={testId ? `${testId}-meta` : undefined}
@@ -251,12 +255,11 @@ export function FacebookSettingsSection({
 
   const [checking, setChecking] = useState(false);
   const [refreshingGroups, setRefreshingGroups] = useState(false);
+  const [refreshingGroupId, setRefreshingGroupId] = useState<string | null>(null);
   const [lastDiag, setLastDiag] = useState<FbSyncDiag | null>(null);
   const [windowMode, setWindowMode] = useState(() => getFbScraperWindowMode());
   const [actionError, setActionError] = useState<string | null>(null);
-  const [loginWindowPendingSync, setLoginWindowPendingSync] = useState(false);
   const [checkingLeaveGroupIds, setCheckingLeaveGroupIds] = useState<Record<string, true>>({});
-  const loginWindowPendingSyncRef = useRef(false);
   const pendingLeaveCheckRef = useRef<{ group: FbGroupInfo; openedAt: number } | null>(null);
   const leaveCheckTimerRef = useRef<number | null>(null);
   const leaveCheckInFlightRef = useRef(false);
@@ -271,34 +274,47 @@ export function FacebookSettingsSection({
   );
   const activeGroupCount = groups.filter((group) => !excludedGroupIds[group.id]).length;
 
-  // Auto-detect login success from the WebView's on_navigation callback
-  useEffect(() => {
-    if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return;
+  const runSync = useCallback(async (trigger: "manual" | "post_login" = "manual") => {
+    setLastDiag(null);
+    try {
+      const result = await withProviderSyncing("facebook", () => captureFbFeed(trigger));
+      setLastDiag(result.diag);
+    } catch (err) {
+      console.error("Facebook feed capture failed:", err);
+    }
+  }, []);
 
-    const unlisten = listen<{ loggedIn: boolean }>("fb-auth-result", (event) => {
-      log.info(`[FB] auth result received logged_in=${event.payload.loggedIn}`);
+  const handleAuthResult = useCallback(
+    (loggedIn: boolean) => {
+      log.info(`[FB] auth result received logged_in=${loggedIn}`);
+      const currentAuth = useAppStore.getState().fbAuth;
       const newState = {
-        ...useAppStore.getState().fbAuth,
-        isAuthenticated: event.payload.loggedIn,
+        ...currentAuth,
+        isAuthenticated: loggedIn,
         lastCheckedAt: Date.now(),
-        lastCaptureError: event.payload.loggedIn
-          ? undefined
-          : useAppStore.getState().fbAuth.lastCaptureError,
+        lastCaptureError: loggedIn ? undefined : currentAuth.lastCaptureError,
       };
       setFbAuth(newState);
       storeFbAuthState(newState);
-      if (event.payload.loggedIn) {
+      if (loggedIn) {
         setActionError(null);
         addDebugEvent("change", "[FB] connection restored");
-        loginWindowPendingSyncRef.current = true;
-        setLoginWindowPendingSync(true);
-      } else {
-        loginWindowPendingSyncRef.current = false;
-        setLoginWindowPendingSync(false);
       }
-    });
-    return () => { unlisten.then((fn) => fn()); };
-  }, [setFbAuth]);
+    },
+    [setFbAuth],
+  );
+
+  const postLoginSync = usePostLoginAutoSync({
+    authEvent: "fb-auth-result",
+    loginWindowClosedEvent: "fb-login-window-closed",
+    scrapeHealthyEvent: "fb-scrape-healthy",
+    scrapeStartFailedEvent: "fb-scrape-start-failed",
+    hideLoginCommand: "fb_hide_login",
+    providerLabel: "Facebook",
+    isAuthenticated: () => useAppStore.getState().fbAuth.isAuthenticated,
+    onAuthResult: handleAuthResult,
+    runSync,
+  });
 
   useEffect(() => {
     if (!fbAuth.isAuthenticated || items.length === 0) return;
@@ -345,33 +361,6 @@ export function FacebookSettingsSection({
       }
     });
   }, [confirm, setFbAuth]);
-
-  const runSync = useCallback(async () => {
-    loginWindowPendingSyncRef.current = false;
-    setLoginWindowPendingSync(false);
-    setLastDiag(null);
-    try {
-      const result = await withProviderSyncing("facebook", () => captureFbFeed());
-      setLastDiag(result.diag);
-    } catch (err) {
-      console.error("Facebook feed capture failed:", err);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return;
-
-    const unlisten = listen<{ closed: boolean }>("fb-login-window-closed", (event) => {
-      const shouldSync = event.payload.closed && useAppStore.getState().fbAuth.isAuthenticated;
-      const pending = loginWindowPendingSyncRef.current;
-      loginWindowPendingSyncRef.current = false;
-      setLoginWindowPendingSync(false);
-      if (pending && shouldSync) {
-        void runSync();
-      }
-    });
-    return () => { unlisten.then((fn) => fn()); };
-  }, [runSync]);
 
   const setExcludedGroups = useCallback(
     async (nextExcludedGroupIds: Record<string, true>) => {
@@ -507,13 +496,19 @@ export function FacebookSettingsSection({
   const handleRefreshGroups = useCallback(async () => {
     await confirm(async () => {
       setRefreshingGroups(true);
+      setRefreshingGroupId(null);
       setActionError(null);
       try {
-        await captureFbGroups();
+        await withProviderSyncing("facebook", () =>
+          captureFbGroups({
+            onCheckingGroup: setRefreshingGroupId,
+          }),
+        );
       } catch (err) {
         setActionError(err instanceof Error ? err.message : "Failed to refresh Facebook groups");
       } finally {
         setRefreshingGroups(false);
+        setRefreshingGroupId(null);
       }
     });
   }, [confirm]);
@@ -585,9 +580,9 @@ export function FacebookSettingsSection({
             </span>
           </div>
 
-          {loginWindowPendingSync && (
+          {postLoginSync.message && (
             <p className="text-xs text-[#a1a1aa] leading-relaxed">
-              Connected. Finish any Facebook prompts, then close the login window.
+              {postLoginSync.message}
             </p>
           )}
 
@@ -599,6 +594,7 @@ export function FacebookSettingsSection({
                   return;
                 }
                 void confirm(async () => {
+                  postLoginSync.cancel();
                   if (isPaused) {
                     await clearProviderPause("facebook");
                   }
@@ -705,7 +701,7 @@ export function FacebookSettingsSection({
                     disabled={refreshingGroups}
                     className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
                   >
-                    {refreshingGroups ? "Refreshing..." : "Refresh"}
+                    Refresh groups
                   </button>
                 </>
               );
@@ -713,6 +709,7 @@ export function FacebookSettingsSection({
             renderItem={(group) => {
               const included = !excludedGroupIds[group.id];
               const checkingLeave = Boolean(checkingLeaveGroupIds[group.id]);
+              const refreshingGroup = refreshingGroupId === group.id;
               const { title, lastActiveText } = splitFacebookGroupName(
                 getFacebookGroupDisplayName(group),
               );
@@ -726,6 +723,15 @@ export function FacebookSettingsSection({
                   }}
                   meta={lastActiveText}
                   status={included ? "Included in future syncs" : "Hidden from future syncs"}
+                  labelAccessory={
+                    refreshingGroup ? (
+                      <span
+                        aria-label={`Refreshing group: ${title}`}
+                        data-testid={`facebook-group-${group.id}-refreshing`}
+                        className="h-3 w-3 shrink-0 rounded-full border border-[#8b5cf6]/50 border-t-[#c4b5fd] animate-spin"
+                      />
+                    ) : null
+                  }
                   trailingAction={
                     <Tooltip
                       label={checkingLeave ? "Checking leave status" : "Leave group via Facebook"}
