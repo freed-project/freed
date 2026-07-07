@@ -202,6 +202,37 @@ test("validateReleaseShape can relax production carry-forward feature omissions"
   );
 });
 
+test("validateReleaseShape can relax production carry-forward support omissions", () => {
+  const release = {
+    deck: "Capture stability and map controls",
+    features: ["Provider capture controls stay consent-gated"],
+    fixes: ["Scraper login prompts now stay open until the provider window closes"],
+    followUps: ["Release workflow and build-system work"],
+  };
+  const options = {
+    earlierReleases: [
+      {
+        deck: "Tooling and soak support",
+        features: [],
+        fixes: ["Soak collector and soak assert scripts with a machine readable verdict"],
+        followUps: ["Automation loop state moved out of tmp into Freed automation storage"],
+      },
+    ],
+  };
+
+  assert.match(
+    validateReleaseShape(release, options).errors.join("\n"),
+    /missing earlier same-day item/i,
+  );
+  assert.equal(
+    validateReleaseShape(release, {
+      ...options,
+      allowEarlierItemOmission: true,
+    }).errors.length,
+    0,
+  );
+});
+
 test("validateReleaseShape rejects previous-day feature repeats", () => {
   const result = validateReleaseShape(
     {

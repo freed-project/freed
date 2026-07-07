@@ -45,7 +45,7 @@ function main() {
   const result = validateReleaseShape(artifact.release ?? {}, {
     earlierReleases: priorArtifacts,
     previousDayRelease: previousDayArtifact?.release,
-    allowEarlierFeatureOmission: artifact.channel === "production",
+    allowEarlierItemOmission: artifact.channel === "production",
   });
 
   if (result.errors.length > 0) {
