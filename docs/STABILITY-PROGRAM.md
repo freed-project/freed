@@ -112,7 +112,7 @@ Baseline measured 2026-07-07 from a 6.05 h idle overnight soak of v26.7.301-dev 
 | Dead-session WebView spins/day/provider | night's single scheduled sweep: li 1 full 100 s WebView spin → event_timeout, x 1 api_error (auth misclassification, F-auth theme) | ≤3 then pause+prompt |
 | Worker INITs/hour during content backlog | 19.3/h while idle (117 / 6.05 h); 82/h during launch-hour backlog | <10 |
 | Renderer recoveries/day (thresholds frozen) | 1 attempt / 6 h idle (≈4/day); launch hour: 5 attempts + 3 restart requests in 57 min, ending in silent app death | →0 |
-| invariant_alarms/day by name (W2-01) | cloud_loop CONFIRMED firing on v26.7.701-dev — tripped ~3 min into the elevated post-launch upload burst ("5 uploads with unchanged heads in 15 min"); soak-assert `invariant_alarms: cloud_loop=1` alongside `uploads_unchanged_heads` FAIL (5/6). Note: threshold is 5-in-15min (~20/h); deep-idle drip was ~11/h, so cloud_loop is burst-triggered and may sit below threshold in steady idle | each →0 as its damper lands |
+| invariant_alarms/day by name (W2-01) | **Pre-damper baseline (v26.7.701-dev, 6.23 h soak 2026-07-07/08): cloud_loop=7, preflight_kill=1.** cloud_loop fires hard during active windows (alarm details 14–19 unchanged uploads/15 min, ~4× the 5-in-15min threshold) and goes quiet in deep idle (burst-triggered, not idle-triggered — a calibration note for the breaker cycle). preflight_kill caught a real held-session teardown (window_destroyed job_complete scraperSessionHeld=true, F04). Cross-confirmed by `uploads_unchanged_heads` FAIL 98/102 (~16/h). This is the P1-01 "before" — cloud_loop should → 0 once the damper lands | each →0 as its damper lands |
 | fix:/perf: share of non-release commits | ~78% | trending down |
 
 ## What NOT to do
