@@ -1,0 +1,48 @@
+{
+  "tag": "v26.7.800-dev",
+  "version": "26.7.800-dev",
+  "channel": "dev",
+  "dayKey": "26.7.8",
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed 2026-07-08: replaced the heuristic fallback copy with specific notes for Automerge worker recovery, v26.7.700 release-note parity, and the lifecycle fixture build fix."
+  ],
+  "generatedAt": "2026-07-08T17:00:13.310Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.701-dev",
+    "previousPublishedDayTag": "v26.7.701-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.800-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.800-dev"
+    ],
+    "prNumbers": [
+      927,
+      929,
+      932
+    ],
+    "commitSubjects": [
+      "fix: restore automerge lifecycle test build (#932)",
+      "chore: merge main back into dev after v26.7.700 (#929)",
+      "fix: recover Automerge worker startup failures (#927)",
+      "docs: record W2-01 full pre-damper baseline from 6.23h soak (#931)",
+      "docs: record W2-01 cloud_loop positive control confirmed (#930)"
+    ]
+  },
+  "release": {
+    "deck": "Automerge worker recovery, v26.7.700 release-note parity, and restored dev validation",
+    "features": [],
+    "fixes": [
+      "Automerge worker startup failures now reset the failed worker, retry the active document request once, reject pending worker requests on runtime failure, and record worker_start_failed or worker_runtime_failed runtime-health events for future soaks",
+      "Dev now carries the v26.7.700 production release-note artifacts back from main, keeping release history aligned across branches",
+      "The Automerge worker lifecycle test fixture now includes the required user-state tags field, so root build and dev Validation compile cleanly after the worker recovery fix"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.800-dev\n\nAutomerge worker recovery, v26.7.700 release-note parity, and restored dev validation.\n\n### Fixes\n\n- Automerge worker startup failures now reset the failed worker, retry the active document request once, reject pending worker requests on runtime failure, and record worker_start_failed or worker_runtime_failed runtime-health events for future soaks\n- Dev now carries the v26.7.700 production release-note artifacts back from main, keeping release history aligned across branches\n- The Automerge worker lifecycle test fixture now includes the required user-state tags field, so root build and dev Validation compile cleanly after the worker recovery fix\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
