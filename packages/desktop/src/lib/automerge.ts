@@ -44,6 +44,7 @@ export type { DocChangeEvent, DocState } from "./automerge-types";
  * backpressure during normal operation.
  */
 const WORKER_REQUEST_TIMEOUT_MS = 180_000;
+const WORKER_START_TIMEOUT_MS = 15_000;
 const IDLE_WORKER_STOP_RETRY_MS = 1_000;
 
 // ---------------------------------------------------------------------------
@@ -57,10 +58,61 @@ let workerDocumentInitialized = false;
 let latestRelayClientCount = 0;
 let idleWorkerStopTimer: ReturnType<typeof setTimeout> | null = null;
 
+type PendingRequestFailureHandler = {
+  reject: (err: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
 function getWorker(): Worker {
   if (!worker) startWorker();
   if (!worker) throw new Error("Automerge worker failed to start");
   return worker;
+}
+
+function workerErrorMessage(err: ErrorEvent | MessageEvent): string {
+  if ("message" in err && typeof err.message === "string" && err.message.length > 0) {
+    return err.message;
+  }
+  return String(err);
+}
+
+function rejectPendingMap<T extends PendingRequestFailureHandler>(pendingMap: Map<number, T>, error: Error): void {
+  for (const pendingRequest of pendingMap.values()) {
+    clearTimeout(pendingRequest.timer);
+    pendingRequest.reject(error);
+  }
+  pendingMap.clear();
+}
+
+function rejectPendingWorkerRequests(error: Error): void {
+  rejectPendingMap(pending, error);
+  rejectPendingMap(pendingAllItemIds, error);
+  rejectPendingMap(pendingDocBinary, error);
+  rejectPendingMap(pendingDocHeads, error);
+  rejectPendingMap(pendingPreservedText, error);
+  rejectPendingMap(pendingContentSignalBackfill, error);
+  rejectPendingMap(pendingSampleDataClear, error);
+}
+
+function resetFailedWorker(failedWorker: Worker, error: Error, phase: string): void {
+  if (worker !== failedWorker) return;
+
+  failedWorker.terminate();
+  worker = null;
+  workerReady = null;
+  workerDocumentInitialized = false;
+  if (idleWorkerStopTimer) {
+    clearTimeout(idleWorkerStopTimer);
+    idleWorkerStopTimer = null;
+  }
+  rejectPendingWorkerRequests(error);
+  log.error(`[automerge-worker] reset failed worker phase=${phase}: ${error.message}`);
+  addDebugEvent("error", `[automerge-worker] reset failed worker phase=${phase}: ${error.message}`);
+  recordRuntimeHealthEvent({
+    event: phase.startsWith("startup") ? "worker_start_failed" : "worker_runtime_failed",
+    phase,
+    message: error.message,
+  });
 }
 
 function startWorker(): void {
@@ -74,21 +126,45 @@ function startWorker(): void {
   log.info("[automerge-worker] started worker");
   recordRuntimeHealthEvent({ event: "worker_spawn" });
   workerReady = new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const failStartup = (error: Error, phase: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      nextWorker.removeEventListener("message", onReady);
+      nextWorker.removeEventListener("error", onStartupError);
+      nextWorker.removeEventListener("messageerror", onStartupMessageError);
+      resetFailedWorker(nextWorker, error, phase);
+      reject(error);
+    };
     const timeout = setTimeout(() => {
-      reject(new Error("Automerge worker failed to start within 15 seconds"));
-    }, 15_000);
+      failStartup(new Error("Automerge worker failed to start within 15 seconds"), "startup_timeout");
+    }, WORKER_START_TIMEOUT_MS);
 
     const onReady = (event: MessageEvent<WorkerResponse>) => {
       if (event.data.type === "READY") {
+        settled = true;
         clearTimeout(timeout);
         nextWorker.removeEventListener("message", onReady);
+        nextWorker.removeEventListener("error", onStartupError);
+        nextWorker.removeEventListener("messageerror", onStartupMessageError);
         resolve();
       }
     };
+    const onStartupError = (event: ErrorEvent) => {
+      failStartup(new Error(workerErrorMessage(event)), "startup_error");
+    };
+    const onStartupMessageError = (event: MessageEvent) => {
+      failStartup(new Error(workerErrorMessage(event)), "startup_message_error");
+    };
     nextWorker.addEventListener("message", onReady);
+    nextWorker.addEventListener("error", onStartupError);
+    nextWorker.addEventListener("messageerror", onStartupMessageError);
   });
+  void workerReady.catch(() => {});
   nextWorker.onmessage = handleWorkerMessage;
   nextWorker.onerror = handleWorkerError;
+  nextWorker.onmessageerror = handleWorkerMessageError;
   if (latestRelayClientCount > 0) {
     void workerReady.then(() => {
       if (worker !== nextWorker) return;
@@ -97,13 +173,27 @@ function startWorker(): void {
         type: "UPDATE_RELAY_CLIENT_COUNT",
         count: latestRelayClientCount,
       } satisfies WorkerRequest);
-    });
+    }).catch(() => {});
   }
 }
 
 async function ensureWorkerReady(): Promise<void> {
-  startWorker();
-  await workerReady;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    startWorker();
+    const ready = workerReady;
+    if (!ready) {
+      lastError = new Error("Automerge worker failed to start");
+      continue;
+    }
+    try {
+      await ready;
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 function hasPendingWorkerRequests(): boolean {
@@ -499,9 +589,23 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
 }
 
 function handleWorkerError(err: ErrorEvent) {
-  const msg = err instanceof Error ? err.message : String(err);
+  const msg = workerErrorMessage(err);
   log.error(`[automerge-worker] unhandled error: ${msg}`);
   addDebugEvent("error", `[AutomergeWorker] unhandled error: ${msg}`);
+  const failedWorker = (err.currentTarget as Worker | null) ?? worker;
+  if (failedWorker) {
+    resetFailedWorker(failedWorker, new Error(msg), "runtime_error");
+  }
+}
+
+function handleWorkerMessageError(err: MessageEvent) {
+  const msg = workerErrorMessage(err);
+  log.error(`[automerge-worker] message error: ${msg}`);
+  addDebugEvent("error", `[AutomergeWorker] message error: ${msg}`);
+  const failedWorker = (err.currentTarget as Worker | null) ?? worker;
+  if (failedWorker) {
+    resetFailedWorker(failedWorker, new Error(msg), "runtime_message_error");
+  }
 }
 
 // ---------------------------------------------------------------------------
