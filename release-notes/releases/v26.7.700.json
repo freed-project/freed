@@ -3,7 +3,7 @@
   "version": "26.7.700",
   "channel": "production",
   "dayKey": "26.7.7",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-07-08T00:12:15.893Z",
   "model": "heuristic",
@@ -152,25 +152,23 @@
     ]
   },
   "release": {
-    "deck": "Move activity monitor to top toolbar, clipboard save shortcut, and reader, sidebar, and settings UX work",
+    "deck": "Map controls, clipboard capture, and stronger sync diagnostics",
     "features": [
-      "Move activity monitor to top toolbar",
-      "Clipboard save shortcut",
-      "Dev-channel prereleases now include a terminal helper for installed-build sync soaks"
+      "Map now has a lower-left time range slider with all-time, today, and last-week shortcuts.",
+      "Freed Desktop adds a clipboard save shortcut and moves activity monitoring into the top toolbar.",
+      "Installed sync soaks now produce structured runtime-health evidence with loop counters and window recovery records."
     ],
     "fixes": [
-      "Reader, feed, and header polish",
-      "Sync and update reliability fixes",
-      "Release build and type-safety cleanup",
-      "The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes",
-      "The CI perf regression gate now fails on real regressions instead of always passing"
+      "Provider scrape recovery now records memory pressure, zero-post failures, and safe local next actions without adding provider traffic.",
+      "Instagram, Facebook, LinkedIn, and X diagnostics now separate local stalls from provider failures more clearly.",
+      "Map presets, graph pins, and content-detail saves now wait for durable state before reloads.",
+      "Production validation now catches real performance regressions and uses the pinned Node toolchain on runners."
     ],
     "followUps": [
-      "Release workflow and build-system work",
-      "Sync, cloud, and pairing infrastructure",
-      "Testing guidance policy",
-      "Freed Desktop keeps installed social sync soaks from creating duplicate provider traffic and records why LinkedIn sees zero posts"
+      "Capture release checks now use a shared provider-safety path list and require recorded owner approval before higher-risk capture changes publish.",
+      "Soak and automation state now lives under Freed automation storage with machine-readable verdicts.",
+      "Freed Desktop provider sync soaks now avoid duplicate traffic and record when LinkedIn returns zero posts."
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.700\n\nMove activity monitor to top toolbar, clipboard save shortcut, and reader, sidebar, and settings UX work\n\n### Features\n\n- Move activity monitor to top toolbar\n- Clipboard save shortcut\n- Dev-channel prereleases now include a terminal helper for installed-build sync soaks\n\n### Fixes\n\n- Reader, feed, and header polish\n- Sync and update reliability fixes\n- Release build and type-safety cleanup\n- The quiet startup contract now records the occlusion recovery policy in native tests and the desktop phase notes\n- The CI perf regression gate now fails on real regressions instead of always passing\n\n### Follow-ups\n\n- Release workflow and build-system work\n- Sync, cloud, and pairing infrastructure\n- Testing guidance policy\n- Freed Desktop keeps installed social sync soaks from creating duplicate provider traffic and records why LinkedIn sees zero posts\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.700\n\nMap controls, clipboard capture, and stronger sync diagnostics\n\n### Features\n\n- Map now has a lower-left time range slider with all-time, today, and last-week shortcuts\n- Freed Desktop adds a clipboard save shortcut and moves activity monitoring into the top toolbar\n- Installed sync soaks now produce structured runtime-health evidence with loop counters and window recovery records\n\n### Fixes\n\n- Provider scrape recovery now records memory pressure, zero-post failures, and safe local next actions without adding provider traffic\n- Instagram, Facebook, LinkedIn, and X diagnostics now separate local stalls from provider failures more clearly\n- Map presets, graph pins, and content-detail saves now wait for durable state before reloads\n- Production validation now catches real performance regressions and uses the pinned Node toolchain on runners\n\n### Follow-ups\n\n- Capture release checks now use a shared provider-safety path list and require recorded owner approval before higher-risk capture changes publish\n- Soak and automation state now lives under Freed automation storage with machine-readable verdicts\n- Freed Desktop provider sync soaks now avoid duplicate traffic and record when LinkedIn returns zero posts\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
