@@ -1,0 +1,43 @@
+{
+  "tag": "v26.7.701-dev",
+  "version": "26.7.701-dev",
+  "channel": "dev",
+  "dayKey": "26.7.7",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-08T01:11:18.923Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.301-dev",
+    "previousPublishedDayTag": "v26.7.301-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.701-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.701-dev"
+    ],
+    "prNumbers": [
+      917,
+      920,
+      922,
+      924
+    ],
+    "commitSubjects": [
+      "fix: relax production release note support omissions (#924)",
+      "fix: relax production release note carry-forward validation (#922)",
+      "fix: allow production release note feature consolidation (#920)",
+      "feat: invariant-alarm monitor observing verified pathologies (stability W2-01) (#917)",
+      "docs: fill Wave 1 baseline scorecard from first overnight soak (#916)"
+    ]
+  },
+  "release": {
+    "deck": "Invariant-alarm monitor observing verified pathologies (stability W2-01)",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.701-dev\n\nInvariant-alarm monitor observing verified pathologies (stability W2-01)\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
