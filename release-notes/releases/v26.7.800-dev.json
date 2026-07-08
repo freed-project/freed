@@ -3,8 +3,10 @@
   "version": "26.7.800-dev",
   "channel": "dev",
   "dayKey": "26.7.8",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed 2026-07-08: replaced the heuristic fallback copy with specific notes for Automerge worker recovery, v26.7.700 release-note parity, and the lifecycle fixture build fix."
+  ],
   "generatedAt": "2026-07-08T17:00:13.310Z",
   "model": "heuristic",
   "source": {
@@ -33,10 +35,14 @@
     ]
   },
   "release": {
-    "deck": "Merge main back into dev after v26.7.700, automerge lifecycle test build restored, and automerge worker startup failures",
+    "deck": "Automerge worker recovery, v26.7.700 release-note parity, and restored dev validation",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Automerge worker startup failures now reset the failed worker, retry the active document request once, reject pending worker requests on runtime failure, and record worker_start_failed or worker_runtime_failed runtime-health events for future soaks",
+      "Dev now carries the v26.7.700 production release-note artifacts back from main, keeping release history aligned across branches",
+      "The Automerge worker lifecycle test fixture now includes the required user-state tags field, so root build and dev Validation compile cleanly after the worker recovery fix"
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.800-dev\n\nMerge main back into dev after v26.7.700, automerge lifecycle test build restored, and automerge worker startup failures\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.800-dev\n\nAutomerge worker recovery, v26.7.700 release-note parity, and restored dev validation.\n\n### Fixes\n\n- Automerge worker startup failures now reset the failed worker, retry the active document request once, reject pending worker requests on runtime failure, and record worker_start_failed or worker_runtime_failed runtime-health events for future soaks\n- Dev now carries the v26.7.700 production release-note artifacts back from main, keeping release history aligned across branches\n- The Automerge worker lifecycle test fixture now includes the required user-state tags field, so root build and dev Validation compile cleanly after the worker recovery fix\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
