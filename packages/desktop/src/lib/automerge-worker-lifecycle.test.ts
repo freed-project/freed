@@ -79,7 +79,7 @@ function makeItem(): FeedItem {
       mediaTypes: [],
       linkPreview: { url: "https://example.com/startup-worker" },
     },
-    userState: { hidden: false, saved: true, savedAt: 1, archived: false },
+    userState: { hidden: false, saved: true, savedAt: 1, archived: false, tags: [] },
     topics: [],
   };
 }
