@@ -1,0 +1,42 @@
+{
+  "tag": "v26.7.800-dev",
+  "version": "26.7.800-dev",
+  "channel": "dev",
+  "dayKey": "26.7.8",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-08T17:00:13.310Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.701-dev",
+    "previousPublishedDayTag": "v26.7.701-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.800-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.800-dev"
+    ],
+    "prNumbers": [
+      927,
+      929,
+      932
+    ],
+    "commitSubjects": [
+      "fix: restore automerge lifecycle test build (#932)",
+      "chore: merge main back into dev after v26.7.700 (#929)",
+      "fix: recover Automerge worker startup failures (#927)",
+      "docs: record W2-01 full pre-damper baseline from 6.23h soak (#931)",
+      "docs: record W2-01 cloud_loop positive control confirmed (#930)"
+    ]
+  },
+  "release": {
+    "deck": "Merge main back into dev after v26.7.700, automerge lifecycle test build restored, and automerge worker startup failures",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.800-dev\n\nMerge main back into dev after v26.7.700, automerge lifecycle test build restored, and automerge worker startup failures\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
