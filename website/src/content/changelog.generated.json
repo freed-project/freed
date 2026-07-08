@@ -1,5 +1,75 @@
 [
   {
+    "version": "26.7.800-dev",
+    "tagName": "v26.7.800-dev",
+    "channel": "dev",
+    "date": "2026-07-08T17:41:30Z",
+    "deck": "Automerge worker recovery, v26.7.700 release-note parity, and restored dev validation",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Automerge worker startup failures now reset the failed worker, retry the active document request once, reject pending worker requests on runtime failure, and record worker_start_failed or worker_runtime_failed runtime-health events for future soaks"
+      },
+      {
+        "text": "Dev now carries the v26.7.700 production release-note artifacts back from main, keeping release history aligned across branches"
+      },
+      {
+        "text": "The Automerge worker lifecycle test fixture now includes the required user-state tags field, so root build and dev Validation compile cleanly after the worker recovery fix"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.800-dev",
+    "prNumbers": [
+      927,
+      929,
+      932
+    ],
+    "builds": [
+      "26.7.800-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.7.800-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.800-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.7.701-dev",
+    "tagName": "v26.7.701-dev",
+    "channel": "dev",
+    "date": "2026-07-08T02:00:36Z",
+    "deck": "Stability W2-01: a passive invariant-alarm monitor that names verified pathologies loudly in the runtime-health log instead of letting them loop silently.",
+    "features": [
+      {
+        "text": "Invariant-alarm monitor (stability W2-01): watches the runtime-health event stream and raises named invariant_alarm records with a runbook string when a verified pathology signature trips , cloud_loop (idle cloud upload loop), scrape_zero_persist, preflight_kill, watchdog_thrash, and an auth_zombie heuristic"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Release-note validation relaxed for production carry-forward, feature consolidation, and support omissions"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Alarms are observation-only this build; their circuit breakers land next, one per soak cycle, so each alarm first observes its pathology as a positive control"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.701-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.7.701-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.7.701-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.701-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
     "version": "26.7.700",
     "tagName": "v26.7.700",
     "channel": "production",
