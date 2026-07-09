@@ -50,7 +50,11 @@ import {
 } from "../../context/PlatformContext.js";
 import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
 import { useFeedCardDensity } from "../../lib/feed-card-density.js";
-import { useInterfaceZoom } from "../../lib/interface-zoom.js";
+import {
+  normalizeInterfaceZoom,
+  scaleInterfaceChromePx,
+  useInterfaceZoom,
+} from "../../lib/interface-zoom.js";
 import {
   FeedCardDensitySlider,
   InterfaceZoomSlider,
@@ -369,6 +373,11 @@ export function Header({
   const activeSearchQuery = searchQuery.trim();
   const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
   const [interfaceZoom, setInterfaceZoom] = useInterfaceZoom();
+  const topToolbarHeightPx = scaleInterfaceChromePx(TOP_TOOLBAR_HEIGHT_PX, interfaceZoom);
+  const toolbarGapHalfPx = scaleInterfaceChromePx(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2, interfaceZoom);
+  const toolbarSlotPaddingRightPx = scaleInterfaceChromePx(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX, interfaceZoom);
+  const toolbarControlCenterYPx =
+    MACOS_TRAFFIC_LIGHT_ROW_CENTER_Y + Math.round((topToolbarHeightPx - TOP_TOOLBAR_HEIGHT_PX) / 2);
 
   const { filteredItems, isSearching, resultCount } = useSearchResults(
     items,
@@ -597,6 +606,11 @@ export function Header({
     top: number;
     right: number;
   } | null>(null);
+  const [signalFilterMenuZoomDrag, setSignalFilterMenuZoomDrag] = useState<{
+    baselineZoom: number;
+    left: number;
+    top: number;
+  } | null>(null);
   const [signalFilterFeedback, setSignalFilterFeedback] = useState<{
     mode: FeedSignalMode;
     tick: number;
@@ -608,6 +622,20 @@ export function Header({
     top: number;
     right: number;
   } | null>(null);
+  const handleSignalFilterZoomDragStart = useCallback((baselineZoom: number) => {
+    const bounds = signalFilterMenuRef.current?.getBoundingClientRect();
+    if (!bounds) {
+      return;
+    }
+    setSignalFilterMenuZoomDrag({
+      baselineZoom,
+      left: bounds.left,
+      top: bounds.top,
+    });
+  }, []);
+  const handleSignalFilterZoomDragEnd = useCallback(() => {
+    setSignalFilterMenuZoomDrag(null);
+  }, []);
   const updateDisplayPreference = useCallback((patch: Partial<DisplayPreferences>) => {
     void updatePreferences({
       display: patch,
@@ -1050,7 +1078,7 @@ export function Header({
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
   const sidebarHandleCenterline = "var(--freed-sidebar-handle-centerline, 264px)";
-  const toolbarBoundaryWidth = `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)})`;
+  const toolbarBoundaryWidth = `calc(${sidebarHandleCenterline} + ${px(toolbarGapHalfPx)})`;
   const leftToolbarWidth = !isMobileDevice
     ? px(layoutControlMetrics.reservedWidthPx)
     : toolbarBoundaryWidth;
@@ -1069,7 +1097,7 @@ export function Header({
       : macosTrafficLightInsetStyle;
   const toolbarLogoRowStyle = {
     paddingLeft: headerDragRegion ? `${MACOS_TRAFFIC_LIGHT_INSET}px` : undefined,
-    paddingRight: px(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX),
+    paddingRight: px(toolbarSlotPaddingRightPx),
   } as CSSProperties;
   const layoutControlClusterStyle = {
     left: 0,
@@ -1090,7 +1118,7 @@ export function Header({
   const layoutControlCenterlineStyle = headerDragRegion
     ? ({
         position: "absolute",
-        top: px(MACOS_TRAFFIC_LIGHT_ROW_CENTER_Y),
+        top: px(toolbarControlCenterYPx),
         transform: "translateY(-50%)",
       } as CSSProperties)
     : undefined;
@@ -1100,10 +1128,12 @@ export function Header({
   const toolbarContainerStyle = {
     ...(headerDragRegion ? dragStyle : {}),
     boxSizing: "border-box",
-    height: px(TOP_TOOLBAR_HEIGHT_PX),
-    minHeight: px(TOP_TOOLBAR_HEIGHT_PX),
+    height: px(topToolbarHeightPx),
+    minHeight: px(topToolbarHeightPx),
     width: "100%",
     maxWidth: "100%",
+    ["--freed-top-toolbar-height" as string]: px(topToolbarHeightPx),
+    ["--freed-toolbar-control-center-y" as string]: px(toolbarControlCenterYPx),
   } as CSSProperties;
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -1361,6 +1391,12 @@ export function Header({
   }, [addFeedOpen, savedContentOpen]);
 
   useEffect(() => {
+    if (!signalFilterMenuOpen) {
+      setSignalFilterMenuZoomDrag(null);
+    }
+  }, [signalFilterMenuOpen]);
+
+  useEffect(() => {
     if (activeFilter.archivedOnly) {
       return;
     }
@@ -1388,8 +1424,15 @@ export function Header({
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
   const signalFilterMenuStyle = {
-    top: signalFilterMenuTop,
-    right: signalFilterMenuPosition?.right ?? 8,
+    top: signalFilterMenuZoomDrag?.top ?? signalFilterMenuTop,
+    ...(signalFilterMenuZoomDrag
+      ? {
+          left: signalFilterMenuZoomDrag.left,
+          right: "auto",
+          transform: `scale(${signalFilterMenuZoomDrag.baselineZoom / normalizeInterfaceZoom(interfaceZoom)})`,
+          transformOrigin: "top left",
+        }
+      : { right: signalFilterMenuPosition?.right ?? 8 }),
     ["--theme-menu-top" as string]: `${signalFilterMenuTop}px`,
     ["--theme-menu-viewport-margin" as string]: `${MENU_VIEWPORT_MARGIN_PX}px`,
     ...(headerDragRegion ? noDrag : {}),
@@ -2025,6 +2068,9 @@ export function Header({
                   onChange={setInterfaceZoom}
                   fullWidth
                   style={headerDragRegion ? toolbarControlStyle : undefined}
+                  dragStabilization="parent"
+                  onDragStart={handleSignalFilterZoomDragStart}
+                  onDragEnd={handleSignalFilterZoomDragEnd}
                 />
               </div>
             </div>

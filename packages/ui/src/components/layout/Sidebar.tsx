@@ -14,6 +14,11 @@ import { toast } from "../Toast.js";
 import { Tooltip } from "../Tooltip.js";
 import { useDebugStore } from "../../lib/debug-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
+import {
+  getInterfaceChromeScale,
+  scaleInterfaceChromePx,
+  useInterfaceZoom,
+} from "../../lib/interface-zoom.js";
 import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
 import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-navigation.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
@@ -564,9 +569,9 @@ const MAX_WIDTH = MAX_PRIMARY_SIDEBAR_WIDTH_PX;
 const DEFAULT_WIDTH = DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX;
 const COMPACT_WIDTH = COMPACT_PRIMARY_SIDEBAR_WIDTH_PX;
 
-function getDesktopModeForWidth(width: number): SidebarMode {
-  if (width <= CLOSED_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX) return "closed";
-  if (width <= COMPACT_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX) return "compact";
+function getDesktopModeForWidth(width: number, interfaceZoom: number): SidebarMode {
+  if (width <= scaleInterfaceChromePx(CLOSED_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX, interfaceZoom)) return "closed";
+  if (width <= scaleInterfaceChromePx(COMPACT_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX, interfaceZoom)) return "compact";
   return "expanded";
 }
 
@@ -605,7 +610,20 @@ export function Sidebar({
       ((s as unknown as { providerSyncCounts?: Partial<Record<string, number>> })
         .providerSyncCounts ?? EMPTY_PROVIDER_SYNC_COUNTS) as Partial<Record<string, number>>,
   );
-  const persistedSidebarWidth = Math.min(
+  const [interfaceZoom] = useInterfaceZoom();
+  const interfaceChromeScale = getInterfaceChromeScale(interfaceZoom);
+  const maxSidebarWidthPx = scaleInterfaceChromePx(MAX_WIDTH, interfaceZoom);
+  const defaultSidebarWidthPx = scaleInterfaceChromePx(DEFAULT_WIDTH, interfaceZoom);
+  const compactSidebarWidthPx = scaleInterfaceChromePx(COMPACT_WIDTH, interfaceZoom);
+  const narrowLabeledSidebarThresholdPx = scaleInterfaceChromePx(NARROW_LABELED_SIDEBAR_THRESHOLD_PX, interfaceZoom);
+  const expandedSidebarPaddingCrossoverWidthPx = scaleInterfaceChromePx(EXPANDED_SIDEBAR_PADDING_CROSSOVER_WIDTH_PX, interfaceZoom);
+  const compactRailOuterInsetPx = scaleInterfaceChromePx(COMPACT_RAIL_OUTER_INSET_PX, interfaceZoom);
+  const expandedSidebarRoomyPaddingPx = scaleInterfaceChromePx(EXPANDED_SIDEBAR_ROOMY_PADDING_PX, interfaceZoom);
+  const expandedSidebarCondensedPaddingPx = scaleInterfaceChromePx(EXPANDED_SIDEBAR_CONDENSED_PADDING_PX, interfaceZoom);
+  const primarySidebarGapWidthPx = scaleInterfaceChromePx(PRIMARY_SIDEBAR_GAP_WIDTH_PX, interfaceZoom);
+  const friendsSidebarGapWidthPx = scaleInterfaceChromePx(FRIENDS_SIDEBAR_GAP_WIDTH_PX, interfaceZoom);
+  const mobileMenuTopPx = scaleInterfaceChromePx(MOBILE_MENU_TOP_PX, interfaceZoom);
+  const persistedSidebarBaseWidth = Math.min(
     MAX_WIDTH,
     useAppStore((s) => s.preferences.display.sidebarWidth) ?? DEFAULT_WIDTH,
   );
@@ -633,7 +651,7 @@ export function Sidebar({
 
   const { open: showSettings, openDefault: openSettings, close: closeSettings } = useSettingsStore();
   const [dragWidth, setDragWidth] = useState<number | null>(null);
-  const [committedWidth, setCommittedWidth] = useState(persistedSidebarWidth);
+  const [committedWidth, setCommittedWidth] = useState(persistedSidebarBaseWidth);
   const [rssFeedsOpen, setRssFeedsOpen] = useState(false);
   const [rssFeedPage, setRssFeedPage] = useState(0);
 
@@ -692,11 +710,11 @@ export function Sidebar({
     if (dragging.current || dragWidth !== null) return;
     if (openingExpandedFromClosed) return;
     if (pendingPersistedWidth.current !== null) {
-      if (persistedSidebarWidth !== pendingPersistedWidth.current) return;
+      if (persistedSidebarBaseWidth !== pendingPersistedWidth.current) return;
       pendingPersistedWidth.current = null;
     }
-    setCommittedWidth(persistedSidebarWidth);
-  }, [dragWidth, openingExpandedFromClosed, persistedSidebarWidth]);
+    setCommittedWidth(persistedSidebarBaseWidth);
+  }, [dragWidth, openingExpandedFromClosed, persistedSidebarBaseWidth]);
 
   useEffect(() => {
     const wasClosed = previousDesktopMode.current === "closed";
@@ -714,17 +732,17 @@ export function Sidebar({
 
   const rawDesktopWidth = dragWidth
     ?? (desktopMode === "compact"
-      ? COMPACT_WIDTH
+      ? compactSidebarWidthPx
       : desktopMode === "closed"
         ? 0
         : openingExpandedFromClosed
-          ? DEFAULT_WIDTH
-          : committedWidth);
+          ? defaultSidebarWidthPx
+          : scaleInterfaceChromePx(committedWidth, interfaceZoom));
   const effectiveGapWidthPx =
     desktopGapWidthPx ?? (
       activeView === "friends"
-        ? FRIENDS_SIDEBAR_GAP_WIDTH_PX
-        : PRIMARY_SIDEBAR_GAP_WIDTH_PX
+        ? friendsSidebarGapWidthPx
+        : primarySidebarGapWidthPx
     );
   const compactReaderRailVisible =
     activeView === "feed" &&
@@ -739,45 +757,45 @@ export function Sidebar({
     : forceCompactDesktopRail
       ? (desktopMode === "closed" ? "closed" : "compact")
     : dragWidth !== null
-      ? getDesktopModeForWidth(dragWidth)
+      ? getDesktopModeForWidth(dragWidth, interfaceZoom)
       : desktopMode;
   const closedPreviewActive = dragWidth !== null && renderMode === "closed";
   const snapPreviewActive = dragWidth !== null && renderMode !== "expanded";
   const desktopWidth = renderMode === "compact"
-    ? COMPACT_WIDTH
+    ? compactSidebarWidthPx
     : renderMode === "closed"
       ? 0
       : rawDesktopWidth;
   const compactRail = renderMode === "compact";
   const narrowLabeledSidebar =
-    renderMode === "expanded" && desktopWidth < NARROW_LABELED_SIDEBAR_THRESHOLD_PX;
+    renderMode === "expanded" && desktopWidth < narrowLabeledSidebarThresholdPx;
   const rowCountsVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const sourceMenusVisible = renderMode === "expanded";
   const rssAccordionVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const searchVariant = compactRail ? "trigger" : "inline";
   const expandedSidebarUsesCondensedPadding =
-    renderMode === "expanded" && desktopWidth < EXPANDED_SIDEBAR_PADDING_CROSSOVER_WIDTH_PX;
+    renderMode === "expanded" && desktopWidth < expandedSidebarPaddingCrossoverWidthPx;
   const sidebarPaddingInlinePx = isMobileDevice
     ? 8
     : compactRail
-    ? COMPACT_RAIL_OUTER_INSET_PX
+    ? compactRailOuterInsetPx
     : expandedSidebarUsesCondensedPadding
-      ? EXPANDED_SIDEBAR_CONDENSED_PADDING_PX
-      : EXPANDED_SIDEBAR_ROOMY_PADDING_PX;
+      ? expandedSidebarCondensedPaddingPx
+      : expandedSidebarRoomyPaddingPx;
   const sidebarPaddingBlockPx = isMobileDevice
     ? 8
     : compactRail
-    ? COMPACT_RAIL_OUTER_INSET_PX
+    ? compactRailOuterInsetPx
     : expandedSidebarUsesCondensedPadding
-      ? EXPANDED_SIDEBAR_CONDENSED_PADDING_PX
-      : EXPANDED_SIDEBAR_ROOMY_PADDING_PX;
+      ? expandedSidebarCondensedPaddingPx
+      : expandedSidebarRoomyPaddingPx;
   const sidebarBodyStyle = {
     paddingTop: `${sidebarPaddingBlockPx}px`,
     paddingInline: `${sidebarPaddingInlinePx}px`,
     paddingBottom: isMobileDevice
       ? `${sidebarPaddingBlockPx}px`
       : compactRail
-      ? `${COMPACT_RAIL_OUTER_INSET_PX}px`
+      ? `${compactRailOuterInsetPx}px`
       : `calc(${sidebarPaddingBlockPx}px + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))`,
     transition: animationIntensity === "none"
       ? "none"
@@ -802,7 +820,7 @@ export function Sidebar({
   const sidebarHandleLeftPx =
     sidebarHandleCenterlinePx - RESIZE_HANDLE_HIT_AREA_WIDTH_PX / 2;
   const desktopAsideWidth = desktopWidth;
-  const desktopAsideRenderedWidth = closedPreviewActive ? COMPACT_WIDTH : desktopAsideWidth;
+  const desktopAsideRenderedWidth = closedPreviewActive ? compactSidebarWidthPx : desktopAsideWidth;
   const compactSidebar = compactRail;
   const rowPaddingClass = isMobileDevice
     ? "px-2"
@@ -895,7 +913,9 @@ export function Sidebar({
       e.preventDefault();
       dragging.current = true;
       const startX = e.clientX;
-      const startW = desktopMode === "compact" ? COMPACT_WIDTH : committedWidth;
+      const startW = desktopMode === "compact"
+        ? compactSidebarWidthPx
+        : scaleInterfaceChromePx(committedWidth, interfaceZoom);
       const previousCursor = document.body.style.cursor;
       const previousUserSelect = document.body.style.userSelect;
 
@@ -904,18 +924,22 @@ export function Sidebar({
 
       const onMove = (ev: MouseEvent) => {
         if (!dragging.current) return;
-        const next = Math.min(MAX_WIDTH, Math.max(0, startW + ev.clientX - startX));
+        const next = Math.min(maxSidebarWidthPx, Math.max(0, startW + ev.clientX - startX));
         setDragWidth(next);
       };
       const onUp = (ev: MouseEvent) => {
         dragging.current = false;
-        const final = Math.min(MAX_WIDTH, Math.max(0, startW + ev.clientX - startX));
-        const nextMode = getDesktopModeForWidth(final);
+        const final = Math.min(maxSidebarWidthPx, Math.max(0, startW + ev.clientX - startX));
+        const nextMode = getDesktopModeForWidth(final, interfaceZoom);
         if (nextMode === "expanded") {
-          pendingPersistedWidth.current = final;
-          setCommittedWidth(final);
-          void updatePreferences({ display: { sidebarWidth: final } } as Parameters<typeof updatePreferences>[0]).catch(() => {
-            if (pendingPersistedWidth.current === final) {
+          const finalBaseWidth = Math.min(
+            MAX_WIDTH,
+            Math.max(0, Math.round(final / interfaceChromeScale)),
+          );
+          pendingPersistedWidth.current = finalBaseWidth;
+          setCommittedWidth(finalBaseWidth);
+          void updatePreferences({ display: { sidebarWidth: finalBaseWidth } } as Parameters<typeof updatePreferences>[0]).catch(() => {
+            if (pendingPersistedWidth.current === finalBaseWidth) {
               pendingPersistedWidth.current = null;
             }
           });
@@ -930,7 +954,18 @@ export function Sidebar({
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [committedWidth, desktopMode, forceCompactDesktopRail, isMobileDevice, onDesktopModeChange, updatePreferences],
+    [
+      committedWidth,
+      compactSidebarWidthPx,
+      desktopMode,
+      forceCompactDesktopRail,
+      interfaceChromeScale,
+      interfaceZoom,
+      isMobileDevice,
+      maxSidebarWidthPx,
+      onDesktopModeChange,
+      updatePreferences,
+    ],
   );
 
   const feedList = useMemo(
@@ -1810,7 +1845,7 @@ export function Sidebar({
       {mobileOpen && (
         <div
           className="fixed bottom-0 left-0 right-0 z-[145] bg-black/60 md:hidden"
-          style={{ top: `calc(env(safe-area-inset-top, 0px) + ${MOBILE_MENU_TOP_PX}px)` }}
+          style={{ top: `calc(env(safe-area-inset-top, 0px) + ${mobileMenuTopPx}px)` }}
           onClick={onMobileClose}
         />
       )}
@@ -1826,9 +1861,9 @@ export function Sidebar({
         style={{
           boxSizing: "border-box",
           width: "100vw",
-          top: `calc(env(safe-area-inset-top, 0px) + ${MOBILE_MENU_TOP_PX}px)`,
-          height: `calc(100dvh - env(safe-area-inset-top, 0px) - ${MOBILE_MENU_TOP_PX}px)`,
-          maxHeight: `calc(100dvh - env(safe-area-inset-top, 0px) - ${MOBILE_MENU_TOP_PX}px)`,
+          top: `calc(env(safe-area-inset-top, 0px) + ${mobileMenuTopPx}px)`,
+          height: `calc(100dvh - env(safe-area-inset-top, 0px) - ${mobileMenuTopPx}px)`,
+          maxHeight: `calc(100dvh - env(safe-area-inset-top, 0px) - ${mobileMenuTopPx}px)`,
         }}
         >
         {sidebarBody}
