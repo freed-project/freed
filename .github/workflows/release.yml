@@ -563,3 +563,29 @@ jobs:
             exit 0
           fi
           ./scripts/vercel-deploy-production.sh pwa "$VERCEL_TOKEN"
+
+  # Stability W2-02: a red release pipeline becomes a triage-readable issue
+  # (label automation-triage) that scripts/triage.mjs ranks against alarms,
+  # soak verdicts, and canary regressions.
+  triage-on-failure:
+    needs: [promotion, notes, validation, create-release, release, updater-manifest, publish, publish-website, publish-pwa]
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the automation-triage issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Release pipeline failure: ${GITHUB_REF_NAME}"
+          body="Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          Ref: ${GITHUB_REF_NAME} (${GITHUB_SHA})
+
+          One or more jobs failed in the Release Desktop App workflow. Open the run to see which platform or stage went red. Auto-filed for scripts/triage.mjs; close after the follow-up release ships."
+          existing=$(gh issue list --label automation-triage --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --label automation-triage --body "$body"
+          fi

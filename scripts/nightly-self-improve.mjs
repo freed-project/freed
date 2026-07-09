@@ -38,6 +38,14 @@ const LEGACY_OUTCOME_LEDGER = "/tmp/freed-nightly-self-improve/outcomes.jsonl";
 const DEFAULT_SOAK_POINTER = path.join(AUTOMATION_STATE_DIR, "current-soak-dir");
 const DEFAULT_OUTCOME_LEDGER = path.join(AUTOMATION_STATE_DIR, "outcomes.jsonl");
 const LEGACY_SOAK_ROOT = "/tmp/freed-perf-soak";
+// Ranked task files emitted by scripts/triage.mjs (stability W2-02).
+export const DEFAULT_TRIAGE_CANDIDATE_DIR = path.join(
+  AUTOMATION_STATE_DIR,
+  "triage",
+  "candidates",
+);
+// Triage evidence older than this no longer outranks roadmap work.
+const TRIAGE_FRESH_MS = 48 * 60 * 60 * 1000;
 
 export function resolveStatePathWithLegacyFallback(preferredPath, legacyPath, fsOps = {}) {
   const ops = { existsSync, mkdirSync, copyFileSync, ...fsOps };
@@ -1613,6 +1621,48 @@ export function collectRiskSnapshot({
   };
 }
 
+/**
+ * Read ranked triage task files (scripts/triage.mjs, stability W2-02) from
+ * the candidate directory. Each T-<rank>-<bucket>.md carries evidence
+ * pointers; files older than TRIAGE_FRESH_MS still load but are marked
+ * stale so ranking can drop them below roadmap work.
+ */
+export function loadTriageCandidates(dirPath = DEFAULT_TRIAGE_CANDIDATE_DIR, nowMs = Date.now()) {
+  if (!existsSync(dirPath)) return [];
+  const candidates = [];
+  for (const name of readdirSync(dirPath).sort()) {
+    const match = name.match(/^T-(\d{2})-(.+)\.md$/);
+    if (!match) continue;
+    const filePath = path.join(dirPath, name);
+    let text;
+    try {
+      text = readFileSync(filePath, "utf8");
+    } catch {
+      continue;
+    }
+    if (text.startsWith("# stale:")) continue;
+    const titleMatch = text.match(/^# T-\d+: (.+)$/m);
+    const programTaskMatch = text.match(/^Program task: (.+)$/m);
+    const evidence = [...text.matchAll(/^- (.+)$/gm)].map((m) => m[1]).slice(0, 6);
+    let mtimeMs = 0;
+    try {
+      mtimeMs = statSync(filePath).mtimeMs;
+    } catch {
+      /* treat as stale */
+    }
+    candidates.push({
+      rank: Number(match[1]),
+      bucketId: match[2],
+      title: titleMatch?.[1] ?? match[2],
+      programTask: programTaskMatch?.[1] ?? null,
+      evidence,
+      filePath,
+      fresh: nowMs - mtimeMs <= TRIAGE_FRESH_MS,
+    });
+  }
+  return candidates.sort((left, right) => left.rank - right.rank);
+}
+
 function target({
   id,
   kind,
@@ -1653,9 +1703,41 @@ export function buildCandidates({
   crashAutomationExists,
   devBotMemoryExists,
   memoryBudgetBytes,
+  triageCandidates = [],
 }) {
   const candidates = [];
   const soakEvidenceQuality = assessSoakEvidenceQuality(soak);
+
+  // Triage loop output (stability W2-02): evidence-ranked task files from
+  // scripts/triage.mjs. Fresh alarm/verdict/canary evidence ranks ABOVE
+  // roadmap work (score 94 down by rank vs roadmap's 48); stale files sink
+  // below it instead of silently vanishing.
+  for (const triage of triageCandidates.slice(0, 3)) {
+    candidates.push(
+      target({
+        id: `triage-${triage.bucketId}`,
+        kind: "stability",
+        title: `Triage: ${triage.title}`,
+        score: triage.fresh ? Math.max(60, 94 - (triage.rank - 1) * 4) : 40,
+        confidence: 0.85,
+        estimatedMinutes: 90,
+        rationale:
+          "The triage loop folded live runtime-health alarms, the latest soak verdict, canary regressions, and CI state into this ranked bucket. Execute the mapped stability-program task instead of re-deriving the problem.",
+        evidence: [
+          `Triage file: ${triage.filePath}`,
+          ...(triage.programTask ? [`Program task: ${triage.programTask}`] : []),
+          ...triage.evidence,
+        ],
+        prompt:
+          `Read ${triage.filePath} and the program task it maps to (${triage.programTask ?? "see file"}). ` +
+          "Execute that task under its own runner-safe/provider-visible/soak-gated header rules — a runner-safe:false task means open the PR and stop for owner review. Attach the triage evidence to the PR body.",
+        validation: [
+          "The mapped program task's counter-based verification governs; cite the counters that must move.",
+          "Respect docs/STABILITY-PROGRAM.md rules: watchdog freeze, one behavioral change per soak cycle, provider-visible approval lane.",
+        ],
+      }),
+    );
+  }
 
   if ((riskSnapshot?.blockerCount ?? 0) > 0 || (riskSnapshot?.warningCount ?? 0) > 0) {
     candidates.push(
@@ -2468,6 +2550,7 @@ export function planNightlyRun(args) {
     crashAutomationExists: existsSync(args.crashAutomation),
     devBotMemoryExists: existsSync(args.devBotMemory),
     memoryBudgetBytes: args.memoryGib * GIB,
+    triageCandidates: loadTriageCandidates(),
   });
   const candidates = applyOutcomeFeedback(baseCandidates, outcomeLedger);
   const selected = selectTargets(candidates, args);

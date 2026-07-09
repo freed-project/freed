@@ -201,3 +201,23 @@ jobs:
           name: test-results
           path: packages/desktop/test-results/
           retention-days: 7
+
+      # Stability W2-02: red dev CI becomes a triage-readable issue instead of
+      # a problem the nightly planner rediscovers from scratch.
+      - name: Open or update the automation-triage issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="CI failure: dev validation on dev"
+          body="Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          Commit: ${GITHUB_SHA}
+          Job: dev (validate:dev)
+
+          Auto-filed for scripts/triage.mjs (label: automation-triage). Latest failure comments on the open issue; close it when the fix merges."
+          existing=$(gh issue list --label automation-triage --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --label automation-triage --body "$body"
+          fi
