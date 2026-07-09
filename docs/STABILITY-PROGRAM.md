@@ -56,7 +56,7 @@ Done when: every counter in the scorecard below has a baseline number from one o
 | [P1-05](stability-tasks/P1-05-recovery-invoke-latch.md) | Recovery never outruns a scrape invoke; persist lastScrapeAt | no | ☐ |
 | [W2-01](stability-tasks/W2-01-invariant-alarms.md) | Invariant alarms: cloud_loop, scrape_zero_persist, preflight_kill, auth_zombie, relay_divergence, watchdog_thrash | no | ◐ observing — cloud_loop positive control CONFIRMED (v26.7.701-dev); breakers + relay_divergence deferred |
 | [W2-02](stability-tasks/W2-02-triage-loop.md) | Triage loop: alarms + canary + red CI → ranked task files; CI-failure issue hook | yes | ☐ |
-| [W2-03](stability-tasks/W2-03-canary-replay-bisect.md) | canary-summarize, watchdog-replay, bisect-regression scripts | yes | ☐ |
+| [W2-03](stability-tasks/W2-03-canary-replay-bisect.md) | canary-summarize, watchdog-replay, bisect-regression scripts | yes | ☑ |
 | [W2-04](stability-tasks/W2-04-new-skills.md) | New skills: freed-soak, freed-triage, freed-canary | yes | ☐ |
 
 Ordering inside Wave 2: W2-01 alarms may land before their matching P1 dampers (positive control). P1-01 through P1-05 land one per soak cycle, in numeric order. W2-02/03/04 are substrate and run in parallel threads.

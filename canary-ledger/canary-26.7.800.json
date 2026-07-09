@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "version": "26.7.800",
+  "windowStart": "2026-07-08T06:44:17.397Z",
+  "windowEnd": "2026-07-09T06:44:17.397Z",
+  "spanHours": 24,
+  "healthLineCount": 1490,
+  "metrics": {
+    "recoveriesPerDay": 3,
+    "windowKillsByReason": {
+      "watchdog_memory": 2
+    },
+    "alarmsByName": {
+      "cloud_loop": 1
+    },
+    "alarmsPerDay": 1,
+    "uploadsPerHour": 0.63,
+    "uploadsUnchangedPerHour": 0.54,
+    "uploadSkipsPerHour": 0,
+    "workerInitsPerHour": 1.33,
+    "scrapeByProvider": {},
+    "peakAppResidentBytes": 8597913600,
+    "peakWebkitLargestResidentBytes": 7224950784,
+    "idleGrowthMbPerHour": 15
+  },
+  "regressions": [],
+  "trailingCompared": 0
+}
