@@ -1,0 +1,49 @@
+{
+  "tag": "v26.7.900-dev",
+  "version": "26.7.900-dev",
+  "channel": "dev",
+  "dayKey": "26.7.9",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-09T16:30:53.430Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.800-dev",
+    "previousPublishedDayTag": "v26.7.800-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.900-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.900-dev"
+    ],
+    "prNumbers": [
+      934,
+      935,
+      936,
+      937,
+      939
+    ],
+    "commitSubjects": [
+      "feat: break the desktop cloud upload loop with a mutation filter and heads guard (stability P1-01) (#934)",
+      "canary: record 26.7.800 (#939)",
+      "feat: add interface zoom controls (#935)",
+      "docs: freed-soak, freed-canary, and freed-triage skills (stability W2-04) (#938)",
+      "feat: triage loop turning alarms, soak verdicts, canary regressions, and red CI into ranked task files (stability W2-02) (#937)",
+      "feat: canary-summarize, replay-watchdog, and bisect-regression scripts (stability W2-03) (#936)"
+    ]
+  },
+  "release": {
+    "deck": "Triage loop, alarms + canary + red CI become ranked task files (stability W2-02), canary-summarize, replay-watchdog, and bisect-regression scripts (stability W2-03), and break the desktop cloud upload loop (mutation filter + heads guard, stability P1-01)",
+    "features": [
+      "Break the desktop cloud upload loop (mutation filter + heads guard, stability P1-01)",
+      "Triage loop , alarms + canary + red CI become ranked task files (stability W2-02)",
+      "Canary-summarize, replay-watchdog, and bisect-regression scripts (stability W2-03)"
+    ],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.900-dev\n\nTriage loop, alarms + canary + red CI become ranked task files (stability W2-02), canary-summarize, replay-watchdog, and bisect-regression scripts (stability W2-03), and break the desktop cloud upload loop (mutation filter + heads guard, stability P1-01)\n\n### Features\n\n- Break the desktop cloud upload loop (mutation filter + heads guard, stability P1-01)\n- Triage loop , alarms + canary + red CI become ranked task files (stability W2-02)\n- Canary-summarize, replay-watchdog, and bisect-regression scripts (stability W2-03)\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
