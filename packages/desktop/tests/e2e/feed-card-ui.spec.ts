@@ -13,6 +13,7 @@ const FACEBOOK_MEDIA_URL = "/freed.svg?feed-card";
 const STORY_MEDIA_URL = "/freed.svg?story-tile";
 const BROKEN_MEDIA_URL = "/freed.svg?fallback";
 const BUG_REPORT_STORE_PATH = `/@fs${fileURLToPath(new URL("../../../ui/src/lib/bug-report.ts", import.meta.url))}`;
+const SETTINGS_STORE_PATH = `/@fs${fileURLToPath(new URL("../../../ui/src/lib/settings-store.ts", import.meta.url))}`;
 
 async function injectCardUiItems(page: import("@playwright/test").Page): Promise<void> {
   await page.evaluate(
@@ -570,6 +571,92 @@ test("filter menu card density slider persists locally", async ({ app, page }) =
   await app.waitForReady();
   await page.getByTestId("mobile-toolbar-filter-button").click();
   await expect(page.getByTestId("feed-signal-filter-menu").getByTestId("feed-card-density-slider")).toHaveValue("2");
+});
+
+test("filter menu interface zoom slider persists locally", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    if (window.sessionStorage.getItem("interface-zoom-test-started") === "1") return;
+    window.sessionStorage.setItem("interface-zoom-test-started", "1");
+    window.localStorage.removeItem("freed-interface-zoom");
+  });
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(page);
+
+  const baseFontSize = await page.evaluate(() =>
+    Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize),
+  );
+
+  await page.getByTestId("mobile-toolbar-filter-button").click();
+  const filterMenu = page.getByTestId("feed-signal-filter-menu");
+  const zoomSlider = filterMenu.getByTestId("interface-zoom-slider");
+  await expect(zoomSlider).toBeVisible();
+  await expect(zoomSlider).toHaveValue("100");
+  await expect(filterMenu.getByTestId("interface-zoom-value")).toHaveText("100%");
+
+  await zoomSlider.focus();
+  for (let i = 0; i < 5; i += 1) {
+    await zoomSlider.press("ArrowRight");
+  }
+
+  await expect(zoomSlider).toHaveValue("150");
+  await expect(filterMenu.getByTestId("interface-zoom-value")).toHaveText("150%");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-interface-zoom"))).toBe("150");
+  await expect.poll(() => page.evaluate(() =>
+    Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize),
+  )).toBeGreaterThan(baseFontSize * 1.4);
+
+  await page.reload();
+  await app.waitForReady();
+  await expect.poll(() => page.evaluate(() =>
+    Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize),
+  )).toBeGreaterThan(baseFontSize * 1.4);
+
+  await page.getByTestId("mobile-toolbar-filter-button").click();
+  await expect(page.getByTestId("feed-signal-filter-menu").getByTestId("interface-zoom-slider")).toHaveValue("150");
+});
+
+test("appearance settings expose card density and interface zoom controls", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1280, height: 850 });
+  await page.addInitScript(() => {
+    window.localStorage.removeItem("freed-feed-card-density");
+    window.localStorage.removeItem("freed-interface-zoom");
+  });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openDefault();
+  }, SETTINGS_STORE_PATH);
+
+  const settingsControls = page.getByTestId("settings-display-scale-controls");
+  await expect(settingsControls.getByText("Card density", { exact: true })).toBeVisible();
+  await expect(settingsControls.getByText("Interface zoom", { exact: true })).toBeVisible();
+
+  const densitySlider = settingsControls.getByTestId("feed-card-density-slider");
+  await expect(densitySlider).toHaveValue("1");
+  await densitySlider.focus();
+  await densitySlider.press("ArrowLeft");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-feed-card-density"))).toBe("compact");
+
+  const baseFontSize = await page.evaluate(() =>
+    Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize),
+  );
+  const zoomSlider = settingsControls.getByTestId("interface-zoom-slider");
+  await expect(zoomSlider).toHaveValue("100");
+  await zoomSlider.focus();
+  for (let i = 0; i < 10; i += 1) {
+    await zoomSlider.press("ArrowRight");
+  }
+
+  await expect(zoomSlider).toHaveValue("200");
+  await expect(settingsControls.getByTestId("settings-interface-zoom-value")).toHaveText("200%");
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem("freed-interface-zoom"))).toBe("200");
+  await expect.poll(() => page.evaluate(() =>
+    Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize),
+  )).toBeGreaterThan(baseFontSize * 1.9);
 });
 
 test("narrow desktop toolbar exposes card density slider in the filter menu", async ({ app, page }) => {

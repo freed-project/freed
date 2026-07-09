@@ -41,6 +41,7 @@ import {
   applyAnimationIntensityToDocument,
   resolveAnimationIntensity,
 } from "../../lib/animation-preferences.js";
+import { applyInterfaceZoomToDocument } from "../../lib/interface-zoom.js";
 import { MapView } from "../map/MapView.js";
 import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
 import {
@@ -358,6 +359,10 @@ export function AppShell({ children }: AppShellProps) {
   );
 
   // Keyboard shortcuts: Cmd/Ctrl+Shift+D to toggle, Escape to close
+  useLayoutEffect(() => {
+    applyInterfaceZoomToDocument();
+  }, []);
+
   useEffect(() => {
     if (!isInitialized) return;
     applyThemeToDocument(themeId);
