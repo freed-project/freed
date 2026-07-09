@@ -1933,7 +1933,31 @@ html.freed-mobile-sidebar-open body {
 }
 
 .theme-toolbar-zoom-slider::-webkit-slider-runnable-track {
-  background: linear-gradient(90deg, var(--theme-border-subtle), var(--theme-border-subtle));
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(var(--interface-zoom-default-stop, 20%) - 0.055rem),
+      color-mix(in srgb, var(--theme-text-muted) 72%, transparent) calc(var(--interface-zoom-default-stop, 20%) - 0.055rem),
+      color-mix(in srgb, var(--theme-text-muted) 72%, transparent) calc(var(--interface-zoom-default-stop, 20%) + 0.055rem),
+      transparent calc(var(--interface-zoom-default-stop, 20%) + 0.055rem),
+      transparent 100%
+    ),
+    linear-gradient(90deg, var(--theme-border-subtle), var(--theme-border-subtle));
+}
+
+.theme-toolbar-zoom-slider::-moz-range-track {
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(var(--interface-zoom-default-stop, 20%) - 0.055rem),
+      color-mix(in srgb, var(--theme-text-muted) 72%, transparent) calc(var(--interface-zoom-default-stop, 20%) - 0.055rem),
+      color-mix(in srgb, var(--theme-text-muted) 72%, transparent) calc(var(--interface-zoom-default-stop, 20%) + 0.055rem),
+      transparent calc(var(--interface-zoom-default-stop, 20%) + 0.055rem),
+      transparent 100%
+    ),
+    linear-gradient(90deg, var(--theme-border-subtle), var(--theme-border-subtle));
 }
 
 .theme-toolbar-select-control {

@@ -587,16 +587,28 @@ test("filter menu interface zoom slider persists locally", async ({ app, page })
   const baseFontSize = await page.evaluate(() =>
     Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize),
   );
+  const baseGeometry = await page.evaluate(() => {
+    const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    if (!toolbar || !sidebar) {
+      throw new Error("Workspace shell is missing");
+    }
+    return {
+      sidebarWidth: Math.round(sidebar.getBoundingClientRect().width),
+      toolbarHeight: Math.round(toolbar.getBoundingClientRect().height),
+    };
+  });
 
   await page.getByTestId("mobile-toolbar-filter-button").click();
   const filterMenu = page.getByTestId("feed-signal-filter-menu");
   const zoomSlider = filterMenu.getByTestId("interface-zoom-slider");
   await expect(zoomSlider).toBeVisible();
+  await expect(zoomSlider).toHaveAttribute("min", "75");
   await expect(zoomSlider).toHaveValue("100");
   await expect(filterMenu.getByTestId("interface-zoom-value")).toHaveText("100%");
 
   await zoomSlider.focus();
-  for (let i = 0; i < 5; i += 1) {
+  for (let i = 0; i < 10; i += 1) {
     await zoomSlider.press("ArrowRight");
   }
 
@@ -606,6 +618,26 @@ test("filter menu interface zoom slider persists locally", async ({ app, page })
   await expect.poll(() => page.evaluate(() =>
     Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize),
   )).toBeGreaterThan(baseFontSize * 1.4);
+  const zoomedGeometry = await page.evaluate(() => {
+    const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    if (!toolbar || !sidebar) {
+      throw new Error("Workspace shell is missing");
+    }
+    const clippedLabels = Array.from(document.querySelectorAll('[data-testid^="source-row-"] .truncate'))
+      .filter((element): element is HTMLElement => element instanceof HTMLElement)
+      .filter((element) => (element.textContent?.trim().length ?? 0) > 1)
+      .filter((element) => element.scrollWidth > element.clientWidth + 1)
+      .map((element) => element.textContent?.trim());
+    return {
+      clippedLabels,
+      sidebarWidth: Math.round(sidebar.getBoundingClientRect().width),
+      toolbarHeight: Math.round(toolbar.getBoundingClientRect().height),
+    };
+  });
+  expect(zoomedGeometry.sidebarWidth).toBeGreaterThan(baseGeometry.sidebarWidth * 1.4);
+  expect(zoomedGeometry.toolbarHeight).toBeGreaterThan(baseGeometry.toolbarHeight * 1.4);
+  expect(zoomedGeometry.clippedLabels).toEqual([]);
 
   await page.reload();
   await app.waitForReady();
@@ -615,6 +647,54 @@ test("filter menu interface zoom slider persists locally", async ({ app, page })
 
   await page.getByTestId("mobile-toolbar-filter-button").click();
   await expect(page.getByTestId("feed-signal-filter-menu").getByTestId("interface-zoom-slider")).toHaveValue("150");
+});
+
+test("filter menu interface zoom slider stays visually stable while dragged", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    window.localStorage.removeItem("freed-interface-zoom");
+  });
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(page);
+
+  const baseFontSize = await page.evaluate(() =>
+    Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize),
+  );
+
+  await page.getByTestId("mobile-toolbar-filter-button").click();
+  const filterMenu = page.getByTestId("feed-signal-filter-menu");
+  const zoomControl = filterMenu.getByTestId("interface-zoom-control");
+  const zoomSlider = filterMenu.getByTestId("interface-zoom-slider");
+  await expect(zoomSlider).toHaveValue("100");
+
+  const controlBox = await zoomControl.boundingBox();
+  const sliderBox = await zoomSlider.boundingBox();
+  expect(controlBox).not.toBeNull();
+  expect(sliderBox).not.toBeNull();
+  if (!controlBox || !sliderBox) {
+    throw new Error("Interface zoom slider geometry is missing");
+  }
+
+  const startX = sliderBox.x + sliderBox.width * 0.2;
+  const targetX = sliderBox.x + sliderBox.width * 0.72;
+  const y = sliderBox.y + sliderBox.height / 2;
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await page.mouse.move(targetX, y, { steps: 8 });
+
+  await expect.poll(() => page.evaluate(() =>
+    Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize),
+  )).toBeGreaterThan(baseFontSize * 1.2);
+  const draggedBox = await zoomControl.boundingBox();
+  expect(draggedBox).not.toBeNull();
+  if (!draggedBox) {
+    throw new Error("Interface zoom slider geometry disappeared while dragging");
+  }
+  expect(draggedBox.width).toBeGreaterThan(controlBox.width * 0.96);
+  expect(draggedBox.width).toBeLessThan(controlBox.width * 1.04);
+
+  await page.mouse.up();
 });
 
 test("appearance settings expose card density and interface zoom controls", async ({ app, page }) => {
@@ -647,7 +727,7 @@ test("appearance settings expose card density and interface zoom controls", asyn
   const zoomSlider = settingsControls.getByTestId("interface-zoom-slider");
   await expect(zoomSlider).toHaveValue("100");
   await zoomSlider.focus();
-  for (let i = 0; i < 10; i += 1) {
+  for (let i = 0; i < 20; i += 1) {
     await zoomSlider.press("ArrowRight");
   }
 

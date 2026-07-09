@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 
-export const INTERFACE_ZOOM_MIN = 50;
+export const INTERFACE_ZOOM_MIN = 75;
 export const INTERFACE_ZOOM_MAX = 200;
-export const INTERFACE_ZOOM_STEP = 10;
+export const INTERFACE_ZOOM_STEP = 5;
 export const INTERFACE_ZOOM_DEFAULT = 100;
 
 const STORAGE_KEY = "freed-interface-zoom";
@@ -19,6 +19,14 @@ export function normalizeInterfaceZoom(value: number | string | null): number {
 
 export function formatInterfaceZoom(value: number): string {
   return `${normalizeInterfaceZoom(value).toLocaleString()}%`;
+}
+
+export function getInterfaceChromeScale(value: number): number {
+  return Math.max(1, normalizeInterfaceZoom(value) / INTERFACE_ZOOM_DEFAULT);
+}
+
+export function scaleInterfaceChromePx(value: number, zoom: number): number {
+  return Math.round(value * getInterfaceChromeScale(zoom));
 }
 
 export function getInterfaceZoom(): number {
