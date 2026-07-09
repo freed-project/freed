@@ -55,7 +55,7 @@ Done when: every counter in the scorecard below has a baseline number from one o
 | [P1-04](stability-tasks/P1-04-preflight-recycle-guard.md) | Preflight recycle guard + login-in-progress latch | no | ☐ |
 | [P1-05](stability-tasks/P1-05-recovery-invoke-latch.md) | Recovery never outruns a scrape invoke; persist lastScrapeAt | no | ☐ |
 | [W2-01](stability-tasks/W2-01-invariant-alarms.md) | Invariant alarms: cloud_loop, scrape_zero_persist, preflight_kill, auth_zombie, relay_divergence, watchdog_thrash | no | ◐ observing — cloud_loop positive control CONFIRMED (v26.7.701-dev); breakers + relay_divergence deferred |
-| [W2-02](stability-tasks/W2-02-triage-loop.md) | Triage loop: alarms + canary + red CI → ranked task files; CI-failure issue hook | yes | ☐ |
+| [W2-02](stability-tasks/W2-02-triage-loop.md) | Triage loop: alarms + canary + red CI → ranked task files; CI-failure issue hook | yes | ☑ |
 | [W2-03](stability-tasks/W2-03-canary-replay-bisect.md) | canary-summarize, watchdog-replay, bisect-regression scripts | yes | ☑ |
 | [W2-04](stability-tasks/W2-04-new-skills.md) | New skills: freed-soak, freed-triage, freed-canary | yes | ☐ |
 
