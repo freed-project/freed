@@ -1,27 +1,58 @@
 {
   "schemaVersion": 1,
   "version": "26.7.800",
-  "windowStart": "2026-07-08T06:44:17.397Z",
-  "windowEnd": "2026-07-09T06:44:17.397Z",
+  "windowStart": "2026-07-08T12:14:46.333Z",
+  "windowEnd": "2026-07-09T12:14:46.333Z",
   "spanHours": 24,
-  "healthLineCount": 1490,
+  "healthLineCount": 1898,
   "metrics": {
     "recoveriesPerDay": 3,
     "windowKillsByReason": {
-      "watchdog_memory": 2
+      "watchdog_memory": 2,
+      "job_complete": 3
     },
     "alarmsByName": {
-      "cloud_loop": 1
+      "cloud_loop": 4,
+      "preflight_kill": 1
     },
-    "alarmsPerDay": 1,
-    "uploadsPerHour": 0.63,
-    "uploadsUnchangedPerHour": 0.54,
+    "alarmsPerDay": 5,
+    "uploadsPerHour": 2.63,
+    "uploadsUnchangedPerHour": 2.46,
     "uploadSkipsPerHour": 0,
-    "workerInitsPerHour": 1.33,
-    "scrapeByProvider": {},
+    "workerInitsPerHour": 4.92,
+    "scrapeByProvider": {
+      "x": {
+        "attempts": 1,
+        "ok": 1,
+        "byStage": {
+          "ok": 1
+        }
+      },
+      "facebook": {
+        "attempts": 1,
+        "ok": 1,
+        "byStage": {
+          "ok": 1
+        }
+      },
+      "instagram": {
+        "attempts": 1,
+        "ok": 0,
+        "byStage": {
+          "placeholder_feed": 1
+        }
+      },
+      "linkedin": {
+        "attempts": 1,
+        "ok": 0,
+        "byStage": {
+          "event_timeout": 1
+        }
+      }
+    },
     "peakAppResidentBytes": 8597913600,
     "peakWebkitLargestResidentBytes": 7224950784,
-    "idleGrowthMbPerHour": 15
+    "idleGrowthMbPerHour": 11.7
   },
   "regressions": [],
   "trailingCompared": 0
