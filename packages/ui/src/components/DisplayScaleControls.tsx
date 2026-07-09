@@ -83,11 +83,17 @@ export function InterfaceZoomSlider({
   onChange,
   fullWidth = false,
   style,
+  dragStabilization = "control",
+  onDragStart,
+  onDragEnd,
 }: {
   value: number;
   onChange: (value: number) => void;
   fullWidth?: boolean;
   style?: CSSProperties;
+  dragStabilization?: "control" | "parent";
+  onDragStart?: (baselineZoom: number) => void;
+  onDragEnd?: () => void;
 }) {
   const [dragBaselineZoom, setDragBaselineZoom] = useState<number | null>(null);
   const zoomLabel = formatInterfaceZoom(value);
@@ -98,11 +104,13 @@ export function InterfaceZoomSlider({
   };
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     event.stopPropagation();
-    setDragBaselineZoom(normalizeInterfaceZoom(value));
+    const baselineZoom = normalizeInterfaceZoom(value);
+    setDragBaselineZoom(baselineZoom);
+    onDragStart?.(baselineZoom);
   };
   const currentZoom = normalizeInterfaceZoom(value);
   const dragScale = dragBaselineZoom === null ? 1 : dragBaselineZoom / currentZoom;
-  const triggerStyle = dragBaselineZoom === null
+  const triggerStyle = dragBaselineZoom === null || dragStabilization === "parent"
     ? undefined
     : ({
         transform: `scale(${dragScale})`,
@@ -114,7 +122,10 @@ export function InterfaceZoomSlider({
       return undefined;
     }
 
-    const endDrag = () => setDragBaselineZoom(null);
+    const endDrag = () => {
+      setDragBaselineZoom(null);
+      onDragEnd?.();
+    };
     window.addEventListener("pointerup", endDrag);
     window.addEventListener("pointercancel", endDrag);
     window.addEventListener("blur", endDrag);
@@ -123,7 +134,7 @@ export function InterfaceZoomSlider({
       window.removeEventListener("pointercancel", endDrag);
       window.removeEventListener("blur", endDrag);
     };
-  }, [dragBaselineZoom]);
+  }, [dragBaselineZoom, onDragEnd]);
 
   return (
     <Tooltip

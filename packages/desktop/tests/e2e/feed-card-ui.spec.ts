@@ -649,7 +649,7 @@ test("filter menu interface zoom slider persists locally", async ({ app, page })
   await expect(page.getByTestId("feed-signal-filter-menu").getByTestId("interface-zoom-slider")).toHaveValue("150");
 });
 
-test("filter menu interface zoom slider stays visually stable while dragged", async ({ app, page }) => {
+test("filter menu stays visually stable while interface zoom is dragged", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() => {
     window.localStorage.removeItem("freed-interface-zoom");
@@ -669,11 +669,13 @@ test("filter menu interface zoom slider stays visually stable while dragged", as
   await expect(zoomSlider).toHaveValue("100");
 
   const controlBox = await zoomControl.boundingBox();
+  const menuBox = await filterMenu.boundingBox();
   const sliderBox = await zoomSlider.boundingBox();
   expect(controlBox).not.toBeNull();
+  expect(menuBox).not.toBeNull();
   expect(sliderBox).not.toBeNull();
-  if (!controlBox || !sliderBox) {
-    throw new Error("Interface zoom slider geometry is missing");
+  if (!controlBox || !menuBox || !sliderBox) {
+    throw new Error("Interface zoom menu geometry is missing");
   }
 
   const startX = sliderBox.x + sliderBox.width * 0.2;
@@ -687,12 +689,18 @@ test("filter menu interface zoom slider stays visually stable while dragged", as
     Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize),
   )).toBeGreaterThan(baseFontSize * 1.2);
   const draggedBox = await zoomControl.boundingBox();
+  const draggedMenuBox = await filterMenu.boundingBox();
   expect(draggedBox).not.toBeNull();
-  if (!draggedBox) {
-    throw new Error("Interface zoom slider geometry disappeared while dragging");
+  expect(draggedMenuBox).not.toBeNull();
+  if (!draggedBox || !draggedMenuBox) {
+    throw new Error("Interface zoom menu geometry disappeared while dragging");
   }
   expect(draggedBox.width).toBeGreaterThan(controlBox.width * 0.96);
   expect(draggedBox.width).toBeLessThan(controlBox.width * 1.04);
+  expect(Math.abs(draggedMenuBox.x - menuBox.x)).toBeLessThan(2);
+  expect(Math.abs(draggedMenuBox.y - menuBox.y)).toBeLessThan(2);
+  expect(draggedMenuBox.width).toBeGreaterThan(menuBox.width * 0.99);
+  expect(draggedMenuBox.width).toBeLessThan(menuBox.width * 1.01);
 
   await page.mouse.up();
 });

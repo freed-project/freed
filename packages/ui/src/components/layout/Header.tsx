@@ -51,6 +51,7 @@ import {
 import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
 import { useFeedCardDensity } from "../../lib/feed-card-density.js";
 import {
+  normalizeInterfaceZoom,
   scaleInterfaceChromePx,
   useInterfaceZoom,
 } from "../../lib/interface-zoom.js";
@@ -605,6 +606,11 @@ export function Header({
     top: number;
     right: number;
   } | null>(null);
+  const [signalFilterMenuZoomDrag, setSignalFilterMenuZoomDrag] = useState<{
+    baselineZoom: number;
+    left: number;
+    top: number;
+  } | null>(null);
   const [signalFilterFeedback, setSignalFilterFeedback] = useState<{
     mode: FeedSignalMode;
     tick: number;
@@ -616,6 +622,20 @@ export function Header({
     top: number;
     right: number;
   } | null>(null);
+  const handleSignalFilterZoomDragStart = useCallback((baselineZoom: number) => {
+    const bounds = signalFilterMenuRef.current?.getBoundingClientRect();
+    if (!bounds) {
+      return;
+    }
+    setSignalFilterMenuZoomDrag({
+      baselineZoom,
+      left: bounds.left,
+      top: bounds.top,
+    });
+  }, []);
+  const handleSignalFilterZoomDragEnd = useCallback(() => {
+    setSignalFilterMenuZoomDrag(null);
+  }, []);
   const updateDisplayPreference = useCallback((patch: Partial<DisplayPreferences>) => {
     void updatePreferences({
       display: patch,
@@ -1371,6 +1391,12 @@ export function Header({
   }, [addFeedOpen, savedContentOpen]);
 
   useEffect(() => {
+    if (!signalFilterMenuOpen) {
+      setSignalFilterMenuZoomDrag(null);
+    }
+  }, [signalFilterMenuOpen]);
+
+  useEffect(() => {
     if (activeFilter.archivedOnly) {
       return;
     }
@@ -1398,8 +1424,15 @@ export function Header({
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
   const signalFilterMenuStyle = {
-    top: signalFilterMenuTop,
-    right: signalFilterMenuPosition?.right ?? 8,
+    top: signalFilterMenuZoomDrag?.top ?? signalFilterMenuTop,
+    ...(signalFilterMenuZoomDrag
+      ? {
+          left: signalFilterMenuZoomDrag.left,
+          right: "auto",
+          transform: `scale(${signalFilterMenuZoomDrag.baselineZoom / normalizeInterfaceZoom(interfaceZoom)})`,
+          transformOrigin: "top left",
+        }
+      : { right: signalFilterMenuPosition?.right ?? 8 }),
     ["--theme-menu-top" as string]: `${signalFilterMenuTop}px`,
     ["--theme-menu-viewport-margin" as string]: `${MENU_VIEWPORT_MARGIN_PX}px`,
     ...(headerDragRegion ? noDrag : {}),
@@ -2035,6 +2068,9 @@ export function Header({
                   onChange={setInterfaceZoom}
                   fullWidth
                   style={headerDragRegion ? toolbarControlStyle : undefined}
+                  dragStabilization="parent"
+                  onDragStart={handleSignalFilterZoomDragStart}
+                  onDragEnd={handleSignalFilterZoomDragEnd}
                 />
               </div>
             </div>
