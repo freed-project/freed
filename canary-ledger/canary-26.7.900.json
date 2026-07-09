@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "version": "26.7.900",
+  "windowStart": "2026-07-09T16:54:37.241Z",
+  "windowEnd": "2026-07-09T20:54:37.241Z",
+  "spanHours": 4,
+  "healthLineCount": 986,
+  "metrics": {
+    "recoveriesPerDay": 30,
+    "windowKillsByReason": {
+      "watchdog_stale": 2,
+      "job_complete": 8,
+      "watchdog_memory": 1,
+      "post_scrape_recovery": 2,
+      "critical_pressure": 1
+    },
+    "alarmsByName": {
+      "cloud_loop": 1,
+      "preflight_kill": 5,
+      "scrape_zero_persist": 1
+    },
+    "alarmsPerDay": 42,
+    "uploadsPerHour": 9.5,
+    "uploadsUnchangedPerHour": 7,
+    "uploadSkipsPerHour": 9,
+    "workerInitsPerHour": 29.5,
+    "scrapeByProvider": {
+      "x": {
+        "attempts": 6,
+        "ok": 6,
+        "byStage": {
+          "ok": 6
+        }
+      },
+      "facebook": {
+        "attempts": 7,
+        "ok": 2,
+        "byStage": {
+          "ok": 2,
+          "runtime_deferred": 4,
+          "memory_pressure": 1
+        }
+      },
+      "instagram": {
+        "attempts": 3,
+        "ok": 2,
+        "byStage": {
+          "ok": 2,
+          "placeholder_feed": 1
+        }
+      },
+      "linkedin": {
+        "attempts": 3,
+        "ok": 0,
+        "byStage": {
+          "event_timeout": 1,
+          "memory_pressure": 2
+        }
+      }
+    },
+    "peakAppResidentBytes": 6884474880,
+    "peakWebkitLargestResidentBytes": 6696501248,
+    "idleGrowthMbPerHour": 196.3
+  },
+  "regressions": [
+    {
+      "metric": "recoveriesPerDay",
+      "current": 30,
+      "trailingMedian": 3,
+      "limit": 5,
+      "trailingCount": 1
+    },
+    {
+      "metric": "uploadsUnchangedPerHour",
+      "current": 7,
+      "trailingMedian": 2.46,
+      "limit": 3.69,
+      "trailingCount": 1
+    },
+    {
+      "metric": "uploadsPerHour",
+      "current": 9.5,
+      "trailingMedian": 2.63,
+      "limit": 3.94,
+      "trailingCount": 1
+    },
+    {
+      "metric": "workerInitsPerHour",
+      "current": 29.5,
+      "trailingMedian": 4.92,
+      "limit": 7.38,
+      "trailingCount": 1
+    },
+    {
+      "metric": "idleGrowthMbPerHour",
+      "current": 196.3,
+      "trailingMedian": 11.7,
+      "limit": 31.7,
+      "trailingCount": 1
+    },
+    {
+      "metric": "alarmsPerDay",
+      "current": 42,
+      "trailingMedian": 5,
+      "limit": 7,
+      "trailingCount": 1
+    }
+  ],
+  "trailingCompared": 1
+}

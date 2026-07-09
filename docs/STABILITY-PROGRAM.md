@@ -1,6 +1,6 @@
 # Stability Program: Provider Sync + Memory
 
-Status: **Active — Wave 1 baseline recorded 2026-07-07; Wave 2 is next**
+Status: **Active — Wave 2 underway. W2-01/02/03/04 substrate merged; P1-01 (desktop cloud loop) shipped + soak-verified 2026-07-09. Next: P1-02, and the scrape-memory restart cluster (P1-04/P1-05) now the dominant instability.**
 Created: 2026-07-02 (dev @ v26.7.203-dev)
 Evidence: [stability-findings.json](stability-findings.json) — 37 findings, each adversarially verified at file:line
 Task queue: [stability-tasks/](stability-tasks/) — one self-contained prompt per task
@@ -49,7 +49,7 @@ Done when: every counter in the scorecard below has a baseline number from one o
 
 | Task | Title | runner-safe | Status |
 | ---- | ----- | ----------- | ------ |
-| [P1-01](stability-tasks/P1-01-cloud-loop-damper-desktop.md) | Break the desktop cloud upload loop (mutation filter + heads guard) | no | ☐ |
+| [P1-01](stability-tasks/P1-01-cloud-loop-damper-desktop.md) | Break the desktop cloud upload loop (mutation filter + heads guard) | no | ☑ shipped v26.7.900-dev, soak-verified |
 | [P1-02](stability-tasks/P1-02-cloud-loop-damper-pwa.md) | Break the PWA cloud loop (mutation tag + heads guard) | no | ☐ |
 | [P1-03](stability-tasks/P1-03-gdrive-self-write-filter.md) | GDrive self-write filtering + no-op upload skip | no | ☐ |
 | [P1-04](stability-tasks/P1-04-preflight-recycle-guard.md) | Preflight recycle guard + login-in-progress latch | no | ☐ |
@@ -104,15 +104,15 @@ Baseline measured 2026-07-07 from a 6.05 h idle overnight soak of v26.7.301-dev 
 
 | Metric | Baseline (fill from first Wave-1 soak) | Target |
 | ------ | -------------------------------------- | ------ |
-| Idle cloud uploads/hour | 11.1/h, 96% heads-unchanged (67 uploads / 6.05 h idle); launch hour: 45/h, 77% unchanged | <5 |
-| Scrapes extracted>0, persisted==0 | 0 of 4 scrapes (fb 7→4, ig 2→2, x+li extracted 0) | 0 |
+| Idle cloud uploads/hour | Baseline 11.1/h @ 96% unchanged (idle) / 16.4/h @ 94% (2026-07-08 pre-damper soak). **Post-P1-01 (v26.7.900-dev, 3.3 h): unchanged-heads uploads ~0.6/h (2/8), 36 echoes skipped, cloud_loop 0 — ~96% cut. ☑ target met.** Residual 2 are restart-tax (in-memory heads record resets per app restart) | <5 |
+| Scrapes extracted>0, persisted==0 | Baseline 0 of 4. **v26.7.900-dev active soak caught 1 (F03): a scrape extracted ≥5, persisted 0 — post-scrape recovery destroyed the renderer before persistence. Target P1-05.** | 0 |
 | Windows destroyed while session active | 0 active-session kills; 4 idle-window kills (3 job_complete, 1 watchdog_memory); launch hour: 12 kills (7 job_complete, 5 watchdog_memory incl. main renderer at age 2059 s) | 0 |
 | LAN convergence phone↔desktop, cloud off | impossible (no relay client connected during soak; relay port LISTEN only) | <10s both ways |
 | "job timed out kind=rss-poll" per day | 0 records in runtime-health/diagnostics over the window — not yet counter-instrumented, needs W2-01 for an authoritative number | 0 |
 | Dead-session WebView spins/day/provider | night's single scheduled sweep: li 1 full 100 s WebView spin → event_timeout, x 1 api_error (auth misclassification, F-auth theme) | ≤3 then pause+prompt |
 | Worker INITs/hour during content backlog | 19.3/h while idle (117 / 6.05 h); 82/h during launch-hour backlog | <10 |
 | Renderer recoveries/day (thresholds frozen) | 1 attempt / 6 h idle (≈4/day); launch hour: 5 attempts + 3 restart requests in 57 min, ending in silent app death | →0 |
-| invariant_alarms/day by name (W2-01) | **Pre-damper baseline (v26.7.701-dev, 6.23 h soak 2026-07-07/08): cloud_loop=7, preflight_kill=1.** cloud_loop fires hard during active windows (alarm details 14–19 unchanged uploads/15 min, ~4× the 5-in-15min threshold) and goes quiet in deep idle (burst-triggered, not idle-triggered — a calibration note for the breaker cycle). preflight_kill caught a real held-session teardown (window_destroyed job_complete scraperSessionHeld=true, F04). Cross-confirmed by `uploads_unchanged_heads` FAIL 98/102 (~16/h). This is the P1-01 "before" — cloud_loop should → 0 once the damper lands | each →0 as its damper lands |
+| invariant_alarms/day by name (W2-01) | **Pre-damper baseline (v26.7.701-dev, 6.23 h soak 2026-07-07/08): cloud_loop=7, preflight_kill=1.** cloud_loop fires hard during active windows (alarm details 14–19 unchanged uploads/15 min, ~4× the 5-in-15min threshold) and goes quiet in deep idle (burst-triggered, not idle-triggered — a calibration note for the breaker cycle). preflight_kill caught a real held-session teardown (window_destroyed job_complete scraperSessionHeld=true, F04). Cross-confirmed by `uploads_unchanged_heads` FAIL 98/102 (~16/h). **After P1-01 (v26.7.900-dev): cloud_loop 7→0.** New dominant alarms are the scrape-restart cluster — preflight_kill (scrape memory kills) and scrape_zero_persist (F03: extract>=5, persist 0) — next targets P1-04/P1-05 | each →0 as its damper lands |
 | fix:/perf: share of non-release commits | ~78% | trending down |
 
 ## What NOT to do
