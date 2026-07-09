@@ -7,7 +7,6 @@ import {
   useCallback,
   type CSSProperties,
   type ButtonHTMLAttributes,
-  type ChangeEvent,
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
@@ -50,12 +49,12 @@ import {
   usePlatform,
 } from "../../context/PlatformContext.js";
 import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
+import { useFeedCardDensity } from "../../lib/feed-card-density.js";
+import { useInterfaceZoom } from "../../lib/interface-zoom.js";
 import {
-  FEED_CARD_DENSITY_LABELS,
-  FEED_CARD_DENSITY_OPTIONS,
-  useFeedCardDensity,
-  type FeedCardDensity,
-} from "../../lib/feed-card-density.js";
+  FeedCardDensitySlider,
+  InterfaceZoomSlider,
+} from "../DisplayScaleControls.js";
 import {
   collectArchivableFeedActionIds,
   collectUnreadFeedActionIds,
@@ -217,64 +216,6 @@ function ToolbarOverflowIcon({ className = "h-5 w-5" }: { className?: string }) 
   );
 }
 
-function FeedCardDensitySlider({
-  value,
-  onChange,
-  fullWidth = false,
-  style,
-}: {
-  value: FeedCardDensity;
-  onChange: (value: FeedCardDensity) => void;
-  fullWidth?: boolean;
-  style?: CSSProperties;
-}) {
-  const valueIndex = Math.max(0, FEED_CARD_DENSITY_OPTIONS.indexOf(value));
-  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const next = FEED_CARD_DENSITY_OPTIONS[Number(event.target.value)] ?? "comfortable";
-    onChange(next);
-  };
-
-  return (
-    <Tooltip
-      label={FEED_CARD_DENSITY_LABELS[value]}
-      className={fullWidth ? "w-full" : undefined}
-    >
-      <div
-        data-testid="feed-card-density-control"
-        className="theme-toolbar-density-control"
-        style={{
-          ...(fullWidth ? { width: "100%" } : {}),
-          ...style,
-        }}
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <span className="theme-toolbar-density-icon theme-toolbar-density-icon-compact" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </span>
-        <input
-          data-testid="feed-card-density-slider"
-          className="theme-toolbar-density-slider"
-          type="range"
-          min={0}
-          max={2}
-          step={1}
-          value={valueIndex}
-          onChange={handleChange}
-          aria-label="Card density"
-          aria-valuetext={FEED_CARD_DENSITY_LABELS[value]}
-        />
-        <span className="theme-toolbar-density-icon theme-toolbar-density-icon-expansive" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </span>
-      </div>
-    </Tooltip>
-  );
-}
-
 function SavedSortSelect({
   value,
   onChange,
@@ -427,6 +368,7 @@ export function Header({
   const display = useAppStore((s) => s.preferences.display);
   const activeSearchQuery = searchQuery.trim();
   const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
+  const [interfaceZoom, setInterfaceZoom] = useInterfaceZoom();
 
   const { filteredItems, isSearching, resultCount } = useSearchResults(
     items,
@@ -2066,6 +2008,25 @@ export function Header({
                 fullWidth
                 style={headerDragRegion ? toolbarControlStyle : undefined}
               />
+              <div className="mt-3">
+                <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                    Interface zoom
+                  </p>
+                  <span
+                    data-testid="interface-zoom-value"
+                    className="text-[0.68rem] font-semibold tabular-nums text-[var(--theme-text-soft)]"
+                  >
+                    {interfaceZoom.toLocaleString()}%
+                  </span>
+                </div>
+                <InterfaceZoomSlider
+                  value={interfaceZoom}
+                  onChange={setInterfaceZoom}
+                  fullWidth
+                  style={headerDragRegion ? toolbarControlStyle : undefined}
+                />
+              </div>
             </div>
           ) : null}
 

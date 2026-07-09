@@ -1909,6 +1909,33 @@ html.freed-mobile-sidebar-open body {
     0 2px 8px rgb(0 0 0 / 0.18);
 }
 
+.theme-toolbar-zoom-control {
+  width: 9.5rem;
+}
+
+.theme-toolbar-zoom-icon {
+  display: inline-flex;
+  width: 0.9rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.theme-toolbar-zoom-icon-small {
+  font-size: 0.625rem;
+}
+
+.theme-toolbar-zoom-icon-large {
+  font-size: 0.9rem;
+}
+
+.theme-toolbar-zoom-slider::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, var(--theme-border-subtle), var(--theme-border-subtle));
+}
+
 .theme-toolbar-select-control {
   display: inline-flex;
   box-sizing: border-box;

@@ -52,6 +52,11 @@ import {
   useReaderOfflineCacheMode,
   type ReaderOfflineCacheMode,
 } from "../lib/reader-cache-settings.js";
+import { useFeedCardDensity } from "../lib/feed-card-density.js";
+import {
+  formatInterfaceZoom,
+  useInterfaceZoom,
+} from "../lib/interface-zoom.js";
 import { ProviderStatusIndicator } from "./ProviderStatusIndicator.js";
 import { toast } from "./Toast.js";
 import { UpdateProgressBar } from "./UpdateProgressBar.js";
@@ -68,6 +73,10 @@ import { SettingsToggle } from "./SettingsToggle.js";
 import { ReportComposer } from "./report/ReportComposer.js";
 import { SearchField } from "./SearchField.js";
 import { ThemePreviewButton } from "./ThemePreviewButton.js";
+import {
+  FeedCardDensitySlider,
+  InterfaceZoomSlider,
+} from "./DisplayScaleControls.js";
 import { Tooltip } from "./Tooltip.js";
 import { ExternalLinkIcon, GoogleContactsIcon, StoryWallIcon } from "./icons.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
@@ -467,6 +476,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const settingsShellRef = useRef<HTMLDivElement>(null);
   const settingsOverlayRef = useRef<HTMLDivElement>(null);
   const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
+  const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
+  const [interfaceZoom, setInterfaceZoom] = useInterfaceZoom();
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
   const allSections: Section[] = useMemo(
@@ -1471,6 +1482,37 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                         </Tooltip>
                       );
                     })}
+                  </div>
+                </div>
+              </div>
+              <div
+                data-testid="settings-display-scale-controls"
+                className="theme-card-soft rounded-2xl p-4 sm:p-5"
+              >
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-text-primary">Card density</p>
+                    <FeedCardDensitySlider
+                      value={feedCardDensity}
+                      onChange={setFeedCardDensity}
+                      fullWidth
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-text-primary">Interface zoom</p>
+                      <span
+                        data-testid="settings-interface-zoom-value"
+                        className="text-xs font-semibold tabular-nums text-text-muted"
+                      >
+                        {formatInterfaceZoom(interfaceZoom)}
+                      </span>
+                    </div>
+                    <InterfaceZoomSlider
+                      value={interfaceZoom}
+                      onChange={setInterfaceZoom}
+                      fullWidth
+                    />
                   </div>
                 </div>
               </div>
