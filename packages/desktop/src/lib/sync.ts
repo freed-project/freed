@@ -24,7 +24,7 @@ import {
   type GoogleDriveFetch,
 } from "@freed/sync/cloud";
 import { getDocBinary, getDocHeads, mergeDoc, replaceLocalDoc, subscribe, setRelayClientCount } from "./automerge";
-import { recordCloudUploadAttempt, type CloudUploadCause } from "./runtime-health-events";
+import { recordCloudUploadAttempt, recordCloudUploadSkipped, type CloudUploadCause } from "./runtime-health-events";
 import {
   addDebugEvent,
   recordCloudProviderEvent,
@@ -1081,6 +1081,10 @@ async function runInitialCloudDownload(
     });
   } else {
     cloudInitialDownloadDeferredAttempts.delete(provider);
+    // Empty cloud: whatever heads we recorded from an earlier connection are
+    // not what the cloud holds. Clear them so the P1-01 guard cannot skip the
+    // first upload of this connection.
+    lastSuccessfulUploadHeadsByProvider.delete(provider);
     markCloudSuccess(provider, {
       stage: "idle",
       lastDownloadAt: Date.now(),
@@ -1300,7 +1304,18 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
 
   // Subscribe to local doc changes so every mutation is uploaded back.
   // Debounced by scheduleCloudUpload. Rapid edits coalesce into one upload.
-  const unsubscribe = subscribe(() => {
+  //
+  // P1-01 damper (F01/F06): MERGE_DOC/REPLACE_DOC events are cloud- or
+  // relay-sourced, not user edits. Scheduling unconditionally on them is the
+  // self-sustaining loop — after every safe upload the merge-back emits a
+  // STATE_UPDATE tagged MERGE_DOC, which re-scheduled the next upload
+  // forever. Those events only upload when the heads actually moved past the
+  // last successful upload; every other mutation schedules as before.
+  const unsubscribe = subscribe((_state, event) => {
+    if (event.mutation === "MERGE_DOC" || event.mutation === "REPLACE_DOC") {
+      void scheduleCloudUploadIfHeadsMoved(provider);
+      return;
+    }
     scheduleCloudUpload(provider);
   });
   cloudChangeUnsubscribes.set(provider, unsubscribe);
@@ -1364,6 +1379,9 @@ export async function deleteCloudFile(provider: CloudProvider, token: string): P
   } else {
     await dropboxDeleteFile(token);
   }
+  // The cloud no longer holds the recorded state; the P1-01 heads guard must
+  // not suppress the next upload after a reconnect.
+  lastSuccessfulUploadHeadsByProvider.delete(provider);
 }
 
 export type CloudConflictWinner = "local" | "cloud";
@@ -1473,6 +1491,54 @@ export async function resolveCloudSyncConflict(
  */
 const lastUploadHeadsByProvider = new Map<CloudProvider, string>();
 
+/**
+ * Heads recorded after the last SUCCESSFUL upload settled, per provider —
+ * including the safe-upload merge-back, so after a completed cycle these are
+ * the heads of the exact document state the cloud now holds (P1-01 damper).
+ * Distinct from lastUploadHeadsByProvider above, which is attempt-time
+ * telemetry for the cloud_upload_attempt counter and must keep measuring
+ * attempts as they happen.
+ */
+const lastSuccessfulUploadHeadsByProvider = new Map<CloudProvider, string>();
+
+/** Current doc heads as a comparable key, or null when unavailable. */
+async function currentHeadsKey(): Promise<string | null> {
+  const heads = await getDocHeads();
+  return heads && heads.length > 0 ? heads.join(",") : null;
+}
+
+/**
+ * P1-01 belt-and-suspenders (F01/F06): called for MERGE_DOC/REPLACE_DOC
+ * subscriber events instead of scheduling unconditionally. Schedules only
+ * when the doc heads moved past the last successful upload — a genuine merge
+ * that changed local state still uploads; the safe-upload merge-back echo
+ * (whose merged state IS what the cloud already holds) does not.
+ */
+async function scheduleCloudUploadIfHeadsMoved(provider: CloudProvider): Promise<void> {
+  try {
+    const headsKey = await currentHeadsKey();
+    const lastUploaded = lastSuccessfulUploadHeadsByProvider.get(provider) ?? null;
+    if (headsKey !== null && headsKey === lastUploaded) {
+      recordCloudUploadSkipped({ provider, cause: "subscriber", reason: "merge_heads_unchanged" });
+      return;
+    }
+  } catch {
+    // Heads unavailable: prefer a redundant upload over a missed one.
+  }
+  scheduleCloudUpload(provider);
+}
+
+/** Record the settled post-upload heads; never lets telemetry fail an upload. */
+async function recordSuccessfulUploadHeads(provider: CloudProvider): Promise<void> {
+  try {
+    const headsKey = await currentHeadsKey();
+    if (headsKey !== null) lastSuccessfulUploadHeadsByProvider.set(provider, headsKey);
+  } catch {
+    // Missing record means the next subscriber event schedules an upload —
+    // the safe failure direction.
+  }
+}
+
 async function recordCloudUploadAttemptCounters(
   provider: CloudProvider,
   cause: CloudUploadCause,
@@ -1501,9 +1567,33 @@ async function performCloudUpload(
   const startedAt = Date.now();
   let byteLength = 0;
   try {
+    const cause = options.cause ?? "subscriber";
+    // P1-01 damper, execution-time check: the debounced timer may have been
+    // armed by a merge-back event that raced ahead of the post-upload heads
+    // record. Re-check at fire time and skip when nothing moved since the
+    // last successful upload. Manual "Sync now" and authoritative replaces
+    // always upload.
+    if (cause === "subscriber" && !options.authoritativeReplace) {
+      try {
+        const headsKey = await currentHeadsKey();
+        if (headsKey !== null && headsKey === lastSuccessfulUploadHeadsByProvider.get(provider)) {
+          recordCloudUploadSkipped({ provider, cause, reason: "execution_heads_unchanged" });
+          updateCloudProvider(provider, {
+            status: "connected",
+            stage: "idle",
+            statusMessage: "Nothing new to upload.",
+            pendingReason: "Waiting for local document changes or Sync now.",
+          });
+          recordCloudStep(provider, "waiting", "idle", "Skipped upload: no changes since the last upload.");
+          return;
+        }
+      } catch {
+        // Heads unavailable: fall through and upload (redundant beats missed).
+      }
+    }
     const binary = await getDocBinary();
     byteLength = binary.byteLength;
-    await recordCloudUploadAttemptCounters(provider, options.cause ?? "subscriber");
+    await recordCloudUploadAttemptCounters(provider, cause);
     const uploadToken = token ?? await getValidCloudToken(provider);
     if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
     markCloudAttempt(provider, "upload", "Uploading local document to cloud storage.");
@@ -1515,6 +1605,10 @@ async function performCloudUpload(
         markCloudAttempt(provider, "merge", "Merging remote data discovered during upload.");
         await mergeDoc(result.uploadedBinary);
       }
+      // Record heads AFTER the merge-back settles: these are the heads of the
+      // exact state the cloud now holds, so the merge-back's own MERGE_DOC
+      // event compares equal and does not re-schedule (P1-01).
+      await recordSuccessfulUploadHeads(provider);
       markCloudSuccess(provider, {
         stage: "idle",
         lastUploadAt: Date.now(),
@@ -1533,6 +1627,7 @@ async function performCloudUpload(
       } else {
         await dropboxUploadSafe(uploadToken, binary);
       }
+      await recordSuccessfulUploadHeads(provider);
       markCloudSuccess(provider, {
         stage: "idle",
         lastUploadAt: Date.now(),
