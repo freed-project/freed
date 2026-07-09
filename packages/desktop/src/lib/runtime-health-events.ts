@@ -48,6 +48,20 @@ export function recordCloudUploadAttempt(input: {
 }
 
 /**
+ * One line per cloud upload the P1-01 damper skipped because the doc heads
+ * had not moved since the last successful upload. A healthy damper shows
+ * skips replacing the unchanged-heads attempts counted above; a broken sync
+ * would instead show zero attempts AND zero skips.
+ */
+export function recordCloudUploadSkipped(input: {
+  provider: string;
+  cause: CloudUploadCause;
+  reason: "merge_heads_unchanged" | "execution_heads_unchanged";
+}): void {
+  recordRuntimeHealthEvent({ event: "cloud_upload_skipped", ...input });
+}
+
+/**
  * One line per scrape settlement across all four capture paths.
  * `itemsExtracted >= 5 && itemsPersisted == 0` is the scrape_zero_persist
  * signature (F03: results discarded by mid-invoke renderer recovery).
