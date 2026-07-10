@@ -130,6 +130,43 @@ test("a synthetic alarm aggregate + failed verdict produce ranked task files wit
   assert.match(rendered, /runtime-health-20260709\.jsonl:42/);
 });
 
+test("passed soak assertions suppress stale raw alarms for the same bucket", () => {
+  const alarms = {
+    preflight_kill: {
+      count: 13,
+      lastTsMs: NOW - 1_000,
+      evidence: [{ file: "runtime-health-20260709.jsonl", line: 1639, detail: "window destroyed during held session" }],
+    },
+    scrape_zero_persist: {
+      count: 1,
+      lastTsMs: NOW - 1_000,
+      evidence: [{ file: "runtime-health-20260709.jsonl", line: 2077, detail: "x scrape extracted 76 items but persisted 0" }],
+    },
+    cloud_loop: {
+      count: 2,
+      lastTsMs: NOW - 1_000,
+      evidence: [{ file: "runtime-health-20260709.jsonl", line: 1532, detail: "2 uploads unchanged heads" }],
+    },
+  };
+  const verdictInfo = {
+    verdictPath: "/soak/soak-verdict.json",
+    verdict: {
+      windowEnd: new Date(NOW).toISOString(),
+      assertions: [
+        { id: "preflight_kills", status: "pass", detail: "0 of 10 window_destroyed records killed an active session" },
+        { id: "scrape_zero_persist", status: "fail", detail: "1 scrape extracted >= 5 items and persisted 0" },
+        { id: "uploads_unchanged_heads", status: "fail", detail: "2 of 8 uploads had unchanged heads" },
+      ],
+    },
+  };
+
+  const ranked = buildCandidates({ alarms, verdictInfo, canaryInfo: null, ciIssues: [], nowMs: NOW });
+  const ids = ranked.map((candidate) => candidate.bucket.id);
+  assert.ok(!ids.includes("preflight-kill"), "resolved preflight assertions should clear raw positive-control alarms");
+  assert.ok(ids.includes("scrape-zero-persist"), "failing assertions still produce candidates");
+  assert.ok(ids.includes("cloud-loop"), "failing cloud-loop assertions still produce candidates");
+});
+
 test("CI issues rank at the top when fresh", () => {
   const ranked = buildCandidates({
     alarms: { cloud_loop: { count: 2, lastTsMs: NOW - 6 * 86_400_000, evidence: [] } },
