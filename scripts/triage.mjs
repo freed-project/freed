@@ -209,6 +209,28 @@ export function readCiIssues({ exec = execFileSync } = {}) {
   }
 }
 
+function resolvedAlarmNamesFromVerdict(verdictInfo) {
+  const assertions = verdictInfo?.verdict?.assertions;
+  if (!assertions) return new Set();
+
+  const statusByAssertion = new Map(
+    assertions.map((assertion) => [assertion.id, assertion.status]),
+  );
+  const resolved = new Set();
+  for (const bucket of BUCKETS) {
+    if (bucket.alarms.length === 0 || bucket.assertions.length === 0) continue;
+    const bucketStatuses = bucket.assertions
+      .map((id) => statusByAssertion.get(id))
+      .filter(Boolean);
+    if (bucketStatuses.includes("pass") && !bucketStatuses.includes("fail")) {
+      for (const alarm of bucket.alarms) {
+        resolved.add(alarm);
+      }
+    }
+  }
+  return resolved;
+}
+
 /**
  * Fold the four evidence streams into scored bucket candidates.
  * score = severity * ln(1 + hits) * freshness, freshness 1.0 for <24h-old
@@ -216,6 +238,7 @@ export function readCiIssues({ exec = execFileSync } = {}) {
  */
 export function buildCandidates({ alarms, verdictInfo, canaryInfo, ciIssues, nowMs }) {
   const candidates = new Map();
+  const resolvedAlarmNames = resolvedAlarmNamesFromVerdict(verdictInfo);
   const touch = (bucketId) => {
     const bucket = BUCKETS.find((b) => b.id === bucketId);
     if (!bucket) return null;
@@ -226,6 +249,7 @@ export function buildCandidates({ alarms, verdictInfo, canaryInfo, ciIssues, now
   };
 
   for (const [name, aggregate] of Object.entries(alarms ?? {})) {
+    if (resolvedAlarmNames.has(name)) continue;
     const bucket = BUCKETS.find((b) => b.alarms.includes(name));
     if (!bucket) continue;
     const candidate = touch(bucket.id);
