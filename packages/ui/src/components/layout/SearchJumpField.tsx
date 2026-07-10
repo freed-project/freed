@@ -367,6 +367,7 @@ export function SearchJumpField({
   const showFloatingField = usesFloatingTrigger && isTriggerOpen;
   const showInlineSurface = !usesFloatingTrigger && isFocused;
   const showCommandSurface = showFloatingField || showInlineSurface || !!confirmAction;
+  const inlineBlurTimerRef = useRef<number | null>(null);
 
   const selectedItem = useMemo(
     () => (selectedItemId ? items.find((item) => item.globalId === selectedItemId) ?? null : null),
@@ -673,6 +674,12 @@ export function SearchJumpField({
 
   useEffect(() => {
     setMounted(true);
+    return () => {
+      if (inlineBlurTimerRef.current) {
+        window.clearTimeout(inlineBlurTimerRef.current);
+        inlineBlurTimerRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -1114,10 +1121,18 @@ export function SearchJumpField({
         value={inputValue}
         onChange={(event) => setInputValue(event.target.value)}
         onFocus={() => {
+          if (inlineBlurTimerRef.current) {
+            window.clearTimeout(inlineBlurTimerRef.current);
+            inlineBlurTimerRef.current = null;
+          }
           setIsFocused(true);
         }}
         onBlur={() => {
-          window.setTimeout(() => {
+          if (inlineBlurTimerRef.current) {
+            window.clearTimeout(inlineBlurTimerRef.current);
+          }
+          inlineBlurTimerRef.current = window.setTimeout(() => {
+            inlineBlurTimerRef.current = null;
             if (!triggerPaletteRef.current?.matches(":hover")) {
               setIsFocused(false);
             }
