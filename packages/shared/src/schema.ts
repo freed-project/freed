@@ -1639,6 +1639,59 @@ export function updateRssFeed(
 }
 
 /**
+ * Reconcile an authenticated YouTube subscription roster in one CRDT change.
+ * Existing fetch health and the user's enabled preference are preserved.
+ * Roster membership is tracked separately so an unfollow does not silently
+ * rewrite the user's local feed preference.
+ */
+export function reconcileYouTubeSubscriptions(
+  doc: FreedDoc,
+  feeds: RssFeed[],
+  items: FeedItem[],
+): void {
+  const incomingYouTubeChannels = new Set(
+    feeds
+      .map((feed) => feed.youtubeChannelId)
+      .filter((channelId): channelId is string => typeof channelId === "string"),
+  );
+
+  for (const feed of feeds) {
+    const existing = doc.rssFeeds[feed.url];
+    if (!existing) {
+      addRssFeed(doc, { ...feed, youtubeRosterActive: true });
+      continue;
+    }
+    updateRssFeed(doc, feed.url, {
+      title: feed.title,
+      ...(feed.siteUrl ? { siteUrl: feed.siteUrl } : {}),
+      ...(feed.imageUrl ? { imageUrl: feed.imageUrl } : {}),
+      ...(feed.folder ? { folder: feed.folder } : {}),
+      ...(feed.youtubeChannelId ? { youtubeChannelId: feed.youtubeChannelId } : {}),
+      ...(feed.youtubeSubscriptionId
+        ? { youtubeSubscriptionId: feed.youtubeSubscriptionId }
+        : {}),
+      ...(feed.youtubeRosterSyncedAt !== undefined
+        ? { youtubeRosterSyncedAt: feed.youtubeRosterSyncedAt }
+        : {}),
+      youtubeRosterActive: true,
+    });
+  }
+
+  for (const existing of Object.values(doc.rssFeeds)) {
+    if (
+      existing.youtubeChannelId &&
+      !incomingYouTubeChannels.has(existing.youtubeChannelId)
+    ) {
+      existing.youtubeRosterActive = false;
+    }
+  }
+
+  for (const item of items) {
+    if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
+  }
+}
+
+/**
  * Remove an RSS feed subscription
  *
  * @param doc - The Automerge document (mutable within A.change)

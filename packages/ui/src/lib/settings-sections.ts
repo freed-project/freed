@@ -20,7 +20,8 @@ export type SectionId =
   | "x"
   | "facebook"
   | "instagram"
-  | "linkedin";
+  | "linkedin"
+  | "youtube";
 
 export interface SectionMeta {
   id: SectionId;
@@ -39,6 +40,7 @@ export interface SettingsSectionAvailability {
   hasFacebook: boolean;
   hasInstagram: boolean;
   hasLinkedIn: boolean;
+  hasYouTube?: boolean;
   hasUpdateChecks: boolean;
   hasFactoryReset: boolean;
 }
@@ -134,6 +136,16 @@ export const LI_SECTION_META: SectionMeta = {
   keywords: ["linkedin", "li", "professional", "feed", "connect", "network", "jobs", "posts"],
 };
 
+/** Shown when this surface can manage or report YouTube integration state. */
+export const YOUTUBE_SECTION_META: SectionMeta = {
+  id: "youtube",
+  label: "YouTube",
+  keywords: [
+    "youtube", "video", "subscriptions", "channels", "focus mode", "offline",
+    "premium", "playlist", "freed offline", "shorts", "reels",
+  ],
+};
+
 /** Shown only when the platform provides a Google Contacts settings component. */
 export const GOOGLE_CONTACTS_SECTION_META: SectionMeta = {
   id: "googleContacts",
@@ -168,7 +180,7 @@ export function buildSettingsSectionMetas(
   const baseSectionById = Object.fromEntries(
     BASE_SECTION_METAS.map((section) => [section.id, section]),
   ) as Record<
-    Exclude<SectionId, "ai" | "shortcuts" | "updates" | "danger" | "googleContacts" | "x" | "facebook" | "instagram" | "linkedin">,
+    Exclude<SectionId, "ai" | "shortcuts" | "updates" | "danger" | "googleContacts" | "x" | "facebook" | "instagram" | "linkedin" | "youtube">,
     SectionMeta
   >;
 
@@ -182,6 +194,7 @@ export function buildSettingsSectionMetas(
     ...(availability.hasFacebook ? [FB_SECTION_META] : []),
     ...(availability.hasInstagram ? [IG_SECTION_META] : []),
     ...(availability.hasLinkedIn ? [LI_SECTION_META] : []),
+    ...(availability.hasYouTube ? [YOUTUBE_SECTION_META] : []),
     baseSectionById.feeds,
     baseSectionById.storyWall,
     ...(availability.hasAISettings ? [AI_SECTION_META] : []),

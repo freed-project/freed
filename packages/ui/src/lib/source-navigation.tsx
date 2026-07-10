@@ -7,6 +7,7 @@ import {
   MapPinIcon,
   RssIcon,
   XIcon,
+  YoutubeIcon,
 } from "../components/icons.js";
 
 export interface SourceNavigationItem {
@@ -23,6 +24,7 @@ export function getTopSourceItems(useShortLabels = false): readonly SourceNaviga
     { id: "facebook", label: "Facebook", icon: <FacebookIcon /> },
     { id: "instagram", label: "Instagram", icon: <InstagramIcon /> },
     { id: "linkedin", label: "LinkedIn", icon: <LinkedInIcon /> },
+    { id: "youtube", label: "YouTube", icon: <YoutubeIcon /> },
   ] as const;
 }
 

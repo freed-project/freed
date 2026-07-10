@@ -166,6 +166,17 @@ export interface SaveUrlResult {
   globalId: string;
 }
 
+export interface YouTubeOfflinePlaylistResult {
+  playlistId: string;
+  playlistUrl: string;
+  added: boolean;
+}
+
+export interface YouTubeControls {
+  /** Add one deliberate video selection to the user's private Freed Offline playlist. */
+  addToOfflinePlaylist: (videoUrl: string) => Promise<YouTubeOfflinePlaylistResult>;
+}
+
 export interface LocalAIModelDownloadProgress {
   id: LocalAIModelId;
   downloadedBytes: number;
@@ -281,6 +292,13 @@ export interface PlatformConfig {
   LinkedInSettingsContent: ComponentType<SyncProviderSectionProps> | null;
 
   /**
+   * Content rendered in the Settings > Sources > YouTube section.
+   * The PWA owns OAuth and subscription import. Synced items remain available
+   * on every Freed surface.
+   */
+  YouTubeSettingsContent?: ComponentType<SyncProviderSectionProps> | null;
+
+  /**
    * Content rendered in the Settings > Sources > Google Contacts section.
    * When null, the Google Contacts section is omitted from settings entirely.
    */
@@ -340,6 +358,9 @@ export interface PlatformConfig {
    * If absent, FeedView falls back to window.open().
    */
   openUrl?: (url: string) => void;
+
+  /** Optional authenticated YouTube actions for the shared reader. */
+  youtube?: YouTubeControls;
 
   /**
    * Fetch full preserved article text for a specific item from local platform

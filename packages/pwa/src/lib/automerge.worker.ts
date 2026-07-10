@@ -32,6 +32,7 @@ import {
   summarizeDocContentSignals,
   removeRssFeed,
   removeAllFeeds,
+  reconcileYouTubeSubscriptions,
   updateRssFeed,
   updateFeedItem,
   removeFeedItem,
@@ -58,6 +59,7 @@ import {
 import {
   countAuthorsWithRecentLocationUpdates,
   countFriendsWithRecentLocationUpdates,
+  collectSavedYouTubeVideoUrls,
   mergeDefaultPreferences,
   rankFeedItems,
   sortByPriority,
@@ -445,6 +447,15 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
         ack(req.reqId);
         break;
 
+      case "RECONCILE_YOUTUBE_SUBSCRIPTIONS":
+        await applyChange(
+          (doc) => reconcileYouTubeSubscriptions(doc, req.feeds, req.items),
+          `Reconcile ${req.feeds.length.toLocaleString()} YouTube subscriptions and ${req.items.length.toLocaleString()} items`,
+          true,
+        );
+        ack(req.reqId);
+        break;
+
       case "ADD_SAMPLE_LIBRARY_DATA":
         await applyChange((doc) => {
           for (const feed of req.feeds) {
@@ -486,6 +497,19 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
           reqId: req.reqId,
           type: "DOC_HEADS",
           heads: currentDoc ? A.getHeads(currentDoc) : null,
+        });
+        break;
+      }
+
+      case "GET_SAVED_YOUTUBE_URLS": {
+        if (!currentDoc) throw new Error("Document not initialized");
+        const plain = A.view(currentDoc, A.getHeads(currentDoc)) as FreedDoc;
+        send({
+          reqId: req.reqId,
+          type: "SAVED_YOUTUBE_URLS",
+          urls: collectSavedYouTubeVideoUrls(
+            Object.values(plain.feedItems as Record<string, FeedItem>),
+          ),
         });
         break;
       }

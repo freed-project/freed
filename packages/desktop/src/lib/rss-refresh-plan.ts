@@ -35,7 +35,9 @@ export function selectRssFeedsForRefresh(
   feeds: RssFeed[],
   options: RssRefreshPlanOptions = {},
 ): RssFeed[] {
-  const enabled = feeds.filter((feed) => feed.enabled);
+  const enabled = feeds.filter(
+    (feed) => feed.enabled && feed.youtubeRosterActive !== false,
+  );
   const maxFeeds = options.maxFeeds ?? enabled.length;
   if (maxFeeds <= 0) return [];
   const now = options.now ?? Date.now();

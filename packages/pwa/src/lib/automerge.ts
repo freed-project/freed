@@ -85,6 +85,13 @@ const pendingDocHeads = new Map<
     reject: (err: Error) => void;
   }
 >();
+const pendingSavedYouTubeUrls = new Map<
+  number,
+  {
+    resolve: (urls: string[]) => void;
+    reject: (err: Error) => void;
+  }
+>();
 
 async function request(msg: WorkerRequest): Promise<void> {
   await workerReady;
@@ -141,6 +148,14 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     if (!pendingHeads) return;
     pendingDocHeads.delete(msg.reqId);
     pendingHeads.resolve(msg.heads);
+    return;
+  }
+
+  if (msg.type === "SAVED_YOUTUBE_URLS") {
+    const pendingUrls = pendingSavedYouTubeUrls.get(msg.reqId);
+    if (!pendingUrls) return;
+    pendingSavedYouTubeUrls.delete(msg.reqId);
+    pendingUrls.resolve(msg.urls);
     return;
   }
 
@@ -205,6 +220,13 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   if (pendingBinary && msg.error) {
     pendingDocBinary.delete(msg.reqId);
     pendingBinary.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingUrls = pendingSavedYouTubeUrls.get(msg.reqId);
+  if (pendingUrls && msg.error) {
+    pendingSavedYouTubeUrls.delete(msg.reqId);
+    pendingUrls.reject(new Error(msg.error));
     return;
   }
 
@@ -307,6 +329,16 @@ export async function getDocHeads(): Promise<string[] | null> {
   });
 }
 
+/** Canonical URLs for every saved YouTube item in the full document. */
+export async function getSavedYouTubeVideoUrls(): Promise<string[]> {
+  await workerReady;
+  const reqId = nextReqId++;
+  return new Promise((resolve, reject) => {
+    pendingSavedYouTubeUrls.set(reqId, { resolve, reject });
+    worker.postMessage({ reqId, type: "GET_SAVED_YOUTUBE_URLS" } satisfies WorkerRequest);
+  });
+}
+
 /** Merge incoming sync binary into the doc (relay / cloud download). */
 export async function mergeDoc(incoming: Uint8Array): Promise<void> {
   const reqId = nextReqId++;
@@ -331,6 +363,15 @@ export async function docAddFeedItem(item: FeedItem): Promise<void> {
 export async function docAddFeedItems(items: FeedItem[]): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "ADD_FEED_ITEMS", items });
+}
+
+/** Reconcile the authenticated YouTube roster and initial items in one Automerge change. */
+export async function docReconcileYouTubeSubscriptions(
+  feeds: RssFeed[],
+  items: FeedItem[],
+): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "RECONCILE_YOUTUBE_SUBSCRIPTIONS", feeds, items });
 }
 
 export async function docAddSampleLibraryData(data: {

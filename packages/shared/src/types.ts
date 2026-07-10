@@ -685,6 +685,18 @@ export interface RssFeed {
   /** User-assigned folder/category */
   folder?: string;
 
+  /** Stable channel identity for subscriptions imported from YouTube OAuth. */
+  youtubeChannelId?: string;
+
+  /** Stable subscription identity from the user's YouTube roster. */
+  youtubeSubscriptionId?: string;
+
+  /** Last time this channel appeared in the authenticated YouTube roster. */
+  youtubeRosterSyncedAt?: number;
+
+  /** Whether this channel is in the latest authenticated YouTube roster. */
+  youtubeRosterActive?: boolean;
+
   /** Internal marker for generated sample data. */
   sampleDataFingerprint?: SampleDataFingerprint;
 }

@@ -3,3 +3,4 @@ export { FeedItem } from "./FeedItem.js";
 export { FeedItemSkeleton } from "./FeedItemSkeleton.js";
 export { FeedView } from "./FeedView.js";
 export { ReaderView } from "./ReaderView.js";
+export { YouTubeFocusPlayer } from "./YouTubeFocusPlayer.js";

@@ -60,12 +60,26 @@ export const SOCIAL_PROVIDER_PACKAGE_PREFIXES = [
 // providers can observe but have no dedicated focused provider test lane, so
 // validate-worktree intentionally does not narrow validation for them.
 export const PROVIDER_VISIBLE_EXTRA_FILES = new Set([
+  "packages/desktop/src/lib/rss-refresh-plan.ts",
   "packages/desktop/src/lib/user-agent.ts",
   "packages/desktop/src-tauri/src/webkit-mask.js",
+  "packages/pwa/api/oauth/google.ts",
+  "packages/pwa/src/components/OAuthCallback.tsx",
+  "packages/pwa/src/components/PwaYouTubeSettings.tsx",
+  "packages/pwa/src/lib/cloud-oauth.ts",
+  "packages/pwa/src/lib/reader-cache.ts",
+  "packages/pwa/src/lib/youtube-handoff.ts",
+  "packages/pwa/src/lib/youtube-auth.ts",
+  "packages/pwa/src/lib/youtube-integration.ts",
+  "packages/shared/src/schema.ts",
+  "packages/shared/src/youtube.ts",
+  "packages/ui/src/components/feed/ReaderView.tsx",
+  "packages/ui/src/components/feed/YouTubeFocusPlayer.tsx",
 ]);
 
 export const PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES = [
   "packages/capture-linkedin/",
+  "packages/capture-youtube/",
 ];
 
 // In any capture package (including non-social ones like capture-save), these

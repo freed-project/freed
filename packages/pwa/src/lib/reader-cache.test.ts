@@ -45,4 +45,37 @@ describe("PWA reader cache", () => {
     expect(pinnedStore.has("/pinned-content/x:pwa-pin")).toBe(true);
     await expect(pinnedStore.get("/content/x:pwa-pin")?.text()).resolves.toContain("Long post body");
   });
+
+  it("pins YouTube metadata without fetching the watch page or thumbnail", async () => {
+    const pinnedStore = new Map<string, Response>();
+    vi.stubGlobal("caches", {
+      open: vi.fn(async () => ({
+        put: vi.fn(async (key: string, response: Response) => {
+          pinnedStore.set(key, response);
+        }),
+        match: vi.fn(async (key: string) => pinnedStore.get(key)),
+      })),
+    });
+    const fetchMock = vi.fn(async () => {
+      throw new Error("YouTube network fetch should stay user-controlled");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const watchUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+
+    await pinReaderItemInPwa(makePost({
+      globalId: "youtube:dQw4w9WgXcQ",
+      platform: "youtube",
+      contentType: "video",
+      content: {
+        text: "Focused lesson",
+        mediaUrls: ["https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"],
+        mediaTypes: ["image"],
+        linkPreview: { url: watchUrl, title: "Focused lesson" },
+      },
+      sourceUrl: watchUrl,
+    }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(pinnedStore.has("/pinned-content/youtube:dQw4w9WgXcQ")).toBe(true);
+  });
 });

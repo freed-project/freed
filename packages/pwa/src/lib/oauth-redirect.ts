@@ -1,13 +1,20 @@
 const OAUTH_CALLBACK_PATH = "/oauth-callback";
-const GOOGLE_OAUTH_PROVIDER = "gdrive";
-const GOOGLE_OAUTH_STATE_VERSION = 1;
+const GOOGLE_OAUTH_PROVIDER = "google";
+const LEGACY_GOOGLE_OAUTH_PROVIDER = "gdrive";
+const GOOGLE_OAUTH_STATE_VERSION = 2;
+const LEGACY_GOOGLE_OAUTH_STATE_VERSION = 1;
 const GOOGLE_OAUTH_RELAY_ORIGIN = "https://app.freed.wtf";
 
 const GOOGLE_REDIRECT_URI_STORAGE_KEY = "freed_pkce_google_redirect_uri";
+const GOOGLE_STATE_STORAGE_KEY = "freed_pkce_google_state";
+const GOOGLE_SCOPES_STORAGE_KEY = "freed_pkce_google_scopes";
+
+export type GoogleOAuthPurpose = "gdrive" | "youtube";
 
 export interface GoogleOAuthState {
   version: typeof GOOGLE_OAUTH_STATE_VERSION;
   provider: typeof GOOGLE_OAUTH_PROVIDER;
+  purpose: GoogleOAuthPurpose;
   returnOrigin: string;
   redirectOrigin: string;
   nonce: string;
@@ -34,13 +41,39 @@ export function clearStoredGoogleOAuthRedirectUri(): void {
   sessionStorage.removeItem(GOOGLE_REDIRECT_URI_STORAGE_KEY);
 }
 
+export function storeGoogleOAuthState(state: string): void {
+  sessionStorage.setItem(GOOGLE_STATE_STORAGE_KEY, state);
+}
+
+export function getStoredGoogleOAuthState(): string | null {
+  return sessionStorage.getItem(GOOGLE_STATE_STORAGE_KEY);
+}
+
+export function clearStoredGoogleOAuthState(): void {
+  sessionStorage.removeItem(GOOGLE_STATE_STORAGE_KEY);
+}
+
+export function storeGoogleOAuthScopes(scopes: readonly string[]): void {
+  sessionStorage.setItem(GOOGLE_SCOPES_STORAGE_KEY, scopes.join(" "));
+}
+
+export function getStoredGoogleOAuthScopes(): string | null {
+  return sessionStorage.getItem(GOOGLE_SCOPES_STORAGE_KEY);
+}
+
+export function clearStoredGoogleOAuthScopes(): void {
+  sessionStorage.removeItem(GOOGLE_SCOPES_STORAGE_KEY);
+}
+
 export function createGoogleOAuthState(
   origin: string = window.location.origin,
   nonce: string = crypto.randomUUID(),
+  purpose: GoogleOAuthPurpose = "gdrive",
 ): string {
   const state: GoogleOAuthState = {
     version: GOOGLE_OAUTH_STATE_VERSION,
     provider: GOOGLE_OAUTH_PROVIDER,
+    purpose,
     returnOrigin: origin,
     redirectOrigin: getGoogleOAuthRedirectOrigin(origin),
     nonce,
@@ -54,7 +87,7 @@ export function createGoogleOAuthRelayTarget(
   currentOrigin: string,
   params: URLSearchParams,
 ): string | null {
-  const state = parseGoogleOAuthState(params.get("state"));
+  const state = readGoogleOAuthState(params.get("state"));
   if (!state || state.returnOrigin === currentOrigin) {
     return null;
   }
@@ -75,16 +108,29 @@ function getGoogleOAuthRedirectOrigin(origin: string): string {
   return shouldUseGoogleOAuthRelay(origin) ? GOOGLE_OAUTH_RELAY_ORIGIN : origin;
 }
 
-function parseGoogleOAuthState(value: string | null): GoogleOAuthState | null {
+/** Decode and validate Google OAuth state, including legacy Drive callbacks. */
+export function readGoogleOAuthState(value: string | null): GoogleOAuthState | null {
   if (!value) {
     return null;
   }
 
   try {
-    const parsed = JSON.parse(fromBase64Url(value)) as Partial<GoogleOAuthState>;
+    const parsed = JSON.parse(fromBase64Url(value)) as Omit<
+      Partial<GoogleOAuthState>,
+      "version" | "provider"
+    > & {
+      version?: number;
+      provider?: string;
+    };
+    const isLegacyDriveState =
+      parsed.version === LEGACY_GOOGLE_OAUTH_STATE_VERSION &&
+      parsed.provider === LEGACY_GOOGLE_OAUTH_PROVIDER;
+    const isCurrentState =
+      parsed.version === GOOGLE_OAUTH_STATE_VERSION &&
+      parsed.provider === GOOGLE_OAUTH_PROVIDER &&
+      (parsed.purpose === "gdrive" || parsed.purpose === "youtube");
     if (
-      parsed.version !== GOOGLE_OAUTH_STATE_VERSION ||
-      parsed.provider !== GOOGLE_OAUTH_PROVIDER ||
+      (!isLegacyDriveState && !isCurrentState) ||
       typeof parsed.returnOrigin !== "string" ||
       typeof parsed.redirectOrigin !== "string" ||
       typeof parsed.nonce !== "string" ||
@@ -92,7 +138,15 @@ function parseGoogleOAuthState(value: string | null): GoogleOAuthState | null {
     ) {
       return null;
     }
-    return parsed as GoogleOAuthState;
+    return {
+      version: GOOGLE_OAUTH_STATE_VERSION,
+      provider: GOOGLE_OAUTH_PROVIDER,
+      purpose: isLegacyDriveState ? "gdrive" : parsed.purpose as GoogleOAuthPurpose,
+      returnOrigin: parsed.returnOrigin,
+      redirectOrigin: parsed.redirectOrigin,
+      nonce: parsed.nonce,
+      issuedAt: parsed.issuedAt,
+    };
   } catch {
     return null;
   }
@@ -105,8 +159,7 @@ function isAllowedPwaOrigin(origin: string): boolean {
       url.protocol === "https:" &&
       (
         url.hostname === "app.freed.wtf" ||
-        url.hostname === "dev-app.freed.wtf" ||
-        url.hostname.endsWith("-aubreyfs-projects.vercel.app")
+        url.hostname === "dev-app.freed.wtf"
       )
     );
   } catch {
@@ -120,8 +173,7 @@ function shouldUseGoogleOAuthRelay(origin: string): boolean {
     return (
       url.protocol === "https:" &&
       (
-        url.hostname === "dev-app.freed.wtf" ||
-        url.hostname.endsWith("-aubreyfs-projects.vercel.app")
+        url.hostname === "dev-app.freed.wtf"
       )
     );
   } catch {

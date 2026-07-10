@@ -147,7 +147,7 @@ packages/capture-bluesky/
 **Advantages:**
 
 - Open AT Protocol with official API
-- No scraping required—legitimate API access
+- No scraping required. It has legitimate API access.
 - Federation-friendly architecture
 - App passwords for authentication
 
@@ -199,31 +199,60 @@ packages/capture-reddit/
 
 ### `@freed/capture-youtube`
 
-YouTube subscriptions and watch later (beyond RSS).
+YouTube subscription import, focused playback, exact-video application handoff,
+and a private user-owned playlist for YouTube Premium offline preparation.
 
 ```
 packages/capture-youtube/
 ├── src/
 │   ├── index.ts
 │   ├── client.ts         # YouTube Data API client
-│   ├── normalize.ts
+│   ├── normalize.ts      # Subscription and video data -> Freed sources/items
+│   ├── constants.ts      # OAuth scopes, endpoints, and playlist identity
 │   └── types.ts
+├── test/
+│   ├── client.test.ts
+│   └── normalize.test.ts
 ├── package.json
 └── tsconfig.json
 ```
 
 **Note:** `capture-rss` already handles YouTube channel feeds. This package adds:
 
-- Subscriptions feed (personalized)
-- Watch Later playlist
-- Watch history (if accessible)
-- Video metadata (duration, views, etc.)
+- The authenticated user's subscription roster
+- Conversion from stable channel IDs to existing public Atom feed sources
+- Video metadata such as duration when the API path needs it
+- Creation and reuse of a private `Freed Offline` playlist
+- Idempotent insertion of user-selected videos into that playlist
+
+The integration intentionally does not import the algorithmic Home feed. Watch
+Later and watch history are not dependable capture sources in the current Data
+API, so Freed owns a normal private playlist instead.
+
+The shared reader adds two playback paths:
+
+- `Watch here in Focus Mode` loads one click-to-load YouTube embed with no autoplay or
+  automatic next video.
+- `Play in YouTube` uses a canonical watch URL so iOS can open the exact video
+  through YouTube's Universal Link.
+
+YouTube Premium downloads remain inside YouTube. Freed adds a selected video to
+`Freed Offline` and opens that playlist. The user chooses the playlist download
+inside YouTube, and Freed does not claim to detect download completion.
 
 **API Access:**
 
 - YouTube Data API v3
-- OAuth 2.0 for user data
-- Quota limits: 10,000 units/day (free tier)
+- Incremental OAuth 2.0, with read-only subscription access first and
+  `youtube.force-ssl` only when the user enables playlist writes
+- Default quota is 10,000 units per day, while playlist creation and each item
+  insert currently cost 50 units
+- Deployed builds must enable the YouTube Data API and approve both scopes on
+  the existing Google OAuth project
+
+See [YouTube Focus and Offline Integration](YOUTUBE-INTEGRATION.md) for the
+initial behavior, security boundaries, quota limits, Premium handoff, native
+Screen Time option, and future resolver or relay research.
 
 ---
 
@@ -251,9 +280,12 @@ packages/capture-youtube/
 | 12.18 | `@freed/capture-reddit` package scaffold   | Low        |        |
 | 12.19 | Reddit OAuth setup                         | Medium     |        |
 | 12.20 | Reddit home feed capture                   | Medium     |        |
-| 12.21 | `@freed/capture-youtube` package scaffold  | Low        |        |
-| 12.22 | YouTube Data API integration               | Medium     |        |
-| 12.23 | YouTube subscriptions feed                 | Medium     |        |
+| 12.21 | `@freed/capture-youtube` package scaffold  | Low        | ✓ Done |
+| 12.22 | YouTube Data API integration               | Medium     | ✓ Done |
+| 12.23 | YouTube subscriptions feed                 | Medium     | ✓ Done |
+| 12.24 | Focus player and exact-video handoff       | Medium     | ✓ Done |
+| 12.25 | Private `Freed Offline` playlist           | Medium     | ✓ Done |
+| 12.26 | YouTube OAuth connection and recovery      | Medium     | ✓ Done |
 
 ---
 
@@ -276,7 +308,12 @@ packages/capture-youtube/
 - [ ] Threads posts captured to FeedItem
 - [ ] Bluesky timeline captured via AT Protocol
 - [ ] Reddit home feed captured (beyond RSS)
-- [ ] YouTube subscriptions captured (beyond RSS)
+- [x] YouTube subscriptions captured beyond manually entered RSS through an explicit PWA OAuth sync, with stable roster reconciliation and a bounded recent upload window
+- [x] YouTube videos offer click-to-load focused playback without autoplay or automatic next-video behavior
+- [x] YouTube videos offer a canonical exact-video handoff for the YouTube application
+- [x] An explicitly connected YouTube account can create or reuse a private `Freed Offline` playlist and add a selected video without claiming it was downloaded
+- [x] The private offline playlist can open in YouTube for the user's Premium-managed playlist download
+- [x] YouTube access tokens stay device-local and out of Automerge, application logs, diagnostics, and bug reports
 - [ ] Each platform handles its own rate limiting
 - [ ] Selector/API maintenance strategy per platform
 - [ ] Planning-oriented sources can surface future-dated activity without being forced through RSS assumptions
@@ -293,16 +330,18 @@ packages/capture-youtube/
 | Threads  | DOM scrape            | Cookies       | N/A                   | High       | Social posts |
 | Bluesky  | AT Protocol           | App password  | Excellent             | Low        | Timeline capture |
 | Reddit   | OAuth API             | OAuth         | Good                  | Medium     | Home feed beyond RSS |
-| YouTube  | Data API              | OAuth         | Good                  | Medium     | Subscriptions beyond RSS |
+| YouTube  | Data API + public RSS | OAuth         | Good                  | Medium     | Subscriptions, focused viewing, Premium offline handoff |
 
 ---
 
 ## Notes
 
-- Feasibility varies by platform—some may prove impractical
+- Feasibility varies by platform. Some may prove impractical.
 - Each capture layer should fail gracefully without breaking others
 - Consider community contributions for selector maintenance
 - Bluesky is the most promising due to open protocol
 - API-based platforms (Bluesky, Reddit, YouTube) are more stable than DOM scraping
+- YouTube embeds, subscription reads, and playlist writes are separate provider-visible behaviors and must remain user-controlled and bounded
+- The default YouTube API quota cannot support playlist writes for a large user population without an approved increase and quota-aware backpressure
 - Mozi should be treated as a planning source, not squeezed into the RSS mental model
 - Mozi overlap views should be derived from captured items at read time, not stored as source-authored canonical records

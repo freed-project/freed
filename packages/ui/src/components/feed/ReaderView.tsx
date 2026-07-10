@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { formatDistanceToNow } from "date-fns";
-import type { FeedItem as FeedItemType, FocusOptions } from "@freed/shared";
+import { parseYouTubeVideoUrl, type FeedItem as FeedItemType, type FocusOptions } from "@freed/shared";
 import {
   useAppStore,
   usePlatform,
@@ -20,6 +20,7 @@ import {
 import { Tooltip } from "../Tooltip.js";
 import { ExternalLinkIcon, TrashIcon } from "../icons.js";
 import { FocusText } from "./FocusText.js";
+import { YouTubeFocusPlayer } from "./YouTubeFocusPlayer.js";
 
 interface ReaderViewProps {
   item: FeedItemType;
@@ -35,6 +36,11 @@ interface ReaderViewProps {
 /** Content source labels for the offline badge */
 type ContentSource = "cache" | "text" | "live" | null;
 type HydrationStatus = NonNullable<ReaderHydrationResult["status"]> | null;
+type OfflinePlaylistState =
+  | { status: "idle" }
+  | { status: "adding"; itemId: string }
+  | { status: "success"; itemId: string; message: string; playlistUrl: string }
+  | { status: "error"; itemId: string; message: string };
 
 // ─── Structured content parser ───────────────────────────────────────────────
 //
@@ -341,6 +347,8 @@ export function ReaderView({
     getLocalPreservedText,
     hydrateReaderItem,
     pinReaderItem,
+    openUrl: platformOpenUrl,
+    youtube,
   } = usePlatform();
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
@@ -378,8 +386,22 @@ export function ReaderView({
   const [isThreadLoading, setIsThreadLoading] = useState(false);
   const [hasRequestedThreadReplies, setHasRequestedThreadReplies] = useState(false);
   const [threadReplyMessage, setThreadReplyMessage] = useState<string | null>(null);
+  const [offlinePlaylistState, setOfflinePlaylistState] = useState<OfflinePlaylistState>({
+    status: "idle",
+  });
+  const visibleOfflinePlaylistState: OfflinePlaylistState =
+    offlinePlaylistState.status !== "idle" && offlinePlaylistState.itemId !== item.globalId
+      ? { status: "idle" }
+      : offlinePlaylistState;
 
   const articleUrl = item.content.linkPreview?.url;
+  const youtubeReference = useMemo(
+    () =>
+      [item.sourceUrl, item.content.linkPreview?.url]
+        .map((url) => parseYouTubeVideoUrl(url))
+        .find((reference) => reference !== null) ?? null,
+    [item.content.linkPreview?.url, item.sourceUrl],
+  );
   const pendingSavedUrlDetails =
     item.platform === "saved" &&
     item.userState.saved &&
@@ -394,6 +416,40 @@ export function ReaderView({
     if (!onOpenUrl || !item.sourceUrl) return;
     onOpenUrl(item.sourceUrl);
   }, [item.sourceUrl, onOpenUrl]);
+  const handlePlayInYouTube = useCallback(
+    (canonicalWatchUrl: string) => {
+      const openExternal = onOpenUrl ?? platformOpenUrl;
+      if (openExternal) {
+        openExternal(canonicalWatchUrl);
+        return;
+      }
+      window.open(canonicalWatchUrl, "_blank", "noopener,noreferrer");
+    },
+    [onOpenUrl, platformOpenUrl],
+  );
+  const handleAddToOfflinePlaylist = useCallback(async () => {
+    if (!youtube || !youtubeReference || visibleOfflinePlaylistState.status === "adding") return;
+    const itemId = item.globalId;
+    setOfflinePlaylistState({ status: "adding", itemId });
+    try {
+      if (!item.userState.saved) {
+        await toggleSaved(itemId);
+      }
+      const result = await youtube.addToOfflinePlaylist(youtubeReference.canonicalWatchUrl);
+      setOfflinePlaylistState({
+        status: "success",
+        itemId,
+        message: result.added ? "Added to Freed Offline" : "Already in Freed Offline",
+        playlistUrl: result.playlistUrl,
+      });
+    } catch (error) {
+      setOfflinePlaylistState({
+        status: "error",
+        itemId,
+        message: error instanceof Error ? error.message : "Could not update Freed Offline.",
+      });
+    }
+  }, [item.globalId, item.userState.saved, toggleSaved, visibleOfflinePlaylistState.status, youtube, youtubeReference]);
   const canOpenAuthorInFriends = Boolean(
     onOpenAuthorInFriends && FRIENDS_AUTHOR_PLATFORMS.has(item.platform),
   );
@@ -430,7 +486,7 @@ export function ReaderView({
       setThreadReplyMessage(null);
       setPreservedText(item.preservedContent?.text ?? null);
 
-      if (item.userState.saved && pinReaderItem) {
+      if (item.userState.saved && pinReaderItem && !youtubeReference) {
         void pinReaderItem(item);
       }
 
@@ -489,6 +545,7 @@ export function ReaderView({
       const shouldHydrateLive =
         Boolean(hydrateReaderItem) &&
         navigator.onLine &&
+        !youtubeReference &&
         !pendingSavedUrlDetails &&
         (!hasReaderContent || (readerContentSource !== "cache" && shouldPin));
 
@@ -537,7 +594,7 @@ export function ReaderView({
       }
 
       // Layer 4: browser fetch fallback for platforms without a native hydrator.
-      if (articleUrl && navigator.onLine && !pendingSavedUrlDetails) {
+      if (articleUrl && navigator.onLine && !pendingSavedUrlDetails && !youtubeReference) {
         setIsCaching(true);
         liveFetch(
           articleUrl,
@@ -595,6 +652,7 @@ export function ReaderView({
     item.preservedContent?.text,
     item.userState.saved,
     pendingSavedUrlDetails,
+    youtubeReference,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoadThreadReplies = useCallback(async () => {
@@ -926,7 +984,7 @@ export function ReaderView({
         </div>
 
         {/* Media */}
-        {isStory && displayMediaUrls.length > 0 ? (
+        {youtubeReference ? null : isStory && displayMediaUrls.length > 0 ? (
           <StoryMediaGallery urls={displayMediaUrls} types={displayMediaTypes} />
         ) : !isStory && readerPresentation.leadImage ? (
           <img
@@ -937,6 +995,52 @@ export function ReaderView({
             className="mb-8 w-full rounded-xl bg-[var(--theme-bg-muted)] ring-1 ring-[var(--theme-border-subtle)]"
           />
         ) : null}
+
+        {youtubeReference && (
+          <div className="mb-8 space-y-3">
+            <YouTubeFocusPlayer
+              videoUrl={youtubeReference.canonicalWatchUrl}
+              title={readerPresentation.title}
+              onPlayInYouTube={handlePlayInYouTube}
+            />
+            {youtube && (
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => void handleAddToOfflinePlaylist()}
+                  disabled={visibleOfflinePlaylistState.status === "adding"}
+                  className="btn-secondary rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {visibleOfflinePlaylistState.status === "adding"
+                    ? "Adding to Freed Offline"
+                    : "Add to Freed Offline"}
+                </button>
+                {visibleOfflinePlaylistState.status === "success" && (
+                  <>
+                    <span role="status" className="text-sm text-[var(--theme-text-secondary)]">
+                      {visibleOfflinePlaylistState.message}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handlePlayInYouTube(visibleOfflinePlaylistState.playlistUrl)}
+                      className="btn-secondary rounded-lg px-3 py-2 text-sm font-semibold"
+                    >
+                      Open playlist in YouTube
+                    </button>
+                  </>
+                )}
+                {visibleOfflinePlaylistState.status === "error" && (
+                  <span role="alert" className="theme-feedback-text-danger text-sm">
+                    {visibleOfflinePlaylistState.message}
+                  </span>
+                )}
+              </div>
+            )}
+            <p className="text-xs leading-5 text-[var(--theme-text-muted)]">
+              YouTube Premium manages background playback and device downloads in the YouTube app.
+            </p>
+          </div>
+        )}
 
         {hydrationMessage && (
           <div
@@ -965,7 +1069,13 @@ export function ReaderView({
         )}
 
         {/* Content */}
-        {isLoading || pendingSavedUrlDetails ? (
+        {youtubeReference ? (
+          item.content.text ? (
+            <p className="text-lg leading-relaxed text-[var(--theme-text-secondary)]">
+              {item.content.text}
+            </p>
+          ) : null
+        ) : isLoading || pendingSavedUrlDetails ? (
           <div className="flex justify-center py-16">
             <div className="w-8 h-8 rounded-full border-2 border-[var(--theme-border-quiet)] border-t-[var(--theme-accent-secondary)] animate-spin" />
           </div>

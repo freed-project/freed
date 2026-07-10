@@ -29,6 +29,7 @@ import {
   choosePopulatedInputForFeedEmptyPreMerge,
   evaluateDestructiveMergeGuard,
   removeRssFeed,
+  reconcileYouTubeSubscriptions,
   updateAccount,
   updatePerson,
   updatePreferences,
@@ -721,6 +722,112 @@ describe("removeRssFeed", () => {
     doc = A.change(doc, (d) => removeRssFeed(d, url));
 
     expect(doc.rssFeeds[url]).toBeUndefined();
+  });
+});
+
+describe("reconcileYouTubeSubscriptions", () => {
+  it("preserves feed preferences while tracking roster activity and saved video state", () => {
+    const followedUrl = "https://www.youtube.com/feeds/videos.xml?channel_id=followed";
+    const unfollowedUrl = "https://www.youtube.com/feeds/videos.xml?channel_id=unfollowed";
+    const manualUrl = "https://example.com/manual.xml";
+    let doc = createEmptyDoc();
+    doc = A.change(doc, (draft) => {
+      addRssFeed(draft, makeFeed({
+        url: followedUrl,
+        title: "Old followed title",
+        enabled: false,
+        youtubeChannelId: "followed",
+        youtubeSubscriptionId: "old-subscription",
+        lastFetched: 123,
+        etag: "keep-etag",
+      }));
+      addRssFeed(draft, makeFeed({
+        url: unfollowedUrl,
+        title: "Unfollowed",
+        youtubeChannelId: "unfollowed",
+        youtubeSubscriptionId: "stale-subscription",
+      }));
+      addRssFeed(draft, makeFeed({ url: manualUrl, title: "Manual" }));
+      addFeedItem(draft, makeItem({
+        globalId: "youtube:dQw4w9WgXcQ",
+        platform: "youtube",
+        userState: { hidden: false, saved: true, archived: false, tags: [] },
+      }));
+    });
+
+    doc = A.change(doc, (draft) => reconcileYouTubeSubscriptions(
+      draft,
+      [makeFeed({
+        url: followedUrl,
+        title: "Current followed title",
+        folder: "YouTube",
+        youtubeChannelId: "followed",
+        youtubeSubscriptionId: "current-subscription",
+        youtubeRosterSyncedAt: 456,
+      })],
+      [makeItem({
+        globalId: "youtube:dQw4w9WgXcQ",
+        platform: "youtube",
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+      })],
+    ));
+
+    expect(doc.rssFeeds[followedUrl]).toMatchObject({
+      title: "Current followed title",
+      enabled: false,
+      lastFetched: 123,
+      etag: "keep-etag",
+      youtubeSubscriptionId: "current-subscription",
+      youtubeRosterSyncedAt: 456,
+      youtubeRosterActive: true,
+    });
+    expect(doc.rssFeeds[unfollowedUrl]).toMatchObject({
+      enabled: true,
+      youtubeRosterActive: false,
+    });
+    expect(doc.rssFeeds[manualUrl].enabled).toBe(true);
+    expect(doc.feedItems["youtube:dQw4w9WgXcQ"].userState.saved).toBe(true);
+  });
+
+  it("defaults a new followed channel to enabled without changing an existing disabled feed", () => {
+    const existingUrl = "https://www.youtube.com/feeds/videos.xml?channel_id=existing";
+    const newUrl = "https://www.youtube.com/feeds/videos.xml?channel_id=new";
+    let doc = createEmptyDoc();
+    doc = A.change(doc, (draft) => {
+      addRssFeed(draft, makeFeed({
+        url: existingUrl,
+        title: "Existing RSS feed",
+        enabled: false,
+      }));
+    });
+
+    doc = A.change(doc, (draft) => reconcileYouTubeSubscriptions(
+      draft,
+      [
+        makeFeed({
+          url: existingUrl,
+          title: "Existing YouTube channel",
+          youtubeChannelId: "existing",
+          youtubeSubscriptionId: "subscription-existing",
+        }),
+        makeFeed({
+          url: newUrl,
+          title: "New YouTube channel",
+          youtubeChannelId: "new",
+          youtubeSubscriptionId: "subscription-new",
+        }),
+      ],
+      [],
+    ));
+
+    expect(doc.rssFeeds[existingUrl]).toMatchObject({
+      enabled: false,
+      youtubeRosterActive: true,
+    });
+    expect(doc.rssFeeds[newUrl]).toMatchObject({
+      enabled: true,
+      youtubeRosterActive: true,
+    });
   });
 });
 

@@ -51,6 +51,7 @@ import {
   TrashIcon,
   UsersIcon,
   XIcon,
+  YoutubeIcon,
 } from "../icons.js";
 
 function groupActionsBySection(actions: readonly CommandPaletteAction[]) {
@@ -156,6 +157,9 @@ function getCommandPaletteIcon(action: CommandPaletteAction): ReactNode {
   }
   if (action.id === "go-source-linkedin" || action.id === "go-settings-linkedin" || action.id.startsWith("go-channel-linkedin-")) {
     return <LinkedInIcon className={iconClass} />;
+  }
+  if (action.id === "go-source-youtube" || action.id === "go-settings-youtube" || action.id.startsWith("go-channel-youtube-")) {
+    return <YoutubeIcon className={iconClass} />;
   }
   if (action.id === "go-settings-googleContacts") {
     return <GoogleContactsIcon className={iconClass} />;
@@ -304,6 +308,7 @@ export function SearchJumpField({
     FacebookSettingsContent,
     InstagramSettingsContent,
     LinkedInSettingsContent,
+    YouTubeSettingsContent,
     GoogleContactsSettingsContent,
     ShortcutsSettingsContent,
     googleContacts,
@@ -449,6 +454,7 @@ export function SearchJumpField({
         hasFacebook: !!FacebookSettingsContent,
         hasInstagram: !!InstagramSettingsContent,
         hasLinkedIn: !!LinkedInSettingsContent,
+        hasYouTube: !!YouTubeSettingsContent,
         hasUpdateChecks: !!checkForUpdates,
         hasFactoryReset: !!factoryReset,
       }),
@@ -457,6 +463,7 @@ export function SearchJumpField({
       GoogleContactsSettingsContent,
       InstagramSettingsContent,
       LinkedInSettingsContent,
+      YouTubeSettingsContent,
       XSettingsContent,
       checkForUpdates,
       factoryReset,
