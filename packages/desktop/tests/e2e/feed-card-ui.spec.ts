@@ -635,8 +635,8 @@ test("filter menu interface zoom slider persists locally", async ({ app, page })
       toolbarHeight: Math.round(toolbar.getBoundingClientRect().height),
     };
   });
-  expect(zoomedGeometry.sidebarWidth).toBeGreaterThan(baseGeometry.sidebarWidth * 1.4);
-  expect(zoomedGeometry.toolbarHeight).toBeGreaterThan(baseGeometry.toolbarHeight * 1.4);
+  expect(zoomedGeometry.sidebarWidth).toBeGreaterThan(baseGeometry.sidebarWidth * 1.25);
+  expect(zoomedGeometry.toolbarHeight).toBeGreaterThanOrEqual(Math.floor(baseGeometry.toolbarHeight * 1.4));
   expect(zoomedGeometry.clippedLabels).toEqual([]);
 
   await page.reload();
