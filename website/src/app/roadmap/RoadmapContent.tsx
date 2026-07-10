@@ -804,7 +804,7 @@ const phases: Phase[] = [
     number: 12,
     title: "Additional Platforms",
     description:
-      "LinkedIn is live. Next up: Mozi, TikTok, Threads, Bluesky, Reddit, and YouTube, all with the same guarded capture and health model.",
+      "LinkedIn and YouTube are in. YouTube adds focused click-to-load viewing, exact-video app handoff, followed-channel sync, and a private playlist users can download in YouTube Premium. Next up: Mozi, TikTok, Threads, Bluesky, and Reddit.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-12-ADDITIONAL-PLATFORMS.md",
