@@ -14,7 +14,7 @@ import {
 } from "./lib/stability-metrics.mjs";
 
 test("the stability metric registry has unique ids and a version", () => {
-  assert.equal(STABILITY_METRIC_REGISTRY_VERSION, 2);
+  assert.equal(STABILITY_METRIC_REGISTRY_VERSION, 3);
   assert.equal(
     new Set(STABILITY_METRICS.map((metric) => metric.id)).size,
     STABILITY_METRICS.length,
@@ -70,6 +70,28 @@ test("cloud soak, triage, and canary surfaces share one rate contract", () => {
     canaryMetrics: ["uploadsUnchangedPerHour", "uploadsPerHour"],
   });
   assert.deepEqual(canaryRegressionTolerances().uploadsUnchangedPerHour, {
+    kind: "ratio",
+    allowance: 1.5,
+    direction: "lower",
+  });
+});
+
+test("worker soak, triage, and canary surfaces share one rate contract", () => {
+  const contract = metricContractForAssertion("worker_init_rate");
+  assert.deepEqual(contract.target, {
+    kind: "max_rate",
+    unit: "events/app-alive-hour",
+    denominator: "appAliveHours",
+    value: 10,
+    exclusive: true,
+    minHours: 1,
+  });
+  assert.deepEqual(metricSignalsForBucket("worker-churn"), {
+    assertions: ["worker_init_rate"],
+    alarms: [],
+    canaryMetrics: ["workerInitsPerHour"],
+  });
+  assert.deepEqual(canaryRegressionTolerances().workerInitsPerHour, {
     kind: "ratio",
     allowance: 1.5,
     direction: "lower",

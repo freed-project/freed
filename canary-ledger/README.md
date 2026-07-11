@@ -45,10 +45,12 @@ specific installed build and time window.
   become a task lifecycle `inconclusive` outcome.
 - Older records remain valid evidence, but old schema or metric-registry
   versions intentionally start a new cold baseline.
-- Metric-registry version 2 names every rate denominator. Runtime rates use
+- Metric-registry version 3 enforces the worker INIT target below 10 events per
+  app-alive hour after at least one attributable app-alive hour. Version 2 named
+  every rate denominator but did not enforce that soak target. Runtime rates use
   app-alive time, cloud rates use connected and eligible cloud time, and memory
-  slopes use the elapsed span of attributable samples. Records from version 1
-  are not comparable because their hourly labels did not encode that contract.
+  slopes use the elapsed span of attributable samples. Records from earlier
+  metric-registry versions are not comparable.
 
 The folded metrics include recoveries/day, window kills by reason, invariant
 alarms by name, cloud upload and damper-skip rates, worker INITs/hour, scrape

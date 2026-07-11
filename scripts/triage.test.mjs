@@ -57,7 +57,7 @@ function attributableAlarm(count, lastTsMs, evidence = []) {
 function validVerdict(assertions, windowEnd = NOW) {
   return {
     schemaVersion: 1,
-    metricRegistryVersion: 2,
+    metricRegistryVersion: 3,
     sourceHealth: { healthy: true },
     runtimeIdentity: {
       attributable: true,
@@ -144,7 +144,7 @@ function validCanaryRecord({
   });
   return {
     schemaVersion: 2,
-    metricRegistryVersion: 2,
+    metricRegistryVersion: 3,
     version,
     buildIdentity,
     runtimeIdentity,

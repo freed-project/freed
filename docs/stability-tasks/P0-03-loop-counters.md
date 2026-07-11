@@ -23,5 +23,6 @@ Native heartbeat, memory, recovery, and alarm records also lack the renderer's b
 ## Verify
 
 - Before the coverage emitter lands, an overnight idle soak may report raw upload counts, broadcasts, worker INITs, and scrape outcomes, but its cloud-rate assertions remain `inconclusive`.
+- A build-attributed window with at least one app-alive hour enforces `worker_init_rate` below 10 events per app-alive hour. Short, thin, untagged, or mixed-identity windows remain `inconclusive`.
 - After scoped owner approval and the emitter implementation, a GDrive-connected soak records bounded `cloud_sync_coverage` intervals and computes cloud upload rates only from their unioned eligible duration.
 - Fill the scorecard baseline only from a build-bounded window with healthy source coverage and every required denominator.

@@ -29,6 +29,7 @@ import {
   assertEventCountZero,
   assertFootprintSlope,
   assertGuardedCounters,
+  assertWorkerInitRate,
   assertWebkitReturnsToBaseline,
   buildCompositeEvidenceFingerprint,
   buildVerdict,
@@ -842,6 +843,79 @@ test("cloud churn stays inconclusive without connected and eligible coverage", (
   assert.match(upload.detail, /no valid cloud_sync_coverage interval/);
 });
 
+test("worker INIT rate enforces the exclusive scorecard target", () => {
+  const workerInitLines = Array.from({ length: 10 }, (_, index) => ({
+    entry: { event: "worker_init", tsMs: index + 1 },
+    line: index + 1,
+    raw: `{worker-${index + 1}}`,
+  }));
+
+  const pass = assertWorkerInitRate(
+    workerInitLines.slice(0, 9),
+    "runtime-health.jsonl",
+    { appAliveHours: 1 },
+  );
+  assert.equal(pass.status, "pass");
+  assert.match(pass.detail, /9\.00\/h; target below 10\/h/);
+
+  const boundaryFailure = assertWorkerInitRate(
+    workerInitLines,
+    "runtime-health.jsonl",
+    { appAliveHours: 1 },
+  );
+  assert.equal(boundaryFailure.status, "fail");
+  assert.match(boundaryFailure.detail, /10\.00\/h; target below 10\/h/);
+  assert.equal(boundaryFailure.violations.length, 10);
+  assert.equal(boundaryFailure.violations[0].line, 1);
+
+  const denominatorPass = assertWorkerInitRate(
+    workerInitLines,
+    "runtime-health.jsonl",
+    { appAliveHours: 2 },
+  );
+  assert.equal(denominatorPass.status, "pass");
+  assert.match(denominatorPass.detail, /5\.00\/h; target below 10\/h/);
+
+  const zeroPass = assertWorkerInitRate([], "runtime-health.jsonl", {
+    appAliveHours: 1,
+  });
+  assert.equal(zeroPass.status, "pass");
+  assert.match(zeroPass.detail, /0\.00\/h; target below 10\/h/);
+});
+
+test("worker INIT rate fails closed without attributable one-hour coverage", () => {
+  const workerInitLines = [
+    {
+      entry: { event: "worker_init", tsMs: 1 },
+      line: 1,
+      raw: "{worker}",
+    },
+  ];
+
+  const unattributed = assertWorkerInitRate(
+    workerInitLines,
+    "runtime-health.jsonl",
+    { appAliveHours: 2, runtimeEvidenceActionable: false },
+  );
+  assert.equal(unattributed.status, "inconclusive");
+  assert.match(unattributed.detail, /coverage or attribution is incomplete/);
+
+  const shortWindow = assertWorkerInitRate(
+    workerInitLines,
+    "runtime-health.jsonl",
+    { appAliveHours: 0.99 },
+  );
+  assert.equal(shortWindow.status, "inconclusive");
+  assert.match(shortWindow.detail, /needs at least 1h/);
+
+  const missingDenominator = assertWorkerInitRate(
+    workerInitLines,
+    "runtime-health.jsonl",
+  );
+  assert.equal(missingDenominator.status, "inconclusive");
+  assert.match(missingDenominator.detail, /no valid app-alive duration/);
+});
+
 test("app-alive coverage rejects empty and mostly-dead collector windows", () => {
   assert.equal(computeAppAliveCoverage([]).healthy, false);
   const coverage = computeAppAliveCoverage([
@@ -1175,7 +1249,7 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   });
 
   assert.equal(verdict.schemaVersion, 1);
-  assert.equal(verdict.metricRegistryVersion, 2);
+  assert.equal(verdict.metricRegistryVersion, 3);
   assert.equal(verdict.pass, true);
   assert.equal(verdict.status, "pass");
   assert.equal(verdict.failures, 0);
@@ -1209,7 +1283,9 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   assert.equal(byId.main_footprint_slope, "pass");
   assert.equal(byId.renderer_recoveries, "pass");
   assert.equal(byId.stale_heartbeats, "pass");
+  assert.equal(byId.worker_init_rate, "pass");
   assert.equal(byId.uploads_unchanged_heads, "pass");
+  assert.equal(verdict.measurements["worker-init-rate"].value, 0);
 });
 
 test("buildVerdict keeps zero and rate assertions inconclusive for a thin runtime stream", () => {
@@ -1245,6 +1321,7 @@ test("buildVerdict keeps zero and rate assertions inconclusive for a thin runtim
   assert.equal(byId.source_health, "inconclusive");
   assert.equal(byId.renderer_recoveries, "inconclusive");
   assert.equal(byId.stale_heartbeats, "inconclusive");
+  assert.equal(byId.worker_init_rate, "inconclusive");
   assert.equal(byId.uploads_unchanged_heads, "inconclusive");
   assert.equal(byId.preflight_kills, "inconclusive");
   assert.equal(byId.scrape_zero_persist, "inconclusive");

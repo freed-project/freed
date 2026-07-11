@@ -11,6 +11,7 @@
 //   main_footprint_slope    idle main-process footprint slope < 25 MB/h over >= 4h
 //   renderer_recoveries     renderer_recovery_restart_requested count == 0
 //   stale_heartbeats        renderer_heartbeat_stale count == 0
+//   worker_init_rate        worker INITs < 10/app-alive hour over >= 1h
 //   webkit_returns_to_baseline  machine-wide WebContent count returns to its
 //                           baseline between scrape cycles
 //   uploads_unchanged_heads unchanged cloud uploads < 5/h over >= 1h
@@ -665,6 +666,56 @@ export function assertEventCountZero(
     "fail",
     `${hits.length} ${eventName} event${hits.length === 1 ? "" : "s"} in the soak window.`,
     hits.slice(0, 10).map(({ line, raw }) => cite(healthPath, line, raw)),
+  );
+}
+
+export function assertWorkerInitRate(
+  healthLines,
+  healthPath,
+  { appAliveHours = null, runtimeEvidenceActionable = true } = {},
+) {
+  const workerInitLines = healthLines.filter(
+    ({ entry }) => entry.event === "worker_init",
+  );
+  const contract = metricContractForAssertion("worker_init_rate");
+  const target = contract.target;
+  const observed = workerInitLines.length;
+
+  if (!runtimeEvidenceActionable) {
+    return assertion(
+      "worker_init_rate",
+      "inconclusive",
+      `Runtime-health coverage or attribution is incomplete, so ${observed.toLocaleString()} observed worker INIT event${observed === 1 ? "" : "s"} cannot establish a complete-window rate.`,
+    );
+  }
+
+  if (!Number.isFinite(appAliveHours) || appAliveHours <= 0) {
+    return assertion(
+      "worker_init_rate",
+      "inconclusive",
+      `${observed.toLocaleString()} worker INIT event${observed === 1 ? "" : "s"} observed, but no valid app-alive duration established the rate denominator.`,
+    );
+  }
+
+  if (appAliveHours < target.minHours) {
+    return assertion(
+      "worker_init_rate",
+      "inconclusive",
+      `App-alive coverage is ${localeFixed(appAliveHours, 2)}h; worker INIT rate needs at least ${target.minHours.toLocaleString()}h. Observed ${observed.toLocaleString()} worker INIT event${observed === 1 ? "" : "s"}.`,
+    );
+  }
+
+  const rate = observed / appAliveHours;
+  const failed = target.exclusive ? rate >= target.value : rate > target.value;
+  return assertion(
+    "worker_init_rate",
+    failed ? "fail" : "pass",
+    `${observed.toLocaleString()} worker INIT event${observed === 1 ? "" : "s"} over ${localeFixed(appAliveHours, 2)} app-alive hours (${localeFixed(rate, 2)}/h; target below ${target.value.toLocaleString()}/h).`,
+    failed
+      ? workerInitLines
+          .slice(0, 10)
+          .map(({ line, raw }) => cite(healthPath, line, raw))
+      : [],
   );
 }
 
@@ -1476,6 +1527,10 @@ export function buildVerdict({
       "renderer_heartbeat_stale",
       { runtimeEvidenceActionable },
     ),
+    assertWorkerInitRate(healthLines, healthPath, {
+      appAliveHours,
+      runtimeEvidenceActionable,
+    }),
     assertWebkitReturnsToBaseline(metricsRows, metricsPath),
     ...assertGuardedCounters(healthLines, healthPath, {
       cloudCoverageHours: measuredCloudEligibleHours,

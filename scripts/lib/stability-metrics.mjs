@@ -6,7 +6,7 @@
  * surfaces cannot quietly invent different definitions for the same symptom.
  */
 
-export const STABILITY_METRIC_REGISTRY_VERSION = 2;
+export const STABILITY_METRIC_REGISTRY_VERSION = 3;
 export const MIN_COMPARABLE_WINDOW_DURATION_RATIO = 0.8;
 export const MAX_COMPARABLE_WINDOW_DURATION_RATIO = 1.25;
 
@@ -189,13 +189,20 @@ export const STABILITY_METRICS = Object.freeze([
   }),
   Object.freeze({
     id: "worker-init-rate",
-    soakAssertionId: null,
+    soakAssertionId: "worker_init_rate",
     outcomeMeasurement: Object.freeze({
       unit: "events/app-alive-hour",
       direction: "lower",
       tolerance: 0.25,
     }),
-    target: null,
+    target: Object.freeze({
+      kind: "max_rate",
+      unit: "events/app-alive-hour",
+      denominator: "appAliveHours",
+      value: 10,
+      exclusive: true,
+      minHours: 1,
+    }),
     triageBucketId: "worker-churn",
     alarmNames: Object.freeze([]),
     canaryMetrics: Object.freeze([
