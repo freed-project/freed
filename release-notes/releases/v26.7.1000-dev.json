@@ -3,8 +3,10 @@
   "version": "26.7.1000-dev",
   "channel": "dev",
   "dayKey": "26.7.10",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed 2026-07-10: led with the first YouTube provider release, kept offline wording limited to the private YouTube playlist and Premium handoff, and included the user-facing display scaling and command search improvements. Internal triage, soak documentation, and test-only changes were omitted."
+  ],
   "generatedAt": "2026-07-11T01:31:15.015Z",
   "model": "heuristic",
   "source": {
@@ -36,10 +38,19 @@
     ]
   },
   "release": {
-    "deck": "Focused YouTube capture and offline playlist",
-    "features": [],
-    "fixes": [],
-    "followUps": []
+    "deck": "YouTube joins Freed with a focused study feed, exact-video playback, and a private playlist for YouTube Premium downloads",
+    "features": [
+      "Connect YouTube in Freed Desktop through your signed-in website session to capture followed channels and recent long-form Subscriptions videos",
+      "Keep Shorts and Reels out of the captured study feed, watch a selected video in Focus Mode, or open that same video directly in YouTube",
+      "Create or reuse a private Freed Offline playlist from selected saved videos, then open it in YouTube so Premium subscribers can download it on their device"
+    ],
+    "fixes": [
+      "Display scaling now uses a practical 75% to 200% range and keeps the sidebar, toolbar, and quick settings stable while the scale changes",
+      "Command search clears delayed blur work when it is refocused or closed, preventing stale updates after navigation"
+    ],
+    "followUps": [
+      "Large offline audio and video packages remain future work; this build hands offline downloads to YouTube Premium through the private playlist"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1000-dev\n\nFocused YouTube capture and offline playlist\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1000-dev\n\nYouTube joins Freed with a focused study feed, exact-video playback, and a private playlist for YouTube Premium downloads. This build also refines display scaling and command search stability.\n\n### Features\n\n- Connect YouTube in Freed Desktop through your signed-in website session to capture followed channels and recent long-form Subscriptions videos\n- Keep Shorts and Reels out of the captured study feed, watch a selected video in Focus Mode, or open that same video directly in YouTube\n- Create or reuse a private Freed Offline playlist from selected saved videos, then open it in YouTube so Premium subscribers can download it on their device\n\n### Fixes\n\n- Display scaling now uses a practical 75% to 200% range and keeps the sidebar, toolbar, and quick settings stable while the scale changes\n- Command search clears delayed blur work when it is refocused or closed, preventing stale updates after navigation\n\n### Follow-ups\n\n- Large offline audio and video packages remain future work; this build hands offline downloads to YouTube Premium through the private playlist\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

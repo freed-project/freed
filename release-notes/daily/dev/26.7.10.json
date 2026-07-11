@@ -2,13 +2,20 @@
   "channel": "dev",
   "dayKey": "26.7.10",
   "date": "2026-07-10",
-  "preferredDeck": null,
+  "preferredDeck": "YouTube joins Freed with a focused study feed, exact-video playback, and a private playlist for YouTube Premium downloads",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
-  "pinnedHighlights": [],
-  "editorialNotes": [],
+  "pinnedHighlights": [
+    "Capture followed YouTube channels and recent long-form Subscriptions videos through a signed-in Freed Desktop session.",
+    "Keep Shorts and Reels out of the study feed, then watch a selected video in Focus Mode or open it directly in YouTube.",
+    "Build a private Freed Offline playlist and hand it to YouTube Premium for device downloads.",
+    "Keep display scaling geometry stable from 75% to 200% and prevent stale command search blur updates."
+  ],
+  "editorialNotes": [
+    "YouTube is the lead story. Do not imply that Freed downloads or relays media in this release."
+  ],
   "updatedAt": "2026-07-11T01:31:15.015Z"
 }
