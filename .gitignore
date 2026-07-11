@@ -40,5 +40,7 @@ npm-debug.log*
 # Playwright MCP debug artifacts
 .playwright-mcp/
 .playwright-cli/
+playwright-report/
+test-results/
 .metadata_never_index
 .vercel
