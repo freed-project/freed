@@ -1,0 +1,45 @@
+{
+  "tag": "v26.7.1000-dev",
+  "version": "26.7.1000-dev",
+  "channel": "dev",
+  "dayKey": "26.7.10",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-11T01:31:15.015Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.900-dev",
+    "previousPublishedDayTag": "v26.7.900-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.1000-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.1000-dev"
+    ],
+    "prNumbers": [
+      940,
+      942,
+      944,
+      946,
+      947
+    ],
+    "commitSubjects": [
+      "feat: add focused YouTube capture and offline playlist (#947)",
+      "fix: relax interface zoom geometry tolerance (#946)",
+      "fix: clear command search blur timers (#944)",
+      "fix: ignore resolved soak alarms in triage (#942)",
+      "docs: P1-01 soak-verified — check box, fill post-damper scorecard (stability) (#941)",
+      "feat: add interface zoom controls (#940)"
+    ]
+  },
+  "release": {
+    "deck": "Focused YouTube capture and offline playlist",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1000-dev\n\nFocused YouTube capture and offline playlist\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
