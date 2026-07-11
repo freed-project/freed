@@ -213,7 +213,9 @@ describe("automerge worker lifecycle", () => {
       detail:
         "[automerge-worker] released idle document after request queue drained",
     });
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(firstWorker.terminated).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
     expect(firstWorker.terminated).toBe(true);
 
     const mutation = automerge.docAddFeedItem(makeItem());
@@ -264,12 +266,105 @@ describe("automerge worker lifecycle", () => {
         "[automerge-worker] released idle document after request queue drained",
     });
 
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(worker.terminated).toBe(false);
 
     worker.emitMessage({ reqId: request.reqId, type: "ACK" });
     await mutation;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(worker.terminated).toBe(true);
+  });
+
+  it("restarts the quiet window after an unloaded binary read", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+    await completeWorkerInit(worker, automerge.initDoc());
+
+    worker.emitMessage({
+      type: "DEBUG_EVENT",
+      kind: "change",
+      detail:
+        "[automerge-worker] released idle document after request queue drained",
+    });
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    const binaryPromise = automerge.getDocBinary();
+    const request = await waitForWorkerRequest(worker, "GET_DOC_BINARY");
+    expect(MockWorker.instances).toHaveLength(1);
+    expect(
+      worker.messages.filter(
+        (message) =>
+          typeof message === "object" &&
+          message !== null &&
+          "type" in message &&
+          (message as { type?: unknown }).type === "INIT",
+      ),
+    ).toHaveLength(1);
+
+    worker.emitMessage({
+      reqId: request.reqId,
+      type: "DOC_BINARY",
+      binary: new Uint8Array([1, 2, 3]),
+    });
+    await expect(binaryPromise).resolves.toEqual(new Uint8Array([1, 2, 3]));
+
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(worker.terminated).toBe(false);
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(worker.terminated).toBe(true);
+  });
+
+  it("stops the worker after an unanswered request times out", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+    await completeWorkerInit(worker, automerge.initDoc());
+
+    worker.emitMessage({
+      type: "DEBUG_EVENT",
+      kind: "change",
+      detail:
+        "[automerge-worker] released idle document after request queue drained",
+    });
+
+    const binaryPromise = automerge.getDocBinary();
+    const binaryResult = binaryPromise.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await waitForWorkerRequest(worker, "GET_DOC_BINARY");
+    await vi.advanceTimersByTimeAsync(180_000);
+    await expect(binaryResult).resolves.toMatchObject({
+      message: expect.stringContaining("request TIMEOUT op=GET_DOC_BINARY"),
+    });
+
+    expect(worker.terminated).toBe(false);
     await vi.advanceTimersByTimeAsync(1_000);
+    expect(worker.terminated).toBe(true);
+  });
+
+  it("restarts the quiet window after a relay client-count update", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+    await completeWorkerInit(worker, automerge.initDoc());
+
+    worker.emitMessage({
+      type: "DEBUG_EVENT",
+      kind: "change",
+      detail:
+        "[automerge-worker] released idle document after request queue drained",
+    });
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    automerge.setRelayClientCount(1);
+    await waitForWorkerRequest(worker, "UPDATE_RELAY_CLIENT_COUNT");
+    expect(MockWorker.instances).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(worker.terminated).toBe(false);
+    await vi.advanceTimersByTimeAsync(11_000);
     expect(worker.terminated).toBe(true);
   });
 

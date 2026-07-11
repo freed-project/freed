@@ -45,6 +45,10 @@ export type { DocChangeEvent, DocState } from "./automerge-types";
  */
 const WORKER_REQUEST_TIMEOUT_MS = 180_000;
 const WORKER_START_TIMEOUT_MS = 15_000;
+// The worker releases currentDoc as soon as its request queue drains. Keep the
+// unloaded shell and currentBinary briefly so sequential snapshot and cloud
+// bookkeeping can reuse one generation without another full A.load.
+const IDLE_WORKER_STOP_DELAY_MS = 30_000;
 const IDLE_WORKER_STOP_RETRY_MS = 1_000;
 
 // ---------------------------------------------------------------------------
@@ -224,18 +228,33 @@ function stopIdleWorker(): boolean {
   return true;
 }
 
-function scheduleIdleWorkerStop(): void {
-  if (idleWorkerStopTimer || !worker) return;
+function cancelIdleWorkerStop(): void {
+  if (!idleWorkerStopTimer) return;
+  clearTimeout(idleWorkerStopTimer);
+  idleWorkerStopTimer = null;
+}
+
+function scheduleIdleWorkerStop(delayMs = IDLE_WORKER_STOP_DELAY_MS): void {
+  if (!worker) return;
+  cancelIdleWorkerStop();
   idleWorkerStopTimer = setTimeout(() => {
     idleWorkerStopTimer = null;
     if (!stopIdleWorker() && worker) {
-      scheduleIdleWorkerStop();
+      scheduleIdleWorkerStop(IDLE_WORKER_STOP_RETRY_MS);
     }
-  }, IDLE_WORKER_STOP_RETRY_MS);
+  }, delayMs);
+}
+
+function completeWorkerActivity(
+  delayMs = IDLE_WORKER_STOP_DELAY_MS,
+): void {
+  if (!appDocumentInitialized) return;
+  scheduleIdleWorkerStop(delayMs);
 }
 
 async function ensureWorkerDocumentReadyFor(type: WorkerRequest["type"]): Promise<void> {
   await ensureWorkerReady();
+  cancelIdleWorkerStop();
   if (
     !appDocumentInitialized ||
     workerDocumentInitialized ||
@@ -320,6 +339,7 @@ async function request(msg: WorkerRequest): Promise<void> {
       if (!pending.has(msg.reqId)) return;
       const pendingCount = pending.size;
       pending.delete(msg.reqId);
+      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
       const opType = (msg as { type: string }).type;
       const errMsg =
         `[automerge-worker] request TIMEOUT op=${opType} reqId=${msg.reqId} ` +
@@ -392,11 +412,13 @@ export function setRelayClientCount(n: number): void {
   const activeWorker = worker;
   void ensureWorkerReady().then(() => {
     if (worker !== activeWorker) return;
+    cancelIdleWorkerStop();
     activeWorker.postMessage({
       reqId: nextReqId++,
       type: "UPDATE_RELAY_CLIENT_COUNT",
       count: n,
     } satisfies WorkerRequest);
+    completeWorkerActivity();
   });
 }
 
@@ -408,6 +430,12 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   const msg = event.data;
 
   if (msg.type === "READY") return;
+
+  // Some reads use currentBinary and do not emit a document-release trace.
+  // A terminal response still starts a fresh quiet window for the worker shell.
+  if ("reqId" in msg && appDocumentInitialized) {
+    completeWorkerActivity();
+  }
 
   if (msg.type === "STATE_UPDATE") {
     publishState(msg.state, {
@@ -729,6 +757,7 @@ export async function getDocBinary(): Promise<Uint8Array> {
     const timer = setTimeout(() => {
       if (!pendingDocBinary.has(reqId)) return;
       pendingDocBinary.delete(reqId);
+      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
       reject(
         new Error(
           `[automerge-worker] request TIMEOUT op=GET_DOC_BINARY reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
@@ -748,12 +777,14 @@ export async function getDocBinary(): Promise<Uint8Array> {
  */
 export async function getDocHeads(): Promise<string[] | null> {
   await ensureWorkerReady();
+  cancelIdleWorkerStop();
   const activeWorker = getWorker();
   return new Promise((resolve, reject) => {
     const reqId = nextReqId++;
     const timer = setTimeout(() => {
       if (!pendingDocHeads.has(reqId)) return;
       pendingDocHeads.delete(reqId);
+      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
       reject(
         new Error(
           `[automerge-worker] request TIMEOUT op=GET_HEADS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
@@ -775,6 +806,7 @@ export async function getSavedYouTubeVideoUrls(): Promise<string[]> {
     const timer = setTimeout(() => {
       if (!pendingSavedYouTubeUrls.has(reqId)) return;
       pendingSavedYouTubeUrls.delete(reqId);
+      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
       reject(
         new Error(
           `[automerge-worker] request TIMEOUT op=GET_SAVED_YOUTUBE_URLS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
@@ -799,6 +831,7 @@ export async function getAllItemIds(): Promise<string[]> {
     const timer = setTimeout(() => {
       if (!pendingAllItemIds.has(reqId)) return;
       pendingAllItemIds.delete(reqId);
+      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
       reject(
         new Error(
           `[automerge-worker] request TIMEOUT op=GET_ALL_ITEM_IDS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
@@ -819,6 +852,7 @@ export async function getItemPreservedText(globalId: string): Promise<string | n
     const timer = setTimeout(() => {
       if (!pendingPreservedText.has(reqId)) return;
       pendingPreservedText.delete(reqId);
+      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
       reject(
         new Error(
           `[automerge-worker] request TIMEOUT op=GET_ITEM_PRESERVED_TEXT reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
@@ -906,6 +940,7 @@ export async function docClearSampleData(): Promise<SampleDataClearSummary> {
     const timer = setTimeout(() => {
       if (!pendingSampleDataClear.has(reqId)) return;
       pendingSampleDataClear.delete(reqId);
+      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
       reject(
         new Error(
           `[automerge-worker] request TIMEOUT op=CLEAR_SAMPLE_DATA reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
@@ -1141,6 +1176,7 @@ export async function docBackfillContentSignals(
     const timer = setTimeout(() => {
       if (!pendingContentSignalBackfill.has(reqId)) return;
       pendingContentSignalBackfill.delete(reqId);
+      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
       reject(
         new Error(
           `[automerge-worker] request TIMEOUT op=BACKFILL_CONTENT_SIGNALS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
