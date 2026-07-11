@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  allowedProviders,
   formatDurationMs,
   getDeferredReason,
   getDeferredRetryDecision,
@@ -32,8 +33,13 @@ test("uses provider-safe runtime deferral retry windows", () => {
   assert.equal(getDeferredRetryMs("facebook", "runtime_deferred"), 2 * 60 * 1000);
   assert.equal(getDeferredRetryMs("instagram", "runtime_deferred"), 10 * 60 * 1000);
   assert.equal(getDeferredRetryMs("linkedin", "runtime_deferred"), 30 * 60 * 1000);
+  assert.equal(getDeferredRetryMs("youtube", "runtime_deferred"), 30 * 60 * 1000);
   assert.equal(getDeferredRetryMs("instagram", "locked"), 10 * 60 * 1000);
   assert.equal(getDeferredRetryMs("instagram", "locked", { lockedRetryMs: 45_000 }), 45_000);
+});
+
+test("accepts YouTube as an installed-build sync target", () => {
+  assert.equal(allowedProviders.has("youtube"), true);
 });
 
 test("stops instead of queueing a second provider run after post-completion renderer rebuild", () => {

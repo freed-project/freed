@@ -61,10 +61,13 @@ import { clearStoredCookies, storeCookies } from "./lib/x-auth";
 import { disconnectIg, storeIgAuthState } from "./lib/instagram-auth";
 import { disconnectFb, storeFbAuthState } from "./lib/fb-auth";
 import { disconnectLi, storeLiAuthState } from "./lib/li-auth";
+import { disconnectYouTube } from "./lib/youtube-auth";
 import { captureXTimeline } from "./lib/x-capture";
 import { captureFbFeed } from "./lib/fb-capture";
 import { captureIgFeed } from "./lib/instagram-capture";
 import { captureLiFeed } from "./lib/li-capture";
+import { captureYouTube } from "./lib/youtube-capture";
+import { addYouTubeVideoToOfflinePlaylist } from "./lib/youtube-playlist";
 import { contentCache } from "./lib/content-cache";
 import { saveUrlInDesktop } from "./lib/save-url";
 import { hydrateReaderItem as hydrateReaderItemForDesktop } from "./lib/reader-hydration";
@@ -82,6 +85,7 @@ import { XSettingsSection } from "./components/XSettingsSection";
 import { FacebookSettingsSection } from "./components/FacebookSettingsSection";
 import { InstagramSettingsSection } from "./components/InstagramSettingsSection";
 import { LinkedInSettingsSection } from "./components/LinkedInSettingsSection";
+import { YouTubeSettingsSection } from "./components/YouTubeSettingsSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
 import { DesktopLegalSettingsSection } from "./components/DesktopLegalSettingsSection";
@@ -127,7 +131,7 @@ const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
 const IS_LOCAL_PREVIEW = IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
 const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
-const PREVIEW_PROVIDER_RISKS: ProviderRiskId[] = ["x", "facebook", "instagram", "linkedin"];
+const PREVIEW_PROVIDER_RISKS: ProviderRiskId[] = ["x", "facebook", "instagram", "linkedin", "youtube"];
 const RENDERER_HEARTBEAT_INTERVAL_MS = 15 * 1000;
 const LOCKED_STARTUP_RECHECK_MS = 30 * 1000;
 
@@ -871,6 +875,7 @@ function App() {
     await disconnectFb().catch(() => {});
     await disconnectIg().catch(() => {});
     await disconnectLi().catch(() => {});
+    await disconnectYouTube().catch(() => {});
     for (const provider of providers) clearCloudProvider(provider);
     clearContactSyncState();
     await clearSnapshots();
@@ -1051,6 +1056,7 @@ function App() {
       FacebookSettingsContent: FacebookSettingsSection,
       InstagramSettingsContent: InstagramSettingsSection,
       LinkedInSettingsContent: LinkedInSettingsSection,
+      YouTubeSettingsContent: YouTubeSettingsSection,
       GoogleContactsSettingsContent: tauriRuntimeAvailable ? GoogleContactsSection : null,
       checkForUpdates: IS_LOCAL_PREVIEW ? undefined : checkForUpdates,
       changelogPreview: DESKTOP_CHANGELOG_PREVIEW,
@@ -1087,7 +1093,8 @@ function App() {
           (sourceId === "x" ||
             sourceId === "facebook" ||
             sourceId === "instagram" ||
-            sourceId === "linkedin") &&
+            sourceId === "linkedin" ||
+            sourceId === "youtube") &&
           health?.providers[sourceId]?.status === "paused";
 
         if (sourceId === "rss") {
@@ -1124,6 +1131,14 @@ function App() {
             await clearProviderPause("linkedin");
           }
           await withProviderSyncing("linkedin", () => captureLiFeed("manual"));
+          return;
+        }
+
+        if (sourceId === "youtube" && state.ytAuth.isAuthenticated) {
+          if (isPaused) {
+            await clearProviderPause("youtube");
+          }
+          await withProviderSyncing("youtube", () => captureYouTube("manual"));
         }
       },
       getSourceStatus: (sourceId) => {
@@ -1136,6 +1151,9 @@ function App() {
       getLocalPreservedText: (globalId) => getItemPreservedText(globalId),
       hydrateReaderItem: hydrateReaderItemForDesktop,
       pinReaderItem,
+      youtube: {
+        addToOfflinePlaylist: addYouTubeVideoToOfflinePlaylist,
+      },
       // Encrypted API key store (type-widened: ApiKeyProvider -> string for PlatformConfig interface)
       secureStorage: secureStorage as {
         getApiKey: (provider: string) => Promise<string | null>;

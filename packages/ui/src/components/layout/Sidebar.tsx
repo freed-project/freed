@@ -583,7 +583,13 @@ export function Sidebar({
   onDesktopDisplayModeChange,
   desktopGapWidthPx,
 }: SidebarProps) {
-  const { SourceIndicator, syncRssNow, syncSourceNow, getSourceStatus } = usePlatform();
+  const {
+    SourceIndicator,
+    YouTubeSettingsContent,
+    syncRssNow,
+    syncSourceNow,
+    getSourceStatus,
+  } = usePlatform();
   const isMobileViewport = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const forceCompactDesktopRail = !isMobileDevice && isMobileViewport;
@@ -1091,8 +1097,10 @@ export function Sidebar({
         return "order-8";
       case "linkedin":
         return "order-9";
-      case "rss":
+      case "youtube":
         return "order-10";
+      case "rss":
+        return "order-11";
       default:
         return "";
     }
@@ -1105,6 +1113,7 @@ export function Sidebar({
     if (source.id === "facebook") return "facebook";
     if (source.id === "instagram") return "instagram";
     if (source.id === "linkedin") return "linkedin";
+    if (source.id === "youtube") return "youtube";
     return "sync";
   };
 
@@ -1113,7 +1122,8 @@ export function Sidebar({
     source.id === "x" ||
     source.id === "facebook" ||
     source.id === "instagram" ||
-    source.id === "linkedin";
+    source.id === "linkedin" ||
+    (source.id === "youtube" && Boolean(YouTubeSettingsContent));
   const sourceMenuTriggerBaseClass = rowCountsVisible
     ? "absolute right-0 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]"
     : "absolute top-[-1px] bottom-[-1px] right-0 flex items-center justify-center rounded-md px-1 transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]";

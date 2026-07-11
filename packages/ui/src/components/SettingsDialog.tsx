@@ -78,7 +78,7 @@ import {
   InterfaceZoomSlider,
 } from "./DisplayScaleControls.js";
 import { Tooltip } from "./Tooltip.js";
-import { ExternalLinkIcon, GoogleContactsIcon, StoryWallIcon } from "./icons.js";
+import { ExternalLinkIcon, GoogleContactsIcon, StoryWallIcon, YoutubeIcon } from "./icons.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useHasTouchOnlyPointer } from "../hooks/useHasTouchOnlyPointer.js";
 
@@ -114,7 +114,10 @@ const ANIMATION_OPTIONS: ReadonlyArray<{ value: AnimationIntensity; label: strin
   { value: "detailed", label: "Detailed" },
 ];
 
-type ProviderSectionId = Extract<SectionId, "x" | "facebook" | "instagram" | "linkedin">;
+type ProviderSectionId = Extract<
+  SectionId,
+  "x" | "facebook" | "instagram" | "linkedin" | "youtube"
+>;
 type ProviderAuthState = {
   isAuthenticated?: boolean;
   lastCaptureError?: string;
@@ -124,6 +127,7 @@ type ProviderAuthSlices = {
   fbAuth?: ProviderAuthState;
   igAuth?: ProviderAuthState;
   liAuth?: ProviderAuthState;
+  ytAuth?: ProviderAuthState;
 };
 const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
 const INSTALLED_BUILD_PRESENTATION = describeInstalledBuild(readBuildMetadata());
@@ -189,7 +193,8 @@ function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId
     sectionId === "x" ||
     sectionId === "facebook" ||
     sectionId === "instagram" ||
-    sectionId === "linkedin"
+    sectionId === "linkedin" ||
+    sectionId === "youtube"
   );
 }
 
@@ -204,6 +209,7 @@ function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
   const fbAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).fbAuth);
   const igAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).igAuth);
   const liAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).liAuth);
+  const ytAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).ytAuth);
 
   const authState =
     sectionId === "x"
@@ -212,7 +218,9 @@ function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
         ? fbAuth
         : sectionId === "instagram"
           ? igAuth
-          : liAuth;
+          : sectionId === "linkedin"
+            ? liAuth
+            : ytAuth;
 
   const snapshot = health?.providers[sectionId];
   const isConnected = authState?.isAuthenticated === true;
@@ -417,6 +425,9 @@ const ICONS: Record<SectionId, ReactNode> = {
       <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
     </svg>
   ),
+  youtube: (
+    <YoutubeIcon />
+  ),
   googleContacts: (
     <GoogleContactsIcon />
   ),
@@ -443,6 +454,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     FacebookSettingsContent,
     InstagramSettingsContent,
     LinkedInSettingsContent,
+    YouTubeSettingsContent,
     GoogleContactsSettingsContent,
     FeedsSettingsContent,
     addRssFeed,
@@ -492,6 +504,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         hasFacebook: !!FacebookSettingsContent,
         hasInstagram: !!InstagramSettingsContent,
         hasLinkedIn: !!LinkedInSettingsContent,
+        hasYouTube: !!YouTubeSettingsContent,
         hasUpdateChecks: !!checkForUpdates,
         hasFactoryReset: !!factoryReset,
       }).map((section) => ({
@@ -507,6 +520,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       FacebookSettingsContent,
       InstagramSettingsContent,
       LinkedInSettingsContent,
+      YouTubeSettingsContent,
       checkForUpdates,
       factoryReset,
       googleContacts,
@@ -538,6 +552,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           ...(sectionById.facebook ? [sectionById.facebook] : []),
           ...(sectionById.instagram ? [sectionById.instagram] : []),
           ...(sectionById.linkedin ? [sectionById.linkedin] : []),
+          ...(sectionById.youtube ? [sectionById.youtube] : []),
           sectionById.feeds!,
         ],
       },
@@ -1664,6 +1679,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="LinkedIn" />
             <LinkedInSettingsContent surface="settings" />
+          </>
+        ) : null;
+
+      case "youtube":
+        return YouTubeSettingsContent ? (
+          <>
+            <SectionHeading label="YouTube" />
+            <YouTubeSettingsContent surface="settings" />
           </>
         ) : null;
 

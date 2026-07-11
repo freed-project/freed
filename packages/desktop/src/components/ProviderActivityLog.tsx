@@ -9,6 +9,7 @@ const PROVIDER_PREFIX: Partial<Record<HealthProviderId, string>> = {
   facebook: "[FB]",
   instagram: "[IG]",
   linkedin: "[LI]",
+  youtube: "[YT]",
   rss: "[RSS]",
 };
 

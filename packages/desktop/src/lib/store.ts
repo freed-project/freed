@@ -95,6 +95,7 @@ import { log } from "./logger";
 import { initFbAuth, storeFbAuthState, type FbAuthState } from "./fb-auth";
 import { initIgAuth, storeIgAuthState, type IgAuthState } from "./instagram-auth";
 import { initLiAuth, storeLiAuthState, type LiAuthState } from "./li-auth";
+import { initYouTubeAuth, type YouTubeAuthState } from "./youtube-auth";
 import { reconcileSocialAuthStateHints } from "./social-auth-cookie-state";
 
 let outboxTeardown: (() => void) | null = null;
@@ -108,6 +109,7 @@ export type SyncProviderId =
   | "facebook"
   | "instagram"
   | "linkedin"
+  | "youtube"
   | "gdrive"
   | "dropbox";
 
@@ -119,6 +121,7 @@ const EMPTY_PROVIDER_SYNC_COUNTS: ProviderSyncCounts = {
   facebook: 0,
   instagram: 0,
   linkedin: 0,
+  youtube: 0,
   gdrive: 0,
   dropbox: 0,
 };
@@ -155,6 +158,8 @@ interface AppState {
   igAuth: IgAuthState;
   // LinkedIn auth state
   liAuth: LiAuthState;
+  // YouTube auth state
+  ytAuth: YouTubeAuthState;
 
   // UI state
   isLoading: boolean;
@@ -224,6 +229,8 @@ interface AppState {
   setIgAuth: (auth: IgAuthState) => void;
   // LinkedIn auth actions
   setLiAuth: (auth: LiAuthState) => void;
+  // YouTube auth actions
+  setYtAuth: (auth: YouTubeAuthState) => void;
 
   // UI actions (not persisted)
   setFilter: (filter: FilterOptions) => void;
@@ -578,6 +585,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   fbAuth: { isAuthenticated: false },
   igAuth: { isAuthenticated: false },
   liAuth: { isAuthenticated: false },
+  ytAuth: { isAuthenticated: false },
   isLoading: true,
   isSyncing: false,
   providerSyncCounts: { ...EMPTY_PROVIDER_SYNC_COUNTS },
@@ -637,6 +645,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       let fbAuth = initFbAuth();
       let igAuth = initIgAuth();
       let liAuth = initLiAuth();
+      const ytAuth = initYouTubeAuth();
 
       if (isTauri() || import.meta.env.VITE_TEST_TAURI === "1") {
         const previousAuth = { fbAuth, igAuth, liAuth };
@@ -660,6 +669,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         fbAuth,
         igAuth,
         liAuth,
+        ytAuth,
         isInitialized: true,
         isLoading: false,
       });
@@ -1064,6 +1074,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setIgAuth: (auth) => set({ igAuth: auth }),
   // LinkedIn auth actions
   setLiAuth: (auth) => set({ liAuth: auth }),
+  // YouTube auth actions
+  setYtAuth: (auth) => set({ ytAuth: auth }),
 
   // UI actions
   setFilter: (filter) => set({ activeFilter: filter }),

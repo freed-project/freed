@@ -18,6 +18,7 @@ import { captureXTimeline } from "./x-capture";
 import { captureFbFeed } from "./fb-capture";
 import { captureIgFeed } from "./instagram-capture";
 import { captureLiFeed } from "./li-capture";
+import { captureYouTube } from "./youtube-capture";
 import { docBatchRefreshFeeds } from "./automerge";
 import { useAppStore, withProviderSyncing } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
@@ -125,7 +126,7 @@ const RSS_FAILURE_RETRY_MAX_MS = 24 * 60 * 60 * 1000;
 const SOCIAL_DEFERRED_RETRY_BASE_MS = 2 * 60 * 1000;
 const SOCIAL_DEFERRED_RETRY_MAX_MS = 10 * 60 * 1000;
 
-export type RetriableSocialProvider = "facebook" | "instagram" | "linkedin";
+export type RetriableSocialProvider = "facebook" | "instagram" | "linkedin" | "youtube";
 
 const socialDeferredRetryTimers = new Map<
   RetriableSocialProvider,
@@ -136,6 +137,7 @@ const socialDebugLabels: Record<RetriableSocialProvider, string> = {
   facebook: "FB",
   instagram: "IG",
   linkedin: "LI",
+  youtube: "YT",
 };
 
 function nextFailedFeedRetryMs(feed: RssFeed): number {
@@ -264,6 +266,16 @@ export async function refreshSocialProvider(
       handleSocialResult("linkedin", result.diag.errorStage);
       return summarizeSocialRefreshResult("linkedin", result.diag);
     }
+    if (provider === "youtube" && store.ytAuth.isAuthenticated) {
+      const result = await withProviderSyncing("youtube", () => captureYouTube(trigger));
+      handleSocialResult("youtube", result.diag.errorStage);
+      return summarizeSocialRefreshResult("youtube", {
+        errorStage: result.diag.errorStage,
+        errorMessage: result.diag.errorMessage,
+        postsExtracted: result.diag.videosExtracted,
+        itemsAdded: result.diag.itemsAdded,
+      });
+    }
     clearSocialDeferredRetry(provider);
     return {
       provider,
@@ -302,6 +314,7 @@ function summarizeSocialRefreshResult(
 ): SocialProviderRefreshResult {
   const postsExtracted = diag.postsExtracted ?? 0;
   const itemsAdded = diag.itemsAdded ?? 0;
+  const itemNoun = provider === "youtube" ? "video" : "post";
 
   if (diag.errorStage) {
     const runtimeDeferred = isRuntimeDeferredStage(diag.errorStage);
@@ -322,7 +335,7 @@ function summarizeSocialRefreshResult(
       provider,
       status: "empty",
       stage: "empty",
-      detail: `${socialDebugLabels[provider]} sync returned 0 posts.`,
+      detail: `${socialDebugLabels[provider]} sync returned 0 ${itemNoun}s.`,
       postsExtracted,
       itemsAdded,
     };
@@ -331,7 +344,7 @@ function summarizeSocialRefreshResult(
   return {
     provider,
     status: "success",
-    detail: `${socialDebugLabels[provider]} sync saw ${postsExtracted.toLocaleString()} post${postsExtracted === 1 ? "" : "s"} and added ${itemsAdded.toLocaleString()} item${itemsAdded === 1 ? "" : "s"}.`,
+    detail: `${socialDebugLabels[provider]} sync saw ${postsExtracted.toLocaleString()} ${itemNoun}${postsExtracted === 1 ? "" : "s"} and added ${itemsAdded.toLocaleString()} item${itemsAdded === 1 ? "" : "s"}.`,
     postsExtracted,
     itemsAdded,
   };
@@ -539,7 +552,8 @@ export async function refreshAllFeeds(
     (store.xAuth.isAuthenticated ||
       store.fbAuth.isAuthenticated ||
       store.igAuth.isAuthenticated ||
-      store.liAuth.isAuthenticated);
+      store.liAuth.isAuthenticated ||
+      store.ytAuth.isAuthenticated);
 
   if (feeds.length === 0 && !hasNativeSocialRefresh) return;
 
@@ -575,6 +589,20 @@ export async function refreshAllFeeds(
     await refreshSocialProvider("facebook", "scheduled");
     await refreshSocialProvider("instagram", "scheduled");
     await refreshSocialProvider("linkedin", "scheduled");
+
+    const { ytAuth } = useAppStore.getState();
+    if (ytAuth?.isAuthenticated && !isProviderPaused("youtube")) {
+      try {
+        await withProviderSyncing("youtube", () => captureYouTube("scheduled"));
+      } catch (youtubeError) {
+        const message = youtubeError instanceof Error
+          ? youtubeError.message
+          : "YouTube subscription sync failed";
+        console.error("[Refresh] YouTube subscription sync failed:", youtubeError);
+        addDebugEvent("error", `[YT] subscription sync threw: ${message}`);
+        if (!useAppStore.getState().error) store.setError(message);
+      }
+    }
   } finally {
     store.setSyncing(false);
   }

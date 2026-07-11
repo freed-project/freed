@@ -14,7 +14,7 @@
 export type Platform =
   | "x" // X/Twitter
   | "rss" // Generic RSS/Atom
-  | "youtube" // YouTube (via RSS)
+  | "youtube" // YouTube authenticated capture, with optional manual RSS intake
   | "reddit" // Reddit (via RSS)
   | "mastodon" // Mastodon (via RSS)
   | "github" // GitHub (via Atom)
@@ -978,6 +978,10 @@ export interface Account {
   firstSeenAt: number;
   lastSeenAt: number;
   discoveredFrom: AccountDiscoveredFrom;
+  /** Whether this account appeared in the latest complete provider follow roster. */
+  followRosterActive?: boolean;
+  /** Last complete or partial provider roster capture that observed this account. */
+  followRosterSyncedAt?: number;
   graphX?: number;
   graphY?: number;
   graphPinned?: boolean;

@@ -23,6 +23,7 @@ import { pathToFileURL } from "node:url";
 // session/cookie state, and the injected extractor scripts.
 export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src/lib/capture.ts",
+  "packages/desktop/src/lib/dev-sync-triggers.ts",
   "packages/desktop/src/lib/fb-auth.ts",
   "packages/desktop/src/lib/fb-capture.ts",
   "packages/desktop/src/lib/instagram-auth.ts",
@@ -39,6 +40,9 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src/lib/social-provider-copy.ts",
   "packages/desktop/src/lib/x-auth.ts",
   "packages/desktop/src/lib/x-capture.ts",
+  "packages/desktop/src/lib/youtube-auth.ts",
+  "packages/desktop/src/lib/youtube-capture.ts",
+  "packages/desktop/src/lib/youtube-playlist.ts",
   "packages/desktop/src-tauri/src/fb-comments-extract.js",
   "packages/desktop/src-tauri/src/fb-extract.js",
   "packages/desktop/src-tauri/src/fb-groups-extract.js",
@@ -47,6 +51,10 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src-tauri/src/ig-extract.js",
   "packages/desktop/src-tauri/src/ig-stories-extract.js",
   "packages/desktop/src-tauri/src/li-extract.js",
+  "packages/desktop/src-tauri/src/youtube-extract.js",
+  "packages/desktop/src-tauri/src/youtube-playlist-action.js",
+  "packages/desktop/src-tauri/src/youtube.rs",
+  "scripts/dev-sync-trigger.mjs",
 ]);
 
 // Social capture packages whose focused provider tests validate-worktree runs.
@@ -60,12 +68,25 @@ export const SOCIAL_PROVIDER_PACKAGE_PREFIXES = [
 // providers can observe but have no dedicated focused provider test lane, so
 // validate-worktree intentionally does not narrow validation for them.
 export const PROVIDER_VISIBLE_EXTRA_FILES = new Set([
+  "packages/desktop/src/components/YouTubeSettingsSection.tsx",
+  "packages/desktop/src-tauri/capabilities/youtube-session.json",
+  "packages/desktop/src/lib/rss-refresh-plan.ts",
   "packages/desktop/src/lib/user-agent.ts",
   "packages/desktop/src-tauri/src/webkit-mask.js",
+  "packages/pwa/api/oauth/google.ts",
+  "packages/pwa/src/components/OAuthCallback.tsx",
+  "packages/pwa/src/lib/cloud-oauth.ts",
+  "packages/pwa/src/lib/reader-cache.ts",
+  "packages/pwa/src/lib/youtube-handoff.ts",
+  "packages/shared/src/schema.ts",
+  "packages/shared/src/youtube.ts",
+  "packages/ui/src/components/feed/ReaderView.tsx",
+  "packages/ui/src/components/feed/YouTubeFocusPlayer.tsx",
 ]);
 
 export const PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES = [
   "packages/capture-linkedin/",
+  "packages/capture-youtube/",
 ];
 
 // In any capture package (including non-social ones like capture-save), these

@@ -158,6 +158,36 @@ describe("dev sync triggers", () => {
     );
   });
 
+  it("runs YouTube through the installed-build trigger path", async () => {
+    const { installDevSyncTriggerBridge } = await import("./dev-sync-triggers");
+    refreshSocialProvider.mockResolvedValue({
+      provider: "youtube",
+      status: "success",
+      postsExtracted: 4,
+      itemsAdded: 2,
+      detail: "YT sync saw 4 videos and added 2 items.",
+    });
+
+    const stop = installDevSyncTriggerBridge();
+    await window.__FREED_RUN_SOCIAL_SYNC__?.({
+      id: "request-youtube-1",
+      provider: "youtube",
+    });
+    stop();
+
+    expect(refreshSocialProvider).toHaveBeenCalledWith("youtube", "dev_trigger");
+    expect(writeNativeJsonFile).toHaveBeenLastCalledWith(
+      "dev-sync-trigger-result.json",
+      expect.objectContaining({
+        id: "request-youtube-1",
+        provider: "youtube",
+        status: "completed",
+        detail: expect.stringContaining("Videos: 4"),
+      }),
+      "dev-sync-trigger",
+    );
+  });
+
   it("treats empty provider results as a failed terminal trigger", async () => {
     const { installDevSyncTriggerBridge } = await import("./dev-sync-triggers");
     refreshSocialProvider.mockResolvedValue({

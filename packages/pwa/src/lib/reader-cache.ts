@@ -1,4 +1,4 @@
-import type { FeedItem } from "@freed/shared";
+import { parseYouTubeVideoUrl, type FeedItem } from "@freed/shared";
 import type { ReaderHydrationResult } from "@freed/ui/context";
 import { cacheArticleHtml, warmArticleImageCache } from "@freed/ui/lib/article-cache";
 import {
@@ -60,6 +60,14 @@ export async function hydrateReaderItemInPwa(
       mediaUrls: item.content.mediaUrls,
       mediaTypes: item.content.mediaTypes,
       status: item.content.mediaUrls.length > 0 || html ? "partial" : "unsupported",
+    };
+  }
+
+  if (parseYouTubeVideoUrl(url) || parseYouTubeVideoUrl(item.sourceUrl)) {
+    const html = pinned ? await cacheFallback(item, true) : undefined;
+    return {
+      html,
+      status: html ? "partial" : "unsupported",
     };
   }
 

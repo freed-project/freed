@@ -41,6 +41,7 @@ import {
   PwaGoogleContactsSettings,
   PwaInstagramSettings,
   PwaLinkedInSettings,
+  PwaYouTubeSettings,
   PwaXSettings,
 } from "./components/PwaSocialProviderSettings";
 import { PwaLegalSettingsSection } from "./components/PwaLegalSettingsSection";
@@ -64,6 +65,7 @@ import {
   watchInstallPrompt,
   type InstallNotice,
 } from "./lib/pwa-install";
+import { openPwaUrl } from "./lib/youtube-handoff";
 
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
 const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
@@ -130,6 +132,7 @@ function App() {
   const setSyncConnected = useAppStore((state) => state.setSyncConnected);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
   const [installNotice, setInstallNotice] = useState<InstallNotice | null>(null);
+
   const [legalResolved, setLegalResolved] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [releaseChannel, setReleaseChannelState] = useState<ReleaseChannel>(() =>
@@ -305,6 +308,7 @@ function App() {
       FacebookSettingsContent: PwaFacebookSettings,
       InstagramSettingsContent: PwaInstagramSettings,
       LinkedInSettingsContent: PwaLinkedInSettings,
+      YouTubeSettingsContent: PwaYouTubeSettings,
       GoogleContactsSettingsContent: PwaGoogleContactsSettings,
       checkForUpdates,
       applyUpdate: applyPwaUpdate,
@@ -335,7 +339,7 @@ function App() {
       // Web Contact Picker API — available on iOS/Android, absent on desktop browsers.
       // FriendEditor falls back to manual entry when this is undefined at runtime.
       pickContact: pickContactViaWebApi,
-      openUrl: (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); },
+      openUrl: openPwaUrl,
       bugReporting: pwaBugReporting,
     }),
     [checkForUpdates, handleFactoryReset, releaseChannel, setReleaseChannel],

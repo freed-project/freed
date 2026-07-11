@@ -29,6 +29,7 @@ import {
   choosePopulatedInputForFeedEmptyPreMerge,
   evaluateDestructiveMergeGuard,
   removeRssFeed,
+  reconcileYouTubeCapture,
   updateAccount,
   updatePerson,
   updatePreferences,
@@ -721,6 +722,104 @@ describe("removeRssFeed", () => {
     doc = A.change(doc, (d) => removeRssFeed(d, url));
 
     expect(doc.rssFeeds[url]).toBeUndefined();
+  });
+});
+
+describe("reconcileYouTubeCapture", () => {
+  it("preserves linked identity and saved video state while reconciling a complete roster", () => {
+    let doc = createEmptyDoc();
+    doc = A.change(doc, (draft) => {
+      addAccounts(draft, [
+        makeAccount({
+          id: "social:youtube:followed",
+          kind: "social",
+          provider: "youtube",
+          externalId: "followed",
+          displayName: "Old followed title",
+          discoveredFrom: "follow_roster",
+          followRosterActive: true,
+        }),
+        makeAccount({
+          id: "social:youtube:unfollowed",
+          kind: "social",
+          provider: "youtube",
+          externalId: "unfollowed",
+          displayName: "Unfollowed",
+          discoveredFrom: "follow_roster",
+          followRosterActive: true,
+        }),
+        makeAccount({
+          id: "social:x:other",
+          kind: "social",
+          provider: "x",
+          externalId: "other",
+          displayName: "Other provider",
+        }),
+      ]);
+      addFeedItem(draft, makeItem({
+        globalId: "youtube:yt:video:dQw4w9WgXcQ",
+        platform: "youtube",
+        userState: { hidden: false, saved: true, archived: false, tags: [] },
+      }));
+    });
+
+    doc = A.change(doc, (draft) => reconcileYouTubeCapture(
+      draft,
+      [makeAccount({
+        id: "social:youtube:followed",
+        kind: "social",
+        provider: "youtube",
+        externalId: "followed",
+        displayName: "Current followed title",
+        discoveredFrom: "follow_roster",
+        personId: undefined,
+      })],
+      [makeItem({
+        globalId: "youtube:yt:video:dQw4w9WgXcQ",
+        platform: "youtube",
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+      })],
+      { rosterComplete: true, capturedAt: 456 },
+    ));
+
+    expect(doc.accounts["social:youtube:followed"]).toMatchObject({
+      personId: "person-1",
+      displayName: "Current followed title",
+      followRosterSyncedAt: 456,
+      followRosterActive: true,
+    });
+    expect(doc.accounts["social:youtube:unfollowed"]).toMatchObject({
+      followRosterSyncedAt: 456,
+      followRosterActive: false,
+    });
+    expect(doc.accounts["social:x:other"].followRosterActive).toBeUndefined();
+    expect(doc.feedItems["youtube:yt:video:dQw4w9WgXcQ"].userState.saved).toBe(true);
+  });
+
+  it("does not infer unfollows from an incomplete website capture", () => {
+    let doc = createEmptyDoc();
+    doc = A.change(doc, (draft) => {
+      addAccounts(draft, [makeAccount({
+        id: "social:youtube:existing",
+        kind: "social",
+        provider: "youtube",
+        externalId: "existing",
+        displayName: "Existing YouTube channel",
+        discoveredFrom: "follow_roster",
+        followRosterActive: true,
+      })]);
+    });
+
+    doc = A.change(doc, (draft) => reconcileYouTubeCapture(
+      draft,
+      [],
+      [],
+      { rosterComplete: false, capturedAt: 456 },
+    ));
+
+    expect(doc.accounts["social:youtube:existing"]).toMatchObject({
+      followRosterActive: true,
+    });
   });
 });
 

@@ -11,6 +11,7 @@ const BASE_AVAILABILITY = {
   hasFacebook: false,
   hasInstagram: false,
   hasLinkedIn: false,
+  hasYouTube: false,
   hasUpdateChecks: false,
   hasFactoryReset: false,
 };
@@ -68,5 +69,14 @@ describe("settings section availability", () => {
     expect(statusOnly?.keywords).not.toContain("opml");
     expect(managed?.keywords).toContain("add feed");
     expect(managed?.keywords).toContain("opml");
+  });
+
+  it("shows YouTube only when the platform provides its integration settings", () => {
+    expect(buildSettingsSectionMetas(BASE_AVAILABILITY).map((section) => section.id))
+      .not.toContain("youtube");
+    expect(buildSettingsSectionMetas({
+      ...BASE_AVAILABILITY,
+      hasYouTube: true,
+    }).map((section) => section.id)).toContain("youtube");
   });
 });

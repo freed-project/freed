@@ -2,6 +2,8 @@
 //!
 //! Native desktop app that bundles capture, sync relay, and reader UI.
 
+mod youtube;
+
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
@@ -12878,6 +12880,12 @@ pub fn run() {
             li_check_auth,
             li_scrape_feed,
             li_disconnect,
+            youtube::yt_show_login,
+            youtube::yt_hide_login,
+            youtube::yt_check_auth,
+            youtube::yt_capture,
+            youtube::yt_add_to_offline_playlist,
+            youtube::yt_disconnect,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Freed")

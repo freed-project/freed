@@ -4,17 +4,18 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const allowedProviders = new Set(["facebook", "instagram", "linkedin"]);
+export const allowedProviders = new Set(["facebook", "instagram", "linkedin", "youtube"]);
 export const defaultLockedRetryMs = 10 * 60 * 1000;
 export const defaultTriggerTimeoutMs = 10 * 60 * 1000;
 export const runtimeDeferredRetryMsByProvider = Object.freeze({
   facebook: 2 * 60 * 1000,
   instagram: 10 * 60 * 1000,
   linkedin: 30 * 60 * 1000,
+  youtube: 30 * 60 * 1000,
 });
 
 function usage() {
-  return "Usage: node scripts/dev-sync-trigger.mjs [facebook|instagram|linkedin]";
+  return "Usage: node scripts/dev-sync-trigger.mjs [facebook|instagram|linkedin|youtube]";
 }
 
 export function formatDurationMs(ms) {

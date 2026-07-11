@@ -85,6 +85,13 @@ export type WorkerRequest =
   | { reqId: number; type: "ADD_FEED_ITEMS"; items: FeedItem[] }
   | {
       reqId: number;
+      type: "RECONCILE_YOUTUBE_CAPTURE";
+      accounts: Account[];
+      items: FeedItem[];
+      options: { rosterComplete: boolean; capturedAt: number };
+    }
+  | {
+      reqId: number;
       type: "ADD_SAMPLE_LIBRARY_DATA";
       feeds: RssFeed[];
       items: FeedItem[];
@@ -124,6 +131,7 @@ export type WorkerRequest =
   | { reqId: number; type: "GET_ALL_ITEM_IDS" }
   | { reqId: number; type: "GET_DOC_BINARY" }
   | { reqId: number; type: "GET_HEADS" }
+  | { reqId: number; type: "GET_SAVED_YOUTUBE_URLS" }
   | { reqId: number; type: "GET_ITEM_PRESERVED_TEXT"; globalId: string }
   // Relay management (fire-and-forget, reqId ignored)
   | { reqId: number; type: "UPDATE_RELAY_CLIENT_COUNT"; count: number };
@@ -204,6 +212,8 @@ export type WorkerResponse =
    * unloaded). Never forces a document load; null before the first INIT.
    */
   | { reqId: number; type: "DOC_HEADS"; heads: string[] | null }
+  /** Canonical URLs for every saved YouTube item in the complete document. */
+  | { reqId: number; type: "SAVED_YOUTUBE_URLS"; urls: string[] }
   /** Sent once per INIT with its cost, for the worker-INIT runtime counter. */
   | { type: "INIT_STATS"; durationMs: number; docBytes: number }
   /** On-demand preserved article text for the active reader item. */

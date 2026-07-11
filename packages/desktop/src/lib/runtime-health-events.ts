@@ -20,7 +20,7 @@ export type SocialScrapeTrigger =
   | "post_login"
   | "unknown";
 
-export type ScrapeOutcomeProvider = "facebook" | "instagram" | "linkedin" | "x";
+export type ScrapeOutcomeProvider = "facebook" | "instagram" | "linkedin" | "youtube" | "x";
 
 export function recordRuntimeHealthEvent(
   payload: { event: string } & Record<string, unknown>,
@@ -62,7 +62,7 @@ export function recordCloudUploadSkipped(input: {
 }
 
 /**
- * One line per scrape settlement across all four capture paths.
+ * One line per scrape settlement across authenticated capture paths.
  * `itemsExtracted >= 5 && itemsPersisted == 0` is the scrape_zero_persist
  * signature (F03: results discarded by mid-invoke renderer recovery).
  */
