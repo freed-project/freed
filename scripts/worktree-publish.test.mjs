@@ -551,6 +551,14 @@ test("worktree-publish keeps the ordinary authenticated GitHub path available", 
     ),
   );
   assert.ok(ghCalls.every((call) => call.ghHost === null));
+  assert.equal(
+    run(
+      "git",
+      ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+      { cwd: fixture.worktree },
+    ).stdout.trim(),
+    "origin/fix/worktree-publish-test",
+  );
 });
 
 test("worktree-publish rejects unsupported direct publish bases", async (t) => {

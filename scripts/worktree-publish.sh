@@ -711,6 +711,9 @@ ensure_provider_pr_draft_before_push
 verify_canonical_base
 "${GIT_BIN}" push -u origin "${PUBLISH_HEAD}:refs/heads/${BRANCH_NAME}"
 verify_remote_head
+"${GIT_BIN}" branch \
+  --set-upstream-to="origin/${BRANCH_NAME}" \
+  "${BRANCH_NAME}" >/dev/null
 
 BODY_CONTENT=""
 if [[ -n "${BODY_FILE}" ]]; then
