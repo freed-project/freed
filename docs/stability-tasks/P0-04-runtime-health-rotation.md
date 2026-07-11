@@ -1,6 +1,6 @@
 # P0-04: Daily runtime-health rotation replacing the 5 MiB halving cap
 
-runner-safe: false (lib.rs) | provider-visible: false | soak-gated: no
+runner-safe: false (lib.rs) | provider-visible: true (conservative native orchestration gate, though this task is logging only) | soak-gated: no (runtime-neutral instrumentation)
 Findings: telemetry-perf map — "5 MiB cap with halving destroys multi-day trend evidence and rewrites the whole file on the event path".
 
 ## Context

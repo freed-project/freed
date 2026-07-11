@@ -6,8 +6,33 @@ Canonical contract for validating installed Freed Desktop builds on the user's p
 
 An installed soak observes a real Freed Desktop build over hours using terminal evidence only.
 
-- Start collection with `node scripts/soak-collect.mjs` (`--detach` to survive terminal close). It samples the app process, the machine-wide WebKit process table, and `runtime-health.jsonl` offsets into a soak directory under `~/.freed/automation/soaks/`, and points `~/.freed/automation/current-soak-dir` at it.
-- Judge the soak with `node scripts/soak-assert.mjs`. It writes `soak-verdict.json` with named assertions (footprint slope, renderer recoveries, stale heartbeats, WebKit baseline return, and the P0-02/P0-03 counters once they exist), each citing violating file:line evidence. Loops gate on the verdict, not on eyeballed TSVs.
+- Start measured collection with an immutable comparison context:
+
+  ```bash
+  node scripts/soak-collect.mjs --detach \
+    --scenario <scenario> \
+    --provider-cohort <provider-auth-pause-and-cloud-state> \
+    --document-size-bucket <bucket> \
+    --artifact-digest <installed-artifact-sha256>
+  ```
+
+  Omit `--artifact-digest` only when no installed artifact digest exists. The
+  three workload flags are required together. They, the detected host platform,
+  architecture, and RAM tier are written once to `soak-info.json`. A measured
+  baseline and effect must use exactly matching values and comparable window
+  durations. The collector acquires the exclusive
+  `~/.freed/automation/current-soak-dir.collector-lock`, rejects a live
+  collector, recovers only a safely identified stale owner, and releases only
+  its own lock token. It samples the app process, the machine-wide WebKit
+  process table, and `runtime-health.jsonl` into a soak directory under
+  `~/.freed/automation/soaks/`. Each saved cursor binds the physical file
+  generation and a SHA-256 digest of the complete source prefix, so daily
+  replacement or truncate-regrow cannot skip new records when the new file is
+  already as large as the old offset. The collector points
+  `~/.freed/automation/current-soak-dir` at it.
+- Judge the soak with `node scripts/soak-assert.mjs`. It writes `soak-verdict.json` with source health, app-alive coverage, named assertions, and one of `pass`, `fail`, or `inconclusive`. Runtime source health requires liveness events in every app-alive segment, at least 80 percent of the expected distinct samples, a bounded largest gap, and a fresh final sample. Zero-event and event-rate assertions remain `inconclusive` until that coverage and one attributable runtime identity are both present. Cloud rates also require explicit connected and eligible coverage. Empty, thin, identity-missing, mixed-build, malformed, or denominator-free windows remain valid analytical `inconclusive` evidence, but they cannot be recorded as task lifecycle outcomes. A lifecycle `inconclusive` requires a nonempty window attributable to the canonical installed build and a complete composite fingerprint. If that contract is unavailable, preserve the raw verdict, keep the task in `soaking`, repair capture, and retry. Create `canary-context.json` with `node scripts/canary-context.mjs --verdict <soak-dir>/soak-verdict.json --install-id <id> --installed-at <iso>`, then summarize with `node scripts/canary-summarize.mjs --context <soak-dir>/canary-context.json --collector-metrics <soak-dir>/metrics.tsv`. The generated canary JSON, runtime-health JSONL sidecar, and collector-metrics TSV sidecar are one portable evidence bundle. Loops gate on these artifacts, not on eyeballed TSVs or the build installed at report time.
+- The bounded `cloud_sync_coverage` event remains provider-gated and has no approved runtime emitter yet. Cloud-rate assertions must remain `inconclusive` until that emitter lands through the scoped provider approval lane. Do not infer eligibility from wall time, a configured account, or an unopened settings screen.
+- The source fingerprint binds ordered runtime records, raw collector metrics, collector and runtime liveness coverage, every rate denominator, build identity, app session, collector session, and app PID. Runtime coverage includes observed and expected distinct counts, density, largest gap, final freshness, and covered app-alive segment counts. Duplicate counted events stay distinct. Native heartbeat, memory, recovery, and alarm events still need the provider-reviewed identity-stamping instrumentation. Until that lands, a window containing those untagged records remains `inconclusive`.
 - The nightly planner (docs/NIGHTLY-SELF-IMPROVE.md) reads the same pointer and soak files as evidence.
 
 ## No focus stealing
@@ -50,8 +75,9 @@ so the helper keeps waiting for unlock without 30 second local churn.
 
 Long-running or background work must not stop overnight because the next useful step would be a click in Freed Desktop.
 
-- If a click is truly required to test the work properly and efficiently, ask for permission with a 10 minute response window, then proceed if the user is unavailable.
+- If a routine local click is truly required to test already authorized work, ask for permission with a 10 minute response window. If the user is unavailable, continue only within authority already granted.
 - When the action is likely to recur, implement and ship a terminal trigger instead of depending on foreground UI automation.
 - Sitting idle until morning is not acceptable when a trigger can be built or the user has given a timeout path.
+- A timeout never authorizes provider traffic, authentication, external posting, deployment, destructive state changes, or a new product behavior. Those actions still require their normal explicit gates.
 
 This is a workflow contract, not a suggestion for one specific script. Generated nightly tasks, release soak notes, morning closeout instructions, and agent handoff prompts must include the same rule whenever they mention app interaction: name the terminal command or trigger to use, identify the missing trigger that must be built before the soak continues, or state the 10 minute timeout path. A background run that can make progress must keep moving. The machine can wait on evidence, CI, network, or a provider-risk approval; it should not wait on performative button etiquette.

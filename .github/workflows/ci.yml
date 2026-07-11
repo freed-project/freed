@@ -8,18 +8,17 @@ on:
 
 concurrency:
   group: validation-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
-  issues: write
-  pull-requests: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   tooling-smoke:
+    name: Tooling smoke
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -28,7 +27,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
@@ -38,6 +37,7 @@ jobs:
         run: npm run test:scripts
 
   main-pr-guard:
+    name: Main PR guard
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
@@ -49,7 +49,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: ".nvmrc"
 
       - name: Refresh branch refs
         run: git fetch origin dev main
@@ -62,9 +62,13 @@ jobs:
             --head-branch="${{ github.head_ref }}"
 
   feature:
+    name: Feature validation
     if: github.event_name == 'pull_request' && github.base_ref == 'dev'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout
@@ -75,7 +79,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
@@ -92,6 +96,38 @@ jobs:
           else
             echo "needs_playwright=false" >> "$GITHUB_OUTPUT"
           fi
+          if printf '%s\n' "$PLAN_LABELS" | grep -q '^native rust '; then
+            echo "needs_native=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_native=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Rust toolchain
+        if: steps.feature-plan.outputs.needs_native == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust build artifacts
+        if: steps.feature-plan.outputs.needs_native == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/desktop/src-tauri -> target
+
+      - name: Install native Linux dependencies
+        if: steps.feature-plan.outputs.needs_native == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            cmake \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev
 
       - name: Install Playwright browsers
         if: steps.feature-plan.outputs.needs_playwright == 'true'
@@ -125,7 +161,7 @@ jobs:
         run: cat perf-comparison.md
 
       - name: Comment perf comparison on PR
-        if: always() && hashFiles('perf-comparison.md') != ''
+        if: always() && hashFiles('perf-comparison.md') != '' && github.event.pull_request.head.repo.full_name == github.repository
         run: node scripts/post-perf-comment.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -156,9 +192,13 @@ jobs:
           retention-days: 7
 
   dev:
+    name: Dev integration
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      issues: write
 
     steps:
       - name: Checkout
@@ -169,11 +209,35 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/desktop/src-tauri -> target
+
+      - name: Install native Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            cmake \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev
 
       - name: Install Playwright browsers
         run: |
@@ -210,7 +274,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           title="CI failure: dev validation on dev"
-          body="Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          body="(AI Generated).
+
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           Commit: ${GITHUB_SHA}
           Job: dev (validate:dev)
 

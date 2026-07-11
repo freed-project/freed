@@ -1,26 +1,89 @@
 ---
 name: freed-soak
-description: Run an installed-build soak of Freed Desktop terminal-first — launch with open -g, start the soak collector, optionally kick provider syncs with dev-sync-trigger, and judge the window with soak-assert. Use when asked to soak a build, observe an installed release overnight, or produce a soak verdict for the stability program.
+description: Run and judge an installed-build soak of Freed Desktop from terminal evidence. Use for release observation, overnight stability windows, or post-change verification. Require the canonical release-verifier lease, the exclusive collector session lock, event-derived build identity, immutable time bounds, source-health checks, comparable process generations, and explicit inconclusive results when identity or coverage is insufficient.
 disable-model-invocation: true
 ---
 
 # Soak
 
-Observe an installed Freed Desktop build over hours using terminal evidence only, then judge the window with a machine-readable verdict. The canonical contract lives in [docs/SOAK-AND-TRIGGERS.md](../../../docs/SOAK-AND-TRIGGERS.md); if this skill and that document disagree, the document wins. Program rules in [docs/STABILITY-PROGRAM.md](../../../docs/STABILITY-PROGRAM.md) bind every soak: **no watchdog changes, one behavioral change per soak cycle, provider-visible work needs owner approval first.**
+Observe one installed build under one declared scenario. Follow [docs/SOAK-AND-TRIGGERS.md](../../../docs/SOAK-AND-TRIGGERS.md) when it is more specific.
 
-## Workflow
+## Start an attributable session
 
-1. Confirm what is installed and running: `defaults read /Applications/Freed.app/Contents/Info.plist CFBundleShortVersionString` and `pgrep -fl "Freed.app/Contents/MacOS"`. If the app is not running, launch it in the background with `open -g /Applications/Freed.app` — never a foregrounding click path.
-2. Start collection: `node scripts/soak-collect.mjs --detach`. It samples the app process, the WebKit process table, and runtime-health offsets into `~/.freed/automation/soaks/<timestamp>/` and repoints `~/.freed/automation/current-soak-dir`. For unattended overnight windows, hold the machine awake with `caffeinate -is` (record its pid; kill it at soak end).
-3. Write a `soak-context.md` into the soak dir at start: build version, why this soak is running, cloud/provider/relay connection state (verified from local logs — sync-health.json, runtime-health.jsonl — never by opening the app UI), and which program cycle this window belongs to (baseline, positive control, post-damper).
-4. If a provider sync must be triggered for signal, use `node scripts/dev-sync-trigger.mjs <provider>` per the canonical doc, including its locked-machine spacing rules. Dev-channel builds enable the trigger automatically.
-5. Never stall overnight waiting for a click: follow the 10-minute-timeout contract — ask with a 10-minute response window, then proceed; ship a terminal trigger for anything recurring.
-6. While the soak runs, heartbeat hourly: app + collector pids alive, `metrics.tsv` growing. If the app died, append the death time and any runtime-health/crash evidence to `soak-context.md`, relaunch with `open -g`, and record the relaunch — deaths are evidence, not something to fix mid-soak.
-7. After the target window (≥6h for program soaks), judge it: `node scripts/soak-assert.mjs`. It writes `soak-verdict.json` with named, file:line-cited assertions. Report the verdict path and the assertion table.
-8. Close out: stop caffeinate, decide whether the collector keeps running for the next cycle, and record the verdict's headline counters wherever the requesting cycle needs them (scorecard column, canary ledger via freed-canary, or a PR).
+1. Record the canonical task ID, behavior under test, metric IDs, required
+   scenario, target duration, minimum coverage, and allowed authority. Require
+   the task to already be in `soaking`. An authorized lifecycle actor must
+   complete `installed` to `soaking` before this workflow starts.
+2. Require the trusted host launcher to have acquired the canonical
+   `release-verifier` lease. Use only its short-lived
+   `FREED_AUTOMATION_LEASE_TOKEN` for verdict mutations. Never request or
+   receive the persistent actor credential. The verifier cannot transition
+   `installed` to `soaking`. The control-plane lease is the verdict writer
+   boundary. The collector separately acquires the exclusive
+   `<pointer>.collector-lock`, rejects a live owner, recovers a stale owner, and
+   releases only its own token. Do not bypass that lock or let two behavioral
+   verification cycles share one active pointer.
+3. Verify the installed app's version, channel, git SHA, and app session from runtime-health event identity. Record the collector session, page load ID, renderer generation, relevant PIDs with process start times, host OS, RAM tier, provider cohort, and document-size bucket.
+4. Launch with `open -g /Applications/Freed.app` only when needed. Never steal focus for routine observation.
+5. Start the collector with an immutable comparison context:
 
-## Success criteria (counters, not vibes)
+   ```bash
+   node scripts/soak-collect.mjs --detach \
+     --scenario <scenario> \
+     --provider-cohort <provider-auth-pause-and-cloud-state> \
+     --document-size-bucket <bucket> \
+     --artifact-digest <installed-artifact-sha256>
+   ```
 
-- A `soak-verdict.json` exists for the window with every assertion judged (pass/fail/skipped), each failure citing file:line evidence.
-- `soak-context.md` records build, purpose, connection state, and any mid-soak deaths/relaunches.
-- The window is attributable: one build, known start/end, collector samples covering it.
+   Omit `--artifact-digest` only when no installed artifact digest exists. The
+   three workload flags are required together for measured lifecycle outcomes.
+   They and the detected host context are written once at collector start and
+   cannot be relabeled later. Record immutable start bounds and keep raw
+   evidence append-only.
+6. Write the scenario and connection state from local evidence. Do not infer provider or cloud state from an unopened UI.
+
+## Run the window
+
+1. Preserve one global behavioral product change until its installed-build soak outcome completes. A different task or exclusivity key does not create another slot.
+2. Use `scripts/dev-sync-trigger.mjs` only under its existing gate. Any new cadence, navigation, request, cookie, header, retry, or WebView behavior requires a separate `freed-provider-risk-review` approval first.
+3. Check source health periodically: app and collector liveness, sample growth, parse failures, offset gaps, rotation, and app-alive coverage.
+4. Record relaunch, sleep, wake, network transitions, renderer replacement, and process-generation changes. Do not calculate one memory slope across those boundaries.
+5. Treat app death as evidence. Relaunch only when the scenario allows it, and begin a new attributable session segment.
+6. Do not tune watchdogs, alter the product, or repair the measured build mid-window.
+
+## Judge and close
+
+1. End the session with an immutable timestamp before moving any latest-session pointer.
+2. Run `node scripts/soak-assert.mjs` against the exact session directory and bounds.
+3. Judge metrics through the versioned registry. Verify event predicates, denominators, minimum exposures, and source coverage before accepting pass or fail.
+4. Return a raw analysis of `inconclusive` for mixed builds, missing identity,
+   broken sources, insufficient duration, insufficient exposure, or a scenario
+   that did not occur. Preserve the raw verdict even when it cannot become a
+   lifecycle outcome.
+5. A verdict covers only events at or before its end time. It may never suppress a later alarm.
+6. Stop the collector and wake lock owned by this session. Do not stop another task's processes.
+7. Record build identity, bounds, coverage, process segments, trigger history, assertion table, and raw evidence pointers in the verification task.
+8. If the source coverage is healthy, create the build-bounded canary context
+   with `scripts/canary-context.mjs`. It rebuilds the soak verdict from the raw
+   session and copies the stored workload and host context. Then run
+   `scripts/canary-summarize.mjs --collector-metrics
+   <soak-dir>/metrics.tsv`. Preserve and commit the canary JSON record, its
+   runtime-health JSONL sidecar, and its collector-metrics TSV sidecar as one
+   portable bundle. Never reconstruct an earlier window from whichever build
+   happens to be installed later.
+9. Treat `soak-assert.mjs` output as raw evidence, not a lifecycle decision.
+   Build the exact task-bound contract with
+   `scripts/build-outcome-verdict.mjs`, including the hashed baseline
+   raw soak verdict and one registered metric ID. The converter rebuilds both
+   verdicts from stored collector artifacts and derives the values, unit,
+   direction, and tolerance from the metric registry. Then call
+   `scripts/record-outcome.mjs` with the generated verdict and the matching
+   evidence window. Never supply effect values by hand. The task's installed
+   version, full commit SHA, channel, optional artifact digest, and soak start
+   must match the
+   verdict window. A lifecycle `inconclusive` is recordable only when the raw
+   window is nonempty, attributable to that installed build, and carries a
+   complete composite fingerprint. If missing or mixed identity, an empty
+   window, or broken capture prevents that contract, leave the task in
+   `soaking`, preserve the analytical verdict, repair collection, and retry. Do
+   not fabricate task attribution to release the behavior slot.

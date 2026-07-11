@@ -2,27 +2,28 @@
 /**
  * bisect-regression.mjs (stability W2-03)
  *
- * Metric name + version range -> commit range -> `git bisect run` with the
- * soak verdict (W1-02) as the predicate. Version bumps are commits, so the
- * range between two release tags is bisectable; each step installs nothing —
- * the predicate runs a bounded soak of the CURRENTLY INSTALLED build only
- * when invoked in --predicate mode by git bisect on a machine that rebuilds
- * per step, or (default) evaluates an existing soak-verdict.json.
+ * Metric name + version range -> a plan for a future runtime bisect.
  *
- * Default output is the exact command sequence rather than silent execution:
- * a bisect at 90 minutes per step is an hours-long commitment the operator
- * should see before starting. --execute runs it for real.
+ * Execution is intentionally disabled. The previous executor checked out each
+ * candidate commit but measured the currently installed app, so every commit
+ * was judged against the same binary. A real executor must build and install
+ * each candidate, verify the installed commit identity, cold launch, collect
+ * an isolated version-bounded soak, and restore the prior app afterward.
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "..");
-const DEFAULT_POINTER = path.join(os.homedir(), ".freed/automation/current-soak-dir");
+export const RUNTIME_BISECT_BLOCKERS = [
+  "build the checked-out commit with the pinned toolchain",
+  "install the candidate app in an isolated location",
+  "verify the installed app reports the checked-out commit SHA",
+  "cold launch and collect a build-bounded soak with minimum coverage",
+  "restore the previously installed app even when a step fails",
+];
 
 /** v-prefix a bare version; pass tags through. */
 export function versionToTag(version) {
@@ -38,18 +39,29 @@ export function versionToTag(version) {
  */
 export function metricFromVerdict(verdict, metric) {
   if (metric === "alarms_total") {
-    const assertion = verdict.assertions?.find((a) => a.id === "invariant_alarms");
+    const assertion = verdict.assertions?.find(
+      (a) => a.id === "invariant_alarms",
+    );
     const match = assertion?.detail?.match(/^(\d+) invariant_alarm/);
     return match ? Number(match[1]) : 0;
   }
   if (metric === "uploads_unchanged_per_hour") {
-    const assertion = verdict.assertions?.find((a) => a.id === "uploads_unchanged_heads");
+    const assertion = verdict.assertions?.find(
+      (a) => a.id === "uploads_unchanged_heads",
+    );
     const match = assertion?.detail?.match(/^(\d+) of (\d+) uploads/);
-    if (!match || !verdict.spanHours) return 0;
-    return Number(match[1]) / verdict.spanHours;
+    const cloudEligibleHours = Number(verdict.sourceHealth?.cloudEligibleHours);
+    if (
+      !match ||
+      !Number.isFinite(cloudEligibleHours) ||
+      cloudEligibleHours <= 0
+    )
+      return null;
+    return Number(match[1]) / cloudEligibleHours;
   }
   const assertion = verdict.assertions?.find((a) => a.id === metric);
-  if (!assertion) throw new Error(`Verdict has no assertion or metric named "${metric}".`);
+  if (!assertion)
+    throw new Error(`Verdict has no assertion or metric named "${metric}".`);
   return assertion.status === "fail" ? 1 : 0;
 }
 
@@ -59,80 +71,54 @@ export function metricFromVerdict(verdict, metric) {
  * build failures before the predicate ever runs).
  */
 export function predicateExitCode(value, threshold) {
+  if (!Number.isFinite(value)) return 125;
   return value > threshold ? 1 : 0;
 }
 
-export function resolveCommitRange(goodTag, badTag, { cwd = REPO_ROOT, exec = execFileSync } = {}) {
+export function resolveCommitRange(
+  goodTag,
+  badTag,
+  { cwd = REPO_ROOT, exec = execFileSync } = {},
+) {
   const revParse = (ref) =>
-    exec("git", ["rev-parse", "--verify", `${ref}^{commit}`], { cwd, encoding: "utf8" }).trim();
+    exec("git", ["rev-parse", "--verify", `${ref}^{commit}`], {
+      cwd,
+      encoding: "utf8",
+    }).trim();
   const good = revParse(goodTag);
   const bad = revParse(badTag);
   const count = Number(
-    exec("git", ["rev-list", "--count", `${goodTag}..${badTag}`], { cwd, encoding: "utf8" }).trim(),
+    exec("git", ["rev-list", "--count", `${goodTag}..${badTag}`], {
+      cwd,
+      encoding: "utf8",
+    }).trim(),
   );
   return { good, bad, count };
 }
 
-export function buildBisectPlan({ metric, goodVersion, badVersion, threshold, soakMinutes }) {
+export function buildBisectPlan({
+  metric,
+  goodVersion,
+  badVersion,
+  threshold,
+  soakMinutes,
+}) {
   const goodTag = versionToTag(goodVersion);
   const badTag = versionToTag(badVersion);
-  const predicate =
-    `node scripts/bisect-regression.mjs --predicate --metric ${metric} ` +
-    `--threshold ${threshold} --soak-minutes ${soakMinutes}`;
   return {
     goodTag,
     badTag,
-    commands: [
-      `git bisect start ${badTag} ${goodTag}`,
-      `git bisect run ${predicate}`,
-      "git bisect reset",
-    ],
-    predicate,
+    metric,
+    threshold,
+    soakMinutes,
+    executionSupported: false,
+    blockers: [...RUNTIME_BISECT_BLOCKERS],
   };
-}
-
-function runPredicate(args) {
-  // Build/soak orchestration is the operator's per-step hook; the predicate
-  // itself is: collect a bounded soak, judge it, map the metric to an exit
-  // code. When a fresh soak is not wanted (--verdict), judge that file as-is.
-  let verdictPath = args.verdict;
-  if (!verdictPath) {
-    const pinnedNode = process.execPath;
-    execFileSync(
-      pinnedNode,
-      [
-        path.join(REPO_ROOT, "scripts/soak-collect.mjs"),
-        "--duration-minutes",
-        String(args.soakMinutes),
-      ],
-      { stdio: "inherit" },
-    );
-    try {
-      execFileSync(pinnedNode, [path.join(REPO_ROOT, "scripts/soak-assert.mjs")], {
-        stdio: "inherit",
-      });
-    } catch {
-      // soak-assert exits 1 on a failing verdict; the verdict file is still
-      // written and the metric extraction below is what decides good/bad.
-    }
-    const pointer = args.pointer ?? DEFAULT_POINTER;
-    verdictPath = path.join(readFileSync(pointer, "utf8").trim(), "soak-verdict.json");
-  }
-  if (!existsSync(verdictPath)) {
-    process.stderr.write(`No verdict at ${verdictPath}; skipping this commit.\n`);
-    process.exit(125);
-  }
-  const verdict = JSON.parse(readFileSync(verdictPath, "utf8"));
-  const value = metricFromVerdict(verdict, args.metric);
-  const code = predicateExitCode(value, args.threshold);
-  process.stdout.write(`${args.metric}=${value} threshold=${args.threshold} -> ${code === 0 ? "good" : "bad"}\n`);
-  process.exit(code);
 }
 
 function usage() {
   return `Usage:
   node scripts/bisect-regression.mjs --metric <name> --good <version> --bad <version> [options]
-  node scripts/bisect-regression.mjs --predicate --metric <name> [--verdict <path>] [options]
 
 Options:
   --metric <name>       Assertion id from soak-verdict.json, or
@@ -141,11 +127,8 @@ Options:
   --bad <version>       First known-bad release version.
   --threshold <n>       Metric value above which a commit is "bad". Default 0.
   --soak-minutes <n>    Predicate soak length. Default 90.
-  --execute             Actually run the bisect (default: print the plan).
-  --predicate           Internal: act as the git-bisect run command.
-  --verdict <path>      Predicate: judge an existing soak-verdict.json instead
-                        of collecting a fresh soak.
-  --pointer <path>      Predicate: soak pointer file. Default ~/.freed/automation/current-soak-dir.
+  --execute             Unsupported until the per-commit build/install harness exists.
+  --predicate           Unsupported until the per-commit build/install harness exists.
   --help                Show this help.
 `;
 }
@@ -157,10 +140,6 @@ export function parseArgs(argv) {
     bad: null,
     threshold: 0,
     soakMinutes: 90,
-    execute: false,
-    predicate: false,
-    verdict: null,
-    pointer: null,
     help: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -170,11 +149,11 @@ export function parseArgs(argv) {
     else if (arg === "--bad") args.bad = argv[++i];
     else if (arg === "--threshold") args.threshold = Number(argv[++i]);
     else if (arg === "--soak-minutes") args.soakMinutes = Number(argv[++i]);
-    else if (arg === "--execute") args.execute = true;
-    else if (arg === "--predicate") args.predicate = true;
-    else if (arg === "--verdict") args.verdict = argv[++i];
-    else if (arg === "--pointer") args.pointer = argv[++i];
-    else if (arg === "--help" || arg === "-h") args.help = true;
+    else if (arg === "--execute" || arg === "--predicate") {
+      throw new Error(
+        `${arg} is disabled until bisect-regression builds, installs, and verifies each checked-out commit.`,
+      );
+    } else if (arg === "--help" || arg === "-h") args.help = true;
     else throw new Error(`Unknown argument: ${arg}`);
   }
   return args;
@@ -184,11 +163,6 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     process.stdout.write(usage());
-    return;
-  }
-  if (args.predicate) {
-    if (!args.metric) throw new Error("--predicate requires --metric.");
-    runPredicate(args);
     return;
   }
   if (!args.metric || !args.good || !args.bad) {
@@ -210,24 +184,11 @@ function main() {
       `${range.count} commits, ~${Math.ceil(Math.log2(Math.max(range.count, 1)))} bisect steps ` +
       `at ${args.soakMinutes} min each\n`,
   );
-  for (const command of plan.commands) {
-    process.stdout.write(`  ${command}\n`);
-  }
-  if (!args.execute) {
-    process.stdout.write("Dry run (pass --execute to start the bisect).\n");
-    return;
-  }
-  execFileSync("git", ["bisect", "start", plan.badTag, plan.goodTag], {
-    cwd: REPO_ROOT,
-    stdio: "inherit",
-  });
-  try {
-    execFileSync("git", ["bisect", "run", ...plan.predicate.split(" ")], {
-      cwd: REPO_ROOT,
-      stdio: "inherit",
-    });
-  } finally {
-    execFileSync("git", ["bisect", "reset"], { cwd: REPO_ROOT, stdio: "inherit" });
+  process.stdout.write(
+    "PLAN ONLY. Runtime bisect execution is disabled until these blockers are closed:\n",
+  );
+  for (const blocker of plan.blockers) {
+    process.stdout.write(`  - ${blocker}\n`);
   }
 }
 
@@ -235,7 +196,9 @@ if (process.argv[1] === __filename) {
   try {
     main();
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
     process.exitCode = 1;
   }
 }

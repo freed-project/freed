@@ -458,6 +458,11 @@ export async function captureDomFeed(
 > checked-in review gate: `./scripts/release.sh` prepares draft notes and
 > daily editorial memory, then `./scripts/release-publish.sh` tags only after
 > the reviewed release artifact passes validation and is approved. The latest
+> dev release prep now returns through a PR to `dev`. Production prep starts
+> from current `main` after any required promotion and returns through a
+> release-only PR to `main`. Tagging requires the exact merged remote commit.
+> Protected release branches no longer depend on direct
+> release commits or branch pushes. The latest
 > release of each day is cumulative, so website changelog cards describe
 > everything newly shipped since the previous day instead of unioning same-day
 > bullets after the fact. Production releases now also carry forward

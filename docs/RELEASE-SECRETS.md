@@ -81,7 +81,7 @@ sync approved `main` changes into `www`.
 Branch promotion rules:
 
 - `dev` carries ongoing product work and dev releases.
-- `main` is only for reviewed production release promotion and rare production hotfixes.
+- `main` carries reviewed production promotions, release-only prep PRs, and rare production hotfixes.
 - Promote `dev` into `main` when shipping production. Do not treat `main` as a peer development branch.
 - After every production release, open a dedicated reverse-integration PR that merges `main` back into `dev`.
 - If `main` gets a production-only fix or release adjustment, include it in that reverse-integration PR immediately after the production release is stable.
@@ -118,18 +118,24 @@ On Vercel, the current project configuration uses `GITHUB_RELEASES_TOKEN`.
 
 ## Drafting release notes
 
-`./scripts/release.sh` now prepares a release in two stages:
+Create a fresh `chore/release-<version>` worktree from current `origin/main` for
+production, or from current `origin/dev` for dev. `./scripts/release.sh`
+prepares a release in two stages:
 
 ```bash
-./scripts/release.sh --channel=production
+./scripts/release.sh
 ./scripts/release.sh --channel=dev
 ```
+
+With no arguments, the script auto-computes the next production version. The
+dev channel is always explicit.
 
 That command:
 
 1. bumps app versions
 2. generates draft files under `release-notes/`
 3. commits the draft release prep
+4. refuses long-lived or detached branches, non-release branch names, and any branch not at the exact current channel base
 
 Optional local environment variable:
 
@@ -171,29 +177,48 @@ render release bullets inside the install toast.
 ## How to publish a reviewed release
 
 ```bash
-# if production main is behind dev, promote dev into main first
+# promote reviewed product state first when main does not match dev
+node scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref=origin/main
 ./scripts/promote-dev-to-main.sh ../freed-prod-promotion
-# merge the promotion PR to main
+# merge the promotion PR
+git fetch origin main
 
-./scripts/release.sh 26.4.107 --channel=production
+# create production prep from the exact current main commit
+./scripts/worktree-add.sh ../freed-release-v26.4.107 -b chore/release-v26.4.107 origin/main --target shared
+cd ../freed-release-v26.4.107
+./scripts/release.sh 26.4.107
 # review the generated release-notes files
 git add release-notes
 git commit -m "docs: review release notes for v26.4.107"
-# ensure the approved website and changelog state is merged to www
+# validate and publish a ready release-only PR targeting main
+npm run validate:release
+"$FREED_TRUSTED_PUBLISHER" --base main --ready --title "chore: prepare v26.4.107"
+# merge the release-prep PR, then update a clean local main branch
+cd /path/to/clean-main-checkout
+git fetch origin main
+git merge --ff-only origin/main
+
 ./scripts/release-publish.sh 26.4.107
-git push origin main --follow-tags
+git push origin refs/tags/v26.4.107
 ```
 
-Production release prep now validates that `HEAD` matches `origin/dev` on
-product-owned paths before it will prepare or publish a tag. If `dev` is ahead,
-`./scripts/release.sh` and `./scripts/release-publish.sh` both fail with the
-exact stale file list instead of silently shipping old code from `main`.
+For a dev release, create the same `chore/release-<version>` branch from
+`origin/dev`, run `./scripts/release.sh --channel=dev`, validate with
+`npm run validate:feature`, and publish the reviewed PR with `--base dev`.
+After it merges, tag the exact updated `origin/dev` commit with
+`./scripts/release-publish.sh <version>-dev`.
 
-PRs targeting `main` also now have a scope guard. Product changes to `main`
-must come from a promotion branch named `chore/promote-dev-to-main-*`, and
-that promotion branch must still match current `origin/dev`. Release-only
-metadata updates remain allowed on `main`, while website-owned files are still
-rejected there.
+Production release prep requires an exact current `origin/main` base after any
+required product promotion. Dev release prep requires exact current
+`origin/dev`. Both return through branch protection. `release-publish.sh`
+refuses to tag unless local `HEAD` exactly equals the target remote branch, so
+it cannot tag an unmerged local release commit.
+
+PRs targeting `main` have a scope guard. Product changes reach `main` only
+through a branch named `chore/promote-dev-to-main-*`, and that promotion must
+still match current `origin/dev`. A `chore/release-*` PR may carry only the
+version files and release-note artifacts recognized as release-only metadata.
+Website-owned files remain rejected there.
 
 The `v*` tag triggers the release workflow which builds all platforms and
 creates a **draft** GitHub Release using the approved checked-in release body.

@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://freed.wtf/schemas/automation/stability-artifact-v1.schema.json",
+  "title": "Freed stability artifact",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "taskId",
+    "createdAt",
+    "status",
+    "source",
+    "payload"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": {
+      "enum": [
+        "evidence-capture",
+        "memory-profile",
+        "sync-replay",
+        "provider-risk-review",
+        "stability-controller"
+      ]
+    },
+    "taskId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "status": { "type": "string" },
+    "identity": {
+      "type": "object",
+      "required": ["version", "commitSha", "channel"],
+      "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "commitSha": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" },
+        "channel": { "enum": ["dev", "production"] }
+      }
+    },
+    "window": {
+      "type": "object",
+      "properties": {
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["status", "references"],
+      "properties": {
+        "status": { "enum": ["healthy", "unhealthy", "inconclusive"] },
+        "references": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["reference", "digest"],
+            "properties": {
+              "reference": { "type": "string", "minLength": 1 },
+              "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        }
+      }
+    },
+    "payload": { "type": "object" },
+    "artifactDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "evidence-capture" } } },
+      "then": {
+        "required": ["identity", "window"],
+        "properties": {
+          "status": { "enum": ["attributable", "inconclusive"] },
+          "payload": {
+            "required": ["processSegments", "redactions", "unresolvedGaps"],
+            "properties": {
+              "processSegments": {
+                "type": "array",
+                "items": { "type": "object" }
+              },
+              "redactions": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              },
+              "unresolvedGaps": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "status": { "const": "attributable" } } },
+            "then": {
+              "properties": {
+                "payload": {
+                  "properties": {
+                    "processSegments": { "minItems": 1 }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "memory-profile" } } },
+      "then": {
+        "required": ["identity", "window"],
+        "properties": {
+          "status": { "enum": ["pass", "fail", "inconclusive"] },
+          "payload": {
+            "required": [
+              "scenario",
+              "comparisonCohort",
+              "metricId",
+              "budget",
+              "contributors",
+              "measuredScope",
+              "excludedScope"
+            ],
+            "properties": {
+              "scenario": { "type": "string", "minLength": 1 },
+              "comparisonCohort": { "type": "string", "minLength": 1 },
+              "metricId": { "type": "string", "minLength": 1 },
+              "budget": {
+                "type": "object",
+                "required": ["value", "unit"],
+                "properties": {
+                  "value": { "type": "number" },
+                  "unit": { "type": "string", "minLength": 1 }
+                }
+              },
+              "contributors": { "type": "array" },
+              "measuredScope": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "minLength": 1 }
+              },
+              "excludedScope": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "sync-replay" } } },
+      "then": {
+        "required": ["window"],
+        "properties": {
+          "status": {
+            "enum": ["reproduced", "not_reproduced", "inconclusive"]
+          },
+          "payload": {
+            "required": [
+              "codeSha",
+              "fixtureSchema",
+              "fixtureDigest",
+              "seed",
+              "command",
+              "invariants",
+              "firstDivergentEvent"
+            ],
+            "properties": {
+              "codeSha": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" },
+              "fixtureSchema": { "type": "string", "minLength": 1 },
+              "fixtureDigest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "seed": {
+                "oneOf": [
+                  { "type": "string", "minLength": 1 },
+                  { "type": "integer" }
+                ]
+              },
+              "command": { "type": "string", "minLength": 1 },
+              "invariants": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["name", "status"],
+                  "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "status": { "enum": ["pass", "fail", "inconclusive"] }
+                  }
+                }
+              },
+              "firstDivergentEvent": {
+                "oneOf": [{ "type": "object" }, { "type": "null" }]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "provider-risk-review" } } },
+      "then": {
+        "properties": {
+          "status": {
+            "enum": [
+              "behavior_approved",
+              "diff_authorized",
+              "blocked_by_owner",
+              "needs_revision"
+            ]
+          },
+          "payload": {
+            "required": [
+              "providers",
+              "observableBehavior",
+              "fingerprintingRisk",
+              "lowestProfileAlternative",
+              "allowedBehavior"
+            ],
+            "properties": {
+              "providers": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "enum": [
+                    "facebook",
+                    "instagram",
+                    "linkedin",
+                    "other",
+                    "x",
+                    "youtube"
+                  ]
+                }
+              },
+              "observableBehavior": { "type": "string", "minLength": 1 },
+              "fingerprintingRisk": { "type": "string", "minLength": 1 },
+              "lowestProfileAlternative": { "type": "string", "minLength": 1 },
+              "allowedBehavior": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "stability-controller" } } },
+      "then": {
+        "properties": {
+          "status": {
+            "enum": ["selected", "inconclusive", "blocked_by_authority", "noop"]
+          },
+          "payload": {
+            "required": [
+              "currentState",
+              "evidenceQuality",
+              "metricContract",
+              "authority",
+              "providerRiskStatus",
+              "exclusivityKey",
+              "nextSkill"
+            ],
+            "properties": {
+              "currentState": { "type": "string", "minLength": 1 },
+              "evidenceQuality": { "type": "string", "minLength": 1 },
+              "metricContract": { "type": "string", "minLength": 1 },
+              "authority": {
+                "enum": ["observe-only", "plan-only", "pr-only", "merge-safe"]
+              },
+              "providerRiskStatus": { "type": "string", "minLength": 1 },
+              "exclusivityKey": { "type": "string", "minLength": 1 },
+              "nextSkill": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

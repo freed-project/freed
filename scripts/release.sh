@@ -6,8 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/node-tooling.sh"
 use_resolved_node_path
 
-# Bumps version across PWA + Desktop package files, then prepares draft
-# release-note artifacts for human review before any tag is created.
+# Bumps version across PWA + Desktop package files on a release-prep branch,
+# then prepares draft release-note artifacts for review before any tag exists.
 #
 # CalVer format: YY.M.DDBUILD
 #   patch = (day_of_month * 100) + build_number
@@ -18,7 +18,8 @@ use_resolved_node_path
 # Note: major version (YY) must be ≤255 for Windows MSI compatibility.
 #
 # Usage:
-#   ./scripts/release.sh                             # auto-compute from today's date
+#   ./scripts/release.sh                            # auto-compute a production release
+#   ./scripts/release.sh --channel=production       # explicit production release
 #   ./scripts/release.sh --channel=dev              # auto-compute a dev release
 #   ./scripts/release.sh 26.3.105                   # manual production override
 #   ./scripts/release.sh 26.3.105-dev --channel=dev # manual dev override
@@ -28,11 +29,11 @@ TAURI_CONF="${DESKTOP_DIR}/src-tauri/tauri.conf.json"
 CARGO_TOML="${DESKTOP_DIR}/src-tauri/Cargo.toml"
 DESKTOP_PKG="${DESKTOP_DIR}/package.json"
 PWA_PKG="packages/pwa/package.json"
-CHANNEL=""
+CHANNEL="production"
 VERSION_INPUT=""
 
-# Ensure working tree is clean
-if ! git diff --quiet HEAD; then
+# Ensure tracked and untracked worktree state is clean.
+if [[ -n "$(git status --porcelain)" ]]; then
   echo "Error: working tree is dirty. Commit or stash changes first." >&2
   exit 1
 fi
@@ -59,26 +60,30 @@ done
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
-if [[ -z "$CHANNEL" ]]; then
-  if [[ "$CURRENT_BRANCH" == "dev" ]]; then
-    CHANNEL="dev"
-  else
-    CHANNEL="production"
-  fi
+if [[ "$CURRENT_BRANCH" == "dev" || "$CURRENT_BRANCH" == "main" || "$CURRENT_BRANCH" == "www" || "$CURRENT_BRANCH" == "HEAD" ]]; then
+  echo "Error: release prep must run on a chore/release-* worktree branch, never directly on ${CURRENT_BRANCH}." >&2
+  exit 1
+fi
+
+if [[ "$CURRENT_BRANCH" != chore/release-* ]]; then
+  echo "Error: release prep branches must be named chore/release-*. Received ${CURRENT_BRANCH}." >&2
+  exit 1
 fi
 
 EXPECTED_BRANCH="main"
 if [[ "$CHANNEL" == "dev" ]]; then
   EXPECTED_BRANCH="dev"
 fi
+EXPECTED_BASE_REF="origin/${EXPECTED_BRANCH}"
 
-if [[ "$CURRENT_BRANCH" != "$EXPECTED_BRANCH" ]]; then
-  echo "Error: ${CHANNEL} releases must be prepared from the ${EXPECTED_BRANCH} branch." >&2
+git fetch origin dev main --tags
+if [[ "$(git rev-parse HEAD)" != "$(git rev-parse "${EXPECTED_BASE_REF}")" ]]; then
+  echo "Error: ${CHANNEL} release prep must start at the exact current ${EXPECTED_BASE_REF} commit." >&2
+  echo "Create a fresh chore/release-<version> worktree from ${EXPECTED_BASE_REF} and retry." >&2
   exit 1
 fi
 
 if [[ "$CHANNEL" == "production" ]]; then
-  git fetch origin dev main
   "${NODE_BIN}" scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref=HEAD
 fi
 
@@ -207,4 +212,16 @@ echo "    release-notes/releases/${TAG}.json"
 echo "    release-notes/releases/${TAG}.md"
 echo "    release-notes/daily/${CHANNEL}/${DAY_KEY}.json"
 echo "==> After review, set \"approved\": true in the release file, commit the edits, then run:"
-echo "    ./scripts/release-publish.sh ${VERSION}"
+if [[ "$CHANNEL" == "production" ]]; then
+  echo "    npm run validate:release"
+else
+  echo "    npm run validate:feature"
+fi
+echo "    \"\$FREED_TRUSTED_PUBLISHER\" --base ${EXPECTED_BRANCH} --ready --title \"chore: prepare ${TAG}\""
+if [[ "$CHANNEL" == "production" ]]; then
+  echo "==> After that PR merges, update local main and run:"
+  echo "    ./scripts/release-publish.sh ${VERSION}"
+else
+  echo "==> After that PR merges, update local dev and run:"
+  echo "    ./scripts/release-publish.sh ${VERSION}"
+fi

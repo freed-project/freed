@@ -10,9 +10,15 @@ import { listPromotionDiffFiles } from "./release-promotion-shared.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const VALIDATE_RELEASE_PROMOTION = path.join(__dirname, "validate-release-promotion.mjs");
+const VALIDATE_RELEASE_PROMOTION = path.join(
+  __dirname,
+  "validate-release-promotion.mjs",
+);
 const VALIDATE_MAIN_PR = path.join(__dirname, "validate-main-pr.mjs");
-const VALIDATE_MAIN_BACKFLOW = path.join(__dirname, "validate-main-backflow.mjs");
+const VALIDATE_MAIN_BACKFLOW = path.join(
+  __dirname,
+  "validate-main-backflow.mjs",
+);
 
 function git(cwd, args) {
   return execFileSync("git", args, {
@@ -43,15 +49,39 @@ function makeTempRepo() {
   git(cwd, ["config", "user.name", "Codex Test"]);
   git(cwd, ["config", "user.email", "codex@example.com"]);
 
-  writeRepoFile(cwd, "packages/pwa/src/app.ts", "export const value = 'main';\n");
-  writeRepoFile(cwd, "packages/pwa/package.json", "{\n  \"name\": \"@freed/pwa\",\n  \"version\": \"0.0.0\"\n}\n");
-  writeRepoFile(cwd, "packages/desktop/package.json", "{\n  \"name\": \"@freed/desktop\",\n  \"version\": \"0.0.0\"\n}\n");
-  writeRepoFile(cwd, "packages/desktop/src-tauri/Cargo.toml", "[package]\nname = \"freed\"\nversion = \"0.0.0\"\n");
-  writeRepoFile(cwd, "packages/desktop/src-tauri/tauri.conf.json", "{\n  \"version\": \"0.0.0\"\n}\n");
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'main';\n",
+  );
+  writeRepoFile(
+    cwd,
+    "packages/pwa/package.json",
+    '{\n  "name": "@freed/pwa",\n  "version": "0.0.0"\n}\n',
+  );
+  writeRepoFile(
+    cwd,
+    "packages/desktop/package.json",
+    '{\n  "name": "@freed/desktop",\n  "version": "0.0.0"\n}\n',
+  );
+  writeRepoFile(
+    cwd,
+    "packages/desktop/src-tauri/Cargo.toml",
+    '[package]\nname = "freed"\nversion = "0.0.0"\n',
+  );
+  writeRepoFile(
+    cwd,
+    "packages/desktop/src-tauri/tauri.conf.json",
+    '{\n  "version": "0.0.0"\n}\n',
+  );
   writeRepoFile(cwd, "scripts/release.sh", "#!/usr/bin/env bash\n");
   writeRepoFile(cwd, "docs/PHASE-1-FOUNDATION.md", "# Phase 1\n");
   writeRepoFile(cwd, "website/next.config.ts", "export default {};\n");
-  writeRepoFile(cwd, "release-notes/releases/v0.0.0.json", "{\n  \"approved\": true\n}\n");
+  writeRepoFile(
+    cwd,
+    "release-notes/releases/v0.0.0.json",
+    '{\n  "approved": true\n}\n',
+  );
   commitAll(cwd, "initial");
 
   git(cwd, ["branch", "dev"]);
@@ -71,9 +101,21 @@ test("listPromotionDiffFiles ignores release-only metadata drift", (t) => {
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
   git(cwd, ["checkout", "dev"]);
-  writeRepoFile(cwd, "packages/pwa/src/app.ts", "export const value = 'dev';\n");
-  writeRepoFile(cwd, "packages/pwa/package.json", "{\n  \"name\": \"@freed/pwa\",\n  \"version\": \"26.4.2100\"\n}\n");
-  writeRepoFile(cwd, "release-notes/releases/v26.4.2100.json", "{\n  \"approved\": true\n}\n");
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'dev';\n",
+  );
+  writeRepoFile(
+    cwd,
+    "packages/pwa/package.json",
+    '{\n  "name": "@freed/pwa",\n  "version": "26.4.2100"\n}\n',
+  );
+  writeRepoFile(
+    cwd,
+    "release-notes/releases/v26.4.2100.json",
+    '{\n  "approved": true\n}\n',
+  );
   commitAll(cwd, "dev change");
 
   const files = listPromotionDiffFiles({
@@ -90,7 +132,11 @@ test("validate-release-promotion fails when main is stale on product files", (t)
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
   git(cwd, ["checkout", "dev"]);
-  writeRepoFile(cwd, "packages/pwa/src/app.ts", "export const value = 'dev';\n");
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'dev';\n",
+  );
   commitAll(cwd, "dev change");
 
   const result = runNode(VALIDATE_RELEASE_PROMOTION, [
@@ -109,7 +155,11 @@ test("validate-main-backflow ignores squashed promotion content already in dev h
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
   git(cwd, ["checkout", "dev"]);
-  writeRepoFile(cwd, "packages/pwa/src/app.ts", "export const value = 'promoted';\n");
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'promoted';\n",
+  );
   commitAll(cwd, "dev feature");
   updateOriginRef(cwd, "dev");
 
@@ -119,7 +169,11 @@ test("validate-main-backflow ignores squashed promotion content already in dev h
   updateOriginRef(cwd, "main");
 
   git(cwd, ["checkout", "dev"]);
-  writeRepoFile(cwd, "packages/pwa/src/app.ts", "export const value = 'next dev change';\n");
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'next dev change';\n",
+  );
   commitAll(cwd, "next dev change");
   updateOriginRef(cwd, "dev");
 
@@ -138,7 +192,11 @@ test("validate-main-backflow fails when main has product content absent from dev
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
   git(cwd, ["checkout", "main"]);
-  writeRepoFile(cwd, "packages/pwa/src/app.ts", "export const value = 'main hotfix';\n");
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'main hotfix';\n",
+  );
   commitAll(cwd, "main hotfix");
   updateOriginRef(cwd, "main");
 
@@ -158,8 +216,16 @@ test("validate-main-backflow ignores release-only main metadata", (t) => {
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
   git(cwd, ["checkout", "main"]);
-  writeRepoFile(cwd, "release-notes/releases/v26.4.2100.json", "{\n  \"approved\": true\n}\n");
-  writeRepoFile(cwd, "packages/pwa/package.json", "{\n  \"name\": \"@freed/pwa\",\n  \"version\": \"26.4.2100\"\n}\n");
+  writeRepoFile(
+    cwd,
+    "release-notes/releases/v26.4.2100.json",
+    '{\n  "approved": true\n}\n',
+  );
+  writeRepoFile(
+    cwd,
+    "packages/pwa/package.json",
+    '{\n  "name": "@freed/pwa",\n  "version": "26.4.2100"\n}\n',
+  );
   commitAll(cwd, "release metadata");
   updateOriginRef(cwd, "main");
 
@@ -178,13 +244,21 @@ test("validate-main-pr passes for a fresh promotion branch", (t) => {
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
   git(cwd, ["checkout", "dev"]);
-  writeRepoFile(cwd, "packages/pwa/src/app.ts", "export const value = 'dev';\n");
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'dev';\n",
+  );
   commitAll(cwd, "dev change");
   updateOriginRef(cwd, "dev");
 
   git(cwd, ["checkout", "-b", "chore/promote-dev-to-main-20260421", "main"]);
   git(cwd, ["merge", "--squash", "--no-commit", "dev"]);
-  git(cwd, ["commit", "-m", "chore: promote dev into main for production release"]);
+  git(cwd, [
+    "commit",
+    "-m",
+    "chore: promote dev into main for production release",
+  ]);
 
   const result = runNode(VALIDATE_MAIN_PR, [
     `--cwd=${cwd}`,
@@ -202,14 +276,26 @@ test("validate-main-pr allows website build config in promotion branches", (t) =
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
   git(cwd, ["checkout", "dev"]);
-  writeRepoFile(cwd, "packages/pwa/src/app.ts", "export const value = 'dev';\n");
-  writeRepoFile(cwd, "website/next.config.ts", "export default { transpilePackages: ['@freed/shared'] };\n");
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'dev';\n",
+  );
+  writeRepoFile(
+    cwd,
+    "website/next.config.ts",
+    "export default { transpilePackages: ['@freed/shared'] };\n",
+  );
   commitAll(cwd, "dev build config");
   updateOriginRef(cwd, "dev");
 
   git(cwd, ["checkout", "-b", "chore/promote-dev-to-main-20260421", "main"]);
   git(cwd, ["merge", "--squash", "--no-commit", "dev"]);
-  git(cwd, ["commit", "-m", "chore: promote dev into main for production release"]);
+  git(cwd, [
+    "commit",
+    "-m",
+    "chore: promote dev into main for production release",
+  ]);
 
   const result = runNode(VALIDATE_MAIN_PR, [
     `--cwd=${cwd}`,
@@ -227,7 +313,11 @@ test("validate-main-pr rejects product changes on a non-promotion branch", (t) =
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
   git(cwd, ["checkout", "-b", "fix/manual-main-edit", "main"]);
-  writeRepoFile(cwd, "packages/pwa/src/app.ts", "export const value = 'oops';\n");
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'oops';\n",
+  );
   commitAll(cwd, "manual main edit");
 
   const result = runNode(VALIDATE_MAIN_PR, [
@@ -241,13 +331,44 @@ test("validate-main-pr rejects product changes on a non-promotion branch", (t) =
   assert.match(result.stderr, /must come from a promotion branch/);
 });
 
-test("validate-main-pr allows release-only metadata updates", (t) => {
+test("validate-main-pr allows release-only metadata updates on a release branch", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "-b", "chore/release-v26.4.2100", "main"]);
+  writeRepoFile(
+    cwd,
+    "release-notes/releases/v26.4.2100.json",
+    '{\n  "approved": true\n}\n',
+  );
+  writeRepoFile(
+    cwd,
+    "packages/pwa/package.json",
+    '{\n  "name": "@freed/pwa",\n  "version": "26.4.2100"\n}\n',
+  );
+  commitAll(cwd, "release metadata");
+
+  const result = runNode(VALIDATE_MAIN_PR, [
+    `--cwd=${cwd}`,
+    "--base-ref=origin/main",
+    "--head-ref=HEAD",
+    "--head-branch=chore/release-v26.4.2100",
+  ]);
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Release-only metadata update detected/);
+});
+
+test("validate-main-pr rejects release-only metadata on a non-release branch", (t) => {
   const cwd = makeTempRepo();
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
   git(cwd, ["checkout", "-b", "docs/release-note-sync", "main"]);
-  writeRepoFile(cwd, "release-notes/releases/v26.4.2100.json", "{\n  \"approved\": true\n}\n");
-  writeRepoFile(cwd, "packages/pwa/package.json", "{\n  \"name\": \"@freed/pwa\",\n  \"version\": \"26.4.2100\"\n}\n");
+  writeRepoFile(
+    cwd,
+    "release-notes/releases/v26.4.2100.json",
+    '{\n  "approved": true\n}\n',
+  );
   commitAll(cwd, "release metadata");
 
   const result = runNode(VALIDATE_MAIN_PR, [
@@ -257,6 +378,9 @@ test("validate-main-pr allows release-only metadata updates", (t) => {
     "--head-branch=docs/release-note-sync",
   ]);
 
-  assert.equal(result.status, 0);
-  assert.match(result.stdout, /Release-only metadata update detected/);
+  assert.equal(result.status, 1);
+  assert.match(
+    result.stderr,
+    /must come from a branch named chore\/release-\*/,
+  );
 });

@@ -18,7 +18,8 @@ function inferBuildKind(env) {
   const isVercelBuild = readEnvString(env, "VERCEL") === "1";
   const vercelEnv = readEnvString(env, "VERCEL_ENV");
   const commitRef = readEnvString(env, "VERCEL_GIT_COMMIT_REF");
-  const commitMessage = readEnvString(env, "VERCEL_GIT_COMMIT_MESSAGE")?.toLowerCase() ?? "";
+  const commitMessage =
+    readEnvString(env, "VERCEL_GIT_COMMIT_MESSAGE")?.toLowerCase() ?? "";
   const isReleaseCommit =
     /^release:\s/.test(commitMessage) ||
     /^docs:\sreview release notes for v/.test(commitMessage);
@@ -42,8 +43,15 @@ export function getBuildMetadata(appVersion, env = process.env) {
   return {
     appVersion,
     buildKind: inferBuildKind(env),
-    commitSha: readEnvString(env, "VERCEL_GIT_COMMIT_SHA"),
-    commitRef: readEnvString(env, "VERCEL_GIT_COMMIT_REF"),
-    deployedAt: readEnvString(env, "FREED_BUILD_TIMESTAMP") ?? new Date().toISOString(),
+    commitSha:
+      readEnvString(env, "FREED_BUILD_COMMIT_SHA") ??
+      readEnvString(env, "VERCEL_GIT_COMMIT_SHA") ??
+      readEnvString(env, "GITHUB_SHA"),
+    commitRef:
+      readEnvString(env, "FREED_BUILD_COMMIT_REF") ??
+      readEnvString(env, "VERCEL_GIT_COMMIT_REF") ??
+      readEnvString(env, "GITHUB_REF_NAME"),
+    deployedAt:
+      readEnvString(env, "FREED_BUILD_TIMESTAMP") ?? new Date().toISOString(),
   };
 }

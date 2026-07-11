@@ -6,6 +6,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
+  isProviderVisiblePath,
+  PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES,
   SOCIAL_PROVIDER_DESKTOP_FILES,
   SOCIAL_PROVIDER_PACKAGE_PREFIXES,
 } from "./lib/provider-visible-paths.mjs";
@@ -15,12 +17,23 @@ const __dirname = path.dirname(__filename);
 export const REPO_ROOT = path.resolve(__dirname, "..");
 
 const NODE_BIN = process.execPath;
+const CARGO_BIN = process.env.CARGO || "cargo";
 const RESOLVED_NPM = path.join(
   path.dirname(NODE_BIN),
   process.platform === "win32" ? "npm.cmd" : "npm",
 );
-const NPM_BIN = existsSync(RESOLVED_NPM) ? RESOLVED_NPM : process.platform === "win32" ? "npm.cmd" : "npm";
-const VALID_MODES = new Set(["feature", "providers", "dev", "production", "release"]);
+const NPM_BIN = existsSync(RESOLVED_NPM)
+  ? RESOLVED_NPM
+  : process.platform === "win32"
+    ? "npm.cmd"
+    : "npm";
+const VALID_MODES = new Set([
+  "feature",
+  "providers",
+  "dev",
+  "production",
+  "release",
+]);
 
 const RELEASE_TOOLING_PATHS = new Set([
   ".github/workflows/ci.yml",
@@ -29,6 +42,7 @@ const RELEASE_TOOLING_PATHS = new Set([
   "scripts/generate-tauri-latest-from-release.mjs",
   "scripts/generate-tauri-latest-from-release.test.mjs",
   "scripts/prepare-release-notes.mjs",
+  "scripts/release-governance.test.mjs",
   "scripts/release-publish.sh",
   "scripts/release-notes-shared.mjs",
   "scripts/release-notes-shared.test.mjs",
@@ -87,17 +101,31 @@ export function parseArgs(argv) {
         break;
       case "--help":
       case "-h":
-        return { help: true, mode: "", changedFiles: [], planLabels: false, planOnly: false };
+        return {
+          help: true,
+          mode: "",
+          changedFiles: [],
+          planLabels: false,
+          planOnly: false,
+        };
       default:
         throw new Error(`Unexpected argument '${arg}'.\n\n${usage()}`);
     }
   }
 
   if (!VALID_MODES.has(mode)) {
-    throw new Error(`Error: --mode must be one of feature, providers, dev, production, or release.\n\n${usage()}`);
+    throw new Error(
+      `Error: --mode must be one of feature, providers, dev, production, or release.\n\n${usage()}`,
+    );
   }
 
-  return { help: false, mode, changedFiles: changedFiles.map(normalizeRepoPath), planLabels, planOnly };
+  return {
+    help: false,
+    mode,
+    changedFiles: changedFiles.map(normalizeRepoPath),
+    planLabels,
+    planOnly,
+  };
 }
 
 function execGit(args) {
@@ -111,12 +139,16 @@ function ensureBaseRefExists(baseRef) {
   try {
     execGit(["rev-parse", "--verify", baseRef]);
   } catch {
-    throw new Error(`Error: could not resolve ${baseRef}. Run git fetch --all --prune first.`);
+    throw new Error(
+      `Error: could not resolve ${baseRef}. Run git fetch --all --prune first.`,
+    );
   }
 }
 
 function defaultBaseRefForMode(mode) {
-  return mode === "production" || mode === "release" ? "origin/main" : "origin/dev";
+  return mode === "production" || mode === "release"
+    ? "origin/main"
+    : "origin/dev";
 }
 
 export function collectChangedFiles({ mode, changedFiles }) {
@@ -133,8 +165,17 @@ export function collectChangedFiles({ mode, changedFiles }) {
     "--diff-filter=ACDMRTUXB",
     `${baseRef}...HEAD`,
   ]);
-  const stagedDiff = execGit(["diff", "--cached", "--name-only", "--diff-filter=ACDMRTUXB"]);
-  const unstagedDiff = execGit(["diff", "--name-only", "--diff-filter=ACDMRTUXB"]);
+  const stagedDiff = execGit([
+    "diff",
+    "--cached",
+    "--name-only",
+    "--diff-filter=ACDMRTUXB",
+  ]);
+  const unstagedDiff = execGit([
+    "diff",
+    "--name-only",
+    "--diff-filter=ACDMRTUXB",
+  ]);
   const untrackedDiff = execGit(["ls-files", "--others", "--exclude-standard"]);
   const combinedDiff = [committedDiff, stagedDiff, unstagedDiff, untrackedDiff]
     .filter(Boolean)
@@ -144,7 +185,9 @@ export function collectChangedFiles({ mode, changedFiles }) {
     return [];
   }
 
-  return unique(combinedDiff.split("\n").map(normalizeRepoPath).filter(Boolean)).sort();
+  return unique(
+    combinedDiff.split("\n").map(normalizeRepoPath).filter(Boolean),
+  ).sort();
 }
 
 export function isWebsiteSurface(filePath) {
@@ -165,6 +208,10 @@ export function isDesktopSurface(filePath) {
 
 export function isPwaSurface(filePath) {
   return filePath.startsWith("packages/pwa/");
+}
+
+export function isDesktopNativeSurface(filePath) {
+  return filePath.startsWith("packages/desktop/src-tauri/");
 }
 
 // The provider path classification is single-sourced (stability task W1-06).
@@ -190,9 +237,30 @@ const SOCIAL_PROVIDER_FOCUSED_TEST_FILES = [
   "social-scraper-session-order.test.ts",
   "x-capture.test.ts",
   "x-normalize.test.ts",
+  "youtube-capture-schema.test.ts",
+  "youtube-native-bridge.test.ts",
 ];
 
-const SOCIAL_PROVIDER_FOCUSED_TEST_FILE_SET = new Set(SOCIAL_PROVIDER_FOCUSED_TEST_FILES);
+const SOCIAL_PROVIDER_FOCUSED_E2E_FILES = [
+  "facebook-capture.spec.ts",
+  "instagram-capture.spec.ts",
+  "legal-gate.spec.ts",
+  "linkedin-capture.spec.ts",
+  "social-memory-preflight.spec.ts",
+  "x-capture.spec.ts",
+  "youtube-capture.spec.ts",
+];
+
+const PROVIDER_FOCUSED_PACKAGE_PREFIXES = [
+  ...SOCIAL_PROVIDER_PACKAGE_PREFIXES,
+  ...PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES.filter((prefix) =>
+    prefix.startsWith("packages/capture-"),
+  ),
+];
+
+const SOCIAL_PROVIDER_FOCUSED_TEST_FILE_SET = new Set(
+  SOCIAL_PROVIDER_FOCUSED_TEST_FILES,
+);
 
 export function isSocialProviderFocusedSurface(filePath) {
   if (SOCIAL_PROVIDER_DESKTOP_FILES.has(filePath)) {
@@ -206,7 +274,9 @@ export function isSocialProviderFocusedSurface(filePath) {
     return SOCIAL_PROVIDER_FOCUSED_TEST_FILE_SET.has(path.basename(filePath));
   }
 
-  return SOCIAL_PROVIDER_PACKAGE_PREFIXES.some((prefix) => filePath.startsWith(prefix));
+  return PROVIDER_FOCUSED_PACKAGE_PREFIXES.some((prefix) =>
+    filePath.startsWith(prefix),
+  );
 }
 
 export function isDesktopPerfSensitiveSurface(filePath) {
@@ -263,7 +333,9 @@ export function isPreparedReleaseArtifactPath(filePath) {
 }
 
 export function isReleaseToolingPath(filePath) {
-  return filePath.startsWith("release-notes/") || RELEASE_TOOLING_PATHS.has(filePath);
+  return (
+    filePath.startsWith("release-notes/") || RELEASE_TOOLING_PATHS.has(filePath)
+  );
 }
 
 export function isValidateRunnerPath(filePath) {
@@ -300,36 +372,83 @@ function addCommand(plan, item) {
   }
 }
 
-function npmCommand(label, args) {
+function commandItem(label, command, args, workspacePath = ".") {
   return {
     kind: "command",
     label,
-    command: NPM_BIN,
+    command,
     args,
+    cwd: path.resolve(REPO_ROOT, workspacePath),
   };
 }
 
-function nodeCommand(label, args) {
-  return {
-    kind: "command",
-    label,
-    command: NODE_BIN,
-    args,
-  };
+function npmCommand(label, args, workspacePath = ".") {
+  return commandItem(label, NPM_BIN, args, workspacePath);
+}
+
+function nodeCommand(label, args, workspacePath = ".") {
+  return commandItem(label, NODE_BIN, args, workspacePath);
+}
+
+function cargoCommand(label, args) {
+  return commandItem(label, CARGO_BIN, args, "packages/desktop/src-tauri");
 }
 
 function desktopUnitFilesCommand(label, files) {
-  return npmCommand(label, [
-    "run",
-    "test:unit",
-    "--workspace=packages/desktop",
-    "--",
-    ...files,
-  ]);
+  return npmCommand(
+    label,
+    ["run", "test:unit", "--", ...files],
+    "packages/desktop",
+  );
 }
 
 function socialProviderFocusedTestsCommand() {
-  return desktopUnitFilesCommand("desktop social provider unit tests", SOCIAL_PROVIDER_FOCUSED_TEST_FILES);
+  return desktopUnitFilesCommand(
+    "desktop social provider unit tests",
+    SOCIAL_PROVIDER_FOCUSED_TEST_FILES,
+  );
+}
+
+function socialProviderFocusedE2eCommand() {
+  return npmCommand(
+    "desktop social provider e2e",
+    ["run", "test:e2e", "--", ...SOCIAL_PROVIDER_FOCUSED_E2E_FILES],
+    "packages/desktop",
+  );
+}
+
+function addCaptureWorkspaceChecks(plan, workspacePath) {
+  if (workspaceHasScript(workspacePath, "test")) {
+    addCommand(
+      plan,
+      npmCommand(`${workspacePath} tests`, ["run", "test"], workspacePath),
+    );
+  }
+  const scriptName = workspaceHasScript(workspacePath, "build")
+    ? "build"
+    : "typecheck";
+  addCommand(
+    plan,
+    npmCommand(
+      `${workspacePath} ${scriptName}`,
+      ["run", scriptName],
+      workspacePath,
+    ),
+  );
+}
+
+function nativeRustChecks() {
+  return [
+    // Clippy is required now, but existing warnings are not denied until the
+    // native monolith gets a dedicated cleanup. A permanent red gate would be
+    // theater, not governance.
+    cargoCommand("native rust clippy", [
+      "clippy",
+      "--all-targets",
+      "--all-features",
+    ]),
+    cargoCommand("native rust tests", ["test", "--all-features"]),
+  ];
 }
 
 function listAllReleaseArtifacts() {
@@ -340,11 +459,16 @@ function listAllReleaseArtifacts() {
 
   return readdirSync(releasesDir)
     .filter((fileName) => fileName.endsWith(".json"))
-    .map((fileName) => normalizeRepoPath(path.join("release-notes", "releases", fileName)))
+    .map((fileName) =>
+      normalizeRepoPath(path.join("release-notes", "releases", fileName)),
+    )
     .sort();
 }
 
-export function collectReleaseArtifactsToValidate(changedFiles, validateAll = false) {
+export function collectReleaseArtifactsToValidate(
+  changedFiles,
+  validateAll = false,
+) {
   const artifacts = new Set();
   let shouldValidateAll = validateAll;
 
@@ -384,7 +508,9 @@ function priorReleaseArtifactsFor(filePath) {
 
   return priorTags
     .filter((tag) => tag && tag !== currentTag)
-    .map((tag) => normalizeRepoPath(path.join("release-notes", "releases", `${tag}.json`)))
+    .map((tag) =>
+      normalizeRepoPath(path.join("release-notes", "releases", `${tag}.json`)),
+    )
     .filter((priorPath) => existsSync(path.join(REPO_ROOT, priorPath)));
 }
 
@@ -402,6 +528,7 @@ export function buildValidationPlan(mode, changedFiles) {
   if (normalizedMode === "providers") {
     return [
       socialProviderFocusedTestsCommand(),
+      socialProviderFocusedE2eCommand(),
     ];
   }
 
@@ -410,13 +537,34 @@ export function buildValidationPlan(mode, changedFiles) {
       npmCommand("root build", ["run", "build"]),
       npmCommand("root typecheck", ["run", "typecheck"]),
       npmCommand("root lint", ["run", "lint"]),
-      npmCommand("website tests", ["run", "test", "--workspace=website"]),
-      npmCommand("pwa unit tests", ["run", "test:unit", "--workspace=packages/pwa"]),
-      npmCommand("desktop unit tests", ["run", "test:unit", "--workspace=packages/desktop"]),
-      npmCommand("desktop e2e smoke", ["run", "test:e2e:smoke", "--workspace=packages/desktop"]),
-      npmCommand("desktop e2e regression", ["run", "test:e2e:regression", "--workspace=packages/desktop"]),
-      npmCommand("desktop e2e perf", ["run", "test:e2e:perf", "--workspace=packages/desktop"]),
-      npmCommand("desktop e2e visual", ["run", "test:e2e:visual", "--workspace=packages/desktop"]),
+      npmCommand("website tests", ["run", "test"], "website"),
+      npmCommand("pwa unit tests", ["run", "test:unit"], "packages/pwa"),
+      npmCommand(
+        "desktop unit tests",
+        ["run", "test:unit"],
+        "packages/desktop",
+      ),
+      npmCommand(
+        "desktop e2e smoke",
+        ["run", "test:e2e:smoke"],
+        "packages/desktop",
+      ),
+      npmCommand(
+        "desktop e2e regression",
+        ["run", "test:e2e:regression"],
+        "packages/desktop",
+      ),
+      npmCommand(
+        "desktop e2e perf",
+        ["run", "test:e2e:perf"],
+        "packages/desktop",
+      ),
+      npmCommand(
+        "desktop e2e visual",
+        ["run", "test:e2e:visual"],
+        "packages/desktop",
+      ),
+      ...nativeRustChecks(),
     ];
   }
 
@@ -427,18 +575,28 @@ export function buildValidationPlan(mode, changedFiles) {
         "--test",
         path.join("scripts", "release-notes-shared.test.mjs"),
       ]),
-      npmCommand("website production build", ["run", "build", "--workspace=website"]),
-      npmCommand("pwa production build", ["run", "build", "--workspace=packages/pwa"]),
-      npmCommand("desktop production build", ["run", "build", "--workspace=packages/desktop"]),
+      npmCommand("website production build", ["run", "build"], "website"),
+      npmCommand("pwa production build", ["run", "build"], "packages/pwa"),
+      npmCommand(
+        "desktop production build",
+        ["run", "build"],
+        "packages/desktop",
+      ),
     ];
 
     const releaseArtifacts = collectReleaseArtifactsToValidate(
       changedFiles,
-      changedFiles.length === 0 || changedFiles.some(isPreparedReleaseArtifactPath),
+      changedFiles.length === 0 ||
+        changedFiles.some(isPreparedReleaseArtifactPath),
     );
 
     if (releaseArtifacts.length > 0) {
-      plan.push(releaseValidationItem("release note artifact validation", releaseArtifacts));
+      plan.push(
+        releaseValidationItem(
+          "release note artifact validation",
+          releaseArtifacts,
+        ),
+      );
     }
 
     return plan;
@@ -446,9 +604,14 @@ export function buildValidationPlan(mode, changedFiles) {
 
   const plan = [npmCommand("root typecheck", ["run", "typecheck"])];
   const sharedSurfaceChanged = changedFiles.some(isSharedSurface);
-  const desktopSurfaceChanged = sharedSurfaceChanged || changedFiles.some(isDesktopSurface);
-  const desktopPerfSensitiveChanged = changedFiles.some(isDesktopPerfSensitiveSurface);
-  const pwaSurfaceChanged = sharedSurfaceChanged || changedFiles.some(isPwaSurface);
+  const desktopSurfaceChanged =
+    sharedSurfaceChanged || changedFiles.some(isDesktopSurface);
+  const desktopNativeSurfaceChanged = changedFiles.some(isDesktopNativeSurface);
+  const desktopPerfSensitiveChanged = changedFiles.some(
+    isDesktopPerfSensitiveSurface,
+  );
+  const pwaSurfaceChanged =
+    sharedSurfaceChanged || changedFiles.some(isPwaSurface);
   const websiteSurfaceChanged = changedFiles.some(isWebsiteSurface);
   const releaseToolingChanged = changedFiles.some(isReleaseToolingPath);
   const validateRunnerChanged = changedFiles.some(isValidateRunnerPath);
@@ -459,12 +622,16 @@ export function buildValidationPlan(mode, changedFiles) {
   const socialProviderOnlyChanged =
     changedFiles.length > 0 &&
     changedFiles.every(isSocialProviderFocusedSurface);
+  const providerVisibleChanged = changedFiles.some(isProviderVisiblePath);
+  const desktopRustSurfaceChanged = changedFiles.some(
+    (filePath) =>
+      filePath.startsWith("packages/desktop/src-tauri/") &&
+      filePath.endsWith(".rs"),
+  );
   const validateRunnerOnlyChanged =
-    changedFiles.length > 0 &&
-    changedFiles.every(isValidateRunnerPath);
+    changedFiles.length > 0 && changedFiles.every(isValidateRunnerPath);
   const socialScrapeLoopOnlyChanged =
-    changedFiles.length > 0 &&
-    changedFiles.every(isSocialScrapeLoopPath);
+    changedFiles.length > 0 && changedFiles.every(isSocialScrapeLoopPath);
 
   if (validateRunnerOnlyChanged) {
     return [
@@ -484,44 +651,99 @@ export function buildValidationPlan(mode, changedFiles) {
     ];
   }
 
-  if (socialProviderOnlyChanged) {
+  if (socialProviderOnlyChanged && !desktopRustSurfaceChanged) {
     addCommand(plan, socialProviderFocusedTestsCommand());
-    addCommand(plan, npmCommand("desktop production build", ["run", "build", "--workspace=packages/desktop"]));
+    addCommand(plan, socialProviderFocusedE2eCommand());
+    for (const workspacePath of captureWorkspaces) {
+      addCaptureWorkspaceChecks(plan, workspacePath);
+    }
+    addCommand(
+      plan,
+      npmCommand(
+        "desktop production build",
+        ["run", "build"],
+        "packages/desktop",
+      ),
+    );
     return plan;
   }
 
+  if (providerVisibleChanged) {
+    addCommand(plan, socialProviderFocusedTestsCommand());
+    addCommand(plan, socialProviderFocusedE2eCommand());
+  }
+
   if (websiteSurfaceChanged) {
-    addCommand(plan, npmCommand("website production build", ["run", "build", "--workspace=website"]));
-    addCommand(plan, npmCommand("website tests", ["run", "test", "--workspace=website"]));
+    addCommand(
+      plan,
+      npmCommand("website production build", ["run", "build"], "website"),
+    );
+    addCommand(plan, npmCommand("website tests", ["run", "test"], "website"));
   }
 
   if (pwaSurfaceChanged) {
-    addCommand(plan, npmCommand("pwa production build", ["run", "build", "--workspace=packages/pwa"]));
-    addCommand(plan, npmCommand("pwa typecheck", ["run", "typecheck", "--workspace=packages/pwa"]));
-    addCommand(plan, npmCommand("pwa unit tests", ["run", "test:unit", "--workspace=packages/pwa"]));
+    addCommand(
+      plan,
+      npmCommand("pwa production build", ["run", "build"], "packages/pwa"),
+    );
+    addCommand(
+      plan,
+      npmCommand("pwa typecheck", ["run", "typecheck"], "packages/pwa"),
+    );
+    addCommand(
+      plan,
+      npmCommand("pwa unit tests", ["run", "test:unit"], "packages/pwa"),
+    );
   }
 
   if (desktopSurfaceChanged) {
-    addCommand(plan, npmCommand("desktop unit tests", ["run", "test:unit", "--workspace=packages/desktop"]));
-    addCommand(plan, npmCommand("desktop e2e smoke", ["run", "test:e2e:smoke", "--workspace=packages/desktop"]));
+    addCommand(
+      plan,
+      npmCommand(
+        "desktop unit tests",
+        ["run", "test:unit"],
+        "packages/desktop",
+      ),
+    );
+    addCommand(
+      plan,
+      npmCommand(
+        "desktop e2e smoke",
+        ["run", "test:e2e:smoke"],
+        "packages/desktop",
+      ),
+    );
   }
 
   if (desktopPerfSensitiveChanged) {
-    addCommand(plan, npmCommand("desktop e2e perf", ["run", "test:e2e:perf", "--workspace=packages/desktop"]));
+    addCommand(
+      plan,
+      npmCommand(
+        "desktop e2e perf",
+        ["run", "test:e2e:perf"],
+        "packages/desktop",
+      ),
+    );
+  }
+
+  if (desktopNativeSurfaceChanged) {
+    // generate_context! validates the built frontend path at compile time.
+    addCommand(
+      plan,
+      npmCommand(
+        "desktop production build",
+        ["run", "build"],
+        "packages/desktop",
+      ),
+    );
+    for (const check of nativeRustChecks()) {
+      addCommand(plan, check);
+    }
   }
 
   if (!sharedSurfaceChanged) {
     for (const workspacePath of captureWorkspaces) {
-      const scriptName = workspaceHasScript(workspacePath, "build") ? "build" : "typecheck";
-      addCommand(
-        plan,
-        npmCommand(`${workspacePath} ${scriptName}`, [
-          "run",
-          scriptName,
-          "--workspace",
-          workspacePath,
-        ]),
-      );
+      addCaptureWorkspaceChecks(plan, workspacePath);
     }
   }
 
@@ -561,35 +783,49 @@ export function buildValidationPlan(mode, changedFiles) {
       !changedFiles.some(isPreparedReleaseArtifactPath),
     );
     if (releaseArtifacts.length > 0) {
-      plan.push(releaseValidationItem("release note artifact validation", releaseArtifacts));
+      plan.push(
+        releaseValidationItem(
+          "release note artifact validation",
+          releaseArtifacts,
+        ),
+      );
     }
   }
 
   return plan;
 }
 
-function runProcess(label, command, args) {
+function runProcess(label, command, args, cwd = REPO_ROOT) {
   console.log(`\n==> ${label}`);
-  console.log(`${command} ${args.join(" ")}`);
+  console.log(
+    `${command} ${args.join(" ")} (cwd: ${path.relative(REPO_ROOT, cwd) || "."})`,
+  );
 
   const result = spawnSync(command, args, {
-    cwd: REPO_ROOT,
+    cwd,
     env: process.env,
     stdio: "inherit",
   });
 
   if (result.status !== 0) {
-    throw new Error(`${label} failed with exit code ${result.status ?? "unknown"}.`);
+    throw new Error(
+      `${label} failed with exit code ${result.status ?? "unknown"}.`,
+    );
   }
 }
 
 function runReleaseValidations(files) {
   for (const filePath of files) {
-    runProcess(`validate ${filePath}`, NODE_BIN, [
-      path.join("scripts", "validate-release-notes.mjs"),
-      filePath,
-      ...priorReleaseArtifactsFor(filePath),
-    ]);
+    runProcess(
+      `validate ${filePath}`,
+      NODE_BIN,
+      [
+        path.join("scripts", "validate-release-notes.mjs"),
+        filePath,
+        ...priorReleaseArtifactsFor(filePath),
+      ],
+      REPO_ROOT,
+    );
   }
 }
 
@@ -617,7 +853,7 @@ export function printValidationPlan({ mode, changedFiles, plan }) {
 export function runValidationPlan(plan) {
   for (const item of plan) {
     if (item.kind === "command") {
-      runProcess(item.label, item.command, item.args);
+      runProcess(item.label, item.command, item.args, item.cwd);
       continue;
     }
 
@@ -632,13 +868,22 @@ export function runValidationPlan(plan) {
 }
 
 export function main(argv = process.argv.slice(2)) {
-  const { help, mode, changedFiles: explicitChangedFiles, planLabels, planOnly } = parseArgs(argv);
+  const {
+    help,
+    mode,
+    changedFiles: explicitChangedFiles,
+    planLabels,
+    planOnly,
+  } = parseArgs(argv);
   if (help) {
     console.log(usage());
     return;
   }
 
-  const changedFiles = collectChangedFiles({ mode, changedFiles: explicitChangedFiles });
+  const changedFiles = collectChangedFiles({
+    mode,
+    changedFiles: explicitChangedFiles,
+  });
   const plan = buildValidationPlan(mode, changedFiles);
   if (planLabels) {
     console.log(describePlan(plan).join("\n"));

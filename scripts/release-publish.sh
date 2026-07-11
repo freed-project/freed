@@ -20,7 +20,7 @@ if [[ "$VERSION" == *-dev ]]; then
   CHANNEL="dev"
 fi
 
-if ! git diff --quiet HEAD; then
+if [[ -n "$(git status --porcelain)" ]]; then
   echo "Error: working tree is dirty. Commit the reviewed release notes first." >&2
   exit 1
 fi
@@ -41,8 +41,16 @@ if [[ "$CURRENT_BRANCH" != "$EXPECTED_BRANCH" ]]; then
   exit 1
 fi
 
+git fetch origin dev main --tags
+REMOTE_RELEASE_SHA="$(git rev-parse "origin/${EXPECTED_BRANCH}")"
+LOCAL_RELEASE_SHA="$(git rev-parse HEAD)"
+if [[ "$LOCAL_RELEASE_SHA" != "$REMOTE_RELEASE_SHA" ]]; then
+  echo "Error: HEAD must equal origin/${EXPECTED_BRANCH} before tagging." >&2
+  echo "The release tag must identify the exact commit merged through branch protection." >&2
+  exit 1
+fi
+
 if [[ "$CHANNEL" == "production" ]]; then
-  git fetch origin dev main
   "${NODE_BIN}" scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref=HEAD
 fi
 
@@ -84,8 +92,13 @@ fi
 
 "${NODE_BIN}" scripts/validate-release-notes.mjs "${VALIDATE_ARGS[@]}"
 
+if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+  echo "Error: tag ${TAG} already exists. Release tags are immutable." >&2
+  exit 1
+fi
+
 git tag -a "${TAG}" -m "Release ${TAG}"
 
 echo "==> Created tag ${TAG}"
 echo "==> To trigger the release workflow, run:"
-echo "    git push origin ${EXPECTED_BRANCH} --follow-tags"
+echo "    git push origin refs/tags/${TAG}"

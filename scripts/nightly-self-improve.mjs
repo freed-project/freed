@@ -1,14 +1,20 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import {
   appendFileSync,
+  closeSync,
   copyFileSync,
   existsSync,
+  fsyncSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -16,6 +22,23 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  appendOutcomeControlEvent,
+  automationControlPaths,
+  finalizeTaskOutcome,
+  guardOwnerIsLive,
+  normalizeInstalledBuildIdentity,
+  processStartIdentity,
+  readTask,
+  readTaskManifest,
+  transitionTask,
+} from "./lib/automation-control.mjs";
+import {
+  canonicalOutcomeDelta,
+  canonicalOutcomeNumber,
+  OUTCOME_VERDICT_SCHEMA_VERSION as CONVERTER_OUTCOME_VERDICT_SCHEMA_VERSION,
+  validateOutcomeVerdictProvenance,
+} from "./build-outcome-verdict.mjs";
 import { isProviderVisiblePath } from "./lib/provider-visible-paths.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,11 +55,103 @@ const DEFAULT_DEV_BOT_MEMORY =
 // reboots; macOS periodically clears /tmp, which made the outcome ledger and
 // active-soak pointer amnesiac. The /tmp paths remain readable as a legacy
 // fallback for one release (see resolveStatePathWithLegacyFallback).
-export const AUTOMATION_STATE_DIR = path.join(os.homedir(), ".freed", "automation");
+export const AUTOMATION_STATE_DIR = path.join(
+  os.homedir(),
+  ".freed",
+  "automation",
+);
+export const OUTCOME_SCHEMA_VERSION = 3;
+export const OUTCOME_STATUSES = [
+  "merged",
+  "installed",
+  "verified_effective",
+  "verified_neutral",
+  "regressed",
+  "inconclusive",
+  "governance_blocked",
+  "superseded",
+  "implementation_failed",
+];
+const MEASURED_OUTCOME_STATUSES = new Set([
+  "verified_effective",
+  "verified_neutral",
+  "regressed",
+]);
+const VERIFICATION_OUTCOME_STATUSES = new Set([
+  ...MEASURED_OUTCOME_STATUSES,
+  "inconclusive",
+]);
+const FRESHNESS_GATED_OUTCOME_STATUSES = new Set([
+  ...VERIFICATION_OUTCOME_STATUSES,
+  "governance_blocked",
+  "superseded",
+]);
+const OUTCOME_ACTORS_BY_STATUS = Object.freeze({
+  merged: Object.freeze(["freed-nightly-runner", "freed-owner"]),
+  installed: Object.freeze(["freed-nightly-runner", "freed-owner"]),
+  verified_effective: Object.freeze(["freed-release-verifier", "freed-owner"]),
+  verified_neutral: Object.freeze(["freed-release-verifier", "freed-owner"]),
+  regressed: Object.freeze(["freed-release-verifier", "freed-owner"]),
+  inconclusive: Object.freeze(["freed-release-verifier", "freed-owner"]),
+  governance_blocked: Object.freeze([
+    "freed-stability-controller",
+    "freed-nightly-runner",
+    "freed-owner",
+  ]),
+  superseded: Object.freeze(["freed-stability-controller", "freed-owner"]),
+  implementation_failed: Object.freeze([
+    "freed-scaffolding-maintainer",
+    "freed-nightly-runner",
+    "freed-owner",
+  ]),
+});
+const OUTCOME_EVIDENCE_DIGEST_PATTERN = /^[0-9a-f]{40,64}$/i;
+const OUTCOME_CONTROL_EVENT_TYPE = "outcome_recorded";
+export const OUTCOME_VERDICT_SCHEMA_VERSION =
+  CONVERTER_OUTCOME_VERDICT_SCHEMA_VERSION;
+const OUTCOME_VERDICT_STATUS = Object.freeze({
+  verified_effective: "pass",
+  verified_neutral: "pass",
+  regressed: "fail",
+  inconclusive: "inconclusive",
+});
+const ACTIVE_BEHAVIOR_TASK_STATES = new Set([
+  "approved_for_pr",
+  "implemented",
+  "validated",
+  "merged",
+  "installed",
+  "soaking",
+  "inconclusive",
+  "governance_blocked",
+]);
+const COMPLETED_BEHAVIOR_OUTCOME_STATES = new Set([
+  "verified_effective",
+  "verified_neutral",
+  "regressed",
+]);
+const RUNNABLE_NIGHTLY_TASK_STATES = new Set([
+  "approved_for_pr",
+  "implemented",
+  "validated",
+]);
+export const DEFAULT_BEHAVIOR_SOAK_EXCLUSIVITY_KEY = "installed-build-product";
+const LEGACY_OUTCOME_ALIASES = {
+  shipped: "merged",
+  validated: "merged",
+  blocked: "governance_blocked",
+  failed: "implementation_failed",
+};
 const LEGACY_SOAK_POINTER = "/tmp/freed-perf-soak/current-soak-dir";
 const LEGACY_OUTCOME_LEDGER = "/tmp/freed-nightly-self-improve/outcomes.jsonl";
-const DEFAULT_SOAK_POINTER = path.join(AUTOMATION_STATE_DIR, "current-soak-dir");
-const DEFAULT_OUTCOME_LEDGER = path.join(AUTOMATION_STATE_DIR, "outcomes.jsonl");
+const DEFAULT_SOAK_POINTER = path.join(
+  AUTOMATION_STATE_DIR,
+  "current-soak-dir",
+);
+const DEFAULT_OUTCOME_LEDGER = path.join(
+  AUTOMATION_STATE_DIR,
+  "outcomes.jsonl",
+);
 const LEGACY_SOAK_ROOT = "/tmp/freed-perf-soak";
 // Ranked task files emitted by scripts/triage.mjs (stability W2-02).
 export const DEFAULT_TRIAGE_CANDIDATE_DIR = path.join(
@@ -47,7 +162,11 @@ export const DEFAULT_TRIAGE_CANDIDATE_DIR = path.join(
 // Triage evidence older than this no longer outranks roadmap work.
 const TRIAGE_FRESH_MS = 48 * 60 * 60 * 1000;
 
-export function resolveStatePathWithLegacyFallback(preferredPath, legacyPath, fsOps = {}) {
+export function resolveStatePathWithLegacyFallback(
+  preferredPath,
+  legacyPath,
+  fsOps = {},
+) {
   const ops = { existsSync, mkdirSync, copyFileSync, ...fsOps };
   if (ops.existsSync(preferredPath)) {
     return preferredPath;
@@ -71,7 +190,7 @@ const DEFAULT_MINIMUM_NIGHT_MINUTES = 180;
 const UNATTENDED_APP_INTERACTION_RULES = [
   "Do not stop an unattended run because the next useful validation or testing step needs a Freed Desktop button press.",
   "Use terminal diagnostics and shipped triggers first, including `node scripts/dev-sync-trigger.mjs <provider>` for installed dev-channel provider sync soaks.",
-  "If a foreground app click is truly the fastest way to test properly, ask for permission with a 10 minute response window and continue if the user is unavailable.",
+  "If a foreground app click is truly the fastest way to test properly, ask for permission with a 10 minute response window. If the user is unavailable, continue only with already authorized local work. The timeout never grants provider approval or permission for a new external action.",
   "When the same app action is likely to recur, build and ship a terminal trigger instead of depending on System Events, coordinate clicks, Computer Use, or browser automation.",
 ];
 const KNOWN_GENERATED_ARTIFACT_PATHS = [
@@ -100,18 +219,29 @@ Options:
   --no-peer-scan                Skip automatic git worktree discovery.
   --expected-branch <name>      Branch expected for nightly planning. Defaults to dev.
   --no-expected-branch          Disable branch expectation checks for deliberate diagnostics.
-  --outcome-ledger <path>       JSONL file with prior target outcomes.
+  --outcome-ledger <path>       Canonical JSONL ledger. Must equal <automation-state-root>/outcomes.jsonl.
+  --automation-state-root <path>  Canonical control root. Defaults to ~/.freed/automation.
   --record-outcome <id>         Append a finished target outcome to the outcome ledger.
+  --record-task-id <id>         Canonical control task for --record-outcome.
   --record-kind <kind>          Target kind for --record-outcome.
-  --record-status <status>      Outcome status: shipped, validated, blocked, or failed.
+  --record-status <status>      Outcome state from the versioned outcome contract.
   --record-notes <text>         Notes for --record-outcome.
   --record-pr <number>          Pull request number or URL for --record-outcome.
-  --record-build <version>      Dev build version for --record-outcome.
+  --record-build <version>      Installed build version for an installed outcome.
+  --record-build-commit-sha <sha>  Installed build's full commit SHA.
+  --record-build-channel <channel> Installed build channel, dev or production.
+  --record-artifact-digest <sha256> Optional installed artifact digest.
+  --record-actor <actor>        Authenticated automation actor for --record-outcome.
+  --record-lease-name <name>    Canonical live lease for --record-outcome.
+  --record-lease-token <token>  Token for the canonical live lease.
+  --record-evidence-digest <d>  Git or SHA-256 digest for the outcome evidence.
+  --record-verdict-reference <r>  JSON verdict path required for verification outcomes.
+  --record-evidence-window-end <iso>  Evidence window used for freshness.
   --max-targets <count>         Maximum targets to select. Defaults to 6.
   --duration-minutes <count>    Planning budget for one night. Defaults to 480.
   --minimum-night-minutes <n>   Keep batching safe work until at least this many machine minutes are queued. Defaults to 180.
   --memory-gib <count>          WebKit RSS budget before memory work wins. Defaults to 2.5.
-  --allow-provider-visible      Permit targets that could touch third-party providers.
+  Provider-visible targets are never executable in the unattended nightly lane.
   --dry-run                     Print the plan without writing files.
   --json                        Print JSON instead of a text summary.
   --help                        Show this help.
@@ -119,6 +249,7 @@ Options:
 }
 
 export function parseArgs(argv) {
+  let outcomeLedgerProvided = false;
   const args = {
     repo: process.cwd(),
     runDir: "",
@@ -129,13 +260,25 @@ export function parseArgs(argv) {
     dailyBugMemory: DEFAULT_DAILY_BUG_MEMORY,
     crashAutomation: DEFAULT_CRASH_AUTOMATION,
     devBotMemory: DEFAULT_DEV_BOT_MEMORY,
-    outcomeLedger: DEFAULT_OUTCOME_LEDGER,
+    outcomeLedger: "",
+    automationStateRoot:
+      process.env.FREED_AUTOMATION_STATE_ROOT ?? AUTOMATION_STATE_DIR,
     recordOutcome: "",
+    recordTaskId: "",
     recordKind: "",
-    recordStatus: "validated",
+    recordStatus: "merged",
     recordNotes: "",
     recordPr: "",
     recordBuild: "",
+    recordBuildCommitSha: "",
+    recordBuildChannel: "",
+    recordArtifactDigest: "",
+    recordActor: "",
+    recordLeaseName: "",
+    recordLeaseToken: "",
+    recordEvidenceDigest: "",
+    recordVerdictReference: "",
+    recordEvidenceWindowEnd: "",
     peerWorktrees: [],
     peerScan: true,
     expectedBranch: "dev",
@@ -192,6 +335,11 @@ export function parseArgs(argv) {
         break;
       case "--outcome-ledger":
         args.outcomeLedger = argv[index + 1] ?? "";
+        outcomeLedgerProvided = true;
+        index += 1;
+        break;
+      case "--automation-state-root":
+        args.automationStateRoot = argv[index + 1] ?? "";
         index += 1;
         break;
       case "--record-outcome":
@@ -200,6 +348,10 @@ export function parseArgs(argv) {
         break;
       case "--record-kind":
         args.recordKind = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-task-id":
+        args.recordTaskId = argv[index + 1] ?? "";
         index += 1;
         break;
       case "--record-status":
@@ -216,6 +368,42 @@ export function parseArgs(argv) {
         break;
       case "--record-build":
         args.recordBuild = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-build-commit-sha":
+        args.recordBuildCommitSha = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-build-channel":
+        args.recordBuildChannel = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-artifact-digest":
+        args.recordArtifactDigest = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-actor":
+        args.recordActor = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-lease-name":
+        args.recordLeaseName = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-lease-token":
+        args.recordLeaseToken = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-evidence-digest":
+        args.recordEvidenceDigest = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-verdict-reference":
+        args.recordVerdictReference = argv[index + 1] ?? "";
+        index += 1;
+        break;
+      case "--record-evidence-window-end":
+        args.recordEvidenceWindowEnd = argv[index + 1] ?? "";
         index += 1;
         break;
       case "--max-targets":
@@ -235,8 +423,9 @@ export function parseArgs(argv) {
         index += 1;
         break;
       case "--allow-provider-visible":
-        args.allowProviderVisible = true;
-        break;
+        throw new Error(
+          "--allow-provider-visible was removed. Use the authenticated provider review lane.",
+        );
       case "--dry-run":
         args.dryRun = true;
         break;
@@ -262,18 +451,61 @@ export function parseArgs(argv) {
   if (!args.soakPointer) {
     throw new Error("A soak pointer path is required.");
   }
+  if (!args.automationStateRoot) {
+    throw new Error("An automation state root is required.");
+  }
   if (args.expectedBranch && /\s/.test(args.expectedBranch)) {
     throw new Error("expected-branch must not contain whitespace.");
   }
   if (args.repairSoakPointer && args.soakDir) {
-    throw new Error("repair-soak-pointer cannot be combined with an explicit soak-dir.");
+    throw new Error(
+      "repair-soak-pointer cannot be combined with an explicit soak-dir.",
+    );
   }
   if (args.recordOutcome) {
     if (!args.recordKind) {
       throw new Error("record-kind is required when record-outcome is set.");
     }
-    if (!["shipped", "validated", "blocked", "failed"].includes(args.recordStatus)) {
-      throw new Error("record-status must be shipped, validated, blocked, or failed.");
+    if (!OUTCOME_STATUSES.includes(args.recordStatus)) {
+      throw new Error(
+        `record-status must be one of: ${OUTCOME_STATUSES.join(", ")}.`,
+      );
+    }
+    if (!args.recordActor || !args.recordLeaseName || !args.recordLeaseToken) {
+      throw new Error(
+        "record-outcome requires record-actor, record-lease-name, and record-lease-token.",
+      );
+    }
+    if (!args.recordTaskId && args.recordKind === "task") {
+      args.recordTaskId = args.recordOutcome;
+    }
+    if (!args.recordTaskId) {
+      throw new Error("record-task-id is required for non-task outcome ids.");
+    }
+    if (!args.recordEvidenceDigest && !args.recordVerdictReference) {
+      throw new Error(
+        "record-outcome requires record-evidence-digest or record-verdict-reference.",
+      );
+    }
+    const buildIdentityProvided =
+      args.recordBuild ||
+      args.recordBuildCommitSha ||
+      args.recordBuildChannel ||
+      args.recordArtifactDigest;
+    if (args.recordStatus === "installed") {
+      if (
+        !args.recordBuild ||
+        !args.recordBuildCommitSha ||
+        !args.recordBuildChannel
+      ) {
+        throw new Error(
+          "installed recording requires record-build, record-build-commit-sha, and record-build-channel.",
+        );
+      }
+    } else if (buildIdentityProvided) {
+      throw new Error(
+        "record-build identity flags are valid only for installed outcomes.",
+      );
     }
   }
   if (!Number.isFinite(args.maxTargets) || args.maxTargets < 1) {
@@ -282,32 +514,58 @@ export function parseArgs(argv) {
   if (!Number.isFinite(args.durationMinutes) || args.durationMinutes < 30) {
     throw new Error("durationMinutes must be at least 30.");
   }
-  if (!Number.isFinite(args.minimumNightMinutes) || args.minimumNightMinutes < 30) {
+  if (
+    !Number.isFinite(args.minimumNightMinutes) ||
+    args.minimumNightMinutes < 30
+  ) {
     throw new Error("minimumNightMinutes must be at least 30.");
   }
   if (args.minimumNightMinutes > args.durationMinutes) {
-    throw new Error("minimumNightMinutes must be less than or equal to durationMinutes.");
+    throw new Error(
+      "minimumNightMinutes must be less than or equal to durationMinutes.",
+    );
   }
   if (!Number.isFinite(args.memoryGib) || args.memoryGib <= 0) {
     throw new Error("memoryGib must be greater than 0.");
   }
 
   args.repo = path.resolve(args.repo);
+  args.automationStateRoot = path.resolve(args.automationStateRoot);
   if (args.soakPointer === DEFAULT_SOAK_POINTER) {
-    args.soakPointer = resolveStatePathWithLegacyFallback(DEFAULT_SOAK_POINTER, LEGACY_SOAK_POINTER);
-  }
-  if (args.outcomeLedger === DEFAULT_OUTCOME_LEDGER) {
-    args.outcomeLedger = resolveStatePathWithLegacyFallback(
-      DEFAULT_OUTCOME_LEDGER,
-      LEGACY_OUTCOME_LEDGER,
+    args.soakPointer = resolveStatePathWithLegacyFallback(
+      DEFAULT_SOAK_POINTER,
+      LEGACY_SOAK_POINTER,
     );
+  }
+  const canonicalOutcomeLedger = automationControlPaths(
+    args.automationStateRoot,
+  ).outcomes;
+  if (!outcomeLedgerProvided) {
+    args.outcomeLedger =
+      canonicalOutcomeLedger === DEFAULT_OUTCOME_LEDGER
+        ? resolveStatePathWithLegacyFallback(
+            DEFAULT_OUTCOME_LEDGER,
+            LEGACY_OUTCOME_LEDGER,
+          )
+        : canonicalOutcomeLedger;
   }
   args.soakPointer = path.resolve(args.soakPointer);
   args.outcomeLedger = path.resolve(args.outcomeLedger);
-  args.peerWorktrees = args.peerWorktrees.filter(Boolean).map((item) => path.resolve(item));
+  if (args.outcomeLedger !== canonicalOutcomeLedger) {
+    throw new Error(
+      `outcome-ledger must equal the canonical state-root ledger at ${canonicalOutcomeLedger}.`,
+    );
+  }
+  args.peerWorktrees = args.peerWorktrees
+    .filter(Boolean)
+    .map((item) => path.resolve(item));
   args.runDir =
     args.runDir ||
-    path.join(AUTOMATION_STATE_DIR, "runs", new Date().toISOString().replace(/[:.]/g, ""));
+    path.join(
+      AUTOMATION_STATE_DIR,
+      "runs",
+      new Date().toISOString().replace(/[:.]/g, ""),
+    );
 
   return args;
 }
@@ -319,17 +577,31 @@ function readText(filePath) {
   return readFileSync(filePath, "utf8");
 }
 
+function readJsonLinesWithHealth(filePath) {
+  const exists = Boolean(filePath && existsSync(filePath));
+  const entries = [];
+  const malformedLines = [];
+  if (!exists) {
+    return { entries, exists: false, healthy: false, malformedLines };
+  }
+  for (const [index, line] of readText(filePath).split(/\r?\n/).entries()) {
+    if (!line.trim()) continue;
+    try {
+      entries.push(JSON.parse(line));
+    } catch {
+      malformedLines.push(index + 1);
+    }
+  }
+  return {
+    entries,
+    exists: true,
+    healthy: malformedLines.length === 0,
+    malformedLines,
+  };
+}
+
 function readJsonLines(filePath) {
-  return readText(filePath)
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .flatMap((line) => {
-      try {
-        return [JSON.parse(line)];
-      } catch {
-        return [];
-      }
-    });
+  return readJsonLinesWithHealth(filePath).entries;
 }
 
 function countFiles(dirPath, limit = 500) {
@@ -382,15 +654,354 @@ function readAutomationStatus(filePath) {
   return match?.[1] ?? "";
 }
 
-export function summarizeOutcomeLedger(filePath) {
-  const entries = readJsonLines(filePath);
+function outcomeEvidence(entry) {
+  const digest = String(entry?.evidence?.digest ?? entry?.evidenceDigest ?? "")
+    .trim()
+    .toLowerCase();
+  const verdictReference = String(
+    entry?.evidence?.verdictReference ?? entry?.verdictReference ?? "",
+  ).trim();
+  const verdictFingerprint = String(
+    entry?.evidence?.verdictFingerprint ?? entry?.verdictFingerprint ?? "",
+  )
+    .trim()
+    .toLowerCase();
+  if (!digest && !verdictReference) {
+    throw new Error(
+      "Outcome recording requires an evidence digest or verdict reference.",
+    );
+  }
+  if (digest && !OUTCOME_EVIDENCE_DIGEST_PATTERN.test(digest)) {
+    throw new Error(
+      "Outcome evidence digest must be a 40 to 64 character hexadecimal digest.",
+    );
+  }
+  if (verdictFingerprint && !/^[0-9a-f]{64}$/.test(verdictFingerprint)) {
+    throw new Error(
+      "Outcome verdict fingerprint must be a 64 character hexadecimal digest.",
+    );
+  }
+  return {
+    ...(digest ? { digest } : {}),
+    ...(verdictReference ? { verdictReference } : {}),
+    ...(verdictFingerprint ? { verdictFingerprint } : {}),
+  };
+}
+
+function normalizeOutcomeEffect(effect, field = "Outcome effect") {
+  if (!effect || typeof effect !== "object" || Array.isArray(effect)) {
+    throw new Error(
+      `${field} requires metric, before, after, delta, and unit.`,
+    );
+  }
+  const metric = String(effect.metric ?? "").trim();
+  const before = canonicalOutcomeNumber(effect.before);
+  const after = canonicalOutcomeNumber(effect.after);
+  const delta = canonicalOutcomeNumber(
+    effect.delta ?? canonicalOutcomeDelta(before, after),
+  );
+  const derivedDelta = canonicalOutcomeDelta(before, after);
+  const unit = String(effect.unit ?? "").trim();
+  if (
+    !metric ||
+    !Number.isFinite(before) ||
+    !Number.isFinite(after) ||
+    !Number.isFinite(delta) ||
+    delta !== derivedDelta ||
+    !unit
+  ) {
+    throw new Error(
+      `${field} requires exact finite values and delta must equal after minus before.`,
+    );
+  }
+  return { metric, before, after, delta, unit };
+}
+
+function resolveOutcomeEvidence(entry) {
+  const normalized = outcomeEvidence(entry);
+  if (!VERIFICATION_OUTCOME_STATUSES.has(entry.outcome)) {
+    if (entry.effect !== undefined) {
+      throw new Error(
+        "Only measured verification outcomes may record an effect.",
+      );
+    }
+    return { evidence: normalized, verdict: null, effect: null };
+  }
+  if (!normalized.verdictReference) {
+    throw new Error(
+      "A verification outcome requires a resolvable verdict file reference.",
+    );
+  }
+  let verdictPath;
+  try {
+    verdictPath = realpathSync(path.resolve(normalized.verdictReference));
+  } catch {
+    throw new Error(
+      `Outcome verdict reference does not resolve: ${normalized.verdictReference}`,
+    );
+  }
+  const verdictText = readFileSync(verdictPath, "utf8");
+  const verdictDigest = createHash("sha256").update(verdictText).digest("hex");
+  if (normalized.digest && normalized.digest !== verdictDigest) {
+    throw new Error(
+      "Outcome evidence digest does not match the referenced verdict file.",
+    );
+  }
+  let verdict;
+  try {
+    verdict = JSON.parse(verdictText);
+  } catch {
+    throw new Error("Outcome verdict reference must contain valid JSON.");
+  }
+  const expectedStatus = OUTCOME_VERDICT_STATUS[entry.outcome];
+  if (
+    verdict?.schemaVersion !== OUTCOME_VERDICT_SCHEMA_VERSION ||
+    verdict?.outcome !== entry.outcome ||
+    verdict?.status !== expectedStatus ||
+    verdict?.pass !== (expectedStatus === "pass") ||
+    verdict?.taskId !== entry.taskId
+  ) {
+    throw new Error(
+      "Outcome verdict schema, task, status, and outcome must exactly match the recorded outcome.",
+    );
+  }
+  validateOutcomeVerdictProvenance(verdict);
+  const verdictWindowStartMs = Date.parse(String(verdict?.windowStart ?? ""));
+  const verdictWindowEndMs = Date.parse(String(verdict?.windowEnd ?? ""));
+  const evidenceWindowEndMs = Date.parse(String(entry.evidenceWindowEnd ?? ""));
+  if (
+    !Number.isFinite(verdictWindowStartMs) ||
+    !Number.isFinite(verdictWindowEndMs) ||
+    verdictWindowStartMs >= verdictWindowEndMs ||
+    !Number.isFinite(evidenceWindowEndMs) ||
+    verdictWindowEndMs !== evidenceWindowEndMs
+  ) {
+    throw new Error(
+      "Outcome evidence window end must match the referenced verdict.",
+    );
+  }
+  const observedBuildIdentity = normalizeInstalledBuildIdentity(
+    verdict?.buildIdentity,
+    "verdict.buildIdentity",
+  );
+  const observedBuild = observedBuildIdentity.version;
+  const verdictFingerprint = String(verdict?.evidenceFingerprint?.digest ?? "")
+    .trim()
+    .toLowerCase();
+  if (
+    verdict?.evidenceFingerprint?.schemaVersion !== 1 ||
+    verdict?.evidenceFingerprint?.algorithm !== "sha256" ||
+    !/^[0-9a-f]{64}$/.test(verdictFingerprint) ||
+    !Number.isSafeInteger(verdict?.evidenceFingerprint?.recordCount) ||
+    verdict.evidenceFingerprint.recordCount <= 0
+  ) {
+    throw new Error(
+      "Outcome verdict must carry a complete evidence fingerprint.",
+    );
+  }
+  if (
+    MEASURED_OUTCOME_STATUSES.has(entry.outcome) &&
+    (verdict?.sourceHealth?.healthy !== true ||
+      verdict?.sourceHealth?.status !== "healthy")
+  ) {
+    throw new Error(
+      "A measured verification outcome requires a healthy verdict source.",
+    );
+  }
+  let effect = null;
+  if (MEASURED_OUTCOME_STATUSES.has(entry.outcome)) {
+    effect = normalizeOutcomeEffect(verdict.effect, "Outcome verdict effect");
+    if (entry.effect !== undefined) {
+      throw new Error(
+        "Recorded effects are derived from the referenced verdict, not caller input.",
+      );
+    }
+  } else if (entry.effect !== undefined || verdict.effect !== undefined) {
+    throw new Error("Inconclusive outcomes must not claim a measured effect.");
+  }
+  return {
+    evidence: {
+      digest: verdictDigest,
+      verdictReference: verdictPath,
+      verdictFingerprint,
+    },
+    verdict: {
+      windowStartMs: verdictWindowStartMs,
+      windowEndMs: verdictWindowEndMs,
+      build: observedBuild,
+      buildIdentity: observedBuildIdentity,
+      status: verdict.status,
+      outcome: verdict.outcome,
+    },
+    effect,
+  };
+}
+
+function outcomeEntryDigest(entry) {
+  const { authentication: _authentication, ...digestible } = entry;
+  return createHash("sha256").update(JSON.stringify(digestible)).digest("hex");
+}
+
+function trustedOutcomeEventHistory(stateRoot) {
+  const eventsPath = automationControlPaths(stateRoot).events;
+  const source = readJsonLinesWithHealth(eventsPath);
+  return {
+    source,
+    outcomes: new Map(
+      source.entries
+        .filter(
+          (event) =>
+            event?.type === OUTCOME_CONTROL_EVENT_TYPE &&
+            typeof event?.eventId === "string" &&
+            typeof event?.taskId === "string" &&
+            typeof event?.data?.outcomeDigest === "string",
+        )
+        .map((event) => [event.eventId, event]),
+    ),
+    transitions: new Map(
+      source.entries
+        .filter(
+          (event) =>
+            event?.type === "task_transitioned" &&
+            typeof event?.eventId === "string" &&
+            typeof event?.taskId === "string" &&
+            Number.isInteger(event?.taskRevision),
+        )
+        .map((event) => [event.eventId, event]),
+    ),
+  };
+}
+
+function authenticateOutcomeEntry(
+  entry,
+  ledgerPath,
+  eventHistory,
+  consumedEventIds,
+  consumedOutcomeKeys,
+) {
+  const authentication = entry?.authentication;
+  if (
+    entry?.schemaVersion !== OUTCOME_SCHEMA_VERSION ||
+    !authentication ||
+    typeof authentication !== "object" ||
+    typeof authentication.controlEventId !== "string" ||
+    typeof authentication.actor !== "string" ||
+    typeof authentication.leaseName !== "string" ||
+    typeof authentication.outcomeDigest !== "string" ||
+    typeof authentication.transitionEventId !== "string" ||
+    !Number.isInteger(authentication.taskRevision) ||
+    typeof entry?.taskId !== "string" ||
+    !OUTCOME_STATUSES.includes(entry?.outcome) ||
+    !OUTCOME_ACTORS_BY_STATUS[entry?.outcome]?.includes(authentication.actor)
+  ) {
+    return {
+      trusted: false,
+      reason: "missing authenticated outcome provenance",
+    };
+  }
+  if (!eventHistory.source.healthy) {
+    return {
+      trusted: false,
+      reason: "control event history is missing or malformed",
+    };
+  }
+  if (consumedEventIds.has(authentication.controlEventId)) {
+    return { trusted: false, reason: "replayed outcome control event" };
+  }
+  let evidence;
+  try {
+    evidence = outcomeEvidence(entry);
+  } catch (error) {
+    return {
+      trusted: false,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+  const outcomeKey = JSON.stringify({
+    taskId: entry.taskId,
+    outcome: entry.outcome,
+    evidence,
+  });
+  if (consumedOutcomeKeys.has(outcomeKey)) {
+    return { trusted: false, reason: "replayed task outcome evidence" };
+  }
+  const event = eventHistory.outcomes.get(authentication.controlEventId);
+  const transitionEvent = eventHistory.transitions.get(
+    authentication.transitionEventId,
+  );
+  const digest = outcomeEntryDigest(entry);
+  if (
+    !event ||
+    event.actor !== authentication.actor ||
+    event.data?.leaseName !== authentication.leaseName ||
+    event.data?.ledgerPath !== ledgerPath ||
+    event.data?.outcomeDigest !== digest ||
+    authentication.outcomeDigest !== digest ||
+    event.data?.id !== entry.id ||
+    event.taskId !== entry.taskId ||
+    event.data?.taskId !== entry.taskId ||
+    event.data?.taskRevision !== authentication.taskRevision ||
+    event.data?.taskState !== entry.outcome ||
+    event.data?.kind !== entry.kind ||
+    event.data?.outcome !== entry.outcome ||
+    event.data?.transitionEventId !== authentication.transitionEventId ||
+    JSON.stringify(event.data?.evidence ?? {}) !== JSON.stringify(evidence) ||
+    !transitionEvent ||
+    transitionEvent.actor !== authentication.actor ||
+    transitionEvent.taskId !== entry.taskId ||
+    transitionEvent.taskRevision !== authentication.taskRevision ||
+    transitionEvent.data?.toState !== entry.outcome ||
+    transitionEvent.data?.outcomeDigest !== digest ||
+    (VERIFICATION_OUTCOME_STATUSES.has(entry.outcome) &&
+      transitionEvent.data?.outcomeRequired !== true)
+  ) {
+    return {
+      trusted: false,
+      reason: "outcome does not match its authenticated control event",
+    };
+  }
+  consumedEventIds.add(authentication.controlEventId);
+  consumedOutcomeKeys.add(outcomeKey);
+  return { trusted: true };
+}
+
+export function summarizeOutcomeLedger(
+  filePath,
+  { stateRoot = path.dirname(path.resolve(filePath)) } = {},
+) {
+  const ledgerPath = path.resolve(filePath);
+  const ledgerSource = readJsonLinesWithHealth(ledgerPath);
+  const rawEntries = ledgerSource.entries;
+  const eventHistory = trustedOutcomeEventHistory(stateRoot);
+  const consumedEventIds = new Set();
+  const consumedOutcomeKeys = new Set();
+  const entries = [];
+  const rejectedEntries = ledgerSource.malformedLines.map((line) => ({
+    entry: null,
+    reason: `malformed outcome ledger line ${line}`,
+  }));
+  for (const entry of rawEntries) {
+    const authentication = authenticateOutcomeEntry(
+      entry,
+      ledgerPath,
+      eventHistory,
+      consumedEventIds,
+      consumedOutcomeKeys,
+    );
+    if (authentication.trusted) {
+      entries.push(entry);
+    } else {
+      rejectedEntries.push({ entry, reason: authentication.reason });
+    }
+  }
   const byKind = new Map();
   const byId = new Map();
 
   for (const entry of entries) {
     const kind = String(entry.kind ?? "");
     const id = String(entry.id ?? "");
-    const outcome = String(entry.outcome ?? "");
+    const rawOutcome = String(entry.outcome ?? "");
+    const outcome = LEGACY_OUTCOME_ALIASES[rawOutcome] ?? rawOutcome;
     if (!kind || !id) {
       continue;
     }
@@ -401,59 +1012,474 @@ export function summarizeOutcomeLedger(filePath) {
       const current = map.get(key) ?? {
         key,
         attempts: 0,
-        shipped: 0,
-        validated: 0,
-        failed: 0,
+        merged: 0,
+        installed: 0,
+        verifiedEffective: 0,
+        verifiedNeutral: 0,
+        regressed: 0,
+        inconclusive: 0,
+        governanceBlocked: 0,
+        superseded: 0,
+        implementationFailed: 0,
+        latestOutcome: null,
+        latestTsMs: null,
+        latestEvidenceWindowEndMs: null,
       };
       current.attempts += 1;
-      if (outcome === "shipped") {
-        current.shipped += 1;
-      } else if (outcome === "validated") {
-        current.validated += 1;
-      } else if (outcome === "failed" || outcome === "blocked") {
-        current.failed += 1;
+      if (outcome === "merged") current.merged += 1;
+      else if (outcome === "installed") current.installed += 1;
+      else if (outcome === "verified_effective") current.verifiedEffective += 1;
+      else if (outcome === "verified_neutral") current.verifiedNeutral += 1;
+      else if (outcome === "regressed") current.regressed += 1;
+      else if (outcome === "inconclusive") current.inconclusive += 1;
+      else if (outcome === "governance_blocked") current.governanceBlocked += 1;
+      else if (outcome === "superseded") current.superseded += 1;
+      else if (outcome === "implementation_failed")
+        current.implementationFailed += 1;
+      const entryTsMs = parseTimestampMs(entry.ts);
+      if (
+        entryTsMs !== null &&
+        (current.latestTsMs === null || entryTsMs >= current.latestTsMs)
+      ) {
+        current.latestTsMs = entryTsMs;
+        current.latestOutcome = outcome;
+        current.latestEvidenceWindowEndMs = parseTimestampMs(
+          entry.evidenceWindowEnd,
+        );
       }
       map.set(key, current);
     }
   }
 
   return {
-    path: filePath,
+    path: ledgerPath,
     exists: entries.length > 0,
     entries,
+    rejectedEntries,
+    sourceHealth: {
+      ledgerHealthy: ledgerSource.healthy && rejectedEntries.length === 0,
+      ledgerSyntaxHealthy: ledgerSource.healthy,
+      ledgerExists: ledgerSource.exists,
+      malformedLedgerLines: ledgerSource.malformedLines,
+      controlEventsHealthy: eventHistory.source.healthy,
+      controlEventsExist: eventHistory.source.exists,
+      malformedControlEventLines: eventHistory.source.malformedLines,
+    },
     byKind: Object.fromEntries(byKind),
     byId: Object.fromEntries(byId),
   };
 }
 
-export function appendOutcomeLedger(filePath, entry, now = new Date()) {
+function waitForOutcomeLedgerLock(ms) {
+  const signal = new Int32Array(
+    new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT),
+  );
+  Atomics.wait(signal, 0, 0, ms);
+}
+
+function syncOutcomeLedgerDirectory(directoryPath) {
+  let directoryFd;
+  try {
+    directoryFd = openSync(directoryPath, "r");
+    fsyncSync(directoryFd);
+  } catch {
+    // The atomically replaced ledger file is still synced on platforms that
+    // do not permit directory fsync.
+  } finally {
+    if (directoryFd !== undefined) closeSync(directoryFd);
+  }
+}
+
+export function appendOutcomeEntryAtomic(
+  ledgerPath,
+  entry,
+  {
+    timeoutMs = 5_000,
+    staleLockMs = 30_000,
+    wait = waitForOutcomeLedgerLock,
+    now = () => Date.now(),
+  } = {},
+) {
+  const directoryPath = path.dirname(ledgerPath);
+  const lockPath = `${ledgerPath}.writer-lock`;
+  const token = randomUUID();
+  const deadline = Date.now() + timeoutMs;
+  mkdirSync(directoryPath, { recursive: true });
+  while (true) {
+    let lockFd;
+    try {
+      lockFd = openSync(lockPath, "wx", 0o600);
+      writeFileSync(
+        lockFd,
+        `${JSON.stringify({
+          schemaVersion: 1,
+          token,
+          pid: process.pid,
+          processStartIdentity: processStartIdentity(process.pid),
+          acquiredAt: new Date(now()).toISOString(),
+        })}\n`,
+        "utf8",
+      );
+      fsyncSync(lockFd);
+      closeSync(lockFd);
+      break;
+    } catch (error) {
+      if (lockFd !== undefined) closeSync(lockFd);
+      if (error?.code !== "EEXIST") throw error;
+      let currentOwner = null;
+      let lockAgeMs = 0;
+      try {
+        currentOwner = JSON.parse(readFileSync(lockPath, "utf8"));
+        lockAgeMs = Math.max(0, now() - statSync(lockPath).mtimeMs);
+      } catch (readError) {
+        if (readError?.code === "ENOENT") continue;
+      }
+      const currentOwnerIsLive = guardOwnerIsLive(currentOwner);
+      const identityBoundOwner = Boolean(
+        currentOwner?.schemaVersion === 1 &&
+        Number.isSafeInteger(currentOwner?.pid) &&
+        currentOwner.pid > 0 &&
+        Object.hasOwn(currentOwner, "processStartIdentity") &&
+        (currentOwner.processStartIdentity === null ||
+          typeof currentOwner.processStartIdentity === "string"),
+      );
+      if (
+        !currentOwnerIsLive &&
+        (identityBoundOwner || lockAgeMs >= staleLockMs)
+      ) {
+        const abandonedPath = `${lockPath}.abandoned.${randomUUID()}`;
+        try {
+          renameSync(lockPath, abandonedPath);
+          rmSync(abandonedPath, { force: true });
+          continue;
+        } catch (takeoverError) {
+          if (!["ENOENT", "EEXIST"].includes(takeoverError?.code))
+            throw takeoverError;
+          continue;
+        }
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`Outcome ledger writer lock is busy: ${lockPath}`);
+      }
+      wait(10);
+    }
+  }
+
+  const temporaryPath = `${ledgerPath}.${process.pid}.${randomUUID()}.tmp`;
+  let temporaryFd;
+  try {
+    const existing = existsSync(ledgerPath)
+      ? readFileSync(ledgerPath, "utf8")
+      : "";
+    const prefix =
+      existing && !existing.endsWith("\n") ? `${existing}\n` : existing;
+    temporaryFd = openSync(temporaryPath, "wx", 0o600);
+    writeFileSync(temporaryFd, `${prefix}${JSON.stringify(entry)}\n`, "utf8");
+    fsyncSync(temporaryFd);
+    closeSync(temporaryFd);
+    temporaryFd = undefined;
+    renameSync(temporaryPath, ledgerPath);
+    syncOutcomeLedgerDirectory(directoryPath);
+  } finally {
+    if (temporaryFd !== undefined) closeSync(temporaryFd);
+    rmSync(temporaryPath, { force: true });
+    try {
+      const lock = JSON.parse(readFileSync(lockPath, "utf8"));
+      if (lock.token === token) rmSync(lockPath, { force: true });
+    } catch {
+      // A successor or manual recovery owns any lock that no longer carries
+      // this token.
+    }
+  }
+}
+
+export function appendOutcomeLedger(filePath, entry, options = {}) {
+  const normalizedOptions =
+    options instanceof Date ? { now: options } : options;
+  const now = normalizedOptions.now ?? new Date();
+  const stateRoot = path.resolve(
+    normalizedOptions.stateRoot ?? path.dirname(path.resolve(filePath)),
+  );
+  const authentication = normalizedOptions.authentication ?? {};
   if (!entry?.id || !entry?.kind || !entry?.outcome) {
     throw new Error("Outcome ledger entries require id, kind, and outcome.");
   }
-  if (!["shipped", "validated", "blocked", "failed"].includes(entry.outcome)) {
-    throw new Error("Outcome must be shipped, validated, blocked, or failed.");
+  const taskId = String(
+    entry.taskId ?? (entry.kind === "task" ? entry.id : ""),
+  ).trim();
+  if (!taskId) {
+    throw new Error("Outcome ledger entries require a canonical taskId.");
+  }
+  if (!OUTCOME_STATUSES.includes(entry.outcome)) {
+    throw new Error(`Outcome must be one of: ${OUTCOME_STATUSES.join(", ")}.`);
+  }
+  if (entry.outcome === "installed" && !entry.installedIdentity) {
+    throw new Error(
+      "An installed outcome requires version, commit, and channel identity.",
+    );
+  }
+  if (VERIFICATION_OUTCOME_STATUSES.has(entry.outcome)) {
+    if (
+      !entry.evidenceWindowEnd ||
+      !Number.isFinite(Date.parse(String(entry.evidenceWindowEnd)))
+    ) {
+      throw new Error(
+        "A verification outcome requires a valid evidence window end timestamp.",
+      );
+    }
+  }
+  if (
+    FRESHNESS_GATED_OUTCOME_STATUSES.has(entry.outcome) &&
+    (!entry.evidenceWindowEnd ||
+      !Number.isFinite(Date.parse(String(entry.evidenceWindowEnd))))
+  ) {
+    throw new Error(
+      `${entry.outcome} requires a valid evidence window end timestamp.`,
+    );
+  }
+  const evidenceWindowEndMs = parseTimestampMs(entry.evidenceWindowEnd);
+  if (
+    evidenceWindowEndMs !== null &&
+    evidenceWindowEndMs > now.getTime() + 5 * 60 * 1_000
+  ) {
+    throw new Error("Outcome evidence window end cannot be in the future.");
+  }
+  const actor = String(authentication.actor ?? "").trim();
+  const leaseName = String(authentication.leaseName ?? "").trim();
+  const leaseToken = String(authentication.leaseToken ?? "").trim();
+  if (!actor || !leaseName || !leaseToken) {
+    throw new Error(
+      "Outcome recording requires an authenticated actor, lease name, and lease token.",
+    );
+  }
+  if (!OUTCOME_ACTORS_BY_STATUS[entry.outcome]?.includes(actor)) {
+    throw new Error(
+      `Actor ${actor || "unknown"} cannot record ${entry.outcome} outcomes.`,
+    );
   }
 
-  mkdirSync(path.dirname(filePath), { recursive: true });
+  const task = readTask({ stateRoot, taskId, nowMs: now.getTime() });
+  if (!task) {
+    throw new Error(
+      `Outcome task ${taskId} does not exist in canonical control state.`,
+    );
+  }
+  const eventHistoryBeforeWrite = trustedOutcomeEventHistory(stateRoot);
+  if (!eventHistoryBeforeWrite.source.healthy) {
+    throw new Error(
+      "Outcome recording requires complete, well-formed control event history.",
+    );
+  }
+  const resolvedOutcome = resolveOutcomeEvidence({ ...entry, taskId });
+  const evidence = resolvedOutcome.evidence;
+  if (VERIFICATION_OUTCOME_STATUSES.has(entry.outcome)) {
+    let installedIdentity;
+    try {
+      installedIdentity = normalizeInstalledBuildIdentity(
+        task.installedIdentity,
+      );
+    } catch {
+      throw new Error(
+        "Verification outcome requires canonical installed version, commit, and channel identity.",
+      );
+    }
+    const installedAtMs = Date.parse(String(task.installedAt ?? ""));
+    const soakStartedAtMs = Date.parse(String(task.soakStartedAt ?? ""));
+    if (
+      JSON.stringify(installedIdentity) !==
+        JSON.stringify(resolvedOutcome.verdict?.buildIdentity) ||
+      !Number.isFinite(installedAtMs) ||
+      !Number.isFinite(soakStartedAtMs) ||
+      soakStartedAtMs < installedAtMs
+    ) {
+      throw new Error(
+        "Verification outcome requires the task's canonical installed build and soak timestamps.",
+      );
+    }
+    if (
+      resolvedOutcome.verdict.windowStartMs < soakStartedAtMs ||
+      resolvedOutcome.verdict.windowEndMs <= soakStartedAtMs
+    ) {
+      throw new Error(
+        "Outcome verdict window must begin after the task entered soaking.",
+      );
+    }
+  }
+
+  const ledgerPath = path.resolve(filePath);
+  const canonicalLedgerPath = automationControlPaths(stateRoot).outcomes;
+  if (ledgerPath !== canonicalLedgerPath) {
+    throw new Error(
+      `Outcome recording requires the canonical ledger at ${canonicalLedgerPath}.`,
+    );
+  }
+  mkdirSync(path.dirname(ledgerPath), { recursive: true });
+  const ledgerBeforeWrite = readJsonLinesWithHealth(ledgerPath);
+  if (ledgerBeforeWrite.exists && !ledgerBeforeWrite.healthy) {
+    throw new Error("Outcome recording requires a well-formed outcome ledger.");
+  }
+  const priorOutcome = task.details?.latestOutcome;
+  const priorRecordedAt = Date.parse(String(priorOutcome?.recordedAt ?? ""));
+  const recordedAt =
+    task.state === entry.outcome &&
+    priorOutcome?.outcome === entry.outcome &&
+    Number.isFinite(priorRecordedAt)
+      ? String(priorOutcome.recordedAt)
+      : now.toISOString();
+  const outcomeBuildIdentity =
+    entry.outcome === "installed"
+      ? normalizeInstalledBuildIdentity(entry.installedIdentity)
+      : (resolvedOutcome.verdict?.buildIdentity ?? null);
   const cleanEntry = {
-    ts: now.toISOString(),
+    schemaVersion: OUTCOME_SCHEMA_VERSION,
+    ts: recordedAt,
     id: String(entry.id),
+    taskId,
     kind: String(entry.kind),
     outcome: String(entry.outcome),
     notes: String(entry.notes ?? ""),
+    evidence,
   };
   if (entry.pr) {
     cleanEntry.pr = String(entry.pr);
   }
-  if (entry.build) {
-    cleanEntry.build = String(entry.build);
+  if (outcomeBuildIdentity) {
+    cleanEntry.buildIdentity = outcomeBuildIdentity;
+    cleanEntry.build = outcomeBuildIdentity.version;
   }
   if (entry.runDir) {
     cleanEntry.runDir = String(entry.runDir);
   }
+  if (entry.evidenceWindowEnd) {
+    cleanEntry.evidenceWindowEnd = String(entry.evidenceWindowEnd);
+  }
+  if (resolvedOutcome.effect) {
+    cleanEntry.effect = resolvedOutcome.effect;
+  }
 
-  appendFileSync(filePath, `${JSON.stringify(cleanEntry)}\n`);
-  return cleanEntry;
+  const outcomeDigest = outcomeEntryDigest(cleanEntry);
+  const taskTransition =
+    task.state === cleanEntry.outcome
+      ? { changed: false, task }
+      : transitionTask({
+          stateRoot,
+          taskId,
+          actor,
+          leaseName,
+          leaseToken,
+          toState: cleanEntry.outcome,
+          expectedRevision: task.revision,
+          details: {
+            ...task.details,
+            ...(cleanEntry.outcome === "installed"
+              ? { installedIdentity: cleanEntry.buildIdentity }
+              : {}),
+            latestOutcome: {
+              outcome: cleanEntry.outcome,
+              evidence,
+              evidenceWindowEnd: cleanEntry.evidenceWindowEnd ?? null,
+              build: cleanEntry.build ?? null,
+              buildIdentity: cleanEntry.buildIdentity ?? null,
+              installedIdentity:
+                cleanEntry.outcome === "installed"
+                  ? cleanEntry.buildIdentity
+                  : null,
+              outcomeDigest,
+              recordedAt,
+            },
+          },
+          nowMs: now.getTime(),
+        });
+  if (taskTransition.task.state !== cleanEntry.outcome) {
+    throw new Error(
+      `Outcome task ${taskId} is ${taskTransition.task.state}, not ${cleanEntry.outcome}.`,
+    );
+  }
+  const transitionEvent =
+    taskTransition.event ??
+    [...eventHistoryBeforeWrite.transitions.values()].find(
+      (event) =>
+        event.taskId === taskId &&
+        event.taskRevision === taskTransition.task.revision &&
+        event.data?.toState === cleanEntry.outcome &&
+        event.data?.outcomeDigest === outcomeDigest,
+    );
+  if (!transitionEvent) {
+    throw new Error(
+      `Outcome task ${taskId} has no matching lifecycle transition for ${cleanEntry.outcome}.`,
+    );
+  }
+  const existingEntry = summarizeOutcomeLedger(ledgerPath, {
+    stateRoot,
+  }).entries.find(
+    (candidate) =>
+      candidate.authentication?.outcomeDigest === outcomeDigest &&
+      candidate.authentication?.transitionEventId === transitionEvent.eventId,
+  );
+  if (existingEntry) {
+    if (VERIFICATION_OUTCOME_STATUSES.has(cleanEntry.outcome)) {
+      finalizeTaskOutcome({
+        stateRoot,
+        taskId,
+        actor,
+        leaseName,
+        leaseToken,
+        outcome: cleanEntry.outcome,
+        outcomeDigest,
+        taskRevision: taskTransition.task.revision,
+        nowMs: now.getTime(),
+      });
+    }
+    return existingEntry;
+  }
+
+  const controlEvent = appendOutcomeControlEvent({
+    stateRoot,
+    actor,
+    leaseName,
+    leaseToken,
+    taskId,
+    nowMs: now.getTime(),
+    data: {
+      id: cleanEntry.id,
+      taskId,
+      taskRevision: taskTransition.task.revision,
+      taskState: taskTransition.task.state,
+      kind: cleanEntry.kind,
+      outcome: cleanEntry.outcome,
+      ledgerPath,
+      leaseName,
+      evidence,
+      outcomeDigest,
+      transitionEventId: transitionEvent.eventId,
+    },
+  });
+  const authenticatedEntry = {
+    ...cleanEntry,
+    authentication: {
+      actor,
+      leaseName,
+      controlEventId: controlEvent.eventId,
+      transitionEventId: transitionEvent.eventId,
+      outcomeDigest,
+      taskRevision: taskTransition.task.revision,
+    },
+  };
+  appendOutcomeEntryAtomic(ledgerPath, authenticatedEntry);
+  if (VERIFICATION_OUTCOME_STATUSES.has(cleanEntry.outcome)) {
+    finalizeTaskOutcome({
+      stateRoot,
+      taskId,
+      actor,
+      leaseName,
+      leaseToken,
+      outcome: cleanEntry.outcome,
+      outcomeDigest,
+      taskRevision: taskTransition.task.revision,
+      nowMs: now.getTime(),
+    });
+  }
+  return authenticatedEntry;
 }
 
 export function parseTsv(text) {
@@ -461,7 +1487,9 @@ export function parseTsv(text) {
   const headers = lines.shift()?.split("\t") ?? [];
   return lines.map((line) => {
     const values = line.split("\t");
-    return Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
+    return Object.fromEntries(
+      headers.map((header, index) => [header, values[index] ?? ""]),
+    );
   });
 }
 
@@ -571,7 +1599,9 @@ export function summarizeSoak(soakDir) {
   const healthRows = readJsonLines(healthPath);
 
   const healthMaxWebKit = healthRows.reduce((max, row) => {
-    const value = numeric(row.webkitResidentBytes ?? row.webkitLargestResidentBytes);
+    const value = numeric(
+      row.webkitResidentBytes ?? row.webkitLargestResidentBytes,
+    );
     return value === null ? max : Math.max(max ?? value, value);
   }, null);
 
@@ -590,7 +1620,8 @@ export function summarizeSoak(soakDir) {
         : null;
 
   const staleHeartbeatCount =
-    rows.filter((row) => row.health_event === "renderer_heartbeat_stale").length +
+    rows.filter((row) => row.health_event === "renderer_heartbeat_stale")
+      .length +
     healthRows.filter((row) => row.event === "renderer_heartbeat_stale").length;
   const throttledHeartbeatCount =
     rows.filter((row) => row.health_hidden_timer_throttled === "true").length +
@@ -611,13 +1642,15 @@ export function summarizeSoak(soakDir) {
     ),
     maxDomNodes: Math.max(
       maxNumber(rows, "health_dom_nodes") ?? 0,
-      healthRows.reduce((max, row) => Math.max(max, numeric(row.domNodeCount) ?? 0), 0),
+      healthRows.reduce(
+        (max, row) => Math.max(max, numeric(row.domNodeCount) ?? 0),
+        0,
+      ),
     ),
     staleHeartbeatCount,
     throttledHeartbeatCount,
     lastEvent:
-      lastValue(rows, "health_event") ||
-      String(healthRows.at(-1)?.event ?? ""),
+      lastValue(rows, "health_event") || String(healthRows.at(-1)?.event ?? ""),
     firstTimestamp: rows[0]?.ts ?? String(healthRows[0]?.tsMs ?? ""),
     lastTimestamp: rows.at(-1)?.ts ?? String(healthRows.at(-1)?.tsMs ?? ""),
   };
@@ -665,45 +1698,50 @@ export function findLatestReadableSoakDir(rootDir, ignoredDir = "") {
     return "";
   }
 
-  return entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => {
-      const candidatePath = path.join(rootDir, entry.name);
-      let resolved = candidatePath;
-      try {
-        resolved = realpathSync(candidatePath);
-      } catch {
-        resolved = candidatePath;
-      }
-      if (ignored && resolved === ignored) {
-        return null;
-      }
-      const summary = summarizeSoak(candidatePath);
-      if (summary.sampleCount <= 0) {
-        return null;
-      }
-      let mtimeMs = 0;
-      try {
-        mtimeMs = statSync(candidatePath).mtimeMs;
-      } catch {
-        mtimeMs = 0;
-      }
-      return {
-        path: candidatePath,
-        mtimeMs,
-        sampleCount: summary.sampleCount,
-      };
-    })
-    .filter(Boolean)
-    .sort((left, right) => {
-      if (right.mtimeMs !== left.mtimeMs) {
-        return right.mtimeMs - left.mtimeMs;
-      }
-      return right.sampleCount - left.sampleCount;
-    })[0]?.path ?? "";
+  return (
+    entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => {
+        const candidatePath = path.join(rootDir, entry.name);
+        let resolved = candidatePath;
+        try {
+          resolved = realpathSync(candidatePath);
+        } catch {
+          resolved = candidatePath;
+        }
+        if (ignored && resolved === ignored) {
+          return null;
+        }
+        const summary = summarizeSoak(candidatePath);
+        if (summary.sampleCount <= 0) {
+          return null;
+        }
+        let mtimeMs = 0;
+        try {
+          mtimeMs = statSync(candidatePath).mtimeMs;
+        } catch {
+          mtimeMs = 0;
+        }
+        return {
+          path: candidatePath,
+          mtimeMs,
+          sampleCount: summary.sampleCount,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => {
+        if (right.mtimeMs !== left.mtimeMs) {
+          return right.mtimeMs - left.mtimeMs;
+        }
+        return right.sampleCount - left.sampleCount;
+      })[0]?.path ?? ""
+  );
 }
 
-export function resolveReadableSoak(soakDir = "", pointerPath = DEFAULT_SOAK_POINTER) {
+export function resolveReadableSoak(
+  soakDir = "",
+  pointerPath = DEFAULT_SOAK_POINTER,
+) {
   const preferredDir = soakDir || resolveCurrentSoakDir(pointerPath);
   const preferred = summarizeSoak(preferredDir);
   if (preferred.sampleCount > 0) {
@@ -715,10 +1753,15 @@ export function resolveReadableSoak(soakDir = "", pointerPath = DEFAULT_SOAK_POI
   // Explicit --soak-dir/--soak-pointer callers stay scoped to their own root.
   const usingDefaults = !soakDir && pointerPath === DEFAULT_SOAK_POINTER;
   const fallbackDir =
-    findLatestReadableSoakDir(path.dirname(preferredDir || pointerPath), preferredDir) ||
+    findLatestReadableSoakDir(
+      path.dirname(preferredDir || pointerPath),
+      preferredDir,
+    ) ||
     (usingDefaults
-      ? findLatestReadableSoakDir(path.join(AUTOMATION_STATE_DIR, "soaks"), preferredDir) ||
-        findLatestReadableSoakDir(LEGACY_SOAK_ROOT, preferredDir)
+      ? findLatestReadableSoakDir(
+          path.join(AUTOMATION_STATE_DIR, "soaks"),
+          preferredDir,
+        ) || findLatestReadableSoakDir(LEGACY_SOAK_ROOT, preferredDir)
       : "");
   if (!fallbackDir) {
     return preferred;
@@ -729,7 +1772,10 @@ export function resolveReadableSoak(soakDir = "", pointerPath = DEFAULT_SOAK_POI
   };
 }
 
-export function repairSoakPointer(pointerPath = DEFAULT_SOAK_POINTER, options = {}) {
+export function repairSoakPointer(
+  pointerPath = DEFAULT_SOAK_POINTER,
+  options = {},
+) {
   const currentDir = resolveCurrentSoakDir(pointerPath);
   const current = summarizeSoak(currentDir);
   if (current.sampleCount > 0) {
@@ -748,8 +1794,10 @@ export function repairSoakPointer(pointerPath = DEFAULT_SOAK_POINTER, options = 
   const readableDir =
     findLatestReadableSoakDir(rootDir, currentDir) ||
     (pointerPath === DEFAULT_SOAK_POINTER
-      ? findLatestReadableSoakDir(path.join(AUTOMATION_STATE_DIR, "soaks"), currentDir) ||
-        findLatestReadableSoakDir(LEGACY_SOAK_ROOT, currentDir)
+      ? findLatestReadableSoakDir(
+          path.join(AUTOMATION_STATE_DIR, "soaks"),
+          currentDir,
+        ) || findLatestReadableSoakDir(LEGACY_SOAK_ROOT, currentDir)
       : "");
   if (!readableDir) {
     return {
@@ -797,7 +1845,8 @@ function latestDatedSection(markdown) {
 export function summarizeDailyBugMemory(memoryPath) {
   const text = readText(memoryPath);
   const latest = latestDatedSection(text);
-  const latestHadNoFix = /no\s+(evidence-backed\s+)?(bug|fix)|no fix applied/i.test(latest.text);
+  const latestHadNoFix =
+    /no\s+(evidence-backed\s+)?(bug|fix)|no fix applied/i.test(latest.text);
   return {
     exists: Boolean(text),
     path: memoryPath,
@@ -895,16 +1944,25 @@ function isKnownGeneratedArtifactPath(filePath) {
   const normalizedPath = normalizeRepoFilePath(filePath);
   return KNOWN_GENERATED_ARTIFACT_PATHS.some(
     (artifactPath) =>
-      normalizedPath === artifactPath || normalizedPath.startsWith(`${artifactPath}/`),
+      normalizedPath === artifactPath ||
+      normalizedPath.startsWith(`${artifactPath}/`),
   );
 }
 
 function filterGeneratedArtifactStatus(statusText) {
   return statusText
     .split(/\r?\n/)
-    .filter((line) => !isKnownGeneratedArtifactPath(line.slice(3).trim().replace(/^.* -> /, "")))
+    .filter(
+      (line) =>
+        !isKnownGeneratedArtifactPath(
+          line
+            .slice(3)
+            .trim()
+            .replace(/^.* -> /, ""),
+        ),
+    )
     .filter(Boolean)
-    .join("\n")
+    .join("\n");
 }
 
 // Provider-visible classification is single-sourced in
@@ -980,7 +2038,9 @@ export function summarizePeerWorktree(worktreePath, currentRepo) {
     git(resolved, ["rev-parse", "--abbrev-ref", "HEAD"]) ||
     "unknown";
   const headOid = git(resolved, ["rev-parse", "HEAD"]);
-  const head = headOid ? headOid.slice(0, 8) : git(resolved, ["rev-parse", "--short", "HEAD"]);
+  const head = headOid
+    ? headOid.slice(0, 8)
+    : git(resolved, ["rev-parse", "--short", "HEAD"]);
   const status = filterGeneratedArtifactStatus(
     git(resolved, ["status", "--short", "--untracked-files=all"]),
   );
@@ -994,8 +2054,14 @@ export function summarizePeerWorktree(worktreePath, currentRepo) {
     ...shortStatusPaths(status),
     ...committedFiles.split(/\r?\n/),
   ]).sort();
-  const aheadCount = Number.parseInt(git(resolved, ["rev-list", "--count", "origin/dev..HEAD"]) || "0", 10);
-  const behindCount = Number.parseInt(git(resolved, ["rev-list", "--count", "HEAD..origin/dev"]) || "0", 10);
+  const aheadCount = Number.parseInt(
+    git(resolved, ["rev-list", "--count", "origin/dev..HEAD"]) || "0",
+    10,
+  );
+  const behindCount = Number.parseInt(
+    git(resolved, ["rev-list", "--count", "HEAD..origin/dev"]) || "0",
+    10,
+  );
 
   const touchesMemoryTelemetry = workingFiles.some(
     (filePath) =>
@@ -1053,7 +2119,8 @@ export function collectPeerWorktrees(
       }
     }),
   );
-  const mergedHeads = mergedPullRequestHeads ?? collectMergedPullRequestHeads(repo);
+  const mergedHeads =
+    mergedPullRequestHeads ?? collectMergedPullRequestHeads(repo);
   const worktreePaths = [...explicitWorktrees];
   if (scan) {
     const worktreeList = git(repo, ["worktree", "list", "--porcelain"]);
@@ -1131,7 +2198,10 @@ export function collectDuplicateWork(peerWorktrees = []) {
       continue;
     }
     findings.push({
-      id: `file-${filePath.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase()}`,
+      id: `file-${filePath
+        .replace(/[^a-z0-9]+/gi, "-")
+        .replace(/^-|-$/g, "")
+        .toLowerCase()}`,
       kind: "file-overlap",
       severity: "blocker",
       title: `Multiple peer worktrees changed ${filePath}`,
@@ -1164,15 +2234,19 @@ export function collectDuplicateWork(peerWorktrees = []) {
 
   return {
     findingCount: findings.length,
-    blockerCount: findings.filter((finding) => finding.severity === "blocker").length,
-    warningCount: findings.filter((finding) => finding.severity === "warning").length,
+    blockerCount: findings.filter((finding) => finding.severity === "blocker")
+      .length,
+    warningCount: findings.filter((finding) => finding.severity === "warning")
+      .length,
     findings,
   };
 }
 
 export function collectRepoSnapshot(repo) {
   return {
-    branch: git(repo, ["branch", "--show-current"]) || git(repo, ["rev-parse", "--abbrev-ref", "HEAD"]),
+    branch:
+      git(repo, ["branch", "--show-current"]) ||
+      git(repo, ["rev-parse", "--abbrev-ref", "HEAD"]),
     head: git(repo, ["rev-parse", "--short", "HEAD"]),
     originDev: git(repo, ["rev-parse", "--short", "origin/dev"]),
     originMain: git(repo, ["rev-parse", "--short", "origin/main"]),
@@ -1192,7 +2266,14 @@ function riskAction({
   return { id, kind, title, safety, command, automationId, notes };
 }
 
-function riskItem({ id, severity, title, evidence, remediation, actions = [] }) {
+function riskItem({
+  id,
+  severity,
+  title,
+  evidence,
+  remediation,
+  actions = [],
+}) {
   return { id, severity, title, evidence, remediation, actions };
 }
 
@@ -1206,7 +2287,12 @@ function matchesExpectedBranch(repo, expectedBranch) {
   if (!expectedBranch) return true;
   if (repo.branch === expectedBranch) return true;
   const expectedHead = expectedBranchHead(repo, expectedBranch);
-  return repo.branch === "HEAD" && Boolean(repo.head) && Boolean(expectedHead) && repo.head === expectedHead;
+  return (
+    repo.branch === "HEAD" &&
+    Boolean(repo.head) &&
+    Boolean(expectedHead) &&
+    repo.head === expectedHead
+  );
 }
 
 export function collectRiskSnapshot({
@@ -1247,7 +2333,12 @@ export function collectRiskSnapshot({
         ],
       }),
     );
-  } else if (expectedBranch === "dev" && repo.head && repo.originDev && repo.head !== repo.originDev) {
+  } else if (
+    expectedBranch === "dev" &&
+    repo.head &&
+    repo.originDev &&
+    repo.head !== repo.originDev
+  ) {
     risks.push(
       riskItem({
         id: "stale-dev-worktree",
@@ -1305,7 +2396,10 @@ export function collectRiskSnapshot({
           id: `generated-artifacts-${relativePath.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
           severity: "warning",
           title: `Generated artifacts exist in ${relativePath}`,
-          evidence: [absolutePath, `${numberFormatter.format(fileCount)} files`],
+          evidence: [
+            absolutePath,
+            `${numberFormatter.format(fileCount)} files`,
+          ],
           remediation:
             "Remove generated reports or intentionally stage them before publishing so validation leftovers do not pollute the branch.",
           actions: [
@@ -1390,7 +2484,8 @@ export function collectRiskSnapshot({
             kind: "local-command",
             title: "Try repairing the active soak pointer",
             safety: "safe-local",
-            command: "node scripts/nightly-self-improve.mjs --repair-soak-pointer",
+            command:
+              "node scripts/nightly-self-improve.mjs --repair-soak-pointer",
             notes:
               "Repairs only when a newer readable soak exists under the same soak root.",
           }),
@@ -1399,12 +2494,17 @@ export function collectRiskSnapshot({
     );
   }
 
-  if (soak.exists && soak.sampleCount > 0 && soak.sampleCount < MIN_PERFORMANCE_SOAK_SAMPLES) {
+  if (
+    soak.exists &&
+    soak.sampleCount > 0 &&
+    soak.sampleCount < MIN_PERFORMANCE_SOAK_SAMPLES
+  ) {
     risks.push(
       riskItem({
         id: "thin-soak-evidence",
         severity: "warning",
-        title: "Installed-build soak has too few samples for performance targeting",
+        title:
+          "Installed-build soak has too few samples for performance targeting",
         evidence: [
           soak.soakDir,
           `${numberFormatter.format(soak.sampleCount)} samples`,
@@ -1430,7 +2530,8 @@ export function collectRiskSnapshot({
       riskItem({
         id: "soak-fallback-evidence",
         severity: "info",
-        title: "Planner used the newest readable soak instead of the current pointer",
+        title:
+          "Planner used the newest readable soak instead of the current pointer",
         evidence: [
           `Pointer ${soak.fallbackFrom}`,
           `Readable soak ${soak.soakDir}`,
@@ -1444,7 +2545,8 @@ export function collectRiskSnapshot({
             kind: "local-command",
             title: "Repair the active soak pointer",
             safety: "safe-local",
-            command: "node scripts/nightly-self-improve.mjs --repair-soak-pointer",
+            command:
+              "node scripts/nightly-self-improve.mjs --repair-soak-pointer",
             notes:
               "Updates the pointer to the newest readable soak without contacting providers or launching the app.",
           }),
@@ -1616,24 +2718,50 @@ export function collectRiskSnapshot({
     warningCount: risks.filter((risk) => risk.severity === "warning").length,
     infoCount: risks.filter((risk) => risk.severity === "info").length,
     automationStatuses,
-    actionCount: risks.reduce((count, risk) => count + (risk.actions?.length ?? 0), 0),
+    actionCount: risks.reduce(
+      (count, risk) => count + (risk.actions?.length ?? 0),
+      0,
+    ),
     risks,
   };
 }
 
 /**
- * Read ranked triage task files (scripts/triage.mjs, stability W2-02) from
- * the candidate directory. Each T-<rank>-<bucket>.md carries evidence
- * pointers; files older than TRIAGE_FRESH_MS still load but are marked
- * stale so ranking can drop them below roadmap work.
+ * Read ranked triage task files (scripts/triage.mjs, stability W2-02). New
+ * writers atomically point current.json at an immutable generation directory.
+ * Legacy top-level T-<rank>-<bucket>.md files remain readable. Evidence older
+ * than TRIAGE_FRESH_MS still loads but is marked stale so ranking can drop it
+ * below roadmap work.
  */
-export function loadTriageCandidates(dirPath = DEFAULT_TRIAGE_CANDIDATE_DIR, nowMs = Date.now()) {
+export function loadTriageCandidates(
+  dirPath = DEFAULT_TRIAGE_CANDIDATE_DIR,
+  nowMs = Date.now(),
+) {
   if (!existsSync(dirPath)) return [];
+  let sourceDir = dirPath;
+  let manifest = null;
+  const currentPath = path.join(dirPath, "current.json");
+  if (existsSync(currentPath)) {
+    try {
+      const parsed = JSON.parse(readFileSync(currentPath, "utf8"));
+      const candidateSource = path.resolve(dirPath, parsed.generationDir ?? "");
+      const candidateRoot = `${path.resolve(dirPath)}${path.sep}`;
+      if (
+        candidateSource.startsWith(candidateRoot) &&
+        existsSync(candidateSource)
+      ) {
+        sourceDir = candidateSource;
+        manifest = parsed;
+      }
+    } catch {
+      // Fall through to the legacy top-level directory.
+    }
+  }
   const candidates = [];
-  for (const name of readdirSync(dirPath).sort()) {
+  for (const name of readdirSync(sourceDir).sort()) {
     const match = name.match(/^T-(\d{2})-(.+)\.md$/);
     if (!match) continue;
-    const filePath = path.join(dirPath, name);
+    const filePath = path.join(sourceDir, name);
     let text;
     try {
       text = readFileSync(filePath, "utf8");
@@ -1643,28 +2771,112 @@ export function loadTriageCandidates(dirPath = DEFAULT_TRIAGE_CANDIDATE_DIR, now
     if (text.startsWith("# stale:")) continue;
     const titleMatch = text.match(/^# T-\d+: (.+)$/m);
     const programTaskMatch = text.match(/^Program task: (.+)$/m);
-    const evidence = [...text.matchAll(/^- (.+)$/gm)].map((m) => m[1]).slice(0, 6);
+    const generatedAtMatch = text.match(/^Generated at: (.+)$/m);
+    const evidenceWindowEndMatch = text.match(/^Evidence window end: (.+)$/m);
+    const evidence = [...text.matchAll(/^- (.+)$/gm)]
+      .map((m) => m[1])
+      .slice(0, 6);
     let mtimeMs = 0;
     try {
       mtimeMs = statSync(filePath).mtimeMs;
     } catch {
       /* treat as stale */
     }
+    const generatedAt = generatedAtMatch?.[1] ?? manifest?.generatedAt ?? null;
+    const evidenceWindowEnd =
+      evidenceWindowEndMatch?.[1] ?? manifest?.evidenceWindowEnd ?? generatedAt;
+    const programTask = programTaskMatch?.[1] ?? null;
+    const programTaskContract = readProgramTaskContract(programTask);
+    const manifestCandidate = manifest?.candidates?.find(
+      (candidate) => candidate.file === name || candidate.id === match[2],
+    );
+    if (
+      manifestCandidate &&
+      (manifestCandidate.sourceHealth !== "healthy" ||
+        !/^[0-9a-f]{64}$/.test(
+          String(manifestCandidate.evidenceFingerprint ?? ""),
+        ))
+    ) {
+      continue;
+    }
+    const evidenceWindowEndMs = Date.parse(evidenceWindowEnd ?? "");
+    const freshnessReferenceMs = Number.isFinite(evidenceWindowEndMs)
+      ? evidenceWindowEndMs
+      : mtimeMs;
     candidates.push({
       rank: Number(match[1]),
       bucketId: match[2],
       title: titleMatch?.[1] ?? match[2],
-      programTask: programTaskMatch?.[1] ?? null,
+      taskId: manifestCandidate?.taskId ?? null,
+      programTask,
+      providerVisible:
+        manifestCandidate?.providerVisible ??
+        programTaskContract.providerVisible,
+      behavioral:
+        manifestCandidate?.behavioral ?? programTaskContract.behavioral,
+      soakExclusivityKey:
+        manifestCandidate?.soakExclusivityKey ??
+        programTaskContract.soakExclusivityKey,
+      evidenceFingerprint: manifestCandidate?.evidenceFingerprint ?? null,
+      sourceHealth: manifestCandidate?.sourceHealth ?? null,
+      observerAuthority: manifestCandidate?.observerAuthority ?? null,
       evidence,
       filePath,
-      fresh: nowMs - mtimeMs <= TRIAGE_FRESH_MS,
+      generation: manifest?.generation ?? null,
+      generatedAt,
+      evidenceWindowEnd,
+      fresh: nowMs - freshnessReferenceMs <= TRIAGE_FRESH_MS,
     });
   }
   return candidates.sort((left, right) => left.rank - right.rank);
 }
 
+function readProgramTaskContract(programTask) {
+  const taskFileName = String(programTask ?? "").match(
+    /([A-Za-z0-9-]+\.md)\b/,
+  )?.[1];
+  if (!taskFileName) {
+    return {
+      providerVisible: true,
+      behavioral: true,
+      soakExclusivityKey: DEFAULT_BEHAVIOR_SOAK_EXCLUSIVITY_KEY,
+    };
+  }
+  const taskText = readText(
+    path.join(REPO_ROOT, "docs", "stability-tasks", taskFileName),
+  );
+  const contractLine =
+    taskText
+      .split(/\r?\n/)
+      .find((line) => /provider-visible:|soak-gated:/i.test(line)) ?? "";
+  const providerVisible = /provider-visible:\s*true\b/i.test(contractLine);
+  const behavioral = contractLine
+    ? /soak-gated:\s*yes\b/i.test(contractLine)
+    : true;
+  const explicitKey =
+    contractLine.match(/soak-exclusivity-key:\s*([A-Za-z0-9._:-]+)/i)?.[1] ??
+    null;
+  return {
+    providerVisible,
+    behavioral,
+    soakExclusivityKey: behavioral
+      ? (explicitKey ?? DEFAULT_BEHAVIOR_SOAK_EXCLUSIVITY_KEY)
+      : null,
+  };
+}
+
+function peerMayContainBehavior(peer) {
+  return (peer.changedFiles ?? []).some(
+    (filePath) =>
+      filePath.startsWith("packages/") &&
+      !/(?:^|\/)(?:tests?|fixtures?)\//i.test(filePath) &&
+      !/\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(filePath),
+  );
+}
+
 function target({
   id,
+  taskId = id,
   kind,
   title,
   score,
@@ -1676,9 +2888,16 @@ function target({
   validation,
   providerVisible = false,
   canModify = true,
+  evidenceWindowEnd = null,
+  behavioral = false,
+  soakExclusivityKey = null,
 }) {
+  const normalizedSoakExclusivityKey = behavioral
+    ? (soakExclusivityKey ?? DEFAULT_BEHAVIOR_SOAK_EXCLUSIVITY_KEY)
+    : null;
   return {
     id,
+    taskId,
     kind,
     title,
     score,
@@ -1686,6 +2905,9 @@ function target({
     estimatedMinutes,
     providerVisible,
     canModify,
+    evidenceWindowEnd,
+    behavioral,
+    soakExclusivityKey: normalizedSoakExclusivityKey,
     rationale,
     evidence,
     prompt,
@@ -1716,30 +2938,40 @@ export function buildCandidates({
     candidates.push(
       target({
         id: `triage-${triage.bucketId}`,
+        taskId: triage.taskId,
         kind: "stability",
         title: `Triage: ${triage.title}`,
         score: triage.fresh ? Math.max(60, 94 - (triage.rank - 1) * 4) : 40,
         confidence: 0.85,
         estimatedMinutes: 90,
+        providerVisible: triage.providerVisible === true,
+        behavioral: triage.behavioral === true,
+        soakExclusivityKey: triage.soakExclusivityKey,
         rationale:
           "The triage loop folded live runtime-health alarms, the latest soak verdict, canary regressions, and CI state into this ranked bucket. Execute the mapped stability-program task instead of re-deriving the problem.",
         evidence: [
           `Triage file: ${triage.filePath}`,
-          ...(triage.programTask ? [`Program task: ${triage.programTask}`] : []),
+          ...(triage.programTask
+            ? [`Program task: ${triage.programTask}`]
+            : []),
           ...triage.evidence,
         ],
         prompt:
           `Read ${triage.filePath} and the program task it maps to (${triage.programTask ?? "see file"}). ` +
-          "Execute that task under its own runner-safe/provider-visible/soak-gated header rules — a runner-safe:false task means open the PR and stop for owner review. Attach the triage evidence to the PR body.",
+          "Execute that task under its own runner-safe/provider-visible/soak-gated header rules. A runner-safe:false task means open the PR and stop for owner review. Attach the triage evidence to the PR body.",
         validation: [
           "The mapped program task's counter-based verification governs; cite the counters that must move.",
           "Respect docs/STABILITY-PROGRAM.md rules: watchdog freeze, one behavioral change per soak cycle, provider-visible approval lane.",
         ],
+        evidenceWindowEnd: triage.evidenceWindowEnd,
       }),
     );
   }
 
-  if ((riskSnapshot?.blockerCount ?? 0) > 0 || (riskSnapshot?.warningCount ?? 0) > 0) {
+  if (
+    (riskSnapshot?.blockerCount ?? 0) > 0 ||
+    (riskSnapshot?.warningCount ?? 0) > 0
+  ) {
     candidates.push(
       target({
         id: "nightly-preflight-risk",
@@ -1778,6 +3010,7 @@ export function buildCandidates({
         score: (duplicateWork?.blockerCount ?? 0) > 0 ? 96 : 76,
         confidence: (duplicateWork?.blockerCount ?? 0) > 0 ? 0.88 : 0.74,
         estimatedMinutes: 35,
+        behavioral: true,
         rationale:
           (duplicateWork?.blockerCount ?? 0) > 0
             ? `Duplicate work detection found ${numberFormatter.format(duplicateWork.blockerCount)} blocker overlap across peer worktrees.`
@@ -1802,13 +3035,19 @@ export function buildCandidates({
   for (const peer of peerWorktrees) {
     candidates.push(
       target({
-        id: `peer-${peer.branch.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase()}`,
+        id: `peer-${peer.branch
+          .replace(/[^a-z0-9]+/gi, "-")
+          .replace(/^-|-$/g, "")
+          .toLowerCase()}`,
         kind: "peer-worktree",
         title: `Review and incorporate peer worktree ${peer.branch}`,
         score: peer.score,
-        confidence: peer.branch.includes("scraper-recycle-verification") ? 0.88 : 0.72,
+        confidence: peer.branch.includes("scraper-recycle-verification")
+          ? 0.88
+          : 0.72,
         estimatedMinutes: peer.touchesNightlyRunner ? 75 : 55,
         providerVisible: peer.providerVisible,
+        behavioral: peerMayContainBehavior(peer),
         rationale: peer.touchesMemoryTelemetry
           ? "A local peer worktree has memory or performance diagnostics changes that should be compared before selecting overnight fixes."
           : "A local peer worktree has unmerged changes that may overlap the nightly improvement path.",
@@ -1843,8 +3082,8 @@ export function buildCandidates({
         score: 98,
         confidence: 0.9,
         estimatedMinutes: 150,
-        rationale:
-          `The active soak observed WebKit RSS at ${formatBytes(soak.maxWebKitResidentBytes)}, above the ${formatBytes(memoryBudgetBytes)} budget.`,
+        behavioral: true,
+        rationale: `The active soak observed WebKit RSS at ${formatBytes(soak.maxWebKitResidentBytes)}, above the ${formatBytes(memoryBudgetBytes)} budget.`,
         evidence: [
           soak.soakDir,
           `${numberFormatter.format(soak.sampleCount)} runtime samples`,
@@ -1861,7 +3100,11 @@ export function buildCandidates({
     );
   }
 
-  if (soakEvidenceQuality.ready && soak.exists && soak.staleHeartbeatCount > 0) {
+  if (
+    soakEvidenceQuality.ready &&
+    soak.exists &&
+    soak.staleHeartbeatCount > 0
+  ) {
     candidates.push(
       target({
         id: "renderer-heartbeat-stale",
@@ -1870,9 +3113,12 @@ export function buildCandidates({
         score: 88,
         confidence: 0.82,
         estimatedMinutes: 90,
-        rationale:
-          `The active soak recorded ${numberFormatter.format(soak.staleHeartbeatCount)} stale heartbeat events.`,
-        evidence: [soak.soakDir, `Last health event ${soak.lastEvent || "unknown"}`],
+        behavioral: true,
+        rationale: `The active soak recorded ${numberFormatter.format(soak.staleHeartbeatCount)} stale heartbeat events.`,
+        evidence: [
+          soak.soakDir,
+          `Last health event ${soak.lastEvent || "unknown"}`,
+        ],
         prompt:
           "Preserve runtime-health and native logs, then distinguish real renderer stalls from hidden timer throttling. Patch the state machine or telemetry only when evidence proves a false positive or missed recovery path.",
         validation: [
@@ -1892,12 +3138,15 @@ export function buildCandidates({
         score: dailyBug.latestHadNoNewCommits ? 58 : 82,
         confidence: dailyBug.latestHadNoNewCommits ? 0.65 : 0.86,
         estimatedMinutes: dailyBug.latestHadNoNewCommits ? 25 : 90,
+        behavioral: true,
         rationale: dailyBug.latestHadNoNewCommits
           ? "The last bug scan found no new commits, but bug fixing remains an executable nightly target once the commit window moves."
           : "The daily bug scan memory has fresh repo evidence that should be reviewed before choosing speculative work.",
         evidence: [
           dailyBug.path,
-          dailyBug.latestDate ? `Latest scan ${dailyBug.latestDate}` : "No dated scan section found",
+          dailyBug.latestDate
+            ? `Latest scan ${dailyBug.latestDate}`
+            : "No dated scan section found",
         ],
         prompt:
           "Read the daily bug scan memory first, use the last completed cutoff, fetch origin dev, main, and www, inspect only new non-release product commits, and implement the smallest evidence-backed fix if one survives targeted validation. If evidence is weak, report no evidence-backed bug found.",
@@ -1919,6 +3168,7 @@ export function buildCandidates({
         score: 64,
         confidence: 0.7,
         estimatedMinutes: 45,
+        behavioral: true,
         rationale:
           "Crash watch exists as a separate heartbeat. Nightly runs should inspect it before choosing polish work.",
         evidence: [DEFAULT_CRASH_AUTOMATION],
@@ -1941,6 +3191,7 @@ export function buildCandidates({
         score: 48,
         confidence: 0.6,
         estimatedMinutes: 120,
+        behavioral: true,
         rationale:
           "The paused hourly dev bot already records autonomous roadmap selection. It should be a fallback target after performance, crashes, and bugs.",
         evidence: [DEFAULT_DEV_BOT_MEMORY],
@@ -1996,7 +3247,9 @@ export function buildCandidates({
       evidence: ["Provider fingerprinting guardrail"],
       prompt:
         "Prepare a short approval request before changing authenticated WebView loads, provider navigation, background API calls, scripted scrolling, cookie behavior, headers, or provider contact frequency.",
-      validation: ["No code changes are allowed for this target without approval."],
+      validation: [
+        "No code changes are allowed for this target without approval.",
+      ],
     }),
   );
 
@@ -2008,17 +3261,53 @@ export function applyOutcomeFeedback(candidates, outcomeLedger) {
     .map((candidate) => {
       const kindStats = outcomeLedger.byKind?.[candidate.kind];
       const idStats = outcomeLedger.byId?.[candidate.id];
-      const shipped = (kindStats?.shipped ?? 0) + (idStats?.shipped ?? 0);
-      const validated = (kindStats?.validated ?? 0) + (idStats?.validated ?? 0);
-      const failed = (kindStats?.failed ?? 0) + (idStats?.failed ?? 0);
-      const adjustment = Math.max(-12, Math.min(12, shipped * 3 + validated * 1.5 - failed * 4));
+      const verifiedEffective = kindStats?.verifiedEffective ?? 0;
+      const regressed = kindStats?.regressed ?? 0;
+      const implementationFailed = kindStats?.implementationFailed ?? 0;
+      const evidenceWindowEndMs = parseTimestampMs(candidate.evidenceWindowEnd);
+      const latestIdOutcome = idStats?.latestOutcome ?? null;
+      const latestIdTsMs = idStats?.latestTsMs ?? null;
+      const latestIdEvidenceWindowEndMs =
+        idStats?.latestEvidenceWindowEndMs ?? null;
+      const hasNewerEvidence =
+        evidenceWindowEndMs !== null &&
+        latestIdEvidenceWindowEndMs !== null &&
+        evidenceWindowEndMs > latestIdEvidenceWindowEndMs;
+      const suppressed =
+        !hasNewerEvidence &&
+        latestIdTsMs !== null &&
+        latestIdEvidenceWindowEndMs !== null &&
+        (latestIdOutcome === "verified_effective" ||
+          latestIdOutcome === "superseded");
+      const governanceBlocked =
+        !hasNewerEvidence &&
+        latestIdTsMs !== null &&
+        latestIdEvidenceWindowEndMs !== null &&
+        latestIdOutcome === "governance_blocked";
+      const exactRegressionBoost = latestIdOutcome === "regressed" ? 8 : 0;
+      const adjustment = Math.max(
+        -12,
+        Math.min(
+          12,
+          regressed * 3 - implementationFailed * 4 + exactRegressionBoost,
+        ),
+      );
       return {
         ...candidate,
-        score: Math.max(1, Math.min(99, candidate.score + adjustment)),
+        canModify: governanceBlocked ? false : candidate.canModify,
+        score: suppressed
+          ? 1
+          : Math.max(1, Math.min(99, candidate.score + adjustment)),
         outcomeFeedback: {
-          shipped,
-          validated,
-          failed,
+          verifiedEffective,
+          regressed,
+          implementationFailed,
+          latestIdOutcome,
+          latestIdTsMs,
+          latestIdEvidenceWindowEndMs,
+          hasNewerEvidence,
+          suppressed,
+          governanceBlocked,
           adjustment,
         },
       };
@@ -2028,12 +3317,61 @@ export function applyOutcomeFeedback(candidates, outcomeLedger) {
 
 export function selectTargets(candidates, options) {
   const budget = options.durationMinutes;
-  const minimumNightMinutes = Math.min(options.minimumNightMinutes ?? DEFAULT_MINIMUM_NIGHT_MINUTES, budget);
+  const minimumNightMinutes = Math.min(
+    options.minimumNightMinutes ?? DEFAULT_MINIMUM_NIGHT_MINUTES,
+    budget,
+  );
+  const behaviorGate =
+    options.behaviorGate ?? buildBehavioralTaskGate(options.controlTasks ?? []);
+  const authorizedTaskIds = options.authorizedTaskIds
+    ? new Set(options.authorizedTaskIds)
+    : null;
+  const canonicalTaskPolicies = options.canonicalTaskPolicies
+    ? new Map(
+        options.canonicalTaskPolicies.map((policy) => [policy.taskId, policy]),
+      )
+    : null;
   const selected = [];
+  let behavioralSelected = false;
   let used = 0;
 
   for (const candidate of candidates) {
-    if (candidate.providerVisible && !options.allowProviderVisible) {
+    const taskId = candidate.taskId ?? candidate.id;
+    const canonicalPolicy = canonicalTaskPolicies?.get(taskId) ?? null;
+    if (canonicalTaskPolicies && !canonicalPolicy) {
+      continue;
+    }
+    if (authorizedTaskIds && !authorizedTaskIds.has(taskId)) {
+      continue;
+    }
+    if (
+      canonicalPolicy &&
+      candidate.behavioral !== canonicalPolicy.behavioral
+    ) {
+      continue;
+    }
+    if (
+      candidate.outcomeFeedback?.suppressed ||
+      candidate.canModify === false
+    ) {
+      continue;
+    }
+    if (
+      candidate.providerVisible ||
+      (canonicalPolicy && canonicalPolicy.providerAuthority !== "forbidden")
+    ) {
+      continue;
+    }
+    const behavioral = canonicalPolicy
+      ? canonicalPolicy.behavioral
+      : candidate.behavioral;
+    const soakExclusivityKey = behavioral
+      ? (candidate.soakExclusivityKey ?? DEFAULT_BEHAVIOR_SOAK_EXCLUSIVITY_KEY)
+      : null;
+    if (soakExclusivityKey && taskId !== behaviorGate.authorizedTaskId) {
+      continue;
+    }
+    if (soakExclusivityKey && behavioralSelected) {
       continue;
     }
     if (selected.length > 0 && used >= minimumNightMinutes) {
@@ -2046,10 +3384,184 @@ export function selectTargets(candidates, options) {
       continue;
     }
     selected.push(candidate);
+    if (soakExclusivityKey) {
+      behavioralSelected = true;
+    }
     used += candidate.estimatedMinutes;
   }
 
   return selected;
+}
+
+export function findPendingOutcomeTransitions(stateRoot, outcomeEntries = []) {
+  const recordedTransitions = new Set(
+    outcomeEntries.map((entry) =>
+      JSON.stringify({
+        taskId: entry?.taskId,
+        outcome: entry?.outcome,
+        taskRevision: entry?.authentication?.taskRevision,
+      }),
+    ),
+  );
+  const source = readJsonLinesWithHealth(
+    automationControlPaths(stateRoot).events,
+  );
+  const pending = source.entries
+    .filter(
+      (event) =>
+        event?.type === "task_transitioned" &&
+        VERIFICATION_OUTCOME_STATUSES.has(event?.data?.toState) &&
+        event?.data?.outcomeRequired === true &&
+        Number.isInteger(event?.taskRevision),
+    )
+    .filter(
+      (event) =>
+        !recordedTransitions.has(
+          JSON.stringify({
+            taskId: event.taskId,
+            outcome: event.data.toState,
+            taskRevision: event.taskRevision,
+          }),
+        ),
+    )
+    .map((event) => ({
+      taskId: event.taskId,
+      state: event.data.toState,
+      revision: event.taskRevision,
+    }));
+  Object.defineProperties(pending, {
+    sourceHealthy: { value: source.healthy, enumerable: false },
+    sourceExists: { value: source.exists, enumerable: false },
+    malformedLines: { value: source.malformedLines, enumerable: false },
+  });
+  return pending;
+}
+
+function taskBehavioralClassification(task) {
+  return typeof task?.behavioral === "boolean"
+    ? task.behavioral
+    : task?.details?.behavioral;
+}
+
+export function buildBehavioralTaskGate(
+  controlTasks = [],
+  {
+    behavioralTaskIds = [],
+    outcomeEntries = [],
+    pendingOutcomeTransitions = null,
+    outcomeLedgerHealthy = true,
+  } = {},
+) {
+  const knownBehavioralTaskIds = new Set(behavioralTaskIds);
+  const hasTrustedOutcome = (task) =>
+    outcomeEntries.some(
+      (entry) =>
+        entry?.taskId === task.taskId &&
+        entry?.outcome === task.state &&
+        entry?.authentication?.taskRevision === task.revision,
+    );
+  if (outcomeLedgerHealthy === false && controlTasks.length > 0) {
+    return {
+      status: "outcome-history-unhealthy",
+      authorizedTaskId: null,
+      activeTasks: controlTasks.filter(
+        (task) => taskBehavioralClassification(task) === true,
+      ),
+    };
+  }
+  if (
+    pendingOutcomeTransitions?.sourceHealthy === false &&
+    controlTasks.length > 0
+  ) {
+    return {
+      status: "control-history-unhealthy",
+      authorizedTaskId: null,
+      activeTasks: controlTasks.filter(
+        (task) => taskBehavioralClassification(task) === true,
+      ),
+    };
+  }
+  const pendingByKey = new Map();
+  for (const task of [
+    ...(pendingOutcomeTransitions ?? []),
+    ...controlTasks.filter(
+      (task) =>
+        task?.pendingOutcome !== undefined ||
+        (COMPLETED_BEHAVIOR_OUTCOME_STATES.has(task?.state) &&
+          !hasTrustedOutcome(task)),
+    ),
+  ]) {
+    pendingByKey.set(`${task.taskId}:${task.state}:${task.revision}`, task);
+  }
+  const pendingOutcomeTasks = [...pendingByKey.values()];
+  if (pendingOutcomeTasks.length > 0) {
+    return {
+      status: "outcome-record-pending",
+      authorizedTaskId: null,
+      activeTasks: pendingOutcomeTasks,
+    };
+  }
+
+  const liveTasks = controlTasks.filter((task) =>
+    ACTIVE_BEHAVIOR_TASK_STATES.has(task?.state),
+  );
+  const classificationIssues = liveTasks.filter((task) => {
+    const declaredBehavioral = taskBehavioralClassification(task);
+    return (
+      typeof declaredBehavioral !== "boolean" ||
+      (knownBehavioralTaskIds.has(task.taskId) && declaredBehavioral === false)
+    );
+  });
+  if (classificationIssues.length > 0) {
+    return {
+      status: "classification-required",
+      authorizedTaskId: null,
+      activeTasks: classificationIssues,
+    };
+  }
+
+  const activeTasks = liveTasks.filter(
+    (task) =>
+      taskBehavioralClassification(task) === true ||
+      knownBehavioralTaskIds.has(task.taskId),
+  );
+  if (activeTasks.length === 0) {
+    return {
+      status: "unreserved",
+      authorizedTaskId: null,
+      activeTasks: [],
+    };
+  }
+  if (activeTasks.length > 1) {
+    return {
+      status: "conflict",
+      authorizedTaskId: null,
+      activeTasks,
+    };
+  }
+  const [task] = activeTasks;
+  const resumable = ["approved_for_pr", "implemented", "validated"].includes(
+    task.state,
+  );
+  return {
+    status: resumable ? "reserved" : "awaiting-soak-outcome",
+    authorizedTaskId: resumable ? task.taskId : null,
+    activeTasks,
+  };
+}
+
+function summarizeBehaviorGate(behaviorGate = {}) {
+  return {
+    status: String(behaviorGate.status ?? "unreserved"),
+    authorizedTaskId: behaviorGate.authorizedTaskId
+      ? String(behaviorGate.authorizedTaskId)
+      : null,
+    activeTasks: (behaviorGate.activeTasks ?? []).map((task) => ({
+      taskId: String(task.taskId ?? "unknown"),
+      state: String(task.state ?? "unknown"),
+      ...(Number.isInteger(task.revision) ? { revision: task.revision } : {}),
+    })),
+  };
 }
 
 export function formatBytes(bytes) {
@@ -2068,6 +3580,8 @@ function formatCandidate(candidate, index) {
     `Confidence: ${numberFormatter.format(candidate.confidence * 100)}%`,
     `Estimated machine time: ${numberFormatter.format(candidate.estimatedMinutes)} min`,
     `Provider-visible: ${candidate.providerVisible ? "yes" : "no"}`,
+    `Behavioral: ${candidate.behavioral ? "yes" : "no"}`,
+    `Soak exclusivity key: ${candidate.soakExclusivityKey ?? "none"}`,
     "",
     "## Rationale",
     "",
@@ -2092,10 +3606,26 @@ function formatCandidate(candidate, index) {
   ].join("\n");
 }
 
-export function buildReport({ repo, soak, riskSnapshot, duplicateWork, outcomeLedger, candidates, selected, options }) {
-  const blockedProvider = candidates.filter((candidate) => candidate.providerVisible);
+export function buildReport({
+  repo,
+  soak,
+  riskSnapshot,
+  duplicateWork,
+  outcomeLedger,
+  behaviorGate,
+  candidates,
+  selected,
+  options,
+}) {
+  const blockedProvider = candidates.filter(
+    (candidate) => candidate.providerVisible,
+  );
   const phases = buildNightlyPhases(selected);
-  const selectedMinutes = selected.reduce((total, candidate) => total + (candidate.estimatedMinutes ?? 0), 0);
+  const selectedMinutes = selected.reduce(
+    (total, candidate) => total + (candidate.estimatedMinutes ?? 0),
+    0,
+  );
+  const safeBehaviorGate = summarizeBehaviorGate(behaviorGate);
   return [
     "# Freed Nightly Improvement Plan",
     "",
@@ -2124,9 +3654,9 @@ export function buildReport({ repo, soak, riskSnapshot, duplicateWork, outcomeLe
     `- Info: ${numberFormatter.format(riskSnapshot?.infoCount ?? 0)}`,
     `- Actions: ${numberFormatter.format(riskSnapshot?.actionCount ?? 0)}`,
     "",
-    ...(riskSnapshot?.risks ?? []).slice(0, 8).map(
-      (risk) => `- ${risk.severity}: ${risk.title}`,
-    ),
+    ...(riskSnapshot?.risks ?? [])
+      .slice(0, 8)
+      .map((risk) => `- ${risk.severity}: ${risk.title}`),
     "",
     "## Duplicate Work",
     "",
@@ -2134,14 +3664,25 @@ export function buildReport({ repo, soak, riskSnapshot, duplicateWork, outcomeLe
     `- Blockers: ${numberFormatter.format(duplicateWork?.blockerCount ?? 0)}`,
     `- Warnings: ${numberFormatter.format(duplicateWork?.warningCount ?? 0)}`,
     "",
-    ...(duplicateWork?.findings ?? []).slice(0, 8).map(
-      (finding) => `- ${finding.severity}: ${finding.title}`,
-    ),
+    ...(duplicateWork?.findings ?? [])
+      .slice(0, 8)
+      .map((finding) => `- ${finding.severity}: ${finding.title}`),
     "",
     "## Learning Signals",
     "",
     `- Outcome ledger: ${outcomeLedger?.path ?? "none"}`,
     `- Prior outcomes loaded: ${numberFormatter.format(outcomeLedger?.entries?.length ?? 0)}`,
+    `- Rejected unsigned or mismatched outcomes: ${numberFormatter.format(outcomeLedger?.rejectedEntries?.length ?? 0)}`,
+    "",
+    "## Behavioral Soak Gate",
+    "",
+    `- Status: ${safeBehaviorGate.status}`,
+    `- Authorized task: ${safeBehaviorGate.authorizedTaskId ?? "none"}`,
+    ...(safeBehaviorGate.activeTasks.length > 0
+      ? safeBehaviorGate.activeTasks.map(
+          (task) => `- Active task: ${task.taskId} in ${task.state}`,
+        )
+      : ["- Active task: none"]),
     "",
     "## Selected Queue",
     "",
@@ -2197,7 +3738,8 @@ function renderDuplicateWorkMarkdown(duplicateWork) {
           "Peer worktrees:",
           "",
           ...finding.peers.map(
-            (peer) => `- ${peer.branch} at ${peer.path} (${peer.head || "unknown"})`,
+            (peer) =>
+              `- ${peer.branch} at ${peer.path} (${peer.head || "unknown"})`,
           ),
           "",
         ])
@@ -2235,10 +3777,11 @@ function renderRiskSnapshotMarkdown(riskSnapshot) {
             ? [
                 "Actions:",
                 "",
-                ...risk.actions.map((action) =>
-                  `- ${action.title} (${action.kind}, ${action.safety})${
-                    action.command ? `: \`${action.command}\`` : ""
-                  }`,
+                ...risk.actions.map(
+                  (action) =>
+                    `- ${action.title} (${action.kind}, ${action.safety})${
+                      action.command ? `: \`${action.command}\`` : ""
+                    }`,
                 ),
                 "",
               ]
@@ -2284,7 +3827,9 @@ function renderPreflightActionsMarkdown(riskSnapshot) {
           `Kind: ${action.kind}`,
           `Safety: ${action.safety}`,
           ...(action.command ? [`Command: \`${action.command}\``] : []),
-          ...(action.automationId ? [`Automation: ${action.automationId}`] : []),
+          ...(action.automationId
+            ? [`Automation: ${action.automationId}`]
+            : []),
           ...(action.notes ? ["", action.notes] : []),
           "",
         ])
@@ -2294,55 +3839,162 @@ function renderPreflightActionsMarkdown(riskSnapshot) {
 
 function buildNightlyPhases(selected) {
   const phases = [
+    "Run node scripts/doctor.mjs --strict. Stop the run if strict machine preflight fails.",
     "Snapshot evidence from soak, logs, automations, git state, and peer worktrees.",
   ];
   if (selected.some((candidate) => candidate.kind === "peer-worktree")) {
-    phases.push("Compare peer worktrees and import safe measurement improvements.");
+    phases.push(
+      "Compare peer worktrees and import safe measurement improvements.",
+    );
   }
-  phases.push("Execute selected targets in score order while respecting provider visibility gates.");
+  phases.push(
+    "Execute selected targets in score order while respecting provider visibility gates.",
+  );
   phases.push("Run focused validation for each changed surface.");
   phases.push("Run validate:feature before publishing or updating a PR.");
-  phases.push("Ship a dev build only if real product fixes landed and checks are green.");
-  phases.push("Install the new build, restart the soak, and write the morning digest.");
+  phases.push(
+    "Ship a dev build only if real product fixes landed and checks are green.",
+  );
+  phases.push(
+    "Install the new build, restart the soak, and write the morning digest.",
+  );
   return phases;
 }
 
+const CONVENTIONAL_PR_TYPES = new Set([
+  "build",
+  "chore",
+  "ci",
+  "docs",
+  "feat",
+  "fix",
+  "perf",
+  "refactor",
+  "revert",
+  "style",
+  "test",
+]);
+
+const PR_TYPE_BY_CANDIDATE_KIND = Object.freeze({
+  "bug-fix": "fix",
+  performance: "perf",
+  roadmap: "feat",
+  release: "chore",
+  stability: "fix",
+  "peer-worktree": "chore",
+  blocked: "chore",
+});
+
+function safePrTitleText(value) {
+  return String(value ?? "")
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/[^A-Za-z0-9 .,:()/_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function deriveCandidatePrTitle(candidate = {}) {
+  const fallback = safePrTitleText(candidate.id) || "nightly maintenance";
+  const rawTitle = safePrTitleText(candidate.title) || fallback;
+  const conventional = rawTitle.match(
+    /^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(?:\([a-z0-9._/-]+\))?!?:\s*(.+)$/i,
+  );
+  const candidateType = String(candidate.kind ?? "").trim();
+  const type =
+    conventional && CONVENTIONAL_PR_TYPES.has(conventional[1].toLowerCase())
+      ? conventional[1].toLowerCase()
+      : (PR_TYPE_BY_CANDIDATE_KIND[candidateType] ?? "chore");
+  let summary = safePrTitleText(conventional?.[2] ?? rawTitle)
+    .replace(/^[:.\s]+/, "")
+    .replace(/[:.\s]+$/, "");
+  if (type === "fix") summary = summary.replace(/^fix\s+/i, "");
+  if (type === "feat") summary = summary.replace(/^feat(?:ure)?\s+/i, "");
+  if (type === "perf") summary = summary.replace(/^perf(?:ormance)?\s+/i, "");
+  if (type === "chore") summary = summary.replace(/^chore\s+/i, "");
+  if (!summary) summary = fallback;
+  summary = summary.replace(/^[A-Z]/, (letter) => letter.toLowerCase());
+  const maximumSummaryLength = Math.max(1, 100 - type.length - 2);
+  summary = summary.slice(0, maximumSummaryLength).replace(/[\s:.,/_-]+$/, "");
+  return `${type}: ${summary || fallback}`;
+}
+
+function buildPublishCommand(selected) {
+  const primary = selected[0] ?? {};
+  const providerVisible = selected.some(
+    (candidate) => candidate.providerVisible === true,
+  );
+  return {
+    closeout: providerVisible ? "draft" : "ready",
+    command: [
+      '"$FREED_TRUSTED_PUBLISHER"',
+      `--title ${JSON.stringify(deriveCandidatePrTitle(primary))}`,
+      '--summary "<summary>"',
+      '--test "<tests>"',
+      ...(providerVisible ? [] : ["--ready"]),
+    ].join(" "),
+  };
+}
+
 export function buildExecutionPlan(selected) {
+  const strictPreflightId = "strict-machine-preflight";
+  const afterStrictPreflight = (phase) => ({
+    ...phase,
+    requires: [strictPreflightId],
+  });
   const phases = [
     {
+      id: strictPreflightId,
+      title: "Run strict machine preflight",
+      stopGate:
+        "Stop the entire run if strict doctor fails. No later mutation, validation, publish, release, or outcome phase may run.",
+      commands: ["node scripts/doctor.mjs --strict"],
+      requires: [],
+      mutates: false,
+    },
+    afterStrictPreflight({
       id: "evidence-snapshot",
       title: "Snapshot evidence",
-      stopGate: "Stop if the repo is dirty with unrelated user changes or required evidence files cannot be read.",
+      stopGate:
+        "Stop if the repo is dirty with unrelated user changes or required evidence files cannot be read.",
       commands: [
         "git fetch --all --prune",
         "git status --short",
         "node scripts/nightly-self-improve.mjs --dry-run --json",
         "# Read preflight-actions.md before manually fixing risk-snapshot warnings.",
       ],
-    },
+      mutates: true,
+    }),
   ];
 
   if (selected.some((candidate) => candidate.kind === "peer-worktree")) {
-    phases.push({
-      id: "peer-review",
-      title: "Review peer worktrees",
-      stopGate: "Stop before editing if the peer branch is still changing or the useful change is provider-visible.",
-      commands: [
-        "git worktree list --porcelain",
-        "git diff --stat origin/dev HEAD",
-        "git diff --name-only origin/dev HEAD",
-      ],
-    });
+    phases.push(
+      afterStrictPreflight({
+        id: "peer-review",
+        title: "Review peer worktrees",
+        stopGate:
+          "Stop before editing if the peer branch is still changing or the useful change is provider-visible.",
+        commands: [
+          "git worktree list --porcelain",
+          "git diff --stat origin/dev HEAD",
+          "git diff --name-only origin/dev HEAD",
+        ],
+        mutates: false,
+      }),
+    );
   }
 
   phases.push(
-    {
+    afterStrictPreflight({
       id: "implementation",
       title: "Implement selected targets",
-      stopGate: "Stop if a target requires provider-visible behavior changes without explicit approval.",
-      commands: selected.map((candidate) => `# ${candidate.id}: ${candidate.prompt}`),
-    },
-    {
+      stopGate:
+        "Stop if a target requires provider-visible behavior changes without explicit approval.",
+      commands: selected.map(
+        (candidate) => `# ${candidate.id}: ${candidate.prompt}`,
+      ),
+      mutates: true,
+    }),
+    afterStrictPreflight({
       id: "focused-validation",
       title: "Run focused validation",
       stopGate: "Stop if the focused test for the touched code path fails.",
@@ -2350,32 +4002,50 @@ export function buildExecutionPlan(selected) {
         "node --test scripts/nightly-self-improve.test.mjs",
         "# Add the focused product test for any non-runner changes.",
       ],
-    },
-    {
+      mutates: true,
+    }),
+    afterStrictPreflight({
       id: "feature-validation",
       title: "Run feature validation",
       stopGate: "Stop if validate:feature fails.",
       commands: ["corepack npm run validate:feature"],
-    },
-    {
-      id: "publish",
-      title: "Publish or update draft PR",
-      stopGate: "Stop if the branch has no product or tooling improvement beyond generated run artifacts.",
-      commands: [
-        './scripts/worktree-publish.sh --title "feat: improve nightly runner" --summary "<summary>" --test "<tests>"',
-      ],
-    },
-    {
+      mutates: true,
+    }),
+  );
+
+  if (selected.length > 0) {
+    const publish = buildPublishCommand(selected);
+    phases.push(
+      afterStrictPreflight({
+        id: "publish",
+        title:
+          publish.closeout === "ready"
+            ? "Publish ready PR after closeout"
+            : "Publish draft PR for owner review",
+        stopGate:
+          publish.closeout === "ready"
+            ? "Stop if implementation, focused validation, feature validation, or closeout evidence is incomplete."
+            : "Keep provider-visible work in draft and stop for explicit owner review and provider-risk approval.",
+        commands: [publish.command],
+        closeout: publish.closeout,
+        mutates: true,
+      }),
+    );
+  }
+
+  phases.push(
+    afterStrictPreflight({
       id: "release-and-soak",
       title: "Ship and soak only after real fixes",
       stopGate: "Skip this phase when only planning artifacts changed.",
       commands: [
         "# Use freed-ship-build dev after fixes merge into dev.",
-        "# Install the new dev build, restart the installed-build soak, and append outcome-template.jsonl to the outcome ledger.",
+        "# Install the new dev build, restart the installed-build soak, and run the authenticated command in outcome-template.jsonl.",
         "# For installed provider sync soaks, prefer node scripts/dev-sync-trigger.mjs <provider> over foreground app clicks.",
-        "# If a foreground app click is required, ask with a 10 minute response window and continue if the user is unavailable.",
+        "# If a foreground app click is required, ask with a 10 minute response window. If the user is unavailable, continue only with already authorized local work. The timeout never grants provider approval or permission for a new external action.",
       ],
-    },
+      mutates: true,
+    }),
   );
 
   return phases;
@@ -2389,6 +4059,7 @@ function renderExecutionPlanMarkdown(phases) {
       `## ${index + 1}. ${phase.title}`,
       "",
       `Stop gate: ${phase.stopGate}`,
+      `Requires passed: ${phase.requires.length > 0 ? phase.requires.join(", ") : "none"}`,
       "",
       "Commands:",
       "",
@@ -2398,24 +4069,40 @@ function renderExecutionPlanMarkdown(phases) {
   ].join("\n");
 }
 
-function buildOutcomeCommand(candidate, outcomeLedger) {
+function buildOutcomeCommand(
+  candidate,
+  outcomeLedger,
+  automationStateRoot = AUTOMATION_STATE_DIR,
+) {
+  const taskId = candidate.taskId ?? candidate.id;
   return [
-    "node scripts/nightly-self-improve.mjs",
-    `--outcome-ledger ${JSON.stringify(outcomeLedger)}`,
-    `--record-outcome ${JSON.stringify(candidate.id)}`,
-    `--record-kind ${JSON.stringify(candidate.kind)}`,
-    "--record-status validated",
-    "--record-notes \"replace with closeout notes\"",
+    "node scripts/record-outcome.mjs",
+    `--ledger ${JSON.stringify(outcomeLedger)}`,
+    `--state-root ${JSON.stringify(automationStateRoot)}`,
+    `--id ${JSON.stringify(candidate.id)}`,
+    `--task-id ${JSON.stringify(taskId)}`,
+    `--kind ${JSON.stringify(candidate.kind)}`,
+    "--status merged",
+    "--actor freed-nightly-runner",
+    "--lease-name nightly-writer",
+    '--evidence-digest "<merged-head-or-diff-digest>"',
+    '--notes "replace with closeout notes"',
   ].join(" ");
 }
 
-function renderOutcomeCloseoutMarkdown({ selected, outcomeLedger }) {
+function renderOutcomeCloseoutMarkdown({
+  selected,
+  outcomeLedger,
+  automationStateRoot,
+  canonicalTaskIds = [],
+}) {
+  const canonicalTasks = new Set(canonicalTaskIds);
   return [
     "# Nightly Outcome Closeout",
     "",
     `Outcome ledger: ${outcomeLedger}`,
     "",
-    "Run one command per selected target after the target finishes. Use `shipped` only after the fix is merged, released when applicable, installed, and soaked enough to compare evidence.",
+    "Record `merged` after merge and `installed` after installation. Record `verified_effective`, `verified_neutral`, `regressed`, or `inconclusive` only after a build-bounded evidence window measures the result.",
     "",
     "Unattended app interaction:",
     "",
@@ -2425,43 +4112,61 @@ function renderOutcomeCloseoutMarkdown({ selected, outcomeLedger }) {
       `## ${index + 1}. ${candidate.title}`,
       "",
       `Target: ${candidate.id}`,
+      `Canonical task: ${candidate.taskId ?? candidate.id}`,
       `Kind: ${candidate.kind}`,
       "",
-      "Command:",
-      "",
-      `\`${buildOutcomeCommand(candidate, outcomeLedger)}\``,
+      ...(canonicalTasks.has(candidate.taskId ?? candidate.id)
+        ? [
+            "Command:",
+            "",
+            `\`${buildOutcomeCommand(candidate, outcomeLedger, automationStateRoot)}\``,
+          ]
+        : [
+            "Outcome command unavailable. The stability controller must register and authorize the canonical task before execution.",
+          ]),
       "",
     ]),
   ].join("\n");
 }
 
-export function writeRunPlan({ runDir, repo, soak, riskSnapshot, duplicateWork, peerWorktrees = [], candidates, selected, options }) {
+export function writeRunPlan({
+  runDir,
+  repo,
+  soak,
+  riskSnapshot,
+  duplicateWork,
+  peerWorktrees = [],
+  candidates,
+  selected,
+  options,
+}) {
   mkdirSync(runDir, { recursive: true });
   const tasksDir = path.join(runDir, "tasks");
   mkdirSync(tasksDir, { recursive: true });
 
   const outcomeLedgerPath = options.outcomeLedger ?? DEFAULT_OUTCOME_LEDGER;
-  const outcomeLedger = options.outcomeLedgerSummary ?? { path: outcomeLedgerPath, entries: [] };
-  const safeRiskSnapshot =
-    riskSnapshot ??
-    {
-      generatedAt: new Date().toISOString(),
-      repoPath: "",
-      blockerCount: 0,
-      warningCount: 0,
-      infoCount: 0,
-      actionCount: 0,
-      automationStatuses: [],
-      risks: [],
-    };
-  const safeDuplicateWork =
-    duplicateWork ??
-    {
-      findingCount: 0,
-      blockerCount: 0,
-      warningCount: 0,
-      findings: [],
-    };
+  const outcomeLedger = options.outcomeLedgerSummary ?? {
+    path: outcomeLedgerPath,
+    entries: [],
+  };
+  const behaviorGate = summarizeBehaviorGate(options.behaviorGate);
+  const canonicalTaskIds = new Set(options.canonicalTaskIds ?? []);
+  const safeRiskSnapshot = riskSnapshot ?? {
+    generatedAt: new Date().toISOString(),
+    repoPath: "",
+    blockerCount: 0,
+    warningCount: 0,
+    infoCount: 0,
+    actionCount: 0,
+    automationStatuses: [],
+    risks: [],
+  };
+  const safeDuplicateWork = duplicateWork ?? {
+    findingCount: 0,
+    blockerCount: 0,
+    warningCount: 0,
+    findings: [],
+  };
   const executionPlan = buildExecutionPlan(selected);
   const report = buildReport({
     repo,
@@ -2469,6 +4174,7 @@ export function writeRunPlan({ runDir, repo, soak, riskSnapshot, duplicateWork, 
     riskSnapshot: safeRiskSnapshot,
     duplicateWork: safeDuplicateWork,
     outcomeLedger,
+    behaviorGate,
     candidates,
     selected,
     options,
@@ -2476,32 +4182,73 @@ export function writeRunPlan({ runDir, repo, soak, riskSnapshot, duplicateWork, 
   const outcomeCloseout = renderOutcomeCloseoutMarkdown({
     selected,
     outcomeLedger: outcomeLedgerPath,
+    automationStateRoot: options.automationStateRoot,
+    canonicalTaskIds,
   });
+  const outcomeTemplateLines = selected
+    .filter((candidate) =>
+      canonicalTaskIds.has(candidate.taskId ?? candidate.id),
+    )
+    .map((candidate) =>
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        id: candidate.id,
+        taskId: candidate.taskId ?? candidate.id,
+        kind: candidate.kind,
+        schemaVersion: OUTCOME_SCHEMA_VERSION,
+        outcome: "merged",
+        notes:
+          "Advance this state only when merge, install, and measured verification milestones actually occur.",
+        command: buildOutcomeCommand(
+          candidate,
+          outcomeLedgerPath,
+          options.automationStateRoot,
+        ),
+      }),
+    );
   writeFileSync(path.join(runDir, "report.md"), report);
-  writeFileSync(path.join(runDir, "targets.json"), `${JSON.stringify({ repo, soak, riskSnapshot: safeRiskSnapshot, duplicateWork: safeDuplicateWork, peerWorktrees, outcomeLedger, executionPlan, candidates, selected }, null, 2)}\n`);
-  writeFileSync(path.join(runDir, "risk-snapshot.json"), `${JSON.stringify(safeRiskSnapshot, null, 2)}\n`);
-  writeFileSync(path.join(runDir, "risk-snapshot.md"), renderRiskSnapshotMarkdown(safeRiskSnapshot));
-  writeFileSync(path.join(runDir, "preflight-actions.json"), `${JSON.stringify(flattenRiskActions(safeRiskSnapshot), null, 2)}\n`);
-  writeFileSync(path.join(runDir, "preflight-actions.md"), renderPreflightActionsMarkdown(safeRiskSnapshot));
-  writeFileSync(path.join(runDir, "duplicate-work.json"), `${JSON.stringify(safeDuplicateWork, null, 2)}\n`);
-  writeFileSync(path.join(runDir, "duplicate-work.md"), renderDuplicateWorkMarkdown(safeDuplicateWork));
-  writeFileSync(path.join(runDir, "execution-plan.json"), `${JSON.stringify(executionPlan, null, 2)}\n`);
-  writeFileSync(path.join(runDir, "execution-plan.md"), renderExecutionPlanMarkdown(executionPlan));
+  writeFileSync(
+    path.join(runDir, "targets.json"),
+    `${JSON.stringify({ repo, soak, riskSnapshot: safeRiskSnapshot, duplicateWork: safeDuplicateWork, peerWorktrees, outcomeLedger, behaviorGate, executionPlan, candidates, selected }, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(runDir, "risk-snapshot.json"),
+    `${JSON.stringify(safeRiskSnapshot, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(runDir, "risk-snapshot.md"),
+    renderRiskSnapshotMarkdown(safeRiskSnapshot),
+  );
+  writeFileSync(
+    path.join(runDir, "preflight-actions.json"),
+    `${JSON.stringify(flattenRiskActions(safeRiskSnapshot), null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(runDir, "preflight-actions.md"),
+    renderPreflightActionsMarkdown(safeRiskSnapshot),
+  );
+  writeFileSync(
+    path.join(runDir, "duplicate-work.json"),
+    `${JSON.stringify(safeDuplicateWork, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(runDir, "duplicate-work.md"),
+    renderDuplicateWorkMarkdown(safeDuplicateWork),
+  );
+  writeFileSync(
+    path.join(runDir, "execution-plan.json"),
+    `${JSON.stringify(executionPlan, null, 2)}\n`,
+  );
+  writeFileSync(
+    path.join(runDir, "execution-plan.md"),
+    renderExecutionPlanMarkdown(executionPlan),
+  );
   writeFileSync(path.join(runDir, "outcome-closeout.md"), outcomeCloseout);
   writeFileSync(
     path.join(runDir, "outcome-template.jsonl"),
-    selected
-      .map((candidate) =>
-        JSON.stringify({
-          ts: new Date().toISOString(),
-          id: candidate.id,
-          kind: candidate.kind,
-          outcome: "validated",
-          notes: "Replace outcome with shipped, validated, blocked, or failed after the run.",
-          command: buildOutcomeCommand(candidate, outcomeLedgerPath),
-        }),
-      )
-      .join("\n") + "\n",
+    outcomeTemplateLines.length > 0
+      ? `${outcomeTemplateLines.join("\n")}\n`
+      : "",
   );
 
   selected.forEach((candidate, index) => {
@@ -2526,8 +4273,17 @@ export function planNightlyRun(args) {
   const soak = resolveReadableSoak(args.soakDir, args.soakPointer);
   const dailyBug = summarizeDailyBugMemory(args.dailyBugMemory);
   const repo = collectRepoSnapshot(args.repo);
-  const peerWorktrees = collectPeerWorktrees(args.repo, args.peerWorktrees, args.peerScan);
-  const outcomeLedger = summarizeOutcomeLedger(args.outcomeLedger);
+  const peerWorktrees = collectPeerWorktrees(
+    args.repo,
+    args.peerWorktrees,
+    args.peerScan,
+  );
+  const outcomeLedger = summarizeOutcomeLedger(args.outcomeLedger, {
+    stateRoot: args.automationStateRoot,
+  });
+  const controlTaskManifest = readTaskManifest({
+    stateRoot: args.automationStateRoot,
+  });
   const duplicateWork = collectDuplicateWork(peerWorktrees);
   const riskSnapshot = collectRiskSnapshot({
     repoPath: args.repo,
@@ -2552,9 +4308,62 @@ export function planNightlyRun(args) {
     memoryBudgetBytes: args.memoryGib * GIB,
     triageCandidates: loadTriageCandidates(),
   });
+  const behavioralTaskIds = baseCandidates
+    .filter((candidate) => candidate.behavioral === true)
+    .map((candidate) => candidate.taskId ?? candidate.id)
+    .concat(
+      controlTaskManifest.tasks
+        .filter((task) => taskBehavioralClassification(task) === true)
+        .map((task) => task.taskId),
+    );
+  const pendingOutcomeTransitions = findPendingOutcomeTransitions(
+    args.automationStateRoot,
+    outcomeLedger.entries,
+  );
+  const behaviorGate = buildBehavioralTaskGate(controlTaskManifest.tasks, {
+    behavioralTaskIds,
+    outcomeEntries: outcomeLedger.entries,
+    pendingOutcomeTransitions,
+    outcomeLedgerHealthy:
+      !outcomeLedger.sourceHealth.ledgerExists ||
+      outcomeLedger.sourceHealth.ledgerHealthy,
+  });
+  const canonicalTaskPolicies = controlTaskManifest.tasks.map((task) => ({
+    taskId: task.taskId,
+    state: task.state,
+    behavioral: taskBehavioralClassification(task),
+    observerAuthority: task.observerAuthority,
+    providerAuthority: task.providerAuthority,
+  }));
+  const runnableTaskIds = controlTaskManifest.tasks
+    .filter(
+      (task) =>
+        RUNNABLE_NIGHTLY_TASK_STATES.has(task.state) &&
+        task.observerAuthority === "merge-safe" &&
+        task.providerAuthority === "forbidden" &&
+        typeof taskBehavioralClassification(task) === "boolean",
+    )
+    .map((task) => task.taskId);
   const candidates = applyOutcomeFeedback(baseCandidates, outcomeLedger);
-  const selected = selectTargets(candidates, args);
-  return { repo, soak, dailyBug, riskSnapshot, duplicateWork, peerWorktrees, outcomeLedger, candidates, selected };
+  const selected = selectTargets(candidates, {
+    ...args,
+    behaviorGate,
+    authorizedTaskIds: runnableTaskIds,
+    canonicalTaskPolicies,
+  });
+  return {
+    repo,
+    soak,
+    dailyBug,
+    riskSnapshot,
+    duplicateWork,
+    peerWorktrees,
+    outcomeLedger,
+    runnableTaskIds,
+    behaviorGate: summarizeBehaviorGate(behaviorGate),
+    candidates,
+    selected,
+  };
 }
 
 function textSummary(plan, writeResult, args) {
@@ -2566,10 +4375,20 @@ function textSummary(plan, writeResult, args) {
     `Duplicate work: ${numberFormatter.format(plan.duplicateWork.findingCount)} findings.`,
     `Peer worktrees with changes: ${numberFormatter.format(plan.peerWorktrees.length)}.`,
     `Prior outcomes loaded: ${numberFormatter.format(plan.outcomeLedger.entries.length)}.`,
+    `Rejected outcomes: ${numberFormatter.format(plan.outcomeLedger.rejectedEntries.length)}.`,
+    `Behavior gate: ${plan.behaviorGate.status}. Active tasks: ${
+      plan.behaviorGate.activeTasks.length > 0
+        ? plan.behaviorGate.activeTasks
+            .map((task) => `${task.taskId} in ${task.state}`)
+            .join(", ")
+        : "none"
+    }.`,
   ];
 
   for (const [index, selected] of plan.selected.entries()) {
-    lines.push(`${index + 1}. ${selected.title} (${selected.kind}, score ${numberFormatter.format(selected.score)})`);
+    lines.push(
+      `${index + 1}. ${selected.title} (${selected.kind}, score ${numberFormatter.format(selected.score)})`,
+    );
   }
 
   if (writeResult) {
@@ -2590,23 +4409,77 @@ function textSummary(plan, writeResult, args) {
   return `${lines.join("\n")}\n`;
 }
 
-export function main(argv = process.argv.slice(2)) {
+export function runNightlyMachinePreflight({
+  strict,
+  exec = execFileSync,
+} = {}) {
+  try {
+    exec(
+      process.execPath,
+      [path.join(__dirname, "doctor.mjs"), ...(strict ? ["--strict"] : [])],
+      { stdio: ["ignore", 2, 2] },
+    );
+    return { ok: true, strict: strict === true };
+  } catch (error) {
+    if (strict) {
+      throw new Error(
+        "Strict machine preflight failed. No mutation phase was started.",
+        {
+          cause: error,
+        },
+      );
+    }
+    return { ok: false, strict: false };
+  }
+}
+
+export function main(
+  argv = process.argv.slice(2),
+  { runPreflight = runNightlyMachinePreflight } = {},
+) {
   const args = parseArgs(argv);
   if (args.help) {
     process.stdout.write(usage());
     return;
   }
 
+  runPreflight({ strict: args.recordOutcome !== "" || !args.dryRun });
+
   if (args.recordOutcome) {
-    const entry = appendOutcomeLedger(args.outcomeLedger, {
-      id: args.recordOutcome,
-      kind: args.recordKind,
-      outcome: args.recordStatus,
-      notes: args.recordNotes,
-      pr: args.recordPr,
-      build: args.recordBuild,
-      runDir: args.runDirProvided ? args.runDir : "",
-    });
+    const entry = appendOutcomeLedger(
+      args.outcomeLedger,
+      {
+        id: args.recordOutcome,
+        taskId: args.recordTaskId,
+        kind: args.recordKind,
+        outcome: args.recordStatus,
+        notes: args.recordNotes,
+        pr: args.recordPr,
+        installedIdentity:
+          args.recordStatus === "installed"
+            ? {
+                version: args.recordBuild,
+                commitSha: args.recordBuildCommitSha,
+                channel: args.recordBuildChannel,
+                ...(args.recordArtifactDigest
+                  ? { artifactDigest: args.recordArtifactDigest }
+                  : {}),
+              }
+            : undefined,
+        runDir: args.runDirProvided ? args.runDir : "",
+        evidenceWindowEnd: args.recordEvidenceWindowEnd,
+        evidenceDigest: args.recordEvidenceDigest,
+        verdictReference: args.recordVerdictReference,
+      },
+      {
+        stateRoot: args.automationStateRoot,
+        authentication: {
+          actor: args.recordActor,
+          leaseName: args.recordLeaseName,
+          leaseToken: args.recordLeaseToken,
+        },
+      },
+    );
     if (args.json) {
       process.stdout.write(`${JSON.stringify(entry, null, 2)}\n`);
     } else {
@@ -2615,16 +4488,6 @@ export function main(argv = process.argv.slice(2)) {
       );
     }
     return;
-  }
-
-  // Machine preflight, warn-only: report broken tooling on stderr before
-  // planning. Loops that must stop on a broken machine run doctor --strict.
-  try {
-    execFileSync(process.execPath, [path.join(__dirname, "doctor.mjs")], {
-      stdio: ["ignore", 2, 2],
-    });
-  } catch {
-    // Never block the planner on preflight reporting.
   }
 
   if (args.repairSoakPointer) {
@@ -2659,11 +4522,18 @@ export function main(argv = process.argv.slice(2)) {
         peerWorktrees: plan.peerWorktrees,
         candidates: plan.candidates,
         selected: plan.selected,
-        options: { ...args, outcomeLedgerSummary: plan.outcomeLedger },
+        options: {
+          ...args,
+          outcomeLedgerSummary: plan.outcomeLedger,
+          behaviorGate: plan.behaviorGate,
+          canonicalTaskIds: plan.runnableTaskIds,
+        },
       });
 
   if (args.json) {
-    process.stdout.write(`${JSON.stringify({ ...plan, writeResult }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ ...plan, writeResult }, null, 2)}\n`,
+    );
   } else {
     process.stdout.write(textSummary(plan, writeResult, args));
   }
@@ -2673,7 +4543,9 @@ if (process.argv[1] === __filename) {
   try {
     main();
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
     process.exitCode = 1;
   }
 }

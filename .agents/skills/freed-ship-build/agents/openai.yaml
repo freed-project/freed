@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ship Freed Build"
+  short_description: "Ship and verify a versioned Desktop build"
+  default_prompt: "Use $freed-ship-build to publish and verify this versioned Freed Desktop build."

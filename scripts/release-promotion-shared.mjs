@@ -21,19 +21,15 @@ export const RELEASE_ONLY_FILES = [
   "packages/pwa/package.json",
 ];
 
-export const RELEASE_ONLY_PREFIXES = [
-  "release-notes/",
-];
+export const RELEASE_ONLY_PREFIXES = ["release-notes/"];
 
-export const FORBIDDEN_MAIN_PR_PREFIXES = [
-  "website/",
-];
+export const FORBIDDEN_MAIN_PR_PREFIXES = ["website/"];
 
-export const PROMOTION_WEBSITE_CONFIG_FILES = [
-  "website/next.config.ts",
-];
+export const PROMOTION_WEBSITE_CONFIG_FILES = ["website/next.config.ts"];
 
-export const PROMOTION_BRANCH_PATTERN = /^chore\/promote-dev-to-main(?:-[a-z0-9._-]+)?$/;
+export const PROMOTION_BRANCH_PATTERN =
+  /^chore\/promote-dev-to-main(?:-[a-z0-9._-]+)?$/;
+export const RELEASE_PREP_BRANCH_PATTERN = /^chore\/release-[a-z0-9._-]+$/;
 
 function runGit(args, { cwd } = {}) {
   return execFileSync("git", args, {
@@ -66,8 +62,10 @@ export function uniqueSorted(values) {
 }
 
 export function isReleaseOnlyFile(filePath) {
-  return RELEASE_ONLY_FILES.includes(filePath)
-    || RELEASE_ONLY_PREFIXES.some((prefix) => filePath.startsWith(prefix));
+  return (
+    RELEASE_ONLY_FILES.includes(filePath) ||
+    RELEASE_ONLY_PREFIXES.some((prefix) => filePath.startsWith(prefix))
+  );
 }
 
 export function isPromotionScopeFile(filePath) {
@@ -75,9 +73,10 @@ export function isPromotionScopeFile(filePath) {
     return true;
   }
 
-  return PROMOTION_SCOPE_PATHS.some((scopePath) => (
-    filePath === scopePath || filePath.startsWith(`${scopePath}/`)
-  ));
+  return PROMOTION_SCOPE_PATHS.some(
+    (scopePath) =>
+      filePath === scopePath || filePath.startsWith(`${scopePath}/`),
+  );
 }
 
 export function listChangedFiles({ fromRef, toRef, cwd, pathspec = [] }) {
@@ -102,16 +101,17 @@ export function listPromotionDiffFiles({ fromRef, toRef, cwd }) {
     pathspec: PROMOTION_WEBSITE_CONFIG_FILES,
   });
 
-  return uniqueSorted([...promotionScopeFiles, ...websiteConfigFiles])
-    .filter((filePath) => !isReleaseOnlyFile(filePath));
+  return uniqueSorted([...promotionScopeFiles, ...websiteConfigFiles]).filter(
+    (filePath) => !isReleaseOnlyFile(filePath),
+  );
 }
 
 export function listComparisonFiles({ baseRef, headRef, cwd }) {
-  return uniqueSorted(splitLines(runGit([
-    "diff",
-    "--name-only",
-    `${baseRef}...${headRef}`,
-  ], { cwd })));
+  return uniqueSorted(
+    splitLines(
+      runGit(["diff", "--name-only", `${baseRef}...${headRef}`], { cwd }),
+    ),
+  );
 }
 
 function readBlobId(ref, filePath, { cwd } = {}) {
@@ -121,20 +121,31 @@ function readBlobId(ref, filePath, { cwd } = {}) {
 function blobExistsInHistory(ref, filePath, blobId, { cwd } = {}) {
   if (!blobId) return false;
 
-  const commits = splitLines(tryRunGit(["log", "--format=%H", ref, "--", filePath], { cwd }) ?? "");
-  return commits.some((commit) => readBlobId(commit, filePath, { cwd }) === blobId);
+  const commits = splitLines(
+    tryRunGit(["log", "--format=%H", ref, "--", filePath], { cwd }) ?? "",
+  );
+  return commits.some(
+    (commit) => readBlobId(commit, filePath, { cwd }) === blobId,
+  );
 }
 
 export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
   const mergeBase = runGit(["merge-base", devRef, mainRef], { cwd });
-  const mainChangedFiles = uniqueSorted(splitLines(runGit([
-    "diff",
-    "--name-only",
-    mergeBase,
-    mainRef,
-    "--",
-    ...PROMOTION_SCOPE_PATHS,
-  ], { cwd })));
+  const mainChangedFiles = uniqueSorted(
+    splitLines(
+      runGit(
+        [
+          "diff",
+          "--name-only",
+          mergeBase,
+          mainRef,
+          "--",
+          ...PROMOTION_SCOPE_PATHS,
+        ],
+        { cwd },
+      ),
+    ),
+  );
 
   return mainChangedFiles
     .filter((filePath) => !isReleaseOnlyFile(filePath))
@@ -146,7 +157,10 @@ export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
         return false;
       }
 
-      if (mainBlobId && blobExistsInHistory(devRef, filePath, mainBlobId, { cwd })) {
+      if (
+        mainBlobId &&
+        blobExistsInHistory(devRef, filePath, mainBlobId, { cwd })
+      ) {
         return false;
       }
 
@@ -155,10 +169,11 @@ export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
 }
 
 export function listForbiddenMainPrFiles(files) {
-  return files.filter((filePath) => (
-    !PROMOTION_WEBSITE_CONFIG_FILES.includes(filePath)
-    && FORBIDDEN_MAIN_PR_PREFIXES.some((prefix) => filePath.startsWith(prefix))
-  ));
+  return files.filter(
+    (filePath) =>
+      !PROMOTION_WEBSITE_CONFIG_FILES.includes(filePath) &&
+      FORBIDDEN_MAIN_PR_PREFIXES.some((prefix) => filePath.startsWith(prefix)),
+  );
 }
 
 export function formatFileList(files) {

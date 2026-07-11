@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   PROMOTION_BRANCH_PATTERN,
+  RELEASE_PREP_BRANCH_PATTERN,
   classifyMainPrFiles,
   ensureRefExists,
   formatFileList,
@@ -100,6 +101,12 @@ function main() {
     if (classified.releaseOnly.length === 0) {
       console.log("Main PR guard passed. No promotion-scope changes detected.");
       return;
+    }
+
+    if (!RELEASE_PREP_BRANCH_PATTERN.test(options.headBranch)) {
+      die(
+        `Release-only changes targeting main must come from a branch named chore/release-*. Received ${options.headBranch}.`,
+      );
     }
 
     console.log("Main PR guard passed. Release-only metadata update detected.");
