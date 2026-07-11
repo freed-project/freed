@@ -89,6 +89,7 @@ function rejectPendingWorkerRequests(error: Error): void {
   rejectPendingMap(pendingAllItemIds, error);
   rejectPendingMap(pendingDocBinary, error);
   rejectPendingMap(pendingDocHeads, error);
+  rejectPendingMap(pendingSavedYouTubeUrls, error);
   rejectPendingMap(pendingPreservedText, error);
   rejectPendingMap(pendingContentSignalBackfill, error);
   rejectPendingMap(pendingSampleDataClear, error);
@@ -202,6 +203,7 @@ function hasPendingWorkerRequests(): boolean {
     pendingAllItemIds.size > 0 ||
     pendingDocBinary.size > 0 ||
     pendingDocHeads.size > 0 ||
+    pendingSavedYouTubeUrls.size > 0 ||
     pendingPreservedText.size > 0 ||
     pendingContentSignalBackfill.size > 0 ||
     pendingSampleDataClear.size > 0
@@ -274,6 +276,14 @@ const pendingDocHeads = new Map<
   number,
   {
     resolve: (heads: string[] | null) => void;
+    reject: (err: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }
+>();
+const pendingSavedYouTubeUrls = new Map<
+  number,
+  {
+    resolve: (urls: string[]) => void;
     reject: (err: Error) => void;
     timer: ReturnType<typeof setTimeout>;
   }
@@ -536,6 +546,15 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     return;
   }
 
+  if (msg.type === "SAVED_YOUTUBE_URLS") {
+    const pendingUrls = pendingSavedYouTubeUrls.get(msg.reqId);
+    if (!pendingUrls) return;
+    clearTimeout(pendingUrls.timer);
+    pendingSavedYouTubeUrls.delete(msg.reqId);
+    pendingUrls.resolve(msg.urls);
+    return;
+  }
+
   if (msg.type === "ITEM_PRESERVED_TEXT") {
     const pendingText = pendingPreservedText.get(msg.reqId);
     if (!pendingText) return;
@@ -577,6 +596,14 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     clearTimeout(pendingClear.timer);
     pendingSampleDataClear.delete(msg.reqId);
     pendingClear.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingUrls = pendingSavedYouTubeUrls.get(msg.reqId);
+  if (pendingUrls && msg.error) {
+    clearTimeout(pendingUrls.timer);
+    pendingSavedYouTubeUrls.delete(msg.reqId);
+    pendingUrls.reject(new Error(msg.error));
     return;
   }
 
@@ -739,6 +766,27 @@ export async function getDocHeads(): Promise<string[] | null> {
   });
 }
 
+/** Canonical URLs for every saved YouTube item in the complete document. */
+export async function getSavedYouTubeVideoUrls(): Promise<string[]> {
+  await ensureWorkerDocumentReadyFor("GET_SAVED_YOUTUBE_URLS");
+  const activeWorker = getWorker();
+  return new Promise((resolve, reject) => {
+    const reqId = nextReqId++;
+    const timer = setTimeout(() => {
+      if (!pendingSavedYouTubeUrls.has(reqId)) return;
+      pendingSavedYouTubeUrls.delete(reqId);
+      reject(
+        new Error(
+          `[automerge-worker] request TIMEOUT op=GET_SAVED_YOUTUBE_URLS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
+        ),
+      );
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pendingSavedYouTubeUrls.set(reqId, { resolve, reject, timer });
+    activeWorker.postMessage({ reqId, type: "GET_SAVED_YOUTUBE_URLS" } satisfies WorkerRequest);
+  });
+}
+
 export function getCachedDocStats(): DocStats | null {
   return lastDocStats;
 }
@@ -810,6 +858,22 @@ export async function docAddFeedItem(item: FeedItem): Promise<void> {
 export async function docAddFeedItems(items: FeedItem[]): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "ADD_FEED_ITEMS", items });
+}
+
+/** Reconcile one authenticated YouTube capture in a single Automerge change. */
+export async function docReconcileYouTubeCapture(
+  accounts: Account[],
+  items: FeedItem[],
+  options: { rosterComplete: boolean; capturedAt: number },
+): Promise<void> {
+  const reqId = nextReqId++;
+  return request({
+    reqId,
+    type: "RECONCILE_YOUTUBE_CAPTURE",
+    accounts,
+    items,
+    options,
+  });
 }
 
 export async function docAddSampleLibraryData(data: {

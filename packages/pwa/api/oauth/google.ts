@@ -1,5 +1,5 @@
 /**
- * Server-side proxy for approved Google OAuth token exchanges.
+ * Server-side proxy for Google Drive OAuth token exchange.
  *
  * Google's token endpoint requires a client_secret even for PKCE flows when
  * using a "Web application" OAuth client type. This serverless function holds
@@ -24,7 +24,7 @@ interface GoogleClientCredentials {
 }
 
 function readAdditionalClients(): GoogleClientCredentials[] {
-  const raw = process.env.GOOGLE_OAUTH_CLIENTS_JSON ?? process.env.GDRIVE_OAUTH_CLIENTS_JSON;
+  const raw = process.env.GDRIVE_OAUTH_CLIENTS_JSON;
   if (!raw) return [];
 
   try {
@@ -54,12 +54,6 @@ function resolveClientCredentials(requestedClientId?: string): GoogleClientCrede
     clients.push({
       clientId: process.env.GDRIVE_DESKTOP_CLIENT_ID,
       clientSecret: process.env.GDRIVE_DESKTOP_CLIENT_SECRET,
-    });
-  }
-  if (process.env.VITE_YOUTUBE_CLIENT_ID && process.env.YOUTUBE_CLIENT_SECRET) {
-    clients.push({
-      clientId: process.env.VITE_YOUTUBE_CLIENT_ID,
-      clientSecret: process.env.YOUTUBE_CLIENT_SECRET,
     });
   }
   clients.push(...readAdditionalClients());
@@ -142,7 +136,6 @@ export default async function handler(req: any, res: any): Promise<void> {
       access_token: data.access_token,
       refresh_token: data.refresh_token,
       expires_in: data.expires_in,
-      scope: data.scope,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

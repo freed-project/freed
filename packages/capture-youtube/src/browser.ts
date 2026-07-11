@@ -1,7 +1,4 @@
-export {
-  YOUTUBE_CHANNEL_BASE_URL,
-  YOUTUBE_WATCH_BASE_URL,
-} from "./constants.js";
+/** Browser-safe YouTube capture normalization for the Freed Desktop renderer. */
 
 export {
   youtubeCapturedChannelsToAccounts,

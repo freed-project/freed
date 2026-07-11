@@ -63,7 +63,6 @@ export type WorkerRequest =
   | { reqId: number; type: "CONFIRM_SEEN_SYNCED"; globalId: string; syncedAt?: number }
   | { reqId: number; type: "ADD_FEED_ITEM"; item: FeedItem }
   | { reqId: number; type: "ADD_FEED_ITEMS"; items: FeedItem[] }
-  | { reqId: number; type: "RECONCILE_YOUTUBE_SUBSCRIPTIONS"; feeds: RssFeed[]; items: FeedItem[] }
   | {
       reqId: number;
       type: "ADD_SAMPLE_LIBRARY_DATA";
@@ -100,7 +99,6 @@ export type WorkerRequest =
   | { reqId: number; type: "MERGE_DOC"; binary: Uint8Array }
   | { reqId: number; type: "GET_DOC_BINARY" }
   | { reqId: number; type: "GET_HEADS" }
-  | { reqId: number; type: "GET_SAVED_YOUTUBE_URLS" }
   | { reqId: number; type: "CLEAR_LOCAL" };
 
 // ---------------------------------------------------------------------------
@@ -115,7 +113,6 @@ export type WorkerResponse =
   | { reqId: number; type: "DOC_BINARY"; binary: Uint8Array }
   /** Current Automerge heads for upload-loop accounting; null before INIT. */
   | { reqId: number; type: "DOC_HEADS"; heads: string[] | null }
-  | { reqId: number; type: "SAVED_YOUTUBE_URLS"; urls: string[] }
   /** Sent once per INIT with its cost, for the worker-INIT debug counter. */
   | { type: "INIT_STATS"; durationMs: number; docBytes: number }
   /** Debug panel event forwarding */

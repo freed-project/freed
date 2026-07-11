@@ -1,93 +1,23 @@
-export type YouTubeFetch = (
-  input: string | URL,
-  init?: RequestInit
-) => Promise<Response>;
-
-export interface YouTubeThumbnail {
-  url: string;
-  width?: number;
-  height?: number;
-}
-
-export interface YouTubeThumbnails {
-  default?: YouTubeThumbnail;
-  medium?: YouTubeThumbnail;
-  high?: YouTubeThumbnail;
-  standard?: YouTubeThumbnail;
-  maxres?: YouTubeThumbnail;
-}
-
-export interface YouTubeSubscription {
-  subscriptionId: string;
+/** One followed channel extracted from the user's authenticated YouTube website session. */
+export interface YouTubeCapturedChannel {
   channelId: string;
-  title: string;
+  displayName: string;
+  handle?: string;
   description?: string;
-  thumbnailUrl?: string;
+  avatarUrl?: string;
+  profileUrl?: string;
 }
 
-export interface YouTubeChannelUploads {
-  channelId: string;
-  uploadsPlaylistId: string;
-  title?: string;
-  customUrl?: string;
-  thumbnailUrl?: string;
-}
-
-export interface YouTubeUpload {
-  playlistItemId: string;
-  playlistId: string;
+/** One video extracted from the user's normal YouTube website experience. */
+export interface YouTubeCapturedVideo {
   videoId: string;
   channelId: string;
   channelTitle: string;
+  channelHandle?: string;
+  channelAvatarUrl?: string;
   title: string;
   description?: string;
-  publishedAt: string;
+  publishedAt?: number | string;
   thumbnailUrl?: string;
-  duration?: string;
-  durationSeconds?: number;
-}
-
-export interface YouTubeOfflinePlaylist {
-  id: string;
-  title: string;
-  privacyStatus: "private";
-  created: boolean;
-}
-
-export interface YouTubePlaylistAddResult {
-  playlistId: string;
-  videoId: string;
-  playlistItemId: string;
-  added: boolean;
-}
-
-export interface YouTubeOfflinePlaylistAddResult
-  extends YouTubePlaylistAddResult {
-  playlistCreated: boolean;
-}
-
-export interface ListSubscriptionsOptions {
-  maxSubscriptions?: number;
-}
-
-export interface ListRecentUploadsOptions {
-  maxPerPlaylist?: number;
-  includeDurations?: boolean;
-}
-
-export interface YouTubeDataApiClientOptions {
-  accessToken: string;
-  fetch: YouTubeFetch;
-  apiBaseUrl?: string;
-}
-
-export interface YouTubeApiErrorPayload {
-  error?: {
-    code?: number;
-    message?: string;
-    errors?: Array<{
-      reason?: string;
-      message?: string;
-    }>;
-  };
+  sourceUrl?: string;
 }

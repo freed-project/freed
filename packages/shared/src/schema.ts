@@ -1639,59 +1639,6 @@ export function updateRssFeed(
 }
 
 /**
- * Reconcile an authenticated YouTube subscription roster in one CRDT change.
- * Existing fetch health and the user's enabled preference are preserved.
- * Roster membership is tracked separately so an unfollow does not silently
- * rewrite the user's local feed preference.
- */
-export function reconcileYouTubeSubscriptions(
-  doc: FreedDoc,
-  feeds: RssFeed[],
-  items: FeedItem[],
-): void {
-  const incomingYouTubeChannels = new Set(
-    feeds
-      .map((feed) => feed.youtubeChannelId)
-      .filter((channelId): channelId is string => typeof channelId === "string"),
-  );
-
-  for (const feed of feeds) {
-    const existing = doc.rssFeeds[feed.url];
-    if (!existing) {
-      addRssFeed(doc, { ...feed, youtubeRosterActive: true });
-      continue;
-    }
-    updateRssFeed(doc, feed.url, {
-      title: feed.title,
-      ...(feed.siteUrl ? { siteUrl: feed.siteUrl } : {}),
-      ...(feed.imageUrl ? { imageUrl: feed.imageUrl } : {}),
-      ...(feed.folder ? { folder: feed.folder } : {}),
-      ...(feed.youtubeChannelId ? { youtubeChannelId: feed.youtubeChannelId } : {}),
-      ...(feed.youtubeSubscriptionId
-        ? { youtubeSubscriptionId: feed.youtubeSubscriptionId }
-        : {}),
-      ...(feed.youtubeRosterSyncedAt !== undefined
-        ? { youtubeRosterSyncedAt: feed.youtubeRosterSyncedAt }
-        : {}),
-      youtubeRosterActive: true,
-    });
-  }
-
-  for (const existing of Object.values(doc.rssFeeds)) {
-    if (
-      existing.youtubeChannelId &&
-      !incomingYouTubeChannels.has(existing.youtubeChannelId)
-    ) {
-      existing.youtubeRosterActive = false;
-    }
-  }
-
-  for (const item of items) {
-    if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
-  }
-}
-
-/**
  * Remove an RSS feed subscription
  *
  * @param doc - The Automerge document (mutable within A.change)
@@ -1864,6 +1811,76 @@ export function addAccount(doc: FreedDoc, account: Account): void {
 export function addAccounts(doc: FreedDoc, accounts: Account[]): void {
   for (const account of accounts) {
     addAccount(doc, account);
+  }
+}
+
+export interface ReconcileYouTubeCaptureOptions {
+  /** Only a complete roster is allowed to deactivate a previously followed channel. */
+  rosterComplete: boolean;
+  /** Timestamp shared by the page capture and every roster membership update. */
+  capturedAt: number;
+}
+
+/**
+ * Reconcile one authenticated YouTube website capture in a single CRDT change.
+ *
+ * The channel roster is stored in the identity graph, not as generated RSS
+ * feeds. An incomplete page capture can add or refresh channels, but it can
+ * never infer an unfollow. Existing feed-item interaction state is preserved.
+ */
+export function reconcileYouTubeCapture(
+  doc: FreedDoc,
+  accounts: Account[],
+  items: FeedItem[],
+  options: ReconcileYouTubeCaptureOptions,
+): void {
+  ensureIdentityGraphRoots(doc);
+  const incomingAccountIds = new Set(accounts.map((account) => account.id));
+
+  for (const account of accounts) {
+    const existing = doc.accounts[account.id];
+    if (!existing) {
+      addAccount(doc, {
+        ...account,
+        followRosterActive: true,
+        followRosterSyncedAt: options.capturedAt,
+      });
+      continue;
+    }
+
+    updateAccount(doc, account.id, {
+      externalId: account.externalId,
+      ...(account.handle ? { handle: account.handle } : {}),
+      ...(account.displayName ? { displayName: account.displayName } : {}),
+      ...(account.avatarUrl ? { avatarUrl: account.avatarUrl } : {}),
+      ...(account.profileUrl ? { profileUrl: account.profileUrl } : {}),
+      lastSeenAt: options.capturedAt,
+      followRosterActive: true,
+      followRosterSyncedAt: options.capturedAt,
+    });
+  }
+
+  if (options.rosterComplete) {
+    for (const existing of Object.values(doc.accounts)) {
+      if (
+        existing.provider === "youtube" &&
+        existing.discoveredFrom === "follow_roster" &&
+        !incomingAccountIds.has(existing.id)
+      ) {
+        existing.followRosterActive = false;
+        existing.followRosterSyncedAt = options.capturedAt;
+        existing.updatedAt = options.capturedAt;
+      }
+    }
+  }
+
+  for (const item of items) {
+    const existing = doc.feedItems[item.globalId];
+    if (existing) {
+      mergeFeedItemInto(existing, item);
+    } else {
+      addFeedItem(doc, item);
+    }
   }
 }
 

@@ -29,7 +29,7 @@ import {
   choosePopulatedInputForFeedEmptyPreMerge,
   evaluateDestructiveMergeGuard,
   removeRssFeed,
-  reconcileYouTubeSubscriptions,
+  reconcileYouTubeCapture,
   updateAccount,
   updatePerson,
   updatePreferences,
@@ -725,108 +725,100 @@ describe("removeRssFeed", () => {
   });
 });
 
-describe("reconcileYouTubeSubscriptions", () => {
-  it("preserves feed preferences while tracking roster activity and saved video state", () => {
-    const followedUrl = "https://www.youtube.com/feeds/videos.xml?channel_id=followed";
-    const unfollowedUrl = "https://www.youtube.com/feeds/videos.xml?channel_id=unfollowed";
-    const manualUrl = "https://example.com/manual.xml";
+describe("reconcileYouTubeCapture", () => {
+  it("preserves linked identity and saved video state while reconciling a complete roster", () => {
     let doc = createEmptyDoc();
     doc = A.change(doc, (draft) => {
-      addRssFeed(draft, makeFeed({
-        url: followedUrl,
-        title: "Old followed title",
-        enabled: false,
-        youtubeChannelId: "followed",
-        youtubeSubscriptionId: "old-subscription",
-        lastFetched: 123,
-        etag: "keep-etag",
-      }));
-      addRssFeed(draft, makeFeed({
-        url: unfollowedUrl,
-        title: "Unfollowed",
-        youtubeChannelId: "unfollowed",
-        youtubeSubscriptionId: "stale-subscription",
-      }));
-      addRssFeed(draft, makeFeed({ url: manualUrl, title: "Manual" }));
+      addAccounts(draft, [
+        makeAccount({
+          id: "social:youtube:followed",
+          kind: "social",
+          provider: "youtube",
+          externalId: "followed",
+          displayName: "Old followed title",
+          discoveredFrom: "follow_roster",
+          followRosterActive: true,
+        }),
+        makeAccount({
+          id: "social:youtube:unfollowed",
+          kind: "social",
+          provider: "youtube",
+          externalId: "unfollowed",
+          displayName: "Unfollowed",
+          discoveredFrom: "follow_roster",
+          followRosterActive: true,
+        }),
+        makeAccount({
+          id: "social:x:other",
+          kind: "social",
+          provider: "x",
+          externalId: "other",
+          displayName: "Other provider",
+        }),
+      ]);
       addFeedItem(draft, makeItem({
-        globalId: "youtube:dQw4w9WgXcQ",
+        globalId: "youtube:yt:video:dQw4w9WgXcQ",
         platform: "youtube",
         userState: { hidden: false, saved: true, archived: false, tags: [] },
       }));
     });
 
-    doc = A.change(doc, (draft) => reconcileYouTubeSubscriptions(
+    doc = A.change(doc, (draft) => reconcileYouTubeCapture(
       draft,
-      [makeFeed({
-        url: followedUrl,
-        title: "Current followed title",
-        folder: "YouTube",
-        youtubeChannelId: "followed",
-        youtubeSubscriptionId: "current-subscription",
-        youtubeRosterSyncedAt: 456,
+      [makeAccount({
+        id: "social:youtube:followed",
+        kind: "social",
+        provider: "youtube",
+        externalId: "followed",
+        displayName: "Current followed title",
+        discoveredFrom: "follow_roster",
+        personId: undefined,
       })],
       [makeItem({
-        globalId: "youtube:dQw4w9WgXcQ",
+        globalId: "youtube:yt:video:dQw4w9WgXcQ",
         platform: "youtube",
         userState: { hidden: false, saved: false, archived: false, tags: [] },
       })],
+      { rosterComplete: true, capturedAt: 456 },
     ));
 
-    expect(doc.rssFeeds[followedUrl]).toMatchObject({
-      title: "Current followed title",
-      enabled: false,
-      lastFetched: 123,
-      etag: "keep-etag",
-      youtubeSubscriptionId: "current-subscription",
-      youtubeRosterSyncedAt: 456,
-      youtubeRosterActive: true,
+    expect(doc.accounts["social:youtube:followed"]).toMatchObject({
+      personId: "person-1",
+      displayName: "Current followed title",
+      followRosterSyncedAt: 456,
+      followRosterActive: true,
     });
-    expect(doc.rssFeeds[unfollowedUrl]).toMatchObject({
-      enabled: true,
-      youtubeRosterActive: false,
+    expect(doc.accounts["social:youtube:unfollowed"]).toMatchObject({
+      followRosterSyncedAt: 456,
+      followRosterActive: false,
     });
-    expect(doc.rssFeeds[manualUrl].enabled).toBe(true);
-    expect(doc.feedItems["youtube:dQw4w9WgXcQ"].userState.saved).toBe(true);
+    expect(doc.accounts["social:x:other"].followRosterActive).toBeUndefined();
+    expect(doc.feedItems["youtube:yt:video:dQw4w9WgXcQ"].userState.saved).toBe(true);
   });
 
-  it("defaults a new followed channel to enabled without changing an existing disabled feed", () => {
-    const existingUrl = "https://www.youtube.com/feeds/videos.xml?channel_id=existing";
-    const newUrl = "https://www.youtube.com/feeds/videos.xml?channel_id=new";
+  it("does not infer unfollows from an incomplete website capture", () => {
     let doc = createEmptyDoc();
     doc = A.change(doc, (draft) => {
-      addRssFeed(draft, makeFeed({
-        url: existingUrl,
-        title: "Existing RSS feed",
-        enabled: false,
-      }));
+      addAccounts(draft, [makeAccount({
+        id: "social:youtube:existing",
+        kind: "social",
+        provider: "youtube",
+        externalId: "existing",
+        displayName: "Existing YouTube channel",
+        discoveredFrom: "follow_roster",
+        followRosterActive: true,
+      })]);
     });
 
-    doc = A.change(doc, (draft) => reconcileYouTubeSubscriptions(
+    doc = A.change(doc, (draft) => reconcileYouTubeCapture(
       draft,
-      [
-        makeFeed({
-          url: existingUrl,
-          title: "Existing YouTube channel",
-          youtubeChannelId: "existing",
-          youtubeSubscriptionId: "subscription-existing",
-        }),
-        makeFeed({
-          url: newUrl,
-          title: "New YouTube channel",
-          youtubeChannelId: "new",
-          youtubeSubscriptionId: "subscription-new",
-        }),
-      ],
       [],
+      [],
+      { rosterComplete: false, capturedAt: 456 },
     ));
 
-    expect(doc.rssFeeds[existingUrl]).toMatchObject({
-      enabled: false,
-      youtubeRosterActive: true,
-    });
-    expect(doc.rssFeeds[newUrl]).toMatchObject({
-      enabled: true,
-      youtubeRosterActive: true,
+    expect(doc.accounts["social:youtube:existing"]).toMatchObject({
+      followRosterActive: true,
     });
   });
 });

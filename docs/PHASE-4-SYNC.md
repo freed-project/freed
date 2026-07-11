@@ -3,7 +3,7 @@
 > **Status:** 🚧 In Progress
 > **Dependencies:** Phase 1-2 (Capture layers ✓)
 >
-> Local relay, Google Drive cloud sync, desktop local snapshot rotation, "Sync Now" button, "Last synced" indicator, proxied Google token exchange for Freed Desktop with a built-in production proxy default, durable Google OAuth refresh, recoverable Google Contacts token-refresh failures, a production callback relay for the exact dev PWA origin, appDataFolder Drive polling, cloud sync health diagnostics, visible Drive transfer diagnostics in Settings, manual Drive sync from Desktop and PWA Settings, cloud sync activity timelines, global background activity visibility for Desktop cloud work, initial Drive download auth-refresh recovery, merged-upload local convergence, destructive Automerge merge blocking, pinned explicit local wins and cloud wins recovery actions, PWA local-change cloud uploads, PWA document-init-gated cloud startup, runtime-gated cloud upload waits, mobile-safe Drive upload bodies, and the no-cloud-sync launch banner are all working. Dynamic preview OAuth is intentionally disabled because client-authored callback state cannot safely authorize an arbitrary return origin. Dropbox remains behind a coming-soon gate while its provider work is finished. iCloud sync is the remaining open item.
+> Local relay, Google Drive cloud sync, desktop local snapshot rotation, "Sync Now" button, "Last synced" indicator, proxied Google token exchange for Freed Desktop with a built-in production proxy default, durable Google OAuth refresh, recoverable Google Contacts token-refresh failures, a production callback relay for dev and preview PWA Google OAuth, appDataFolder Drive polling, cloud sync health diagnostics, visible Drive transfer diagnostics in Settings, manual Drive sync from Desktop and PWA Settings, cloud sync activity timelines, global background activity visibility for Desktop cloud work, initial Drive download auth-refresh recovery, merged-upload local convergence, destructive Automerge merge blocking, pinned explicit local wins and cloud wins recovery actions, PWA local-change cloud uploads, PWA document-init-gated cloud startup, runtime-gated cloud upload waits, mobile-safe Drive upload bodies, and the no-cloud-sync launch banner are all working. Dropbox remains behind a coming-soon gate while its provider work is finished. iCloud is the remaining core document-sync item. Large offline media uses a separate future transport plan.
 
 ---
 
@@ -258,6 +258,23 @@ The relay requires a 256-bit token in the WebSocket upgrade URI (`?t=<base64url>
 
 Each provider stores a single Automerge binary file. CRDT handles merge conflicts automatically.
 
+### Future Large Media Transfer
+
+Automerge and the current document relay are not media pipes. Future offline
+audio and video packages must stay outside the Freed document, snapshots, logs,
+and bug reports.
+
+The planned transfer order is a dedicated authenticated LAN endpoint, then
+chunk-encrypted objects in the user's configured cloud when Freed Desktop is
+unreachable. The PWA verifies and stores each package in device-local media
+storage. A Freed-hosted relay requires a separate owner decision after the
+device-owned paths have been measured for reliability, privacy, provider
+visibility, bandwidth, and cost.
+
+See [YouTube Focus and Offline Integration](YOUTUBE-INTEGRATION.md) for the
+first audio-oriented use case, security model, iPhone constraints, failure
+recovery, telemetry, milestones, and acceptance tests.
+
 ---
 
 ## Tasks
@@ -281,6 +298,7 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 | 4.15 | Visible cloud transfer diagnostics, manual sync, and initial Drive download recovery | ✓ | Medium |
 | 4.16 | Destructive Automerge merge guard     | ✓      | Medium     |
 | 4.17 | Desktop cloud sync activity in the global background monitor | ✓ | Low |
+| 4.18 | Dedicated large-media transfer lane, LAN first with encrypted user-cloud fallback | ☐ | High |
 
 ---
 
@@ -292,7 +310,7 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] Desktop broadcasts doc changes to connected PWA clients via `broadcast_doc` Tauri command
 - [x] QR code or manual pairing connects PWA to Desktop (SyncConnectDialog with QR scanner)
 - [x] Sync connection status observable (`onStatusChange` listener in sync.ts)
-- [x] PWA falls back to cloud sync when away from home (Google Drive PKCE OAuth, production callback relay for the exact `dev-app.freed.wtf` origin, local-change upload subscriptions, Automerge merge-upload). Dynamic preview OAuth remains disabled until return origins use a server-authenticated, one-time mechanism.
+- [x] PWA falls back to cloud sync when away from home (Google Drive PKCE OAuth, production callback relay for dev and preview app origins, local-change upload subscriptions, Automerge merge-upload)
 - [x] Google Drive uses the server token proxy in Freed Desktop so the Google client secret stays out of the app bundle, watches appDataFolder changes, refreshes stored OAuth credentials before Drive or Contacts calls, and retries Contacts once after a 401 with a forced token refresh
 - [x] Freed Desktop falls back to the production Google token proxy when the build omits `VITE_GDRIVE_TOKEN_PROXY_URL`, so local and dev builds do not silently use direct Google token exchange
 - [x] Google Contacts token lookup and forced refresh failures remain recoverable in sync state instead of opening the fatal recovery screen
@@ -310,6 +328,8 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] Desktop no-cloud-sync launch banner self-dismisses after 15 seconds with a gentle countdown ring
 - [x] Desktop writes rotating local snapshots and can restore an older Automerge copy from Settings
 - [ ] iCloud sync integration
+- [ ] Large media packages transfer outside Automerge through an authenticated,
+      resumable, integrity-checked path with explicit storage and deletion rules
 
 ---
 

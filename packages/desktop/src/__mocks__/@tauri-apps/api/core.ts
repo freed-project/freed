@@ -295,6 +295,12 @@ const handlers: Record<string, Handler> = {
   li_check_auth: () => true,
   li_scrape_feed: () => null,
   li_disconnect: () => null,
+  yt_show_login: () => null,
+  yt_hide_login: () => null,
+  yt_check_auth: () => true,
+  yt_capture: () => null,
+  yt_add_to_offline_playlist: () => null,
+  yt_disconnect: () => null,
 };
 
 // Expose handler map so tests and tauri-init.ts can override defaults.

@@ -9,7 +9,6 @@ import { FeedView } from "@freed/ui/components/feed";
 import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
 import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
 import { ToastContainer, toast } from "@freed/ui/components/Toast";
-import { useSettingsStore } from "@freed/ui/lib/settings-store";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { OAuthCallback } from "./components/OAuthCallback";
 import {
@@ -42,10 +41,10 @@ import {
   PwaGoogleContactsSettings,
   PwaInstagramSettings,
   PwaLinkedInSettings,
+  PwaYouTubeSettings,
   PwaXSettings,
 } from "./components/PwaSocialProviderSettings";
 import { PwaLegalSettingsSection } from "./components/PwaLegalSettingsSection";
-import { PwaYouTubeSettings } from "./components/PwaYouTubeSettings";
 import { acceptPwaBundle, hasAcceptedPwaBundle } from "./lib/legal-consent";
 import { useBrowserNavigationHistory } from "./lib/navigation-history";
 import { pwaBugReporting } from "./lib/bug-report";
@@ -66,7 +65,6 @@ import {
   watchInstallPrompt,
   type InstallNotice,
 } from "./lib/pwa-install";
-import { addYouTubeVideoToOfflinePlaylist } from "./lib/youtube-integration";
 import { openPwaUrl } from "./lib/youtube-handoff";
 
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
@@ -135,13 +133,6 @@ function App() {
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
   const [installNotice, setInstallNotice] = useState<InstallNotice | null>(null);
 
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    if (url.searchParams.get("youtube_oauth") !== "connected") return;
-    useSettingsStore.getState().openTo("youtube");
-    url.searchParams.delete("youtube_oauth");
-    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
-  }, []);
   const [legalResolved, setLegalResolved] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [releaseChannel, setReleaseChannelState] = useState<ReleaseChannel>(() =>
@@ -349,9 +340,6 @@ function App() {
       // FriendEditor falls back to manual entry when this is undefined at runtime.
       pickContact: pickContactViaWebApi,
       openUrl: openPwaUrl,
-      youtube: {
-        addToOfflinePlaylist: addYouTubeVideoToOfflinePlaylist,
-      },
       bugReporting: pwaBugReporting,
     }),
     [checkForUpdates, handleFactoryReset, releaseChannel, setReleaseChannel],

@@ -34,6 +34,7 @@ function health(
       facebook: providerSnapshot("facebook"),
       instagram: providerSnapshot("instagram"),
       linkedin: providerSnapshot("linkedin"),
+      youtube: providerSnapshot("youtube"),
       gdrive: providerSnapshot("gdrive"),
       dropbox: providerSnapshot("dropbox"),
       ...overrides,
@@ -93,5 +94,25 @@ describe("desktop source status", () => {
 
     expect(status?.tone).toBe("critical");
     expect(status?.label).toBe("Reconnect required");
+  });
+
+  it("projects the authenticated YouTube session and active capture state", () => {
+    const status = getDesktopSourceStatus(
+      "youtube",
+      sourceState({
+        ytAuth: { isAuthenticated: true },
+        providerSyncCounts: { youtube: 1 },
+      }),
+      health({
+        youtube: providerSnapshot("youtube", {
+          status: "healthy",
+          lastOutcome: "success",
+          lastSuccessfulAt: Date.now(),
+        }),
+      }),
+    );
+
+    expect(status?.tone).toBe("healthy");
+    expect(status?.syncing).toBe(true);
   });
 });

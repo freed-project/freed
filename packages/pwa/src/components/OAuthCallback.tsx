@@ -1,5 +1,5 @@
 /**
- * OAuthCallback handles the OAuth 2.0 PKCE redirect from Google and Dropbox.
+ * OAuthCallback — handles the OAuth 2.0 PKCE redirect from GDrive / Dropbox.
  *
  * Rendered instead of the main app when window.location.pathname is
  * "/oauth-callback". Reads the authorization code from URL params,
@@ -7,35 +7,23 @@
  * and redirects back to the app root.
  *
  * Token exchange:
- *   - Google Drive and YouTube: proxied through /api/oauth/google (server holds client_secret;
+ *   - GDrive: proxied through /api/oauth/google (server holds client_secret;
  *     Google's "Web application" client type requires it even for PKCE flows).
  *   - Dropbox: direct client-side PKCE exchange (public-client support is
  *     enabled on the Dropbox app via "Allow public clients (PKCE)").
  *
  * Token refresh (access tokens expire ~1hr for GDrive, ~4hr for Dropbox) is
- * deferred. The user will be prompted to reconnect when the token expires.
+ * deferred — the user will be prompted to reconnect when the token expires.
  */
 
 import { useEffect, useState } from "react";
 import { startCloudSync, storeCloudToken, type CloudProvider, type CloudTokenBundle } from "../lib/sync";
 import {
   clearStoredGoogleOAuthRedirectUri,
-  clearStoredGoogleOAuthScopes,
-  clearStoredGoogleOAuthState,
   createGoogleOAuthRelayTarget,
   getOAuthCallbackUri,
   getStoredGoogleOAuthRedirectUri,
-  getStoredGoogleOAuthScopes,
-  getStoredGoogleOAuthState,
-  readGoogleOAuthState,
 } from "../lib/oauth-redirect";
-import { getGoogleOAuthClientId } from "../lib/cloud-oauth";
-import {
-  storeYouTubeToken,
-  YOUTUBE_OAUTH_SUCCESS_PATH,
-  type YouTubeTokenBundle,
-} from "../lib/youtube-auth";
-import { resetYouTubeIntegrationForNewGrant } from "../lib/youtube-integration";
 
 const DROPBOX_TOKEN_ENDPOINT = "https://api.dropboxapi.com/oauth2/token";
 
@@ -46,40 +34,27 @@ const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
 const OAUTH_REDIRECT_URI = getOAuthCallbackUri();
 
 type ExchangeResult =
-  | { ok: true; token: CloudTokenBundle & Pick<YouTubeTokenBundle, "scope" | "clientId"> }
+  | { ok: true; token: CloudTokenBundle }
   | { ok: false; error: string };
 
-type OAuthProvider = CloudProvider | "youtube";
-
-async function exchangeGoogle(
-  code: string,
-  verifier: string,
-  purpose: "gdrive" | "youtube",
-  redirectUri: string,
-  requestedScopes?: string,
-): Promise<ExchangeResult> {
+async function exchangeGDrive(code: string, verifier: string): Promise<ExchangeResult> {
+  const redirectUri = getStoredGoogleOAuthRedirectUri();
   // Token exchange is proxied server-side: Google requires a client_secret
   // even for PKCE, so we never expose it to the browser.
   const res = await fetch("/api/oauth/google", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      code,
-      verifier,
-      redirectUri,
-      clientId: getGoogleOAuthClientId(purpose),
-    }),
+    body: JSON.stringify({ code, verifier, redirectUri }),
   });
 
   const data = await res.json().catch(() => ({ error: "invalid JSON from proxy" }));
 
   if (!res.ok) {
-    const label = purpose === "youtube" ? "YouTube" : "Google Drive";
-    return { ok: false, error: `${label} token exchange failed: ${data.error ?? res.status}` };
+    return { ok: false, error: `GDrive token exchange failed: ${data.error ?? res.status}` };
   }
 
-  const { access_token, refresh_token, expires_in, scope } = data;
-  if (!access_token) return { ok: false, error: "Google token proxy returned no access token" };
+  const { access_token, refresh_token, expires_in } = data;
+  if (!access_token) return { ok: false, error: "GDrive proxy returned no access_token" };
 
   return {
     ok: true,
@@ -87,8 +62,6 @@ async function exchangeGoogle(
       accessToken: access_token as string,
       refreshToken: refresh_token as string | undefined,
       expiresAt: typeof expires_in === "number" ? Date.now() + expires_in * 1000 : undefined,
-      scope: typeof scope === "string" ? scope : requestedScopes,
-      clientId: getGoogleOAuthClientId(purpose),
     },
   };
 }
@@ -131,7 +104,6 @@ type Status = "exchanging" | "success" | "error";
 export function OAuthCallback() {
   const [status, setStatus] = useState<Status>("exchanging");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [targetProvider, setTargetProvider] = useState<OAuthProvider | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,25 +119,13 @@ export function OAuthCallback() {
       const code = params.get("code");
       const oauthError = params.get("error");
 
-      const providerValue = sessionStorage.getItem("freed_pkce_provider");
-      const provider: OAuthProvider | null =
-        providerValue === "gdrive" || providerValue === "dropbox" || providerValue === "youtube"
-          ? providerValue
-          : null;
+      const provider = sessionStorage.getItem("freed_pkce_provider") as CloudProvider | null;
       const verifier = sessionStorage.getItem("freed_pkce_verifier");
-      const returnedState = params.get("state");
-      const storedGoogleState = getStoredGoogleOAuthState();
-      const storedGoogleScopes = getStoredGoogleOAuthScopes();
-      const googleState = readGoogleOAuthState(params.get("state"));
-      const googleRedirectUri = getStoredGoogleOAuthRedirectUri();
-      setTargetProvider(provider);
 
       // Clean up PKCE state immediately, single-use.
       sessionStorage.removeItem("freed_pkce_provider");
       sessionStorage.removeItem("freed_pkce_verifier");
       clearStoredGoogleOAuthRedirectUri();
-      clearStoredGoogleOAuthState();
-      clearStoredGoogleOAuthScopes();
 
       if (oauthError) {
         if (!cancelled) {
@@ -185,38 +145,10 @@ export function OAuthCallback() {
         return;
       }
 
-      if (
-        (provider === "gdrive" || provider === "youtube") &&
-        (!returnedState || !storedGoogleState || returnedState !== storedGoogleState)
-      ) {
-        if (!cancelled) {
-          setStatus("error");
-          setErrorMessage("Google authorization state could not be verified. Please try connecting again.");
-        }
-        return;
-      }
-
-      if (
-        (provider === "gdrive" || provider === "youtube") &&
-        googleState?.purpose !== provider
-      ) {
-        if (!cancelled) {
-          setStatus("error");
-          setErrorMessage("Google authorization state does not match this connection request.");
-        }
-        return;
-      }
+      const exchange = provider === "gdrive" ? exchangeGDrive : exchangeDropbox;
 
       try {
-        const result = provider === "dropbox"
-          ? await exchangeDropbox(code, verifier)
-          : await exchangeGoogle(
-              code,
-              verifier,
-              provider,
-              googleRedirectUri,
-              storedGoogleScopes ?? undefined,
-            );
+        const result = await exchange(code, verifier);
         if (!result.ok) {
           if (!cancelled) {
             setStatus("error");
@@ -225,18 +157,14 @@ export function OAuthCallback() {
           return;
         }
 
-        if (provider === "youtube") {
-          resetYouTubeIntegrationForNewGrant();
-          storeYouTubeToken(result.token);
-        } else {
-          storeCloudToken(provider, result.token);
+        storeCloudToken(provider, result.token);
 
-          // Token exchange is the success condition. The initial download and
-          // merge happen in the background, and the poll loop retries failures.
-          startCloudSync(provider, result.token.accessToken).catch((err) => {
-            console.error("[OAuthCallback] startCloudSync failed:", err);
-          });
-        }
+        // Fire-and-forget — token exchange is the success condition.
+        // The initial download/merge happens in the background; if it fails
+        // the poll loop will retry. Don't block the callback page on it.
+        startCloudSync(provider, result.token.accessToken).catch((err) => {
+          console.error("[OAuthCallback] startCloudSync failed:", err);
+        });
 
         if (cancelled) return;
 
@@ -244,9 +172,7 @@ export function OAuthCallback() {
 
         // Give the user a moment to see the success state before navigating.
         setTimeout(() => {
-          window.location.replace(
-            provider === "youtube" ? YOUTUBE_OAUTH_SUCCESS_PATH : "/",
-          );
+          window.location.replace("/");
         }, 1200);
       } catch (err: unknown) {
         console.error("[OAuthCallback] token exchange threw:", err);
@@ -272,9 +198,7 @@ export function OAuthCallback() {
         {status === "exchanging" && (
           <>
             <div className="mx-auto mb-5 h-10 w-10 animate-spin rounded-full border-2 border-[var(--theme-accent-secondary)] border-t-transparent" />
-            <p className="font-medium text-[var(--theme-text-primary)]">
-              {targetProvider === "youtube" ? "Connecting YouTube..." : "Connecting cloud sync..."}
-            </p>
+            <p className="font-medium text-[var(--theme-text-primary)]">Connecting cloud sync...</p>
             <p className="mt-2 text-sm text-[var(--theme-text-muted)]">Exchanging authorization code</p>
           </>
         )}
@@ -286,12 +210,8 @@ export function OAuthCallback() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <p className="font-medium text-[var(--theme-text-primary)]">
-              {targetProvider === "youtube" ? "YouTube connected" : "Cloud sync connected"}
-            </p>
-            <p className="mt-2 text-sm text-[var(--theme-text-muted)]">
-              {targetProvider === "youtube" ? "Returning to YouTube settings..." : "Returning to your feed..."}
-            </p>
+            <p className="font-medium text-[var(--theme-text-primary)]">Cloud sync connected</p>
+            <p className="mt-2 text-sm text-[var(--theme-text-muted)]">Returning to your feed...</p>
           </>
         )}
 

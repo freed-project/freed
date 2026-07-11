@@ -1,578 +1,658 @@
 # YouTube Focus and Offline Integration
 
-> **Status:** Initial integration implemented in the YouTube focus feature branch.
-> The user must connect a Google account with YouTube access, and deployed builds
-> must provide the matching Google OAuth and YouTube Data API credentials.
+> **Status:** The authenticated website-session integration is implemented in
+> the YouTube focus feature branch. Direct media caching is documented future
+> work and is not part of the initial release.
 > **Phase:** [Phase 12: Additional Platforms](PHASE-12-ADDITIONAL-PLATFORMS.md)
 > **Last reviewed:** 2026-07-10
 
 ## Product Goal
 
-YouTube contains excellent long-form educational material, but opening the
-normal application also exposes Home, Shorts, recommendations, comments, and
-autoplay. Freed should help a user choose a video deliberately, watch it without
-entering those discovery surfaces, and prepare selected videos for YouTube
-Premium offline viewing.
+YouTube contains excellent long-form educational material, but opening its
+normal discovery surfaces also exposes Home, Shorts, recommendations, comments,
+and autoplay. Freed should let a user choose deliberately, watch without a feed
+wrapped around the video, and prepare selected material for offline listening or
+viewing without sending the user back through an attention trap.
 
-The integration has three distinct jobs:
+The integration has four jobs:
 
-1. Track videos from channels the user intentionally follows.
-2. Offer a focused player that does not surround the selected video with a feed.
-3. Hand Premium-only background and offline work to the YouTube application,
-   where those entitlements are actually available.
+1. Capture the channels and recent videos visible in the user's normal signed-in
+   YouTube website session.
+2. Offer focused foreground playback and an exact-video YouTube handoff.
+3. Maintain a private `Freed Offline` playlist through YouTube's normal website
+   controls for users who want YouTube Premium to manage downloads.
+4. Research a separate audio-first media path that can place user-selected
+   material in the Freed PWA for offline and locked-screen playback.
 
-The design does not pretend that a web embed inherits Premium benefits. It also
-does not treat a video added to a playlist as downloaded. YouTube remains the
-authority for Premium status, download eligibility, download progress, and the
-encrypted offline copy.
+The fourth job is technically possible, but it is a new media acquisition and
+delivery system. A service worker cannot reach through a cross-origin YouTube
+iframe and copy its media. Freed must first produce a stable media package on
+Freed Desktop, then deliver that package to the PWA over the local network or
+through encrypted storage controlled by the user.
 
-## Initial Capability Matrix
+## Product and Traffic Boundaries
+
+The initial integration follows the same provider model as Facebook, Instagram,
+LinkedIn, Substack, and Medium:
+
+- The user signs into the ordinary provider website inside a dedicated Freed
+  Desktop WebView.
+- The provider session and cookies remain on that device in the isolated
+  WebView data store.
+- Freed loads normal YouTube website pages and extracts the roster and video
+  cards visible to that signed-in user.
+- Playlist actions use the website's normal Save and playlist controls.
+- Freed has no YouTube developer project, YouTube OAuth grant, Data API client,
+  API quota, or central subscription service.
+- Current capture and playlist work originates from the user's device. Freed
+  does not proxy those requests through shared infrastructure.
+
+This minimizes distinct traffic, but it cannot guarantee that YouTube sees the
+WebView as indistinguishable from every other browser visit. A provider can
+observe WebKit traits, navigation order, repeated timing, and scripted clicks.
+Freed must not add fingerprint spoofing, unusual headers, hidden high-frequency
+polling, or synthetic interaction noise. The safest behavior is a small,
+bounded sequence against ordinary pages at a cadence the user authorized.
+
+The future media resolver has a different risk profile. Resolving downloadable
+streams can require requests that differ from ordinary playback. It must remain
+separate from routine roster capture, explicit per item, and covered by a new
+provider-risk approval when implementation begins.
+
+## Capability Matrix
 
 | Capability | Initial behavior | Important boundary |
 | ---------- | ---------------- | ------------------ |
-| Followed videos | The PWA imports the complete authenticated subscription roster, records stable channel feeds, then attempts a bounded recent window for each channel. | The roster lands before optional video enrichment. Partial channel failures are reported without discarding followed channels. Sync is explicit and foreground-only. |
-| Watch here in Focus Mode | The reader offers `Watch here in Focus Mode`, then loads one click-to-load YouTube embed for the selected video. | Reliable foreground playback only. It does not promise locked-screen playback. |
-| Open in YouTube | A direct canonical watch URL hands the exact video to YouTube through iOS Universal Links when available. | Freed can bypass Home and Shorts on entry, but cannot remove navigation inside YouTube. |
-| Save to Freed Offline | After YouTube OAuth, Freed creates or reuses a private `Freed Offline` playlist and adds the selected video. | This is a YouTube playlist write, not a media download. |
-| Open offline playlist | Freed opens the private playlist in YouTube so the user can download the full playlist with Premium. | YouTube performs and manages all device downloads. |
-| Premium background playback | The exact-video handoff lets the YouTube application use the user's Premium background playback setting. | The Focus Mode iframe does not inherit this guarantee. |
-| Direct media download | Not included. | Freed does not receive, decrypt, store, or redistribute YouTube media bytes. |
-| Screen Time shield | Not included. | A PWA cannot use Apple's Screen Time frameworks. |
+| Followed channels | Freed Desktop captures the authenticated channel roster through the user's YouTube website session. | A complete roster may reconcile unfollows. A partial capture may add or refresh channels, but cannot infer an unfollow. |
+| Recent subscription videos | Manual sync and the bounded routine refresh capture video cards from the signed-in Subscriptions surface. | This reflects the page the user can see. It is not an algorithmic Home import and does not use the Data API. |
+| Watch here in Focus Mode | The reader loads one click-to-load YouTube embed for the selected video. | This supports reliable foreground playback only. It does not promise locked-screen playback. |
+| Play in YouTube | A direct canonical watch URL hands the exact video to YouTube through iOS Universal Links when available. | Freed can bypass Home and Shorts on entry, but cannot remove navigation inside YouTube. |
+| Save to Freed Offline | Freed Desktop uses the authenticated website session to create or reuse a private playlist and save the selected video. | This updates a YouTube playlist. It is not a media download. |
+| Open offline playlist | Freed opens the playlist in YouTube so a Premium user can choose YouTube's playlist download. | YouTube performs and manages those device downloads. |
+| Direct Freed audio download | Future work. | Requires Desktop resolution, packaging, transfer, PWA storage, and real iPhone validation. |
+| Direct Freed video download | Later future work after audio proves reliable. | Video has much higher storage, bandwidth, codec, and battery cost. |
+| Screen Time shield | Not included. | A PWA cannot call Apple's Screen Time frameworks. |
 
-## Initial User Experience
+## Current Authenticated Website Integration
+
+### Connection and Capture
+
+Freed Desktop owns the YouTube connection. The login window uses a persistent,
+provider-specific WebView data store. Signing in establishes an ordinary website
+session instead of issuing a token to a Freed YouTube application.
+
+One explicit sync does the following:
+
+1. Verifies that the WebView still shows a signed-in YouTube session.
+2. Loads the normal channel-management and Subscriptions pages needed for the
+   requested capture.
+3. Extracts stable channel IDs, channel names, handles, profile links, artwork,
+   long-form video IDs, titles, thumbnails, and published labels when present.
+4. Scrolls only as much as the bounded capture requires and reports whether the
+   roster reached a complete stopping condition.
+5. Normalizes followed channels into Freed's identity graph and recent videos
+   into normal `FeedItem` records.
+6. Reconciles missing channels only after a complete roster capture.
+
+Shorts and Reels cards are discarded before persistence. Freed does not import
+them into the focused feed merely because YouTube inserted them into the
+Subscriptions surface.
+
+YouTube's website cards often expose localized relative labels rather than an
+exact publication timestamp. Freed preserves the rendered Subscriptions order
+with deterministic millisecond offsets on first capture. It does not pretend a
+localized label is an exact date. Later captures preserve the first-seen order
+for an existing video.
+
+The login window remains open while post-login prompts and the first capture
+finish. Later manual syncs use the same persistent session and refresh both
+surfaces. Routine scheduled refreshes load only Subscriptions, so the full
+channel roster is not crawled every cycle. A failed or partial capture keeps
+existing content and reports diagnostic counts instead of turning an incomplete
+page into a mass unfollow.
+
+No access token, refresh token, Google account identifier, or YouTube API secret
+exists in this design. Disconnecting removes Freed's local website session. It
+does not modify the user's YouTube account.
+
+### The Role of RSS
+
+RSS is not the authenticated subscription source and is not generated from the
+captured roster.
+
+Freed's existing RSS capture can still follow a public YouTube channel feed when
+the user adds that feed directly. That independent path is useful for a public,
+low-privilege channel with no personalized state. It does not reveal the signed-in
+user's follows, unfollows, ordering, members-only material, or the personalized
+Subscriptions page.
+
+The authenticated website session is therefore the source of truth for whom the
+user follows and which recent subscription items YouTube shows them. Public RSS
+remains an optional manual intake mode. Adding automatic RSS polling for every
+captured channel would create a new request pattern and must not happen silently.
+
+### Save to Freed Offline
+
+Playlist management uses the same authenticated website session. Freed does not
+call a playlist API.
+
+For one deliberate save, Freed Desktop:
+
+1. Opens the canonical watch page in the authenticated YouTube WebView.
+2. Activates the normal Save control.
+3. Selects an existing private `Freed Offline` playlist, or creates it through
+   the normal website dialog when it does not exist.
+4. Confirms the resulting website state or notification.
+5. Stores the non-secret playlist link and ID needed for later handoff, plus a
+   device-local set of video IDs already confirmed in that playlist.
+
+`Sync saved videos` repeats that sequence serially in batches of at most 25
+provider actions. Each confirmed item is checkpointed locally, so a later run
+resumes without replaying the full saved library. It stops on the first
+uncertain failure instead of clicking blindly. A successful provider action
+stays successful even when a later item fails. Removing the failed item from
+Saved lets the next run continue through the remaining queue. `Recheck All`
+clears only the local completion markers when the user wants to reconcile
+external playlist edits. `Stop After Current Video` cancels the remainder of a
+batch without abandoning confirmed progress.
+
+The playlist belongs to the user. If the same YouTube account is active on the
+iPhone, the playlist should appear in the YouTube application. Premium users can
+then choose YouTube's native playlist download. Freed cannot remotely start or
+observe that iPhone download.
+
+Unsaving an item in Freed does not silently remove it from YouTube. These are
+separate user decisions. Disconnecting, losing authentication, or beginning a
+new login clears cached playlist metadata and completion checkpoints so they
+are not reused across account changes.
 
 ### Watch Here in Focus Mode
 
-`Watch here in Focus Mode` is the primary focus action for a YouTube item. The player follows
-these rules:
+`Watch here in Focus Mode` is the primary focused playback action for a YouTube
+item.
 
-- The focus player does not contact YouTube until the user presses the play
-  action. Subscription metadata and thumbnail images have separate provider
-  contact behavior.
-- The embed loads only the selected video. It does not load a playlist or
-  automatically queue the next item.
-- Autoplay stays off. Playback begins from a deliberate user action.
-- Inline playback is allowed on mobile so the user is not forced into a separate
-  browser surface.
-- The YouTube player remains the media renderer. Freed does not scrape or proxy
-  the media source.
-- If the video owner disabled embedding, the item was removed, or the player
-  returns another embed error, the exact-video YouTube handoff remains available.
-- If the IFrame API script fails or does not initialize within ten seconds,
-  Freed removes both the script and player. The user can retry with a clean
-  script or use the exact-video handoff. A failed observer never leaves an
-  unguarded recommendation end screen behind.
-
-After the click, Freed loads the official IFrame API to observe ready, playing,
-paused, buffering, ended, and error states. When playback ends, Freed removes
-the iframe before YouTube can turn the end screen into the next browsing surface
-and offers `Replay in Focus Mode`. It must not automatically start the next
-video. YouTube's `rel=0` parameter limits related videos to the same channel. It
-does not remove related videos completely, so removing the player at the ended
-state is the stronger protection.
+- The reader does not contact the player host until the user presses Play.
+- The embed loads only the selected video. It does not queue a playlist.
+- Autoplay stays off.
+- Freed observes player state through the official IFrame API.
+- When playback ends, Freed removes the iframe before the end screen becomes a
+  new discovery surface and offers `Replay in Focus Mode`.
+- The exact-video handoff remains visible when embedding is disabled or fails.
 
 The privacy-enhanced `youtube-nocookie.com` host reduces storage before the user
-interacts with the player, but it does not make playback invisible to YouTube.
-Once loaded, YouTube can still observe the request, IP address, browser and
-device traits, selected video, referring origin, and playback timing.
-
-Freed Desktop needs separate native verification. YouTube error `153` means an
-embed did not provide an HTTP Referer or equivalent client identity. A native
-WebView served from a custom application scheme may trigger that error even when
-the same player works at `https://app.freed.wtf`. The initial reader keeps the
-exact-video fallback visible. If native verification proves unreliable, the
-lowest-complexity fix is an HTTPS wrapper page that owns only the official
-YouTube embed and completion messages. That wrapper would be a new hosted,
-provider-visible surface, but it would not proxy media bytes.
+interacts with the player, but playback is still visible to YouTube. Once the
+iframe loads, YouTube can observe the request, IP address, selected video,
+browser traits, referring origin, and playback timing.
 
 ### Play in YouTube
 
-Freed converts supported YouTube URLs to this canonical form:
+Freed normalizes supported links to one canonical watch route:
 
 ```text
 https://www.youtube.com/watch?v=VIDEO_ID
 ```
 
-Normalization should accept at least these source shapes:
-
-- `youtube.com/watch?v=VIDEO_ID`
-- `youtu.be/VIDEO_ID`
-- `youtube.com/shorts/VIDEO_ID`
-- `youtube.com/embed/VIDEO_ID`
-- `youtube.com/live/VIDEO_ID`
-
-The handoff strips tracking, recommendation, playlist, and index parameters
-unless the user explicitly chose playlist playback. The initial normalizer also
-removes start-position parameters. Converting a Shorts URL to the canonical watch
-route avoids opening directly in the Shorts player.
-
-On iOS, a direct user-tapped YouTube HTTPS link normally opens the installed
-YouTube application at that video. If YouTube is absent, the same URL opens in
-the browser. A user can override Universal Link behavior and keep YouTube links
-in the browser, so Freed must present this as an exact link rather than a promise
-that it can force a particular application.
-
-The action must be a synchronous result of the user's tap. Freed should not put
-a redirect service, analytics hop, asynchronous task, or URL shortener between
-the tap and `youtube.com`. This improves handoff reliability and avoids leaking
-another navigation record.
-
-### Save to Freed Offline
-
-If the YouTube write grant is missing, the first `Save to Freed Offline` action
-saves the item locally and opens Google authorization. The OAuth return opens
-YouTube Settings. The initial implementation does not retain or automatically
-resume that pending provider write, so the user completes it with `Sync saved
-videos`. When the write grant is already present, the reader can add the
-selected video immediately. In either path, Freed:
-
-1. Validates the device's recorded private playlist ID when one exists, then
-   falls back to an exact private `Freed Offline` title match.
-2. Creates a private playlist named `Freed Offline` if no valid playlist exists.
-3. Records the returned playlist ID, never an access token, in device-local
-   integration state.
-4. Adds the selected video to that playlist.
-5. Offers `Open Freed Offline in YouTube` so the user can manage the playlist and
-   choose YouTube's playlist download action.
-
-The reader action saves the video in Freed before attempting the provider write.
-If authorization, connectivity, capacity, or quota blocks the playlist update,
-the local save remains. In YouTube Settings, `Sync saved videos` collects every
-locally saved YouTube URL, canonicalizes and deduplicates the video IDs, then
-reconciles them into the same private playlist. Inserts are sequential and stop
-on the first provider failure. The initial client has no durable pending queue
-or per-video progress record. Any successful provider inserts remain in the
-playlist, and the user manually retries the full saved set. Retrying is safe
-because every insert begins with a membership check.
-
-The saved-video query runs inside the Automerge worker against the full
-document. It includes hidden and archived saved items and does not inherit the
-main feed's 2,500-item hydration limit.
-
-The playlist must be private when created. The client records the resulting ID
-locally and prefers that ID later, so a user rename does not create a duplicate.
-If the ID is deleted or inaccessible, it searches owned playlists by exact
-private title before creating a replacement. A future synced integration record
-can carry this non-secret identity across devices. A new OAuth grant clears the
-device-local ID because Freed cannot prove that the account stayed the same.
-If the playlist was renamed before reauthorization, the next write may create a
-new `Freed Offline` playlist instead of rediscovering the renamed one.
-
-Adding a video uses best-effort duplicate avoidance, not transactional
-idempotency. Each insert begins with a playlist membership read. The PWA also
-serializes playlist operations with the same-origin Web Locks API when
-available, with an in-tab queue as a fallback. Simultaneous operations from
-different devices, or tabs without Web Locks support, can still race between
-the membership check and YouTube's insert and create a duplicate. Retrying an
-uncertain insert performs the membership check again.
-
-Unsaving an item in Freed does not silently remove it from the YouTube playlist.
-Those are separate user decisions. A later explicit `Remove from Freed Offline`
-action may delete the matching playlist item.
-
-### What YouTube Premium Does
-
-YouTube Premium owns both behaviors that require the user's subscription:
-
-- Background playback while another application is active or the screen is off
-  is handled by the signed-in YouTube mobile application.
-- Offline media is downloaded, encrypted, validated, and played by YouTube.
-
-After the user downloads the full `Freed Offline` playlist in YouTube, videos
-added later may download automatically when YouTube's recency and connectivity
-conditions are met. This is useful behavior, not a completion guarantee. Freed
-cannot query whether Premium is active, trigger the Download control, observe
-progress, confirm that bytes exist locally, or open YouTube in a forced offline
-mode. User-facing confirmation must therefore say `Added to Freed Offline`, not
-`Downloaded`.
-
-## Capture Architecture
-
-### Current Public Channel Path
-
-`@freed/capture-rss` already recognizes YouTube channel feeds and normalizes
-entries as `platform: "youtube"` and `contentType: "video"`. This is the lowest
-traffic and least privileged capture path. It remains useful even after an
-authenticated provider exists.
-
-### Authenticated Subscription Path
-
-The Phase 12 `@freed/capture-youtube` package now expands capture beyond
-manually added channel feeds:
-
-1. Request a read grant only when the user chooses to connect YouTube.
-2. Page through `subscriptions.list` with `mine=true` to obtain the user's
-   channel roster.
-3. Reconcile that roster into Freed sources with stable YouTube channel IDs.
-4. After the complete roster is stored, attempt each channel's uploads playlist
-   and capture up to five recent videos during the explicit foreground sync.
-5. Store every channel as a normal Freed feed so Freed Desktop can continue on
-   the existing RSS cadence after the Automerge document reaches it.
-6. Mark roster-managed feeds inactive when they disappear from a later complete
-   roster. The RSS scheduler excludes them without overwriting the user's
-   `enabled` preference, captured videos, or fetch health.
-7. Deduplicate videos by the existing YouTube Atom identity,
-   `youtube:yt:video:VIDEO_ID`, so later RSS polls preserve read and saved state.
-
-This architecture imports the user's deliberate subscriptions, not YouTube's
-algorithmic Home feed. The initial PWA refresh is manual and foreground-only.
-It pages and stores the full roster first. Recent-video enrichment then makes
-one bounded uploads-list request per available channel. The initial sync omits
-separate duration lookups to reduce provider traffic and quota cost.
-Individual channel failures are skipped, and quota or authorization failures
-stop enrichment without rolling back the roster or videos already collected.
-It does not start a hidden browser loop. This still has material shared-quota
-cost for large rosters and needs production telemetry
-before a broad rollout.
-
-Watch Later and watch history are not dependable capture sources. The current
-Data API explicitly reports that some system playlists, including Watch Later,
-cannot be listed. Freed should own its private playlist instead of basing an
-offline contract on an inaccessible system playlist.
-
-## OAuth, Token, and Data Security
-
-The playlist feature is an authenticated provider write. Its security boundary
-is stricter than public RSS capture.
-
-- Request read access for subscription import separately from write access for
-  `Freed Offline`. Incremental authorization keeps the first connection honest.
-- Use OAuth authorization code flow with PKCE where the platform supports it.
-- Validate `state`, redirect origin, and authorization response before exchange.
-- Use the existing server token exchange pattern when an OAuth client secret is
-  required. Never ship the secret in browser or desktop JavaScript.
-- The initial PWA keeps the access and refresh token bundle in origin-scoped
-  browser storage. It never places those tokens in Automerge, feed items, URLs,
-  logs, diagnostics, or bug reports. A future native surface should use its
-  platform credential store.
-- Each completed authorization grant replaces the previous token bundle.
-  Freed never carries a refresh token or recorded scopes into a later grant
-  because Google may let the user choose a different account. Token refreshes
-  may retain their own refresh token because they are tied to the same grant.
-- A completed grant also clears device-local playlist IDs, links, and sync
-  counters before the new token is stored. This prevents one account's private
-  playlist link from being reused after an account switch. Existing captured
-  channels remain in Automerge until the next explicit roster sync reconciles
-  the new account.
-- Freed does not receive a stable Google account identity in this scope set and
-  cannot select the account active inside the YouTube application. The user
-  must open `Freed Offline` with the same account connected in Freed.
-- The initial playlist ID and sync counters are also device-local. A future
-  schema may sync non-secret integration state after cross-device ownership and
-  stale-playlist recovery are designed.
-- Refresh tokens before expiry and retry one authorization failure after a
-  forced refresh. Repeated authorization failure becomes a reconnect state, not
-  an infinite background loop.
-- Disconnect forgets Freed's local credential. It does not revoke the Google
-  grant or delete the user's private playlist.
-- The initial client does not log API response bodies, bearer tokens, or full
-  IDs. Future quota telemetry should record only method, status class, quota
-  cost, duration, and a redacted ID tail.
-
-### Deployment Credential Contract
-
-The PWA reuses the existing server-side Google token exchange endpoint. A
-deployment must configure and verify these pieces before the connection button
-can reach a real account:
-
-- Enable YouTube Data API v3 in the Google Cloud project.
-- Authorize `youtube.readonly` for subscription capture.
-- Authorize `youtube.force-ssl` only for users who enable private playlist
-  writes. Google does not provide a narrower playlist-only write scope.
-- Set `VITE_YOUTUBE_CLIENT_ID` and `YOUTUBE_CLIENT_SECRET` for a separate web
-  client, or omit them to reuse the existing Google Drive client.
-- `GOOGLE_OAUTH_CLIENTS_JSON` may hold additional client ID to secret mappings.
-  The older `GDRIVE_OAUTH_CLIENTS_JSON` name remains a fallback.
-- Register `https://app.freed.wtf/oauth-callback`. The exact
-  `https://dev-app.freed.wtf` origin may use the production callback relay, and
-  the originating app verifies the exact stored PKCE state after return.
-- Dynamic preview origins are intentionally excluded from the relay. OAuth must
-  remain unavailable there until a server-authenticated, one-time return-origin
-  mechanism replaces client-authored relay state. Hostname suffix matching is
-  not an authorization boundary.
-- Keep all client secrets in the server environment. Only client IDs ship in
-  browser JavaScript.
-
-The first implementation manages OAuth in the PWA. Subscription feeds and
-captured videos travel through the existing Automerge document to Freed Desktop.
-Adding a separate native Desktop OAuth and API transport would require its own
-allowlisted native command, secure token storage, mocks, and real native tests.
-
-The YouTube Data API currently charges 50 quota units to create a playlist, 50
-for each playlist item insert, and 1 for the membership check that reduces
-duplicate inserts. The default project budget for these methods is 10,000 units
-per day. In the theoretical case where the project did nothing else, one
-playlist creation plus the required checks permits at most 195 new additions in
-that day. That is nowhere near a tens-of-thousands-of-users target. Production
-rollout requires an approved quota increase, quota telemetry, per-user
-backpressure, and a useful manual handoff when the shared quota is exhausted.
-
-## Provider Visibility and Privacy
-
-Each mode creates a different observable event:
-
-| User action | Provider-visible behavior | Lowest-profile behavior |
-| ----------- | ------------------------- | ----------------------- |
-| Open reader | No player or IFrame API request before the focus click. A remote captured thumbnail can still contact YouTube's image host when a feed card renders. | Keep the player unloaded, avoid preconnect, and add a first-party thumbnail cache before claiming a fully quiet reader. |
-| Watch here | The browser loads a YouTube embed and playback resources | Load only after an explicit tap. No autoplay, prefetch, or background player. |
-| Play in YouTube | The device opens a canonical YouTube watch URL | Use the direct HTTPS link with no Freed redirect. |
-| Save to Freed Offline | Freed makes authenticated playlist list, create, or insert API calls | Make writes only after the explicit save action and avoid repeated polling. |
-| Sync subscriptions | Freed makes authenticated roster, channel, and upload-playlist reads | Run only after an explicit sync action, omit duration lookups, bound the recent window, then use the existing RSS scheduler where available. |
-
-YouTube can associate authenticated API writes with the OAuth client, account,
-video, playlist, IP address, and request time. The focus embed exposes playback
-traffic without the OAuth write, while a Universal Link transfers the user into
-YouTube's own application. These are not equivalent privacy modes and the user
-interface should not blur them together.
-
-All YouTube network paths belong in the canonical provider-visible path list.
-Publishing changes to those paths requires the owner approval reference required
-by the repository workflow.
-
-## Failure and Recovery Behavior
-
-The integration should fail locally and legibly:
-
-| Failure | User-facing recovery |
-| ------- | -------------------- |
-| Embed disabled or unavailable | Keep `Play in YouTube` visible for the exact video. |
-| YouTube application not installed | Open the canonical mobile watch page. |
-| Universal Link preference points to browser | Explain that the user can use YouTube's `Open` banner to restore app handoff. |
-| OAuth canceled | Leave the item unchanged and offer connection again on the next explicit save. |
-| Token expired or revoked | Refresh once, then show `Reconnect YouTube`. |
-| Playlist deleted or made inaccessible | The next sync lists owned playlists and recreates `Freed Offline` when no exact private match remains. |
-| Duplicate or uncertain insert | Reconcile membership before another write. |
-| Video private, removed, regional, age-restricted, or otherwise unavailable | Keep metadata and explain that YouTube controls availability. |
-| Quota exhausted | Keep the local save, report that the provider sync stopped, and let the user manually retry `Sync saved videos` later. Inserts completed before the failure remain in YouTube. |
-| Playlist capacity reached | Keep the local save and ask the user to remove videos from `Freed Offline` in YouTube before retrying. Do not report this as a permission failure. |
-| Device is offline | Keep the local Freed bookmark. The initial playlist action must be retried when online and never claims that YouTube media is offline. |
-
-## Background Playback Findings
-
-Mobile websites can provide locked-screen audio when they own a direct media
-source that Safari can play through an HTML media element. A robust first-party
-implementation would use a user-initiated `<audio>` or `<video>` element, a
-range-capable MP4 or HLS source, and Media Session metadata for lock-screen
-controls. Safari may suspend page JavaScript while its native media pipeline
-continues to request HLS segments.
-
-That mechanism does not transfer to a third-party YouTube iframe. The media
-element lives in YouTube's cross-origin document. Freed cannot read its stream
-URL, control its media session, cache its bytes, or confer the user's Premium
-entitlement on the embed. YouTube documents Premium background playback for its
-mobile applications. That is not a documented guarantee for a third-party
-embedded player or for Freed's mobile website.
-
-The initial product contract is therefore simple:
-
-- `Watch here in Focus Mode` is focused foreground playback.
-- `Play in YouTube` is the path for Premium locked-screen playback.
-- Creator-provided direct media, such as a podcast enclosure, may use native web
-  background audio without any YouTube relay.
-
-## Future Native Screen Time Companion
-
-An installed native iOS companion could use Apple's `FamilyControls`,
-`DeviceActivity`, `ManagedSettings`, and `ManagedSettingsUI` frameworks. A
-possible guarded handoff would:
-
-1. Ask the user to select YouTube in Apple's Screen Time picker.
-2. Shield YouTube by default during a focus schedule.
-3. Temporarily remove the shield when the user chooses a specific Freed video.
-4. Open the canonical video URL.
-5. Restore the shield after the video duration plus a user-controlled cushion.
-
-This reduces the available doomscrolling window, but it cannot prove that the
-user watched the selected video. Screen Time observes application usage, not
-YouTube's internal route. During the allowance, Home and Shorts remain reachable.
-
-A PWA cannot call these frameworks. The companion must be a signed native app
-with Apple's Family Controls capability and monitoring or shield extensions.
-Whether it is distributed through the App Store or another installation path
-does not remove the entitlement and code-signing requirement.
-
-The native companion is a separate project because it adds a new application,
-extensions, entitlement provisioning, native state synchronization, emergency
-unlock behavior, and real-device testing. It should not block the web-based
-focus player or exact-video handoff.
-
-## Future Direct-Media Playback
-
-Direct media should be preferred whenever the creator provides it. Podcasts,
-owned files, authorized creator downloads, and standard HLS sources can support:
-
-- Locked-screen audio through the browser media pipeline.
-- Media Session title, artwork, play, pause, seek, and position controls.
-- First-party offline storage where browser capacity permits it.
-- Desktop local files without placing large media blobs in Automerge.
-
-Synced state should contain metadata, a content hash, and device-local
-availability, not the media bytes. Each device owns its download, eviction,
-integrity check, and storage accounting. Browser storage can be evicted by the
-operating system, so the PWA must describe offline availability as device-local
-and re-check it before promising playback.
-
-## Future YouTube Resolver and Relay Research
-
-A relay is technically possible, but it is not part of the initial integration.
-It would be independent media acquisition and delivery. It would not carry the
-user's Premium entitlement through Freed.
-
-### Resolver Only
-
-A small service could resolve a video ID into temporary media URLs and return
-them to the client. The client would then fetch media bytes directly from the
-provider host.
-
-Advantages:
-
-- Freed avoids most media bandwidth and storage.
-- Startup infrastructure is smaller than a full relay.
-
-Technical weaknesses:
-
-- Media URLs are short-lived and may be tied to an IP address or client context.
-- Browser cross-origin rules can prevent direct use.
-- YouTube increasingly requires proof-of-origin tokens or other client evidence.
-- Audio and video are often separate streams, so a browser cannot treat the
-  resolved result as one ordinary video source.
-- Format, signature, client profile, and attestation changes can break resolution
-  without warning.
-- Centralized resolver traffic is easy to identify and rate limit.
-
-This is a useful laboratory probe, not a dependable product contract.
-
-### Full Media Relay
-
-A full relay would acquire the source streams, combine or transmux them, and
-serve a first-party HLS manifest to Freed:
-
-1. An authenticated Freed request submits a video ID and requested mode.
-2. A resolver worker obtains viable source formats.
-3. A media worker selects audio-only or compatible audio and video streams.
-4. FFmpeg or an equivalent pipeline transmuxes the source into HLS without
-   transcoding when codecs permit it.
-5. Object storage or an edge cache holds short-lived manifests and segments.
-6. The PWA receives a signed, short-lived Freed HLS URL.
-7. Safari plays that URL through its native media pipeline.
-
-The service would need a job queue, resolver fleet, media workers, signed URL
-issuer, object store, CDN, request authentication, rate limits, cancellation,
-range and seek support, expiration, observability, and a deletion path. An
-audio-only rendition should be the default for locked-screen listening because
-shipping unseen video wastes bandwidth and battery.
-
-### Bandwidth and Storage
-
-Useful planning formulas are:
+Normalization accepts watch, short-link, Shorts, embed, and live URL shapes. It
+strips tracking, playlist, index, and recommendation parameters unless the user
+explicitly chose a playlist. Converting a Shorts URL to the watch route avoids
+entering directly through the Shorts player.
+
+The link is a synchronous result of the user's tap. No Freed redirect, analytics
+hop, asynchronous task, or URL shortener sits between the tap and YouTube. iOS
+normally opens the installed application at the exact video through its
+Universal Link. Browser fallback remains available when the application is
+absent or the user has changed Universal Link behavior.
+
+## Future Offline Media Architecture
+
+### Feasibility
+
+The iPhone PWA can store and play audio or video offline when it receives a
+stable, same-origin or cross-origin-enabled media resource. It cannot extract
+that resource from a YouTube iframe because the iframe is cross-origin, the
+player does not expose downloadable bytes, and the underlying media URLs are
+often temporary, signed, split by track, or bound to a particular client
+context.
+
+The feasible design moves resolution and packaging to Freed Desktop, then moves
+the resulting package to the PWA. The PWA does not resolve YouTube streams.
+
+### Audio-First Package
+
+Audio is the first supported rendition because it best serves focused study,
+locked-screen listening, weak connections, and limited phone storage.
+
+For each user-selected video, Freed Desktop should produce a package containing:
+
+| Asset | Required contents |
+| ----- | ----------------- |
+| Manifest | Opaque package ID, YouTube video ID, title, channel, duration, creation time, source fingerprint, rendition list, byte sizes, MIME types, codec names, and checksums. |
+| Audio | One seekable AAC-LC track in an M4A or MP4 container unless a proven Safari-compatible source can be passed through safely. |
+| Artwork | A bounded local image suitable for the reader and Media Session controls. |
+| Captions | Optional creator captions or transcript metadata when separately available and authorized by the selected source path. |
+| Video | Optional H.264 video with AAC audio in an MP4 container after the audio path is proven. |
+
+The packaging ladder should be conservative:
+
+1. Pass through a source when its container, codec, seeking behavior, and Safari
+   playback are already compatible.
+2. Remux separate compatible audio and video tracks without transcoding.
+3. Transcode only when the selected source cannot meet the device contract.
+4. Fail clearly when digital rights management, interactive verification, or an
+   unsupported media class prevents a valid package.
+
+Audio-only output should be the default. Optional video should use one selected
+quality rather than an offline adaptive ladder. Multiple renditions multiply
+storage, transfer, integrity checks, and eviction complexity.
+
+### Desktop Resolver and Packager
+
+The resolver runs locally in Freed Desktop against one video the user explicitly
+selected. It must not become a hidden channel crawler.
+
+The Desktop pipeline should:
+
+1. Resolve currently viable source formats using the user's local network and
+   the minimum provider context required for that selected video.
+2. Never export raw YouTube cookies, session tokens, device attestation material,
+   or browser storage to another device or service.
+3. Choose an audio source first and an optional video source only when requested.
+4. Download into a temporary local workspace with bounded retries and a total
+   byte limit.
+5. Remux or transcode through a constrained media worker.
+6. Move the MP4 metadata needed for seeking to the front of a progressive file.
+7. Compute a SHA-256 checksum for each final asset and for the package manifest.
+8. Publish the package atomically only after duration, codec, seek, checksum, and
+   size validation pass.
+9. Delete source fragments and failed temporary outputs.
+
+Resolution is the least stable part of the design. Media signatures, temporary
+URLs, client profiles, proof-of-origin tokens, rate limits, and attestation can
+change without notice. The resolver must report the failure stage and version so
+a provider change does not masquerade as storage corruption.
+
+### Transfer Order
+
+Media bytes never belong in Automerge, the normal document relay, application
+logs, bug reports, or rotating document snapshots. Only a small package record
+and, if useful, a device-keyed availability summary may enter synced metadata.
+
+Transfer should follow this order:
+
+1. Direct local network transfer from Freed Desktop.
+2. Encrypted transfer through storage owned by the user.
+3. A Freed-hosted relay only after the first two paths have been measured and
+   found insufficient.
+
+#### Local Network First
+
+The fastest and most private path is a dedicated media endpoint next to the
+existing Desktop LAN relay. It should use the existing device pairing relationship
+but a separate media capability and protocol.
+
+- The PWA requests one opaque package ID, never a filesystem path.
+- The Desktop authorizes the paired device and package before serving bytes.
+- The endpoint supports byte ranges, chunk hashes, resumable downloads,
+  cancellation, and bounded concurrent transfers.
+- A short-lived media capability prevents the long-lived pairing token from
+  appearing in routine media URLs.
+- The PWA writes chunks directly to device storage instead of holding the full
+  file in JavaScript memory.
+- The endpoint requires a transport acceptable to the secure PWA context. Mixed
+  content and local network permission behavior must be proven on real iPhones.
+
+The transport is a real design problem. An HTTPS PWA cannot assume that iOS will
+allow a plain HTTP or WebSocket connection to an arbitrary LAN address. The
+laboratory should compare a locally trusted HTTPS endpoint with a WebRTC data
+channel. WebRTC supplies encrypted peer-to-peer transport from a secure page,
+but Freed would need a signaling exchange, bounded message sizes, flow control,
+resume offsets, and its own chunk protocol. A local HTTPS endpoint gives normal
+range requests but requires a certificate chain that the iPhone accepts. The
+existing document relay should not be stretched into a media pipe until one of
+these transports passes real-device proof.
+
+This path keeps provider acquisition and media transfer on the user's devices.
+It also avoids cloud storage and hosted bandwidth.
+
+#### Encrypted User Cloud Second
+
+When the phone cannot reach Freed Desktop, Desktop may upload the package to the
+user's configured cloud storage. This reuses the user's sync choice, but media
+objects remain separate from the Automerge document.
+
+The cloud package should use:
+
+- One random media key per package.
+- AES-256-GCM authenticated encryption through Web Crypto, with a unique nonce
+  for every manifest-declared chunk.
+- A versioned chunk format so a phone can resume and verify without downloading
+  the entire object again.
+- Random opaque object names that do not expose video IDs or titles.
+- An encrypted manifest containing rendition metadata and plaintext checksums.
+- A separate media root key established through the paired-device trust flow,
+  then used to wrap each random package key. It must not reuse the long-lived LAN
+  pairing token as encryption key material.
+- Wrapped keys may travel with encrypted cloud metadata. Raw package keys and
+  the raw media root key must never appear in Automerge or cloud metadata.
+- Explicit retention, delete, and orphan cleanup records.
+- A cloud quota check before upload and a PWA quota check before download.
+
+The media root key needs an explicit recovery contract. A PWA cannot promise
+hardware-backed secret storage. Clearing Freed site data may remove both cached
+media and its local key material. The phone should re-pair with Desktop rather
+than upload a recoverable plaintext key to Freed or the cloud provider.
+
+Authenticated encryption detects tampering for each chunk. The final SHA-256
+checksum verifies that the decrypted asset exactly matches what Desktop
+packaged. A checksum alone is not an authentication mechanism.
+
+Cloud encryption is future work. Existing document sync does not automatically
+make large media end-to-end encrypted or suitable for partial download. This
+requires a purpose-built object format and key exchange.
+
+#### Hosted Relay Later
+
+A Freed-hosted resolver or relay is the last option, not the default architecture.
+It could resolve streams, package media, and serve signed first-party URLs when
+Desktop is offline. It would also create the largest privacy, cost, and provider
+risk:
+
+- YouTube would see centralized Freed-controlled IP ranges and repeated client
+  behavior instead of traffic originating only from the user's device.
+- Freed would learn which user requested which video and would temporarily hold
+  media bytes.
+- Shared resolver breakage or blocking would affect every user at once.
+- Audio and especially video transfer would create material bandwidth and
+  storage costs.
+
+Any hosted experiment needs a separate owner decision, isolated infrastructure,
+strict log retention, signed per-user capabilities, abuse controls, deletion,
+and a provider-risk approval. It does not meet the goal of making provider
+traffic look like an ordinary request from the user's device as well as the
+Desktop-first path does.
+
+If approved later, the smallest credible hosted system still needs an
+authenticated request service, job queue, resolver workers, constrained media
+workers, ephemeral object storage, signed URL issuance, range and seek support,
+rate limits, cancellation, expiry, deletion, and operational monitoring. A CDN
+would reduce repeat transfer cost but would add another viewing-data processor.
+Stored source fragments should expire quickly. User-authorized offline packages
+need a separate retention record instead of inheriting a cache lifetime.
+
+Hosted transfer planning should use measured rendition bitrates:
 
 ```text
 bytes per hour = bits per second * 3,600 / 8
-relay transfer = playback hours * bytes per hour
+transfer bytes = playback hours * bytes per hour
 stored bytes = retained hours * bytes per hour * rendition count
 ```
 
-At 128 kbps, audio is about 57.6 MB per listening hour. At 3 Mbps, video is
-about 1.35 GB per viewing hour. At 10,000 playback hours, that is about 576 GB
-of audio transfer or 13.5 TB of video transfer before retries, multiple
-renditions, cache misses, origin egress, or replication. The arithmetic develops
-teeth rather quickly.
+This arithmetic is why audio remains the default. Video multiplies egress,
+storage, cache misses, retries, and regional replication before anyone has even
+misplaced a semicolon.
 
-Storage should be ephemeral by default. A user-authorized offline copy would
-need a separate retention record, encryption at rest, integrity hash, per-user
-access check, regional placement decision, deletion deadline, and storage quota.
-Media bytes must never enter Automerge or normal diagnostic archives.
+## PWA Download and Storage
 
-### Unsupported and High-Friction Content
+### Foreground Download Contract
 
-A relay prototype must begin with public, non-live, freely viewable videos. It
-must assume these classes are unsupported until individually proven:
+The initial iPhone contract must be honest: a large download runs while the user
+keeps the Freed PWA open in the foreground. Safari does not provide a dependable
+Background Fetch contract for a Home Screen PWA that can finish large media after
+the user locks the phone or leaves the app. A service worker may be suspended.
 
-- Private or unlisted content that requires account state
-- Age-restricted videos
-- Channel member content and paid media
-- Regional restrictions
-- Live streams, premieres, and in-progress archives
-- Digital rights management protected formats
-- Videos whose owner disables the needed playback form
-- Removed videos and videos requiring interactive verification
+The user may choose `Download audio` or, later, `Download audio and video`.
+Before starting, the PWA should:
 
-Freed should never accept a user's raw YouTube cookies as a shortcut. Cookies,
-session tokens, and device attestation material are account credentials. Sending
-them to a relay would turn a playback experiment into an account-security system.
+1. Read estimated usage and quota through `navigator.storage.estimate()`.
+2. Request persistent storage through `navigator.storage.persist()` when
+   available and explain that persistence is still not an absolute guarantee.
+3. Show the expected download size and available space.
+4. Create a durable partial-download record.
+5. Fetch and verify bounded chunks while the page remains foregrounded.
+6. Resume from the last verified chunk after interruption.
+7. Mark the rendition offline only after every chunk and final checksum pass.
 
-### Relay Fingerprinting and Privacy
+The app shell, artwork, and small metadata can stay in the Cache API and
+IndexedDB. Large media should use the Origin Private File System, with IndexedDB
+holding the searchable package index and download state. OPFS is available in
+modern iOS Safari, is scoped to the Freed origin, and is still governed by
+browser quota and eviction policy.
 
-A resolver or relay substantially increases provider detection risk. YouTube
-would see repeated player and segment requests from Freed-controlled IP ranges,
-consistent headers and client profiles, resolution timing, selected video IDs,
-and retry patterns. A block against that fleet could affect every user at once.
+Cloud objects remain encrypted in transit and at rest. After download, the PWA
+should authenticate and decrypt into the final OPFS media file. Locked-screen
+playback should not depend on page JavaScript or a service worker continuously
+decrypting chunks after iOS suspends them. The resulting device-local file is
+protected by browser origin isolation, not by hardware-backed file encryption.
+That tradeoff must be stated plainly in user-facing storage copy.
 
-The relay would also learn which user requested which video, when playback
-started, how far the user sought, and roughly how much they consumed. A privacy
-respecting design would need:
+A temporary filename or incomplete manifest must never appear as playable
+offline media. Startup reconciliation should remove abandoned temporary files,
+repair stale indexes, and downgrade any record whose file or checksum is gone.
 
-- Short-lived opaque session IDs rather than video IDs in public URLs
-- Signed manifests scoped to one user, rendition, and expiration
-- Minimal structured logs with video IDs redacted after active debugging
-- No third-party analytics on media endpoints
-- Separate billing and operational metrics from viewing history
-- Strict retention limits and a user deletion path
-- Protection against URL sharing, hotlinking, replay, and cache key confusion
+### Eviction and Storage Pressure
 
-The lowest-profile alternative remains the direct, user-initiated YouTube link.
-Any relay experiment requires a separate owner approval for the new
-provider-visible behavior before implementation.
+PWA media availability is device-local. The operating system or browser can
+evict origin data under pressure, and the user can clear site data at any time.
 
-## Staged Future Work
+Freed should maintain a user-visible storage budget and apply these rules:
+
+- Never consume the full reported origin quota.
+- Protect the currently playing item and downloads explicitly pinned by the
+  user.
+- Evict optional video before the matching audio rendition.
+- Evict least-recently-played unpinned packages next.
+- Keep metadata after media eviction so the item remains saved and can be
+  downloaded again.
+- Reconcile IndexedDB against OPFS on startup, resume, and before claiming that
+  an item is offline.
+- Surface the reason for every automatic eviction and the bytes recovered.
+
+`Available offline` means that the selected rendition exists on this device and
+passed integrity verification. It does not mean that another device has it or
+that the browser will preserve it forever.
+
+## Offline and Locked-Screen Playback
+
+Once the PWA owns a compatible local media file, it can play that file through a
+first-party `<audio>` or `<video>` element. Media Session metadata can provide
+title, artwork, play, pause, seek, and position controls on the lock screen.
+
+This is fundamentally different from a YouTube iframe. Freed owns the local
+media element and source, so Safari's native media pipeline can continue playback
+while page JavaScript is suspended. It still requires proof on supported iPhone
+and iOS versions.
+
+Audio acceptance must include:
+
+- Playback starts from a user gesture in the installed Home Screen PWA.
+- The screen can lock without stopping audio.
+- Lock-screen and Control Center controls show the correct title and artwork.
+- Play, pause, seek, previous position, wired audio, Bluetooth audio, and AirPlay
+  behave correctly.
+- Incoming calls, Siri, route changes, alarms, and audio from another application
+  pause and resume predictably.
+- Playback works in airplane mode after a cold PWA launch.
+- Long audio seeks without loading the entire file into JavaScript memory.
+- A suspended service worker does not break reads needed by the media pipeline.
+
+If an OPFS-backed virtual URL cannot serve reliable byte ranges while the PWA is
+backgrounded, the implementation must test a Blob URL or another first-party
+delivery shape. The product must not promise locked-screen playback until a real
+iPhone can play a long offline file through repeated lock, unlock, interruption,
+and seek cycles.
+
+## Stream and Codec Challenges
+
+| Challenge | Required response |
+| --------- | ----------------- |
+| Temporary source URLs | Resolve and consume them on Desktop within a bounded job. Never sync temporary provider URLs as durable media references. |
+| Separate audio and video tracks | Remux compatible tracks on Desktop. Do not ask the PWA to synchronize independent provider streams. |
+| Unsupported Safari codec | Transcode to the approved audio or video profile, or fail before publishing the package. |
+| Seeking and byte ranges | Put MP4 metadata at the front, serve correct range responses, and test long forward and backward seeks. |
+| Large video files | Require an explicit video choice, show size, cap quality, and favor audio retention during eviction. |
+| Source changes during resume | Pin a source fingerprint per job. Restart packaging when the source no longer matches rather than joining incompatible fragments. |
+| Live or upcoming video | Exclude from the first resolver milestone. A finished archive may be retried later as a normal video. |
+| Private, members-only, age-restricted, regional, paid, or protected media | Treat as unsupported until each class has an explicit secure design and real test. Never export account credentials to make it work. |
+| Digital rights management | Do not attempt to bypass it. Report that the item cannot be packaged. |
+| Captions and chapters | Store them as separate versioned assets. Missing text tracks must not invalidate otherwise valid audio. |
+
+## Privacy and Security
+
+The offline path creates a new copy of media and therefore needs stronger
+boundaries than metadata capture:
+
+- YouTube credentials never leave the Desktop WebView data store.
+- Resolution happens only after an explicit user selection.
+- No background channel-wide media downloading is allowed.
+- The provider video ID may appear in the local manifest, but cloud object names
+  and public URLs use opaque identifiers.
+- Cloud media and its manifest are encrypted before upload.
+- The cloud provider can still observe opaque object sizes, upload and download
+  times, account identity, and IP addresses even though it cannot read titles or
+  media bytes.
+- Device-local PWA storage is protected by browser origin isolation. It is not a
+  hardware-backed media vault and should not be described as one.
+- Media bytes, keys, provider cookies, and source URLs stay out of Automerge,
+  telemetry payloads, logs, snapshots, and bug reports.
+- Deleting an offline item removes local renditions, partial files, keys, and
+  queued cloud objects. Cloud deletion must be retried until confirmed.
+- A lost or unpaired device must not be able to request new media capabilities.
+
+The Desktop resolver may still be identifiable because media resolution can
+differ from an ordinary player sequence. The technical design should minimize
+that difference, not promise invisibility. A hosted relay makes differentiation
+easier and is therefore intentionally last.
+
+## Telemetry and Diagnostics
+
+Diagnostics must explain failures without becoming viewing history. Runtime
+health should record bounded structured events such as:
+
+| Event | Safe fields |
+| ----- | ----------- |
+| `youtube_roster_outcome` | Trigger, result, resolved count, unresolved count, completeness, scroll passes, stage, duration. |
+| `youtube_playlist_outcome` | Result, stage, click count, navigation count, duration. |
+| `youtube_media_resolution_outcome` | Result, resolver version, source class, selected rendition, transform class, codec family, duration bucket, byte bucket, stage, elapsed time. |
+| `youtube_media_transfer_outcome` | LAN or cloud path, result, verified chunks, retry count, byte bucket, throughput bucket, interruption reason, elapsed time. |
+| `youtube_offline_storage_outcome` | Result, quota bucket, bytes written or recovered, eviction reason, checksum result, elapsed time. |
+| `youtube_offline_playback_outcome` | Audio or video, local source shape, start result, seek result, interruption class, lock test result, duration bucket. |
+
+Do not record full video IDs, titles, channel names, source URLs, cookies, media
+keys, exact viewing positions, or raw provider responses. Local debug mode may
+show an ID tail when the repository convention requires one, but exported
+reports must redact it.
+
+Expected health directions are:
+
+- Checksum failures remain zero.
+- Interrupted downloads resume without restarting verified chunks.
+- Resolver failures have a classified stage instead of a generic timeout.
+- Storage evictions never delete pinned or currently playing media.
+- Background playback passes every run on the explicitly supported iPhone
+  matrix before the capability is labeled reliable.
+
+## Failure and Recovery
+
+| Failure | Recovery behavior |
+| ------- | ----------------- |
+| YouTube website session expired | Keep captured content and ask the user to reopen the login window. Do not erase the roster. |
+| Capture ends before roster completion | Add or refresh observed channels, preserve all missing channels as active, and report the partial stop reason. |
+| Website selector changed | Stop the bounded action, preserve state, and record extraction counts and stage. Never continue clicking by coordinates. |
+| Localized label or interface experiment is ambiguous | Stop without clicking. Record the structural stage and let a maintained extractor add an explicit variant. |
+| Playlist dialog is ambiguous | Stop without claiming success. Keep the local Freed save and offer a retry. |
+| Embed disabled or unavailable | Keep `Play in YouTube` visible for the exact video. |
+| Resolver cannot identify a viable source | Keep the saved item, report the resolver stage, and leave YouTube playback paths intact. |
+| Source URL expires during packaging | Re-resolve once within the same explicit job. Restart if the source fingerprint changed. |
+| Remux or transcode fails | Delete temporary output, keep source fragments only for the bounded retry window, and report the media worker stage. |
+| LAN endpoint is unreachable | Preserve the prepared Desktop package and offer encrypted user-cloud transfer when configured. |
+| Cloud quota is insufficient | Keep the Desktop package and explain the required bytes. Do not partially publish the cloud manifest. |
+| PWA quota is insufficient | Offer audio-only, a smaller video rendition, or eviction choices before downloading. |
+| PWA leaves the foreground | Pause at the last verified chunk and resume on the next foreground visit. |
+| Chunk authentication or checksum fails | Delete the failed chunk, retry from a trusted source, and never mark the rendition ready. |
+| Browser evicts local media | Keep the saved item, downgrade device availability, and offer download again. |
+| Offline file exists but cannot seek | Mark the rendition unhealthy, preserve diagnostics, and offer repackage or delete. |
+| Device is offline before download completes | Keep verified partial chunks and resume when the selected transport returns. |
+| Item becomes private, removed, protected, or regionally unavailable | Keep metadata and explain that no new package can be produced. Existing local state follows the user's deletion and retention choices. |
+
+## Staged Milestones
 
 | Stage | Capability | Exit condition |
 | ----- | ---------- | -------------- |
-| 1 | Initial PWA provider, focus player, exact-video handoff, subscription roster, and private `Freed Offline` playlist | Implemented in this branch with automated coverage. Iframe loads and authenticated API calls require explicit actions. Generic feed cards can still request remote captured thumbnails. |
-| 2 | Production hardening | Real credentials, quota increase, quota telemetry, first-party thumbnail caching, cross-device playlist identity, native Desktop embed proof, and real iPhone acceptance are complete. |
-| 3 | Focus session controls | Optional duration timer, deliberate completion notes, and user-selected next-item behavior have mobile usability coverage without autoplay. |
-| 4 | Native Screen Time companion | Real-device shield, timed handoff, emergency unlock, and entitlement provisioning are proven. |
-| 5 | Direct creator media | HLS or direct audio supports lock-screen controls and honest device-local offline state. |
-| 6 | Audio-only relay laboratory | One public video survives real locked-iPhone testing with measured bandwidth, token lifetime, failure classification, and separate provider-risk approval. |
-| 7 | Relay product decision | Cost, reliability, privacy, account security, detection risk, and content coverage justify proceeding. Otherwise the laboratory is retired. |
+| 1 | Authenticated website capture and playlist actions | No YouTube developer project or API credentials remain. Roster, recent videos, and playlist actions work through one persistent Desktop session with focused automated coverage. |
+| 2 | Desktop audio resolver laboratory | One explicit public video produces a validated, seekable AAC package. Resolver version, source class, transform, checksums, and classified failures are observable locally. |
+| 3 | LAN PWA audio download | A paired iPhone downloads, resumes, verifies, stores, deletes, and re-downloads one audio package from Desktop without media bytes entering Automerge. |
+| 4 | Real iPhone offline and lock-screen proof | A long audio file survives airplane mode, cold launch, lock, seek, interruption, Bluetooth, and repeated resume tests on the supported iOS matrix. |
+| 5 | Encrypted user-cloud media | Desktop uploads chunk-encrypted opaque objects, a paired PWA decrypts and verifies them, and deletion removes package objects and key material. |
+| 6 | Audio-first playlist queue | The user can prepare several saved videos, download them in a foreground queue, see exact storage cost, and recover from interruption or eviction. |
+| 7 | Optional video | One bounded H.264 and AAC rendition passes storage, range, seek, battery, eviction, and offline playback acceptance. Audio remains independently retainable. |
+| 8 | Hosted relay decision | Measured LAN and user-cloud limitations justify or reject centralized infrastructure. Privacy, traffic differentiation, cost, abuse, retention, and provider risk receive a separate owner decision. |
 
 ## Validation Matrix
 
-The feature should be tested at three levels.
+### Unit and Package Tests
 
-### Automated
+- Extract stable channel and video identities from representative website data.
+- Reject malformed IDs, deceptive hosts, invalid protocols, and ambiguous page
+  states.
+- Reconcile unfollows only after a complete roster.
+- Preserve saved, read, hidden, archived, and tagged state during recapture.
+- Serialize playlist jobs and classify added, existing, ambiguous, and failed
+  outcomes.
+- Select the approved audio and video profiles from representative format sets.
+- Verify manifest canonicalization, chunk authentication, SHA-256 checksums,
+  atomic publish, partial resume, and delete behavior.
+- Prove media bytes and keys cannot enter Automerge or exported diagnostics.
 
-- Extract video IDs from watch, short, Shorts, embed, and live URLs.
-- Reject deceptive hosts, invalid protocols, and malformed video IDs.
-- Prove the reader does not create a YouTube iframe before the user's tap.
-- Prove Focus Mode does not enable autoplay or playlist continuation.
-- Preserve the exact-video fallback when embed playback fails.
-- Create a private playlist only when no exact private `Freed Offline` match exists.
-- Avoid duplicate playlist inserts after an uncertain response.
-- Refresh an expired token once, then enter a reconnect state.
-- Keep quota, capacity, authorization, offline, and deleted-playlist failures distinct.
-- Confirm no OAuth secret or bearer token enters Automerge or logs.
+### Desktop Integration Tests
 
-### Browser and Shared UI
+- Login, session check, post-login capture, manual capture, disconnect, and
+  session-expiry recovery use the established provider pattern.
+- Bounded extraction reports candidate count, scroll passes, unresolved count,
+  completeness, and stop reason.
+- Playlist automation stops on changed or ambiguous controls without coordinate
+  clicking or infinite retries.
+- Resolver timeouts terminate child media processes and remove temporary files.
+- Remuxed and transcoded outputs pass codec, duration, seek, and checksum probes.
+- The LAN endpoint rejects missing, expired, wrong-device, and wrong-package
+  capabilities and honors valid range requests.
 
-- Verify the actions remain reachable at supported reader widths.
-- Verify focus controls use the established button hierarchy and theme tokens.
-- Verify the player stays within the viewport in portrait and landscape layouts.
-- Verify keyboard focus, labels, reduced motion, and screen-reader names.
-- Verify leaving the item removes or stops the active embed.
+### PWA Tests
 
-### Real iPhone
+- Storage preflight handles unsupported APIs, denied persistence, low quota, and
+  `QuotaExceededError`.
+- Foreground download resumes only from verified chunk boundaries.
+- Startup reconciliation repairs stale indexes and removes abandoned partials.
+- Service worker or Blob media URLs return correct MIME type, content length,
+  range status, and seek behavior.
+- Eviction protects pinned and active media, removes video before audio, and
+  retains metadata.
+- Offline UI never confuses saved metadata, YouTube playlist membership, Desktop
+  package readiness, cloud availability, and this-device availability.
 
-- YouTube installed, Universal Links enabled, exact video opens.
-- YouTube absent, canonical browser fallback opens.
-- User preference keeps links in Safari, recovery copy is accurate.
-- Premium background playback continues after the YouTube app handoff and lock.
-- Focus Mode makes no locked-screen playback promise.
-- The private playlist opens in YouTube and can be downloaded with Premium.
-- A newly added playlist item is described as added to the playlist, never as
-  downloaded to the device.
-- Offline launch distinguishes Freed metadata availability from YouTube media
-  availability.
+### Real iPhone Acceptance
+
+- Home Screen installation and first download work on the oldest supported iOS
+  version and the current release.
+- Foreground download pauses cleanly on lock or app switch and resumes without
+  redownloading verified chunks.
+- Audio plays after a cold airplane-mode launch.
+- Lock-screen metadata and controls remain correct through seek, pause, resume,
+  interruption, wired output, Bluetooth, and AirPlay.
+- Browser storage eviction is reproduced and the PWA repairs availability state.
+- Optional video, when introduced, survives portrait, landscape, seek, lock,
+  unlock, and low-storage tests without degrading the audio-only path.
+
+### Soak and Provider-Risk Checks
+
+- No background resolver or channel-wide media downloader runs without an
+  explicit user selection.
+- Current capture contacts only the ordinary authenticated pages required for
+  the bounded action.
+- Resolver request count, retry count, duration, and child process lifetime stay
+  within declared budgets.
+- Repeated failure does not create a retry storm against YouTube, LAN peers, or
+  cloud storage.
+- Hosted relay work cannot begin under the current approval for local research.
 
 ## Reference Notes
 
@@ -583,13 +663,10 @@ The feature should be tested at three levels.
 - [YouTube privacy-enhanced embed mode](https://support.google.com/youtube/answer/171780?hl=en)
 - [YouTube Premium background playback](https://support.google.com/youtube/answer/6308116?hl=en)
 - [YouTube offline behavior](https://support.google.com/youtube/answer/7381437?hl=en)
-- [Create a YouTube playlist](https://developers.google.com/youtube/v3/docs/playlists/insert)
-- [List YouTube playlists and current system-playlist limits](https://developers.google.com/youtube/v3/docs/playlists/list)
-- [Add a YouTube playlist item](https://developers.google.com/youtube/v3/docs/playlistItems/insert)
-- [List YouTube subscriptions](https://developers.google.com/youtube/v3/docs/subscriptions/list)
-- [YouTube Data API quota costs](https://developers.google.com/youtube/v3/determine_quota_cost)
-- [Apple Family Controls](https://developer.apple.com/documentation/familycontrols)
-- [Apple Managed Settings](https://developer.apple.com/documentation/managedsettings)
+- [WebKit storage policy](https://webkit.org/blog/14403/updates-to-storage-policy/)
+- [WebKit Origin Private File System](https://webkit.org/blog/12257/the-file-system-access-api-with-origin-private-file-system/)
+- [Background Fetch support boundary](https://developer.mozilla.org/en-US/docs/Web/API/Background_Fetch_API)
+- [Encrypted WebRTC data channels](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Using_data_channels)
 - [Apple Media Session overview](https://developer.apple.com/videos/play/wwdc2021/10189/)
 - [Apple HTTP Live Streaming](https://developer.apple.com/streaming/)
 - [yt-dlp proof-of-origin token guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide)

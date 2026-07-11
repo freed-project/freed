@@ -8,7 +8,7 @@ import {
 } from "@freed/ui/lib/provider-status";
 
 type ProviderSyncCountsShape = Partial<Record<
-  "rss" | "x" | "facebook" | "instagram" | "linkedin",
+  "rss" | "x" | "facebook" | "instagram" | "linkedin" | "youtube",
   number
 >>;
 
@@ -25,6 +25,7 @@ export interface SourceStatusInput {
   fbAuth?: ProviderAuthState;
   igAuth?: ProviderAuthState;
   liAuth?: ProviderAuthState;
+  ytAuth?: ProviderAuthState;
 }
 
 function formatFeedHealthDetail(
@@ -78,12 +79,15 @@ export function getDesktopSourceStatus(
           ? desktopState.igAuth
           : sourceId === "linkedin"
             ? desktopState.liAuth
-            : null;
+            : sourceId === "youtube"
+              ? desktopState.ytAuth
+              : null;
   const snapshot =
     sourceId === "x" ||
     sourceId === "facebook" ||
     sourceId === "instagram" ||
-    sourceId === "linkedin"
+    sourceId === "linkedin" ||
+    sourceId === "youtube"
       ? health?.providers[sourceId]
       : undefined;
   const authError =
@@ -116,7 +120,8 @@ export function getDesktopSourceStatus(
       sourceId === "x" ||
       sourceId === "facebook" ||
       sourceId === "instagram" ||
-      sourceId === "linkedin"
+      sourceId === "linkedin" ||
+      sourceId === "youtube"
         ? (desktopState.providerSyncCounts[sourceId] ?? 0) > 0
         : false,
   };

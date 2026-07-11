@@ -35,6 +35,7 @@ import {
   addRssFeed,
   removeRssFeed,
   removeAllFeeds,
+  reconcileYouTubeCapture,
   updateRssFeed,
   updateFeedItem,
   summarizeDocContentSignals,
@@ -60,6 +61,7 @@ import {
 import {
   countAuthorsWithRecentLocationUpdates,
   countFriendsWithRecentLocationUpdates,
+  collectSavedYouTubeVideoUrls,
   mergeDefaultPreferences,
   rankFeedItems,
   sortByPriority,
@@ -1112,6 +1114,19 @@ async function handleRequest(
         });
         break;
 
+      case "GET_SAVED_YOUTUBE_URLS": {
+        const doc = ensureCurrentDocLoaded(req.type);
+        const plain = A.view(doc, A.getHeads(doc)) as FreedDoc;
+        send({
+          reqId: req.reqId,
+          type: "SAVED_YOUTUBE_URLS",
+          urls: collectSavedYouTubeVideoUrls(
+            Object.values(plain.feedItems as Record<string, FeedItem>),
+          ),
+        });
+        break;
+      }
+
       case "MERGE_DOC": {
         if (!currentDoc) throw new Error("Document not initialized");
         const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
@@ -1255,6 +1270,14 @@ async function handleRequest(
 
       case "ADD_FEED_ITEMS":
         await applyAddFeedItemsPatchChange(req.items, trace);
+        ack(req.reqId);
+        break;
+
+      case "RECONCILE_YOUTUBE_CAPTURE":
+        await applyRequestChange((doc) => {
+          for (const item of req.items) compactFeedItemTextForSync(item);
+          reconcileYouTubeCapture(doc, req.accounts, req.items, req.options);
+        }, `Reconcile ${req.accounts.length.toLocaleString()} YouTube channels and ${req.items.length.toLocaleString()} videos`, true);
         ack(req.reqId);
         break;
 

@@ -13,7 +13,7 @@ import {
   getProviderRiskAcceptance,
 } from "../lib/legal-consent";
 
-const PROVIDERS: ProviderRiskId[] = ["x", "facebook", "instagram", "linkedin"];
+const PROVIDERS: ProviderRiskId[] = ["x", "facebook", "instagram", "linkedin", "youtube"];
 
 export function DesktopLegalSettingsSection() {
   const [bundleAcceptance, setBundleAcceptance] =

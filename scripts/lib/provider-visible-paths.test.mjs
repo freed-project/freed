@@ -22,13 +22,22 @@ test("desktop capture, auth, and extractor files are provider-visible", () => {
   assert.equal(isProviderVisiblePath("packages/desktop/src/lib/social-auth-cookie-state.ts"), true);
   assert.equal(isProviderVisiblePath("packages/desktop/src-tauri/src/fb-extract.js"), true);
   assert.equal(isProviderVisiblePath("packages/desktop/src-tauri/src/ig-stories-extract.js"), true);
+  assert.equal(isProviderVisiblePath("packages/desktop/src/lib/youtube-capture.ts"), true);
+  assert.equal(isProviderVisiblePath("packages/desktop/src/lib/youtube-playlist.ts"), true);
+  assert.equal(isProviderVisiblePath("packages/desktop/src/lib/dev-sync-triggers.ts"), true);
+  assert.equal(isProviderVisiblePath("packages/desktop/src-tauri/src/youtube-extract.js"), true);
+  assert.equal(isProviderVisiblePath("packages/desktop/src-tauri/src/youtube-playlist-action.js"), true);
+  assert.equal(isProviderVisiblePath("packages/desktop/src-tauri/src/youtube.rs"), true);
+  assert.equal(isProviderVisiblePath("scripts/dev-sync-trigger.mjs"), true);
 });
 
 test("risk-only provider surfaces are provider-visible even without a focused test lane", () => {
   assert.equal(isProviderVisiblePath("packages/desktop/src-tauri/src/webkit-mask.js"), true);
+  assert.equal(isProviderVisiblePath("packages/desktop/src-tauri/capabilities/youtube-session.json"), true);
+  assert.equal(isProviderVisiblePath("packages/desktop/src/components/YouTubeSettingsSection.tsx"), true);
   assert.equal(isProviderVisiblePath("packages/desktop/src/lib/user-agent.ts"), true);
   assert.equal(isProviderVisiblePath("packages/desktop/src/lib/rss-refresh-plan.ts"), true);
-  assert.equal(isProviderVisiblePath("packages/pwa/src/lib/youtube-integration.ts"), true);
+  assert.equal(isProviderVisiblePath("packages/pwa/src/lib/youtube-handoff.ts"), true);
   assert.equal(isProviderVisiblePath("packages/pwa/src/lib/reader-cache.ts"), true);
   assert.equal(isProviderVisiblePath("packages/shared/src/schema.ts"), true);
   assert.equal(isProviderVisiblePath("packages/shared/src/youtube.ts"), true);
@@ -41,7 +50,7 @@ test("provider capture packages are provider-visible, including linkedin and you
   assert.equal(isProviderVisiblePath("packages/capture-x/src/endpoints.ts"), true);
   assert.equal(isProviderVisiblePath("packages/capture-linkedin/src/browser.ts"), true);
   assert.equal(isProviderVisiblePath("packages/capture-linkedin/src/normalize.ts"), true);
-  assert.equal(isProviderVisiblePath("packages/capture-youtube/src/client.ts"), true);
+  assert.equal(isProviderVisiblePath("packages/capture-youtube/src/browser.ts"), true);
 });
 
 test("provider-contact files in non-social capture packages are provider-visible", () => {

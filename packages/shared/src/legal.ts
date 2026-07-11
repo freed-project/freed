@@ -1,6 +1,6 @@
 export type LegalDocId = "terms" | "eula" | "privacy";
 
-export type ProviderRiskId = "x" | "facebook" | "instagram" | "linkedin";
+export type ProviderRiskId = "x" | "facebook" | "instagram" | "linkedin" | "youtube";
 
 export type LegalSurface =
   | "website-download"
@@ -9,7 +9,8 @@ export type LegalSurface =
   | "desktop-provider-x"
   | "desktop-provider-facebook"
   | "desktop-provider-instagram"
-  | "desktop-provider-linkedin";
+  | "desktop-provider-linkedin"
+  | "desktop-provider-youtube";
 
 export interface LegalDocMeta {
   id: LegalDocId;
@@ -52,6 +53,7 @@ export const PROVIDER_RISK_VERSIONS: Record<ProviderRiskId, string> = {
   facebook: "2026-03-31-facebook",
   instagram: "2026-03-31-instagram",
   linkedin: "2026-03-31-linkedin",
+  youtube: "2026-07-10-youtube",
 };
 
 export function isLegalAcceptanceRecord(
@@ -101,5 +103,7 @@ export function providerSurface(provider: ProviderRiskId): LegalSurface {
       return "desktop-provider-instagram";
     case "linkedin":
       return "desktop-provider-linkedin";
+    case "youtube":
+      return "desktop-provider-youtube";
   }
 }

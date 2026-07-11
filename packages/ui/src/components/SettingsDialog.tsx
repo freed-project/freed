@@ -114,7 +114,10 @@ const ANIMATION_OPTIONS: ReadonlyArray<{ value: AnimationIntensity; label: strin
   { value: "detailed", label: "Detailed" },
 ];
 
-type ProviderSectionId = Extract<SectionId, "x" | "facebook" | "instagram" | "linkedin">;
+type ProviderSectionId = Extract<
+  SectionId,
+  "x" | "facebook" | "instagram" | "linkedin" | "youtube"
+>;
 type ProviderAuthState = {
   isAuthenticated?: boolean;
   lastCaptureError?: string;
@@ -124,6 +127,7 @@ type ProviderAuthSlices = {
   fbAuth?: ProviderAuthState;
   igAuth?: ProviderAuthState;
   liAuth?: ProviderAuthState;
+  ytAuth?: ProviderAuthState;
 };
 const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
 const INSTALLED_BUILD_PRESENTATION = describeInstalledBuild(readBuildMetadata());
@@ -189,7 +193,8 @@ function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId
     sectionId === "x" ||
     sectionId === "facebook" ||
     sectionId === "instagram" ||
-    sectionId === "linkedin"
+    sectionId === "linkedin" ||
+    sectionId === "youtube"
   );
 }
 
@@ -204,6 +209,7 @@ function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
   const fbAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).fbAuth);
   const igAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).igAuth);
   const liAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).liAuth);
+  const ytAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).ytAuth);
 
   const authState =
     sectionId === "x"
@@ -212,7 +218,9 @@ function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
         ? fbAuth
         : sectionId === "instagram"
           ? igAuth
-          : liAuth;
+          : sectionId === "linkedin"
+            ? liAuth
+            : ytAuth;
 
   const snapshot = health?.providers[sectionId];
   const isConnected = authState?.isAuthenticated === true;

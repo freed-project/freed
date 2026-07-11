@@ -19,6 +19,7 @@ export function providerHealthLabel(provider: HealthProviderId): string {
     facebook: "Facebook",
     instagram: "Instagram",
     linkedin: "LinkedIn",
+    youtube: "YouTube",
     gdrive: "Google Drive",
     dropbox: "Dropbox",
   }[provider];

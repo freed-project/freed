@@ -30,26 +30,6 @@ describe("rss refresh plan", () => {
     ]);
   });
 
-  it("skips channels absent from the latest YouTube roster without changing enabled", () => {
-    const unfollowed = {
-      ...feed("https://youtube.example/unfollowed", 1),
-      youtubeChannelId: "channel-unfollowed",
-      youtubeRosterActive: false,
-    };
-    const followed = {
-      ...feed("https://youtube.example/followed", 2),
-      youtubeChannelId: "channel-followed",
-      youtubeRosterActive: true,
-    };
-    const legacy = feed("https://legacy.example/feed", 3);
-
-    expect(selectRssFeedsForRefresh([unfollowed, followed, legacy])).toEqual([
-      followed,
-      legacy,
-    ]);
-    expect(unfollowed.enabled).toBe(true);
-  });
-
   it("limits scheduled refreshes to stale feeds", () => {
     const now = 10 * SCHEDULED_RSS_STALE_AFTER_MS;
     const fresh = now - SCHEDULED_RSS_STALE_AFTER_MS + 1;

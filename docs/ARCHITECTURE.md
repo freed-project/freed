@@ -17,11 +17,7 @@ npm workspaces monorepo (`packages/*`, `skills/*`, `website`), Node pinned by `.
 | `packages/shared` | Pure functions + types, including the Automerge schema (`src/schema.ts`, backward-compatible changes only). Zero runtime deps. No React. |
 | `packages/ui` | Platform-agnostic React UI (feed, reader, map via MapLibre, search via MiniSearch, zustand stores). Ships raw `.tsx`; no build step. No platform stores, no Tauri APIs. |
 | `packages/sync` | Storage-agnostic sync: IndexedDB and filesystem storage adapters, cloud providers (`cloud/gdrive.ts`, `cloud/dropbox.ts`, `cloud/merge.ts`), LAN relay client (`network/local-relay.ts`). Works in browser and Node. |
-| `packages/capture-x` | X GraphQL response types, endpoint definitions (`https://x.com/i/api/graphql`), and normalizers. |
-| `packages/capture-facebook` / `capture-instagram` / `capture-linkedin` | Per-provider extraction and normalization helpers. Capture packages never import each other. |
-| `packages/capture-rss` | RSS/Atom parsing (rss-parser, fast-xml-parser). |
-| `packages/capture-youtube` | YouTube Data API client and normalization helpers. |
-| `packages/capture-save` | Save-for-later article capture (Readability, zip import/export). |
+| `packages/capture-*` | Isolated provider extraction, parsing, and normalization helpers. Capture packages never import each other. |
 | `packages/desktop` | Tauri shell: React renderer plus `src-tauri/src/lib.rs` (~13k lines of Rust). Imports the capture packages used by its native and scheduled providers, plus `@freed/ui`, `@freed/shared`, and `@freed/sync`. |
 | `packages/pwa` | Mobile reader app shell (Vite + React + vite-plugin-pwa/Workbox). Never imports Tauri APIs. |
 | `website` | Marketing site (Next.js App Router) at `freed.wtf`. Lives on the `www` branch lane. |
@@ -40,9 +36,8 @@ Tauri 2 (Rust backend, WKWebView renderer on macOS). Two runtime halves:
 Capture uses provider-specific transports. Anything that would change provider-visible behavior, including loads, navigation, request frequency, cookies, headers, extractor scripts, embeds, or provider API calls, requires the explicit approval lane in AGENTS.md and STABILITY-PROGRAM.md.
 
 - **X:** hidden authenticated WebView calls X's own GraphQL API (`x.com/i/api/graphql`, endpoint definitions in `capture-x/src/endpoints.ts`) and normalizes timeline responses. No DOM scraping.
-- **Facebook / Instagram / LinkedIn:** hidden scraper windows (labels `fb-scraper`, `ig-scraper`, `li-scraper`, each with an isolated WebKit data store) load the provider feed and run DOM extract scripts (`fb-extract-dom`, `instagram-extract-script`, `li-extract-dom`, plus stories and FB groups variants). Results are normalized by the matching `capture-*` package. Facebook extractors have a measured ~2-day half-life against DOM churn; the program forbids hardening passes and prescribes diagnostics (canary classification) instead.
+- **Authenticated websites:** isolated WebView data stores keep each provider session on the user's device. Provider pages are loaded and normalized by the matching `capture-*` package. DOM extractors can change frequently, so the stability program favors diagnostics over speculative hardening.
 - **RSS:** `rss-poller.ts` on the renderer scheduler; parsing in `capture-rss`.
-- **YouTube:** PWA OAuth and the Data API import subscriptions as RSS-backed channel sources. Focus, offline, quota, and provider constraints live in [YouTube Focus and Offline Integration](YOUTUBE-INTEGRATION.md).
 - **Save-for-later:** URL/clipboard capture through `capture-save` (Readability extraction); also used by the PWA.
 - Social scrapes are currently nested inside the `rss-poll` job, which serializes them behind a Rust mutex and causes the recurring "job timed out kind=rss-poll" cycle (F17; un-nesting is Wave 4).
 
