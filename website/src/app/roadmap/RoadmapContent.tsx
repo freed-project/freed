@@ -731,7 +731,7 @@ const phases: Phase[] = [
     number: 4,
     title: "Sync Layer",
     description:
-      "Local relay, Google Drive, and Dropbox sync are working, with health checks, retries, debug charts, and desktop snapshots. iCloud is still open.",
+      "Local relay, Google Drive, and Dropbox sync are working, with health checks, retries, debug charts, and desktop snapshots. iCloud is still open. Large offline media will use a separate future transport outside the synced Freed document.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-4-SYNC.md",
@@ -804,7 +804,7 @@ const phases: Phase[] = [
     number: 12,
     title: "Additional Platforms",
     description:
-      "LinkedIn is live. Next up: Mozi, TikTok, Threads, Bluesky, Reddit, and YouTube, all with the same guarded capture and health model.",
+      "LinkedIn and YouTube are in. YouTube adds focused viewing, exact-video app handoff, followed-channel sync, and a private playlist for Premium downloads. Future work explores offline audio prepared by Freed Desktop and transferred over the local network or encrypted user cloud. Next up: Mozi, TikTok, Threads, Bluesky, and Reddit.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-12-ADDITIONAL-PLATFORMS.md",
