@@ -180,6 +180,33 @@ export const BUCKETS = BUCKET_DEFINITIONS.map((bucket) => ({
   ).map((metric) => metric.id),
 }));
 
+function localDateKey(timestampMs) {
+  const date = new Date(timestampMs);
+  if (!Number.isFinite(date.getTime())) {
+    throw new Error("Runtime health evidence window must have a valid start");
+  }
+  return [
+    date.getFullYear().toString().padStart(4, "0"),
+    (date.getMonth() + 1).toString().padStart(2, "0"),
+    date.getDate().toString().padStart(2, "0"),
+  ].join("");
+}
+
+function isValidRuntimeHealthDateKey(value) {
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(4, 6));
+  const day = Number(value.slice(6, 8));
+  if (year < 1970 || month < 1 || month > 12 || day < 1 || day > 31) {
+    return false;
+  }
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
 export function readHealthEntries(appDataDir, { sinceMs }) {
   const entries = [];
   const malformedLines = [];
@@ -190,8 +217,16 @@ export function readHealthEntries(appDataDir, { sinceMs }) {
     });
     return entries;
   }
+  const earliestDatedFile = localDateKey(sinceMs);
   const files = readdirSync(appDataDir)
-    .filter((name) => /^runtime-health-\d{8}\.jsonl$/.test(name))
+    .filter((name) => {
+      const match = /^runtime-health-(\d{8})\.jsonl$/.exec(name);
+      if (match === null) return false;
+      return (
+        !isValidRuntimeHealthDateKey(match[1]) ||
+        match[1] >= earliestDatedFile
+      );
+    })
     .sort()
     .map((name) => path.join(appDataDir, name));
   const livePath = path.join(appDataDir, "runtime-health.jsonl");

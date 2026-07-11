@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import {
   mkdtempSync,
   readFileSync,
@@ -618,6 +619,122 @@ test("health ingestion preserves same-source multiplicity and reports malformed 
   assert.equal(entries.sourceDiagnostics.malformedLines.length, 1);
   const alarms = aggregateAlarms(entries);
   assert.equal(alarms.cloud_loop.sourceHealth, "malformed");
+});
+
+test("health ingestion ignores malformed dated files wholly before the evidence window", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-triage-old-health-"));
+  writeFileSync(
+    path.join(dir, "runtime-health-20260707.jsonl"),
+    "historical-truncated-json\n",
+  );
+  writeFileSync(
+    path.join(dir, "runtime-health.jsonl"),
+    `${JSON.stringify({
+      ...BUILD_IDENTITY,
+      event: "invariant_alarm",
+      name: "cloud_loop",
+      tsMs: NOW,
+    })}\n`,
+  );
+
+  const entries = readHealthEntries(dir, { sinceMs: NOW - 1 });
+  assert.equal(entries.length, 1);
+  assert.equal(entries.sourceDiagnostics.sourceLineCount, 1);
+  assert.deepEqual(entries.sourceDiagnostics.malformedLines, []);
+  const alarms = aggregateAlarms(entries);
+  assert.equal(alarms.cloud_loop.sourceHealth, "healthy");
+  const ranked = buildCandidates({
+    alarms,
+    verdictInfo: null,
+    canaryInfo: null,
+    ciIssues: [],
+    nowMs: NOW,
+  });
+  assert.ok(ranked.some((candidate) => candidate.bucket.id === "cloud-loop"));
+});
+
+test("health ingestion keeps malformed cutoff-day files fail-closed", () => {
+  const dir = mkdtempSync(
+    path.join(os.tmpdir(), "freed-triage-cutoff-health-"),
+  );
+  writeFileSync(
+    path.join(dir, "runtime-health-20260709.jsonl"),
+    "current-window-truncated-json\n",
+  );
+  writeFileSync(
+    path.join(dir, "runtime-health-20260000.jsonl"),
+    "invalid-date-truncated-json\n",
+  );
+  writeFileSync(
+    path.join(dir, "runtime-health.jsonl"),
+    `${JSON.stringify({
+      ...BUILD_IDENTITY,
+      event: "invariant_alarm",
+      name: "cloud_loop",
+      tsMs: NOW,
+    })}\n`,
+  );
+
+  const entries = readHealthEntries(dir, { sinceMs: NOW - 1 });
+  assert.deepEqual(
+    entries.sourceDiagnostics.malformedLines
+      .map(({ file }) => path.basename(file))
+      .sort(),
+    ["runtime-health-20260000.jsonl", "runtime-health-20260709.jsonl"],
+  );
+  const alarms = aggregateAlarms(entries);
+  assert.equal(alarms.cloud_loop.sourceHealth, "malformed");
+  assert.equal(
+    buildCandidates({
+      alarms,
+      verdictInfo: null,
+      canaryInfo: null,
+      ciIssues: [],
+      nowMs: NOW,
+    }).length,
+    0,
+  );
+});
+
+test("health ingestion uses the local rotation date across a UTC boundary", () => {
+  const dir = mkdtempSync(
+    path.join(os.tmpdir(), "freed-triage-local-date-health-"),
+  );
+  writeFileSync(
+    path.join(dir, "runtime-health-20260707.jsonl"),
+    "expired-local-day-truncated-json\n",
+  );
+  writeFileSync(
+    path.join(dir, "runtime-health-20260708.jsonl"),
+    "cutoff-local-day-truncated-json\n",
+  );
+  const triageUrl = new URL("./triage.mjs", import.meta.url).href;
+  const diagnostics = JSON.parse(
+    execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `import { readHealthEntries } from ${JSON.stringify(triageUrl)};
+const entries = readHealthEntries(process.env.TRIAGE_FIXTURE_DIR, {
+  sinceMs: Date.parse("2026-07-09T06:30:00Z"),
+});
+process.stdout.write(JSON.stringify(entries.sourceDiagnostics.malformedLines));`,
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          TZ: "America/Los_Angeles",
+          TRIAGE_FIXTURE_DIR: dir,
+        },
+      },
+    ),
+  );
+  assert.deepEqual(
+    diagnostics.map(({ file }) => path.basename(file)),
+    ["runtime-health-20260708.jsonl"],
+  );
 });
 
 test("latest canary ignores legacy records and preserves a newer inconclusive verdict", () => {
