@@ -180,7 +180,11 @@ test("trusted publisher config fails closed without a valid host handoff", () =>
   const configPath = path.join(home, "missing.json");
   const missing = checkTrustedPublisherConfig({}, home, { configPath });
   assert.equal(missing.status, "warn");
-  assert.match(missing.detail, /publishing stays closed/);
+  assert.match(missing.detail, /broker-backed publication stays unavailable/);
+  assert.match(
+    missing.detail,
+    /normal GitHub-authenticated publication remains available/,
+  );
 
   const malformed = checkTrustedPublisherConfig(
     { FREED_TRUSTED_PUBLISHER: "scripts/trusted-publisher-host" },
@@ -215,7 +219,7 @@ test("trusted publisher config rejects an arbitrary user-owned executable", () =
     result.detail,
     /control checkout does not match its pinned commit/,
   );
-  assert.match(result.detail, /publishing stays closed/);
+  assert.match(result.detail, /broker-backed publication stays unavailable/);
 });
 
 test("trusted publisher config rejects fields the broker does not accept", () => {

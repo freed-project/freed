@@ -3926,7 +3926,7 @@ function buildPublishCommand(selected) {
   return {
     closeout: providerVisible ? "draft" : "ready",
     command: [
-      '"$FREED_TRUSTED_PUBLISHER"',
+      "./scripts/worktree-publish.sh",
       `--title ${JSON.stringify(deriveCandidatePrTitle(primary))}`,
       '--summary "<summary>"',
       '--test "<tests>"',

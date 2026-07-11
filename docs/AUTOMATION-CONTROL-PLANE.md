@@ -236,7 +236,7 @@ closed. The credential authenticates actor identity only. It does not expand
 the actor's checked-in authority, provider policy, task authority, or lifecycle
 destinations.
 
-The PR publisher uses a separate fail-closed identity contract. It does not
+The optional broker-backed PR publisher uses a separate fail-closed identity contract. It does not
 accept `FREED_AUTOMATION_ACTOR_TOKEN` or
 `FREED_PR_PUBLISHER_ACTOR_TOKEN`. Its persistent credential is a raw 32 byte
 Ed25519 private signing key in the macOS Keychain item with service
@@ -246,7 +246,7 @@ state before Keychain access, uses the key only to sign one capability, wipes
 its key buffer, and never places the key or a reusable derivative in a child
 environment, argument, file, shell, Node process, or GitHub command.
 
-The agent environment receives one public broker binding:
+When that optional host profile is installed, the agent environment receives one public broker binding:
 
 - `FREED_TRUSTED_PUBLISHER`: absolute path to the signed owner-managed broker
   outside the candidate worktree
@@ -293,13 +293,14 @@ closed. Only then does it issue the short-lived publisher lease token to the
 pinned publisher helper. A nightly runner credential cannot authenticate this
 lease.
 
-`scripts/doctor.mjs` checks the fixed production config, ownership and modes,
+`scripts/doctor.mjs` checks the fixed broker config, ownership and modes,
 all pinned file digests, broker signature and designated identity, control
 commit and cleanliness, state root, public-key record, and non-secret Keychain
-item presence. It never reads the signing key. Use `--require-publisher` for a
-release or promotion gate. The native broker repeats the trust checks at use
-time. Until the owner installs and provisions this chain, authenticated
-publishing is intentionally unavailable.
+item presence. It never reads the signing key. Use `--require-publisher` only
+when the caller deliberately selects the optional broker profile. The native
+broker repeats the trust checks at use time. Missing broker provisioning does
+not block normal GitHub-authenticated publication through
+`scripts/worktree-publish.sh`.
 
 ### Credential provisioning and rotation
 
@@ -314,7 +315,7 @@ must restore the prior Keychain item and both public bindings if any step
 fails. The `security` command with `-p`, `-w <value>`, or `-X <value>` is not an
 acceptable installer because it exposes secret material in the process list.
 
-The scheduler handoff is a trusted host boundary outside candidate worktrees.
+The optional broker scheduler handoff is a trusted host boundary outside candidate worktrees.
 General actors retrieve only their own credential and expose it to an approved
 immutable launcher long enough to acquire their canonical lease. Publisher
 handoff never exports its signing key. Candidate work receives only the
@@ -323,8 +324,10 @@ short-lived authority it needs. The trusted publisher launcher supplies only
 helper clears persistent and lease credentials from every child-process
 environment before running Git, hooks, validators, provider checks, or GitHub
 commands. The checked-in automation specifications do not install this host
-component. Until the owner provisions it, unattended actors may observe and
-plan, but authenticated mutation and publishing remain closed.
+component. Without it, an authorized actor may still publish through the normal
+helper and the caller's existing GitHub authentication. This fallback does not
+claim credential isolation. Actor leases, provider approvals, branch policy,
+validation, and exact PR rechecks still apply.
 
 The publisher lease has a fixed 30 minute absolute lifetime. Heartbeats cannot
 extend it beyond that boundary. The candidate helper revalidates the live
@@ -351,7 +354,7 @@ an authenticated acquisition upgrades only that lease, issues a new lease
 token, invalidates the old token, and appends `lease_credential_upgraded`.
 Cross-actor upgrades fail closed.
 
-### Signed owner capability
+### Optional signed owner capability
 
 `freed-owner` is not an unattended automation identity and does not use a
 persistent actor credential or a same-user bootstrap file. A mode `0600` file
@@ -418,8 +421,11 @@ authority, approval reference, revision, or action. A copied owner lease token
 therefore cannot authorize another governance operation.
 
 The repository does not install the broker, root config, Keychain key, or owner
-capability. Missing host trust keeps owner acquisition closed. Provider approval
-still requires its scoped approval reference and the independent publish gate.
+capability. Missing host trust keeps broker-backed owner acquisition closed, but
+does not block normal publication. Provider work can use the signing-free
+`owner-confirmation` path described below. That path does not claim
+machine-verifiable owner identity. It relies on explicit confirmation in the
+current task and independent exact-diff CODEOWNER review.
 
 ## Authority model
 
@@ -432,14 +438,18 @@ Checked-in automation authority is one of:
 
 Provider authority is separate. `forbidden` prohibits provider activity.
 `approval-required` may prepare an approval packet, but it cannot implement or
-publish provider-visible behavior without the owner's scoped record. A task may
-move to provider authority `approved` only with an approval reference. The
-publish gate still validates the approval JSON, exact path set, expiry, and full
-committed branch diff hash. Only the `freed-owner` lease may change task
-authority. Task authority never substitutes for the publish gate or CODEOWNER
-review. Creating a task directly with provider authority `approved` also
-requires an approval reference. The current manifest retains that reference,
-and every task event carries the same approval snapshot.
+publish provider-visible behavior without the owner's scoped Gate 1 decision
+and Gate 2 exact-diff confirmation. A task may move to provider authority
+`approved` only with an approval reference. Only the `freed-owner` lease may
+change task authority, and the optional signed owner capability is the stronger
+machine-verifiable route for that mutation. The signing-free
+`owner-confirmation` route does not mutate task authority or pretend that the
+approval file authenticates the owner. It records the owner's explicit
+confirmation of the exact packet digest in the current task. Task authority
+never substitutes for the publish gate or CODEOWNER review. Creating a task
+directly with provider authority `approved` also requires an approval reference.
+The current manifest retains that reference, and every task event carries the
+same approval snapshot.
 
 ## Checked-in automation specifications
 
@@ -600,15 +610,35 @@ Provider approval JSON belongs outside the repository because the approved
 provider branch must remain clean. The record cannot be future-dated, may last
 at most seven days, must still be unexpired, and must name the exact
 provider-visible path set. Its `diffSha` must equal the hash of the full
-committed binary diff from `origin/<base>...HEAD`. It records `approvedBy`, an
-`control-task` approval source, and one provider scope for every approved path.
-Provider names inferred from provider-specific paths must match that scope. The
-owner grants the packet's canonical SHA-256 digest to the referenced task using
-the private one-time owner bootstrap. The publish helper verifies that digest
-against the canonical task manifest. Any branch edit invalidates the record.
-The authenticated local record does not replace external CODEOWNER review. The
-publish helper always keeps the PR in draft. After exact-head CODEOWNER review,
-the owner performs a separate authorized ready transition through GitHub.
+committed binary diff from `origin/<base>...HEAD`. It records `approvedBy`, one
+provider scope for every approved path, and either an `owner-confirmation` or
+`control-task` approval source. Provider names inferred from provider-specific
+paths must match that scope. Any branch edit invalidates the record.
+
+Gate 1 happens before code. The owner must explicitly approve the named
+provider, observable behavior, fingerprinting risk, and lowest-profile
+alternative. General permission to proceed with a plan or program is not this
+approval.
+
+Gate 2 happens after the exact diff is committed. Calculate the packet's
+canonical SHA-256 digest and show that exact digest to the owner in the current
+task. For the signing-free route, set `approvalSource.kind` to
+`owner-confirmation`, use a stable task or thread reference, and copy the exact
+digest into `authorizationDigest` only after the owner explicitly confirms it.
+The helper verifies that the stored digest still matches the packet. This is a
+cooperative record, not cryptographic owner authentication. A file that merely
+claims an owner name or copies a digest is not sufficient without the actual
+confirmation in the current task.
+
+For stronger machine-verifiable authorization, set `approvalSource.kind` to
+`control-task`. Use the optional signed broker to authorize the same packet
+digest on the referenced task. The publish helper verifies the task manifest,
+approved provider authority, and matching owner capability event. Broker
+provisioning is optional and does not block the direct owner-confirmation path.
+
+Neither source replaces external review. The publish helper always keeps the
+provider-visible PR in draft. After exact-head CODEOWNER review, the owner
+performs a separate authorized ready transition through GitHub.
 
 See [W1-06](stability-tasks/W1-06-provider-visible-single-source.md) and the
 fingerprinting stop sign in [AGENTS.md](../AGENTS.md) for the full publish

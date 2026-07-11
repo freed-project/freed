@@ -649,7 +649,7 @@ export function checkTrustedPublisherConfig(
   { configPath = TRUSTED_PUBLISHER_CONFIG_PATH } = {},
 ) {
   const broker = String(env.FREED_TRUSTED_PUBLISHER ?? "").trim();
-  const remediation = `Install the signed broker, immutable control checkout, immutable Node and GitHub CLI, and root-owned schema v2 config at ${configPath}.`;
+  const remediation = `To enable the optional unattended publisher, install the signed broker, immutable control checkout, immutable Node and GitHub CLI, and root-owned schema v2 config at ${configPath}.`;
   const problems = [];
   let config = null;
 
@@ -890,7 +890,7 @@ export function checkTrustedPublisherConfig(
       "trusted-publisher",
       "trusted PR publisher",
       "warn",
-      `${[...new Set(problems)].join("; ")}. Authenticated publishing stays closed.`,
+      `${[...new Set(problems)].join("; ")}. Optional broker-backed publication stays unavailable; normal GitHub-authenticated publication remains available.`,
       remediation,
     );
   }

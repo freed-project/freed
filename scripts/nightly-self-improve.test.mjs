@@ -2726,6 +2726,10 @@ test("execution plan includes peer review and release soak gates", () => {
   assert.equal(publish?.closeout, "ready");
   assert.match(
     publish?.commands[0] ?? "",
+    /^\.\/scripts\/worktree-publish\.sh /,
+  );
+  assert.match(
+    publish?.commands[0] ?? "",
     /--title "chore: review and incorporate peer worktree perf\/scraper-recycle"/,
   );
   assert.match(publish?.commands[0] ?? "", / --ready$/);

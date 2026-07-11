@@ -37,7 +37,7 @@ function mustRun(command, args, options = {}) {
   return result;
 }
 
-test("promotion fails closed before creating a worktree when publisher trust is not provisioned", async (t) => {
+test("promotion fails closed when a configured publisher broker is not provisioned", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "freed-promote-main-"));
   t.after(async () => {
     await fs.rm(root, { recursive: true, force: true });

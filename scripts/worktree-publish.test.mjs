@@ -213,6 +213,7 @@ const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
 
 fs.appendFileSync(logFile, JSON.stringify({
   args,
+  ghHost: process.env.GH_HOST || null,
   persistentActorTokenPresent: Boolean(process.env.FREED_AUTOMATION_ACTOR_TOKEN),
   genericLeaseTokenPresent: Boolean(process.env.FREED_AUTOMATION_LEASE_TOKEN),
   ownerBootstrapTokenPresent: Boolean(process.env.FREED_OWNER_BOOTSTRAP_TOKEN),
@@ -221,11 +222,15 @@ fs.appendFileSync(logFile, JSON.stringify({
 }) + "\\n");
 
 if (args[0] === "api") {
+  const base = args[1].split("/").at(-1);
+  if (state.canonicalRefOverrides && state.canonicalRefOverrides[base]) {
+    process.stdout.write(state.canonicalRefOverrides[base]);
+    process.exit(0);
+  }
   if (state.canonicalBaseOverride) {
     process.stdout.write(state.canonicalBaseOverride);
     process.exit(0);
   }
-  const base = args[1].split("/").at(-1);
   const baseSha = execFileSync("/usr/bin/git", ["rev-parse", "origin/" + base], {
     encoding: "utf8",
   }).trim();
@@ -265,7 +270,14 @@ if (args[1] === "view") {
   process.exit(0);
 }
 
-if (args[1] === "edit" || args[1] === "ready") {
+if (args[1] === "ready") {
+  const isDraft = args.includes("--undo");
+  state.prList = (state.prList || []).map((item) => ({ ...item, isDraft }));
+  fs.writeFileSync(stateFile, JSON.stringify(state));
+  process.exit(0);
+}
+
+if (args[1] === "edit") {
   process.exit(0);
 }
 
@@ -427,8 +439,10 @@ async function authorizeProviderApproval(fixture, approval) {
       actor: "freed-owner",
       leaseName: "owner-governance",
       data: {
-        credentialKind: "owner-bootstrap",
-        ownerBootstrapGrantId: "provider-owner-bootstrap-test",
+        credentialKind: "owner-signed-capability",
+        ownerCapabilityId: "provider-owner-capability-test",
+        ownerCapabilityTaskId: approval.approvalSource.reference,
+        ownerCapabilityIntentDigest: "b".repeat(64),
       },
     })}\n${JSON.stringify({
       schemaVersion: 1,
@@ -446,8 +460,10 @@ async function authorizeProviderApproval(fixture, approval) {
         authorizationProvenance: {
           leaseName: "owner-governance",
           leaseAcquiredAt: "2026-07-10T15:59:30.000Z",
-          credentialKind: "owner-bootstrap",
-          ownerBootstrapGrantId: "provider-owner-bootstrap-test",
+          credentialKind: "owner-signed-capability",
+          ownerCapabilityId: "provider-owner-capability-test",
+          ownerCapabilityTaskId: approval.approvalSource.reference,
+          ownerCapabilityIntentDigest: "b".repeat(64),
         },
       },
     })}\n`,
@@ -466,6 +482,304 @@ async function readGhLog(logFile) {
       // care about the publish flow's PR interactions.
       .filter((call) => call.args[0] === "pr")
   );
+}
+
+function directPublishEnv(fixture) {
+  const environment = { ...fixture.env };
+  for (const name of [
+    "FREED_PR_PUBLISHER_LEASE_TOKEN",
+    "FREED_PUBLISH_CONTROL_STATE_ROOT",
+    "FREED_PUBLISH_SCOPE_JSON",
+    "FREED_PUBLISH_GIT_BIN",
+    "FREED_PUBLISH_GH_BIN",
+    "FREED_PUBLISH_PYTHON_BIN",
+    "FREED_TRUSTED_GH_BIN",
+    "FREED_TRUSTED_GH_SHA256",
+    "FREED_TRUSTED_NODE_BIN",
+    "FREED_TRUSTED_NODE_SHA256",
+  ]) {
+    delete environment[name];
+  }
+  return environment;
+}
+
+test("worktree-publish keeps the ordinary authenticated GitHub path available", async (t) => {
+  const fixture = await createPublishFixture(t, {
+    preacquirePublisherLease: false,
+  });
+  await fs.writeFile(
+    path.join(fixture.worktree, "README.md"),
+    "interactive publish\n",
+  );
+
+  const result = run(
+    "bash",
+    [
+      publishScript,
+      "--title",
+      "fix: preserve interactive publishing",
+      "--summary",
+      "Keep normal GitHub authenticated publication independent from the optional broker",
+      "--test",
+      "node --test scripts/worktree-publish.test.mjs",
+      "--ready",
+    ],
+    {
+      cwd: fixture.worktree,
+      env: {
+        ...directPublishEnv(fixture),
+        GH_HOST: "attacker.invalid",
+      },
+    },
+  );
+
+  assertSuccess(result);
+  assert.match(
+    result.stdout,
+    /https:\/\/github.com\/freed-project\/freed\/pull\/999/,
+  );
+  const ghCalls = await readGhLog(fixture.ghLogFile);
+  assert.ok(ghCalls.some((call) => call.args[1] === "create"));
+  assert.ok(
+    ghCalls.every(
+      (call) =>
+        call.persistentActorTokenPresent === false &&
+        call.genericLeaseTokenPresent === false &&
+        call.ownerBootstrapTokenPresent === false &&
+        call.persistentPublisherTokenPresent === false &&
+        call.publisherLeaseTokenPresent === false,
+    ),
+  );
+  assert.ok(ghCalls.every((call) => call.ghHost === null));
+});
+
+test("worktree-publish rejects unsupported direct publish bases", async (t) => {
+  const fixture = await createPublishFixture(t, {
+    preacquirePublisherLease: false,
+  });
+  const result = run(
+    "bash",
+    [
+      publishScript,
+      "--title",
+      "fix: reject unsafe publish base",
+      "--base",
+      "feature-shadow",
+    ],
+    { cwd: fixture.worktree, env: directPublishEnv(fixture) },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /publish base must be dev, main, or www/);
+});
+
+test("worktree-publish refreshes origin/dev before direct main validation", async (t) => {
+  const fixture = await createPublishFixture(t, {
+    preacquirePublisherLease: false,
+  });
+  const candidateScripts = path.join(fixture.worktree, "scripts");
+  await fs.mkdir(candidateScripts, { recursive: true });
+  await fs.copyFile(
+    path.join(repoRoot, "scripts/validate-main-pr.mjs"),
+    path.join(candidateScripts, "validate-main-pr.mjs"),
+  );
+  await fs.copyFile(
+    path.join(repoRoot, "scripts/release-promotion-shared.mjs"),
+    path.join(candidateScripts, "release-promotion-shared.mjs"),
+  );
+  assert.equal(
+    run("git", ["add", "scripts"], { cwd: fixture.worktree }).status,
+    0,
+  );
+  assert.equal(
+    run("git", ["commit", "-m", "chore: seed main release guard"], {
+      cwd: fixture.worktree,
+    }).status,
+    0,
+  );
+  assert.equal(
+    run("git", ["push", fixture.origin, "HEAD:refs/heads/main"], {
+      cwd: fixture.worktree,
+    }).status,
+    0,
+  );
+  assert.equal(
+    run("git", ["fetch", "origin", "main"], { cwd: fixture.worktree })
+      .status,
+    0,
+  );
+  assert.equal(
+    run(
+      "git",
+      ["checkout", "-B", "chore/release-v26.7.1002", "origin/main"],
+      { cwd: fixture.worktree },
+    ).status,
+    0,
+  );
+  const releaseFile = path.join(
+    fixture.worktree,
+    "release-notes/releases/v26.7.1002.json",
+  );
+  await fs.mkdir(path.dirname(releaseFile), { recursive: true });
+  await fs.writeFile(releaseFile, "{}\n");
+  assert.equal(
+    run("git", ["add", releaseFile], { cwd: fixture.worktree }).status,
+    0,
+  );
+  assert.equal(
+    run("git", ["commit", "-m", "chore: prepare v26.7.1002"], {
+      cwd: fixture.worktree,
+    }).status,
+    0,
+  );
+
+  const devAdvancer = path.join(path.dirname(fixture.worktree), "dev-advancer");
+  assert.equal(
+    run("git", ["clone", "--branch", "dev", fixture.origin, devAdvancer])
+      .status,
+    0,
+  );
+  assert.equal(
+    run("git", ["config", "user.name", "Freed Tests"], {
+      cwd: devAdvancer,
+    }).status,
+    0,
+  );
+  assert.equal(
+    run("git", ["config", "user.email", "tests@freed.invalid"], {
+      cwd: devAdvancer,
+    }).status,
+    0,
+  );
+  await fs.writeFile(path.join(devAdvancer, "README.md"), "advanced dev\n");
+  assert.equal(run("git", ["add", "README.md"], { cwd: devAdvancer }).status, 0);
+  assert.equal(
+    run("git", ["commit", "-m", "chore: advance dev"], {
+      cwd: devAdvancer,
+    }).status,
+    0,
+  );
+  assert.equal(
+    run("git", ["push", "origin", "dev"], { cwd: devAdvancer }).status,
+    0,
+  );
+  const remoteDevHead = run("git", ["rev-parse", "HEAD"], {
+    cwd: devAdvancer,
+  }).stdout.trim();
+  const staleDevHead = run("git", ["rev-parse", "origin/dev"], {
+    cwd: fixture.worktree,
+  }).stdout.trim();
+  assert.notEqual(staleDevHead, remoteDevHead);
+
+  await fs.writeFile(
+    fixture.ghStateFile,
+    JSON.stringify({
+      prList: [],
+      viewBase: "main",
+      createUrl: "https://github.com/freed-project/freed/pull/1002",
+    }),
+  );
+  const result = run(
+    "bash",
+    [
+      publishScript,
+      "--base",
+      "main",
+      "--ready",
+      "--title",
+      "chore: prepare v26.7.1002",
+    ],
+    { cwd: fixture.worktree, env: directPublishEnv(fixture) },
+  );
+
+  assertSuccess(result);
+  assert.equal(
+    run("git", ["rev-parse", "origin/dev"], { cwd: fixture.worktree })
+      .stdout.trim(),
+    remoteDevHead,
+  );
+
+  const publishedHead = run("git", ["rev-parse", "HEAD"], {
+    cwd: fixture.worktree,
+  }).stdout.trim();
+  await fs.writeFile(releaseFile, '{"retry":true}\n');
+  assert.equal(
+    run("git", ["add", releaseFile], { cwd: fixture.worktree }).status,
+    0,
+  );
+  assert.equal(
+    run("git", ["commit", "-m", "chore: refresh v26.7.1002"], {
+      cwd: fixture.worktree,
+    }).status,
+    0,
+  );
+  await fs.writeFile(
+    fixture.ghStateFile,
+    JSON.stringify({
+      prList: [
+        {
+          number: 1002,
+          url: "https://github.com/freed-project/freed/pull/1002",
+          isDraft: false,
+          headRefOid: publishedHead,
+          baseRefName: "main",
+        },
+      ],
+      viewBase: "main",
+      canonicalRefOverrides: { dev: "f".repeat(40) },
+    }),
+  );
+  const movedDevResult = run(
+    "bash",
+    [
+      publishScript,
+      "--base",
+      "main",
+      "--ready",
+      "--title",
+      "chore: prepare v26.7.1002",
+    ],
+    { cwd: fixture.worktree, env: directPublishEnv(fixture) },
+  );
+  assert.notEqual(movedDevResult.status, 0);
+  assert.match(
+    movedDevResult.stderr,
+    /canonical dev moved after the local ref was fetched/,
+  );
+  assert.equal(
+    run(
+      "git",
+      ["ls-remote", "origin", "refs/heads/chore/release-v26.7.1002"],
+      { cwd: fixture.worktree },
+    ).stdout.split("\t")[0],
+    publishedHead,
+  );
+});
+
+for (const reservedName of [
+  "FREED_PR_PUBLISHER_LEASE_TOKEN",
+  "FREED_PUBLISH_CONTROL_STATE_ROOT",
+  "FREED_PUBLISH_SCOPE_JSON",
+  "FREED_PUBLISH_GIT_BIN",
+  "FREED_PUBLISH_GH_BIN",
+  "FREED_PUBLISH_PYTHON_BIN",
+]) {
+  test(`worktree-publish does not downgrade an empty ${reservedName} handoff`, async (t) => {
+    const fixture = await createPublishFixture(t, {
+      preacquirePublisherLease: false,
+    });
+    const result = run("bash", [publishScript, "--help"], {
+      cwd: fixture.worktree,
+      env: {
+        ...directPublishEnv(fixture),
+        [reservedName]: "",
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(
+      result.stderr,
+      /trusted publishing requires an absolute FREED_PUBLISH_CONTROL_STATE_ROOT/,
+    );
+  });
 }
 
 test("worktree-publish converts an existing ready PR back to draft and updates it", async (t) => {
@@ -1253,7 +1567,7 @@ test("publisher scripts disable shell tracing before reading secrets", () => {
   assert.doesNotMatch(traceOutput, new RegExp(leaseSecret));
 });
 
-test("worktree-publish rejects a nightly token when the publisher lease is missing", async (t) => {
+test("worktree-publish rejects a partial trusted handoff even when nightly credentials are present", async (t) => {
   const fixture = await createPublishFixture(t);
   await fs.writeFile(
     path.join(fixture.worktree, "README.md"),
@@ -1284,6 +1598,47 @@ test("worktree-publish rejects a nightly token when the publisher lease is missi
   );
   const ghCalls = await readGhLog(fixture.ghLogFile);
   assert.equal(ghCalls.length, 0);
+});
+
+test("worktree-publish permits cooperative direct publication from a nightly environment", async (t) => {
+  const fixture = await createPublishFixture(t, {
+    preacquirePublisherLease: false,
+  });
+  await fs.writeFile(
+    path.join(fixture.worktree, "README.md"),
+    "cooperative nightly publication\n",
+  );
+
+  const result = run(
+    "bash",
+    [
+      publishScript,
+      "--title",
+      "fix: preserve cooperative nightly publication",
+    ],
+    {
+      cwd: fixture.worktree,
+      env: {
+        ...directPublishEnv(fixture),
+        FREED_AUTOMATION_ACTOR: "freed-nightly-runner",
+        FREED_AUTOMATION_ACTOR_TOKEN:
+          "nightly-persistent-secret-1234567890",
+        FREED_AUTOMATION_LEASE_TOKEN:
+          "nightly-short-lived-secret-1234567890",
+      },
+    },
+  );
+
+  assertSuccess(result);
+  const ghCalls = await readGhLog(fixture.ghLogFile);
+  assert.ok(ghCalls.some((call) => call.args[1] === "create"));
+  assert.ok(
+    ghCalls.every(
+      (call) =>
+        call.persistentActorTokenPresent === false &&
+        call.genericLeaseTokenPresent === false,
+    ),
+  );
 });
 
 test("worktree-publish rejects a provider file injected after initial inspection", async (t) => {
@@ -1396,8 +1751,10 @@ test("worktree-publish treats a provider file renamed outside the provider tree 
   );
 });
 
-test("worktree-publish accepts an exact structured provider approval and records it", async (t) => {
-  const fixture = await createPublishFixture(t);
+test("worktree-publish accepts an exact owner-confirmed provider approval through direct publication", async (t) => {
+  const fixture = await createPublishFixture(t, {
+    preacquirePublisherLease: false,
+  });
 
   const extractorPath = path.join(
     fixture.worktree,
@@ -1434,7 +1791,10 @@ test("worktree-publish accepts an exact structured provider approval and records
     approvedBy: "AubreyF",
     ownerApprovalReference:
       "Owner approved the Facebook extractor repair in task 019f",
-    approvalSource: { kind: "control-task", reference: "P1-04" },
+    approvalSource: {
+      kind: "owner-confirmation",
+      reference: "task-019f-provider-diff-confirmation",
+    },
     approvedAt: new Date(now - 60_000).toISOString(),
     expiresAt: new Date(now + 86_400_000).toISOString(),
     providers: ["facebook"],
@@ -1452,10 +1812,27 @@ test("worktree-publish accepts an exact structured provider approval and records
       },
     ],
   };
+  approval.authorizationDigest = providerApprovalAuthorizationDigest(approval);
   await fs.writeFile(approvalPath, JSON.stringify(approval));
-  const authorizationDigest = await authorizeProviderApproval(
-    fixture,
-    approval,
+  const authorizationDigest = approval.authorizationDigest;
+  await fs.writeFile(
+    fixture.ghStateFile,
+    JSON.stringify({
+      prList: [
+        {
+          number: 1003,
+          url: "https://github.com/freed-project/freed/pull/1003",
+          isDraft: false,
+        },
+      ],
+      viewBase: "dev",
+    }),
+  );
+  const prePushHook = path.join(fixture.worktree, ".git/hooks/pre-push");
+  await fs.writeFile(
+    prePushHook,
+    `#!${process.execPath}\nconst fs = require("node:fs");\nconst state = JSON.parse(fs.readFileSync(process.env.GH_STATE_FILE, "utf8"));\nif (!state.prList?.[0]?.isDraft) process.exit(1);\n`,
+    { mode: 0o755 },
   );
 
   const result = run(
@@ -1472,7 +1849,7 @@ test("worktree-publish accepts an exact structured provider approval and records
     {
       cwd: fixture.worktree,
       env: {
-        ...fixture.env,
+        ...directPublishEnv(fixture),
         FREED_AUTOMATION_STATE_ROOT: path.join(
           path.dirname(fixture.worktree),
           "forged-provider-state",
@@ -1484,10 +1861,14 @@ test("worktree-publish accepts an exact structured provider approval and records
   assertSuccess(result);
 
   const ghCalls = await readGhLog(fixture.ghLogFile);
-  const createCall = ghCalls.find((call) => call.args[1] === "create");
-  assert.ok(createCall);
-  assert.equal(createCall.args[1], "create");
-  const body = createCall.args[createCall.args.indexOf("--body") + 1];
+  const demoteIndex = ghCalls.findIndex(
+    (call) => call.args[1] === "ready" && call.args.includes("--undo"),
+  );
+  const editIndex = ghCalls.findIndex((call) => call.args[1] === "edit");
+  assert.ok(demoteIndex >= 0);
+  assert.ok(editIndex > demoteIndex);
+  const editCall = ghCalls[editIndex];
+  const body = editCall.args[editCall.args.indexOf("--body") + 1];
   assert.match(body, /## Provider Visible Approval/);
   assert.match(body, /Approved by: AubreyF/);
   assert.match(

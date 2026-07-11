@@ -25,7 +25,7 @@ test("release preparation uses the channel's protected branch as its exact base"
     /EXPECTED_BASE_REF="origin\/\$\{EXPECTED_BRANCH\}"/,
   );
   assert.match(releasePrep, /git rev-parse "\$\{EXPECTED_BASE_REF\}"/);
-  assert.match(releasePrep, /FREED_TRUSTED_PUBLISHER/);
+  assert.match(releasePrep, /\.\/scripts\/worktree-publish\.sh/);
   assert.match(releasePrep, /--base \$\{EXPECTED_BRANCH\} --ready/);
   assert.match(releasePrep, /npm run validate:release/);
   assert.match(releasePrep, /npm run validate:feature/);
@@ -44,5 +44,10 @@ test("release publication tags only the exact merged remote commit", () => {
     promotion,
     /Create the production release-prep branch from that exact commit/,
   );
+  assert.match(
+    promotion,
+    /PUBLISH_COMMAND=\("\$\{SCRIPT_DIR\}\/worktree-publish\.sh"\)/,
+  );
+  assert.match(promotion, /if \[\[ -n "\$\{FREED_TRUSTED_PUBLISHER:-\}" \]\]/);
   assert.doesNotMatch(promotion, /release-publish\.sh <version>/);
 });

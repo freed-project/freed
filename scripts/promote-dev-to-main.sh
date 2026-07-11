@@ -58,13 +58,17 @@ if "${NODE_BIN}" "${SCRIPT_DIR}/validate-release-promotion.mjs" --from-ref=origi
   exit 0
 fi
 
-if [[ -z "${FREED_TRUSTED_PUBLISHER:-}" || "${FREED_TRUSTED_PUBLISHER}" != /* || ! -x "${FREED_TRUSTED_PUBLISHER}" ]]; then
-  echo "Error: FREED_TRUSTED_PUBLISHER must be an absolute executable owner host broker." >&2
-  exit 1
-fi
-if ! "${NODE_BIN}" "${SCRIPT_DIR}/doctor.mjs" --require-publisher >/dev/null; then
-  echo "Error: the trusted publisher host is not fully provisioned. Run scripts/doctor.mjs for exact remediation." >&2
-  exit 1
+PUBLISH_COMMAND=("${SCRIPT_DIR}/worktree-publish.sh")
+if [[ -n "${FREED_TRUSTED_PUBLISHER:-}" ]]; then
+  if [[ "${FREED_TRUSTED_PUBLISHER}" != /* || ! -x "${FREED_TRUSTED_PUBLISHER}" ]]; then
+    echo "Error: FREED_TRUSTED_PUBLISHER must be an absolute executable owner host broker." >&2
+    exit 1
+  fi
+  if ! "${NODE_BIN}" "${SCRIPT_DIR}/doctor.mjs" --require-publisher >/dev/null; then
+    echo "Error: the configured trusted publisher host is not fully provisioned. Run scripts/doctor.mjs for exact remediation." >&2
+    exit 1
+  fi
+  PUBLISH_COMMAND=("${FREED_TRUSTED_PUBLISHER}")
 fi
 
 if [[ -d "${WORKTREE_PATH}" ]]; then
@@ -122,7 +126,7 @@ EOF
   if [[ -n "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
     PUBLISH_ARGS+=(--provider-risk-approval-file "${PROVIDER_RISK_APPROVAL_FILE}")
   fi
-  "${FREED_TRUSTED_PUBLISHER}" "${PUBLISH_ARGS[@]}"
+  "${PUBLISH_COMMAND[@]}" "${PUBLISH_ARGS[@]}"
 )
 
 echo "Promotion PR created from ${BRANCH_NAME}."

@@ -1,6 +1,6 @@
 ---
 name: freed-provider-risk-review
-description: Prepare and verify a scoped owner-approval packet for any Freed change that could alter behavior visible to X, Facebook, Instagram, LinkedIn, or another provider. Use before implementation that changes WebView loads, navigation, requests, retries, cadence, cookies, headers, scrolling, clicking, extraction scripts, media loading, login behavior, or provider timing. Preparing the packet never grants approval.
+description: Prepare and verify both owner gates for any Freed change that could alter behavior visible to X, Facebook, Instagram, LinkedIn, or another provider. Use before implementation that changes WebView loads, navigation, requests, retries, cadence, cookies, headers, scrolling, clicking, extraction scripts, media loading, login behavior, or provider timing, and again before publishing the exact committed diff. Preparing a packet never grants approval.
 disable-model-invocation: true
 ---
 
@@ -34,38 +34,52 @@ Include:
 
 Stop before code until the owner explicitly approves the named observable
 behavior after seeing its provider, fingerprinting risk, and lower-profile
-alternative. Store that owner decision on the canonical task as the preliminary
-`providerApprovalReference`, then move provider authority to `approved`. This
-first gate authorizes only implementation within the described behavior. It is
-not publish approval.
+alternative in the current task. Record a stable reference to that decision.
+This first gate authorizes only implementation within the described behavior.
+It is not publish approval. General permission to proceed with a plan, program,
+or broad batch of work does not satisfy this gate.
 
 ## Gate 2: exact diff authorization before publish
 
 After implementation and validation, commit the candidate diff. Then create the
 schema version 1 approval JSON outside the repository with:
 
-- Exact base SHA, head SHA, provider-visible path set, and full binary diff hash
-- `approvedBy`, `control-task` approval source, top-level provider union, and
-  one exact provider scope for every approved path
+- Exact provider-visible path set and full committed binary diff hash
+- `approvedBy`, top-level provider union, and one exact provider scope for every
+  approved path
 - Observable behavior, fingerprinting risk, lowest-profile alternative,
   approval time, and expiry no more than seven days later
+- Either an `owner-confirmation` source with a stable current task or thread
+  reference, or a `control-task` source with the governed task ID
 
-Compute its authorization digest with
+For the signing-free path, create the packet with `approvalSource.kind` set to
+`owner-confirmation` and leave out `authorizationDigest`. Compute the digest with
 `node scripts/lib/provider-visible-paths.mjs --approval-digest <approval.json>`.
-The owner uses the private one-time bootstrap flow to replace the task's
-preliminary reference with that exact digest. This second gate authorizes only
-publishing the reviewed commit. Any material behavior or path change returns to
-Gate 1 before code changes continue. Any committed diff change returns to Gate
-2 before publishing.
+Show the owner that exact digest with the provider behavior, risk, alternative,
+diff hash, and path set. Stop until the owner explicitly confirms that exact
+digest in the current task. Then add the unchanged digest as
+`authorizationDigest`. Do not change any other packet field.
+
+For stronger machine-verifiable authorization, use `control-task` and the
+optional signed broker. Bind the same digest to the governed task, set provider
+authority to `approved`, and preserve the owner capability event. Broker
+provisioning is hardening, not a prerequisite for the signing-free path.
+
+This second gate authorizes only publishing the reviewed commit. Any material
+behavior or path change returns to Gate 1 before code changes continue. Any
+committed diff change returns to Gate 2 before publishing.
 
 ## Approval rules
 
-- General permission to improve stability, build a feature, or proceed with a plan is not a substitute for this scoped approval.
+- General permission to improve stability, build a feature, or "proceed with everything" is not a substitute for either scoped gate.
 - Behavior approval applies only to the described contact frequency, timing,
   provider, paths, and observable flow.
 - Do not contact a provider while preparing the packet.
-- A JSON file that merely says `approvedBy: AubreyF` is not authenticated
-  publish approval.
+- Treat `owner-confirmation` as cooperative evidence. The JSON file does not
+  authenticate the owner. Require the explicit current-task confirmation and
+  preserve its stable reference.
+- Treat `control-task` as the optional machine-verifiable route. Require the
+  matching task digest, approved provider authority, and owner capability event.
 - Publish only with `--provider-risk-approval-file <approval.json>`. The helper keeps provider-visible pull requests in draft. The repository CODEOWNER must review the exact diff before the pull request can become ready or merge.
 
 ## Result
@@ -81,5 +95,5 @@ schema](../../../automation/artifact-schemas/stability-artifact-v1.schema.json).
 Validate and atomically store it with `node scripts/stability-artifact.mjs write
 --input <manifest.json>`. The canonical result lives under
 `~/.freed/automation/artifacts/provider-risk-review/<task-id>/`. This manifest
-describes the gate state. It does not replace the authenticated owner approval
-record required by either gate.
+describes the gate state. It does not replace the explicit Gate 1 decision, the
+exact Gate 2 confirmation, or CODEOWNER review.

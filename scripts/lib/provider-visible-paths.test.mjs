@@ -476,8 +476,10 @@ function authorizedControlState(
       authorizationProvenance: {
         leaseName: "owner-governance",
         leaseAcquiredAt: "2026-07-10T15:59:30.000Z",
-        credentialKind: "owner-bootstrap",
-        ownerBootstrapGrantId: "provider-owner-grant",
+        credentialKind: "owner-signed-capability",
+        ownerCapabilityId: "provider-owner-capability",
+        ownerCapabilityTaskId: task.taskId,
+        ownerCapabilityIntentDigest: "b".repeat(64),
       },
     },
     ...eventOverrides,
@@ -498,8 +500,10 @@ function authorizedControlState(
         actor: "freed-owner",
         leaseName: "owner-governance",
         data: {
-          credentialKind: "owner-bootstrap",
-          ownerBootstrapGrantId: "provider-owner-grant",
+          credentialKind: "owner-signed-capability",
+          ownerCapabilityId: "provider-owner-capability",
+          ownerCapabilityTaskId: task.taskId,
+          ownerCapabilityIntentDigest: "b".repeat(64),
         },
       },
       event,
@@ -569,6 +573,55 @@ test("structured provider approval rejects a self-attested owner claim", () => {
   );
 });
 
+test("structured provider approval accepts an exact owner-confirmed digest without broker state", () => {
+  const packet = validApproval({
+    approvalSource: {
+      kind: "owner-confirmation",
+      reference: "task-019f-provider-diff-confirmation",
+    },
+  });
+  const record = {
+    ...packet,
+    authorizationDigest: providerApprovalAuthorizationDigest(packet),
+  };
+  const approval = validateProviderRiskApproval(record, record.paths, {
+    now: Date.parse("2026-07-11T00:00:00.000Z"),
+    diffSha: record.diffSha,
+  });
+
+  assert.equal(approval.authorizationDigest, record.authorizationDigest);
+  assert.equal(approval.approvalSource.kind, "owner-confirmation");
+});
+
+test("structured owner confirmation rejects a missing or changed packet digest", () => {
+  const packet = validApproval({
+    approvalSource: {
+      kind: "owner-confirmation",
+      reference: "task-019f-provider-diff-confirmation",
+    },
+  });
+  assert.throws(
+    () =>
+      validateProviderRiskApproval(packet, packet.paths, {
+        now: Date.parse("2026-07-11T00:00:00.000Z"),
+        diffSha: packet.diffSha,
+      }),
+    /owner-confirmation approval must contain the exact authorizationDigest/,
+  );
+  assert.throws(
+    () =>
+      validateProviderRiskApproval(
+        { ...packet, authorizationDigest: `sha256:${"0".repeat(64)}` },
+        packet.paths,
+        {
+          now: Date.parse("2026-07-11T00:00:00.000Z"),
+          diffSha: packet.diffSha,
+        },
+      ),
+    /owner-confirmation approval must contain the exact authorizationDigest/,
+  );
+});
+
 test("structured provider approval requires pr lifecycle authority and owner event provenance", () => {
   const record = validApproval();
   assert.throws(
@@ -594,7 +647,7 @@ test("structured provider approval requires pr lifecycle authority and owner eve
           { actor: "freed-nightly-runner" },
         ),
       }),
-    /has no owner-bootstrap authorization event/,
+    /has no owner-signed-capability authorization event/,
   );
   const withoutOwnerLease = authorizedControlState(record);
   withoutOwnerLease.controlEvents = withoutOwnerLease.controlEvents.slice(1);
@@ -605,7 +658,7 @@ test("structured provider approval requires pr lifecycle authority and owner eve
         diffSha: record.diffSha,
         ...withoutOwnerLease,
       }),
-    /has no owner-bootstrap authorization event/,
+    /has no owner-signed-capability authorization event/,
   );
 });
 

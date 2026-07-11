@@ -31,11 +31,6 @@ Build one website change in the `www` lane and preserve its source identity thro
 3. Launch `./scripts/worktree-preview.sh website` on a fresh port returned by `scripts/lib/find-free-port.mjs`.
 4. Use browser automation only when the task requires browser inspection. Keep the preview alive while the user is reviewing it.
 5. Deploy a shareable preview only when requested, using `./scripts/vercel-deploy-preview.sh website`.
-6. Publish through the owner-configured absolute signed host broker:
-   `"$FREED_TRUSTED_PUBLISHER" --title "<conventional title>" --base www --summary "<change>" --test "cd website && PATH=../node_modules/.bin:$PATH npm run build" --ready`.
-   It must live outside the candidate worktree and resolve the approved clean
-   control-plane checkout from its private host config. Omit `--ready` while
-   work remains. Stop if the signed broker, inner launcher, or target-scoped
-   publisher lease is unavailable.
+6. Publish with `./scripts/worktree-publish.sh --title "<conventional title>" --base www --summary "<change>" --test "cd website && PATH=../node_modules/.bin:$PATH npm run build" --ready` using the caller's existing GitHub authentication. Omit `--ready` while work remains. A deliberately provisioned unattended host may use `FREED_TRUSTED_PUBLISHER` as an optional wrapper around the same helper. Missing broker provisioning does not block the normal website PR path.
 7. Confirm the PR targets `www`, the exact head SHA passed validation, and the PR state matches the granted authority.
 8. Report the source commit, website commit, local preview URL, and remote preview deployment ID when one exists.

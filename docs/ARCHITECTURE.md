@@ -95,8 +95,9 @@ Three long-lived branches: `dev` (product work, default), `main` (production rel
   `scripts/doctor.mjs --strict` preflight gates mutation and publishing.
 - `scripts/doctor.mjs`: machine preflight for the pinned Node toolchain, GitHub
   CLI, credential helpers, Python, Xcode license state, automation state, and
-  trusted publisher readiness. Worktree setup may warn, but continuous mutation
-  loops stop on strict failures.
+  optional trusted publisher readiness. Worktree setup may warn, but continuous
+  mutation loops stop on strict failures. Missing optional broker provisioning
+  is a warning unless the caller explicitly requires that profile.
 - `scripts/soak-collect.mjs` and `scripts/soak-assert.mjs`: exclusive installed
   soak collection, raw evidence mirroring, build attribution, source-health
   checks, comparable workload context, and machine-readable verdicts. See
@@ -111,7 +112,7 @@ Three long-lived branches: `dev` (product work, default), `main` (production rel
   canary regressions, and CI issues into one immutable ranked candidate
   generation while preserving duplicate event multiplicity.
 - `scripts/trusted-publisher-host.swift` and
-  `scripts/trusted-worktree-publish.sh`: root-provisioned publisher broker,
+  `scripts/trusted-worktree-publish.sh`: optional root-provisioned publisher broker,
   one-use scoped capabilities, exact leases, pinned executable identities, and
   final branch and PR rechecks. No reusable publisher secret enters an agent
   process.

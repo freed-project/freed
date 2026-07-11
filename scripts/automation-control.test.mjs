@@ -7,6 +7,7 @@ import {
   sign as signPayload,
 } from "node:crypto";
 import {
+  appendFileSync,
   chmodSync,
   existsSync,
   mkdirSync,
@@ -47,6 +48,10 @@ import {
   updateTaskAuthorities,
   verifyOwnerCapabilityEnvelope,
 } from "./lib/automation-control.mjs";
+import {
+  providerApprovalAuthorizationDigest,
+  validateProviderRiskApproval,
+} from "./lib/provider-visible-paths.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.join(__dirname, "automation-control.mjs");
@@ -1336,17 +1341,33 @@ test("new writes reject release authority while legacy records downgrade to merg
 
 test("provider approval requires a reference and authority changes are audited", () => {
   const stateRoot = temporaryStateRoot();
+  const nowMs = Date.now();
   const controller = actorLease(stateRoot, "freed-stability-controller");
-  const owner = actorLease(stateRoot, "freed-owner", {
-    ownerTaskId: "P1-04",
-    ownerIntentDigest: ownerIntent("task.authorize", "P1-04", {
-      observerAuthority: "merge-safe",
-      providerAuthority: "approved",
-      reason: "Scoped provider lifecycle work approved.",
-      approvalReference: "owner-confirmation-2026-07-10",
-      expectedRevision: 1,
-    }),
-  });
+  const approval = {
+    schemaVersion: 1,
+    approvalId: "provider-risk-p1-04-facebook-lifecycle",
+    approvedBy: "AubreyF",
+    ownerApprovalReference: "Owner approved the exact P1-04 provider diff.",
+    approvalSource: { kind: "control-task", reference: "P1-04" },
+    approvedAt: new Date(nowMs - 60_000).toISOString(),
+    expiresAt: new Date(nowMs + 86_400_000).toISOString(),
+    providers: ["facebook"],
+    observableBehavior:
+      "Changes the existing Facebook provider lifecycle behavior.",
+    fingerprintingRisk:
+      "Changed lifecycle timing could make the session easier to distinguish.",
+    lowestProfileAlternative:
+      "Keep the existing lifecycle and collect passive diagnostics.",
+    diffSha: "a".repeat(40),
+    paths: ["packages/desktop/src-tauri/src/fb-extract.js"],
+    pathScopes: [
+      {
+        path: "packages/desktop/src-tauri/src/fb-extract.js",
+        providers: ["facebook"],
+      },
+    ],
+  };
+  const authorizationDigest = providerApprovalAuthorizationDigest(approval);
   createTask({
     stateRoot,
     taskId: "P1-04",
@@ -1354,7 +1375,54 @@ test("provider approval requires a reference and authority changes are audited",
     observerAuthority: "pr-only",
     providerAuthority: "approval-required",
     details: { behavioral: true },
+    nowMs: nowMs + 1_000,
   });
+  transitionTask({
+    stateRoot,
+    taskId: "P1-04",
+    ...controller,
+    toState: "triaged",
+    expectedRevision: 1,
+    nowMs: nowMs + 2_000,
+  });
+  const owner = actorLease(stateRoot, "freed-owner", {
+    nowMs: nowMs + 3_000,
+    ownerTaskId: "P1-04",
+    ownerIntentDigest: ownerIntent("task.authorize", "P1-04", {
+      observerAuthority: "merge-safe",
+      providerAuthority: "approved",
+      reason: "Scoped provider lifecycle work approved.",
+      approvalReference: authorizationDigest,
+      expectedRevision: 2,
+    }),
+  });
+  const ownerLeaseRecord = JSON.parse(
+    readFileSync(
+      path.join(
+        automationControlPaths(stateRoot).leases,
+        "owner-governance.lease/lease.json",
+      ),
+      "utf8",
+    ),
+  );
+  appendFileSync(
+    automationControlPaths(stateRoot).events,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      eventId: "provider-owner-capability-lease",
+      type: "lease_acquired",
+      ts: ownerLeaseRecord.acquiredAt,
+      actor: "freed-owner",
+      leaseName: "owner-governance",
+      data: {
+        credentialKind: ownerLeaseRecord.credentialKind,
+        ownerCapabilityId: ownerLeaseRecord.ownerCapabilityId,
+        ownerCapabilityTaskId: ownerLeaseRecord.ownerCapabilityTaskId,
+        ownerCapabilityIntentDigest:
+          ownerLeaseRecord.ownerCapabilityIntentDigest,
+      },
+    })}\n`,
+  );
   assert.throws(
     () =>
       updateTaskAuthorities({
@@ -1375,8 +1443,8 @@ test("provider approval requires a reference and authority changes are audited",
         observerAuthority: "merge-safe",
         providerAuthority: "approved",
         reason: "A different, unsigned governance intent.",
-        approvalReference: "owner-confirmation-2026-07-10",
-        expectedRevision: 1,
+        approvalReference: authorizationDigest,
+        expectedRevision: 2,
       }),
     (error) =>
       error instanceof AutomationControlError &&
@@ -1390,14 +1458,15 @@ test("provider approval requires a reference and authority changes are audited",
     observerAuthority: "merge-safe",
     providerAuthority: "approved",
     reason: "Scoped provider lifecycle work approved.",
-    approvalReference: "owner-confirmation-2026-07-10",
-    expectedRevision: 1,
+    approvalReference: authorizationDigest,
+    expectedRevision: 2,
+    nowMs: nowMs + 4_000,
   });
   assert.equal(update.task.observerAuthority, "merge-safe");
   assert.equal(update.task.providerAuthority, "approved");
   const event = readEvents(stateRoot).at(-1);
   assert.equal(event.type, "task_authority_updated");
-  assert.equal(event.data.approvalReference, "owner-confirmation-2026-07-10");
+  assert.equal(event.data.approvalReference, authorizationDigest);
   assert.equal(
     event.data.authorizationProvenance.leaseName,
     "owner-governance",
@@ -1414,6 +1483,25 @@ test("provider approval requires a reference and authority changes are audited",
     event.data.authorizationProvenance.ownerCapabilityTaskId,
     "P1-04",
   );
+  transitionTask({
+    stateRoot,
+    taskId: "P1-04",
+    ...controller,
+    toState: "approved_for_pr",
+    expectedRevision: 3,
+    nowMs: nowMs + 5_000,
+  });
+  const validatedApproval = validateProviderRiskApproval(
+    approval,
+    approval.paths,
+    {
+      now: nowMs + 6_000,
+      diffSha: approval.diffSha,
+      controlManifest: readTaskManifest({ stateRoot }),
+      controlEvents: readEvents(stateRoot),
+    },
+  );
+  assert.equal(validatedApproval.authorizationDigest, authorizationDigest);
 });
 
 test("approved provider tasks require and retain an owner approval reference at creation", () => {

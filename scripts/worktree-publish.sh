@@ -4,12 +4,23 @@ set -euo pipefail
 set +x
 umask 077
 
+PUBLISH_LEASE_PRESENT="${FREED_PR_PUBLISHER_LEASE_TOKEN+x}"
+PUBLISH_STATE_ROOT_PRESENT="${FREED_PUBLISH_CONTROL_STATE_ROOT+x}"
+PUBLISH_SCOPE_PRESENT="${FREED_PUBLISH_SCOPE_JSON+x}"
+PUBLISH_GIT_PRESENT="${FREED_PUBLISH_GIT_BIN+x}"
+PUBLISH_GH_PRESENT="${FREED_PUBLISH_GH_BIN+x}"
+PUBLISH_PYTHON_PRESENT="${FREED_PUBLISH_PYTHON_BIN+x}"
 PUBLISH_LEASE_TOKEN="${FREED_PR_PUBLISHER_LEASE_TOKEN:-}"
 PUBLISH_CONTROL_STATE_ROOT="${FREED_PUBLISH_CONTROL_STATE_ROOT:-}"
 PUBLISH_SCOPE_JSON="${FREED_PUBLISH_SCOPE_JSON:-}"
-GIT_BIN="${FREED_PUBLISH_GIT_BIN:-/usr/bin/git}"
+GIT_BIN="${FREED_PUBLISH_GIT_BIN:-}"
 GH_BIN="${FREED_PUBLISH_GH_BIN:-}"
-PYTHON_BIN="${FREED_PUBLISH_PYTHON_BIN:-/usr/bin/python3}"
+PYTHON_BIN="${FREED_PUBLISH_PYTHON_BIN:-}"
+PUBLISH_NODE_BIN="${NODE_BIN:-}"
+TRUSTED_PUBLISH_MODE=false
+if [[ -n "${PUBLISH_LEASE_PRESENT}" || -n "${PUBLISH_STATE_ROOT_PRESENT}" || -n "${PUBLISH_SCOPE_PRESENT}" || -n "${PUBLISH_GIT_PRESENT}" || -n "${PUBLISH_GH_PRESENT}" || -n "${PUBLISH_PYTHON_PRESENT}" ]]; then
+  TRUSTED_PUBLISH_MODE=true
+fi
 builtin unset \
   FREED_PR_PUBLISHER_ACTOR_TOKEN \
   FREED_PR_PUBLISHER_LEASE_TOKEN \
@@ -21,15 +32,33 @@ builtin unset \
   FREED_PUBLISH_GIT_BIN \
   FREED_PUBLISH_GH_BIN \
   FREED_PUBLISH_PYTHON_BIN \
+  GH_HOST \
   GH_REPO
 builtin declare +x PUBLISH_LEASE_TOKEN
 
-if [[ "${PUBLISH_CONTROL_STATE_ROOT}" != /* ]]; then
-  echo "Error: publishing requires an absolute FREED_PUBLISH_CONTROL_STATE_ROOT from the trusted host launcher." >&2
-  exit 1
-fi
-
 SCRIPT_DIR="$(builtin cd -P -- "${BASH_SOURCE[0]%/*}" && builtin pwd)"
+
+if ${TRUSTED_PUBLISH_MODE}; then
+  if [[ "${PUBLISH_CONTROL_STATE_ROOT}" != /* ]]; then
+    echo "Error: trusted publishing requires an absolute FREED_PUBLISH_CONTROL_STATE_ROOT." >&2
+    exit 1
+  fi
+  NODE_BIN="${PUBLISH_NODE_BIN}"
+else
+  # Normal feature and release work uses the repository-pinned toolchain and
+  # the caller's existing GitHub authentication. The optional trusted broker
+  # supplies all six private handoff values together; any partial handoff above
+  # enters trusted mode and fails closed instead of silently downgrading.
+  # shellcheck source=./lib/node-tooling.sh
+  source "${SCRIPT_DIR}/lib/node-tooling.sh"
+  NODE_BIN="$(resolve_node_bin)"
+  GIT_BIN="$(command -v git || true)"
+  GH_BIN="$(command -v gh || true)"
+  PYTHON_BIN="$(command -v python3 || true)"
+  PUBLISH_CONTROL_STATE_ROOT="${HOME}/.freed/automation"
+  PUBLISH_SCOPE_JSON=""
+  PUBLISH_LEASE_TOKEN=""
+fi
 
 usage() {
   cat <<'EOF'
@@ -85,6 +114,17 @@ ensure_publishable_branch() {
   case "${branch_name}" in
     main|dev|www)
       echo "Error: refusing to publish directly from protected branch '${branch_name}'." >&2
+      exit 1
+      ;;
+  esac
+}
+
+ensure_publishable_base() {
+  case "$1" in
+    dev|main|www)
+      ;;
+    *)
+      echo "Error: publish base must be dev, main, or www." >&2
       exit 1
       ;;
   esac
@@ -233,11 +273,13 @@ FINAL_PROVIDER_DIFF_SHA=""
 PUBLISH_HEAD=""
 BRANCH_NAME=""
 SCOPE_HEAD_SHA=""
+EXPECTED_BASE_SHA=""
+EXPECTED_DEV_SHA=""
 SUMMARY_ARGS=()
 TEST_ARGS=()
 
 release_publish_lease() {
-  if [[ -n "${PUBLISH_LEASE_TOKEN}" ]]; then
+  if ${TRUSTED_PUBLISH_MODE} && [[ -n "${PUBLISH_LEASE_TOKEN}" ]]; then
     FREED_AUTOMATION_LEASE_TOKEN="${PUBLISH_LEASE_TOKEN}" \
       "${NODE_BIN}" "${SCRIPT_DIR}/automation-control.mjs" lease release \
       --state-root "${PUBLISH_CONTROL_STATE_ROOT}" \
@@ -247,6 +289,9 @@ release_publish_lease() {
 }
 
 validate_publish_lease() {
+  if ! ${TRUSTED_PUBLISH_MODE}; then
+    return 0
+  fi
   FREED_AUTOMATION_LEASE_TOKEN="${PUBLISH_LEASE_TOKEN}" \
     "${NODE_BIN}" "${SCRIPT_DIR}/automation-control.mjs" lease heartbeat \
     --state-root "${PUBLISH_CONTROL_STATE_ROOT}" \
@@ -276,6 +321,11 @@ ensure_repo_identity() {
 }
 
 validate_publish_scope_target() {
+  if ! ${TRUSTED_PUBLISH_MODE}; then
+    EXPECTED_BASE_SHA="$("${GIT_BIN}" rev-parse "origin/${BASE_BRANCH}")"
+    SCOPE_HEAD_SHA=""
+    return 0
+  fi
   if [[ -z "${PUBLISH_SCOPE_JSON}" ]]; then
     echo "Error: publishing requires a target-scoped publisher lease." >&2
     exit 1
@@ -305,18 +355,32 @@ validate_publish_scope_target() {
     exit 1
   fi
   SCOPE_HEAD_SHA="${scope_head_sha}"
+  EXPECTED_BASE_SHA="${scope_base_sha}"
 }
 
-verify_canonical_base() {
+verify_canonical_ref() {
+  local branch_name="$1"
+  local expected_sha="$2"
   local canonical_base_sha
   canonical_base_sha="$(
     "${GH_BIN}" api \
-      "repos/${PUBLISH_REPO}/git/ref/heads/${BASE_BRANCH}" \
+      "repos/${PUBLISH_REPO}/git/ref/heads/${branch_name}" \
       --jq .object.sha
   )"
-  if [[ "${canonical_base_sha}" != "$(json_nested_field "${PUBLISH_SCOPE_JSON}" baseSha)" ]]; then
-    echo "Error: canonical ${BASE_BRANCH} moved after the publisher capability was issued." >&2
+  if [[ "${canonical_base_sha}" != "${expected_sha}" ]]; then
+    if ${TRUSTED_PUBLISH_MODE}; then
+      echo "Error: canonical ${branch_name} moved after the publisher capability was issued or validated." >&2
+    else
+      echo "Error: canonical ${branch_name} moved after the local ref was fetched. Re-run publish." >&2
+    fi
     exit 1
+  fi
+}
+
+verify_canonical_base() {
+  verify_canonical_ref "${BASE_BRANCH}" "${EXPECTED_BASE_SHA}"
+  if [[ "${BASE_BRANCH}" == "main" ]]; then
+    verify_canonical_ref dev "${EXPECTED_DEV_SHA}"
   fi
 }
 
@@ -350,8 +414,9 @@ assert_publish_write_ready() {
   revalidate_provider_approval
 }
 
-verify_pr_target() {
+verify_pr_target_head() {
   local pr_reference="$1"
+  local expected_head="$2"
   local pr_json
   local pr_head
   local pr_base
@@ -359,10 +424,44 @@ verify_pr_target() {
   pr_json="$("${GH_BIN}" pr view "${pr_reference}" --repo "${PUBLISH_REPO}" --json headRefOid,baseRefName)"
   pr_head="$(json_nested_field "${pr_json}" headRefOid)"
   pr_base="$(json_nested_field "${pr_json}" baseRefName)"
-  if [[ "${pr_head}" != "${PUBLISH_HEAD}" || "${pr_base}" != "${BASE_BRANCH}" ]]; then
+  if [[ "${pr_head}" != "${expected_head}" || "${pr_base}" != "${BASE_BRANCH}" ]]; then
     echo "Error: pull request target does not match the inspected publish head and base." >&2
     exit 1
   fi
+}
+
+verify_pr_target() {
+  verify_pr_target_head "$1" "${PUBLISH_HEAD}"
+}
+
+ensure_provider_pr_draft_before_push() {
+  if [[ -z "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
+    return
+  fi
+  local existing_json
+  local existing_number
+  local existing_is_draft
+  local existing_head
+  existing_json="$(
+    "${GH_BIN}" pr list \
+      --repo "${PUBLISH_REPO}" \
+      --head "${BRANCH_NAME}" \
+      --base "${BASE_BRANCH}" \
+      --state open \
+      --json number,isDraft,headRefOid,baseRefName \
+      --limit 1
+  )"
+  existing_number="$(pr_field "${existing_json}" number)"
+  existing_is_draft="$(pr_field "${existing_json}" isDraft)"
+  existing_head="$(pr_field "${existing_json}" headRefOid)"
+  if [[ -z "${existing_number}" || "${existing_is_draft}" == "true" ]]; then
+    return
+  fi
+  validate_publish_lease
+  verify_canonical_base
+  revalidate_provider_approval
+  verify_pr_target_head "${existing_number}" "${existing_head}"
+  "${GH_BIN}" pr ready "${existing_number}" --repo "${PUBLISH_REPO}" --undo >/dev/null
 }
 
 trap release_publish_lease EXIT
@@ -437,6 +536,7 @@ require_executable "${NODE_BIN:-}" node
 "${NODE_BIN}" "${SCRIPT_DIR}/doctor.mjs" || true
 
 ensure_conventional_title "${TITLE}"
+ensure_publishable_base "${BASE_BRANCH}"
 
 if ! "${GIT_BIN}" rev-parse --git-dir >/dev/null 2>&1; then
   echo "Error: current directory is not inside a git repository." >&2
@@ -444,19 +544,28 @@ if ! "${GIT_BIN}" rev-parse --git-dir >/dev/null 2>&1; then
 fi
 ensure_repo_identity
 
-"${GIT_BIN}" fetch origin "${BASE_BRANCH}" >/dev/null 2>&1
+if [[ "${BASE_BRANCH}" == "main" ]]; then
+  # Main validation compares promotion branches with origin/dev. Refresh both
+  # long-lived refs so a stale local dev ref cannot bless an old promotion.
+  "${GIT_BIN}" fetch origin main dev >/dev/null 2>&1
+  EXPECTED_DEV_SHA="$("${GIT_BIN}" rev-parse origin/dev)"
+else
+  "${GIT_BIN}" fetch origin "${BASE_BRANCH}" >/dev/null 2>&1
+fi
 
 BRANCH_NAME="$(current_branch)"
 ensure_publishable_branch "${BRANCH_NAME}"
 validate_publish_scope_target
 
-if [[ -z "${PUBLISH_LEASE_TOKEN}" ]]; then
-  echo "Error: publishing requires FREED_PR_PUBLISHER_LEASE_TOKEN from the trusted host launcher." >&2
-  exit 1
-fi
-if ! validate_publish_lease; then
-  echo "Error: FREED_PR_PUBLISHER_LEASE_TOKEN is not a live publisher lease." >&2
-  exit 1
+if ${TRUSTED_PUBLISH_MODE}; then
+  if [[ -z "${PUBLISH_LEASE_TOKEN}" ]]; then
+    echo "Error: publishing requires FREED_PR_PUBLISHER_LEASE_TOKEN from the trusted host launcher." >&2
+    exit 1
+  fi
+  if ! validate_publish_lease; then
+    echo "Error: FREED_PR_PUBLISHER_LEASE_TOKEN is not a live publisher lease." >&2
+    exit 1
+  fi
 fi
 
 # Provider-visible gate (stability task W1-06): refuse to publish a branch
@@ -525,7 +634,7 @@ elif [[ -n "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
 fi
 
 if [[ "${BASE_BRANCH}" == "main" ]] && has_worktree_changes; then
-  echo "Error: governed main publishing requires the unchanged broker-validated head." >&2
+  echo "Error: main publishing requires a committed, clean branch." >&2
   exit 1
 fi
 
@@ -559,7 +668,7 @@ validate_publish_lease
 
 PUBLISH_HEAD="$("${GIT_BIN}" rev-parse HEAD)"
 if [[ "${BASE_BRANCH}" == "main" ]]; then
-  if [[ ! "${SCOPE_HEAD_SHA}" =~ ^[0-9a-f]{40}$ || "${PUBLISH_HEAD}" != "${SCOPE_HEAD_SHA}" ]]; then
+  if ${TRUSTED_PUBLISH_MODE} && [[ ! "${SCOPE_HEAD_SHA}" =~ ^[0-9a-f]{40}$ || "${PUBLISH_HEAD}" != "${SCOPE_HEAD_SHA}" ]]; then
     echo "Error: governed main head changed after broker validation." >&2
     exit 1
   fi
@@ -568,7 +677,7 @@ if [[ "${BASE_BRANCH}" == "main" ]]; then
     --base-ref=origin/main \
     --head-ref="${PUBLISH_HEAD}" \
     --head-branch="${BRANCH_NAME}"
-elif [[ -n "${SCOPE_HEAD_SHA}" ]]; then
+elif ${TRUSTED_PUBLISH_MODE} && [[ -n "${SCOPE_HEAD_SHA}" ]]; then
   echo "Error: only governed main capabilities may pre-bind a publish head." >&2
   exit 1
 fi
@@ -598,6 +707,7 @@ if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
 fi
 
 validate_publish_lease
+ensure_provider_pr_draft_before_push
 verify_canonical_base
 "${GIT_BIN}" push -u origin "${PUBLISH_HEAD}:refs/heads/${BRANCH_NAME}"
 verify_remote_head

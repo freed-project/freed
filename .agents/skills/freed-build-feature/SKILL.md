@@ -49,15 +49,11 @@ When product work changes any `docs/PHASE-*.md` file:
 
 ## Publish and close out
 
-1. Publish through the owner-configured absolute trusted host broker:
-   `"$FREED_TRUSTED_PUBLISHER" --title "<conventional title>" --summary "<change>" --test "<focused check>"`.
-   The broker must live outside the candidate worktree and invoke the trusted
-   launcher from the approved control-plane checkout. Add `--ready` only when
-   work is complete and no provider-visible path changed. The helper always
-   keeps provider-visible pull requests draft. After exact-head CODEOWNER
-   review, the owner performs a separate authorized ready transition through
-   GitHub. Stop if the trusted broker, launcher, or publisher lease is
-   unavailable.
+1. Publish with `./scripts/worktree-publish.sh --title "<conventional title>" --summary "<change>" --test "<focused check>"` using the caller's existing GitHub authentication. Add `--ready` only when work is complete and no provider-visible path changed. The helper always keeps provider-visible pull requests draft. After exact-head CODEOWNER review, the owner performs a separate authorized ready transition through GitHub.
+   A host that deliberately provisions `FREED_TRUSTED_PUBLISHER` may invoke the
+   same helper through its capability and lease handoff for unattended work.
+   Missing optional broker provisioning does not block the normal publication
+   path. A partial trusted handoff still fails closed.
 2. Confirm the PR targets `dev`, required checks passed for the exact head SHA, and the PR state matches the granted authority.
 3. Do not merge owner-review or provider-visible work autonomously.
 4. For governed stability or control-plane work, record the canonical task ID

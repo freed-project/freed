@@ -192,7 +192,7 @@ git add release-notes
 git commit -m "docs: review release notes for v26.4.107"
 # validate and publish a ready release-only PR targeting main
 npm run validate:release
-"$FREED_TRUSTED_PUBLISHER" --base main --ready --title "chore: prepare v26.4.107"
+./scripts/worktree-publish.sh --base main --ready --title "chore: prepare v26.4.107"
 # merge the release-prep PR, then update a clean local main branch
 cd /path/to/clean-main-checkout
 git fetch origin main

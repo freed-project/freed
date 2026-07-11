@@ -195,7 +195,10 @@ const PROVIDER_APPROVAL_PROVIDER_IDS = new Set([
   "x",
   "youtube",
 ]);
-const PROVIDER_APPROVAL_SOURCE_KINDS = new Set(["control-task"]);
+const PROVIDER_APPROVAL_SOURCE_KINDS = new Set([
+  "control-task",
+  "owner-confirmation",
+]);
 const PROVIDER_APPROVAL_TASK_STATES = new Set([
   "approved_for_pr",
   "implemented",
@@ -432,7 +435,9 @@ export function validateProviderRiskApproval(
     errors.push("approvalSource must be an object");
   } else {
     if (!PROVIDER_APPROVAL_SOURCE_KINDS.has(approvalSource.kind)) {
-      errors.push("approvalSource.kind must be control-task");
+      errors.push(
+        "approvalSource.kind must be control-task or owner-confirmation",
+      );
     }
     requireApprovalText(approvalSource, "reference", errors);
   }
@@ -564,8 +569,19 @@ export function validateProviderRiskApproval(
   };
   const authorizationErrors = [];
   const authorizationDigest = providerApprovalAuthorizationDigest(approval);
+  const requiresControlTaskAuthorization =
+    requireControlTask && approval.approvalSource.kind === "control-task";
   if (
     requireControlTask &&
+    approval.approvalSource.kind === "owner-confirmation" &&
+    record.authorizationDigest !== authorizationDigest
+  ) {
+    authorizationErrors.push(
+      `owner-confirmation approval must contain the exact authorizationDigest ${authorizationDigest}`,
+    );
+  }
+  if (
+    requiresControlTaskAuthorization &&
     (controlManifest?.schemaVersion !== AUTOMATION_CONTROL_SCHEMA_VERSION ||
       !Number.isSafeInteger(controlManifest?.revision) ||
       !Array.isArray(controlManifest?.tasks))
@@ -579,11 +595,11 @@ export function validateProviderRiskApproval(
         (task) => task?.taskId === approval.approvalSource.reference,
       )
     : null;
-  if (requireControlTask && !controlTask) {
+  if (requiresControlTaskAuthorization && !controlTask) {
     authorizationErrors.push(
       `approvalSource control task was not found: ${approval.approvalSource.reference}`,
     );
-  } else if (requireControlTask) {
+  } else if (requiresControlTaskAuthorization) {
     if (
       controlTask.schemaVersion !== AUTOMATION_CONTROL_SCHEMA_VERSION ||
       !Number.isSafeInteger(controlTask.revision) ||
@@ -627,9 +643,14 @@ export function validateProviderRiskApproval(
               ) &&
               candidate?.actor === "freed-owner" &&
               candidate?.leaseName === "owner-governance" &&
-              candidate?.data?.credentialKind === "owner-bootstrap" &&
-              candidate?.data?.ownerBootstrapGrantId ===
-                provenance?.ownerBootstrapGrantId &&
+              candidate?.data?.credentialKind === "owner-signed-capability" &&
+              candidate?.data?.ownerCapabilityId ===
+                provenance?.ownerCapabilityId &&
+              candidate?.data?.ownerCapabilityTaskId === controlTask.taskId &&
+              candidate?.data?.ownerCapabilityTaskId ===
+                provenance?.ownerCapabilityTaskId &&
+              candidate?.data?.ownerCapabilityIntentDigest ===
+                provenance?.ownerCapabilityIntentDigest &&
               candidate?.ts === provenance?.leaseAcquiredAt,
           );
           return (
@@ -644,9 +665,14 @@ export function validateProviderRiskApproval(
             event?.providerAuthority === "approved" &&
             event?.providerApprovalReference === authorizationDigest &&
             provenance?.leaseName === "owner-governance" &&
-            provenance?.credentialKind === "owner-bootstrap" &&
-            typeof provenance?.ownerBootstrapGrantId === "string" &&
-            provenance.ownerBootstrapGrantId.length > 0 &&
+            provenance?.credentialKind === "owner-signed-capability" &&
+            typeof provenance?.ownerCapabilityId === "string" &&
+            provenance.ownerCapabilityId.length > 0 &&
+            provenance?.ownerCapabilityTaskId === controlTask.taskId &&
+            typeof provenance?.ownerCapabilityIntentDigest === "string" &&
+            /^[0-9a-f]{64}$/.test(
+              provenance.ownerCapabilityIntentDigest,
+            ) &&
             Number.isFinite(
               Date.parse(String(provenance?.leaseAcquiredAt ?? "")),
             ) &&
@@ -657,7 +683,7 @@ export function validateProviderRiskApproval(
       : null;
     if (!ownerAuthorizationEvent) {
       authorizationErrors.push(
-        `control task ${controlTask.taskId} has no owner-bootstrap authorization event for ${authorizationDigest}`,
+        `control task ${controlTask.taskId} has no owner-signed-capability authorization event for ${authorizationDigest}`,
       );
     }
   }

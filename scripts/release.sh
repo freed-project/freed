@@ -217,7 +217,7 @@ if [[ "$CHANNEL" == "production" ]]; then
 else
   echo "    npm run validate:feature"
 fi
-echo "    \"\$FREED_TRUSTED_PUBLISHER\" --base ${EXPECTED_BRANCH} --ready --title \"chore: prepare ${TAG}\""
+echo "    ./scripts/worktree-publish.sh --base ${EXPECTED_BRANCH} --ready --title \"chore: prepare ${TAG}\""
 if [[ "$CHANNEL" == "production" ]]; then
   echo "==> After that PR merges, update local main and run:"
   echo "    ./scripts/release-publish.sh ${VERSION}"
