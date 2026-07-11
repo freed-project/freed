@@ -723,7 +723,7 @@ const phases: Phase[] = [
     title: "Save for Later",
     description:
       "Save any link, read offline, and keep summaries and tags close at hand.",
-    status: "complete",
+    status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-3-SAVE-FOR-LATER.md",
   },
