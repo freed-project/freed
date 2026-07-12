@@ -55,7 +55,7 @@ function inferBuildChannel(appVersion, buildKind, commitRef, env) {
     appVersion.endsWith("-dev") ||
     commitRef === "dev" ||
     commitRef?.endsWith("-dev") ||
-    buildKind === "snapshot"
+    buildKind !== "release"
   ) {
     return "dev";
   }

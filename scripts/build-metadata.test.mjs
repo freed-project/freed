@@ -52,6 +52,8 @@ test("release channel metadata validates explicit values and preserves safe fall
 
 test("explicit build identity wins over hosting environment fallbacks", () => {
   const metadata = getBuildMetadata("26.7.1000", {
+    FREED_BUILD_KIND: "release",
+    FREED_BUILD_CHANNEL: "production",
     FREED_BUILD_COMMIT_SHA: "b".repeat(40),
     FREED_BUILD_COMMIT_REF: "main",
     VERCEL_GIT_COMMIT_SHA: "c".repeat(40),
@@ -72,4 +74,16 @@ test("production hosting builds infer a channel without desktop release metadata
 
   assert.equal(metadata.buildKind, "release");
   assert.equal(metadata.channel, "production");
+});
+
+test("local and preview builds default to the development channel", () => {
+  assert.equal(getBuildMetadata("26.7.1200", {}).channel, "dev");
+  assert.equal(
+    getBuildMetadata("26.7.1200", {
+      VERCEL: "1",
+      VERCEL_ENV: "preview",
+      VERCEL_GIT_COMMIT_REF: "fix/runtime-health",
+    }).channel,
+    "dev",
+  );
 });

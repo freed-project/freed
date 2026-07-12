@@ -9,7 +9,7 @@ import {
   ensureRefExists,
   formatFileList,
   listComparisonFiles,
-  listPromotionDiffFiles,
+  listPromotionBranchDiffFiles,
 } from "./release-promotion-shared.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -119,7 +119,7 @@ function main() {
     );
   }
 
-  const driftFiles = listPromotionDiffFiles({
+  const driftFiles = listPromotionBranchDiffFiles({
     fromRef: "origin/dev",
     toRef: options.headRef,
     cwd: options.cwd,

@@ -16,7 +16,7 @@ release.
 | --- | --- |
 | `automation/specs/*.json` | Checked-in automation identity, authority, provider policy, prompt path, soak limit, allowed local overlay fields, and required host handoff capabilities |
 | `automation/prompts/*.md` | Checked-in behavioral contract for each automation |
-| `.github/rulesets/*.json` | Checked-in dev, main, and www PR, review, merge, and required-check governance |
+| `.github/rulesets/*.json` | Checked-in dev, main, and www PR governance, plus split release-tag creation and no-bypass immutability policies |
 | `~/.freed/automation/control/current-tasks.json` | Atomic current task state |
 | `~/.freed/automation/control/task-transactions/` | Recoverable write-ahead records that bind each task revision to its audit event |
 | `~/.freed/automation/control/events.jsonl` | Append-only audit history for task, authority, lease, and observer events |
@@ -235,6 +235,34 @@ malformed, wrong-actor, wrong-purpose, or token-mismatched credential fails
 closed. The credential authenticates actor identity only. It does not expand
 the actor's checked-in authority, provider policy, task authority, or lifecycle
 destinations.
+
+Release tags have a separate external trust boundary. The checked-in
+`release-tag-lockdown.json` is the bootstrap authority. Apply it with
+`--lock-release-tags --apply` before App provisioning. It restricts creation,
+update, and deletion with no bypass in one API mutation. The separate creation
+and immutability policies describe the activated end state. Activation first
+requires an owner-reviewed change that pins the creation policy to the exact App
+ID. It then uses
+`node scripts/sync-github-rulesets.mjs --release-tags --release-app-id <id> --release-app-slug <slug> --apply`.
+The command verifies the public App identity, an unsuspended installation with
+Contents write permission, exact repository access, and the fixed root-owned
+publisher binding at `/Library/Application Support/Freed/release-tag-publisher.json`
+before it applies either policy. It verifies both split policies live before it
+removes the bootstrap lockdown. The creation policy grants that App one bypass.
+The immutability policy grants none. The PR publisher App, user
+identities, administrator roles, teams, and deploy keys are never acceptable
+substitutes.
+
+`scripts/release-publish.sh` fails closed until the live release-tag policy is
+active. It also requires the release commit to equal the current protected
+channel branch, validates the fixed product and promoted dev receipts, rejects
+an existing local or remote tag, and delegates one exact annotated-tag creation
+through the same fixed root-owned publisher binding used during activation. The
+binding, parent chain, executable digest, App identity, and broker attestation
+are rechecked immediately before use. That broker rechecks the branch tip and receipt at
+push time, then obtains a short-lived installation credential. The delayed
+workflow checks that the tag commit remains in protected channel history. It
+does not compare against a moving branch tip or a later dev snapshot.
 
 The optional broker-backed PR publisher uses a separate fail-closed identity contract. It does not
 accept `FREED_AUTOMATION_ACTOR_TOKEN` or
@@ -476,12 +504,19 @@ merge only, dismiss stale reviews, require resolved review threads, require
 CODEOWNER review for owned paths, and name the exact status checks for each
 branch. There are no bypass actors.
 
-`npm run governance:rulesets` is a read-only dry run. It compares the checked-in
-payloads with GitHub. Apply one lane at a time with
-`npm run governance:rulesets -- --branch <dev|main|www> --apply`. Apply fails
-unless the target branch already contains the exact governed CODEOWNERS file
-and a recent merged pull request to that branch has a successful run for every
-required check context. CODEOWNERS must land in `dev`, then ride the explicit
+`npm run governance:rulesets` is a read-only branch dry run. It compares the
+checked-in branch payloads with GitHub and reports the required release-tag
+lockdown state. Once an owner-reviewed App ID is checked in, use
+`--release-tags` with the exact App and publisher arguments to compare the two
+tag policies. Apply one branch lane at a time with
+`npm run governance:rulesets -- --branch <dev|main|www> --publisher-login <bot-login> --apply`. Apply fails
+unless the target branch already contains the exact governed CODEOWNERS file,
+a recent merged pull request was authored by that distinct publisher identity,
+the exact merged head has an APPROVED review from `@AubreyF`, and that head has
+a successful run for every required check context. This prevents the sole
+CODEOWNER from locking the repository by authoring a PR they cannot
+self-approve. The publisher identity may create branches and PRs, but it must
+not have approval or merge authority. CODEOWNERS must land in `dev`, then ride the explicit
 promotion into `main` and a separate handoff into `www` before either ruleset
 is applied. The `www` handoff must also add the repository `.nvmrc`, which is
 not present on the current `www` branch, before its workflows use
@@ -489,11 +524,22 @@ not present on the current `www` branch, before its workflows use
 policy, pinned toolchain, and workflow exist can lock the branch with an
 impossible condition.
 
+The publisher login is a GitHub author identity, not merely the local trusted
+publisher broker. A broker that still invokes `gh` as `@AubreyF` does not solve
+self-approval and cannot satisfy ruleset readiness. Keep all three rulesets
+unapplied until a distinct least-privilege App or bot has produced the required
+review evidence.
+
 Release preparation is also PR-only. Dev prep starts from current `origin/dev`
 and returns through a reviewed PR to `dev`. Production prep starts from current
 `origin/main` after any required product promotion and returns through a
 release-only PR to `main`. `release-publish.sh` tags only an exact merged remote
-commit and never instructs a protected branch push.
+commit and never instructs a protected branch push. Release artifacts bind the
+tag, channel, numeric bundle versions, and product commit used to prepare the
+notes. The root-owned release publisher rechecks exact branch-tip equality when
+it creates the remote tag. The delayed tag workflow then requires that commit
+to remain in protected `origin/main` or `origin/dev` history and reruns release
+identity validation before signing or publication.
 
 ## One global behavior slot
 

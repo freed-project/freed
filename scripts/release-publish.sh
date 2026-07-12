@@ -50,9 +50,8 @@ if [[ "$LOCAL_RELEASE_SHA" != "$REMOTE_RELEASE_SHA" ]]; then
   exit 1
 fi
 
-if [[ "$CHANNEL" == "production" ]]; then
-  "${NODE_BIN}" scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref=HEAD
-fi
+"${NODE_BIN}" scripts/validate-release-identity.mjs --tag="${TAG}" --head-ref=HEAD
+"${NODE_BIN}" scripts/validate-release-tag-authority.mjs --repo=freed-project/freed
 
 APPROVED=$("${NODE_BIN}" -e "
   const fs = require('fs');
@@ -97,8 +96,35 @@ if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
   exit 1
 fi
 
-git tag -a "${TAG}" -m "Release ${TAG}"
+if [[ -n "$(git ls-remote --tags origin "refs/tags/${TAG}")" ]]; then
+  echo "Error: remote tag ${TAG} already exists. Release tags are immutable." >&2
+  exit 1
+fi
 
-echo "==> Created tag ${TAG}"
-echo "==> To trigger the release workflow, run:"
-echo "    git push origin refs/tags/${TAG}"
+RELEASE_FILE_SHA256=$("${NODE_BIN}" -e "
+  const crypto = require('crypto');
+  const fs = require('fs');
+  process.stdout.write(crypto.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex'));
+" "$RELEASE_FILE")
+
+"${NODE_BIN}" scripts/release-tag-publisher.mjs publish \
+  --repo freed-project/freed \
+  --worktree "$(pwd -P)" \
+  --tag "${TAG}" \
+  --channel "${CHANNEL}" \
+  --commit "${LOCAL_RELEASE_SHA}" \
+  --branch "${EXPECTED_BRANCH}" \
+  --release-file "${RELEASE_FILE}" \
+  --release-file-sha256 "${RELEASE_FILE_SHA256}"
+
+git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}"
+if [[ "$(git cat-file -t "refs/tags/${TAG}")" != "tag" ]]; then
+  echo "Error: release publisher created a non-annotated tag ${TAG}." >&2
+  exit 1
+fi
+if [[ "$(git rev-list -n 1 "refs/tags/${TAG}")" != "${LOCAL_RELEASE_SHA}" ]]; then
+  echo "Error: release publisher created ${TAG} at the wrong commit." >&2
+  exit 1
+fi
+
+echo "==> Published immutable tag ${TAG} through the dedicated release GitHub App."

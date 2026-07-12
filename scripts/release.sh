@@ -83,8 +83,10 @@ if [[ "$(git rev-parse HEAD)" != "$(git rev-parse "${EXPECTED_BASE_REF}")" ]]; t
   exit 1
 fi
 
+PROMOTED_DEV_COMMIT_SHA=""
 if [[ "$CHANNEL" == "production" ]]; then
   "${NODE_BIN}" scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref=HEAD
+  PROMOTED_DEV_COMMIT_SHA="$(git rev-parse origin/dev)"
 fi
 
 if [[ -n "$VERSION_INPUT" ]]; then
@@ -118,27 +120,21 @@ else
   done
 
   NEXT_BUILD=$(( MAX_BUILD + 1 ))
-  VERSION="${YY}.${M}.$(( PATCH_BASE + NEXT_BUILD ))"
-  if [[ "$CHANNEL" == "dev" ]]; then
-    VERSION="${VERSION}-dev"
-  fi
+  VERSION="$(
+    "${NODE_BIN}" scripts/release-version.mjs \
+      --channel="${CHANNEL}" \
+      --major="${YY}" \
+      --month="${M}" \
+      --day="${D}" \
+      --build="${NEXT_BUILD}"
+  )"
   echo "==> Auto-computed ${CHANNEL} version: ${VERSION} (${YY}.${M}.${D} build ${NEXT_BUILD})"
 fi
 
-# Validate format
-if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-  echo "Error: '${VERSION}' is not a valid version" >&2
-  exit 1
-fi
-
-if [[ "$CHANNEL" == "dev" && "$VERSION" != *-dev ]]; then
-  VERSION="${VERSION}-dev"
-fi
-
-if [[ "$CHANNEL" == "production" && "$VERSION" == *-dev ]]; then
-  echo "Error: production releases cannot use a -dev suffix." >&2
-  exit 1
-fi
+# Validate and normalize the release identity before mutating any version file.
+# Bundle versions stay numeric, while the exact -dev suffix lives on dev tags
+# and release metadata.
+VERSION="$("${NODE_BIN}" scripts/release-version.mjs --channel="${CHANNEL}" "${VERSION}")"
 
 BASE_VERSION="${VERSION%-dev}"
 APP_VERSION="${VERSION}"
@@ -197,7 +193,8 @@ echo "    ${DESKTOP_PKG}"
 echo "    ${PWA_PKG}"
 
 # Generate draft release-note artifacts
-"${NODE_BIN}" scripts/prepare-release-notes.mjs "${VERSION}"
+FREED_PROMOTED_DEV_COMMIT_SHA="${PROMOTED_DEV_COMMIT_SHA}" \
+  "${NODE_BIN}" scripts/prepare-release-notes.mjs "${VERSION}"
 
 # Commit draft release prep, but do not tag yet.
 git add "${TAURI_CONF}" "${CARGO_TOML}" "${DESKTOP_PKG}" "${PWA_PKG}" \

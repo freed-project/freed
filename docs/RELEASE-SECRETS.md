@@ -116,6 +116,70 @@ GitHub Releases API with any of these environment variable names:
 
 On Vercel, the current project configuration uses `GITHUB_RELEASES_TOKEN`.
 
+## Release tag authority
+
+Release tags are an external trust boundary. GitHub loads a tag-push workflow
+from the tagged commit, so a workflow cannot prove that its own source was
+reviewed. Two live rulesets form the root control. `Freed release tag creation`
+targets every `refs/tags/v*` tag and grants its only bypass to one dedicated
+release GitHub App with repository Contents write permission. `Freed release
+tag immutability` targets the same tags and restricts update and deletion with
+no bypass, including no bypass for the release App.
+
+The checked-in `.github/rulesets/release-tag-lockdown.json` policy is the safe
+bootstrap. Apply it before App provisioning. It blocks creation, update, and
+deletion with no bypass in one API mutation. The checked-in creation and
+immutability policies then describe the split activated state. Do not add a
+user, administrator role, team, deploy key, or the PR publisher App as a
+substitute.
+
+```bash
+node scripts/sync-github-rulesets.mjs --lock-release-tags --apply
+```
+
+After the dedicated release App and root-owned publisher are installed for
+`freed-project/freed`, an owner-reviewed PR must pin the App ID in the creation
+policy and set that policy active. Then an owner can verify and apply both
+rulesets:
+
+```bash
+node scripts/sync-github-rulesets.mjs \
+  --release-tags \
+  --release-app-id <github-app-id> \
+  --release-app-slug <github-app-slug> \
+  --apply
+```
+
+The fixed root-owned binding at
+`/Library/Application Support/Freed/release-tag-publisher.json` pins the App,
+publisher path, and executable SHA-256 digest. Activation and every publication
+recheck that file, its parent chain, the executable, and the broker attestation.
+The binding schema is:
+
+```json
+{
+  "schemaVersion": 1,
+  "purpose": "freed-release-tag-publisher-binding",
+  "status": "active",
+  "repo": "freed-project/freed",
+  "appId": 123456,
+  "appSlug": "freed-release-publisher",
+  "publisherPath": "/Library/Application Support/Freed/release-tag-publisher",
+  "publisherSha256": "<64 lowercase hexadecimal characters>"
+}
+```
+
+The binding, publisher executable, and every parent directory must be owned by
+root and must not be group or world writable. The executable must attest the
+same repository, App identity, digest, short-lived installation-token mode, and
+single `create-annotated-tag` operation before ruleset activation or release.
+The release publisher must request a short-lived installation token and expose
+only one operation: create the exact approved annotated tag at the exact current
+protected branch commit. It must not expose arbitrary refs, commits, updates,
+or deletions. `release-publish.sh` fails before publication when the checked-in
+App ID, either live ruleset, the publisher path, or any tag precondition is
+missing.
+
 ## Drafting release notes
 
 Create a fresh `chore/release-<version>` worktree from current `origin/main` for
@@ -199,7 +263,6 @@ git fetch origin main
 git merge --ff-only origin/main
 
 ./scripts/release-publish.sh 26.4.107
-git push origin refs/tags/v26.4.107
 ```
 
 For a dev release, create the same `chore/release-<version>` branch from
@@ -212,7 +275,12 @@ Production release prep requires an exact current `origin/main` base after any
 required product promotion. Dev release prep requires exact current
 `origin/dev`. Both return through branch protection. `release-publish.sh`
 refuses to tag unless local `HEAD` exactly equals the target remote branch, so
-it cannot tag an unmerged local release commit.
+it cannot tag an unmerged local release commit. It also binds the requested tag,
+channel, Desktop, PWA, Tauri, and Cargo versions to the reviewed release
+artifact. The artifact records the product commit used to prepare its notes.
+Production artifacts also record the exact promoted dev commit whose product
+tree matched main at preparation time. Any later product change makes the
+release identity stale and requires a new release-prep PR.
 
 PRs targeting `main` have a scope guard. Product changes reach `main` only
 through a branch named `chore/promote-dev-to-main-*`, and that promotion must
@@ -223,7 +291,12 @@ Website-owned files remain rejected there.
 The `v*` tag triggers the release workflow which builds all platforms and
 creates a **draft** GitHub Release using the approved checked-in release body.
 After all platform builds succeed, the workflow publishes that release
-automatically.
+automatically. Before any secret-bearing job, the workflow requires the tag
+commit to remain in protected `origin/main` history for production or protected
+`origin/dev` history for dev, then reruns the release identity validator. The
+trusted release App proves exact branch-tip equality when it creates the tag.
+Ancestry in the delayed workflow allows the branch to advance without breaking
+an honest release.
 
 If `VERCEL_TOKEN` is configured, production releases deploy `packages/pwa/` to
 `app.freed.wtf` so the PWA version stays aligned with the shipped desktop
@@ -231,8 +304,8 @@ release. After any GitHub release is published, the release workflow also
 redeploys the public website from current `www` so the static changelog
 snapshot is rebuilt against the latest release list. Production website deploys
 still require the reviewed website and changelog state to already be merged
-into `www`. The release workflow now also rechecks production promotion state
-at tag time, so a stale `main` tag cannot slip through after `dev` advances.
+into `www`. Production identity uses the fixed promoted dev receipt recorded
+during preparation. A later dev commit cannot change or invalidate that release.
 After the production release is stable, open the dedicated `main` back into
 `dev` reverse-integration PR before more feature work piles onto `dev`.
 
@@ -253,6 +326,8 @@ The in-app updater will pick the new GitHub release up automatically.
 
 `./scripts/release-publish.sh` and the release workflow both validate that:
 
+- the tag, channel, numeric bundle versions, and release artifact agree
+- no product-owned file changed after the artifact's recorded product commit
 - the deck does not duplicate a feature or follow-up
 - there are no more than 3 features
 - there are no more than 15 fixes or 15 follow-ups after consolidation

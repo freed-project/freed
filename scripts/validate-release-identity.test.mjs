@@ -1,0 +1,255 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import test from "node:test";
+
+import {
+  parseReleaseTag,
+  validateReleaseIdentity,
+} from "./validate-release-identity.mjs";
+
+function git(cwd, args) {
+  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+}
+
+function writeRepoFile(cwd, relativePath, contents) {
+  const filePath = path.join(cwd, relativePath);
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileSync(filePath, contents);
+}
+
+function writeVersionFiles(cwd, version) {
+  writeRepoFile(
+    cwd,
+    "packages/desktop/package.json",
+    `${JSON.stringify({ version }, null, 2)}\n`,
+  );
+  writeRepoFile(
+    cwd,
+    "packages/pwa/package.json",
+    `${JSON.stringify({ version }, null, 2)}\n`,
+  );
+  writeRepoFile(
+    cwd,
+    "packages/desktop/src-tauri/tauri.conf.json",
+    `${JSON.stringify({ version }, null, 2)}\n`,
+  );
+  writeRepoFile(
+    cwd,
+    "packages/desktop/src-tauri/Cargo.toml",
+    `[package]\nname = "freed"\nversion = "${version}"\n`,
+  );
+}
+
+function commitAll(cwd, message) {
+  git(cwd, ["add", "."]);
+  git(cwd, ["commit", "-m", message]);
+}
+
+function makeReleaseRepo() {
+  const cwd = mkdtempSync(path.join(tmpdir(), "freed-release-identity-"));
+  git(cwd, ["init", "-b", "dev"]);
+  git(cwd, ["config", "user.name", "Freed Test"]);
+  git(cwd, ["config", "user.email", "test@freed.invalid"]);
+  writeVersionFiles(cwd, "26.7.1200");
+  writeRepoFile(
+    cwd,
+    "packages/desktop/src/app.ts",
+    "export const value = 1;\n",
+  );
+  commitAll(cwd, "feat: product state");
+  const productCommitSha = git(cwd, ["rev-parse", "HEAD"]);
+
+  writeVersionFiles(cwd, "26.7.1300");
+  writeRepoFile(
+    cwd,
+    "release-notes/releases/v26.7.1300-dev.json",
+    `${JSON.stringify(
+      {
+        tag: "v26.7.1300-dev",
+        version: "26.7.1300-dev",
+        channel: "dev",
+        dayKey: "26.7.13",
+        approved: true,
+        source: { channel: "dev", productCommitSha },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  commitAll(cwd, "release: v26.7.1300-dev");
+  return { cwd, productCommitSha };
+}
+
+function makeProductionReleaseRepo() {
+  const cwd = mkdtempSync(path.join(tmpdir(), "freed-production-identity-"));
+  git(cwd, ["init", "-b", "dev"]);
+  git(cwd, ["config", "user.name", "Freed Test"]);
+  git(cwd, ["config", "user.email", "test@freed.invalid"]);
+  writeVersionFiles(cwd, "26.7.1200");
+  writeRepoFile(
+    cwd,
+    "packages/desktop/src/app.ts",
+    "export const value = 1;\n",
+  );
+  commitAll(cwd, "feat: promoted product state");
+  const promotedDevCommitSha = git(cwd, ["rev-parse", "HEAD"]);
+  git(cwd, ["checkout", "-b", "main"]);
+  const productCommitSha = git(cwd, ["rev-parse", "HEAD"]);
+
+  writeVersionFiles(cwd, "26.7.1300");
+  writeRepoFile(
+    cwd,
+    "release-notes/releases/v26.7.1300.json",
+    `${JSON.stringify(
+      {
+        tag: "v26.7.1300",
+        version: "26.7.1300",
+        channel: "production",
+        dayKey: "26.7.13",
+        approved: true,
+        source: {
+          channel: "production",
+          productCommitSha,
+          promotedDevCommitSha,
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  commitAll(cwd, "release: v26.7.1300");
+  return { cwd, productCommitSha, promotedDevCommitSha };
+}
+
+test("release tags accept only numeric CalVer and one exact dev suffix", () => {
+  assert.deepEqual(parseReleaseTag("v26.7.1300-dev"), {
+    tag: "v26.7.1300-dev",
+    version: "26.7.1300-dev",
+    appVersion: "26.7.1300",
+    channel: "dev",
+    dayKey: "26.7.13",
+  });
+  assert.throws(() => parseReleaseTag("v26.7.1300-beta"), /numeric CalVer/);
+  assert.throws(() => parseReleaseTag("v26.7.1300-dev.1"), /numeric CalVer/);
+});
+
+test("release identity binds the tag, app versions, and prepared product commit", (t) => {
+  const { cwd, productCommitSha } = makeReleaseRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  const result = validateReleaseIdentity({ cwd, tag: "v26.7.1300-dev" });
+  assert.equal(result.productCommitSha, productCommitSha);
+  assert.equal(result.channel, "dev");
+
+  writeVersionFiles(cwd, "26.7.1301");
+  assert.throws(
+    () => validateReleaseIdentity({ cwd, tag: "v26.7.1300-dev" }),
+    /Desktop package version is 26\.7\.1301, expected 26\.7\.1300/,
+  );
+});
+
+test("release identity rejects product drift after notes were prepared", (t) => {
+  const { cwd } = makeReleaseRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  writeRepoFile(
+    cwd,
+    "packages/desktop/src/app.ts",
+    "export const value = 2;\n",
+  );
+  commitAll(cwd, "feat: late product change");
+
+  assert.throws(
+    () => validateReleaseIdentity({ cwd, tag: "v26.7.1300-dev" }),
+    /product files changed after release notes were prepared: packages\/desktop\/src\/app\.ts/,
+  );
+});
+
+test("production identity stays bound to the recorded dev snapshot after dev advances", (t) => {
+  const { cwd, promotedDevCommitSha } = makeProductionReleaseRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  assert.equal(
+    validateReleaseIdentity({ cwd, tag: "v26.7.1300" }).promotedDevCommitSha,
+    promotedDevCommitSha,
+  );
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "packages/desktop/src/app.ts",
+    "export const value = 2;\n",
+  );
+  commitAll(cwd, "feat: later dev work");
+  git(cwd, ["checkout", "main"]);
+
+  assert.equal(
+    validateReleaseIdentity({ cwd, tag: "v26.7.1300" }).channel,
+    "production",
+  );
+});
+
+test("production identity rejects a recorded dev snapshot that differs from product state", (t) => {
+  const { cwd } = makeProductionReleaseRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "packages/desktop/src/app.ts",
+    "export const value = 3;\n",
+  );
+  commitAll(cwd, "feat: mismatched dev snapshot");
+  const mismatchedSha = git(cwd, ["rev-parse", "HEAD"]);
+  git(cwd, ["checkout", "main"]);
+  const releasePath = path.join(cwd, "release-notes/releases/v26.7.1300.json");
+  const artifact = JSON.parse(readFileSync(releasePath, "utf8"));
+  artifact.source.promotedDevCommitSha = mismatchedSha;
+  writeFileSync(releasePath, `${JSON.stringify(artifact, null, 2)}\n`);
+
+  assert.throws(
+    () => validateReleaseIdentity({ cwd, tag: "v26.7.1300" }),
+    /recorded promoted dev snapshot does not match the prepared product commit: packages\/desktop\/src\/app\.ts/,
+  );
+});
+
+test("protected branch ancestry allows branch advance and rejects an off-branch tag", (t) => {
+  const { cwd } = makeProductionReleaseRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const releaseHead = git(cwd, ["rev-parse", "HEAD"]);
+
+  git(cwd, ["commit", "--allow-empty", "-m", "docs: later main metadata"]);
+  assert.equal(
+    validateReleaseIdentity({
+      cwd,
+      tag: "v26.7.1300",
+      headRef: releaseHead,
+      branchRef: "main",
+    }).channel,
+    "production",
+  );
+
+  git(cwd, ["checkout", "-b", "unreviewed", releaseHead]);
+  git(cwd, ["commit", "--allow-empty", "-m", "chore: unreviewed tag source"]);
+  const unreviewedHead = git(cwd, ["rev-parse", "HEAD"]);
+  git(cwd, ["checkout", "main"]);
+  assert.throws(
+    () =>
+      validateReleaseIdentity({
+        cwd,
+        tag: "v26.7.1300",
+        headRef: unreviewedHead,
+        branchRef: "main",
+      }),
+    /is not in protected main history/,
+  );
+});

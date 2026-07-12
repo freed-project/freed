@@ -6,12 +6,28 @@ import { fileURLToPath } from "node:url";
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const releasePrep = readFileSync(path.join(scriptsDir, "release.sh"), "utf8");
+const releaseVersion = readFileSync(
+  path.join(scriptsDir, "release-version.mjs"),
+  "utf8",
+);
+const releaseNotesPrep = readFileSync(
+  path.join(scriptsDir, "prepare-release-notes.mjs"),
+  "utf8",
+);
+const releaseNotesBackfill = readFileSync(
+  path.join(scriptsDir, "backfill-release-notes.mjs"),
+  "utf8",
+);
 const releasePublish = readFileSync(
   path.join(scriptsDir, "release-publish.sh"),
   "utf8",
 );
 const promotion = readFileSync(
   path.join(scriptsDir, "promote-dev-to-main.sh"),
+  "utf8",
+);
+const releaseWorkflow = readFileSync(
+  path.join(scriptsDir, "..", ".github", "workflows", "release.yml"),
   "utf8",
 );
 
@@ -32,12 +48,23 @@ test("release preparation uses the channel's protected branch as its exact base"
   assert.doesNotMatch(releasePrep, /git push origin (?:dev|main)/);
 });
 
-test("release publication tags only the exact merged remote commit", () => {
+test("release publication delegates one exact tag to the trusted App publisher", () => {
   assert.match(
     releasePublish,
     /HEAD must equal origin\/\$\{EXPECTED_BRANCH\} before tagging/,
   );
-  assert.match(releasePublish, /git push origin refs\/tags\/\$\{TAG\}/);
+  assert.match(
+    releasePublish,
+    /release-tag-publisher\.mjs publish[\s\S]*--tag "\$\{TAG\}"[\s\S]*--commit "\$\{LOCAL_RELEASE_SHA\}"[\s\S]*--branch "\$\{EXPECTED_BRANCH\}"[\s\S]*--release-file-sha256 "\$\{RELEASE_FILE_SHA256\}"/,
+  );
+  assert.match(releasePublish, /git ls-remote --tags origin/);
+  assert.match(
+    releasePublish,
+    /git fetch origin "refs\/tags\/\$\{TAG\}:refs\/tags\/\$\{TAG\}"/,
+  );
+  assert.match(releasePublish, /git cat-file -t "refs\/tags\/\$\{TAG\}"/);
+  assert.match(releasePublish, /git rev-list -n 1 "refs\/tags\/\$\{TAG\}"/);
+  assert.doesNotMatch(releasePublish, /git tag -a/);
   assert.doesNotMatch(releasePublish, /git push origin .*--follow-tags/);
   assert.doesNotMatch(releasePublish, /git push origin \$\{EXPECTED_BRANCH\}/);
   assert.match(
@@ -45,9 +72,60 @@ test("release publication tags only the exact merged remote commit", () => {
     /Create the production release-prep branch from that exact commit/,
   );
   assert.match(
+    releasePublish,
+    /validate-release-identity\.mjs --tag="\$\{TAG\}" --head-ref=HEAD/,
+  );
+  assert.match(
+    releasePublish,
+    /validate-release-tag-authority\.mjs --repo=freed-project\/freed/,
+  );
+  assert.match(
+    releasePrep,
+    /FREED_PROMOTED_DEV_COMMIT_SHA="\$\{PROMOTED_DEV_COMMIT_SHA\}"/,
+  );
+  assert.match(releaseWorkflow, /EXPECTED_BRANCH="main"/);
+  assert.match(
+    releaseWorkflow,
+    /TAG" == \*-dev[\s\S]*EXPECTED_BRANCH="dev"/,
+  );
+  assert.match(
+    releaseWorkflow,
+    /--branch-ref="origin\/\$\{EXPECTED_BRANCH\}"/,
+  );
+  assert.doesNotMatch(releaseWorkflow, /GITHUB_SHA" != "\$EXPECTED_SHA"/);
+  assert.match(
+    releaseWorkflow,
+    /validate-release-identity\.mjs[\s\S]*--tag="\$\{TAG\}"[\s\S]*--head-ref="\$GITHUB_SHA"[\s\S]*--branch-ref="origin\/\$\{EXPECTED_BRANCH\}"/,
+  );
+  assert.match(
     promotion,
     /PUBLISH_COMMAND=\("\$\{SCRIPT_DIR\}\/worktree-publish\.sh"\)/,
   );
   assert.match(promotion, /if \[\[ -n "\$\{FREED_TRUSTED_PUBLISHER:-\}" \]\]/);
   assert.doesNotMatch(promotion, /release-publish\.sh <version>/);
+  assert.doesNotMatch(
+    releaseWorkflow,
+    /validate-release-promotion\.mjs --from-ref=origin\/dev/,
+  );
+});
+
+test("release preparation validates canonical CalVer before mutating version files", () => {
+  const validationIndex = releasePrep.indexOf("scripts/release-version.mjs");
+  const firstMutationIndex = releasePrep.indexOf(
+    "fs.writeFileSync('${TAURI_CONF}'",
+  );
+  assert.ok(validationIndex >= 0);
+  assert.ok(firstMutationIndex > validationIndex);
+  assert.match(releaseVersion, /no leading-zero segments/);
+  assert.match(releaseVersion, /Windows installers require a major no greater than 255/);
+  assert.doesNotMatch(releasePrep, /-\[a-zA-Z0-9\.\]\+/);
+});
+
+test("historical backfill uses the explicit immutable published-tag receipt mode", () => {
+  assert.match(releaseNotesBackfill, /--historical-published-tag/);
+  assert.match(
+    releaseNotesPrep,
+    /--historical-published-tag requires --force/,
+  );
+  assert.match(releaseNotesPrep, /rev-parse", `\$\{tag\}\^\{commit\}`/);
 });

@@ -32,16 +32,19 @@ jobs:
       - name: Refresh release refs
         run: git fetch origin dev main
 
-      - name: Validate production promotion state
+      - name: Validate protected release source and identity
         shell: bash
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
+          EXPECTED_BRANCH="main"
           if [[ "$TAG" == *-dev ]]; then
-            echo "Dev release detected, skipping production promotion validation."
-            exit 0
+            EXPECTED_BRANCH="dev"
           fi
 
-          node scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref="$GITHUB_SHA"
+          node scripts/validate-release-identity.mjs \
+            --tag="${TAG}" \
+            --head-ref="$GITHUB_SHA" \
+            --branch-ref="origin/${EXPECTED_BRANCH}"
 
   # Load the reviewed, checked-in release notes for this tag.
   # The workflow refuses to freestyle release prose on its own.
