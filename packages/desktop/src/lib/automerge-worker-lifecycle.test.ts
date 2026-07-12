@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocState } from "./automerge-types";
 
 const recordWorkerInitMock = vi.hoisted(() => vi.fn());
+const recordRuntimeHealthEventMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -24,7 +25,7 @@ vi.mock("./logger.js", () => ({
 }));
 
 vi.mock("./runtime-health-events", () => ({
-  recordRuntimeHealthEvent: vi.fn(),
+  recordRuntimeHealthEvent: recordRuntimeHealthEventMock,
   recordWorkerInit: recordWorkerInitMock,
 }));
 
@@ -163,6 +164,7 @@ describe("automerge worker lifecycle", () => {
     vi.useFakeTimers();
     MockWorker.instances = [];
     recordWorkerInitMock.mockReset();
+    recordRuntimeHealthEventMock.mockReset();
     vi.stubGlobal("Worker", MockWorker);
   });
 
@@ -207,16 +209,26 @@ describe("automerge worker lifecycle", () => {
       docBytes: 6_291_456,
     });
 
+    const scheduledAtMs = Date.now();
     firstWorker.emitMessage({
       type: "DEBUG_EVENT",
       kind: "change",
       detail:
         "[automerge-worker] released idle document after request queue drained",
     });
+    vi.setSystemTime(scheduledAtMs + 15_000);
     await vi.advanceTimersByTimeAsync(29_999);
     expect(firstWorker.terminated).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     expect(firstWorker.terminated).toBe(true);
+    expect(recordRuntimeHealthEventMock).toHaveBeenCalledWith({
+      event: "worker_idle_terminated",
+      reason: "quiet_window",
+      quietWindowTargetMs: 30_000,
+      scheduledDelayMs: 30_000,
+      timerElapsedMs: 45_000,
+      timerOverrunMs: 15_000,
+    });
 
     const mutation = automerge.docAddFeedItem(makeItem());
     expect(MockWorker.instances).toHaveLength(2);
@@ -342,6 +354,14 @@ describe("automerge worker lifecycle", () => {
     expect(worker.terminated).toBe(false);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(worker.terminated).toBe(true);
+    expect(recordRuntimeHealthEventMock).toHaveBeenCalledWith({
+      event: "worker_idle_terminated",
+      reason: "request_timeout_cleanup",
+      quietWindowTargetMs: 30_000,
+      scheduledDelayMs: 1_000,
+      timerElapsedMs: 1_000,
+      timerOverrunMs: 0,
+    });
   });
 
   it("restarts the quiet window after a relay client-count update", async () => {

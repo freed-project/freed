@@ -51,6 +51,11 @@ const WORKER_START_TIMEOUT_MS = 15_000;
 const IDLE_WORKER_STOP_DELAY_MS = 30_000;
 const IDLE_WORKER_STOP_RETRY_MS = 1_000;
 
+type IdleWorkerStopReason =
+  | "quiet_window"
+  | "pending_request_retry"
+  | "request_timeout_cleanup";
+
 // ---------------------------------------------------------------------------
 // Worker lifecycle
 // ---------------------------------------------------------------------------
@@ -234,22 +239,48 @@ function cancelIdleWorkerStop(): void {
   idleWorkerStopTimer = null;
 }
 
-function scheduleIdleWorkerStop(delayMs = IDLE_WORKER_STOP_DELAY_MS): void {
+function scheduleIdleWorkerStop(
+  delayMs = IDLE_WORKER_STOP_DELAY_MS,
+  reason: IdleWorkerStopReason = "quiet_window",
+): void {
   if (!worker) return;
   cancelIdleWorkerStop();
+  const scheduledAtMs = Date.now();
   idleWorkerStopTimer = setTimeout(() => {
     idleWorkerStopTimer = null;
-    if (!stopIdleWorker() && worker) {
-      scheduleIdleWorkerStop(IDLE_WORKER_STOP_RETRY_MS);
+    const firedAtMs = Date.now();
+    if (stopIdleWorker()) {
+      const timerElapsedMs = Math.max(0, firedAtMs - scheduledAtMs);
+      recordRuntimeHealthEvent({
+        event: "worker_idle_terminated",
+        reason,
+        quietWindowTargetMs: IDLE_WORKER_STOP_DELAY_MS,
+        scheduledDelayMs: delayMs,
+        timerElapsedMs,
+        timerOverrunMs: Math.max(0, timerElapsedMs - delayMs),
+      });
+    } else if (worker) {
+      scheduleIdleWorkerStop(
+        IDLE_WORKER_STOP_RETRY_MS,
+        "pending_request_retry",
+      );
     }
   }, delayMs);
 }
 
 function completeWorkerActivity(
   delayMs = IDLE_WORKER_STOP_DELAY_MS,
+  reason: IdleWorkerStopReason = "quiet_window",
 ): void {
   if (!appDocumentInitialized) return;
-  scheduleIdleWorkerStop(delayMs);
+  scheduleIdleWorkerStop(delayMs, reason);
+}
+
+function completeTimedOutWorkerActivity(): void {
+  completeWorkerActivity(
+    IDLE_WORKER_STOP_RETRY_MS,
+    "request_timeout_cleanup",
+  );
 }
 
 async function ensureWorkerDocumentReadyFor(type: WorkerRequest["type"]): Promise<void> {
@@ -339,7 +370,7 @@ async function request(msg: WorkerRequest): Promise<void> {
       if (!pending.has(msg.reqId)) return;
       const pendingCount = pending.size;
       pending.delete(msg.reqId);
-      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
+      completeTimedOutWorkerActivity();
       const opType = (msg as { type: string }).type;
       const errMsg =
         `[automerge-worker] request TIMEOUT op=${opType} reqId=${msg.reqId} ` +
@@ -757,7 +788,7 @@ export async function getDocBinary(): Promise<Uint8Array> {
     const timer = setTimeout(() => {
       if (!pendingDocBinary.has(reqId)) return;
       pendingDocBinary.delete(reqId);
-      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
+      completeTimedOutWorkerActivity();
       reject(
         new Error(
           `[automerge-worker] request TIMEOUT op=GET_DOC_BINARY reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
@@ -784,7 +815,7 @@ export async function getDocHeads(): Promise<string[] | null> {
     const timer = setTimeout(() => {
       if (!pendingDocHeads.has(reqId)) return;
       pendingDocHeads.delete(reqId);
-      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
+      completeTimedOutWorkerActivity();
       reject(
         new Error(
           `[automerge-worker] request TIMEOUT op=GET_HEADS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
@@ -806,7 +837,7 @@ export async function getSavedYouTubeVideoUrls(): Promise<string[]> {
     const timer = setTimeout(() => {
       if (!pendingSavedYouTubeUrls.has(reqId)) return;
       pendingSavedYouTubeUrls.delete(reqId);
-      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
+      completeTimedOutWorkerActivity();
       reject(
         new Error(
           `[automerge-worker] request TIMEOUT op=GET_SAVED_YOUTUBE_URLS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
@@ -831,7 +862,7 @@ export async function getAllItemIds(): Promise<string[]> {
     const timer = setTimeout(() => {
       if (!pendingAllItemIds.has(reqId)) return;
       pendingAllItemIds.delete(reqId);
-      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
+      completeTimedOutWorkerActivity();
       reject(
         new Error(
           `[automerge-worker] request TIMEOUT op=GET_ALL_ITEM_IDS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
@@ -852,7 +883,7 @@ export async function getItemPreservedText(globalId: string): Promise<string | n
     const timer = setTimeout(() => {
       if (!pendingPreservedText.has(reqId)) return;
       pendingPreservedText.delete(reqId);
-      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
+      completeTimedOutWorkerActivity();
       reject(
         new Error(
           `[automerge-worker] request TIMEOUT op=GET_ITEM_PRESERVED_TEXT reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
@@ -940,7 +971,7 @@ export async function docClearSampleData(): Promise<SampleDataClearSummary> {
     const timer = setTimeout(() => {
       if (!pendingSampleDataClear.has(reqId)) return;
       pendingSampleDataClear.delete(reqId);
-      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
+      completeTimedOutWorkerActivity();
       reject(
         new Error(
           `[automerge-worker] request TIMEOUT op=CLEAR_SAMPLE_DATA reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
@@ -1176,7 +1207,7 @@ export async function docBackfillContentSignals(
     const timer = setTimeout(() => {
       if (!pendingContentSignalBackfill.has(reqId)) return;
       pendingContentSignalBackfill.delete(reqId);
-      completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS);
+      completeTimedOutWorkerActivity();
       reject(
         new Error(
           `[automerge-worker] request TIMEOUT op=BACKFILL_CONTENT_SIGNALS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,

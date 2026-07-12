@@ -36,6 +36,7 @@ Install a build containing only this behavioral change. Run a bounded soak with 
 
 - Snapshot and cloud bookkeeping within 30 seconds reuse one worker generation and one INIT.
 - Worker INITs per hour move toward the registered target of fewer than 10.
+- `worker_idle_terminated` records prove normal quiet-window termination separately from worker resets and request-timeout cleanup, including the explicit scheduling reason, scheduled delay, actual timer elapsed time, and timer overrun caused by renderer throttling.
 - Memory pressure is compared across attributable process generations. Raw RSS alone is not a verdict.
 - The worker still terminates after a genuine quiet window and reloads the document correctly on the next mutation.
 
