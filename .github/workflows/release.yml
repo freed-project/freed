@@ -394,6 +394,7 @@ jobs:
           VITE_GDRIVE_DESKTOP_CLIENT_ID: 304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com
           VITE_GDRIVE_TOKEN_PROXY_URL: https://app.freed.wtf/api/oauth/google
           VITE_GDRIVE_FORCE_TOKEN_PROXY: "1"
+          FREED_BUILD_CHANNEL: ${{ needs.notes.outputs.release_channel }}
           VITE_ENABLE_DEV_SYNC_TRIGGERS: ${{ needs.notes.outputs.release_channel == 'dev' && '1' || '0' }}
         with:
           projectPath: packages/desktop

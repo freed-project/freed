@@ -60,6 +60,7 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
     __BUILD_KIND__: JSON.stringify(buildMetadata.buildKind),
+    __BUILD_CHANNEL__: JSON.stringify(buildMetadata.channel),
     __BUILD_COMMIT_SHA__: JSON.stringify(buildMetadata.commitSha),
     __BUILD_COMMIT_REF__: JSON.stringify(buildMetadata.commitRef),
     __BUILD_DEPLOYED_AT__: JSON.stringify(buildMetadata.deployedAt),

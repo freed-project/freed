@@ -1,4 +1,5 @@
 const BUILD_KIND_VALUES = new Set(["release", "snapshot", "preview", "local"]);
+const BUILD_CHANNEL_VALUES = new Set(["dev", "production"]);
 
 function readEnvString(env, key) {
   const value = env[key];
@@ -39,18 +40,44 @@ function inferBuildKind(env) {
   return "preview";
 }
 
+function inferBuildChannel(appVersion, buildKind, commitRef, env) {
+  const explicit = readEnvString(env, "FREED_BUILD_CHANNEL");
+  if (explicit) {
+    if (!BUILD_CHANNEL_VALUES.has(explicit)) {
+      throw new Error(
+        `FREED_BUILD_CHANNEL must be dev or production, received ${explicit}.`,
+      );
+    }
+    return explicit;
+  }
+
+  if (
+    appVersion.endsWith("-dev") ||
+    commitRef === "dev" ||
+    commitRef?.endsWith("-dev") ||
+    buildKind === "snapshot"
+  ) {
+    return "dev";
+  }
+
+  return "production";
+}
+
 export function getBuildMetadata(appVersion, env = process.env) {
+  const buildKind = inferBuildKind(env);
+  const commitRef =
+    readEnvString(env, "FREED_BUILD_COMMIT_REF") ??
+    readEnvString(env, "VERCEL_GIT_COMMIT_REF") ??
+    readEnvString(env, "GITHUB_REF_NAME");
   return {
     appVersion,
-    buildKind: inferBuildKind(env),
+    buildKind,
+    channel: inferBuildChannel(appVersion, buildKind, commitRef, env),
     commitSha:
       readEnvString(env, "FREED_BUILD_COMMIT_SHA") ??
       readEnvString(env, "VERCEL_GIT_COMMIT_SHA") ??
       readEnvString(env, "GITHUB_SHA"),
-    commitRef:
-      readEnvString(env, "FREED_BUILD_COMMIT_REF") ??
-      readEnvString(env, "VERCEL_GIT_COMMIT_REF") ??
-      readEnvString(env, "GITHUB_REF_NAME"),
+    commitRef,
     deployedAt:
       readEnvString(env, "FREED_BUILD_TIMESTAMP") ?? new Date().toISOString(),
   };

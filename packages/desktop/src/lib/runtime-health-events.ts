@@ -28,7 +28,7 @@ export function runtimeHealthIdentityFields(): RuntimeHealthIdentityFields {
     appVersion: __APP_VERSION__,
     buildCommitSha: __BUILD_COMMIT_SHA__,
     buildKind: __BUILD_KIND__,
-    channel: __APP_VERSION__.endsWith("-dev") ? "dev" : "production",
+    channel: __BUILD_CHANNEL__,
     appSessionId: RUNTIME_APP_SESSION_ID,
   };
 }
