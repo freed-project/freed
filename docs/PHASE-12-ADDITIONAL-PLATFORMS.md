@@ -221,6 +221,8 @@ packages/capture-youtube/
 
 - Freed Desktop maintains a persistent YouTube WebView data store, matching the
   existing authenticated provider pattern.
+- The interactive login window hides as soon as authentication is confirmed.
+  Initial capture continues in the same persistent background session.
 - An explicit sync captures the signed-in user's followed-channel roster and
   recent Subscriptions page video cards.
 - Routine scheduled refreshes capture only recent Subscriptions videos. Full
@@ -348,6 +350,8 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
       YouTube developer project, OAuth grant, Data API client, or shared quota
 - [x] Recent YouTube videos are captured from the signed-in Subscriptions page
       rather than generated RSS feeds or the algorithmic Home surface
+- [x] The YouTube login window hides as soon as authentication is confirmed,
+      while the initial subscription sync continues in the persistent background session
 - [x] YouTube videos offer click-to-load focused playback without autoplay or automatic next-video behavior
 - [x] YouTube videos offer a canonical exact-video handoff for the YouTube application
 - [x] An authenticated YouTube website session can create or reuse a private

@@ -22,6 +22,7 @@ export function tauriInitScript(): string {
       return window[name];
     }
     window.__TAURI_MOCK_IPC_TIMINGS__ = [];
+    window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
     function timedHandler(cmd, fn) {
       return function(args) {
         var start = performance.now();
@@ -200,12 +201,27 @@ export function tauriInitScript(): string {
       li_check_auth: () => true,
       li_scrape_feed: () => null,
       li_disconnect: () => null,
-      yt_show_login: () => null,
-      yt_hide_login: () => null,
+      yt_show_login: () => {
+        window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = true;
+        return null;
+      },
+      yt_hide_login: () => {
+        window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
+        return null;
+      },
       yt_check_auth: () => true,
-      yt_capture: () => null,
-      yt_add_to_offline_playlist: () => null,
-      yt_disconnect: () => null,
+      yt_capture: () => {
+        window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
+        return null;
+      },
+      yt_add_to_offline_playlist: () => {
+        window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
+        return null;
+      },
+      yt_disconnect: () => {
+        window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
+        return null;
+      },
     };
     window.__TAURI_MOCK_INVOCATIONS__ = [];
     window.__TAURI_MOCK_OPENED_URLS__ = [];

@@ -84,11 +84,12 @@ export function YouTubeSettingsSection({
       if (!loggedIn || !loginPendingRef.current) return;
 
       loginPendingRef.current = false;
-      setMessage("Connected. Syncing your subscriptions while the YouTube window stays open.");
-      void runSync("post_login")
-        .then(async () => {
+      setMessage("Connected. Syncing your subscriptions in the background.");
+      void hideYouTubeLogin()
+        .catch(() => {})
+        .then(() => runSync("post_login"))
+        .then(() => {
           setMessage("Connected. Subscription sync finished.");
-          await hideYouTubeLogin();
         })
         .catch((error) => {
           setMessage(null);
@@ -97,8 +98,9 @@ export function YouTubeSettingsSection({
     });
     const closeUnlisten = listen<{ closed: boolean }>("yt-login-window-closed", (event) => {
       if (!event.payload.closed) return;
+      const wasPending = loginPendingRef.current;
       loginPendingRef.current = false;
-      setMessage(null);
+      if (wasPending) setMessage(null);
     });
 
     return () => {
