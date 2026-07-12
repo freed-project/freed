@@ -1978,7 +1978,7 @@ fn is_dev_sync_trigger_terminal_status(status: &str) -> bool {
 }
 
 fn is_supported_dev_sync_provider(provider: &str) -> bool {
-    matches!(provider, "facebook" | "instagram" | "linkedin")
+    matches!(provider, "facebook" | "instagram" | "linkedin" | "youtube")
 }
 
 fn dev_sync_trigger_request_expiration_detail(
@@ -2257,7 +2257,7 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
                                     request_id,
                                     None,
                                     "ignored",
-                                    Some("Unsupported provider. Use facebook, instagram, or linkedin."),
+                                    Some("Unsupported provider. Use facebook, instagram, linkedin, or youtube."),
                                 );
                             } else if let Some(detail) =
                                 dev_sync_trigger_lock_deferral_detail(&get_desktop_session_state())
@@ -13494,7 +13494,7 @@ mod tests {
     }
 
     #[test]
-    fn dev_sync_trigger_request_parses_supported_provider() {
+    fn dev_sync_trigger_request_parses_and_recognizes_supported_providers() {
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(
             dev_sync_trigger_path(temp.path()),
@@ -13509,6 +13509,9 @@ mod tests {
         assert_eq!(request.provider.as_deref(), Some("facebook"));
         assert_eq!(request.created_at, Some(123456));
         assert!(is_supported_dev_sync_provider("facebook"));
+        assert!(is_supported_dev_sync_provider("instagram"));
+        assert!(is_supported_dev_sync_provider("linkedin"));
+        assert!(is_supported_dev_sync_provider("youtube"));
         assert!(!is_supported_dev_sync_provider("medium"));
     }
 

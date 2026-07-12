@@ -21,18 +21,20 @@ Launch installed builds with `open -g /Applications/Freed.app` so cold startup s
 When a provider sync needs a manual kick, use a GitHub dev-channel prerelease, or launch a local build with `FREED_ENABLE_DEV_SYNC_TRIGGERS=1`, then run:
 
 ```bash
-node scripts/dev-sync-trigger.mjs facebook   # or instagram, linkedin
+node scripts/dev-sync-trigger.mjs youtube   # or facebook, instagram, linkedin
 ```
 
 - The trigger calls the same in-app social refresh path as the UI. It must keep existing auth, pause state, provider cooldowns, and rate limits intact.
 - It is picked up by the native process, so it works when WebKit has suspended a backgrounded renderer.
 - The trigger file is a live request, not a durable queue. Requests expire after the helper timeout; if a stale request was ignored, re-run the helper instead of expecting Freed Desktop to replay old provider traffic on the next launch.
 - The helper is not a traffic generator. If the renderer was rebuilt after the provider run already finished, inspect the health log or wait for the provider cooldown instead of queueing a new request. The native watcher only replays a request when the renderer was rebuilt before the trigger finished.
-- Deferral spacing is provider-safe: Facebook can retry sooner, Instagram needs the 10 minute interval, LinkedIn needs the longer LinkedIn interval.
+- Deferral spacing is provider-safe: Facebook can retry sooner, Instagram needs the 10 minute interval, and LinkedIn and YouTube use the longer 30 minute interval.
+
+For a YouTube acceptance run, require a terminal result of `completed`, a `youtube_roster_outcome` runtime-health record with `trigger: "dev_trigger"`, `result: "success"`, `complete: true`, `unresolvedCount: 0`, and a nonzero `resolvedCount`, plus the matching successful scrape outcome. This proves full reconciliation of the signed-in subscription roster and capture of the recent videos rendered by the Subscriptions page. It does not crawl every subscribed channel's historical upload archive.
 
 ### Gating
 
-Dev-channel prereleases enable the trigger automatically (the release workflow sets `VITE_ENABLE_DEV_SYNC_TRIGGERS=1` for dev builds). In the production channel the raw file trigger stays gated to dev-channel installs, debug builds, or explicit `FREED_ENABLE_DEV_SYNC_TRIGGERS=1` launches until it has a user-facing permission model: any local process that can write to the app data folder could otherwise start authenticated provider syncs, which changes observable Facebook, Instagram, or LinkedIn traffic without an explicit user action.
+Dev-channel prereleases enable the trigger automatically (the release workflow sets `VITE_ENABLE_DEV_SYNC_TRIGGERS=1` for dev builds). In the production channel the raw file trigger stays gated to dev-channel installs, debug builds, or explicit `FREED_ENABLE_DEV_SYNC_TRIGGERS=1` launches until it has a user-facing permission model: any local process that can write to the app data folder could otherwise start authenticated provider syncs, which changes observable Facebook, Instagram, LinkedIn, or YouTube traffic without an explicit user action.
 
 ## Locked machine
 
