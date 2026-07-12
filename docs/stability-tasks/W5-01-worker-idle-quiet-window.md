@@ -4,9 +4,11 @@ runner-safe: false | provider-visible: false | soak-gated: YES
 
 Finding: F20, repeated full Automerge initialization during sequential local bookkeeping.
 
-Prerequisites: the deterministic large-document worker harness from PR 950 and
-the schema 3 collector, metric registry, fingerprint, and outcome converter from
-PR 949.
+Prerequisites: the deterministic large-document worker harness from PR 950,
+the schema 3 collector, metric registry, fingerprint, and outcome converter
+from PR 949, and separately approved native runtime identity stamping. PR 949
+stamps renderer-originated counters, but native heartbeat, memory, recovery,
+window, and alarm records remain untagged until the gated native change lands.
 
 ## Evidence
 
@@ -49,13 +51,17 @@ Desktop 26.7.1000 predates the complete immutable runtime identity envelope. It
 can calibrate collection and document the causal trace, but it cannot be
 promoted into a lifecycle outcome or used as the measured-effect denominator.
 
-After PR 949 lands, install a measurement-only build from `dev` that does not
-contain W5-01. Run it for at least six credited app-alive hours and require a
-closed, healthy schema 3 verdict with a complete fingerprint, attributable
-build identity, and an artifact digest. Before W5-01 is installed, amend this
-task and the PR body with the exact frozen baseline verdict path and SHA-256.
-If that baseline is inconclusive, repair measurement and rerun it. Do not
-install the W5-01 behavior against an inadmissible denominator.
+After PR 949 and the separately approved native identity stamp land, install a
+measurement-only build from `dev` that does not contain W5-01. The central
+native runtime-health writer must stamp every metric-relevant event with one
+app version, full commit SHA, release channel, and native process-session ID.
+Derived invariant alarms must preserve the same identity. Run the build for at
+least six credited app-alive hours and require a closed, healthy schema 3
+verdict with a complete fingerprint, attributable build identity, and an
+artifact digest. Before W5-01 is installed, amend this task and the PR body with
+the exact frozen baseline verdict path and SHA-256. If that baseline is
+inconclusive, repair measurement and rerun it. Do not install the W5-01 behavior
+against an inadmissible denominator.
 
 Then install a different build containing only this behavioral change. Run it
 for at least six credited app-alive hours with this exact comparison context:
