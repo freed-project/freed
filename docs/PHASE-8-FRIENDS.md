@@ -167,6 +167,12 @@ Default nudge intervals by care level:
 | Focused selection | Connected cluster stays bright, unrelated nodes dim |
 | Higher zoom | More labels appear without shrinking the viewport |
 
+### Next-generation Friends Galaxy
+
+The current atlas starfield remains the shipping compatibility surface while the next renderer is built behind it. The approved replacement uses a constrained 3D galactic plane with stable semantic geography on `x` and `y`, relationship prominence on `z`, tight identity systems, provider sectors on the outer rim, a locked perspective camera, and a renderer-neutral typed scene protocol. WebGPU is the preferred shared backend, WebGL2 is the compatibility backend, and native Metal remains gated on later device evidence.
+
+The first foundation compiles current atlas nodes into compact typed buffers for stable 3D positions, semantic prominence, bounded activity and recency brightness, theme color roles, interaction flags, and indexed edges. The current Three renderer consumes this protocol immediately so the new architecture has a production caller while later graph indexing, camera, picking, text, and GPU backend work proceeds. The complete approved vision, interaction contract, rendering contract, and staged roadmap live in [FRIENDS-GALAXY-ARCHITECTURE.md](./FRIENDS-GALAXY-ARCHITECTURE.md).
+
 ### Scale targets
 
 - Default showcase sample: 250 friends, 1,250 connected social identities, 15 feeds, and 1,445 items
@@ -191,6 +197,7 @@ Default nudge intervals by care level:
 - `packages/ui/src/lib/identity-graph-activity-summary.ts` - summary builder for graph activity counts, latest activity, samples, location presence, and avatar candidates
 - `packages/ui/src/lib/identity-graph-atlas.ts` - capped atlas builder with provider clusters, LOD tiers, labels, hit buckets, bounds, and metrics
 - `packages/ui/src/lib/identity-graph-atlas.worker.ts` - worker entrypoint for graph atlas slices
+- `packages/ui/src/lib/identity-galaxy-scene.ts` - renderer-neutral typed scene compiler for semantic 3D node and edge buffers
 - `packages/ui/src/components/friends/index.ts` — barrel export
 
 ---
@@ -351,6 +358,8 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.53 | Reconcile partial Substack and Medium follow rosters as accounts and provisional human connections without automatic friend promotion | Medium | Done |
 | 8.54 | Rescan provisional identity repair when roster identity details improve in place | Medium | Done |
 | 8.55 | Discover and enrich authenticated essay authors atomically when item counts stay unchanged | Medium | Done |
+| 8.56 | Define and integrate the renderer-neutral Friends Galaxy typed scene protocol | High | Done |
+| 8.57 | Replace the atlas starfield with the approved GPU-resident Friends Galaxy engine, locked camera, batched labels, and depth-aware picking | High | In Progress |
 
 ---
 
@@ -423,6 +432,8 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Graph atlas diagnostics report canonical source nodes, visible nodes, rendered primitive count, first visible time, frame p95, long tasks, memory estimate, renderer type, and touch input mode
 - [x] Headless and no-WebGL environments fall back to a canvas starfield while preserving graph diagnostics
 - [x] Dense graph coverage asserts capped visible nodes instead of requiring the full source graph in the renderer payload
+- [x] The current renderer consumes a versioned typed scene with stable 3D positions, semantic prominence, theme roles, interaction flags, and indexed edges
+- [ ] The next-generation Friends Galaxy keeps all semantic stars GPU-resident and applies detail limits only to labels, avatars, edges, picking, and expensive effects
 - [x] Desktop browser tests cover mixed-tier graph load, context-menu link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
 - [ ] macOS native contact picker (CNContactStore)

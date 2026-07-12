@@ -35,6 +35,12 @@ import {
   type IdentityGraphAtlasQuality,
 } from "../../lib/identity-graph-atlas.js";
 import {
+  compileIdentityGalaxyScene,
+  IdentityGalaxyColorRole,
+  IdentityGalaxyNodeFlag,
+  type IdentityGalaxyScene,
+} from "../../lib/identity-galaxy-scene.js";
+import {
   FRIEND_GRAPH_DEFAULT_TRANSFORM,
   type ViewTransform,
 } from "../../lib/identity-graph-layout.js";
@@ -399,49 +405,21 @@ function colorFromCss(value: string, fallback = "#7dd3fc"): THREE.Color {
   return new THREE.Color(Number(match[1]) / 255, Number(match[2]) / 255, Number(match[3]) / 255);
 }
 
-function nodeDepth(node: IdentityGraphAtlasNode): number {
-  if (node.kind === "friend_person") {
-    const tierBoost = node.priority >= 980 ? 90 : node.priority >= 880 ? 64 : 36;
-    return tierBoost + Math.min(46, Math.sqrt(node.activityCount + 1) * 2.8);
-  }
-  if (node.kind === "connection_person") return 16 + Math.min(22, Math.sqrt(node.activityCount + 1) * 1.3);
-  if (node.kind === "account") return -30 - seededUnit(node.id) * 46;
-  if (node.kind === "feed") return -48 - seededUnit(node.id) * 52;
-  return -128;
-}
-
-function nodePointSize(
-  node: IdentityGraphAtlasNode,
-  selected: boolean,
-  hovered: boolean,
-  quality: IdentityGraphAtlasQuality,
-): number {
-  const roleSize = node.kind === "friend_person"
-    ? 34
-    : node.kind === "connection_person"
-      ? 28
-      : node.kind === "provider_cluster"
-        ? 40
-        : node.kind === "feed"
-          ? 20
-          : 22;
-  const size = roleSize + node.radius * 1.05 + (selected ? 22 : hovered ? 12 : 0);
-  return Math.max(8, size * (quality === "interactive" ? 0.78 : 1));
-}
-
 function graphNodeColor(
-  node: IdentityGraphAtlasNode,
+  role: IdentityGalaxyColorRole,
+  provider: string | null,
+  flags: number,
   palette: GraphPalette,
-  selected: boolean,
-  linkedToSelected: boolean,
-  hovered: boolean,
 ): THREE.Color {
+  const selected = (flags & IdentityGalaxyNodeFlag.Selected) !== 0;
+  const linkedToSelected = (flags & IdentityGalaxyNodeFlag.LinkedToSelection) !== 0;
+  const hovered = (flags & IdentityGalaxyNodeFlag.Hovered) !== 0;
   if (selected) return colorFromCss(palette.selection, "#67e8f9");
   if (hovered || linkedToSelected) return colorFromCss(palette.highlight, "#f0abfc");
-  if (node.kind === "friend_person") return colorFromCss(palette.friendStroke, "#60a5fa");
-  if (node.kind === "connection_person") return colorFromCss(palette.connectionStroke, "#c084fc");
-  if (node.kind === "feed") return new THREE.Color("#f59e0b");
-  return colorFromCss(providerColor(node.provider, palette), "#38bdf8");
+  if (role === IdentityGalaxyColorRole.Friend) return colorFromCss(palette.friendStroke, "#60a5fa");
+  if (role === IdentityGalaxyColorRole.Connection) return colorFromCss(palette.connectionStroke, "#c084fc");
+  if (role === IdentityGalaxyColorRole.Feed) return new THREE.Color("#f59e0b");
+  return colorFromCss(providerColor(provider ?? undefined, palette), "#38bdf8");
 }
 
 function makePointMaterial(): THREE.ShaderMaterial {
@@ -522,6 +500,7 @@ function makeStarGeometry(count: number, width: number, height: number, palette:
 function drawFallbackStarfield(
   canvas: HTMLCanvasElement,
   atlas: IdentityGraphAtlas,
+  galaxyScene: IdentityGalaxyScene,
   transform: ViewTransform,
   palette: GraphPalette,
   selectedPersonId: string | null | undefined,
@@ -568,11 +547,12 @@ function drawFallbackStarfield(
     context.fill();
     context.stroke();
   }
-  for (const node of atlas.nodes) {
+  for (let index = 0; index < atlas.nodes.length; index += 1) {
+    const node = atlas.nodes[index]!;
     const selected =
       (!!node.personId && node.personId === selectedPersonId) ||
       (!!node.accountId && node.accountId === selectedAccountId);
-    const depth = nodeDepth(node);
+    const depth = galaxyScene.positions[index * 3 + 2] ?? 0;
     const parallax = 1 + Math.max(-0.24, Math.min(0.42, depth / 260));
     const radius = Math.max(5, node.radius * 0.82 * parallax + (selected ? 7 : 0));
     context.beginPath();
@@ -674,10 +654,8 @@ class StarfieldGraphRenderer {
 
   syncScene(
     atlas: IdentityGraphAtlas,
+    galaxyScene: IdentityGalaxyScene,
     palette: GraphPalette,
-    selectedPersonId: string | null | undefined,
-    selectedAccountId: string | null | undefined,
-    hoveredNodeId: string | null,
     variation: StarfieldVariation,
     quality: IdentityGraphAtlasQuality,
   ): void {
@@ -712,8 +690,8 @@ class StarfieldGraphRenderer {
     this.syncRegions(atlas, palette, variation);
     this.edgeMaterial.color.copy(colorFromCss(palette.edge, "#7dd3fc"));
     this.edgeMaterial.opacity = quality === "interactive" ? 0.26 : 0.58;
-    this.syncEdges(atlas);
-    this.syncNodes(atlas, palette, selectedPersonId, selectedAccountId, hoveredNodeId, quality);
+    this.syncEdges(galaxyScene);
+    this.syncNodes(galaxyScene, palette);
     this.syncLabels(atlas, palette, quality);
   }
 
@@ -756,10 +734,6 @@ class StarfieldGraphRenderer {
     for (const label of this.labels) {
       label.quaternion.copy(this.camera.quaternion);
     }
-  }
-
-  private nodePosition(node: IdentityGraphAtlasNode): THREE.Vector3 {
-    return new THREE.Vector3(node.x, -node.y, nodeDepth(node));
   }
 
   private clearRegions(): void {
@@ -821,62 +795,44 @@ class StarfieldGraphRenderer {
     }
   }
 
-  private syncEdges(atlas: IdentityGraphAtlas): void {
-    const nodeById = new Map(atlas.nodes.map((node) => [node.id, node]));
-    const positions = new Float32Array(atlas.edges.length * 6);
+  private syncEdges(galaxyScene: IdentityGalaxyScene): void {
+    const positions = new Float32Array(galaxyScene.edgeIndices.length * 3);
     let offset = 0;
-    for (const edge of atlas.edges) {
-      const source = nodeById.get(edge.sourceId);
-      const target = nodeById.get(edge.targetId);
-      if (!source || !target) continue;
-      const sourcePoint = this.nodePosition(source);
-      const targetPoint = this.nodePosition(target);
-      positions[offset] = sourcePoint.x;
-      positions[offset + 1] = sourcePoint.y;
-      positions[offset + 2] = sourcePoint.z - 8;
-      positions[offset + 3] = targetPoint.x;
-      positions[offset + 4] = targetPoint.y;
-      positions[offset + 5] = targetPoint.z - 8;
+    for (let edgeOffset = 0; edgeOffset < galaxyScene.edgeIndices.length; edgeOffset += 2) {
+      const sourceOffset = galaxyScene.edgeIndices[edgeOffset]! * 3;
+      const targetOffset = galaxyScene.edgeIndices[edgeOffset + 1]! * 3;
+      positions[offset] = galaxyScene.positions[sourceOffset]!;
+      positions[offset + 1] = galaxyScene.positions[sourceOffset + 1]!;
+      positions[offset + 2] = galaxyScene.positions[sourceOffset + 2]! - 8;
+      positions[offset + 3] = galaxyScene.positions[targetOffset]!;
+      positions[offset + 4] = galaxyScene.positions[targetOffset + 1]!;
+      positions[offset + 5] = galaxyScene.positions[targetOffset + 2]! - 8;
       offset += 6;
     }
-    this.edgeGeometry.setAttribute("position", new THREE.BufferAttribute(positions.slice(0, offset), 3));
+    this.edgeGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     this.edgeGeometry.computeBoundingSphere();
   }
 
   private syncNodes(
-    atlas: IdentityGraphAtlas,
+    galaxyScene: IdentityGalaxyScene,
     palette: GraphPalette,
-    selectedPersonId: string | null | undefined,
-    selectedAccountId: string | null | undefined,
-    hoveredNodeId: string | null,
-    quality: IdentityGraphAtlasQuality,
   ): void {
-    const positions = new Float32Array(atlas.nodes.length * 3);
-    const colors = new Float32Array(atlas.nodes.length * 3);
-    const sizes = new Float32Array(atlas.nodes.length);
-    for (let index = 0; index < atlas.nodes.length; index += 1) {
-      const node = atlas.nodes[index]!;
-      const selected =
-        (!!node.personId && node.personId === selectedPersonId) ||
-        (!!node.accountId && node.accountId === selectedAccountId);
-      const linkedToSelected = !!selectedPersonId && node.linkedPersonId === selectedPersonId;
-      const hovered = node.id === hoveredNodeId;
-      const point = this.nodePosition(node);
-      const color = graphNodeColor(node, palette, selected, linkedToSelected, hovered);
-      const muted = selectedPersonId || selectedAccountId
-        ? selected || linkedToSelected || hovered ? 1 : 0.34
-        : 1;
-      positions[index * 3] = point.x;
-      positions[index * 3 + 1] = point.y;
-      positions[index * 3 + 2] = point.z;
-      colors[index * 3] = color.r * muted;
-      colors[index * 3 + 1] = color.g * muted;
-      colors[index * 3 + 2] = color.b * muted;
-      sizes[index] = nodePointSize(node, selected, hovered, quality);
+    const colors = new Float32Array(galaxyScene.nodeIds.length * 3);
+    for (let index = 0; index < galaxyScene.nodeIds.length; index += 1) {
+      const color = graphNodeColor(
+        galaxyScene.colorRoles[index]! as IdentityGalaxyColorRole,
+        galaxyScene.providers[index] ?? null,
+        galaxyScene.flags[index]!,
+        palette,
+      );
+      const intensity = galaxyScene.brightness[index]! * galaxyScene.emphasis[index]!;
+      colors[index * 3] = color.r * intensity;
+      colors[index * 3 + 1] = color.g * intensity;
+      colors[index * 3 + 2] = color.b * intensity;
     }
-    this.nodeGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    this.nodeGeometry.setAttribute("position", new THREE.BufferAttribute(galaxyScene.positions, 3));
     this.nodeGeometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    this.nodeGeometry.setAttribute("pointSize", new THREE.BufferAttribute(sizes, 1));
+    this.nodeGeometry.setAttribute("pointSize", new THREE.BufferAttribute(galaxyScene.pointSizes, 1));
     this.nodeGeometry.computeBoundingSphere();
   }
 
@@ -945,6 +901,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const rendererRef = useRef<StarfieldGraphRenderer | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const atlasRef = useRef<IdentityGraphAtlas | null>(null);
+  const galaxySceneRef = useRef<IdentityGalaxyScene | null>(null);
   const webglUnavailableRef = useRef(false);
   const hitBucketsRef = useRef<Map<string, string[]>>(new Map());
   const transformRef = useRef<ViewTransform>({ ...FRIEND_GRAPH_DEFAULT_TRANSFORM });
@@ -1117,11 +1074,27 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const canvas = canvasRef.current;
     const atlas = atlasRef.current;
     if (!canvas || !atlas) return;
+    let galaxyScene = galaxySceneRef.current;
     try {
+      const shouldCompileScene = sceneDirtyRef.current || !galaxyScene;
+      if (shouldCompileScene) {
+        galaxyScene = compileIdentityGalaxyScene(atlas, {
+          quality: latestQualityRef.current,
+          selectedPersonId,
+          selectedAccountId,
+          hoveredNodeId: hoveredNodeIdRef.current,
+        });
+        galaxySceneRef.current = galaxyScene;
+      }
+      if (!galaxyScene) {
+        throw new Error("Friends galaxy scene compilation failed");
+      }
       let renderer = rendererRef.current;
+      let rendererCreated = false;
       if (!renderer && !webglUnavailableRef.current) {
         renderer = new StarfieldGraphRenderer(canvas);
         rendererRef.current = renderer;
+        rendererCreated = true;
       }
       const frameAt = nowMs();
       if (lastFrameAtRef.current !== null) {
@@ -1135,29 +1108,28 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       const startedAt = nowMs();
       if (renderer) {
         renderer.resize(canvasSize.width, canvasSize.height);
-        if (sceneDirtyRef.current) {
+        if (shouldCompileScene || rendererCreated) {
           renderer.syncScene(
             atlas,
+            galaxyScene,
             getPalette(),
-            selectedPersonId,
-            selectedAccountId,
-            hoveredNodeIdRef.current,
             starfieldVariation,
             latestQualityRef.current,
           );
-          sceneDirtyRef.current = false;
         }
         renderer.render(transformRef.current, latestQualityRef.current);
       } else {
         drawFallbackStarfield(
           canvas,
           atlas,
+          galaxyScene,
           transformRef.current,
           getPalette(),
           selectedPersonId,
           selectedAccountId,
         );
       }
+      sceneDirtyRef.current = false;
       if (!firstVisibleMsRef.current && atlas.nodes.length > 0) {
         firstVisibleMsRef.current = nowMs() - mountedAtRef.current;
       }
@@ -1165,14 +1137,23 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     } catch (error) {
       if (error instanceof Error && error.message === "WebGL unavailable") {
         webglUnavailableRef.current = true;
+        galaxyScene ??= compileIdentityGalaxyScene(atlas, {
+          quality: latestQualityRef.current,
+          selectedPersonId,
+          selectedAccountId,
+          hoveredNodeId: hoveredNodeIdRef.current,
+        });
+        galaxySceneRef.current = galaxyScene;
         drawFallbackStarfield(
           canvas,
           atlas,
+          galaxyScene,
           transformRef.current,
           getPalette(),
           selectedPersonId,
           selectedAccountId,
         );
+        sceneDirtyRef.current = false;
         if (!firstVisibleMsRef.current && atlas.nodes.length > 0) {
           firstVisibleMsRef.current = nowMs() - mountedAtRef.current;
         }
@@ -1522,6 +1503,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       }
       rendererRef.current?.dispose();
       rendererRef.current = null;
+      galaxySceneRef.current = null;
     };
   }, []);
 

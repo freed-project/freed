@@ -40,6 +40,7 @@ export interface IdentityGraphAtlasNode {
   latestActivityAt?: number;
   aggregateCount?: number;
   graphPinned?: boolean;
+  careLevel?: Person["careLevel"];
   friendSuggestionConfidence?: FriendCandidateConfidence;
 }
 
@@ -380,6 +381,7 @@ export function buildIdentityGraphAtlas({
       activityCount: activity.count,
       latestActivityAt: activity.latest > 0 ? activity.latest : undefined,
       graphPinned: person.graphPinned,
+      careLevel: person.careLevel,
       friendSuggestionConfidence: friendSuggestionStrengthByPerson[person.id],
     });
   }
