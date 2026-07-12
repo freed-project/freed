@@ -56,6 +56,10 @@ type IdleWorkerStopReason =
   | "pending_request_retry"
   | "request_timeout_cleanup";
 
+class WorkerInitFailureError extends Error {}
+class WorkerInitResponseError extends Error {}
+class WorkerInitTimeoutError extends WorkerInitFailureError {}
+
 // ---------------------------------------------------------------------------
 // Worker lifecycle
 // ---------------------------------------------------------------------------
@@ -102,6 +106,8 @@ function rejectPendingWorkerRequests(error: Error): void {
   rejectPendingMap(pendingPreservedText, error);
   rejectPendingMap(pendingContentSignalBackfill, error);
   rejectPendingMap(pendingSampleDataClear, error);
+  rejectPendingMap(pendingInit, error);
+  rejectPendingMap(pendingRelayClientCount, error);
 }
 
 function resetFailedWorker(failedWorker: Worker, error: Error, phase: string): void {
@@ -178,11 +184,7 @@ function startWorker(): void {
   if (latestRelayClientCount > 0) {
     void workerReady.then(() => {
       if (worker !== nextWorker) return;
-      nextWorker.postMessage({
-        reqId: nextReqId++,
-        type: "UPDATE_RELAY_CLIENT_COUNT",
-        count: latestRelayClientCount,
-      } satisfies WorkerRequest);
+      postRelayClientCount(nextWorker, latestRelayClientCount);
     }).catch(() => {});
   }
 }
@@ -215,7 +217,9 @@ function hasPendingWorkerRequests(): boolean {
     pendingSavedYouTubeUrls.size > 0 ||
     pendingPreservedText.size > 0 ||
     pendingContentSignalBackfill.size > 0 ||
-    pendingSampleDataClear.size > 0
+    pendingSampleDataClear.size > 0 ||
+    pendingInit.size > 0 ||
+    pendingRelayClientCount.size > 0
   );
 }
 
@@ -245,8 +249,15 @@ function scheduleIdleWorkerStop(
 ): void {
   if (!worker) return;
   cancelIdleWorkerStop();
+  const scheduledWorker = worker;
   const scheduledAtMs = Date.now();
-  idleWorkerStopTimer = setTimeout(() => {
+  const scheduledTimer = setTimeout(() => {
+    if (
+      idleWorkerStopTimer !== scheduledTimer ||
+      worker !== scheduledWorker
+    ) {
+      return;
+    }
     idleWorkerStopTimer = null;
     const firedAtMs = Date.now();
     if (stopIdleWorker()) {
@@ -266,6 +277,7 @@ function scheduleIdleWorkerStop(
       );
     }
   }, delayMs);
+  idleWorkerStopTimer = scheduledTimer;
 }
 
 function completeWorkerActivity(
@@ -362,6 +374,46 @@ const pendingSampleDataClear = new Map<
     timer: ReturnType<typeof setTimeout>;
   }
 >();
+const pendingInit = new Map<number, PendingRequestFailureHandler>();
+const pendingRelayClientCount = new Map<
+  number,
+  PendingRequestFailureHandler
+>();
+
+function postRelayClientCount(activeWorker: Worker, count: number): void {
+  cancelIdleWorkerStop();
+  const reqId = nextReqId++;
+  const timer = setTimeout(() => {
+    if (!pendingRelayClientCount.has(reqId)) return;
+    pendingRelayClientCount.delete(reqId);
+    completeTimedOutWorkerActivity();
+    const message =
+      `[automerge-worker] request TIMEOUT op=UPDATE_RELAY_CLIENT_COUNT` +
+      ` reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`;
+    log.error(message);
+    addDebugEvent("error", message);
+    recordRuntimeHealthEvent({
+      event: "worker_runtime_failed",
+      phase: "relay_client_count_timeout",
+      message,
+    });
+  }, WORKER_REQUEST_TIMEOUT_MS);
+
+  pendingRelayClientCount.set(reqId, {
+    timer,
+    reject: (error) => {
+      log.warn(
+        `[automerge-worker] relay client-count update cancelled: ${error.message}`,
+      );
+    },
+  });
+  activeWorker.postMessage({
+    reqId,
+    type: "UPDATE_RELAY_CLIENT_COUNT",
+    count,
+  } satisfies WorkerRequest);
+}
+
 async function request(msg: WorkerRequest): Promise<void> {
   await ensureWorkerDocumentReadyFor(msg.type);
   const activeWorker = getWorker();
@@ -443,13 +495,7 @@ export function setRelayClientCount(n: number): void {
   const activeWorker = worker;
   void ensureWorkerReady().then(() => {
     if (worker !== activeWorker) return;
-    cancelIdleWorkerStop();
-    activeWorker.postMessage({
-      reqId: nextReqId++,
-      type: "UPDATE_RELAY_CLIENT_COUNT",
-      count: n,
-    } satisfies WorkerRequest);
-    completeWorkerActivity();
+    postRelayClientCount(activeWorker, n);
   });
 }
 
@@ -458,6 +504,8 @@ export function setRelayClientCount(n: number): void {
 // ---------------------------------------------------------------------------
 
 function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
+  const sourceWorker = event.currentTarget as Worker | null;
+  if (sourceWorker && sourceWorker !== worker) return;
   const msg = event.data;
 
   if (msg.type === "READY") return;
@@ -641,6 +689,14 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     return;
   }
 
+  const pendingRelay = pendingRelayClientCount.get(msg.reqId);
+  if (pendingRelay) {
+    clearTimeout(pendingRelay.timer);
+    pendingRelayClientCount.delete(msg.reqId);
+    if (msg.error) pendingRelay.reject(new Error(msg.error));
+    return;
+  }
+
   // ACK
   const pendingBackfill = pendingContentSignalBackfill.get(msg.reqId);
   if (pendingBackfill && msg.error) {
@@ -675,20 +731,22 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
 }
 
 function handleWorkerError(err: ErrorEvent) {
+  const failedWorker = (err.currentTarget as Worker | null) ?? worker;
+  if (failedWorker && failedWorker !== worker) return;
   const msg = workerErrorMessage(err);
   log.error(`[automerge-worker] unhandled error: ${msg}`);
   addDebugEvent("error", `[AutomergeWorker] unhandled error: ${msg}`);
-  const failedWorker = (err.currentTarget as Worker | null) ?? worker;
   if (failedWorker) {
     resetFailedWorker(failedWorker, new Error(msg), "runtime_error");
   }
 }
 
 function handleWorkerMessageError(err: MessageEvent) {
+  const failedWorker = (err.currentTarget as Worker | null) ?? worker;
+  if (failedWorker && failedWorker !== worker) return;
   const msg = workerErrorMessage(err);
   log.error(`[automerge-worker] message error: ${msg}`);
   addDebugEvent("error", `[AutomergeWorker] message error: ${msg}`);
-  const failedWorker = (err.currentTarget as Worker | null) ?? worker;
   if (failedWorker) {
     resetFailedWorker(failedWorker, new Error(msg), "runtime_message_error");
   }
@@ -721,17 +779,40 @@ function sendInit(): Promise<DocState> {
 
     let initialState: DocState | null = null;
     let initAcked = false;
-    let resolved = false;
+    let settled = false;
+
+    function cleanup() {
+      const pendingRequest = pendingInit.get(reqId);
+      if (pendingRequest) clearTimeout(pendingRequest.timer);
+      pendingInit.delete(reqId);
+      activeWorker.removeEventListener("message", stateHandler);
+    }
+
+    function fail(error: Error) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    }
 
     function tryResolve() {
-      if (!initialState || !initAcked || resolved) return;
-      resolved = true;
+      if (!initialState || !initAcked || settled) return;
+      settled = true;
+      cleanup();
       appDocumentInitialized = true;
       workerDocumentInitialized = true;
+      completeWorkerActivity();
       resolve(initialState);
     }
 
     const stateHandler = (event: MessageEvent<WorkerResponse>) => {
+      const sourceWorker = event.currentTarget as Worker | null;
+      if (
+        (sourceWorker && sourceWorker !== activeWorker) ||
+        worker !== activeWorker
+      ) {
+        return;
+      }
       const msg = event.data;
       if (msg.type === "STATE_UPDATE" && !initialState) {
         lastDocState = msg.state;
@@ -744,9 +825,8 @@ function sendInit(): Promise<DocState> {
           () => "(doc lives in worker - not directly accessible)",
           () => new Uint8Array(0),
         );
-        activeWorker.removeEventListener("message", stateHandler);
         if (msg.error) {
-          reject(new Error(msg.error));
+          fail(new WorkerInitResponseError(msg.error));
         } else {
           initAcked = true;
           tryResolve();
@@ -754,6 +834,26 @@ function sendInit(): Promise<DocState> {
       }
     };
 
+    const timer = setTimeout(() => {
+      if (!pendingInit.has(reqId)) return;
+      pendingInit.delete(reqId);
+      const error = new WorkerInitTimeoutError(
+        `[automerge-worker] request TIMEOUT op=INIT reqId=${reqId}` +
+          ` timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
+      );
+      resetFailedWorker(activeWorker, error, "runtime_init_timeout");
+      fail(error);
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pendingInit.set(reqId, {
+      timer,
+      reject: (error) =>
+        fail(
+          error instanceof WorkerInitFailureError
+            ? error
+            : new WorkerInitFailureError(error.message),
+        ),
+    });
     activeWorker.addEventListener("message", stateHandler);
     activeWorker.postMessage({ reqId, type: "INIT" } satisfies WorkerRequest);
   });
@@ -766,7 +866,8 @@ export async function initDoc(): Promise<DocState> {
     appDocumentInitialized = true;
     workerDocumentInitialized = true;
     return state;
-  } catch {
+  } catch (error) {
+    if (!(error instanceof WorkerInitResponseError)) throw error;
     await clearLocalDoc();
     const state = await sendInit();
     appDocumentInitialized = true;

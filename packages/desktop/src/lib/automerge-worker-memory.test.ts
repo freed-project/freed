@@ -147,6 +147,8 @@ describe("automerge worker memory routing", () => {
     expect(clientSource).toContain("IDLE_WORKER_STOP_DELAY_MS = 30_000");
     expect(clientSource).toContain("IDLE_WORKER_STOP_RETRY_MS = 1_000");
     expect(clientSource).toContain("function hasPendingWorkerRequests()");
+    expect(clientSource).toContain("pendingInit.size > 0");
+    expect(clientSource).toContain("pendingRelayClientCount.size > 0");
     expect(clientSource).toContain("function stopIdleWorker()");
     expect(clientSource).toContain("function cancelIdleWorkerStop()");
     expect(clientSource).toContain("function completeWorkerActivity(");
@@ -164,6 +166,15 @@ describe("automerge worker memory routing", () => {
     expect(clientSource).toContain("await sendInit()");
     expect(clientSource).toContain("(msg.detail ?? \"\").startsWith(\"[automerge-worker] released idle document\")");
     expect(clientSource).toContain("scheduleIdleWorkerStop();");
+    expect(clientSource).toContain("pendingInit.set(reqId, {");
+    expect(clientSource).toContain("idleWorkerStopTimer !== scheduledTimer");
+    expect(clientSource).toContain("worker !== scheduledWorker");
+    expect(clientSource).toContain("sourceWorker !== worker");
+    expect(clientSource).toContain("error instanceof WorkerInitFailureError");
+    expect(clientSource).toContain("error instanceof WorkerInitResponseError");
+    expect(workerSource).toMatch(
+      /if \(req\.type === "UPDATE_RELAY_CLIENT_COUNT"\) \{[\s\S]*?ack\(req\.reqId\);[\s\S]*?return;/,
+    );
   });
 
   it("rebuilds a fresh Automerge document only after compacting oversized text", () => {

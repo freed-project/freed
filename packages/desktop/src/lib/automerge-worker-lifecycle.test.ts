@@ -71,6 +71,12 @@ class MockWorker {
     for (const listener of this.listeners.get("message") ?? []) listener(event);
     this.onmessage?.(event);
   }
+
+  emitError(message: string): void {
+    const event = { message, currentTarget: this };
+    for (const listener of this.listeners.get("error") ?? []) listener(event);
+    this.onerror?.(event);
+  }
 }
 
 function makeItem(): FeedItem {
@@ -379,13 +385,187 @@ describe("automerge worker lifecycle", () => {
     await vi.advanceTimersByTimeAsync(20_000);
 
     automerge.setRelayClientCount(1);
-    await waitForWorkerRequest(worker, "UPDATE_RELAY_CLIENT_COUNT");
+    const relayRequest = await waitForWorkerRequest(
+      worker,
+      "UPDATE_RELAY_CLIENT_COUNT",
+    );
     expect(MockWorker.instances).toHaveLength(1);
 
-    await vi.advanceTimersByTimeAsync(20_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(worker.terminated).toBe(false);
-    await vi.advanceTimersByTimeAsync(11_000);
+    worker.emitMessage({ reqId: relayRequest.reqId, type: "ACK" });
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(worker.terminated).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
     expect(worker.terminated).toBe(true);
+  });
+
+  it("does not terminate while a large document reinitialization is pending", async () => {
+    const automerge = await import("./automerge");
+    const firstWorker = MockWorker.instances[0];
+    firstWorker.emitMessage({ type: "READY" });
+    await completeWorkerInit(firstWorker, automerge.initDoc(), makeState(), 6_291_456);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(firstWorker.terminated).toBe(true);
+
+    const mutation = automerge.docAddFeedItem(makeItem());
+    const secondWorker = MockWorker.instances[1];
+    secondWorker.emitMessage({ type: "READY" });
+    const reinitRequest = await waitForWorkerRequest(secondWorker, "INIT");
+
+    automerge.setRelayClientCount(1);
+    const relayRequest = await waitForWorkerRequest(
+      secondWorker,
+      "UPDATE_RELAY_CLIENT_COUNT",
+    );
+    secondWorker.emitMessage({ reqId: relayRequest.reqId, type: "ACK" });
+
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(secondWorker.terminated).toBe(false);
+
+    secondWorker.emitMessage({ type: "STATE_UPDATE", state: makeState() });
+    secondWorker.emitMessage({
+      type: "INIT_STATS",
+      durationMs: 31_000,
+      docBytes: 6_291_456,
+    });
+    secondWorker.emitMessage({ reqId: reinitRequest.reqId, type: "ACK" });
+
+    const addRequest = await waitForWorkerRequest(
+      secondWorker,
+      "ADD_FEED_ITEM",
+    );
+    secondWorker.emitMessage({ reqId: addRequest.reqId, type: "ACK" });
+    await expect(mutation).resolves.toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(secondWorker.terminated).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(secondWorker.terminated).toBe(true);
+  });
+
+  it("resets a worker whose document reinitialization times out", async () => {
+    const automerge = await import("./automerge");
+    const firstWorker = MockWorker.instances[0];
+    firstWorker.emitMessage({ type: "READY" });
+    await completeWorkerInit(firstWorker, automerge.initDoc());
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(firstWorker.terminated).toBe(true);
+
+    const mutation = automerge.docAddFeedItem(makeItem());
+    const mutationResult = mutation.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    const secondWorker = MockWorker.instances[1];
+    secondWorker.emitMessage({ type: "READY" });
+    await waitForWorkerRequest(secondWorker, "INIT");
+
+    await vi.advanceTimersByTimeAsync(180_000);
+    expect(secondWorker.terminated).toBe(true);
+    await expect(mutationResult).resolves.toMatchObject({
+      message: expect.stringContaining("request TIMEOUT op=INIT"),
+    });
+    expect(recordRuntimeHealthEventMock).toHaveBeenCalledWith({
+      event: "worker_runtime_failed",
+      phase: "runtime_init_timeout",
+      message: expect.stringContaining("request TIMEOUT op=INIT"),
+    });
+  });
+
+  it("does not clear local data when the initial document load times out", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+
+    const initResult = automerge.initDoc().then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await waitForWorkerRequest(worker, "INIT");
+    await vi.advanceTimersByTimeAsync(180_000);
+
+    expect(worker.terminated).toBe(true);
+    await expect(initResult).resolves.toMatchObject({
+      message: expect.stringContaining("request TIMEOUT op=INIT"),
+    });
+    expect(MockWorker.instances).toHaveLength(1);
+    expect(
+      worker.messages.some(
+        (message) =>
+          typeof message === "object" &&
+          message !== null &&
+          "type" in message &&
+          (message as { type?: unknown }).type === "CLEAR_LOCAL",
+      ),
+    ).toBe(false);
+  });
+
+  it("does not clear local data when the initial worker generation crashes", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+
+    const initResult = automerge.initDoc().then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await waitForWorkerRequest(worker, "INIT");
+    worker.emitError("worker crashed during INIT");
+
+    expect(worker.terminated).toBe(true);
+    await expect(initResult).resolves.toMatchObject({
+      message: "worker crashed during INIT",
+    });
+    expect(MockWorker.instances).toHaveLength(1);
+    expect(
+      worker.messages.some(
+        (message) =>
+          typeof message === "object" &&
+          message !== null &&
+          "type" in message &&
+          (message as { type?: unknown }).type === "CLEAR_LOCAL",
+      ),
+    ).toBe(false);
+  });
+
+  it("ignores lifecycle messages from a terminated worker generation", async () => {
+    const automerge = await import("./automerge");
+    const firstWorker = MockWorker.instances[0];
+    firstWorker.emitMessage({ type: "READY" });
+    await completeWorkerInit(firstWorker, automerge.initDoc());
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(firstWorker.terminated).toBe(true);
+
+    const mutation = automerge.docAddFeedItem(makeItem());
+    const secondWorker = MockWorker.instances[1];
+    secondWorker.emitMessage({ type: "READY" });
+    await completeWorkerInit(secondWorker, Promise.resolve(makeState()));
+    const addRequest = await waitForWorkerRequest(
+      secondWorker,
+      "ADD_FEED_ITEM",
+    );
+    secondWorker.emitMessage({ reqId: addRequest.reqId, type: "ACK" });
+    await mutation;
+
+    await vi.advanceTimersByTimeAsync(20_000);
+    firstWorker.emitMessage({
+      type: "DEBUG_EVENT",
+      kind: "change",
+      detail:
+        "[automerge-worker] released idle document after request queue drained",
+    });
+    firstWorker.emitMessage({
+      type: "STATE_UPDATE",
+      state: makeState([makeItem()]),
+    });
+
+    expect(automerge.getDocState()?.items).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(secondWorker.terminated).toBe(true);
   });
 
   it.todo(

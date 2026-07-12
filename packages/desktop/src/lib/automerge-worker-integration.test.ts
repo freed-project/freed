@@ -230,11 +230,17 @@ describe("real Automerge worker module", () => {
       fixture.manifest.binaryBytes,
     );
 
+    const relayCountStart = posts.length;
     sendRequest(scope, {
       reqId: 5,
       type: "UPDATE_RELAY_CLIENT_COUNT",
       count: 1,
     });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 5,
+      relayCountStart,
+    );
     const mutationStart = posts.length;
     sendRequest(scope, {
       reqId: 6,
