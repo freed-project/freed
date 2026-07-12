@@ -1,0 +1,38 @@
+{
+  "tag": "v26.7.1200-dev",
+  "version": "26.7.1200-dev",
+  "channel": "dev",
+  "dayKey": "26.7.12",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-12T21:51:33.317Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.1000-dev",
+    "previousPublishedDayTag": "v26.7.1000-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.1200-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.1200-dev"
+    ],
+    "prNumbers": [
+      950,
+      954
+    ],
+    "commitSubjects": [
+      "fix: hide YouTube window after login (#954)",
+      "chore: add Automerge worker memory harness (#950)"
+    ]
+  },
+  "release": {
+    "deck": "Automerge worker memory harness and youTube window after login now stays out of the way",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1200-dev\n\nAutomerge worker memory harness and youTube window after login now stays out of the way\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
