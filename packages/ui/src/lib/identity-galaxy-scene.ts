@@ -292,3 +292,24 @@ export function compileIdentityGalaxyScene(
     bounds: boundsForPositions(positions),
   };
 }
+
+export function updateIdentityGalaxySceneInteraction(
+  scene: IdentityGalaxyScene,
+  nodes: readonly IdentityGraphAtlasNode[],
+  options: CompileIdentityGalaxySceneOptions,
+): void {
+  if (scene.nodeIds.length !== nodes.length) {
+    throw new Error("Friends galaxy scene and atlas node counts do not match");
+  }
+  const hasSelection = !!options.selectedPersonId || !!options.selectedAccountId;
+  for (let index = 0; index < nodes.length; index += 1) {
+    const node = nodes[index]!;
+    const nextFlags = nodeFlags(node, options);
+    const selected = (nextFlags & IdentityGalaxyNodeFlag.Selected) !== 0;
+    const hovered = (nextFlags & IdentityGalaxyNodeFlag.Hovered) !== 0;
+    const linked = (nextFlags & IdentityGalaxyNodeFlag.LinkedToSelection) !== 0;
+    scene.flags[index] = nextFlags;
+    scene.pointSizes[index] = pointSize(node, selected, hovered, options.quality);
+    scene.emphasis[index] = hasSelection && !selected && !hovered && !linked ? 0.34 : 1;
+  }
+}

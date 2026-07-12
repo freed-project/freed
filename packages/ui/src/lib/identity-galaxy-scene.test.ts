@@ -8,7 +8,9 @@ import {
   IdentityGalaxyColorRole,
   IdentityGalaxyNodeFlag,
   IdentityGalaxyNodeKindCode,
+  updateIdentityGalaxySceneInteraction,
 } from "./identity-galaxy-scene.js";
+import { identityGalaxySceneTransferables } from "./identity-galaxy-worker-protocol.js";
 
 function node(
   id: string,
@@ -142,21 +144,38 @@ describe("compileIdentityGalaxyScene", () => {
         friendSuggestionConfidence: "high",
       }),
     ]);
-    const base = compileIdentityGalaxyScene(input, { quality: "settled", now: 1_000 });
-    const interactive = compileIdentityGalaxyScene(input, {
+    const scene = compileIdentityGalaxyScene(input, { quality: "settled", now: 1_000 });
+    const positions = scene.positions;
+    const edgeIndices = scene.edgeIndices;
+    const basePointSize = scene.pointSizes[0]!;
+    updateIdentityGalaxySceneInteraction(scene, input.nodes, {
       quality: "interactive",
       selectedPersonId: "selected",
       hoveredNodeId: "account:hovered",
       now: 1_000,
     });
 
-    expect(interactive.positions).toEqual(base.positions);
-    expect(interactive.flags[0]! & IdentityGalaxyNodeFlag.Selected).not.toBe(0);
-    expect(interactive.flags[0]! & IdentityGalaxyNodeFlag.Pinned).not.toBe(0);
-    expect(interactive.flags[1]! & IdentityGalaxyNodeFlag.Hovered).not.toBe(0);
-    expect(interactive.flags[1]! & IdentityGalaxyNodeFlag.LinkedToSelection).not.toBe(0);
-    expect(interactive.flags[1]! & IdentityGalaxyNodeFlag.SuggestedHigh).not.toBe(0);
-    expect(interactive.pointSizes[0]).toBeGreaterThan(base.pointSizes[0]!);
+    expect(scene.positions).toBe(positions);
+    expect(scene.edgeIndices).toBe(edgeIndices);
+    expect(scene.flags[0]! & IdentityGalaxyNodeFlag.Selected).not.toBe(0);
+    expect(scene.flags[0]! & IdentityGalaxyNodeFlag.Pinned).not.toBe(0);
+    expect(scene.flags[1]! & IdentityGalaxyNodeFlag.Hovered).not.toBe(0);
+    expect(scene.flags[1]! & IdentityGalaxyNodeFlag.LinkedToSelection).not.toBe(0);
+    expect(scene.flags[1]! & IdentityGalaxyNodeFlag.SuggestedHigh).not.toBe(0);
+    expect(scene.pointSizes[0]).toBeGreaterThan(basePointSize);
+  });
+
+  it("exposes each typed scene buffer exactly once for worker transfer", () => {
+    const scene = compileIdentityGalaxyScene(atlas([
+      node("person:transfer", { personId: "transfer", careLevel: 3 }),
+    ]), { quality: "settled", now: 1_000 });
+
+    const transferables = identityGalaxySceneTransferables(scene);
+
+    expect(transferables).toHaveLength(10);
+    expect(new Set(transferables).size).toBe(transferables.length);
+    expect(transferables).toContain(scene.positions.buffer);
+    expect(transferables).toContain(scene.edgeIndices.buffer);
   });
 
   it("is deterministic for the same atlas and clock", () => {

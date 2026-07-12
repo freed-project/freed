@@ -133,5 +133,22 @@ The graph occupies a constrained galactic plane. `x` and `y` encode stable seman
 
 ## Benchmarking Note
 
-As of July 12, 2026, other tasks are running on the development machine. Do not run performance benchmarks or treat local timing results as meaningful until the owner explicitly authorizes benchmarking. Correctness checks, builds, deterministic unit tests, and visual architecture work may continue.
+As of July 12, 2026, other tasks are running on the development machine. The owner has authorized benchmarking only when a case is repeated enough to establish a consistency range. Single-run timing results are not decision evidence. Correctness checks, builds, deterministic unit tests, and visual architecture work may continue independently.
 
+## Implementation Progress
+
+### Foundation complete
+
+- The current atlas compiles into a versioned renderer-neutral scene protocol backed by typed arrays.
+- Semantic depth is care-dominant, with bounded activity and recency contributions.
+- Linked accounts remain behind their identity while preserving stable deterministic positions.
+- The atlas worker transfers scene buffers instead of making the main thread compile duplicate GPU input.
+- Hover and selection update flags, emphasis, and point sizes in place without replacing static positions or indexed edges.
+- An imperative `IdentityGalaxyEngine` owns Three.js, Troika labels, palette resolution, WebGL fallback selection, resize, synchronization, rendering, and disposal.
+- `FriendGraph.tsx` now owns React props, worker lifecycle, interaction orchestration, and product callbacks rather than renderer internals.
+
+### Next structural target
+
+Replace the viewport-capped atlas scene source with a persistent full semantic galaxy index. Every person, account, feed, and provider aggregate should remain GPU-resident while viewport detail policy controls labels, avatars, links, picking resolution, and expensive effects.
+
+Benchmarking is authorized only as repeated consistency runs while other machine tasks remain active. Single-run timing results are not decision evidence.

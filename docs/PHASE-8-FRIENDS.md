@@ -171,7 +171,7 @@ Default nudge intervals by care level:
 
 The current atlas starfield remains the shipping compatibility surface while the next renderer is built behind it. The approved replacement uses a constrained 3D galactic plane with stable semantic geography on `x` and `y`, relationship prominence on `z`, tight identity systems, provider sectors on the outer rim, a locked perspective camera, and a renderer-neutral typed scene protocol. WebGPU is the preferred shared backend, WebGL2 is the compatibility backend, and native Metal remains gated on later device evidence.
 
-The first foundation compiles current atlas nodes into compact typed buffers for stable 3D positions, semantic prominence, bounded activity and recency brightness, theme color roles, interaction flags, and indexed edges. The current Three renderer consumes this protocol immediately so the new architecture has a production caller while later graph indexing, camera, picking, text, and GPU backend work proceeds. The complete approved vision, interaction contract, rendering contract, and staged roadmap live in [FRIENDS-GALAXY-ARCHITECTURE.md](./FRIENDS-GALAXY-ARCHITECTURE.md).
+The first foundation compiles current atlas nodes into compact typed buffers for stable 3D positions, semantic prominence, bounded activity and recency brightness, theme color roles, interaction flags, and indexed edges. The atlas worker transfers those buffers directly to the main thread. Hover and selection patch dynamic typed arrays in place without rebuilding positions or edges. An imperative engine now owns Three.js, Troika labels, theme palette resolution, WebGL fallback selection, resize, scene synchronization, rendering, and disposal while the React shell owns product props and worker lifecycle. The complete approved vision, interaction contract, rendering contract, and staged roadmap live in [FRIENDS-GALAXY-ARCHITECTURE.md](./FRIENDS-GALAXY-ARCHITECTURE.md).
 
 ### Scale targets
 
@@ -198,6 +198,8 @@ The first foundation compiles current atlas nodes into compact typed buffers for
 - `packages/ui/src/lib/identity-graph-atlas.ts` - capped atlas builder with provider clusters, LOD tiers, labels, hit buckets, bounds, and metrics
 - `packages/ui/src/lib/identity-graph-atlas.worker.ts` - worker entrypoint for graph atlas slices
 - `packages/ui/src/lib/identity-galaxy-scene.ts` - renderer-neutral typed scene compiler for semantic 3D node and edge buffers
+- `packages/ui/src/lib/identity-galaxy-worker-protocol.ts` - typed worker request, response, and transferable buffer contract
+- `packages/ui/src/lib/identity-galaxy-engine.ts` - imperative rendering engine and current Three.js plus canvas compatibility backends
 - `packages/ui/src/components/friends/index.ts` — barrel export
 
 ---
@@ -360,6 +362,8 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.55 | Discover and enrich authenticated essay authors atomically when item counts stay unchanged | Medium | Done |
 | 8.56 | Define and integrate the renderer-neutral Friends Galaxy typed scene protocol | High | Done |
 | 8.57 | Replace the atlas starfield with the approved GPU-resident Friends Galaxy engine, locked camera, batched labels, and depth-aware picking | High | In Progress |
+| 8.58 | Transfer typed galaxy scene buffers from the atlas worker and patch interaction state in place | High | Done |
+| 8.59 | Move renderer, palette, fallback, and GPU resource ownership out of React into an imperative galaxy engine | High | Done |
 
 ---
 
@@ -433,6 +437,8 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Headless and no-WebGL environments fall back to a canvas starfield while preserving graph diagnostics
 - [x] Dense graph coverage asserts capped visible nodes instead of requiring the full source graph in the renderer payload
 - [x] The current renderer consumes a versioned typed scene with stable 3D positions, semantic prominence, theme roles, interaction flags, and indexed edges
+- [x] The graph worker transfers typed scene buffers directly, and main-thread interaction updates preserve static position and edge arrays
+- [x] The React Friends shell delegates palette, renderer, fallback, GPU resource, resize, scene sync, and disposal ownership to an imperative engine
 - [ ] The next-generation Friends Galaxy keeps all semantic stars GPU-resident and applies detail limits only to labels, avatars, edges, picking, and expensive effects
 - [x] Desktop browser tests cover mixed-tier graph load, context-menu link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map

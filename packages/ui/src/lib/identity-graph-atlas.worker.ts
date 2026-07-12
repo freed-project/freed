@@ -1,18 +1,12 @@
 import {
   buildIdentityGraphAtlas,
-  type BuildIdentityGraphAtlasInput,
-  type IdentityGraphAtlas,
 } from "./identity-graph-atlas.js";
-
-interface AtlasRequest extends BuildIdentityGraphAtlasInput {
-  requestId: number;
-}
-
-interface AtlasResponse {
-  requestId: number;
-  atlas: IdentityGraphAtlas;
-  durationMs: number;
-}
+import { compileIdentityGalaxyScene } from "./identity-galaxy-scene.js";
+import {
+  identityGalaxySceneTransferables,
+  type IdentityGalaxyWorkerRequest,
+  type IdentityGalaxyWorkerResponse,
+} from "./identity-galaxy-worker-protocol.js";
 
 function nowMs(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -21,15 +15,21 @@ function nowMs(): number {
   return Date.now();
 }
 
-self.onmessage = (event: MessageEvent<AtlasRequest>) => {
+self.onmessage = (event: MessageEvent<IdentityGalaxyWorkerRequest>) => {
   const startedAt = nowMs();
   const atlas = buildIdentityGraphAtlas(event.data);
-  const response: AtlasResponse = {
+  const scene = compileIdentityGalaxyScene(atlas, {
+    quality: event.data.quality,
+    selectedPersonId: event.data.selectedPersonId,
+    selectedAccountId: event.data.selectedAccountId,
+  });
+  const response: IdentityGalaxyWorkerResponse = {
     requestId: event.data.requestId,
     atlas,
+    scene,
     durationMs: nowMs() - startedAt,
   };
-  self.postMessage(response);
+  self.postMessage(response, identityGalaxySceneTransferables(scene));
 };
 
 export {};
