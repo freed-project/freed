@@ -29,10 +29,31 @@ An installed soak observes a real Freed Desktop build over hours using terminal 
   generation and a SHA-256 digest of the complete source prefix, so daily
   replacement or truncate-regrow cannot skip new records when the new file is
   already as large as the old offset. The collector points
-  `~/.freed/automation/current-soak-dir` at it.
-- Judge the soak with `node scripts/soak-assert.mjs`. It writes `soak-verdict.json` with source health, app-alive coverage, named assertions, and one of `pass`, `fail`, or `inconclusive`. Runtime source health requires liveness events in every app-alive segment, at least 80 percent of the expected distinct samples, a bounded largest gap, and a fresh final sample. Zero-event and event-rate assertions remain `inconclusive` until that coverage and one attributable runtime identity are both present. Cloud rates also require explicit connected and eligible coverage. Empty, thin, identity-missing, mixed-build, malformed, or denominator-free windows remain valid analytical `inconclusive` evidence, but they cannot be recorded as task lifecycle outcomes. A lifecycle `inconclusive` requires a nonempty window attributable to the canonical installed build and a complete composite fingerprint. If that contract is unavailable, preserve the raw verdict, keep the task in `soaking`, repair capture, and retry. Create `canary-context.json` with `node scripts/canary-context.mjs --verdict <soak-dir>/soak-verdict.json --install-id <id> --installed-at <iso>`, then summarize with `node scripts/canary-summarize.mjs --context <soak-dir>/canary-context.json --collector-metrics <soak-dir>/metrics.tsv`. The generated canary JSON, runtime-health JSONL sidecar, and collector-metrics TSV sidecar are one portable evidence bundle. Loops gate on these artifacts, not on eyeballed TSVs or the build installed at report time.
+  `~/.freed/automation/current-soak-dir` at it. A transient sample exception
+  does not terminate the detached collector. The first failure in an outage and
+  the eventual recovery are appended to `collector-events.jsonl`; repeated
+  failures stay folded into that one recovery record. Before a new outage, the
+  current file rotates at one MiB. Its matching recovery stays in the same file
+  and may extend it by one bounded record. Each collector process also writes a
+  durable session start and graceful stop. Rotation closes and reopens a
+  balanced session segment. A replacement collector uses one atomic restart
+  transition to close an unclosed prior process and open its replacement, then
+  recovers any persisted sample outage on its first successful sample. A
+  missing stop therefore exposes an abruptly dead collector instead of letting
+  the truncated tail look healthy. Source-health
+  rules still decide whether a recovered sample gap is usable. An open sample
+  outage, open collector session, malformed transition, or missing closed
+  session keeps the verdict inconclusive. New sessions use soak-info schema 3,
+  declare collector-event schema 2, and create the empty current event file at
+  initialization. Older soaks and collectors remain analytical
+  `inconclusive` and cannot close a lifecycle soak. Never add the declaration
+  retroactively.
+
+- At the immutable end bound, stop only the lock-owned collector and wait for
+  its lock to clear before hashing evidence. Then judge the frozen session with
+  `node scripts/soak-assert.mjs`. It writes `soak-verdict.json` with source health, app-alive coverage, named assertions, and one of `pass`, `fail`, or `inconclusive`. Runtime source health requires liveness events in every app-alive segment, at least 80 percent of the expected distinct samples, a bounded largest gap, and a fresh final sample. Zero-event and event-rate assertions remain `inconclusive` until that coverage and one attributable runtime identity are both present. Cloud rates also require explicit connected and eligible coverage. Empty, thin, identity-missing, mixed-build, malformed, open-collector-outage, legacy-collector, missing-event-file, or denominator-free windows remain valid analytical `inconclusive` evidence, but they cannot be recorded as task lifecycle outcomes. A lifecycle `inconclusive` requires a nonempty window attributable to the canonical installed build and a complete composite fingerprint with capability-declared, present, closed, and well-formed collector-event evidence. If that contract is unavailable, preserve the raw verdict, keep the task in `soaking`, repair capture, and retry. Create `canary-context.json` with `node scripts/canary-context.mjs --verdict <soak-dir>/soak-verdict.json --install-id <id> --installed-at <iso>`, then summarize with `node scripts/canary-summarize.mjs --context <soak-dir>/canary-context.json --collector-metrics <soak-dir>/metrics.tsv`. The generated canary JSON plus runtime-health, collector-metrics, and collector-events sidecars are one portable evidence bundle. Loops gate on these artifacts, not on eyeballed files or the build installed at report time.
 - The bounded `cloud_sync_coverage` event remains provider-gated and has no approved runtime emitter yet. Cloud-rate assertions must remain `inconclusive` until that emitter lands through the scoped provider approval lane. Do not infer eligibility from wall time, a configured account, or an unopened settings screen.
-- The source fingerprint binds ordered runtime records, raw collector metrics, collector and runtime liveness coverage, every rate denominator, build identity, app session, collector session, and app PID. Runtime coverage includes observed and expected distinct counts, density, largest gap, final freshness, and covered app-alive segment counts. Duplicate counted events stay distinct. Native heartbeat, memory, recovery, and alarm events still need the provider-reviewed identity-stamping instrumentation. Until that lands, a window containing those untagged records remains `inconclusive`.
+- The source fingerprint binds ordered runtime records, raw collector metrics, ordered collector outage events, collector and runtime liveness coverage, every rate denominator, build identity, app session, collector session, and app PID. Runtime coverage includes observed and expected distinct counts, density, largest gap, final freshness, and covered app-alive segment counts. Duplicate counted events stay distinct. Native heartbeat, memory, recovery, and alarm events still need the provider-reviewed identity-stamping instrumentation. Until that lands, a window containing those untagged records remains `inconclusive`.
 - The nightly planner (docs/NIGHTLY-SELF-IMPROVE.md) reads the same pointer and soak files as evidence.
 
 ## No focus stealing

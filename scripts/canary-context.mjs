@@ -169,6 +169,26 @@ export function buildCanaryObservationContext({
       collectorHeaderHealthy: verdict.sourceHealth.collectorHeaderHealthy,
       collectorMalformedRowCount:
         verdict.sourceHealth.collectorMalformedRowCount,
+      collectorEventCount: verdict.sourceHealth.collectorEventCount,
+      collectorEventFailureCount:
+        verdict.sourceHealth.collectorEventFailureCount,
+      collectorEventRecoveryCount:
+        verdict.sourceHealth.collectorEventRecoveryCount,
+      collectorEventMalformedLineCount:
+        verdict.sourceHealth.collectorEventMalformedLineCount,
+      collectorEventProtocolErrorCount:
+        verdict.sourceHealth.collectorEventProtocolErrorCount,
+      collectorOutageOpen: verdict.sourceHealth.collectorOutageOpen,
+      collectorOpenOutageStartedAtMs:
+        verdict.sourceHealth.collectorOpenOutageStartedAtMs,
+      collectorEventCoverageHealthy:
+        verdict.sourceHealth.collectorEventCoverageHealthy,
+      collectorEventEvidenceCapable:
+        verdict.sourceHealth.collectorEventEvidenceCapable,
+      collectorEventEvidencePresent:
+        verdict.sourceHealth.collectorEventEvidencePresent,
+      collectorEventEvidenceSchemaVersion:
+        verdict.sourceHealth.collectorEventEvidenceSchemaVersion,
       runtimeHealthMalformedLineCount:
         verdict.sourceHealth.runtimeHealthMalformedLineCount,
       runtimeHealthSampleCount: verdict.sourceHealth.runtimeHealthSampleCount,

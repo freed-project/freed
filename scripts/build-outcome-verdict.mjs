@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  CANARY_OBSERVATION_CONTEXT_SCHEMA_VERSION,
   hasMatchedEvidenceAttribution,
   validateStoredCanaryRecordProvenance,
 } from "./canary-summarize.mjs";
@@ -19,6 +20,7 @@ import {
   rebuildStoredSoakVerdict,
   VERDICT_SCHEMA_VERSION as SOAK_VERDICT_SCHEMA_VERSION,
 } from "./soak-assert.mjs";
+import { COLLECTOR_EVENTS_SCHEMA_VERSION } from "./soak-collect.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 export const OUTCOME_VERDICT_SCHEMA_VERSION = 1;
@@ -219,16 +221,37 @@ function buildIdentityFromCanary(canary, label) {
   );
 }
 
-function validateEvidenceFingerprint(fingerprint, label) {
+export function validateEvidenceFingerprint(fingerprint, label) {
+  const runtimeHealth = fingerprint?.runtimeHealth;
+  const collectorMetrics = fingerprint?.collectorMetrics;
+  const collectorEvents = fingerprint?.collectorEvents;
+  const validComponent = (component, { requireByteLength = false } = {}) =>
+    component?.algorithm === "sha256" &&
+    /^[0-9a-f]{64}$/.test(String(component?.digest ?? "")) &&
+    Number.isSafeInteger(component?.recordCount) &&
+    component.recordCount >= 0 &&
+    (!requireByteLength ||
+      (Number.isSafeInteger(component?.byteLength) &&
+        component.byteLength >= 0));
+  const componentRecordCount =
+    Number(runtimeHealth?.recordCount ?? 0) +
+    Number(collectorMetrics?.recordCount ?? 0) +
+    Number(collectorEvents?.recordCount ?? 0);
   if (
-    fingerprint?.schemaVersion !== 1 ||
+    fingerprint?.schemaVersion !== 2 ||
     fingerprint?.algorithm !== "sha256" ||
     !/^[0-9a-f]{64}$/.test(String(fingerprint?.digest ?? "")) ||
     !Number.isSafeInteger(fingerprint?.recordCount) ||
-    fingerprint.recordCount <= 0
+    fingerprint.recordCount <= 0 ||
+    !validComponent(runtimeHealth) ||
+    runtimeHealth.recordCount <= 0 ||
+    !validComponent(collectorMetrics, { requireByteLength: true }) ||
+    collectorMetrics.recordCount <= 0 ||
+    !validComponent(collectorEvents, { requireByteLength: true }) ||
+    fingerprint.recordCount !== componentRecordCount
   ) {
     throw new Error(
-      `${label} requires a complete SHA-256 evidence fingerprint.`,
+      `${label} requires complete runtime, collector metrics, and collector event SHA-256 evidence fingerprint components.`,
     );
   }
   return structuredClone(fingerprint);
@@ -286,6 +309,20 @@ function validateSoakVerdict(
     verdict.evidenceFingerprint,
     label,
   );
+  if (
+    verdict?.sourceHealth?.collectorEventEvidenceCapable !== true ||
+    verdict?.sourceHealth?.collectorEventEvidencePresent !== true ||
+    verdict?.sourceHealth?.collectorEventEvidenceSchemaVersion !==
+      COLLECTOR_EVENTS_SCHEMA_VERSION ||
+    verdict?.sourceHealth?.collectorEventCoverageHealthy !== true ||
+    verdict?.sourceHealth?.collectorOutageOpen !== false ||
+    verdict?.sourceHealth?.collectorEventMalformedLineCount !== 0 ||
+    verdict?.sourceHealth?.collectorEventProtocolErrorCount !== 0
+  ) {
+    throw new Error(
+      `${label} cannot become a lifecycle outcome without capability-declared, present, closed, and well-formed collector-event evidence.`,
+    );
+  }
   const healthy = verdict?.sourceHealth?.healthy === true;
   if (requireHealthy && !healthy) {
     throw new Error(`${label} requires healthy collector coverage.`);
@@ -485,7 +522,7 @@ function canaryExpectedLimit(before, canaryMetric) {
 
 function validateCanarySource(canary, args, sourcePath) {
   if (
-    canary?.schemaVersion !== 2 ||
+    canary?.schemaVersion !== CANARY_OBSERVATION_CONTEXT_SCHEMA_VERSION ||
     canary?.metricRegistryVersion !== STABILITY_METRIC_REGISTRY_VERSION
   ) {
     throw new Error(

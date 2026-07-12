@@ -6,17 +6,39 @@ import {
   compareCanarySummary,
   computeCanarySummary,
 } from "../canary-summarize.mjs";
-import { METRICS_COLUMNS } from "../soak-collect.mjs";
+import {
+  COLLECTOR_EVENTS_SCHEMA_VERSION,
+  METRICS_COLUMNS,
+} from "../soak-collect.mjs";
 import {
   buildCompositeEvidenceFingerprint,
+  collectorEventsEvidenceFingerprint,
   collectorMetricsEvidenceFingerprint,
+  computeCollectorEventCoverage,
   computeRuntimeHealthCoverage,
+  parseCollectorEventsJsonl,
   parseMetricsTsv,
   runtimeHealthEvidenceFingerprint,
 } from "../soak-assert.mjs";
 
 const MB = 1024 * 1024;
 const DAY_MS = 24 * 60 * 60_000;
+
+function closedCollectorSessionEventsText(startMs, endMs, collectorRunId) {
+  return `${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_started",
+    tsMs: startMs,
+    collectorRunId,
+  })}\n${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_stopped",
+    tsMs: endMs,
+    collectorRunId,
+    sessionStartedAtMs: startMs,
+    reason: "duration_reached",
+  })}\n`;
+}
 
 function metricsText(rows) {
   return `${[
@@ -124,6 +146,15 @@ export function createCanaryEvidenceFixture({
       healthFileLines: entries.length,
     })),
   );
+  const collectorEventsText = closedCollectorSessionEventsText(
+    startMs,
+    endMs,
+    `collector-run-${version}`,
+  );
+  const collectorEventCoverage = computeCollectorEventCoverage(
+    parseCollectorEventsJsonl(collectorEventsText),
+    { requireClosedSession: true },
+  );
   const runtimeHealthCoverage = computeRuntimeHealthCoverage(
     entries.map((entry) => ({ entry })),
     parseMetricsTsv(collectorMetricsText),
@@ -143,6 +174,10 @@ export function createCanaryEvidenceFixture({
     creditedIntervalCount: 1,
     collectorHeaderHealthy: true,
     collectorMalformedRowCount: 0,
+    ...collectorEventCoverage,
+    collectorEventEvidenceCapable: true,
+    collectorEventEvidencePresent: true,
+    collectorEventEvidenceSchemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
     runtimeHealthMalformedLineCount: 0,
     ...runtimeHealthCoverage,
     cloudEligibleHours: 24,
@@ -151,6 +186,8 @@ export function createCanaryEvidenceFixture({
     runtimeHealthFingerprint: runtimeHealthEvidenceFingerprint(entries),
     collectorMetricsFingerprint:
       collectorMetricsEvidenceFingerprint(collectorMetricsText),
+    collectorEventsFingerprint:
+      collectorEventsEvidenceFingerprint(collectorEventsText),
     sourceHealth,
     runtimeAttribution: {
       collectorSessionId: runtime.collectorSessionId,
@@ -161,7 +198,7 @@ export function createCanaryEvidenceFixture({
   });
   const summary = computeCanarySummary(entries, {
     observationContext: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       build,
       runtime,
       workload: { scenario, providerCohort, documentSizeBucket },
@@ -173,15 +210,20 @@ export function createCanaryEvidenceFixture({
     windowStartMs: startMs,
     windowEndMs: endMs,
   });
-  return { entries, summary, collectorMetricsText };
+  return { entries, summary, collectorMetricsText, collectorEventsText };
 }
 
 export function writeCanaryEvidenceBundle(root, fixture, comparison = null) {
   const runtimeText = `${fixture.entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
   const runtimeFile = `canary-evidence-${randomUUID()}.jsonl`;
   const collectorFile = `canary-collector-${randomUUID()}.tsv`;
+  const collectorEventsFile = `canary-collector-events-${randomUUID()}.jsonl`;
   writeFileSync(path.join(root, runtimeFile), runtimeText);
   writeFileSync(path.join(root, collectorFile), fixture.collectorMetricsText);
+  writeFileSync(
+    path.join(root, collectorEventsFile),
+    fixture.collectorEventsText,
+  );
   const record = {
     ...fixture.summary,
     sourceEvidence: {
@@ -196,6 +238,13 @@ export function writeCanaryEvidenceBundle(root, fixture, comparison = null) {
           .update(fixture.collectorMetricsText)
           .digest("hex"),
         format: "collector-metrics-tsv",
+      },
+      collectorEvents: {
+        file: collectorEventsFile,
+        digest: createHash("sha256")
+          .update(fixture.collectorEventsText)
+          .digest("hex"),
+        format: "collector-events-jsonl",
       },
     },
     ...(comparison

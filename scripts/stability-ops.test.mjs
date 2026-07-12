@@ -15,6 +15,7 @@ import {
 } from "./replay-watchdog.mjs";
 import {
   canaryCollectorEvidenceFilename,
+  canaryCollectorEventsEvidenceFilename,
   canaryEvidenceFilename,
   canaryRecordFilename,
   canaryRecordText,
@@ -24,6 +25,7 @@ import {
   loadTrailingSummaries,
   parseArgs as parseCanaryArgs,
   parseRuntimeHealthEvidenceText,
+  readCollectorEventsEvidenceText,
   readHealthWindow,
   validateCanaryObservationContext,
   validateCanaryRawEvidence,
@@ -40,6 +42,7 @@ import {
   buildCompositeEvidenceFingerprint,
   runtimeHealthEvidenceFingerprint,
 } from "./soak-assert.mjs";
+import { COLLECTOR_EVENTS_SCHEMA_VERSION } from "./soak-collect.mjs";
 import {
   createCanaryEvidenceFixture,
   writeCanaryEvidenceBundle,
@@ -51,6 +54,22 @@ const RUST_SOURCE = path.join(
   "../packages/desktop/src-tauri/src/lib.rs",
 );
 const TRACE_FIXTURE = path.join(__dirname, "fixtures/watchdog-trace.jsonl");
+
+function closedCollectorSessionEventsText(startMs, endMs, collectorRunId) {
+  return `${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_started",
+    tsMs: startMs,
+    collectorRunId,
+  })}\n${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_stopped",
+    tsMs: endMs,
+    collectorRunId,
+    sessionStartedAtMs: startMs,
+    reason: "duration_reached",
+  })}\n`;
+}
 
 // ---------------------------------------------------------------------------
 // replay-watchdog
@@ -220,6 +239,11 @@ function canaryContext(version, windowStartMs, windowEndMs, overrides = {}) {
   const runtimeHealthExpectedSampleCount =
     overrides.runtimeHealthExpectedSampleCount ??
     runtimeHealthDistinctSampleCount;
+  const collectorEventsText = closedCollectorSessionEventsText(
+    windowStartMs,
+    windowEndMs,
+    `collector-run-${version}-${windowStartMs}`,
+  );
   const sourceHealth = {
     status: "healthy",
     appAliveHours: overrides.appAliveHours ?? spanHours,
@@ -235,6 +259,25 @@ function canaryContext(version, windowStartMs, windowEndMs, overrides = {}) {
     creditedIntervalCount: overrides.creditedIntervalCount ?? 1,
     collectorHeaderHealthy: overrides.collectorHeaderHealthy ?? true,
     collectorMalformedRowCount: overrides.collectorMalformedRowCount ?? 0,
+    collectorEventCount: overrides.collectorEventCount ?? 2,
+    collectorEventFailureCount: overrides.collectorEventFailureCount ?? 0,
+    collectorEventRecoveryCount: overrides.collectorEventRecoveryCount ?? 0,
+    collectorEventMalformedLineCount:
+      overrides.collectorEventMalformedLineCount ?? 0,
+    collectorEventProtocolErrorCount:
+      overrides.collectorEventProtocolErrorCount ?? 0,
+    collectorOutageOpen: overrides.collectorOutageOpen ?? false,
+    collectorOpenOutageStartedAtMs:
+      overrides.collectorOpenOutageStartedAtMs ?? null,
+    collectorEventCoverageHealthy:
+      overrides.collectorEventCoverageHealthy ?? true,
+    collectorEventEvidenceCapable:
+      overrides.collectorEventEvidenceCapable ?? true,
+    collectorEventEvidencePresent:
+      overrides.collectorEventEvidencePresent ?? true,
+    collectorEventEvidenceSchemaVersion:
+      overrides.collectorEventEvidenceSchemaVersion ??
+      COLLECTOR_EVENTS_SCHEMA_VERSION,
     runtimeHealthMalformedLineCount:
       overrides.runtimeHealthMalformedLineCount ?? 0,
     runtimeHealthSampleCount,
@@ -300,11 +343,17 @@ function canaryContext(version, windowStartMs, windowEndMs, overrides = {}) {
         recordCount: collectorSampleCount,
         byteLength: collectorSampleCount * 100,
       },
+      collectorEventsFingerprint: overrides.collectorEventsFingerprint ?? {
+        algorithm: "sha256",
+        digest: createHash("sha256").update(collectorEventsText).digest("hex"),
+        recordCount: 2,
+        byteLength: Buffer.byteLength(collectorEventsText, "utf8"),
+      },
       sourceHealth,
       runtimeAttribution: attribution,
     });
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     build,
     runtime,
     workload: {
@@ -342,6 +391,8 @@ function computeAttributedCanary(entries, context, bounds) {
       runtimeHealthEvidenceFingerprint(attributedEntries),
     collectorMetricsFingerprint:
       context.sourceHealth.evidenceFingerprint.collectorMetrics,
+    collectorEventsFingerprint:
+      context.sourceHealth.evidenceFingerprint.collectorEvents,
     sourceHealth: context.sourceHealth,
     runtimeAttribution,
   });
@@ -383,6 +434,8 @@ function priorCanary(summary, index) {
       summary.sourceHealth.evidenceFingerprint.runtimeHealth,
     collectorMetricsFingerprint:
       summary.sourceHealth.evidenceFingerprint.collectorMetrics,
+    collectorEventsFingerprint:
+      summary.sourceHealth.evidenceFingerprint.collectorEvents,
     sourceHealth: summary.sourceHealth,
     runtimeAttribution: {
       collectorSessionId: runtimeIdentity.collectorSessionId,
@@ -427,6 +480,8 @@ function withWindowDurationRatio(summary, ratio) {
     runtimeHealthFingerprint: sourceHealth.evidenceFingerprint.runtimeHealth,
     collectorMetricsFingerprint:
       sourceHealth.evidenceFingerprint.collectorMetrics,
+    collectorEventsFingerprint:
+      sourceHealth.evidenceFingerprint.collectorEvents,
     sourceHealth,
     runtimeAttribution: {
       collectorSessionId: adjusted.runtimeIdentity.collectorSessionId,
@@ -627,6 +682,8 @@ test("same-build canary history cannot satisfy the baseline minimum", () => {
       sameBuild.sourceHealth.evidenceFingerprint.runtimeHealth,
     collectorMetricsFingerprint:
       sameBuild.sourceHealth.evidenceFingerprint.collectorMetrics,
+    collectorEventsFingerprint:
+      sameBuild.sourceHealth.evidenceFingerprint.collectorEvents,
     sourceHealth: sameBuild.sourceHealth,
     runtimeAttribution: {
       collectorSessionId: sameBuildRuntime.collectorSessionId,
@@ -708,6 +765,8 @@ test("malformed runtime-health evidence cannot produce a passing canary", () => 
     runtimeHealthFingerprint: runtimeHealthEvidenceFingerprint(parsed),
     collectorMetricsFingerprint:
       context.sourceHealth.evidenceFingerprint.collectorMetrics,
+    collectorEventsFingerprint:
+      context.sourceHealth.evidenceFingerprint.collectorEvents,
     sourceHealth: context.sourceHealth,
     runtimeAttribution: {
       collectorSessionId: context.runtime.collectorSessionId,
@@ -771,6 +830,8 @@ test("one unrelated health line fails closed as thin runtime-health coverage", (
     runtimeHealthFingerprint: runtimeHealthEvidenceFingerprint(entries),
     collectorMetricsFingerprint:
       context.sourceHealth.evidenceFingerprint.collectorMetrics,
+    collectorEventsFingerprint:
+      context.sourceHealth.evidenceFingerprint.collectorEvents,
     sourceHealth: context.sourceHealth,
     runtimeAttribution: {
       collectorSessionId: context.runtime.collectorSessionId,
@@ -788,7 +849,7 @@ test("one unrelated health line fails closed as thin runtime-health coverage", (
         windowStartMs: start,
         windowEndMs: end,
       }),
-    /complete runtime and collector SHA-256 components/,
+    /complete runtime, collector metrics, and collector event SHA-256 components/,
   );
 });
 
@@ -801,6 +862,8 @@ test("one untagged metric line cannot claim healthy runtime-health coverage", ()
     runtimeHealthFingerprint: runtimeHealthEvidenceFingerprint(entries),
     collectorMetricsFingerprint:
       context.sourceHealth.evidenceFingerprint.collectorMetrics,
+    collectorEventsFingerprint:
+      context.sourceHealth.evidenceFingerprint.collectorEvents,
     sourceHealth: context.sourceHealth,
     runtimeAttribution: {
       collectorSessionId: context.runtime.collectorSessionId,
@@ -818,7 +881,7 @@ test("one untagged metric line cannot claim healthy runtime-health coverage", ()
         windowStartMs: start,
         windowEndMs: end,
       }),
-    /complete runtime and collector SHA-256 components/,
+    /complete runtime, collector metrics, and collector event SHA-256 components/,
   );
 });
 
@@ -859,7 +922,7 @@ test("canary raw validation rejects runtime-health coverage tampering", () => {
   });
   const summary = fixture.summary;
   const context = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     build: summary.buildIdentity,
     runtime: summary.runtimeIdentity,
     workload: summary.workload,
@@ -877,6 +940,7 @@ test("canary raw validation rejects runtime-health coverage tampering", () => {
       fixture.entries,
       fixture.collectorMetricsText,
       context,
+      fixture.collectorEventsText,
     ),
   );
 
@@ -886,6 +950,8 @@ test("canary raw validation rejects runtime-health coverage tampering", () => {
       summary.sourceHealth.evidenceFingerprint.runtimeHealth,
     collectorMetricsFingerprint:
       summary.sourceHealth.evidenceFingerprint.collectorMetrics,
+    collectorEventsFingerprint:
+      summary.sourceHealth.evidenceFingerprint.collectorEvents,
     sourceHealth: context.sourceHealth,
     runtimeAttribution: {
       collectorSessionId: summary.runtimeIdentity.collectorSessionId,
@@ -902,6 +968,7 @@ test("canary raw validation rejects runtime-health coverage tampering", () => {
         fixture.entries,
         fixture.collectorMetricsText,
         context,
+        fixture.collectorEventsText,
       ),
     /runtimeHealthLargestObservedGapMs does not match the raw collector evidence and runtime-health evidence/,
   );
@@ -999,15 +1066,65 @@ test("canary filenames preserve multiple observation windows for one release", (
   );
 });
 
+test("canary collector event evidence preserves the rotated archive before the live file", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-canary-events-"));
+  const metricsPath = path.join(dir, "metrics.tsv");
+  const eventsPath = path.join(dir, "collector-events.jsonl");
+  const archivedText = '{"event":"collector_sample_failed"}\n';
+  const currentText = '{"event":"collector_sample_recovered"}\n';
+  writeFileSync(metricsPath, "tsMs\tappPid\n");
+  writeFileSync(`${eventsPath}.1`, archivedText);
+  writeFileSync(eventsPath, currentText);
+
+  assert.equal(
+    readCollectorEventsEvidenceText({ collectorMetricsPath: metricsPath }),
+    `${archivedText}${currentText}`,
+  );
+  assert.equal(
+    readCollectorEventsEvidenceText({
+      collectorMetricsPath: metricsPath,
+      collectorEventsPath: eventsPath,
+    }),
+    currentText,
+  );
+  assert.throws(
+    () =>
+      readCollectorEventsEvidenceText({
+        collectorMetricsPath: metricsPath,
+        collectorEventsPath: path.join(dir, "missing.jsonl"),
+      }),
+    /Collector event evidence does not exist/,
+  );
+  const missingDir = mkdtempSync(
+    path.join(os.tmpdir(), "freed-canary-events-missing-"),
+  );
+  const missingMetricsPath = path.join(missingDir, "metrics.tsv");
+  writeFileSync(missingMetricsPath, "tsMs\tappPid\n");
+  assert.throws(
+    () =>
+      readCollectorEventsEvidenceText({
+        collectorMetricsPath: missingMetricsPath,
+      }),
+    /Collector event evidence does not exist/,
+  );
+});
+
 test("canary records and source sidecars are content addressed and immutable", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-canary-immutable-"));
   const runtimeA = '{"event":"renderer_heartbeat","tsMs":1}\n';
   const runtimeB = '{"event":"renderer_heartbeat","tsMs":2}\n';
   const collectorA = "tsMs\tappPid\n1\t123\n";
   const collectorB = "tsMs\tappPid\n2\t123\n";
+  const collectorEventsA =
+    '{"schemaVersion":1,"event":"collector_sample_failed","tsMs":1}\n';
+  const collectorEventsB =
+    '{"schemaVersion":1,"event":"collector_sample_failed","tsMs":2}\n';
   const runtimeDigestA = createHash("sha256").update(runtimeA).digest("hex");
   const collectorDigestA = createHash("sha256")
     .update(collectorA)
+    .digest("hex");
+  const collectorEventsDigestA = createHash("sha256")
+    .update(collectorEventsA)
     .digest("hex");
 
   assert.equal(
@@ -1018,6 +1135,10 @@ test("canary records and source sidecars are content addressed and immutable", (
     canaryCollectorEvidenceFilename(collectorA),
     `canary-collector-${collectorDigestA}.tsv`,
   );
+  assert.equal(
+    canaryCollectorEventsEvidenceFilename(collectorEventsA),
+    `canary-collector-events-${collectorEventsDigestA}.jsonl`,
+  );
   assert.notEqual(
     canaryEvidenceFilename(runtimeA),
     canaryEvidenceFilename(runtimeB),
@@ -1025,6 +1146,10 @@ test("canary records and source sidecars are content addressed and immutable", (
   assert.notEqual(
     canaryCollectorEvidenceFilename(collectorA),
     canaryCollectorEvidenceFilename(collectorB),
+  );
+  assert.notEqual(
+    canaryCollectorEventsEvidenceFilename(collectorEventsA),
+    canaryCollectorEventsEvidenceFilename(collectorEventsB),
   );
 
   const runtimePathA = path.join(dir, canaryEvidenceFilename(runtimeA));
@@ -1050,6 +1175,32 @@ test("canary records and source sidecars are content addressed and immutable", (
   writeImmutableCanaryArtifact(collectorPathB, collectorB);
   assert.equal(readFileSync(collectorPathA, "utf8"), collectorA);
   assert.equal(readFileSync(collectorPathB, "utf8"), collectorB);
+
+  const collectorEventsPathA = path.join(
+    dir,
+    canaryCollectorEventsEvidenceFilename(collectorEventsA),
+  );
+  const collectorEventsPathB = path.join(
+    dir,
+    canaryCollectorEventsEvidenceFilename(collectorEventsB),
+  );
+  assert.equal(
+    writeImmutableCanaryArtifact(collectorEventsPathA, collectorEventsA)
+      .created,
+    true,
+  );
+  assert.equal(
+    writeImmutableCanaryArtifact(collectorEventsPathA, collectorEventsA)
+      .created,
+    false,
+  );
+  assert.throws(
+    () => writeImmutableCanaryArtifact(collectorEventsPathA, collectorEventsB),
+    /Refusing to overwrite immutable canary artifact/,
+  );
+  writeImmutableCanaryArtifact(collectorEventsPathB, collectorEventsB);
+  assert.equal(readFileSync(collectorEventsPathA, "utf8"), collectorEventsA);
+  assert.equal(readFileSync(collectorEventsPathB, "utf8"), collectorEventsB);
 
   const recordA = {
     version: "26.7.900-dev",

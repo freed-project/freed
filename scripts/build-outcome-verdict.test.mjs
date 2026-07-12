@@ -25,11 +25,19 @@ import {
   parseRuntimeHealthEvidenceText,
 } from "./canary-summarize.mjs";
 import { buildCanaryObservationContext } from "./canary-context.mjs";
-import { METRICS_COLUMNS } from "./soak-collect.mjs";
+import {
+  COLLECTOR_EVENTS_SCHEMA_VERSION,
+  collectorEventEvidenceDeclaration,
+  METRICS_COLUMNS,
+  SOAK_SCHEMA_VERSION,
+} from "./soak-collect.mjs";
 import {
   buildCompositeEvidenceFingerprint,
+  collectorEventsEvidenceFingerprint,
   collectorMetricsEvidenceFingerprint,
+  computeCollectorEventCoverage,
   computeRuntimeHealthCoverage,
+  parseCollectorEventsJsonl,
   parseMetricsTsv,
   rebuildStoredSoakVerdict,
   runtimeHealthEvidenceFingerprint,
@@ -37,6 +45,22 @@ import {
 
 const MB = 1024 * 1024;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function closedCollectorSessionEventsText(startMs, endMs, collectorRunId) {
+  return `${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_started",
+    tsMs: startMs,
+    collectorRunId,
+  })}\n${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_stopped",
+    tsMs: endMs,
+    collectorRunId,
+    sessionStartedAtMs: startMs,
+    reason: "duration_reached",
+  })}\n`;
+}
 
 function metricsText(rows) {
   return `${[
@@ -138,11 +162,16 @@ function writeStoredSoak(
     `${health.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
   );
   writeFileSync(
+    path.join(soakDir, "collector-events.jsonl"),
+    closedCollectorSessionEventsText(start, end, `collector-run-${name}`),
+  );
+  writeFileSync(
     path.join(soakDir, "soak-info.json"),
     `${JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: SOAK_SCHEMA_VERSION,
       collectorSessionId: `collector-${name}`,
       intervalSeconds: 60,
+      collectorEvents: collectorEventEvidenceDeclaration(),
       ...(artifactDigest ? { artifactDigest } : {}),
       comparisonContext: {
         scenario: comparisonContext.scenario ?? "idle",
@@ -191,6 +220,10 @@ function canaryFromStoredSoak(stored, installId) {
     entries,
     summary,
     collectorMetricsText: readFileSync(stored.metricsPath, "utf8"),
+    collectorEventsText: readFileSync(
+      path.join(path.dirname(stored.verdictPath), "collector-events.jsonl"),
+      "utf8",
+    ),
   };
 }
 
@@ -283,6 +316,15 @@ function attributedCanary({
     entries.map((entry) => ({ entry })),
     parseMetricsTsv(collectorMetricsText),
   );
+  const collectorEventsText = closedCollectorSessionEventsText(
+    start,
+    end,
+    `collector-run-${version}`,
+  );
+  const collectorEventCoverage = computeCollectorEventCoverage(
+    parseCollectorEventsJsonl(collectorEventsText),
+    { requireClosedSession: true },
+  );
   const sourceHealth = {
     status: "healthy",
     appAliveHours: 24,
@@ -298,6 +340,10 @@ function attributedCanary({
     creditedIntervalCount: 1,
     collectorHeaderHealthy: true,
     collectorMalformedRowCount: 0,
+    ...collectorEventCoverage,
+    collectorEventEvidenceCapable: true,
+    collectorEventEvidencePresent: true,
+    collectorEventEvidenceSchemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
     runtimeHealthMalformedLineCount: 0,
     ...runtimeHealthCoverage,
     cloudEligibleHours: 24,
@@ -306,6 +352,8 @@ function attributedCanary({
     runtimeHealthFingerprint: runtimeHealthEvidenceFingerprint(entries),
     collectorMetricsFingerprint:
       collectorMetricsEvidenceFingerprint(collectorMetricsText),
+    collectorEventsFingerprint:
+      collectorEventsEvidenceFingerprint(collectorEventsText),
     sourceHealth,
     runtimeAttribution: {
       collectorSessionId: runtime.collectorSessionId,
@@ -316,7 +364,7 @@ function attributedCanary({
   });
   const summary = computeCanarySummary(entries, {
     observationContext: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       build,
       runtime,
       workload: {
@@ -332,18 +380,21 @@ function attributedCanary({
     windowStartMs: start,
     windowEndMs: end,
   });
-  return { entries, summary, collectorMetricsText };
+  return { entries, summary, collectorMetricsText, collectorEventsText };
 }
 
 function writeCanaryRecord(root, fixture, comparison = null) {
   const evidenceText = `${fixture.entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
+  const collectorEventsText = fixture.collectorEventsText ?? "";
   const evidenceFile = `canary-evidence-${randomUUID()}.jsonl`;
   writeFileSync(path.join(root, evidenceFile), evidenceText);
   const collectorEvidenceFile = `canary-collector-${randomUUID()}.tsv`;
+  const collectorEventsFile = `canary-collector-events-${randomUUID()}.jsonl`;
   writeFileSync(
     path.join(root, collectorEvidenceFile),
     fixture.collectorMetricsText,
   );
+  writeFileSync(path.join(root, collectorEventsFile), collectorEventsText);
   const record = {
     ...fixture.summary,
     sourceEvidence: {
@@ -358,6 +409,11 @@ function writeCanaryRecord(root, fixture, comparison = null) {
           .update(fixture.collectorMetricsText)
           .digest("hex"),
         format: "collector-metrics-tsv",
+      },
+      collectorEvents: {
+        file: collectorEventsFile,
+        digest: createHash("sha256").update(collectorEventsText).digest("hex"),
+        format: "collector-events-jsonl",
       },
     },
     ...(comparison
@@ -823,6 +879,77 @@ test("inconclusive lifecycle verdicts still require attributable nonempty eviden
   );
 });
 
+test("legacy soaks without collector-event capability cannot close as lifecycle inconclusive", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-soak-legacy-events-"));
+  const stored = writeStoredSoak(root, {
+    name: "legacy-events",
+    start: Date.parse("2026-07-10T00:00:00.000Z"),
+    commitSha: "e".repeat(40),
+    version: "26.7.1000-dev",
+    slopeMbPerHour: 4,
+  });
+  const soakDir = path.dirname(stored.verdictPath);
+  const infoPath = path.join(soakDir, "soak-info.json");
+  const info = JSON.parse(readFileSync(infoPath, "utf8"));
+  info.schemaVersion = 2;
+  delete info.collectorEvents;
+  writeFileSync(infoPath, `${JSON.stringify(info, null, 2)}\n`);
+  const legacyVerdict = rebuildStoredSoakVerdict(soakDir);
+  writeFileSync(
+    stored.verdictPath,
+    `${JSON.stringify(legacyVerdict, null, 2)}\n`,
+  );
+
+  assert.equal(legacyVerdict.status, "inconclusive");
+  assert.equal(legacyVerdict.sourceHealth.collectorEventEvidenceCapable, false);
+  assert.throws(
+    () =>
+      buildOutcomeVerdictFromArtifacts({
+        sourcePath: stored.verdictPath,
+        sourceKind: "soak",
+        taskId: "W1-02",
+        outcome: "inconclusive",
+      }),
+    /cannot become a lifecycle outcome without capability-declared, present/,
+  );
+
+  const openStored = writeStoredSoak(root, {
+    name: "open-events",
+    start: Date.parse("2026-07-11T00:00:00.000Z"),
+    commitSha: "f".repeat(40),
+    version: "26.7.1100-dev",
+    slopeMbPerHour: 4,
+  });
+  const openSoakDir = path.dirname(openStored.verdictPath);
+  writeFileSync(
+    path.join(openSoakDir, "collector-events.jsonl"),
+    `${JSON.stringify({
+      schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+      event: "collector_sample_failed",
+      tsMs: Date.parse("2026-07-11T01:00:00.000Z"),
+      failedSamples: 1,
+      sampleMayBePartial: true,
+      errorMessage: "sample incomplete",
+    })}\n`,
+  );
+  const openVerdict = rebuildStoredSoakVerdict(openSoakDir);
+  writeFileSync(
+    openStored.verdictPath,
+    `${JSON.stringify(openVerdict, null, 2)}\n`,
+  );
+  assert.equal(openVerdict.sourceHealth.collectorOutageOpen, true);
+  assert.throws(
+    () =>
+      buildOutcomeVerdictFromArtifacts({
+        sourcePath: openStored.verdictPath,
+        sourceKind: "soak",
+        taskId: "W1-02",
+        outcome: "inconclusive",
+      }),
+    /cannot become a lifecycle outcome without capability-declared, present, closed/,
+  );
+});
+
 test("generated canary records remain verifiable after moving their evidence bundle", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "freed-canary-portable-"));
   const stored = writeStoredSoak(root, {
@@ -871,6 +998,7 @@ test("generated canary records remain verifiable after moving their evidence bun
   );
   assert.ok(record.sourceEvidence.runtimeHealth.file);
   assert.ok(record.sourceEvidence.collectorMetrics.file);
+  assert.ok(record.sourceEvidence.collectorEvents.file);
   const movedLedger = path.join(root, "moved-ledger");
   renameSync(ledger, movedLedger);
   const verdict = buildOutcomeVerdictFromArtifacts({

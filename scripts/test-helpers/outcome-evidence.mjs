@@ -3,10 +3,31 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { buildOutcomeVerdictFromArtifacts } from "../build-outcome-verdict.mjs";
-import { METRICS_COLUMNS } from "../soak-collect.mjs";
+import {
+  COLLECTOR_EVENTS_SCHEMA_VERSION,
+  collectorEventEvidenceDeclaration,
+  METRICS_COLUMNS,
+  SOAK_SCHEMA_VERSION,
+} from "../soak-collect.mjs";
 import { rebuildStoredSoakVerdict } from "../soak-assert.mjs";
 
 const MB = 1024 * 1024;
+
+function closedCollectorSessionEventsText(startMs, endMs, collectorRunId) {
+  return `${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_started",
+    tsMs: startMs,
+    collectorRunId,
+  })}\n${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_stopped",
+    tsMs: endMs,
+    collectorRunId,
+    sessionStartedAtMs: startMs,
+    reason: "duration_reached",
+  })}\n`;
+}
 
 function metricsText(rows) {
   return `${[
@@ -100,11 +121,20 @@ export function writeStoredSoakEvidence(
     `${health.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
   );
   writeFileSync(
+    path.join(soakDir, "collector-events.jsonl"),
+    closedCollectorSessionEventsText(
+      startMs,
+      endMs,
+      `collector-run-${name}-${randomUUID()}`,
+    ),
+  );
+  writeFileSync(
     path.join(soakDir, "soak-info.json"),
     `${JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: SOAK_SCHEMA_VERSION,
       collectorSessionId: `collector-${name}-${randomUUID()}`,
       intervalSeconds: 60,
+      collectorEvents: collectorEventEvidenceDeclaration(),
       ...(artifactDigest ? { artifactDigest } : {}),
       comparisonContext,
     })}\n`,

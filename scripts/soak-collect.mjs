@@ -15,6 +15,7 @@
 //                          rotation (P0-04) cannot shrink a long soak's evidence
 //                          window; soak-assert prefers this copy
 //   health-offsets.jsonl   byte/line cursor of the app's runtime-health.jsonl
+//   collector-events.jsonl session lifecycle plus sample outage transitions
 //   soak-info.json         schema version + config, written once at start
 //
 // WebKit attribution caveat: WebKit XPC processes are children of launchd
@@ -54,9 +55,35 @@ const DETACHED_HANDOFF_PARENT_PID_ENV =
 const DETACHED_READY_TIMEOUT_MS = 10_000;
 const DETACHED_ACCEPT_TIMEOUT_MS = 15_000;
 const COLLECTOR_ENTRYPOINT = path.basename(__filename);
+export const COLLECTOR_EVENTS_SCHEMA_VERSION = 2;
+export const COLLECTOR_EVENTS_FILENAME = "collector-events.jsonl";
+export const COLLECTOR_EVENTS_ARCHIVE_FILENAME = `${COLLECTOR_EVENTS_FILENAME}.1`;
+const MAX_COLLECTOR_ERROR_MESSAGE_LENGTH = 1_000;
+export const MAX_COLLECTOR_EVENTS_BYTES = 1024 * 1024;
+const COLLECTOR_DIAGNOSTIC_ERROR_INTERVAL_MS = 5 * 60_000;
 
-export const SOAK_SCHEMA_VERSION = 2;
+export const SOAK_SCHEMA_VERSION = 3;
 export const HEALTH_CURSOR_SCHEMA_VERSION = 2;
+
+export function collectorEventEvidenceDeclaration() {
+  return {
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    filename: COLLECTOR_EVENTS_FILENAME,
+    archiveFilename: COLLECTOR_EVENTS_ARCHIVE_FILENAME,
+    maxFileBytes: MAX_COLLECTOR_EVENTS_BYTES,
+  };
+}
+
+export function hasCollectorEventEvidenceCapability(soakInfo) {
+  const declaration = soakInfo?.collectorEvents;
+  return (
+    Number(soakInfo?.schemaVersion) >= SOAK_SCHEMA_VERSION &&
+    declaration?.schemaVersion === COLLECTOR_EVENTS_SCHEMA_VERSION &&
+    declaration?.filename === COLLECTOR_EVENTS_FILENAME &&
+    declaration?.archiveFilename === COLLECTOR_EVENTS_ARCHIVE_FILENAME &&
+    declaration?.maxFileBytes === MAX_COLLECTOR_EVENTS_BYTES
+  );
+}
 export const METRICS_COLUMNS = [
   "tsMs", // sample wall-clock epoch ms
   "iso", // same instant, ISO-8601, for humans
@@ -1006,51 +1033,392 @@ function takeSample(args, cursor, now = Date.now()) {
   return sample;
 }
 
+function collectorErrorFields(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String(error.code)
+      : null;
+  return {
+    errorName: error instanceof Error ? error.name : "Error",
+    ...(code ? { errorCode: code } : {}),
+    errorMessage: message.slice(0, MAX_COLLECTOR_ERROR_MESSAGE_LENGTH),
+  };
+}
+
+function collectorEventLine(event) {
+  const tsMs = Number(event.tsMs);
+  return `${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    ...event,
+    tsMs,
+    iso: new Date(tsMs).toISOString(),
+    collectorPid: process.pid,
+  })}\n`;
+}
+
+function removeTemporaryFile(filePath) {
+  try {
+    unlinkSync(filePath);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
+
+function rotateCollectorEventsWithLifecycle({
+  eventPath,
+  archivedPath,
+  eventLine,
+  eventTsMs,
+  lifecycle,
+}) {
+  const archiveTemp = `${archivedPath}.tmp-${process.pid}-${randomUUID()}`;
+  const currentTemp = `${eventPath}.tmp-${process.pid}-${randomUUID()}`;
+  const priorSessionStartedAtMs = lifecycle.sessionStartedAtMs;
+  const nextSessionStartedAtMs = Number(eventTsMs);
+  const archivedText = `${readFileSync(eventPath, "utf8")}${collectorEventLine({
+    event: "collector_session_stopped",
+    tsMs: nextSessionStartedAtMs,
+    collectorRunId: lifecycle.collectorRunId,
+    sessionStartedAtMs: priorSessionStartedAtMs,
+    reason: "event_file_rotation",
+  })}`;
+  const currentText = `${collectorEventLine({
+    event: "collector_session_started",
+    tsMs: nextSessionStartedAtMs,
+    collectorRunId: lifecycle.collectorRunId,
+    continuation: "event_file_rotation",
+  })}${eventLine}`;
+  try {
+    writeFileSync(archiveTemp, archivedText, { flag: "wx", mode: 0o600 });
+    writeFileSync(currentTemp, currentText, { flag: "wx", mode: 0o600 });
+    renameSync(archiveTemp, archivedPath);
+    renameSync(currentTemp, eventPath);
+    lifecycle.sessionStartedAtMs = nextSessionStartedAtMs;
+  } finally {
+    removeTemporaryFile(archiveTemp);
+    removeTemporaryFile(currentTemp);
+  }
+}
+
+export function appendCollectorEvent(soakDir, event, lifecycle = null) {
+  const eventPath = path.join(soakDir, COLLECTOR_EVENTS_FILENAME);
+  const archivedPath = path.join(soakDir, COLLECTOR_EVENTS_ARCHIVE_FILENAME);
+  const line = collectorEventLine(event);
+  if (
+    event.event === "collector_sample_failed" &&
+    existsSync(eventPath) &&
+    statSync(eventPath).size + Buffer.byteLength(line, "utf8") >
+      MAX_COLLECTOR_EVENTS_BYTES
+  ) {
+    if (lifecycle?.sessionStartedAtMs) {
+      rotateCollectorEventsWithLifecycle({
+        eventPath,
+        archivedPath,
+        eventLine: line,
+        eventTsMs: event.tsMs,
+        lifecycle,
+      });
+      return;
+    }
+    removeTemporaryFile(archivedPath);
+    renameSync(eventPath, archivedPath);
+  }
+  appendFileSync(eventPath, line);
+}
+
+function readCollectorEventText(soakDir) {
+  return [
+    path.join(soakDir, COLLECTOR_EVENTS_ARCHIVE_FILENAME),
+    path.join(soakDir, COLLECTOR_EVENTS_FILENAME),
+  ]
+    .filter((filePath) => existsSync(filePath))
+    .map((filePath) => readFileSync(filePath, "utf8"))
+    .join("");
+}
+
+function collectorEventEntries(text) {
+  return String(text ?? "")
+    .split("\n")
+    .filter((line) => line.trim())
+    .flatMap((line) => {
+      try {
+        const entry = JSON.parse(line);
+        return entry?.schemaVersion === COLLECTOR_EVENTS_SCHEMA_VERSION
+          ? [entry]
+          : [];
+      } catch {
+        return [];
+      }
+    });
+}
+
+function openCollectorSession(entries) {
+  let openSession = null;
+  for (const entry of entries) {
+    if (entry.event === "collector_session_started") {
+      openSession = entry;
+      continue;
+    }
+    if (
+      entry.event === "collector_session_restarted" &&
+      openSession &&
+      entry.priorCollectorRunId === openSession.collectorRunId &&
+      Number(entry.priorSessionStartedAtMs) === Number(openSession.tsMs)
+    ) {
+      openSession = {
+        ...entry,
+        event: "collector_session_started",
+      };
+      continue;
+    }
+    if (
+      entry.event === "collector_session_stopped" &&
+      openSession &&
+      entry.collectorRunId === openSession.collectorRunId &&
+      Number(entry.sessionStartedAtMs) === Number(openSession.tsMs)
+    ) {
+      openSession = null;
+    }
+  }
+  return openSession;
+}
+
+function tryAppendCollectorEvent(writeEvent, soakDir, event, state, now) {
+  try {
+    writeEvent(soakDir, event);
+    return true;
+  } catch (error) {
+    if (
+      state.lastDiagnosticWriteErrorTsMs === null ||
+      now - state.lastDiagnosticWriteErrorTsMs >=
+        COLLECTOR_DIAGNOSTIC_ERROR_INTERVAL_MS
+    ) {
+      process.stderr.write(
+        `Could not persist collector event: ${collectorErrorFields(error).errorMessage}\n`,
+      );
+      state.lastDiagnosticWriteErrorTsMs = now;
+    }
+    return false;
+  }
+}
+
+export function createCollectorTickState(openFailure = null) {
+  const firstFailureTsMs = openFailure ? Number(openFailure.tsMs) : null;
+  const errorFields = openFailure
+    ? {
+        errorName: String(openFailure.errorName ?? "Error"),
+        ...(openFailure.errorCode
+          ? { errorCode: String(openFailure.errorCode) }
+          : {}),
+        errorMessage: String(openFailure.errorMessage ?? "sample failed").slice(
+          0,
+          MAX_COLLECTOR_ERROR_MESSAGE_LENGTH,
+        ),
+      }
+    : null;
+  return {
+    consecutiveFailures: openFailure ? 1 : 0,
+    firstFailureTsMs,
+    lastFailureTsMs: firstFailureTsMs,
+    firstError: errorFields,
+    lastError: errorFields,
+    failureEvent: openFailure ? { ...openFailure } : null,
+    recoveryEvent: null,
+    failureRecorded: Boolean(openFailure),
+    lastDiagnosticWriteErrorTsMs: null,
+  };
+}
+
+export function hydrateCollectorTickStateFromEventsText(text) {
+  let openFailure = null;
+  for (const entry of collectorEventEntries(text)) {
+    if (entry.event === "collector_sample_failed") {
+      openFailure = entry;
+    } else if (
+      entry.event === "collector_sample_recovered" &&
+      openFailure &&
+      Number(entry.failureStartedAtMs) === Number(openFailure.tsMs)
+    ) {
+      openFailure = null;
+    }
+  }
+  return createCollectorTickState(openFailure);
+}
+
+function persistPendingOutageEvents({ state, writeEventFn, soakDir, now }) {
+  if (!state.failureEvent) return true;
+  if (!state.failureRecorded) {
+    state.failureRecorded = tryAppendCollectorEvent(
+      writeEventFn,
+      soakDir,
+      state.failureEvent,
+      state,
+      now,
+    );
+    if (!state.failureRecorded) return false;
+  }
+  if (!state.recoveryEvent) return false;
+  if (
+    !tryAppendCollectorEvent(
+      writeEventFn,
+      soakDir,
+      state.recoveryEvent,
+      state,
+      now,
+    )
+  ) {
+    return false;
+  }
+  Object.assign(state, createCollectorTickState());
+  return true;
+}
+
+export function runCollectorTick({
+  args,
+  cursor,
+  state,
+  now = Date.now(),
+  takeSampleFn = takeSample,
+  writeEventFn = appendCollectorEvent,
+}) {
+  if (state.recoveryEvent) {
+    persistPendingOutageEvents({
+      state,
+      writeEventFn,
+      soakDir: args.soakDir,
+      now,
+    });
+  }
+  try {
+    const sample = takeSampleFn(args, cursor, now);
+    if (state.consecutiveFailures > 0) {
+      state.recoveryEvent ??= {
+        event: "collector_sample_recovered",
+        tsMs: now,
+        failedSamples: state.consecutiveFailures,
+        failureStartedAtMs: state.firstFailureTsMs,
+        failureLastObservedAtMs: state.lastFailureTsMs,
+        outageMs: Math.max(0, now - state.firstFailureTsMs),
+        firstError: state.firstError,
+        lastError: state.lastError,
+      };
+      persistPendingOutageEvents({
+        state,
+        writeEventFn,
+        soakDir: args.soakDir,
+        now,
+      });
+    }
+    return { ok: true, sample };
+  } catch (error) {
+    const errorFields = collectorErrorFields(error);
+    if (state.consecutiveFailures === 0) {
+      state.firstFailureTsMs = now;
+      state.firstError = errorFields;
+      state.failureEvent = {
+        event: "collector_sample_failed",
+        tsMs: now,
+        failedSamples: 1,
+        sampleMayBePartial: true,
+        ...errorFields,
+      };
+    } else if (state.recoveryEvent) {
+      // The diagnostic sink was unavailable when a sample recovered, then the
+      // next sample failed. Fold both into the still-pending outage pair. Raw
+      // collector metrics remain the authority for exact successful samples.
+      state.recoveryEvent = null;
+    }
+    state.consecutiveFailures += 1;
+    state.lastFailureTsMs = now;
+    state.lastError = errorFields;
+    if (!state.failureRecorded) {
+      state.failureRecorded = tryAppendCollectorEvent(
+        writeEventFn,
+        args.soakDir,
+        state.failureEvent,
+        state,
+        now,
+      );
+    }
+    return { ok: false, error };
+  }
+}
+
 function initSoakDir(args) {
   mkdirSync(args.soakDir, { recursive: true });
   const infoPath = path.join(args.soakDir, "soak-info.json");
+  const collectorEventsPath = path.join(
+    args.soakDir,
+    COLLECTOR_EVENTS_FILENAME,
+  );
   if (!existsSync(infoPath)) {
-    writeFileSync(
-      infoPath,
-      `${JSON.stringify(
-        {
-          schemaVersion: SOAK_SCHEMA_VERSION,
-          startedAt: new Date().toISOString(),
-          intervalSeconds: args.intervalSeconds,
-          durationMinutes: args.durationMinutes,
-          appData: args.appData,
-          appBinary: args.appBinary,
-          ...(args.artifactDigest
-            ? { artifactDigest: args.artifactDigest }
-            : {}),
-          ...(args.scenario
-            ? {
-                comparisonContext: {
-                  scenario: args.scenario,
-                  providerCohort: args.providerCohort,
-                  documentSizeBucket: args.documentSizeBucket,
-                  host: {
-                    platform: os.platform(),
-                    architecture: os.arch(),
-                    memoryTierGiB: Math.max(
-                      1,
-                      Math.round(os.totalmem() / 1024 ** 3),
-                    ),
+    if (
+      existsSync(collectorEventsPath) ||
+      existsSync(path.join(args.soakDir, COLLECTOR_EVENTS_ARCHIVE_FILENAME))
+    ) {
+      throw new Error(
+        "Refusing to attach new soak provenance to existing collector event evidence.",
+      );
+    }
+    writeFileSync(collectorEventsPath, "", { flag: "wx" });
+    try {
+      writeFileSync(
+        infoPath,
+        `${JSON.stringify(
+          {
+            schemaVersion: SOAK_SCHEMA_VERSION,
+            startedAt: new Date().toISOString(),
+            intervalSeconds: args.intervalSeconds,
+            durationMinutes: args.durationMinutes,
+            appData: args.appData,
+            appBinary: args.appBinary,
+            ...(args.artifactDigest
+              ? { artifactDigest: args.artifactDigest }
+              : {}),
+            ...(args.scenario
+              ? {
+                  comparisonContext: {
+                    scenario: args.scenario,
+                    providerCohort: args.providerCohort,
+                    documentSizeBucket: args.documentSizeBucket,
+                    host: {
+                      platform: os.platform(),
+                      architecture: os.arch(),
+                      memoryTierGiB: Math.max(
+                        1,
+                        Math.round(os.totalmem() / 1024 ** 3),
+                      ),
+                    },
                   },
-                },
-              }
-            : {}),
-          collectorPid: process.pid,
-          collectorSessionId: randomUUID(),
-          metricsColumns: METRICS_COLUMNS,
-          webkitProcessesColumns: ["tsMs", "pid", "ppid", "rssKb", "command"],
-          notes:
-            "webkit* metrics are machine-wide: WebKit XPC processes cannot be attributed to Freed from ps (ppid 1, finding F27). App-attributed telemetry lives in runtime-health.jsonl.",
-        },
-        null,
-        2,
-      )}\n`,
-    );
+                }
+              : {}),
+            collectorPid: process.pid,
+            collectorSessionId: randomUUID(),
+            collectorEvents: collectorEventEvidenceDeclaration(),
+            metricsColumns: METRICS_COLUMNS,
+            webkitProcessesColumns: ["tsMs", "pid", "ppid", "rssKb", "command"],
+            notes:
+              "webkit* metrics are machine-wide: WebKit XPC processes cannot be attributed to Freed from ps (ppid 1, finding F27). App-attributed telemetry lives in runtime-health.jsonl.",
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    } catch (error) {
+      unlinkSync(collectorEventsPath);
+      throw error;
+    }
+  } else {
+    const soakInfo = JSON.parse(readFileSync(infoPath, "utf8"));
+    if (
+      hasCollectorEventEvidenceCapability(soakInfo) &&
+      !existsSync(collectorEventsPath)
+    ) {
+      throw new Error(
+        `Collector event evidence is missing from capability-bearing soak: ${collectorEventsPath}`,
+      );
+    }
   }
   const metricsPath = path.join(args.soakDir, "metrics.tsv");
   if (!existsSync(metricsPath)) {
@@ -1058,6 +1426,66 @@ function initSoakDir(args) {
   }
   mkdirSync(path.dirname(args.pointer), { recursive: true });
   writeFileSync(args.pointer, `${args.soakDir}\n`);
+}
+
+export function beginCollectorSession(
+  soakDir,
+  lifecycle,
+  existingEventsText,
+  now,
+  appendEventFn = appendCollectorEvent,
+) {
+  const priorSession = openCollectorSession(
+    collectorEventEntries(existingEventsText),
+  );
+  if (priorSession) {
+    appendEventFn(soakDir, {
+      event: "collector_session_restarted",
+      tsMs: now,
+      collectorRunId: lifecycle.collectorRunId,
+      priorCollectorRunId: priorSession.collectorRunId,
+      priorSessionStartedAtMs: Number(priorSession.tsMs),
+      reason: "collector_restarted_after_unclosed_session",
+    });
+  } else {
+    appendEventFn(soakDir, {
+      event: "collector_session_started",
+      tsMs: now,
+      collectorRunId: lifecycle.collectorRunId,
+    });
+  }
+  lifecycle.sessionStartedAtMs = now;
+}
+
+export function stopCollectorSession(soakDir, lifecycle, reason, now) {
+  if (!lifecycle?.sessionStartedAtMs) return;
+  appendCollectorEvent(
+    soakDir,
+    {
+      event: "collector_session_stopped",
+      tsMs: now,
+      collectorRunId: lifecycle.collectorRunId,
+      sessionStartedAtMs: lifecycle.sessionStartedAtMs,
+      reason,
+    },
+    lifecycle,
+  );
+  lifecycle.sessionStartedAtMs = null;
+}
+
+export function ensurePendingOutageEvidenceDurable({
+  state,
+  writeEventFn,
+  soakDir,
+  now,
+}) {
+  if (!state?.failureEvent) return;
+  persistPendingOutageEvents({ state, writeEventFn, soakDir, now });
+  if (state.failureEvent && !state.failureRecorded) {
+    throw new Error(
+      "Refusing to close collector evidence before the pending sample failure marker is durable.",
+    );
+  }
 }
 
 async function main() {
@@ -1075,19 +1503,58 @@ async function main() {
   const handedOffLock = consumeDetachedHandoff(args);
   const collectorLock = handedOffLock ?? acquireCollectorLock(args);
   let lockReleased = false;
+  let timer = null;
+  let tickState = null;
+  let lifecycle = null;
+  let finalized = false;
   const releaseLock = () => {
     if (!lockReleased) {
       releaseCollectorLock(collectorLock);
       lockReleased = true;
     }
   };
+  const finishCollector = (reason) => {
+    if (finalized) return;
+    finalized = true;
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+    const now = Date.now();
+    try {
+      if (tickState?.failureEvent) {
+        ensurePendingOutageEvidenceDurable({
+          state: tickState,
+          writeEventFn: (soakDir, event) =>
+            appendCollectorEvent(soakDir, event, lifecycle),
+          soakDir: args.soakDir,
+          now,
+        });
+      }
+      stopCollectorSession(args.soakDir, lifecycle, reason, now);
+    } finally {
+      releaseLock();
+    }
+  };
   process.once("exit", releaseLock);
   process.once("SIGINT", () => {
-    releaseLock();
+    try {
+      finishCollector("signal_sigint");
+    } catch (error) {
+      process.stderr.write(
+        `Could not close collector evidence: ${collectorErrorFields(error).errorMessage}\n`,
+      );
+    }
     process.exit(130);
   });
   process.once("SIGTERM", () => {
-    releaseLock();
+    try {
+      finishCollector("signal_sigterm");
+    } catch (error) {
+      process.stderr.write(
+        `Could not close collector evidence: ${collectorErrorFields(error).errorMessage}\n`,
+      );
+    }
     process.exit(143);
   });
 
@@ -1095,13 +1562,36 @@ async function main() {
   let startedAt;
   try {
     initSoakDir(args);
+    const existingEventsText = readCollectorEventText(args.soakDir);
+    tickState = hydrateCollectorTickStateFromEventsText(existingEventsText);
+    lifecycle = {
+      collectorRunId: randomUUID(),
+      sessionStartedAtMs: null,
+    };
+    beginCollectorSession(
+      args.soakDir,
+      lifecycle,
+      existingEventsText,
+      Date.now(),
+    );
     cursor = {
       health: readLastHealthCursor(
         path.join(args.soakDir, "health-offsets.jsonl"),
       ),
     };
     startedAt = Date.now();
-    const sample = takeSample(args, cursor);
+    const initialTick = runCollectorTick({
+      args,
+      cursor,
+      state: tickState,
+      takeSampleFn: takeSample,
+      writeEventFn: (soakDir, event) =>
+        appendCollectorEvent(soakDir, event, lifecycle),
+    });
+    if (!initialTick.ok) {
+      throw initialTick.error;
+    }
+    const sample = initialTick.sample;
     process.stdout.write(
       `Soak dir ${args.soakDir}: sampling every ${args.intervalSeconds}s (app pid ${sample.appPid || "not running"}).\n`,
     );
@@ -1109,23 +1599,39 @@ async function main() {
       await waitForDetachedAcceptance(collectorLock, args);
     }
     if (args.once) {
-      releaseLock();
+      finishCollector("once_complete");
       return;
     }
   } catch (error) {
-    releaseLock();
+    try {
+      finishCollector("startup_error");
+    } catch (closeError) {
+      error.cause ??= closeError;
+    }
     throw error;
   }
 
-  const timer = setInterval(() => {
-    takeSample(args, cursor);
+  timer = setInterval(() => {
+    runCollectorTick({
+      args,
+      cursor,
+      state: tickState,
+      writeEventFn: (soakDir, event) =>
+        appendCollectorEvent(soakDir, event, lifecycle),
+    });
     if (
       args.durationMinutes > 0 &&
       Date.now() - startedAt >= args.durationMinutes * 60_000
     ) {
-      clearInterval(timer);
-      releaseLock();
-      process.stdout.write("Soak duration reached; collector exiting.\n");
+      try {
+        finishCollector("duration_reached");
+        process.stdout.write("Soak duration reached; collector exiting.\n");
+      } catch (error) {
+        process.stderr.write(
+          `Could not close collector evidence: ${collectorErrorFields(error).errorMessage}\n`,
+        );
+        process.exitCode = 1;
+      }
     }
   }, args.intervalSeconds * 1_000);
 }

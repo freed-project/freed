@@ -168,6 +168,17 @@ test("buildCanaryObservationContext carries complete collector and runtime-healt
   assert.equal(context.sourceHealth.collectorDistinctSampleCount, 301);
   assert.equal(context.sourceHealth.sampleDensity, 1);
   for (const field of [
+    "collectorEventCount",
+    "collectorEventFailureCount",
+    "collectorEventRecoveryCount",
+    "collectorEventMalformedLineCount",
+    "collectorEventProtocolErrorCount",
+    "collectorOutageOpen",
+    "collectorOpenOutageStartedAtMs",
+    "collectorEventCoverageHealthy",
+    "collectorEventEvidenceCapable",
+    "collectorEventEvidencePresent",
+    "collectorEventEvidenceSchemaVersion",
     "runtimeHealthSampleCount",
     "runtimeHealthDistinctSampleCount",
     "runtimeHealthExpectedSampleCount",
@@ -189,10 +200,14 @@ test("buildCanaryObservationContext carries complete collector and runtime-healt
       value.verdict.evidenceFingerprint.coverage[field],
     );
   }
-  assert.equal(context.sourceHealth.evidenceFingerprint.schemaVersion, 1);
+  assert.equal(context.sourceHealth.evidenceFingerprint.schemaVersion, 2);
   assert.equal(
     context.sourceHealth.evidenceFingerprint.collectorMetrics.recordCount,
     context.sourceHealth.collectorSampleCount,
+  );
+  assert.equal(
+    context.sourceHealth.evidenceFingerprint.collectorEvents.recordCount,
+    context.sourceHealth.collectorEventCount,
   );
 });
 

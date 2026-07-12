@@ -42,6 +42,7 @@ import {
   runtimeIdentityFromHealthLines,
 } from "./soak-assert.mjs";
 import {
+  CANARY_OBSERVATION_CONTEXT_SCHEMA_VERSION,
   hasMatchedEvidenceAttribution,
   validateStoredCanaryRecordProvenance,
 } from "./canary-summarize.mjs";
@@ -223,8 +224,7 @@ export function readHealthEntries(appDataDir, { sinceMs }) {
       const match = /^runtime-health-(\d{8})\.jsonl$/.exec(name);
       if (match === null) return false;
       return (
-        !isValidRuntimeHealthDateKey(match[1]) ||
-        match[1] >= earliestDatedFile
+        !isValidRuntimeHealthDateKey(match[1]) || match[1] >= earliestDatedFile
       );
     })
     .sort()
@@ -365,7 +365,7 @@ export function readLatestCanaries(ledgerDir = DEFAULT_LEDGER_DIR) {
     .filter((item) => {
       const record = item?.record;
       return (
-        record?.schemaVersion === 2 &&
+        record?.schemaVersion === CANARY_OBSERVATION_CONTEXT_SCHEMA_VERSION &&
         record?.metricRegistryVersion === STABILITY_METRIC_REGISTRY_VERSION &&
         typeof record?.buildIdentity?.commitSha === "string" &&
         typeof record?.runtimeIdentity?.appSessionId === "string" &&
@@ -396,7 +396,7 @@ export function readLatestCanary(ledgerDir = DEFAULT_LEDGER_DIR) {
 
 function actionableCanaryRecord(record) {
   return (
-    record?.schemaVersion === 2 &&
+    record?.schemaVersion === CANARY_OBSERVATION_CONTEXT_SCHEMA_VERSION &&
     record?.metricRegistryVersion === STABILITY_METRIC_REGISTRY_VERSION &&
     record?.comparison?.status === "regression" &&
     record?.sourceHealth?.status === "healthy" &&

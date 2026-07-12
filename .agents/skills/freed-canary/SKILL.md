@@ -14,25 +14,27 @@ Judge a build from attributable evidence. The installed version observed at repo
 2. Select an immutable window whose events identify one app version, channel, git SHA, app session, collector session, and app PID. Split windows at releases, relaunches, sleep transitions, and process-generation changes where the metric requires it.
 3. Check source health, parse failures, sample gaps, app-alive coverage, network state, scenario, and document-size bucket. Return an analytical `inconclusive` result when required identity or coverage is missing, and preserve it even when it cannot become a task lifecycle outcome.
 4. Build `canary-context.json` from the finished soak with `node
-   scripts/canary-context.mjs --verdict <soak-dir>/soak-verdict.json
-   --install-id <id> --installed-at <iso>`. The helper rebuilds the stored soak
+scripts/canary-context.mjs --verdict <soak-dir>/soak-verdict.json
+--install-id <id> --installed-at <iso>`. The helper rebuilds the stored soak
    before copying build, runtime, workload, host, source coverage, cloud
    duration, and optional artifact digest. Caller workload or host values may
    only assert an exact match. They cannot relabel the window.
 5. Run `node scripts/canary-summarize.mjs --context
-   <canary-context.json> --collector-metrics <soak-dir>/metrics.tsv`. The
+<canary-context.json> --collector-metrics <soak-dir>/metrics.tsv`. The
    context owns the exact start and end bounds. The summarizer hashes and
-   copies both runtime-health JSONL and collector-metrics TSV into the ledger.
-   Do not attribute an arbitrary trailing window to the currently installed
-   version or a manually supplied version label.
+   copies runtime-health JSONL, collector-metrics TSV, and the ordered bounded
+   collector-events JSONL into the ledger. By default it reads the rotated
+   collector-events archive before the live file. Do not attribute an
+   arbitrary trailing window to the currently installed version or a manually
+   supplied version label.
 6. Compare only cohorts with compatible operating system, RAM tier, document-size bucket, provider state, workload, and process-generation semantics. A baseline window must be between 0.8 and 1.25 times the current window duration, inclusive.
 7. Require at least three comparable historical windows before an automatic regression verdict. With fewer, record the current observation as a provisional baseline and return `inconclusive`.
 8. Judge each metric through the versioned metric registry. Use app-alive time for runtime rates and verified cloud-eligible time for cloud rates. A missing denominator makes that metric unavailable.
 9. Preserve every observation window. Records and raw sidecars are content addressed and published atomically. Reuse an existing path only when its bytes are identical. Changed evidence must create a new bundle and must never overwrite history.
-10. If authorized, publish the ledger record and both evidence sidecars through
-    a small PR to `dev`. Include the exact build identity, time bounds, cohort
-    definition, coverage, and verdict. The JSON and sidecars are one portable
-    provenance bundle.
+10. If authorized, publish the ledger record and all three evidence sidecars
+    through a small PR to `dev`. Include the exact build identity, time bounds,
+    cohort definition, coverage, and verdict. The JSON and sidecars are one
+    portable provenance bundle.
 11. If a metric regressed, create a plan-only bisect with `scripts/bisect-regression.mjs`. Do not execute bisection until a harness can build each commit, install it, verify the installed SHA, collect an isolated window, and restore the prior app.
 12. Map a confirmed regression to one stable task ID. A provisional or inconclusive signal does not authorize product changes.
 13. Record a task verification outcome only when its canonical task is in

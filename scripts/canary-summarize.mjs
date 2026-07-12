@@ -38,8 +38,10 @@ import {
 } from "./lib/stability-metrics.mjs";
 import {
   buildCompositeEvidenceFingerprint,
+  collectorEventsEvidenceFingerprint,
   collectorMetricsEvidenceFingerprint,
   computeAppAliveCoverage,
+  computeCollectorEventCoverage,
   computeCloudEligibleHours,
   computeRuntimeHealthCoverage,
   EVIDENCE_FINGERPRINT_SCHEMA_VERSION,
@@ -47,10 +49,16 @@ import {
   MAX_RUNTIME_HEALTH_CREDITED_GAP_MS,
   MIN_COLLECTOR_SAMPLE_DENSITY,
   MIN_RUNTIME_HEALTH_SAMPLE_DENSITY,
+  parseCollectorEventsJsonl,
   parseMetricsTsv,
   runtimeHealthEvidenceFingerprint,
   runtimeIdentityFromHealthLines,
 } from "./soak-assert.mjs";
+import {
+  COLLECTOR_EVENTS_ARCHIVE_FILENAME,
+  COLLECTOR_EVENTS_FILENAME,
+  COLLECTOR_EVENTS_SCHEMA_VERSION,
+} from "./soak-collect.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "..");
@@ -65,7 +73,7 @@ export const REGRESSION_TOLERANCES = Object.freeze(
   canaryRegressionTolerances(),
 );
 export const MIN_COMPARABLE_CANARY_WINDOWS = 3;
-export const CANARY_OBSERVATION_CONTEXT_SCHEMA_VERSION = 2;
+export const CANARY_OBSERVATION_CONTEXT_SCHEMA_VERSION = 3;
 
 export function parseRuntimeHealthEvidenceText(
   text,
@@ -242,6 +250,34 @@ function normalizeSourceHealth(
   const collectorMalformedRowCount = Number(
     sourceHealth.collectorMalformedRowCount ?? 0,
   );
+  const collectorEventCount = Number(sourceHealth.collectorEventCount ?? 0);
+  const collectorEventFailureCount = Number(
+    sourceHealth.collectorEventFailureCount ?? 0,
+  );
+  const collectorEventRecoveryCount = Number(
+    sourceHealth.collectorEventRecoveryCount ?? 0,
+  );
+  const collectorEventMalformedLineCount = Number(
+    sourceHealth.collectorEventMalformedLineCount ?? 0,
+  );
+  const collectorEventProtocolErrorCount = Number(
+    sourceHealth.collectorEventProtocolErrorCount ?? 0,
+  );
+  const collectorOutageOpen = sourceHealth.collectorOutageOpen === true;
+  const collectorOpenOutageStartedAtMs =
+    sourceHealth.collectorOpenOutageStartedAtMs === null ||
+    sourceHealth.collectorOpenOutageStartedAtMs === undefined
+      ? null
+      : Number(sourceHealth.collectorOpenOutageStartedAtMs);
+  const collectorEventCoverageHealthy =
+    sourceHealth.collectorEventCoverageHealthy !== false;
+  const collectorEventEvidenceCapable =
+    sourceHealth.collectorEventEvidenceCapable === true;
+  const collectorEventEvidencePresent =
+    sourceHealth.collectorEventEvidencePresent === true;
+  const collectorEventEvidenceSchemaVersion = Number(
+    sourceHealth.collectorEventEvidenceSchemaVersion,
+  );
   const runtimeHealthMalformedLineCount = Number(
     sourceHealth.runtimeHealthMalformedLineCount ?? 0,
   );
@@ -369,6 +405,54 @@ function normalizeSourceHealth(
     collectorMalformedRowCount !== 0
   ) {
     errors.push("sourceHealth.collectorMalformedRowCount must be 0");
+  }
+  if (
+    !Number.isSafeInteger(collectorEventCount) ||
+    collectorEventCount < 0 ||
+    !Number.isSafeInteger(collectorEventFailureCount) ||
+    collectorEventFailureCount < 0 ||
+    !Number.isSafeInteger(collectorEventRecoveryCount) ||
+    collectorEventRecoveryCount < 0 ||
+    collectorEventFailureCount + collectorEventRecoveryCount >
+      collectorEventCount ||
+    collectorEventCount -
+      collectorEventFailureCount -
+      collectorEventRecoveryCount <
+      2
+  ) {
+    errors.push(
+      "sourceHealth collector event counts must be non-negative integers with at least one closed collector session",
+    );
+  }
+  if (
+    !Number.isSafeInteger(collectorEventMalformedLineCount) ||
+    collectorEventMalformedLineCount !== 0
+  ) {
+    errors.push("sourceHealth.collectorEventMalformedLineCount must be 0");
+  }
+  if (
+    !Number.isSafeInteger(collectorEventProtocolErrorCount) ||
+    collectorEventProtocolErrorCount !== 0
+  ) {
+    errors.push("sourceHealth.collectorEventProtocolErrorCount must be 0");
+  }
+  if (
+    collectorOutageOpen ||
+    collectorOpenOutageStartedAtMs !== null ||
+    !collectorEventCoverageHealthy
+  ) {
+    errors.push(
+      "sourceHealth collector event coverage must be healthy with no open outage",
+    );
+  }
+  if (
+    !collectorEventEvidenceCapable ||
+    !collectorEventEvidencePresent ||
+    collectorEventEvidenceSchemaVersion !== COLLECTOR_EVENTS_SCHEMA_VERSION
+  ) {
+    errors.push(
+      `sourceHealth collector event evidence must be capability-declared, present, and schema version ${COLLECTOR_EVENTS_SCHEMA_VERSION.toLocaleString()}`,
+    );
   }
   if (
     !Number.isSafeInteger(runtimeHealthMalformedLineCount) ||
@@ -533,6 +617,17 @@ function normalizeSourceHealth(
     creditedIntervalCount,
     collectorHeaderHealthy,
     collectorMalformedRowCount,
+    collectorEventCount,
+    collectorEventFailureCount,
+    collectorEventRecoveryCount,
+    collectorEventMalformedLineCount,
+    collectorEventProtocolErrorCount,
+    collectorOutageOpen,
+    collectorOpenOutageStartedAtMs,
+    collectorEventCoverageHealthy,
+    collectorEventEvidenceCapable,
+    collectorEventEvidencePresent,
+    collectorEventEvidenceSchemaVersion,
     runtimeHealthMalformedLineCount,
     runtimeHealthSampleCount,
     runtimeHealthDistinctSampleCount,
@@ -561,16 +656,21 @@ function normalizeSourceHealth(
     !validFingerprintComponent(fingerprint?.collectorMetrics, {
       requireByteLength: true,
     }) ||
-    fingerprint.collectorMetrics.recordCount !== collectorSampleCount
+    fingerprint.collectorMetrics.recordCount !== collectorSampleCount ||
+    !validFingerprintComponent(fingerprint?.collectorEvents, {
+      requireByteLength: true,
+    }) ||
+    fingerprint.collectorEvents.recordCount !== collectorEventCount
   ) {
     errors.push(
-      "sourceHealth.evidenceFingerprint must contain complete runtime and collector SHA-256 components",
+      "sourceHealth.evidenceFingerprint must contain complete runtime, collector metrics, and collector event SHA-256 components",
     );
     return normalized;
   }
   const rebuilt = buildCompositeEvidenceFingerprint({
     runtimeHealthFingerprint: fingerprint.runtimeHealth,
     collectorMetricsFingerprint: fingerprint.collectorMetrics,
+    collectorEventsFingerprint: fingerprint.collectorEvents,
     sourceHealth: normalized,
     runtimeAttribution: attribution,
   });
@@ -899,7 +999,7 @@ export function computeCanarySummary(
 
   const alarmTotal = Object.values(alarmsByName).reduce((sum, n) => sum + n, 0);
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     metricRegistryVersion: STABILITY_METRIC_REGISTRY_VERSION,
     version,
     buildIdentity: context.build,
@@ -947,11 +1047,19 @@ export function validateCanaryRawEvidence(
   entries,
   collectorMetricsText,
   observationContext,
+  collectorEventsText = "",
 ) {
   const context = validateCanaryObservationContext(observationContext);
   const metricsRows = parseMetricsTsv(collectorMetricsText);
   const expectedIntervalMs = context.sourceHealth.expectedIntervalMs;
   const coverage = computeAppAliveCoverage(metricsRows, { expectedIntervalMs });
+  const collectorEvents = parseCollectorEventsJsonl(collectorEventsText);
+  const collectorEventCoverage = computeCollectorEventCoverage(
+    collectorEvents,
+    {
+      requireClosedSession: true,
+    },
+  );
   const healthLines = entries.map((entry) => ({ entry }));
   const runtimeHealthCoverage = computeRuntimeHealthCoverage(
     healthLines,
@@ -971,7 +1079,8 @@ export function validateCanaryRawEvidence(
     status:
       coverage.healthy &&
       runtimeHealthCoverage.runtimeHealthCoverageHealthy &&
-      runtimeHealthMalformedLineCount === 0
+      runtimeHealthMalformedLineCount === 0 &&
+      collectorEventCoverage.collectorEventCoverageHealthy
         ? "healthy"
         : "unhealthy",
     appAliveHours: coverage.appAliveHours,
@@ -987,6 +1096,23 @@ export function validateCanaryRawEvidence(
     creditedIntervalCount: coverage.creditedIntervalCount,
     collectorHeaderHealthy: coverage.collectorHeaderHealthy,
     collectorMalformedRowCount: coverage.collectorMalformedRowCount,
+    collectorEventCount: collectorEventCoverage.collectorEventCount,
+    collectorEventFailureCount:
+      collectorEventCoverage.collectorEventFailureCount,
+    collectorEventRecoveryCount:
+      collectorEventCoverage.collectorEventRecoveryCount,
+    collectorEventMalformedLineCount:
+      collectorEventCoverage.collectorEventMalformedLineCount,
+    collectorEventProtocolErrorCount:
+      collectorEventCoverage.collectorEventProtocolErrorCount,
+    collectorOutageOpen: collectorEventCoverage.collectorOutageOpen,
+    collectorOpenOutageStartedAtMs:
+      collectorEventCoverage.collectorOpenOutageStartedAtMs,
+    collectorEventCoverageHealthy:
+      collectorEventCoverage.collectorEventCoverageHealthy,
+    collectorEventEvidenceCapable: true,
+    collectorEventEvidencePresent: true,
+    collectorEventEvidenceSchemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
     runtimeHealthMalformedLineCount,
     runtimeHealthSampleCount: runtimeHealthCoverage.runtimeHealthSampleCount,
     runtimeHealthDistinctSampleCount:
@@ -1040,6 +1166,17 @@ export function validateCanaryRawEvidence(
     "creditedIntervalCount",
     "collectorHeaderHealthy",
     "collectorMalformedRowCount",
+    "collectorEventCount",
+    "collectorEventFailureCount",
+    "collectorEventRecoveryCount",
+    "collectorEventMalformedLineCount",
+    "collectorEventProtocolErrorCount",
+    "collectorOutageOpen",
+    "collectorOpenOutageStartedAtMs",
+    "collectorEventCoverageHealthy",
+    "collectorEventEvidenceCapable",
+    "collectorEventEvidencePresent",
+    "collectorEventEvidenceSchemaVersion",
     "runtimeHealthMalformedLineCount",
     "cloudEligibleHours",
   ];
@@ -1068,6 +1205,10 @@ export function validateCanaryRawEvidence(
       collectorMetricsText,
       metricsRows,
     ),
+    collectorEventsFingerprint: collectorEventsEvidenceFingerprint(
+      collectorEventsText,
+      collectorEvents,
+    ),
     sourceHealth: rebuiltSourceHealth,
     runtimeAttribution,
   });
@@ -1082,6 +1223,7 @@ export function validateCanaryRawEvidence(
   return {
     context,
     metricsRows,
+    collectorEvents,
     sourceHealth: rebuiltSourceHealth,
     evidenceFingerprint,
   };
@@ -1159,6 +1301,12 @@ export function validateStoredCanaryRecordEvidence(canary, recordPath) {
     "Canary collector source evidence",
     "collector-metrics-tsv",
   );
+  const collectorEventsArtifact = readHashedLedgerEvidence(
+    recordPath,
+    canary?.sourceEvidence?.collectorEvents,
+    "Canary collector event source evidence",
+    "collector-events-jsonl",
+  );
   const entries = parseRuntimeHealthEvidenceText(
     runtimeArtifact.text,
     runtimeArtifact.resolvedPath,
@@ -1182,6 +1330,7 @@ export function validateStoredCanaryRecordEvidence(canary, recordPath) {
     entries,
     collectorArtifact.text,
     observationContext,
+    collectorEventsArtifact.text,
   );
   const recomputed = computeCanarySummary(entries, {
     observationContext,
@@ -1608,6 +1757,39 @@ export function canaryCollectorEvidenceFilename(collectorMetricsText) {
   return `canary-collector-${contentDigest(collectorMetricsText)}.tsv`;
 }
 
+export function canaryCollectorEventsEvidenceFilename(collectorEventsText) {
+  return `canary-collector-events-${contentDigest(collectorEventsText)}.jsonl`;
+}
+
+export function readCollectorEventsEvidenceText({
+  collectorMetricsPath,
+  collectorEventsPath = null,
+}) {
+  if (collectorEventsPath) {
+    const resolvedPath = path.resolve(collectorEventsPath);
+    if (!existsSync(resolvedPath)) {
+      throw new Error(
+        `Collector event evidence does not exist: ${resolvedPath}`,
+      );
+    }
+    return readFileSync(resolvedPath, "utf8");
+  }
+  const eventPath = path.join(
+    path.dirname(path.resolve(collectorMetricsPath)),
+    COLLECTOR_EVENTS_FILENAME,
+  );
+  if (!existsSync(eventPath)) {
+    throw new Error(`Collector event evidence does not exist: ${eventPath}`);
+  }
+  return [
+    path.join(path.dirname(eventPath), COLLECTOR_EVENTS_ARCHIVE_FILENAME),
+    eventPath,
+  ]
+    .filter((candidate) => existsSync(candidate))
+    .map((candidate) => readFileSync(candidate, "utf8"))
+    .join("");
+}
+
 function existingArtifactMatches(filePath, expectedBytes) {
   try {
     const existingBytes = readFileSync(filePath);
@@ -1658,6 +1840,7 @@ function usage() {
 Options:
   --context <path>     Required observation context JSON with build, runtime, workload, host, source health, and exact window.
   --collector-metrics <path>  Required metrics.tsv from the soak that created the context.
+  --collector-events <path>   Optional collector-events JSONL. By default requires the current file beside collector metrics and reads its archive first when present.
   --app-data <path>    Dir with rotated runtime-health files. Defaults to the installed app dir.
   --ledger-dir <path>  Ledger output dir. Defaults to <repo>/canary-ledger.
   --strict             Exit 1 when a regression is flagged.
@@ -1670,6 +1853,7 @@ export function parseArgs(argv) {
   const args = {
     context: null,
     collectorMetrics: null,
+    collectorEvents: null,
     appData: DEFAULT_APP_DATA,
     ledgerDir: DEFAULT_LEDGER_DIR,
     strict: false,
@@ -1680,6 +1864,7 @@ export function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--context") args.context = argv[++i];
     else if (arg === "--collector-metrics") args.collectorMetrics = argv[++i];
+    else if (arg === "--collector-events") args.collectorEvents = argv[++i];
     else if (arg === "--app-data") args.appData = argv[++i];
     else if (arg === "--ledger-dir") args.ledgerDir = argv[++i];
     else if (arg === "--strict") args.strict = true;
@@ -1718,7 +1903,16 @@ function main() {
     path.resolve(args.collectorMetrics),
     "utf8",
   );
-  validateCanaryRawEvidence(entries, collectorMetricsText, context);
+  const collectorEventsText = readCollectorEventsEvidenceText({
+    collectorMetricsPath: args.collectorMetrics,
+    collectorEventsPath: args.collectorEvents,
+  });
+  validateCanaryRawEvidence(
+    entries,
+    collectorMetricsText,
+    context,
+    collectorEventsText,
+  );
   const summary = computeCanarySummary(entries, {
     observationContext: context,
     windowStartMs: sinceMs,
@@ -1742,6 +1936,16 @@ function main() {
     collectorEvidenceFile,
   );
   writeImmutableCanaryArtifact(collectorEvidencePath, collectorMetricsText);
+  const collectorEventsEvidenceFile =
+    canaryCollectorEventsEvidenceFilename(collectorEventsText);
+  const collectorEventsEvidencePath = path.join(
+    args.ledgerDir,
+    collectorEventsEvidenceFile,
+  );
+  writeImmutableCanaryArtifact(
+    collectorEventsEvidencePath,
+    collectorEventsText,
+  );
   const record = {
     ...summary,
     sourceEvidence: {
@@ -1754,6 +1958,11 @@ function main() {
         file: collectorEvidenceFile,
         digest: createHash("sha256").update(collectorMetricsText).digest("hex"),
         format: "collector-metrics-tsv",
+      },
+      collectorEvents: {
+        file: collectorEventsEvidenceFile,
+        digest: createHash("sha256").update(collectorEventsText).digest("hex"),
+        format: "collector-events-jsonl",
       },
     },
     comparison,

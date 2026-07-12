@@ -28,6 +28,7 @@ import {
   buildCandidates as buildNightlyCandidates,
   loadTriageCandidates,
 } from "./nightly-self-improve.mjs";
+import { COLLECTOR_EVENTS_SCHEMA_VERSION } from "./soak-collect.mjs";
 import { writeCanaryEvidenceCohort } from "./test-helpers/canary-evidence.mjs";
 import { writeStoredSoakEvidence } from "./test-helpers/outcome-evidence.mjs";
 
@@ -104,6 +105,17 @@ function validCanaryRecord({
     creditedIntervalCount: 60,
     collectorHeaderHealthy: true,
     collectorMalformedRowCount: 0,
+    collectorEventCount: 2,
+    collectorEventFailureCount: 0,
+    collectorEventRecoveryCount: 0,
+    collectorEventMalformedLineCount: 0,
+    collectorEventProtocolErrorCount: 0,
+    collectorOutageOpen: false,
+    collectorOpenOutageStartedAtMs: null,
+    collectorEventCoverageHealthy: true,
+    collectorEventEvidenceCapable: true,
+    collectorEventEvidencePresent: true,
+    collectorEventEvidenceSchemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
     runtimeHealthMalformedLineCount: 0,
     runtimeHealthSampleCount: 61,
     runtimeHealthDistinctSampleCount: 61,
@@ -139,11 +151,17 @@ function validCanaryRecord({
       recordCount: sourceHealth.collectorSampleCount,
       byteLength: 6_100,
     },
+    collectorEventsFingerprint: {
+      algorithm: "sha256",
+      digest: "e".repeat(64),
+      recordCount: 2,
+      byteLength: 240,
+    },
     sourceHealth,
     runtimeAttribution: attribution,
   });
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     metricRegistryVersion: 3,
     version,
     buildIdentity,

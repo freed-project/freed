@@ -36,11 +36,17 @@ import {
   stabilityMetricById,
   STABILITY_METRIC_REGISTRY_VERSION,
 } from "./lib/stability-metrics.mjs";
+import {
+  COLLECTOR_EVENTS_ARCHIVE_FILENAME,
+  COLLECTOR_EVENTS_FILENAME,
+  COLLECTOR_EVENTS_SCHEMA_VERSION,
+  hasCollectorEventEvidenceCapability,
+} from "./soak-collect.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 
 export const VERDICT_SCHEMA_VERSION = 1;
-export const EVIDENCE_FINGERPRINT_SCHEMA_VERSION = 1;
+export const EVIDENCE_FINGERPRINT_SCHEMA_VERSION = 2;
 export const DEFAULT_COLLECTOR_INTERVAL_MS = 60_000;
 export const MAX_COLLECTOR_CREDITED_GAP_MS = 5 * 60_000;
 export const MIN_COLLECTOR_SAMPLE_DENSITY = 0.8;
@@ -180,6 +186,202 @@ export function parseMetricsTsv(text) {
     enumerable: false,
   });
   return rows;
+}
+
+export function parseCollectorEventsJsonl(text) {
+  const rawRecords = [];
+  const malformedLines = [];
+  const events = [];
+  for (const [index, raw] of String(text ?? "")
+    .split("\n")
+    .entries()) {
+    if (!raw.trim()) continue;
+    rawRecords.push(raw);
+    try {
+      const entry = JSON.parse(raw);
+      const event = String(entry?.event ?? "");
+      const tsMs = Number(entry?.tsMs);
+      const failedSamples = Number(entry?.failedSamples);
+      const failureStartedAtMs = Number(entry?.failureStartedAtMs);
+      const failureLastObservedAtMs = Number(entry?.failureLastObservedAtMs);
+      const outageMs = Number(entry?.outageMs);
+      const collectorRunId = String(entry?.collectorRunId ?? "").trim();
+      const sessionStartedAtMs = Number(entry?.sessionStartedAtMs);
+      const priorCollectorRunId = String(
+        entry?.priorCollectorRunId ?? "",
+      ).trim();
+      const priorSessionStartedAtMs = Number(entry?.priorSessionStartedAtMs);
+      const validEvent =
+        entry?.schemaVersion === COLLECTOR_EVENTS_SCHEMA_VERSION &&
+        Number.isFinite(tsMs) &&
+        tsMs > 0 &&
+        ((event === "collector_session_started" && collectorRunId.length > 0) ||
+          (event === "collector_session_restarted" &&
+            collectorRunId.length > 0 &&
+            priorCollectorRunId.length > 0 &&
+            Number.isFinite(priorSessionStartedAtMs) &&
+            priorSessionStartedAtMs > 0 &&
+            priorSessionStartedAtMs <= tsMs &&
+            typeof entry.reason === "string" &&
+            entry.reason.length > 0) ||
+          (event === "collector_session_stopped" &&
+            collectorRunId.length > 0 &&
+            Number.isFinite(sessionStartedAtMs) &&
+            sessionStartedAtMs > 0 &&
+            sessionStartedAtMs <= tsMs &&
+            typeof entry.reason === "string" &&
+            entry.reason.length > 0) ||
+          (event === "collector_sample_failed" &&
+            failedSamples === 1 &&
+            entry.sampleMayBePartial === true) ||
+          (event === "collector_sample_recovered" &&
+            Number.isSafeInteger(failedSamples) &&
+            failedSamples > 0 &&
+            Number.isFinite(failureStartedAtMs) &&
+            Number.isFinite(failureLastObservedAtMs) &&
+            failureLastObservedAtMs >= failureStartedAtMs &&
+            failureLastObservedAtMs <= tsMs &&
+            outageMs === Math.max(0, tsMs - failureStartedAtMs)));
+      if (!validEvent) {
+        throw new Error("invalid collector event");
+      }
+      events.push({ entry, line: index + 1, raw });
+    } catch {
+      malformedLines.push({ line: index + 1, raw });
+    }
+  }
+  events.sourceDiagnostics = {
+    sourceLineCount: rawRecords.length,
+    rawRecords,
+    malformedLines,
+  };
+  return events;
+}
+
+export function computeCollectorEventCoverage(
+  collectorEvents,
+  { requireClosedSession = false } = {},
+) {
+  const malformedLineCount =
+    collectorEvents.sourceDiagnostics?.malformedLines?.length ?? 0;
+  let openFailure = null;
+  let openSession = null;
+  let failureCount = 0;
+  let recoveryCount = 0;
+  let sessionStartCount = 0;
+  let sessionStopCount = 0;
+  let sessionAbandonCount = 0;
+  let protocolErrorCount = 0;
+  let priorTsMs = 0;
+  const seenSessionIdentities = new Set();
+  for (const { entry } of collectorEvents) {
+    const tsMs = Number(entry.tsMs);
+    if (tsMs < priorTsMs) protocolErrorCount += 1;
+    priorTsMs = Math.max(priorTsMs, tsMs);
+    if (entry.event === "collector_session_started") {
+      sessionStartCount += 1;
+      const sessionIdentity = `${entry.collectorRunId}:${Number(entry.tsMs)}`;
+      if (seenSessionIdentities.has(sessionIdentity)) {
+        protocolErrorCount += 1;
+      }
+      seenSessionIdentities.add(sessionIdentity);
+      if (openSession) protocolErrorCount += 1;
+      openSession = entry;
+      continue;
+    }
+    if (entry.event === "collector_session_restarted") {
+      sessionStartCount += 1;
+      sessionAbandonCount += 1;
+      const sessionIdentity = `${entry.collectorRunId}:${Number(entry.tsMs)}`;
+      if (seenSessionIdentities.has(sessionIdentity)) {
+        protocolErrorCount += 1;
+      }
+      seenSessionIdentities.add(sessionIdentity);
+      if (
+        !openSession ||
+        entry.priorCollectorRunId !== openSession.collectorRunId ||
+        Number(entry.priorSessionStartedAtMs) !== Number(openSession.tsMs)
+      ) {
+        protocolErrorCount += 1;
+      }
+      openSession = {
+        ...entry,
+        event: "collector_session_started",
+      };
+      continue;
+    }
+    if (entry.event === "collector_session_stopped") {
+      sessionStopCount += 1;
+      if (
+        !openSession ||
+        entry.collectorRunId !== openSession.collectorRunId ||
+        Number(entry.sessionStartedAtMs) !== Number(openSession.tsMs)
+      ) {
+        protocolErrorCount += 1;
+      } else {
+        openSession = null;
+      }
+      continue;
+    }
+    if (entry.event === "collector_sample_failed") {
+      failureCount += 1;
+      if (openFailure) {
+        protocolErrorCount += 1;
+      } else {
+        openFailure = entry;
+      }
+      continue;
+    }
+    if (entry.event !== "collector_sample_recovered") {
+      protocolErrorCount += 1;
+      continue;
+    }
+    recoveryCount += 1;
+    if (!openFailure) {
+      protocolErrorCount += 1;
+      continue;
+    }
+    if (
+      Number(entry.failureStartedAtMs) !== Number(openFailure.tsMs) ||
+      tsMs < Number(openFailure.tsMs)
+    ) {
+      protocolErrorCount += 1;
+    }
+    openFailure = null;
+  }
+  const healthy =
+    malformedLineCount === 0 &&
+    protocolErrorCount === 0 &&
+    openFailure === null &&
+    openSession === null &&
+    (!requireClosedSession || sessionStartCount > 0);
+  const openEvidence = [openFailure, openSession]
+    .filter(Boolean)
+    .sort((left, right) => Number(left.tsMs) - Number(right.tsMs))[0];
+  return {
+    collectorEventCount: collectorEvents.length,
+    collectorEventFailureCount: failureCount,
+    collectorEventRecoveryCount: recoveryCount,
+    collectorEventSessionStartCount: sessionStartCount,
+    collectorEventSessionStopCount: sessionStopCount,
+    collectorEventSessionAbandonCount: sessionAbandonCount,
+    collectorEventMalformedLineCount: malformedLineCount,
+    collectorEventProtocolErrorCount: protocolErrorCount,
+    collectorOutageOpen: openEvidence !== undefined,
+    collectorOpenOutageStartedAtMs: openEvidence
+      ? Number(openEvidence.tsMs)
+      : null,
+    collectorEventCoverageHealthy: healthy,
+    collectorEventCoverageReason: healthy
+      ? null
+      : openFailure
+        ? `Collector sampling has an unrecovered outage open since ${new Date(Number(openFailure.tsMs)).toISOString()}.`
+        : openSession
+          ? `Collector session ${openSession.collectorRunId} is still open since ${new Date(Number(openSession.tsMs)).toISOString()}. Stop the lock-owning collector before judging or hashing the soak.`
+          : requireClosedSession && sessionStartCount === 0
+            ? "Collector event evidence contains no durably closed collector session."
+            : `Collector event evidence has ${malformedLineCount.toLocaleString()} malformed line${malformedLineCount === 1 ? "" : "s"} and ${protocolErrorCount.toLocaleString()} protocol error${protocolErrorCount === 1 ? "" : "s"}.`,
+  };
 }
 
 export function readHealthLines(
@@ -1162,6 +1364,20 @@ export function collectorMetricsEvidenceFingerprint(
   };
 }
 
+export function collectorEventsEvidenceFingerprint(
+  collectorEventsText,
+  collectorEvents = undefined,
+) {
+  const text = String(collectorEventsText ?? "");
+  const events = collectorEvents ?? parseCollectorEventsJsonl(text);
+  return {
+    algorithm: "sha256",
+    digest: createHash("sha256").update(text).digest("hex"),
+    recordCount: events.sourceDiagnostics?.sourceLineCount ?? events.length,
+    byteLength: Buffer.byteLength(text, "utf8"),
+  };
+}
+
 export function sourceHealthFingerprintFields(sourceHealth) {
   return {
     healthy:
@@ -1193,6 +1409,36 @@ export function sourceHealthFingerprintFields(sourceHealth) {
     collectorMalformedRowCount: Number(
       sourceHealth?.collectorMalformedRowCount ?? 0,
     ),
+    collectorEventCount: Number(sourceHealth?.collectorEventCount ?? 0),
+    collectorEventFailureCount: Number(
+      sourceHealth?.collectorEventFailureCount ?? 0,
+    ),
+    collectorEventRecoveryCount: Number(
+      sourceHealth?.collectorEventRecoveryCount ?? 0,
+    ),
+    collectorEventMalformedLineCount: Number(
+      sourceHealth?.collectorEventMalformedLineCount ?? 0,
+    ),
+    collectorEventProtocolErrorCount: Number(
+      sourceHealth?.collectorEventProtocolErrorCount ?? 0,
+    ),
+    collectorOutageOpen: sourceHealth?.collectorOutageOpen === true,
+    collectorOpenOutageStartedAtMs:
+      sourceHealth?.collectorOpenOutageStartedAtMs === null ||
+      sourceHealth?.collectorOpenOutageStartedAtMs === undefined
+        ? null
+        : Number(sourceHealth.collectorOpenOutageStartedAtMs),
+    collectorEventCoverageHealthy:
+      sourceHealth?.collectorEventCoverageHealthy !== false,
+    collectorEventEvidenceCapable:
+      sourceHealth?.collectorEventEvidenceCapable === true,
+    collectorEventEvidencePresent:
+      sourceHealth?.collectorEventEvidencePresent === true,
+    collectorEventEvidenceSchemaVersion:
+      sourceHealth?.collectorEventEvidenceSchemaVersion === null ||
+      sourceHealth?.collectorEventEvidenceSchemaVersion === undefined
+        ? null
+        : Number(sourceHealth.collectorEventEvidenceSchemaVersion),
     runtimeHealthMalformedLineCount: Number(
       sourceHealth?.runtimeHealthMalformedLineCount ?? 0,
     ),
@@ -1247,6 +1493,7 @@ export function runtimeAttributionFingerprintFields(runtimeIdentity) {
 export function buildCompositeEvidenceFingerprint({
   runtimeHealthFingerprint,
   collectorMetricsFingerprint,
+  collectorEventsFingerprint = collectorEventsEvidenceFingerprint(""),
   sourceHealth,
   runtimeAttribution,
 }) {
@@ -1256,12 +1503,16 @@ export function buildCompositeEvidenceFingerprint({
   const collectorMetrics = normalizedFingerprintComponent(
     collectorMetricsFingerprint,
   );
+  const collectorEvents = normalizedFingerprintComponent(
+    collectorEventsFingerprint,
+  );
   const coverage = sourceHealthFingerprintFields(sourceHealth);
   const attribution = runtimeAttribution ?? null;
   const payload = {
     schemaVersion: EVIDENCE_FINGERPRINT_SCHEMA_VERSION,
     runtimeHealth,
     collectorMetrics,
+    collectorEvents,
     coverage,
     attribution,
   };
@@ -1269,9 +1520,13 @@ export function buildCompositeEvidenceFingerprint({
     schemaVersion: EVIDENCE_FINGERPRINT_SCHEMA_VERSION,
     algorithm: "sha256",
     digest: createHash("sha256").update(stableJson(payload)).digest("hex"),
-    recordCount: runtimeHealth.recordCount + collectorMetrics.recordCount,
+    recordCount:
+      runtimeHealth.recordCount +
+      collectorMetrics.recordCount +
+      collectorEvents.recordCount,
     runtimeHealth,
     collectorMetrics,
+    collectorEvents,
     coverage,
     attribution,
   };
@@ -1283,6 +1538,9 @@ export function buildVerdict({
   metricsPath,
   healthLines,
   healthPath,
+  collectorEventsText = "",
+  collectorEvents = parseCollectorEventsJsonl(collectorEventsText),
+  collectorEventsEvidencePresent = false,
   soakInfo = {},
 }) {
   const metricsRows = parseMetricsTsv(metricsText);
@@ -1343,20 +1601,46 @@ export function buildVerdict({
   );
   const runtimeHealthMalformedLineCount =
     healthLines.sourceDiagnostics?.malformedLines?.length ?? 0;
+  const collectorEventCoverage = computeCollectorEventCoverage(
+    collectorEvents,
+    {
+      requireClosedSession: true,
+    },
+  );
+  const collectorEventEvidenceCapable =
+    hasCollectorEventEvidenceCapability(soakInfo);
+  const collectorEventEvidenceSchemaVersion = Number.isSafeInteger(
+    Number(soakInfo?.collectorEvents?.schemaVersion),
+  )
+    ? Number(soakInfo.collectorEvents.schemaVersion)
+    : null;
   const sourceHealth = {
     ...collectorCoverage,
     ...runtimeHealthCoverage,
+    ...collectorEventCoverage,
     healthy:
       collectorCoverage.healthy &&
       runtimeHealthCoverage.runtimeHealthCoverageHealthy &&
-      runtimeHealthMalformedLineCount === 0,
+      runtimeHealthMalformedLineCount === 0 &&
+      collectorEventCoverage.collectorEventCoverageHealthy &&
+      collectorEventEvidenceCapable &&
+      collectorEventsEvidencePresent,
     reason:
       runtimeHealthMalformedLineCount > 0
         ? `Runtime-health evidence contains ${runtimeHealthMalformedLineCount.toLocaleString()} malformed line${runtimeHealthMalformedLineCount === 1 ? "" : "s"}.`
-        : !collectorCoverage.healthy
-          ? collectorCoverage.reason
-          : runtimeHealthCoverage.runtimeHealthCoverageReason,
+        : !collectorEventEvidenceCapable
+          ? "The soak collector did not declare the collector-event evidence capability, so an empty event stream cannot prove that no trailing outage occurred."
+          : !collectorEventsEvidencePresent
+            ? "The capability-bearing soak is missing its current collector-event evidence file."
+            : !collectorEventCoverage.collectorEventCoverageHealthy
+              ? collectorEventCoverage.collectorEventCoverageReason
+              : !collectorCoverage.healthy
+                ? collectorCoverage.reason
+                : runtimeHealthCoverage.runtimeHealthCoverageReason,
     runtimeHealthMalformedLineCount,
+    collectorEventEvidenceCapable,
+    collectorEventEvidencePresent: collectorEventsEvidencePresent,
+    collectorEventEvidenceSchemaVersion,
     cloudEligibleHours: measuredCloudEligibleHours,
   };
   const appPids = [
@@ -1400,6 +1684,10 @@ export function buildVerdict({
     collectorMetricsFingerprint: collectorMetricsEvidenceFingerprint(
       metricsText,
       metricsRows,
+    ),
+    collectorEventsFingerprint: collectorEventsEvidenceFingerprint(
+      collectorEventsText,
+      collectorEvents,
     ),
     sourceHealth,
     runtimeAttribution: runtimeAttributionFingerprintFields(runtimeIdentity),
@@ -1588,14 +1876,29 @@ export function rebuildStoredSoakVerdict(soakDir) {
     toTsMs: windowEnd === 0 ? Number.POSITIVE_INFINITY : windowEnd,
   });
   const soakInfo = JSON.parse(readFileSync(soakInfoPath, "utf8"));
+  const collectorEventEvidence = readCollectorEventsEvidence(resolvedSoakDir);
   return buildVerdict({
     soakDir: resolvedSoakDir,
     metricsText,
     metricsPath,
     healthLines,
     healthPath,
+    collectorEventsText: collectorEventEvidence.text,
+    collectorEventsEvidencePresent: collectorEventEvidence.present,
     soakInfo,
   });
+}
+
+function readCollectorEventsEvidence(soakDir) {
+  const currentPath = path.join(soakDir, COLLECTOR_EVENTS_FILENAME);
+  const text = [
+    path.join(soakDir, COLLECTOR_EVENTS_ARCHIVE_FILENAME),
+    currentPath,
+  ]
+    .filter((filePath) => existsSync(filePath))
+    .map((filePath) => readFileSync(filePath, "utf8"))
+    .join("");
+  return { text, present: existsSync(currentPath) };
 }
 
 function main() {
@@ -1640,12 +1943,15 @@ function main() {
   const soakInfo = existsSync(soakInfoPath)
     ? JSON.parse(readFileSync(soakInfoPath, "utf8"))
     : {};
+  const collectorEventEvidence = readCollectorEventsEvidence(soakDir);
   const verdict = buildVerdict({
     soakDir,
     metricsText,
     metricsPath,
     healthLines,
     healthPath,
+    collectorEventsText: collectorEventEvidence.text,
+    collectorEventsEvidencePresent: collectorEventEvidence.present,
     soakInfo,
   });
   const outPath = args.out

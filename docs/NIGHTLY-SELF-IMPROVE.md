@@ -270,7 +270,7 @@ The same converter accepts `--canary-verdict <canary-record.json>`. For a
 measured canary outcome, it derives before and after values from the selected
 registered comparison metric and validates the comparison limit against the
 metric registry. A canary pass can record `verified_neutral`, not
-`verified_effective`. A raw canary schema version 2 record is never passed
+`verified_effective`. A raw canary schema version 3 record is never passed
 directly to the outcome writer.
 
 The canonical task must already be in `soaking`, or already at the exact outcome

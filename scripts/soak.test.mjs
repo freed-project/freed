@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -14,7 +16,14 @@ import test from "node:test";
 
 import {
   acquireCollectorLock,
+  appendCollectorEvent,
+  beginCollectorSession,
   buildSample,
+  COLLECTOR_EVENTS_SCHEMA_VERSION,
+  collectorEventEvidenceDeclaration,
+  createCollectorTickState,
+  ensurePendingOutageEvidenceDurable,
+  hydrateCollectorTickStateFromEventsText,
   METRICS_COLUMNS,
   metricsRowToTsv,
   mirrorHealthDelta,
@@ -23,6 +32,9 @@ import {
   readLastHealthCursor,
   readLastHealthOffset,
   releaseCollectorLock,
+  runCollectorTick,
+  SOAK_SCHEMA_VERSION,
+  stopCollectorSession,
 } from "./soak-collect.mjs";
 import {
   assertAlarmCounts,
@@ -37,8 +49,10 @@ import {
   collectorMetricsEvidenceFingerprint,
   computeAppAliveCoverage,
   computeCloudEligibleHours,
+  computeCollectorEventCoverage,
   computeRuntimeHealthCoverage,
   footprintSlopeMbPerHour,
+  parseCollectorEventsJsonl,
   parseMetricsTsv,
   readHealthLines,
   runtimeHealthEvidenceFingerprint,
@@ -63,6 +77,34 @@ const COLLECTOR_PROCESS_IDENTITY = Object.freeze({
 
 function withRuntimeIdentity(entry, identity = RUNTIME_IDENTITY) {
   return { ...entry, ...identity };
+}
+
+function collectorCapableSoakInfo(overrides = {}) {
+  return {
+    schemaVersion: SOAK_SCHEMA_VERSION,
+    collectorEvents: collectorEventEvidenceDeclaration(),
+    ...overrides,
+  };
+}
+
+function closedCollectorSessionEventsText({
+  startMs = 1_700_000_000_000,
+  endMs = startMs + 5 * 60 * 60_000,
+  collectorRunId = "collector-run-1",
+} = {}) {
+  return `${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_started",
+    tsMs: startMs,
+    collectorRunId,
+  })}\n${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_stopped",
+    tsMs: endMs,
+    collectorRunId,
+    sessionStartedAtMs: startMs,
+    reason: "duration_reached",
+  })}\n`;
 }
 
 const PS_FIXTURE = [
@@ -373,6 +415,154 @@ test(
         "detached collector did not release its lock",
       );
     }
+    const events = parseCollectorEventsJsonl(
+      readFileSync(path.join(soakDir, "collector-events.jsonl"), "utf8"),
+    );
+    const coverage = computeCollectorEventCoverage(events, {
+      requireClosedSession: true,
+    });
+    assert.equal(coverage.collectorEventCoverageHealthy, true);
+    assert.equal(coverage.collectorEventSessionStartCount, 1);
+    assert.equal(coverage.collectorEventSessionStopCount, 1);
+  },
+);
+
+test(
+  "detached collector survives a periodic metrics failure and records recovery",
+  { timeout: 30_000 },
+  async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "freed-soak-recovery-"));
+    const soakDir = path.join(root, "soak");
+    const pointer = path.join(root, "state", "current-soak-dir");
+    const metricsPath = path.join(soakDir, "metrics.tsv");
+    const savedMetricsPath = path.join(soakDir, "metrics.saved.tsv");
+    const eventsPath = path.join(soakDir, "collector-events.jsonl");
+    const args = [
+      path.join(__dirname, "soak-collect.mjs"),
+      "--detach",
+      "--soak-dir",
+      soakDir,
+      "--pointer",
+      pointer,
+      "--app-data",
+      root,
+      "--interval-seconds",
+      "5",
+      "--duration-minutes",
+      "1",
+    ];
+    let childPid = 0;
+
+    try {
+      const output = execFileSync(process.execPath, args, { encoding: "utf8" });
+      const pidMatch = output.match(/Detached collector pid (\d+),/);
+      assert.ok(pidMatch, output);
+      childPid = Number(pidMatch[1]);
+      const initialMetricsLines = readFileSync(metricsPath, "utf8")
+        .trim()
+        .split("\n").length;
+      const initialEventsText = readFileSync(eventsPath, "utf8");
+      const initialSession = JSON.parse(
+        initialEventsText.split("\n").find((line) => line.trim()),
+      );
+      const rotationPadding = Array.from({ length: 550 }, () => {
+        const tsMs = Number(initialSession.tsMs) + 1;
+        return `${JSON.stringify({
+          schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+          event: "collector_sample_failed",
+          tsMs,
+          failedSamples: 1,
+          sampleMayBePartial: true,
+          padding: "p".repeat(1_000),
+        })}\n${JSON.stringify({
+          schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+          event: "collector_sample_recovered",
+          tsMs,
+          failedSamples: 1,
+          failureStartedAtMs: tsMs,
+          failureLastObservedAtMs: tsMs,
+          outageMs: 0,
+          padding: "p".repeat(1_000),
+        })}\n`;
+      }).join("");
+      writeFileSync(eventsPath, `${initialEventsText}${rotationPadding}`);
+
+      renameSync(metricsPath, savedMetricsPath);
+      mkdirSync(metricsPath);
+      assert.equal(
+        await waitForCondition(
+          () =>
+            existsSync(`${eventsPath}.1`) &&
+            existsSync(eventsPath) &&
+            readFileSync(eventsPath, "utf8").includes(
+              '"event":"collector_sample_failed"',
+            ),
+          15_000,
+        ),
+        true,
+        "detached collector did not record the induced sample failure",
+      );
+      assert.doesNotThrow(() => process.kill(childPid, 0));
+      assert.equal(existsSync(`${pointer}.collector-lock`), true);
+
+      rmSync(metricsPath, { recursive: true });
+      renameSync(savedMetricsPath, metricsPath);
+      assert.equal(
+        await waitForCondition(() => {
+          if (!existsSync(eventsPath)) return false;
+          const eventsText = readFileSync(eventsPath, "utf8");
+          if (!eventsText.includes('"event":"collector_sample_recovered"')) {
+            return false;
+          }
+          return (
+            readFileSync(metricsPath, "utf8").trim().split("\n").length >
+            initialMetricsLines
+          );
+        }, 15_000),
+        true,
+        "detached collector did not resume metrics after the induced failure",
+      );
+      assert.doesNotThrow(() => process.kill(childPid, 0));
+      assert.equal(existsSync(`${pointer}.collector-lock`), true);
+    } finally {
+      if (existsSync(savedMetricsPath)) {
+        rmSync(metricsPath, { recursive: true, force: true });
+        renameSync(savedMetricsPath, metricsPath);
+      }
+      if (!childPid && existsSync(`${pointer}.collector-lock`)) {
+        childPid = Number(
+          JSON.parse(readFileSync(`${pointer}.collector-lock`, "utf8")).pid,
+        );
+      }
+      if (childPid > 0) {
+        try {
+          process.kill(childPid, "SIGTERM");
+        } catch (error) {
+          if (error?.code !== "ESRCH") throw error;
+        }
+      }
+      assert.equal(
+        await waitForCondition(
+          () => !existsSync(`${pointer}.collector-lock`),
+          5_000,
+        ),
+        true,
+        "detached collector did not release its lock",
+      );
+    }
+    const archivePath = `${eventsPath}.1`;
+    assert.equal(existsSync(archivePath), true);
+    for (const filePath of [archivePath, eventsPath]) {
+      const coverage = computeCollectorEventCoverage(
+        parseCollectorEventsJsonl(readFileSync(filePath, "utf8")),
+        { requireClosedSession: true },
+      );
+      assert.equal(
+        coverage.collectorEventCoverageHealthy,
+        true,
+        `${path.basename(filePath)} does not contain a closed lifecycle segment`,
+      );
+    }
   },
 );
 
@@ -397,6 +587,7 @@ test("soak-collect --once writes metrics, offsets, info, and the pointer", () =>
 
   assert.ok(existsSync(path.join(soakDir, "metrics.tsv")));
   assert.ok(existsSync(path.join(soakDir, "soak-info.json")));
+  assert.ok(existsSync(path.join(soakDir, "collector-events.jsonl")));
   assert.ok(existsSync(path.join(soakDir, "health-offsets.jsonl")));
   assert.equal(existsSync(`${pointer}.collector-lock`), false);
   assert.equal(readFileSync(pointer, "utf8").trim(), soakDir);
@@ -410,10 +601,736 @@ test("soak-collect --once writes metrics, offsets, info, and the pointer", () =>
   const info = JSON.parse(
     readFileSync(path.join(soakDir, "soak-info.json"), "utf8"),
   );
-  assert.equal(info.schemaVersion, 2);
+  assert.equal(info.schemaVersion, SOAK_SCHEMA_VERSION);
+  assert.deepEqual(info.collectorEvents, collectorEventEvidenceDeclaration());
   assert.equal(typeof info.collectorSessionId, "string");
   assert.deepEqual(info.metricsColumns, METRICS_COLUMNS);
+  const eventCoverage = computeCollectorEventCoverage(
+    parseCollectorEventsJsonl(
+      readFileSync(path.join(soakDir, "collector-events.jsonl"), "utf8"),
+    ),
+    { requireClosedSession: true },
+  );
+  assert.equal(eventCoverage.collectorEventCoverageHealthy, true);
+  assert.equal(eventCoverage.collectorEventCount, 2);
 });
+
+test("a capability-bearing collector restart refuses a missing event file", () => {
+  const root = mkdtempSync(
+    path.join(os.tmpdir(), "freed-soak-events-missing-"),
+  );
+  const soakDir = path.join(root, "soak");
+  const pointer = path.join(root, "state", "current-soak-dir");
+  const args = [
+    path.join(__dirname, "soak-collect.mjs"),
+    "--once",
+    "--soak-dir",
+    soakDir,
+    "--pointer",
+    pointer,
+    "--app-data",
+    root,
+  ];
+  execFileSync(process.execPath, args, { encoding: "utf8" });
+  const eventPath = path.join(soakDir, "collector-events.jsonl");
+  rmSync(eventPath);
+
+  const restarted = spawnSync(process.execPath, args, { encoding: "utf8" });
+  assert.equal(restarted.status, 1);
+  assert.match(restarted.stderr, /Collector event evidence is missing/);
+  assert.equal(existsSync(eventPath), false);
+  assert.equal(existsSync(`${pointer}.collector-lock`), false);
+});
+
+test("a collector restart closes the prior session and recovers its open sample outage", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-soak-resume-outage-"));
+  const soakDir = path.join(root, "soak");
+  const pointer = path.join(root, "state", "current-soak-dir");
+  const args = [
+    path.join(__dirname, "soak-collect.mjs"),
+    "--once",
+    "--soak-dir",
+    soakDir,
+    "--pointer",
+    pointer,
+    "--app-data",
+    root,
+  ];
+  execFileSync(process.execPath, args, { encoding: "utf8" });
+  const eventPath = path.join(soakDir, "collector-events.jsonl");
+  const sessionStartedAtMs = Date.now() - 120_000;
+  const failureStartedAtMs = sessionStartedAtMs + 60_000;
+  const priorRunId = "collector-run-before-restart";
+  writeFileSync(
+    eventPath,
+    `${JSON.stringify({
+      schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+      event: "collector_session_started",
+      tsMs: sessionStartedAtMs,
+      collectorRunId: priorRunId,
+    })}\n${JSON.stringify({
+      schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+      event: "collector_sample_failed",
+      tsMs: failureStartedAtMs,
+      failedSamples: 1,
+      sampleMayBePartial: true,
+      errorName: "Error",
+      errorMessage: "metrics write failed before restart",
+    })}\n`,
+  );
+
+  execFileSync(process.execPath, args, { encoding: "utf8" });
+  const eventsText = readFileSync(eventPath, "utf8");
+  const entries = parseCollectorEventsJsonl(eventsText);
+  const coverage = computeCollectorEventCoverage(entries, {
+    requireClosedSession: true,
+  });
+  assert.equal(coverage.collectorEventCoverageHealthy, true);
+  assert.equal(coverage.collectorEventSessionAbandonCount, 1);
+  assert.equal(coverage.collectorEventFailureCount, 1);
+  assert.equal(coverage.collectorEventRecoveryCount, 1);
+  assert.match(eventsText, /collector_restarted_after_unclosed_session/);
+  assert.equal(
+    hydrateCollectorTickStateFromEventsText(eventsText).consecutiveFailures,
+    0,
+  );
+});
+
+test("a collector restart cannot close the prior session unless its replacement start is durable", () => {
+  const startMs = 1_000;
+  const priorEventsText = `${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_started",
+    tsMs: startMs,
+    collectorRunId: "prior-run",
+  })}\n`;
+  const lifecycle = {
+    collectorRunId: "replacement-run",
+    sessionStartedAtMs: null,
+  };
+  assert.throws(
+    () =>
+      beginCollectorSession(
+        "/unused",
+        lifecycle,
+        priorEventsText,
+        2_000,
+        () => {
+          throw new Error("event sink unavailable");
+        },
+      ),
+    /event sink unavailable/,
+  );
+  assert.equal(lifecycle.sessionStartedAtMs, null);
+  const coverage = computeCollectorEventCoverage(
+    parseCollectorEventsJsonl(priorEventsText),
+    { requireClosedSession: true },
+  );
+  assert.equal(coverage.collectorEventCoverageHealthy, false);
+  assert.equal(coverage.collectorOutageOpen, true);
+});
+
+test("a standalone abandoned-session record cannot close lifecycle evidence", () => {
+  const text = `${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_started",
+    tsMs: 1_000,
+    collectorRunId: "prior-run",
+  })}\n${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_abandoned",
+    tsMs: 2_000,
+    collectorRunId: "prior-run",
+    sessionStartedAtMs: 1_000,
+    reason: "replacement_failed_to_start",
+  })}\n`;
+  const coverage = computeCollectorEventCoverage(
+    parseCollectorEventsJsonl(text),
+    { requireClosedSession: true },
+  );
+  assert.equal(coverage.collectorEventCoverageHealthy, false);
+  assert.equal(coverage.collectorEventMalformedLineCount, 1);
+  assert.equal(coverage.collectorOutageOpen, true);
+});
+
+test("collector shutdown refuses to hide a failure marker that is still unwritten", () => {
+  const state = createCollectorTickState();
+  runCollectorTick({
+    args: { soakDir: "/unused" },
+    cursor: {},
+    state,
+    now: 1_000,
+    takeSampleFn: () => {
+      throw new Error("sample write failed");
+    },
+    writeEventFn: () => {
+      throw new Error("failure marker write failed");
+    },
+  });
+  assert.equal(state.failureRecorded, false);
+  assert.throws(
+    () =>
+      ensurePendingOutageEvidenceDurable({
+        state,
+        writeEventFn: () => {
+          throw new Error("failure marker still unavailable");
+        },
+        soakDir: "/unused",
+        now: 2_000,
+      }),
+    /Refusing to close collector evidence/,
+  );
+  assert.equal(state.failureRecorded, false);
+});
+
+test("lifecycle-aware collector event rotation is retry safe", () => {
+  const root = mkdtempSync(
+    path.join(os.tmpdir(), "freed-soak-rotation-retry-"),
+  );
+  const eventPath = path.join(root, "collector-events.jsonl");
+  const archivePath = `${eventPath}.1`;
+  const lifecycle = {
+    collectorRunId: "rotation-run",
+    sessionStartedAtMs: 100,
+  };
+  const startLine = `${JSON.stringify({
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_started",
+    tsMs: lifecycle.sessionStartedAtMs,
+    collectorRunId: lifecycle.collectorRunId,
+  })}\n`;
+  const padding = Array.from({ length: 550 }, () => {
+    const tsMs = 101;
+    return `${JSON.stringify({
+      schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+      event: "collector_sample_failed",
+      tsMs,
+      failedSamples: 1,
+      sampleMayBePartial: true,
+      padding: "p".repeat(1_000),
+    })}\n${JSON.stringify({
+      schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+      event: "collector_sample_recovered",
+      tsMs,
+      failedSamples: 1,
+      failureStartedAtMs: tsMs,
+      failureLastObservedAtMs: tsMs,
+      outageMs: 0,
+      padding: "p".repeat(1_000),
+    })}\n`;
+  }).join("");
+  writeFileSync(eventPath, `${startLine}${padding}`);
+  mkdirSync(archivePath);
+  const state = createCollectorTickState();
+  const writeEventFn = (soakDir, event) =>
+    appendCollectorEvent(soakDir, event, lifecycle);
+  const failSample = () => {
+    throw new Error("metrics unavailable");
+  };
+
+  runCollectorTick({
+    args: { soakDir: root },
+    cursor: {},
+    state,
+    now: 2_000,
+    takeSampleFn: failSample,
+    writeEventFn,
+  });
+  assert.equal(state.failureRecorded, false);
+  assert.equal(
+    (readFileSync(eventPath, "utf8").match(/collector_session_stopped/g) ?? [])
+      .length,
+    0,
+  );
+
+  rmSync(archivePath, { recursive: true });
+  runCollectorTick({
+    args: { soakDir: root },
+    cursor: {},
+    state,
+    now: 2_500,
+    takeSampleFn: failSample,
+    writeEventFn,
+  });
+  assert.equal(state.failureRecorded, true);
+  runCollectorTick({
+    args: { soakDir: root },
+    cursor: {},
+    state,
+    now: 3_000,
+    takeSampleFn: () => ({ appPid: 42 }),
+    writeEventFn,
+  });
+  stopCollectorSession(root, lifecycle, "signal_sigterm", 4_000);
+
+  for (const filePath of [archivePath, eventPath]) {
+    const coverage = computeCollectorEventCoverage(
+      parseCollectorEventsJsonl(readFileSync(filePath, "utf8")),
+      { requireClosedSession: true },
+    );
+    assert.equal(coverage.collectorEventCoverageHealthy, true);
+  }
+  assert.equal(
+    (
+      readFileSync(archivePath, "utf8").match(/collector_session_stopped/g) ??
+      []
+    ).length,
+    1,
+  );
+});
+
+test("a partially published rotation cannot reuse a session identity and pass", () => {
+  const start = {
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_started",
+    tsMs: 1_000,
+    collectorRunId: "rotation-run",
+  };
+  const rotationStop = {
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_stopped",
+    tsMs: 1_000,
+    collectorRunId: "rotation-run",
+    sessionStartedAtMs: 1_000,
+    reason: "event_file_rotation",
+  };
+  const restart = {
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_restarted",
+    tsMs: 2_000,
+    collectorRunId: "replacement-run",
+    priorCollectorRunId: "rotation-run",
+    priorSessionStartedAtMs: 1_000,
+    reason: "collector_restarted_after_unclosed_session",
+  };
+  const replacementStop = {
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_stopped",
+    tsMs: 3_000,
+    collectorRunId: "replacement-run",
+    sessionStartedAtMs: 2_000,
+    reason: "signal_sigterm",
+  };
+  const partialArchive = `${JSON.stringify(start)}\n${JSON.stringify(rotationStop)}\n`;
+  const staleCurrent = `${JSON.stringify(start)}\n${JSON.stringify(restart)}\n${JSON.stringify(replacementStop)}\n`;
+  const coverage = computeCollectorEventCoverage(
+    parseCollectorEventsJsonl(`${partialArchive}${staleCurrent}`),
+    { requireClosedSession: true },
+  );
+  assert.equal(coverage.collectorEventCoverageHealthy, false);
+  assert.ok(coverage.collectorEventProtocolErrorCount >= 1);
+});
+
+test("collector ticks survive transient sample failures and persist one outage pair", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-soak-tick-"));
+  const args = { soakDir: root };
+  const cursor = {};
+  const state = createCollectorTickState();
+  let attempts = 0;
+  const takeSampleFn = () => {
+    attempts += 1;
+    if (attempts <= 2) {
+      const error = new Error(`temporary sample failure ${attempts}`);
+      error.code = "EIO";
+      throw error;
+    }
+    return { appPid: 42 };
+  };
+
+  const first = runCollectorTick({
+    args,
+    cursor,
+    state,
+    now: 1_000,
+    takeSampleFn,
+  });
+  const second = runCollectorTick({
+    args,
+    cursor,
+    state,
+    now: 61_000,
+    takeSampleFn,
+  });
+  const recovered = runCollectorTick({
+    args,
+    cursor,
+    state,
+    now: 121_000,
+    takeSampleFn,
+  });
+  const steady = runCollectorTick({
+    args,
+    cursor,
+    state,
+    now: 181_000,
+    takeSampleFn,
+  });
+
+  assert.equal(first.ok, false);
+  assert.equal(second.ok, false);
+  assert.deepEqual(recovered, { ok: true, sample: { appPid: 42 } });
+  assert.equal(steady.ok, true);
+  assert.deepEqual(state, createCollectorTickState());
+
+  const events = readFileSync(path.join(root, "collector-events.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.equal(events.length, 2);
+  assert.deepEqual(
+    events.map(({ event }) => event),
+    ["collector_sample_failed", "collector_sample_recovered"],
+  );
+  assert.equal(events[0].failedSamples, 1);
+  assert.equal(events[0].errorCode, "EIO");
+  assert.equal(events[1].failedSamples, 2);
+  assert.equal(events[1].failureStartedAtMs, 1_000);
+  assert.equal(events[1].failureLastObservedAtMs, 61_000);
+  assert.equal(events[1].outageMs, 120_000);
+  assert.equal(events[1].firstError.errorMessage, "temporary sample failure 1");
+  assert.equal(events[1].lastError.errorMessage, "temporary sample failure 2");
+});
+
+test("collector ticks keep separate event pairs for separate outages", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-soak-outage-pairs-"));
+  const state = createCollectorTickState();
+  let attempt = 0;
+  const takeSampleFn = () => {
+    attempt += 1;
+    if (attempt === 1 || attempt === 3) {
+      throw new Error(`sample failure ${attempt}`);
+    }
+    return { appPid: 42 };
+  };
+
+  for (const now of [1_000, 61_000, 121_000, 181_000]) {
+    runCollectorTick({
+      args: { soakDir: root },
+      cursor: {},
+      state,
+      now,
+      takeSampleFn,
+    });
+  }
+
+  const events = readFileSync(path.join(root, "collector-events.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.deepEqual(
+    events.map(({ event }) => event),
+    [
+      "collector_sample_failed",
+      "collector_sample_recovered",
+      "collector_sample_failed",
+      "collector_sample_recovered",
+    ],
+  );
+  assert.deepEqual(
+    events.map(({ tsMs }) => tsMs),
+    [1_000, 61_000, 121_000, 181_000],
+  );
+});
+
+test("collector events rotate at the bounded file limit and truncate error text", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-soak-event-bound-"));
+  const eventPath = path.join(root, "collector-events.jsonl");
+  const prior = "p".repeat(1024 * 1024);
+  writeFileSync(eventPath, prior);
+
+  const result = runCollectorTick({
+    args: { soakDir: root },
+    cursor: {},
+    state: createCollectorTickState(),
+    now: 1_000,
+    takeSampleFn: () => {
+      throw new Error("e".repeat(2_000));
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(readFileSync(`${eventPath}.1`, "utf8"), prior);
+  const event = JSON.parse(readFileSync(eventPath, "utf8"));
+  assert.equal(event.event, "collector_sample_failed");
+  assert.equal(event.errorMessage.length, 1_000);
+});
+
+test("collector event rotation keeps every failure and recovery pair in one file", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-soak-event-pairs-"));
+  const eventPath = path.join(root, "collector-events.jsonl");
+  const eventPair = (failureTsMs, padding) => {
+    const recoveryTsMs = failureTsMs + 1;
+    return `${JSON.stringify({
+      schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+      event: "collector_sample_failed",
+      tsMs: failureTsMs,
+      failedSamples: 1,
+      sampleMayBePartial: true,
+      padding,
+    })}\n${JSON.stringify({
+      schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+      event: "collector_sample_recovered",
+      tsMs: recoveryTsMs,
+      failedSamples: 1,
+      failureStartedAtMs: failureTsMs,
+      failureLastObservedAtMs: failureTsMs,
+      outageMs: 1,
+      padding,
+    })}\n`;
+  };
+  const largeClosedStream = (startTsMs) =>
+    Array.from({ length: 550 }, (_, index) =>
+      eventPair(startTsMs + index * 2, "p".repeat(1_000)),
+    ).join("");
+  writeFileSync(eventPath, largeClosedStream(1_000));
+
+  const state = createCollectorTickState();
+  let shouldFail = true;
+  const takeSampleFn = () => {
+    if (shouldFail) {
+      shouldFail = false;
+      throw new Error("first rotated outage");
+    }
+    return { appPid: 42 };
+  };
+  runCollectorTick({
+    args: { soakDir: root },
+    cursor: {},
+    state,
+    now: 10_000,
+    takeSampleFn,
+  });
+  runCollectorTick({
+    args: { soakDir: root },
+    cursor: {},
+    state,
+    now: 10_001,
+    takeSampleFn,
+  });
+  const firstCombined = `${readFileSync(`${eventPath}.1`, "utf8")}${readFileSync(eventPath, "utf8")}`;
+  assert.equal(
+    computeCollectorEventCoverage(parseCollectorEventsJsonl(firstCombined))
+      .collectorEventCoverageHealthy,
+    true,
+  );
+
+  writeFileSync(
+    eventPath,
+    `${readFileSync(eventPath, "utf8")}${largeClosedStream(20_000)}`,
+  );
+  shouldFail = true;
+  runCollectorTick({
+    args: { soakDir: root },
+    cursor: {},
+    state,
+    now: 30_000,
+    takeSampleFn,
+  });
+  runCollectorTick({
+    args: { soakDir: root },
+    cursor: {},
+    state,
+    now: 30_001,
+    takeSampleFn,
+  });
+  const archive = readFileSync(`${eventPath}.1`, "utf8");
+  const current = readFileSync(eventPath, "utf8");
+  assert.equal(
+    JSON.parse(archive.split("\n")[0]).event,
+    "collector_sample_failed",
+  );
+  assert.equal(
+    JSON.parse(current.split("\n")[0]).event,
+    "collector_sample_failed",
+  );
+  assert.equal(
+    computeCollectorEventCoverage(
+      parseCollectorEventsJsonl(`${archive}${current}`),
+    ).collectorEventCoverageHealthy,
+    true,
+  );
+});
+
+test("collector ticks retry an unpersisted failure marker without exiting", () => {
+  const state = createCollectorTickState();
+  const events = [];
+  let writes = 0;
+  const writeEventFn = (_soakDir, event) => {
+    writes += 1;
+    if (writes === 1) {
+      throw new Error("diagnostic volume temporarily unavailable");
+    }
+    events.push(event);
+  };
+  const takeSampleFn = () => {
+    throw new Error("sample failed");
+  };
+
+  const first = runCollectorTick({
+    args: { soakDir: "/unused" },
+    cursor: {},
+    state,
+    now: 1_000,
+    takeSampleFn,
+    writeEventFn,
+  });
+  const second = runCollectorTick({
+    args: { soakDir: "/unused" },
+    cursor: {},
+    state,
+    now: 61_000,
+    takeSampleFn,
+    writeEventFn,
+  });
+
+  assert.equal(first.ok, false);
+  assert.equal(second.ok, false);
+  assert.equal(writes, 2);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].event, "collector_sample_failed");
+  assert.equal(events[0].failedSamples, 1);
+  assert.equal(events[0].tsMs, 1_000);
+  assert.equal(events[0].errorMessage, "sample failed");
+  assert.equal(state.failureRecorded, true);
+  assert.equal(state.consecutiveFailures, 2);
+});
+
+test("collector ticks persist a delayed failure marker before immediate recovery", () => {
+  const state = createCollectorTickState();
+  const events = [];
+  let attempts = 0;
+  let writes = 0;
+  const first = runCollectorTick({
+    args: { soakDir: "/unused" },
+    cursor: {},
+    state,
+    now: 1_000,
+    takeSampleFn: () => {
+      attempts += 1;
+      throw new Error("original sample failure");
+    },
+    writeEventFn: (_soakDir, event) => {
+      writes += 1;
+      if (writes === 1) throw new Error("diagnostic sink unavailable");
+      events.push(event);
+    },
+  });
+  const recovered = runCollectorTick({
+    args: { soakDir: "/unused" },
+    cursor: {},
+    state,
+    now: 61_000,
+    takeSampleFn: () => {
+      attempts += 1;
+      return { appPid: 42 };
+    },
+    writeEventFn: (_soakDir, event) => {
+      writes += 1;
+      events.push(event);
+    },
+  });
+
+  assert.equal(first.ok, false);
+  assert.equal(recovered.ok, true);
+  assert.equal(attempts, 2);
+  assert.deepEqual(
+    events.map(({ event }) => event),
+    ["collector_sample_failed", "collector_sample_recovered"],
+  );
+  assert.equal(events[0].tsMs, 1_000);
+  assert.equal(events[0].errorMessage, "original sample failure");
+  assert.equal(events[1].tsMs, 61_000);
+  assert.deepEqual(state, createCollectorTickState());
+});
+
+test("collector ticks retry a recovery marker before clearing outage state", () => {
+  const state = createCollectorTickState();
+  const events = [];
+  let attempts = 0;
+  let rejectRecovery = true;
+  const takeSampleFn = () => {
+    attempts += 1;
+    if (attempts === 1) throw new Error("sample failed");
+    return { appPid: 42 };
+  };
+  const writeEventFn = (_soakDir, event) => {
+    if (event.event === "collector_sample_recovered" && rejectRecovery) {
+      rejectRecovery = false;
+      throw new Error("recovery write failed");
+    }
+    events.push(event);
+  };
+
+  runCollectorTick({
+    args: { soakDir: "/unused" },
+    cursor: {},
+    state,
+    now: 1_000,
+    takeSampleFn,
+    writeEventFn,
+  });
+  const firstSuccess = runCollectorTick({
+    args: { soakDir: "/unused" },
+    cursor: {},
+    state,
+    now: 61_000,
+    takeSampleFn,
+    writeEventFn,
+  });
+  assert.equal(firstSuccess.ok, true);
+  assert.equal(state.recoveryEvent.tsMs, 61_000);
+
+  const secondSuccess = runCollectorTick({
+    args: { soakDir: "/unused" },
+    cursor: {},
+    state,
+    now: 121_000,
+    takeSampleFn,
+    writeEventFn,
+  });
+  assert.equal(secondSuccess.ok, true);
+  assert.deepEqual(
+    events.map(({ event }) => event),
+    ["collector_sample_failed", "collector_sample_recovered"],
+  );
+  assert.equal(events[1].tsMs, 61_000);
+  assert.equal(events[1].outageMs, 60_000);
+  assert.deepEqual(state, createCollectorTickState());
+});
+
+test(
+  "detached collector reports startup sample failure and releases its lock",
+  { timeout: 15_000 },
+  async () => {
+    const root = mkdtempSync(
+      path.join(os.tmpdir(), "freed-soak-startup-fail-"),
+    );
+    const blockedSoakPath = path.join(root, "not-a-directory");
+    const pointer = path.join(root, "state", "current-soak-dir");
+    writeFileSync(blockedSoakPath, "blocked\n");
+    const result = spawnSync(
+      process.execPath,
+      [
+        path.join(__dirname, "soak-collect.mjs"),
+        "--detach",
+        "--soak-dir",
+        blockedSoakPath,
+        "--pointer",
+        pointer,
+        "--app-data",
+        root,
+      ],
+      { encoding: "utf8", timeout: 10_000 },
+    );
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /not-a-directory|EEXIST|directory/);
+    assert.equal(
+      await waitForCondition(() => !existsSync(`${pointer}.collector-lock`)),
+      true,
+    );
+  },
+);
 
 function runCollectOnce(root, soakDir, pointer) {
   execFileSync(
@@ -1235,6 +2152,8 @@ test("invariant alarm counts are informational and break down by name", () => {
 test("buildVerdict produces a machine-readable verdict with real numbers", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-soak-verdict-"));
   const { healthPath, metricsText } = healthySoakEvidence(dir);
+  const measurementStartMs = 1_700_000_000_000;
+  const measurementEndMs = measurementStartMs + 5 * 60 * 60_000;
 
   const verdict = buildVerdict({
     soakDir: dir,
@@ -1242,13 +2161,20 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
     metricsPath: path.join(dir, "metrics.tsv"),
     healthLines: readHealthLines(healthPath),
     healthPath,
-    soakInfo: {
+    collectorEventsText: closedCollectorSessionEventsText({
+      startMs: measurementStartMs - 60_000,
+      endMs: measurementEndMs + 60_000,
+    }),
+    collectorEventsEvidencePresent: true,
+    soakInfo: collectorCapableSoakInfo({
       collectorSessionId: "collector-session-1",
       intervalSeconds: 60,
-    },
+    }),
   });
 
   assert.equal(verdict.schemaVersion, 1);
+  assert.equal(verdict.windowStart, new Date(measurementStartMs).toISOString());
+  assert.equal(verdict.windowEnd, new Date(measurementEndMs).toISOString());
   assert.equal(verdict.metricRegistryVersion, 3);
   assert.equal(verdict.pass, true);
   assert.equal(verdict.status, "pass");
@@ -1266,6 +2192,8 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   assert.equal(verdict.sourceHealth.cloudEligibleHours, 5);
   assert.equal(verdict.sourceHealth.sampleDensity, 1);
   assert.equal(verdict.sourceHealth.runtimeHealthCoverageHealthy, true);
+  assert.equal(verdict.sourceHealth.collectorEventCoverageHealthy, true);
+  assert.equal(verdict.sourceHealth.collectorEventCount, 2);
   assert.equal(verdict.sourceHealth.runtimeHealthDistinctSampleCount, 301);
   assert.equal(verdict.sourceHealth.runtimeHealthExpectedSampleCount, 300);
   assert.equal(
@@ -1273,6 +2201,8 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
     301,
   );
   assert.equal(verdict.evidenceFingerprint.collectorMetrics.recordCount, 301);
+  assert.equal(verdict.evidenceFingerprint.schemaVersion, 2);
+  assert.equal(verdict.evidenceFingerprint.collectorEvents.recordCount, 2);
   assert.equal(
     verdict.evidenceFingerprint.runtimeHealth.recordCount,
     verdict.healthLineCount,
@@ -1286,6 +2216,153 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   assert.equal(byId.worker_init_rate, "pass");
   assert.equal(byId.uploads_unchanged_heads, "pass");
   assert.equal(verdict.measurements["worker-init-rate"].value, 0);
+});
+
+test("buildVerdict does not treat legacy or missing collector-event evidence as a healthy empty stream", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-soak-capability-"));
+  const { healthPath, metricsText } = healthySoakEvidence(dir);
+  const build = (
+    soakInfo,
+    collectorEventsEvidencePresent,
+    collectorEventsText = "",
+  ) =>
+    buildVerdict({
+      soakDir: dir,
+      metricsText,
+      metricsPath: path.join(dir, "metrics.tsv"),
+      healthLines: readHealthLines(healthPath),
+      healthPath,
+      collectorEventsText,
+      collectorEventsEvidencePresent,
+      soakInfo,
+    });
+
+  const legacy = build(
+    { schemaVersion: 2, collectorSessionId: "legacy", intervalSeconds: 60 },
+    false,
+  );
+  assert.equal(legacy.sourceHealth.healthy, false);
+  assert.equal(legacy.sourceHealth.collectorEventEvidenceCapable, false);
+  assert.match(legacy.sourceHealth.reason, /did not declare/);
+  assert.equal(legacy.status, "inconclusive");
+
+  const missing = build(
+    collectorCapableSoakInfo({
+      collectorSessionId: "missing-file",
+      intervalSeconds: 60,
+    }),
+    false,
+  );
+  assert.equal(missing.sourceHealth.healthy, false);
+  assert.equal(missing.sourceHealth.collectorEventEvidenceCapable, true);
+  assert.equal(missing.sourceHealth.collectorEventEvidencePresent, false);
+  assert.match(missing.sourceHealth.reason, /missing its current/);
+  assert.equal(missing.status, "inconclusive");
+
+  const empty = build(
+    collectorCapableSoakInfo({
+      collectorSessionId: "empty-events",
+      intervalSeconds: 60,
+    }),
+    true,
+  );
+  assert.equal(empty.sourceHealth.healthy, false);
+  assert.match(empty.sourceHealth.reason, /no durably closed/);
+
+  const startMs = 1_700_000_000_000;
+  const openSession = build(
+    collectorCapableSoakInfo({
+      collectorSessionId: "open-session",
+      intervalSeconds: 60,
+    }),
+    true,
+    `${JSON.stringify({
+      schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+      event: "collector_session_started",
+      tsMs: startMs,
+      collectorRunId: "collector-run-open",
+    })}\n`,
+  );
+  assert.equal(openSession.sourceHealth.healthy, false);
+  assert.equal(openSession.sourceHealth.collectorOutageOpen, true);
+  assert.match(openSession.sourceHealth.reason, /still open/);
+});
+
+test("buildVerdict makes an unrecovered collector outage inconclusive and fingerprints its recovery", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-soak-outage-"));
+  const { healthEntries, healthPath, metricsText } = healthySoakEvidence(dir);
+  const failureStartedAtMs = healthEntries[0].tsMs + 60_000;
+  const sessionStartedAtMs = failureStartedAtMs - 60_000;
+  const collectorRunId = "collector-run-outage";
+  const sessionStart = {
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_started",
+    tsMs: sessionStartedAtMs,
+    collectorRunId,
+  };
+  const failure = {
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_sample_failed",
+    tsMs: failureStartedAtMs,
+    failedSamples: 1,
+    sampleMayBePartial: true,
+    errorMessage: "metrics volume unavailable",
+  };
+  const build = (collectorEventsText) =>
+    buildVerdict({
+      soakDir: dir,
+      metricsText,
+      metricsPath: path.join(dir, "metrics.tsv"),
+      healthLines: readHealthLines(healthPath),
+      healthPath,
+      collectorEventsText,
+      collectorEventsEvidencePresent: true,
+      soakInfo: collectorCapableSoakInfo({
+        collectorSessionId: "collector-session-1",
+        intervalSeconds: 60,
+      }),
+    });
+
+  const open = build(
+    `${JSON.stringify(sessionStart)}\n${JSON.stringify(failure)}\n`,
+  );
+  assert.equal(open.sourceHealth.healthy, false);
+  assert.equal(open.sourceHealth.collectorOutageOpen, true);
+  assert.equal(open.sourceHealth.collectorEventCoverageHealthy, false);
+  assert.match(open.sourceHealth.reason, /unrecovered outage/);
+  assert.equal(open.status, "inconclusive");
+  assert.equal(open.evidenceFingerprint.collectorEvents.recordCount, 2);
+  assert.equal(open.evidenceFingerprint.coverage.collectorOutageOpen, true);
+
+  const recovery = {
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_sample_recovered",
+    tsMs: failureStartedAtMs + 60_000,
+    failedSamples: 1,
+    failureStartedAtMs,
+    failureLastObservedAtMs: failureStartedAtMs,
+    outageMs: 60_000,
+  };
+  const sessionStop = {
+    schemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
+    event: "collector_session_stopped",
+    tsMs: recovery.tsMs + 1,
+    collectorRunId,
+    sessionStartedAtMs,
+    reason: "duration_reached",
+  };
+  const recovered = build(
+    `${JSON.stringify(sessionStart)}\n${JSON.stringify(failure)}\n${JSON.stringify(recovery)}\n${JSON.stringify(sessionStop)}\n`,
+  );
+  assert.equal(recovered.sourceHealth.healthy, true);
+  assert.equal(recovered.sourceHealth.collectorOutageOpen, false);
+  assert.equal(recovered.sourceHealth.collectorEventCoverageHealthy, true);
+  assert.equal(recovered.status, "pass");
+  assert.equal(recovered.evidenceFingerprint.collectorEvents.recordCount, 4);
+  assert.notEqual(
+    recovered.evidenceFingerprint.digest,
+    open.evidenceFingerprint.digest,
+  );
 });
 
 test("buildVerdict keeps zero and rate assertions inconclusive for a thin runtime stream", () => {
@@ -1305,10 +2382,12 @@ test("buildVerdict keeps zero and rate assertions inconclusive for a thin runtim
     metricsPath: path.join(dir, "metrics.tsv"),
     healthLines: thinLines,
     healthPath,
-    soakInfo: {
+    collectorEventsText: closedCollectorSessionEventsText(),
+    collectorEventsEvidencePresent: true,
+    soakInfo: collectorCapableSoakInfo({
       collectorSessionId: "collector-session-1",
       intervalSeconds: 60,
-    },
+    }),
   });
 
   assert.equal(verdict.runtimeIdentity.attributable, true);
@@ -1345,10 +2424,12 @@ test("malformed runtime and collector records make a soak verdict inconclusive",
     metricsPath: path.join(runtimeDir, "metrics.tsv"),
     healthLines: readHealthLines(runtimeEvidence.healthPath),
     healthPath: runtimeEvidence.healthPath,
-    soakInfo: {
+    collectorEventsText: closedCollectorSessionEventsText(),
+    collectorEventsEvidencePresent: true,
+    soakInfo: collectorCapableSoakInfo({
       collectorSessionId: "collector-session-1",
       intervalSeconds: 60,
-    },
+    }),
   });
   assert.equal(malformedRuntime.pass, false);
   assert.equal(malformedRuntime.status, "inconclusive");
@@ -1374,10 +2455,12 @@ test("malformed runtime and collector records make a soak verdict inconclusive",
     metricsPath: path.join(collectorDir, "metrics.tsv"),
     healthLines: readHealthLines(collectorEvidence.healthPath),
     healthPath: collectorEvidence.healthPath,
-    soakInfo: {
+    collectorEventsText: closedCollectorSessionEventsText(),
+    collectorEventsEvidencePresent: true,
+    soakInfo: collectorCapableSoakInfo({
       collectorSessionId: "collector-session-1",
       intervalSeconds: 60,
-    },
+    }),
   });
   assert.equal(malformedCollector.pass, false);
   assert.equal(malformedCollector.status, "inconclusive");
@@ -1408,10 +2491,12 @@ test("buildVerdict marks untagged metric evidence unattributable", () => {
       },
     ],
     healthPath: "/tmp/untagged-soak/runtime-health.jsonl",
-    soakInfo: {
+    collectorEventsText: closedCollectorSessionEventsText(),
+    collectorEventsEvidencePresent: true,
+    soakInfo: collectorCapableSoakInfo({
       collectorSessionId: "collector-session-1",
       intervalSeconds: 60,
-    },
+    }),
   });
   assert.equal(verdict.runtimeIdentity.attributable, false);
   assert.equal(verdict.runtimeIdentity.evidenceStatus, "incomplete");

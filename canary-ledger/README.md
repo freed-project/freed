@@ -14,20 +14,25 @@ specific installed build and time window.
   Publication is atomic and exclusive. An exact rerun reuses byte-identical
   files, while changed evidence creates a new bundle and never overwrites an
   existing artifact.
-- Each schema version 2 record includes the metric-registry version, full build
+- Each schema version 3 record includes the metric-registry version, full build
   and commit identity, install boundary, collector session, app PID, app session,
   workload, observation ID, comparison context, UTC window bounds, source
   coverage, evidence fingerprint, folded metrics, and comparison result.
-- Each record references two ledger-relative, SHA-256 sidecars: the exact
-  runtime-health JSONL used for the window and the exact collector-metrics TSV
-  used to rebuild app-alive and cloud-eligible denominators. The record and
-  both sidecars are one portable bundle. Commit or move them together.
-- The evidence fingerprint is schema version 1. It binds the ordered runtime
-  records, raw collector metrics, credited coverage and denominators, build and
-  app-session attribution, collector session, and app PID. Its runtime-health
-  and collector-metrics components remain visible so consumers can recompute
-  the parts for which they hold the raw source files. Changing a denominator or
-  duplicating a counted event changes the composite digest.
+- Each record references three ledger-relative, SHA-256 sidecars: the exact
+  runtime-health JSONL used for the window, the exact collector-metrics TSV used
+  to rebuild app-alive and cloud-eligible denominators, and the bounded
+  collector-events JSONL used to prove both that no sample outage remained open
+  and that the lock-owning collector stopped cleanly before evidence was
+  frozen. The record and all three sidecars are one portable bundle. Commit or
+  move them together.
+- The evidence fingerprint is schema version 2. It binds the ordered runtime
+  records, raw collector metrics, ordered collector outage events, credited
+  coverage and denominators, build and app-session attribution, collector
+  session, and app PID. Its runtime-health, collector-metrics, and
+  collector-events components remain visible so consumers can recompute the
+  parts for which they hold the raw source files. Changing a denominator,
+  dropping an outage transition, or duplicating a counted event changes the
+  composite digest.
 - The comparison context contains platform, architecture, memory tier, channel,
   scenario, provider cohort, and document-size bucket. A baseline is comparable
   only when this context and the metric-registry version match the current
@@ -98,7 +103,8 @@ override.
 
 `--strict` exits nonzero for a proven regression. It does not turn an
 inconclusive window into a failure or a pass. Commit the generated JSON record,
-runtime-health JSONL sidecar, and collector-metrics TSV sidecar even when the
-result is inconclusive so the ledger preserves the evidence and makes the
-cold-start reason visible. Committing the canary bundle does not authorize a
-task transition when the lifecycle outcome contract is unavailable.
+runtime-health JSONL sidecar, collector-metrics TSV sidecar, and
+collector-events JSONL sidecar even when the result is inconclusive so the
+ledger preserves the evidence and makes the cold-start reason visible.
+Committing the canary bundle does not authorize a task transition when the
+lifecycle outcome contract is unavailable.

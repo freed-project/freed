@@ -37,6 +37,7 @@ import {
   canonicalOutcomeDelta,
   canonicalOutcomeNumber,
   OUTCOME_VERDICT_SCHEMA_VERSION as CONVERTER_OUTCOME_VERDICT_SCHEMA_VERSION,
+  validateEvidenceFingerprint,
   validateOutcomeVerdictProvenance,
 } from "./build-outcome-verdict.mjs";
 import { isProviderVisiblePath } from "./lib/provider-visible-paths.mjs";
@@ -785,20 +786,10 @@ function resolveOutcomeEvidence(entry) {
     "verdict.buildIdentity",
   );
   const observedBuild = observedBuildIdentity.version;
-  const verdictFingerprint = String(verdict?.evidenceFingerprint?.digest ?? "")
-    .trim()
-    .toLowerCase();
-  if (
-    verdict?.evidenceFingerprint?.schemaVersion !== 1 ||
-    verdict?.evidenceFingerprint?.algorithm !== "sha256" ||
-    !/^[0-9a-f]{64}$/.test(verdictFingerprint) ||
-    !Number.isSafeInteger(verdict?.evidenceFingerprint?.recordCount) ||
-    verdict.evidenceFingerprint.recordCount <= 0
-  ) {
-    throw new Error(
-      "Outcome verdict must carry a complete evidence fingerprint.",
-    );
-  }
+  const verdictFingerprint = validateEvidenceFingerprint(
+    verdict?.evidenceFingerprint,
+    "Outcome verdict",
+  ).digest;
   if (
     MEASURED_OUTCOME_STATUSES.has(entry.outcome) &&
     (verdict?.sourceHealth?.healthy !== true ||
