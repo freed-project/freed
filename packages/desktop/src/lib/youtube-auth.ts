@@ -21,7 +21,7 @@ export async function showYouTubeLogin(): Promise<void> {
   await invoke("yt_show_login");
 }
 
-/** Close the visible login window after the user has finished account prompts. */
+/** Hide the visible login window while preserving its authenticated session. */
 export async function hideYouTubeLogin(): Promise<void> {
   await invoke("yt_hide_login");
 }

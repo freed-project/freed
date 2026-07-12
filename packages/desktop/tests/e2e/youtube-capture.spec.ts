@@ -41,26 +41,9 @@ test("authenticated YouTube login captures followed channels and recent videos",
   const channelId = "UC1111111111111111111111";
   await app.goto();
   await app.waitForReady();
-  await ipc.setHandler("yt_capture", () => {
-    const listeners = (window as unknown as Record<string, Record<string, Array<(event: { payload: unknown }) => void>>>).__TAURI_EVENT_LISTENERS__ ?? {};
-    const payload = {
-      channels: [{ channelId: "UC1111111111111111111111", title: "Learning Channel" }],
-      videos: [{
-        videoId: "dQw4w9WgXcQ",
-        title: "Focused Study",
-        channelId: "UC1111111111111111111111",
-        channelTitle: "Learning Channel",
-      }],
-      rosterComplete: true,
-      complete: true,
-      unresolvedCount: 0,
-      scrollPasses: 2,
-      stopReason: "stable",
-      done: true,
-    };
-    for (const listener of listeners["yt-capture-data"] ?? []) listener({ payload });
-    return null;
-  });
+  await ipc.setHandler("yt_capture", () => new Promise((resolve) => {
+    (window as unknown as Record<string, unknown>).__YOUTUBE_CAPTURE_RESOLVE__ = resolve;
+  }));
 
   await openYouTubeSettings(page);
   await page.getByText("Log in with YouTube").click();
@@ -68,16 +51,51 @@ test("authenticated YouTube login captures followed channels and recent videos",
   await expect.poll(async () =>
     (await ipc.invocations()).some((call) => call.cmd === "yt_show_login")
   ).toBe(true);
+  await expect.poll(() => page.evaluate(() =>
+    (window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__
+  )).toBe(true);
 
   await emitTauriEvent(page, "yt-auth-result", { loggedIn: true });
+
+  await expect(page.getByText("Connected. Syncing your subscriptions in the background.")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect.poll(() => page.evaluate(() =>
+    (window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__
+  )).toBe(false);
+  await expect.poll(async () => {
+    const calls = await ipc.invocations();
+    const hideIndex = calls.findIndex((call) => call.cmd === "yt_hide_login");
+    const captureIndex = calls.findIndex((call) => call.cmd === "yt_capture");
+    return hideIndex >= 0 && captureIndex > hideIndex;
+  }).toBe(true);
+
+  await emitTauriEvent(page, "yt-capture-data", {
+    channels: [{ channelId, title: "Learning Channel" }],
+    videos: [{
+      videoId: "dQw4w9WgXcQ",
+      title: "Focused Study",
+      channelId,
+      channelTitle: "Learning Channel",
+    }],
+    rosterComplete: true,
+    complete: true,
+    unresolvedCount: 0,
+    scrollPasses: 2,
+    stopReason: "stable",
+    done: true,
+  });
+  await page.evaluate(() => {
+    const globals = window as unknown as Record<string, unknown>;
+    const resolve = globals.__YOUTUBE_CAPTURE_RESOLVE__ as ((value: unknown) => void) | undefined;
+    resolve?.(null);
+    delete globals.__YOUTUBE_CAPTURE_RESOLVE__;
+  });
 
   await expect(page.getByText("Connected. Subscription sync finished.")).toBeVisible({
     timeout: 10_000,
   });
   await expect(page.getByText("Found 1 followed channel and 1 video.")).toBeVisible();
-  await expect.poll(async () =>
-    (await ipc.invocations()).some((call) => call.cmd === "yt_hide_login")
-  ).toBe(true);
 
   const stored = await page.evaluate(({ expectedChannelId }) => {
     const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as {
@@ -93,6 +111,57 @@ test("authenticated YouTube login captures followed channels and recent videos",
     };
   }, { expectedChannelId: channelId });
   expect(stored).toEqual({ hasChannel: true, hasVideo: true });
+});
+
+test("YouTube login still syncs when the first hide request fails", async ({
+  app,
+  page,
+  ipc,
+}) => {
+  await app.goto();
+  await app.waitForReady();
+  await ipc.setHandler("yt_hide_login", () => {
+    throw new Error("Transient hide failure");
+  });
+  await ipc.setHandler("yt_capture", () => {
+    (window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
+    const listeners = (
+      window as unknown as Record<
+        string,
+        Record<string, Array<(event: { payload: unknown }) => void>>
+      >
+    ).__TAURI_EVENT_LISTENERS__ ?? {};
+    const payload = {
+      channels: [],
+      videos: [],
+      rosterComplete: true,
+      complete: true,
+      unresolvedCount: 0,
+      scrollPasses: 1,
+      stopReason: "stable",
+      done: true,
+    };
+    for (const listener of listeners["yt-capture-data"] ?? []) listener({ payload });
+    return null;
+  });
+
+  await openYouTubeSettings(page);
+  await page.getByText("Log in with YouTube").click();
+  await app.acceptProviderRiskIfPresent("youtube");
+  await emitTauriEvent(page, "yt-auth-result", { loggedIn: true });
+
+  await expect(page.getByText("Connected. Subscription sync finished.")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect.poll(async () => {
+    const calls = await ipc.invocations();
+    const hideIndex = calls.findIndex((call) => call.cmd === "yt_hide_login");
+    const captureIndex = calls.findIndex((call) => call.cmd === "yt_capture");
+    return hideIndex >= 0 && captureIndex > hideIndex;
+  }).toBe(true);
+  await expect.poll(() => page.evaluate(() =>
+    (window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__
+  )).toBe(false);
 });
 
 test("manually saved YouTube URLs sync through the rendered Freed Offline action", async ({

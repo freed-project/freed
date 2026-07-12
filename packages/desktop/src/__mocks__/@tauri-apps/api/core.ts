@@ -60,6 +60,11 @@ function timedHandler(cmd: string, handler: Handler): Handler {
   };
 }
 
+function setMockYouTubeWindowVisible(visible: boolean): null {
+  (window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = visible;
+  return null;
+}
+
 /**
  * Route an HTTP request through the Vite dev server proxy so it can make
  * real network calls server-side, bypassing CORS. Mirrors what the Rust
@@ -295,12 +300,12 @@ const handlers: Record<string, Handler> = {
   li_check_auth: () => true,
   li_scrape_feed: () => null,
   li_disconnect: () => null,
-  yt_show_login: () => null,
-  yt_hide_login: () => null,
+  yt_show_login: () => setMockYouTubeWindowVisible(true),
+  yt_hide_login: () => setMockYouTubeWindowVisible(false),
   yt_check_auth: () => true,
-  yt_capture: () => null,
-  yt_add_to_offline_playlist: () => null,
-  yt_disconnect: () => null,
+  yt_capture: () => setMockYouTubeWindowVisible(false),
+  yt_add_to_offline_playlist: () => setMockYouTubeWindowVisible(false),
+  yt_disconnect: () => setMockYouTubeWindowVisible(false),
 };
 
 // Expose handler map so tests and tauri-init.ts can override defaults.
@@ -310,6 +315,7 @@ const handlers: Record<string, Handler> = {
   cmd: string;
   args: Record<string, unknown> | undefined;
 }>;
+(window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
 
 const callbackStore = (
   (window as unknown as Record<string, unknown>).__TAURI_MOCK_CALLBACKS__ ??

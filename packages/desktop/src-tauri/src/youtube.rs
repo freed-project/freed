@@ -116,6 +116,72 @@ const YOUTUBE_AUTH_PROBE_SCRIPT: &str = r#"
 
 static YOUTUBE_SESSION_OPERATION: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum YouTubeWindowPresentation {
+    Interactive,
+    Hidden,
+}
+
+impl YouTubeWindowPresentation {
+    fn from_interactive(interactive: bool) -> Self {
+        if interactive {
+            Self::Interactive
+        } else {
+            Self::Hidden
+        }
+    }
+}
+
+trait YouTubeWindowControls {
+    fn set_youtube_always_on_bottom(&self, always_on_bottom: bool);
+    fn set_youtube_focusable(&self, focusable: bool);
+    fn show_youtube_window(&self) -> Result<(), String>;
+    fn hide_youtube_window(&self) -> Result<(), String>;
+    fn focus_youtube_window(&self);
+}
+
+impl<R: tauri::Runtime> YouTubeWindowControls for tauri::WebviewWindow<R> {
+    fn set_youtube_always_on_bottom(&self, always_on_bottom: bool) {
+        let _ = self.set_always_on_bottom(always_on_bottom);
+    }
+
+    fn set_youtube_focusable(&self, focusable: bool) {
+        let _ = self.set_focusable(focusable);
+    }
+
+    fn show_youtube_window(&self) -> Result<(), String> {
+        self.show().map_err(|error| error.to_string())
+    }
+
+    fn hide_youtube_window(&self) -> Result<(), String> {
+        self.hide().map_err(|error| error.to_string())
+    }
+
+    fn focus_youtube_window(&self) {
+        let _ = self.set_focus();
+    }
+}
+
+fn apply_youtube_window_presentation(
+    window: &impl YouTubeWindowControls,
+    presentation: YouTubeWindowPresentation,
+) -> Result<(), String> {
+    match presentation {
+        YouTubeWindowPresentation::Interactive => {
+            window.set_youtube_always_on_bottom(false);
+            window.set_youtube_focusable(true);
+            window.show_youtube_window()?;
+            window.focus_youtube_window();
+        }
+        YouTubeWindowPresentation::Hidden => {
+            window.set_youtube_always_on_bottom(true);
+            window.set_youtube_focusable(false);
+            window.hide_youtube_window()?;
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct YouTubeAuthPayload {
@@ -146,6 +212,7 @@ fn build_youtube_session_window(
     url: &str,
     interactive: bool,
 ) -> Result<tauri::WebviewWindow, String> {
+    let presentation = YouTubeWindowPresentation::from_interactive(interactive);
     let window = tauri::WebviewWindowBuilder::new(
         app,
         YOUTUBE_SESSION_WINDOW_LABEL,
@@ -156,8 +223,9 @@ fn build_youtube_session_window(
     .title("YouTube with Freed")
     .inner_size(1280.0, 900.0)
     .center()
-    .visible(true)
+    .visible(presentation == YouTubeWindowPresentation::Interactive)
     .focused(interactive)
+    .focusable(interactive)
     .always_on_bottom(!interactive)
     .build()
     .map_err(|error| error.to_string())?;
@@ -179,8 +247,12 @@ fn ensure_youtube_session_window(
     url: &str,
     interactive: bool,
 ) -> Result<tauri::WebviewWindow, String> {
+    let presentation = YouTubeWindowPresentation::from_interactive(interactive);
     let window = match app.get_webview_window(YOUTUBE_SESSION_WINDOW_LABEL) {
         Some(window) => {
+            if presentation == YouTubeWindowPresentation::Hidden {
+                apply_youtube_window_presentation(&window, presentation)?;
+            }
             window
                 .navigate(youtube_url(url)?)
                 .map_err(|error| error.to_string())?;
@@ -189,25 +261,23 @@ fn ensure_youtube_session_window(
         None => build_youtube_session_window(app, url, interactive)?,
     };
 
-    window.show().map_err(|error| error.to_string())?;
-    if interactive {
-        let _ = window.set_always_on_bottom(false);
-        let _ = window.set_focusable(true);
-        let _ = window.set_focus();
-    } else {
-        let _ = window.set_always_on_bottom(true);
-    }
+    apply_youtube_window_presentation(&window, presentation)?;
     Ok(window)
 }
 
-fn demote_youtube_session_window(app: &tauri::AppHandle) {
+fn hide_youtube_session_window(
+    app: &tauri::AppHandle,
+    restore_main_focus: bool,
+) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(YOUTUBE_SESSION_WINDOW_LABEL) {
-        let _ = window.show();
-        let _ = window.set_always_on_bottom(true);
+        apply_youtube_window_presentation(&window, YouTubeWindowPresentation::Hidden)?;
     }
-    if let Some(main) = app.get_webview_window("main") {
-        let _ = main.set_focus();
+    if restore_main_focus {
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.set_focus();
+        }
     }
+    Ok(())
 }
 
 fn canonical_watch_url(video_url: &str) -> Result<(String, String), String> {
@@ -387,12 +457,7 @@ pub async fn yt_show_login(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn yt_hide_login(app: tauri::AppHandle) -> Result<(), String> {
-    let _ = app.emit(
-        "yt-login-window-closed",
-        serde_json::json!({ "closed": true }),
-    );
-    demote_youtube_session_window(&app);
-    Ok(())
+    hide_youtube_session_window(&app, true)
 }
 
 #[tauri::command]
@@ -404,7 +469,7 @@ pub async fn yt_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
         wait_for_auth_result(&app, &window).await
     }
     .await;
-    demote_youtube_session_window(&app);
+    let _ = hide_youtube_session_window(&app, false);
     result
 }
 
@@ -439,7 +504,7 @@ pub async fn yt_capture(app: tauri::AppHandle, include_roster: Option<bool>) -> 
         Ok(())
     }
     .await;
-    demote_youtube_session_window(&app);
+    let _ = hide_youtube_session_window(&app, false);
     result
 }
 
@@ -460,7 +525,7 @@ pub async fn yt_add_to_offline_playlist(
         Ok(())
     }
     .await;
-    demote_youtube_session_window(&app);
+    let _ = hide_youtube_session_window(&app, false);
     result
 }
 
@@ -495,6 +560,88 @@ pub async fn yt_disconnect(app: tauri::AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
+
+    #[derive(Debug, Eq, PartialEq)]
+    enum RecordedYouTubeWindowAction {
+        AlwaysOnBottom(bool),
+        Focusable(bool),
+        Show,
+        Hide,
+        Focus,
+    }
+
+    #[derive(Default)]
+    struct RecordingYouTubeWindow {
+        actions: RefCell<Vec<RecordedYouTubeWindowAction>>,
+    }
+
+    impl YouTubeWindowControls for RecordingYouTubeWindow {
+        fn set_youtube_always_on_bottom(&self, always_on_bottom: bool) {
+            self.actions
+                .borrow_mut()
+                .push(RecordedYouTubeWindowAction::AlwaysOnBottom(
+                    always_on_bottom,
+                ));
+        }
+
+        fn set_youtube_focusable(&self, focusable: bool) {
+            self.actions
+                .borrow_mut()
+                .push(RecordedYouTubeWindowAction::Focusable(focusable));
+        }
+
+        fn show_youtube_window(&self) -> Result<(), String> {
+            self.actions
+                .borrow_mut()
+                .push(RecordedYouTubeWindowAction::Show);
+            Ok(())
+        }
+
+        fn hide_youtube_window(&self) -> Result<(), String> {
+            self.actions
+                .borrow_mut()
+                .push(RecordedYouTubeWindowAction::Hide);
+            Ok(())
+        }
+
+        fn focus_youtube_window(&self) {
+            self.actions
+                .borrow_mut()
+                .push(RecordedYouTubeWindowAction::Focus);
+        }
+    }
+
+    #[test]
+    fn hidden_youtube_presentation_hides_without_showing_or_focusing() {
+        let window = RecordingYouTubeWindow::default();
+        apply_youtube_window_presentation(&window, YouTubeWindowPresentation::Hidden).unwrap();
+
+        assert_eq!(
+            *window.actions.borrow(),
+            vec![
+                RecordedYouTubeWindowAction::AlwaysOnBottom(true),
+                RecordedYouTubeWindowAction::Focusable(false),
+                RecordedYouTubeWindowAction::Hide,
+            ]
+        );
+    }
+
+    #[test]
+    fn interactive_youtube_presentation_shows_and_focuses() {
+        let window = RecordingYouTubeWindow::default();
+        apply_youtube_window_presentation(&window, YouTubeWindowPresentation::Interactive).unwrap();
+
+        assert_eq!(
+            *window.actions.borrow(),
+            vec![
+                RecordedYouTubeWindowAction::AlwaysOnBottom(false),
+                RecordedYouTubeWindowAction::Focusable(true),
+                RecordedYouTubeWindowAction::Show,
+                RecordedYouTubeWindowAction::Focus,
+            ]
+        );
+    }
 
     #[test]
     fn canonical_watch_url_accepts_supported_youtube_routes() {
