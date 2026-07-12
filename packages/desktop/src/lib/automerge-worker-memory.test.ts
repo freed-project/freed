@@ -151,11 +151,15 @@ describe("automerge worker memory routing", () => {
     expect(clientSource).toContain("function cancelIdleWorkerStop()");
     expect(clientSource).toContain("function completeWorkerActivity(");
     expect(clientSource).toContain("function scheduleIdleWorkerStop(");
-    expect(clientSource).toContain("scheduleIdleWorkerStop(IDLE_WORKER_STOP_RETRY_MS)");
+    expect(clientSource).toMatch(
+      /scheduleIdleWorkerStop\(\s*IDLE_WORKER_STOP_RETRY_MS,\s*"pending_request_retry",?\s*\)/,
+    );
     expect(clientSource).toContain("worker.terminate()");
     expect(clientSource).toContain("ensureWorkerDocumentReadyFor(msg.type)");
     expect(clientSource).toContain("cancelIdleWorkerStop();");
-    expect(clientSource).toContain("completeWorkerActivity(IDLE_WORKER_STOP_RETRY_MS)");
+    expect(clientSource).toMatch(
+      /completeWorkerActivity\(\s*IDLE_WORKER_STOP_RETRY_MS,\s*"request_timeout_cleanup",?\s*\)/,
+    );
     expect(clientSource).toContain('if ("reqId" in msg && appDocumentInitialized)');
     expect(clientSource).toContain("await sendInit()");
     expect(clientSource).toContain("(msg.detail ?? \"\").startsWith(\"[automerge-worker] released idle document\")");
