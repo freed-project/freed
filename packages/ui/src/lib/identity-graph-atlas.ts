@@ -122,6 +122,28 @@ export interface BuildIdentityGraphAtlasInput {
   friendSuggestionStrengthByAccount?: Record<string, FriendCandidateConfidence>;
 }
 
+export type BuildIdentityGraphAtlasModelInput = Omit<
+  BuildIdentityGraphAtlasInput,
+  "transform" | "quality" | "selectedPersonId" | "selectedAccountId"
+>;
+
+export interface IdentityGraphAtlasModel {
+  nodes: IdentityGraphAtlasNode[];
+  edges: IdentityGraphAtlasEdge[];
+  regions: IdentityGraphAtlasRegion[];
+  bounds: IdentityGraphAtlasBounds;
+}
+
+export interface SliceIdentityGraphAtlasInput {
+  model: IdentityGraphAtlasModel;
+  transform: ViewTransform;
+  width: number;
+  height: number;
+  quality: IdentityGraphAtlasQuality;
+  selectedPersonId?: string | null;
+  selectedAccountId?: string | null;
+}
+
 interface ProviderBucket {
   provider: string;
   accounts: IdentityGraphAtlasNode[];
@@ -316,22 +338,17 @@ function nodeSortValue(node: IdentityGraphAtlasNode, selectedPersonId?: string |
   return score;
 }
 
-export function buildIdentityGraphAtlas({
+export function buildIdentityGraphAtlasModel({
   persons,
   accounts,
   feeds,
   activitySummaries,
   mode,
-  transform,
   width,
   height,
-  quality,
-  selectedPersonId,
-  selectedAccountId,
   friendSuggestionStrengthByPerson = {},
   friendSuggestionStrengthByAccount = {},
-}: BuildIdentityGraphAtlasInput): IdentityGraphAtlas {
-  const startedAt = nowMs();
+}: BuildIdentityGraphAtlasModelInput): IdentityGraphAtlasModel {
   const accountValues = Object.values(accounts);
   const visiblePersons = persons
     .filter((person) => mode === "all_content" || person.relationshipStatus === "friend")
@@ -513,7 +530,7 @@ export function buildIdentityGraphAtlas({
   for (let providerIndex = 0; providerIndex < providers.length; providerIndex += 1) {
     const bucket = providers[providerIndex]!;
     const unlinked = [...bucket.accounts, ...bucket.feeds].sort((left, right) =>
-      nodeSortValue(right, selectedPersonId, selectedAccountId) - nodeSortValue(left, selectedPersonId, selectedAccountId) ||
+      nodeSortValue(right) - nodeSortValue(left) ||
       left.label.localeCompare(right.label),
     );
     const angle = -Math.PI / 2 + (Math.PI * 2 * providerIndex) / Math.max(1, providers.length);
@@ -573,6 +590,28 @@ export function buildIdentityGraphAtlas({
       allNodes.push(node);
     });
   }
+
+  return {
+    nodes: allNodes,
+    edges,
+    regions,
+    bounds: graphBounds(allNodes, regions),
+  };
+}
+
+export function sliceIdentityGraphAtlas({
+  model,
+  transform,
+  width,
+  height,
+  quality,
+  selectedPersonId,
+  selectedAccountId,
+}: SliceIdentityGraphAtlasInput): IdentityGraphAtlas {
+  const startedAt = nowMs();
+  const allNodes = model.nodes;
+  const edges = model.edges;
+  const regions = model.regions;
 
   const lod = lodForScale(transform.scale);
   const maxNodes = maxNodesForViewport(width, quality, lod);
@@ -658,7 +697,6 @@ export function buildIdentityGraphAtlas({
   const labels = [...regionLabels, ...nodeLabels]
     .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id))
     .slice(0, labelCap);
-  const bounds = graphBounds(allNodes, regions);
   const clusterNodeCount = visibleNodes.filter((node) => node.kind === "provider_cluster").length;
 
   return {
@@ -667,7 +705,7 @@ export function buildIdentityGraphAtlas({
     regions,
     labels,
     hitBuckets: buildHitBuckets(visibleNodes),
-    bounds,
+    bounds: model.bounds,
     metrics: {
       sourceNodeCount,
       visibleNodeCount: visibleNodes.length,
@@ -679,6 +717,19 @@ export function buildIdentityGraphAtlas({
       buildMs: nowMs() - startedAt,
     },
   };
+}
+
+export function buildIdentityGraphAtlas(input: BuildIdentityGraphAtlasInput): IdentityGraphAtlas {
+  const model = buildIdentityGraphAtlasModel(input);
+  return sliceIdentityGraphAtlas({
+    model,
+    transform: input.transform,
+    width: input.width,
+    height: input.height,
+    quality: input.quality,
+    selectedPersonId: input.selectedPersonId,
+    selectedAccountId: input.selectedAccountId,
+  });
 }
 
 export function fitTransformToAtlasBounds(

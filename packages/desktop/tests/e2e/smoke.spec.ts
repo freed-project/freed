@@ -4304,12 +4304,14 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
       people: Number((element as HTMLElement).dataset.graphPersonCount ?? "0"),
       channels: Number((element as HTMLElement).dataset.graphChannelCount ?? "0"),
       links: Number((element as HTMLElement).dataset.graphLinkCount ?? "0"),
+      resident: Number((element as HTMLElement).dataset.graphResidentNodeCount ?? "0"),
     }));
   }).toEqual({
     nodes: 8,
     people: 3,
     channels: 5,
     links: 3,
+    resident: 10,
   });
 });
 

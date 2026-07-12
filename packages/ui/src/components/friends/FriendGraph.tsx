@@ -22,9 +22,10 @@ import {
   type IdentityGraphActivitySummaries,
 } from "../../lib/identity-graph-activity-summary.js";
 import {
-  buildIdentityGraphAtlas,
+  buildIdentityGraphAtlasModel,
   fitTransformToAtlasBounds,
-  type BuildIdentityGraphAtlasInput,
+  sliceIdentityGraphAtlas,
+  type BuildIdentityGraphAtlasModelInput,
   type IdentityGraphAtlas,
   type IdentityGraphAtlasBounds,
   type IdentityGraphAtlasNode,
@@ -39,7 +40,10 @@ import {
   IdentityGalaxyEngine,
   type IdentityGalaxyVariation,
 } from "../../lib/identity-galaxy-engine.js";
-import type { IdentityGalaxyWorkerResponse } from "../../lib/identity-galaxy-worker-protocol.js";
+import type {
+  IdentityGalaxyWorkerResponse,
+  IdentityGalaxyWorkerViewportInput,
+} from "../../lib/identity-galaxy-worker-protocol.js";
 import {
   FRIEND_GRAPH_DEFAULT_TRANSFORM,
   type ViewTransform,
@@ -149,6 +153,7 @@ interface GraphPerfSnapshot {
   denseInteractionRebuildCount: number;
   qualityMode: "interactive" | "settled";
   sourceNodeCount: number;
+  residentNodeCount: number;
   visibleNodeCount: number;
   renderedPrimitiveCount: number;
   firstVisibleMs: number;
@@ -168,6 +173,14 @@ interface GraphSurfacePerfSnapshot extends GraphPerfSnapshot {
   channelCount: number;
   transformScale: number;
 }
+
+type ApplyIdentityGraphAtlas = (
+  requestId: number,
+  atlas: IdentityGraphAtlas,
+  galaxyScene: IdentityGalaxyScene | undefined,
+  edgeIndices: Uint32Array | undefined,
+  durationMs: number,
+) => void;
 
 const MIN_SCALE = 0.18;
 const MAX_SCALE = 3.2;
@@ -337,6 +350,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const overlayRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<IdentityGalaxyEngine | null>(null);
   const workerRef = useRef<Worker | null>(null);
+  const applyAtlasRef = useRef<ApplyIdentityGraphAtlas | null>(null);
   const atlasRef = useRef<IdentityGraphAtlas | null>(null);
   const galaxySceneRef = useRef<IdentityGalaxyScene | null>(null);
   const hitBucketsRef = useRef<Map<string, string[]>>(new Map());
@@ -347,6 +361,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const hoveredNodeIdRef = useRef<string | null>(null);
   const latestRequestIdRef = useRef(0);
   const latestResolvedRequestIdRef = useRef(0);
+  const nextSourceRevisionRef = useRef(0);
+  const postedSourceRevisionRef = useRef(-1);
   const pendingWorkerTimeoutsRef = useRef<Map<number, number>>(new Map());
   const atlasRafRef = useRef(0);
   const drawRafRef = useRef(0);
@@ -420,9 +436,35 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     () => buildSuggestionRecord(friendSuggestionStrengthByAccount),
     [friendSuggestionStrengthByAccount],
   );
+  const galaxySource = useMemo(() => ({
+    revision: nextSourceRevisionRef.current + 1,
+    input: {
+      persons,
+      accounts,
+      feeds,
+      activitySummaries,
+      mode,
+      width: canvasSize.width,
+      height: canvasSize.height,
+      friendSuggestionStrengthByPerson: friendSuggestionStrengthByPersonRecord,
+      friendSuggestionStrengthByAccount: friendSuggestionStrengthByAccountRecord,
+    } satisfies BuildIdentityGraphAtlasModelInput,
+  }), [
+    accounts,
+    activitySummaries,
+    canvasSize.height,
+    canvasSize.width,
+    feeds,
+    friendSuggestionStrengthByAccountRecord,
+    friendSuggestionStrengthByPersonRecord,
+    mode,
+    persons,
+  ]);
+  nextSourceRevisionRef.current = galaxySource.revision;
 
   const exposeDiagnostics = useCallback((atlas: IdentityGraphAtlas, sceneSyncMs: number) => {
     const sourceNodeCount = canonicalNodeCount;
+    const residentNodeCount = galaxySceneRef.current?.nodeIds.length ?? atlas.metrics.visibleNodeCount;
     const visibleNodeCount = atlas.metrics.visibleNodeCount;
     const p95Samples = [...frameSamplesRef.current].sort((left, right) => left - right);
     const frameP95Ms = p95Samples[Math.floor(p95Samples.length * 0.95)] ?? 0;
@@ -435,7 +477,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       contentSyncCount: 1,
       transformOnlySyncCount: latestQualityRef.current === "interactive" ? 1 : 0,
       edgeRebuildCount: atlas.edges.length > 0 ? 1 : 0,
-      nodeRestyleCount: visibleNodeCount,
+      nodeRestyleCount: residentNodeCount,
       labelLayoutCount: atlas.labels.length > 0 ? 1 : 0,
       avatarDisplayCount: 0,
       visibleLabelCount: atlas.labels.length,
@@ -448,8 +490,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       denseInteractionRebuildCount: atlas.metrics.capped ? 1 : 0,
       qualityMode: latestQualityRef.current,
       sourceNodeCount,
+      residentNodeCount,
       visibleNodeCount,
-      renderedPrimitiveCount: atlas.metrics.renderedPrimitiveCount,
+      renderedPrimitiveCount: residentNodeCount + atlas.edges.length + atlas.regions.length + atlas.labels.length,
       firstVisibleMs: firstVisibleMsRef.current,
       frameP95Ms,
       longTaskCount: longTaskCountRef.current,
@@ -473,6 +516,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       container.dataset.visibleLabelCount = String(atlas.labels.length);
       container.dataset.graphQualityMode = latestQualityRef.current;
       container.dataset.graphVisibleNodeCount = String(visibleNodeCount);
+      container.dataset.graphResidentNodeCount = String(residentNodeCount);
       container.dataset.graphRenderer = engineRef.current?.rendererType ?? "three-starfield";
     }
     (window as typeof window & { __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot }).__FREED_GRAPH_PERF__ = perf;
@@ -506,7 +550,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       }
       const shouldSyncScene = sceneDirtyRef.current;
       if (shouldSyncScene) {
-        updateIdentityGalaxySceneInteraction(galaxyScene, atlas.nodes, {
+        updateIdentityGalaxySceneInteraction(galaxyScene, {
           quality: latestQualityRef.current,
           selectedPersonId,
           selectedAccountId,
@@ -575,7 +619,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const applyAtlas = useCallback((
     requestId: number,
     atlas: IdentityGraphAtlas,
-    galaxyScene: IdentityGalaxyScene,
+    galaxyScene: IdentityGalaxyScene | undefined,
+    edgeIndices: Uint32Array | undefined,
     durationMs: number,
   ) => {
     if (requestId < latestResolvedRequestIdRef.current) return;
@@ -587,7 +632,14 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     latestResolvedRequestIdRef.current = requestId;
     atlas.metrics.buildMs = durationMs;
     atlasRef.current = atlas;
-    galaxySceneRef.current = galaxyScene;
+    if (galaxyScene) {
+      galaxySceneRef.current = galaxyScene;
+    } else if (edgeIndices && galaxySceneRef.current) {
+      galaxySceneRef.current.edgeIndices = edgeIndices;
+    }
+    if (!galaxySceneRef.current) {
+      throw new Error("Friends galaxy atlas arrived without a semantic scene");
+    }
     hitBucketsRef.current = buildHitBucketMap(atlas);
     sceneDirtyRef.current = true;
     if (!hasFittedInitialAtlasRef.current && !hasUserAdjustedTransformRef.current) {
@@ -604,17 +656,26 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     draw();
     scheduleDraw();
   }, [canvasSize.height, canvasSize.width, draw, scheduleDraw]);
+  applyAtlasRef.current = applyAtlas;
 
-  const runAtlasOnMainThread = useCallback((requestId: number, input: BuildIdentityGraphAtlasInput) => {
+  const runAtlasOnMainThread = useCallback((
+    requestId: number,
+    source: BuildIdentityGraphAtlasModelInput,
+    viewport: IdentityGalaxyWorkerViewportInput,
+  ) => {
     window.setTimeout(() => {
       const startedAt = nowMs();
-      const atlas = buildIdentityGraphAtlas(input);
-      const galaxyScene = compileIdentityGalaxyScene(atlas, {
-        quality: input.quality,
-        selectedPersonId: input.selectedPersonId,
-        selectedAccountId: input.selectedAccountId,
+      const model = buildIdentityGraphAtlasModel(source);
+      const atlas = sliceIdentityGraphAtlas({ model, ...viewport });
+      const galaxyScene = compileIdentityGalaxyScene({
+        nodes: model.nodes,
+        edges: atlas.edges,
+      }, {
+        quality: viewport.quality,
+        selectedPersonId: viewport.selectedPersonId,
+        selectedAccountId: viewport.selectedAccountId,
       });
-      applyAtlas(requestId, atlas, galaxyScene, nowMs() - startedAt);
+      applyAtlas(requestId, atlas, galaxyScene, undefined, nowMs() - startedAt);
     }, 0);
   }, [applyAtlas]);
 
@@ -622,24 +683,17 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     latestQualityRef.current = quality;
     const requestId = latestRequestIdRef.current + 1;
     latestRequestIdRef.current = requestId;
-    const input: BuildIdentityGraphAtlasInput = {
-      persons,
-      accounts,
-      feeds,
-      activitySummaries,
-      mode,
+    const viewport: IdentityGalaxyWorkerViewportInput = {
       transform: transformRef.current,
       width: canvasSize.width,
       height: canvasSize.height,
       quality,
       selectedPersonId,
       selectedAccountId,
-      friendSuggestionStrengthByPerson: friendSuggestionStrengthByPersonRecord,
-      friendSuggestionStrengthByAccount: friendSuggestionStrengthByAccountRecord,
     };
     const worker = workerRef.current;
     if (!worker) {
-      runAtlasOnMainThread(requestId, input);
+      runAtlasOnMainThread(requestId, galaxySource.input, viewport);
       return;
     }
     const timeout = window.setTimeout(() => {
@@ -648,21 +702,32 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       if (workerRef.current === worker) {
         worker.terminate();
         workerRef.current = null;
+        postedSourceRevisionRef.current = -1;
       }
-      runAtlasOnMainThread(requestId, input);
+      runAtlasOnMainThread(requestId, galaxySource.input, viewport);
     }, GRAPH_LAYOUT_WORKER_TIMEOUT_MS);
     pendingWorkerTimeoutsRef.current.set(requestId, timeout);
-    worker.postMessage({ requestId, ...input });
+    if (postedSourceRevisionRef.current !== galaxySource.revision) {
+      postedSourceRevisionRef.current = galaxySource.revision;
+      worker.postMessage({
+        kind: "build",
+        requestId,
+        sourceRevision: galaxySource.revision,
+        source: galaxySource.input,
+        viewport,
+      });
+    } else {
+      worker.postMessage({
+        kind: "viewport",
+        requestId,
+        sourceRevision: galaxySource.revision,
+        viewport,
+      });
+    }
   }, [
-    accounts,
-    activitySummaries,
     canvasSize.height,
     canvasSize.width,
-    feeds,
-    friendSuggestionStrengthByAccountRecord,
-    friendSuggestionStrengthByPersonRecord,
-    mode,
-    persons,
+    galaxySource,
     runAtlasOnMainThread,
     selectedAccountId,
     selectedPersonId,
@@ -776,12 +841,20 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       { type: "module" },
     );
     workerRef.current = worker;
+    postedSourceRevisionRef.current = -1;
     worker.onmessage = (event: MessageEvent<IdentityGalaxyWorkerResponse>) => {
-      applyAtlas(event.data.requestId, event.data.atlas, event.data.scene, event.data.durationMs);
+      applyAtlasRef.current?.(
+        event.data.requestId,
+        event.data.atlas,
+        event.data.scene,
+        event.data.edgeIndices,
+        event.data.durationMs,
+      );
     };
     worker.onerror = () => {
       if (workerRef.current === worker) {
         workerRef.current = null;
+        postedSourceRevisionRef.current = -1;
       }
     };
     return () => {
@@ -792,9 +865,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       worker.terminate();
       if (workerRef.current === worker) {
         workerRef.current = null;
+        postedSourceRevisionRef.current = -1;
       }
     };
-  }, [applyAtlas]);
+  }, []);
 
   useLayoutEffect(() => {
     const container = containerRef.current;

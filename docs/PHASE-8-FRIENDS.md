@@ -171,7 +171,7 @@ Default nudge intervals by care level:
 
 The current atlas starfield remains the shipping compatibility surface while the next renderer is built behind it. The approved replacement uses a constrained 3D galactic plane with stable semantic geography on `x` and `y`, relationship prominence on `z`, tight identity systems, provider sectors on the outer rim, a locked perspective camera, and a renderer-neutral typed scene protocol. WebGPU is the preferred shared backend, WebGL2 is the compatibility backend, and native Metal remains gated on later device evidence.
 
-The first foundation compiles current atlas nodes into compact typed buffers for stable 3D positions, semantic prominence, bounded activity and recency brightness, theme color roles, interaction flags, and indexed edges. The atlas worker transfers those buffers directly to the main thread. Hover and selection patch dynamic typed arrays in place without rebuilding positions or edges. An imperative engine now owns Three.js, Troika labels, theme palette resolution, WebGL fallback selection, resize, scene synchronization, rendering, and disposal while the React shell owns product props and worker lifecycle. The complete approved vision, interaction contract, rendering contract, and staged roadmap live in [FRIENDS-GALAXY-ARCHITECTURE.md](./FRIENDS-GALAXY-ARCHITECTURE.md).
+The first foundation compiles the complete semantic galaxy into compact typed buffers for stable 3D positions, semantic prominence, bounded activity and recency brightness, theme color roles, interaction flags, and indexed edges. The atlas worker caches the rich semantic model by source revision and transfers the full star buffers only when graph source data or layout dimensions change. Pan, zoom, quality, and selection requests retain those star buffers while returning capped label, hit, and edge detail. Hover and selection patch dynamic typed arrays in place without rebuilding positions. An imperative engine now owns Three.js, Troika labels, theme palette resolution, WebGL fallback selection, resize, scene synchronization, rendering, and disposal while the React shell owns product props, worker lifecycle, interaction orchestration, and product callbacks. The complete approved vision, interaction contract, rendering contract, and staged roadmap live in [FRIENDS-GALAXY-ARCHITECTURE.md](./FRIENDS-GALAXY-ARCHITECTURE.md).
 
 ### Scale targets
 
@@ -184,6 +184,7 @@ The first foundation compiles current atlas nodes into compact typed buffers for
 - Selection sync budget: under 60 ms in the desktop seeded fixture
 - Pan and zoom sync budget: transform-only on the main thread, under 4 ms of main-thread work per gesture frame
 - Visible node budget during interaction: under 300 desktop and under 160 iPhone
+- The visible node budget applies to hit, label, avatar, and edge detail. It does not evict semantic stars from GPU residency.
 - Animation scope: camera movement, hover, focus, selection, pinning, and settle transitions only. There is no live force simulation during interaction
 
 ### Files
@@ -364,6 +365,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.57 | Replace the atlas starfield with the approved GPU-resident Friends Galaxy engine, locked camera, batched labels, and depth-aware picking | High | In Progress |
 | 8.58 | Transfer typed galaxy scene buffers from the atlas worker and patch interaction state in place | High | Done |
 | 8.59 | Move renderer, palette, fallback, and GPU resource ownership out of React into an imperative galaxy engine | High | Done |
+| 8.60 | Cache the full semantic galaxy model in the worker and retain every semantic star across viewport atlas updates | High | Done |
 
 ---
 
@@ -439,7 +441,8 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The current renderer consumes a versioned typed scene with stable 3D positions, semantic prominence, theme roles, interaction flags, and indexed edges
 - [x] The graph worker transfers typed scene buffers directly, and main-thread interaction updates preserve static position and edge arrays
 - [x] The React Friends shell delegates palette, renderer, fallback, GPU resource, resize, scene sync, and disposal ownership to an imperative engine
-- [ ] The next-generation Friends Galaxy keeps all semantic stars GPU-resident and applies detail limits only to labels, avatars, edges, picking, and expensive effects
+- [x] The worker caches the full semantic model by source revision, and viewport updates retain every semantic star while capping labels, hit detail, and edges
+- [x] The next-generation Friends Galaxy keeps all semantic stars GPU-resident and applies detail limits only to labels, avatars, edges, picking, and expensive effects
 - [x] Desktop browser tests cover mixed-tier graph load, context-menu link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
 - [ ] macOS native contact picker (CNContactStore)

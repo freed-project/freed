@@ -1,12 +1,25 @@
 import {
-  buildIdentityGraphAtlas,
+  buildIdentityGraphAtlasModel,
+  sliceIdentityGraphAtlas,
+  type IdentityGraphAtlasModel,
 } from "./identity-graph-atlas.js";
-import { compileIdentityGalaxyScene } from "./identity-galaxy-scene.js";
 import {
-  identityGalaxySceneTransferables,
+  compileIdentityGalaxyEdgeIndicesFromIndex,
+  compileIdentityGalaxyScene,
+} from "./identity-galaxy-scene.js";
+import {
+  identityGalaxyWorkerResponseTransferables,
   type IdentityGalaxyWorkerRequest,
   type IdentityGalaxyWorkerResponse,
 } from "./identity-galaxy-worker-protocol.js";
+
+interface CachedGalaxyModel {
+  sourceRevision: number;
+  model: IdentityGraphAtlasModel;
+  nodeIndexById: Map<string, number>;
+}
+
+let cachedGalaxy: CachedGalaxyModel | null = null;
 
 function nowMs(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -16,20 +29,53 @@ function nowMs(): number {
 }
 
 self.onmessage = (event: MessageEvent<IdentityGalaxyWorkerRequest>) => {
+  const request = event.data;
   const startedAt = nowMs();
-  const atlas = buildIdentityGraphAtlas(event.data);
-  const scene = compileIdentityGalaxyScene(atlas, {
-    quality: event.data.quality,
-    selectedPersonId: event.data.selectedPersonId,
-    selectedAccountId: event.data.selectedAccountId,
+  let rebuilt = false;
+
+  if (request.kind === "build") {
+    const model = buildIdentityGraphAtlasModel(request.source);
+    cachedGalaxy = {
+      sourceRevision: request.sourceRevision,
+      model,
+      nodeIndexById: new Map(model.nodes.map((node, index) => [node.id, index])),
+    };
+    rebuilt = true;
+  }
+
+  if (!cachedGalaxy || cachedGalaxy.sourceRevision !== request.sourceRevision) {
+    throw new Error("Friends galaxy worker received a viewport request without its semantic model");
+  }
+
+  const atlas = sliceIdentityGraphAtlas({
+    model: cachedGalaxy.model,
+    ...request.viewport,
   });
   const response: IdentityGalaxyWorkerResponse = {
-    requestId: event.data.requestId,
+    requestId: request.requestId,
+    sourceRevision: request.sourceRevision,
     atlas,
-    scene,
-    durationMs: nowMs() - startedAt,
+    durationMs: 0,
   };
-  self.postMessage(response, identityGalaxySceneTransferables(scene));
+
+  if (rebuilt) {
+    response.scene = compileIdentityGalaxyScene({
+      nodes: cachedGalaxy.model.nodes,
+      edges: atlas.edges,
+    }, {
+      quality: request.viewport.quality,
+      selectedPersonId: request.viewport.selectedPersonId,
+      selectedAccountId: request.viewport.selectedAccountId,
+    });
+  } else {
+    response.edgeIndices = compileIdentityGalaxyEdgeIndicesFromIndex(
+      cachedGalaxy.nodeIndexById,
+      atlas.edges,
+    );
+  }
+
+  response.durationMs = nowMs() - startedAt;
+  self.postMessage(response, identityGalaxyWorkerResponseTransferables(response));
 };
 
 export {};

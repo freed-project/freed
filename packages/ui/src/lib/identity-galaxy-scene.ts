@@ -1,5 +1,6 @@
 import type {
   IdentityGraphAtlas,
+  IdentityGraphAtlasEdge,
   IdentityGraphAtlasNode,
   IdentityGraphAtlasQuality,
 } from "./identity-graph-atlas.js";
@@ -49,6 +50,9 @@ export interface IdentityGalaxySceneBounds {
 export interface IdentityGalaxyScene {
   version: typeof IDENTITY_GALAXY_SCENE_VERSION;
   nodeIds: readonly string[];
+  personIds: readonly (string | null)[];
+  accountIds: readonly (string | null)[];
+  linkedPersonIds: readonly (string | null)[];
   providers: readonly (string | null)[];
   kinds: Uint8Array;
   colorRoles: Uint8Array;
@@ -70,6 +74,8 @@ export interface CompileIdentityGalaxySceneOptions {
   hoveredNodeId?: string | null;
   now?: number;
 }
+
+export type IdentityGalaxySceneSource = Pick<IdentityGraphAtlas, "nodes" | "edges">;
 
 const GALAXY_FAR_DEPTH = -220;
 const GALAXY_DEPTH_SPAN = 440;
@@ -131,21 +137,22 @@ function semanticProminence(node: IdentityGraphAtlasNode): number {
 }
 
 function pointSize(
-  node: IdentityGraphAtlasNode,
+  kind: IdentityGalaxyNodeKindCode,
+  radius: number,
   selected: boolean,
   hovered: boolean,
   quality: IdentityGraphAtlasQuality,
 ): number {
-  const roleSize = node.kind === "friend_person"
+  const roleSize = kind === IdentityGalaxyNodeKindCode.FriendPerson
     ? 34
-    : node.kind === "connection_person"
+    : kind === IdentityGalaxyNodeKindCode.ConnectionPerson
       ? 28
-      : node.kind === "provider_cluster"
+      : kind === IdentityGalaxyNodeKindCode.ProviderCluster
         ? 40
-        : node.kind === "feed"
+        : kind === IdentityGalaxyNodeKindCode.Feed
           ? 20
           : 22;
-  const size = roleSize + node.radius * 1.05 + (selected ? 22 : hovered ? 12 : 0);
+  const size = roleSize + radius * 1.05 + (selected ? 22 : hovered ? 12 : 0);
   return Math.max(8, size * (quality === "interactive" ? 0.78 : 1));
 }
 
@@ -155,18 +162,8 @@ function recencySignal(latestActivityAt: number | undefined, now: number): numbe
   return 1 - clamp(ageDays / 120, 0, 1);
 }
 
-function nodeFlags(
-  node: IdentityGraphAtlasNode,
-  options: CompileIdentityGalaxySceneOptions,
-): number {
-  const selected =
-    (!!node.personId && node.personId === options.selectedPersonId) ||
-    (!!node.accountId && node.accountId === options.selectedAccountId);
-  let flags = selected ? IdentityGalaxyNodeFlag.Selected : 0;
-  if (node.id === options.hoveredNodeId) flags |= IdentityGalaxyNodeFlag.Hovered;
-  if (options.selectedPersonId && node.linkedPersonId === options.selectedPersonId) {
-    flags |= IdentityGalaxyNodeFlag.LinkedToSelection;
-  }
+function staticNodeFlags(node: IdentityGraphAtlasNode): number {
+  let flags = 0;
   if (node.graphPinned) flags |= IdentityGalaxyNodeFlag.Pinned;
   if (node.friendSuggestionConfidence === "high") flags |= IdentityGalaxyNodeFlag.SuggestedHigh;
   if (node.friendSuggestionConfidence === "medium") flags |= IdentityGalaxyNodeFlag.SuggestedMedium;
@@ -197,12 +194,40 @@ function boundsForPositions(positions: Float32Array): IdentityGalaxySceneBounds 
   return { minX, maxX, minY, maxY, minZ, maxZ };
 }
 
+export function compileIdentityGalaxyEdgeIndices(
+  nodeIds: readonly string[],
+  edges: readonly IdentityGraphAtlasEdge[],
+): Uint32Array {
+  const nodeIndexById = new Map(nodeIds.map((id, index) => [id, index]));
+  return compileIdentityGalaxyEdgeIndicesFromIndex(nodeIndexById, edges);
+}
+
+export function compileIdentityGalaxyEdgeIndicesFromIndex(
+  nodeIndexById: ReadonlyMap<string, number>,
+  edges: readonly IdentityGraphAtlasEdge[],
+): Uint32Array {
+  const edgeIndices = new Uint32Array(edges.length * 2);
+  let edgeOffset = 0;
+  for (const edge of edges) {
+    const sourceIndex = nodeIndexById.get(edge.sourceId);
+    const targetIndex = nodeIndexById.get(edge.targetId);
+    if (sourceIndex === undefined || targetIndex === undefined) continue;
+    edgeIndices[edgeOffset] = sourceIndex;
+    edgeIndices[edgeOffset + 1] = targetIndex;
+    edgeOffset += 2;
+  }
+  return edgeOffset === edgeIndices.length ? edgeIndices : edgeIndices.slice(0, edgeOffset);
+}
+
 export function compileIdentityGalaxyScene(
-  atlas: IdentityGraphAtlas,
+  source: IdentityGalaxySceneSource,
   options: CompileIdentityGalaxySceneOptions,
 ): IdentityGalaxyScene {
-  const nodeCount = atlas.nodes.length;
+  const nodeCount = source.nodes.length;
   const nodeIds = new Array<string>(nodeCount);
+  const personIds = new Array<string | null>(nodeCount);
+  const accountIds = new Array<string | null>(nodeCount);
+  const linkedPersonIds = new Array<string | null>(nodeCount);
   const providers = new Array<string | null>(nodeCount);
   const kinds = new Uint8Array(nodeCount);
   const colorRoles = new Uint8Array(nodeCount);
@@ -213,32 +238,32 @@ export function compileIdentityGalaxyScene(
   const prominence = new Float32Array(nodeCount);
   const brightness = new Float32Array(nodeCount);
   const emphasis = new Float32Array(nodeCount);
-  const nodeIndexById = new Map<string, number>();
   const personDepthById = new Map<string, number>();
   const now = options.now ?? Date.now();
-  const hasSelection = !!options.selectedPersonId || !!options.selectedAccountId;
 
   for (let index = 0; index < nodeCount; index += 1) {
-    const node = atlas.nodes[index]!;
+    const node = source.nodes[index]!;
     const nodeProminence = semanticProminence(node);
     const jitter = (seededUnit(`${node.id}:galaxy-depth`) - 0.5) * 8;
     const depth = GALAXY_FAR_DEPTH + nodeProminence * GALAXY_DEPTH_SPAN + jitter;
     nodeIds[index] = node.id;
+    personIds[index] = node.personId ?? null;
+    accountIds[index] = node.accountId ?? null;
+    linkedPersonIds[index] = node.linkedPersonId ?? null;
     providers[index] = node.provider ?? null;
     kinds[index] = nodeKindCode(node);
     colorRoles[index] = colorRole(node);
-    flags[index] = nodeFlags(node, options);
+    flags[index] = staticNodeFlags(node);
     positions[index * 3] = node.x;
     positions[index * 3 + 1] = -node.y;
     positions[index * 3 + 2] = depth;
     radii[index] = node.radius;
     prominence[index] = nodeProminence;
-    nodeIndexById.set(node.id, index);
     if (node.personId) personDepthById.set(node.personId, depth);
   }
 
   for (let index = 0; index < nodeCount; index += 1) {
-    const node = atlas.nodes[index]!;
+    const node = source.nodes[index]!;
     if (!node.linkedPersonId) continue;
     const personDepth = personDepthById.get(node.linkedPersonId);
     if (personDepth === undefined) continue;
@@ -250,34 +275,22 @@ export function compileIdentityGalaxyScene(
   }
 
   for (let index = 0; index < nodeCount; index += 1) {
-    const node = atlas.nodes[index]!;
-    const nodeFlagBits = flags[index]!;
-    const selected = (nodeFlagBits & IdentityGalaxyNodeFlag.Selected) !== 0;
-    const hovered = (nodeFlagBits & IdentityGalaxyNodeFlag.Hovered) !== 0;
-    const linked = (nodeFlagBits & IdentityGalaxyNodeFlag.LinkedToSelection) !== 0;
-    pointSizes[index] = pointSize(node, selected, hovered, options.quality);
+    const node = source.nodes[index]!;
     brightness[index] = clamp(
       0.76 + activitySignal(node.activityCount) * 0.14 + recencySignal(node.latestActivityAt, now) * 0.1,
       0.76,
       1,
     );
-    emphasis[index] = hasSelection && !selected && !hovered && !linked ? 0.34 : 1;
   }
 
-  const edgeIndices = new Uint32Array(atlas.edges.length * 2);
-  let edgeOffset = 0;
-  for (const edge of atlas.edges) {
-    const sourceIndex = nodeIndexById.get(edge.sourceId);
-    const targetIndex = nodeIndexById.get(edge.targetId);
-    if (sourceIndex === undefined || targetIndex === undefined) continue;
-    edgeIndices[edgeOffset] = sourceIndex;
-    edgeIndices[edgeOffset + 1] = targetIndex;
-    edgeOffset += 2;
-  }
+  const edgeIndices = compileIdentityGalaxyEdgeIndices(nodeIds, source.edges);
 
-  return {
+  const scene: IdentityGalaxyScene = {
     version: IDENTITY_GALAXY_SCENE_VERSION,
     nodeIds,
+    personIds,
+    accountIds,
+    linkedPersonIds,
     providers,
     kinds,
     colorRoles,
@@ -288,28 +301,39 @@ export function compileIdentityGalaxyScene(
     prominence,
     brightness,
     emphasis,
-    edgeIndices: edgeOffset === edgeIndices.length ? edgeIndices : edgeIndices.slice(0, edgeOffset),
+    edgeIndices,
     bounds: boundsForPositions(positions),
   };
+  updateIdentityGalaxySceneInteraction(scene, options);
+  return scene;
 }
 
 export function updateIdentityGalaxySceneInteraction(
   scene: IdentityGalaxyScene,
-  nodes: readonly IdentityGraphAtlasNode[],
   options: CompileIdentityGalaxySceneOptions,
 ): void {
-  if (scene.nodeIds.length !== nodes.length) {
-    throw new Error("Friends galaxy scene and atlas node counts do not match");
-  }
   const hasSelection = !!options.selectedPersonId || !!options.selectedAccountId;
-  for (let index = 0; index < nodes.length; index += 1) {
-    const node = nodes[index]!;
-    const nextFlags = nodeFlags(node, options);
-    const selected = (nextFlags & IdentityGalaxyNodeFlag.Selected) !== 0;
-    const hovered = (nextFlags & IdentityGalaxyNodeFlag.Hovered) !== 0;
-    const linked = (nextFlags & IdentityGalaxyNodeFlag.LinkedToSelection) !== 0;
+  const dynamicFlagMask = IdentityGalaxyNodeFlag.Selected |
+    IdentityGalaxyNodeFlag.Hovered |
+    IdentityGalaxyNodeFlag.LinkedToSelection;
+  for (let index = 0; index < scene.nodeIds.length; index += 1) {
+    let nextFlags = scene.flags[index]! & ~dynamicFlagMask;
+    const selected =
+      (!!scene.personIds[index] && scene.personIds[index] === options.selectedPersonId) ||
+      (!!scene.accountIds[index] && scene.accountIds[index] === options.selectedAccountId);
+    const hovered = scene.nodeIds[index] === options.hoveredNodeId;
+    const linked = !!options.selectedPersonId && scene.linkedPersonIds[index] === options.selectedPersonId;
+    if (selected) nextFlags |= IdentityGalaxyNodeFlag.Selected;
+    if (hovered) nextFlags |= IdentityGalaxyNodeFlag.Hovered;
+    if (linked) nextFlags |= IdentityGalaxyNodeFlag.LinkedToSelection;
     scene.flags[index] = nextFlags;
-    scene.pointSizes[index] = pointSize(node, selected, hovered, options.quality);
+    scene.pointSizes[index] = pointSize(
+      scene.kinds[index]! as IdentityGalaxyNodeKindCode,
+      scene.radii[index]!,
+      selected,
+      hovered,
+      options.quality,
+    );
     scene.emphasis[index] = hasSelection && !selected && !hovered && !linked ? 0.34 : 1;
   }
 }

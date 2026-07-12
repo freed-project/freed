@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Account, Person, RssFeed } from "@freed/shared";
-import { buildIdentityGraphAtlas } from "./identity-graph-atlas.js";
+import {
+  buildIdentityGraphAtlas,
+  buildIdentityGraphAtlasModel,
+  sliceIdentityGraphAtlas,
+} from "./identity-graph-atlas.js";
 import type { IdentityGraphActivitySummaries } from "./identity-graph-activity-summary.js";
+import { compileIdentityGalaxyScene } from "./identity-galaxy-scene.js";
 
 function person(index: number): Person {
   return {
@@ -33,6 +38,42 @@ function account(index: number): Account {
 }
 
 describe("buildIdentityGraphAtlas", () => {
+  it("keeps the full semantic star scene resident while capping viewport detail", () => {
+    const persons = Array.from({ length: 240 }, (_, index) => person(index));
+    const accounts = Object.fromEntries(
+      Array.from({ length: 900 }, (_, index) => {
+        const entry = account(index);
+        return [entry.id, entry];
+      }),
+    );
+    const model = buildIdentityGraphAtlasModel({
+      persons,
+      accounts,
+      feeds: {},
+      activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+      mode: "all_content",
+      width: 390,
+      height: 760,
+    });
+    const viewportAtlas = sliceIdentityGraphAtlas({
+      model,
+      transform: { x: 0, y: 0, scale: 0.25 },
+      width: 390,
+      height: 760,
+      quality: "interactive",
+    });
+    const scene = compileIdentityGalaxyScene({
+      nodes: model.nodes,
+      edges: viewportAtlas.edges,
+    }, { quality: "interactive", now: 1_000 });
+
+    expect(model.nodes.length).toBeGreaterThan(viewportAtlas.nodes.length);
+    expect(viewportAtlas.nodes.length).toBeLessThanOrEqual(160);
+    expect(scene.nodeIds).toHaveLength(model.nodes.length);
+    expect(scene.positions).toHaveLength(model.nodes.length * 3);
+    expect(scene.edgeIndices).toHaveLength(0);
+  });
+
   it("returns a capped overview atlas instead of the full graph payload", () => {
     const persons = Array.from({ length: 500 }, (_, index) => person(index));
     const accounts = Object.fromEntries(

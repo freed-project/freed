@@ -10,7 +10,10 @@ import {
   IdentityGalaxyNodeKindCode,
   updateIdentityGalaxySceneInteraction,
 } from "./identity-galaxy-scene.js";
-import { identityGalaxySceneTransferables } from "./identity-galaxy-worker-protocol.js";
+import {
+  identityGalaxySceneTransferables,
+  identityGalaxyWorkerResponseTransferables,
+} from "./identity-galaxy-worker-protocol.js";
 
 function node(
   id: string,
@@ -148,7 +151,7 @@ describe("compileIdentityGalaxyScene", () => {
     const positions = scene.positions;
     const edgeIndices = scene.edgeIndices;
     const basePointSize = scene.pointSizes[0]!;
-    updateIdentityGalaxySceneInteraction(scene, input.nodes, {
+    updateIdentityGalaxySceneInteraction(scene, {
       quality: "interactive",
       selectedPersonId: "selected",
       hoveredNodeId: "account:hovered",
@@ -176,6 +179,19 @@ describe("compileIdentityGalaxyScene", () => {
     expect(new Set(transferables).size).toBe(transferables.length);
     expect(transferables).toContain(scene.positions.buffer);
     expect(transferables).toContain(scene.edgeIndices.buffer);
+  });
+
+  it("transfers only the edge patch for a cached worker viewport response", () => {
+    const edgeIndices = new Uint32Array([0, 1]);
+    const response = {
+      requestId: 2,
+      sourceRevision: 1,
+      atlas: atlas([]),
+      edgeIndices,
+      durationMs: 0,
+    };
+
+    expect(identityGalaxyWorkerResponseTransferables(response)).toEqual([edgeIndices.buffer]);
   });
 
   it("is deterministic for the same atlas and clock", () => {

@@ -146,9 +146,13 @@ As of July 12, 2026, other tasks are running on the development machine. The own
 - Hover and selection update flags, emphasis, and point sizes in place without replacing static positions or indexed edges.
 - An imperative `IdentityGalaxyEngine` owns Three.js, Troika labels, palette resolution, WebGL fallback selection, resize, synchronization, rendering, and disposal.
 - `FriendGraph.tsx` now owns React props, worker lifecycle, interaction orchestration, and product callbacks rather than renderer internals.
+- Semantic model construction and viewport atlas slicing are separate operations.
+- The worker caches the full rich semantic model by source revision.
+- The first response for a source revision transfers every semantic star. Later viewport responses retain those node buffers and transfer only capped atlas metadata plus edge indices.
+- Resident semantic stars are now distinct from visible interaction detail in diagnostics and regression coverage.
 
 ### Next structural target
 
-Replace the viewport-capped atlas scene source with a persistent full semantic galaxy index. Every person, account, feed, and provider aggregate should remain GPU-resident while viewport detail policy controls labels, avatars, links, picking resolution, and expensive effects.
+Replace the compatibility point renderer with the first native galaxy rendering pass. The next slice should add explicit camera state, world-plane projection, GPU-instanced star quads with procedural coronae, and depth-aware picking while preserving the cached semantic model and current product workflows.
 
 Benchmarking is authorized only as repeated consistency runs while other machine tasks remain active. Single-run timing results are not decision evidence.
