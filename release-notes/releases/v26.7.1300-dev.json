@@ -1,0 +1,42 @@
+{
+  "tag": "v26.7.1300-dev",
+  "version": "26.7.1300-dev",
+  "channel": "dev",
+  "dayKey": "26.7.13",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-13T20:44:43.335Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.1200-dev",
+    "previousPublishedDayTag": "v26.7.1200-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "9023047b3f52947d9b29ec39f32e8839e359e36d",
+    "promotedDevCommitSha": null,
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.1300-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.1300-dev"
+    ],
+    "prNumbers": [
+      949,
+      955,
+      957
+    ],
+    "commitSubjects": [
+      "fix: harden the stability control plane (#949)",
+      "fix: enable YouTube terminal sync soaks (#955)",
+      "fix: resolve pinned Node when sourced by zsh (#957)"
+    ]
+  },
+  "release": {
+    "deck": "Harden the stability control plane, youTube terminal sync soaks, and pinned Node when sourced by zsh resolved",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1300-dev\n\nHarden the stability control plane, youTube terminal sync soaks, and pinned Node when sourced by zsh resolved\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
