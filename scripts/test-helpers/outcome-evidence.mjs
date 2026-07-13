@@ -12,6 +12,8 @@ import {
 import { rebuildStoredSoakVerdict } from "../soak-assert.mjs";
 
 const MB = 1024 * 1024;
+const OUTCOME_EVIDENCE_HOURS = 6;
+const OUTCOME_EVIDENCE_SAMPLE_COUNT = OUTCOME_EVIDENCE_HOURS * 60 + 1;
 
 function closedCollectorSessionEventsText(startMs, endMs, collectorRunId) {
   return `${JSON.stringify({
@@ -65,9 +67,9 @@ export function writeStoredSoakEvidence(
     channel,
     appSessionId: `session-${name}-${randomUUID()}`,
   };
-  const endMs = startMs + 5 * 60 * 60_000;
+  const endMs = startMs + OUTCOME_EVIDENCE_HOURS * 60 * 60_000;
   const health = [
-    ...Array.from({ length: 301 }, (_, index) => ({
+    ...Array.from({ length: OUTCOME_EVIDENCE_SAMPLE_COUNT }, (_, index) => ({
       ...identity,
       event: "renderer_heartbeat",
       tsMs: startMs + index * 60_000,
@@ -103,18 +105,21 @@ export function writeStoredSoakEvidence(
         ]
       : []),
   ];
-  const rows = Array.from({ length: 301 }, (_, index) => ({
-    tsMs: startMs + index * 60_000,
-    iso: new Date(startMs + index * 60_000).toISOString(),
-    appPid: 123,
-    appRssKb: 500 * 1024,
-    webkitWebContentCount: 4,
-    webkitWebContentRssKb: 400 * 1024,
-    webkitLargestRssKb: 100 * 1024,
-    webkitOtherRssKb: 20 * 1024,
-    healthFileBytes: 1,
-    healthFileLines: health.length,
-  }));
+  const rows = Array.from(
+    { length: OUTCOME_EVIDENCE_SAMPLE_COUNT },
+    (_, index) => ({
+      tsMs: startMs + index * 60_000,
+      iso: new Date(startMs + index * 60_000).toISOString(),
+      appPid: 123,
+      appRssKb: 500 * 1024,
+      webkitWebContentCount: 4,
+      webkitWebContentRssKb: 400 * 1024,
+      webkitLargestRssKb: 100 * 1024,
+      webkitOtherRssKb: 20 * 1024,
+      healthFileBytes: 1,
+      healthFileLines: health.length,
+    }),
+  );
   writeFileSync(path.join(soakDir, "metrics.tsv"), metricsText(rows));
   writeFileSync(
     path.join(soakDir, "runtime-health.jsonl"),
@@ -161,7 +166,8 @@ export function writeMeasuredOutcomeVerdict(
       : outcome === "verified_neutral"
         ? before
         : 4,
-    sourceStartMs = Date.parse(windowEnd) - 5 * 60 * 60_000,
+    sourceStartMs =
+      Date.parse(windowEnd) - OUTCOME_EVIDENCE_HOURS * 60 * 60_000,
   },
 ) {
   const source = writeStoredSoakEvidence(root, {
@@ -179,7 +185,8 @@ export function writeMeasuredOutcomeVerdict(
       ? null
       : writeStoredSoakEvidence(root, {
           name: `${taskId}-baseline`,
-          startMs: sourceStartMs - 6 * 60 * 60_000,
+          startMs:
+            sourceStartMs - OUTCOME_EVIDENCE_HOURS * 60 * 60_000,
           version: `baseline-${version}`,
           commitSha:
             commitSha === "b".repeat(40) ? "c".repeat(40) : "b".repeat(40),

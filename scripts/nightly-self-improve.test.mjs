@@ -2223,7 +2223,7 @@ test("verification outcomes bind exact verdict semantics, installed build, and s
   const staleWindowVerdict = writeOutcomeVerdict(dir, {
     taskId: "stale-window",
     build: "v26.7.100-dev",
-    windowStart: "2026-07-09T20:00:00Z",
+    windowStart: "2026-07-09T19:00:00Z",
     windowEnd: "2026-07-10T01:00:00Z",
   });
   assert.throws(

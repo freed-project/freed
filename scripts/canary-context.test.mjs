@@ -59,7 +59,7 @@ test("buildCanaryObservationContext binds a healthy soak to exact build and work
     "social-authenticated-gdrive-connected",
   );
   assert.equal(context.windowStart, START);
-  assert.equal(context.sourceHealth.cloudEligibleHours, 5);
+  assert.equal(context.sourceHealth.cloudEligibleHours, 6);
 });
 
 test("buildCanaryObservationContext rejects unhealthy source coverage", () => {
@@ -114,7 +114,7 @@ test("buildCanaryObservationContext cannot replace measured cloud coverage", () 
     ...input(),
     cloudEligibleHours: 999,
   });
-  assert.equal(context.sourceHealth.cloudEligibleHours, 5);
+  assert.equal(context.sourceHealth.cloudEligibleHours, 6);
 });
 
 test("buildCanaryObservationContext cannot relabel the stored workload or host", () => {
@@ -165,7 +165,7 @@ test("buildCanaryObservationContext rejects coverage that no longer matches the 
 test("buildCanaryObservationContext carries complete collector and runtime-health evidence", () => {
   const value = input();
   const context = buildCanaryObservationContext(value);
-  assert.equal(context.sourceHealth.collectorDistinctSampleCount, 301);
+  assert.equal(context.sourceHealth.collectorDistinctSampleCount, 361);
   assert.equal(context.sourceHealth.sampleDensity, 1);
   for (const field of [
     "collectorEventCount",
