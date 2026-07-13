@@ -1445,7 +1445,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           className="absolute inset-0 cursor-grab"
         />
       </div>
-      {import.meta.env.DEV ? (
+      {import.meta.env.DEV || import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1" ? (
         <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-xl border border-[color:rgb(var(--theme-border-rgb)/0.22)] bg-[color:rgb(var(--theme-surface-rgb)/0.78)] px-2 py-2 text-xs text-[color:var(--theme-text-secondary)] shadow-lg backdrop-blur-md sm:left-4 sm:top-4 sm:px-3">
           <span className="hidden font-semibold text-[color:var(--theme-text-primary)] sm:inline">Starfield</span>
           <select
