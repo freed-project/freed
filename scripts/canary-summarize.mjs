@@ -33,6 +33,7 @@ import { fileURLToPath } from "node:url";
 import {
   canaryRegressionTolerances,
   invariantAlarmMeetsMetricContract,
+  MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS,
   STABILITY_METRIC_REGISTRY_VERSION,
   windowDurationsAreComparable,
 } from "./lib/stability-metrics.mjs";
@@ -43,6 +44,7 @@ import {
   computeAppAliveCoverage,
   computeCollectorEventCoverage,
   computeCloudEligibleHours,
+  computeNativeMemoryPressureCoverage,
   computeRuntimeHealthCoverage,
   EVIDENCE_FINGERPRINT_SCHEMA_VERSION,
   MAX_COLLECTOR_CREDITED_GAP_MS,
@@ -53,6 +55,7 @@ import {
   parseMetricsTsv,
   runtimeHealthEvidenceFingerprint,
   runtimeIdentityFromHealthLines,
+  summarizeWorkerIdleTerminations,
 } from "./soak-assert.mjs";
 import {
   COLLECTOR_EVENTS_ARCHIVE_FILENAME,
@@ -313,6 +316,58 @@ function normalizeSourceHealth(
   );
   const runtimeHealthCoverageHealthy =
     sourceHealth.runtimeHealthCoverageHealthy === true;
+  const nativeMemoryPressureSampleCount = Number(
+    sourceHealth.nativeMemoryPressureSampleCount,
+  );
+  const nativeMemoryPressureValidSampleCount = Number(
+    sourceHealth.nativeMemoryPressureValidSampleCount,
+  );
+  const nativeMemoryPressureDistinctSampleCount = Number(
+    sourceHealth.nativeMemoryPressureDistinctSampleCount,
+  );
+  const nativeMemoryPressureExpectedSampleCount = Number(
+    sourceHealth.nativeMemoryPressureExpectedSampleCount,
+  );
+  const nativeMemoryPressureSampleDensity = Number(
+    sourceHealth.nativeMemoryPressureSampleDensity,
+  );
+  const nativeMemoryPressureExpectedIntervalMs = Number(
+    sourceHealth.nativeMemoryPressureExpectedIntervalMs,
+  );
+  const nativeMemoryPressureMaxCreditedGapMs = Number(
+    sourceHealth.nativeMemoryPressureMaxCreditedGapMs,
+  );
+  const nativeMemoryPressureLargestObservedGapMs = Number(
+    sourceHealth.nativeMemoryPressureLargestObservedGapMs,
+  );
+  const nativeMemoryPressureLastFreshnessMs = Number(
+    sourceHealth.nativeMemoryPressureLastFreshnessMs,
+  );
+  const nativeMemoryPressureAppAliveSegmentCount = Number(
+    sourceHealth.nativeMemoryPressureAppAliveSegmentCount,
+  );
+  const nativeMemoryPressureCoveredAppAliveSegmentCount = Number(
+    sourceHealth.nativeMemoryPressureCoveredAppAliveSegmentCount,
+  );
+  const nativeMemoryPressureInvalidSampleCount = Number(
+    sourceHealth.nativeMemoryPressureInvalidSampleCount,
+  );
+  const nativeMemoryPressureDuplicateTimestampCount = Number(
+    sourceHealth.nativeMemoryPressureDuplicateTimestampCount,
+  );
+  const nativeMemoryPressurePageLoadIdCount = Number(
+    sourceHealth.nativeMemoryPressurePageLoadIdCount,
+  );
+  const nativeMemoryPressureRendererGenerationCount = Number(
+    sourceHealth.nativeMemoryPressureRendererGenerationCount,
+  );
+  const nativeMemoryPressureCoverageHealthy =
+    sourceHealth.nativeMemoryPressureCoverageHealthy === true;
+  const appMemoryPressureP95Bytes =
+    sourceHealth.appMemoryPressureP95Bytes === null ||
+    sourceHealth.appMemoryPressureP95Bytes === undefined
+      ? null
+      : Number(sourceHealth.appMemoryPressureP95Bytes);
   const cloudEligibleHours =
     sourceHealth.cloudEligibleHours === null ||
     sourceHealth.cloudEligibleHours === undefined
@@ -568,6 +623,117 @@ function normalizeSourceHealth(
   if (!runtimeHealthCoverageHealthy) {
     errors.push("sourceHealth.runtimeHealthCoverageHealthy must be true");
   }
+  const nativeCountFields = [
+    ["nativeMemoryPressureSampleCount", nativeMemoryPressureSampleCount],
+    [
+      "nativeMemoryPressureValidSampleCount",
+      nativeMemoryPressureValidSampleCount,
+    ],
+    [
+      "nativeMemoryPressureDistinctSampleCount",
+      nativeMemoryPressureDistinctSampleCount,
+    ],
+    [
+      "nativeMemoryPressureExpectedSampleCount",
+      nativeMemoryPressureExpectedSampleCount,
+    ],
+    [
+      "nativeMemoryPressureAppAliveSegmentCount",
+      nativeMemoryPressureAppAliveSegmentCount,
+    ],
+    [
+      "nativeMemoryPressureCoveredAppAliveSegmentCount",
+      nativeMemoryPressureCoveredAppAliveSegmentCount,
+    ],
+    [
+      "nativeMemoryPressureInvalidSampleCount",
+      nativeMemoryPressureInvalidSampleCount,
+    ],
+    [
+      "nativeMemoryPressureDuplicateTimestampCount",
+      nativeMemoryPressureDuplicateTimestampCount,
+    ],
+    [
+      "nativeMemoryPressurePageLoadIdCount",
+      nativeMemoryPressurePageLoadIdCount,
+    ],
+    [
+      "nativeMemoryPressureRendererGenerationCount",
+      nativeMemoryPressureRendererGenerationCount,
+    ],
+  ];
+  for (const [field, value] of nativeCountFields) {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      errors.push(`sourceHealth.${field} must be a non-negative integer`);
+    }
+  }
+  if (
+    !Number.isFinite(nativeMemoryPressureSampleDensity) ||
+    nativeMemoryPressureSampleDensity < 0 ||
+    nativeMemoryPressureSampleDensity > 1.000001
+  ) {
+    errors.push(
+      "sourceHealth.nativeMemoryPressureSampleDensity must be between 0 and 1",
+    );
+  }
+  if (
+    !Number.isFinite(nativeMemoryPressureExpectedIntervalMs) ||
+    nativeMemoryPressureExpectedIntervalMs < 5_000
+  ) {
+    errors.push(
+      "sourceHealth.nativeMemoryPressureExpectedIntervalMs must be at least 5,000",
+    );
+  }
+  if (
+    !Number.isFinite(nativeMemoryPressureMaxCreditedGapMs) ||
+    nativeMemoryPressureMaxCreditedGapMs <= 0 ||
+    nativeMemoryPressureMaxCreditedGapMs > MAX_RUNTIME_HEALTH_CREDITED_GAP_MS
+  ) {
+    errors.push(
+      "sourceHealth.nativeMemoryPressureMaxCreditedGapMs must be within the runtime-health gap limit",
+    );
+  }
+  for (const [field, value] of [
+    [
+      "nativeMemoryPressureLargestObservedGapMs",
+      nativeMemoryPressureLargestObservedGapMs,
+    ],
+    [
+      "nativeMemoryPressureLastFreshnessMs",
+      nativeMemoryPressureLastFreshnessMs,
+    ],
+  ]) {
+    if (!Number.isFinite(value) || value < 0) {
+      errors.push(`sourceHealth.${field} must be non-negative`);
+    }
+  }
+  if (nativeMemoryPressureCoverageHealthy) {
+    if (
+      nativeMemoryPressureDistinctSampleCount < 3 ||
+      nativeMemoryPressureExpectedSampleCount < 3 ||
+      nativeMemoryPressureSampleDensity < MIN_RUNTIME_HEALTH_SAMPLE_DENSITY ||
+      nativeMemoryPressureInvalidSampleCount !== 0 ||
+      nativeMemoryPressureDuplicateTimestampCount !== 0 ||
+      nativeMemoryPressureAppAliveSegmentCount !== 1 ||
+      nativeMemoryPressureCoveredAppAliveSegmentCount !== 1 ||
+      nativeMemoryPressurePageLoadIdCount !== 1 ||
+      nativeMemoryPressureRendererGenerationCount !== 1 ||
+      nativeMemoryPressureLargestObservedGapMs >
+        nativeMemoryPressureMaxCreditedGapMs ||
+      nativeMemoryPressureLastFreshnessMs >
+        nativeMemoryPressureMaxCreditedGapMs ||
+      !Number.isSafeInteger(appMemoryPressureP95Bytes) ||
+      appMemoryPressureP95Bytes < 0
+    ) {
+      errors.push(
+        "sourceHealth native memory-pressure coverage is marked healthy but its samples, generation, gaps, or p95 are invalid",
+      );
+    }
+  } else if (appMemoryPressureP95Bytes !== null) {
+    errors.push(
+      "sourceHealth.appMemoryPressureP95Bytes must be null when native memory-pressure coverage is unhealthy",
+    );
+  }
   if (
     cloudEligibleHours !== null &&
     (!Number.isFinite(cloudEligibleHours) || cloudEligibleHours <= 0)
@@ -640,6 +806,23 @@ function normalizeSourceHealth(
     runtimeHealthAppAliveSegmentCount,
     runtimeHealthCoveredAppAliveSegmentCount,
     runtimeHealthCoverageHealthy,
+    nativeMemoryPressureSampleCount,
+    nativeMemoryPressureValidSampleCount,
+    nativeMemoryPressureDistinctSampleCount,
+    nativeMemoryPressureExpectedSampleCount,
+    nativeMemoryPressureSampleDensity,
+    nativeMemoryPressureExpectedIntervalMs,
+    nativeMemoryPressureMaxCreditedGapMs,
+    nativeMemoryPressureLargestObservedGapMs,
+    nativeMemoryPressureLastFreshnessMs,
+    nativeMemoryPressureAppAliveSegmentCount,
+    nativeMemoryPressureCoveredAppAliveSegmentCount,
+    nativeMemoryPressureInvalidSampleCount,
+    nativeMemoryPressureDuplicateTimestampCount,
+    nativeMemoryPressurePageLoadIdCount,
+    nativeMemoryPressureRendererGenerationCount,
+    nativeMemoryPressureCoverageHealthy,
+    appMemoryPressureP95Bytes,
     cloudEligibleHours,
     evidenceFingerprint: structuredClone(sourceHealth.evidenceFingerprint),
   };
@@ -864,7 +1047,12 @@ export function validateCanaryObservationContext(
 
 export function computeCanarySummary(
   entries,
-  { observationContext, windowStartMs, windowEndMs },
+  {
+    observationContext,
+    windowStartMs,
+    windowEndMs,
+    collectorMetricsText = null,
+  },
 ) {
   const context = validateCanaryObservationContext(observationContext, {
     windowStartMs,
@@ -963,6 +1151,9 @@ export function computeCanarySummary(
   const uploadsUnchanged = uploads.filter((e) => e.headsUnchanged === true);
   const uploadSkips = count((e) => e.event === "cloud_upload_skipped");
   const workerInits = count((e) => e.event === "worker_init");
+  const workerIdleTerminations = summarizeWorkerIdleTerminations(
+    entries.map((entry) => ({ entry })),
+  );
 
   const scrapeByProvider = {};
   for (const e of entries) {
@@ -996,6 +1187,18 @@ export function computeCanarySummary(
       bytes: Number(e.appResidentBytes ?? 0),
     })),
   );
+  const nativeMemoryPressure = collectorMetricsText
+    ? computeNativeMemoryPressureCoverage(
+        entries.map((entry) => ({ entry })),
+        parseMetricsTsv(collectorMetricsText),
+        {
+          collectorExpectedIntervalMs: context.sourceHealth.expectedIntervalMs,
+        },
+      )
+    : {
+        appMemoryPressureP95Bytes:
+          context.sourceHealth.appMemoryPressureP95Bytes,
+      };
 
   const alarmTotal = Object.values(alarmsByName).reduce((sum, n) => sum + n, 0);
   return {
@@ -1032,7 +1235,11 @@ export function computeCanarySummary(
           ? null
           : Number((uploadSkips / cloudHours).toFixed(2)),
       workerInitsPerHour: Number((workerInits / appAliveHours).toFixed(2)),
+      workerIdleTerminationsByReason: workerIdleTerminations.byReason,
+      workerIdleTerminationInvalidReasonCount:
+        workerIdleTerminations.invalidReasonCount,
       scrapeByProvider,
+      appMemoryPressureP95Bytes: nativeMemoryPressure.appMemoryPressureP95Bytes,
       peakAppResidentBytes,
       peakWebkitLargestResidentBytes,
       idleGrowthMbPerHour:
@@ -1067,6 +1274,11 @@ export function validateCanaryRawEvidence(
     {
       collectorExpectedIntervalMs: expectedIntervalMs,
     },
+  );
+  const nativeMemoryPressureCoverage = computeNativeMemoryPressureCoverage(
+    healthLines,
+    metricsRows,
+    { collectorExpectedIntervalMs: expectedIntervalMs },
   );
   const runtimeHealthMalformedLineCount =
     entries.sourceDiagnostics?.malformedLines?.length ?? 0;
@@ -1135,6 +1347,7 @@ export function validateCanaryRawEvidence(
       runtimeHealthCoverage.runtimeHealthCoveredAppAliveSegmentCount,
     runtimeHealthCoverageHealthy:
       runtimeHealthCoverage.runtimeHealthCoverageHealthy,
+    ...nativeMemoryPressureCoverage,
     cloudEligibleHours,
   };
   const runtimeHealthSourceFields = new Set([
@@ -1178,6 +1391,23 @@ export function validateCanaryRawEvidence(
     "collectorEventEvidencePresent",
     "collectorEventEvidenceSchemaVersion",
     "runtimeHealthMalformedLineCount",
+    "nativeMemoryPressureSampleCount",
+    "nativeMemoryPressureValidSampleCount",
+    "nativeMemoryPressureDistinctSampleCount",
+    "nativeMemoryPressureExpectedSampleCount",
+    "nativeMemoryPressureSampleDensity",
+    "nativeMemoryPressureExpectedIntervalMs",
+    "nativeMemoryPressureMaxCreditedGapMs",
+    "nativeMemoryPressureLargestObservedGapMs",
+    "nativeMemoryPressureLastFreshnessMs",
+    "nativeMemoryPressureAppAliveSegmentCount",
+    "nativeMemoryPressureCoveredAppAliveSegmentCount",
+    "nativeMemoryPressureInvalidSampleCount",
+    "nativeMemoryPressureDuplicateTimestampCount",
+    "nativeMemoryPressurePageLoadIdCount",
+    "nativeMemoryPressureRendererGenerationCount",
+    "nativeMemoryPressureCoverageHealthy",
+    "appMemoryPressureP95Bytes",
     "cloudEligibleHours",
   ];
   for (const field of sourceHealthFields) {
@@ -1336,6 +1566,7 @@ export function validateStoredCanaryRecordEvidence(canary, recordPath) {
     observationContext,
     windowStartMs: Date.parse(canary.windowStart),
     windowEndMs: Date.parse(canary.windowEnd),
+    collectorMetricsText: collectorArtifact.text,
   });
   for (const [key, value] of Object.entries(recomputed)) {
     if (JSON.stringify(canary[key]) !== JSON.stringify(value)) {
@@ -1507,14 +1738,23 @@ export function comparableCanarySummaries(
   const currentKey = comparisonContextKey(summary);
   if (!currentKey) return [];
   const currentStartMs = Date.parse(summary.windowStart);
-  const currentEndMs = Date.parse(summary.windowEnd);
-  const currentDurationMs = currentEndMs - currentStartMs;
-  if (!Number.isFinite(currentDurationMs) || currentDurationMs <= 0) return [];
+  const currentAppAliveHours = Number(summary.sourceHealth?.appAliveHours);
+  const currentDurationMs = currentAppAliveHours * 3_600_000;
+  if (
+    !Number.isFinite(currentStartMs) ||
+    !Number.isFinite(currentAppAliveHours) ||
+    currentAppAliveHours < MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS
+  ) {
+    return [];
+  }
   const seenObservations = new Set();
   const eligible = trailingSummaries
     .filter((candidate) => {
       const candidateStartMs = Date.parse(candidate.windowStart);
       const candidateEndMs = Date.parse(candidate.windowEnd);
+      const candidateAppAliveHours = Number(
+        candidate.sourceHealth?.appAliveHours,
+      );
       return (
         candidate.schemaVersion === summary.schemaVersion &&
         candidate.buildIdentity?.commitSha &&
@@ -1529,9 +1769,11 @@ export function comparableCanarySummaries(
         Number.isFinite(candidateEndMs) &&
         Number.isFinite(candidateStartMs) &&
         candidateEndMs > candidateStartMs &&
+        Number.isFinite(candidateAppAliveHours) &&
+        candidateAppAliveHours >= MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS &&
         windowDurationsAreComparable(
           currentDurationMs,
-          candidateEndMs - candidateStartMs,
+          candidateAppAliveHours * 3_600_000,
         ) &&
         candidateEndMs <= currentStartMs &&
         candidate.observationId !== summary.observationId
@@ -1579,6 +1821,7 @@ export function compareCanarySummary(
             observationId: candidate.observationId,
             windowStart: candidate.windowStart,
             windowEnd: candidate.windowEnd,
+            appAliveHours: candidate.sourceHealth?.appAliveHours,
             buildIdentity: candidate.buildIdentity,
             evidenceFingerprint: candidate.sourceHealth?.evidenceFingerprint,
           },
@@ -1917,6 +2160,7 @@ function main() {
     observationContext: context,
     windowStartMs: sinceMs,
     windowEndMs: untilMs,
+    collectorMetricsText,
   });
   const trailing = loadTrailingSummaries(args.ledgerDir, version);
   const comparison = compareCanarySummary(summary, trailing);

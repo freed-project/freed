@@ -29,6 +29,11 @@ Measure comparable generations, not a dramatic line drawn through unrelated proc
 1. Compare matched build and scenario cohorts. Require enough samples and duration for the registered metric.
 2. Use robust summaries such as median, percentile, and median absolute deviation where the registry specifies them.
 3. Report peak, settled baseline, growth within one generation, return-to-baseline delay, worker INIT rate, and binary-copy amplification separately.
+   For worker lifecycle outcomes, pair `worker-init-rate` with the automatic
+   `app-memory-pressure-p95` guardrail. It is the nearest-rank p95 of
+   `appMemoryPressureBytes` from dense native samples inside one credited
+   app-alive, page-load, and renderer generation. It permits at most 128 MiB of
+   growth. Treat it as app-level net pressure, not worker-owned bytes.
 4. Return `inconclusive` for mixed states, process identity gaps, insufficient duration, source failure, or noncomparable cohorts.
 5. Do not tune watchdog thresholds in response to a memory result.
 

@@ -212,6 +212,39 @@ export function buildCanaryObservationContext({
         verdict.sourceHealth.runtimeHealthCoveredAppAliveSegmentCount,
       runtimeHealthCoverageHealthy:
         verdict.sourceHealth.runtimeHealthCoverageHealthy,
+      nativeMemoryPressureSampleCount:
+        verdict.sourceHealth.nativeMemoryPressureSampleCount,
+      nativeMemoryPressureValidSampleCount:
+        verdict.sourceHealth.nativeMemoryPressureValidSampleCount,
+      nativeMemoryPressureDistinctSampleCount:
+        verdict.sourceHealth.nativeMemoryPressureDistinctSampleCount,
+      nativeMemoryPressureExpectedSampleCount:
+        verdict.sourceHealth.nativeMemoryPressureExpectedSampleCount,
+      nativeMemoryPressureSampleDensity:
+        verdict.sourceHealth.nativeMemoryPressureSampleDensity,
+      nativeMemoryPressureExpectedIntervalMs:
+        verdict.sourceHealth.nativeMemoryPressureExpectedIntervalMs,
+      nativeMemoryPressureMaxCreditedGapMs:
+        verdict.sourceHealth.nativeMemoryPressureMaxCreditedGapMs,
+      nativeMemoryPressureLargestObservedGapMs:
+        verdict.sourceHealth.nativeMemoryPressureLargestObservedGapMs,
+      nativeMemoryPressureLastFreshnessMs:
+        verdict.sourceHealth.nativeMemoryPressureLastFreshnessMs,
+      nativeMemoryPressureAppAliveSegmentCount:
+        verdict.sourceHealth.nativeMemoryPressureAppAliveSegmentCount,
+      nativeMemoryPressureCoveredAppAliveSegmentCount:
+        verdict.sourceHealth.nativeMemoryPressureCoveredAppAliveSegmentCount,
+      nativeMemoryPressureInvalidSampleCount:
+        verdict.sourceHealth.nativeMemoryPressureInvalidSampleCount,
+      nativeMemoryPressureDuplicateTimestampCount:
+        verdict.sourceHealth.nativeMemoryPressureDuplicateTimestampCount,
+      nativeMemoryPressurePageLoadIdCount:
+        verdict.sourceHealth.nativeMemoryPressurePageLoadIdCount,
+      nativeMemoryPressureRendererGenerationCount:
+        verdict.sourceHealth.nativeMemoryPressureRendererGenerationCount,
+      nativeMemoryPressureCoverageHealthy:
+        verdict.sourceHealth.nativeMemoryPressureCoverageHealthy,
+      appMemoryPressureP95Bytes: verdict.sourceHealth.appMemoryPressureP95Bytes,
       cloudEligibleHours: verdict.sourceHealth.cloudEligibleHours ?? null,
       evidenceFingerprint: verdict.evidenceFingerprint,
     },

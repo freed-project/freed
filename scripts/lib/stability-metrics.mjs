@@ -6,7 +6,8 @@
  * surfaces cannot quietly invent different definitions for the same symptom.
  */
 
-export const STABILITY_METRIC_REGISTRY_VERSION = 3;
+export const STABILITY_METRIC_REGISTRY_VERSION = 4;
+export const MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS = 6;
 export const MIN_COMPARABLE_WINDOW_DURATION_RATIO = 0.8;
 export const MAX_COMPARABLE_WINDOW_DURATION_RATIO = 1.25;
 
@@ -204,6 +205,7 @@ export const STABILITY_METRICS = Object.freeze([
       minHours: 1,
     }),
     triageBucketId: "worker-churn",
+    outcomeGuardrailMetricIds: Object.freeze(["app-memory-pressure-p95"]),
     alarmNames: Object.freeze([]),
     canaryMetrics: Object.freeze([
       Object.freeze({
@@ -213,6 +215,30 @@ export const STABILITY_METRICS = Object.freeze([
         minimum: 0,
         denominator: "appAliveHours",
         tolerance: Object.freeze({ kind: "ratio", allowance: 1.5 }),
+      }),
+    ]),
+  }),
+  Object.freeze({
+    id: "app-memory-pressure-p95",
+    soakAssertionId: null,
+    outcomeMeasurement: Object.freeze({
+      unit: "bytes",
+      direction: "lower",
+      tolerance: 128 * 1024 * 1024,
+    }),
+    target: null,
+    triageBucketId: "memory-growth",
+    alarmNames: Object.freeze([]),
+    canaryMetrics: Object.freeze([
+      Object.freeze({
+        name: "appMemoryPressureP95Bytes",
+        unit: "bytes",
+        direction: "lower",
+        minimum: 0,
+        tolerance: Object.freeze({
+          kind: "absolute",
+          allowance: 128 * 1024 * 1024,
+        }),
       }),
     ]),
   }),

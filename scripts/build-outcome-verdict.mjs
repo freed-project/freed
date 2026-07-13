@@ -12,6 +12,7 @@ import {
 } from "./canary-summarize.mjs";
 import {
   canaryMetricContract,
+  MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS,
   stabilityMetricById,
   STABILITY_METRIC_REGISTRY_VERSION,
   windowDurationsAreComparable,
@@ -48,6 +49,7 @@ Effect options:
   Canary neutral/regression: --metric <registered canary metric name>
 
 Before, after, unit, direction, and tolerance are derived from evidence and the checked-in metric registry.
+Registered guardrails are automatic. Selecting worker-init-rate also enforces app-memory-pressure-p95.
 `;
 }
 
@@ -291,15 +293,6 @@ function validateSoakVerdict(
       `${label} uses an unsupported soak or metric registry schema.`,
     );
   }
-  if (outcome) {
-    const expectedStatus = OUTCOME_STATUS[outcome];
-    if (
-      verdict.status !== expectedStatus ||
-      verdict.pass !== (expectedStatus === "pass")
-    ) {
-      throw new Error(`${label} status does not match the requested outcome.`);
-    }
-  }
   const window = evidenceWindow(verdict, label);
   const buildIdentity = buildIdentityFromRuntime(
     verdict.runtimeIdentity,
@@ -324,10 +317,29 @@ function validateSoakVerdict(
     );
   }
   const healthy = verdict?.sourceHealth?.healthy === true;
+  const appAliveHours = Number(verdict?.sourceHealth?.appAliveHours);
+  if (
+    !Number.isFinite(appAliveHours) ||
+    appAliveHours < MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS
+  ) {
+    throw new Error(
+      `${label} requires at least ${MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS.toLocaleString()} credited app-alive hours for a lifecycle outcome or measured baseline.`,
+    );
+  }
+  if (outcome) {
+    const expectedStatus = OUTCOME_STATUS[outcome];
+    const statusAllowed =
+      outcome === "regressed"
+        ? verdict.status === "pass" || verdict.status === "fail"
+        : verdict.status === expectedStatus;
+    if (!statusAllowed || verdict.pass !== (verdict.status === "pass")) {
+      throw new Error(`${label} status does not match the requested outcome.`);
+    }
+  }
   if (requireHealthy && !healthy) {
     throw new Error(`${label} requires healthy collector coverage.`);
   }
-  return { window, buildIdentity, fingerprint, healthy };
+  return { window, buildIdentity, fingerprint, healthy, appAliveHours };
 }
 
 function validatedSoakMeasurement(verdict, metricId, label) {
@@ -391,28 +403,18 @@ export function canonicalOutcomeDelta(before, after) {
   );
 }
 
-function assertMeasuredOutcome(
-  outcome,
-  { before, after, direction, tolerance },
-) {
+function measurementAssessment({ before, after, direction, tolerance }) {
   const delta = canonicalOutcomeDelta(before, after);
   const signedImprovement = direction === "lower" ? -delta : delta;
-  if (outcome === "verified_effective" && signedImprovement <= tolerance) {
-    throw new Error(
-      "verified_effective requires evidence-derived improvement beyond registry tolerance.",
-    );
-  }
-  if (outcome === "verified_neutral" && Math.abs(delta) > tolerance) {
-    throw new Error(
-      "verified_neutral requires an evidence-derived delta within registry tolerance.",
-    );
-  }
-  if (outcome === "regressed" && signedImprovement >= -tolerance) {
-    throw new Error(
-      "regressed requires evidence-derived deterioration beyond registry tolerance.",
-    );
-  }
-  return delta;
+  return {
+    delta,
+    assessment:
+      signedImprovement > tolerance
+        ? "effective"
+        : signedImprovement < -tolerance
+          ? "regressed"
+          : "neutral",
+  };
 }
 
 function deriveSoakEffect(rawVerdict, baselineArtifact, args) {
@@ -453,13 +455,16 @@ function deriveSoakEffect(rawVerdict, baselineArtifact, args) {
       "Baseline and measured soak workload, provider cohort, document size, and host must match.",
     );
   }
-  const currentSpanMs =
-    current.window.windowEndMs - current.window.windowStartMs;
-  const baselineSpanMs =
-    baseline.window.windowEndMs - baseline.window.windowStartMs;
-  if (!windowDurationsAreComparable(currentSpanMs, baselineSpanMs)) {
+  const currentCreditedDurationMs = current.appAliveHours * 3_600_000;
+  const baselineCreditedDurationMs = baseline.appAliveHours * 3_600_000;
+  if (
+    !windowDurationsAreComparable(
+      currentCreditedDurationMs,
+      baselineCreditedDurationMs,
+    )
+  ) {
     throw new Error(
-      "Baseline and measured soak windows must have comparable duration.",
+      "Baseline and measured soak windows must have comparable credited app-alive duration.",
     );
   }
   const beforeMeasurement = validatedSoakMeasurement(
@@ -480,20 +485,115 @@ function deriveSoakEffect(rawVerdict, baselineArtifact, args) {
   }
   const before = canonicalOutcomeNumber(beforeMeasurement.value);
   const after = canonicalOutcomeNumber(afterMeasurement.value);
-  const delta = assertMeasuredOutcome(args.outcome, {
+  const primaryAssessment = measurementAssessment({
     before,
     after,
     direction: contract.direction,
     tolerance: contract.tolerance,
   });
+  const primaryEffect = {
+    metric: args.metric,
+    before,
+    after,
+    delta: primaryAssessment.delta,
+    unit: contract.unit,
+  };
+  const guardrails = (
+    afterMeasurement.metricContract.outcomeGuardrailMetricIds ?? []
+  ).map((metricId) => {
+    const beforeGuardrail = validatedSoakMeasurement(
+      baselineArtifact.value,
+      metricId,
+      "Baseline soak verdict",
+    );
+    const afterGuardrail = validatedSoakMeasurement(
+      rawVerdict,
+      metricId,
+      "Raw soak verdict",
+    );
+    if (
+      JSON.stringify(beforeGuardrail.contract) !==
+      JSON.stringify(afterGuardrail.contract)
+    ) {
+      throw new Error(
+        `Baseline and measured soak ${metricId} guardrail contracts do not match.`,
+      );
+    }
+    const guardrailBefore = canonicalOutcomeNumber(beforeGuardrail.value);
+    const guardrailAfter = canonicalOutcomeNumber(afterGuardrail.value);
+    const assessment = measurementAssessment({
+      before: guardrailBefore,
+      after: guardrailAfter,
+      direction: afterGuardrail.contract.direction,
+      tolerance: afterGuardrail.contract.tolerance,
+    });
+    return {
+      metric: metricId,
+      before: guardrailBefore,
+      after: guardrailAfter,
+      delta: assessment.delta,
+      unit: afterGuardrail.contract.unit,
+      direction: afterGuardrail.contract.direction,
+      tolerance: afterGuardrail.contract.tolerance,
+      assessment: assessment.assessment,
+    };
+  });
+  const regressedGuardrail = guardrails.find(
+    (guardrail) => guardrail.assessment === "regressed",
+  );
+  if (
+    args.outcome === "verified_effective" &&
+    (primaryAssessment.assessment !== "effective" || regressedGuardrail)
+  ) {
+    throw new Error(
+      "verified_effective requires primary improvement beyond tolerance and no registered guardrail regression.",
+    );
+  }
+  if (
+    args.outcome === "verified_neutral" &&
+    (primaryAssessment.assessment !== "neutral" || regressedGuardrail)
+  ) {
+    throw new Error(
+      "verified_neutral requires a neutral primary effect and no registered guardrail regression.",
+    );
+  }
+  if (
+    args.outcome === "regressed" &&
+    primaryAssessment.assessment !== "regressed" &&
+    !regressedGuardrail
+  ) {
+    throw new Error(
+      "regressed requires deterioration beyond tolerance in the primary metric or a registered guardrail.",
+    );
+  }
+  const decisiveEffect =
+    args.outcome === "regressed" &&
+    primaryAssessment.assessment !== "regressed" &&
+    regressedGuardrail
+      ? {
+          metric: regressedGuardrail.metric,
+          before: regressedGuardrail.before,
+          after: regressedGuardrail.after,
+          delta: regressedGuardrail.delta,
+          unit: regressedGuardrail.unit,
+        }
+      : primaryEffect;
   return {
-    effect: { metric: args.metric, before, after, delta, unit: contract.unit },
+    effect: decisiveEffect,
     effectAssessment: {
       method: "registered-soak-baseline",
+      primaryMetric: args.metric,
+      primaryEffect,
+      primaryAssessment: primaryAssessment.assessment,
       direction: contract.direction,
       tolerance: contract.tolerance,
+      guardrails,
       metricRegistryVersion: STABILITY_METRIC_REGISTRY_VERSION,
       comparisonContext: currentContext,
+      creditedAppAliveHours: {
+        baseline: baseline.appAliveHours,
+        measured: current.appAliveHours,
+      },
       baselineReference: {
         kind: "soak",
         path: baselineArtifact.path,
@@ -554,6 +654,15 @@ function validateCanarySource(canary, args, sourcePath) {
     canary?.sourceHealth?.evidenceFingerprint,
     "Canary verdict",
   );
+  const appAliveHours = Number(canary?.sourceHealth?.appAliveHours);
+  if (
+    !Number.isFinite(appAliveHours) ||
+    appAliveHours < MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS
+  ) {
+    throw new Error(
+      `Canary verdict requires at least ${MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS.toLocaleString()} credited app-alive hours for a lifecycle outcome.`,
+    );
+  }
   return { window, buildIdentity, fingerprint };
 }
 
@@ -735,7 +844,8 @@ export function validateOutcomeVerdictProvenance(verdict) {
     sourceKind: verdict.sourceVerdict.kind,
     taskId: verdict.taskId,
     outcome: verdict.outcome,
-    metric: verdict.effect?.metric ?? "",
+    metric:
+      verdict.effectAssessment?.primaryMetric ?? verdict.effect?.metric ?? "",
     baselineReference: verdict.effectAssessment?.baselineReference?.path ?? "",
   });
   if (

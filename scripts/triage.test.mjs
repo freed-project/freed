@@ -58,7 +58,7 @@ function attributableAlarm(count, lastTsMs, evidence = []) {
 function validVerdict(assertions, windowEnd = NOW) {
   return {
     schemaVersion: 1,
-    metricRegistryVersion: 3,
+    metricRegistryVersion: 4,
     sourceHealth: { healthy: true },
     runtimeIdentity: {
       attributable: true,
@@ -128,6 +128,23 @@ function validCanaryRecord({
     runtimeHealthAppAliveSegmentCount: 1,
     runtimeHealthCoveredAppAliveSegmentCount: 1,
     runtimeHealthCoverageHealthy: true,
+    nativeMemoryPressureSampleCount: 61,
+    nativeMemoryPressureValidSampleCount: 61,
+    nativeMemoryPressureDistinctSampleCount: 61,
+    nativeMemoryPressureExpectedSampleCount: 60,
+    nativeMemoryPressureSampleDensity: 1,
+    nativeMemoryPressureExpectedIntervalMs: 60_000,
+    nativeMemoryPressureMaxCreditedGapMs: 150_000,
+    nativeMemoryPressureLargestObservedGapMs: 60_000,
+    nativeMemoryPressureLastFreshnessMs: 0,
+    nativeMemoryPressureAppAliveSegmentCount: 1,
+    nativeMemoryPressureCoveredAppAliveSegmentCount: 1,
+    nativeMemoryPressureInvalidSampleCount: 0,
+    nativeMemoryPressureDuplicateTimestampCount: 0,
+    nativeMemoryPressurePageLoadIdCount: 1,
+    nativeMemoryPressureRendererGenerationCount: 1,
+    nativeMemoryPressureCoverageHealthy: true,
+    appMemoryPressureP95Bytes: 700 * 1024 * 1024,
     cloudEligibleHours: null,
   };
   const attribution = {
@@ -162,7 +179,7 @@ function validCanaryRecord({
   });
   return {
     schemaVersion: 3,
-    metricRegistryVersion: 3,
+    metricRegistryVersion: 4,
     version,
     buildIdentity,
     runtimeIdentity,

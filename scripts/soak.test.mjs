@@ -41,6 +41,7 @@ import {
   assertEventCountZero,
   assertFootprintSlope,
   assertGuardedCounters,
+  assertWorkerIdleTerminationContract,
   assertWorkerInitRate,
   assertWebkitReturnsToBaseline,
   buildCompositeEvidenceFingerprint,
@@ -50,6 +51,7 @@ import {
   computeAppAliveCoverage,
   computeCloudEligibleHours,
   computeCollectorEventCoverage,
+  computeNativeMemoryPressureCoverage,
   computeRuntimeHealthCoverage,
   footprintSlopeMbPerHour,
   parseCollectorEventsJsonl,
@@ -57,6 +59,7 @@ import {
   readHealthLines,
   runtimeHealthEvidenceFingerprint,
   runtimeIdentityFromHealthLines,
+  summarizeWorkerIdleTerminations,
 } from "./soak-assert.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -141,6 +144,17 @@ function healthySoakEvidence(dir) {
         event: "renderer_heartbeat",
         tsMs: start + index * 60_000,
         nativeFootprintBytes: 1_000 * MB,
+      }),
+    ),
+    ...Array.from({ length: 301 }, (_, index) =>
+      withRuntimeIdentity({
+        event: "native_runtime_memory_sample",
+        tsMs: start + index * 60_000,
+        appMemoryPressureBytes: (700 + (index % 20)) * MB,
+        memoryHighBytes: 4 * 1024 * MB,
+        memoryCriticalBytes: 6 * 1024 * MB,
+        pageLoadId: "page-1",
+        rendererGeneration: 1,
       }),
     ),
     withRuntimeIdentity({
@@ -1833,6 +1847,143 @@ test("worker INIT rate fails closed without attributable one-hour coverage", () 
   assert.match(missingDenominator.detail, /no valid app-alive duration/);
 });
 
+test("worker lifecycle events require attribution and use a fixed reason summary", () => {
+  const lines = [
+    {
+      entry: withRuntimeIdentity({
+        event: "worker_idle_terminated",
+        reason: "quiet_window",
+        tsMs: 1,
+      }),
+      line: 1,
+      raw: "{quiet}",
+    },
+    {
+      entry: withRuntimeIdentity({
+        event: "worker_idle_terminated",
+        reason: "pending_request_retry",
+        tsMs: 2,
+      }),
+      line: 2,
+      raw: "{retry}",
+    },
+    {
+      entry: withRuntimeIdentity({
+        event: "worker_idle_terminated",
+        reason: "request_timeout_cleanup",
+        tsMs: 3,
+      }),
+      line: 3,
+      raw: "{timeout}",
+    },
+    {
+      entry: withRuntimeIdentity({ event: "worker_init_recovery", tsMs: 4 }),
+      line: 4,
+      raw: "{recovery}",
+    },
+  ];
+  assert.equal(runtimeIdentityFromHealthLines(lines).status, "attributable");
+  assert.deepEqual(summarizeWorkerIdleTerminations(lines), {
+    total: 3,
+    byReason: {
+      quiet_window: 1,
+      pending_request_retry: 1,
+      request_timeout_cleanup: 1,
+    },
+    invalidReasonCount: 0,
+  });
+  assert.equal(
+    assertWorkerIdleTerminationContract(lines, "runtime-health.jsonl").status,
+    "pass",
+  );
+
+  const untagged = {
+    entry: { event: "worker_init_recovery", tsMs: 5 },
+    line: 5,
+    raw: "{untagged}",
+  };
+  assert.equal(
+    runtimeIdentityFromHealthLines([...lines, untagged]).status,
+    "incomplete",
+  );
+  const invalid = [
+    ...lines,
+    {
+      entry: withRuntimeIdentity({
+        event: "worker_idle_terminated",
+        reason: "mystery",
+        tsMs: 6,
+      }),
+      line: 6,
+      raw: "{invalid}",
+    },
+  ];
+  const invalidAssertion = assertWorkerIdleTerminationContract(
+    invalid,
+    "runtime-health.jsonl",
+  );
+  assert.equal(invalidAssertion.status, "inconclusive");
+  assert.equal(invalidAssertion.violations.length, 1);
+});
+
+test("native memory pressure p95 requires dense credited single-generation evidence", () => {
+  const start = 1_700_000_000_000;
+  const metricsRows = Array.from({ length: 11 }, (_, index) => ({
+    tsMs: start + index * 60_000,
+    appPid: 1,
+  }));
+  const memoryLines = Array.from({ length: 11 }, (_, index) => ({
+    entry: withRuntimeIdentity({
+      event: "native_runtime_memory_sample",
+      tsMs: start + index * 60_000,
+      appMemoryPressureBytes: (100 + index) * MB,
+      memoryHighBytes: 4 * 1024 * MB,
+      memoryCriticalBytes: 6 * 1024 * MB,
+      pageLoadId: "page-1",
+      rendererGeneration: 1,
+    }),
+  }));
+  const outside = {
+    entry: withRuntimeIdentity({
+      ...memoryLines.at(-1).entry,
+      tsMs: start + 20 * 60_000,
+      appMemoryPressureBytes: 9_999 * MB,
+    }),
+  };
+  const healthy = computeNativeMemoryPressureCoverage(
+    [...memoryLines, outside],
+    metricsRows,
+  );
+  assert.equal(healthy.nativeMemoryPressureCoverageHealthy, true);
+  assert.equal(healthy.nativeMemoryPressureDistinctSampleCount, 11);
+  assert.equal(healthy.appMemoryPressureP95Bytes, 110 * MB);
+
+  const duplicate = computeNativeMemoryPressureCoverage(
+    [...memoryLines, memoryLines[0]],
+    metricsRows,
+  );
+  assert.equal(duplicate.nativeMemoryPressureCoverageHealthy, false);
+  assert.equal(duplicate.nativeMemoryPressureDuplicateTimestampCount, 1);
+  assert.equal(duplicate.appMemoryPressureP95Bytes, null);
+
+  const mixedGeneration = structuredClone(memoryLines);
+  mixedGeneration.at(-1).entry.rendererGeneration = 2;
+  assert.equal(
+    computeNativeMemoryPressureCoverage(mixedGeneration, metricsRows)
+      .nativeMemoryPressureCoverageHealthy,
+    false,
+  );
+
+  const missingField = structuredClone(memoryLines);
+  delete missingField[4].entry.memoryHighBytes;
+  const invalid = computeNativeMemoryPressureCoverage(
+    missingField,
+    metricsRows,
+  );
+  assert.equal(invalid.nativeMemoryPressureCoverageHealthy, false);
+  assert.equal(invalid.nativeMemoryPressureInvalidSampleCount, 1);
+});
+
 test("app-alive coverage rejects empty and mostly-dead collector windows", () => {
   assert.equal(computeAppAliveCoverage([]).healthy, false);
   const coverage = computeAppAliveCoverage([
@@ -2175,7 +2326,7 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   assert.equal(verdict.schemaVersion, 1);
   assert.equal(verdict.windowStart, new Date(measurementStartMs).toISOString());
   assert.equal(verdict.windowEnd, new Date(measurementEndMs).toISOString());
-  assert.equal(verdict.metricRegistryVersion, 3);
+  assert.equal(verdict.metricRegistryVersion, 4);
   assert.equal(verdict.pass, true);
   assert.equal(verdict.status, "pass");
   assert.equal(verdict.failures, 0);
@@ -2192,6 +2343,7 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   assert.equal(verdict.sourceHealth.cloudEligibleHours, 5);
   assert.equal(verdict.sourceHealth.sampleDensity, 1);
   assert.equal(verdict.sourceHealth.runtimeHealthCoverageHealthy, true);
+  assert.equal(verdict.sourceHealth.nativeMemoryPressureCoverageHealthy, true);
   assert.equal(verdict.sourceHealth.collectorEventCoverageHealthy, true);
   assert.equal(verdict.sourceHealth.collectorEventCount, 2);
   assert.equal(verdict.sourceHealth.runtimeHealthDistinctSampleCount, 301);
@@ -2214,8 +2366,10 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   assert.equal(byId.renderer_recoveries, "pass");
   assert.equal(byId.stale_heartbeats, "pass");
   assert.equal(byId.worker_init_rate, "pass");
+  assert.equal(byId.worker_idle_termination_contract, "pass");
   assert.equal(byId.uploads_unchanged_heads, "pass");
   assert.equal(verdict.measurements["worker-init-rate"].value, 0);
+  assert.equal(verdict.measurements["app-memory-pressure-p95"].value, 718 * MB);
 });
 
 test("buildVerdict does not treat legacy or missing collector-event evidence as a healthy empty stream", () => {
@@ -2373,7 +2527,9 @@ test("buildVerdict keeps zero and rate assertions inconclusive for a thin runtim
     ({ entry }) => entry.event === "renderer_heartbeat",
   );
   const thinLines = completeLines.filter(
-    ({ entry }) => entry.event !== "renderer_heartbeat",
+    ({ entry }) =>
+      entry.event !== "renderer_heartbeat" &&
+      entry.event !== "native_runtime_memory_sample",
   );
   thinLines.push(heartbeatLines[0], heartbeatLines.at(-1));
   const verdict = buildVerdict({
@@ -2401,6 +2557,7 @@ test("buildVerdict keeps zero and rate assertions inconclusive for a thin runtim
   assert.equal(byId.renderer_recoveries, "inconclusive");
   assert.equal(byId.stale_heartbeats, "inconclusive");
   assert.equal(byId.worker_init_rate, "inconclusive");
+  assert.equal(byId.worker_idle_termination_contract, "inconclusive");
   assert.equal(byId.uploads_unchanged_heads, "inconclusive");
   assert.equal(byId.preflight_kills, "inconclusive");
   assert.equal(byId.scrape_zero_persist, "inconclusive");

@@ -188,6 +188,16 @@ function canaryEntries(uploadsUnchanged) {
     },
     { event: "worker_init", durationMs: 1000, docBytes: 1, tsMs: start + 5000 },
     {
+      event: "worker_idle_terminated",
+      reason: "quiet_window",
+      tsMs: start + 5_100,
+    },
+    {
+      event: "worker_idle_terminated",
+      reason: "pending_request_retry",
+      tsMs: start + 5_200,
+    },
+    {
       event: "scrape_outcome",
       provider: "facebook",
       stage: "ok",
@@ -303,6 +313,40 @@ function canaryContext(version, windowStartMs, windowEndMs, overrides = {}) {
       overrides.runtimeHealthCoveredAppAliveSegmentCount ?? 1,
     runtimeHealthCoverageHealthy:
       overrides.runtimeHealthCoverageHealthy ?? true,
+    nativeMemoryPressureSampleCount:
+      overrides.nativeMemoryPressureSampleCount ?? expectedSampleCount,
+    nativeMemoryPressureValidSampleCount:
+      overrides.nativeMemoryPressureValidSampleCount ?? expectedSampleCount,
+    nativeMemoryPressureDistinctSampleCount:
+      overrides.nativeMemoryPressureDistinctSampleCount ?? expectedSampleCount,
+    nativeMemoryPressureExpectedSampleCount:
+      overrides.nativeMemoryPressureExpectedSampleCount ?? expectedSampleCount,
+    nativeMemoryPressureSampleDensity:
+      overrides.nativeMemoryPressureSampleDensity ?? 1,
+    nativeMemoryPressureExpectedIntervalMs:
+      overrides.nativeMemoryPressureExpectedIntervalMs ?? 60_000,
+    nativeMemoryPressureMaxCreditedGapMs:
+      overrides.nativeMemoryPressureMaxCreditedGapMs ?? 150_000,
+    nativeMemoryPressureLargestObservedGapMs:
+      overrides.nativeMemoryPressureLargestObservedGapMs ?? 60_000,
+    nativeMemoryPressureLastFreshnessMs:
+      overrides.nativeMemoryPressureLastFreshnessMs ?? 60_000,
+    nativeMemoryPressureAppAliveSegmentCount:
+      overrides.nativeMemoryPressureAppAliveSegmentCount ?? 1,
+    nativeMemoryPressureCoveredAppAliveSegmentCount:
+      overrides.nativeMemoryPressureCoveredAppAliveSegmentCount ?? 1,
+    nativeMemoryPressureInvalidSampleCount:
+      overrides.nativeMemoryPressureInvalidSampleCount ?? 0,
+    nativeMemoryPressureDuplicateTimestampCount:
+      overrides.nativeMemoryPressureDuplicateTimestampCount ?? 0,
+    nativeMemoryPressurePageLoadIdCount:
+      overrides.nativeMemoryPressurePageLoadIdCount ?? 1,
+    nativeMemoryPressureRendererGenerationCount:
+      overrides.nativeMemoryPressureRendererGenerationCount ?? 1,
+    nativeMemoryPressureCoverageHealthy:
+      overrides.nativeMemoryPressureCoverageHealthy ?? true,
+    appMemoryPressureP95Bytes:
+      overrides.appMemoryPressureP95Bytes ?? 700 * 1024 * 1024,
     cloudEligibleHours: Object.hasOwn(overrides, "cloudEligibleHours")
       ? overrides.cloudEligibleHours
       : spanHours,
@@ -471,6 +515,7 @@ function withWindowDurationRatio(summary, ratio) {
   const sourceHealth = {
     ...adjusted.sourceHealth,
     appAliveHours: durationHours,
+    appAliveRatio: 1,
     collectorSpanHours: durationHours,
     cloudEligibleHours:
       adjusted.sourceHealth.cloudEligibleHours === null ? null : durationHours,
@@ -545,7 +590,7 @@ test("computeCanarySummary folds counters into per-release metrics", () => {
     bounds,
   );
   assert.equal(summary.version, "26.7.800");
-  assert.equal(summary.metricRegistryVersion, 3);
+  assert.equal(summary.metricRegistryVersion, 4);
   assert.equal(summary.spanHours, 6);
   assert.equal(summary.metrics.uploadsUnchangedPerHour, 2);
   assert.equal(
@@ -563,6 +608,13 @@ test("computeCanarySummary folds counters into per-release metrics", () => {
   );
   assert.ok(summary.metrics.peakAppResidentBytes >= 600 * 1024 * 1024);
   assert.ok(summary.metrics.idleGrowthMbPerHour > 0);
+  assert.deepEqual(summary.metrics.workerIdleTerminationsByReason, {
+    quiet_window: 1,
+    pending_request_retry: 1,
+    request_timeout_cleanup: 0,
+  });
+  assert.equal(summary.metrics.workerIdleTerminationInvalidReasonCount, 0);
+  assert.equal(summary.metrics.appMemoryPressureP95Bytes, 700 * 1024 * 1024);
 });
 
 test("regression detection flags a worsened trace and passes a steady one", () => {
@@ -663,6 +715,43 @@ test("canary comparison rejects a baseline window longer than the 1.25 duration 
   ]);
   assert.equal(comparison.comparableWindows, 2);
   assert.equal(comparison.status, "inconclusive");
+});
+
+test("canary comparison uses credited app-alive duration instead of wall span", () => {
+  const { entries, start } = canaryEntries(12);
+  const bounds = { windowStartMs: start, windowEndMs: start + 10 * 3_600_000 };
+  const current = computeAttributedCanary(
+    entries,
+    canaryContext("26.7.803", bounds.windowStartMs, bounds.windowEndMs, {
+      appAliveHours: 8,
+      appAliveRatio: 0.8,
+      cloudEligibleHours: 8,
+    }),
+    bounds,
+  );
+  const creditedComparableWallShort = withWindowDurationRatio(
+    priorCanary(current, 10),
+    0.79,
+  );
+  const creditedMismatchWallComparable = withWindowDurationRatio(
+    priorCanary(current, 20),
+    1.25,
+  );
+  const wallShortComparison = compareCanarySummary(current, [
+    priorCanary(current, 1),
+    priorCanary(current, 2),
+    creditedComparableWallShort,
+  ]);
+  assert.equal(wallShortComparison.comparableWindows, 3);
+  assert.equal(wallShortComparison.status, "pass");
+
+  const creditedMismatchComparison = compareCanarySummary(current, [
+    priorCanary(current, 1),
+    priorCanary(current, 2),
+    creditedMismatchWallComparable,
+  ]);
+  assert.equal(creditedMismatchComparison.comparableWindows, 2);
+  assert.equal(creditedMismatchComparison.status, "inconclusive");
 });
 
 test("same-build canary history cannot satisfy the baseline minimum", () => {

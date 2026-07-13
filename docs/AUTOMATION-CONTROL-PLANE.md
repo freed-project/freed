@@ -581,6 +581,11 @@ complete composite fingerprint. Raw soak or canary analysis may be
 capture is broken. Preserve that raw result, but do not turn it into a task
 transition. Keep the task in `soaking`, repair collection, and retry.
 
+Every lifecycle verification state requires at least six credited app-alive
+hours. Measured soak baselines have the same minimum. Comparison duration comes
+from credited app-alive time, not wall span, and must stay within the inclusive
+0.8 to 1.25 ratio. Wall bounds still enforce ordering and nonoverlap.
+
 The planner suppresses an exact task ID only when its latest outcome is
 `verified_effective` or `superseded` and no newer evidence exists.
 `governance_blocked` makes that exact candidate nonmodifiable until newer
@@ -616,6 +621,13 @@ The raw soak verdict and the generated outcome verdict are separate artifacts.
 The converter binds the release decision to the raw verdict digest and a hashed
 baseline reference. Hand-written lifecycle verdicts are not an acceptable
 closeout path.
+
+Metric guardrails are registered, not caller selected. A worker-init outcome
+automatically compares `app-memory-pressure-p95` from the same baseline and
+measured artifacts. Effectiveness requires the worker-init rate to improve
+beyond its tolerance without more than 128 MiB of p95 memory-pressure growth.
+If only that memory guardrail regresses, the generated outcome records the
+memory metric as the decisive effect.
 
 The outcome writer appends a matching authenticated control event. Unsigned
 historical ledger lines, replayed event IDs, mismatched actors, and evidence

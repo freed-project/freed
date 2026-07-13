@@ -70,6 +70,10 @@ Observe one installed build under one declared scenario. Follow [docs/SOAK-AND-T
    task's collector.
 3. Run `node scripts/soak-assert.mjs` against the exact session directory and bounds.
 4. Judge metrics through the versioned registry. Verify event predicates, denominators, minimum exposures, and source coverage before accepting pass or fail.
+   A raw analytical verdict may use a shorter window, but every lifecycle
+   outcome and every measured baseline requires at least six credited
+   app-alive hours. Compare baseline and measured credited durations within the
+   inclusive 0.8 to 1.25 ratio. Never substitute wall span.
 5. Return a raw analysis of `inconclusive` for mixed builds, missing identity,
    broken sources, insufficient duration, insufficient exposure, or a scenario
    that did not occur. Preserve the raw verdict even when it cannot become a
@@ -90,7 +94,9 @@ Observe one installed build under one declared scenario. Follow [docs/SOAK-AND-T
     `scripts/build-outcome-verdict.mjs`, including the hashed baseline
     raw soak verdict and one registered metric ID. The converter rebuilds both
     verdicts from stored collector artifacts and derives the values, unit,
-    direction, and tolerance from the metric registry. Then call
+    direction, tolerance, and any automatic guardrails from the metric
+    registry. A `worker-init-rate` outcome always carries the registered
+    `app-memory-pressure-p95` guardrail. The caller cannot omit it. Then call
     `scripts/record-outcome.mjs` with the generated verdict and the matching
     evidence window. Never supply effect values by hand. The task's installed
     version, full commit SHA, channel, optional artifact digest, and soak start

@@ -36,6 +36,7 @@ import {
   collectorEventsEvidenceFingerprint,
   collectorMetricsEvidenceFingerprint,
   computeCollectorEventCoverage,
+  computeNativeMemoryPressureCoverage,
   computeRuntimeHealthCoverage,
   parseCollectorEventsJsonl,
   parseMetricsTsv,
@@ -80,7 +81,13 @@ function writeStoredSoak(
     version,
     slopeMbPerHour,
     artifactDigest = "",
-    durationHours = 5,
+    durationHours = 6,
+    creditedHours = durationHours,
+    memoryPressureBytes = 700 * MB,
+    memoryCoverageInvalid = false,
+    workerInitCount = 0,
+    workerIdleTerminationReasons = [],
+    workerInitRecoveryCount = 0,
     comparisonContext = {},
   },
 ) {
@@ -101,20 +108,41 @@ function writeStoredSoak(
       tsMs: start + index * 60_000,
       nativeFootprintBytes: (500 + slopeMbPerHour * (index / 60)) * MB,
     })),
-    {
+    ...Array.from({ length: heartbeatCount }, (_, index) => ({
       ...identity,
       event: "native_runtime_memory_sample",
-      tsMs: start + 100,
+      tsMs: start + index * 60_000,
+      appMemoryPressureBytes: memoryPressureBytes,
+      memoryHighBytes: 4 * 1024 * MB,
+      memoryCriticalBytes: 6 * 1024 * MB,
       appResidentBytes: 500 * MB,
       webkitLargestResidentBytes: 100 * MB,
-    },
-    {
+      pageLoadId: `page-${name}`,
+      rendererGeneration:
+        memoryCoverageInvalid && index === heartbeatCount - 1 ? 2 : 1,
+    })),
+    ...Array.from({ length: workerInitCount }, (_, index) => ({
       ...identity,
-      event: "native_runtime_memory_sample",
-      tsMs: end - 100,
-      appResidentBytes: 500 * MB,
-      webkitLargestResidentBytes: 100 * MB,
-    },
+      event: "worker_init",
+      tsMs:
+        start +
+        Math.floor(
+          ((index + 1) * creditedHours * 60 * 60_000) / (workerInitCount + 1),
+        ),
+      durationMs: 1_000,
+      docBytes: 16 * MB,
+    })),
+    ...workerIdleTerminationReasons.map((reason, index) => ({
+      ...identity,
+      event: "worker_idle_terminated",
+      reason,
+      tsMs: start + (index + 1) * 2_000,
+    })),
+    ...Array.from({ length: workerInitRecoveryCount }, (_, index) => ({
+      ...identity,
+      event: "worker_init_recovery",
+      tsMs: start + (index + 1) * 3_000,
+    })),
     {
       ...identity,
       event: "cloud_sync_coverage",
@@ -146,7 +174,7 @@ function writeStoredSoak(
     (_, index) => ({
       tsMs: start + index * 60_000,
       iso: new Date(start + index * 60_000).toISOString(),
-      appPid: 123,
+      appPid: index <= creditedHours * 60 ? 123 : 0,
       appRssKb: 500 * 1024,
       webkitWebContentCount: 4,
       webkitWebContentRssKb: 400 * 1024,
@@ -211,15 +239,17 @@ function canaryFromStoredSoak(stored, installId) {
     evidenceText,
     stored.healthPath,
   );
+  const collectorMetricsText = readFileSync(stored.metricsPath, "utf8");
   const summary = computeCanarySummary(entries, {
     observationContext: context,
     windowStartMs: Date.parse(context.windowStart),
     windowEndMs: Date.parse(context.windowEnd),
+    collectorMetricsText,
   });
   return {
     entries,
     summary,
-    collectorMetricsText: readFileSync(stored.metricsPath, "utf8"),
+    collectorMetricsText,
     collectorEventsText: readFileSync(
       path.join(path.dirname(stored.verdictPath), "collector-events.jsonl"),
       "utf8",
@@ -229,12 +259,15 @@ function canaryFromStoredSoak(stored, installId) {
 
 function attributedCanary({
   recoveries = 0,
+  durationHours = 24,
   start = Date.parse("2026-07-10T00:00:00.000Z"),
   version = "26.7.100-dev",
   commitSha = "c".repeat(40),
   artifactDigest = "",
 } = {}) {
-  const end = start + 24 * 60 * 60_000;
+  const end = start + durationHours * 60 * 60_000;
+  const sampleCount = Math.floor(durationHours * 60) + 1;
+  const creditedHours = (sampleCount - 1) / 60;
   const build = {
     version,
     commitSha,
@@ -255,30 +288,28 @@ function attributedCanary({
     appSessionId: runtime.appSessionId,
   };
   const entries = [
-    ...Array.from({ length: 1_441 }, (_, index) => ({
+    ...Array.from({ length: sampleCount }, (_, index) => ({
       ...identity,
       event: "renderer_heartbeat",
       tsMs: start + index * 60_000,
     })),
-    {
+    ...Array.from({ length: sampleCount }, (_, index) => ({
       ...identity,
       event: "native_runtime_memory_sample",
-      tsMs: start + 100,
+      tsMs: start + index * 60_000,
+      appMemoryPressureBytes: 700 * MB,
+      memoryHighBytes: 4 * 1024 * MB,
+      memoryCriticalBytes: 6 * 1024 * MB,
       appResidentBytes: 500 * MB,
       webkitLargestResidentBytes: 100 * MB,
-    },
+      pageLoadId: `page-${version}`,
+      rendererGeneration: 1,
+    })),
     ...Array.from({ length: recoveries }, (_, index) => ({
       ...identity,
       event: "renderer_recovery_restart_requested",
       tsMs: start + (index + 1) * 1_000,
     })),
-    {
-      ...identity,
-      event: "native_runtime_memory_sample",
-      tsMs: end - 100,
-      appResidentBytes: 500 * MB,
-      webkitLargestResidentBytes: 100 * MB,
-    },
     {
       ...identity,
       event: "cloud_sync_coverage",
@@ -297,7 +328,6 @@ function attributedCanary({
     },
     enumerable: false,
   });
-  const sampleCount = 1_441;
   const collectorMetricsText = metricsText(
     Array.from({ length: sampleCount }, (_, index) => ({
       tsMs: start + index * 60_000,
@@ -316,6 +346,10 @@ function attributedCanary({
     entries.map((entry) => ({ entry })),
     parseMetricsTsv(collectorMetricsText),
   );
+  const nativeMemoryPressureCoverage = computeNativeMemoryPressureCoverage(
+    entries.map((entry) => ({ entry })),
+    parseMetricsTsv(collectorMetricsText),
+  );
   const collectorEventsText = closedCollectorSessionEventsText(
     start,
     end,
@@ -327,13 +361,13 @@ function attributedCanary({
   );
   const sourceHealth = {
     status: "healthy",
-    appAliveHours: 24,
+    appAliveHours: creditedHours,
     appAliveRatio: 1,
     collectorSampleCount: sampleCount,
     collectorDistinctSampleCount: sampleCount,
     expectedSampleCount: sampleCount,
     sampleDensity: 1,
-    collectorSpanHours: 24,
+    collectorSpanHours: creditedHours,
     expectedIntervalMs: 60_000,
     maxCreditedGapMs: 150_000,
     largestObservedGapMs: 60_000,
@@ -346,7 +380,8 @@ function attributedCanary({
     collectorEventEvidenceSchemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
     runtimeHealthMalformedLineCount: 0,
     ...runtimeHealthCoverage,
-    cloudEligibleHours: 24,
+    ...nativeMemoryPressureCoverage,
+    cloudEligibleHours: creditedHours,
   };
   sourceHealth.evidenceFingerprint = buildCompositeEvidenceFingerprint({
     runtimeHealthFingerprint: runtimeHealthEvidenceFingerprint(entries),
@@ -379,6 +414,7 @@ function attributedCanary({
     },
     windowStartMs: start,
     windowEndMs: end,
+    collectorMetricsText,
   });
   return { entries, summary, collectorMetricsText, collectorEventsText };
 }
@@ -565,7 +601,7 @@ test("soak outcomes reject mismatched workload, host, and observation duration",
     commitSha: "d".repeat(40),
     version: "26.7.700-dev",
     slopeMbPerHour: 30,
-    durationHours: 2,
+    durationHours: 12,
   });
   const build = (baselineReference) =>
     buildOutcomeVerdictFromArtifacts({
@@ -586,7 +622,193 @@ test("soak outcomes reject mismatched workload, host, and observation duration",
   );
   assert.throws(
     () => build(mismatchedDuration.verdictPath),
-    /windows must have comparable duration/,
+    /comparable credited app-alive duration/,
+  );
+});
+
+test("lifecycle outcomes require six credited hours and compare credited exposure", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-credited-hours-"));
+  const short = writeStoredSoak(root, {
+    name: "short",
+    start: Date.parse("2026-07-11T00:00:00.000Z"),
+    commitSha: "b".repeat(40),
+    version: "26.7.1100-dev",
+    slopeMbPerHour: 4,
+    durationHours: 5.99,
+  });
+  const baseline = writeStoredSoak(root, {
+    name: "baseline",
+    start: Date.parse("2026-07-09T00:00:00.000Z"),
+    commitSha: "a".repeat(40),
+    version: "26.7.900-dev",
+    slopeMbPerHour: 30,
+    durationHours: 6,
+  });
+  assert.throws(
+    () =>
+      buildOutcomeVerdictFromArtifacts({
+        sourcePath: short.verdictPath,
+        sourceKind: "soak",
+        taskId: "W5-01",
+        outcome: "verified_effective",
+        metric: "main-footprint-slope",
+        baselineReference: baseline.verdictPath,
+      }),
+    /at least 6 credited app-alive hours/,
+  );
+
+  const currentCreditedEight = writeStoredSoak(root, {
+    name: "current-credited-eight",
+    start: Date.parse("2026-07-12T00:00:00.000Z"),
+    commitSha: "c".repeat(40),
+    version: "26.7.1200-dev",
+    slopeMbPerHour: 4,
+    durationHours: 10,
+    creditedHours: 8,
+  });
+  const baselineCreditedTwelve = writeStoredSoak(root, {
+    name: "baseline-credited-twelve",
+    start: Date.parse("2026-07-08T00:00:00.000Z"),
+    commitSha: "d".repeat(40),
+    version: "26.7.800-dev",
+    slopeMbPerHour: 30,
+    durationHours: 12.5,
+    creditedHours: 12.5,
+  });
+  assert.throws(
+    () =>
+      buildOutcomeVerdictFromArtifacts({
+        sourcePath: currentCreditedEight.verdictPath,
+        sourceKind: "soak",
+        taskId: "W5-01",
+        outcome: "verified_effective",
+        metric: "main-footprint-slope",
+        baselineReference: baselineCreditedTwelve.verdictPath,
+      }),
+    /comparable credited app-alive duration/,
+  );
+
+  const baselineWallShorter = writeStoredSoak(root, {
+    name: "baseline-wall-shorter",
+    start: Date.parse("2026-07-07T00:00:00.000Z"),
+    commitSha: "e".repeat(40),
+    version: "26.7.700-dev",
+    slopeMbPerHour: 30,
+    durationHours: 7.9,
+    creditedHours: 7.9,
+  });
+  assert.doesNotThrow(() =>
+    buildOutcomeVerdictFromArtifacts({
+      sourcePath: currentCreditedEight.verdictPath,
+      sourceKind: "soak",
+      taskId: "W5-01",
+      outcome: "verified_effective",
+      metric: "main-footprint-slope",
+      baselineReference: baselineWallShorter.verdictPath,
+    }),
+  );
+});
+
+test("worker init outcomes enforce the automatic memory-pressure guardrail", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-worker-guardrail-"));
+  const baseline = writeStoredSoak(root, {
+    name: "baseline",
+    start: Date.parse("2026-07-09T00:00:00.000Z"),
+    commitSha: "a".repeat(40),
+    version: "26.7.900-dev",
+    slopeMbPerHour: 4,
+    workerInitCount: 72,
+    memoryPressureBytes: 700 * MB,
+  });
+  const effective = writeStoredSoak(root, {
+    name: "effective",
+    start: Date.parse("2026-07-10T00:00:00.000Z"),
+    commitSha: "b".repeat(40),
+    version: "26.7.1000-dev",
+    slopeMbPerHour: 4,
+    workerInitCount: 24,
+    memoryPressureBytes: 700 * MB + 128 * MB,
+    workerIdleTerminationReasons: [
+      "quiet_window",
+      "pending_request_retry",
+      "request_timeout_cleanup",
+    ],
+    workerInitRecoveryCount: 1,
+  });
+  const effectiveVerdict = buildOutcomeVerdictFromArtifacts({
+    sourcePath: effective.verdictPath,
+    sourceKind: "soak",
+    taskId: "W5-01",
+    outcome: "verified_effective",
+    metric: "worker-init-rate",
+    baselineReference: baseline.verdictPath,
+  });
+  assert.equal(effectiveVerdict.effect.metric, "worker-init-rate");
+  assert.equal(
+    effectiveVerdict.effectAssessment.primaryAssessment,
+    "effective",
+  );
+  assert.deepEqual(effectiveVerdict.effectAssessment.guardrails, [
+    {
+      metric: "app-memory-pressure-p95",
+      before: 700 * MB,
+      after: 828 * MB,
+      delta: 128 * MB,
+      unit: "bytes",
+      direction: "lower",
+      tolerance: 128 * MB,
+      assessment: "neutral",
+    },
+  ]);
+  assert.deepEqual(
+    effective.verdict.eventSummaries.workerIdleTerminations.byReason,
+    {
+      quiet_window: 1,
+      pending_request_retry: 1,
+      request_timeout_cleanup: 1,
+    },
+  );
+
+  const regressed = writeStoredSoak(root, {
+    name: "regressed",
+    start: Date.parse("2026-07-11T00:00:00.000Z"),
+    commitSha: "c".repeat(40),
+    version: "26.7.1100-dev",
+    slopeMbPerHour: 4,
+    workerInitCount: 24,
+    memoryPressureBytes: 700 * MB + 128 * MB + 1,
+  });
+  const regressedVerdict = buildOutcomeVerdictFromArtifacts({
+    sourcePath: regressed.verdictPath,
+    sourceKind: "soak",
+    taskId: "W5-01",
+    outcome: "regressed",
+    metric: "worker-init-rate",
+    baselineReference: baseline.verdictPath,
+  });
+  assert.equal(regressedVerdict.effect.metric, "app-memory-pressure-p95");
+  assert.equal(regressedVerdict.status, "fail");
+
+  const missingGuardrail = writeStoredSoak(root, {
+    name: "missing-guardrail",
+    start: Date.parse("2026-07-12T00:00:00.000Z"),
+    commitSha: "d".repeat(40),
+    version: "26.7.1200-dev",
+    slopeMbPerHour: 4,
+    workerInitCount: 24,
+    memoryCoverageInvalid: true,
+  });
+  assert.throws(
+    () =>
+      buildOutcomeVerdictFromArtifacts({
+        sourcePath: missingGuardrail.verdictPath,
+        sourceKind: "soak",
+        taskId: "W5-01",
+        outcome: "verified_effective",
+        metric: "worker-init-rate",
+        baselineReference: baseline.verdictPath,
+      }),
+    /lacks the registered app-memory-pressure-p95 measurement contract/,
   );
 });
 
@@ -864,6 +1086,25 @@ test("inconclusive lifecycle verdicts still require attributable nonempty eviden
     outcome: "inconclusive",
   });
   assert.equal(verdict.status, "inconclusive");
+
+  const shortFixture = attributedCanary({
+    durationHours: 5.99,
+    version: "26.7.short-dev",
+    commitSha: "d".repeat(40),
+  });
+  const shortComparison = compareCanarySummary(shortFixture.summary, []);
+  const shortSource = writeCanaryRecord(root, shortFixture, shortComparison);
+  assert.throws(
+    () =>
+      buildOutcomeVerdictFromArtifacts({
+        sourcePath: shortSource.recordPath,
+        sourceKind: "canary",
+        taskId: "P1-04",
+        outcome: "inconclusive",
+      }),
+    /at least 6 credited app-alive hours/,
+  );
+
   const tampered = structuredClone(source.record);
   tampered.evidenceAttribution.status = "mixed";
   writeFileSync(source.recordPath, `${JSON.stringify(tampered, null, 2)}\n`);

@@ -35,7 +35,7 @@ the complete operator contract.
 
 | Component | Contract |
 | --- | --- |
-| Metric registry | `scripts/lib/stability-metrics.mjs` supplies shared metric IDs and semantics to soak, canary, and triage. Old evidence that lacks required fields stays visibly unavailable. |
+| Metric registry | `scripts/lib/stability-metrics.mjs` supplies shared metric IDs, automatic guardrails, six-hour lifecycle exposure, and credited-duration comparison semantics to soak, canary, and triage. Old evidence that lacks required fields stays visibly unavailable. |
 | Current task state | `~/.freed/automation/control/current-tasks.json` is schema-versioned, revisioned, and replaced atomically. |
 | Audit history | `~/.freed/automation/control/events.jsonl` records task, authority, observer, and lease changes as append-only events. |
 | Writer ownership | Private actor credentials authenticate automation lease acquisition. Normal publication uses the caller's existing GitHub authentication through the governed helper. Hosts may optionally add a broker-signed capability and target-scoped publisher lease for unattended publication. Active leases cannot be stolen; expired takeover is recorded. |
@@ -136,6 +136,7 @@ Baseline measured 2026-07-07 from a 6.05 h idle overnight soak of v26.7.301-dev 
 | "job timed out kind=rss-poll" per day | 0 records in runtime-health/diagnostics over the window — not yet counter-instrumented, needs W2-01 for an authoritative number | 0 |
 | Dead-session WebView spins/day/provider | night's single scheduled sweep: li 1 full 100 s WebView spin → event_timeout, x 1 api_error (auth misclassification, F-auth theme) | ≤3 then pause+prompt |
 | Worker INITs/hour during content backlog | 19.3/h while idle (117 / 6.05 h); 82/h during launch-hour backlog | <10 |
+| App memory-pressure p95 during worker lifecycle soak | New registry-v4 baseline required from dense, attributable `native_runtime_memory_sample` evidence in one credited app-alive, page-load, and renderer generation | Worker-init improvements permit no more than 128 MiB p95 growth versus the matched baseline |
 | Renderer recoveries/day (thresholds frozen) | 1 attempt / 6 h idle (≈4/day); launch hour: 5 attempts + 3 restart requests in 57 min, ending in silent app death | →0 |
 | invariant_alarms/day by name (W2-01) | **Pre-damper baseline (v26.7.701-dev, 6.23 h soak 2026-07-07/08): cloud_loop=7, preflight_kill=1.** cloud_loop fires hard during active windows (alarm details 14 to 19 unchanged uploads/15 min, about 4 times the 5-in-15min threshold) and goes quiet in deep idle. That pattern is a calibration note for the breaker cycle. preflight_kill caught a real held-session teardown (window_destroyed job_complete scraperSessionHeld=true, F04). The same window had 98 unchanged uploads in 102 attempts, a crude wall-time rate of about 16/h. It is not a valid cloud-eligible rate. **After P1-01 (v26.7.900-dev): cloud_loop fell from 7 to 0.** New dominant alarms are the scrape-restart cluster: preflight_kill (scrape memory kills) and scrape_zero_persist (F03: extract>=5, persist 0). Next targets are P1-04/P1-05. | each trends to 0 as its damper lands |
 | fix:/perf: share of non-release commits | ~78% | trending down |

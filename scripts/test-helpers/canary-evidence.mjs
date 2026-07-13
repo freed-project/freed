@@ -15,6 +15,7 @@ import {
   collectorEventsEvidenceFingerprint,
   collectorMetricsEvidenceFingerprint,
   computeCollectorEventCoverage,
+  computeNativeMemoryPressureCoverage,
   computeRuntimeHealthCoverage,
   parseCollectorEventsJsonl,
   parseMetricsTsv,
@@ -89,13 +90,18 @@ export function createCanaryEvidenceFixture({
       event: "renderer_heartbeat",
       tsMs: startMs + index * 60_000,
     })),
-    {
+    ...Array.from({ length: 1_441 }, (_, index) => ({
       ...identity,
       event: "native_runtime_memory_sample",
-      tsMs: startMs + 100,
+      tsMs: startMs + index * 60_000,
+      appMemoryPressureBytes: 700 * MB,
+      memoryHighBytes: 4 * 1024 * MB,
+      memoryCriticalBytes: 6 * 1024 * MB,
       appResidentBytes: 500 * MB,
       webkitLargestResidentBytes: 100 * MB,
-    },
+      pageLoadId: `page-${version}`,
+      rendererGeneration: 1,
+    })),
     ...Array.from({ length: recoveries }, (_, index) => ({
       ...identity,
       event: "renderer_recovery_restart_requested",
@@ -106,13 +112,6 @@ export function createCanaryEvidenceFixture({
       event: "worker_init",
       tsMs: startMs + (index + 1) * 2_000,
     })),
-    {
-      ...identity,
-      event: "native_runtime_memory_sample",
-      tsMs: endMs - 100,
-      appResidentBytes: 500 * MB,
-      webkitLargestResidentBytes: 100 * MB,
-    },
     {
       ...identity,
       event: "cloud_sync_coverage",
@@ -159,6 +158,10 @@ export function createCanaryEvidenceFixture({
     entries.map((entry) => ({ entry })),
     parseMetricsTsv(collectorMetricsText),
   );
+  const nativeMemoryPressureCoverage = computeNativeMemoryPressureCoverage(
+    entries.map((entry) => ({ entry })),
+    parseMetricsTsv(collectorMetricsText),
+  );
   const sourceHealth = {
     status: "healthy",
     appAliveHours: 24,
@@ -180,6 +183,7 @@ export function createCanaryEvidenceFixture({
     collectorEventEvidenceSchemaVersion: COLLECTOR_EVENTS_SCHEMA_VERSION,
     runtimeHealthMalformedLineCount: 0,
     ...runtimeHealthCoverage,
+    ...nativeMemoryPressureCoverage,
     cloudEligibleHours: 24,
   };
   sourceHealth.evidenceFingerprint = buildCompositeEvidenceFingerprint({
@@ -209,6 +213,7 @@ export function createCanaryEvidenceFixture({
     },
     windowStartMs: startMs,
     windowEndMs: endMs,
+    collectorMetricsText,
   });
   return { entries, summary, collectorMetricsText, collectorEventsText };
 }

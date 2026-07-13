@@ -234,6 +234,11 @@ for a nonempty window attributable to the task's canonical installed build with
 a complete composite fingerprint. Otherwise the task stays in `soaking` while
 collection is repaired and retried.
 
+Every lifecycle outcome and every measured soak baseline requires at least six
+credited app-alive hours. Baseline matching compares credited app-alive
+duration within the inclusive 0.8 to 1.25 ratio. It does not use wall duration
+as a proxy for exposure.
+
 ```bash
 RAW_VERDICT=/absolute/path/to/soak-verdict.json
 BASELINE=/absolute/path/to/prior-raw-soak-verdict.json
@@ -265,6 +270,11 @@ rebuilds both raw soak verdicts from their stored collector artifacts, selects
 the metric's checked-in registry contract, and derives before, after, unit,
 direction, and tolerance. `record-outcome.mjs` rejects caller-supplied effect
 values and accepts only that generated contract.
+
+Guardrails declared by the selected registry metric are automatic. The
+worker-init metric always carries `app-memory-pressure-p95` as a 128 MiB
+non-regression guardrail. The caller cannot omit or replace it with another
+flag.
 
 The same converter accepts `--canary-verdict <canary-record.json>`. For a
 measured canary outcome, it derives before and after values from the selected

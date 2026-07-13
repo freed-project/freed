@@ -57,6 +57,14 @@ const RUNTIME_HEALTH_LIVENESS_EVENTS = new Set([
   "renderer_heartbeat",
   "native_runtime_memory_sample",
 ]);
+export const WORKER_IDLE_TERMINATION_REASONS = Object.freeze([
+  "quiet_window",
+  "pending_request_retry",
+  "request_timeout_cleanup",
+]);
+const WORKER_IDLE_TERMINATION_REASON_SET = new Set(
+  WORKER_IDLE_TERMINATION_REASONS,
+);
 const REQUIRED_METRICS_COLUMNS = Object.freeze([
   "tsMs",
   "iso",
@@ -732,6 +740,162 @@ export function computeRuntimeHealthCoverage(
   };
 }
 
+function nearestRankPercentile(values, percentile) {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  const sorted = values.toSorted((left, right) => left - right);
+  return sorted[Math.ceil(sorted.length * percentile) - 1] ?? null;
+}
+
+export function summarizeWorkerIdleTerminations(healthLines) {
+  const byReason = Object.fromEntries(
+    WORKER_IDLE_TERMINATION_REASONS.map((reason) => [reason, 0]),
+  );
+  let invalidReasonCount = 0;
+  for (const { entry } of healthLines) {
+    if (entry?.event !== "worker_idle_terminated") continue;
+    if (WORKER_IDLE_TERMINATION_REASON_SET.has(entry.reason)) {
+      byReason[entry.reason] += 1;
+    } else {
+      invalidReasonCount += 1;
+    }
+  }
+  return {
+    total:
+      Object.values(byReason).reduce((sum, count) => sum + count, 0) +
+      invalidReasonCount,
+    byReason,
+    invalidReasonCount,
+  };
+}
+
+export function computeNativeMemoryPressureCoverage(
+  healthLines,
+  metricsRows,
+  {
+    collectorExpectedIntervalMs = DEFAULT_COLLECTOR_INTERVAL_MS,
+    nativeExpectedIntervalMs = DEFAULT_RUNTIME_HEALTH_INTERVAL_MS,
+  } = {},
+) {
+  const intervals = appAliveIntervals(metricsRows, {
+    expectedIntervalMs: collectorExpectedIntervalMs,
+  });
+  const timing = runtimeHealthTiming(nativeExpectedIntervalMs);
+  const inCreditedInterval = (timestamp) =>
+    intervals.some(
+      (interval) =>
+        timestamp >= interval.startMs && timestamp <= interval.endMs,
+    );
+  const observed = healthLines
+    .map(({ entry }) => entry)
+    .filter(
+      (entry) =>
+        entry?.event === "native_runtime_memory_sample" &&
+        Number.isFinite(Number(entry.tsMs)) &&
+        inCreditedInterval(Number(entry.tsMs)),
+    );
+  const valid = observed.filter((entry) => {
+    const pressureBytes = Number(entry.appMemoryPressureBytes);
+    const highBytes = Number(entry.memoryHighBytes);
+    const criticalBytes = Number(entry.memoryCriticalBytes);
+    const rendererGeneration = Number(entry.rendererGeneration);
+    return (
+      Number.isSafeInteger(pressureBytes) &&
+      pressureBytes >= 0 &&
+      Number.isSafeInteger(highBytes) &&
+      highBytes > 0 &&
+      Number.isSafeInteger(criticalBytes) &&
+      criticalBytes >= highBytes &&
+      Number.isSafeInteger(rendererGeneration) &&
+      rendererGeneration > 0 &&
+      typeof entry.pageLoadId === "string" &&
+      entry.pageLoadId.trim().length > 0
+    );
+  });
+  const invalidSampleCount = observed.length - valid.length;
+  const timestamps = valid
+    .map((entry) => Number(entry.tsMs))
+    .sort((left, right) => left - right);
+  const distinctTimestamps = [...new Set(timestamps)];
+  const duplicateTimestampCount = timestamps.length - distinctTimestamps.length;
+  const pageLoadIds = new Set(valid.map((entry) => entry.pageLoadId.trim()));
+  const rendererGenerations = new Set(
+    valid.map((entry) => Number(entry.rendererGeneration)),
+  );
+
+  let expectedSampleCount = 0;
+  let largestObservedGapMs = 0;
+  let lastFreshnessMs = 0;
+  let coveredSegmentCount = 0;
+  for (const interval of intervals) {
+    const durationMs = interval.endMs - interval.startMs;
+    expectedSampleCount += Math.max(
+      1,
+      Math.ceil(durationMs / timing.expectedIntervalMs),
+    );
+    const segmentSamples = distinctTimestamps.filter(
+      (timestamp) =>
+        timestamp >= interval.startMs && timestamp <= interval.endMs,
+    );
+    if (segmentSamples.length > 0) coveredSegmentCount += 1;
+    let priorTimestamp = interval.startMs;
+    for (const timestamp of segmentSamples) {
+      largestObservedGapMs = Math.max(
+        largestObservedGapMs,
+        timestamp - priorTimestamp,
+      );
+      priorTimestamp = timestamp;
+    }
+    const freshnessMs = interval.endMs - priorTimestamp;
+    largestObservedGapMs = Math.max(largestObservedGapMs, freshnessMs);
+    lastFreshnessMs = Math.max(lastFreshnessMs, freshnessMs);
+  }
+  const sampleDensity =
+    expectedSampleCount > 0
+      ? Math.min(1, distinctTimestamps.length / expectedSampleCount)
+      : 0;
+  const healthy =
+    intervals.length === 1 &&
+    expectedSampleCount >= 3 &&
+    distinctTimestamps.length >= 3 &&
+    invalidSampleCount === 0 &&
+    duplicateTimestampCount === 0 &&
+    pageLoadIds.size === 1 &&
+    rendererGenerations.size === 1 &&
+    coveredSegmentCount === intervals.length &&
+    sampleDensity >= MIN_RUNTIME_HEALTH_SAMPLE_DENSITY &&
+    largestObservedGapMs <= timing.maxCreditedGapMs &&
+    lastFreshnessMs <= timing.maxCreditedGapMs;
+  const p95Bytes = healthy
+    ? nearestRankPercentile(
+        valid.map((entry) => Number(entry.appMemoryPressureBytes)),
+        0.95,
+      )
+    : null;
+  const reason = healthy
+    ? null
+    : `Native memory-pressure coverage used ${distinctTimestamps.length.toLocaleString()} distinct valid sample${distinctTimestamps.length === 1 ? "" : "s"} against ${expectedSampleCount.toLocaleString()} expected across ${intervals.length.toLocaleString()} credited segment${intervals.length === 1 ? "" : "s"}; invalid=${invalidSampleCount.toLocaleString()}, duplicates=${duplicateTimestampCount.toLocaleString()}, page loads=${pageLoadIds.size.toLocaleString()}, renderer generations=${rendererGenerations.size.toLocaleString()}, largest gap=${largestObservedGapMs.toLocaleString()} ms.`;
+  return {
+    nativeMemoryPressureSampleCount: observed.length,
+    nativeMemoryPressureValidSampleCount: valid.length,
+    nativeMemoryPressureDistinctSampleCount: distinctTimestamps.length,
+    nativeMemoryPressureExpectedSampleCount: expectedSampleCount,
+    nativeMemoryPressureSampleDensity: sampleDensity,
+    nativeMemoryPressureExpectedIntervalMs: timing.expectedIntervalMs,
+    nativeMemoryPressureMaxCreditedGapMs: timing.maxCreditedGapMs,
+    nativeMemoryPressureLargestObservedGapMs: largestObservedGapMs,
+    nativeMemoryPressureLastFreshnessMs: lastFreshnessMs,
+    nativeMemoryPressureAppAliveSegmentCount: intervals.length,
+    nativeMemoryPressureCoveredAppAliveSegmentCount: coveredSegmentCount,
+    nativeMemoryPressureInvalidSampleCount: invalidSampleCount,
+    nativeMemoryPressureDuplicateTimestampCount: duplicateTimestampCount,
+    nativeMemoryPressurePageLoadIdCount: pageLoadIds.size,
+    nativeMemoryPressureRendererGenerationCount: rendererGenerations.size,
+    nativeMemoryPressureCoverageHealthy: healthy,
+    nativeMemoryPressureCoverageReason: reason,
+    appMemoryPressureP95Bytes: p95Bytes,
+  };
+}
+
 export function computeCloudEligibleHours(
   healthLines,
   metricsRows,
@@ -1243,6 +1407,45 @@ export function assertAlarmCounts(
   );
 }
 
+export function assertWorkerIdleTerminationContract(
+  healthLines,
+  healthPath,
+  { runtimeEvidenceActionable = true } = {},
+) {
+  const terminationLines = healthLines.filter(
+    ({ entry }) => entry.event === "worker_idle_terminated",
+  );
+  const summary = summarizeWorkerIdleTerminations(terminationLines);
+  const breakdown = WORKER_IDLE_TERMINATION_REASONS.map(
+    (reason) => `${reason}=${summary.byReason[reason].toLocaleString()}`,
+  ).join(", ");
+  if (!runtimeEvidenceActionable) {
+    return assertion(
+      "worker_idle_termination_contract",
+      "inconclusive",
+      `Runtime-health coverage or attribution is incomplete, so ${summary.total.toLocaleString()} observed worker idle termination event${summary.total === 1 ? "" : "s"} cannot establish a complete-window reason summary (${breakdown}).`,
+    );
+  }
+  if (summary.invalidReasonCount > 0) {
+    return assertion(
+      "worker_idle_termination_contract",
+      "inconclusive",
+      `${summary.invalidReasonCount.toLocaleString()} of ${summary.total.toLocaleString()} worker idle termination event${summary.total === 1 ? "" : "s"} had a missing or unregistered reason (${breakdown}).`,
+      terminationLines
+        .filter(
+          ({ entry }) => !WORKER_IDLE_TERMINATION_REASON_SET.has(entry.reason),
+        )
+        .slice(0, 10)
+        .map(({ line, raw }) => cite(healthPath, line, raw)),
+    );
+  }
+  return assertion(
+    "worker_idle_termination_contract",
+    "pass",
+    `${summary.total.toLocaleString()} worker idle termination event${summary.total === 1 ? "" : "s"} (${breakdown}).`,
+  );
+}
+
 export function isMetricRelevantRuntimeEntry(entry) {
   return Boolean(
     entry &&
@@ -1256,6 +1459,8 @@ export function isMetricRelevantRuntimeEntry(entry) {
       entry.event === "scrape_outcome" ||
       entry.event === "invariant_alarm" ||
       entry.event === "worker_init" ||
+      entry.event === "worker_init_recovery" ||
+      entry.event === "worker_idle_terminated" ||
       entry.event === "native_runtime_memory_sample" ||
       typeof entry.headsUnchanged === "boolean"),
   );
@@ -1472,6 +1677,58 @@ export function sourceHealthFingerprintFields(sourceHealth) {
     ),
     runtimeHealthCoverageHealthy:
       sourceHealth?.runtimeHealthCoverageHealthy === true,
+    nativeMemoryPressureSampleCount: Number(
+      sourceHealth?.nativeMemoryPressureSampleCount,
+    ),
+    nativeMemoryPressureValidSampleCount: Number(
+      sourceHealth?.nativeMemoryPressureValidSampleCount,
+    ),
+    nativeMemoryPressureDistinctSampleCount: Number(
+      sourceHealth?.nativeMemoryPressureDistinctSampleCount,
+    ),
+    nativeMemoryPressureExpectedSampleCount: Number(
+      sourceHealth?.nativeMemoryPressureExpectedSampleCount,
+    ),
+    nativeMemoryPressureSampleDensity: Number(
+      sourceHealth?.nativeMemoryPressureSampleDensity,
+    ),
+    nativeMemoryPressureExpectedIntervalMs: Number(
+      sourceHealth?.nativeMemoryPressureExpectedIntervalMs,
+    ),
+    nativeMemoryPressureMaxCreditedGapMs: Number(
+      sourceHealth?.nativeMemoryPressureMaxCreditedGapMs,
+    ),
+    nativeMemoryPressureLargestObservedGapMs: Number(
+      sourceHealth?.nativeMemoryPressureLargestObservedGapMs,
+    ),
+    nativeMemoryPressureLastFreshnessMs: Number(
+      sourceHealth?.nativeMemoryPressureLastFreshnessMs,
+    ),
+    nativeMemoryPressureAppAliveSegmentCount: Number(
+      sourceHealth?.nativeMemoryPressureAppAliveSegmentCount,
+    ),
+    nativeMemoryPressureCoveredAppAliveSegmentCount: Number(
+      sourceHealth?.nativeMemoryPressureCoveredAppAliveSegmentCount,
+    ),
+    nativeMemoryPressureInvalidSampleCount: Number(
+      sourceHealth?.nativeMemoryPressureInvalidSampleCount,
+    ),
+    nativeMemoryPressureDuplicateTimestampCount: Number(
+      sourceHealth?.nativeMemoryPressureDuplicateTimestampCount,
+    ),
+    nativeMemoryPressurePageLoadIdCount: Number(
+      sourceHealth?.nativeMemoryPressurePageLoadIdCount,
+    ),
+    nativeMemoryPressureRendererGenerationCount: Number(
+      sourceHealth?.nativeMemoryPressureRendererGenerationCount,
+    ),
+    nativeMemoryPressureCoverageHealthy:
+      sourceHealth?.nativeMemoryPressureCoverageHealthy === true,
+    appMemoryPressureP95Bytes:
+      sourceHealth?.appMemoryPressureP95Bytes === null ||
+      sourceHealth?.appMemoryPressureP95Bytes === undefined
+        ? null
+        : Number(sourceHealth.appMemoryPressureP95Bytes),
   };
 }
 
@@ -1599,6 +1856,11 @@ export function buildVerdict({
       collectorExpectedIntervalMs: expectedIntervalMs,
     },
   );
+  const nativeMemoryPressureCoverage = computeNativeMemoryPressureCoverage(
+    healthLines,
+    metricsRows,
+    { collectorExpectedIntervalMs: expectedIntervalMs },
+  );
   const runtimeHealthMalformedLineCount =
     healthLines.sourceDiagnostics?.malformedLines?.length ?? 0;
   const collectorEventCoverage = computeCollectorEventCoverage(
@@ -1617,6 +1879,7 @@ export function buildVerdict({
   const sourceHealth = {
     ...collectorCoverage,
     ...runtimeHealthCoverage,
+    ...nativeMemoryPressureCoverage,
     ...collectorEventCoverage,
     healthy:
       collectorCoverage.healthy &&
@@ -1788,6 +2051,13 @@ export function buildVerdict({
               .length / appAliveHours
           : null,
       ),
+      "app-memory-pressure-p95": measurement(
+        "app-memory-pressure-p95",
+        runtimeEvidenceActionable &&
+          sourceHealth.nativeMemoryPressureCoverageHealthy
+          ? sourceHealth.appMemoryPressureP95Bytes
+          : null,
+      ),
       "invariant-alarm-rate": measurement(
         "invariant-alarm-rate",
         runtimeEvidenceActionable && appAliveDays
@@ -1819,6 +2089,9 @@ export function buildVerdict({
       appAliveHours,
       runtimeEvidenceActionable,
     }),
+    assertWorkerIdleTerminationContract(healthLines, healthPath, {
+      runtimeEvidenceActionable,
+    }),
     assertWebkitReturnsToBaseline(metricsRows, metricsPath),
     ...assertGuardedCounters(healthLines, healthPath, {
       cloudCoverageHours: measuredCloudEligibleHours,
@@ -1847,6 +2120,9 @@ export function buildVerdict({
     sourceHealth,
     evidenceFingerprint,
     comparisonContext,
+    eventSummaries: {
+      workerIdleTerminations: summarizeWorkerIdleTerminations(healthLines),
+    },
     measurements,
     runtimeIdentity,
     assertions,

@@ -27,9 +27,9 @@ scripts/canary-context.mjs --verdict <soak-dir>/soak-verdict.json
    collector-events archive before the live file. Do not attribute an
    arbitrary trailing window to the currently installed version or a manually
    supplied version label.
-6. Compare only cohorts with compatible operating system, RAM tier, document-size bucket, provider state, workload, and process-generation semantics. A baseline window must be between 0.8 and 1.25 times the current window duration, inclusive.
+6. Compare only cohorts with compatible operating system, RAM tier, document-size bucket, provider state, workload, and process-generation semantics. Every lifecycle window requires at least six credited app-alive hours. A baseline's credited app-alive duration must be between 0.8 and 1.25 times the current credited duration, inclusive. Use wall bounds only for ordering and overlap.
 7. Require at least three comparable historical windows before an automatic regression verdict. With fewer, record the current observation as a provisional baseline and return `inconclusive`.
-8. Judge each metric through the versioned metric registry. Use app-alive time for runtime rates and verified cloud-eligible time for cloud rates. A missing denominator makes that metric unavailable.
+8. Judge each metric through the versioned metric registry. Use app-alive time for runtime rates and verified cloud-eligible time for cloud rates. A missing denominator makes that metric unavailable. Worker-init outcomes automatically carry the registered p95 app-memory-pressure guardrail.
 9. Preserve every observation window. Records and raw sidecars are content addressed and published atomically. Reuse an existing path only when its bytes are identical. Changed evidence must create a new bundle and must never overwrite history.
 10. If authorized, publish the ledger record and all three evidence sidecars
     through a small PR to `dev`. Include the exact build identity, time bounds,

@@ -14,7 +14,7 @@ import {
 } from "./lib/stability-metrics.mjs";
 
 test("the stability metric registry has unique ids and a version", () => {
-  assert.equal(STABILITY_METRIC_REGISTRY_VERSION, 3);
+  assert.equal(STABILITY_METRIC_REGISTRY_VERSION, 4);
   assert.equal(
     new Set(STABILITY_METRICS.map((metric) => metric.id)).size,
     STABILITY_METRICS.length,
@@ -94,6 +94,14 @@ test("worker soak, triage, and canary surfaces share one rate contract", () => {
   assert.deepEqual(canaryRegressionTolerances().workerInitsPerHour, {
     kind: "ratio",
     allowance: 1.5,
+    direction: "lower",
+  });
+  assert.deepEqual(contract.outcomeGuardrailMetricIds, [
+    "app-memory-pressure-p95",
+  ]);
+  assert.deepEqual(canaryRegressionTolerances().appMemoryPressureP95Bytes, {
+    kind: "absolute",
+    allowance: 128 * 1024 * 1024,
     direction: "lower",
   });
 });
