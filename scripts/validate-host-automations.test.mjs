@@ -19,6 +19,7 @@ import {
   auditSavedAutomations,
   authoritativeModelCatalog,
   formatHostAutomationAudit,
+  inspectRootOwnedRuntimeFile,
   parseSavedAutomationToml,
   validateSavedSchedule,
 } from "./validate-host-automations.mjs";
@@ -37,6 +38,7 @@ function fixture() {
   const codexHome = path.join(root, ".codex");
   const stateRoot = path.join(root, ".freed", "automation");
   const launcherRecordRoot = path.join(root, "launcher-records");
+  const runtimeRoot = path.join(root, "automation-actor-runtimes");
   const promptPath = path.join(
     repoRoot,
     "automation",
@@ -72,6 +74,7 @@ function fixture() {
     codexHome,
     stateRoot,
     launcherRecordRoot,
+    runtimeRoot,
     promptPath,
     spec,
   };
@@ -175,7 +178,12 @@ function launcherAttestation(value, overrides = {}) {
 
 function writeLauncherRecord(
   value,
-  { digest = undefined, attestationOverrides = {} } = {},
+  {
+    digest = undefined,
+    attestationOverrides = {},
+    runtimeDigestOverrides = {},
+    runtimePathOverrides = {},
+  } = {},
 ) {
   const attestation = launcherAttestation(value, attestationOverrides);
   const launcherPath = path.join(value.root, "trusted-launcher");
@@ -187,6 +195,45 @@ function writeLauncherRecord(
   const launcherSha256 =
     digest ??
     createHash("sha256").update(readFileSync(launcherPath)).digest("hex");
+  const runtimeContents = {
+    nodePath: "pinned node fixture\n",
+    controlEntryPath: "pinned control entry fixture\n",
+    controlLibraryPath: "pinned control library fixture\n",
+  };
+  const runtimeDigests = Object.fromEntries(
+    Object.entries(runtimeContents).map(([field, contents]) => [
+      field.replace(/Path$/, "Sha256"),
+      createHash("sha256").update(contents).digest("hex"),
+    ]),
+  );
+  const runtimeDigest = createHash("sha256")
+    .update(
+      [
+        "freed-automation-actor-runtime-v1",
+        `node:${runtimeDigests.nodeSha256}`,
+        `automation-control.mjs:${runtimeDigests.controlEntrySha256}`,
+        `lib/automation-control.mjs:${runtimeDigests.controlLibrarySha256}`,
+        "",
+      ].join("\n"),
+    )
+    .digest("hex");
+  const runtimeVersionRoot = path.join(value.runtimeRoot, runtimeDigest);
+  const runtimePaths = {
+    nodePath: path.join(runtimeVersionRoot, "node"),
+    controlEntryPath: path.join(runtimeVersionRoot, "automation-control.mjs"),
+    controlLibraryPath: path.join(
+      runtimeVersionRoot,
+      "lib",
+      "automation-control.mjs",
+    ),
+    ...runtimePathOverrides,
+  };
+  for (const [field, runtimePath] of Object.entries(runtimePaths)) {
+    mkdirSync(path.dirname(runtimePath), { recursive: true, mode: 0o700 });
+    if (!runtimePathOverrides[field]) {
+      writeFileSync(runtimePath, runtimeContents[field], { mode: 0o500 });
+    }
+  }
   const recordDir = value.launcherRecordRoot;
   mkdirSync(recordDir, { recursive: true, mode: 0o700 });
   const recordPath = path.join(recordDir, `${value.spec.id}.json`);
@@ -200,6 +247,9 @@ function writeLauncherRecord(
       attestationProtocol: "freed-actor-launcher-readiness-v1",
       launcherPath,
       launcherSha256,
+      ...runtimePaths,
+      ...runtimeDigests,
+      ...runtimeDigestOverrides,
       stateRoot: realpathSync(value.stateRoot),
       leaseName: value.spec.lease.name,
       maxLeaseLifetimeMs: value.spec.lease.maxLifetimeMs,
@@ -219,6 +269,12 @@ function audit(value, options = {}) {
     stateRoot: value.stateRoot,
     launcherRecordRoot: value.launcherRecordRoot,
     launcherRecordInspector: () => ({ ready: true, reason: "" }),
+    runtimeRoot: value.runtimeRoot,
+    runtimeFileInspector: (runtimePath, runtimeRoot) =>
+      inspectRootOwnedRuntimeFile(runtimePath, runtimeRoot, {
+        requiredUid:
+          typeof process.getuid === "function" ? process.getuid() : 0,
+      }),
     modelCatalog: modelCatalog(),
     nowMs: NOW_MS,
     ...options,
@@ -442,6 +498,12 @@ test("credential and launcher records reject permissive modes and digest drift",
     launcherRecordRoot: value.launcherRecordRoot,
     launcherRecordInspector: () => ({ ready: true, reason: "" }),
     launcherInspector: () => ({ ready: true, reason: "" }),
+    runtimeRoot: value.runtimeRoot,
+    runtimeFileInspector: (runtimePath, runtimeRoot) =>
+      inspectRootOwnedRuntimeFile(runtimePath, runtimeRoot, {
+        requiredUid:
+          typeof process.getuid === "function" ? process.getuid() : 0,
+      }),
     keychainLookup: () => ({ ready: true, reason: "" }),
   });
   assert.equal(readiness.ready, false);
@@ -463,6 +525,165 @@ test("credential and launcher records reject permissive modes and digest drift",
   );
   assert.equal(untrustedRecord.ready, false);
   assert.match(untrustedRecord.reason, /not root-owned and immutable/);
+});
+
+test("general actor launcher records pin the complete root-owned runtime", () => {
+  const value = fixture();
+  writeCredential(value);
+  const credential = actorCredentialReadiness(value.stateRoot, value.spec.id);
+  const { recordPath } = writeLauncherRecord(value);
+  const record = JSON.parse(readFileSync(recordPath, "utf8"));
+
+  for (const field of [
+    "nodePath",
+    "nodeSha256",
+    "controlEntryPath",
+    "controlEntrySha256",
+    "controlLibraryPath",
+    "controlLibrarySha256",
+  ]) {
+    assert.equal(Object.hasOwn(record, field), true, `${field} is missing`);
+  }
+
+  const readiness = actorLauncherReadiness(value.stateRoot, value.spec.id, {
+    credential,
+    leaseContract: value.spec.lease,
+    launcherRecordRoot: value.launcherRecordRoot,
+    launcherRecordInspector: () => ({ ready: true, reason: "" }),
+    launcherInspector: () => ({ ready: true, reason: "" }),
+    runtimeRoot: value.runtimeRoot,
+    runtimeFileInspector: (runtimePath, runtimeRoot) =>
+      inspectRootOwnedRuntimeFile(runtimePath, runtimeRoot, {
+        requiredUid:
+          typeof process.getuid === "function" ? process.getuid() : 0,
+      }),
+    keychainLookup: () => ({ ready: true, reason: "" }),
+    launcherAttestor: () => ({
+      ready: true,
+      reason: "",
+      attestation: launcherAttestation(value),
+    }),
+  });
+  assert.equal(readiness.ready, true);
+  assert.equal(readiness.runtimeRoot, realpathSync(value.runtimeRoot));
+  assert.equal(readiness.nodePath, record.nodePath);
+  assert.equal(readiness.controlEntryPath, record.controlEntryPath);
+  assert.equal(readiness.controlLibraryPath, record.controlLibraryPath);
+});
+
+test("general actor runtime pins reject missing fields, escapes, writable files, and digest drift", () => {
+  const cases = [
+    {
+      name: "missing field",
+      mutate(record) {
+        delete record.nodeSha256;
+      },
+      expected: /identity or handoff contract is invalid/,
+    },
+    {
+      name: "runtime escape",
+      mutate(record, value) {
+        const outsidePath = path.join(value.root, "outside-node");
+        writeFileSync(outsidePath, "outside runtime\n", { mode: 0o500 });
+        record.nodePath = outsidePath;
+        record.nodeSha256 = createHash("sha256")
+          .update(readFileSync(outsidePath))
+          .digest("hex");
+      },
+      expected: /not a canonical path under the automation actor runtime root/,
+    },
+    {
+      name: "mixed runtime versions",
+      mutate(record, value) {
+        const differentRuntimePath = path.join(
+          value.runtimeRoot,
+          "2".repeat(64),
+          "automation-control.mjs",
+        );
+        mkdirSync(path.dirname(differentRuntimePath), {
+          recursive: true,
+          mode: 0o700,
+        });
+        writeFileSync(differentRuntimePath, "different runtime\n", {
+          mode: 0o500,
+        });
+        record.controlEntryPath = differentRuntimePath;
+        record.controlEntrySha256 = createHash("sha256")
+          .update(readFileSync(differentRuntimePath))
+          .digest("hex");
+      },
+      expected: /do not share one content-addressed runtime/,
+    },
+    {
+      name: "writable file",
+      mutate(record) {
+        chmodSync(record.controlEntryPath, 0o722);
+      },
+      expected: /not a root-owned immutable regular file/,
+    },
+    {
+      name: "digest drift",
+      mutate(record) {
+        record.controlLibrarySha256 = "0".repeat(64);
+      },
+      expected: /automation control library pin digest does not match/,
+    },
+  ];
+
+  for (const scenario of cases) {
+    const value = fixture();
+    writeCredential(value);
+    const credential = actorCredentialReadiness(value.stateRoot, value.spec.id);
+    const { recordPath } = writeLauncherRecord(value);
+    const record = JSON.parse(readFileSync(recordPath, "utf8"));
+    scenario.mutate(record, value);
+    writeFileSync(recordPath, `${JSON.stringify(record)}\n`, { mode: 0o600 });
+
+    const readiness = actorLauncherReadiness(value.stateRoot, value.spec.id, {
+      credential,
+      leaseContract: value.spec.lease,
+      launcherRecordRoot: value.launcherRecordRoot,
+      launcherRecordInspector: () => ({ ready: true, reason: "" }),
+      launcherInspector: () => ({ ready: true, reason: "" }),
+      runtimeRoot: value.runtimeRoot,
+      runtimeFileInspector: (runtimePath, runtimeRoot) =>
+        inspectRootOwnedRuntimeFile(runtimePath, runtimeRoot, {
+          requiredUid:
+            typeof process.getuid === "function" ? process.getuid() : 0,
+        }),
+      keychainLookup: () => ({ ready: true, reason: "" }),
+    });
+    assert.equal(readiness.ready, false, scenario.name);
+    assert.match(readiness.reason, scenario.expected, scenario.name);
+  }
+});
+
+test("runtime file inspection requires a regular immutable file owned by the trusted uid", () => {
+  const value = fixture();
+  writeCredential(value);
+  const { recordPath } = writeLauncherRecord(value);
+  const runtimePath = JSON.parse(readFileSync(recordPath, "utf8")).nodePath;
+  const currentUid =
+    typeof process.getuid === "function" ? process.getuid() : 0;
+
+  assert.equal(
+    inspectRootOwnedRuntimeFile(runtimePath, value.runtimeRoot, {
+      requiredUid: currentUid,
+    }).ready,
+    true,
+  );
+  assert.match(
+    inspectRootOwnedRuntimeFile(runtimePath, value.runtimeRoot, {
+      requiredUid: currentUid + 1,
+    }).reason,
+    /not a root-owned immutable regular file/,
+  );
+  assert.match(
+    inspectRootOwnedRuntimeFile(path.dirname(runtimePath), value.runtimeRoot, {
+      requiredUid: currentUid,
+    }).reason,
+    /not a root-owned immutable regular file/,
+  );
 });
 
 test("active actor rejects a launcher attestation that does not verify the credential", () => {

@@ -182,11 +182,41 @@ credential is unavailable. Keep actors paused until their credentials and
 trusted launchers exist, then reconcile through the Codex host automation
 controls instead of editing TOML directly.
 
+After the owner-reviewed bootstrap helper is merged, provision and verify the
+five general actors from a clean `dev` checkout at exact `origin/dev`:
+
+```bash
+npm run automation:actors -- provision --all
+npm run automation:actors -- verify --all
+npm run validate:host-automations
+```
+
+If the batch fails, credentials completed earlier in that invocation are
+revoked in reverse order. The failing actor is left untouched in case it had
+state from an earlier owner action. Revoke the actor named by the error, then
+retry. A `provision_rollback_failed` result names any earlier actors that also
+need explicit owner recovery.
+
+This helper needs no signing identity. It installs a root-owned,
+content-addressed copy of the pinned Node and control runtime, plus one
+actor-specific launcher binding. The native provisioner stores the persistent
+credential in the owner's Keychain with access limited to that launcher. Keep
+the saved actors paused until the real-host verification proves unattended
+Keychain access. Provisioning does not grant task authority or provider
+approval, and it does not contact a provider.
+
+The unsigned handoff is cooperative among processes running as the same macOS
+user. It pins the selected role and protects the persistent credential, but it
+cannot prove which saved automation invoked a provisioned general actor
+launcher. Do not provision the five launchers if those roles require hard
+caller isolation. Stored task ceilings, provider approvals, the global behavior
+slot, owner governance, publisher isolation, and GitHub review remain enforced.
+
 Before mutation, the executor must:
 
 1. Read the atomic current task manifest.
 2. Confirm the task authority permits the intended action.
-3. Require the trusted host launcher to acquire `nightly-writer` outside the candidate process, then supply only its short-lived token in `FREED_AUTOMATION_LEASE_TOKEN`.
+3. Run `npm run --silent automation:actors -- acquire --actor freed-nightly-runner` so the trusted host launcher acquires `nightly-writer` outside the candidate process, then supply only its short-lived token in `FREED_AUTOMATION_LEASE_TOKEN`.
 4. Recheck provider authority and soak exclusivity.
 5. Heartbeat the lease while it owns mutable work.
 6. Release the lease on success, no-op, or controlled failure.
@@ -210,6 +240,7 @@ Validate the checked-in automation contract with:
 ```bash
 npm run validate:automations
 npm run validate:host-automations
+npm run automation:actors -- verify --all
 node --test scripts/automation-control.test.mjs
 ```
 

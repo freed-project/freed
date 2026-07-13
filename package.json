@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "postinstall": "node scripts/patch-automerge.mjs",
+    "automation:actors": "node scripts/automation-actors.mjs",
     "automation:control": "node scripts/automation-control.mjs",
     "build": "node scripts/run-workspace-fanout.mjs build",
     "canary:context": "node scripts/canary-context.mjs",

@@ -297,11 +297,12 @@ function actorLease(
     return { actor, leaseName: policy.leaseName, leaseToken: token };
   }
   const actorCredentialToken = writeActorCredential(stateRoot, actor);
+  assert.equal(policy.maxLeaseLifetimeMs, 30 * 60_000);
   acquireLease({
     stateRoot,
     name: policy.leaseName,
     owner: actor,
-    ttlMs: 24 * 60 * 60 * 1_000,
+    ttlMs: policy.maxLeaseLifetimeMs,
     nowMs,
     token,
     actorCredentialToken,
@@ -1716,6 +1717,80 @@ test("non-owner lease acquisition requires the matching persistent actor credent
     actorCredentialToken,
   });
   assert.equal(acquired.lease.credentialKind, "persistent-actor");
+});
+
+test("general actor policies enforce a 30-minute absolute lease lifetime", () => {
+  const maxLeaseLifetimeMs = 30 * 60_000;
+  const nowMs = Date.parse("2026-07-10T14:30:00Z");
+  const generalActors = Object.keys(AUTOMATION_ACTOR_POLICIES).filter(
+    (actor) => !["freed-owner", "freed-pr-publisher"].includes(actor),
+  );
+
+  assert.deepEqual(generalActors.sort(), [
+    "freed-nightly-runner",
+    "freed-release-verifier",
+    "freed-runtime-observer",
+    "freed-scaffolding-maintainer",
+    "freed-stability-controller",
+  ]);
+  assert.equal(
+    AUTOMATION_ACTOR_POLICIES["freed-owner"].maxLeaseLifetimeMs,
+    undefined,
+  );
+  assert.equal(
+    AUTOMATION_ACTOR_POLICIES["freed-pr-publisher"].maxLeaseLifetimeMs,
+    undefined,
+  );
+
+  for (const actor of generalActors) {
+    const stateRoot = temporaryStateRoot();
+    const policy = AUTOMATION_ACTOR_POLICIES[actor];
+    const actorCredentialToken = writeActorCredential(stateRoot, actor);
+    assert.equal(policy.maxLeaseLifetimeMs, maxLeaseLifetimeMs);
+
+    assert.throws(
+      () =>
+        acquireLease({
+          stateRoot,
+          name: policy.leaseName,
+          owner: actor,
+          ttlMs: maxLeaseLifetimeMs + 1,
+          nowMs,
+          token: `${actor}-overlong-token`,
+          actorCredentialToken,
+        }),
+      (error) =>
+        error instanceof AutomationControlError &&
+        error.code === "lease_ttl_exceeded",
+    );
+
+    const acquired = acquireLease({
+      stateRoot,
+      name: policy.leaseName,
+      owner: actor,
+      ttlMs: maxLeaseLifetimeMs,
+      nowMs,
+      token: `${actor}-bounded-token`,
+      actorCredentialToken,
+    });
+    assert.equal(acquired.lease.credentialKind, "persistent-actor");
+    assert.equal(
+      acquired.lease.expiresAt,
+      new Date(nowMs + maxLeaseLifetimeMs).toISOString(),
+    );
+
+    const heartbeat = heartbeatLease({
+      stateRoot,
+      name: policy.leaseName,
+      token: acquired.lease.token,
+      ttlMs: maxLeaseLifetimeMs,
+      nowMs: nowMs + 20 * 60_000,
+    });
+    assert.equal(
+      heartbeat.lease.expiresAt,
+      new Date(nowMs + maxLeaseLifetimeMs).toISOString(),
+    );
+  }
 });
 
 test("owner lease lifetime cannot outlive its signed capability limit", () => {
