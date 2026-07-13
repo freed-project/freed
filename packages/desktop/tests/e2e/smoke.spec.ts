@@ -811,27 +811,45 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   await expectDesktopSidebarClosed(page, 3_000);
 });
 
-test("desktop titlebar controls align with the macOS stoplight row", async ({ app, page }) => {
+test("desktop layout controls fill the toolbar hitbox and center their icons", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.injectRssItems(1);
+  await page.locator("[data-feed-item-id]").first().click();
+  await expect(page.getByRole("button", { name: "Hide Previews" })).toBeVisible();
 
   const geometry = await page.evaluate(() => {
     const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
     const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
-    if (!toolbar || !sidebarToggle) return null;
+    const previewToggle = document.querySelector('[aria-label="Hide Previews"]') as HTMLElement | null;
+    const sidebarIcon = sidebarToggle?.querySelector("svg") as SVGElement | null;
+    const previewIcon = previewToggle?.querySelector("svg") as SVGElement | null;
+    if (!toolbar || !sidebarToggle || !previewToggle || !sidebarIcon || !previewIcon) return null;
 
     const toolbarRect = toolbar.getBoundingClientRect();
-    const toggleRect = sidebarToggle.getBoundingClientRect();
+    const readControlGeometry = (control: HTMLElement, icon: SVGElement) => {
+      const controlRect = control.getBoundingClientRect();
+      const iconRect = icon.getBoundingClientRect();
+      return {
+        height: Math.round(controlRect.height),
+        iconCenterY: Math.round(iconRect.top + iconRect.height / 2 - toolbarRect.top),
+      };
+    };
+
     return {
       toolbarHeight: Math.round(toolbarRect.height),
-      toggleCenterY: Math.round(toggleRect.top + toggleRect.height / 2 - toolbarRect.top),
+      toolbarCenterY: Math.round(toolbarRect.height / 2),
+      sidebar: readControlGeometry(sidebarToggle, sidebarIcon),
+      preview: readControlGeometry(previewToggle, previewIcon),
     };
   });
 
   expect(geometry).not.toBeNull();
-  expect(geometry?.toolbarHeight).toBe(52);
-  expect(geometry?.toggleCenterY).toBe(18);
+  expect(geometry?.sidebar.height).toBe(geometry?.toolbarHeight);
+  expect(geometry?.preview.height).toBe(geometry?.toolbarHeight);
+  expect(geometry?.sidebar.iconCenterY).toBe(geometry?.toolbarCenterY);
+  expect(geometry?.preview.iconCenterY).toBe(geometry?.toolbarCenterY);
 });
 
 test("narrow desktop viewports keep the desktop compact rail instead of switching to the mobile drawer", async ({ app, page }) => {

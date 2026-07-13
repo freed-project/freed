@@ -44,7 +44,6 @@ import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   MACOS_TRAFFIC_LIGHT_INSET,
-  MACOS_TRAFFIC_LIGHT_ROW_CENTER_Y,
   useAppStore,
   usePlatform,
 } from "../../context/PlatformContext.js";
@@ -376,8 +375,6 @@ export function Header({
   const topToolbarHeightPx = scaleInterfaceChromePx(TOP_TOOLBAR_HEIGHT_PX, interfaceZoom);
   const toolbarGapHalfPx = scaleInterfaceChromePx(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2, interfaceZoom);
   const toolbarSlotPaddingRightPx = scaleInterfaceChromePx(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX, interfaceZoom);
-  const toolbarControlCenterYPx =
-    MACOS_TRAFFIC_LIGHT_ROW_CENTER_Y + Math.round((topToolbarHeightPx - TOP_TOOLBAR_HEIGHT_PX) / 2);
 
   const { filteredItems, isSearching, resultCount } = useSearchResults(
     items,
@@ -1106,25 +1103,22 @@ export function Header({
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
   const sidebarTogglePositionStyle = {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
     left: px(layoutControlMetrics.sidebarToggleLeftPx),
     pointerEvents: "auto",
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
   const previewTogglePositionStyle = {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
     left: px(layoutControlMetrics.previewToggleLeftPx),
     pointerEvents: "auto",
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
-  const layoutControlCenterlineStyle = headerDragRegion
-    ? ({
-        position: "absolute",
-        top: px(toolbarControlCenterYPx),
-        transform: "translateY(-50%)",
-      } as CSSProperties)
-    : undefined;
-  const layoutControlWrapperClass = headerDragRegion
-    ? "absolute inline-flex"
-    : "absolute top-1/2 inline-flex -translate-y-1/2";
+  const layoutControlWrapperClass = "absolute inset-y-0 inline-flex items-center";
   const toolbarContainerStyle = {
     ...(headerDragRegion ? dragStyle : {}),
     boxSizing: "border-box",
@@ -1133,7 +1127,6 @@ export function Header({
     width: "100%",
     maxWidth: "100%",
     ["--freed-top-toolbar-height" as string]: px(topToolbarHeightPx),
-    ["--freed-toolbar-control-center-y" as string]: px(toolbarControlCenterYPx),
   } as CSSProperties;
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -1505,7 +1498,7 @@ export function Header({
                   <Tooltip
                     label={desktopSidebarToggleLabel}
                     className={layoutControlWrapperClass}
-                    triggerStyle={{ ...sidebarTogglePositionStyle, ...layoutControlCenterlineStyle }}
+                    triggerStyle={sidebarTogglePositionStyle}
                   >
                     <button
                       onClick={onDesktopSidebarToggle}
@@ -1526,7 +1519,7 @@ export function Header({
                     <Tooltip
                       label={display.reading.dualColumnMode ? "Hide Previews" : "Show Previews"}
                       className={layoutControlWrapperClass}
-                      triggerStyle={{ ...previewTogglePositionStyle, ...layoutControlCenterlineStyle }}
+                      triggerStyle={previewTogglePositionStyle}
                     >
                       <button
                         ref={handlePreviewToggleButtonRef}
