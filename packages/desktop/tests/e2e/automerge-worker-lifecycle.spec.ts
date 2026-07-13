@@ -277,6 +277,12 @@ test("large document survives real worker idle termination and reinitialization"
     ),
   ).toBe(true);
   expect(
+    quietWindowWorker.outbound.filter(
+      (message) =>
+        message.sequence > replacementSequence && message.type === "INIT",
+    ),
+  ).toHaveLength(0);
+  expect(
     recordsAfterQuietWindowRead.filter(
       (record) =>
         record.url.includes("automerge.worker") &&
@@ -284,17 +290,32 @@ test("large document survives real worker idle termination and reinitialization"
     ),
   ).toHaveLength(0);
 
-  await expect
-    .poll(
-      async () => {
-        const record = (await readWorkerProbeRecords(page)).find(
-          (candidate) => candidate.generation === replacementGeneration,
-        );
-        return record?.terminatedSequence ?? 0;
-      },
-      { timeout: 75_000 },
-    )
-    .toBeGreaterThan(replacementSequence);
+  try {
+    await expect
+      .poll(
+        async () => {
+          const record = (await readWorkerProbeRecords(page)).find(
+            (candidate) => candidate.generation === replacementGeneration,
+          );
+          return record?.terminatedSequence ?? 0;
+        },
+        { timeout: 75_000 },
+      )
+      .toBeGreaterThan(replacementSequence);
+  } catch (error) {
+    const timeoutEvidence = {
+      replacementGeneration,
+      replacementSequence,
+      workers: await readWorkerProbeRecords(page),
+    };
+    await testInfo.attach("automerge-worker-termination-timeout.json", {
+      body: Buffer.from(
+        JSON.stringify(timeoutEvidence, null, 2),
+      ),
+      contentType: "application/json",
+    });
+    throw error;
+  }
 
   const mutation = await page.evaluate(async (mutationTargetId) => {
     const automerge = (

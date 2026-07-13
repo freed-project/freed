@@ -231,7 +231,9 @@ export function createLargeAutomergeFixture(
       (draft) => {
         const item = draft.feedItems[targetId];
         if (!item) throw new Error(`Fixture item missing: ${targetId}`);
-        item.userState.readAt = FIXTURE_EPOCH_MS + mutationIndex + 1;
+        const readAt = FIXTURE_EPOCH_MS + mutationIndex + 1;
+        item.userState.readAt = readAt;
+        item.userState.seenSyncedAt = readAt;
       },
     );
     const persisted = persistDoc(doc, persistence);
