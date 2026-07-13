@@ -103,7 +103,7 @@ echo "Verifying preview bundle for $TARGET from $TEMP_DIR"
   else
     (
       cd packages/pwa
-      env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run build
+      env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" VITE_FREED_FEATURE_PREVIEW=1 PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run build
     )
   fi
 )
@@ -124,7 +124,7 @@ if [[ "$TARGET" == "website" ]]; then
   "$NPX_BIN" vercel deploy --prebuilt --archive=tgz --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" -y
 else
   echo "Building $TARGET preview with Vercel"
-  env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" "$NPX_BIN" vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}"
+  env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" VITE_FREED_FEATURE_PREVIEW=1 "$NPX_BIN" vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}"
 
   echo "Deploying $TARGET preview with Vercel"
   "$NPX_BIN" vercel deploy --prebuilt --archive=tgz --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" -y
