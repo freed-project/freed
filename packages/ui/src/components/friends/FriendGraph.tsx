@@ -17,6 +17,7 @@ import type {
   RssFeed,
 } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
+import { CopyIcon } from "../icons.js";
 import {
   buildIdentityGraphActivitySummaries,
   type IdentityGraphActivitySummaries,
@@ -33,6 +34,7 @@ import {
 } from "../../lib/identity-graph-atlas.js";
 import {
   compileIdentityGalaxyScene,
+  IdentityGalaxyNodeKindCode,
   type IdentityGalaxyScene,
   updateIdentityGalaxySceneInteraction,
 } from "../../lib/identity-galaxy-scene.js";
@@ -40,6 +42,7 @@ import {
   IdentityGalaxyEngine,
   type IdentityGalaxyVariation,
 } from "../../lib/identity-galaxy-engine.js";
+import { viewportPointToIdentityGalaxyPlane } from "../../lib/identity-galaxy-camera.js";
 import type {
   IdentityGalaxyWorkerResponse,
   IdentityGalaxyWorkerViewportInput,
@@ -146,6 +149,8 @@ interface GraphPerfSnapshot {
   visibleLabelCount: number;
   visibleNodeLabelCount: number;
   visibleProviderLabelCount: number;
+  rendererLabelCount: number;
+  readyRendererLabelCount: number;
   denseRenderMode: "dense" | "containers";
   denseInteractionEligible: boolean;
   denseInteractionNodeCount: number;
@@ -185,6 +190,8 @@ type ApplyIdentityGraphAtlas = (
 const MIN_SCALE = 0.18;
 const MAX_SCALE = 3.2;
 const FIT_PADDING = 96;
+const DESKTOP_INITIAL_SCALE = 0.34;
+const MOBILE_INITIAL_SCALE = 0.42;
 const TRACKPAD_PINCH_ZOOM_SPEED = 0.0035;
 const WHEEL_ZOOM_SPEED = 0.0014;
 const INTERACTION_SETTLE_DELAY_MS = 180;
@@ -197,6 +204,10 @@ const EMPTY_GRAPH_VIEWPORT_INSETS: GraphViewportInsets = {
   bottom: 0,
   left: 0,
 };
+
+function fitPaddingForViewport(width: number): number {
+  return width <= 700 ? 28 : FIT_PADDING;
+}
 
 function nowMs(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -242,6 +253,81 @@ function fitTransformToVisibleAtlasBounds(
     y: transform.y + viewportInsets.top,
     scale: transform.scale,
   };
+}
+
+function initialGalaxyBounds(
+  atlasBounds: IdentityGraphAtlasBounds,
+  scene: IdentityGalaxyScene,
+  viewportWidth: number,
+): IdentityGraphAtlasBounds {
+  let left = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (let index = 0; index < scene.nodeIds.length; index += 1) {
+    const kind = scene.kinds[index];
+    if (kind !== IdentityGalaxyNodeKindCode.FriendPerson &&
+      kind !== IdentityGalaxyNodeKindCode.ConnectionPerson) {
+      continue;
+    }
+    const x = scene.positions[index * 3]!;
+    const y = -scene.positions[index * 3 + 1]!;
+    const radius = scene.radii[index]!;
+    left = Math.min(left, x - radius);
+    right = Math.max(right, x + radius);
+    top = Math.min(top, y - radius);
+    bottom = Math.max(bottom, y + radius);
+  }
+  if (!Number.isFinite(left)) return atlasBounds;
+  const padding = viewportWidth <= 700 ? 72 : 150;
+  return {
+    left: left - padding,
+    right: right + padding,
+    top: top - padding,
+    bottom: bottom + padding,
+  };
+}
+
+function ensureInitialGalaxyScale(
+  transform: ViewTransform,
+  bounds: IdentityGraphAtlasBounds,
+  width: number,
+  height: number,
+  viewportInsets: GraphViewportInsets,
+): ViewTransform {
+  const minimumScale = width <= 700 ? MOBILE_INITIAL_SCALE : DESKTOP_INITIAL_SCALE;
+  if (transform.scale >= minimumScale) return transform;
+  const center = visibleViewportCenter(width, height, viewportInsets);
+  const worldCenterX = (bounds.left + bounds.right) / 2;
+  const worldCenterY = (bounds.top + bounds.bottom) / 2;
+  return {
+    x: center.x - worldCenterX * minimumScale,
+    y: center.y - worldCenterY * minimumScale,
+    scale: minimumScale,
+  };
+}
+
+function initialGalaxyTransform(
+  atlasBounds: IdentityGraphAtlasBounds,
+  scene: IdentityGalaxyScene,
+  width: number,
+  height: number,
+  viewportInsets: GraphViewportInsets,
+): ViewTransform {
+  const bounds = initialGalaxyBounds(atlasBounds, scene, width);
+  return ensureInitialGalaxyScale(
+    fitTransformToVisibleAtlasBounds(
+      bounds,
+      width,
+      height,
+      fitPaddingForViewport(width),
+      viewportInsets,
+    ),
+    bounds,
+    width,
+    height,
+    viewportInsets,
+  );
 }
 
 function visibleViewportCenter(width: number, height: number, viewportInsets: GraphViewportInsets): TouchPoint {
@@ -354,6 +440,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const atlasRef = useRef<IdentityGraphAtlas | null>(null);
   const galaxySceneRef = useRef<IdentityGalaxyScene | null>(null);
   const hitBucketsRef = useRef<Map<string, string[]>>(new Map());
+  const atlasNodeByIdRef = useRef<Map<string, IdentityGraphAtlasNode>>(new Map());
+  const visibleNodeIdsRef = useRef<string[]>([]);
   const transformRef = useRef<ViewTransform>({ ...FRIEND_GRAPH_DEFAULT_TRANSFORM });
   const dragStateRef = useRef<DragState | null>(null);
   const pinchStateRef = useRef<PinchState | null>(null);
@@ -483,6 +571,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       visibleLabelCount: atlas.labels.length,
       visibleNodeLabelCount: atlas.labels.filter((label) => label.kind !== "provider_cluster").length,
       visibleProviderLabelCount: atlas.labels.filter((label) => label.kind === "provider_cluster").length,
+      rendererLabelCount: engineRef.current?.labelCount ?? 0,
+      readyRendererLabelCount: engineRef.current?.readyLabelCount ?? 0,
       denseRenderMode: sourceNodeCount >= 1_200 ? "dense" : "containers",
       denseInteractionEligible: sourceNodeCount >= 1_200,
       denseInteractionNodeCount: latestQualityRef.current === "interactive" ? visibleNodeCount : 0,
@@ -514,6 +604,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       container.dataset.graphPersonCount = String(personCount);
       container.dataset.graphChannelCount = String(channelCount);
       container.dataset.visibleLabelCount = String(atlas.labels.length);
+      container.dataset.rendererLabelCount = String(engineRef.current?.labelCount ?? 0);
+      container.dataset.readyRendererLabelCount = String(engineRef.current?.readyLabelCount ?? 0);
       container.dataset.graphQualityMode = latestQualityRef.current;
       container.dataset.graphVisibleNodeCount = String(visibleNodeCount);
       container.dataset.graphResidentNodeCount = String(residentNodeCount);
@@ -587,7 +679,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           },
         );
       }
-      engine.render(transformRef.current, latestQualityRef.current);
+      engine.render(transformRef.current);
       sceneDirtyRef.current = false;
       if (!firstVisibleMsRef.current && atlas.nodes.length > 0) {
         firstVisibleMsRef.current = nowMs() - mountedAtRef.current;
@@ -641,13 +733,15 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       throw new Error("Friends galaxy atlas arrived without a semantic scene");
     }
     hitBucketsRef.current = buildHitBucketMap(atlas);
+    atlasNodeByIdRef.current = new Map(atlas.nodes.map((node) => [node.id, node]));
+    visibleNodeIdsRef.current = atlas.nodes.map((node) => node.id);
     sceneDirtyRef.current = true;
     if (!hasFittedInitialAtlasRef.current && !hasUserAdjustedTransformRef.current) {
-      transformRef.current = fitTransformToVisibleAtlasBounds(
+      transformRef.current = initialGalaxyTransform(
         atlas.bounds,
+        galaxySceneRef.current,
         canvasSize.width,
         canvasSize.height,
-        FIT_PADDING,
         viewportInsetsRef.current,
       );
       hasFittedInitialAtlasRef.current = true;
@@ -767,15 +861,28 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const container = containerRef.current;
     if (!container) return { x: 0, y: 0 };
     const rect = container.getBoundingClientRect();
-    return {
-      x: (clientX - rect.left - transformRef.current.x) / transformRef.current.scale,
-      y: (clientY - rect.top - transformRef.current.y) / transformRef.current.scale,
-    };
+    return viewportPointToIdentityGalaxyPlane(
+      clientX - rect.left,
+      clientY - rect.top,
+      transformRef.current,
+    );
   }, []);
 
   const hitNodeAt = useCallback((clientX: number, clientY: number) => {
     const atlas = atlasRef.current;
     if (!atlas) return null;
+    const container = containerRef.current;
+    const scene = galaxySceneRef.current;
+    const engine = engineRef.current;
+    if (container && scene && engine) {
+      const rect = container.getBoundingClientRect();
+      const nodeId = engine.pickNode(
+        clientX - rect.left,
+        clientY - rect.top,
+        visibleNodeIdsRef.current,
+      );
+      if (nodeId) return atlasNodeByIdRef.current.get(nodeId) ?? null;
+    }
     const point = viewportToWorld(clientX, clientY);
     return findHitNode(atlas, hitBucketsRef.current, point.x, point.y);
   }, [viewportToWorld]);
@@ -808,7 +915,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       atlas.bounds,
       canvasSize.width,
       canvasSize.height,
-      FIT_PADDING,
+      fitPaddingForViewport(canvasSize.width),
       viewportInsetsRef.current,
     );
     hasUserAdjustedTransformRef.current = true;
@@ -914,12 +1021,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   useEffect(() => {
     if (!atlasReady) return;
     const atlas = atlasRef.current;
-    if (atlas && !hasUserAdjustedTransformRef.current) {
-      transformRef.current = fitTransformToVisibleAtlasBounds(
+    const scene = galaxySceneRef.current;
+    if (atlas && scene && !hasUserAdjustedTransformRef.current) {
+      transformRef.current = initialGalaxyTransform(
         atlas.bounds,
+        scene,
         canvasSize.width,
         canvasSize.height,
-        FIT_PADDING,
         viewportInsets,
       );
     }
@@ -1160,8 +1268,21 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const pinch = pinchStateRef.current;
     if (pinch && pinch.pointerIds.includes(event.pointerId)) {
       pinchStateRef.current = null;
-      dragStateRef.current = null;
-      overlayRef.current?.classList.toggle("cursor-grabbing", activeTouchPointsRef.current.size > 0);
+      const remainingTouch = activeTouchPointsRef.current.entries().next().value as
+        | [number, TouchPoint]
+        | undefined;
+      dragStateRef.current = remainingTouch
+        ? {
+            kind: "pan",
+            pointerId: remainingTouch[0],
+            startX: remainingTouch[1].x,
+            startY: remainingTouch[1].y,
+            originX: transformRef.current.x,
+            originY: transformRef.current.y,
+            moved: true,
+          }
+        : null;
+      overlayRef.current?.classList.toggle("cursor-grabbing", !!remainingTouch);
       requestAtlas("settled");
       return;
     }
@@ -1325,10 +1446,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         />
       </div>
       {import.meta.env.DEV ? (
-        <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-xl border border-[color:rgb(var(--theme-border-rgb)/0.22)] bg-[color:rgb(var(--theme-surface-rgb)/0.78)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)] shadow-lg backdrop-blur-md">
-          <span className="font-semibold text-[color:var(--theme-text-primary)]">Starfield</span>
+        <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-xl border border-[color:rgb(var(--theme-border-rgb)/0.22)] bg-[color:rgb(var(--theme-surface-rgb)/0.78)] px-2 py-2 text-xs text-[color:var(--theme-text-secondary)] shadow-lg backdrop-blur-md sm:left-4 sm:top-4 sm:px-3">
+          <span className="hidden font-semibold text-[color:var(--theme-text-primary)] sm:inline">Starfield</span>
           <select
-            className="rounded-lg border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:var(--theme-bg-card)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)]"
+            className="max-w-[8.5rem] rounded-lg border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:var(--theme-bg-card)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)] sm:max-w-none"
             value={starfieldVariation}
             onChange={(event) => setStarfieldVariation(event.target.value as IdentityGalaxyVariation)}
             aria-label="Starfield variation"
@@ -1422,13 +1543,20 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       ) : null}
       <div
         data-testid="friend-graph-controls"
-        className="absolute right-4 top-4 z-10 flex items-center gap-2"
+        className="absolute right-3 top-3 z-10 flex items-center gap-2 sm:right-4 sm:top-4"
       >
         <button type="button" className={CONTROL_BASE} onClick={fitAll}>
           Fit all
         </button>
-        <button type="button" className={CONTROL_BASE} onClick={handleCopyDiagnostics}>
-          Copy diagnostics
+        <button
+          type="button"
+          className={`${CONTROL_BASE} inline-flex items-center px-2 sm:px-3`}
+          onClick={handleCopyDiagnostics}
+          aria-label="Copy diagnostics"
+          title="Copy diagnostics"
+        >
+          <CopyIcon className="h-4 w-4" />
+          <span className="hidden sm:inline">Copy diagnostics</span>
         </button>
       </div>
     </div>

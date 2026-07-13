@@ -12,6 +12,10 @@ import {
   type IdentityGalaxyScene,
 } from "./identity-galaxy-scene.js";
 import type { ViewTransform } from "./identity-graph-layout.js";
+import {
+  IDENTITY_GALAXY_CAMERA_FOV,
+  identityGalaxyCameraPose,
+} from "./identity-galaxy-camera.js";
 
 export type IdentityGalaxyVariation = "nebula-rings" | "nebula" | "rings";
 export type IdentityGalaxyRendererType = "three-starfield" | "canvas-starfield-fallback";
@@ -62,7 +66,7 @@ function readGraphPalette(element: HTMLElement | null): GraphPalette {
   const shell = cssRgbVar(style, "--theme-shell-rgb", "6 7 13");
   return {
     surface: rgb(shell, 0.2),
-    text: style.getPropertyValue("--theme-text") || rgb("255 255 255", 0.9),
+    text: style.getPropertyValue("--theme-text-primary") || rgb("255 255 255", 0.9),
     mutedText: style.getPropertyValue("--theme-text-muted") || rgb("255 255 255", 0.62),
     edge: rgb(primary, 0.32),
     friendFill: rgb(primary, 0.42),
@@ -106,7 +110,9 @@ function seededUnit(value: string): number {
 }
 
 function colorFromCss(value: string, fallback = "#7dd3fc"): THREE.Color {
-  const match = value.match(/rgb\((\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/);
+  const normalized = value.trim();
+  if (/^#[\da-f]{3,8}$/i.test(normalized)) return new THREE.Color(normalized);
+  const match = normalized.match(/rgb\((\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/);
   if (!match) return new THREE.Color(fallback);
   return new THREE.Color(Number(match[1]) / 255, Number(match[2]) / 255, Number(match[3]) / 255);
 }
@@ -158,14 +164,163 @@ function makePointMaterial(): THREE.ShaderMaterial {
       void main() {
         vec2 center = gl_PointCoord - vec2(0.5);
         float distanceFromCenter = length(center);
-        float core = smoothstep(0.34, 0.02, distanceFromCenter);
-        float halo = smoothstep(0.5, 0.08, distanceFromCenter) * 0.52;
+        float core = 1.0 - smoothstep(0.02, 0.34, distanceFromCenter);
+        float halo = (1.0 - smoothstep(0.08, 0.5, distanceFromCenter)) * 0.52;
         float alpha = max(core, halo) * vAlpha;
         if (alpha < 0.02) discard;
         gl_FragColor = vec4(vColor, alpha);
       }
     `,
     vertexColors: true,
+  });
+}
+
+function makeGalaxyStarGeometry(): THREE.InstancedBufferGeometry {
+  const geometry = new THREE.InstancedBufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute([
+    -0.5, -0.5, 0,
+    0.5, -0.5, 0,
+    0.5, 0.5, 0,
+    -0.5, 0.5, 0,
+  ], 3));
+  geometry.setAttribute("starUv", new THREE.Float32BufferAttribute([
+    -1, -1,
+    1, -1,
+    1, 1,
+    -1, 1,
+  ], 2));
+  geometry.setIndex([0, 1, 2, 0, 2, 3]);
+  geometry.instanceCount = 0;
+  return geometry;
+}
+
+function makeGalaxyStarMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    depthTest: true,
+    blending: THREE.NormalBlending,
+    uniforms: {
+      resolution: { value: new THREE.Vector2(1, 1) },
+      lightSurface: { value: 0 },
+    },
+    vertexShader: `
+      uniform vec2 resolution;
+      attribute vec2 starUv;
+      attribute vec3 instancePosition;
+      attribute vec3 instanceColor;
+      attribute float instanceSize;
+      attribute float instanceProminence;
+      attribute float instanceHighlight;
+      varying vec2 vStarUv;
+      varying vec3 vStarColor;
+      varying float vProminence;
+      varying float vHighlight;
+
+      void main() {
+        vec4 viewCenter = modelViewMatrix * vec4(instancePosition, 1.0);
+        vec4 clipCenter = projectionMatrix * viewCenter;
+        float depthScale = clamp(1000.0 / max(280.0, -viewCenter.z), 0.72, 1.8);
+        vec2 pixelOffset = position.xy * instanceSize * depthScale;
+        clipCenter.xy += pixelOffset * (2.0 / resolution) * clipCenter.w;
+        gl_Position = clipCenter;
+        vStarUv = starUv;
+        vStarColor = instanceColor;
+        vProminence = instanceProminence;
+        vHighlight = instanceHighlight;
+      }
+    `,
+    fragmentShader: `
+      varying vec2 vStarUv;
+      varying vec3 vStarColor;
+      varying float vProminence;
+      varying float vHighlight;
+      uniform float lightSurface;
+
+      void main() {
+        float radius = length(vStarUv);
+        if (radius > 1.0) discard;
+
+        float core = 1.0 - smoothstep(0.16, 0.46, radius);
+        float hotCore = 1.0 - smoothstep(0.0, 0.2, radius);
+        float corona = (1.0 - smoothstep(0.18, 1.0, radius)) * (0.045 + vProminence * 0.085);
+        float angle = atan(vStarUv.y, vStarUv.x);
+        float rayShape = pow(abs(cos(angle * 2.0)), 24.0);
+        float rays = rayShape * (1.0 - smoothstep(0.08, 0.94, radius)) * vProminence * 0.2;
+        float outerRing = smoothstep(0.6, 0.68, radius) - smoothstep(0.74, 0.82, radius);
+        float selectionRing = outerRing * vHighlight * 0.82;
+        float alpha = clamp(core + corona + rays + selectionRing, 0.0, 1.0);
+        vec3 hotColor = mix(vec3(1.0), vStarColor * 0.5, lightSurface);
+        vec3 color = mix(vStarColor, hotColor, hotCore * 0.76 + rays * 0.22);
+        color = mix(color, vec3(1.0), selectionRing * 0.5);
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
+  });
+}
+
+function makeGalaxyEdgeGeometry(): THREE.InstancedBufferGeometry {
+  const geometry = new THREE.InstancedBufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute([
+    0, -1, 0,
+    1, -1, 0,
+    1, 1, 0,
+    0, 1, 0,
+  ], 3));
+  geometry.setIndex([0, 1, 2, 0, 2, 3]);
+  geometry.instanceCount = 0;
+  return geometry;
+}
+
+function makeGalaxyEdgeMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+    blending: THREE.NormalBlending,
+    uniforms: {
+      color: { value: new THREE.Color("#7dd3fc") },
+      opacity: { value: 0.64 },
+      resolution: { value: new THREE.Vector2(1, 1) },
+      width: { value: 1.35 },
+    },
+    vertexShader: `
+      uniform vec2 resolution;
+      uniform float width;
+      attribute vec3 edgeSource;
+      attribute vec3 edgeTarget;
+      varying float vAcross;
+      varying float vAlong;
+
+      void main() {
+        vec4 sourceClip = projectionMatrix * modelViewMatrix * vec4(edgeSource, 1.0);
+        vec4 targetClip = projectionMatrix * modelViewMatrix * vec4(edgeTarget, 1.0);
+        vec2 sourceNdc = sourceClip.xy / sourceClip.w;
+        vec2 targetNdc = targetClip.xy / targetClip.w;
+        vec2 pixelDirection = (targetNdc - sourceNdc) * resolution;
+        float directionLength = max(0.001, length(pixelDirection));
+        vec2 normal = vec2(-pixelDirection.y, pixelDirection.x) / directionLength;
+        vec4 centerClip = mix(sourceClip, targetClip, position.x);
+        centerClip.xy += normal * position.y * width * (2.0 / resolution) * centerClip.w;
+        gl_Position = centerClip;
+        vAcross = position.y;
+        vAlong = position.x;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 color;
+      uniform float opacity;
+      varying float vAcross;
+      varying float vAlong;
+
+      void main() {
+        float crossFade = 1.0 - smoothstep(0.42, 1.0, abs(vAcross));
+        float endFade = smoothstep(0.0, 0.13, vAlong) * (1.0 - smoothstep(0.87, 1.0, vAlong));
+        float alpha = crossFade * mix(0.42, 1.0, endFade) * opacity;
+        if (alpha < 0.02) discard;
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
   });
 }
 
@@ -279,26 +434,25 @@ function drawFallbackStarfield(
 class StarfieldGraphRenderer {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
-  private readonly camera = new THREE.PerspectiveCamera(42, 1, 1, 8_000);
+  private readonly camera = new THREE.PerspectiveCamera(IDENTITY_GALAXY_CAMERA_FOV, 1, 1, 20_000);
   private readonly graphGroup = new THREE.Group();
   private readonly regionGroup = new THREE.Group();
   private readonly labelGroup = new THREE.Group();
-  private readonly nodeGeometry = new THREE.BufferGeometry();
-  private readonly nodeMaterial = makePointMaterial();
-  private readonly nodePoints: THREE.Points;
-  private readonly edgeGeometry = new THREE.BufferGeometry();
-  private readonly edgeMaterial = new THREE.LineBasicMaterial({
-    color: 0x7dd3fc,
-    transparent: true,
-    opacity: 0.58,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    depthTest: false,
-  });
-  private readonly edgeLines: THREE.LineSegments;
+  private readonly nodeGeometry = makeGalaxyStarGeometry();
+  private readonly nodeMaterial = makeGalaxyStarMaterial();
+  private readonly nodeStars: THREE.Mesh;
+  private readonly edgeGeometry = makeGalaxyEdgeGeometry();
+  private readonly edgeMaterial = makeGalaxyEdgeMaterial();
+  private readonly edgeLines: THREE.Mesh;
   private readonly starMaterial = makePointMaterial();
   private starPoints: THREE.Points | null = null;
   private labels: TroikaText[] = [];
+  private indexedScene: IdentityGalaxyScene | null = null;
+  private nodeIndexById = new Map<string, number>();
+  private readonly projectedNode = new THREE.Vector3();
+  private lastTransform: ViewTransform | null = null;
+  private labelRenderRaf = 0;
+  private labelLayoutDirty = false;
   private width = 1;
   private height = 1;
   private starCount = 0;
@@ -329,12 +483,12 @@ class StarfieldGraphRenderer {
     this.scene.add(this.graphGroup);
     this.scene.add(this.labelGroup);
     this.graphGroup.add(this.regionGroup);
-    this.edgeLines = new THREE.LineSegments(this.edgeGeometry, this.edgeMaterial);
+    this.edgeLines = new THREE.Mesh(this.edgeGeometry, this.edgeMaterial);
     this.edgeLines.frustumCulled = false;
     this.graphGroup.add(this.edgeLines);
-    this.nodePoints = new THREE.Points(this.nodeGeometry, this.nodeMaterial);
-    this.nodePoints.frustumCulled = false;
-    this.graphGroup.add(this.nodePoints);
+    this.nodeStars = new THREE.Mesh(this.nodeGeometry, this.nodeMaterial);
+    this.nodeStars.frustumCulled = false;
+    this.graphGroup.add(this.nodeStars);
   }
 
   resize(width: number, height: number): void {
@@ -351,10 +505,9 @@ class StarfieldGraphRenderer {
     this.renderer.setPixelRatio(pixelRatio);
     this.renderer.setSize(this.width, this.height, false);
     this.camera.aspect = this.width / this.height;
-    this.camera.position.set(0, 0, this.height / 2 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
-    this.camera.lookAt(0, 0, 0);
     this.camera.updateProjectionMatrix();
-    this.nodeMaterial.uniforms.pixelRatio.value = pixelRatio;
+    this.nodeMaterial.uniforms.resolution.value.set(this.width, this.height);
+    this.edgeMaterial.uniforms.resolution.value.set(this.width, this.height);
     this.starMaterial.uniforms.pixelRatio.value = pixelRatio;
   }
 
@@ -366,6 +519,7 @@ class StarfieldGraphRenderer {
     quality: IdentityGraphAtlasQuality,
   ): void {
     if (this.disposed) return;
+    this.ensureSceneIndex(galaxyScene);
     const nextPaletteKey = [
       palette.surface,
       palette.text,
@@ -394,31 +548,79 @@ class StarfieldGraphRenderer {
       this.paletteKey = nextPaletteKey;
     }
     this.syncRegions(atlas, palette, variation);
-    this.edgeMaterial.color.copy(colorFromCss(palette.edge, "#7dd3fc"));
-    this.edgeMaterial.opacity = quality === "interactive" ? 0.26 : 0.58;
+    const surfaceColor = colorFromCss(palette.surface, "#06070d");
+    const surfaceLuminance = surfaceColor.r * 0.2126 + surfaceColor.g * 0.7152 + surfaceColor.b * 0.0722;
+    this.nodeMaterial.uniforms.lightSurface.value = THREE.MathUtils.smoothstep(surfaceLuminance, 0.55, 0.8);
+    this.edgeMaterial.uniforms.color.value.copy(colorFromCss(palette.edge, "#7dd3fc"));
+    this.edgeMaterial.uniforms.opacity.value = quality === "interactive" ? 0.28 : 0.64;
     this.syncEdges(galaxyScene);
     this.syncNodes(galaxyScene, palette);
-    this.syncLabels(atlas, palette, quality);
+    this.syncLabels(atlas, galaxyScene, palette, quality);
   }
 
-  render(transform: ViewTransform, quality: IdentityGraphAtlasQuality): void {
+  render(transform: ViewTransform): void {
     if (this.disposed) return;
-    this.applyTransform(transform);
+    this.lastTransform = { ...transform };
+    this.applyCamera(transform);
     if (this.starPoints) {
-      this.starPoints.visible = quality !== "interactive";
-      this.starPoints.position.set(
-        (transform.x - this.width / 2) * 0.055,
-        (this.height / 2 - transform.y) * 0.055,
-        0,
-      );
-      this.starPoints.scale.setScalar(1.01 + transform.scale * 0.018);
+      this.starPoints.visible = true;
     }
-    this.regionGroup.visible = quality !== "interactive";
+    this.regionGroup.visible = true;
     this.renderer.render(this.scene, this.camera);
+  }
+
+  get labelCount(): number {
+    return this.labels.length;
+  }
+
+  get readyLabelCount(): number {
+    return this.labels.filter((label) => {
+      const position = label.geometry.getAttribute("position");
+      return position ? position.count > 0 : false;
+    }).length;
+  }
+
+  pickNode(
+    viewportX: number,
+    viewportY: number,
+    galaxyScene: IdentityGalaxyScene,
+    candidateNodeIds: readonly string[],
+  ): string | null {
+    if (this.disposed) return null;
+    this.ensureSceneIndex(galaxyScene);
+    let bestId: string | null = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+    for (const nodeId of candidateNodeIds) {
+      const nodeIndex = this.nodeIndexById.get(nodeId);
+      if (nodeIndex === undefined) continue;
+      const offset = nodeIndex * 3;
+      this.projectedNode.set(
+        galaxyScene.positions[offset]!,
+        galaxyScene.positions[offset + 1]!,
+        galaxyScene.positions[offset + 2]!,
+      ).project(this.camera);
+      if (this.projectedNode.z < -1 || this.projectedNode.z > 1) continue;
+      const screenX = (this.projectedNode.x + 1) * this.width * 0.5;
+      const screenY = (1 - this.projectedNode.y) * this.height * 0.5;
+      const dx = screenX - viewportX;
+      const dy = screenY - viewportY;
+      const cameraDepth = this.camera.position.z - galaxyScene.positions[offset + 2]!;
+      const depthScale = Math.max(0.72, Math.min(1.8, 1_000 / Math.max(280, cameraDepth)));
+      const radius = Math.max(10, galaxyScene.pointSizes[nodeIndex]! * depthScale * 0.5);
+      const normalizedDistance = (dx * dx + dy * dy) / (radius * radius);
+      if (normalizedDistance > 1) continue;
+      const score = normalizedDistance - galaxyScene.prominence[nodeIndex]! * 0.22;
+      if (score < bestScore) {
+        bestScore = score;
+        bestId = nodeId;
+      }
+    }
+    return bestId;
   }
 
   dispose(): void {
     this.disposed = true;
+    window.cancelAnimationFrame(this.labelRenderRaf);
     this.clearRegions();
     this.clearLabels();
     this.nodeGeometry.dispose();
@@ -432,13 +634,64 @@ class StarfieldGraphRenderer {
     this.renderer.dispose();
   }
 
-  private applyTransform(transform: ViewTransform): void {
-    this.graphGroup.position.set(transform.x - this.width / 2, this.height / 2 - transform.y, 0);
-    this.graphGroup.scale.set(transform.scale, transform.scale, transform.scale);
-    this.labelGroup.position.copy(this.graphGroup.position);
-    this.labelGroup.scale.copy(this.graphGroup.scale);
+  private applyCamera(transform: ViewTransform): void {
+    const pose = identityGalaxyCameraPose(transform, this.width, this.height, this.camera.fov);
+    this.camera.position.set(pose.x, pose.y, pose.z);
+    this.camera.lookAt(pose.targetX, pose.targetY, pose.targetZ);
+    const billboardScale = 1 / Math.max(0.08, transform.scale);
     for (const label of this.labels) {
       label.quaternion.copy(this.camera.quaternion);
+      label.scale.setScalar(billboardScale);
+    }
+    if (this.labelLayoutDirty) {
+      this.layoutLabels();
+      this.labelLayoutDirty = false;
+    }
+  }
+
+  private ensureSceneIndex(galaxyScene: IdentityGalaxyScene): void {
+    if (this.indexedScene === galaxyScene) return;
+    this.indexedScene = galaxyScene;
+    this.nodeIndexById = new Map(galaxyScene.nodeIds.map((id, index) => [id, index]));
+  }
+
+  private scheduleLabelRender(): void {
+    if (this.disposed || this.labelRenderRaf || !this.lastTransform) return;
+    this.labelRenderRaf = window.requestAnimationFrame(() => {
+      this.labelRenderRaf = 0;
+      if (this.lastTransform) this.render(this.lastTransform);
+    });
+  }
+
+  private layoutLabels(): void {
+    const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = [];
+    const focalLengthPixels = this.height / 2 /
+      Math.tan((this.camera.fov * Math.PI) / 360);
+    for (const label of this.labels) {
+      this.projectedNode.copy(label.position).project(this.camera);
+      const screenX = (this.projectedNode.x + 1) * this.width * 0.5;
+      const screenY = (1 - this.projectedNode.y) * this.height * 0.5;
+      const cameraDepth = this.camera.position.z - label.position.z;
+      const fontPixels = label.fontSize * label.scale.x *
+        focalLengthPixels / Math.max(1, cameraDepth);
+      const labelText = typeof label.userData.labelText === "string" ? label.userData.labelText : "";
+      const width = Math.min(220, Math.max(38, labelText.length * fontPixels * 0.54));
+      const height = Math.max(16, fontPixels * 1.25);
+      const bounds = {
+        left: screenX - width / 2 - 5,
+        right: screenX + width / 2 + 5,
+        top: screenY - height / 2 - 4,
+        bottom: screenY + height / 2 + 4,
+      };
+      const outside = bounds.right < 0 || bounds.left > this.width || bounds.bottom < 0 || bounds.top > this.height;
+      const collides = occupied.some((entry) =>
+        bounds.left < entry.right &&
+        bounds.right > entry.left &&
+        bounds.top < entry.bottom &&
+        bounds.bottom > entry.top,
+      );
+      label.visible = !outside && !collides;
+      if (label.visible) occupied.push(bounds);
     }
   }
 
@@ -502,21 +755,25 @@ class StarfieldGraphRenderer {
   }
 
   private syncEdges(galaxyScene: IdentityGalaxyScene): void {
-    const positions = new Float32Array(galaxyScene.edgeIndices.length * 3);
-    let offset = 0;
+    const edgeCount = galaxyScene.edgeIndices.length / 2;
+    const sources = new Float32Array(edgeCount * 3);
+    const targets = new Float32Array(edgeCount * 3);
+    let edgeIndex = 0;
     for (let edgeOffset = 0; edgeOffset < galaxyScene.edgeIndices.length; edgeOffset += 2) {
       const sourceOffset = galaxyScene.edgeIndices[edgeOffset]! * 3;
       const targetOffset = galaxyScene.edgeIndices[edgeOffset + 1]! * 3;
-      positions[offset] = galaxyScene.positions[sourceOffset]!;
-      positions[offset + 1] = galaxyScene.positions[sourceOffset + 1]!;
-      positions[offset + 2] = galaxyScene.positions[sourceOffset + 2]! - 8;
-      positions[offset + 3] = galaxyScene.positions[targetOffset]!;
-      positions[offset + 4] = galaxyScene.positions[targetOffset + 1]!;
-      positions[offset + 5] = galaxyScene.positions[targetOffset + 2]! - 8;
-      offset += 6;
+      const attributeOffset = edgeIndex * 3;
+      sources[attributeOffset] = galaxyScene.positions[sourceOffset]!;
+      sources[attributeOffset + 1] = galaxyScene.positions[sourceOffset + 1]!;
+      sources[attributeOffset + 2] = galaxyScene.positions[sourceOffset + 2]! - 8;
+      targets[attributeOffset] = galaxyScene.positions[targetOffset]!;
+      targets[attributeOffset + 1] = galaxyScene.positions[targetOffset + 1]!;
+      targets[attributeOffset + 2] = galaxyScene.positions[targetOffset + 2]! - 8;
+      edgeIndex += 1;
     }
-    this.edgeGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    this.edgeGeometry.computeBoundingSphere();
+    this.edgeGeometry.setAttribute("edgeSource", new THREE.InstancedBufferAttribute(sources, 3));
+    this.edgeGeometry.setAttribute("edgeTarget", new THREE.InstancedBufferAttribute(targets, 3));
+    this.edgeGeometry.instanceCount = edgeCount;
   }
 
   private syncNodes(
@@ -524,6 +781,7 @@ class StarfieldGraphRenderer {
     palette: GraphPalette,
   ): void {
     const colors = new Float32Array(galaxyScene.nodeIds.length * 3);
+    const highlights = new Float32Array(galaxyScene.nodeIds.length);
     for (let index = 0; index < galaxyScene.nodeIds.length; index += 1) {
       const color = graphNodeColor(
         galaxyScene.colorRoles[index]! as IdentityGalaxyColorRole,
@@ -535,11 +793,31 @@ class StarfieldGraphRenderer {
       colors[index * 3] = color.r * intensity;
       colors[index * 3 + 1] = color.g * intensity;
       colors[index * 3 + 2] = color.b * intensity;
+      const flags = galaxyScene.flags[index]!;
+      highlights[index] = (flags & (
+        IdentityGalaxyNodeFlag.Selected |
+        IdentityGalaxyNodeFlag.Hovered |
+        IdentityGalaxyNodeFlag.LinkedToSelection
+      )) !== 0 ? 1 : 0;
     }
-    this.nodeGeometry.setAttribute("position", new THREE.BufferAttribute(galaxyScene.positions, 3));
-    this.nodeGeometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    this.nodeGeometry.setAttribute("pointSize", new THREE.BufferAttribute(galaxyScene.pointSizes, 1));
-    this.nodeGeometry.computeBoundingSphere();
+    this.nodeGeometry.setAttribute(
+      "instancePosition",
+      new THREE.InstancedBufferAttribute(galaxyScene.positions, 3),
+    );
+    this.nodeGeometry.setAttribute("instanceColor", new THREE.InstancedBufferAttribute(colors, 3));
+    this.nodeGeometry.setAttribute(
+      "instanceSize",
+      new THREE.InstancedBufferAttribute(galaxyScene.pointSizes, 1),
+    );
+    this.nodeGeometry.setAttribute(
+      "instanceProminence",
+      new THREE.InstancedBufferAttribute(galaxyScene.prominence, 1),
+    );
+    this.nodeGeometry.setAttribute(
+      "instanceHighlight",
+      new THREE.InstancedBufferAttribute(highlights, 1),
+    );
+    this.nodeGeometry.instanceCount = galaxyScene.nodeIds.length;
   }
 
   private clearLabels(): void {
@@ -550,31 +828,52 @@ class StarfieldGraphRenderer {
     this.labels = [];
   }
 
-  private syncLabels(atlas: IdentityGraphAtlas, palette: GraphPalette, quality: IdentityGraphAtlasQuality): void {
+  private syncLabels(
+    atlas: IdentityGraphAtlas,
+    galaxyScene: IdentityGalaxyScene,
+    palette: GraphPalette,
+    quality: IdentityGraphAtlasQuality,
+  ): void {
     this.clearLabels();
     if (quality === "interactive") return;
-    const cap = window.innerWidth < 720 ? 44 : 110;
+    this.ensureSceneIndex(galaxyScene);
+    const smallViewport = this.width < 720;
+    const cap = smallViewport ? 24 : 96;
     for (const label of atlas.labels.slice(0, cap)) {
       const text = new TroikaText();
       text.text = label.text;
       text.fontSize = label.kind === "provider_cluster"
-        ? 26
+        ? smallViewport ? 16 : 19
         : label.kind === "friend_person"
-          ? 19
+          ? smallViewport ? 14 : 16
           : label.kind === "connection_person"
-            ? 17
-            : 15;
+            ? smallViewport ? 13 : 15
+            : smallViewport ? 12 : 13;
       text.anchorX = "center";
       text.anchorY = "middle";
       text.color = colorFromCss(palette.text, "#f8fafc");
       text.outlineColor = colorFromCss(palette.labelFill, "#020617");
       text.outlineWidth = label.kind === "provider_cluster" ? "8%" : "10%";
-      text.position.set(label.x, -label.y - 24 / Math.max(0.7, label.priority / 600), label.kind === "provider_cluster" ? -38 : 86);
+      text.frustumCulled = false;
+      text.material.depthTest = false;
+      text.material.depthWrite = false;
+      text.material.transparent = true;
+      const nodeIndex = this.nodeIndexById.get(label.nodeId);
+      const nodeDepth = nodeIndex === undefined
+        ? label.kind === "provider_cluster" ? -38 : 0
+        : galaxyScene.positions[nodeIndex * 3 + 2]! + 6;
+      text.position.set(
+        label.x,
+        -label.y - 24 / Math.max(0.7, label.priority / 600),
+        nodeDepth,
+      );
       text.renderOrder = 10;
-      text.sync();
+      text.userData.labelText = label.text;
+      text.sync(() => this.scheduleLabelRender());
       this.labels.push(text);
       this.labelGroup.add(text);
     }
+    this.labelLayoutDirty = true;
   }
 }
 
@@ -602,6 +901,14 @@ export class IdentityGalaxyEngine {
     return this.renderer ? "three-starfield" : "canvas-starfield-fallback";
   }
 
+  get labelCount(): number {
+    return this.renderer?.labelCount ?? 0;
+  }
+
+  get readyLabelCount(): number {
+    return this.renderer?.readyLabelCount ?? 0;
+  }
+
   resize(width: number, height: number): void {
     this.renderer?.resize(width, height);
   }
@@ -620,9 +927,9 @@ export class IdentityGalaxyEngine {
     this.renderer?.syncScene(atlas, scene, palette, options.variation, options.quality);
   }
 
-  render(transform: ViewTransform, quality: IdentityGraphAtlasQuality): void {
+  render(transform: ViewTransform): void {
     if (this.renderer) {
-      this.renderer.render(transform, quality);
+      this.renderer.render(transform);
       return;
     }
     if (!this.atlas || !this.scene || !this.palette) return;
@@ -635,6 +942,15 @@ export class IdentityGalaxyEngine {
       this.selectedPersonId,
       this.selectedAccountId,
     );
+  }
+
+  pickNode(
+    viewportX: number,
+    viewportY: number,
+    candidateNodeIds: readonly string[],
+  ): string | null {
+    if (!this.renderer || !this.scene) return null;
+    return this.renderer.pickNode(viewportX, viewportY, this.scene, candidateNodeIds);
   }
 
   dispose(): void {

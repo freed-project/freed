@@ -5227,7 +5227,10 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
     }, { timeout: 8_000 })
     .toBeLessThanOrEqual(midpointTolerancePx);
 
-  await viewport.evaluate((element, gesture) => {
+  const afterPinch = await readGraphDebug(page);
+  expect(afterPinch).not.toBeNull();
+
+  await viewport.evaluate(async (element, gesture) => {
     const target = element as HTMLElement & {
       setPointerCapture: (pointerId: number) => void;
       releasePointerCapture: (pointerId: number) => void;
@@ -5236,7 +5239,7 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
     target.releasePointerCapture = () => undefined;
 
     const dispatchTouchPointer = (
-      type: "pointerup",
+      type: "pointermove" | "pointerup",
       pointerId: number,
       x: number,
       y: number,
@@ -5252,13 +5255,30 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
         clientY: y,
         width: 12,
         height: 12,
-        buttons: 0,
+        buttons: type === "pointerup" ? 0 : 1,
       }));
     };
+    const nextFrame = () => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
 
     dispatchTouchPointer("pointerup", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
-    dispatchTouchPointer("pointerup", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
+    await nextFrame();
+    dispatchTouchPointer("pointermove", 12, gesture.centerX + 204 + gesture.panDelta.x, gesture.centerY + 42 + gesture.panDelta.y, false);
+    await nextFrame();
+    dispatchTouchPointer("pointerup", 12, gesture.centerX + 204 + gesture.panDelta.x, gesture.centerY + 42 + gesture.panDelta.y, false);
   }, { centerX, centerY, panDelta });
+
+  await expect
+    .poll(async () => {
+      const afterSingleFingerPan = await readGraphDebug(page);
+      if (!afterSingleFingerPan) return 0;
+      return Math.hypot(
+        afterSingleFingerPan.transform.x - afterPinch!.transform.x,
+        afterSingleFingerPan.transform.y - afterPinch!.transform.y,
+      );
+    }, { timeout: 8_000 })
+    .toBeGreaterThan(40);
 });
 
 test("stress Friends graph degrades labels during motion and avoids expensive redraws on pan", async ({ app, page }) => {

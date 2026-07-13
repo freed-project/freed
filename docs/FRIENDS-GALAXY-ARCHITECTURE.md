@@ -8,7 +8,7 @@ PR 746 replaced the retained Pixi full-scene Friends graph with a summary-backed
 
 This implementation is a useful prototype, but it is not the final FriendsGraph architecture. The approved direction below supersedes the visual and rendering assumptions in the original implementation while preserving its product workflows and lessons.
 
-## Current Architecture Findings
+## Prototype Findings At Kickoff
 
 - The current layout is fundamentally two-dimensional. Depth is added after the atlas layout, so the scene is layered 2D rather than a true 3D spatial model.
 - Zoom and pan scale a scene group instead of moving a camera over a galactic plane.
@@ -151,8 +151,21 @@ As of July 12, 2026, other tasks are running on the development machine. The own
 - The first response for a source revision transfers every semantic star. Later viewport responses retain those node buffers and transfer only capped atlas metadata plus edge indices.
 - Resident semantic stars are now distinct from visible interaction detail in diagnostics and regression coverage.
 
+### First native galaxy pass complete
+
+- The graph now uses a locked perspective camera over the galactic plane. Pan and zoom move the camera while preserving the established plane transform and bounded prominence depth.
+- Every semantic star is rendered through one instanced WebGL2 quad mesh with procedural cores, coronae, rays, and selection rings. No retained scene object exists per star.
+- Settled relationship spokes use one instanced edge mesh with screen-stable width. Gesture quality keeps its stricter edge and interaction caps without evicting semantic stars.
+- Projected picking uses the active camera, depth-scaled hit radii, and capped worker candidates.
+- Confirmed friends use a deterministic golden-angle disk sized by local system footprint. Sparse linked accounts occupy complete local orbits instead of partial arcs.
+- Model compilation builds one account-to-person index and never rescans the full account library for each person.
+- The initial camera opens at the first useful semantic tier on Freed Desktop and at a closer exploration tier on iPhone. `Fit all` still reveals the complete provider universe.
+- Billboard labels redraw after asynchronous glyph generation, use settled screen-space collision, and read the active theme's real text and shell colors.
+- Two-touch pinch hands directly to one-finger pan when either touch lifts. Linking and pinning remain context-menu-only workflows.
+- Neon and Scriptorium visual passes confirm that node cores, background stars, labels, edges, and provider fields follow the active theme.
+
 ### Next structural target
 
-Replace the compatibility point renderer with the first native galaxy rendering pass. The next slice should add explicit camera state, world-plane projection, GPU-instanced star quads with procedural coronae, and depth-aware picking while preserving the cached semantic model and current product workflows.
+Replace the remaining per-label Troika objects with a batched SDF or MSDF billboard layer. Then add the WebGPU renderer laboratory, close-zoom avatar texture atlas, incremental graph index maintenance, and repeated device performance baselines. The current WebGL2 engine remains the compatibility backend and functional integration surface during that work.
 
 Benchmarking is authorized only as repeated consistency runs while other machine tasks remain active. Single-run timing results are not decision evidence.

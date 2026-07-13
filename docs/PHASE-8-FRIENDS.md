@@ -138,8 +138,8 @@ Default nudge intervals by care level:
 
 ### Renderer and layout
 
-- Renderer: theme-aware Three.js starfield with capped visible graph nodes, Troika billboard labels, and a canvas fallback when WebGL is unavailable
-- Layout: off-main-thread worker that computes stable atlas tiers from activity summaries instead of shipping the full graph scene to the main thread
+- Renderer: imperative Three.js WebGL2 engine with GPU-resident semantic stars, instanced procedural star and edge passes, settled Troika billboard labels, and a canvas fallback when WebGL is unavailable
+- Layout: off-main-thread worker that caches the complete semantic model, transfers typed scene buffers once per source revision, and computes capped label, edge, and hit detail from activity summaries
 - Tiering:
   - confirmed friends are the largest identity stars near the center and closer to the camera
   - Fam and high-priority friends get the strongest depth and glow
@@ -171,7 +171,7 @@ Default nudge intervals by care level:
 
 The current atlas starfield remains the shipping compatibility surface while the next renderer is built behind it. The approved replacement uses a constrained 3D galactic plane with stable semantic geography on `x` and `y`, relationship prominence on `z`, tight identity systems, provider sectors on the outer rim, a locked perspective camera, and a renderer-neutral typed scene protocol. WebGPU is the preferred shared backend, WebGL2 is the compatibility backend, and native Metal remains gated on later device evidence.
 
-The first foundation compiles the complete semantic galaxy into compact typed buffers for stable 3D positions, semantic prominence, bounded activity and recency brightness, theme color roles, interaction flags, and indexed edges. The atlas worker caches the rich semantic model by source revision and transfers the full star buffers only when graph source data or layout dimensions change. Pan, zoom, quality, and selection requests retain those star buffers while returning capped label, hit, and edge detail. Hover and selection patch dynamic typed arrays in place without rebuilding positions. An imperative engine now owns Three.js, Troika labels, theme palette resolution, WebGL fallback selection, resize, scene synchronization, rendering, and disposal while the React shell owns product props, worker lifecycle, interaction orchestration, and product callbacks. The complete approved vision, interaction contract, rendering contract, and staged roadmap live in [FRIENDS-GALAXY-ARCHITECTURE.md](./FRIENDS-GALAXY-ARCHITECTURE.md).
+The foundation compiles the complete semantic galaxy into compact typed buffers for stable 3D positions, semantic prominence, bounded activity and recency brightness, theme color roles, interaction flags, and indexed edges. The atlas worker caches the rich semantic model by source revision and transfers the full star buffers only when graph source data or layout dimensions change. Pan, zoom, quality, and selection requests retain those star buffers while returning capped label, hit, and edge detail. Hover and selection patch dynamic typed arrays in place without rebuilding positions. An imperative engine owns the locked perspective camera, one instanced procedural star pass, one instanced settled edge pass, depth-aware projected picking, Troika labels with settled screen-space collision, theme palette resolution, WebGL fallback selection, resize, scene synchronization, rendering, and disposal. The React shell owns product props, worker lifecycle, interaction orchestration, and product callbacks. The complete approved vision, interaction contract, rendering contract, and staged roadmap live in [FRIENDS-GALAXY-ARCHITECTURE.md](./FRIENDS-GALAXY-ARCHITECTURE.md).
 
 ### Scale targets
 
@@ -199,6 +199,7 @@ The first foundation compiles the complete semantic galaxy into compact typed bu
 - `packages/ui/src/lib/identity-graph-atlas.ts` - capped atlas builder with provider clusters, LOD tiers, labels, hit buckets, bounds, and metrics
 - `packages/ui/src/lib/identity-graph-atlas.worker.ts` - worker entrypoint for graph atlas slices
 - `packages/ui/src/lib/identity-galaxy-scene.ts` - renderer-neutral typed scene compiler for semantic 3D node and edge buffers
+- `packages/ui/src/lib/identity-galaxy-camera.ts` - locked perspective camera and plane-to-viewport projection math
 - `packages/ui/src/lib/identity-galaxy-worker-protocol.ts` - typed worker request, response, and transferable buffer contract
 - `packages/ui/src/lib/identity-galaxy-engine.ts` - imperative rendering engine and current Three.js plus canvas compatibility backends
 - `packages/ui/src/components/friends/index.ts` — barrel export
@@ -366,6 +367,9 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.58 | Transfer typed galaxy scene buffers from the atlas worker and patch interaction state in place | High | Done |
 | 8.59 | Move renderer, palette, fallback, and GPU resource ownership out of React into an imperative galaxy engine | High | Done |
 | 8.60 | Cache the full semantic galaxy model in the worker and retain every semantic star across viewport atlas updates | High | Done |
+| 8.61 | Add the locked perspective camera, world-plane projection, and depth-aware picking | High | Done |
+| 8.62 | Render semantic stars and settled relationship spokes through instanced procedural WebGL2 passes | High | Done |
+| 8.63 | Replace per-label Troika objects with a batched SDF or MSDF billboard layer and add the close-zoom avatar texture atlas | High | Planned |
 
 ---
 
@@ -443,6 +447,13 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The React Friends shell delegates palette, renderer, fallback, GPU resource, resize, scene sync, and disposal ownership to an imperative engine
 - [x] The worker caches the full semantic model by source revision, and viewport updates retain every semantic star while capping labels, hit detail, and edges
 - [x] The next-generation Friends Galaxy keeps all semantic stars GPU-resident and applies detail limits only to labels, avatars, edges, picking, and expensive effects
+- [x] A locked perspective camera produces bounded prominence parallax while preserving intuitive plane navigation
+- [x] Semantic stars and settled relationship spokes render through two instanced WebGL2 passes with no per-node or per-edge scene objects
+- [x] Projected picking accounts for the active camera, node depth, and capped interaction candidates
+- [x] Linked accounts occupy complete local orbits, and dense people fields reserve enough space for those systems
+- [x] Galaxy compilation indexes accounts by person once instead of scanning the full account library for every identity
+- [x] Mobile pinch hands directly to one-finger pan when either touch lifts
+- [x] Settled billboard labels redraw after glyph generation, avoid screen-space collisions, and use active theme colors
 - [x] Desktop browser tests cover mixed-tier graph load, context-menu link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
 - [ ] macOS native contact picker (CNContactStore)

@@ -38,6 +38,29 @@ function account(index: number): Account {
 }
 
 describe("buildIdentityGraphAtlas", () => {
+  it("normalizes legacy social accounts with missing provider metadata", () => {
+    const legacyAccount = {
+      ...account(1),
+      id: "legacy-account",
+      personId: undefined,
+      provider: undefined as unknown as Account["provider"],
+    };
+
+    const model = buildIdentityGraphAtlasModel({
+      persons: [],
+      accounts: { [legacyAccount.id]: legacyAccount },
+      feeds: {},
+      activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+      mode: "all_content",
+      width: 900,
+      height: 640,
+    });
+
+    expect(model.regions).toEqual([
+      expect.objectContaining({ provider: "other", unlinkedCount: 1 }),
+    ]);
+  });
+
   it("keeps the full semantic star scene resident while capping viewport detail", () => {
     const persons = Array.from({ length: 240 }, (_, index) => person(index));
     const accounts = Object.fromEntries(
@@ -200,5 +223,63 @@ describe("buildIdentityGraphAtlas", () => {
       ...accountNodes.map((node) => Math.hypot(node.x - personNode!.x, node.y - personNode!.y)),
     );
     expect(maxAccountDistance).toBeLessThanOrEqual(personNode!.radius + 55);
+  });
+
+  it("distributes a sparse set of linked accounts around a complete local orbit", () => {
+    const linkedPerson = {
+      ...person(1),
+      relationshipStatus: "friend",
+    } satisfies Person;
+    const linkedAccounts = Array.from({ length: 5 }, (_, index) => ({
+      ...account(index),
+      id: `orbit-account-${index}`,
+      personId: linkedPerson.id,
+    } satisfies Account));
+    const model = buildIdentityGraphAtlasModel({
+      persons: [linkedPerson],
+      accounts: Object.fromEntries(linkedAccounts.map((entry) => [entry.id, entry])),
+      feeds: {},
+      activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+      mode: "all_content",
+      width: 900,
+      height: 640,
+    });
+    const personNode = model.nodes.find((node) => node.personId === linkedPerson.id)!;
+    const occupiedQuadrants = new Set(
+      model.nodes
+        .filter((node) => node.linkedPersonId === linkedPerson.id)
+        .map((node) => {
+          const angle = Math.atan2((node.y - personNode.y) / 0.86, node.x - personNode.x);
+          return Math.floor(((angle + Math.PI * 2) % (Math.PI * 2)) / (Math.PI / 2));
+        }),
+    );
+
+    expect(occupiedQuadrants.size).toBe(4);
+  });
+
+  it("spaces dense friend systems far enough apart for their account fields", () => {
+    const friends = Array.from({ length: 100 }, (_, index) => ({
+      ...person(index),
+      relationshipStatus: "friend",
+      careLevel: 3,
+    } satisfies Person));
+    const model = buildIdentityGraphAtlasModel({
+      persons: friends,
+      accounts: {},
+      feeds: {},
+      activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+      mode: "all_content",
+      width: 1_200,
+      height: 800,
+    });
+    const personNodes = model.nodes.filter((node) => node.kind === "friend_person");
+    const nearestDistances = personNodes.map((node, index) => Math.min(
+      ...personNodes
+        .filter((_, candidateIndex) => candidateIndex !== index)
+        .map((candidate) => Math.hypot(candidate.x - node.x, candidate.y - node.y)),
+    )).sort((left, right) => left - right);
+    const medianDistance = nearestDistances[Math.floor(nearestDistances.length / 2)]!;
+
+    expect(medianDistance).toBeGreaterThan(80);
   });
 });

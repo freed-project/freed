@@ -144,15 +144,22 @@ function pointSize(
   quality: IdentityGraphAtlasQuality,
 ): number {
   const roleSize = kind === IdentityGalaxyNodeKindCode.FriendPerson
-    ? 34
+    ? 30
     : kind === IdentityGalaxyNodeKindCode.ConnectionPerson
-      ? 28
+      ? 24
       : kind === IdentityGalaxyNodeKindCode.ProviderCluster
-        ? 40
+        ? 32
         : kind === IdentityGalaxyNodeKindCode.Feed
-          ? 20
-          : 22;
-  const size = roleSize + radius * 1.05 + (selected ? 22 : hovered ? 12 : 0);
+          ? 11
+          : 12;
+  const radiusScale = kind === IdentityGalaxyNodeKindCode.FriendPerson
+    ? 0.58
+    : kind === IdentityGalaxyNodeKindCode.ConnectionPerson
+      ? 0.5
+      : kind === IdentityGalaxyNodeKindCode.ProviderCluster
+        ? 0.55
+        : 0.36;
+  const size = roleSize + radius * radiusScale + (selected ? 18 : hovered ? 10 : 0);
   return Math.max(8, size * (quality === "interactive" ? 0.78 : 1));
 }
 

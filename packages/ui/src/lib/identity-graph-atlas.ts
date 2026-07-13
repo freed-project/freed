@@ -156,12 +156,13 @@ const OVERVIEW_NODE_CAP = 220;
 const MIDDLE_NODE_CAP = 520;
 const DETAIL_NODE_CAP = 1_100;
 const MOBILE_OVERVIEW_NODE_CAP = 150;
-const MOBILE_MIDDLE_NODE_CAP = 260;
+const MOBILE_MIDDLE_NODE_CAP = 520;
 const MOBILE_DETAIL_NODE_CAP = 520;
 const INTERACTIVE_NODE_CAP = 140;
 const INTERACTIVE_DESKTOP_NODE_CAP = 240;
 const LABEL_CAP = 120;
 const MOBILE_LABEL_CAP = 56;
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
 function nowMs(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -184,6 +185,10 @@ function seededUnit(value: string): number {
 
 function safeText(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function normalizedProvider(value: unknown): string {
+  return safeText(value, "other").toLowerCase();
 }
 
 function providerLabel(provider: string): string {
@@ -238,7 +243,7 @@ function personActivity(
   let avatarUrl: string | null = null;
   for (const account of accounts) {
     if (account.personId !== personId || account.kind !== "social") continue;
-    const summary = summaries[socialActivitySummaryKey(account.provider, account.externalId)];
+    const summary = summaries[socialActivitySummaryKey(normalizedProvider(account.provider), account.externalId)];
     count += summary?.itemCount ?? 0;
     latest = Math.max(latest, summary?.latestActivityAt ?? 0, account.lastSeenAt ?? 0);
     avatarUrl = avatarUrl ?? account.avatarUrl ?? summary?.avatarUrl ?? null;
@@ -350,37 +355,56 @@ export function buildIdentityGraphAtlasModel({
   friendSuggestionStrengthByAccount = {},
 }: BuildIdentityGraphAtlasModelInput): IdentityGraphAtlasModel {
   const accountValues = Object.values(accounts);
+  const socialAccountsByPersonId = new Map<string, Account[]>();
+  for (const account of accountValues) {
+    if (account.kind !== "social" || !account.personId) continue;
+    const siblings = socialAccountsByPersonId.get(account.personId);
+    if (siblings) siblings.push(account);
+    else socialAccountsByPersonId.set(account.personId, [account]);
+  }
   const visiblePersons = persons
     .filter((person) => mode === "all_content" || person.relationshipStatus === "friend")
     .sort((left, right) =>
       right.careLevel - left.careLevel ||
       safeText(left.relationshipStatus).localeCompare(safeText(right.relationshipStatus)) ||
+      hashValue(left.id) - hashValue(right.id) ||
       safeText(left.name).localeCompare(safeText(right.name)),
     );
   const visiblePersonIds = new Set(visiblePersons.map((person) => person.id));
   const centerX = width / 2;
   const centerY = height / 2;
   const minDimension = Math.min(width, height);
-  const friendBaseRadius = Math.max(120, minDimension * 0.24);
-  const connectionBaseRadius = Math.max(310, minDimension * 0.48);
+  const friendCount = visiblePersons.filter((person) => person.relationshipStatus === "friend").length;
+  const connectionCount = visiblePersons.length - friendCount;
+  const friendFieldRadius = Math.max(360, minDimension * 0.5, Math.sqrt(Math.max(1, friendCount)) * 82);
+  const connectionInnerRadius = friendFieldRadius + 170;
+  const connectionFieldWidth = Math.max(220, Math.sqrt(Math.max(1, connectionCount)) * 48);
   const allNodes: IdentityGraphAtlasNode[] = [];
   const edges: IdentityGraphAtlasEdge[] = [];
   const regions: IdentityGraphAtlasRegion[] = [];
   const providerBuckets = new Map<string, ProviderBucket>();
 
+  let friendIndex = 0;
+  let connectionIndex = 0;
   for (let index = 0; index < visiblePersons.length; index += 1) {
     const person = visiblePersons[index]!;
-    const linkedAccounts = accountValues.filter((account) => account.personId === person.id && account.kind === "social");
+    const linkedAccounts = socialAccountsByPersonId.get(person.id) ?? [];
     const activity = personActivity(person.id, linkedAccounts, activitySummaries.social);
     const friend = person.relationshipStatus === "friend";
-    const bandRadius = friend
-      ? friendBaseRadius + Math.floor(index / 72) * 66
-      : connectionBaseRadius + Math.floor(index / 110) * 58;
-    const angle = -Math.PI / 2 + seededUnit(`person:${person.id}`) * Math.PI * 2;
+    const angle = friend
+      ? -Math.PI / 2 + friendIndex * GOLDEN_ANGLE + (seededUnit(`person:${person.id}:angle`) - 0.5) * 0.16
+      : -Math.PI / 2 + connectionIndex * GOLDEN_ANGLE + (seededUnit(`connection:${person.id}:angle`) - 0.5) * 0.2;
+    const carePull = 1 - ((person.careLevel - 1) / 4) * 0.12;
+    const radius = friend
+      ? Math.sqrt((friendIndex + 0.55) / Math.max(1, friendCount)) * friendFieldRadius * carePull
+      : connectionInnerRadius +
+        Math.sqrt((connectionIndex + 0.5) / Math.max(1, connectionCount)) * connectionFieldWidth;
     const fallback = {
-      x: centerX + Math.cos(angle) * bandRadius,
-      y: centerY + Math.sin(angle) * bandRadius * 0.72,
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY + Math.sin(angle) * radius * 0.74,
     };
+    if (friend) friendIndex += 1;
+    else connectionIndex += 1;
     const position = applyPinnedPosition(person, fallback);
     allNodes.push({
       id: `person:${person.id}`,
@@ -407,33 +431,29 @@ export function buildIdentityGraphAtlasModel({
   const visibleSocialAccounts = accountValues
     .filter((account) => account.kind === "social")
     .filter((account) => mode === "all_content" || (!!account.personId && visiblePersonIds.has(account.personId)));
-  const visibleSocialAccountsByPersonId = new Map<string, Account[]>();
-  for (const account of visibleSocialAccounts) {
-    if (!account.personId) continue;
-    const siblings = visibleSocialAccountsByPersonId.get(account.personId);
-    if (siblings) {
-      siblings.push(account);
-    } else {
-      visibleSocialAccountsByPersonId.set(account.personId, [account]);
-    }
-  }
 
   for (const account of visibleSocialAccounts) {
+    const provider = normalizedProvider(account.provider);
     const linkedPersonId = account.personId && visiblePersonIds.has(account.personId) ? account.personId : null;
-    const summary = activitySummaries.social[socialActivitySummaryKey(account.provider, account.externalId)];
+    const summary = activitySummaries.social[socialActivitySummaryKey(provider, account.externalId)];
     const linkedPerson = linkedPersonId ? personNodeById.get(linkedPersonId) : null;
     const label = accountLabel(account);
     const activityCount = summary?.itemCount ?? 0;
     const radius = Math.min(linkedPerson ? 21 : 15, Math.max(10, (linkedPerson ? 12 : 10) + Math.log2(activityCount + 1.5) * 1.9));
     let fallback: { x: number; y: number };
     if (linkedPerson) {
-      const siblings = linkedPersonId ? visibleSocialAccountsByPersonId.get(linkedPersonId) ?? [] : [];
+      const siblings = linkedPersonId ? socialAccountsByPersonId.get(linkedPersonId) ?? [] : [];
       const siblingIndex = Math.max(0, siblings.findIndex((entry) => entry.id === account.id));
-      const ringCapacity = linkedPerson.radius >= 60 ? 18 : 14;
-      const ringIndex = Math.floor(siblingIndex / ringCapacity);
-      const indexInRing = siblingIndex % ringCapacity;
+      const maximumRingCapacity = linkedPerson.radius >= 60 ? 18 : 14;
+      const ringIndex = Math.floor(siblingIndex / maximumRingCapacity);
+      const indexInRing = siblingIndex % maximumRingCapacity;
+      const ringPopulation = Math.min(
+        maximumRingCapacity,
+        Math.max(1, siblings.length - ringIndex * maximumRingCapacity),
+      );
       const orbit = linkedPerson.radius + 18 + ringIndex * 15;
-      const angle = (Math.PI * 2 * (indexInRing + ringIndex * 0.36)) / ringCapacity + seededUnit(`account:${account.id}`) * 0.045;
+      const orbitRotation = seededUnit(`person:${linkedPersonId}:orbit`) * Math.PI * 2;
+      const angle = orbitRotation + (Math.PI * 2 * (indexInRing + ringIndex * 0.36)) / ringPopulation;
       fallback = {
         x: linkedPerson.x + Math.cos(angle) * orbit,
         y: linkedPerson.y + Math.sin(angle) * orbit * 0.86,
@@ -454,7 +474,7 @@ export function buildIdentityGraphAtlasModel({
       radius,
       priority: linkedPerson ? 420 + activityCount : 280 + activityCount,
       accountId: account.id,
-      provider: account.provider,
+      provider,
       linkedPersonId,
       initials: initialsForLabel(label),
       avatarUrl: account.avatarUrl ?? summary?.avatarUrl ?? null,
@@ -472,27 +492,28 @@ export function buildIdentityGraphAtlasModel({
         targetId: node.id,
       });
     } else {
-      const bucket = providerBuckets.get(account.provider) ?? {
-        provider: account.provider,
+      const bucket = providerBuckets.get(provider) ?? {
+        provider,
         accounts: [],
         feeds: [],
         linkedCount: 0,
       };
       bucket.accounts.push(node);
-      providerBuckets.set(account.provider, bucket);
+      providerBuckets.set(provider, bucket);
     }
   }
 
   for (const account of visibleSocialAccounts) {
     if (!account.personId) continue;
-    const bucket = providerBuckets.get(account.provider) ?? {
-      provider: account.provider,
+    const provider = normalizedProvider(account.provider);
+    const bucket = providerBuckets.get(provider) ?? {
+      provider,
       accounts: [],
       feeds: [],
       linkedCount: 0,
     };
     bucket.linkedCount += 1;
-    providerBuckets.set(account.provider, bucket);
+    providerBuckets.set(provider, bucket);
   }
 
   if (mode === "all_content") {
@@ -525,13 +546,15 @@ export function buildIdentityGraphAtlasModel({
     }
   }
 
-  const providers = [...providerBuckets.values()].sort((left, right) => left.provider.localeCompare(right.provider));
-  const outerRadius = Math.max(430, minDimension * 0.72);
+  const providers = [...providerBuckets.values()].sort((left, right) =>
+    safeText(left.provider, "other").localeCompare(safeText(right.provider, "other")),
+  );
+  const outerRadius = Math.max(620, friendFieldRadius + connectionFieldWidth + 300);
   for (let providerIndex = 0; providerIndex < providers.length; providerIndex += 1) {
     const bucket = providers[providerIndex]!;
     const unlinked = [...bucket.accounts, ...bucket.feeds].sort((left, right) =>
       nodeSortValue(right) - nodeSortValue(left) ||
-      left.label.localeCompare(right.label),
+      safeText(left.label).localeCompare(safeText(right.label)),
     );
     const angle = -Math.PI / 2 + (Math.PI * 2 * providerIndex) / Math.max(1, providers.length);
     const islandRing = Math.floor(providerIndex / 8);
