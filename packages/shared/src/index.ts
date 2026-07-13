@@ -47,6 +47,7 @@ export * from "./release-channel";
 export * from "./legal";
 export * from "./legal-storage";
 export * from "./bug-report";
+export * from "./redact-sensitive";
 export * from "./story-wall";
 export * from "./youtube";
 

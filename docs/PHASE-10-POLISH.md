@@ -447,7 +447,7 @@ Reward security researchers for responsible disclosure.
 | Task  | Description                                                         | Complexity |
 | ----- | ------------------------------------------------------------------- | ---------- |
 | 10.23 | Crash / stale-bundle recovery dialog with in-place updater fallback | Medium     |
-| 10.24 | Public-safe and private bug reporting flow                          | Medium     |
+| 10.24 | Public-safe bundles and private GitHub vulnerability reports        | Medium     |
 
 ---
 
@@ -487,6 +487,7 @@ Reward security researchers for responsible disclosure.
 - [x] On hard crash or unreachable JSON update bundle, a friendly recovery dialog is shown outside the React tree, auto-checks for updates immediately, offers in-place install and restart when available, and keeps a channel-aware browser download fallback for the latest installer
 - [x] Desktop and PWA expose a shared bug report flow with public-safe bundles by default and private diagnostics as an explicit opt-in path
 - [x] Shared bug report actions now reflect the selected bundle privacy tier, bulk-toggle private diagnostics, and disable public GitHub issue drafts while private artifacts are selected
+- [x] Shared bug reports can submit redacted text and selected stack traces to the private GitHub vulnerability inbox after an explicit click, while keeping the diagnostic zip on the user's device and avoiding automatic retries
 - [x] Settings keeps Support out of the primary section list and opens the existing report composer from a dedicated Support modal launched at the top of Danger Zone
 
 ---

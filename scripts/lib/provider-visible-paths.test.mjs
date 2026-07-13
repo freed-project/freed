@@ -331,6 +331,12 @@ test("background media and Google sync network surfaces are provider-visible", (
     true,
   );
   assert.equal(isProviderVisiblePath("packages/pwa/api/oauth/google.ts"), true);
+  assert.equal(isProviderVisiblePath("packages/pwa/api/security-report.ts"), true);
+  assert.equal(isProviderVisiblePath("packages/pwa/api/fetch-url.ts"), true);
+  assert.deepEqual(
+    providerIdsForPath("packages/pwa/api/security-report.ts"),
+    ["other"],
+  );
   assert.equal(isProviderVisiblePath("packages/pwa/src/lib/sync.ts"), true);
   assert.equal(
     isProviderVisiblePath("packages/shared/src/google-contacts.ts"),
@@ -832,6 +838,12 @@ test("provider-specific paths infer the provider used to validate approval scope
     ["other"],
   );
   assert.deepEqual(providerIdsForPath("packages/sync/src/cloud/gdrive.ts"), [
+    "other",
+  ]);
+  assert.deepEqual(providerIdsForPath("packages/capture-rss/src/browser.ts"), [
+    "other",
+  ]);
+  assert.deepEqual(providerIdsForPath("packages/capture-save/src/browser.ts"), [
     "other",
   ]);
   assert.deepEqual(
