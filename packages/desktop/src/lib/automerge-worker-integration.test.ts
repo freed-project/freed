@@ -18,18 +18,32 @@ import {
 const storageHarness = vi.hoisted(() => ({
   binary: null as Uint8Array | null,
   saveBytes: [] as number[],
+  recoveryCopies: [] as Uint8Array[],
   clearCount: 0,
+  loadFailuresRemaining: 0,
 }));
 
 vi.mock("@freed/sync/storage/indexeddb", () => ({
   IndexedDBStorage: class {
     async load(): Promise<Uint8Array | null> {
+      if (storageHarness.loadFailuresRemaining > 0) {
+        storageHarness.loadFailuresRemaining -= 1;
+        throw new Error("transient IndexedDB load failure");
+      }
       return storageHarness.binary?.slice() ?? null;
     }
 
     async save(binary: Uint8Array): Promise<void> {
       storageHarness.binary = binary.slice();
       storageHarness.saveBytes.push(binary.byteLength);
+    }
+
+    async replaceCorruptDocumentWithRecoveryCopy(
+      binary: Uint8Array,
+    ): Promise<void> {
+      storageHarness.recoveryCopies.push(binary.slice());
+      storageHarness.binary = null;
+      storageHarness.clearCount += 1;
     }
 
     async clear(): Promise<void> {
@@ -125,7 +139,9 @@ describe("real Automerge worker module", () => {
     scope = createWorkerScope(posts);
     storageHarness.binary = fixture.binary.slice();
     storageHarness.saveBytes = [];
+    storageHarness.recoveryCopies = [];
     storageHarness.clearCount = 0;
+    storageHarness.loadFailuresRemaining = 0;
     vi.stubGlobal("self", scope);
     await import("./automerge.worker");
   });
@@ -303,5 +319,58 @@ describe("real Automerge worker module", () => {
     expect(Buffer.from(first.binary).equals(Buffer.from(second.binary))).toBe(
       true,
     );
+  });
+
+  it("preserves a corrupt binary before replacing the live document", async () => {
+    const corruptBinary = new Uint8Array([1, 2, 3, 4, 5]);
+    storageHarness.binary = corruptBinary.slice();
+
+    sendRequest(scope, { reqId: 7, type: "INIT" });
+    const recoveryPost = await waitForPost(
+      posts,
+      (message) => message.type === "INIT_RECOVERY",
+    );
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 7,
+    );
+
+    expect(recoveryPost.message).toEqual({
+      type: "INIT_RECOVERY",
+      reason: "confirmed_corrupt_document",
+      action: "preserved_recovery_copy_then_cleared_local",
+      recoveryBytes: corruptBinary.byteLength,
+    });
+    expect(storageHarness.recoveryCopies).toHaveLength(1);
+    expect(
+      Buffer.from(storageHarness.recoveryCopies[0]).equals(
+        Buffer.from(corruptBinary),
+      ),
+    ).toBe(true);
+    expect(storageHarness.clearCount).toBe(1);
+    expect(storageHarness.binary).not.toBeNull();
+    expect(() => A.load<FreedDoc>(storageHarness.binary!)).not.toThrow();
+  });
+
+  it("retries one transient INIT storage failure without clearing data", async () => {
+    storageHarness.loadFailuresRemaining = 1;
+
+    sendRequest(scope, { reqId: 8, type: "INIT" });
+    await waitForPost(
+      posts,
+      (message) =>
+        message.type === "DEBUG_EVENT" &&
+        message.detail?.includes("INIT storage load failed, retrying once") ===
+          true,
+    );
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 8,
+    );
+
+    expect(storageHarness.loadFailuresRemaining).toBe(0);
+    expect(storageHarness.clearCount).toBe(0);
+    expect(storageHarness.recoveryCopies).toHaveLength(0);
+    expect(storageHarness.binary).not.toBeNull();
   });
 });

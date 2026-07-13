@@ -102,6 +102,7 @@ const DESKTOP_UI_CONTENT_TEXT_LIMIT = 280;
 const DESKTOP_UI_LINK_DESCRIPTION_LIMIT = 180;
 const DESKTOP_UI_EVENT_EVIDENCE_LIMIT = 220;
 const FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES = 4 * 1024 * 1024;
+const INIT_STORAGE_LOAD_RETRY_MS = 250;
 
 interface RequestTrace {
   reqId: number;
@@ -117,6 +118,24 @@ interface RequestTrace {
 
 function send(msg: WorkerResponse): void {
   self.postMessage(msg);
+}
+
+async function loadStoredDocumentWithRetry(): Promise<Uint8Array | null> {
+  try {
+    return await storage.load();
+  } catch (error) {
+    send({
+      type: "DEBUG_EVENT",
+      kind: "error",
+      detail:
+        "[automerge-worker] INIT storage load failed, retrying once" +
+        ` message=${error instanceof Error ? error.message : String(error)}`,
+    });
+    await new Promise((resolve) =>
+      setTimeout(resolve, INIT_STORAGE_LOAD_RETRY_MS),
+    );
+    return storage.load();
+  }
 }
 
 function ack(reqId: number, error?: string): void {
@@ -1021,10 +1040,30 @@ async function handleRequest(
     switch (req.type) {
       case "INIT": {
         let loadedDocNeedsPersist = false;
-        const saved = await storage.load();
+        const saved = await loadStoredDocumentWithRetry();
         if (saved) {
+          let loadedDoc: FreedDoc | null = null;
           try {
-            currentDoc = A.load<FreedDoc>(saved);
+            loadedDoc = A.load<FreedDoc>(saved);
+          } catch {
+            await storage.replaceCorruptDocumentWithRecoveryCopy(saved);
+            currentDoc = null;
+            currentBinary = null;
+            persistenceState = createPersistenceState(null);
+            send({
+              type: "INIT_RECOVERY",
+              reason: "confirmed_corrupt_document",
+              action: "preserved_recovery_copy_then_cleared_local",
+              recoveryBytes: saved.byteLength,
+            });
+            send({
+              type: "DEBUG_EVENT",
+              kind: "init",
+              detail: "corrupt doc recovery copy preserved, creating fresh",
+            });
+          }
+          if (loadedDoc) {
+            currentDoc = loadedDoc;
             currentBinary = saved;
             persistenceState = createPersistenceState(saved);
             loadedDocNeedsPersist =
@@ -1034,12 +1073,6 @@ async function handleRequest(
                 rebuildHistory: true,
                 previousBinaryBytes: saved.byteLength,
               }) || loadedDocNeedsPersist;
-          } catch {
-            await storage.clear();
-            currentDoc = null;
-            currentBinary = null;
-            persistenceState = createPersistenceState(null);
-            send({ type: "DEBUG_EVENT", kind: "init", detail: "corrupt doc cleared, creating fresh" });
           }
         }
         if (!currentDoc) {

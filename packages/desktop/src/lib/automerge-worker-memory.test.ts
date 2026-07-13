@@ -10,6 +10,14 @@ const clientSource = readFileSync(
   join(process.cwd(), "src/lib/automerge.ts"),
   "utf8",
 );
+const pwaWorkerSource = readFileSync(
+  join(process.cwd(), "../pwa/src/lib/automerge.worker.ts"),
+  "utf8",
+);
+const indexedDbStorageSource = readFileSync(
+  join(process.cwd(), "../sync/src/storage/indexeddb.ts"),
+  "utf8",
+);
 
 function caseBody(caseName: string): string {
   const pattern = new RegExp(`case "${caseName}":[\\s\\S]*?break;`);
@@ -124,6 +132,41 @@ describe("automerge worker memory routing", () => {
     expect(helperBody).not.toContain("A.save");
     expect(initBody).toContain("loadedDocNeedsPersist");
     expect(initBody).toContain("hydrateAndBroadcastWithoutPersist(trace)");
+  });
+
+  it("classifies only Automerge parse failures as corrupt documents", () => {
+    const desktopInit = caseBody("INIT");
+    const pwaInit =
+      pwaWorkerSource.match(/case "INIT":[\s\S]*?break;/)?.[0] ?? "";
+
+    for (const initBody of [desktopInit, pwaInit]) {
+      const parseGuard = initBody.match(
+        /try \{\s*loadedDoc = A\.load<FreedDoc>\(saved\);\s*\} catch \{[\s\S]*?\n\s*\}/,
+      )?.[0] ?? "";
+      expect(parseGuard).toContain(
+        "replaceCorruptDocumentWithRecoveryCopy(saved)",
+      );
+      expect(parseGuard).not.toContain("migrateLoadedIdentityGraph");
+      expect(parseGuard).not.toContain("compactLoadedFeedText");
+      expect(initBody.indexOf("if (loadedDoc)")).toBeLessThan(
+        initBody.indexOf("migrateLoadedIdentityGraph"),
+      );
+    }
+  });
+
+  it("atomically preserves corrupt bytes before deleting the live key", () => {
+    const recoveryBody =
+      indexedDbStorageSource.match(
+        /async replaceCorruptDocumentWithRecoveryCopy[\s\S]*?\n  }/,
+      )?.[0] ?? "";
+
+    expect(recoveryBody).toContain(
+      "store.put(recoveryCopy, CORRUPT_DOC_RECOVERY_KEY)",
+    );
+    expect(recoveryBody).toContain("store.delete(DOC_KEY)");
+    expect(recoveryBody).toContain("transaction.oncomplete");
+    expect(recoveryBody).toContain("transaction.onerror");
+    expect(recoveryBody).toContain("transaction.onabort");
   });
 
   it("releases the Automerge document after idle and reloads it on demand", () => {

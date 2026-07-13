@@ -115,6 +115,13 @@ export type WorkerResponse =
   | { reqId: number; type: "DOC_HEADS"; heads: string[] | null }
   /** Sent once per INIT with its cost, for the worker-INIT debug counter. */
   | { type: "INIT_STATS"; durationMs: number; docBytes: number }
+  /** A corrupt local binary was preserved before the live IndexedDB key was cleared. */
+  | {
+      type: "INIT_RECOVERY";
+      reason: "confirmed_corrupt_document";
+      action: "preserved_recovery_copy_then_cleared_local";
+      recoveryBytes: number;
+    }
   /** Debug panel event forwarding */
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
   /** Doc size snapshot for the debug panel */

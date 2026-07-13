@@ -47,6 +47,9 @@ const WORKER_REQUEST_TIMEOUT_MS = 180_000;
 const WORKER_START_TIMEOUT_MS = 15_000;
 const IDLE_WORKER_STOP_RETRY_MS = 1_000;
 
+class WorkerInitFailureError extends Error {}
+class WorkerInitTimeoutError extends WorkerInitFailureError {}
+
 // ---------------------------------------------------------------------------
 // Worker lifecycle
 // ---------------------------------------------------------------------------
@@ -93,6 +96,7 @@ function rejectPendingWorkerRequests(error: Error): void {
   rejectPendingMap(pendingPreservedText, error);
   rejectPendingMap(pendingContentSignalBackfill, error);
   rejectPendingMap(pendingSampleDataClear, error);
+  rejectPendingMap(pendingInit, error);
 }
 
 function resetFailedWorker(failedWorker: Worker, error: Error, phase: string): void {
@@ -206,7 +210,8 @@ function hasPendingWorkerRequests(): boolean {
     pendingSavedYouTubeUrls.size > 0 ||
     pendingPreservedText.size > 0 ||
     pendingContentSignalBackfill.size > 0 ||
-    pendingSampleDataClear.size > 0
+    pendingSampleDataClear.size > 0 ||
+    pendingInit.size > 0
   );
 }
 
@@ -312,6 +317,7 @@ const pendingSampleDataClear = new Map<
     timer: ReturnType<typeof setTimeout>;
   }
 >();
+const pendingInit = new Map<number, PendingRequestFailureHandler>();
 async function request(msg: WorkerRequest): Promise<void> {
   await ensureWorkerDocumentReadyFor(msg.type);
   const activeWorker = getWorker();
@@ -405,6 +411,8 @@ export function setRelayClientCount(n: number): void {
 // ---------------------------------------------------------------------------
 
 function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
+  const sourceWorker = event.currentTarget as Worker | null;
+  if (sourceWorker && sourceWorker !== worker) return;
   const msg = event.data;
 
   if (msg.type === "READY") return;
@@ -504,6 +512,16 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
 
   if (msg.type === "INIT_STATS") {
     recordWorkerInit({ durationMs: msg.durationMs, docBytes: msg.docBytes });
+    return;
+  }
+
+  if (msg.type === "INIT_RECOVERY") {
+    recordRuntimeHealthEvent({
+      event: "worker_init_recovery",
+      reason: msg.reason,
+      action: msg.action,
+      recoveryBytes: msg.recoveryBytes,
+    });
     return;
   }
 
@@ -616,20 +634,22 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
 }
 
 function handleWorkerError(err: ErrorEvent) {
+  const failedWorker = (err.currentTarget as Worker | null) ?? worker;
+  if (failedWorker && failedWorker !== worker) return;
   const msg = workerErrorMessage(err);
   log.error(`[automerge-worker] unhandled error: ${msg}`);
   addDebugEvent("error", `[AutomergeWorker] unhandled error: ${msg}`);
-  const failedWorker = (err.currentTarget as Worker | null) ?? worker;
   if (failedWorker) {
     resetFailedWorker(failedWorker, new Error(msg), "runtime_error");
   }
 }
 
 function handleWorkerMessageError(err: MessageEvent) {
+  const failedWorker = (err.currentTarget as Worker | null) ?? worker;
+  if (failedWorker && failedWorker !== worker) return;
   const msg = workerErrorMessage(err);
   log.error(`[automerge-worker] message error: ${msg}`);
   addDebugEvent("error", `[AutomergeWorker] message error: ${msg}`);
-  const failedWorker = (err.currentTarget as Worker | null) ?? worker;
   if (failedWorker) {
     resetFailedWorker(failedWorker, new Error(msg), "runtime_message_error");
   }
@@ -662,17 +682,39 @@ function sendInit(): Promise<DocState> {
 
     let initialState: DocState | null = null;
     let initAcked = false;
-    let resolved = false;
+    let settled = false;
+
+    function cleanup() {
+      const pendingRequest = pendingInit.get(reqId);
+      if (pendingRequest) clearTimeout(pendingRequest.timer);
+      pendingInit.delete(reqId);
+      activeWorker.removeEventListener("message", stateHandler);
+    }
+
+    function fail(error: Error) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    }
 
     function tryResolve() {
-      if (!initialState || !initAcked || resolved) return;
-      resolved = true;
+      if (!initialState || !initAcked || settled) return;
+      settled = true;
+      cleanup();
       appDocumentInitialized = true;
       workerDocumentInitialized = true;
       resolve(initialState);
     }
 
     const stateHandler = (event: MessageEvent<WorkerResponse>) => {
+      const sourceWorker = event.currentTarget as Worker | null;
+      if (
+        (sourceWorker && sourceWorker !== activeWorker) ||
+        worker !== activeWorker
+      ) {
+        return;
+      }
       const msg = event.data;
       if (msg.type === "STATE_UPDATE" && !initialState) {
         lastDocState = msg.state;
@@ -685,9 +727,8 @@ function sendInit(): Promise<DocState> {
           () => "(doc lives in worker - not directly accessible)",
           () => new Uint8Array(0),
         );
-        activeWorker.removeEventListener("message", stateHandler);
         if (msg.error) {
-          reject(new Error(msg.error));
+          fail(new WorkerInitFailureError(msg.error));
         } else {
           initAcked = true;
           tryResolve();
@@ -695,6 +736,26 @@ function sendInit(): Promise<DocState> {
       }
     };
 
+    const timer = setTimeout(() => {
+      if (!pendingInit.has(reqId)) return;
+      pendingInit.delete(reqId);
+      const error = new WorkerInitTimeoutError(
+        `[automerge-worker] request TIMEOUT op=INIT reqId=${reqId}` +
+          ` timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
+      );
+      resetFailedWorker(activeWorker, error, "runtime_init_timeout");
+      fail(error);
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pendingInit.set(reqId, {
+      timer,
+      reject: (error) =>
+        fail(
+          error instanceof WorkerInitFailureError
+            ? error
+            : new WorkerInitFailureError(error.message),
+        ),
+    });
     activeWorker.addEventListener("message", stateHandler);
     activeWorker.postMessage({ reqId, type: "INIT" } satisfies WorkerRequest);
   });
@@ -702,18 +763,10 @@ function sendInit(): Promise<DocState> {
 
 export async function initDoc(): Promise<DocState> {
   await ensureWorkerReady();
-  try {
-    const state = await sendInit();
-    appDocumentInitialized = true;
-    workerDocumentInitialized = true;
-    return state;
-  } catch {
-    await clearLocalDoc();
-    const state = await sendInit();
-    appDocumentInitialized = true;
-    workerDocumentInitialized = true;
-    return state;
-  }
+  const state = await sendInit();
+  appDocumentInitialized = true;
+  workerDocumentInitialized = true;
+  return state;
 }
 
 /** Latest hydrated state from the worker. Returns null before first INIT. */

@@ -216,6 +216,13 @@ export type WorkerResponse =
   | { reqId: number; type: "SAVED_YOUTUBE_URLS"; urls: string[] }
   /** Sent once per INIT with its cost, for the worker-INIT runtime counter. */
   | { type: "INIT_STATS"; durationMs: number; docBytes: number }
+  /** A corrupt local binary was preserved before the live IndexedDB key was cleared. */
+  | {
+      type: "INIT_RECOVERY";
+      reason: "confirmed_corrupt_document";
+      action: "preserved_recovery_copy_then_cleared_local";
+      recoveryBytes: number;
+    }
   /** On-demand preserved article text for the active reader item. */
   | { reqId: number; type: "ITEM_PRESERVED_TEXT"; globalId: string; text: string | null }
   /** One-batch content signal backfill summary. */
