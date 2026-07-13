@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "freed-runtime-observer",
+  "name": "Freed runtime observer",
+  "kind": "heartbeat",
+  "promptPath": "automation/prompts/freed-runtime-observer.md",
+  "authority": "observe-only",
+  "providerBehavior": "forbidden",
+  "maxBehavioralChangesPerSoak": 0,
+  "stateRoot": "~/.freed/automation",
+  "lease": { "name": "runtime-observer", "maxLifetimeMs": 1800000 },
+  "localOverlayFields": ["status", "rrule", "destination", "target_thread_id"],
+  "requiredHostCapabilities": [
+    "trusted-launcher",
+    "short-lived-credential-handoff"
+  ]
+}

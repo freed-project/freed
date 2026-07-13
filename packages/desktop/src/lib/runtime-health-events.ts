@@ -10,6 +10,29 @@
 
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
+export interface RuntimeHealthIdentityFields {
+  appVersion: string;
+  buildCommitSha: string | null;
+  buildKind: string;
+  channel: "dev" | "production";
+  appSessionId: string;
+}
+
+const RUNTIME_APP_SESSION_ID =
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `session-${Date.now().toLocaleString()}-${Math.random().toString(36).slice(2)}`;
+
+export function runtimeHealthIdentityFields(): RuntimeHealthIdentityFields {
+  return {
+    appVersion: __APP_VERSION__,
+    buildCommitSha: __BUILD_COMMIT_SHA__,
+    buildKind: __BUILD_KIND__,
+    channel: __BUILD_CHANNEL__,
+    appSessionId: RUNTIME_APP_SESSION_ID,
+  };
+}
+
 export type CloudUploadCause = "subscriber" | "manual" | "poll";
 
 export type SocialScrapeTrigger =
@@ -27,7 +50,9 @@ export function recordRuntimeHealthEvent(
 ): void {
   try {
     if (!isTauri()) return;
-    void invoke("record_runtime_health_event", { payload }).catch(() => {});
+    void invoke("record_runtime_health_event", {
+      payload: { ...payload, ...runtimeHealthIdentityFields() },
+    }).catch(() => {});
   } catch {
     // Counters must never propagate into sync or capture paths.
   }

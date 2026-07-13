@@ -1,6 +1,6 @@
 # P1-03: GDrive self-write filtering + no-op upload skip
 
-runner-safe: false | provider-visible: false | soak-gated: YES (after P1-02 has soaked)
+runner-safe: false | provider-visible: true (changes Google Drive polling, download, and upload frequency) | soak-gated: YES (after P1-02 has a completed installed-build outcome)
 Findings: F01 (poll leg). Prereq: P1-01/P1-02 merged.
 
 ## Defect

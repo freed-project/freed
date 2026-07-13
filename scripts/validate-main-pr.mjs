@@ -4,11 +4,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   PROMOTION_BRANCH_PATTERN,
+  RELEASE_PREP_BRANCH_PATTERN,
   classifyMainPrFiles,
   ensureRefExists,
   formatFileList,
   listComparisonFiles,
-  listPromotionDiffFiles,
+  listPromotionBranchDiffFiles,
 } from "./release-promotion-shared.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -102,6 +103,12 @@ function main() {
       return;
     }
 
+    if (!RELEASE_PREP_BRANCH_PATTERN.test(options.headBranch)) {
+      die(
+        `Release-only changes targeting main must come from a branch named chore/release-*. Received ${options.headBranch}.`,
+      );
+    }
+
     console.log("Main PR guard passed. Release-only metadata update detected.");
     return;
   }
@@ -112,7 +119,7 @@ function main() {
     );
   }
 
-  const driftFiles = listPromotionDiffFiles({
+  const driftFiles = listPromotionBranchDiffFiles({
     fromRef: "origin/dev",
     toRef: options.headRef,
     cwd: options.cwd,

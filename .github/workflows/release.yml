@@ -11,6 +11,7 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FREED_BUILD_KIND: release
 
 jobs:
   promotion:
@@ -26,21 +27,24 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: ".nvmrc"
 
       - name: Refresh release refs
         run: git fetch origin dev main
 
-      - name: Validate production promotion state
+      - name: Validate protected release source and identity
         shell: bash
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
+          EXPECTED_BRANCH="main"
           if [[ "$TAG" == *-dev ]]; then
-            echo "Dev release detected, skipping production promotion validation."
-            exit 0
+            EXPECTED_BRANCH="dev"
           fi
 
-          node scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref="$GITHUB_SHA"
+          node scripts/validate-release-identity.mjs \
+            --tag="${TAG}" \
+            --head-ref="$GITHUB_SHA" \
+            --branch-ref="origin/${EXPECTED_BRANCH}"
 
   # Load the reviewed, checked-in release notes for this tag.
   # The workflow refuses to freestyle release prose on its own.
@@ -63,7 +67,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
+          node-version-file: ".nvmrc"
 
       - name: Load reviewed release notes
         id: gen
@@ -151,7 +155,7 @@ jobs:
   validation:
     needs: notes
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -163,11 +167,35 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/desktop/src-tauri -> target
+
+      - name: Install native Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            cmake \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev
 
       - name: Install Playwright browsers
         run: |
@@ -254,7 +282,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install Rust toolchain
@@ -305,9 +333,9 @@ jobs:
       - name: Build workspace dependencies
         shell: bash
         run: |
-          npm run build -w @freed/shared
-          npm run build -w @freed/sync
-          npm run build -w @freed/capture-rss
+          (cd packages/shared && npm run build)
+          (cd packages/sync && npm run build)
+          (cd packages/capture-rss && npm run build)
 
       - name: Validate Apple signing secrets
         if: runner.os == 'macOS'
@@ -369,6 +397,7 @@ jobs:
           VITE_GDRIVE_DESKTOP_CLIENT_ID: 304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com
           VITE_GDRIVE_TOKEN_PROXY_URL: https://app.freed.wtf/api/oauth/google
           VITE_GDRIVE_FORCE_TOKEN_PROXY: "1"
+          FREED_BUILD_CHANNEL: ${{ needs.notes.outputs.release_channel }}
           VITE_ENABLE_DEV_SYNC_TRIGGERS: ${{ needs.notes.outputs.release_channel == 'dev' && '1' || '0' }}
         with:
           projectPath: packages/desktop
@@ -430,7 +459,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: ".nvmrc"
 
       - name: Generate latest.json
         shell: bash
@@ -486,7 +515,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Verify website production branch contains this release
@@ -547,7 +576,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
@@ -568,7 +597,18 @@ jobs:
   # (label automation-triage) that scripts/triage.mjs ranks against alarms,
   # soak verdicts, and canary regressions.
   triage-on-failure:
-    needs: [promotion, notes, validation, create-release, release, updater-manifest, publish, publish-website, publish-pwa]
+    needs:
+      [
+        promotion,
+        notes,
+        validation,
+        create-release,
+        release,
+        updater-manifest,
+        publish,
+        publish-website,
+        publish-pwa,
+      ]
     if: failure()
     runs-on: ubuntu-latest
     permissions:
@@ -579,7 +619,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           title="Release pipeline failure: ${GITHUB_REF_NAME}"
-          body="Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          body="(AI Generated).
+
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           Ref: ${GITHUB_REF_NAME} (${GITHUB_SHA})
 
           One or more jobs failed in the Release Desktop App workflow. Open the run to see which platform or stage went red. Auto-filed for scripts/triage.mjs; close after the follow-up release ships."

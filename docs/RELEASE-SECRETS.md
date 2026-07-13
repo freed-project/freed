@@ -81,7 +81,7 @@ sync approved `main` changes into `www`.
 Branch promotion rules:
 
 - `dev` carries ongoing product work and dev releases.
-- `main` is only for reviewed production release promotion and rare production hotfixes.
+- `main` carries reviewed production promotions, release-only prep PRs, and rare production hotfixes.
 - Promote `dev` into `main` when shipping production. Do not treat `main` as a peer development branch.
 - After every production release, open a dedicated reverse-integration PR that merges `main` back into `dev`.
 - If `main` gets a production-only fix or release adjustment, include it in that reverse-integration PR immediately after the production release is stable.
@@ -116,20 +116,90 @@ GitHub Releases API with any of these environment variable names:
 
 On Vercel, the current project configuration uses `GITHUB_RELEASES_TOKEN`.
 
-## Drafting release notes
+## Release tag authority
 
-`./scripts/release.sh` now prepares a release in two stages:
+Release tags are an external trust boundary. GitHub loads a tag-push workflow
+from the tagged commit, so a workflow cannot prove that its own source was
+reviewed. Two live rulesets form the root control. `Freed release tag creation`
+targets every `refs/tags/v*` tag and grants its only bypass to one dedicated
+release GitHub App with repository Contents write permission. `Freed release
+tag immutability` targets the same tags and restricts update and deletion with
+no bypass, including no bypass for the release App.
+
+The checked-in `.github/rulesets/release-tag-lockdown.json` policy is the safe
+bootstrap. Apply it before App provisioning. It blocks creation, update, and
+deletion with no bypass in one API mutation. The checked-in creation and
+immutability policies then describe the split activated state. Do not add a
+user, administrator role, team, deploy key, or the PR publisher App as a
+substitute.
 
 ```bash
-./scripts/release.sh --channel=production
+node scripts/sync-github-rulesets.mjs --lock-release-tags --apply
+```
+
+After the dedicated release App and root-owned publisher are installed for
+`freed-project/freed`, an owner-reviewed PR must pin the App ID in the creation
+policy and set that policy active. Then an owner can verify and apply both
+rulesets:
+
+```bash
+node scripts/sync-github-rulesets.mjs \
+  --release-tags \
+  --release-app-id <github-app-id> \
+  --release-app-slug <github-app-slug> \
+  --apply
+```
+
+The fixed root-owned binding at
+`/Library/Application Support/Freed/release-tag-publisher.json` pins the App,
+publisher path, and executable SHA-256 digest. Activation and every publication
+recheck that file, its parent chain, the executable, and the broker attestation.
+The binding schema is:
+
+```json
+{
+  "schemaVersion": 1,
+  "purpose": "freed-release-tag-publisher-binding",
+  "status": "active",
+  "repo": "freed-project/freed",
+  "appId": 123456,
+  "appSlug": "freed-release-publisher",
+  "publisherPath": "/Library/Application Support/Freed/release-tag-publisher",
+  "publisherSha256": "<64 lowercase hexadecimal characters>"
+}
+```
+
+The binding, publisher executable, and every parent directory must be owned by
+root and must not be group or world writable. The executable must attest the
+same repository, App identity, digest, short-lived installation-token mode, and
+single `create-annotated-tag` operation before ruleset activation or release.
+The release publisher must request a short-lived installation token and expose
+only one operation: create the exact approved annotated tag at the exact current
+protected branch commit. It must not expose arbitrary refs, commits, updates,
+or deletions. `release-publish.sh` fails before publication when the checked-in
+App ID, either live ruleset, the publisher path, or any tag precondition is
+missing.
+
+## Drafting release notes
+
+Create a fresh `chore/release-<version>` worktree from current `origin/main` for
+production, or from current `origin/dev` for dev. `./scripts/release.sh`
+prepares a release in two stages:
+
+```bash
+./scripts/release.sh
 ./scripts/release.sh --channel=dev
 ```
+
+With no arguments, the script auto-computes the next production version. The
+dev channel is always explicit.
 
 That command:
 
 1. bumps app versions
 2. generates draft files under `release-notes/`
 3. commits the draft release prep
+4. refuses long-lived or detached branches, non-release branch names, and any branch not at the exact current channel base
 
 Optional local environment variable:
 
@@ -171,34 +241,62 @@ render release bullets inside the install toast.
 ## How to publish a reviewed release
 
 ```bash
-# if production main is behind dev, promote dev into main first
+# promote reviewed product state first when main does not match dev
+node scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref=origin/main
 ./scripts/promote-dev-to-main.sh ../freed-prod-promotion
-# merge the promotion PR to main
+# merge the promotion PR
+git fetch origin main
 
-./scripts/release.sh 26.4.107 --channel=production
+# create production prep from the exact current main commit
+./scripts/worktree-add.sh ../freed-release-v26.4.107 -b chore/release-v26.4.107 origin/main --target shared
+cd ../freed-release-v26.4.107
+./scripts/release.sh 26.4.107
 # review the generated release-notes files
 git add release-notes
 git commit -m "docs: review release notes for v26.4.107"
-# ensure the approved website and changelog state is merged to www
+# validate and publish a ready release-only PR targeting main
+npm run validate:release
+./scripts/worktree-publish.sh --base main --ready --title "chore: prepare v26.4.107"
+# merge the release-prep PR, then update a clean local main branch
+cd /path/to/clean-main-checkout
+git fetch origin main
+git merge --ff-only origin/main
+
 ./scripts/release-publish.sh 26.4.107
-git push origin main --follow-tags
 ```
 
-Production release prep now validates that `HEAD` matches `origin/dev` on
-product-owned paths before it will prepare or publish a tag. If `dev` is ahead,
-`./scripts/release.sh` and `./scripts/release-publish.sh` both fail with the
-exact stale file list instead of silently shipping old code from `main`.
+For a dev release, create the same `chore/release-<version>` branch from
+`origin/dev`, run `./scripts/release.sh --channel=dev`, validate with
+`npm run validate:feature`, and publish the reviewed PR with `--base dev`.
+After it merges, tag the exact updated `origin/dev` commit with
+`./scripts/release-publish.sh <version>-dev`.
 
-PRs targeting `main` also now have a scope guard. Product changes to `main`
-must come from a promotion branch named `chore/promote-dev-to-main-*`, and
-that promotion branch must still match current `origin/dev`. Release-only
-metadata updates remain allowed on `main`, while website-owned files are still
-rejected there.
+Production release prep requires an exact current `origin/main` base after any
+required product promotion. Dev release prep requires exact current
+`origin/dev`. Both return through branch protection. `release-publish.sh`
+refuses to tag unless local `HEAD` exactly equals the target remote branch, so
+it cannot tag an unmerged local release commit. It also binds the requested tag,
+channel, Desktop, PWA, Tauri, and Cargo versions to the reviewed release
+artifact. The artifact records the product commit used to prepare its notes.
+Production artifacts also record the exact promoted dev commit whose product
+tree matched main at preparation time. Any later product change makes the
+release identity stale and requires a new release-prep PR.
+
+PRs targeting `main` have a scope guard. Product changes reach `main` only
+through a branch named `chore/promote-dev-to-main-*`, and that promotion must
+still match current `origin/dev`. A `chore/release-*` PR may carry only the
+version files and release-note artifacts recognized as release-only metadata.
+Website-owned files remain rejected there.
 
 The `v*` tag triggers the release workflow which builds all platforms and
 creates a **draft** GitHub Release using the approved checked-in release body.
 After all platform builds succeed, the workflow publishes that release
-automatically.
+automatically. Before any secret-bearing job, the workflow requires the tag
+commit to remain in protected `origin/main` history for production or protected
+`origin/dev` history for dev, then reruns the release identity validator. The
+trusted release App proves exact branch-tip equality when it creates the tag.
+Ancestry in the delayed workflow allows the branch to advance without breaking
+an honest release.
 
 If `VERCEL_TOKEN` is configured, production releases deploy `packages/pwa/` to
 `app.freed.wtf` so the PWA version stays aligned with the shipped desktop
@@ -206,8 +304,8 @@ release. After any GitHub release is published, the release workflow also
 redeploys the public website from current `www` so the static changelog
 snapshot is rebuilt against the latest release list. Production website deploys
 still require the reviewed website and changelog state to already be merged
-into `www`. The release workflow now also rechecks production promotion state
-at tag time, so a stale `main` tag cannot slip through after `dev` advances.
+into `www`. Production identity uses the fixed promoted dev receipt recorded
+during preparation. A later dev commit cannot change or invalidate that release.
 After the production release is stable, open the dedicated `main` back into
 `dev` reverse-integration PR before more feature work piles onto `dev`.
 
@@ -228,6 +326,8 @@ The in-app updater will pick the new GitHub release up automatically.
 
 `./scripts/release-publish.sh` and the release workflow both validate that:
 
+- the tag, channel, numeric bundle versions, and release artifact agree
+- no product-owned file changed after the artifact's recorded product commit
 - the deck does not duplicate a feature or follow-up
 - there are no more than 3 features
 - there are no more than 15 fixes or 15 follow-ups after consolidation
