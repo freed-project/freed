@@ -83,7 +83,11 @@ function main() {
     headRef: options.headRef,
     cwd: options.cwd,
   });
-  const classified = classifyMainPrFiles(changedFiles);
+  const classified = classifyMainPrFiles(changedFiles, {
+    baseRef: options.baseRef,
+    headRef: options.headRef,
+    cwd: options.cwd,
+  });
 
   if (classified.forbidden.length > 0) {
     die(
