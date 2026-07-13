@@ -3,8 +3,10 @@
   "version": "26.7.1300-dev",
   "channel": "dev",
   "dayKey": "26.7.13",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed 2026-07-13: led with unattended YouTube validation, kept the capture scope to the complete subscription roster and recent Subscriptions media, and summarized the stability control-plane work as a build-trust improvement."
+  ],
   "generatedAt": "2026-07-13T20:44:43.335Z",
   "model": "heuristic",
   "source": {
@@ -33,10 +35,15 @@
     ]
   },
   "release": {
-    "deck": "Harden the stability control plane, youTube terminal sync soaks, and pinned Node when sourced by zsh resolved",
-    "features": [],
-    "fixes": [],
+    "deck": "Unattended YouTube validation now runs through the normal authenticated sync path with stricter build and soak evidence",
+    "features": [
+      "Dev builds can start the normal authenticated YouTube sync from the terminal, allowing unattended validation of the complete subscription roster and recent Subscriptions media without foreground clicks"
+    ],
+    "fixes": [
+      "Release and soak evidence now fails closed on incomplete sessions and binds installed builds to their exact source commits",
+      "Repository tooling now keeps Node, npm, and npx on the pinned toolchain when sourced from zsh"
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1300-dev\n\nHarden the stability control plane, youTube terminal sync soaks, and pinned Node when sourced by zsh resolved\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1300-dev\n\nUnattended YouTube validation now runs through the normal authenticated sync path with stricter build and soak evidence.\n\n### Features\n\n- Dev builds can start the normal authenticated YouTube sync from the terminal, allowing unattended validation of the complete subscription roster and recent Subscriptions media without foreground clicks\n\n### Fixes\n\n- Release and soak evidence now fails closed on incomplete sessions and binds installed builds to their exact source commits\n- Repository tooling now keeps Node, npm, and npx on the pinned toolchain when sourced from zsh\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
