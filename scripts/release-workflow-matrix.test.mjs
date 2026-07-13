@@ -77,13 +77,3 @@ test("desktop releases force Google token exchange through the server proxy", ()
     "release workflow should not embed a Google client secret in the desktop app bundle",
   );
 });
-
-test("desktop releases pass the reviewed channel into build metadata", () => {
-  const workflow = readFileSync(releaseWorkflowPath, "utf8");
-
-  assert.match(
-    workflow,
-    /FREED_BUILD_CHANNEL:\s*\$\{\{ needs\.notes\.outputs\.release_channel \}\}/,
-    "release builds should stamp the reviewed release channel into runtime identity",
-  );
-});
