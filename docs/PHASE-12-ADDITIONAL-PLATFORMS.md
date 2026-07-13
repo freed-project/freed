@@ -225,6 +225,9 @@ packages/capture-youtube/
   Initial capture continues in the same persistent background session.
 - An explicit sync captures the signed-in user's followed-channel roster and
   recent Subscriptions page video cards.
+- Dev-channel installed builds can start that same explicit sync through the
+  terminal trigger, with the existing authenticated session, pause state,
+  cooldowns, and provider-safe retry spacing intact.
 - Routine scheduled refreshes capture only recent Subscriptions videos. Full
   roster reconciliation stays with post-login and explicit manual syncs.
 - Complete roster captures reconcile unfollows. Partial captures can add or
@@ -323,6 +326,7 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 | 12.30 | Encrypted user-cloud media transfer        | High       |        |
 | 12.31 | Optional offline video rendition           | High       |        |
 | 12.32 | Hosted relay measurement and owner decision | High      |        |
+| 12.33 | YouTube installed-build terminal sync trigger | Low      | ✓ Done |
 
 ---
 
@@ -350,6 +354,9 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
       YouTube developer project, OAuth grant, Data API client, or shared quota
 - [x] Recent YouTube videos are captured from the signed-in Subscriptions page
       rather than generated RSS feeds or the algorithmic Home surface
+- [x] Dev-channel installed builds can trigger the same authenticated explicit
+      YouTube roster and Subscriptions sync from the terminal for unattended
+      validation without changing the provider capture path
 - [x] The YouTube login window hides as soon as authentication is confirmed,
       while the initial subscription sync continues in the persistent background session
 - [x] YouTube videos offer click-to-load focused playback without autoplay or automatic next-video behavior
