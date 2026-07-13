@@ -27,6 +27,7 @@ use_resolved_node_path
 DESKTOP_DIR="packages/desktop"
 TAURI_CONF="${DESKTOP_DIR}/src-tauri/tauri.conf.json"
 CARGO_TOML="${DESKTOP_DIR}/src-tauri/Cargo.toml"
+CARGO_LOCK="${DESKTOP_DIR}/src-tauri/Cargo.lock"
 DESKTOP_PKG="${DESKTOP_DIR}/package.json"
 PWA_PKG="packages/pwa/package.json"
 CHANNEL="production"
@@ -170,6 +171,10 @@ awk -v ver="${APP_VERSION}" '
   { print }
 ' "${CARGO_TOML}" > "${CARGO_TOML}.tmp" && mv "${CARGO_TOML}.tmp" "${CARGO_TOML}"
 
+# Refresh only the Freed Desktop package entry after changing its version.
+# The explicit package and version keep dependency resolution out of release prep.
+cargo update -p freed-desktop --precise "${APP_VERSION}" --offline --manifest-path "${CARGO_TOML}"
+
 # Update desktop package.json
 "${NODE_BIN}" -e "
   const fs = require('fs');
@@ -189,6 +194,7 @@ awk -v ver="${APP_VERSION}" '
 echo "==> Updated version files:"
 echo "    ${TAURI_CONF}"
 echo "    ${CARGO_TOML}"
+echo "    ${CARGO_LOCK}"
 echo "    ${DESKTOP_PKG}"
 echo "    ${PWA_PKG}"
 
@@ -197,7 +203,7 @@ FREED_PROMOTED_DEV_COMMIT_SHA="${PROMOTED_DEV_COMMIT_SHA}" \
   "${NODE_BIN}" scripts/prepare-release-notes.mjs "${VERSION}"
 
 # Commit draft release prep, but do not tag yet.
-git add "${TAURI_CONF}" "${CARGO_TOML}" "${DESKTOP_PKG}" "${PWA_PKG}" \
+git add "${TAURI_CONF}" "${CARGO_TOML}" "${CARGO_LOCK}" "${DESKTOP_PKG}" "${PWA_PKG}" \
   "release-notes/releases/${TAG}.json" \
   "release-notes/releases/${TAG}.md" \
   "release-notes/daily/${CHANNEL}/${DAY_KEY}.json"

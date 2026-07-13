@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { inspectCargoLockReleaseChange } from "./lib/cargo-lock-release.mjs";
 import { listPromotionDiffFiles } from "./release-promotion-shared.mjs";
 import { parseReleaseVersion } from "./release-version.mjs";
 
@@ -24,6 +25,35 @@ function cargoPackageVersion(contents) {
   const packageBlock =
     contents.match(/\[package\]([\s\S]*?)(?=\n\[|$)/)?.[1] ?? "";
   return packageBlock.match(/^version\s*=\s*"([^"]+)"/m)?.[1] ?? null;
+}
+
+function cargoLockReleaseChangeErrors({
+  cwd,
+  fromRef,
+  toRef,
+  expectedVersion = null,
+  context = "Cargo.lock",
+}) {
+  const result = inspectCargoLockReleaseChange({
+    cwd,
+    fromRef,
+    toRef,
+    expectedVersion,
+  });
+  if (result.error) {
+    return [`${context} validation failed: ${result.error}`];
+  }
+
+  const errors = [];
+  if (!result.versionMatches) {
+    errors.push(
+      `${context} freed-desktop package version is ${String(result.afterVersion)}, expected ${expectedVersion}.`,
+    );
+  }
+  if (!result.contentMatches) {
+    errors.push(`${context} may only change the freed-desktop package version.`);
+  }
+  return errors;
 }
 
 export function parseReleaseTag(tag) {
@@ -112,6 +142,14 @@ export function validateReleaseIdentity({
         `release source productCommitSha ${productCommitSha} is not an ancestor of ${headRef}.`,
       );
     } else {
+      errors.push(
+        ...cargoLockReleaseChangeErrors({
+          cwd,
+          fromRef: productCommitSha,
+          toRef: headRef,
+          expectedVersion: expected.appVersion,
+        }),
+      );
       const driftFiles = listPromotionDiffFiles({
         fromRef: productCommitSha,
         toRef: headRef,
@@ -145,6 +183,14 @@ export function validateReleaseIdentity({
           `production release source promotedDevCommitSha ${promotedDevCommitSha} is not a local commit.`,
         );
       } else if (/^[0-9a-f]{40,64}$/.test(productCommitSha)) {
+        errors.push(
+          ...cargoLockReleaseChangeErrors({
+            cwd,
+            fromRef: promotedDevCommitSha,
+            toRef: productCommitSha,
+            context: "recorded promoted dev Cargo.lock",
+          }),
+        );
         const promotionDrift = listPromotionDiffFiles({
           fromRef: promotedDevCommitSha,
           toRef: productCommitSha,

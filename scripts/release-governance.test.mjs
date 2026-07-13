@@ -121,6 +121,30 @@ test("release preparation validates canonical CalVer before mutating version fil
   assert.doesNotMatch(releasePrep, /-\[a-zA-Z0-9\.\]\+/);
 });
 
+test("release preparation refreshes and stages the Rust lockfile", () => {
+  const cargoTomlMutationIndex = releasePrep.indexOf(
+    "' \"${CARGO_TOML}\" > \"${CARGO_TOML}.tmp\"",
+  );
+  const cargoLockRefreshIndex = releasePrep.indexOf(
+    'cargo update -p freed-desktop --precise "${APP_VERSION}" --offline --manifest-path "${CARGO_TOML}"',
+  );
+  const releaseNotesIndex = releasePrep.indexOf(
+    "scripts/prepare-release-notes.mjs",
+  );
+
+  assert.match(
+    releasePrep,
+    /CARGO_LOCK="\$\{DESKTOP_DIR\}\/src-tauri\/Cargo\.lock"/,
+  );
+  assert.ok(cargoTomlMutationIndex >= 0);
+  assert.ok(cargoLockRefreshIndex > cargoTomlMutationIndex);
+  assert.ok(releaseNotesIndex > cargoLockRefreshIndex);
+  assert.match(
+    releasePrep,
+    /git add "\$\{TAURI_CONF\}" "\$\{CARGO_TOML\}" "\$\{CARGO_LOCK\}"/,
+  );
+});
+
 test("historical backfill uses the explicit immutable published-tag receipt mode", () => {
   assert.match(releaseNotesBackfill, /--historical-published-tag/);
   assert.match(

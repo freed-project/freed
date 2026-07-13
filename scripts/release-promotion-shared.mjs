@@ -1,5 +1,10 @@
 import { execFileSync } from "node:child_process";
 
+import {
+  CARGO_LOCK_PATH,
+  inspectCargoLockReleaseChange,
+} from "./lib/cargo-lock-release.mjs";
+
 export const PROMOTION_SCOPE_PATHS = [
   ".agents",
   ".github",
@@ -55,6 +60,10 @@ function tryRunGit(args, { cwd } = {}) {
   }
 }
 
+function isCargoLockReleaseOnlyChange({ fromRef, toRef, cwd }) {
+  return inspectCargoLockReleaseChange({ fromRef, toRef, cwd }).ok;
+}
+
 export function splitLines(value) {
   return value
     .split(/\r?\n/)
@@ -107,7 +116,11 @@ export function listPromotionDiffFiles({ fromRef, toRef, cwd }) {
   });
 
   return uniqueSorted([...promotionScopeFiles, ...websiteConfigFiles]).filter(
-    (filePath) => !isReleaseOnlyFile(filePath),
+    (filePath) => {
+      if (isReleaseOnlyFile(filePath)) return false;
+      if (filePath !== CARGO_LOCK_PATH) return true;
+      return !isCargoLockReleaseOnlyChange({ fromRef, toRef, cwd });
+    },
   );
 }
 
@@ -220,6 +233,15 @@ export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
 
   return mainChangedFiles
     .filter((filePath) => !isReleaseOnlyFile(filePath))
+    .filter(
+      (filePath) =>
+        filePath !== CARGO_LOCK_PATH ||
+        !isCargoLockReleaseOnlyChange({
+          fromRef: devRef,
+          toRef: mainRef,
+          cwd,
+        }),
+    )
     .filter((filePath) => {
       const mainBlobId = readBlobId(mainRef, filePath, { cwd });
       const devBlobId = readBlobId(devRef, filePath, { cwd });
@@ -289,7 +311,10 @@ export function ensureRefExists(ref, { cwd } = {}) {
   runGit(["rev-parse", "--verify", ref], { cwd });
 }
 
-export function classifyMainPrFiles(files) {
+export function classifyMainPrFiles(
+  files,
+  { baseRef = null, headRef = null, cwd } = {},
+) {
   const forbidden = [];
   const promotionScoped = [];
   const releaseOnly = [];
@@ -302,6 +327,20 @@ export function classifyMainPrFiles(files) {
     }
 
     if (isReleaseOnlyFile(filePath)) {
+      releaseOnly.push(filePath);
+      continue;
+    }
+
+    if (
+      filePath === CARGO_LOCK_PATH &&
+      baseRef &&
+      headRef &&
+      isCargoLockReleaseOnlyChange({
+        fromRef: runGit(["merge-base", baseRef, headRef], { cwd }),
+        toRef: headRef,
+        cwd,
+      })
+    ) {
       releaseOnly.push(filePath);
       continue;
     }
