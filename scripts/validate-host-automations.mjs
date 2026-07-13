@@ -19,6 +19,9 @@ const ACTOR_LAUNCHER_ATTESTATION_PURPOSE =
   "automation-actor-launcher-readiness";
 const ACTOR_LAUNCHER_RECORD_ROOT =
   "/Library/Application Support/Freed/automation-actor-launchers";
+const ACTOR_RUNTIME_ROOT =
+  "/Library/Application Support/Freed/automation-actor-runtimes";
+const ACTOR_RUNTIME_DIGEST_PROTOCOL = "freed-automation-actor-runtime-v1";
 const CANONICAL_REPOSITORY = "freed-project/freed";
 const MODEL_CATALOG_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 const MODEL_CATALOG_MAX_FUTURE_SKEW_MS = 5 * 60 * 1_000;
@@ -280,6 +283,20 @@ function sha256(filePath) {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
 
+function actorRuntimeDigest(record) {
+  return createHash("sha256")
+    .update(
+      [
+        ACTOR_RUNTIME_DIGEST_PROTOCOL,
+        `node:${record.nodeSha256}`,
+        `automation-control.mjs:${record.controlEntrySha256}`,
+        `lib/automation-control.mjs:${record.controlLibrarySha256}`,
+        "",
+      ].join("\n"),
+    )
+    .digest("hex");
+}
+
 function inspectRootOwnedExecutable(launcherPath) {
   try {
     if (
@@ -325,6 +342,90 @@ function inspectRootOwnedExecutable(launcherPath) {
     return {
       ready: false,
       reason: `launcher cannot be inspected: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  return { ready: true, reason: "" };
+}
+
+function isStrictChildPath(parentPath, candidatePath) {
+  const relative = path.relative(parentPath, candidatePath);
+  return (
+    relative !== "" &&
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
+}
+
+export function inspectRootOwnedRuntimeFile(
+  runtimePath,
+  runtimeRoot = ACTOR_RUNTIME_ROOT,
+  { requiredUid = 0 } = {},
+) {
+  try {
+    const resolvedRoot = path.resolve(runtimeRoot);
+    if (
+      !path.isAbsolute(runtimeRoot) ||
+      realpathSync(resolvedRoot) !== resolvedRoot
+    ) {
+      return {
+        ready: false,
+        reason: "automation actor runtime root is not canonical",
+      };
+    }
+    if (
+      !path.isAbsolute(runtimePath) ||
+      realpathSync(runtimePath) !== runtimePath ||
+      !isStrictChildPath(resolvedRoot, runtimePath)
+    ) {
+      return {
+        ready: false,
+        reason:
+          "runtime pin is not a canonical path under the automation actor runtime root",
+      };
+    }
+    const runtimeStats = lstatSync(runtimePath);
+    if (
+      !runtimeStats.isFile() ||
+      runtimeStats.isSymbolicLink() ||
+      runtimeStats.uid !== requiredUid ||
+      (runtimeStats.mode & 0o022) !== 0
+    ) {
+      return {
+        ready: false,
+        reason: "runtime pin is not a root-owned immutable regular file",
+      };
+    }
+    let current = path.dirname(runtimePath);
+    while (true) {
+      const stats = lstatSync(current);
+      if (
+        !stats.isDirectory() ||
+        stats.isSymbolicLink() ||
+        stats.uid !== requiredUid ||
+        (stats.mode & 0o022) !== 0
+      ) {
+        return {
+          ready: false,
+          reason:
+            "runtime pin has a non-root-owned or writable directory in its runtime path",
+        };
+      }
+      if (current === resolvedRoot) break;
+      const parent = path.dirname(current);
+      if (parent === current || !isStrictChildPath(resolvedRoot, current)) {
+        return {
+          ready: false,
+          reason:
+            "runtime pin escapes the root-owned automation actor runtime tree",
+        };
+      }
+      current = parent;
+    }
+  } catch (error) {
+    return {
+      ready: false,
+      reason: `runtime pin cannot be inspected: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
   return { ready: true, reason: "" };
@@ -458,6 +559,8 @@ export function actorLauncherReadiness(
     launcherInspector = inspectRootOwnedExecutable,
     launcherRecordInspector = inspectRootOwnedRecord,
     launcherRecordRoot = ACTOR_LAUNCHER_RECORD_ROOT,
+    runtimeFileInspector = inspectRootOwnedRuntimeFile,
+    runtimeRoot = ACTOR_RUNTIME_ROOT,
     keychainLookup = defaultKeychainLookup,
   } = {},
 ) {
@@ -492,6 +595,23 @@ export function actorLauncherReadiness(
         reason: "automation state root is missing or not canonical",
       };
     }
+    let canonicalRuntimeRoot = "";
+    try {
+      const resolvedRuntimeRoot = path.resolve(runtimeRoot);
+      if (
+        !path.isAbsolute(runtimeRoot) ||
+        realpathSync(resolvedRuntimeRoot) !== resolvedRuntimeRoot
+      ) {
+        throw new Error("runtime root is not canonical");
+      }
+      canonicalRuntimeRoot = resolvedRuntimeRoot;
+    } catch {
+      return {
+        ready: false,
+        path: recordPath,
+        reason: "automation actor runtime root is missing or not canonical",
+      };
+    }
     if (
       !leaseContract ||
       typeof leaseContract.name !== "string" ||
@@ -507,6 +627,10 @@ export function actorLauncherReadiness(
     const expectedKeys = [
       "actor",
       "attestationProtocol",
+      "controlEntryPath",
+      "controlEntrySha256",
+      "controlLibraryPath",
+      "controlLibrarySha256",
       "handoff",
       "keychainAccount",
       "keychainService",
@@ -514,6 +638,8 @@ export function actorLauncherReadiness(
       "launcherPath",
       "launcherSha256",
       "maxLeaseLifetimeMs",
+      "nodePath",
+      "nodeSha256",
       "purpose",
       "schemaVersion",
       "stateRoot",
@@ -532,7 +658,13 @@ export function actorLauncherReadiness(
       record.leaseName !== leaseContract.name ||
       record.maxLeaseLifetimeMs !== leaseContract.maxLifetimeMs ||
       typeof record.launcherPath !== "string" ||
-      !/^[0-9a-f]{64}$/.test(String(record.launcherSha256 ?? ""))
+      !/^[0-9a-f]{64}$/.test(String(record.launcherSha256 ?? "")) ||
+      typeof record.nodePath !== "string" ||
+      !/^[0-9a-f]{64}$/.test(String(record.nodeSha256 ?? "")) ||
+      typeof record.controlEntryPath !== "string" ||
+      !/^[0-9a-f]{64}$/.test(String(record.controlEntrySha256 ?? "")) ||
+      typeof record.controlLibraryPath !== "string" ||
+      !/^[0-9a-f]{64}$/.test(String(record.controlLibrarySha256 ?? ""))
     ) {
       return {
         ready: false,
@@ -560,6 +692,86 @@ export function actorLauncherReadiness(
         ready: false,
         path: recordPath,
         reason: "trusted launcher digest does not match",
+      };
+    }
+    const runtimePins = [
+      {
+        label: "node",
+        path: record.nodePath,
+        sha256: record.nodeSha256,
+      },
+      {
+        label: "automation control entry",
+        path: record.controlEntryPath,
+        sha256: record.controlEntrySha256,
+      },
+      {
+        label: "automation control library",
+        path: record.controlLibraryPath,
+        sha256: record.controlLibrarySha256,
+      },
+    ];
+    for (const pin of runtimePins) {
+      if (
+        !path.isAbsolute(pin.path) ||
+        realpathSync(pin.path) !== pin.path ||
+        !isStrictChildPath(canonicalRuntimeRoot, pin.path)
+      ) {
+        return {
+          ready: false,
+          path: recordPath,
+          reason: `${pin.label} pin is not a canonical path under the automation actor runtime root`,
+        };
+      }
+      const runtimeFile = runtimeFileInspector(pin.path, canonicalRuntimeRoot);
+      if (!runtimeFile.ready) {
+        return {
+          ready: false,
+          path: recordPath,
+          reason: `${pin.label} pin is invalid: ${runtimeFile.reason}`,
+        };
+      }
+      if (sha256(pin.path) !== pin.sha256) {
+        return {
+          ready: false,
+          path: recordPath,
+          reason: `${pin.label} pin digest does not match`,
+        };
+      }
+    }
+    const nodeRelativePath = path.relative(
+      canonicalRuntimeRoot,
+      record.nodePath,
+    );
+    const runtimePathParts = nodeRelativePath.split(path.sep);
+    const runtimeDigest = runtimePathParts[0] ?? "";
+    const expectedRuntimePaths = {
+      nodePath: path.join(canonicalRuntimeRoot, runtimeDigest, "node"),
+      controlEntryPath: path.join(
+        canonicalRuntimeRoot,
+        runtimeDigest,
+        "automation-control.mjs",
+      ),
+      controlLibraryPath: path.join(
+        canonicalRuntimeRoot,
+        runtimeDigest,
+        "lib",
+        "automation-control.mjs",
+      ),
+    };
+    if (
+      !/^[0-9a-f]{64}$/.test(runtimeDigest) ||
+      runtimePathParts.length !== 2 ||
+      record.nodePath !== expectedRuntimePaths.nodePath ||
+      record.controlEntryPath !== expectedRuntimePaths.controlEntryPath ||
+      record.controlLibraryPath !== expectedRuntimePaths.controlLibraryPath ||
+      runtimeDigest !== actorRuntimeDigest(record)
+    ) {
+      return {
+        ready: false,
+        path: recordPath,
+        reason:
+          "trusted launcher record runtime pins do not share one content-addressed runtime",
       };
     }
     const keychain = keychainLookup({
@@ -604,6 +816,10 @@ export function actorLauncherReadiness(
       handoff: record.handoff,
       leaseName: record.leaseName,
       maxLeaseLifetimeMs: record.maxLeaseLifetimeMs,
+      runtimeRoot: canonicalRuntimeRoot,
+      nodePath: record.nodePath,
+      controlEntryPath: record.controlEntryPath,
+      controlLibraryPath: record.controlLibraryPath,
     };
   } catch (error) {
     return {
@@ -978,6 +1194,8 @@ export function auditSavedAutomations({
   launcherInspector = inspectRootOwnedExecutable,
   launcherRecordInspector = inspectRootOwnedRecord,
   launcherRecordRoot = ACTOR_LAUNCHER_RECORD_ROOT,
+  runtimeFileInspector = inspectRootOwnedRuntimeFile,
+  runtimeRoot = ACTOR_RUNTIME_ROOT,
   keychainLookup = defaultKeychainLookup,
 }) {
   const modelCatalog = authoritativeModelCatalog(
@@ -1005,6 +1223,8 @@ export function auditSavedAutomations({
       launcherInspector,
       launcherRecordInspector,
       launcherRecordRoot,
+      runtimeFileInspector,
+      runtimeRoot,
       keychainLookup,
     });
     const issues = [];

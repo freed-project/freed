@@ -24,7 +24,9 @@ Maintain one durable control-plane truth for each root cause. Sensors observe. T
 ## Apply authority
 
 - Observation and reconciliation do not grant permission to write code, post externally, merge, release, deploy, or contact a provider.
-- Carry the checked-in actor policy as `observe-only`, `plan-only`, `pr-only`, or `merge-safe`. A trusted host launcher authenticates non-owner lease acquisition outside the agent process. Mutations receive only that actor's short-lived canonical lease token in `FREED_AUTOMATION_LEASE_TOKEN`.
+- Carry the checked-in actor policy as `observe-only`, `plan-only`, `pr-only`, or `merge-safe`. A trusted host launcher binds a selected general actor role to its pinned credential and runtime outside the agent process. It does not authenticate which same-user saved automation invoked that role. Mutations receive only that role's short-lived canonical lease token in `FREED_AUTOMATION_LEASE_TOKEN`.
+- Before a general actor mutates state, require `npm run --silent automation:actors -- acquire --actor <actor>` to return its canonical lease. Treat missing or failed host verification as `blocked_by_authority`. Never substitute a reusable secret, an owner lease, a publisher capability, or a signing-free task mutation path.
+- General actor provisioning is an owner action from a reviewed clean `dev` checkout. It does not grant provider authority. Keep provider contact forbidden until the canonical task and provider approval gates allow it.
 - Require the provider-specific approval packet for provider-visible implementation. General implementation authority does not replace it.
 - Enforce one behavioral product change globally. Exclusivity keys label evidence and prevent duplicate work, but they do not create parallel behavior slots. The next behavior waits until the active change has an installed-build soak outcome.
 - Keep `runner-safe: false` work at owner-review PR state.

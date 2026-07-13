@@ -12,20 +12,20 @@ release.
 
 ## Sources of truth
 
-| Source | Purpose |
-| --- | --- |
-| `automation/specs/*.json` | Checked-in automation identity, authority, provider policy, prompt path, soak limit, allowed local overlay fields, and required host handoff capabilities |
-| `automation/prompts/*.md` | Checked-in behavioral contract for each automation |
-| `.github/rulesets/*.json` | Checked-in dev, main, and www PR governance, plus split release-tag creation and no-bypass immutability policies |
-| `~/.freed/automation/control/current-tasks.json` | Atomic current task state |
-| `~/.freed/automation/control/task-transactions/` | Recoverable write-ahead records that bind each task revision to its audit event |
-| `~/.freed/automation/control/events.jsonl` | Append-only audit history for task, authority, lease, and observer events |
-| `~/.freed/automation/control/leases/` | Token-bound leases that prevent duplicate writers |
-| `~/.freed/automation/control/actor-credentials/` | Private local credential records that authenticate non-owner actor lease acquisition |
-| `~/.freed/automation/control/owner-capabilities/` | Broker-signed one-use owner governance capabilities, split into pending and consumed records |
-| `~/.freed/automation/outcomes.jsonl` | Versioned merge, install, and observed-effect outcomes |
-| `~/.freed/automation/soaks/` | Installed-build evidence windows and verdicts |
-| `docs/roadmap-status.json` | Structured phase status used to validate roadmap truth |
+| Source                                            | Purpose                                                                                                                                                   |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `automation/specs/*.json`                         | Checked-in automation identity, authority, provider policy, prompt path, soak limit, allowed local overlay fields, and required host handoff capabilities |
+| `automation/prompts/*.md`                         | Checked-in behavioral contract for each automation                                                                                                        |
+| `.github/rulesets/*.json`                         | Checked-in dev, main, and www PR governance, plus split release-tag creation and no-bypass immutability policies                                          |
+| `~/.freed/automation/control/current-tasks.json`  | Atomic current task state                                                                                                                                 |
+| `~/.freed/automation/control/task-transactions/`  | Recoverable write-ahead records that bind each task revision to its audit event                                                                           |
+| `~/.freed/automation/control/events.jsonl`        | Append-only audit history for task, authority, lease, and observer events                                                                                 |
+| `~/.freed/automation/control/leases/`             | Token-bound leases that prevent duplicate writers                                                                                                         |
+| `~/.freed/automation/control/actor-credentials/`  | Private local credential records used by pinned general actor launchers to acquire canonical role leases                                                   |
+| `~/.freed/automation/control/owner-capabilities/` | Broker-signed one-use owner governance capabilities, split into pending and consumed records                                                              |
+| `~/.freed/automation/outcomes.jsonl`              | Versioned merge, install, and observed-effect outcomes                                                                                                    |
+| `~/.freed/automation/soaks/`                      | Installed-build evidence windows and verdicts                                                                                                             |
+| `docs/roadmap-status.json`                        | Structured phase status used to validate roadmap truth                                                                                                    |
 
 The default state root can be replaced with `FREED_AUTOMATION_STATE_ROOT` or the
 CLI `--state-root` option. Repository automation specifications intentionally do
@@ -60,11 +60,14 @@ Every actor specification also requires `trusted-launcher` and
 2. A root-owned immutable launcher binding at
    `/Library/Application Support/Freed/automation-actor-launchers/<actor>.json`.
 3. The root-owned executable and exact SHA-256 digest named by that binding.
-4. The matching non-secret Keychain item metadata for service
+4. Root-owned pinned copies of the repo Node binary, control entry, and control
+   library under
+   `/Library/Application Support/Freed/automation-actor-runtimes/<runtime-digest>/`.
+5. The matching non-secret Keychain item metadata for service
    `freed-automation-actor` and account `<actor>`.
-5. A binding handoff of `keychain-to-canonical-lease`, which gives the actor only
+6. A binding handoff of `keychain-to-canonical-lease`, which gives the actor only
    its short-lived canonical lease and never its persistent secret.
-6. A successful nonmutating `freed-actor-launcher-readiness-v1` attestation from
+7. A successful nonmutating `freed-actor-launcher-readiness-v1` attestation from
    the pinned launcher. It must bind the actor, canonical state root, canonical
    lease name, 30 minute maximum lifetime, credential digest, Keychain service
    and account, and confirm both digest verification and canonical lease
@@ -79,6 +82,71 @@ actor remains safely PAUSED and is reported as reconciliation drift. A saved
 PAUSED actor may await owner provisioning, but its installed overlay still must
 be valid. Reconcile through the Codex host automation controls, never by editing
 `automation.toml` directly.
+
+### Owner provisioning for general actors
+
+Provision the five general actors only from a clean `dev` checkout whose HEAD is
+the exact local `origin/dev`. The helper refuses `freed-owner` and
+`freed-pr-publisher`. After the reviewed bootstrap PR is merged and the local
+checkout is current, run:
+
+```bash
+npm run automation:actors -- provision --all
+npm run automation:actors -- verify --all
+npm run validate:host-automations
+```
+
+If `provision --all` fails after creating earlier credentials, it revokes only
+the actors completed by that invocation, in reverse order. It never revokes the
+actor whose provision step failed, because that actor may have owner-managed
+state from an earlier attempt. Run `revoke --actor <actor named in the error>`,
+then retry provisioning. A `provision_rollback_failed` result names every actor
+that still requires explicit owner recovery.
+
+The helper compiles two native Swift programs without a signing identity. It
+installs only public, content-addressed runtime files and actor-specific launcher
+bindings through `sudo`. The native provisioner then generates each persistent
+credential with the system random source, stores it in the current owner's
+Keychain, restricts the item to the exact installed launcher, and writes only its
+digest to the private automation state directory. The orchestration script,
+shell, and agent never receive the credential. It never appears in arguments,
+standard output, logs, task state, or agent state.
+
+The installed launcher clears inherited environment state, verifies its own
+root-owned binding and every pinned runtime digest, reads the Keychain item with
+interaction disabled, and invokes only the pinned control entry. That child
+process is the only JavaScript process that receives the persistent credential,
+and receives it only long enough to acquire the actor's canonical lease. The
+launcher returns only the short-lived lease result. General actor leases have a
+30 minute absolute lifetime. Heartbeats cannot extend them past the original
+limit.
+
+This handoff follows the control plane's cooperative same-user threat model. It
+protects the persistent credential and pins the selected role to one immutable
+launcher and runtime. It does not authenticate which saved automation invoked
+that launcher. Any process running as the same macOS user can invoke any of the
+five provisioned general actor launchers. Stored task authority, provider
+approval, the global behavior slot, owner governance, publisher isolation, and
+GitHub review gates still apply. Do not provision these launchers if the five
+general roles require hard isolation from one another.
+
+The owner can rotate, revoke, or verify one actor without exposing its secret:
+
+```bash
+npm run automation:actors -- rotate --actor freed-nightly-runner
+npm run automation:actors -- revoke --actor freed-nightly-runner
+npm run automation:actors -- verify --actor freed-nightly-runner
+npm run automation:actors -- acquire --actor freed-nightly-runner
+```
+
+Keep every saved actor paused until both verification commands pass on the real
+host. The first installation must prove that the root-owned launcher built
+without a signing identity can use its Keychain ACL unattended on the current
+macOS version. A source-level test cannot prove that host policy. Provisioning
+enables the five general policy roles inside the cooperative same-user boundary.
+It does not create task authority, bypass owner governance, authorize
+provider-visible behavior, contact a provider, or consume the one behavioral
+soak slot.
 
 ## Atomic current task manifest
 
@@ -127,12 +195,12 @@ explicit transitions. A task cannot skip from implementation to effectiveness.
 Stored task authority is a lifecycle ceiling, separate from the authority of
 the actor holding a lease:
 
-| Task authority | Furthest mutable lifecycle stage |
-| --- | --- |
+| Task authority | Furthest mutable lifecycle stage                                                                                                                           |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `observe-only` | Product and external state stay read-only; local evidence, observed tasks, control events, and later verification verdicts are allowed by the actor policy |
-| `plan-only` | Triage, PR approval planning, governance blocking, supersession, and closure |
-| `pr-only` | Implementation and validation in a PR, but not merge |
-| `merge-safe` | Merge, install, and soak handoff under existing governance |
+| `plan-only`    | Triage, PR approval planning, governance blocking, supersession, and closure                                                                               |
+| `pr-only`      | Implementation and validation in a PR, but not merge                                                                                                       |
+| `merge-safe`   | Merge, install, and soak handoff under existing governance                                                                                                 |
 
 Both checks must pass. The actor policy must allow the requested destination,
 and the stored task ceiling must be high enough for it. An `observe-only` task
@@ -210,10 +278,10 @@ governance through `freed-owner` with `owner-governance`.
 
 ### Automation actor credentials
 
-Every non-owner actor's trusted host launcher must authenticate lease
-acquisition with both a private local credential record and the matching token
-in `FREED_AUTOMATION_ACTOR_TOKEN`. That persistent token must not enter the
-agent process. The credential lives at
+Every general automation actor's trusted host launcher must bind canonical role
+lease acquisition to both a private local credential record and the matching
+token in `FREED_AUTOMATION_ACTOR_TOKEN`. That persistent token must not enter
+the agent process. The credential lives at
 `<stateRoot>/control/actor-credentials/<actor>.json` and has this shape:
 
 ```json
@@ -229,12 +297,15 @@ The credential must be a private regular file with no group or world
 permissions. The private token must contain at least 32 characters. The
 credential is machine-local and must never be checked in, generated by an
 automation prompt, copied into task details, printed in logs, or posted to an
-external service. Scheduled automation supplies the matching secret only in
-the environment of the lease-acquire invocation. A missing, permissive,
+external service. The native launcher supplies the matching secret only to the
+pinned lease-acquire child process. The scheduled automation receives only the
+resulting short-lived lease token. A missing, permissive,
 malformed, wrong-actor, wrong-purpose, or token-mismatched credential fails
-closed. The credential authenticates actor identity only. It does not expand
-the actor's checked-in authority, provider policy, task authority, or lifecycle
-destinations.
+closed. The credential proves that the pinned launcher and runtime selected the
+canonical actor role. It does not authenticate the calling saved automation.
+Any process running as the same macOS user can invoke another provisioned
+general role. The resulting lease does not expand that role's checked-in
+authority, provider policy, stored task authority, or lifecycle destinations.
 
 Release tags have a separate external trust boundary. The checked-in
 `release-tag-lockdown.json` is the bootstrap authority. Apply it with
@@ -481,13 +552,13 @@ same approval snapshot.
 
 ## Checked-in automation specifications
 
-| Automation | Authority | Provider policy | Behavioral changes per soak |
-| --- | --- | --- | --- |
-| `freed-runtime-observer` | `observe-only` | `forbidden` | 0 |
-| `freed-stability-controller` | `plan-only` | `forbidden` | 0 |
-| `freed-nightly-runner` | `merge-safe` | `approval-required` | 1 |
-| `freed-release-verifier` | `observe-only` | `forbidden` | 0 |
-| `freed-scaffolding-maintainer` | `pr-only` | `forbidden` | 0 |
+| Automation                     | Authority      | Provider policy     | Behavioral changes per soak |
+| ------------------------------ | -------------- | ------------------- | --------------------------- |
+| `freed-runtime-observer`       | `observe-only` | `forbidden`         | 0                           |
+| `freed-stability-controller`   | `plan-only`    | `forbidden`         | 0                           |
+| `freed-nightly-runner`         | `merge-safe`   | `approval-required` | 1                           |
+| `freed-release-verifier`       | `observe-only` | `forbidden`         | 0                           |
+| `freed-scaffolding-maintainer` | `pr-only`      | `forbidden`         | 0                           |
 
 Run `npm run validate:automations` after changing a specification or prompt. The
 validator checks IDs, prompt paths, authority and provider-policy parity with
@@ -707,6 +778,7 @@ contract.
 ```bash
 npm run validate:automations
 npm run validate:host-automations
+npm run automation:actors -- verify --all
 npm run validate:roadmap
 npm run governance:rulesets
 node --test scripts/automation-control.test.mjs

@@ -91,11 +91,14 @@ export const PROVIDER_AUTHORITIES = Object.freeze([
   "approved",
 ]);
 
+const GENERAL_ACTOR_LEASE_MAX_LIFETIME_MS = 30 * 60 * 1_000;
+
 export const AUTOMATION_ACTOR_POLICIES = Object.freeze({
   "freed-runtime-observer": Object.freeze({
     leaseName: "runtime-observer",
     observerAuthority: "observe-only",
     providerAuthority: "forbidden",
+    maxLeaseLifetimeMs: GENERAL_ACTOR_LEASE_MAX_LIFETIME_MS,
     canCreateTask: true,
     canAppendEvent: true,
     destinations: Object.freeze([]),
@@ -104,6 +107,7 @@ export const AUTOMATION_ACTOR_POLICIES = Object.freeze({
     leaseName: "stability-controller",
     observerAuthority: "plan-only",
     providerAuthority: "forbidden",
+    maxLeaseLifetimeMs: GENERAL_ACTOR_LEASE_MAX_LIFETIME_MS,
     canCreateTask: true,
     canAppendEvent: true,
     destinations: Object.freeze([
@@ -118,6 +122,7 @@ export const AUTOMATION_ACTOR_POLICIES = Object.freeze({
     leaseName: "scaffolding-writer",
     observerAuthority: "pr-only",
     providerAuthority: "forbidden",
+    maxLeaseLifetimeMs: GENERAL_ACTOR_LEASE_MAX_LIFETIME_MS,
     canCreateTask: true,
     canAppendEvent: true,
     destinations: Object.freeze([
@@ -139,6 +144,7 @@ export const AUTOMATION_ACTOR_POLICIES = Object.freeze({
     leaseName: "nightly-writer",
     observerAuthority: "merge-safe",
     providerAuthority: "approval-required",
+    maxLeaseLifetimeMs: GENERAL_ACTOR_LEASE_MAX_LIFETIME_MS,
     canCreateTask: false,
     canAppendEvent: true,
     destinations: Object.freeze([
@@ -158,6 +164,7 @@ export const AUTOMATION_ACTOR_POLICIES = Object.freeze({
     leaseName: "release-verifier",
     observerAuthority: "observe-only",
     providerAuthority: "forbidden",
+    maxLeaseLifetimeMs: GENERAL_ACTOR_LEASE_MAX_LIFETIME_MS,
     canCreateTask: false,
     canAppendEvent: true,
     destinations: Object.freeze([
@@ -2329,7 +2336,7 @@ function actorLeaseMaxLifetimeMs(owner) {
   if (owner === "freed-pr-publisher") {
     return PUBLISHER_LEASE_MAX_LIFETIME_MS;
   }
-  return null;
+  return AUTOMATION_ACTOR_POLICIES[owner]?.maxLeaseLifetimeMs ?? null;
 }
 
 function validateLegacyUncredentialedLeaseRecord(record, name, policy) {

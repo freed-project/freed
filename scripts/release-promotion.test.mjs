@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,8 +46,7 @@ function cargoLockContents(
   rootVersion,
   {
     dependencyVersion = "1.0.0",
-    dependencySource =
-      "registry+https://github.com/rust-lang/crates.io-index",
+    dependencySource = "registry+https://github.com/rust-lang/crates.io-index",
     dependencyChecksum = "a".repeat(64),
     injectDependency = false,
   } = {},
@@ -258,7 +263,11 @@ test("validate-main-backflow ignores files that exist only on dev", (t) => {
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
   git(cwd, ["checkout", "dev"]);
-  writeRepoFile(cwd, "packages/pwa/src/dev-only.ts", "export const ready = true;\n");
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/dev-only.ts",
+    "export const ready = true;\n",
+  );
   commitAll(cwd, "feat: dev-only file");
   updateOriginRef(cwd, "dev");
 
@@ -270,6 +279,128 @@ test("validate-main-backflow ignores files that exist only on dev", (t) => {
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /Main backflow is in sync/);
+});
+
+test("validate-main-backflow accepts a shared file when dev is a strict textual superset", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "main"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'main';\nexport const hotfix = true;\n",
+  );
+  commitAll(cwd, "fix: main hotfix");
+  updateOriginRef(cwd, "main");
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'main';\nexport const hotfix = true;\nexport const nextDevChange = true;\n",
+  );
+  commitAll(cwd, "feat: extend the shared file on dev");
+  updateOriginRef(cwd, "dev");
+
+  const result = runNode(VALIDATE_MAIN_BACKFLOW, [
+    `--cwd=${cwd}`,
+    "--dev-ref=origin/dev",
+    "--main-ref=origin/main",
+  ]);
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Main backflow is in sync/);
+});
+
+test("validate-main-backflow rejects mode drift when dev also adds text", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const scriptPath = "scripts/shared-tool.sh";
+
+  git(cwd, ["checkout", "main"]);
+  writeRepoFile(cwd, scriptPath, "#!/usr/bin/env bash\nprintf 'main\\n'\n");
+  chmodSync(path.join(cwd, scriptPath), 0o755);
+  commitAll(cwd, "fix: add executable main tool");
+  updateOriginRef(cwd, "main");
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    scriptPath,
+    "#!/usr/bin/env bash\nprintf 'main\\n'\nprintf 'dev\\n'\n",
+  );
+  chmodSync(path.join(cwd, scriptPath), 0o644);
+  commitAll(cwd, "feat: extend shared tool without executable mode");
+  updateOriginRef(cwd, "dev");
+
+  const result = runNode(VALIDATE_MAIN_BACKFLOW, [
+    `--cwd=${cwd}`,
+    "--dev-ref=origin/dev",
+    "--main-ref=origin/main",
+  ]);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Dev refresh needed/);
+  assert.match(result.stderr, /scripts\/shared-tool\.sh/);
+});
+
+test("validate-main-backflow rejects a shared file when dev changes a main line and adds content", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "main"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'main hotfix';\nexport const shared = true;\n",
+  );
+  commitAll(cwd, "fix: main hotfix");
+  updateOriginRef(cwd, "main");
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'changed on dev';\nexport const shared = true;\nexport const nextDevChange = true;\n",
+  );
+  commitAll(cwd, "feat: change and extend the shared file on dev");
+  updateOriginRef(cwd, "dev");
+
+  const result = runNode(VALIDATE_MAIN_BACKFLOW, [
+    `--cwd=${cwd}`,
+    "--dev-ref=origin/dev",
+    "--main-ref=origin/main",
+  ]);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Dev refresh needed/);
+  assert.match(result.stderr, /packages\/pwa\/src\/app\.ts/);
+});
+
+test("validate-main-backflow rejects binary differences", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "main"]);
+  writeRepoFile(cwd, "packages/pwa/src/app.ts", Buffer.from([0, 1, 2, 3]));
+  commitAll(cwd, "fix: main binary state");
+  updateOriginRef(cwd, "main");
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(cwd, "packages/pwa/src/app.ts", Buffer.from([0, 1, 2, 3, 4]));
+  commitAll(cwd, "feat: dev binary state");
+  updateOriginRef(cwd, "dev");
+
+  const result = runNode(VALIDATE_MAIN_BACKFLOW, [
+    `--cwd=${cwd}`,
+    "--dev-ref=origin/dev",
+    "--main-ref=origin/main",
+  ]);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Dev refresh needed/);
+  assert.match(result.stderr, /packages\/pwa\/src\/app\.ts/);
 });
 
 test("validate-main-backflow rejects a main-side file deletion missing from dev", (t) => {
@@ -513,10 +644,7 @@ test("validate-main-backflow rejects dependency drift in Cargo.lock", (t) => {
 
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Dev refresh needed/);
-  assert.match(
-    result.stderr,
-    /packages\/desktop\/src-tauri\/Cargo\.lock/,
-  );
+  assert.match(result.stderr, /packages\/desktop\/src-tauri\/Cargo\.lock/);
 });
 
 test("validate-main-pr passes for a fresh promotion branch", (t) => {
