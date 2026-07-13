@@ -811,6 +811,86 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   await expectDesktopSidebarClosed(page, 3_000);
 });
 
+test("desktop sidebar toggle ignores stale persisted modes until the worker acknowledges the change", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  await sidebarToggle.click();
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: { display: { sidebarMode?: string } };
+          };
+          setState: (patch: Record<string, unknown>) => void;
+        }
+      | undefined;
+    if (!store) throw new Error("Freed store is unavailable");
+
+    let acknowledge: (() => void) | null = null;
+    const persistence = new Promise<void>((resolve) => {
+      acknowledge = resolve;
+    });
+    const setPersistedMode = (sidebarMode: "compact" | "closed") => {
+      const state = store.getState();
+      store.setState({
+        preferences: {
+          ...state.preferences,
+          display: {
+            ...state.preferences.display,
+            sidebarMode,
+          },
+        },
+      });
+    };
+
+    store.setState({
+      updatePreferences: async (update: { display?: { sidebarMode?: "compact" | "closed" } }) => {
+        if (update.display?.sidebarMode) {
+          setPersistedMode(update.display.sidebarMode);
+        }
+        await persistence;
+      },
+    });
+    (window as Record<string, unknown>).__FREED_SIDEBAR_TEST_CONTROL__ = {
+      acknowledge: () => acknowledge?.(),
+      setPersistedMode,
+    };
+  });
+
+  await sidebarToggle.click();
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
+  await expectDesktopSidebarClosed(page, 1_000);
+
+  await page.evaluate(() => {
+    const control = (window as Record<string, unknown>).__FREED_SIDEBAR_TEST_CONTROL__ as
+      | { setPersistedMode: (mode: "compact" | "closed") => void }
+      | undefined;
+    control?.setPersistedMode("compact");
+  });
+  await page.waitForTimeout(100);
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
+  await expect(page.getByTestId("app-sidebar-resize-handle")).toHaveCount(0);
+
+  await page.evaluate(() => {
+    const control = (window as Record<string, unknown>).__FREED_SIDEBAR_TEST_CONTROL__ as
+      | {
+          acknowledge: () => void;
+          setPersistedMode: (mode: "compact" | "closed") => void;
+        }
+      | undefined;
+    control?.setPersistedMode("closed");
+    control?.acknowledge();
+  });
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
+  await expectDesktopSidebarClosed(page, 1_000);
+});
+
 test("desktop layout controls fill the toolbar hitbox and center their icons", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();

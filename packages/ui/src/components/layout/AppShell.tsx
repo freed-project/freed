@@ -155,6 +155,7 @@ export function AppShell({ children }: AppShellProps) {
   const dragging = useRef(false);
   const pendingPersistedDebugWidth = useRef<number | null>(null);
   const pendingPersistedDesktopSidebarMode = useRef<SidebarMode | null>(null);
+  const latestPersistedDesktopSidebarMode = useRef<SidebarMode>(persistedDesktopSidebarMode);
   const lastNonClosedDesktopSidebarModeRef = useRef<SidebarMode>(
     persistedDesktopSidebarMode === "closed" ? "expanded" : persistedDesktopSidebarMode,
   );
@@ -209,6 +210,8 @@ export function AppShell({ children }: AppShellProps) {
       ? "compact"
       : desktopSidebarMode;
 
+  latestPersistedDesktopSidebarMode.current = persistedDesktopSidebarMode;
+
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
     if (pendingPersistedDebugWidth.current !== null) {
@@ -220,10 +223,7 @@ export function AppShell({ children }: AppShellProps) {
 
   useEffect(() => {
     if (pendingPersistedDesktopSidebarMode.current !== null) {
-      if (persistedDesktopSidebarMode !== pendingPersistedDesktopSidebarMode.current) {
-        return;
-      }
-      pendingPersistedDesktopSidebarMode.current = null;
+      return;
     }
     setDesktopSidebarMode(persistedDesktopSidebarMode);
     setDesktopSidebarDisplayMode(persistedDesktopSidebarMode);
@@ -294,11 +294,19 @@ export function AppShell({ children }: AppShellProps) {
       lastNonClosedDesktopSidebarModeRef.current = nextMode;
     }
     pendingPersistedDesktopSidebarMode.current = nextMode;
-    void updatePreferences({ display: { sidebarMode: nextMode } } as Parameters<typeof updatePreferences>[0]).catch(() => {
-      if (pendingPersistedDesktopSidebarMode.current === nextMode) {
-        pendingPersistedDesktopSidebarMode.current = null;
-      }
-    });
+    // The optimistic store value updates before the worker acknowledges persistence.
+    // Keep the local display mode authoritative until that acknowledgement arrives,
+    // otherwise an older worker snapshot can replay the previous sidebar mode.
+    void updatePreferences({ display: { sidebarMode: nextMode } } as Parameters<typeof updatePreferences>[0])
+      .catch(() => {})
+      .finally(() => {
+        if (pendingPersistedDesktopSidebarMode.current === nextMode) {
+          pendingPersistedDesktopSidebarMode.current = null;
+          const confirmedMode = latestPersistedDesktopSidebarMode.current;
+          setDesktopSidebarMode(confirmedMode);
+          setDesktopSidebarDisplayMode(confirmedMode);
+        }
+      });
   }, [updatePreferences]);
 
   const handleDesktopSidebarToggle = useCallback(() => {
