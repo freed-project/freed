@@ -213,6 +213,11 @@ digest, Keychain-backed App proof, and native publisher attestation. It applies
 from GitHub before removing the bootstrap lockdown. A partial activation leaves
 the lockdown in place.
 
+GitHub returns tag update rules without the branch-only fetch and merge
+parameter. The checked-in tag policies use that canonical parameter-free form.
+The verifier accepts an older explicit `false` value but rejects `true` or any
+unexpected update parameters.
+
 ### Verify, publish, rotate, or revoke
 
 Verify the installed publisher and its live App installation at any time:

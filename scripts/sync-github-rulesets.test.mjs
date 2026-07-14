@@ -227,6 +227,13 @@ test("release tag creation grants only the dedicated App while immutability gran
   assert.equal(immutability.enforcement, "active");
   assert.deepEqual(immutability.bypass_actors, []);
   assert.equal(verifyReleaseTagLockdown(tagRulesets).lockdown, lockdown);
+  assert.deepEqual(
+    planRulesetSync(
+      tagRulesets,
+      tagRulesets.map((ruleset, index) => ({ ...ruleset, id: index + 1 })),
+    ).map((item) => item.action),
+    ["unchanged", "unchanged", "unchanged"],
+  );
   assert.throws(
     () =>
       verifyReleaseTagLockdown([
