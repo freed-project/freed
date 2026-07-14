@@ -5,16 +5,16 @@
   "dayKey": "26.7.14",
   "approved": true,
   "editorialNotes": [
-    "Reviewed 2026-07-14: retained the exact reviewed v26.7.1400-dev product copy because that immutable tag failed before any workflow job started. This replacement build changes only release metadata after the repository Actions allowlist was repaired."
+    "Reviewed 2026-07-14: retained the reviewed v26.7.1400-dev highlights because that immutable tag failed before any workflow job started. Rebound this replacement to the current dev product commit after private vulnerability reporting and release validation repairs merged, and after the repository Action policy was corrected."
   ],
-  "generatedAt": "2026-07-14T22:51:22.000Z",
+  "generatedAt": "2026-07-14T23:24:47.000Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.7.1200-dev",
     "previousPublishedDayTag": "v26.7.1200-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "67af8b6a0c63bc5da9dd21a1cbb622be78d49d52",
+    "productCommitSha": "41d35fd14a1d94122f4ed7b556d909b1cc2aea27",
     "promotedDevCommitSha": null,
     "isLatestOfDay": true,
     "sameDayTagsIncluded": [
@@ -24,6 +24,9 @@
       "v26.7.1401-dev"
     ],
     "prNumbers": [
+      1010,
+      1012,
+      968,
       642,
       949,
       953,
@@ -48,6 +51,9 @@
       984
     ],
     "commitSubjects": [
+      "fix: repair release validation contracts (#1010)",
+      "fix: align tooling fixtures with current policy (#1012)",
+      "feat: add private vulnerability reporting (#968)",
       "chore: prepare v26.7.1400-dev (#984)",
       "fix: accept canonical tag ruleset responses (#983)",
       "fix: allow exact current-task owner approvals (#982)",
@@ -83,9 +89,10 @@
     ],
     "fixes": [
       "Provider regions now form spiral nebulae instead of flat ellipses, and identity links appear only for the hovered or selected constellation",
-      "YouTube followed-channel and subscription capture now reports bounded progress, cancels stale work, and closes hidden capture sessions when finished"
+      "YouTube followed-channel and subscription capture now reports bounded progress, cancels stale work, and closes hidden capture sessions when finished",
+      "Security reports can now be submitted privately with redacted diagnostics and hardened fetched-content handling"
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1401-dev\n\nFriends is now a theme-aware personal galaxy with native touch and trackpad navigation, tight identity constellations, and cosmic provider nebulae.\n\n### Features\n\n- Explore Friends as a hardware-accelerated 3D galaxy where relationship importance controls depth, identities form tight constellations, and every starfield follows the active Freed theme\n- Pan, zoom, and focus the galaxy with a mouse, trackpad, or midpoint-preserving iPhone pinch gestures while billboard labels stay visible and close to their stars\n- Use the new Medium and Substack beta sources in Freed Desktop to capture essays, visible relationships, subscriptions, and activity through your signed-in sessions\n\n### Fixes\n\n- Provider regions now form spiral nebulae instead of flat ellipses, and identity links appear only for the hovered or selected constellation\n- YouTube followed-channel and subscription capture now reports bounded progress, cancels stale work, and closes hidden capture sessions when finished\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1401-dev\n\nFriends is now a theme-aware personal galaxy with native touch and trackpad navigation, tight identity constellations, and cosmic provider nebulae.\n\n### Features\n\n- Explore Friends as a hardware-accelerated 3D galaxy where relationship importance controls depth, identities form tight constellations, and every starfield follows the active Freed theme\n- Pan, zoom, and focus the galaxy with a mouse, trackpad, or midpoint-preserving iPhone pinch gestures while billboard labels stay visible and close to their stars\n- Use the new Medium and Substack beta sources in Freed Desktop to capture essays, visible relationships, subscriptions, and activity through your signed-in sessions\n\n### Fixes\n\n- Provider regions now form spiral nebulae instead of flat ellipses, and identity links appear only for the hovered or selected constellation\n- YouTube followed-channel and subscription capture now reports bounded progress, cancels stale work, and closes hidden capture sessions when finished\n- Security reports can now be submitted privately with redacted diagnostics and hardened fetched-content handling\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
