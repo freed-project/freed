@@ -36,6 +36,9 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src/components/InstagramFeedEmptyState.tsx",
   "packages/desktop/src/components/InstagramSettingsSection.tsx",
   "packages/desktop/src/components/LinkedInSettingsSection.tsx",
+  "packages/desktop/src/components/AuthenticatedEssaySettingsSection.tsx",
+  "packages/desktop/src/components/SubstackSettingsSection.tsx",
+  "packages/desktop/src/components/MediumSettingsSection.tsx",
   "packages/desktop/src/components/ProviderSyncActionButton.tsx",
   "packages/desktop/src/components/ScraperWindowModeControl.tsx",
   "packages/desktop/src/components/SyncProviderSectionSurface.tsx",
@@ -53,6 +56,13 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src/lib/legal-consent.ts",
   "packages/desktop/src/lib/li-auth.ts",
   "packages/desktop/src/lib/li-capture.ts",
+  "packages/desktop/src/lib/authenticated-essay-auth.ts",
+  "packages/desktop/src/lib/authenticated-essay-capture.ts",
+  "packages/desktop/src/lib/authenticated-essay-poller.ts",
+  "packages/desktop/src/lib/substack-auth.ts",
+  "packages/desktop/src/lib/substack-capture.ts",
+  "packages/desktop/src/lib/medium-auth.ts",
+  "packages/desktop/src/lib/medium-capture.ts",
   "packages/desktop/src/lib/provider-auth-errors.ts",
   "packages/desktop/src/lib/provider-health.ts",
   "packages/desktop/src/lib/reader-hydration.ts",
@@ -75,6 +85,8 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src-tauri/src/ig-extract.js",
   "packages/desktop/src-tauri/src/ig-stories-extract.js",
   "packages/desktop/src-tauri/src/li-extract.js",
+  "packages/desktop/src-tauri/src/substack-extract.js",
+  "packages/desktop/src-tauri/src/medium-extract.js",
   "packages/desktop/src-tauri/src/youtube-extract.js",
   "packages/desktop/src-tauri/src/youtube-playlist-action.js",
   "packages/desktop/src-tauri/src/youtube.rs",
@@ -85,6 +97,8 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
 export const SOCIAL_PROVIDER_PACKAGE_PREFIXES = [
   "packages/capture-facebook/",
   "packages/capture-instagram/",
+  "packages/capture-substack/",
+  "packages/capture-medium/",
   "packages/capture-x/",
 ];
 
@@ -93,9 +107,7 @@ export const SOCIAL_PROVIDER_PACKAGE_PREFIXES = [
 // validate-worktree intentionally does not narrow validation for them.
 export const PROVIDER_VISIBLE_EXTRA_FILES = new Set([
   "packages/desktop/src/components/YouTubeSettingsSection.tsx",
-  "packages/desktop/src-tauri/capabilities/fb-scraper.json",
-  "packages/desktop/src-tauri/capabilities/ig-scraper.json",
-  "packages/desktop/src-tauri/capabilities/youtube-session.json",
+  "packages/desktop/src-tauri/gen/schemas/capabilities.json",
   "packages/desktop/src/lib/rss-refresh-plan.ts",
   "packages/capture-rss/src/discovery.ts",
   "packages/capture-save/src/extract.ts",
@@ -142,6 +154,7 @@ export const PROVIDER_VISIBLE_ORCHESTRATION_FILES = new Set([
 ]);
 
 export const PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES = [
+  "packages/desktop/src-tauri/capabilities/",
   "packages/capture-linkedin/",
   "packages/capture-youtube/",
   "packages/sync/src/cloud/",
@@ -191,6 +204,8 @@ const PROVIDER_APPROVAL_PROVIDER_IDS = new Set([
   "facebook",
   "instagram",
   "linkedin",
+  "substack",
+  "medium",
   "other",
   "x",
   "youtube",
@@ -236,11 +251,34 @@ export function providerApprovalAuthorizationDigest(record) {
 
 export function providerIdsForPath(filePath) {
   const normalizedPath = normalizeProviderPath(filePath).toLowerCase();
+  const allSocialProviders = [
+    "facebook",
+    "instagram",
+    "linkedin",
+    "medium",
+    "substack",
+    "x",
+    "youtube",
+  ];
+  if (
+    normalizedPath === "packages/desktop/src-tauri/capabilities/default.json" ||
+    normalizedPath === "packages/desktop/src-tauri/gen/schemas/capabilities.json"
+  ) {
+    return allSocialProviders;
+  }
   if (
     normalizedPath === "packages/desktop/src/lib/legal-consent.ts" ||
     normalizedPath === "packages/shared/src/legal.ts"
   ) {
-    return ["facebook", "instagram", "linkedin", "x", "youtube"];
+    return allSocialProviders;
+  }
+  if (
+    normalizedPath === "packages/desktop/src/components/authenticatedessaysettingssection.tsx" ||
+    normalizedPath === "packages/desktop/src/lib/authenticated-essay-auth.ts" ||
+    normalizedPath === "packages/desktop/src/lib/authenticated-essay-capture.ts" ||
+    normalizedPath === "packages/desktop/src/lib/authenticated-essay-poller.ts"
+  ) {
+    return ["medium", "substack"];
   }
   if (
     normalizedPath.startsWith("packages/capture-facebook/") ||
@@ -257,6 +295,16 @@ export function providerIdsForPath(filePath) {
     /\/(?:li|linkedin)(?:[-_.\/]|$)/.test(normalizedPath)
   )
     return ["linkedin"];
+  if (
+    normalizedPath.startsWith("packages/capture-substack/") ||
+    normalizedPath.includes("substack")
+  )
+    return ["substack"];
+  if (
+    normalizedPath.startsWith("packages/capture-medium/") ||
+    /\/(?:medium)(?:[-_.\/]|$)/.test(normalizedPath)
+  )
+    return ["medium"];
   if (
     normalizedPath.startsWith("packages/capture-x/") ||
     /\/x(?:[-_.\/]|$)/.test(normalizedPath)

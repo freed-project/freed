@@ -1,6 +1,6 @@
 # Phase 12: Additional Platforms
 
-> **Status:** 🚧 In Progress
+> **Status:** 🚧 In Progress: LinkedIn and YouTube are integrated, and authenticated Substack and Medium capture is available in beta with local sessions, visible roster and activity extraction, provider health controls, and connection-only identity ingestion
 > **Dependencies:** Phase 5 (Desktop App), Phase 7 (Facebook/Instagram patterns)
 
 ---
@@ -34,6 +34,111 @@ packages/capture-linkedin/
 - LinkedIn aggressively blocks automation
 - Session management more complex than other platforms
 - May require browser profile approach rather than cookies
+
+---
+
+### `@freed/capture-substack` and `@freed/capture-medium` beta
+
+Authenticated essay networks are first-class beta sources in Freed Desktop.
+Each source uses an isolated native WebView session for login and visible page
+capture. Browser-safe capture packages normalize rendered activity and roster
+records into `FeedItem` and `Account` records.
+
+```
+packages/capture-substack/
+  src/browser.ts
+  src/normalize.ts
+  src/types.ts
+  package.json
+
+packages/capture-medium/
+  src/browser.ts
+  src/normalize.ts
+  src/types.ts
+  package.json
+```
+
+**Beta behavior:**
+
+- Substack and Medium appear in Sources, Settings, source filters, provider
+  health, sync status, diagnostics, and legal risk controls with visible Beta
+  labels.
+- Login cookies and session state stay in provider-specific WebView data stores
+  on Freed Desktop. Each connected source reuses one validated browser identity
+  across login, auth checks, captures, and app restarts until disconnect.
+- Native event bridge access is limited to each hidden scraper window while it
+  is on that provider's own web origin. Visible login windows and third party
+  sign in pages receive no Freed IPC permissions.
+- Post-login, manual, and scheduled capture read rendered follower, following,
+  subscription, activity, and essay surfaces where the provider makes them
+  visible. Roster surfaces use randomized scrolling with ceilings of 500
+  unique identities per graph run, 20 extraction passes, and 60 seconds per
+  surface. Navigation chrome and links to individual essays are rejected as
+  roster identities. Redirects to any unexpected provider route fail closed
+  before cards can be assigned the wrong relationship or essay role.
+- Roster records become social `Account` records with
+  `discoveredFrom: "follow_roster"`. Identity repair can create provisional
+  `connection` people for human profiles, but never promotes them to friends.
+  Publication-only Substack and Medium identities remain unlinked accounts and
+  are not offered as friend candidates. Accounts retain the follower,
+  following, and subscription directions observed across partial roster
+  captures.
+- Partial roster captures can add or refresh accounts. They never infer an
+  unfollow from a missing rendered row.
+- Authenticated item authors become accounts in the same atomic reconciliation,
+  including when capture upgrades an existing RSS record without changing the
+  feed item count. Existing accounts gain richer names and avatars without
+  losing connection links. Distinct people acting on the same essay remain
+  distinct activity records.
+- Authenticated capture shares the native social session lock, memory
+  preflight, background runtime coordinator, randomized pacing, cooldowns,
+  provider health, and scrape outcome telemetry.
+- A dedicated randomized scheduler runs authenticated beta capture outside the
+  existing RSS poll job. The next allowed capture time persists separately from
+  auth state, so an app restart or disconnect cannot bypass the randomized
+  cooldown. A cooldown defers locally before any provider page is opened and
+  schedules one retry after the remaining deadline instead of polling
+  throughout the cooldown.
+- Publication and author RSS feeds remain the preferred path for full public
+  essay bodies. Users add those feeds through the existing RSS source. RSS and
+  authenticated captures share canonical essay identities, enrich the same
+  record in either sync order, consolidate preexisting RSS and authenticated
+  duplicates, and preserve the chosen item ID and all merged user state.
+  Provider-classified RSS articles remain visible and counted under both their
+  provider source and Feeds.
+  Medium custom domain feeds are recognized from their feed generator metadata.
+  Freed Desktop writes complete provider RSS text to the device-local reader
+  cache before synced text is compacted. A richer RSS body replaces a cached
+  placeholder, a longer local article is preserved, and cache failures do not
+  block feed ingestion.
+
+**Privacy boundaries:**
+
+- Substack subscriber management pages are blocked from extraction.
+- Subscriber email addresses, paid status, subscriber metadata, direct
+  messages, private chats, and private audience tools are out of scope.
+- Subscriber-only essay bodies are not archived through authenticated page
+  capture. Both the DOM extractor and browser-safe normalizer enforce this
+  boundary.
+- Restacks, likes, and claps retain only explicit activity labels and linked
+  titles. Embedded essay excerpts are not archived as activity text.
+- Incidental author links do not become roster accounts. A rendered profile
+  needs an explicit follower, following, or subscription role.
+- Raw page data, cookies, and provider sessions do not enter Automerge,
+  diagnostics, or bug reports.
+
+**Known beta limits:**
+
+- Provider DOM and route changes can reduce visible results until selectors are
+  updated.
+- Capture is deliberately bounded and does not script clicks or unbounded
+  scrolling. Rosters larger than 500 visible identities per graph run remain
+  partial and may require later conservative pagination work.
+- Medium marks its API unsupported and does not allow new integrations, so the
+  beta uses authenticated website extraction instead of an official token
+  integration.
+- The installed beta still needs real-account selector validation and an
+  attributable soak before it can leave beta.
 
 ---
 
@@ -327,6 +432,16 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 | 12.31 | Optional offline video rendition           | High       |        |
 | 12.32 | Hosted relay measurement and owner decision | High      |        |
 | 12.33 | YouTube installed-build terminal sync trigger | Low      | ✓ Done |
+| 12.34 | Substack and Medium browser-safe capture packages | Medium | ✓ Done |
+| 12.35 | Isolated authenticated WebView login and disconnect flows | High | ✓ Done |
+| 12.36 | Bounded visible roster traversal plus activity and essay extraction | High | ✓ Done |
+| 12.37 | Atomic follow-roster and activity reconciliation | High | ✓ Done |
+| 12.38 | Beta source UI, consent, health, filtering, and diagnostics | Medium | ✓ Done |
+| 12.39 | Normalizer, DOM extractor, auth, health, and desktop workflow coverage | Medium | ✓ Done |
+| 12.40 | Scheduled refresh with restart-safe local cooldowns | High | ✓ Done |
+| 12.41 | Installed Substack and Medium selector soak | High | 🚧 In Progress |
+| 12.42 | Device-local provider RSS essay body preservation | Medium | ✓ Done |
+| 12.43 | Origin-scoped native event bridge capabilities | High | ✓ Done |
 
 ---
 
@@ -342,6 +457,39 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 - [x] LinkedIn login stays open after auth so users can finish platform prompts while sync starts, then closes only after scrape startup health is confirmed
 - [x] LinkedIn post-login sync uses the user's selected scraper window mode instead of switching modes for the first scrape
 - [x] LinkedIn zero-post runs now fail with local DOM diagnostics for candidate counts, activity URNs, login chrome, feed containers, and URL instead of clearing the last capture error as a successful empty sync
+- [x] Substack and Medium appear as Beta sources with isolated authenticated
+      WebView sessions, provider risk consent, source filters, sync state, and
+      provider health controls
+- [x] Visible Substack and Medium roster records reconcile atomically as
+      `follow_roster` accounts, create provisional connections only for human
+      profiles, never create friends, and retain every observed relationship
+      direction
+- [x] Visible notes, stories, responses, comments, highlights, and linked essays
+      normalize into stable feed items without turning incidental authors into
+      roster accounts
+- [x] Substack and Medium RSS articles enrich authenticated essay records
+      without duplicate items or lost saved, read, archive, and tag state
+- [x] Complete Substack and Medium essay text supplied by a user-added RSS feed
+      is cached locally before sync compaction, including under a reconciled
+      legacy RSS item ID
+- [x] Authenticated essay capture shares the native social session lock, memory
+      preflight, randomized pacing, cooldowns, and scrape outcome telemetry
+- [x] Roster traversal stops at the visible end of each surface, 500 unique
+      identities across the graph run, 20 extraction passes, or 60 seconds,
+      rejects navigation and essay links, fails closed on unexpected redirects,
+      and never opens subscriber management surfaces
+- [x] One validated Safari or WebView browser identity is reused across login,
+      auth checks, capture, and app restarts until the source is disconnected
+- [x] Hidden scraper WebViews can emit only from the matching Substack or
+      Medium origin, with no Freed IPC access in visible login windows or on
+      third party sign in pages
+- [x] Authenticated Substack and Medium sessions use a dedicated randomized
+      scheduler outside the RSS poll job, while persisted local cooldowns
+      prevent early provider navigation after a restart
+- [x] Substack subscriber dashboards and sensitive subscriber metadata stay out
+      of capture, Automerge, diagnostics, and bug reports
+- [ ] Installed Substack and Medium beta sessions pass real-account selector and
+      runtime soak validation
 - [ ] Mozi activity captured to FeedItem with plans, trips, attendance, or overlap-adjacent events
 - [ ] Mozi is visible in desktop Sources navigation and source status UI
 - [ ] Mozi desktop flows have regression coverage in Playwright
@@ -388,6 +536,8 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 | Platform | Method                | Auth Required | API Quality           | Difficulty | Primary Value |
 | -------- | --------------------- | ------------- | --------------------- | ---------- | ------------- |
 | LinkedIn | DOM scrape            | Cookies       | N/A                   | Very High  | Professional posts |
+| Substack | Authenticated WebView plus user-added RSS | Website session | Public RSS only | High | Essays, notes, follows, subscriptions |
+| Medium   | Authenticated WebView plus user-added RSS | Website session | No new general integration tokens | High | Stories, responses, follows |
 | Mozi     | WebView payload + DOM | Phone session | Unknown / likely none | High       | Social planning, trips, overlaps |
 | TikTok   | TBD                   | TBD           | Limited               | Very High  | Short-form video feed |
 | Threads  | DOM scrape            | Cookies       | N/A                   | High       | Social posts |
@@ -407,6 +557,12 @@ audio-first resolver plan, encryption, provider risk, milestones, and tests.
 - YouTube embeds, roster capture, playlist interactions, media resolution, and media transfer are separate provider-visible behaviors and must remain user-controlled and bounded
 - YouTube current behavior uses the user's authenticated website session and does not require a developer project, OAuth grant, Data API quota, or hosted provider requests
 - Public YouTube RSS remains a separate manual intake mode. It is not the source of truth for the authenticated follow roster
+- Substack and Medium are beta sources. Authenticated WebView extraction fills
+  visible graph and activity gaps, while user-added RSS remains the preferred
+  path for full public essay bodies
+- Substack subscriber management, private chats, direct messages, paid status,
+  subscriber email addresses, and private audience tools are not capture
+  surfaces
 - Future offline media is audio-first, Desktop-resolved, LAN-first, stored outside Automerge, and transferred through encrypted user cloud only when direct device transfer is unavailable
 - A hosted YouTube media relay remains a later owner decision because centralized traffic directly conflicts with the goal of minimizing provider differentiation
 - Mozi should be treated as a planning source, not squeezed into the RSS mental model

@@ -291,6 +291,12 @@ export interface PlatformConfig {
    */
   LinkedInSettingsContent: ComponentType<SyncProviderSectionProps> | null;
 
+  /** Content rendered in the Settings > Sources > Substack beta section. */
+  SubstackSettingsContent: ComponentType<SyncProviderSectionProps> | null;
+
+  /** Content rendered in the Settings > Sources > Medium beta section. */
+  MediumSettingsContent: ComponentType<SyncProviderSectionProps> | null;
+
   /**
    * Content rendered in the Settings > Sources > YouTube section.
    * The PWA owns OAuth and subscription import. Synced items remain available

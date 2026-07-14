@@ -6,6 +6,8 @@ function createMockAppState() {
     fbAuth: { isAuthenticated: true } as Record<string, unknown>,
     igAuth: { isAuthenticated: true } as Record<string, unknown>,
     liAuth: { isAuthenticated: true } as Record<string, unknown>,
+    substackAuth: { isAuthenticated: true } as Record<string, unknown>,
+    mediumAuth: { isAuthenticated: true } as Record<string, unknown>,
     setXAuth(next: Record<string, unknown>) {
       state.xAuth = next;
     },
@@ -17,6 +19,12 @@ function createMockAppState() {
     },
     setLiAuth(next: Record<string, unknown>) {
       state.liAuth = next;
+    },
+    setSubstackAuth(next: Record<string, unknown>) {
+      state.substackAuth = next;
+    },
+    setMediumAuth(next: Record<string, unknown>) {
+      state.mediumAuth = next;
     },
   };
 
@@ -81,6 +89,12 @@ async function loadProviderHealthModule(options: { native?: boolean } = {}) {
   }));
   vi.doMock("./li-auth", () => ({
     storeLiAuthState: vi.fn(),
+  }));
+  vi.doMock("./substack-auth", () => ({
+    storeSubstackAuthState: vi.fn(),
+  }));
+  vi.doMock("./medium-auth", () => ({
+    storeMediumAuthState: vi.fn(),
   }));
 
   const debugStore = await import("@freed/ui/lib/debug-store");
@@ -375,6 +389,30 @@ describe("provider health", () => {
     const action = toastInfo.mock.calls[0]?.[1]?.onAction as (() => void) | undefined;
     action?.();
     expect(openTo).toHaveBeenCalledWith("x");
+  });
+
+  it("syncs Medium pause state into its authenticated session", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-07-13T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, storeState } = await loadProviderHealthModule();
+
+    await mod.recordProviderHealthEvent({
+      provider: "medium",
+      outcome: "provider_rate_limit",
+      stage: "provider_rate_limit",
+      reason: "Medium asked Freed to slow down",
+      signalType: "explicit",
+      finishedAt: now.getTime(),
+    });
+
+    const pause = mod.getProviderPause("medium");
+    expect(pause?.pauseLevel).toBe(1);
+    expect(storeState.mediumAuth.pausedUntil).toBe(pause?.pausedUntil);
+
+    await mod.clearProviderPause("medium");
+    expect(storeState.mediumAuth.pausedUntil).toBeUndefined();
   });
 
   it("heuristically pauses repeated suspicious failures and escalates across detections", async () => {

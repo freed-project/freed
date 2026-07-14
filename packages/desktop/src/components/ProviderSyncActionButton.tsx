@@ -18,7 +18,7 @@ export function ProviderSyncActionButton({
   return (
     <button
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || busy}
       data-testid={testId}
       className="theme-accent-button flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors disabled:opacity-50"
     >

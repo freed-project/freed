@@ -443,6 +443,7 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
       preservePriorityOrder: msg.preservePriorityOrder,
       searchCorpusVersion: msg.searchCorpusVersion,
       docItemCount: msg.docItemCount,
+      removedItemIds: msg.removedItemIds,
     });
     lastItemIndexById = patched.itemIndex;
     publishState(patched.state, {
@@ -870,6 +871,22 @@ export async function docReconcileYouTubeCapture(
   return request({
     reqId,
     type: "RECONCILE_YOUTUBE_CAPTURE",
+    accounts,
+    items,
+    options,
+  });
+}
+
+/** Reconcile one partial authenticated Substack or Medium capture atomically. */
+export async function docReconcileFollowRosterCapture(
+  accounts: Account[],
+  items: FeedItem[],
+  options: { provider: "substack" | "medium"; capturedAt: number },
+): Promise<void> {
+  const reqId = nextReqId++;
+  return request({
+    reqId,
+    type: "RECONCILE_FOLLOW_ROSTER_CAPTURE",
     accounts,
     items,
     options,

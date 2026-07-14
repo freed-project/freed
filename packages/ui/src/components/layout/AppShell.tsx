@@ -28,6 +28,7 @@ import {
   buildProvisionalPersonCandidates,
   buildDiscoveredAccountsFromItems,
   isPrunableInvalidDiscoveredSocialAccount,
+  provisionalPersonRepairSignature,
   type GoogleContact,
   type IdentitySuggestion,
   type SidebarMode,
@@ -159,7 +160,7 @@ export function AppShell({ children }: AppShellProps) {
     persistedDesktopSidebarMode === "closed" ? "expanded" : persistedDesktopSidebarMode,
   );
   const discoveredAccountScanRef = useRef({ itemCount: 0, accountCount: 0 });
-  const provisionalPersonScanRef = useRef({ personCount: 0, accountCount: 0 });
+  const provisionalPersonScanRef = useRef("");
   const invalidAccountCleanupRef = useRef("");
   const blockingModalOpen =
     settingsOpen ||
@@ -448,13 +449,9 @@ export function AppShell({ children }: AppShellProps) {
 
   useEffect(() => {
     if (!isInitialized) return;
-    const personCount = Object.keys(persons).length;
-    const accountCount = Object.keys(accounts).length;
-    const previous = provisionalPersonScanRef.current;
-    if (personCount === previous.personCount && accountCount === previous.accountCount) {
-      return;
-    }
-    provisionalPersonScanRef.current = { personCount, accountCount };
+    const signature = provisionalPersonRepairSignature(persons, accounts);
+    if (signature === provisionalPersonScanRef.current) return;
+    provisionalPersonScanRef.current = signature;
     const candidates = buildProvisionalPersonCandidates(persons, accounts);
     if (candidates.length === 0) return;
     void createConnectionPersonsFromCandidates(candidates).catch((error) => {

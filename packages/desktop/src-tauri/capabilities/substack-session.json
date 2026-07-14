@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.tauri.app/config/2/capability",
+  "identifier": "substack-session",
+  "description": "Allows the hidden Substack WebView to emit capture results to Freed",
+  "windows": ["substack-scraper"],
+  "remote": {
+    "urls": ["https://substack.com/*", "https://www.substack.com/*"]
+  },
+  "permissions": ["core:event:allow-emit"]
+}

@@ -21,6 +21,8 @@ export type Platform =
   | "facebook" // Facebook (DOM capture)
   | "instagram" // Instagram (DOM capture)
   | "linkedin" // LinkedIn (DOM capture)
+  | "substack" // Substack (authenticated WebView + RSS)
+  | "medium" // Medium (authenticated WebView + RSS)
   | "saved"; // Manually saved URLs (bookmarks)
 
 /** User-facing display names for each platform. */
@@ -34,6 +36,8 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+  substack: "Substack",
+  medium: "Medium",
   saved: "Saved",
 };
 
@@ -892,6 +896,8 @@ export type AccountDiscoveredFrom =
   | "manual_entry"
   | "follow_roster";
 
+export type FollowRosterRole = "follower" | "following" | "subscription";
+
 /**
  * Legacy social-profile shape preserved only for migration from the old
  * Friend document model.
@@ -978,10 +984,12 @@ export interface Account {
   firstSeenAt: number;
   lastSeenAt: number;
   discoveredFrom: AccountDiscoveredFrom;
-  /** Whether this account appeared in the latest complete provider follow roster. */
+  /** Whether this account has been observed in a provider follow roster capture. */
   followRosterActive?: boolean;
   /** Last complete or partial provider roster capture that observed this account. */
   followRosterSyncedAt?: number;
+  /** Provider relationship directions observed across partial roster captures. */
+  followRosterRoles?: FollowRosterRole[];
   graphX?: number;
   graphY?: number;
   graphPinned?: boolean;

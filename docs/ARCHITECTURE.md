@@ -1,10 +1,10 @@
 # Freed Technical Architecture
 
-Accurate as of 2026-07-10 (dev @ v26.7.1000-dev). This document describes the system as shipped, not as aspired to. Known defects and program-tracked limitations cite finding IDs from [stability-findings.json](stability-findings.json); the remediation plan is [STABILITY-PROGRAM.md](STABILITY-PROGRAM.md).
+Accurate as of 2026-07-13 (dev @ v26.7.1300). This document describes the system as shipped, not as aspired to. Known defects and program-tracked limitations cite finding IDs from [stability-findings.json](stability-findings.json); the remediation plan is [STABILITY-PROGRAM.md](STABILITY-PROGRAM.md).
 
 ## What Freed is
 
-Freed Desktop captures the user's own social feeds (X, Facebook, Instagram, LinkedIn, YouTube, RSS, saved articles) on their machine using their own authenticated sessions, stores everything locally in one Automerge document, and presents a user-controlled unified feed. A companion PWA at `app.freed.wtf` is the mobile reader. There is no Freed content backend: sync rides on a LAN relay inside the desktop app and on the user's own cloud storage (Google Drive, Dropbox). Small serverless endpoints handle narrow operations such as OAuth token exchange without receiving the Automerge document.
+Freed Desktop captures the user's own social feeds (X, Facebook, Instagram, LinkedIn, Substack beta, Medium beta, YouTube, RSS, saved articles) on their machine using their own authenticated sessions, stores everything locally in one Automerge document, and presents a user-controlled unified feed. A companion PWA at `app.freed.wtf` is the mobile reader. There is no Freed content backend: sync rides on a LAN relay inside the desktop app and on the user's own cloud storage (Google Drive, Dropbox). Small serverless endpoints handle narrow operations such as OAuth token exchange without receiving the Automerge document.
 
 Earlier drafts of this document described a browser add-on capture layer and direct peer-to-peer device sync; neither was ever shipped, and nothing here is aspirational.
 
@@ -27,7 +27,7 @@ npm workspaces monorepo (`packages/*`, `skills/*`, `website`), Node pinned by `.
 
 Tauri 2 (Rust backend, WKWebView renderer on macOS). Two runtime halves:
 
-**The React renderer is the orchestrator.** The main window runs the scheduler (`background-runtime-coordinator.ts` job kinds include `rss-poll`, content fetching, cloud upload), the RSS poller, the content fetcher, provider capture drivers (`fb-capture.ts`, `instagram-capture.ts`, `li-capture.ts`, `youtube-capture.ts`, X via `capture.ts`), provider health tracking, and the Automerge worker host. This is a load-bearing architectural fact: killing the main renderer kills every in-flight background job (finding F03; Wave 6 of the stability program moves orchestration into Rust).
+**The React renderer is the orchestrator.** The main window runs the scheduler (`background-runtime-coordinator.ts` job kinds include `rss-poll`, content fetching, cloud upload), the RSS poller, the content fetcher, provider capture drivers (`fb-capture.ts`, `instagram-capture.ts`, `li-capture.ts`, `substack-capture.ts`, `medium-capture.ts`, `youtube-capture.ts`, X via `capture.ts`), provider health tracking, and the Automerge worker host. This is a load-bearing architectural fact: killing the main renderer kills every in-flight background job (finding F03; Wave 6 of the stability program moves orchestration into Rust).
 
 **Rust (`src-tauri/src/lib.rs`) owns native substrate:** window management including hidden scraper WebViews, the LAN sync relay, the renderer watchdog and memory recovery, `runtime-health.jsonl` telemetry, the dev sync trigger watcher, tray/updater/global-shortcut plumbing, and utility commands such as `fetch_binary_url`.
 
@@ -38,9 +38,25 @@ Capture uses provider-specific transports. Anything that would change provider-v
 - **X:** hidden authenticated WebView calls X's own GraphQL API (`x.com/i/api/graphql`, endpoint definitions in `capture-x/src/endpoints.ts`) and normalizes timeline responses. No DOM scraping.
 - **Authenticated websites:** isolated WebView data stores keep each provider session on the user's device. Provider pages are loaded and normalized by the matching `capture-*` package. DOM extractors can change frequently, so the stability program favors diagnostics over speculative hardening.
 - **YouTube:** an isolated authenticated session captures the user's subscription roster and saved playlists through the YouTube-specific native bridge and `capture-youtube` normalization package. Playback remains a reader surface, not a background preload loop.
+- **Substack and Medium beta:** isolated authenticated WebView sessions capture
+  bounded rendered roster, activity, and essay records. Browser-safe capture
+  packages normalize records, and one atomic Automerge change reconciles
+  follow-roster accounts with visible activity. The graph run rejects browser
+  chrome and essay links, and caps itself at 500 unique identities. Missing
+  rows never imply an unfollow. Subscriber management and private communication
+  surfaces are blocked. Essay excerpts embedded inside restacks, likes, and
+  claps are not archived. A dedicated randomized scheduler runs both beta
+  providers outside the RSS poll job. The next allowed capture time is stored
+  outside auth state so cooldowns survive a restart or disconnect. User-added
+  RSS remains the preferred path for full public essay bodies, with canonical
+  reconciliation consolidating legacy duplicates without losing user state.
 - **RSS:** `rss-poller.ts` on the renderer scheduler; parsing in `capture-rss`.
 - **Save-for-later:** URL/clipboard capture through `capture-save` (Readability extraction); also used by the PWA.
-- Social scrapes are currently nested inside the `rss-poll` job, which serializes them behind a Rust mutex and causes the recurring "job timed out kind=rss-poll" cycle (F17; un-nesting is Wave 4).
+- Facebook, Instagram, and LinkedIn social scrapes are currently nested inside
+  the `rss-poll` job, which serializes them behind a Rust mutex and causes the
+  recurring "job timed out kind=rss-poll" cycle (F17; un-nesting is Wave 4).
+  Substack and Medium use their dedicated scheduler and do not enter that nested
+  path.
 
 ### Auth state
 

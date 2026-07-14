@@ -78,4 +78,31 @@ describe("PWA reader cache", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(pinnedStore.has("/pinned-content/youtube:dQw4w9WgXcQ")).toBe(true);
   });
+
+  it("renders link media as a link in the pinned fallback", async () => {
+    const pinnedStore = new Map<string, Response>();
+    vi.stubGlobal("caches", {
+      open: vi.fn(async () => ({
+        put: vi.fn(async (key: string, response: Response) => {
+          pinnedStore.set(key, response);
+        }),
+        match: vi.fn(async (key: string) => pinnedStore.get(key)),
+      })),
+    });
+
+    await pinReaderItemInPwa(makePost({
+      content: {
+        text: "Source material",
+        mediaUrls: ["https://example.com/source?a=1&b=2", "javascript:alert(1)"],
+        mediaTypes: ["link", "link"],
+      },
+    }));
+
+    const html = await pinnedStore.get("/content/x:pwa-pin")?.text();
+    expect(html).toContain(
+      '<a href="https://example.com/source?a=1&amp;b=2" target="_blank" rel="noreferrer noopener">https://example.com/source?a=1&amp;b=2</a>',
+    );
+    expect(html).not.toContain('<img src="https://example.com/source');
+    expect(html).not.toContain("javascript:");
+  });
 });
