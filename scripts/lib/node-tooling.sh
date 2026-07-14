@@ -2,8 +2,20 @@
 
 set -euo pipefail
 
+node_tooling_source_path() {
+  if [[ -n "${ZSH_VERSION:-}" ]]; then
+    printf '%s\n' "${(%):-%x}"
+    return 0
+  fi
+
+  printf '%s\n' "${BASH_SOURCE[0]}"
+}
+
 node_tooling_repo_root() {
-  cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd
+  local source_path
+
+  source_path="$(node_tooling_source_path)"
+  cd "$(dirname "${source_path}")/../.." && pwd
 }
 
 node_tooling_nvm_version() {
