@@ -114,6 +114,7 @@ export function usePostLoginAutoSync({
       if (!isDesktopProviderAuthAllowed()) return;
       const loggedIn = event.payload.loggedIn;
       onAuthResultRef.current(loggedIn);
+      if (loggedIn && pendingRef.current) return;
       clearCloseTimer();
 
       if (!loggedIn) {

@@ -80,6 +80,7 @@ export function runDesktopProviderAuthRequest<T>(
 interface DesktopProviderAuthCheckOptions<Payload> {
   eventName: string;
   command: string;
+  invokeArgs?: Record<string, unknown>;
   timeoutMs: number;
   isLoggedIn: (payload: Payload) => boolean;
 }
@@ -88,6 +89,7 @@ interface DesktopProviderAuthCheckOptions<Payload> {
 export function requestDesktopProviderAuthCheck<Payload>({
   eventName,
   command,
+  invokeArgs,
   timeoutMs,
   isLoggedIn,
 }: DesktopProviderAuthCheckOptions<Payload>): Promise<boolean> {
@@ -113,7 +115,11 @@ export function requestDesktopProviderAuthCheck<Payload>({
       });
       if (signal.aborted) return false;
       timeout = setTimeout(() => finish(false), timeoutMs);
-      void trackProviderAuthRequest(invoke(command)).catch(() => finish(false));
+      const invocation =
+        invokeArgs === undefined
+          ? invoke(command)
+          : invoke(command, invokeArgs);
+      void trackProviderAuthRequest(invocation).catch(() => finish(false));
       return await result;
     } catch {
       return false;

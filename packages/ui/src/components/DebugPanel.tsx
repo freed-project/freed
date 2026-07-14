@@ -738,6 +738,8 @@ function HealthTab() {
     FacebookSettingsContent,
     InstagramSettingsContent,
     LinkedInSettingsContent,
+    SubstackSettingsContent,
+    MediumSettingsContent,
     YouTubeSettingsContent,
   } = usePlatform();
   const [feedRangeByUrl, setFeedRangeByUrl] = useState<Record<string, HealthChartRange>>({});
@@ -762,6 +764,8 @@ function HealthTab() {
     "facebook",
     "instagram",
     "linkedin",
+    "substack",
+    "medium",
     "youtube",
     "gdrive",
     "dropbox",
@@ -773,6 +777,8 @@ function HealthTab() {
     facebook: FacebookSettingsContent,
     instagram: InstagramSettingsContent,
     linkedin: LinkedInSettingsContent,
+    substack: SubstackSettingsContent,
+    medium: MediumSettingsContent,
     youtube: YouTubeSettingsContent,
   };
 

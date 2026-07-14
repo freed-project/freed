@@ -31,7 +31,14 @@ async function openSettingsSection(
 
 async function cancelProviderRiskDialog(
   page: import("@playwright/test").Page,
-  provider: "x" | "facebook" | "instagram" | "linkedin" | "youtube",
+  provider:
+    | "x"
+    | "facebook"
+    | "instagram"
+    | "linkedin"
+    | "substack"
+    | "medium"
+    | "youtube",
 ): Promise<void> {
   const dialog = page.getByTestId(`provider-risk-dialog-${provider}`);
   await expect(dialog).toBeVisible({ timeout: 5_000 });

@@ -205,6 +205,20 @@ export function tauriInitScript(): string {
       li_check_auth: () => true,
       li_scrape_feed: () => null,
       li_disconnect: () => null,
+      substack_show_login: () => null,
+      substack_hide_login: () => null,
+      substack_check_auth: () => true,
+      substack_disconnect: () => null,
+      substack_scrape_graph: () => null,
+      substack_scrape_activity: () => null,
+      substack_scrape_essays: () => null,
+      medium_show_login: () => null,
+      medium_hide_login: () => null,
+      medium_check_auth: () => true,
+      medium_disconnect: () => null,
+      medium_scrape_graph: () => null,
+      medium_scrape_activity: () => null,
+      medium_scrape_essays: () => null,
       yt_show_login: () => {
         window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = true;
         return null;

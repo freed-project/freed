@@ -67,6 +67,8 @@ const SOCIAL_GRAPH_PROVIDERS: Array<Account["provider"]> = [
   "facebook",
   "x",
   "linkedin",
+  "substack",
+  "medium",
 ];
 
 function hashValue(value: string): number {

@@ -397,6 +397,8 @@ function App() {
       FacebookSettingsContent: PwaFacebookSettings,
       InstagramSettingsContent: PwaInstagramSettings,
       LinkedInSettingsContent: PwaLinkedInSettings,
+      SubstackSettingsContent: null,
+      MediumSettingsContent: null,
       YouTubeSettingsContent: PwaYouTubeSettings,
       GoogleContactsSettingsContent: PwaGoogleContactsSettings,
       checkForUpdates,

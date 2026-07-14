@@ -586,6 +586,8 @@ export function Sidebar({
 }: SidebarProps) {
   const {
     SourceIndicator,
+    SubstackSettingsContent,
+    MediumSettingsContent,
     YouTubeSettingsContent,
     syncRssNow,
     syncSourceNow,
@@ -612,6 +614,14 @@ export function Sidebar({
   const unreadCountByPlatform = useAppStore((s) => s.unreadCountByPlatform);
   const totalItemCount = useAppStore((s) => s.totalItemCount);
   const itemCountByPlatform = useAppStore((s) => s.itemCountByPlatform);
+  const rssUnreadCount = useMemo(
+    () => Object.values(feedUnreadCounts).reduce((total, count) => total + count, 0),
+    [feedUnreadCounts],
+  );
+  const rssItemCount = useMemo(
+    () => Object.values(feedTotalCounts).reduce((total, count) => total + count, 0),
+    [feedTotalCounts],
+  );
   const providerSyncCounts = useAppStore(
     (s) =>
       ((s as unknown as { providerSyncCounts?: Partial<Record<string, number>> })
@@ -1064,12 +1074,16 @@ export function Sidebar({
   const sourceUnreadCount = (source: SourceNavigationItem) =>
     source.id === undefined
       ? totalUnreadCount
-      : (unreadCountByPlatform[source.id] ?? 0);
+      : source.id === "rss"
+        ? rssUnreadCount
+        : (unreadCountByPlatform[source.id] ?? 0);
 
   const sourceTotalCount = (source: SourceNavigationItem) =>
     source.id === undefined
       ? totalItemCount
-      : (itemCountByPlatform[source.id] ?? 0);
+      : source.id === "rss"
+        ? rssItemCount
+        : (itemCountByPlatform[source.id] ?? 0);
 
   const sourceKey = (source: SourceNavigationItem) => source.id ?? "all";
   const topSourceItems = useMemo(
@@ -1091,10 +1105,14 @@ export function Sidebar({
         return "order-8";
       case "linkedin":
         return "order-9";
-      case "youtube":
+      case "substack":
         return "order-10";
-      case "rss":
+      case "medium":
         return "order-11";
+      case "youtube":
+        return "order-12";
+      case "rss":
+        return "order-[13]";
       default:
         return "";
     }
@@ -1107,6 +1125,8 @@ export function Sidebar({
     if (source.id === "facebook") return "facebook";
     if (source.id === "instagram") return "instagram";
     if (source.id === "linkedin") return "linkedin";
+    if (source.id === "substack") return "substack";
+    if (source.id === "medium") return "medium";
     if (source.id === "youtube") return "youtube";
     return "sync";
   };
@@ -1117,6 +1137,8 @@ export function Sidebar({
     source.id === "facebook" ||
     source.id === "instagram" ||
     source.id === "linkedin" ||
+    (source.id === "substack" && Boolean(SubstackSettingsContent)) ||
+    (source.id === "medium" && Boolean(MediumSettingsContent)) ||
     (source.id === "youtube" && Boolean(YouTubeSettingsContent));
   const sourceMenuTriggerBaseClass = rowCountsVisible
     ? "absolute right-0 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]"
@@ -1270,7 +1292,13 @@ export function Sidebar({
   ), []);
 
   const getSourceBadge = useCallback((source: SourceNavigationItem, sourceStatus?: SidebarSourceStatusSummary | null) => {
-    if (source.id && source.id !== "rss" && SourceIndicator) {
+    if (
+      source.id &&
+      source.id !== "rss" &&
+      source.id !== "substack" &&
+      source.id !== "medium" &&
+      SourceIndicator
+    ) {
       return renderSidebarIconBadge(<SourceIndicator sourceId={source.id} />);
     }
 
@@ -1593,7 +1621,7 @@ export function Sidebar({
                     <li key={source.id ?? "all"} className={sourceOrderClass(source)}>
                       {renderCompactRow({
                         key: sourceKey(source),
-                        label: source.label,
+                        label: source.stage === "beta" ? `${source.label}, Beta` : source.label,
                         active: isTopSourceActive(source),
                         onClick: () => handleSourceClick(source),
                         icon: source.icon,
@@ -1758,6 +1786,11 @@ export function Sidebar({
                         labeledSourceIconSizeClass(source.id),
                       )}
                       label={source.label}
+                      afterLabel={source.stage === "beta" ? (
+                        <span className="shrink-0 rounded border border-[color:var(--theme-border-subtle)] px-1 py-0.5 text-[8px] font-semibold uppercase leading-none text-[color:var(--theme-text-muted)]">
+                          Beta
+                        </span>
+                      ) : null}
                       labelClass={sidebarLabelClass}
                       menu={renderSourceMenu(source)}
                       menuOpen={openMenuSourceKey === sourceKey(source)}

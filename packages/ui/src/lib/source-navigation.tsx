@@ -5,7 +5,9 @@ import {
   InstagramIcon,
   LinkedInIcon,
   MapPinIcon,
+  MediumIcon,
   RssIcon,
+  SubstackIcon,
   XIcon,
   YoutubeIcon,
 } from "../components/icons.js";
@@ -14,6 +16,7 @@ export interface SourceNavigationItem {
   id: string | undefined;
   label: string;
   icon: ReactNode;
+  stage?: "beta";
 }
 
 export function getTopSourceItems(useShortLabels = false): readonly SourceNavigationItem[] {
@@ -24,6 +27,8 @@ export function getTopSourceItems(useShortLabels = false): readonly SourceNaviga
     { id: "facebook", label: "Facebook", icon: <FacebookIcon /> },
     { id: "instagram", label: "Instagram", icon: <InstagramIcon /> },
     { id: "linkedin", label: "LinkedIn", icon: <LinkedInIcon /> },
+    { id: "substack", label: "Substack", icon: <SubstackIcon />, stage: "beta" },
+    { id: "medium", label: "Medium", icon: <MediumIcon />, stage: "beta" },
     { id: "youtube", label: "YouTube", icon: <YoutubeIcon /> },
   ] as const;
 }

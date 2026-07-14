@@ -359,6 +359,9 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.50 | Render the Friends atlas as a theme-aware 3D starfield with context-menu linking and pinning | High | Done |
 | 8.51 | Tune the starfield for larger readable stars, tighter linked-channel fields, brighter connectors, and lower zoom render cost | High | Done |
 | 8.52 | Let the Friends starfield fill under the primary app sidebar while preserving visible-workspace fit and focus math | Medium | Done |
+| 8.53 | Reconcile partial Substack and Medium follow rosters as accounts and provisional human connections without automatic friend promotion | Medium | Done |
+| 8.54 | Rescan provisional identity repair when roster identity details improve in place | Medium | Done |
+| 8.55 | Discover and enrich authenticated essay authors atomically when item counts stay unchanged | Medium | Done |
 
 ---
 
@@ -401,6 +404,13 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Map exposes a lower-left draggable time range slider with all available time selected by default
 - [x] Unlinked accounts can be promoted or linked from both the Friends workspace and Map popups
 - [x] Likely human social accounts can persist as provisional `connection` identities before they are confirmed as friends
+- [x] Substack and Medium follower, following, and visible subscription accounts
+      enter the identity graph, preserve existing person links and graph
+      placement, and create provisional connections only for likely human
+      profiles. Identity repair reruns when account details improve without a
+      count change. Author accounts are created in the same Automerge change
+      when authenticated capture resolves an existing RSS item. Publication-only
+      Substack and Medium accounts never become people or friends automatically
 - [x] Empty provisional identities are removed automatically when their last linked channel moves away
 - [x] The Friends graph uses a Three.js starfield renderer with worker-computed atlas slices instead of the old main-thread canvas stack
 - [x] Semantic zoom reveals more labels as the operator zooms in, without crushing the viewport

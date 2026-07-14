@@ -62,6 +62,9 @@ export interface RssFeedPatch {
   removedUrls: string[];
 }
 
+export type RssFeedRefreshUpdate = Pick<RssFeed, "url"> &
+  Partial<Pick<RssFeed, "lastFetched" | "title" | "siteUrl">>;
+
 export interface DocStats {
   binaryBytes: number;
   itemCount: number;
@@ -107,6 +110,13 @@ export type WorkerRequest =
     }
   | {
       reqId: number;
+      type: "RECONCILE_FOLLOW_ROSTER_CAPTURE";
+      accounts: Account[];
+      items: FeedItem[];
+      options: { provider: "substack" | "medium"; capturedAt: number };
+    }
+  | {
+      reqId: number;
       type: "ADD_SAMPLE_LIBRARY_DATA";
       feeds: RssFeed[];
       items: FeedItem[];
@@ -137,7 +147,12 @@ export type WorkerRequest =
   | { reqId: number; type: "REMOVE_ACCOUNT"; accountId: string }
   | { reqId: number; type: "MERGE_DOC"; binary: Uint8Array }
   // Desktop-specific mutations
-  | { reqId: number; type: "BATCH_REFRESH_FEEDS"; feeds: RssFeed[]; items: FeedItem[] }
+  | {
+      reqId: number;
+      type: "BATCH_REFRESH_FEEDS";
+      feeds: RssFeedRefreshUpdate[];
+      items: FeedItem[];
+    }
   | { reqId: number; type: "BATCH_IMPORT_ITEMS"; items: FeedItem[] }
   | { reqId: number; type: "HEAL_UNTITLED_FEEDS" }
   | { reqId: number; type: "DEDUPLICATE_ITEMS" }
@@ -200,6 +215,7 @@ export type WorkerResponse =
       type: "ITEM_PATCH";
       patches: FeedItemPatch[];
       changedItemIds: string[];
+      removedItemIds?: string[];
       mutation?: WorkerRequest["type"];
       orderedItemIds?: string[];
       preservePriorityOrder?: boolean;

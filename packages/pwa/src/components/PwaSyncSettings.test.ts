@@ -36,6 +36,8 @@ function createPlatform(): PlatformConfig {
     FacebookSettingsContent: null,
     InstagramSettingsContent: null,
     LinkedInSettingsContent: null,
+    SubstackSettingsContent: null,
+    MediumSettingsContent: null,
     GoogleContactsSettingsContent: null,
     releaseChannel: "production",
   };

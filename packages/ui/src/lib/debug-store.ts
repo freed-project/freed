@@ -171,6 +171,8 @@ export type HealthProviderId =
   | "facebook"
   | "instagram"
   | "linkedin"
+  | "substack"
+  | "medium"
   | "youtube"
   | "gdrive"
   | "dropbox";

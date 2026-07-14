@@ -18,6 +18,8 @@ import { captureXTimeline } from "./x-capture";
 import { captureFbFeed } from "./fb-capture";
 import { captureIgFeed } from "./instagram-capture";
 import { captureLiFeed } from "./li-capture";
+import { captureSubstackFeed } from "./substack-capture";
+import { captureMediumFeed } from "./medium-capture";
 import { captureYouTube } from "./youtube-capture";
 import { docBatchRefreshFeeds } from "./automerge";
 import { useAppStore, withProviderSyncing } from "./store";
@@ -44,6 +46,8 @@ import {
   isFactoryResetEpochCurrent,
   runFactoryResetSensitiveDesktopOperation,
 } from "./factory-reset-guard";
+import { cacheRssEssayBodies } from "./rss-essay-cache";
+import type { RssFeedRefreshUpdate } from "./automerge-types";
 
 export type SocialProviderRefreshStatus =
   | "success"
@@ -105,6 +109,20 @@ async function fetchRssFeed(
   };
 }
 
+async function preserveRssEssayBodies(
+  items: readonly FeedItem[],
+  existingItems: readonly FeedItem[],
+): Promise<void> {
+  if (!isTauri() || items.length === 0) return;
+  const result = await cacheRssEssayBodies(items, existingItems);
+  if (result.failed > 0) {
+    addDebugEvent(
+      "error",
+      `[RSS] ${result.failed.toLocaleString()} essay bod${result.failed === 1 ? "y" : "ies"} could not be preserved locally`,
+    );
+  }
+}
+
 /**
  * Add a new RSS feed subscription and fetch its initial items
  */
@@ -131,6 +149,8 @@ export function addRssFeed(feedUrl: string): Promise<void> {
       const feed = feedToRssFeed(parsed);
       const items = feedToFeedItems(parsed);
 
+      await preserveRssEssayBodies(items, store.items);
+      assertFactoryResetEpoch(resetEpoch);
       await store.addFeed(feed);
       assertFactoryResetEpoch(resetEpoch);
       await store.addItems(items);
@@ -155,8 +175,15 @@ const RSS_FAILURE_RETRY_BASE_MS = 2 * 60 * 60 * 1000;
 const RSS_FAILURE_RETRY_MAX_MS = 24 * 60 * 60 * 1000;
 const SOCIAL_DEFERRED_RETRY_BASE_MS = 2 * 60 * 1000;
 const SOCIAL_DEFERRED_RETRY_MAX_MS = 10 * 60 * 1000;
+const MAX_TIMER_DELAY_MS = 2_147_000_000;
 
-export type RetriableSocialProvider = "facebook" | "instagram" | "linkedin" | "youtube";
+export type RetriableSocialProvider =
+  | "facebook"
+  | "instagram"
+  | "linkedin"
+  | "substack"
+  | "medium"
+  | "youtube";
 
 const socialDeferredRetryTimers = new Map<
   RetriableSocialProvider,
@@ -167,6 +194,8 @@ const socialDebugLabels: Record<RetriableSocialProvider, string> = {
   facebook: "FB",
   instagram: "IG",
   linkedin: "LI",
+  substack: "Substack",
+  medium: "Medium",
   youtube: "YT",
 };
 
@@ -202,7 +231,7 @@ function markFeedFetchFailed(feed: RssFeed, message: string, now: number): void 
 }
 
 function shouldRetrySocialStage(stage: string | null): boolean {
-  return stage === "memory_pressure" || isRuntimeDeferredStage(stage);
+  return stage === "memory_pressure" || stage === "cooldown" || isRuntimeDeferredStage(stage);
 }
 
 function nextSocialDeferredRetryMs(provider: RetriableSocialProvider): number {
@@ -228,9 +257,15 @@ function clearSocialDeferredRetry(provider: RetriableSocialProvider): void {
 function scheduleSocialDeferredRetry(
   provider: RetriableSocialProvider,
   stage: string,
+  retryAfterMs?: number,
 ): void {
   if (socialDeferredRetryTimers.has(provider)) return;
-  const retryMs = nextSocialDeferredRetryMs(provider);
+  const retryMs = typeof retryAfterMs === "number" && Number.isFinite(retryAfterMs)
+    ? Math.min(
+        MAX_TIMER_DELAY_MS,
+        Math.max(1_000, retryAfterMs + Math.floor(Math.random() * 30_000)),
+      )
+    : nextSocialDeferredRetryMs(provider);
   socialDeferredRetryCounts.set(
     provider,
     (socialDeferredRetryCounts.get(provider) ?? 0) + 1,
@@ -250,9 +285,10 @@ function scheduleSocialDeferredRetry(
 function handleSocialResult(
   provider: RetriableSocialProvider,
   stage: string | null,
+  retryAfterMs?: number,
 ): void {
   if (shouldRetrySocialStage(stage)) {
-    scheduleSocialDeferredRetry(provider, stage ?? "deferred");
+    scheduleSocialDeferredRetry(provider, stage ?? "deferred", retryAfterMs);
   } else {
     clearSocialDeferredRetry(provider);
   }
@@ -308,6 +344,26 @@ export async function refreshSocialProvider(
       handleSocialResult("linkedin", result.diag.errorStage);
       return summarizeSocialRefreshResult("linkedin", result.diag);
     }
+    if (provider === "substack" && store.substackAuth.isAuthenticated) {
+      const result = await withProviderSyncing("substack", () => captureSubstackFeed(trigger));
+      handleSocialResult("substack", result.diag.errorStage, result.diag.retryAfterMs);
+      return summarizeSocialRefreshResult("substack", {
+        errorStage: result.diag.errorStage,
+        errorMessage: result.diag.errorMessage,
+        postsExtracted: result.diag.entriesExtracted + result.diag.profilesExtracted,
+        itemsAdded: result.diag.itemsAdded + result.diag.accountsAdded,
+      });
+    }
+    if (provider === "medium" && store.mediumAuth.isAuthenticated) {
+      const result = await withProviderSyncing("medium", () => captureMediumFeed(trigger));
+      handleSocialResult("medium", result.diag.errorStage, result.diag.retryAfterMs);
+      return summarizeSocialRefreshResult("medium", {
+        errorStage: result.diag.errorStage,
+        errorMessage: result.diag.errorMessage,
+        postsExtracted: result.diag.entriesExtracted + result.diag.profilesExtracted,
+        itemsAdded: result.diag.itemsAdded + result.diag.accountsAdded,
+      });
+    }
     if (provider === "youtube" && store.ytAuth.isAuthenticated) {
       const result = await withProviderSyncing("youtube", () => captureYouTube(trigger));
       handleSocialResult("youtube", result.diag.errorStage);
@@ -356,10 +412,14 @@ function summarizeSocialRefreshResult(
 ): SocialProviderRefreshResult {
   const postsExtracted = diag.postsExtracted ?? 0;
   const itemsAdded = diag.itemsAdded ?? 0;
-  const itemNoun = provider === "youtube" ? "video" : "post";
+  const itemNoun = provider === "youtube"
+    ? "video"
+    : provider === "substack" || provider === "medium"
+      ? "record"
+      : "post";
 
   if (diag.errorStage) {
-    const runtimeDeferred = isRuntimeDeferredStage(diag.errorStage);
+    const runtimeDeferred = shouldRetrySocialStage(diag.errorStage);
     return {
       provider,
       status: runtimeDeferred ? "deferred" : "error",
@@ -402,11 +462,11 @@ async function refreshEnabledRssFeeds(
     await withProviderSyncing("rss", async () => {
       const allNewItems: FeedItem[] = [];
       const fetchedFeeds: RssFeed[] = [];
-      const feedUpdates: RssFeed[] = [];
+      const feedUpdates: RssFeedRefreshUpdate[] = [];
       const feedErrors: string[] = [];
       const rssStartedAt = Date.now();
       const rssBefore = store.items.filter(
-        (item) => item.platform === "rss",
+        (item) => item.platform === "rss" || Boolean(item.rssSource),
       ).length;
       let rssSeen = 0;
 
@@ -452,7 +512,14 @@ async function refreshEnabledRssFeeds(
         for (const [resultIndex, result] of results.entries()) {
           if (result.status === "fulfilled") {
             fetchedFeeds.push(result.value.feed);
-            feedUpdates.push(result.value.feed);
+            feedUpdates.push({
+              url: result.value.feed.url,
+              lastFetched: result.value.feed.lastFetched,
+              title: result.value.feed.title,
+              ...(result.value.feed.siteUrl
+                ? { siteUrl: result.value.feed.siteUrl }
+                : {}),
+            });
             allNewItems.push(...result.value.items);
             rssSeen += result.value.items.length;
             await recordProviderHealthEvent({
@@ -497,11 +564,12 @@ async function refreshEnabledRssFeeds(
       }
 
       if (feedUpdates.length > 0 || allNewItems.length > 0) {
+        await preserveRssEssayBodies(allNewItems, store.items);
         await docBatchRefreshFeeds(feedUpdates, allNewItems);
       }
       const rssAfter = useAppStore
         .getState()
-        .items.filter((item) => item.platform === "rss").length;
+        .items.filter((item) => item.platform === "rss" || Boolean(item.rssSource)).length;
       const rssItemsAdded = Math.max(0, rssAfter - rssBefore);
       await recordProviderHealthEvent({
         provider: "rss",

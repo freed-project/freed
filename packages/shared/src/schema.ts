@@ -25,6 +25,7 @@ import type {
   LocationSource,
   SampleDataClearSummary,
 } from "./types.js";
+import { canonicalEssayProviderUrl } from "./essay-identity.js";
 import { createDefaultPreferences, createDefaultMeta } from "./types.js";
 import { stripDeviceLocalPreferenceUpdates } from "./preferences.js";
 import {
@@ -36,7 +37,11 @@ import {
   sanitizeReachOutLogWrite,
   sanitizeRssFeedWrite,
 } from "./sync-write-policy.js";
-import { friendForAuthor, personForAuthor } from "./friends.js";
+import {
+  discoveredSocialAccountFromItem,
+  friendForAuthor,
+  personForAuthor,
+} from "./friends.js";
 import { hasSampleDataFingerprint } from "./sample-data.js";
 import {
   CONTENT_SIGNAL_KEYS,
@@ -498,18 +503,19 @@ export function migrateLegacyIdentityGraph(doc: FreedDoc): boolean {
  * normalizers should already produce clean objects, but this prevents a single
  * bad optional field from crashing the whole capture.
  */
-function stripUndefined<T>(value: T): T {
+const UNSAFE_OBJECT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+export function stripUndefined<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map(stripUndefined) as unknown as T;
   }
   if (value !== null && typeof value === "object") {
-    const result: Record<string, unknown> = {};
+    const entries: Array<[string, unknown]> = [];
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (v !== undefined) {
-        result[k] = stripUndefined(v);
-      }
+      if (v === undefined || UNSAFE_OBJECT_KEYS.has(k)) continue;
+      entries.push([k, stripUndefined(v)]);
     }
-    return result as T;
+    return Object.fromEntries(entries) as T;
   }
   return value;
 }
@@ -776,6 +782,38 @@ function mergeUniqueStrings(target: string[], source: string[] | undefined): voi
   }
 }
 
+function mergeFeedItemMedia(
+  target: FeedItem["content"],
+  source: FeedItem["content"],
+): void {
+  const missingTargetTypes = new Set<number>();
+  for (let index = 0; index < target.mediaUrls.length; index += 1) {
+    if (target.mediaTypes[index]) continue;
+    missingTargetTypes.add(index);
+    target.mediaTypes.push("image");
+  }
+  if (target.mediaTypes.length > target.mediaUrls.length) {
+    target.mediaTypes.splice(target.mediaUrls.length);
+  }
+
+  for (const [index, url] of source.mediaUrls.entries()) {
+    const sourceType = source.mediaTypes[index];
+    const existingIndex = target.mediaUrls.indexOf(url);
+    if (existingIndex >= 0) {
+      if (
+        sourceType &&
+        (missingTargetTypes.has(existingIndex) ||
+          (sourceType === "video" && target.mediaTypes[existingIndex] !== "video"))
+      ) {
+        target.mediaTypes[existingIndex] = sourceType;
+      }
+      continue;
+    }
+    target.mediaUrls.push(url);
+    target.mediaTypes.push(sourceType ?? "image");
+  }
+}
+
 function assignOptionalField(
   target: Record<string, unknown>,
   key: string,
@@ -963,13 +1001,20 @@ function applyEventCandidateToItem(
     target.method = clean.method;
     target.detectedAt = clean.detectedAt;
     target.confidence = clean.confidence;
-    assignOptionalField(target as unknown as Record<string, unknown>, "title", clean.title);
-    assignOptionalField(target as unknown as Record<string, unknown>, "startsAt", clean.startsAt);
-    assignOptionalField(target as unknown as Record<string, unknown>, "endsAt", clean.endsAt);
-    assignOptionalField(target as unknown as Record<string, unknown>, "timezone", clean.timezone);
-    assignOptionalField(target as unknown as Record<string, unknown>, "locationName", clean.locationName);
-    assignOptionalField(target as unknown as Record<string, unknown>, "locationUrl", clean.locationUrl);
-    assignOptionalField(target as unknown as Record<string, unknown>, "evidence", clean.evidence);
+    if (clean.title === undefined) delete target.title;
+    else target.title = clean.title;
+    if (clean.startsAt === undefined) delete target.startsAt;
+    else target.startsAt = clean.startsAt;
+    if (clean.endsAt === undefined) delete target.endsAt;
+    else target.endsAt = clean.endsAt;
+    if (clean.timezone === undefined) delete target.timezone;
+    else target.timezone = clean.timezone;
+    if (clean.locationName === undefined) delete target.locationName;
+    else target.locationName = clean.locationName;
+    if (clean.locationUrl === undefined) delete target.locationUrl;
+    else target.locationUrl = clean.locationUrl;
+    if (clean.evidence === undefined) delete target.evidence;
+    else target.evidence = clean.evidence;
   }
 
   if (clean.confidence < EVENT_CANDIDATE_THRESHOLD) return;
@@ -991,11 +1036,9 @@ function applyEventCandidateToItem(
       });
     } else if (item.location.source === "text_extraction") {
       item.location.name = clean.locationName;
-      assignOptionalField(
-        item.location as unknown as Record<string, unknown>,
-        "url",
-        clean.locationUrl ?? item.location.url,
-      );
+      const locationUrl = clean.locationUrl ?? item.location.url;
+      if (locationUrl === undefined) delete item.location.url;
+      else item.location.url = locationUrl;
     }
   }
 }
@@ -1026,26 +1069,23 @@ function mergeEngagement(target: FeedItem, source: FeedItem): void {
     target.engagement = stripUndefined(source.engagement);
     return;
   }
-  assignOptionalField(
-    target.engagement as unknown as Record<string, unknown>,
-    "likes",
-    Math.max(target.engagement.likes ?? 0, source.engagement.likes ?? 0) || undefined,
-  );
-  assignOptionalField(
-    target.engagement as unknown as Record<string, unknown>,
-    "reposts",
-    Math.max(target.engagement.reposts ?? 0, source.engagement.reposts ?? 0) || undefined,
-  );
-  assignOptionalField(
-    target.engagement as unknown as Record<string, unknown>,
-    "comments",
-    Math.max(target.engagement.comments ?? 0, source.engagement.comments ?? 0) || undefined,
-  );
-  assignOptionalField(
-    target.engagement as unknown as Record<string, unknown>,
-    "views",
-    Math.max(target.engagement.views ?? 0, source.engagement.views ?? 0) || undefined,
-  );
+  const likes = Math.max(target.engagement.likes ?? 0, source.engagement.likes ?? 0) || undefined;
+  if (likes === undefined) delete target.engagement.likes;
+  else target.engagement.likes = likes;
+
+  const reposts =
+    Math.max(target.engagement.reposts ?? 0, source.engagement.reposts ?? 0) || undefined;
+  if (reposts === undefined) delete target.engagement.reposts;
+  else target.engagement.reposts = reposts;
+
+  const comments =
+    Math.max(target.engagement.comments ?? 0, source.engagement.comments ?? 0) || undefined;
+  if (comments === undefined) delete target.engagement.comments;
+  else target.engagement.comments = comments;
+
+  const views = Math.max(target.engagement.views ?? 0, source.engagement.views ?? 0) || undefined;
+  if (views === undefined) delete target.engagement.views;
+  else target.engagement.views = views;
 }
 
 function mergeLinkPreview(target: FeedItem["content"], source: FeedItem["content"]): void {
@@ -1071,7 +1111,7 @@ function mergeLinkPreview(target: FeedItem["content"], source: FeedItem["content
   }
 }
 
-function mergeFeedItemInto(
+export function mergeFeedItemInto(
   target: FeedItem,
   source: FeedItem,
   options: { preserveLegacyHtml?: boolean } = {},
@@ -1083,8 +1123,7 @@ function mergeFeedItemInto(
     target.content.text = source.content.text;
   }
   mergeLinkPreview(target.content, source.content);
-  mergeUniqueStrings(target.content.mediaUrls, source.content.mediaUrls);
-  mergeUniqueStrings(target.content.mediaTypes, source.content.mediaTypes);
+  mergeFeedItemMedia(target.content, source.content);
 
   if (!target.location && source.location) {
     target.location = stripUndefined(source.location);
@@ -1139,20 +1178,17 @@ function mergeFeedItemInto(
   }
   mergeUniqueStrings(target.topics, source.topics);
   mergeEngagement(target, source);
-  assignOptionalField(
-    target as unknown as Record<string, unknown>,
-    "priority",
-    Math.max(target.priority ?? 0, source.priority ?? 0) || undefined,
+  const priority = Math.max(target.priority ?? 0, source.priority ?? 0) || undefined;
+  if (priority === undefined) delete target.priority;
+  else target.priority = priority;
+
+  const priorityComputedAt = mergeTimestamp(
+    target.priorityComputedAt,
+    source.priorityComputedAt,
+    "max",
   );
-  assignOptionalField(
-    target as unknown as Record<string, unknown>,
-    "priorityComputedAt",
-    mergeTimestamp(
-      target.priorityComputedAt,
-      source.priorityComputedAt,
-      "max",
-    ),
-  );
+  if (priorityComputedAt === undefined) delete target.priorityComputedAt;
+  else target.priorityComputedAt = priorityComputedAt;
   mergeUserState(target.userState, source.userState);
   applySemanticEnrichmentToItem(target);
 }
@@ -1329,6 +1365,7 @@ export function clearSampleData(doc: FreedDoc): SampleDataClearSummary {
  * @param item - The feed item to add
  */
 export function addFeedItem(doc: FreedDoc, item: FeedItem): void {
+  if (UNSAFE_OBJECT_KEYS.has(item.globalId)) return;
   const next = stripUndefined(sanitizeFeedItemWrite(item)) as FeedItem;
   if (!hasCurrentContentSignals(next)) {
     applySemanticEnrichmentToItem(next);
@@ -2024,6 +2061,7 @@ export function logReachOut(
 
 export function addAccount(doc: FreedDoc, account: Account): void {
   ensureIdentityGraphRoots(doc);
+  if (UNSAFE_OBJECT_KEYS.has(account.id)) return;
   doc.accounts[account.id] = stripUndefined(sanitizeAccountWrite(account)) as Account;
 }
 
@@ -2031,6 +2069,313 @@ export function addAccounts(doc: FreedDoc, accounts: Account[]): void {
   for (const account of accounts) {
     addAccount(doc, account);
   }
+}
+
+export interface ReconcileFollowRosterCaptureOptions {
+  provider: "substack" | "medium";
+  capturedAt: number;
+}
+
+export interface ReconcileProviderEssayItemsOptions {
+  shouldMergeExisting?: (existing: FeedItem, incoming: FeedItem) => boolean;
+}
+
+export interface ReconcileProviderEssayItemsResult {
+  changedIds: string[];
+  addedIds: string[];
+  removedIds: string[];
+}
+
+function canonicalEssayItemUrl(item: FeedItem): string | null {
+  const value = item.content.linkPreview?.url ?? item.sourceUrl;
+  return canonicalEssayProviderUrl(value) ?? null;
+}
+
+function isProviderEssayMatch(
+  item: FeedItem,
+  provider: "substack" | "medium",
+): boolean {
+  if (item.platform === provider) return item.contentType === "article";
+  return item.platform === "rss" && Boolean(item.rssSource || item.contentType === "article");
+}
+
+function preferAuthenticatedEssayKeeper(
+  matches: FeedItem[],
+  incoming: FeedItem,
+  provider: "substack" | "medium",
+): FeedItem {
+  const exact = matches.find((item) => item.globalId === incoming.globalId);
+  const authenticated = matches.find(
+    (item) => item.platform === provider && !item.rssSource,
+  );
+  return incoming.rssSource
+    ? authenticated ?? exact ?? matches[0]
+    : exact ?? authenticated ?? matches[0];
+}
+
+function normalizedAuthorLabel(value: string): string {
+  return value.trim().replace(/^@/, "").toLowerCase();
+}
+
+function preferredRosterDisplayName(
+  existing: Account,
+  incoming: Account,
+): string | undefined {
+  return [existing, incoming]
+    .map((account) => ({
+      value: account.displayName?.trim(),
+      handle: account.handle?.trim(),
+    }))
+    .filter((candidate): candidate is { value: string; handle: string | undefined } =>
+      Boolean(candidate.value),
+    )
+    .sort((left, right) => {
+      const leftScore =
+        (normalizedAuthorLabel(left.value) === normalizedAuthorLabel(left.handle ?? "")
+          ? 0
+          : 1_000) + left.value.length;
+      const rightScore =
+        (normalizedAuthorLabel(right.value) === normalizedAuthorLabel(right.handle ?? "")
+          ? 0
+          : 1_000) + right.value.length;
+      return rightScore - leftScore;
+    })[0]?.value;
+}
+
+function reconcileAuthenticatedItemAuthors(
+  doc: FreedDoc,
+  items: FeedItem[],
+): void {
+  const accountsByIdentity = new Map<string, Account>();
+  for (const account of Object.values(doc.accounts)) {
+    if (account.kind !== "social") continue;
+    accountsByIdentity.set(`${account.provider}:${account.externalId}`, account);
+  }
+
+  for (const item of items) {
+    const incoming = discoveredSocialAccountFromItem(item);
+    if (!incoming) continue;
+    const identityKey = `${incoming.provider}:${incoming.externalId}`;
+    const existing = accountsByIdentity.get(identityKey);
+    if (!existing) {
+      addAccount(doc, incoming);
+      accountsByIdentity.set(identityKey, doc.accounts[incoming.id]);
+      continue;
+    }
+
+    const displayName = preferredRosterDisplayName(existing, incoming);
+    const firstSeenAt = Math.min(existing.firstSeenAt, incoming.firstSeenAt);
+    const lastSeenAt = Math.max(existing.lastSeenAt, incoming.lastSeenAt);
+    const nextHandle =
+      incoming.handle && (!existing.handle || existing.handle === "unknown")
+        ? incoming.handle
+        : existing.handle;
+    const nextAvatarUrl = incoming.avatarUrl || existing.avatarUrl;
+    const nextProfileUrl = incoming.profileUrl || existing.profileUrl;
+    if (
+      displayName === existing.displayName &&
+      nextHandle === existing.handle &&
+      nextAvatarUrl === existing.avatarUrl &&
+      nextProfileUrl === existing.profileUrl &&
+      firstSeenAt === existing.firstSeenAt &&
+      lastSeenAt === existing.lastSeenAt
+    ) {
+      continue;
+    }
+
+    updateAccount(doc, existing.id, {
+      ...(nextHandle ? { handle: nextHandle } : {}),
+      ...(displayName ? { displayName } : {}),
+      ...(nextAvatarUrl ? { avatarUrl: nextAvatarUrl } : {}),
+      ...(nextProfileUrl ? { profileUrl: nextProfileUrl } : {}),
+      firstSeenAt,
+      lastSeenAt,
+      updatedAt: Math.max(existing.updatedAt, incoming.updatedAt),
+    });
+  }
+}
+
+function preferredAuthenticatedDisplayName(target: FeedItem, incoming: FeedItem): string {
+  const incomingName = incoming.author.displayName.trim();
+  const targetName = target.author.displayName.trim();
+  const incomingUsesHandle =
+    normalizedAuthorLabel(incomingName) === normalizedAuthorLabel(incoming.author.handle);
+  const targetUsesHandle =
+    normalizedAuthorLabel(targetName) === normalizedAuthorLabel(target.author.handle);
+  if (incomingUsesHandle && targetName && !targetUsesHandle) return targetName;
+  return incomingName || targetName;
+}
+
+function applyAuthenticatedEssayAuthor(target: FeedItem, incoming: FeedItem): boolean {
+  if (incoming.rssSource || incoming.author.id === "unknown") return false;
+  const displayName = preferredAuthenticatedDisplayName(target, incoming);
+  const changed =
+    target.author.id !== incoming.author.id ||
+    target.author.handle !== incoming.author.handle ||
+    target.author.displayName !== displayName ||
+    (incoming.author.avatarUrl !== undefined &&
+      target.author.avatarUrl !== incoming.author.avatarUrl);
+  target.author.id = incoming.author.id;
+  target.author.handle = incoming.author.handle;
+  target.author.displayName = displayName;
+  if (incoming.author.avatarUrl) target.author.avatarUrl = incoming.author.avatarUrl;
+  return changed;
+}
+
+/**
+ * Reconcile provider-classified essays by canonical URL in one indexed pass.
+ * Existing record IDs remain stable unless a duplicate provider record already
+ * exists, and every duplicate's interaction state is merged before deletion.
+ */
+export function reconcileProviderEssayItems(
+  doc: FreedDoc,
+  items: FeedItem[],
+  provider: "substack" | "medium",
+  options: ReconcileProviderEssayItemsOptions = {},
+): ReconcileProviderEssayItemsResult {
+  const changedIds = new Set<string>();
+  const addedIds: string[] = [];
+  const removedIds: string[] = [];
+  const matchesByUrl = new Map<string, FeedItem[]>();
+
+  for (const existing of Object.values(doc.feedItems) as FeedItem[]) {
+    if (!isProviderEssayMatch(existing, provider)) continue;
+    const url = canonicalEssayItemUrl(existing);
+    if (!url) continue;
+    const matches = matchesByUrl.get(url);
+    if (matches) matches.push(existing);
+    else matchesByUrl.set(url, [existing]);
+  }
+
+  for (const incoming of items) {
+    if (["__proto__", "constructor", "prototype"].includes(incoming.globalId)) continue;
+    if (incoming.platform !== provider || incoming.contentType !== "article") continue;
+    const url = canonicalEssayItemUrl(incoming);
+    const exact = doc.feedItems[incoming.globalId] as FeedItem | undefined;
+    const urlMatches = url ? [...(matchesByUrl.get(url) ?? [])] : [];
+    if (exact && !urlMatches.some((item) => item.globalId === exact.globalId)) {
+      urlMatches.unshift(exact);
+    }
+
+    if (urlMatches.length === 0) {
+      addFeedItem(doc, incoming);
+      addedIds.push(incoming.globalId);
+      changedIds.add(incoming.globalId);
+      if (url) matchesByUrl.set(url, [doc.feedItems[incoming.globalId]]);
+      continue;
+    }
+
+    const keeper = preferAuthenticatedEssayKeeper(urlMatches, incoming, provider);
+    for (const duplicate of urlMatches) {
+      if (duplicate.globalId === keeper.globalId) continue;
+      mergeFeedItemInto(keeper, duplicate);
+      delete doc.feedItems[duplicate.globalId];
+      removedIds.push(duplicate.globalId);
+      changedIds.add(keeper.globalId);
+    }
+
+    if (keeper.platform !== provider || keeper.contentType !== "article") {
+      keeper.platform = provider;
+      keeper.contentType = "article";
+      changedIds.add(keeper.globalId);
+    }
+    if (applyAuthenticatedEssayAuthor(keeper, incoming)) {
+      changedIds.add(keeper.globalId);
+    }
+    if (options.shouldMergeExisting?.(keeper, incoming) !== false) {
+      mergeFeedItemInto(keeper, incoming);
+      changedIds.add(keeper.globalId);
+    }
+    if (url) matchesByUrl.set(url, [keeper]);
+  }
+
+  return {
+    changedIds: [...changedIds],
+    addedIds,
+    removedIds,
+  };
+}
+
+/**
+ * Merge a partial authenticated follow roster and its visible activity.
+ *
+ * These providers do not expose a trustworthy complete roster marker, so a
+ * missing account is never treated as an unfollow. Existing person links,
+ * graph placement, and feed interaction state remain authoritative.
+ */
+export function reconcileFollowRosterCapture(
+  doc: FreedDoc,
+  accounts: Account[],
+  items: FeedItem[],
+  options: ReconcileFollowRosterCaptureOptions,
+): void {
+  ensureIdentityGraphRoots(doc);
+  const providerItems = items.filter(
+    (item) =>
+      item.platform === options.provider &&
+      !["__proto__", "constructor", "prototype"].includes(item.globalId),
+  );
+
+  for (const account of accounts) {
+    if (["__proto__", "constructor", "prototype"].includes(account.id)) continue;
+    if (account.provider !== options.provider) continue;
+    const existing = doc.accounts[account.id];
+    if (!existing) {
+      addAccount(doc, {
+        ...account,
+        followRosterActive: true,
+        followRosterSyncedAt: options.capturedAt,
+      });
+      continue;
+    }
+
+    const reconciledUpdatedAt = Math.max(
+      existing.updatedAt,
+      account.updatedAt,
+      options.capturedAt,
+    );
+    const displayName = preferredRosterDisplayName(existing, account);
+
+    updateAccount(doc, account.id, {
+      externalId: account.externalId,
+      ...(account.handle ? { handle: account.handle } : {}),
+      ...(displayName ? { displayName } : {}),
+      ...(account.avatarUrl ? { avatarUrl: account.avatarUrl } : {}),
+      ...(account.profileUrl ? { profileUrl: account.profileUrl } : {}),
+      ...(existing.discoveredFrom === "captured_item" ||
+      existing.discoveredFrom === "story_author"
+        ? { discoveredFrom: "follow_roster" as const }
+        : {}),
+      firstSeenAt: Math.min(existing.firstSeenAt, account.firstSeenAt),
+      lastSeenAt: Math.max(existing.lastSeenAt, account.lastSeenAt, options.capturedAt),
+      followRosterActive: true,
+      followRosterSyncedAt: options.capturedAt,
+    });
+    if (account.followRosterRoles?.length) {
+      if (!existing.followRosterRoles) existing.followRosterRoles = [];
+      for (const role of account.followRosterRoles) {
+        if (!existing.followRosterRoles.includes(role)) {
+          existing.followRosterRoles.push(role);
+        }
+      }
+    }
+    existing.updatedAt = reconciledUpdatedAt;
+  }
+
+  reconcileProviderEssayItems(doc, providerItems, options.provider);
+
+  for (const item of providerItems) {
+    if (item.contentType === "article") continue;
+    if (["__proto__", "constructor", "prototype"].includes(item.globalId)) continue;
+    const existing = doc.feedItems[item.globalId];
+    if (existing) {
+      mergeFeedItemInto(existing, item);
+    } else {
+      addFeedItem(doc, item);
+    }
+  }
+
+  reconcileAuthenticatedItemAuthors(doc, providerItems);
 }
 
 export interface ReconcileYouTubeCaptureOptions {
@@ -2057,6 +2402,7 @@ export function reconcileYouTubeCapture(
   const incomingAccountIds = new Set(accounts.map((account) => account.id));
 
   for (const account of accounts) {
+    if (["__proto__", "constructor", "prototype"].includes(account.id)) continue;
     const existing = doc.accounts[account.id];
     if (!existing) {
       addAccount(doc, {
@@ -2094,6 +2440,7 @@ export function reconcileYouTubeCapture(
   }
 
   for (const item of items) {
+    if (["__proto__", "constructor", "prototype"].includes(item.globalId)) continue;
     const existing = doc.feedItems[item.globalId];
     if (existing) {
       mergeFeedItemInto(

@@ -242,6 +242,7 @@ export const ACCOUNT_WRITE_POLICY = {
   discoveredFrom: "sync",
   followRosterActive: "sync",
   followRosterSyncedAt: "sync",
+  followRosterRoles: "nested",
   graphX: "device-local",
   graphY: "device-local",
   graphPinned: "device-local",
@@ -708,6 +709,7 @@ export function sanitizeAccountWrite(
     updates,
     ACCOUNT_WRITE_POLICY,
     {
+      followRosterRoles: sanitizeStringArray,
       sampleDataFingerprint: (value) => sanitizeNestedObject(value, sanitizeSampleDataFingerprintWrite),
     },
     options.preserveUndefined,

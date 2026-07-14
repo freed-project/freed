@@ -16,14 +16,30 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
+function safeWebUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 function renderFallbackHtml(item: FeedItem): string {
   const title = item.content.linkPreview?.title ?? item.content.text?.slice(0, 100) ?? item.author.displayName;
   const media = item.content.mediaUrls
     .map((url, index) => {
-      const safeUrl = escapeHtml(url);
-      return item.content.mediaTypes[index] === "video"
-        ? `<figure><video src="${safeUrl}" controls playsinline></video></figure>`
-        : `<figure><img src="${safeUrl}" alt="" /></figure>`;
+      const webUrl = safeWebUrl(url);
+      if (!webUrl) return "";
+      const safeUrl = escapeHtml(webUrl);
+      const type = item.content.mediaTypes[index];
+      if (type === "video") {
+        return `<figure><video src="${safeUrl}" controls playsinline></video></figure>`;
+      }
+      if (type === "link") {
+        return `<p><a href="${safeUrl}" target="_blank" rel="noreferrer noopener">${safeUrl}</a></p>`;
+      }
+      return `<figure><img src="${safeUrl}" alt="" /></figure>`;
     })
     .join("");
   const paragraphs = (item.preservedContent?.text ?? item.content.text ?? "")

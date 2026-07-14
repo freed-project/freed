@@ -37,6 +37,7 @@ import type {
   DocState,
   DocStats,
   DocumentHistoryRelation,
+  RssFeedRefreshUpdate,
   WorkerRequest,
   WorkerResponse,
 } from "./automerge-types";
@@ -595,6 +596,7 @@ function handleWorkerMessage(
       preservePriorityOrder: msg.preservePriorityOrder,
       searchCorpusVersion: msg.searchCorpusVersion,
       docItemCount: msg.docItemCount,
+      removedItemIds: msg.removedItemIds,
     });
     lastItemIndexById = patched.itemIndex;
     publishState(patched.state, {
@@ -1217,6 +1219,22 @@ export async function docReconcileYouTubeCapture(
   });
 }
 
+/** Reconcile one partial authenticated Substack or Medium capture atomically. */
+export async function docReconcileFollowRosterCapture(
+  accounts: Account[],
+  items: FeedItem[],
+  options: { provider: "substack" | "medium"; capturedAt: number },
+): Promise<void> {
+  const reqId = nextReqId++;
+  return request({
+    reqId,
+    type: "RECONCILE_FOLLOW_ROSTER_CAPTURE",
+    accounts,
+    items,
+    options,
+  });
+}
+
 export async function docAddSampleLibraryData(data: {
   feeds: RssFeed[];
   items: FeedItem[];
@@ -1429,11 +1447,24 @@ export const docRemoveFriend = docRemovePerson;
 // ─── Desktop-specific mutations ─────────────────────────────────────────────
 
 export async function docBatchRefreshFeeds(
-  feeds: RssFeed[],
+  feeds: RssFeedRefreshUpdate[],
   items: FeedItem[],
 ): Promise<void> {
   const reqId = nextReqId++;
-  return request({ reqId, type: "BATCH_REFRESH_FEEDS", feeds, items });
+  const durableFeeds = feeds.map((feed) => ({
+    url: feed.url,
+    ...(feed.lastFetched === undefined
+      ? {}
+      : { lastFetched: feed.lastFetched }),
+    ...(feed.title === undefined ? {} : { title: feed.title }),
+    ...(feed.siteUrl === undefined ? {} : { siteUrl: feed.siteUrl }),
+  }));
+  return request({
+    reqId,
+    type: "BATCH_REFRESH_FEEDS",
+    feeds: durableFeeds,
+    items,
+  });
 }
 
 export async function docBatchImportItems(

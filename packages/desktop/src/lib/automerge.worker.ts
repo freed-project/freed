@@ -38,6 +38,8 @@ import {
   removeRssFeed,
   removeAllFeeds,
   reconcileYouTubeCapture,
+  reconcileFollowRosterCapture,
+  reconcileProviderEssayItems,
   updateRssFeed,
   updateFeedItem,
   summarizeDocContentSignals,
@@ -74,6 +76,7 @@ import type {
   DocState,
   FeedItemPatch,
   RssFeedPatch,
+  RssFeedRefreshUpdate,
   WorkerErrorCode,
   WorkerRequest,
   WorkerResponse,
@@ -170,6 +173,38 @@ function rebuildKnownLinkPreviewUrls(doc: FreedDoc | null): void {
   for (const item of Object.values(doc.feedItems ?? {}) as FeedItem[]) {
     addKnownLinkPreviewUrl(item);
   }
+}
+
+function isAuthenticatedEssayArticle(item: FeedItem): boolean {
+  return (
+    item.contentType === "article" &&
+    (item.platform === "substack" || item.platform === "medium")
+  );
+}
+
+function readerTextLength(item: FeedItem): number {
+  return Math.max(
+    item.content.text?.length ?? 0,
+    item.preservedContent?.text.length ?? 0,
+  );
+}
+
+function shouldMergeEssayRssItem(existing: FeedItem, incoming: FeedItem): boolean {
+  if (!isAuthenticatedEssayArticle(incoming)) return false;
+  if (existing.platform !== incoming.platform || existing.contentType !== "article") return true;
+  if (!existing.rssSource) return true;
+  if (readerTextLength(incoming) > readerTextLength(existing)) return true;
+  if (incoming.content.mediaUrls.some((url) => !existing.content.mediaUrls.includes(url))) return true;
+  const existingPreview = existing.content.linkPreview;
+  const incomingPreview = incoming.content.linkPreview;
+  return Boolean(
+    incomingPreview &&
+    (
+      !existingPreview ||
+      (incomingPreview.title?.length ?? 0) > (existingPreview.title?.length ?? 0) ||
+      (incomingPreview.description?.length ?? 0) > (existingPreview.description?.length ?? 0)
+    )
+  );
 }
 
 function toLegacyContact(account: Account): LegacyDeviceContact {
@@ -935,13 +970,20 @@ async function applyAddFeedItemsPatchChange(items: FeedItem[], trace?: RequestTr
 }
 
 async function applyBatchRefreshFeedsPatchChange(
-  feeds: RssFeed[],
+  feeds: RssFeedRefreshUpdate[],
   items: FeedItem[],
   trace?: RequestTrace,
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
   const feedPatch: RssFeedPatch = { feeds: {}, removedUrls: [] };
   let changedIds: string[] = [];
+  const removedEssayDuplicateIds: string[] = [];
+  const changedIdSet = new Set<string>();
+  const markChanged = (globalId: string) => {
+    if (changedIdSet.has(globalId)) return;
+    changedIdSet.add(globalId);
+    changedIds.push(globalId);
+  };
   currentDoc = A.change(currentDoc, `Refresh ${feeds.length.toLocaleString()} feeds, ${items.length.toLocaleString()} items`, (doc) => {
     for (const feed of feeds) {
       const stored = doc.rssFeeds[feed.url] as RssFeed | undefined;
@@ -956,19 +998,41 @@ async function applyBatchRefreshFeedsPatchChange(
       feedPatch.feeds[feed.url] = cloneRssFeedForPatch(stored);
     }
 
+    for (const item of items) compactFeedItemTextForSync(item);
+
+    for (const provider of ["substack", "medium"] as const) {
+      const providerItems = items.filter(
+        (item) => item.platform === provider && item.contentType === "article",
+      );
+      const essayResult = reconcileProviderEssayItems(
+        doc,
+        providerItems,
+        provider,
+        { shouldMergeExisting: shouldMergeEssayRssItem },
+      );
+      for (const globalId of essayResult.changedIds) markChanged(globalId);
+      for (const globalId of essayResult.addedIds) {
+        addKnownLinkPreviewUrl(doc.feedItems[globalId] as FeedItem | undefined);
+      }
+      removedEssayDuplicateIds.push(...essayResult.removedIds);
+    }
+
     for (const item of items) {
-      compactFeedItemTextForSync(item);
-      if (doc.feedItems[item.globalId]) continue;
+      if (isAuthenticatedEssayArticle(item)) continue;
+      const existingById = doc.feedItems[item.globalId];
+      if (existingById) continue;
+
       const linkUrl = itemLinkPreviewUrl(item);
       if (hasKnownLinkPreviewUrl(linkUrl)) continue;
       addFeedItem(doc, item);
-      changedIds.push(item.globalId);
+      markChanged(item.globalId);
       addKnownLinkPreviewUrl(item);
     }
   });
+  if (removedEssayDuplicateIds.length > 0) rebuildKnownLinkPreviewUrls(currentDoc);
 
   const feedChanged = Object.keys(feedPatch.feeds).length > 0 || feedPatch.removedUrls.length > 0;
-  if (!feedChanged && changedIds.length === 0) {
+  if (!feedChanged && changedIds.length === 0 && removedEssayDuplicateIds.length === 0) {
     emitWorkerTrace(
       `[automerge-worker] skip op=${trace?.opType ?? "unknown"} reason=no_changes`,
       "change",
@@ -976,14 +1040,16 @@ async function applyBatchRefreshFeedsPatchChange(
     return;
   }
 
-  if (changedIds.length > 0) bumpSearchCorpusVersion();
+  if (changedIds.length > 0 || removedEssayDuplicateIds.length > 0) bumpSearchCorpusVersion();
   send({
     type: "DEBUG_EVENT",
     kind: "change",
     detail:
       `Refresh ${feeds.length.toLocaleString()} feeds, ${items.length.toLocaleString()} items: ` +
-      `${changedIds.length.toLocaleString()} new`,
+      `${changedIds.length.toLocaleString()} changed, ` +
+      `${removedEssayDuplicateIds.length.toLocaleString()} removed`,
   });
+
   await persistAndBroadcastWithoutHydration(trace);
 
   if (feedChanged) {
@@ -992,11 +1058,12 @@ async function applyBatchRefreshFeedsPatchChange(
 
   const doc = currentDoc;
   const patches = cloneRankedFeedItemPatches(doc, changedIds);
-  if (patches.length > 0) {
+  if (patches.length > 0 || removedEssayDuplicateIds.length > 0) {
     send({
       type: "ITEM_PATCH",
       patches,
-      changedItemIds: changedIds,
+      changedItemIds: [...changedIds, ...removedEssayDuplicateIds],
+      removedItemIds: removedEssayDuplicateIds,
       preservePriorityOrder: true,
       searchCorpusVersion,
       mutation: trace?.opType,
@@ -1326,6 +1393,14 @@ async function handleRequest(
           for (const item of req.items) compactFeedItemTextForSync(item);
           reconcileYouTubeCapture(doc, req.accounts, req.items, req.options);
         }, `Reconcile ${req.accounts.length.toLocaleString()} YouTube channels and ${req.items.length.toLocaleString()} videos`, true);
+        ack(req.reqId);
+        break;
+
+      case "RECONCILE_FOLLOW_ROSTER_CAPTURE":
+        await applyRequestChange((doc) => {
+          for (const item of req.items) compactFeedItemTextForSync(item);
+          reconcileFollowRosterCapture(doc, req.accounts, req.items, req.options);
+        }, `Reconcile ${req.accounts.length.toLocaleString()} ${req.options.provider} accounts and ${req.items.length.toLocaleString()} items`, true);
         ack(req.reqId);
         break;
 

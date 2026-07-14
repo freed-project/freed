@@ -7,7 +7,7 @@ mod youtube;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
-use rand::RngCore;
+use rand::{Rng, RngCore};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(unix)]
@@ -54,6 +54,7 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 const DEFAULT_SYNC_RELAY_PORT: u16 = 8765;
 const FACTORY_RESET_RELAY_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 const FACTORY_RESET_RELAY_DRAIN_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const SYNC_RELAY_DOC_SEND_TIMEOUT: Duration = Duration::from_secs(2);
 const MAIN_WINDOW_LABEL: &str = "main";
 const MAIN_WINDOW_RECOVERY_KEEPALIVE_LABEL: &str = "main-recovery-keepalive";
 const PRIMARY_MENU_ITEM_SHOW: &str = "show";
@@ -69,7 +70,13 @@ fn sync_relay_port() -> u16 {
 
 const DEFAULT_WEBKIT_SAFARI_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
-const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 3] = ["fb-scraper", "ig-scraper", "li-scraper"];
+const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 5] = [
+    "fb-scraper",
+    "ig-scraper",
+    "li-scraper",
+    "substack-scraper",
+    "medium-scraper",
+];
 const FB_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
     0x66, 0x72, 0x65, 0x65, 0x64, 0xfb, 0x00, 0x01, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0xfb, 0x00, 0x01,
 ];
@@ -78,6 +85,12 @@ const IG_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
 ];
 const LI_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
     0x66, 0x72, 0x65, 0x65, 0x64, 0x1d, 0x00, 0x03, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x1d, 0x00, 0x03,
+];
+const SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0x5b, 0x00, 0x04, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x5b, 0x00, 0x04,
+];
+const MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0x6d, 0x00, 0x05, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x6d, 0x00, 0x05,
 ];
 const BYTES_PER_GIB: u64 = 1024 * 1024 * 1024;
 const MIN_CRITICAL_MEMORY_BYTES: u64 = 7 * BYTES_PER_GIB / 2;
@@ -306,6 +319,8 @@ fn social_scraper_data_store_identifier(label: &str) -> Option<[u8; 16]> {
         "fb-login" | "fb-scraper" => Some(FB_SCRAPER_DATA_STORE_IDENTIFIER),
         "ig-scraper" => Some(IG_SCRAPER_DATA_STORE_IDENTIFIER),
         "li-scraper" => Some(LI_SCRAPER_DATA_STORE_IDENTIFIER),
+        "substack-login" | "substack-scraper" => Some(SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER),
+        "medium-login" | "medium-scraper" => Some(MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER),
         _ => None,
     }
 }
@@ -733,6 +748,8 @@ fn active_job_uses_social_scraper(active_job: Option<&str>) -> bool {
             operation.starts_with("fb_")
                 || operation.starts_with("ig_")
                 || operation.starts_with("li_")
+                || operation.starts_with("substack_")
+                || operation.starts_with("medium_")
         })
         .unwrap_or(false)
 }
@@ -2829,6 +2846,8 @@ fn prune_snapshots(snapshot_dir: &std::path::Path, now_secs: u64) {
 
 struct SyncRelayState {
     port: u16,
+    /// Serializes token snapshots and document exchange against relay reset.
+    epoch_gate: RwLock<()>,
     /// Broadcast channel — sends doc bytes to all connected clients.
     broadcast_tx: broadcast::Sender<Arc<Vec<u8>>>,
     /// Latest doc binary, served to new joiners immediately on connect.
@@ -3304,6 +3323,8 @@ struct CaptureState {
     fb_user_agent: std::sync::Mutex<String>,
     ig_user_agent: std::sync::Mutex<String>,
     li_user_agent: std::sync::Mutex<String>,
+    substack_user_agent: std::sync::Mutex<String>,
+    medium_user_agent: std::sync::Mutex<String>,
     scraper_session: Arc<tokio::sync::Mutex<()>>,
     background_runtime: Arc<BackgroundRuntimeCoordinator>,
     x_client: rquest::Client,
@@ -3323,6 +3344,8 @@ impl CaptureState {
             fb_user_agent: std::sync::Mutex::new(String::new()),
             ig_user_agent: std::sync::Mutex::new(String::new()),
             li_user_agent: std::sync::Mutex::new(String::new()),
+            substack_user_agent: std::sync::Mutex::new(String::new()),
+            medium_user_agent: std::sync::Mutex::new(String::new()),
             scraper_session: Arc::new(tokio::sync::Mutex::new(())),
             background_runtime: Arc::new(BackgroundRuntimeCoordinator::new()),
             x_client,
@@ -5460,14 +5483,14 @@ fn get_all_local_ips() -> Vec<serde_json::Value> {
 /// This URL is encoded into the QR code shown in the Mobile Sync tab.
 /// Only devices that scan the QR code (i.e. know the token) can connect.
 #[tauri::command]
-fn get_sync_url(state: tauri::State<'_, RelayState>) -> String {
+async fn get_sync_url(state: tauri::State<'_, RelayState>) -> Result<String, String> {
+    let _epoch = state.epoch_gate.read().await;
     let port = state.port;
-    // StdRwLock guard is held briefly and dropped before any await — safe.
     let token = state.pairing_token.read().unwrap().clone();
     let ip = local_ip_address::local_ip()
         .map(|ip| ip.to_string())
         .unwrap_or_else(|_| "localhost".to_string());
-    format!("ws://{}:{}?t={}", ip, port, token)
+    Ok(format!("ws://{}:{}?t={}", ip, port, token))
 }
 
 /// Rotates the pairing token and persists the new value to disk.
@@ -5483,6 +5506,7 @@ async fn reset_pairing_token(
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let new_token = generate_token();
     std::fs::write(data_dir.join("pairing-token"), &new_token).map_err(|e| e.to_string())?;
+    let _epoch = state.epoch_gate.write().await;
     *state.pairing_token.write().unwrap() = new_token.clone();
     info!("[Sync] Pairing token rotated");
     Ok(new_token)
@@ -5495,6 +5519,7 @@ async fn factory_reset_sync_relay_in(
     let new_token = generate_token();
     std::fs::write(data_dir.join("pairing-token"), &new_token).map_err(|e| e.to_string())?;
 
+    let _epoch = state.epoch_gate.write().await;
     state
         .accepting_doc_updates
         .store(false, std::sync::atomic::Ordering::SeqCst);
@@ -5543,10 +5568,14 @@ async fn factory_reset_sync_relay(
 
 /// Resume relay document updates only after the local Automerge document is cleared.
 #[tauri::command]
-fn resume_sync_relay_after_factory_reset(state: tauri::State<'_, RelayState>) {
+async fn resume_sync_relay_after_factory_reset(
+    state: tauri::State<'_, RelayState>,
+) -> Result<(), String> {
+    let _epoch = state.epoch_gate.write().await;
     state
         .accepting_doc_updates
         .store(true, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
 }
 
 fn remove_factory_reset_file(path: &Path) -> Result<(), String> {
@@ -7659,13 +7688,13 @@ async fn broadcast_doc(
     state: tauri::State<'_, RelayState>,
     doc_bytes: Vec<u8>,
 ) -> Result<(), String> {
+    let _epoch = state.epoch_gate.read().await;
     if !state
         .accepting_doc_updates
         .load(std::sync::atomic::Ordering::SeqCst)
     {
         return Err("sync relay is being factory reset".to_string());
     }
-    let generation = state.generation.load(std::sync::atomic::Ordering::SeqCst);
     let byte_len = doc_bytes.len() as u64;
     let doc_bytes = Arc::new(doc_bytes);
     {
@@ -7673,9 +7702,8 @@ async fn broadcast_doc(
         if !state
             .accepting_doc_updates
             .load(std::sync::atomic::Ordering::SeqCst)
-            || generation != state.generation.load(std::sync::atomic::Ordering::SeqCst)
         {
-            return Err("sync relay changed generation".to_string());
+            return Err("sync relay is being factory reset".to_string());
         }
         *current_doc = Some(doc_bytes.clone());
     }
@@ -10258,6 +10286,8 @@ async fn ig_like_post(
 /// The extraction script injected into the LinkedIn WebView after page load.
 /// Reads posts from the rendered DOM and emits them via Tauri event IPC.
 const LI_EXTRACT_SCRIPT: &str = include_str!("li-extract.js");
+const SUBSTACK_EXTRACT_SCRIPT: &str = include_str!("substack-extract.js");
+const MEDIUM_EXTRACT_SCRIPT: &str = include_str!("medium-extract.js");
 
 /// Show a visible WebView window navigated to linkedin.com/login so the
 /// user can authenticate through the real LinkedIn login flow.
@@ -10671,6 +10701,1247 @@ async fn li_disconnect(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+struct EssayScrapePage {
+    url: &'static str,
+    scope: &'static str,
+    relation: Option<&'static str>,
+    substack_profile_tab: Option<&'static str>,
+}
+
+const ESSAY_ROSTER_MAX_EXTRACTION_PASSES: usize = 20;
+const ESSAY_ROSTER_MAX_SURFACE_DURATION: Duration = Duration::from_secs(60);
+const ESSAY_ROSTER_SCROLL_EVENT: &str = "essay-roster-scroll-state";
+const SUBSTACK_PROFILE_URL_EVENT: &str = "substack-profile-url";
+
+const SUBSTACK_GRAPH_PAGES: [EssayScrapePage; 4] = [
+    EssayScrapePage {
+        url: "https://substack.com/home",
+        scope: "profile_discovery",
+        relation: None,
+        substack_profile_tab: None,
+    },
+    EssayScrapePage {
+        url: "https://substack.com/home",
+        scope: "graph",
+        relation: Some("follower"),
+        substack_profile_tab: Some("followers"),
+    },
+    EssayScrapePage {
+        url: "https://substack.com/home",
+        scope: "graph",
+        relation: Some("following"),
+        substack_profile_tab: Some("following"),
+    },
+    EssayScrapePage {
+        url: "https://substack.com/home",
+        scope: "graph",
+        relation: Some("subscription"),
+        substack_profile_tab: Some("reads"),
+    },
+];
+const SUBSTACK_ACTIVITY_PAGES: [EssayScrapePage; 1] = [EssayScrapePage {
+    url: "https://substack.com/notes",
+    scope: "activity",
+    relation: None,
+    substack_profile_tab: None,
+}];
+const SUBSTACK_ESSAY_PAGES: [EssayScrapePage; 1] = [EssayScrapePage {
+    url: "https://substack.com/home",
+    scope: "essays",
+    relation: None,
+    substack_profile_tab: None,
+}];
+const MEDIUM_GRAPH_PAGES: [EssayScrapePage; 2] = [
+    EssayScrapePage {
+        url: "https://medium.com/me/following",
+        scope: "graph",
+        relation: Some("following"),
+        substack_profile_tab: None,
+    },
+    EssayScrapePage {
+        url: "https://medium.com/me/followers",
+        scope: "graph",
+        relation: Some("follower"),
+        substack_profile_tab: None,
+    },
+];
+const MEDIUM_ACTIVITY_PAGES: [EssayScrapePage; 1] = [EssayScrapePage {
+    url: "https://medium.com/",
+    scope: "activity",
+    relation: None,
+    substack_profile_tab: None,
+}];
+const MEDIUM_ESSAY_PAGES: [EssayScrapePage; 1] = [EssayScrapePage {
+    url: "https://medium.com/me/stories/public",
+    scope: "essays",
+    relation: None,
+    substack_profile_tab: None,
+}];
+
+#[derive(Clone, Copy)]
+struct EssayProviderConfig {
+    label: &'static str,
+    id: &'static str,
+    host: &'static str,
+    login_window_label: &'static str,
+    scraper_window_label: &'static str,
+    data_store_identifier: [u8; 16],
+    login_url: &'static str,
+    auth_check_url: &'static str,
+    auth_operation: &'static str,
+    auth_event: &'static str,
+    capture_event: &'static str,
+    login_closed_event: &'static str,
+    auth_expression: &'static str,
+    login_title: &'static str,
+    lifecycle_prefix: &'static str,
+    extract_script: &'static str,
+}
+
+const SUBSTACK_ESSAY_PROVIDER: EssayProviderConfig = EssayProviderConfig {
+    label: "Substack",
+    id: "substack",
+    host: "substack.com",
+    login_window_label: "substack-login",
+    scraper_window_label: "substack-scraper",
+    data_store_identifier: SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER,
+    login_url: "https://substack.com/sign-in",
+    auth_check_url: "https://substack.com/home",
+    auth_operation: "substack_check_auth",
+    auth_event: "substack-auth-result",
+    capture_event: "substack-feed-data",
+    login_closed_event: "substack-login-window-closed",
+    auth_expression: "window.location.pathname.indexOf('/home') === 0 && !document.querySelector('form[action*=\"sign-in\"]')",
+    login_title: "Connect Substack with Freed",
+    lifecycle_prefix: "substack",
+    extract_script: SUBSTACK_EXTRACT_SCRIPT,
+};
+
+const MEDIUM_ESSAY_PROVIDER: EssayProviderConfig = EssayProviderConfig {
+    label: "Medium",
+    id: "medium",
+    host: "medium.com",
+    login_window_label: "medium-login",
+    scraper_window_label: "medium-scraper",
+    data_store_identifier: MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER,
+    login_url: "https://medium.com/m/signin",
+    auth_check_url: "https://medium.com/me/settings",
+    auth_operation: "medium_check_auth",
+    auth_event: "medium-auth-result",
+    capture_event: "medium-feed-data",
+    login_closed_event: "medium-login-window-closed",
+    auth_expression: "window.location.pathname.indexOf('/me/settings') === 0 && !document.querySelector('form[action*=\"signin\"]')",
+    login_title: "Connect Medium with Freed",
+    lifecycle_prefix: "medium",
+    extract_script: MEDIUM_EXTRACT_SCRIPT,
+};
+
+#[derive(Clone, Copy)]
+struct EssayScrapePlan {
+    provider: EssayProviderConfig,
+    operation: &'static str,
+    pages: &'static [EssayScrapePage],
+}
+
+const SUBSTACK_GRAPH_SCRAPE_PLAN: EssayScrapePlan = EssayScrapePlan {
+    provider: SUBSTACK_ESSAY_PROVIDER,
+    operation: "substack_scrape_graph",
+    pages: &SUBSTACK_GRAPH_PAGES,
+};
+const SUBSTACK_ACTIVITY_SCRAPE_PLAN: EssayScrapePlan = EssayScrapePlan {
+    provider: SUBSTACK_ESSAY_PROVIDER,
+    operation: "substack_scrape_activity",
+    pages: &SUBSTACK_ACTIVITY_PAGES,
+};
+const SUBSTACK_ESSAY_SCRAPE_PLAN: EssayScrapePlan = EssayScrapePlan {
+    provider: SUBSTACK_ESSAY_PROVIDER,
+    operation: "substack_scrape_essays",
+    pages: &SUBSTACK_ESSAY_PAGES,
+};
+const MEDIUM_GRAPH_SCRAPE_PLAN: EssayScrapePlan = EssayScrapePlan {
+    provider: MEDIUM_ESSAY_PROVIDER,
+    operation: "medium_scrape_graph",
+    pages: &MEDIUM_GRAPH_PAGES,
+};
+const MEDIUM_ACTIVITY_SCRAPE_PLAN: EssayScrapePlan = EssayScrapePlan {
+    provider: MEDIUM_ESSAY_PROVIDER,
+    operation: "medium_scrape_activity",
+    pages: &MEDIUM_ACTIVITY_PAGES,
+};
+const MEDIUM_ESSAY_SCRAPE_PLAN: EssayScrapePlan = EssayScrapePlan {
+    provider: MEDIUM_ESSAY_PROVIDER,
+    operation: "medium_scrape_essays",
+    pages: &MEDIUM_ESSAY_PAGES,
+};
+
+fn provider_host_matches(host: &str, provider_host: &str) -> bool {
+    host == provider_host || host.ends_with(&format!(".{}", provider_host))
+}
+
+fn provider_page_requires_login(url: &url::Url, provider_host: &str) -> bool {
+    if !provider_host_matches(url.host_str().unwrap_or_default(), provider_host) {
+        return true;
+    }
+    let path = url.path().to_ascii_lowercase();
+    path.contains("sign-in") || path.contains("signin") || path.contains("login")
+}
+
+fn essay_capture_surface_is_sensitive(url: &url::Url, provider: EssayProviderConfig) -> bool {
+    if provider.id != "substack" {
+        return false;
+    }
+    let path = url.path().to_ascii_lowercase();
+    ["/subscriber", "/audience", "/inbox", "/messages", "/chat"]
+        .iter()
+        .any(|blocked| path.contains(blocked))
+}
+
+fn store_essay_provider_user_agent(
+    user_agent_store: &std::sync::Mutex<String>,
+    user_agent: String,
+) -> Result<String, String> {
+    let normalized = user_agent.trim();
+    if normalized.is_empty() || normalized.len() > 512 || normalized.chars().any(char::is_control) {
+        return Err("Invalid browser identity".to_string());
+    }
+    let normalized = normalized.to_string();
+    *user_agent_store.lock().unwrap() = normalized.clone();
+    Ok(normalized)
+}
+
+fn canonical_substack_profile_root(value: &str) -> Option<url::Url> {
+    let parsed = url::Url::parse(value).ok()?;
+    if parsed.scheme() != "https"
+        || !matches!(parsed.host_str(), Some("substack.com" | "www.substack.com"))
+    {
+        return None;
+    }
+    let first_segment = parsed
+        .path_segments()?
+        .find(|segment| !segment.is_empty())?;
+    let handle = first_segment.strip_prefix('@')?;
+    if handle.is_empty()
+        || handle.len() > 100
+        || !handle.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
+    {
+        return None;
+    }
+    url::Url::parse(&format!("https://substack.com/@{}", handle)).ok()
+}
+
+fn substack_profile_tab_url(root: &url::Url, tab: &str) -> Result<url::Url, String> {
+    if !matches!(tab, "followers" | "following" | "reads") {
+        return Err("Unsupported Substack profile surface".to_string());
+    }
+    let mut result = root.clone();
+    result.set_path(&format!("{}/{}", root.path().trim_end_matches('/'), tab));
+    Ok(result)
+}
+
+fn normalized_surface_path(url: &url::Url) -> &str {
+    let path = url.path().trim_end_matches('/');
+    if path.is_empty() {
+        "/"
+    } else {
+        path
+    }
+}
+
+fn normalized_surface_host(url: &url::Url) -> Option<&str> {
+    url.host_str()
+        .map(|host| host.strip_prefix("www.").unwrap_or(host))
+}
+
+fn essay_surface_origin_matches(current_url: &url::Url, target_url: &url::Url) -> bool {
+    current_url.scheme() == target_url.scheme()
+        && current_url.scheme() == "https"
+        && normalized_surface_host(current_url) == normalized_surface_host(target_url)
+        && current_url.port_or_known_default() == target_url.port_or_known_default()
+}
+
+fn essay_provider_auth_surface_matches(
+    current_url: &url::Url,
+    provider: EssayProviderConfig,
+) -> bool {
+    let Ok(target_url) = url::Url::parse(provider.auth_check_url) else {
+        return false;
+    };
+    essay_surface_origin_matches(current_url, &target_url)
+        && normalized_surface_path(current_url) == normalized_surface_path(&target_url)
+}
+
+fn essay_login_auth_probe_script(provider: EssayProviderConfig) -> Result<String, String> {
+    Ok(format!(
+        r#"
+        (function() {{
+          var attemptsRemaining = 20;
+          function proveAuthenticatedSession() {{
+            try {{
+              if (window.__FREED_ESSAY_LOGIN_AUTH_EMITTED) return;
+              var loggedIn = Boolean({});
+              if (loggedIn) {{
+                window.__FREED_ESSAY_LOGIN_AUTH_EMITTED = true;
+                window.__TAURI__.event.emit({}, {{ loggedIn: true }});
+                return;
+              }}
+            }} catch (_) {{}}
+            attemptsRemaining -= 1;
+            if (attemptsRemaining > 0) window.setTimeout(proveAuthenticatedSession, 250);
+          }}
+          window.setTimeout(proveAuthenticatedSession, 250);
+        }})();
+        "#,
+        provider.auth_expression,
+        serde_json::to_string(provider.auth_event).map_err(|error| error.to_string())?,
+    ))
+}
+
+fn essay_capture_surface_matches(
+    current_url: &url::Url,
+    target_url: &url::Url,
+    _page: &EssayScrapePage,
+) -> bool {
+    essay_surface_origin_matches(current_url, target_url)
+        && normalized_surface_path(current_url) == normalized_surface_path(target_url)
+}
+
+async fn resolve_substack_profile_root(
+    app: &tauri::AppHandle,
+    window: &tauri::WebviewWindow,
+) -> Result<url::Url, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel::<Option<String>>();
+    let sender = Arc::new(StdMutex::new(Some(sender)));
+    let listener_sender = sender.clone();
+    let listener_id = app.listen(SUBSTACK_PROFILE_URL_EVENT, move |event| {
+        let profile_url = serde_json::from_str::<serde_json::Value>(event.payload())
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("url")
+                    .and_then(|entry| entry.as_str())
+                    .map(str::to_string)
+            });
+        if let Some(sender) = listener_sender.lock().unwrap().take() {
+            let _ = sender.send(profile_url);
+        }
+    });
+
+    let event_name =
+        serde_json::to_string(SUBSTACK_PROFILE_URL_EVENT).map_err(|error| error.to_string())?;
+    let script = format!(
+        r#"
+        (function() {{
+          try {{
+            function profileRoot(value) {{
+              try {{
+                var url = new URL(value, window.location.href);
+                if (url.hostname !== "substack.com" && url.hostname !== "www.substack.com") return "";
+                var match = url.pathname.match(/^\/@[A-Za-z0-9._-]+/);
+                return match ? url.origin + match[0] : "";
+              }} catch (_) {{
+                return "";
+              }}
+            }}
+
+            var current = profileRoot(window.location.href);
+            var best = current ? {{ url: current, score: 100 }} : null;
+            document.querySelectorAll('a[href]').forEach(function(link) {{
+              var url = profileRoot(link.getAttribute('href'));
+              if (!url) return;
+              var chrome = link.closest('nav, [role="banner"], [role="navigation"], [data-testid*="sidebar"], [data-testid*="nav"]');
+              if (!chrome) return;
+              var score = 5;
+              var label = String(link.getAttribute('aria-label') || '').toLowerCase();
+              var testId = String(link.getAttribute('data-testid') || '').toLowerCase();
+              if (label.indexOf('profile') !== -1 || label.indexOf('account') !== -1) score += 8;
+              if (testId.indexOf('profile') !== -1 || testId.indexOf('user') !== -1 || testId.indexOf('avatar') !== -1) score += 6;
+              if (link.querySelector('img')) score += 2;
+              if (!best || score > best.score) best = {{ url: url, score: score }};
+            }});
+            var resolved = best && best.score >= 5 ? best.url : "";
+            window.__TAURI__.event.emit({}, {{ url: resolved || null }});
+          }} catch (_) {{
+            window.__TAURI__.event.emit({}, {{ url: null }});
+          }}
+        }})();
+        "#,
+        event_name, event_name
+    );
+    if let Err(error) = window.eval(&script) {
+        app.unlisten(listener_id);
+        return Err(error.to_string());
+    }
+
+    let profile_url = match timeout(Duration::from_secs(3), receiver).await {
+        Ok(Ok(Some(profile_url))) => Ok(profile_url),
+        Ok(Ok(None)) | Err(_) => {
+            Err("Substack did not expose the signed in profile link".to_string())
+        }
+        Ok(Err(_)) => Err("Substack profile lookup ended before completion".to_string()),
+    };
+    app.unlisten(listener_id);
+    canonical_substack_profile_root(&profile_url?)
+        .ok_or_else(|| "Substack returned an invalid profile link".to_string())
+}
+
+async fn resolve_substack_profile_root_with_fallback(
+    app: &tauri::AppHandle,
+    window: &tauri::WebviewWindow,
+) -> Result<url::Url, String> {
+    match resolve_substack_profile_root(app, window).await {
+        Ok(root) => Ok(root),
+        Err(initial_error) => {
+            window
+                .navigate(
+                    "https://substack.com/profile"
+                        .parse()
+                        .map_err(|error: url::ParseError| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+            tokio::time::sleep(Duration::from_millis(gaussian_ms(5000.0, 700.0))).await;
+            resolve_substack_profile_root(app, window)
+                .await
+                .map_err(|fallback_error| format!("{}; {}", initial_error, fallback_error))
+        }
+    }
+}
+
+async fn emit_essay_extraction_pass(
+    window: &tauri::WebviewWindow,
+    provider: EssayProviderConfig,
+    page: &EssayScrapePage,
+    capture_token: &str,
+) -> Result<(), String> {
+    let relation_json = page
+        .relation
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|error| error.to_string())?
+        .unwrap_or_else(|| "null".to_string());
+    let script = format!(
+        "window.__FREED_ESSAY_CAPTURE_SCOPE = {}; window.__FREED_ESSAY_RELATION = {}; window.__FREED_ESSAY_CAPTURE_TOKEN = {}; {}",
+        serde_json::to_string(page.scope).map_err(|error| error.to_string())?,
+        relation_json,
+        serde_json::to_string(capture_token).map_err(|error| error.to_string())?,
+        provider.extract_script,
+    );
+    window.eval(&script).map_err(|error| {
+        format!(
+            "Failed to inject {} extraction script: {}",
+            provider.label, error
+        )
+    })?;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let done_script = format!(
+        r#"
+        window.__TAURI__.event.emit({}, {{
+          entries: [], profiles: [], done: true, extractedAt: Date.now(),
+          url: window.location.href, candidateCount: 0, scope: {}, relation: {}
+        }});
+        "#,
+        serde_json::to_string(provider.capture_event).map_err(|error| error.to_string())?,
+        serde_json::to_string(page.scope).map_err(|error| error.to_string())?,
+        relation_json,
+    );
+    window
+        .eval(&done_script)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+async fn scroll_essay_roster_surface(
+    app: &tauri::AppHandle,
+    window: &tauri::WebviewWindow,
+) -> Result<bool, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel::<bool>();
+    let sender = Arc::new(StdMutex::new(Some(sender)));
+    let listener_sender = sender.clone();
+    let listener_id = app.listen(ESSAY_ROSTER_SCROLL_EVENT, move |event| {
+        let can_continue = serde_json::from_str::<serde_json::Value>(event.payload())
+            .ok()
+            .and_then(|value| value.get("canContinue").and_then(|entry| entry.as_bool()))
+            .unwrap_or(false);
+        if let Some(sender) = listener_sender.lock().unwrap().take() {
+            let _ = sender.send(can_continue);
+        }
+    });
+
+    let scroll_ratio = rand::thread_rng().gen_range(0.72f64..1.28f64);
+    let event_name =
+        serde_json::to_string(ESSAY_ROSTER_SCROLL_EVENT).map_err(|error| error.to_string())?;
+    let script = format!(
+        r#"
+        (function() {{
+          try {{
+            var target = window.__FREED_ESSAY_SCROLL_TARGET;
+            if (!target || !target.isConnected || target.scrollHeight <= target.clientHeight + 24) {{
+              var candidates = [document.scrollingElement].concat(
+                Array.from(document.querySelectorAll('main, [role="main"], [role="list"], [data-testid*="list"], section, div'))
+              ).filter(function(node) {{
+                return node && node.scrollHeight > node.clientHeight + 24;
+              }});
+              candidates.sort(function(left, right) {{
+                return (right.scrollHeight - right.clientHeight) - (left.scrollHeight - left.clientHeight);
+              }});
+              target = candidates[0] || document.scrollingElement;
+              window.__FREED_ESSAY_SCROLL_TARGET = target;
+            }}
+
+            var seen = window.__FREED_ESSAY_ROSTER_IDS;
+            var limitReached = seen instanceof Set && seen.size >= 500;
+            var viewport = target === document.scrollingElement ? window.innerHeight : target.clientHeight;
+            var before = target === document.scrollingElement ? window.scrollY : target.scrollTop;
+            var extentBefore = target ? target.scrollHeight : 0;
+            var atEnd = before + viewport >= extentBefore - 24;
+            if (!limitReached && !atEnd && target) {{
+              var amount = Math.max(320, Math.round(viewport * {}));
+              if (target === document.scrollingElement) {{
+                window.scrollBy({{ top: amount, behavior: 'smooth' }});
+              }} else if (typeof target.scrollBy === 'function') {{
+                target.scrollBy({{ top: amount, behavior: 'smooth' }});
+              }} else {{
+                target.scrollTop += amount;
+              }}
+            }}
+
+            window.setTimeout(function() {{
+              var after = target === document.scrollingElement ? window.scrollY : target.scrollTop;
+              var extentAfter = target ? target.scrollHeight : 0;
+              var moved = after > before + 1 || extentAfter > extentBefore + 1;
+              window.__TAURI__.event.emit({}, {{
+                canContinue: !limitReached && !atEnd && moved,
+                limitReached: limitReached,
+                atEnd: atEnd,
+                offset: after,
+                extent: extentAfter
+              }});
+            }}, 450);
+          }} catch (_) {{
+            window.__TAURI__.event.emit({}, {{ canContinue: false }});
+          }}
+        }})();
+        "#,
+        scroll_ratio, event_name, event_name
+    );
+    if let Err(error) = window.eval(&script) {
+        app.unlisten(listener_id);
+        return Err(error.to_string());
+    }
+
+    let can_continue = timeout(Duration::from_secs(2), receiver)
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or(false);
+    app.unlisten(listener_id);
+    Ok(can_continue)
+}
+
+async fn show_essay_provider_login(
+    app: tauri::AppHandle,
+    user_agent_store: &std::sync::Mutex<String>,
+    user_agent: String,
+    provider: EssayProviderConfig,
+) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+    let user_agent = store_essay_provider_user_agent(user_agent_store, user_agent)?;
+
+    recycle_webview_window(
+        &app,
+        provider.login_window_label,
+        WindowDestroyedReason::LoginFlow,
+        "login restart",
+    );
+
+    let auth_probe_script = essay_login_auth_probe_script(provider)?;
+    let login_window = WebviewWindowBuilder::new(
+        &app,
+        provider.login_window_label,
+        tauri::WebviewUrl::External(
+            provider
+                .login_url
+                .parse()
+                .map_err(|e: url::ParseError| e.to_string())?,
+        ),
+    )
+    .data_store_identifier(provider.data_store_identifier)
+    .user_agent(&user_agent)
+    .initialization_script(include_str!("webkit-mask.js"))
+    .title(provider.login_title)
+    .inner_size(
+        500.0 + rand::thread_rng().gen_range(-8.0f64..8.0),
+        720.0 + rand::thread_rng().gen_range(-10.0f64..10.0),
+    )
+    .center()
+    .visible(true)
+    .on_page_load(move |window, payload| {
+        if payload.event() == tauri::webview::PageLoadEvent::Finished
+            && essay_provider_auth_surface_matches(payload.url(), provider)
+        {
+            let _ = window.eval(&auth_probe_script);
+        }
+    })
+    .build()
+    .map_err(|e| e.to_string())?;
+    observe_window_created(provider.login_window_label);
+
+    let close_app = app.clone();
+    login_window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { .. } = event {
+            let _ = close_app.emit(
+                provider.login_closed_event,
+                serde_json::json!({ "closed": true }),
+            );
+        }
+    });
+    Ok(())
+}
+
+async fn hide_essay_provider_login(
+    app: tauri::AppHandle,
+    provider: EssayProviderConfig,
+) -> Result<(), String> {
+    let _ = app.emit(
+        provider.login_closed_event,
+        serde_json::json!({ "closed": true }),
+    );
+    recycle_webview_window(
+        &app,
+        provider.login_window_label,
+        WindowDestroyedReason::LoginFlow,
+        "login dismissed",
+    );
+    Ok(())
+}
+
+async fn check_essay_provider_auth(
+    app: tauri::AppHandle,
+    capture: &CaptureState,
+    user_agent_store: &std::sync::Mutex<String>,
+    user_agent: String,
+    provider: EssayProviderConfig,
+) -> Result<bool, String> {
+    use tauri::WebviewWindowBuilder;
+
+    store_essay_provider_user_agent(user_agent_store, user_agent)?;
+    let scraper_user_agent = stored_or_default_user_agent(user_agent_store);
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        provider.label,
+        "auth check",
+        Some(provider.scraper_window_label),
+    )
+    .await?;
+    let _scraper_session =
+        acquire_background_scraper_session(capture, provider.auth_operation).await?;
+    let _recycle_guard = WebviewRecycleGuard::new(
+        app.clone(),
+        provider.scraper_window_label,
+        "auth check complete",
+    );
+    let wv = match app.get_webview_window(provider.scraper_window_label) {
+        Some(window) => {
+            set_background_scraper_media_guard(&window, true)?;
+            window
+                .navigate(
+                    provider
+                        .auth_check_url
+                        .parse()
+                        .map_err(|e: url::ParseError| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
+            window
+        }
+        None => {
+            let window = WebviewWindowBuilder::new(
+                &app,
+                provider.scraper_window_label,
+                tauri::WebviewUrl::External(
+                    provider
+                        .auth_check_url
+                        .parse()
+                        .map_err(|e: url::ParseError| e.to_string())?,
+                ),
+            )
+            .data_store_identifier(provider.data_store_identifier)
+            .user_agent(&scraper_user_agent)
+            .initialization_script(include_str!("webkit-mask.js"))
+            .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
+            .title(format!("Freed {}", provider.label))
+            .inner_size(500.0, 720.0)
+            .visible(false)
+            .build()
+            .map_err(|e| e.to_string())?;
+            observe_window_created(provider.scraper_window_label);
+            window
+        }
+    };
+    set_background_scraper_media_guard(&wv, true)?;
+    tokio::time::sleep(Duration::from_millis(gaussian_ms(5000.0, 700.0))).await;
+
+    let (sender, receiver) = tokio::sync::oneshot::channel::<bool>();
+    let sender = Arc::new(StdMutex::new(Some(sender)));
+    let listener_sender = sender.clone();
+    let listener_id = app.listen(provider.auth_event, move |event| {
+        let logged_in = serde_json::from_str::<serde_json::Value>(event.payload())
+            .ok()
+            .and_then(|value| value.get("loggedIn").and_then(|entry| entry.as_bool()))
+            .unwrap_or(false);
+        if let Some(sender) = listener_sender.lock().unwrap().take() {
+            let _ = sender.send(logged_in);
+        }
+    });
+
+    let auth_script = format!(
+        r#"
+        (function() {{
+          try {{
+            var loggedIn = Boolean({});
+            window.__TAURI__.event.emit({}, {{ loggedIn: loggedIn }});
+          }} catch (error) {{
+            window.__TAURI__.event.emit({}, {{ loggedIn: false, error: String(error && error.message || error) }});
+          }}
+        }})();
+        "#,
+        provider.auth_expression,
+        serde_json::to_string(provider.auth_event).map_err(|e| e.to_string())?,
+        serde_json::to_string(provider.auth_event).map_err(|e| e.to_string())?,
+    );
+    if let Err(error) = wv.eval(&auth_script) {
+        app.unlisten(listener_id);
+        return Err(error.to_string());
+    }
+
+    let logged_in = timeout(Duration::from_secs(5), receiver)
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or(false);
+    app.unlisten(listener_id);
+    Ok(logged_in)
+}
+
+fn build_essay_scraper_window(
+    app: &tauri::AppHandle,
+    window_label: &'static str,
+    data_store_identifier: [u8; 16],
+    initial_url: &'static str,
+    user_agent: &str,
+    title: &str,
+    window_mode: ScraperWindowMode,
+) -> Result<tauri::WebviewWindow, String> {
+    use tauri::WebviewWindowBuilder;
+
+    let mut builder = WebviewWindowBuilder::new(
+        app,
+        window_label,
+        tauri::WebviewUrl::External(
+            initial_url
+                .parse()
+                .map_err(|e: url::ParseError| e.to_string())?,
+        ),
+    )
+    .data_store_identifier(data_store_identifier)
+    .user_agent(user_agent)
+    .initialization_script(include_str!("webkit-mask.js"))
+    .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
+    .title(title)
+    .inner_size(1280.0, 900.0);
+
+    if window_mode == ScraperWindowMode::Shown {
+        builder = builder.center().visible(true);
+    } else if window_mode == ScraperWindowMode::Cloaked {
+        builder = builder
+            .transparent(true)
+            .focused(false)
+            .focusable(false)
+            .decorations(false)
+            .always_on_bottom(true)
+            .skip_taskbar(true)
+            .shadow(false)
+            .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_CLOAK_JS)
+            .visible(true);
+    } else {
+        builder = builder
+            .focused(false)
+            .focusable(false)
+            .decorations(false)
+            .always_on_bottom(true)
+            .skip_taskbar(true)
+            .shadow(false)
+            .visible(false);
+    }
+
+    let window = builder.build().map_err(|e| e.to_string())?;
+    observe_window_created(window_label);
+    Ok(window)
+}
+
+async fn scrape_essay_provider(
+    app: tauri::AppHandle,
+    capture: &CaptureState,
+    user_agent_store: &std::sync::Mutex<String>,
+    user_agent: String,
+    plan: EssayScrapePlan,
+    window_mode: ScraperWindowMode,
+) -> Result<(), String> {
+    let EssayScrapePlan {
+        provider,
+        operation,
+        pages,
+    } = plan;
+    store_essay_provider_user_agent(user_agent_store, user_agent)?;
+    let scraper_user_agent = stored_or_default_user_agent(user_agent_store);
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        provider.label,
+        "authenticated capture",
+        None,
+    )
+    .await?;
+    let _scraper_session = acquire_background_scraper_session(capture, operation).await?;
+    let _recycle_guard = WebviewRecycleGuard::new(
+        app.clone(),
+        provider.scraper_window_label,
+        "authenticated capture complete",
+    );
+
+    let first_page = pages
+        .first()
+        .ok_or_else(|| format!("{} capture has no pages", provider.label))?;
+    let wv = match app.get_webview_window(provider.scraper_window_label) {
+        Some(window) => window,
+        None => build_essay_scraper_window(
+            &app,
+            provider.scraper_window_label,
+            provider.data_store_identifier,
+            first_page.url,
+            &scraper_user_agent,
+            &format!("Freed {}", provider.label),
+            window_mode,
+        )?,
+    };
+    prepare_background_scraper_window(&wv, window_mode)?;
+    emit_social_scrape_lifecycle(
+        &app,
+        &format!("{}-scrape-started", provider.lifecycle_prefix),
+        provider.id,
+        Some(&wv),
+        window_mode,
+        None,
+    );
+
+    let mut substack_profile_root = None;
+    let capture_token = format!("{}:{}:{}", provider.id, operation, rand::random::<u64>());
+    for (index, page) in pages.iter().enumerate() {
+        let surface_started = Instant::now();
+        let target_url = if let Some(tab) = page.substack_profile_tab {
+            let profile_root = match substack_profile_root.clone() {
+                Some(root) => root,
+                None => {
+                    let root = resolve_substack_profile_root_with_fallback(&app, &wv).await?;
+                    substack_profile_root = Some(root.clone());
+                    root
+                }
+            };
+            substack_profile_tab_url(&profile_root, tab)?
+        } else {
+            page.url
+                .parse()
+                .map_err(|error: url::ParseError| error.to_string())?
+        };
+        if index > 0
+            || wv
+                .url()
+                .map(|url| url.as_str() != target_url.as_str())
+                .unwrap_or(true)
+        {
+            wv.navigate(target_url.clone())
+                .map_err(|error| error.to_string())?;
+        }
+        tokio::time::sleep(Duration::from_millis(gaussian_ms(6500.0, 1000.0))).await;
+        prepare_background_scraper_window(&wv, window_mode)?;
+
+        let current_url = wv.url().map_err(|e| e.to_string())?;
+        if essay_capture_surface_is_sensitive(&current_url, provider) {
+            let message = "blocked_sensitive_surface";
+            let _ = app.emit(
+                provider.capture_event,
+                serde_json::json!({
+                    "entries": [],
+                    "profiles": [],
+                    "error": message,
+                    "extractedAt": unix_millis_now(),
+                    "url": current_url.as_str(),
+                    "candidateCount": 0
+                }),
+            );
+            return Err(format!(
+                "{} refused a subscriber management surface",
+                provider.label
+            ));
+        }
+        if provider_page_requires_login(&current_url, provider.host) {
+            let _ = app.emit(
+                provider.capture_event,
+                serde_json::json!({
+                    "entries": [],
+                    "profiles": [],
+                    "error": "authentication_required",
+                    "extractedAt": unix_millis_now(),
+                    "url": current_url.as_str(),
+                    "candidateCount": 0,
+                    "done": true
+                }),
+            );
+            emit_social_scrape_lifecycle(
+                &app,
+                &format!("{}-scrape-start-failed", provider.lifecycle_prefix),
+                provider.id,
+                Some(&wv),
+                window_mode,
+                Some("authentication required"),
+            );
+            return Err("authentication_required".to_string());
+        }
+        if !essay_capture_surface_matches(&current_url, &target_url, page) {
+            let surface = page.substack_profile_tab.unwrap_or(page.scope);
+            let message = format!("unexpected_{}_surface", surface);
+            let _ = app.emit(
+                provider.capture_event,
+                serde_json::json!({
+                    "entries": [],
+                    "profiles": [],
+                    "error": message,
+                    "extractedAt": unix_millis_now(),
+                    "url": current_url.as_str(),
+                    "candidateCount": 0
+                }),
+            );
+            return Err(format!(
+                "{} did not open the expected {} surface",
+                provider.label, surface
+            ));
+        }
+
+        if let Err(error) = emit_essay_extraction_pass(&wv, provider, page, &capture_token).await {
+            emit_social_scrape_lifecycle(
+                &app,
+                &format!("{}-scrape-start-failed", provider.lifecycle_prefix),
+                provider.id,
+                Some(&wv),
+                window_mode,
+                Some("extractor injection failed"),
+            );
+            return Err(error);
+        }
+        if index == 0 {
+            emit_social_scrape_lifecycle(
+                &app,
+                &format!("{}-scrape-healthy", provider.lifecycle_prefix),
+                provider.id,
+                Some(&wv),
+                window_mode,
+                Some("first extraction pass injected"),
+            );
+        }
+
+        if page.scope == "graph" && page.relation.is_some() {
+            let mut extraction_passes = 1usize;
+            while extraction_passes < ESSAY_ROSTER_MAX_EXTRACTION_PASSES
+                && surface_started.elapsed() < ESSAY_ROSTER_MAX_SURFACE_DURATION
+            {
+                let remaining =
+                    ESSAY_ROSTER_MAX_SURFACE_DURATION.saturating_sub(surface_started.elapsed());
+                if remaining <= Duration::from_secs(3)
+                    || !scroll_essay_roster_surface(&app, &wv).await?
+                {
+                    break;
+                }
+                let pause = Duration::from_millis(gaussian_ms(1500.0, 450.0).clamp(700, 2800));
+                let remaining =
+                    ESSAY_ROSTER_MAX_SURFACE_DURATION.saturating_sub(surface_started.elapsed());
+                if remaining <= Duration::from_millis(600) {
+                    break;
+                }
+                tokio::time::sleep(pause.min(remaining - Duration::from_millis(550))).await;
+                if surface_started.elapsed() >= ESSAY_ROSTER_MAX_SURFACE_DURATION {
+                    break;
+                }
+                emit_essay_extraction_pass(&wv, provider, page, &capture_token).await?;
+                extraction_passes += 1;
+            }
+        }
+        cleanup_background_scraper_media(&wv);
+    }
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    Ok(())
+}
+
+async fn disconnect_essay_provider(
+    app: tauri::AppHandle,
+    provider: EssayProviderConfig,
+    temporary_label: &'static str,
+) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+
+    let mut cleared = false;
+    let mut cleanup_errors = Vec::new();
+    for label in [provider.login_window_label, provider.scraper_window_label] {
+        if let Some(window) = app.get_webview_window(label) {
+            match window.clear_all_browsing_data() {
+                Ok(()) => cleared = true,
+                Err(error) => cleanup_errors.push(format!("{} data: {}", label, error)),
+            }
+            match window.destroy() {
+                Ok(()) => record_window_destroyed(
+                    &app,
+                    label,
+                    WindowDestroyedReason::User,
+                    "provider disconnect",
+                ),
+                Err(error) => cleanup_errors.push(format!("{} window: {}", label, error)),
+            }
+        }
+    }
+
+    if !cleared {
+        let window = WebviewWindowBuilder::new(
+            &app,
+            temporary_label,
+            tauri::WebviewUrl::External("about:blank".parse().unwrap()),
+        )
+        .data_store_identifier(provider.data_store_identifier)
+        .title(format!("Freed {} disconnect", provider.label))
+        .visible(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+        if let Err(error) = window.clear_all_browsing_data() {
+            cleanup_errors.push(format!("temporary data store: {}", error));
+        }
+        if let Err(error) = window.destroy() {
+            cleanup_errors.push(format!("temporary window: {}", error));
+        }
+    }
+
+    if !cleanup_errors.is_empty() {
+        return Err(format!(
+            "{} disconnect cleanup was incomplete: {}",
+            provider.label,
+            cleanup_errors.join("; ")
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn substack_show_login(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    user_agent: String,
+) -> Result<(), String> {
+    show_essay_provider_login(
+        app,
+        &capture.substack_user_agent,
+        user_agent,
+        SUBSTACK_ESSAY_PROVIDER,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn substack_hide_login(app: tauri::AppHandle) -> Result<(), String> {
+    hide_essay_provider_login(app, SUBSTACK_ESSAY_PROVIDER).await
+}
+
+#[tauri::command]
+async fn substack_check_auth(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    user_agent: String,
+) -> Result<bool, String> {
+    check_essay_provider_auth(
+        app,
+        &capture,
+        &capture.substack_user_agent,
+        user_agent,
+        SUBSTACK_ESSAY_PROVIDER,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn substack_disconnect(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+) -> Result<(), String> {
+    let result =
+        disconnect_essay_provider(app, SUBSTACK_ESSAY_PROVIDER, "substack-disconnect").await;
+    capture.substack_user_agent.lock().unwrap().clear();
+    result
+}
+
+#[tauri::command]
+async fn substack_scrape_graph(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+    user_agent: String,
+) -> Result<(), String> {
+    scrape_essay_provider(
+        app,
+        &capture,
+        &capture.substack_user_agent,
+        user_agent,
+        SUBSTACK_GRAPH_SCRAPE_PLAN,
+        window_mode,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn substack_scrape_activity(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+    user_agent: String,
+) -> Result<(), String> {
+    scrape_essay_provider(
+        app,
+        &capture,
+        &capture.substack_user_agent,
+        user_agent,
+        SUBSTACK_ACTIVITY_SCRAPE_PLAN,
+        window_mode,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn substack_scrape_essays(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+    user_agent: String,
+) -> Result<(), String> {
+    scrape_essay_provider(
+        app,
+        &capture,
+        &capture.substack_user_agent,
+        user_agent,
+        SUBSTACK_ESSAY_SCRAPE_PLAN,
+        window_mode,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn medium_show_login(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    user_agent: String,
+) -> Result<(), String> {
+    show_essay_provider_login(
+        app,
+        &capture.medium_user_agent,
+        user_agent,
+        MEDIUM_ESSAY_PROVIDER,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn medium_hide_login(app: tauri::AppHandle) -> Result<(), String> {
+    hide_essay_provider_login(app, MEDIUM_ESSAY_PROVIDER).await
+}
+
+#[tauri::command]
+async fn medium_check_auth(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    user_agent: String,
+) -> Result<bool, String> {
+    check_essay_provider_auth(
+        app,
+        &capture,
+        &capture.medium_user_agent,
+        user_agent,
+        MEDIUM_ESSAY_PROVIDER,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn medium_disconnect(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+) -> Result<(), String> {
+    let result = disconnect_essay_provider(app, MEDIUM_ESSAY_PROVIDER, "medium-disconnect").await;
+    capture.medium_user_agent.lock().unwrap().clear();
+    result
+}
+
+#[tauri::command]
+async fn medium_scrape_graph(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+    user_agent: String,
+) -> Result<(), String> {
+    scrape_essay_provider(
+        app,
+        &capture,
+        &capture.medium_user_agent,
+        user_agent,
+        MEDIUM_GRAPH_SCRAPE_PLAN,
+        window_mode,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn medium_scrape_activity(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+    user_agent: String,
+) -> Result<(), String> {
+    scrape_essay_provider(
+        app,
+        &capture,
+        &capture.medium_user_agent,
+        user_agent,
+        MEDIUM_ACTIVITY_SCRAPE_PLAN,
+        window_mode,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn medium_scrape_essays(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+    user_agent: String,
+) -> Result<(), String> {
+    scrape_essay_provider(
+        app,
+        &capture,
+        &capture.medium_user_agent,
+        user_agent,
+        MEDIUM_ESSAY_SCRAPE_PLAN,
+        window_mode,
+    )
+    .await
+}
+
 // ---------------------------------------------------------------------------
 // WebSocket relay
 // ---------------------------------------------------------------------------
@@ -10701,11 +11972,13 @@ async fn store_relay_client_doc_if_current(
     connection_generation: u64,
     bytes: Arc<Vec<u8>>,
 ) -> bool {
+    let _epoch = state.epoch_gate.read().await;
     let mut current_doc = state.current_doc.write().await;
     if !relay_connection_can_exchange_docs(state, connection_generation) {
         return false;
     }
-    *current_doc = Some(bytes);
+    *current_doc = Some(bytes.clone());
+    let _ = state.broadcast_tx.send(bytes);
     true
 }
 
@@ -10713,7 +11986,7 @@ async fn store_relay_client_doc_if_current(
 ///
 /// The client must include `?t=<token>` in the upgrade URI.  Any connection
 /// that omits the token or presents an incorrect value is rejected with HTTP
-/// 401 before the WebSocket handshake completes — no data is exchanged.
+/// 401 before the WebSocket handshake completes. No data is exchanged.
 #[cfg_attr(feature = "perf", tracing::instrument(skip(stream, state, app), fields(addr = %addr)))]
 async fn handle_connection(
     stream: TcpStream,
@@ -10723,16 +11996,20 @@ async fn handle_connection(
 ) {
     info!("[Sync] New connection from: {}", addr);
 
-    // Snapshot the token now — the StdRwLock guard is dropped here, so it is
-    // never held across an .await point.
-    let expected_token = state.pairing_token.read().unwrap().clone();
-    let connection_generation = state.generation.load(std::sync::atomic::Ordering::SeqCst);
+    let (expected_token, connection_generation) = {
+        let _epoch = state.epoch_gate.read().await;
+        (
+            state.pairing_token.read().unwrap().clone(),
+            state.generation.load(std::sync::atomic::Ordering::SeqCst),
+        )
+    };
+    let handshake_token = expected_token.clone();
     let mut disconnect_rx = state.disconnect_tx.subscribe();
 
     let ws_stream = match accept_hdr_async(
         stream,
         move |req: &WsRequest, resp: WsResponse| -> Result<WsResponse, ErrorResponse> {
-            let token_ok = relay_request_token_matches(req.uri().query(), &expected_token);
+            let token_ok = relay_request_token_matches(req.uri().query(), &handshake_token);
 
             if token_ok {
                 Ok(resp)
@@ -10758,82 +12035,110 @@ async fn handle_connection(
     };
 
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+    let mut broadcast_rx = state.broadcast_tx.subscribe();
 
-    // Increment client count and notify frontend
-    {
-        let mut count = state.client_count.write().await;
-        *count += 1;
-        let new_count = *count;
-        info!("[Sync] Client connected. Total: {}", new_count);
-        let _ = app.emit("sync-client-count", new_count);
-    }
+    let connected_count = {
+        let _epoch = state.epoch_gate.read().await;
+        let token_is_current =
+            state.pairing_token.read().unwrap().as_str() == expected_token.as_str();
+        if !token_is_current || !relay_connection_can_exchange_docs(&state, connection_generation) {
+            let _ = timeout(
+                SYNC_RELAY_DOC_SEND_TIMEOUT,
+                ws_sender.send(Message::Close(None)),
+            )
+            .await;
+            info!("[Sync] Client {} rejected during relay reset", addr);
+            return;
+        }
 
-    if !relay_connection_can_exchange_docs(&state, connection_generation) {
-        let _ = ws_sender.send(Message::Close(None)).await;
-        info!("[Sync] Client {} rejected during relay reset", addr);
-    } else {
-        // Push current doc to the new client immediately
         if let Some(doc) = state.current_doc.read().await.clone() {
-            if let Err(e) = ws_sender
-                .send(Message::Binary(doc.as_ref().clone().into()))
-                .await
+            match timeout(
+                SYNC_RELAY_DOC_SEND_TIMEOUT,
+                ws_sender.send(Message::Binary(doc.as_ref().clone().into())),
+            )
+            .await
             {
-                error!("[Sync] Failed to send initial doc: {}", e);
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    error!("[Sync] Failed to send initial doc: {}", error);
+                    return;
+                }
+                Err(_) => {
+                    error!("[Sync] Timed out sending initial doc to {}", addr);
+                    return;
+                }
             }
         }
 
-        let mut broadcast_rx = state.broadcast_tx.subscribe();
+        let mut count = state.client_count.write().await;
+        *count += 1;
+        *count
+    };
+    info!("[Sync] Client connected. Total: {}", connected_count);
+    let _ = app.emit("sync-client-count", connected_count);
 
-        loop {
-            tokio::select! {
-                msg = ws_receiver.next() => {
-                    match msg {
-                        Some(Ok(Message::Binary(data))) => {
-                            // Client pushed a document update, store and rebroadcast it.
-                            let bytes = Arc::new(data.to_vec());
-                            if !store_relay_client_doc_if_current(
-                                &state,
-                                connection_generation,
-                                bytes.clone(),
-                            ).await {
-                                info!("[Sync] Ignored stale client update after relay reset");
-                                break;
-                            }
-                            let _ = state.broadcast_tx.send(bytes);
-                        }
-                        Some(Ok(Message::Close(_))) | None => {
-                            info!("[Sync] Client {} disconnected", addr);
+    loop {
+        tokio::select! {
+            msg = ws_receiver.next() => {
+                match msg {
+                    Some(Ok(Message::Binary(data))) => {
+                        // The client pushed a document update. Store and rebroadcast it.
+                        let bytes = Arc::new(data.to_vec());
+                        if !store_relay_client_doc_if_current(
+                            &state,
+                            connection_generation,
+                            bytes,
+                        ).await {
+                            info!("[Sync] Ignored stale client update after relay reset");
                             break;
                         }
-                        Some(Ok(Message::Ping(data))) => {
-                            let _ = ws_sender.send(Message::Pong(data)).await;
-                        }
-                        Some(Err(e)) => {
-                            error!("[Sync] Error from {}: {}", addr, e);
-                            break;
-                        }
-                        _ => {}
                     }
+                    Some(Ok(Message::Close(_))) | None => {
+                        info!("[Sync] Client {} disconnected", addr);
+                        break;
+                    }
+                    Some(Ok(Message::Ping(data))) => {
+                        let _ = ws_sender.send(Message::Pong(data)).await;
+                    }
+                    Some(Err(e)) => {
+                        error!("[Sync] Error from {}: {}", addr, e);
+                        break;
+                    }
+                    _ => {}
                 }
-                broadcast = broadcast_rx.recv() => {
+            }
+            broadcast = broadcast_rx.recv() => {
+                if let Ok(doc) = broadcast {
+                    let _epoch = state.epoch_gate.read().await;
                     if !relay_connection_can_exchange_docs(&state, connection_generation) {
-                        let _ = ws_sender.send(Message::Close(None)).await;
+                        let _ = timeout(
+                            SYNC_RELAY_DOC_SEND_TIMEOUT,
+                            ws_sender.send(Message::Close(None)),
+                        ).await;
                         info!("[Sync] Client {} rejected a broadcast after relay reset", addr);
                         break;
                     }
-                    if let Ok(doc) = broadcast {
-                        if let Err(e) = ws_sender.send(Message::Binary(doc.as_ref().clone().into())).await {
-                            error!("[Sync] Failed to send to {}: {}", addr, e);
+                    match timeout(
+                        SYNC_RELAY_DOC_SEND_TIMEOUT,
+                        ws_sender.send(Message::Binary(doc.as_ref().clone().into())),
+                    ).await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(error)) => {
+                            error!("[Sync] Failed to send to {}: {}", addr, error);
+                            break;
+                        }
+                        Err(_) => {
+                            error!("[Sync] Timed out sending to {}", addr);
                             break;
                         }
                     }
                 }
-                reset = disconnect_rx.recv() => {
-                    if reset.is_ok() {
-                        let _ = ws_sender.send(Message::Close(None)).await;
-                        info!("[Sync] Client {} disconnected by factory reset", addr);
-                        break;
-                    }
+            }
+            reset = disconnect_rx.recv() => {
+                if reset.is_ok() {
+                    let _ = ws_sender.send(Message::Close(None)).await;
+                    info!("[Sync] Client {} disconnected by factory reset", addr);
+                    break;
                 }
             }
         }
@@ -11953,6 +13258,7 @@ pub fn run() {
 
     let relay_state = Arc::new(SyncRelayState {
         port: sync_relay_port(),
+        epoch_gate: RwLock::new(()),
         broadcast_tx,
         current_doc: RwLock::new(None),
         disconnect_tx,
@@ -13221,6 +14527,20 @@ pub fn run() {
             li_check_auth,
             li_scrape_feed,
             li_disconnect,
+            substack_show_login,
+            substack_hide_login,
+            substack_check_auth,
+            substack_disconnect,
+            substack_scrape_graph,
+            substack_scrape_activity,
+            substack_scrape_essays,
+            medium_show_login,
+            medium_hide_login,
+            medium_check_auth,
+            medium_disconnect,
+            medium_scrape_graph,
+            medium_scrape_activity,
+            medium_scrape_essays,
             youtube::yt_show_login,
             youtube::yt_hide_login,
             youtube::yt_check_auth,
@@ -13316,6 +14636,7 @@ mod tests {
         let mut disconnect_rx = disconnect_tx.subscribe();
         let state = Arc::new(SyncRelayState {
             port: DEFAULT_SYNC_RELAY_PORT,
+            epoch_gate: RwLock::new(()),
             broadcast_tx,
             current_doc: RwLock::new(Some(Arc::new(vec![1, 2, 3]))),
             disconnect_tx,
@@ -13325,9 +14646,20 @@ mod tests {
             pairing_token: StdRwLock::new("old-token".to_string()),
         });
 
-        let new_token = factory_reset_sync_relay_in(data_dir.path(), &state)
-            .await
-            .unwrap();
+        let mut broadcast_rx = state.broadcast_tx.subscribe();
+        assert!(store_relay_client_doc_if_current(&state, 7, Arc::new(vec![4, 5, 6]),).await);
+        assert_eq!(broadcast_rx.recv().await.unwrap().as_slice(), &[4, 5, 6]);
+
+        let epoch = state.epoch_gate.read().await;
+        let reset_state = state.clone();
+        let reset_data_dir = data_dir.path().to_path_buf();
+        let reset = tokio::spawn(async move {
+            factory_reset_sync_relay_in(&reset_data_dir, &reset_state).await
+        });
+        tokio::task::yield_now().await;
+        assert!(!reset.is_finished());
+        drop(epoch);
+        let new_token = reset.await.unwrap().unwrap();
 
         assert_ne!(new_token, "old-token");
         assert_eq!(
@@ -13382,6 +14714,7 @@ mod tests {
         let mut disconnect_rx = disconnect_tx.subscribe();
         let state = Arc::new(SyncRelayState {
             port: DEFAULT_SYNC_RELAY_PORT,
+            epoch_gate: RwLock::new(()),
             broadcast_tx,
             current_doc: RwLock::new(Some(Arc::new(vec![1, 2, 3]))),
             disconnect_tx,
@@ -13995,6 +15328,14 @@ mod tests {
         assert_eq!(
             data_store_identifier_folder(LI_SCRAPER_DATA_STORE_IDENTIFIER),
             "66726565-641d-0003-9a7d-3701021d0003"
+        );
+        assert_eq!(
+            data_store_identifier_folder(SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER),
+            "66726565-645b-0004-9a7d-3701025b0004"
+        );
+        assert_eq!(
+            data_store_identifier_folder(MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER),
+            "66726565-646d-0005-9a7d-3701026d0005"
         );
     }
 
@@ -14660,14 +16001,263 @@ mod tests {
             social_scraper_data_store_identifier("li-scraper"),
             Some(LI_SCRAPER_DATA_STORE_IDENTIFIER)
         );
+        assert_eq!(
+            social_scraper_data_store_identifier("substack-login"),
+            Some(SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("substack-scraper"),
+            Some(SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("medium-login"),
+            Some(MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("medium-scraper"),
+            Some(MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
         assert_eq!(social_scraper_data_store_identifier("main"), None);
 
         let unique = HashSet::from([
             FB_SCRAPER_DATA_STORE_IDENTIFIER,
             IG_SCRAPER_DATA_STORE_IDENTIFIER,
             LI_SCRAPER_DATA_STORE_IDENTIFIER,
+            SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER,
+            MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER,
         ]);
-        assert_eq!(unique.len(), 3);
+        assert_eq!(unique.len(), 5);
+    }
+
+    #[test]
+    fn essay_provider_login_detection_rejects_auth_and_foreign_pages() {
+        let substack_home = url::Url::parse("https://substack.com/home").unwrap();
+        let substack_login = url::Url::parse("https://substack.com/sign-in").unwrap();
+        let medium_settings = url::Url::parse("https://medium.com/me/settings").unwrap();
+        let medium_login = url::Url::parse("https://medium.com/m/signin").unwrap();
+        let foreign = url::Url::parse("https://example.com/home").unwrap();
+
+        assert!(!provider_page_requires_login(
+            &substack_home,
+            "substack.com"
+        ));
+        assert!(provider_page_requires_login(
+            &substack_login,
+            "substack.com"
+        ));
+        assert!(!provider_page_requires_login(
+            &medium_settings,
+            "medium.com"
+        ));
+        assert!(provider_page_requires_login(&medium_login, "medium.com"));
+        assert!(provider_page_requires_login(&foreign, "substack.com"));
+    }
+
+    #[test]
+    fn essay_login_auth_requires_the_configured_canonical_surface() {
+        let substack_home = url::Url::parse("https://substack.com/home?redirected=1").unwrap();
+        let substack_www_home = url::Url::parse("https://www.substack.com/home").unwrap();
+        let substack_help = url::Url::parse("https://substack.com/help").unwrap();
+        let substack_article = url::Url::parse("https://substack.com/p/example").unwrap();
+        let substack_tenant_home = url::Url::parse("https://example.substack.com/home").unwrap();
+        let insecure_home = url::Url::parse("http://substack.com/home").unwrap();
+
+        assert!(essay_provider_auth_surface_matches(
+            &substack_home,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(essay_provider_auth_surface_matches(
+            &substack_www_home,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(!essay_provider_auth_surface_matches(
+            &substack_help,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(!essay_provider_auth_surface_matches(
+            &substack_article,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(!essay_provider_auth_surface_matches(
+            &substack_tenant_home,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(!essay_provider_auth_surface_matches(
+            &insecure_home,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+
+        let script = essay_login_auth_probe_script(SUBSTACK_ESSAY_PROVIDER).unwrap();
+        assert!(script.contains(SUBSTACK_ESSAY_PROVIDER.auth_expression));
+        assert!(script.contains(SUBSTACK_ESSAY_PROVIDER.auth_event));
+        assert!(!script.contains("loggedIn: false"));
+    }
+
+    #[test]
+    fn essay_provider_configurations_keep_sessions_and_events_isolated() {
+        for provider in [SUBSTACK_ESSAY_PROVIDER, MEDIUM_ESSAY_PROVIDER] {
+            let login_url = url::Url::parse(provider.login_url).unwrap();
+            let auth_url = url::Url::parse(provider.auth_check_url).unwrap();
+
+            assert!(provider_host_matches(
+                login_url.host_str().unwrap(),
+                provider.host
+            ));
+            assert!(provider_host_matches(
+                auth_url.host_str().unwrap(),
+                provider.host
+            ));
+            assert_ne!(provider.auth_event, provider.capture_event);
+            assert_ne!(provider.login_window_label, provider.scraper_window_label);
+        }
+
+        assert_ne!(
+            SUBSTACK_ESSAY_PROVIDER.data_store_identifier,
+            MEDIUM_ESSAY_PROVIDER.data_store_identifier
+        );
+        assert_ne!(
+            SUBSTACK_ESSAY_PROVIDER.capture_event,
+            MEDIUM_ESSAY_PROVIDER.capture_event
+        );
+    }
+
+    #[test]
+    fn authenticated_essay_browser_identity_is_validated_and_stored() {
+        let store = std::sync::Mutex::new(String::new());
+        let user_agent = "Mozilla/5.0 AppleWebKit/605.1.15 Safari/605.1.15".to_string();
+
+        assert_eq!(
+            store_essay_provider_user_agent(&store, format!("  {}  ", user_agent)).unwrap(),
+            user_agent
+        );
+        assert_eq!(stored_or_default_user_agent(&store), user_agent);
+        assert!(store_essay_provider_user_agent(&store, "bad\nheader".to_string()).is_err());
+        assert_eq!(stored_or_default_user_agent(&store), user_agent);
+    }
+
+    #[test]
+    fn substack_profile_surfaces_accept_only_public_profile_roots() {
+        let root = canonical_substack_profile_root(
+            "https://substack.com/@Ada_Lovelace/followers?utm_source=test",
+        )
+        .unwrap();
+
+        assert_eq!(root.as_str(), "https://substack.com/@Ada_Lovelace");
+        assert_eq!(
+            substack_profile_tab_url(&root, "following")
+                .unwrap()
+                .as_str(),
+            "https://substack.com/@Ada_Lovelace/following"
+        );
+        assert!(canonical_substack_profile_root("https://evil.example/@ada").is_none());
+        assert!(canonical_substack_profile_root("https://ada.substack.com/").is_none());
+        assert!(
+            canonical_substack_profile_root("https://substack.com/publish/subscribers").is_none()
+        );
+        assert!(substack_profile_tab_url(&root, "subscribers").is_err());
+    }
+
+    #[test]
+    fn essay_roster_capture_has_hard_traversal_limits() {
+        assert_eq!(ESSAY_ROSTER_MAX_EXTRACTION_PASSES, 20);
+        assert_eq!(ESSAY_ROSTER_MAX_SURFACE_DURATION, Duration::from_secs(60));
+        assert_eq!(
+            SUBSTACK_GRAPH_PAGES
+                .iter()
+                .filter_map(|page| page.substack_profile_tab)
+                .collect::<Vec<_>>(),
+            vec!["followers", "following", "reads"]
+        );
+        assert!(MEDIUM_GRAPH_PAGES
+            .iter()
+            .all(|page| page.scope == "graph" && page.relation.is_some()));
+    }
+
+    #[test]
+    fn essay_capture_rejects_redirects_to_the_wrong_provider_surface() {
+        let medium_followers = url::Url::parse("https://medium.com/me/followers").unwrap();
+        let medium_home = url::Url::parse("https://medium.com/").unwrap();
+        let medium_wrong_host =
+            url::Url::parse("https://publication.medium.com/me/followers").unwrap();
+        assert!(essay_capture_surface_matches(
+            &medium_followers,
+            &medium_followers,
+            &MEDIUM_GRAPH_PAGES[1]
+        ));
+        assert!(!essay_capture_surface_matches(
+            &medium_home,
+            &medium_followers,
+            &MEDIUM_GRAPH_PAGES[1]
+        ));
+        assert!(!essay_capture_surface_matches(
+            &medium_wrong_host,
+            &medium_followers,
+            &MEDIUM_GRAPH_PAGES[1]
+        ));
+
+        let substack_profile = url::Url::parse("https://substack.com/@ada/following/").unwrap();
+        let wrong_substack_profile =
+            url::Url::parse("https://substack.com/@grace/following").unwrap();
+        let substack_home = url::Url::parse("https://substack.com/home").unwrap();
+        let substack_wrong_host =
+            url::Url::parse("https://ada.substack.com/@ada/following").unwrap();
+        assert!(essay_capture_surface_matches(
+            &substack_profile,
+            &substack_profile,
+            &SUBSTACK_GRAPH_PAGES[2]
+        ));
+        assert!(!essay_capture_surface_matches(
+            &substack_home,
+            &substack_profile,
+            &SUBSTACK_GRAPH_PAGES[2]
+        ));
+        assert!(!essay_capture_surface_matches(
+            &wrong_substack_profile,
+            &substack_profile,
+            &SUBSTACK_GRAPH_PAGES[2]
+        ));
+        assert!(!essay_capture_surface_matches(
+            &substack_wrong_host,
+            &substack_profile,
+            &SUBSTACK_GRAPH_PAGES[2]
+        ));
+    }
+
+    #[test]
+    fn essay_capture_plan_excludes_subscriber_management_surfaces() {
+        for page in SUBSTACK_GRAPH_PAGES
+            .iter()
+            .chain(SUBSTACK_ACTIVITY_PAGES.iter())
+            .chain(SUBSTACK_ESSAY_PAGES.iter())
+            .chain(MEDIUM_GRAPH_PAGES.iter())
+            .chain(MEDIUM_ACTIVITY_PAGES.iter())
+            .chain(MEDIUM_ESSAY_PAGES.iter())
+        {
+            let path = url::Url::parse(page.url)
+                .unwrap()
+                .path()
+                .to_ascii_lowercase();
+            assert!(!path.contains("subscriber"));
+            assert_ne!(page.substack_profile_tab, Some("subscribers"));
+        }
+
+        for path in [
+            "https://substack.com/publish/subscribers",
+            "https://substack.com/publish/audience",
+            "https://substack.com/inbox",
+            "https://substack.com/messages/thread-1",
+            "https://substack.com/chat/room-1",
+        ] {
+            let url = url::Url::parse(path).unwrap();
+            assert!(essay_capture_surface_is_sensitive(
+                &url,
+                SUBSTACK_ESSAY_PROVIDER
+            ));
+            assert!(!essay_capture_surface_is_sensitive(
+                &url,
+                MEDIUM_ESSAY_PROVIDER
+            ));
+        }
     }
 
     #[test]

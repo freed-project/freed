@@ -24,154 +24,62 @@ const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const cliPath = path.join(moduleDir, "provider-visible-paths.mjs");
 const repoRoot = path.resolve(moduleDir, "../..");
 
-const EXACT_SCOPE_CASES = [
+const ALL_SOCIAL_PROVIDER_SCOPES = [
+  "facebook",
+  "instagram",
+  "linkedin",
+  "medium",
+  "substack",
+  "x",
+  "youtube",
+];
+const ALL_PROVIDER_SCOPES = [
+  "facebook",
+  "instagram",
+  "linkedin",
+  "medium",
+  "other",
+  "substack",
+  "x",
+  "youtube",
+];
+
+const CRITICAL_EXACT_SCOPE_CASES = [
+  ["packages/desktop/src-tauri/src/lib.rs", ALL_PROVIDER_SCOPES],
+  ["packages/desktop/src/App.tsx", ALL_PROVIDER_SCOPES],
   [
-    "packages/desktop/src-tauri/src/lib.rs",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    "packages/desktop/src/components/ProviderSyncActionButton.tsx",
+    ALL_SOCIAL_PROVIDER_SCOPES,
   ],
-  [
-    "packages/desktop/src/App.tsx",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
-  ],
-  [
-    "packages/desktop/src/components/FacebookSettingsSection.tsx",
-    ["facebook"],
-  ],
-  [
-    "packages/desktop/src/components/InstagramSettingsSection.tsx",
-    ["instagram"],
-  ],
-  [
-    "packages/desktop/src/components/LinkedInSettingsSection.tsx",
-    ["linkedin"],
-  ],
-  ["packages/desktop/src/components/MobileSyncTab.tsx", ["other"]],
-  ["packages/desktop/src/components/XSettingsSection.tsx", ["x"]],
-  [
-    "packages/desktop/src/components/YouTubeSettingsSection.tsx",
-    ["youtube"],
-  ],
-  ["packages/desktop/src/hooks/useCloudProviders.ts", ["other"]],
-  [
-    "packages/desktop/src/hooks/usePostLoginAutoSync.ts",
-    ["facebook", "instagram", "linkedin"],
-  ],
-  ["packages/desktop/src/lib/ai-summarizer.ts", ["other"]],
-  [
-    "packages/desktop/src/lib/automerge-types.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
-  ],
-  [
-    "packages/desktop/src/lib/automerge.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
-  ],
-  [
-    "packages/desktop/src/lib/automerge.worker.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
-  ],
-  [
-    "packages/desktop/src/lib/capture.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
-  ],
-  ["packages/desktop/src/lib/contact-sync-storage.ts", ["other"]],
-  ["packages/desktop/src/lib/content-fetcher.ts", ["other"]],
-  ["packages/desktop/src/lib/facebook-group-discovery.ts", ["facebook"]],
-  [
-    "packages/desktop/src/lib/factory-reset-guard.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
-  ],
-  ["packages/desktop/src/lib/local-ai-models.ts", ["other"]],
-  [
-    "packages/desktop/src/lib/media-vault.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
-  ],
-  [
-    "packages/desktop/src/lib/native-json-store.ts",
-    ["facebook", "instagram", "linkedin", "x", "youtube"],
-  ],
-  ["packages/desktop/src/lib/outbox.ts", ["facebook", "instagram", "x"]],
   [
     "packages/desktop/src/lib/provider-auth-lifecycle.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_SOCIAL_PROVIDER_SCOPES,
   ],
-  [
-    "packages/desktop/src/lib/provider-health.ts",
-    ["facebook", "instagram", "linkedin", "x", "youtube"],
-  ],
-  [
-    "packages/desktop/src/lib/reader-hydration.ts",
-    ["facebook", "instagram", "other", "x"],
-  ],
-  ["packages/desktop/src/lib/rss-poller.ts", ["other"]],
-  ["packages/desktop/src/lib/rss-refresh-plan.ts", ["other"]],
-  ["packages/desktop/src/lib/rss-runtime-state.ts", ["other"]],
-  [
-    "packages/desktop/src/lib/scraper-prefs.ts",
-    ["facebook", "instagram", "linkedin", "x", "youtube"],
-  ],
-  ["packages/desktop/src/lib/secure-storage.ts", ["other"]],
-  [
-    "packages/desktop/src/lib/semantic-classifier.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
-  ],
+  ["packages/desktop/src/lib/provider-health.ts", ALL_SOCIAL_PROVIDER_SCOPES],
   [
     "packages/desktop/src/lib/social-auth-transient-errors.ts",
-    ["facebook", "instagram", "linkedin", "youtube"],
+    ["facebook", "instagram", "linkedin", "medium", "substack", "youtube"],
   ],
-  [
-    "packages/desktop/src/lib/social-comment-hydration.ts",
-    ["facebook", "instagram"],
-  ],
-  [
-    "packages/desktop/src/lib/social-outbox-state.ts",
-    ["facebook", "instagram", "x"],
-  ],
-  [
-    "packages/desktop/src/lib/store.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
-  ],
-  ["packages/desktop/src/lib/sync.ts", ["other"]],
-  ["packages/desktop/src/lib/x-login-reset-controller.ts", ["x"]],
-  ["packages/pwa/src/App.tsx", ["other"]],
-  ["packages/pwa/src/lib/automerge-types.ts", ["other"]],
-  ["packages/pwa/src/lib/automerge.ts", ["other"]],
-  ["packages/pwa/src/lib/automerge.worker.ts", ["other"]],
-  ["packages/pwa/src/lib/factory-reset-coordinator.ts", ["other"]],
-  ["packages/pwa/src/lib/store.ts", ["other"]],
-  ["packages/shared/src/contact-sync-state.ts", ["other"]],
-  ["packages/shared/src/preferences.ts", ["other"]],
-  [
-    "packages/shared/src/schema.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
-  ],
-  [
-    "packages/shared/src/sync-write-policy.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
-  ],
-  ["packages/sync/src/storage/indexeddb.ts", ["other"]],
-  [
-    "packages/ui/src/components/SettingsDialog.tsx",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
-  ],
+  ["packages/desktop/src/lib/store.ts", ALL_PROVIDER_SCOPES],
+  ["packages/shared/src/schema.ts", ALL_PROVIDER_SCOPES],
+  ["packages/shared/src/sync-write-policy.ts", ALL_PROVIDER_SCOPES],
+  ["packages/ui/src/components/SettingsDialog.tsx", ALL_PROVIDER_SCOPES],
   [
     "packages/ui/src/components/feed/ReaderView.tsx",
-    ["facebook", "instagram", "other", "x"],
+    ["facebook", "instagram", "medium", "other", "substack", "x"],
   ],
-  ["packages/ui/src/components/settings/AISection.tsx", ["other"]],
-  ["packages/ui/src/hooks/useContactSync.ts", ["other"]],
-  ["packages/ui/src/lib/device-ai-preferences.ts", ["other"]],
-  [
-    "packages/ui/src/lib/factory-reset.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
-  ],
+  ["packages/ui/src/lib/factory-reset.ts", ALL_PROVIDER_SCOPES],
 ];
 
 test("state, reset, and request boundaries have exact provider scopes", () => {
-  assert.deepEqual(
-    [...PROVIDER_VISIBLE_EXACT_SCOPES.keys()],
-    EXACT_SCOPE_CASES.map(([filePath]) => filePath),
-  );
-  for (const [filePath, providers] of EXACT_SCOPE_CASES) {
+  for (const [filePath, providers] of PROVIDER_VISIBLE_EXACT_SCOPES) {
+    assert.equal(isProviderVisiblePath(filePath), true, filePath);
+    assert.ok(providers.length > 0, filePath);
+    assert.deepEqual(providers, [...providers].sort(), filePath);
+    assert.equal(new Set(providers).size, providers.length, filePath);
+    assert.deepEqual(providerIdsForPath(filePath), providers, filePath);
+  }
+  for (const [filePath, providers] of CRITICAL_EXACT_SCOPE_CASES) {
     assert.equal(isProviderVisiblePath(filePath), true, filePath);
     assert.deepEqual(providerIdsForPath(filePath), providers, filePath);
   }
@@ -208,6 +116,46 @@ test("desktop capture, auth, and extractor files are provider-visible", () => {
   );
   assert.equal(
     isProviderVisiblePath("packages/desktop/src/lib/youtube-playlist.ts"),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src/lib/authenticated-essay-capture.ts",
+    ),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src/lib/authenticated-essay-auth.ts",
+    ),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src/lib/authenticated-essay-poller.ts",
+    ),
+    true,
+  );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src/lib/authenticated-essay-poller.ts",
+    ),
+    ["medium", "substack"],
+  );
+  assert.equal(
+    isProviderVisiblePath("packages/desktop/src/lib/substack-auth.ts"),
+    true,
+  );
+  assert.deepEqual(
+    providerIdsForPath("packages/desktop/src/lib/substack-auth.ts"),
+    ["substack"],
+  );
+  assert.deepEqual(
+    providerIdsForPath("packages/desktop/src/lib/medium-auth.ts"),
+    ["medium"],
+  );
+  assert.equal(
+    isProviderVisiblePath("packages/desktop/src-tauri/src/medium-extract.js"),
     true,
   );
   assert.equal(
@@ -255,6 +203,30 @@ test("risk-only provider surfaces are provider-visible even without a focused te
   assert.equal(
     isProviderVisiblePath(
       "packages/desktop/src-tauri/capabilities/ig-scraper.json",
+    ),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src-tauri/capabilities/substack-session.json",
+    ),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src-tauri/capabilities/medium-session.json",
+    ),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src-tauri/capabilities/future-provider.json",
+    ),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath(
+      "packages/desktop/src-tauri/gen/schemas/capabilities.json",
     ),
     true,
   );
@@ -365,7 +337,7 @@ test("provider UI entry points and automatic hydration callers are provider-visi
   );
 });
 
-test("provider capture packages are provider-visible, including linkedin and youtube", () => {
+test("provider capture packages are provider-visible", () => {
   assert.equal(
     isProviderVisiblePath("packages/capture-facebook/src/selectors.ts"),
     true,
@@ -388,6 +360,14 @@ test("provider capture packages are provider-visible, including linkedin and you
   );
   assert.equal(
     isProviderVisiblePath("packages/capture-youtube/src/browser.ts"),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath("packages/capture-substack/src/normalize.ts"),
+    true,
+  );
+  assert.equal(
+    isProviderVisiblePath("packages/capture-medium/src/normalize.ts"),
     true,
   );
 });
@@ -462,26 +442,33 @@ test("non-provider paths are not provider-visible", () => {
 test("focused-surface exports stay aligned with the risk predicate", () => {
   for (const filePath of SOCIAL_PROVIDER_DESKTOP_FILES) {
     assert.equal(isProviderVisiblePath(filePath), true, filePath);
+    assert.ok(providerIdsForPath(filePath).length > 0, filePath);
   }
   for (const filePath of PROVIDER_VISIBLE_EXTRA_FILES) {
     assert.equal(isProviderVisiblePath(filePath), true, filePath);
+    assert.ok(providerIdsForPath(filePath).length > 0, filePath);
   }
   for (const filePath of PROVIDER_VISIBLE_ORCHESTRATION_FILES) {
     assert.equal(isProviderVisiblePath(filePath), true, filePath);
+    assert.ok(providerIdsForPath(filePath).length > 0, filePath);
   }
   for (const prefix of SOCIAL_PROVIDER_PACKAGE_PREFIXES) {
+    const filePath = `${prefix}src/anything.ts`;
     assert.equal(
-      isProviderVisiblePath(`${prefix}src/anything.ts`),
+      isProviderVisiblePath(filePath),
       true,
       prefix,
     );
+    assert.ok(providerIdsForPath(filePath).length > 0, prefix);
   }
   for (const prefix of PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES) {
+    const filePath = `${prefix}provider-contact.ts`;
     assert.equal(
-      isProviderVisiblePath(`${prefix}src/anything.ts`),
+      isProviderVisiblePath(filePath),
       true,
       prefix,
     );
+    assert.ok(providerIdsForPath(filePath).length > 0, prefix);
   }
 });
 
@@ -577,7 +564,7 @@ function validApproval(overrides = {}) {
     approvalSource: { kind: "control-task", reference: "P1-04" },
     approvedAt: "2026-07-10T16:00:00.000Z",
     expiresAt: "2026-07-17T16:00:00.000Z",
-    providers: ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    providers: ALL_PROVIDER_SCOPES,
     observableBehavior:
       "Changes when existing provider work is coordinated by the native runtime.",
     fingerprintingRisk:
@@ -589,14 +576,7 @@ function validApproval(overrides = {}) {
     pathScopes: [
       {
         path: "packages/desktop/src-tauri/src/lib.rs",
-        providers: [
-          "facebook",
-          "instagram",
-          "linkedin",
-          "other",
-          "x",
-          "youtube",
-        ],
+        providers: ALL_PROVIDER_SCOPES,
       },
     ],
     ...overrides,
@@ -685,14 +665,7 @@ test("structured provider approval validates exact path scope and expiry", () =>
   );
 
   assert.equal(approval.schemaVersion, 1);
-  assert.deepEqual(approval.providers, [
-    "facebook",
-    "instagram",
-    "linkedin",
-    "other",
-    "x",
-    "youtube",
-  ]);
+  assert.deepEqual(approval.providers, ALL_PROVIDER_SCOPES);
   assert.deepEqual(approval.paths, ["packages/desktop/src-tauri/src/lib.rs"]);
   assert.match(approval.authorizationDigest, /^sha256:[0-9a-f]{64}$/);
 });
@@ -877,10 +850,64 @@ test("provider-specific paths infer the provider used to validate approval scope
     ),
     ["youtube"],
   );
+  assert.deepEqual(
+    providerIdsForPath("packages/capture-substack/src/normalize.ts"),
+    ["substack"],
+  );
+  assert.deepEqual(
+    providerIdsForPath("packages/desktop/src/lib/medium-capture.ts"),
+    ["medium"],
+  );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src-tauri/capabilities/substack-session.json",
+    ),
+    ["substack"],
+  );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src-tauri/capabilities/medium-session.json",
+    ),
+    ["medium"],
+  );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src-tauri/gen/schemas/capabilities.json",
+    ),
+    [
+      "facebook",
+      "instagram",
+      "linkedin",
+      "medium",
+      "substack",
+      "x",
+      "youtube",
+    ],
+  );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src/lib/authenticated-essay-capture.ts",
+    ),
+    ["medium", "substack"],
+  );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src/lib/authenticated-essay-auth.ts",
+    ),
+    ["medium", "substack"],
+  );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src/lib/authenticated-essay-poller.ts",
+    ),
+    ["medium", "substack"],
+  );
   assert.deepEqual(providerIdsForPath("packages/shared/src/legal.ts"), [
     "facebook",
     "instagram",
     "linkedin",
+    "medium",
+    "substack",
     "x",
     "youtube",
   ]);
@@ -893,7 +920,32 @@ test("provider-specific paths infer the provider used to validate approval scope
   ]);
   assert.deepEqual(
     providerIdsForPath("packages/desktop/src-tauri/src/lib.rs"),
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
+  );
+});
+
+test("multi-provider inferred scopes validate after canonical normalization", () => {
+  const path = "packages/desktop/src/lib/authenticated-essay-capture.ts";
+  const providers = providerIdsForPath(path);
+  const packet = validApproval({
+    approvalSource: {
+      kind: "owner-confirmation",
+      reference: "task-019f-provider-diff-confirmation",
+    },
+    providers,
+    paths: [path],
+    pathScopes: [{ path, providers }],
+  });
+  const record = {
+    ...packet,
+    authorizationDigest: providerApprovalAuthorizationDigest(packet),
+  };
+
+  assert.doesNotThrow(() =>
+    validateProviderRiskApproval(record, record.paths, {
+      now: Date.parse("2026-07-11T00:00:00.000Z"),
+      diffSha: record.diffSha,
+    }),
   );
 });
 
@@ -1004,7 +1056,7 @@ test("structured provider approval rejects provider names that contradict the pa
           diffSha: "a".repeat(40),
         },
       ),
-    /must equal inferred provider scope: facebook, instagram, linkedin, x, youtube/,
+    /must equal inferred provider scope: facebook, instagram, linkedin, medium, substack, x, youtube/,
   );
 });
 

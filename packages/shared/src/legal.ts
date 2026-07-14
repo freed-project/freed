@@ -1,6 +1,13 @@
 export type LegalDocId = "terms" | "eula" | "privacy";
 
-export type ProviderRiskId = "x" | "facebook" | "instagram" | "linkedin" | "youtube";
+export type ProviderRiskId =
+  | "x"
+  | "facebook"
+  | "instagram"
+  | "linkedin"
+  | "substack"
+  | "medium"
+  | "youtube";
 
 export type LegalSurface =
   | "website-download"
@@ -10,6 +17,8 @@ export type LegalSurface =
   | "desktop-provider-facebook"
   | "desktop-provider-instagram"
   | "desktop-provider-linkedin"
+  | "desktop-provider-substack"
+  | "desktop-provider-medium"
   | "desktop-provider-youtube";
 
 export interface LegalDocMeta {
@@ -53,6 +62,8 @@ export const PROVIDER_RISK_VERSIONS: Record<ProviderRiskId, string> = {
   facebook: "2026-03-31-facebook",
   instagram: "2026-03-31-instagram",
   linkedin: "2026-03-31-linkedin",
+  substack: "2026-07-13-substack",
+  medium: "2026-07-13-medium",
   youtube: "2026-07-10-youtube",
 };
 
@@ -103,6 +114,10 @@ export function providerSurface(provider: ProviderRiskId): LegalSurface {
       return "desktop-provider-instagram";
     case "linkedin":
       return "desktop-provider-linkedin";
+    case "substack":
+      return "desktop-provider-substack";
+    case "medium":
+      return "desktop-provider-medium";
     case "youtube":
       return "desktop-provider-youtube";
   }

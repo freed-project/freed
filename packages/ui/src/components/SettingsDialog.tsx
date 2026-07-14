@@ -78,7 +78,14 @@ import {
   InterfaceZoomSlider,
 } from "./DisplayScaleControls.js";
 import { Tooltip } from "./Tooltip.js";
-import { ExternalLinkIcon, GoogleContactsIcon, StoryWallIcon, YoutubeIcon } from "./icons.js";
+import {
+  ExternalLinkIcon,
+  GoogleContactsIcon,
+  MediumIcon,
+  StoryWallIcon,
+  SubstackIcon,
+  YoutubeIcon,
+} from "./icons.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useHasTouchOnlyPointer } from "../hooks/useHasTouchOnlyPointer.js";
 
@@ -116,7 +123,7 @@ const ANIMATION_OPTIONS: ReadonlyArray<{ value: AnimationIntensity; label: strin
 
 type ProviderSectionId = Extract<
   SectionId,
-  "x" | "facebook" | "instagram" | "linkedin" | "youtube"
+  "x" | "facebook" | "instagram" | "linkedin" | "substack" | "medium" | "youtube"
 >;
 type ProviderAuthState = {
   isAuthenticated?: boolean;
@@ -127,6 +134,8 @@ type ProviderAuthSlices = {
   fbAuth?: ProviderAuthState;
   igAuth?: ProviderAuthState;
   liAuth?: ProviderAuthState;
+  substackAuth?: ProviderAuthState;
+  mediumAuth?: ProviderAuthState;
   ytAuth?: ProviderAuthState;
 };
 const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
@@ -194,6 +203,8 @@ function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId
     sectionId === "facebook" ||
     sectionId === "instagram" ||
     sectionId === "linkedin" ||
+    sectionId === "substack" ||
+    sectionId === "medium" ||
     sectionId === "youtube"
   );
 }
@@ -209,6 +220,8 @@ function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
   const fbAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).fbAuth);
   const igAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).igAuth);
   const liAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).liAuth);
+  const substackAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).substackAuth);
+  const mediumAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).mediumAuth);
   const ytAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).ytAuth);
 
   const authState =
@@ -220,7 +233,11 @@ function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
           ? igAuth
           : sectionId === "linkedin"
             ? liAuth
-            : ytAuth;
+            : sectionId === "substack"
+              ? substackAuth
+              : sectionId === "medium"
+                ? mediumAuth
+                : ytAuth;
 
   const snapshot = health?.providers[sectionId];
   const isConnected = authState?.isAuthenticated === true;
@@ -425,6 +442,8 @@ const ICONS: Record<SectionId, ReactNode> = {
       <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
     </svg>
   ),
+  substack: <SubstackIcon />,
+  medium: <MediumIcon />,
   youtube: (
     <YoutubeIcon />
   ),
@@ -454,6 +473,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     FacebookSettingsContent,
     InstagramSettingsContent,
     LinkedInSettingsContent,
+    SubstackSettingsContent,
+    MediumSettingsContent,
     YouTubeSettingsContent,
     GoogleContactsSettingsContent,
     FeedsSettingsContent,
@@ -505,6 +526,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         hasFacebook: !!FacebookSettingsContent,
         hasInstagram: !!InstagramSettingsContent,
         hasLinkedIn: !!LinkedInSettingsContent,
+        hasSubstack: !!SubstackSettingsContent,
+        hasMedium: !!MediumSettingsContent,
         hasYouTube: !!YouTubeSettingsContent,
         hasUpdateChecks: !!checkForUpdates,
         hasFactoryReset: !!factoryReset,
@@ -521,6 +544,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       FacebookSettingsContent,
       InstagramSettingsContent,
       LinkedInSettingsContent,
+      SubstackSettingsContent,
+      MediumSettingsContent,
       YouTubeSettingsContent,
       checkForUpdates,
       factoryReset,
@@ -553,6 +578,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           ...(sectionById.facebook ? [sectionById.facebook] : []),
           ...(sectionById.instagram ? [sectionById.instagram] : []),
           ...(sectionById.linkedin ? [sectionById.linkedin] : []),
+          ...(sectionById.substack ? [sectionById.substack] : []),
+          ...(sectionById.medium ? [sectionById.medium] : []),
           ...(sectionById.youtube ? [sectionById.youtube] : []),
           sectionById.feeds!,
         ],
@@ -1684,6 +1711,22 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           </>
         ) : null;
 
+      case "substack":
+        return SubstackSettingsContent ? (
+          <>
+            <SectionHeading label="Substack" stage="beta" />
+            <SubstackSettingsContent surface="settings" />
+          </>
+        ) : null;
+
+      case "medium":
+        return MediumSettingsContent ? (
+          <>
+            <SectionHeading label="Medium" stage="beta" />
+            <MediumSettingsContent surface="settings" />
+          </>
+        ) : null;
+
       case "youtube":
         return YouTubeSettingsContent ? (
           <>
@@ -1967,6 +2010,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           {section.icon}
         </span>
         <span>{section.label}</span>
+        {section.stage === "beta" ? (
+          <span className="rounded border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[var(--theme-text-muted)]">
+            Beta
+          </span>
+        ) : null}
         {isProviderSection(section.id) ? (
           <ProviderStatusDot sectionId={section.id} />
         ) : null}
@@ -2453,14 +2501,27 @@ function UpToDateBadge() {
 
 // ── Section heading ───────────────────────────────────────────────────────────
 
-function SectionHeading({ label, danger }: { label: string; danger?: boolean }) {
+function SectionHeading({
+  label,
+  danger,
+  stage,
+}: {
+  label: string;
+  danger?: boolean;
+  stage?: "beta";
+}) {
   return (
     <h3
-      className={`mb-4 text-base font-semibold uppercase tracking-wide sm:mb-5 sm:text-sm ${
+      className={`mb-4 flex items-center gap-2 text-base font-semibold uppercase tracking-wide sm:mb-5 sm:text-sm ${
         danger ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.64)]" : "text-text-muted"
       }`}
     >
-      {label}
+      <span>{label}</span>
+      {stage === "beta" ? (
+        <span className="rounded border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--theme-text-muted)]">
+          Beta
+        </span>
+      ) : null}
     </h3>
   );
 }

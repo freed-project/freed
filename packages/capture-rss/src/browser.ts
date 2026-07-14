@@ -113,6 +113,7 @@ function parseRss(rss: Rec): ParsedFeed {
     link: text(ch.link),
     feedUrl: "",
     language: text(ch.language),
+    generator: text(ch.generator),
     lastBuildDate: text(ch.lastBuildDate),
     ...(img?.url ? {
       image: {
@@ -171,6 +172,7 @@ function parseAtom(feed: Rec): ParsedFeed {
     description: text(feed.subtitle),
     link: text(altLink?.["@_href"]) ?? text(altLink?.["href"]),
     feedUrl: "",
+    generator: text(feed.generator),
     items: parseAtomItems(feed.entry),
   };
 }

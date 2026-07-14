@@ -1,4 +1,8 @@
-import { createDefaultPreferences, type FeedItem } from "@freed/shared";
+import {
+  createDefaultPreferences,
+  type FeedItem,
+  type RssFeed,
+} from "@freed/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocState } from "./automerge-types";
 
@@ -376,6 +380,44 @@ describe("automerge worker lifecycle", () => {
     await mutation;
     await vi.advanceTimersByTimeAsync(1_000);
     expect(worker.terminated).toBe(true);
+  });
+
+  it("strips device-local RSS state before posting refreshes to the worker", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+    await completeWorkerInit(worker, automerge.initDoc());
+
+    const feed: RssFeed = {
+      url: "https://example.com/feed.xml",
+      title: "Example Feed",
+      siteUrl: "https://example.com",
+      enabled: true,
+      trackUnread: true,
+      lastFetched: 100,
+      lastFetchAttemptedAt: 101,
+      nextFetchAfter: 102,
+      consecutiveFailures: 3,
+      lastFetchError: "offline",
+    };
+    const mutation = automerge.docBatchRefreshFeeds([feed], []);
+    const request = await waitForWorkerRequest(worker, "BATCH_REFRESH_FEEDS") as {
+      reqId: number;
+      type: string;
+      feeds: unknown[];
+    };
+
+    expect(request.feeds).toEqual([
+      {
+        url: feed.url,
+        lastFetched: 100,
+        title: "Example Feed",
+        siteUrl: "https://example.com",
+      },
+    ]);
+
+    worker.emitMessage({ reqId: request.reqId, type: "ACK" });
+    await expect(mutation).resolves.toBeUndefined();
   });
 
   it("keeps the worker alive until a legacy HTML request settles", async () => {

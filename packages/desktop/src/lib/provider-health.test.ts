@@ -6,6 +6,8 @@ function createMockAppState() {
     fbAuth: { isAuthenticated: true } as Record<string, unknown>,
     igAuth: { isAuthenticated: true } as Record<string, unknown>,
     liAuth: { isAuthenticated: true } as Record<string, unknown>,
+    substackAuth: { isAuthenticated: true } as Record<string, unknown>,
+    mediumAuth: { isAuthenticated: true } as Record<string, unknown>,
     setXAuth(next: Record<string, unknown>) {
       state.xAuth = next;
     },
@@ -18,6 +20,12 @@ function createMockAppState() {
     setLiAuth(next: Record<string, unknown>) {
       state.liAuth = next;
     },
+    setSubstackAuth(next: Record<string, unknown>) {
+      state.substackAuth = next;
+    },
+    setMediumAuth(next: Record<string, unknown>) {
+      state.mediumAuth = next;
+    },
   };
 
   return state;
@@ -29,6 +37,8 @@ const TEST_PROVIDER_IDS = [
   "facebook",
   "instagram",
   "linkedin",
+  "substack",
+  "medium",
   "youtube",
   "gdrive",
   "dropbox",
@@ -124,6 +134,12 @@ async function loadProviderHealthModule(options: { native?: boolean } = {}) {
   }));
   vi.doMock("./li-auth", () => ({
     storeLiAuthState: vi.fn(),
+  }));
+  vi.doMock("./substack-auth", () => ({
+    storeSubstackAuthState: vi.fn(),
+  }));
+  vi.doMock("./medium-auth", () => ({
+    storeMediumAuthState: vi.fn(),
   }));
 
   const debugStore = await import("@freed/ui/lib/debug-store");
@@ -310,6 +326,37 @@ describe("provider health", () => {
       reason: "No feeds were due",
       durationMs: 500,
     });
+  });
+
+  it("upgrades the provider set written before Substack and Medium were added", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, nativeFiles, debugStore } =
+      await loadProviderHealthModule({ native: true });
+    const persisted = createValidPersistedHealthRecord(now.getTime());
+    const legacyProviders = Object.fromEntries(
+      Object.entries(persisted.providers).filter(
+        ([provider]) => provider !== "substack" && provider !== "medium",
+      ),
+    );
+    nativeFiles.set(
+      "/mock/app-data/sync-health.json",
+      JSON.stringify({
+        "provider-health": {
+          ...persisted,
+          providers: legacyProviders,
+        },
+      }),
+    );
+
+    await mod.initProviderHealth();
+
+    expect(mod.isProviderPaused("substack")).toBe(false);
+    expect(mod.isProviderPaused("medium")).toBe(false);
+    expect(debugStore.useDebugStore.getState().health?.providers.substack.status).toBe("idle");
+    expect(debugStore.useDebugStore.getState().health?.providers.medium.status).toBe("idle");
   });
 
   it("blocks automatic provider work without overwriting a future health-store version", async () => {
@@ -860,6 +907,30 @@ describe("provider health", () => {
     const action = toastInfo.mock.calls[0]?.[1]?.onAction as (() => void) | undefined;
     action?.();
     expect(openTo).toHaveBeenCalledWith("x");
+  });
+
+  it("syncs Medium pause state into its authenticated session", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-07-13T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, storeState } = await loadProviderHealthModule();
+
+    await mod.recordProviderHealthEvent({
+      provider: "medium",
+      outcome: "provider_rate_limit",
+      stage: "provider_rate_limit",
+      reason: "Medium asked Freed to slow down",
+      signalType: "explicit",
+      finishedAt: now.getTime(),
+    });
+
+    const pause = mod.getProviderPause("medium");
+    expect(pause?.pauseLevel).toBe(1);
+    expect(storeState.mediumAuth.pausedUntil).toBe(pause?.pausedUntil);
+
+    await mod.clearProviderPause("medium");
+    expect(storeState.mediumAuth.pausedUntil).toBeUndefined();
   });
 
   it("heuristically pauses repeated suspicious failures and escalates across detections", async () => {

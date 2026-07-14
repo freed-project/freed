@@ -36,6 +36,9 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src/components/InstagramFeedEmptyState.tsx",
   "packages/desktop/src/components/InstagramSettingsSection.tsx",
   "packages/desktop/src/components/LinkedInSettingsSection.tsx",
+  "packages/desktop/src/components/AuthenticatedEssaySettingsSection.tsx",
+  "packages/desktop/src/components/SubstackSettingsSection.tsx",
+  "packages/desktop/src/components/MediumSettingsSection.tsx",
   "packages/desktop/src/components/ProviderSyncActionButton.tsx",
   "packages/desktop/src/components/ScraperWindowModeControl.tsx",
   "packages/desktop/src/components/SyncProviderSectionSurface.tsx",
@@ -53,6 +56,13 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src/lib/legal-consent.ts",
   "packages/desktop/src/lib/li-auth.ts",
   "packages/desktop/src/lib/li-capture.ts",
+  "packages/desktop/src/lib/authenticated-essay-auth.ts",
+  "packages/desktop/src/lib/authenticated-essay-capture.ts",
+  "packages/desktop/src/lib/authenticated-essay-poller.ts",
+  "packages/desktop/src/lib/substack-auth.ts",
+  "packages/desktop/src/lib/substack-capture.ts",
+  "packages/desktop/src/lib/medium-auth.ts",
+  "packages/desktop/src/lib/medium-capture.ts",
   "packages/desktop/src/lib/provider-auth-errors.ts",
   "packages/desktop/src/lib/provider-health.ts",
   "packages/desktop/src/lib/reader-hydration.ts",
@@ -75,6 +85,8 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src-tauri/src/ig-extract.js",
   "packages/desktop/src-tauri/src/ig-stories-extract.js",
   "packages/desktop/src-tauri/src/li-extract.js",
+  "packages/desktop/src-tauri/src/substack-extract.js",
+  "packages/desktop/src-tauri/src/medium-extract.js",
   "packages/desktop/src-tauri/src/youtube-extract.js",
   "packages/desktop/src-tauri/src/youtube-playlist-action.js",
   "packages/desktop/src-tauri/src/youtube.rs",
@@ -85,6 +97,8 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
 export const SOCIAL_PROVIDER_PACKAGE_PREFIXES = [
   "packages/capture-facebook/",
   "packages/capture-instagram/",
+  "packages/capture-substack/",
+  "packages/capture-medium/",
   "packages/capture-x/",
 ];
 
@@ -93,9 +107,7 @@ export const SOCIAL_PROVIDER_PACKAGE_PREFIXES = [
 // validate-worktree intentionally does not narrow validation for them.
 export const PROVIDER_VISIBLE_EXTRA_FILES = new Set([
   "packages/desktop/src/components/YouTubeSettingsSection.tsx",
-  "packages/desktop/src-tauri/capabilities/fb-scraper.json",
-  "packages/desktop/src-tauri/capabilities/ig-scraper.json",
-  "packages/desktop/src-tauri/capabilities/youtube-session.json",
+  "packages/desktop/src-tauri/gen/schemas/capabilities.json",
   "packages/desktop/src/lib/rss-refresh-plan.ts",
   "packages/capture-rss/src/discovery.ts",
   "packages/capture-save/src/extract.ts",
@@ -145,19 +157,46 @@ export const PROVIDER_VISIBLE_ORCHESTRATION_FILES = new Set([
 // These files may not name a provider in their path, but a change can still
 // alter whether provider work starts, retries, commits, or survives reset.
 // Keep the values sorted because approval packets compare exact scopes.
+const ALL_SOCIAL_PROVIDER_SCOPES = Object.freeze([
+  "facebook",
+  "instagram",
+  "linkedin",
+  "medium",
+  "substack",
+  "x",
+  "youtube",
+]);
+const ALL_PROVIDER_SCOPES = Object.freeze([
+  "facebook",
+  "instagram",
+  "linkedin",
+  "medium",
+  "other",
+  "substack",
+  "x",
+  "youtube",
+]);
+
 export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
+  ["packages/capture-rss/src/discovery.ts", ["other"]],
+  ["packages/capture-save/src/extract.ts", ["other"]],
+  ["packages/desktop/src-tauri/src/webkit-mask.js", ALL_SOCIAL_PROVIDER_SCOPES],
   [
     "packages/desktop/src-tauri/src/lib.rs",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
   ],
   [
     "packages/desktop/src/App.tsx",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
   ],
+  ["packages/desktop/src/components/CloudProviderCard.tsx", ["other"]],
+  ["packages/desktop/src/components/CloudSyncNudge.tsx", ["other"]],
+  ["packages/desktop/src/components/FacebookFeedEmptyState.tsx", ["facebook"]],
   [
     "packages/desktop/src/components/FacebookSettingsSection.tsx",
     ["facebook"],
   ],
+  ["packages/desktop/src/components/InstagramFeedEmptyState.tsx", ["instagram"]],
   [
     "packages/desktop/src/components/InstagramSettingsSection.tsx",
     ["instagram"],
@@ -166,7 +205,21 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
     "packages/desktop/src/components/LinkedInSettingsSection.tsx",
     ["linkedin"],
   ],
+  ["packages/desktop/src/components/MediumSettingsSection.tsx", ["medium"]],
   ["packages/desktop/src/components/MobileSyncTab.tsx", ["other"]],
+  [
+    "packages/desktop/src/components/ProviderSyncActionButton.tsx",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/components/ScraperWindowModeControl.tsx",
+    ["facebook", "instagram", "linkedin", "medium", "substack"],
+  ],
+  [
+    "packages/desktop/src/components/SyncProviderSectionSurface.tsx",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  ["packages/desktop/src/components/XFeedEmptyState.tsx", ["x"]],
   ["packages/desktop/src/components/XSettingsSection.tsx", ["x"]],
   [
     "packages/desktop/src/components/YouTubeSettingsSection.tsx",
@@ -177,47 +230,68 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
     "packages/desktop/src/hooks/usePostLoginAutoSync.ts",
     ["facebook", "instagram", "linkedin"],
   ],
+  [
+    "packages/desktop/src/hooks/useProviderRiskGate.tsx",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
   ["packages/desktop/src/lib/ai-summarizer.ts", ["other"]],
   [
+    "packages/desktop/src/lib/background-runtime-coordinator.ts",
+    ALL_PROVIDER_SCOPES,
+  ],
+  [
     "packages/desktop/src/lib/automerge-types.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
   ],
   [
     "packages/desktop/src/lib/automerge.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
   ],
   [
     "packages/desktop/src/lib/automerge.worker.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
   ],
   [
     "packages/desktop/src/lib/capture.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
   ],
   ["packages/desktop/src/lib/contact-sync-storage.ts", ["other"]],
   ["packages/desktop/src/lib/content-fetcher.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/dev-sync-triggers.ts",
+    ["facebook", "instagram", "linkedin", "youtube"],
+  ],
   ["packages/desktop/src/lib/facebook-group-discovery.ts", ["facebook"]],
   [
     "packages/desktop/src/lib/factory-reset-guard.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
   ],
   ["packages/desktop/src/lib/local-ai-models.ts", ["other"]],
   [
     "packages/desktop/src/lib/media-vault.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/memory-monitor.ts",
+    ["facebook", "instagram", "linkedin", "medium", "substack"],
   ],
   [
     "packages/desktop/src/lib/native-json-store.ts",
-    ["facebook", "instagram", "linkedin", "x", "youtube"],
+    ALL_SOCIAL_PROVIDER_SCOPES,
   ],
   ["packages/desktop/src/lib/outbox.ts", ["facebook", "instagram", "x"]],
+  ["packages/desktop/src/lib/platform-actions.ts", ALL_PROVIDER_SCOPES],
+  [
+    "packages/desktop/src/lib/provider-auth-errors.ts",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
   [
     "packages/desktop/src/lib/provider-auth-lifecycle.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_SOCIAL_PROVIDER_SCOPES,
   ],
   [
     "packages/desktop/src/lib/provider-health.ts",
-    ["facebook", "instagram", "linkedin", "x", "youtube"],
+    ALL_SOCIAL_PROVIDER_SCOPES,
   ],
   [
     "packages/desktop/src/lib/reader-hydration.ts",
@@ -227,17 +301,30 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
   ["packages/desktop/src/lib/rss-refresh-plan.ts", ["other"]],
   ["packages/desktop/src/lib/rss-runtime-state.ts", ["other"]],
   [
+    "packages/desktop/src/lib/scraper-media-diag.ts",
+    ["facebook", "instagram", "linkedin"],
+  ],
+  [
     "packages/desktop/src/lib/scraper-prefs.ts",
-    ["facebook", "instagram", "linkedin", "x", "youtube"],
+    ["facebook", "instagram", "linkedin", "medium", "substack", "x"],
   ],
   ["packages/desktop/src/lib/secure-storage.ts", ["other"]],
   [
     "packages/desktop/src/lib/semantic-classifier.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
+  ],
+  ["packages/desktop/src/lib/side-effect-scheduler.ts", ALL_PROVIDER_SCOPES],
+  [
+    "packages/desktop/src/lib/social-auth-cookie-state.ts",
+    ["facebook", "instagram", "linkedin"],
   ],
   [
     "packages/desktop/src/lib/social-auth-transient-errors.ts",
-    ["facebook", "instagram", "linkedin", "youtube"],
+    ["facebook", "instagram", "linkedin", "medium", "substack", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/social-capture-runtime.ts",
+    ["facebook", "instagram", "linkedin", "medium", "substack"],
   ],
   [
     "packages/desktop/src/lib/social-comment-hydration.ts",
@@ -248,46 +335,60 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
     ["facebook", "instagram", "x"],
   ],
   [
+    "packages/desktop/src/lib/social-provider-copy.ts",
+    ["facebook", "instagram", "linkedin", "medium", "substack", "x"],
+  ],
+  [
     "packages/desktop/src/lib/store.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
   ],
   ["packages/desktop/src/lib/sync.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/user-agent.ts",
+    ["facebook", "instagram", "linkedin", "medium", "substack", "x"],
+  ],
   ["packages/desktop/src/lib/x-login-reset-controller.ts", ["x"]],
   ["packages/pwa/src/App.tsx", ["other"]],
   ["packages/pwa/src/lib/automerge-types.ts", ["other"]],
   ["packages/pwa/src/lib/automerge.ts", ["other"]],
   ["packages/pwa/src/lib/automerge.worker.ts", ["other"]],
   ["packages/pwa/src/lib/factory-reset-coordinator.ts", ["other"]],
+  ["packages/pwa/src/lib/reader-cache.ts", ["other"]],
   ["packages/pwa/src/lib/store.ts", ["other"]],
   ["packages/shared/src/contact-sync-state.ts", ["other"]],
   ["packages/shared/src/preferences.ts", ["other"]],
   [
     "packages/shared/src/schema.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
   ],
   [
     "packages/shared/src/sync-write-policy.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
   ],
   ["packages/sync/src/storage/indexeddb.ts", ["other"]],
   [
     "packages/ui/src/components/SettingsDialog.tsx",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
   ],
   [
     "packages/ui/src/components/feed/ReaderView.tsx",
-    ["facebook", "instagram", "other", "x"],
+    ["facebook", "instagram", "medium", "other", "substack", "x"],
   ],
   ["packages/ui/src/components/settings/AISection.tsx", ["other"]],
   ["packages/ui/src/hooks/useContactSync.ts", ["other"]],
   ["packages/ui/src/lib/device-ai-preferences.ts", ["other"]],
   [
     "packages/ui/src/lib/factory-reset.ts",
-    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+    ALL_PROVIDER_SCOPES,
+  ],
+  [
+    "scripts/dev-sync-trigger.mjs",
+    ["facebook", "instagram", "linkedin", "youtube"],
   ],
 ]);
 
 export const PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES = [
+  "packages/desktop/src-tauri/capabilities/",
   "packages/capture-linkedin/",
   "packages/capture-youtube/",
   "packages/sync/src/cloud/",
@@ -338,6 +439,8 @@ const PROVIDER_APPROVAL_PROVIDER_IDS = new Set([
   "facebook",
   "instagram",
   "linkedin",
+  "substack",
+  "medium",
   "other",
   "x",
   "youtube",
@@ -386,11 +489,26 @@ export function providerIdsForPath(filePath) {
   const exactScope = PROVIDER_VISIBLE_EXACT_SCOPES.get(canonicalPath);
   if (exactScope) return [...exactScope];
   const normalizedPath = canonicalPath.toLowerCase();
+  const allSocialProviders = ALL_SOCIAL_PROVIDER_SCOPES;
+  if (
+    normalizedPath === "packages/desktop/src-tauri/capabilities/default.json" ||
+    normalizedPath === "packages/desktop/src-tauri/gen/schemas/capabilities.json"
+  ) {
+    return allSocialProviders;
+  }
   if (
     normalizedPath === "packages/desktop/src/lib/legal-consent.ts" ||
     normalizedPath === "packages/shared/src/legal.ts"
   ) {
-    return ["facebook", "instagram", "linkedin", "x", "youtube"];
+    return allSocialProviders;
+  }
+  if (
+    normalizedPath === "packages/desktop/src/components/authenticatedessaysettingssection.tsx" ||
+    normalizedPath === "packages/desktop/src/lib/authenticated-essay-auth.ts" ||
+    normalizedPath === "packages/desktop/src/lib/authenticated-essay-capture.ts" ||
+    normalizedPath === "packages/desktop/src/lib/authenticated-essay-poller.ts"
+  ) {
+    return ["medium", "substack"];
   }
   if (
     normalizedPath.startsWith("packages/capture-facebook/") ||
@@ -408,6 +526,16 @@ export function providerIdsForPath(filePath) {
   )
     return ["linkedin"];
   if (
+    normalizedPath.startsWith("packages/capture-substack/") ||
+    normalizedPath.includes("substack")
+  )
+    return ["substack"];
+  if (
+    normalizedPath.startsWith("packages/capture-medium/") ||
+    /\/(?:medium)(?:[-_.\/]|$)/.test(normalizedPath)
+  )
+    return ["medium"];
+  if (
     normalizedPath.startsWith("packages/capture-x/") ||
     /\/x(?:[-_.\/]|$)/.test(normalizedPath)
   )
@@ -417,6 +545,10 @@ export function providerIdsForPath(filePath) {
     normalizedPath.includes("youtube")
   )
     return ["youtube"];
+  if (
+    normalizedPath.startsWith("packages/desktop/src-tauri/capabilities/")
+  )
+    return ["other"];
   if (
     normalizedPath.startsWith("packages/sync/src/cloud/") ||
     normalizedPath.startsWith("packages/pwa/api/oauth/google") ||

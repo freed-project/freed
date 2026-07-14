@@ -120,6 +120,8 @@ import { log } from "./logger";
 import { initFbAuth, storeFbAuthState, type FbAuthState } from "./fb-auth";
 import { initIgAuth, storeIgAuthState, type IgAuthState } from "./instagram-auth";
 import { initLiAuth, storeLiAuthState, type LiAuthState } from "./li-auth";
+import { initSubstackAuth, type SubstackAuthState } from "./substack-auth";
+import { initMediumAuth, type MediumAuthState } from "./medium-auth";
 import { initYouTubeAuth, type YouTubeAuthState } from "./youtube-auth";
 import { reconcileSocialAuthStateHints } from "./social-auth-cookie-state";
 import { getOrCreateDesktopClientRegistration } from "./desktop-client-registration";
@@ -157,6 +159,8 @@ export type SyncProviderId =
   | "facebook"
   | "instagram"
   | "linkedin"
+  | "substack"
+  | "medium"
   | "youtube"
   | "gdrive"
   | "dropbox";
@@ -169,6 +173,8 @@ const EMPTY_PROVIDER_SYNC_COUNTS: ProviderSyncCounts = {
   facebook: 0,
   instagram: 0,
   linkedin: 0,
+  substack: 0,
+  medium: 0,
   youtube: 0,
   gdrive: 0,
   dropbox: 0,
@@ -207,6 +213,10 @@ interface AppState {
   igAuth: IgAuthState;
   // LinkedIn auth state
   liAuth: LiAuthState;
+  // Substack auth state
+  substackAuth: SubstackAuthState;
+  // Medium auth state
+  mediumAuth: MediumAuthState;
   // YouTube auth state
   ytAuth: YouTubeAuthState;
 
@@ -278,6 +288,10 @@ interface AppState {
   setIgAuth: (auth: IgAuthState) => void;
   // LinkedIn auth actions
   setLiAuth: (auth: LiAuthState) => void;
+  // Substack auth actions
+  setSubstackAuth: (auth: SubstackAuthState) => void;
+  // Medium auth actions
+  setMediumAuth: (auth: MediumAuthState) => void;
   // YouTube auth actions
   setYtAuth: (auth: YouTubeAuthState) => void;
 
@@ -649,6 +663,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   fbAuth: { isAuthenticated: false },
   igAuth: { isAuthenticated: false },
   liAuth: { isAuthenticated: false },
+  substackAuth: { isAuthenticated: false },
+  mediumAuth: { isAuthenticated: false },
   ytAuth: { isAuthenticated: false },
   isLoading: true,
   isSyncing: false,
@@ -720,6 +736,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         let fbAuth = initFbAuth();
         let igAuth = initIgAuth();
         let liAuth = initLiAuth();
+        const substackAuth = initSubstackAuth();
+        const mediumAuth = initMediumAuth();
         const ytAuth = initYouTubeAuth();
 
         if (isTauri() || import.meta.env.VITE_TEST_TAURI === "1") {
@@ -745,6 +763,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           fbAuth,
           igAuth,
           liAuth,
+          substackAuth,
+          mediumAuth,
           ytAuth,
           isInitialized: true,
           isLoading: false,
@@ -1200,6 +1220,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   setIgAuth: (auth) => set({ igAuth: auth }),
   // LinkedIn auth actions
   setLiAuth: (auth) => set({ liAuth: auth }),
+  // Substack auth actions
+  setSubstackAuth: (auth) => set({ substackAuth: auth }),
+  // Medium auth actions
+  setMediumAuth: (auth) => set({ mediumAuth: auth }),
   // YouTube auth actions
   setYtAuth: (auth) => set({ ytAuth: auth }),
 

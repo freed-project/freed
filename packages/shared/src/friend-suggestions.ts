@@ -27,7 +27,7 @@ const MIN_VISIBLE_SCORE = 60;
 const HIGH_CONFIDENCE_SCORE = 80;
 const MAX_SAMPLE_ITEMS = 5;
 const RECENT_WINDOW_MS = 45 * 24 * 60 * 60 * 1_000;
-const SOCIAL_PROVIDERS = new Set(["x", "facebook", "instagram", "linkedin"]);
+const SOCIAL_PROVIDERS = new Set(["x", "facebook", "instagram", "linkedin", "substack", "medium"]);
 const RSS_PROVIDER = "rss";
 
 const POSITIVE_SIGNAL_WEIGHTS: Partial<Record<ContentSignal, number>> = {

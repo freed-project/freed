@@ -34,6 +34,7 @@ import {
 } from "@freed/ui/lib/device-ai-preferences";
 import { log } from "./logger.js";
 import { toSyncedPreservedText } from "./preserved-text.js";
+import { renderFeedItemReaderHtml } from "./reader-item-html.js";
 import {
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
@@ -183,41 +184,6 @@ function newStubItems(items: FeedItem[], options: { force?: boolean } = {}): Que
     }));
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function textToParagraphs(text: string): string {
-  return text
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
-    .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
-    .join("");
-}
-
-function renderItemReaderHtml(item: FeedItem): string {
-  const title = item.content.linkPreview?.title ?? item.content.text?.slice(0, 100) ?? item.author.displayName;
-  const body = item.content.text ? textToParagraphs(item.content.text) : "";
-  const media = item.content.mediaUrls
-    .map((url, index) => {
-      const type = item.content.mediaTypes[index];
-      const safeUrl = escapeHtml(url);
-      if (type === "video") {
-        return `<figure><video src="${safeUrl}" controls playsinline></video></figure>`;
-      }
-      return `<figure><img src="${safeUrl}" alt="" /></figure>`;
-    })
-    .join("");
-
-  return `<article><h1>${escapeHtml(title)}</h1>${media}${body}</article>`;
-}
-
 function pruneFailed(now = Date.now()): void {
   for (const [id, failedAt] of failed) {
     if (now - failedAt > FAILED_RETRY_COOLDOWN_MS) {
@@ -273,7 +239,7 @@ export function enqueue(items: FeedItem[], options: EnqueueOptions = {}): void {
 
 async function pinReaderItemInternal(item: FeedItem): Promise<void> {
   const url = item.content.linkPreview?.url;
-  await contentCache.set(item.globalId, renderItemReaderHtml(item));
+  await contentCache.set(item.globalId, renderFeedItemReaderHtml(item));
   if (url) {
     enqueue([item], { priority: true, force: true });
   }

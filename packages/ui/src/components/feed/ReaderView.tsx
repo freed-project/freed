@@ -328,11 +328,13 @@ const HEADING_CLASSES: Record<number, string> = {
 };
 
 const STORY_REPLY_MESSAGE = "Story replies are private on this platform. Open the story to reply there.";
-const FRIENDS_AUTHOR_PLATFORMS = new Set(["x", "facebook", "instagram", "linkedin"]);
+const FRIENDS_AUTHOR_PLATFORMS = new Set(["x", "facebook", "instagram", "linkedin", "substack", "medium"]);
 const REPLY_PLATFORM_LABELS: Partial<Record<FeedItemType["platform"], string>> = {
   x: "X",
   facebook: "Facebook",
   instagram: "Instagram",
+  substack: "Substack",
+  medium: "Medium",
 };
 
 export function ReaderView({

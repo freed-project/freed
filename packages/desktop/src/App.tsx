@@ -34,6 +34,10 @@ import {
   stopRssPoller,
   stopRssPollerAndDrain,
 } from "./lib/rss-poller";
+import {
+  startAuthenticatedEssayPoller,
+  stopAuthenticatedEssayPoller,
+} from "./lib/authenticated-essay-poller";
 import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import {
@@ -77,11 +81,21 @@ import { clearStoredCookies, storeCookies } from "./lib/x-auth";
 import { disconnectIgForFactoryReset, storeIgAuthState } from "./lib/instagram-auth";
 import { disconnectFbForFactoryReset, storeFbAuthState } from "./lib/fb-auth";
 import { disconnectLiForFactoryReset, storeLiAuthState } from "./lib/li-auth";
+import {
+  disconnectSubstackForFactoryReset,
+  storeSubstackAuthState,
+} from "./lib/substack-auth";
+import {
+  disconnectMediumForFactoryReset,
+  storeMediumAuthState,
+} from "./lib/medium-auth";
 import { disconnectYouTubeForFactoryReset } from "./lib/youtube-auth";
 import { captureXTimeline } from "./lib/x-capture";
 import { captureFbFeed } from "./lib/fb-capture";
 import { captureIgFeed } from "./lib/instagram-capture";
 import { captureLiFeed } from "./lib/li-capture";
+import { captureSubstackFeed } from "./lib/substack-capture";
+import { captureMediumFeed } from "./lib/medium-capture";
 import { captureYouTube } from "./lib/youtube-capture";
 import { addYouTubeVideoToOfflinePlaylist } from "./lib/youtube-playlist";
 import { contentCache } from "./lib/content-cache";
@@ -134,6 +148,8 @@ import { XSettingsSection } from "./components/XSettingsSection";
 import { FacebookSettingsSection } from "./components/FacebookSettingsSection";
 import { InstagramSettingsSection } from "./components/InstagramSettingsSection";
 import { LinkedInSettingsSection } from "./components/LinkedInSettingsSection";
+import { SubstackSettingsSection } from "./components/SubstackSettingsSection";
+import { MediumSettingsSection } from "./components/MediumSettingsSection";
 import { YouTubeSettingsSection } from "./components/YouTubeSettingsSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
@@ -190,7 +206,15 @@ const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
 const IS_LOCAL_PREVIEW = IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
 const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
-const PREVIEW_PROVIDER_RISKS: ProviderRiskId[] = ["x", "facebook", "instagram", "linkedin", "youtube"];
+const PREVIEW_PROVIDER_RISKS: ProviderRiskId[] = [
+  "x",
+  "facebook",
+  "instagram",
+  "linkedin",
+  "substack",
+  "medium",
+  "youtube",
+];
 const RENDERER_HEARTBEAT_INTERVAL_MS = 15 * 1000;
 const LOCKED_STARTUP_RECHECK_MS = 30 * 1000;
 
@@ -524,6 +548,7 @@ function App() {
     });
     void initProviderHealth();
     startRssPoller();
+    startAuthenticatedEssayPoller();
     // Wire the LAN relay change subscription and client-count polling.
     startSync();
     // Resume cloud sync loops for any previously authenticated providers.
@@ -554,6 +579,7 @@ function App() {
     });
     return () => {
       stopRssPoller();
+      stopAuthenticatedEssayPoller();
       stopSync();
       stopAllCloudSyncs();
       stopSnapshotManager();
@@ -959,6 +985,7 @@ function App() {
       reset: async () => {
         beginFactoryResetBoundary();
         stopRssPoller();
+        stopAuthenticatedEssayPoller();
         stopSync();
         stopAllCloudSyncs();
         stopSnapshotManager();
@@ -1005,6 +1032,8 @@ function App() {
               disconnectFbForFactoryReset,
               disconnectIgForFactoryReset,
               disconnectLiForFactoryReset,
+              disconnectSubstackForFactoryReset,
+              disconnectMediumForFactoryReset,
               disconnectYouTubeForFactoryReset,
             ]) {
               try {
@@ -1136,7 +1165,14 @@ function App() {
   // credentials to localStorage (matching the real auth persistence format)
   // and updates Zustand state so the sidebar dots light up without a real login.
   const seedSocialConnections = useCallback(() => {
-    const { setXAuth, setFbAuth, setIgAuth, setLiAuth } = useAppStore.getState();
+    const {
+      setXAuth,
+      setFbAuth,
+      setIgAuth,
+      setLiAuth,
+      setSubstackAuth,
+      setMediumAuth,
+    } = useAppStore.getState();
     const now = Date.now();
 
     const xCookies = { ct0: "sample-ct0-token", authToken: "sample-auth-token" };
@@ -1154,6 +1190,14 @@ function App() {
     const liState = { isAuthenticated: true, lastCheckedAt: now };
     storeLiAuthState(liState);
     setLiAuth(liState);
+
+    const substackState = { isAuthenticated: true, lastCheckedAt: now };
+    storeSubstackAuthState(substackState);
+    setSubstackAuth(substackState);
+
+    const mediumState = { isAuthenticated: true, lastCheckedAt: now };
+    storeMediumAuthState(mediumState);
+    setMediumAuth(mediumState);
   }, []);
 
   // Local feature previews should open with a useful library. E2E tests keep
@@ -1217,6 +1261,8 @@ function App() {
       FacebookSettingsContent: FacebookSettingsSection,
       InstagramSettingsContent: InstagramSettingsSection,
       LinkedInSettingsContent: LinkedInSettingsSection,
+      SubstackSettingsContent: SubstackSettingsSection,
+      MediumSettingsContent: MediumSettingsSection,
       YouTubeSettingsContent: YouTubeSettingsSection,
       GoogleContactsSettingsContent: tauriRuntimeAvailable ? GoogleContactsSection : null,
       checkForUpdates: IS_LOCAL_PREVIEW ? undefined : checkForUpdates,
@@ -1256,6 +1302,8 @@ function App() {
             sourceId === "facebook" ||
             sourceId === "instagram" ||
             sourceId === "linkedin" ||
+            sourceId === "substack" ||
+            sourceId === "medium" ||
             sourceId === "youtube") &&
           health?.providers[sourceId]?.status === "paused";
 
@@ -1293,6 +1341,22 @@ function App() {
             await clearProviderPause("linkedin");
           }
           await withProviderSyncing("linkedin", () => captureLiFeed("manual"));
+          return;
+        }
+
+        if (sourceId === "substack" && state.substackAuth.isAuthenticated) {
+          if (isPaused) {
+            await clearProviderPause("substack");
+          }
+          await withProviderSyncing("substack", () => captureSubstackFeed("manual"));
+          return;
+        }
+
+        if (sourceId === "medium" && state.mediumAuth.isAuthenticated) {
+          if (isPaused) {
+            await clearProviderPause("medium");
+          }
+          await withProviderSyncing("medium", () => captureMediumFeed("manual"));
           return;
         }
 
