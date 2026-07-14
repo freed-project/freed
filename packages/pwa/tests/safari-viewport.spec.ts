@@ -45,35 +45,37 @@ async function openSeededFriendsGraph(page: Page, friendId: string, friendName: 
     (window as typeof window & { __FREED_GRAPH_DEBUG_ENABLED__?: boolean })
       .__FREED_GRAPH_DEBUG_ENABLED__ = true;
   });
-  await page.goto("/", { waitUntil: "load" });
+  await page.goto("/friends", { waitUntil: "load" });
   await acceptLegalGateIfPresent(page);
-  await page.waitForFunction(() => {
+  const hasDevelopmentStore = await page.waitForFunction(() => {
     const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as
       | { getState?: () => { isInitialized?: boolean } }
       | undefined;
     return store?.getState?.().isInitialized === true;
-  });
-  await page.evaluate(async ({ id, name }) => {
-    const runtime = window as unknown as Record<string, unknown>;
-    const automerge = runtime.__FREED_AUTOMERGE__ as {
-      docAddFriend: (friend: unknown) => Promise<void>;
-    };
-    const store = runtime.__FREED_STORE__ as {
-      getState: () => {
-        setActiveView: (view: string) => void;
+  }, undefined, { timeout: 3_000 }).then(() => true).catch(() => false);
+  if (hasDevelopmentStore) {
+    await page.evaluate(async ({ id, name }) => {
+      const runtime = window as unknown as Record<string, unknown>;
+      const automerge = runtime.__FREED_AUTOMERGE__ as {
+        docAddFriend: (friend: unknown) => Promise<void>;
       };
-    };
-    const now = Date.now();
-    await automerge.docAddFriend({
-      id,
-      name,
-      careLevel: 5,
-      sources: [],
-      createdAt: now,
-      updatedAt: now,
-    });
-    store.getState().setActiveView("friends");
-  }, { id: friendId, name: friendName });
+      const store = runtime.__FREED_STORE__ as {
+        getState: () => {
+          setActiveView: (view: string) => void;
+        };
+      };
+      const now = Date.now();
+      await automerge.docAddFriend({
+        id,
+        name,
+        careLevel: 5,
+        sources: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      store.getState().setActiveView("friends");
+    }, { id: friendId, name: friendName });
+  }
   await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 10_000 });
   const deadline = Date.now() + 15_000;
   let previousSceneSyncCount = -1;
