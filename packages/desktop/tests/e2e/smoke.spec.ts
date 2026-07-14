@@ -5315,7 +5315,12 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
   await expect
     .poll(async () => {
       const debug = await readGraphSummary(page);
-      if (!debug || debug.qualityMode !== "settled" || debug.metrics.visibleLabelCount <= 0) {
+      if (
+        !debug ||
+        debug.qualityMode !== "settled" ||
+        debug.metrics.visibleLabelCount <= 0 ||
+        !debug.metrics.capped
+      ) {
         return 0;
       }
       return debug.metrics.sourceNodeCount ?? debug.nodeCount;
