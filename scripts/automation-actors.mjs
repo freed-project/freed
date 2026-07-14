@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -17,20 +16,35 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  ACTOR_LAUNCHER_ATTESTATION_PROTOCOL,
+  ACTOR_LAUNCHER_HANDOFF,
+  ACTOR_LAUNCHER_PURPOSE,
+  ACTOR_LAUNCHER_RECORD_ROOT,
+  ACTOR_RUNTIME_ROOT,
+  LAUNCHER_ATTESTATION_TIMEOUT_MS,
+  actorCredentialReadiness,
+  actorLauncherReadiness,
+  defaultLauncherAttestor,
+  readInstalledActorBinding,
+  runtimeDigestForPins as sharedRuntimeDigestForPins,
+  sha256File,
+  validateActorBindingRecord,
+} from "./lib/automation-actor-readiness.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "..");
-const DEFAULT_LAUNCHER_ROOT =
-  "/Library/Application Support/Freed/automation-actor-launchers";
-const DEFAULT_RUNTIME_ROOT =
-  "/Library/Application Support/Freed/automation-actor-runtimes";
+const DEFAULT_LAUNCHER_ROOT = ACTOR_LAUNCHER_RECORD_ROOT;
+const DEFAULT_RUNTIME_ROOT = ACTOR_RUNTIME_ROOT;
 const KEYCHAIN_SERVICE = "freed-automation-actor";
-const LAUNCHER_PURPOSE = "automation-actor-launcher";
-const LAUNCHER_HANDOFF = "keychain-to-canonical-lease";
-const ATTESTATION_PROTOCOL = "freed-actor-launcher-readiness-v1";
+const LAUNCHER_PURPOSE = ACTOR_LAUNCHER_PURPOSE;
+const LAUNCHER_HANDOFF = ACTOR_LAUNCHER_HANDOFF;
+const ATTESTATION_PROTOCOL = ACTOR_LAUNCHER_ATTESTATION_PROTOCOL;
 const MAX_LEASE_LIFETIME_MS = 30 * 60 * 1_000;
 const LEASE_TTL_SECONDS = 30 * 60;
 const MAX_LAUNCHER_HANDOFF_BYTES = 16 * 1_024;
-const RUNTIME_DIGEST_PROTOCOL = "freed-automation-actor-runtime-v1";
+const LAUNCHER_ACQUIRE_TIMEOUT_MS = 15_000;
+const CONTROL_LIFECYCLE_TIMEOUT_MS = 15_000;
 const RESERVED_ACTORS = new Set(["freed-owner", "freed-pr-publisher"]);
 
 export const AUTOMATION_ACTORS = Object.freeze({
@@ -74,6 +88,7 @@ function usage() {
   node scripts/automation-actors.mjs revoke (--actor <actor> | --all) [--state-root <path>]
   node scripts/automation-actors.mjs verify (--actor <actor> | --all) [--state-root <path>]
   node scripts/automation-actors.mjs acquire --actor <actor> [--state-root <path>]
+  node scripts/automation-actors.mjs accept-host --all [--state-root <path>]
 
 Supported actors:
   ${AUTOMATION_ACTOR_IDS.join("\n  ")}
@@ -140,7 +155,14 @@ export function parseCommand(argv) {
   }
   const [action, ...rest] = argv;
   if (
-    !["provision", "rotate", "revoke", "verify", "acquire"].includes(action)
+    ![
+      "provision",
+      "rotate",
+      "revoke",
+      "verify",
+      "acquire",
+      "accept-host",
+    ].includes(action)
   ) {
     fail("invalid_action", `Unsupported action: ${String(action)}`);
   }
@@ -150,6 +172,9 @@ export function parseCommand(argv) {
   }
   if (options.all && action === "acquire") {
     fail("invalid_actor", "acquire requires exactly one actor.");
+  }
+  if (action === "accept-host" && !options.all) {
+    fail("invalid_actor", "accept-host requires --all.");
   }
   if (!options.all && !options.actor) {
     fail("invalid_actor", "--actor or --all is required.");
@@ -172,13 +197,16 @@ function sanitizedEnvironment(env) {
   return safe;
 }
 
-function defaultRunner(executable, args, options) {
+export function defaultRunner(executable, args, options) {
   return spawnSync(executable, args, {
     cwd: options.cwd,
     env: options.env,
     encoding: "utf8",
     maxBuffer: 256 * 1_024,
-    stdio: ["inherit", "pipe", "pipe"],
+    stdio: [options.stdin ?? "inherit", "pipe", "pipe"],
+    ...(options.timeoutMs === undefined
+      ? {}
+      : { timeout: options.timeoutMs, killSignal: "SIGKILL" }),
   });
 }
 
@@ -194,15 +222,36 @@ function runChecked(
   dependencies,
   executable,
   args,
-  { cwd = "/", purpose = "command" } = {},
+  {
+    cwd = "/",
+    purpose = "command",
+    timeoutMs = undefined,
+    additionalEnv = {},
+    stdin = "inherit",
+  } = {},
 ) {
   const result = normalizedRunResult(
     dependencies.runner(executable, args, {
       cwd,
-      env: sanitizedEnvironment(dependencies.env),
+      env: {
+        ...sanitizedEnvironment(dependencies.env),
+        ...additionalEnv,
+      },
+      timeoutMs,
+      killSignal: timeoutMs === undefined ? undefined : "SIGKILL",
+      stdin,
     }),
   );
   if (result.error || result.status !== 0) {
+    if (result.error?.code === "ETIMEDOUT") {
+      const bound = Number.isSafeInteger(timeoutMs)
+        ? `${timeoutMs.toLocaleString()} ms`
+        : "its configured time bound";
+      fail(
+        "command_timeout",
+        `${purpose} exceeded ${bound}.`,
+      );
+    }
     const status = Number.isInteger(result.status)
       ? ` with status ${result.status.toLocaleString()}`
       : "";
@@ -331,19 +380,8 @@ function canonicalStateRoot(
   }
 }
 
-function sha256File(filePath) {
-  return createHash("sha256").update(readFileSync(filePath)).digest("hex");
-}
-
 export function runtimeDigestForPins(pins) {
-  const payload = [
-    RUNTIME_DIGEST_PROTOCOL,
-    `node:${pins.nodeSha256}`,
-    `automation-control.mjs:${pins.controlEntrySha256}`,
-    `lib/automation-control.mjs:${pins.controlLibrarySha256}`,
-    "",
-  ].join("\n");
-  return createHash("sha256").update(payload).digest("hex");
+  return sharedRuntimeDigestForPins(pins);
 }
 
 function inspectRegularFile(filePath, { executable = false } = {}) {
@@ -678,216 +716,49 @@ function runProvisionerAction(command, dependencies, stateRoot) {
   });
 }
 
-const BINDING_KEYS = Object.freeze(
-  [
-    "actor",
-    "attestationProtocol",
-    "controlEntryPath",
-    "controlEntrySha256",
-    "controlLibraryPath",
-    "controlLibrarySha256",
-    "handoff",
-    "keychainAccount",
-    "keychainService",
-    "leaseName",
-    "launcherPath",
-    "launcherSha256",
-    "maxLeaseLifetimeMs",
-    "nodePath",
-    "nodeSha256",
-    "purpose",
-    "schemaVersion",
-    "stateRoot",
-  ].sort(),
-);
-
-function isSha256(value) {
-  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
-}
-
-function isStrictChildPath(parentPath, candidatePath) {
-  const relative = path.relative(parentPath, candidatePath);
-  return (
-    relative !== "" &&
-    relative !== ".." &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
-}
-
-function inspectTrustedDirectory(directory, trustedUid) {
-  const resolved = path.resolve(directory);
-  let stats;
-  let canonical;
-  try {
-    stats = lstatSync(resolved);
-    canonical = realpathSync(resolved);
-  } catch {
-    fail("invalid_binding", "A trusted public directory is missing.");
-  }
-  if (
-    canonical !== resolved ||
-    !stats.isDirectory() ||
-    stats.isSymbolicLink() ||
-    stats.uid !== trustedUid ||
-    (stats.mode & 0o022) !== 0
-  ) {
-    fail("invalid_binding", "A trusted public directory is not immutable.");
-  }
-}
-
-function inspectTrustedFile(
-  filePath,
-  rootPath,
-  dependencies,
-  label,
-  executable,
-) {
-  const root = path.resolve(rootPath);
-  const resolved = path.resolve(filePath);
-  inspectTrustedDirectory(root, dependencies.trustedUid);
-  if (!isStrictChildPath(root, resolved)) {
-    fail("invalid_binding", `${label} escapes its trusted public root.`);
-  }
-  let current = path.dirname(resolved);
-  while (true) {
-    inspectTrustedDirectory(current, dependencies.trustedUid);
-    if (current === root) break;
-    const parent = path.dirname(current);
-    if (parent === current || !isStrictChildPath(root, current)) {
-      fail("invalid_binding", `${label} escapes its trusted public root.`);
-    }
-    current = parent;
-  }
-  let stats;
-  let canonical;
-  try {
-    stats = lstatSync(resolved);
-    canonical = realpathSync(resolved);
-  } catch {
-    fail("invalid_binding", `${label} is missing.`);
-  }
-  if (
-    canonical !== resolved ||
-    !stats.isFile() ||
-    stats.isSymbolicLink() ||
-    stats.uid !== dependencies.trustedUid ||
-    (stats.mode & 0o022) !== 0 ||
-    (executable && (stats.mode & 0o111) === 0)
-  ) {
-    fail("invalid_binding", `${label} is not a trusted immutable file.`);
-  }
-}
-
-function assertPinnedFile(
-  filePath,
-  expectedSha256,
-  rootPath,
-  dependencies,
-  label,
-  executable = false,
-) {
-  inspectTrustedFile(filePath, rootPath, dependencies, label, executable);
-  if (sha256File(filePath) !== expectedSha256) {
-    fail("invalid_binding", `${label} does not match its public binding.`);
-  }
-}
-
 export function validatePublicBinding(binding, expected, dependencies) {
-  const contract = AUTOMATION_ACTORS[expected.actor];
-  const launcherPath = path.join(
-    dependencies.launcherRoot,
-    "bin",
-    `${expected.actor}-${String(binding?.launcherSha256 ?? "")}`,
-  );
-  const digest = path.basename(path.dirname(binding?.nodePath ?? ""));
-  const runtimeDirectory = path.join(dependencies.runtimeRoot, digest);
-  if (
-    !binding ||
-    typeof binding !== "object" ||
-    Array.isArray(binding) ||
-    Object.keys(binding).sort().join("\n") !== BINDING_KEYS.join("\n") ||
-    binding.schemaVersion !== 1 ||
-    binding.actor !== expected.actor ||
-    binding.purpose !== LAUNCHER_PURPOSE ||
-    binding.handoff !== LAUNCHER_HANDOFF ||
-    binding.attestationProtocol !== ATTESTATION_PROTOCOL ||
-    binding.keychainService !== KEYCHAIN_SERVICE ||
-    binding.keychainAccount !== expected.actor ||
-    binding.stateRoot !== expected.stateRoot ||
-    binding.leaseName !== contract.leaseName ||
-    binding.maxLeaseLifetimeMs !== MAX_LEASE_LIFETIME_MS ||
-    binding.launcherPath !== launcherPath ||
-    !isSha256(binding.launcherSha256) ||
-    !isSha256(binding.nodeSha256) ||
-    !isSha256(binding.controlEntrySha256) ||
-    !isSha256(binding.controlLibrarySha256) ||
-    !isSha256(digest) ||
-    binding.nodePath !== path.join(runtimeDirectory, "node") ||
-    binding.controlEntryPath !==
-      path.join(runtimeDirectory, "automation-control.mjs") ||
-    binding.controlLibraryPath !==
-      path.join(runtimeDirectory, "lib", "automation-control.mjs") ||
-    runtimeDigestForPins(binding) !== digest
-  ) {
-    fail("invalid_binding", "The public actor binding is invalid.");
+  const readiness = validateActorBindingRecord(binding, {
+    actor: expected.actor,
+    stateRoot: expected.stateRoot,
+    leaseContract: {
+      name: AUTOMATION_ACTORS[expected.actor].leaseName,
+      maxLifetimeMs: MAX_LEASE_LIFETIME_MS,
+    },
+    launcherRoot: dependencies.launcherRoot,
+    runtimeRoot: dependencies.runtimeRoot,
+    requiredUid: dependencies.trustedUid,
+  });
+  if (!readiness.ready) {
+    fail("invalid_binding", readiness.reason);
   }
-  assertPinnedFile(
-    binding.launcherPath,
-    binding.launcherSha256,
-    dependencies.launcherRoot,
-    dependencies,
-    "Launcher",
-    true,
-  );
-  assertPinnedFile(
-    binding.nodePath,
-    binding.nodeSha256,
-    dependencies.runtimeRoot,
-    dependencies,
-    "Pinned Node",
-    true,
-  );
-  assertPinnedFile(
-    binding.controlEntryPath,
-    binding.controlEntrySha256,
-    dependencies.runtimeRoot,
-    dependencies,
-    "Automation control entry",
-  );
-  assertPinnedFile(
-    binding.controlLibraryPath,
-    binding.controlLibrarySha256,
-    dependencies.runtimeRoot,
-    dependencies,
-    "Automation control library",
-  );
   return binding;
 }
 
-function acquireActor(command, dependencies, stateRoot) {
-  const bindingPath = path.join(
-    dependencies.launcherRoot,
-    `${command.actor}.json`,
-  );
-  let binding;
-  try {
-    inspectTrustedFile(
-      bindingPath,
-      dependencies.launcherRoot,
-      dependencies,
-      "Public actor binding",
-      false,
-    );
-    binding = JSON.parse(readFileSync(bindingPath, "utf8"));
-  } catch {
-    fail("invalid_binding", "The public actor binding cannot be read.");
+function installedBinding(command, dependencies, stateRoot) {
+  const readiness = readInstalledActorBinding(stateRoot, command.actor, {
+    leaseContract: {
+      name: AUTOMATION_ACTORS[command.actor].leaseName,
+      maxLifetimeMs: MAX_LEASE_LIFETIME_MS,
+    },
+    launcherRecordRoot: dependencies.launcherRoot,
+    runtimeRoot: dependencies.runtimeRoot,
+    requiredUid: dependencies.trustedUid,
+  });
+  if (!readiness.ready) {
+    fail("invalid_binding", readiness.reason);
   }
-  validatePublicBinding(
-    binding,
-    { actor: command.actor, stateRoot },
-    dependencies,
-  );
+  return readiness;
+}
+
+function acquireActor(
+  command,
+  dependencies,
+  stateRoot,
+  installedBindingOverride = undefined,
+) {
+  const binding =
+    installedBindingOverride ??
+    installedBinding(command, dependencies, stateRoot).binding;
   const stdout = runChecked(
     dependencies,
     binding.launcherPath,
@@ -902,8 +773,48 @@ function acquireActor(command, dependencies, stateRoot) {
       "--ttl-seconds",
       String(LEASE_TTL_SECONDS),
     ],
-    { purpose: "Automation actor lease acquisition" },
+    {
+      purpose: "Automation actor lease acquisition",
+      timeoutMs: dependencies.launcherAcquireTimeoutMs,
+      stdin: "ignore",
+    },
   );
+  const parsed = parseAcquisitionHandoff(
+    stdout,
+    command.actor,
+    binding.leaseName,
+  );
+  if (!parsed.valid) {
+    if (parsed.plausibleLeaseToken !== undefined) {
+      cleanupMalformedAcquisition(
+        command.actor,
+        parsed.plausibleLeaseToken,
+        binding,
+        dependencies,
+        stateRoot,
+      );
+    }
+    fail(
+      "invalid_launcher_response",
+      "The actor launcher did not return one JSON object.",
+    );
+  }
+  return parsed.result;
+}
+
+function parseAcquisitionHandoff(stdout, actor, leaseName) {
+  let result;
+  try {
+    result = JSON.parse(stdout);
+  } catch {
+    return { valid: false, plausibleLeaseToken: undefined };
+  }
+  const plausibleLeaseToken =
+    typeof result?.leaseToken === "string" &&
+    Buffer.byteLength(result.leaseToken, "utf8") >= 16 &&
+    Buffer.byteLength(result.leaseToken, "utf8") <= 4 * 1_024
+      ? result.leaseToken
+      : undefined;
   const expectedHandoffKeys = [
     "acquiredAt",
     "actor",
@@ -914,21 +825,18 @@ function acquireActor(command, dependencies, stateRoot) {
     "ttlMs",
   ].sort();
   try {
-    if (Buffer.byteLength(stdout, "utf8") > MAX_LAUNCHER_HANDOFF_BYTES) {
-      throw new Error("oversized result");
-    }
-    const result = JSON.parse(stdout);
     const acquiredAt = Date.parse(result?.acquiredAt);
     const expiresAt = Date.parse(result?.expiresAt);
     if (
+      Buffer.byteLength(stdout, "utf8") > MAX_LAUNCHER_HANDOFF_BYTES ||
       !result ||
       typeof result !== "object" ||
       Array.isArray(result) ||
       Object.keys(result).sort().join("\n") !==
         expectedHandoffKeys.join("\n") ||
       result.schemaVersion !== 1 ||
-      result.actor !== command.actor ||
-      result.leaseName !== binding.leaseName ||
+      result.actor !== actor ||
+      result.leaseName !== leaseName ||
       typeof result.leaseToken !== "string" ||
       Buffer.byteLength(result.leaseToken, "utf8") < 16 ||
       Buffer.byteLength(result.leaseToken, "utf8") > 4 * 1_024 ||
@@ -942,13 +850,350 @@ function acquireActor(command, dependencies, stateRoot) {
     ) {
       throw new Error("invalid result");
     }
-    return result;
+    return { valid: true, plausibleLeaseToken, result };
+  } catch {
+    return { valid: false, plausibleLeaseToken, result };
+  }
+}
+
+function cleanupMalformedAcquisition(
+  actor,
+  leaseToken,
+  binding,
+  dependencies,
+  stateRoot,
+) {
+  try {
+    const before = runPinnedControl(
+      dependencies,
+      binding,
+      stateRoot,
+      "show",
+    );
+    if (before === null) return;
+    if (
+      before?.name !== binding.leaseName ||
+      before?.owner !== actor ||
+      !["active", "expired"].includes(before?.status)
+    ) {
+      throw new Error("unexpected live lease");
+    }
+    const release = runPinnedControl(
+      dependencies,
+      binding,
+      stateRoot,
+      "release",
+      { leaseToken },
+    );
+    if (
+      release?.released !== true ||
+      release?.lease?.name !== binding.leaseName ||
+      release?.lease?.owner !== actor
+    ) {
+      throw new Error("release was not confirmed");
+    }
+    if (
+      runPinnedControl(dependencies, binding, stateRoot, "show") !== null
+    ) {
+      throw new Error("lease remains live");
+    }
   } catch {
     fail(
-      "invalid_launcher_response",
-      "The actor launcher did not return one JSON object.",
+      "acquire_cleanup_failed",
+      `Malformed acquisition may have left the ${actor} lease live.`,
     );
   }
+}
+
+function attestActor(actor, dependencies, stateRoot) {
+  const credential = actorCredentialReadiness(stateRoot, actor, {
+    requiredUid: dependencies.uid,
+  });
+  const readiness = actorLauncherReadiness(stateRoot, actor, {
+    credential,
+    leaseContract: {
+      name: AUTOMATION_ACTORS[actor].leaseName,
+      maxLifetimeMs: MAX_LEASE_LIFETIME_MS,
+    },
+    launcherAttestor: dependencies.launcherAttestor,
+    attestationTimeoutMs: LAUNCHER_ATTESTATION_TIMEOUT_MS,
+    launcherRecordRoot: dependencies.launcherRoot,
+    runtimeRoot: dependencies.runtimeRoot,
+    requiredUid: dependencies.trustedUid,
+  });
+  if (!readiness.ready) {
+    fail("actor_not_ready", readiness.reason);
+  }
+  return readiness;
+}
+
+function publicVerification(readiness) {
+  return {
+    actor: readiness.binding.actor,
+    leaseName: readiness.binding.leaseName,
+    launcherSha256: readiness.binding.launcherSha256,
+    runtimeDigest: readiness.runtimeDigest,
+    attested: true,
+  };
+}
+
+function verifyActors(command, dependencies, stateRoot) {
+  const actors =
+    command.actor === "all" ? AUTOMATION_ACTOR_IDS : [command.actor];
+  const readinesses = actors.map((actor) =>
+    attestActor(actor, dependencies, stateRoot),
+  );
+  if (command.actor === "all") {
+    assertOneRuntimeDigest(readinesses);
+  }
+  return {
+    action: "verify",
+    stateRoot,
+    records: readinesses.map(publicVerification),
+  };
+}
+
+function parseControlResponse(stdout, { action, stateRoot }) {
+  if (Buffer.byteLength(stdout, "utf8") > MAX_LAUNCHER_HANDOFF_BYTES) {
+    fail("invalid_control_response", "The pinned control output was too large.");
+  }
+  try {
+    const payload = JSON.parse(stdout);
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      Array.isArray(payload) ||
+      Object.keys(payload).sort().join("\n") !==
+        ["action", "ok", "result", "schemaVersion", "stateRoot"]
+          .sort()
+          .join("\n") ||
+      payload.ok !== true ||
+      payload.schemaVersion !== 1 ||
+      payload.action !== action ||
+      payload.stateRoot !== stateRoot
+    ) {
+      throw new Error("invalid control result");
+    }
+    return payload.result;
+  } catch {
+    fail(
+      "invalid_control_response",
+      "The pinned control did not return the expected JSON object.",
+    );
+  }
+}
+
+function runPinnedControl(
+  dependencies,
+  binding,
+  stateRoot,
+  action,
+  { leaseToken = undefined } = {},
+) {
+  const args = [
+    binding.controlEntryPath,
+    "lease",
+    action,
+    "--state-root",
+    stateRoot,
+    "--name",
+    binding.leaseName,
+  ];
+  if (action === "heartbeat") {
+    args.push("--ttl-seconds", String(LEASE_TTL_SECONDS));
+  }
+  const stdout = runChecked(dependencies, binding.nodePath, args, {
+    purpose: `Automation actor lease ${action}`,
+    timeoutMs: dependencies.controlLifecycleTimeoutMs,
+    stdin: "ignore",
+    additionalEnv:
+      leaseToken === undefined
+        ? {}
+        : { FREED_AUTOMATION_LEASE_TOKEN: leaseToken },
+  });
+  return parseControlResponse(stdout, {
+    action: `lease.${action}`,
+    stateRoot,
+  });
+}
+
+function canonicalIdentity(value) {
+  if (Array.isArray(value)) return value.map(canonicalIdentity);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalIdentity(value[key])]),
+    );
+  }
+  return value;
+}
+
+function readinessIdentity(readiness) {
+  return JSON.stringify(
+    canonicalIdentity({
+      credentialPath: readiness.credentialPath,
+      credentialSha256: readiness.credentialSha256,
+      binding: readiness.binding,
+      runtimeRoot: readiness.runtimeRoot,
+      runtimeDigest: readiness.runtimeDigest,
+      attestation: readiness.attestation,
+    }),
+  );
+}
+
+function assertOneRuntimeDigest(readinesses) {
+  const runtimeDigests = new Set(
+    readinesses.map((readiness) => readiness.runtimeDigest),
+  );
+  if (runtimeDigests.size !== 1) {
+    fail(
+      "runtime_identity_mismatch",
+      "Installed actor bindings do not share one pinned runtime digest.",
+    );
+  }
+  return readinesses[0].runtimeDigest;
+}
+
+function acceptActor(actor, dependencies, stateRoot, initial) {
+  let leaseToken;
+  let primaryFailure;
+  let releaseFailure;
+  try {
+    const lease = acquireActor(
+      { action: "acquire", actor, stateRoot },
+      dependencies,
+      stateRoot,
+      initial.binding,
+    );
+    leaseToken = lease.leaseToken;
+    const heartbeat = runPinnedControl(
+      dependencies,
+      initial.binding,
+      stateRoot,
+      "heartbeat",
+      { leaseToken },
+    );
+    if (
+      heartbeat?.heartbeated !== true ||
+      heartbeat?.lease?.token !== leaseToken ||
+      heartbeat?.lease?.name !== initial.binding.leaseName ||
+      heartbeat?.lease?.owner !== actor
+    ) {
+      fail(
+        "invalid_control_response",
+        "The pinned control did not confirm the expected lease heartbeat.",
+      );
+    }
+  } catch (error) {
+    primaryFailure = error;
+  } finally {
+    if (leaseToken !== undefined) {
+      try {
+        const release = runPinnedControl(
+          dependencies,
+          initial.binding,
+          stateRoot,
+          "release",
+          { leaseToken },
+        );
+        if (
+          release?.released !== true ||
+          release?.lease?.name !== initial.binding.leaseName ||
+          release?.lease?.owner !== actor
+        ) {
+          fail(
+            "invalid_control_response",
+            "The pinned control did not confirm the expected lease release.",
+          );
+        }
+      } catch (error) {
+        releaseFailure = error;
+      }
+    }
+  }
+  if (releaseFailure) {
+    fail(
+      "accept_host_release_failed",
+      `Host acceptance could not release the ${actor} lease.`,
+    );
+  }
+  if (primaryFailure) throw primaryFailure;
+
+  const shown = runPinnedControl(
+    dependencies,
+    initial.binding,
+    stateRoot,
+    "show",
+  );
+  if (shown !== null) {
+    fail(
+      "lease_still_live",
+      `Host acceptance found a live ${actor} lease after release.`,
+    );
+  }
+  return {
+    actor,
+    leaseName: initial.binding.leaseName,
+    launcherSha256: initial.binding.launcherSha256,
+    runtimeDigest: initial.runtimeDigest,
+    attested: true,
+    acquired: true,
+    heartbeated: true,
+    released: true,
+    liveLease: false,
+  };
+}
+
+function acceptHost(dependencies, stateRoot) {
+  const initialReadinesses = AUTOMATION_ACTOR_IDS.map((actor) =>
+    attestActor(actor, dependencies, stateRoot),
+  );
+  const runtimeDigest = assertOneRuntimeDigest(initialReadinesses);
+  const launcherDigests = new Set(
+    initialReadinesses.map(
+      (readiness) => readiness.binding.launcherSha256,
+    ),
+  );
+  if (launcherDigests.size !== 1) {
+    fail(
+      "launcher_identity_mismatch",
+      "Installed actor launchers do not share one stable public identity.",
+    );
+  }
+  const records = [];
+  for (const [index, actor] of AUTOMATION_ACTOR_IDS.entries()) {
+    const record = acceptActor(
+      actor,
+      dependencies,
+      stateRoot,
+      initialReadinesses[index],
+    );
+    records.push(record);
+  }
+  const finalReadinesses = AUTOMATION_ACTOR_IDS.map((actor) =>
+    attestActor(actor, dependencies, stateRoot),
+  );
+  for (const [index, actor] of AUTOMATION_ACTOR_IDS.entries()) {
+    if (
+      readinessIdentity(finalReadinesses[index]) !==
+      readinessIdentity(initialReadinesses[index])
+    ) {
+      fail(
+        "launcher_identity_changed",
+        `The installed ${actor} credential or launcher identity changed during acceptance.`,
+      );
+    }
+    records[index].launcherIdentityStable = true;
+  }
+  return {
+    action: "accept-host",
+    stateRoot,
+    accepted: true,
+    launcherSha256: initialReadinesses[0].binding.launcherSha256,
+    runtimeDigest,
+    records,
+  };
 }
 
 function dependenciesWithDefaults(overrides = {}) {
@@ -969,6 +1214,9 @@ function dependenciesWithDefaults(overrides = {}) {
       "automation-actor-host-build.sh",
     ),
     runner: defaultRunner,
+    launcherAttestor: defaultLauncherAttestor,
+    launcherAcquireTimeoutMs: LAUNCHER_ACQUIRE_TIMEOUT_MS,
+    controlLifecycleTimeoutMs: CONTROL_LIFECYCLE_TIMEOUT_MS,
     repositoryInspector: defaultRepositoryInspector,
     pinnedNodeResolver: defaultPinnedNodeResolver,
     ...overrides,
@@ -984,7 +1232,7 @@ export function executeCommand(command, overrides = {}) {
   if (command.help) return { help: true, usage: usage() };
   const dependencies = dependenciesWithDefaults(overrides);
   assertOwnerHost(dependencies);
-  if (["provision", "rotate", "revoke", "verify"].includes(command.action)) {
+  if (["provision", "rotate", "revoke"].includes(command.action)) {
     const repository = dependencies.repositoryInspector(dependencies);
     assertProvisioningReady({
       platform: dependencies.platform,
@@ -999,11 +1247,17 @@ export function executeCommand(command, overrides = {}) {
   if (command.action === "provision") {
     return provisionActors(command, dependencies, stateRoot);
   }
-  if (["rotate", "revoke", "verify"].includes(command.action)) {
+  if (["rotate", "revoke"].includes(command.action)) {
     return runProvisionerAction(command, dependencies, stateRoot);
+  }
+  if (command.action === "verify") {
+    return verifyActors(command, dependencies, stateRoot);
   }
   if (command.action === "acquire") {
     return acquireActor(command, dependencies, stateRoot);
+  }
+  if (command.action === "accept-host") {
+    return acceptHost(dependencies, stateRoot);
   }
   fail("invalid_action", `Unsupported action: ${command.action}`);
 }

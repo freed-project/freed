@@ -108,10 +108,13 @@ HOST_PARENT="${HOST_OUTPUT%/*}"
 HOST_NAME="${HOST_OUTPUT##*/}"
 PROVISIONER_PARENT="${PROVISIONER_OUTPUT%/*}"
 PROVISIONER_NAME="${PROVISIONER_OUTPUT##*/}"
-HOST_TEMP="$(/usr/bin/mktemp "${HOST_PARENT}/.automation-actor-host.XXXXXX")"
-PROVISIONER_TEMP="$(/usr/bin/mktemp "${PROVISIONER_PARENT}/.automation-actor-provision.XXXXXX")"
+HOST_BUILD_DIRECTORY="$(/usr/bin/mktemp -d "${HOST_PARENT}/.automation-actor-host-build.XXXXXX")"
+PROVISIONER_BUILD_DIRECTORY="$(/usr/bin/mktemp -d "${PROVISIONER_PARENT}/.automation-actor-provision-build.XXXXXX")"
+/bin/chmod 700 "${HOST_BUILD_DIRECTORY}" "${PROVISIONER_BUILD_DIRECTORY}"
+HOST_TEMP="${HOST_BUILD_DIRECTORY}/automation-actor-host"
+PROVISIONER_TEMP="${PROVISIONER_BUILD_DIRECTORY}/automation-actor-provision"
 cleanup() {
-  /bin/rm -f -- "${HOST_TEMP}" "${PROVISIONER_TEMP}"
+  /bin/rm -rf -- "${HOST_BUILD_DIRECTORY}" "${PROVISIONER_BUILD_DIRECTORY}"
 }
 trap cleanup EXIT
 
@@ -123,7 +126,6 @@ trap cleanup EXIT
   "${HOST_SOURCE}" \
   -o "${HOST_TEMP}" \
   -framework Security \
-  -framework LocalAuthentication \
   -framework CryptoKit
 
 "${SWIFTC}" \
@@ -143,6 +145,7 @@ fi
 /bin/chmod 755 "${HOST_TEMP}" "${PROVISIONER_TEMP}"
 /bin/mv -f -- "${HOST_TEMP}" "${HOST_PARENT}/${HOST_NAME}"
 /bin/mv -f -- "${PROVISIONER_TEMP}" "${PROVISIONER_PARENT}/${PROVISIONER_NAME}"
+/bin/rmdir -- "${HOST_BUILD_DIRECTORY}" "${PROVISIONER_BUILD_DIRECTORY}"
 trap - EXIT
 
 echo "Built native automation actor host at ${HOST_PARENT}/${HOST_NAME}"
