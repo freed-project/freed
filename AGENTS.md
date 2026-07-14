@@ -29,6 +29,8 @@
 
 Before activating a saved Freed automation, run `npm run validate:host-automations`. It compares identity, prompt, schedule, authoritative callable model and supported reasoning effort, target, working directories, execution environment, credential record, root-owned launcher binding and digest, and non-secret Keychain item presence without editing host files. An ACTIVE actor fails closed unless its trusted launcher can exchange the persistent Keychain credential for only the actor's short-lived canonical lease. Missing actors remain PAUSED. Reconcile missing or drifted actors through the Codex host automation controls, and never repair drift by editing `automation.toml` directly.
 
+When the owner explicitly approves one exact lifecycle operation in the current task, a private current-task owner confirmation file is the supported cooperative fallback for that operation. It may acquire only a short `freed-owner` lease bound to the named task and canonical operation intent. Store the file outside the repository. The file does not authenticate the owner, does not grant provider traffic, and does not replace either provider-risk gate or CODEOWNER review. Each different operation requires its own exact intent and confirmation record.
+
 ## Versioning
 
 CalVer `YY.M.DDBUILD` — patch segment encodes the day and build number:
@@ -74,6 +76,7 @@ Run `./scripts/release.sh` with no args from a fresh release-prep worktree based
 Pass an explicit remote base like `origin/dev` or `origin/www` so feature work does not inherit a stale local branch by accident.
 For multi-thread or speculative worktree swarms, prefer `--swarm`. That maps to deferred bootstrap until the thread actually needs verification or a preview.
 Prefer the lightest useful local preview before opening a draft PR:
+
 - product work usually uses `PORT=$(node scripts/lib/find-free-port.mjs 1421) && ./scripts/worktree-preview.sh pwa --port "$PORT"`
 - website work uses `PORT=$(node scripts/lib/find-free-port.mjs 3000) && ./scripts/worktree-preview.sh website --port "$PORT"`
 - use `./scripts/worktree-preview.sh desktop --native` only when real Tauri behavior matters, and report the preview label when you do
@@ -263,7 +266,7 @@ test("invoke a command", async ({ app, ipc }) => {
   await ipc.setHandler("my_command", (_args) => ({ ok: true }));
 
   const result = await app.page.evaluate(async () =>
-    (window as any).__TAURI_MOCK_INVOKE__("my_command", {})
+    (window as any).__TAURI_MOCK_INVOKE__("my_command", {}),
   );
   expect(result).toEqual({ ok: true });
 });

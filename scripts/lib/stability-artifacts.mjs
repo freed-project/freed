@@ -9,6 +9,8 @@ import {
 import os from "node:os";
 import path from "node:path";
 
+import { stabilityMetricById } from "./stability-metrics.mjs";
+
 export const STABILITY_ARTIFACT_SCHEMA_VERSION = 1;
 export const DEFAULT_STABILITY_ARTIFACT_ROOT = path.join(
   os.homedir(),
@@ -147,6 +149,19 @@ function requireStringArray(value, field, errors, options = {}) {
 }
 
 function validatePayload(kind, status, payload, errors) {
+  if (Object.hasOwn(payload, "metricId")) {
+    const metricId = requireString(
+      payload.metricId,
+      "payload.metricId",
+      errors,
+    );
+    if (metricId && !stabilityMetricById(metricId)) {
+      errors.push(
+        `payload.metricId must name a registered stability metric: ${metricId}`,
+      );
+    }
+  }
+
   if (kind === "evidence-capture") {
     const processSegments = requireArray(
       payload.processSegments,
@@ -175,7 +190,6 @@ function validatePayload(kind, status, payload, errors) {
   if (kind === "memory-profile") {
     requireString(payload.scenario, "payload.scenario", errors);
     requireString(payload.comparisonCohort, "payload.comparisonCohort", errors);
-    requireString(payload.metricId, "payload.metricId", errors);
     const budget = requireObject(payload.budget, "payload.budget", errors);
     if (!Number.isFinite(budget.value))
       errors.push("payload.budget.value must be a finite number");

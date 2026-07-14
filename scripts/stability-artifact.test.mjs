@@ -61,7 +61,7 @@ function memoryArtifact(overrides = {}) {
     payload: {
       scenario: "large-document-idle",
       comparisonCohort: "apple-silicon-32gb-large",
-      metricId: "main_footprint_slope",
+      metricId: "main-footprint-slope",
       budget: { value: 5, unit: "MiB/hour" },
       contributors: [],
       measuredScope: ["Freed Desktop native and attributed WebKit RSS"],
@@ -153,6 +153,33 @@ test("provider review artifacts require named providers and human-readable risk 
   assert.throws(
     () => validateStabilityArtifact(artifact),
     /payload.providers must be an array[\s\S]*payload.observableBehavior must be a non-empty string/,
+  );
+});
+
+test("stability artifacts reject unknown optional metric ids", () => {
+  const valid = controllerArtifact({
+    kind: "provider-risk-review",
+    status: "diff_authorized",
+    payload: {
+      providers: ["other"],
+      observableBehavior: "Observe the reviewed provider behavior.",
+      fingerprintingRisk: "The provider can observe authenticated requests.",
+      lowestProfileAlternative: "Keep provider contact disabled.",
+      allowedBehavior: "Only the exact reviewed provider behavior.",
+      metricId: "renderer-recovery-count",
+    },
+  });
+  assert.doesNotThrow(() => validateStabilityArtifact(valid));
+  assert.throws(
+    () =>
+      validateStabilityArtifact({
+        ...valid,
+        payload: {
+          ...valid.payload,
+          metricId: "unregistered-provider-wish",
+        },
+      }),
+    /payload.metricId must name a registered stability metric/,
   );
 });
 
