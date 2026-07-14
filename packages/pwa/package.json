@@ -21,7 +21,7 @@
     "@freed/shared": "*",
     "@freed/sync": "*",
     "@freed/ui": "*",
-    "@tanstack/react-virtual": "^3.13.6",
+    "@tanstack/react-virtual": "^3.14.6",
     "date-fns": "^4.1.0",
     "jsqr": "^1.4.0",
     "jszip": "^3.10.1",
