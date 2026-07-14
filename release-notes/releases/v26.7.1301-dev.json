@@ -1,0 +1,64 @@
+{
+  "tag": "v26.7.1301-dev",
+  "version": "26.7.1301-dev",
+  "channel": "dev",
+  "dayKey": "26.7.13",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-14T04:15:20.327Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.1200-dev",
+    "previousPublishedDayTag": "v26.7.1200-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "315559bd7e184172349d3ae786c61098cb2f9b02",
+    "promotedDevCommitSha": null,
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.1301-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.1301-dev"
+    ],
+    "prNumbers": [
+      949,
+      955,
+      957,
+      963,
+      964,
+      965,
+      966,
+      969
+    ],
+    "commitSubjects": [
+      "fix: complete YouTube capture lifecycle (#969)",
+      "fix: bootstrap automation actor leases (#965)",
+      "test: restore release channel build coverage (#967)",
+      "chore: reverse integrate main into dev (#966)",
+      "fix: bind release lockfile to version bump (#964)",
+      "chore: prepare v26.7.1300-dev (#963)",
+      "fix: harden the stability control plane (#949)",
+      "fix: enable YouTube terminal sync soaks (#955)",
+      "fix: resolve pinned Node when sourced by zsh (#957)"
+    ]
+  },
+  "release": {
+    "deck": "Unattended YouTube validation now runs through the normal authenticated sync path with stricter build and soak evidence",
+    "features": [],
+    "fixes": [
+      "Complete YouTube capture lifecycle",
+      "Bootstrap automation actor leases",
+      "Bind release lockfile to version bump",
+      "Harden the stability control plane",
+      "Pinned Node when sourced by zsh resolved",
+      "Start the normal authenticated YouTube sync from a dev build through the terminal without foreground clicks",
+      "Require complete subscription roster evidence, recent Subscriptions media evidence, and exact installed-build identity during the soak"
+    ],
+    "followUps": [
+      "Reverse integrate main into dev",
+      "Prepare v26.7.1300-dev"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1301-dev\n\nUnattended YouTube validation now runs through the normal authenticated sync path with stricter build and soak evidence\n\n### Fixes\n\n- Complete YouTube capture lifecycle\n- Bootstrap automation actor leases\n- Bind release lockfile to version bump\n- Harden the stability control plane\n- Pinned Node when sourced by zsh resolved\n- Start the normal authenticated YouTube sync from a dev build through the terminal without foreground clicks\n- Require complete subscription roster evidence, recent Subscriptions media evidence, and exact installed-build identity during the soak\n\n### Follow-ups\n\n- Reverse integrate main into dev\n- Prepare v26.7.1300-dev\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
