@@ -164,13 +164,11 @@ export function verifyPreparedReleaseTagPublisher({
 
 export function buildReleaseGitHubAppManifest({ origin }) {
   const callbackUrl = new URL(CALLBACK_PATH, origin).toString();
-  const webhookUrl = new URL("/github-app/inactive-webhook", origin).toString();
   return {
     name: RELEASE_GITHUB_APP_NAME,
     url: "https://freed.wtf",
     description:
       "Creates one reviewed immutable release tag for freed-project/freed.",
-    hook_attributes: { url: webhookUrl, active: false },
     redirect_url: callbackUrl,
     public: false,
     default_permissions: { contents: "write" },
