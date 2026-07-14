@@ -8,6 +8,8 @@ import {
   createEmptyDoc,
   mergeFeedItemInto,
   reconcileFollowRosterCapture,
+  stripUndefined,
+  updateFeedItem,
 } from "./schema.js";
 import { matchesFeedFilter } from "./ranking.js";
 
@@ -45,6 +47,44 @@ function item(overrides: Partial<FeedItem> = {}): FeedItem {
     ...overrides,
   };
 }
+
+describe("feed item sanitization", () => {
+  it("drops prototype mutation keys from captured and updated records", () => {
+    const untrusted = JSON.parse(
+      '{"safe":"value","__proto__":{"polluted":"root"},"nested":{"constructor":{"prototype":{"polluted":"nested"}},"prototype":{"polluted":"nested"}}}',
+    ) as Record<string, unknown>;
+    const sanitized = stripUndefined(untrusted);
+
+    expect(Object.getPrototypeOf(sanitized)).toBe(Object.prototype);
+    expect((sanitized as Record<string, unknown>).polluted).toBeUndefined();
+    expect(Object.hasOwn(sanitized, "__proto__")).toBe(false);
+    expect(Object.hasOwn(sanitized.nested as object, "constructor")).toBe(false);
+    expect(Object.hasOwn(sanitized.nested as object, "prototype")).toBe(false);
+
+    const captured = item() as FeedItem & Record<string, unknown>;
+    Object.defineProperty(captured, "__proto__", {
+      value: { polluted: "captured" },
+      enumerable: true,
+    });
+    Object.defineProperty(captured.content, "constructor", {
+      value: { prototype: { polluted: "nested" } },
+      enumerable: true,
+    });
+
+    const doc = A.change(createEmptyDoc(), (draft) => {
+      addFeedItem(draft, captured);
+      const updates = JSON.parse(
+        '{"__proto__":{"polluted":"updated"},"content":{"mediaUrls":[],"mediaTypes":[],"prototype":{"polluted":"nested-update"}}}',
+      ) as Partial<FeedItem>;
+      updateFeedItem(draft, captured.globalId, updates);
+    });
+
+    expect((Object.prototype as Record<string, unknown>).polluted).toBeUndefined();
+    expect(Object.hasOwn(doc.feedItems[captured.globalId], "__proto__")).toBe(false);
+    expect(Object.hasOwn(doc.feedItems[captured.globalId].content, "constructor")).toBe(false);
+    expect(Object.hasOwn(doc.feedItems[captured.globalId].content, "prototype")).toBe(false);
+  });
+});
 
 describe("reconcileFollowRosterCapture", () => {
   it("preserves person links, graph placement, and feed interaction state", () => {

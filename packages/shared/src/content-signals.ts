@@ -567,13 +567,23 @@ function candidateTitle(item: FeedItem, evidence: SignalEvidence): string | unde
   return text ? text.slice(0, 120) : undefined;
 }
 
+function trimTrailingLocationClosers(value: string): string {
+  let end = value.length;
+  while (end > 0) {
+    const character = value[end - 1];
+    if (character !== ")" && character !== "]") break;
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
 function extractLocationName(item: FeedItem, evidence: SignalEvidence): string | undefined {
   if (item.location?.name) return item.location.name;
   for (const pattern of LOCATION_PHRASES) {
     const match = evidence.displayText.match(pattern);
     const raw = match?.[1]?.trim();
     if (!raw) continue;
-    const cleaned = raw.replace(/\s+/g, " ").replace(/[)\]]+$/g, "").trim();
+    const cleaned = trimTrailingLocationClosers(raw.replace(/\s+/g, " ")).trim();
     if (cleaned.length >= 2 && cleaned.length <= 80) return cleaned;
   }
   return undefined;

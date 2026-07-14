@@ -374,18 +374,19 @@ export function migrateLegacyIdentityGraph(doc: FreedDoc): boolean {
  * normalizers should already produce clean objects, but this prevents a single
  * bad optional field from crashing the whole capture.
  */
-function stripUndefined<T>(value: T): T {
+const UNSAFE_OBJECT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+export function stripUndefined<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map(stripUndefined) as unknown as T;
   }
   if (value !== null && typeof value === "object") {
-    const result: Record<string, unknown> = {};
+    const entries: Array<[string, unknown]> = [];
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (v !== undefined) {
-        result[k] = stripUndefined(v);
-      }
+      if (v === undefined || UNSAFE_OBJECT_KEYS.has(k)) continue;
+      entries.push([k, stripUndefined(v)]);
     }
-    return result as T;
+    return Object.fromEntries(entries) as T;
   }
   return value;
 }
@@ -684,18 +685,6 @@ function mergeFeedItemMedia(
   }
 }
 
-function assignOptionalField(
-  target: Record<string, unknown>,
-  key: string,
-  value: unknown,
-): void {
-  if (value === undefined) {
-    delete target[key];
-    return;
-  }
-  target[key] = value;
-}
-
 function mergeHighlights(
   target: FeedItem["userState"],
   source: FeedItem["userState"],
@@ -738,41 +727,33 @@ function mergeUserState(target: FeedItem["userState"], source: FeedItem["userSta
   target.hidden = target.hidden || source.hidden;
   target.saved = target.saved || source.saved;
   target.archived = target.archived || source.archived;
-  assignOptionalField(
-    target as unknown as Record<string, unknown>,
-    "liked",
-    target.liked || source.liked || undefined,
-  );
-  assignOptionalField(
-    target as unknown as Record<string, unknown>,
-    "readAt",
-    mergeTimestamp(target.readAt, source.readAt, "min"),
-  );
-  assignOptionalField(
-    target as unknown as Record<string, unknown>,
-    "savedAt",
-    mergeTimestamp(target.savedAt, source.savedAt, "min"),
-  );
-  assignOptionalField(
-    target as unknown as Record<string, unknown>,
-    "archivedAt",
-    mergeTimestamp(target.archivedAt, source.archivedAt, "min"),
-  );
-  assignOptionalField(
-    target as unknown as Record<string, unknown>,
-    "likedAt",
-    mergeTimestamp(target.likedAt, source.likedAt, "min"),
-  );
-  assignOptionalField(
-    target as unknown as Record<string, unknown>,
-    "likedSyncedAt",
-    mergeSyncedTimestamp(target.likedSyncedAt, source.likedSyncedAt),
-  );
-  assignOptionalField(
-    target as unknown as Record<string, unknown>,
-    "seenSyncedAt",
-    mergeSyncedTimestamp(target.seenSyncedAt, source.seenSyncedAt),
-  );
+  const liked = target.liked || source.liked || undefined;
+  if (liked === undefined) delete target.liked;
+  else target.liked = liked;
+
+  const readAt = mergeTimestamp(target.readAt, source.readAt, "min");
+  if (readAt === undefined) delete target.readAt;
+  else target.readAt = readAt;
+
+  const savedAt = mergeTimestamp(target.savedAt, source.savedAt, "min");
+  if (savedAt === undefined) delete target.savedAt;
+  else target.savedAt = savedAt;
+
+  const archivedAt = mergeTimestamp(target.archivedAt, source.archivedAt, "min");
+  if (archivedAt === undefined) delete target.archivedAt;
+  else target.archivedAt = archivedAt;
+
+  const likedAt = mergeTimestamp(target.likedAt, source.likedAt, "min");
+  if (likedAt === undefined) delete target.likedAt;
+  else target.likedAt = likedAt;
+
+  const likedSyncedAt = mergeSyncedTimestamp(target.likedSyncedAt, source.likedSyncedAt);
+  if (likedSyncedAt === undefined) delete target.likedSyncedAt;
+  else target.likedSyncedAt = likedSyncedAt;
+
+  const seenSyncedAt = mergeSyncedTimestamp(target.seenSyncedAt, source.seenSyncedAt);
+  if (seenSyncedAt === undefined) delete target.seenSyncedAt;
+  else target.seenSyncedAt = seenSyncedAt;
   mergeUniqueStrings(target.tags, source.tags);
   mergeHighlights(target, source);
 }
@@ -833,13 +814,20 @@ function applyEventCandidateToItem(
     target.method = clean.method;
     target.detectedAt = clean.detectedAt;
     target.confidence = clean.confidence;
-    assignOptionalField(target as unknown as Record<string, unknown>, "title", clean.title);
-    assignOptionalField(target as unknown as Record<string, unknown>, "startsAt", clean.startsAt);
-    assignOptionalField(target as unknown as Record<string, unknown>, "endsAt", clean.endsAt);
-    assignOptionalField(target as unknown as Record<string, unknown>, "timezone", clean.timezone);
-    assignOptionalField(target as unknown as Record<string, unknown>, "locationName", clean.locationName);
-    assignOptionalField(target as unknown as Record<string, unknown>, "locationUrl", clean.locationUrl);
-    assignOptionalField(target as unknown as Record<string, unknown>, "evidence", clean.evidence);
+    if (clean.title === undefined) delete target.title;
+    else target.title = clean.title;
+    if (clean.startsAt === undefined) delete target.startsAt;
+    else target.startsAt = clean.startsAt;
+    if (clean.endsAt === undefined) delete target.endsAt;
+    else target.endsAt = clean.endsAt;
+    if (clean.timezone === undefined) delete target.timezone;
+    else target.timezone = clean.timezone;
+    if (clean.locationName === undefined) delete target.locationName;
+    else target.locationName = clean.locationName;
+    if (clean.locationUrl === undefined) delete target.locationUrl;
+    else target.locationUrl = clean.locationUrl;
+    if (clean.evidence === undefined) delete target.evidence;
+    else target.evidence = clean.evidence;
   }
 
   if (clean.confidence < EVENT_CANDIDATE_THRESHOLD) return;
@@ -861,11 +849,9 @@ function applyEventCandidateToItem(
       });
     } else if (item.location.source === "text_extraction") {
       item.location.name = clean.locationName;
-      assignOptionalField(
-        item.location as unknown as Record<string, unknown>,
-        "url",
-        clean.locationUrl ?? item.location.url,
-      );
+      const locationUrl = clean.locationUrl ?? item.location.url;
+      if (locationUrl === undefined) delete item.location.url;
+      else item.location.url = locationUrl;
     }
   }
 }
@@ -896,26 +882,23 @@ function mergeEngagement(target: FeedItem, source: FeedItem): void {
     target.engagement = stripUndefined(source.engagement);
     return;
   }
-  assignOptionalField(
-    target.engagement as unknown as Record<string, unknown>,
-    "likes",
-    Math.max(target.engagement.likes ?? 0, source.engagement.likes ?? 0) || undefined,
-  );
-  assignOptionalField(
-    target.engagement as unknown as Record<string, unknown>,
-    "reposts",
-    Math.max(target.engagement.reposts ?? 0, source.engagement.reposts ?? 0) || undefined,
-  );
-  assignOptionalField(
-    target.engagement as unknown as Record<string, unknown>,
-    "comments",
-    Math.max(target.engagement.comments ?? 0, source.engagement.comments ?? 0) || undefined,
-  );
-  assignOptionalField(
-    target.engagement as unknown as Record<string, unknown>,
-    "views",
-    Math.max(target.engagement.views ?? 0, source.engagement.views ?? 0) || undefined,
-  );
+  const likes = Math.max(target.engagement.likes ?? 0, source.engagement.likes ?? 0) || undefined;
+  if (likes === undefined) delete target.engagement.likes;
+  else target.engagement.likes = likes;
+
+  const reposts =
+    Math.max(target.engagement.reposts ?? 0, source.engagement.reposts ?? 0) || undefined;
+  if (reposts === undefined) delete target.engagement.reposts;
+  else target.engagement.reposts = reposts;
+
+  const comments =
+    Math.max(target.engagement.comments ?? 0, source.engagement.comments ?? 0) || undefined;
+  if (comments === undefined) delete target.engagement.comments;
+  else target.engagement.comments = comments;
+
+  const views = Math.max(target.engagement.views ?? 0, source.engagement.views ?? 0) || undefined;
+  if (views === undefined) delete target.engagement.views;
+  else target.engagement.views = views;
 }
 
 function mergeLinkPreview(target: FeedItem["content"], source: FeedItem["content"]): void {
@@ -993,20 +976,17 @@ export function mergeFeedItemInto(target: FeedItem, source: FeedItem): void {
   }
   mergeUniqueStrings(target.topics, source.topics);
   mergeEngagement(target, source);
-  assignOptionalField(
-    target as unknown as Record<string, unknown>,
-    "priority",
-    Math.max(target.priority ?? 0, source.priority ?? 0) || undefined,
+  const priority = Math.max(target.priority ?? 0, source.priority ?? 0) || undefined;
+  if (priority === undefined) delete target.priority;
+  else target.priority = priority;
+
+  const priorityComputedAt = mergeTimestamp(
+    target.priorityComputedAt,
+    source.priorityComputedAt,
+    "max",
   );
-  assignOptionalField(
-    target as unknown as Record<string, unknown>,
-    "priorityComputedAt",
-    mergeTimestamp(
-      target.priorityComputedAt,
-      source.priorityComputedAt,
-      "max",
-    ),
-  );
+  if (priorityComputedAt === undefined) delete target.priorityComputedAt;
+  else target.priorityComputedAt = priorityComputedAt;
   mergeUserState(target.userState, source.userState);
   applySemanticEnrichmentToItem(target);
 }
