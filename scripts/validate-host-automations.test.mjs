@@ -131,6 +131,47 @@ function writeSavedAutomation(value, overrides = {}) {
   );
 }
 
+function heartbeatFixture(overrides = {}) {
+  const value = fixture();
+  value.spec = {
+    ...value.spec,
+    id: "freed-runtime-observer",
+    name: "Freed runtime observer",
+    kind: "heartbeat",
+    authority: "observe-only",
+    lease: { name: "runtime-observer", maxLifetimeMs: 1_800_000 },
+    localOverlayFields: ["status", "rrule", "destination", "target_thread_id"],
+  };
+  const automationDir = path.join(
+    value.codexHome,
+    "automations",
+    value.spec.id,
+  );
+  mkdirSync(automationDir, { recursive: true });
+  const saved = {
+    id: value.spec.id,
+    kind: value.spec.kind,
+    name: value.spec.name,
+    prompt: "# Nightly\n\nUse the governed task queue.",
+    status: "PAUSED",
+    rrule: "FREQ=MINUTELY;INTERVAL=30",
+    destination: "thread",
+    target_thread_id: "thread-123",
+    ...overrides,
+  };
+  writeFileSync(
+    path.join(automationDir, "automation.toml"),
+    Object.entries(saved)
+      .filter(([, savedValue]) => savedValue !== undefined)
+      .map(
+        ([field, savedValue]) =>
+          `${field} = ${JSON.stringify(savedValue)}`,
+      )
+      .join("\n") + "\n",
+  );
+  return value;
+}
+
 function writeCredential(value) {
   const credentialDir = path.join(
     value.stateRoot,
@@ -332,38 +373,43 @@ test("schedule validation rejects self-expiring and kind-incompatible schedules"
 });
 
 test("heartbeat overlays validate cadence and thread target without a cron model", () => {
-  const value = fixture();
-  value.spec = {
-    ...value.spec,
-    id: "freed-runtime-observer",
-    name: "Freed runtime observer",
-    kind: "heartbeat",
-    authority: "observe-only",
-    lease: { name: "runtime-observer", maxLifetimeMs: 1_800_000 },
-    localOverlayFields: ["status", "rrule", "destination", "target_thread_id"],
-  };
-  const automationDir = path.join(
-    value.codexHome,
-    "automations",
-    value.spec.id,
-  );
-  mkdirSync(automationDir, { recursive: true });
-  writeFileSync(
-    path.join(automationDir, "automation.toml"),
-    [
-      `id = ${JSON.stringify(value.spec.id)}`,
-      `kind = ${JSON.stringify(value.spec.kind)}`,
-      `name = ${JSON.stringify(value.spec.name)}`,
-      `prompt = ${JSON.stringify("# Nightly\n\nUse the governed task queue.")}`,
-      'status = "PAUSED"',
-      'rrule = "FREQ=MINUTELY;INTERVAL=30"',
-      'destination = "thread"',
-      'target_thread_id = "thread-123"',
-      "",
-    ].join("\n"),
-  );
+  const value = heartbeatFixture();
   const result = audit(value);
   assert.equal(result.issueCount, 0);
+});
+
+test("heartbeat destination may be omitted when a thread target is present", () => {
+  const value = heartbeatFixture({ destination: undefined });
+  const result = audit(value);
+
+  assert.equal(result.issueCount, 0);
+});
+
+test("heartbeat rejects an explicit non-thread destination", () => {
+  const value = heartbeatFixture({ destination: "project" });
+  const result = audit(value);
+
+  assert.deepEqual(result.records[0].issues, [
+    {
+      code: "target-drift",
+      message: "heartbeat destination, when set, must be thread",
+    },
+  ]);
+});
+
+test("heartbeat still requires a target thread when destination is omitted", () => {
+  const value = heartbeatFixture({
+    destination: undefined,
+    target_thread_id: undefined,
+  });
+  const result = audit(value);
+
+  assert.deepEqual(result.records[0].issues, [
+    {
+      code: "target-drift",
+      message: "heartbeat target_thread_id is required",
+    },
+  ]);
 });
 
 test("cron actors may use the owner-supplied cadence field instead of rrule", () => {
