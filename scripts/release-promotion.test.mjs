@@ -234,6 +234,43 @@ test("validate-main-backflow ignores squashed promotion content already in dev h
   assert.match(result.stdout, /Main backflow is in sync/);
 });
 
+test("validate-main-backflow accepts the historical promote dev to main subject", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'promoted';\n",
+  );
+  commitAll(cwd, "dev feature");
+  updateOriginRef(cwd, "dev");
+
+  git(cwd, ["checkout", "main"]);
+  git(cwd, ["merge", "--squash", "--no-commit", "dev"]);
+  git(cwd, ["commit", "-m", "chore: promote dev to main (#329)"]);
+  updateOriginRef(cwd, "main");
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'next dev change';\n",
+  );
+  commitAll(cwd, "next dev change");
+  updateOriginRef(cwd, "dev");
+
+  const result = runNode(VALIDATE_MAIN_BACKFLOW, [
+    `--cwd=${cwd}`,
+    "--dev-ref=origin/dev",
+    "--main-ref=origin/main",
+  ]);
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Main backflow is in sync/);
+});
+
 test("validate-main-backflow fails when main has product content absent from dev", (t) => {
   const cwd = makeTempRepo();
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
