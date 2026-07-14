@@ -122,6 +122,44 @@ function signedOwnerCapability(
   };
 }
 
+function writeOwnerConfirmation(
+  stateRoot,
+  taskId,
+  intent,
+  {
+    nowMs = Date.parse("2026-07-10T09:00:00Z"),
+    confirmationId = `owner-confirmation-${nowMs}`,
+    approvedBy = "AubreyF",
+    approvedAtMs = nowMs,
+    expiresAtMs = nowMs + 24 * 60 * 60_000,
+    mode = 0o600,
+  } = {},
+) {
+  const intentDigest = ownerGovernanceIntentDigest(intent);
+  const confirmation = {
+    schemaVersion: 1,
+    kind: "owner-confirmation",
+    confirmationId,
+    approvedBy,
+    ownerApprovalReference:
+      "Owner explicitly approved this exact lifecycle operation in the current task.",
+    approvalSource: {
+      kind: "current-task",
+      reference: taskId,
+    },
+    taskId,
+    intent,
+    intentDigest,
+    approvedAt: new Date(approvedAtMs).toISOString(),
+    expiresAt: new Date(expiresAtMs).toISOString(),
+  };
+  const confirmationPath = path.join(stateRoot, `${confirmationId}.json`);
+  writeFileSync(confirmationPath, `${JSON.stringify(confirmation)}\n`, {
+    mode,
+  });
+  return { confirmation, confirmationPath, intentDigest };
+}
+
 function writeActorCredential(
   stateRoot,
   actor,
@@ -1623,6 +1661,237 @@ test("owner capability signature is bound to task, intent, state root, and lease
   );
 });
 
+test("current-task owner confirmation acquires one exact audited governance lease", () => {
+  const stateRoot = temporaryStateRoot();
+  const nowMs = Date.parse("2026-07-10T14:00:00Z");
+  const taskId = "current-task-owner-confirmation";
+  const details = {
+    behavioral: true,
+    metricId: "renderer-recovery-count",
+  };
+  const intent = {
+    schemaVersion: 1,
+    action: "task.create",
+    taskId,
+    parameters: {
+      state: "observed",
+      observerAuthority: "merge-safe",
+      providerAuthority: "approved",
+      approvalReference: "sha256:approved-provider-diff",
+      details,
+    },
+  };
+  const intentDigest = ownerGovernanceIntentDigest(intent);
+  const { confirmation, confirmationPath } = writeOwnerConfirmation(
+    stateRoot,
+    taskId,
+    intent,
+    { nowMs },
+  );
+  const acquired = acquireLease({
+    stateRoot,
+    name: "owner-governance",
+    owner: "freed-owner",
+    ttlMs: 60_000,
+    nowMs: nowMs + 1_000,
+    ownerConfirmationFile: confirmationPath,
+    ownerCapabilityTaskId: taskId,
+    ownerCapabilityIntentDigest: intentDigest,
+  });
+  assert.equal(acquired.lease.credentialKind, "owner-confirmation");
+  assert.equal(acquired.lease.ownerConfirmationTaskId, taskId);
+  assert.equal(acquired.lease.ownerConfirmationIntentDigest, intentDigest);
+  assert.match(acquired.lease.ownerConfirmationDigest, /^[0-9a-f]{64}$/);
+  assert.equal(acquired.lease.ownerConfirmationReference, taskId);
+  assert.equal(acquired.lease.ownerConfirmationApprovedBy, "AubreyF");
+  assert.equal(
+    acquired.lease.ownerConfirmationApprovalReference,
+    confirmation.ownerApprovalReference,
+  );
+  assert.equal(
+    acquired.lease.ownerConfirmationApprovedAt,
+    confirmation.approvedAt,
+  );
+  assert.equal(
+    acquired.lease.ownerConfirmationExpiresAt,
+    confirmation.expiresAt,
+  );
+
+  const created = createTask({
+    stateRoot,
+    taskId,
+    actor: "freed-owner",
+    leaseName: "owner-governance",
+    leaseToken: acquired.lease.token,
+    observerAuthority: "merge-safe",
+    providerAuthority: "approved",
+    approvalReference: "sha256:approved-provider-diff",
+    details,
+    nowMs: nowMs + 2_000,
+  });
+  assert.equal(created.task.state, "observed");
+  assert.equal(
+    created.event.data.authorizationProvenance.credentialKind,
+    "owner-confirmation",
+  );
+  assert.equal(
+    created.event.data.authorizationProvenance.ownerConfirmationDigest,
+    acquired.lease.ownerConfirmationDigest,
+  );
+  assert.throws(
+    () =>
+      createTask({
+        stateRoot,
+        taskId: "different-current-task",
+        actor: "freed-owner",
+        leaseName: "owner-governance",
+        leaseToken: acquired.lease.token,
+        observerAuthority: "merge-safe",
+        providerAuthority: "forbidden",
+        details: { behavioral: false },
+        nowMs: nowMs + 3_000,
+      }),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "owner_capability_intent_mismatch",
+  );
+
+  releaseLease({
+    stateRoot,
+    name: "owner-governance",
+    token: acquired.lease.token,
+    nowMs: nowMs + 4_000,
+  });
+  const transitionIntent = {
+    schemaVersion: 1,
+    action: "task.transition",
+    taskId,
+    parameters: {
+      toState: "triaged",
+      expectedRevision: 1,
+      details: null,
+    },
+  };
+  const transitionConfirmation = writeOwnerConfirmation(
+    stateRoot,
+    taskId,
+    transitionIntent,
+    {
+      nowMs,
+      confirmationId: "owner-confirmation-transition",
+    },
+  );
+  const transitionLease = acquireLease({
+    stateRoot,
+    name: "owner-governance",
+    owner: "freed-owner",
+    ttlMs: 60_000,
+    nowMs: nowMs + 5_000,
+    ownerConfirmationFile: transitionConfirmation.confirmationPath,
+    ownerCapabilityTaskId: taskId,
+    ownerCapabilityIntentDigest: transitionConfirmation.intentDigest,
+  });
+  const transitioned = transitionTask({
+    stateRoot,
+    taskId,
+    actor: "freed-owner",
+    leaseName: "owner-governance",
+    leaseToken: transitionLease.lease.token,
+    toState: "triaged",
+    expectedRevision: 1,
+    nowMs: nowMs + 6_000,
+  });
+  assert.equal(transitioned.task.state, "triaged");
+  assert.equal(
+    transitioned.event.data.authorizationProvenance.ownerConfirmationDigest,
+    transitionLease.lease.ownerConfirmationDigest,
+  );
+});
+
+test("current-task owner confirmation rejects stale, forged, and permissive records", () => {
+  const stateRoot = temporaryStateRoot();
+  const nowMs = Date.parse("2026-07-10T14:00:00Z");
+  const taskId = "invalid-owner-confirmation";
+  const intent = {
+    schemaVersion: 1,
+    action: "task.create",
+    taskId,
+    parameters: {
+      state: "observed",
+      observerAuthority: "merge-safe",
+      providerAuthority: "forbidden",
+      approvalReference: null,
+      details: { behavioral: false },
+    },
+  };
+  const intentDigest = ownerGovernanceIntentDigest(intent);
+  const acquire = (confirmationPath) =>
+    acquireLease({
+      stateRoot,
+      name: "owner-governance",
+      owner: "freed-owner",
+      ttlMs: 60_000,
+      nowMs,
+      ownerConfirmationFile: confirmationPath,
+      ownerCapabilityTaskId: taskId,
+      ownerCapabilityIntentDigest: intentDigest,
+    });
+
+  const expired = writeOwnerConfirmation(stateRoot, taskId, intent, {
+    nowMs,
+    confirmationId: "expired-owner-confirmation",
+    approvedAtMs: nowMs - 120_000,
+    expiresAtMs: nowMs - 60_000,
+  });
+  assert.throws(
+    () => acquire(expired.confirmationPath),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "owner_confirmation_invalid",
+  );
+
+  const forged = writeOwnerConfirmation(stateRoot, taskId, intent, {
+    nowMs,
+    confirmationId: "forged-owner-confirmation",
+    approvedBy: "SomeoneElse",
+  });
+  assert.throws(
+    () => acquire(forged.confirmationPath),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "owner_confirmation_invalid",
+  );
+
+  const tampered = writeOwnerConfirmation(stateRoot, taskId, intent, {
+    nowMs,
+    confirmationId: "tampered-owner-confirmation",
+  });
+  tampered.confirmation.intent.parameters.details.behavioral = true;
+  writeFileSync(
+    tampered.confirmationPath,
+    `${JSON.stringify(tampered.confirmation)}\n`,
+    { mode: 0o600 },
+  );
+  assert.throws(
+    () => acquire(tampered.confirmationPath),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "owner_confirmation_invalid",
+  );
+
+  const permissive = writeOwnerConfirmation(stateRoot, taskId, intent, {
+    nowMs,
+    confirmationId: "permissive-owner-confirmation",
+    mode: 0o644,
+  });
+  assert.throws(
+    () => acquire(permissive.confirmationPath),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "owner_confirmation_permissions_invalid",
+  );
+});
+
 test("same-UID owner bootstrap files cannot authenticate governance", () => {
   const stateRoot = temporaryStateRoot();
   const nowMs = Date.parse("2026-07-10T14:00:00Z");
@@ -2642,7 +2911,77 @@ test("CLI computes the canonical owner governance intent digest", () => {
   assert.equal(result.result.intentDigest, ownerGovernanceIntentDigest(intent));
 });
 
-test("CLI cannot mint freed-owner without a signed owner capability", async () => {
+test("CLI accepts a current-task owner confirmation without a broker token", () => {
+  const stateRoot = temporaryStateRoot();
+  const taskId = "cli-current-task-owner";
+  const details = {
+    behavioral: false,
+    metricId: "renderer-recovery-count",
+  };
+  const intent = {
+    schemaVersion: 1,
+    action: "task.create",
+    taskId,
+    parameters: {
+      state: "observed",
+      observerAuthority: "merge-safe",
+      providerAuthority: "forbidden",
+      approvalReference: null,
+      details,
+    },
+  };
+  const intentDigest = ownerGovernanceIntentDigest(intent);
+  const { confirmationPath } = writeOwnerConfirmation(
+    stateRoot,
+    taskId,
+    intent,
+    { nowMs: Date.now(), confirmationId: "cli-owner-confirmation" },
+  );
+  const lease = runCli([
+    "lease",
+    "acquire",
+    "--state-root",
+    stateRoot,
+    "--name",
+    "owner-governance",
+    "--owner",
+    "freed-owner",
+    "--ttl-seconds",
+    "60",
+    "--owner-confirmation-file",
+    confirmationPath,
+    "--owner-task-id",
+    taskId,
+    "--owner-intent-digest",
+    intentDigest,
+  ]);
+  assert.equal(lease.result.lease.credentialKind, "owner-confirmation");
+  assert.ok(lease.result.lease.token);
+
+  const created = runCli([
+    "task",
+    "create",
+    "--state-root",
+    stateRoot,
+    "--id",
+    taskId,
+    "--actor",
+    "freed-owner",
+    "--lease-name",
+    "owner-governance",
+    "--lease-token",
+    lease.result.lease.token,
+    "--observer-authority",
+    "merge-safe",
+    "--provider-authority",
+    "forbidden",
+    "--details-json",
+    JSON.stringify(details),
+  ]);
+  assert.equal(created.result.task.taskId, taskId);
+});
+
+test("CLI cannot mint freed-owner without an approved owner source", async () => {
   const stateRoot = temporaryStateRoot();
   const args = [
     "lease",

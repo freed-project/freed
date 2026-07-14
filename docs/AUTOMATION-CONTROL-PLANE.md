@@ -581,6 +581,69 @@ does not block normal publication. Provider work can use the signing-free
 GitHub reaction path described below. GitHub records the CODEOWNER account that
 made the human Gate 2 decision.
 
+### Current-task owner confirmation
+
+An owner may explicitly approve one exact control-plane operation in the
+current task without installing the optional broker. Record that decision in a
+private mode `0600` JSON file outside the repository:
+
+```json
+{
+  "schemaVersion": 1,
+  "kind": "owner-confirmation",
+  "confirmationId": "authenticated-essay-capture-create",
+  "approvedBy": "AubreyF",
+  "ownerApprovalReference": "Owner approved this exact lifecycle operation in the current task.",
+  "approvalSource": {
+    "kind": "current-task",
+    "reference": "authenticated-essay-capture-pr-642"
+  },
+  "taskId": "authenticated-essay-capture-pr-642",
+  "intent": {
+    "schemaVersion": 1,
+    "action": "task.create",
+    "taskId": "authenticated-essay-capture-pr-642",
+    "parameters": {
+      "state": "observed",
+      "observerAuthority": "merge-safe",
+      "providerAuthority": "approved",
+      "approvalReference": "<provider approval reference>",
+      "details": {
+        "behavioral": true,
+        "metricId": "renderer-recovery-count"
+      }
+    }
+  },
+  "intentDigest": "<canonical operation intent digest>",
+  "approvedAt": "<ISO-8601 timestamp>",
+  "expiresAt": "<ISO-8601 timestamp no more than seven days later>"
+}
+```
+
+Compute the intent with `owner intent-digest`, then acquire the short lease:
+
+```bash
+node scripts/automation-control.mjs lease acquire \
+  --name owner-governance \
+  --owner freed-owner \
+  --ttl-seconds 600 \
+  --owner-confirmation-file /absolute/path/to/confirmation.json \
+  --owner-task-id authenticated-essay-capture-pr-642 \
+  --owner-intent-digest <digest>
+```
+
+The command generates and returns only a short lease token. The lease is bound
+to the exact task and intent. A different action, parameter, revision, or task
+is rejected. The confirmation must identify `AubreyF`, cannot be future dated,
+must still be live, and cannot last more than seven days. Its canonical digest,
+task reference, and owner identity are copied into the lease and mutation audit
+events.
+
+This route is cooperative evidence. The JSON does not prove who wrote it, so
+the current task must contain the owner's explicit decision. It does not grant
+provider contact and cannot replace Gate 1, Gate 2, or exact-diff CODEOWNER
+review. The signed broker remains the stronger machine-verifiable option.
+
 ## Authority model
 
 Checked-in automation authority is one of:
@@ -595,11 +658,14 @@ Provider authority is separate. `forbidden` prohibits provider activity.
 provider-visible work ready without the owner's scoped Gate 1 decision and the
 Gate 2 CODEOWNER reaction. A task may move to provider authority
 `approved` only with an approval reference. Only the `freed-owner` lease may
-change task authority, and the optional signed owner capability is the stronger
-machine-verifiable route for that mutation. The direct human route is the
-CODEOWNER's GitHub thumbs-up on the generated provider review comment. It does
-not mutate task authority. Task authority never substitutes for the publish
-gate or CODEOWNER review. Creating a task
+change task authority. That lease can be bound to either the optional signed
+owner capability or one exact current-task owner confirmation. The
+confirmation file does not authenticate the owner. It records the owner's
+explicit current-task decision and the canonical operation intent. The direct
+provider Gate 2 route remains the CODEOWNER's GitHub thumbs-up on the generated
+provider review comment, and that reaction does not itself mutate task
+authority. Task authority never substitutes for the publish gate or CODEOWNER
+review. Creating a task
 directly with provider authority `approved` also requires an approval reference.
 The current manifest retains that reference, and every task event carries the
 same approval snapshot.
