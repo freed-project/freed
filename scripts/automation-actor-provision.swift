@@ -18,6 +18,8 @@ private let leaseLifetimeMilliseconds = 30 * 60 * 1_000
 private let maximumBindingBytes = 32 * 1_024
 private let maximumCredentialBytes = 4 * 1_024
 private let randomCredentialBytes = 32
+private let launcherPromptSelector =
+  SecKeychainPromptSelector.unsignedAct.union(.invalidAct)
 #if AUTOMATION_ACTOR_PROVISION_TESTING
   private let fakeExistingCredential =
     Data("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".utf8)
@@ -44,14 +46,12 @@ private struct ProvisionFailure: Error, CustomStringConvertible {
 private enum StoreFailure: Error {
   case itemNotFound
   case duplicateItem
-  case invalidACL
 }
 
 private enum ProvisionAction: String {
   case provision
   case rotate
   case revoke
-  case verify
 }
 
 private struct ParsedArguments {
@@ -62,6 +62,7 @@ private struct ParsedArguments {
     let testBindingPath: String
     let testRuntimeRoot: String
     let testKeychainState: String
+    let testInteractionMode: String
   #endif
 }
 
@@ -86,7 +87,7 @@ private struct LauncherBinding: Decodable {
   let controlLibrarySha256: String
 }
 
-private struct ActorCredentialRecord: Codable {
+private struct ActorCredentialRecord: Codable, Equatable {
   let schemaVersion: Int
   let actor: String
   let purpose: String
@@ -108,15 +109,67 @@ private struct StoredCredential {
   let launcherACLMatches: Bool
 }
 
+private struct StoredCredentialMetadata {
+  let launcherACLMatches: Bool
+}
+
+private enum CreatedCredentialHandle {
+  case system(Data)
+  #if AUTOMATION_ACTOR_PROVISION_TESTING
+    case fake(UUID)
+  #endif
+}
+
+private struct ProvisionRollback {
+  let createdItem: CreatedCredentialHandle
+  let record: ActorCredentialRecord
+}
+
 private protocol SecretStore: AnyObject {
-  func read(service: String, account: String, launcherPath: String) throws -> StoredCredential
-  func add(service: String, account: String, secret: Data, launcherPath: String) throws
+  func inspect(
+    service: String,
+    account: String,
+    launcherPath: String
+  ) throws -> StoredCredentialMetadata
+  func readOwnerInteractive(
+    service: String,
+    account: String,
+    launcherPath: String
+  ) throws -> StoredCredential
+  func add(
+    service: String,
+    account: String,
+    secret: Data,
+    launcherPath: String
+  ) throws -> CreatedCredentialHandle
+  func deleteCreated(_ handle: CreatedCredentialHandle) throws
   func update(service: String, account: String, secret: Data, launcherPath: String) throws
   func delete(service: String, account: String) throws
 }
 
 private protocol CredentialGenerator {
   func generate() throws -> Data
+}
+
+private protocol KeychainInteractionController: AnyObject {
+  func currentState() throws -> Bool
+  func setAllowed(_ allowed: Bool) throws
+}
+
+private final class SystemKeychainInteractionController: KeychainInteractionController {
+  func currentState() throws -> Bool {
+    var state = DarwinBoolean(false)
+    guard SecKeychainGetUserInteractionAllowed(&state) == errSecSuccess else {
+      throw ProvisionFailure("the Keychain interaction policy could not be read")
+    }
+    return state.boolValue
+  }
+
+  func setAllowed(_ allowed: Bool) throws {
+    guard SecKeychainSetUserInteractionAllowed(allowed) == errSecSuccess else {
+      throw ProvisionFailure("the Keychain interaction policy could not be changed")
+    }
+  }
 }
 
 private struct SecureCredentialGenerator: CredentialGenerator {
@@ -141,42 +194,157 @@ private struct SecureCredentialGenerator: CredentialGenerator {
 }
 
 #if AUTOMATION_ACTOR_PROVISION_TESTING
+  private final class FakeKeychainInteractionController: KeychainInteractionController {
+    private let mode: String
+    private let credentialRecordPath: String
+    private let actor: String
+    private(set) var interactionAllowed: Bool
+
+    init(mode: String, stateRoot: String, actor: String) {
+      self.mode = mode
+      credentialRecordPath = stateRoot + "/control/actor-credentials/" + actor + ".json"
+      self.actor = actor
+      interactionAllowed = mode != "initially-disabled"
+    }
+
+    private func injectCredentialDigestDrift() throws {
+      let record = ActorCredentialRecord(
+        schemaVersion: credentialSchemaVersion,
+        actor: actor,
+        purpose: credentialPurpose,
+        tokenSha256: String(repeating: "0", count: 64)
+      )
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.sortedKeys]
+      var data = try encoder.encode(record)
+      defer { data.resetBytes(in: 0..<data.count) }
+      data.append(0x0A)
+      try data.write(to: URL(fileURLWithPath: credentialRecordPath), options: .atomic)
+      guard chmod(credentialRecordPath, 0o600) == 0 else {
+        throw posixFailure("securing the drifted fake credential record")
+      }
+    }
+
+    func currentState() throws -> Bool {
+      if mode == "get-failure" {
+        throw ProvisionFailure("the test Keychain interaction policy could not be read")
+      }
+      return interactionAllowed
+    }
+
+    func setAllowed(_ allowed: Bool) throws {
+      if !allowed, mode == "disable-failure" {
+        throw ProvisionFailure("the test Keychain interaction policy could not be disabled")
+      }
+      if !allowed, mode == "disable-noop" {
+        return
+      }
+      if allowed, mode == "restore-failure-with-digest-drift" {
+        try injectCredentialDigestDrift()
+        throw ProvisionFailure("the test Keychain interaction policy could not be restored")
+      }
+      if allowed, mode == "restore-failure" {
+        throw ProvisionFailure("the test Keychain interaction policy could not be restored")
+      }
+      interactionAllowed = allowed
+    }
+  }
+
   private struct FakeCredentialGenerator: CredentialGenerator {
     func generate() throws -> Data {
       fakeRotatedCredential
     }
   }
 
+  private struct FakeKeychainItemSnapshot: Codable {
+    let present: Bool
+    let secretSha256: String?
+    let launcherACLMatches: Bool?
+  }
+
   private final class FakeSecretStore: SecretStore {
     private var item: StoredCredential?
+    private var itemIdentity: UUID?
     private let credentialDirectory: String
+    private let itemSnapshotPath: String
     private let injectDigestWriteFailure: Bool
+    private let injectPartialRotationFailure: Bool
+    private let rejectSecretReads: Bool
+    private let interactionController: FakeKeychainInteractionController
     private var updateCount = 0
 
-    init(state: String, stateRoot: String) throws {
+    init(
+      state: String,
+      stateRoot: String,
+      interactionController: FakeKeychainInteractionController
+    ) throws {
       credentialDirectory = stateRoot + "/control/actor-credentials"
+      itemSnapshotPath = stateRoot + "/test-keychain-item.json"
+      self.interactionController = interactionController
+      injectDigestWriteFailure = state == "digest-write-failure"
+      injectPartialRotationFailure = state == "partial-rotation-failure"
+      rejectSecretReads = state == "metadata-only"
       switch state {
       case "empty":
         item = nil
-        injectDigestWriteFailure = false
-      case "valid":
+      case "valid", "digest-write-failure", "metadata-only", "partial-rotation-failure":
         item = StoredCredential(secret: fakeExistingCredential, launcherACLMatches: true)
-        injectDigestWriteFailure = false
       case "wrong-secret":
         item = StoredCredential(secret: Data(repeating: 0x66, count: 64), launcherACLMatches: true)
-        injectDigestWriteFailure = false
       case "wrong-acl":
         item = StoredCredential(secret: fakeExistingCredential, launcherACLMatches: false)
-        injectDigestWriteFailure = false
-      case "digest-write-failure":
-        item = StoredCredential(secret: fakeExistingCredential, launcherACLMatches: true)
-        injectDigestWriteFailure = true
       default:
         throw ProvisionFailure("the fake Keychain state is unsupported")
       }
+      itemIdentity = item == nil ? nil : UUID()
+      try persistItemSnapshot()
     }
 
-    func read(service: String, account: String, launcherPath: String) throws -> StoredCredential {
+    private func persistItemSnapshot() throws {
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.sortedKeys]
+      let snapshot = FakeKeychainItemSnapshot(
+        present: item != nil,
+        secretSha256: item.map { sha256Hex($0.secret) },
+        launcherACLMatches: item.map(\.launcherACLMatches)
+      )
+      var data = try encoder.encode(snapshot)
+      data.append(0x0A)
+      try data.write(to: URL(fileURLWithPath: itemSnapshotPath), options: .atomic)
+      data.resetBytes(in: 0..<data.count)
+      guard chmod(itemSnapshotPath, 0o600) == 0 else {
+        throw posixFailure("securing the fake Keychain item snapshot")
+      }
+    }
+
+    func inspect(
+      service: String,
+      account: String,
+      launcherPath: String
+    ) throws -> StoredCredentialMetadata {
+      guard !interactionController.interactionAllowed else {
+        throw ProvisionFailure("the fake Keychain inspection permitted user interaction")
+      }
+      guard service == keychainService, actorLeaseNames[account] != nil,
+        launcherPath.first == "/"
+      else {
+        throw ProvisionFailure("the fake Keychain inspection was not canonical")
+      }
+      guard let item else { throw StoreFailure.itemNotFound }
+      return StoredCredentialMetadata(launcherACLMatches: item.launcherACLMatches)
+    }
+
+    func readOwnerInteractive(
+      service: String,
+      account: String,
+      launcherPath: String
+    ) throws -> StoredCredential {
+      guard interactionController.interactionAllowed else {
+        throw ProvisionFailure("the fake owner-interactive Keychain read suppressed interaction")
+      }
+      guard !rejectSecretReads else {
+        throw ProvisionFailure("the fake Keychain secret read was forbidden")
+      }
       guard service == keychainService, actorLeaseNames[account] != nil,
         launcherPath.first == "/"
       else {
@@ -186,17 +354,44 @@ private struct SecureCredentialGenerator: CredentialGenerator {
       return item
     }
 
-    func add(service: String, account: String, secret: Data, launcherPath: String) throws {
+    func add(
+      service: String,
+      account: String,
+      secret: Data,
+      launcherPath: String
+    ) throws -> CreatedCredentialHandle {
+      guard !interactionController.interactionAllowed else {
+        throw ProvisionFailure("the fake Keychain add permitted user interaction")
+      }
       guard item == nil else { throw StoreFailure.duplicateItem }
       guard service == keychainService, actorLeaseNames[account] != nil,
         launcherPath.first == "/", secret == fakeRotatedCredential
       else {
         throw ProvisionFailure("the fake Keychain add was not canonical")
       }
+      let identity = UUID()
       item = StoredCredential(secret: secret, launcherACLMatches: true)
+      itemIdentity = identity
+      try persistItemSnapshot()
+      return .fake(identity)
+    }
+
+    func deleteCreated(_ handle: CreatedCredentialHandle) throws {
+      guard !interactionController.interactionAllowed else {
+        throw ProvisionFailure("the fake Keychain rollback permitted user interaction")
+      }
+      guard case .fake(let identity) = handle, itemIdentity == identity, item != nil else {
+        throw ProvisionFailure("the fake Keychain rollback did not match the created item")
+      }
+      item = nil
+      itemIdentity = nil
+      try persistItemSnapshot()
     }
 
     func update(service: String, account: String, secret: Data, launcherPath: String) throws {
+      guard interactionController.interactionAllowed else {
+        throw ProvisionFailure("the fake owner-interactive Keychain update suppressed interaction")
+      }
       guard item != nil else { throw StoreFailure.itemNotFound }
       guard service == keychainService, actorLeaseNames[account] != nil,
         launcherPath.first == "/"
@@ -204,6 +399,14 @@ private struct SecureCredentialGenerator: CredentialGenerator {
         throw ProvisionFailure("the fake Keychain update was not canonical")
       }
       updateCount += 1
+      if injectPartialRotationFailure, updateCount == 1 {
+        let previousACL = item?.launcherACLMatches ?? false
+        item = StoredCredential(secret: secret, launcherACLMatches: previousACL)
+        try persistItemSnapshot()
+        throw ProvisionFailure(
+          "the fake Keychain rotation failed after changing the secret and before applying the ACL"
+        )
+      }
       if injectDigestWriteFailure {
         let mode: mode_t = updateCount == 1 ? 0o500 : 0o700
         guard chmod(credentialDirectory, mode) == 0 else {
@@ -211,14 +414,20 @@ private struct SecureCredentialGenerator: CredentialGenerator {
         }
       }
       item = StoredCredential(secret: secret, launcherACLMatches: true)
+      try persistItemSnapshot()
     }
 
     func delete(service: String, account: String) throws {
+      guard !interactionController.interactionAllowed else {
+        throw ProvisionFailure("the fake Keychain deletion permitted user interaction")
+      }
       guard service == keychainService, actorLeaseNames[account] != nil else {
         throw ProvisionFailure("the fake Keychain deletion was not canonical")
       }
       guard item != nil else { throw StoreFailure.itemNotFound }
       item = nil
+      itemIdentity = nil
+      try persistItemSnapshot()
     }
   }
 #endif
@@ -247,13 +456,32 @@ private final class KeychainSecretStore: SecretStore {
     let application = try trustedApplication(launcherPath)
     var access: SecAccess?
     let trustedList = [application] as CFArray
+    let description = "Freed automation actor \(account)" as CFString
     let status = SecAccessCreate(
-      "Freed automation actor \(account)" as CFString,
+      description,
       trustedList,
       &access
     )
     guard status == errSecSuccess, let access else {
       throw ProvisionFailure("the launcher-only Keychain ACL could not be created")
+    }
+    guard let aclList = SecAccessCopyMatchingACLList(
+      access,
+      kSecACLAuthorizationDecrypt
+    ) as? [SecACL], !aclList.isEmpty else {
+      throw ProvisionFailure("the launcher-only Keychain decrypt ACL is unavailable")
+    }
+    for acl in aclList {
+      guard
+        SecACLSetContents(
+          acl,
+          trustedList,
+          description,
+          launcherPromptSelector
+        ) == errSecSuccess
+      else {
+        throw ProvisionFailure("the launcher-only Keychain prompt policy could not be set")
+      }
     }
     return access
   }
@@ -307,7 +535,8 @@ private final class KeychainSecretStore: SecretStore {
       guard SecACLCopyContents(acl, &applications, &description, &selector) == errSecSuccess,
         let trustedApplications = applications as? [SecTrustedApplication],
         trustedApplications.count == 1,
-        try trustedApplicationData(trustedApplications[0]) == expectedData
+        try trustedApplicationData(trustedApplications[0]) == expectedData,
+        selector == launcherPromptSelector
       else {
         return false
       }
@@ -315,7 +544,30 @@ private final class KeychainSecretStore: SecretStore {
     return true
   }
 
-  func read(service: String, account: String, launcherPath: String) throws -> StoredCredential {
+  func inspect(
+    service: String,
+    account: String,
+    launcherPath: String
+  ) throws -> StoredCredentialMetadata {
+    return StoredCredentialMetadata(
+      launcherACLMatches: try aclMatches(
+        service: service,
+        account: account,
+        launcherPath: launcherPath
+      )
+    )
+  }
+
+  func readOwnerInteractive(
+    service: String,
+    account: String,
+    launcherPath: String
+  ) throws -> StoredCredential {
+    let itemMetadata = try inspect(
+      service: service,
+      account: account,
+      launcherPath: launcherPath
+    )
     var query = identityQuery(service: service, account: account)
     query[kSecReturnData] = true
     query[kSecMatchLimit] = kSecMatchLimitOne
@@ -327,23 +579,42 @@ private final class KeychainSecretStore: SecretStore {
     }
     return StoredCredential(
       secret: data,
-      launcherACLMatches: try aclMatches(
-        service: service,
-        account: account,
-        launcherPath: launcherPath
-      )
+      launcherACLMatches: itemMetadata.launcherACLMatches
     )
   }
 
-  func add(service: String, account: String, secret: Data, launcherPath: String) throws {
+  func add(
+    service: String,
+    account: String,
+    secret: Data,
+    launcherPath: String
+  ) throws -> CreatedCredentialHandle {
     var attributes = identityQuery(service: service, account: account)
     attributes[kSecAttrLabel] = "Freed automation actor \(account)"
     attributes[kSecValueData] = secret
     attributes[kSecAttrAccess] = try access(launcherPath, account: account)
-    let status = SecItemAdd(attributes as CFDictionary, nil)
+    attributes[kSecReturnPersistentRef] = true
+    var result: CFTypeRef?
+    let status = SecItemAdd(attributes as CFDictionary, &result)
     if status == errSecDuplicateItem { throw StoreFailure.duplicateItem }
-    guard status == errSecSuccess else {
+    guard status == errSecSuccess,
+      let persistentReference = result as? Data,
+      !persistentReference.isEmpty,
+      persistentReference.count <= maximumCredentialBytes
+    else {
       throw ProvisionFailure("the actor Keychain credential could not be created")
+    }
+    return .system(persistentReference)
+  }
+
+  func deleteCreated(_ handle: CreatedCredentialHandle) throws {
+    guard case .system(let persistentReference) = handle else {
+      throw ProvisionFailure("the created actor Keychain item identity is invalid")
+    }
+    let query = [kSecMatchItemList: [persistentReference] as CFArray]
+    let status = SecItemDelete(query as CFDictionary)
+    guard status == errSecSuccess else {
+      throw ProvisionFailure("the newly created actor Keychain credential could not be rolled back")
     }
   }
 
@@ -407,9 +678,59 @@ private func clearInheritedEnvironment() throws {
   }
 }
 
+private func withKeychainInteractionDisabled<T>(
+  controller: KeychainInteractionController,
+  restorationFailureCleanup: ((T) throws -> Void)? = nil,
+  operation: () throws -> T
+) throws -> T {
+  let previousInteractionState = try controller.currentState()
+  try controller.setAllowed(false)
+  guard try controller.currentState() == false else {
+    throw ProvisionFailure(
+      "the Keychain interaction policy remained enabled after the disable request"
+    )
+  }
+
+  let operationResult: Result<T, Error>
+  do {
+    operationResult = .success(try operation())
+  } catch {
+    operationResult = .failure(error)
+  }
+
+  do {
+    try controller.setAllowed(previousInteractionState)
+    guard try controller.currentState() == previousInteractionState else {
+      throw ProvisionFailure("the Keychain interaction policy restored an unexpected state")
+    }
+  } catch {
+    if case .success(let result) = operationResult,
+      let restorationFailureCleanup
+    {
+      do {
+        try controller.setAllowed(false)
+        guard try controller.currentState() == false else {
+          throw ProvisionFailure(
+            "the Keychain interaction policy remained enabled before lifecycle rollback"
+          )
+        }
+        try restorationFailureCleanup(result)
+      } catch {
+        throw ProvisionFailure(
+          "the Keychain interaction policy could not be restored and the completed lifecycle action could not be rolled back"
+        )
+      }
+    }
+    throw ProvisionFailure(
+      "the Keychain interaction policy could not be restored after the lifecycle action"
+    )
+  }
+  return try operationResult.get()
+}
+
 private func parseArguments(_ values: [String]) throws -> ParsedArguments {
   guard let first = values.first, let action = ProvisionAction(rawValue: first) else {
-    throw ProvisionFailure("the provisioner requires provision, rotate, revoke, or verify")
+    throw ProvisionFailure("the provisioner requires provision, rotate, or revoke")
   }
   var options: [String: String] = [:]
   var allowed = Set(["--actor", "--state-root"])
@@ -417,6 +738,7 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
     allowed.insert("--test-binding")
     allowed.insert("--test-runtime-root")
     allowed.insert("--test-keychain-state")
+    allowed.insert("--test-interaction-mode")
   #endif
   var index = 1
   while index < values.count {
@@ -442,13 +764,21 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
     else {
       throw ProvisionFailure("the provisioner test fixture is incomplete")
     }
+    let testInteractionMode = options["--test-interaction-mode"] ?? "valid"
+    guard [
+      "valid", "initially-disabled", "get-failure", "disable-failure", "disable-noop",
+      "restore-failure", "restore-failure-with-digest-drift",
+    ].contains(testInteractionMode) else {
+      throw ProvisionFailure("the provisioner test interaction mode is invalid")
+    }
     return ParsedArguments(
       action: action,
       actor: actor,
       stateRoot: stateRoot,
       testBindingPath: testBindingPath,
       testRuntimeRoot: testRuntimeRoot,
-      testKeychainState: testKeychainState
+      testKeychainState: testKeychainState,
+      testInteractionMode: testInteractionMode
     )
   #else
     return ParsedArguments(action: action, actor: actor, stateRoot: stateRoot)
@@ -861,6 +1191,26 @@ private func removeCredentialIfPresent(_ binding: LauncherBinding) throws {
   }
 }
 
+private func removeCredentialIfMatching(
+  _ expected: ActorCredentialRecord,
+  binding: LauncherBinding
+) throws {
+  guard let current = try readCredentialIfPresent(binding) else { return }
+  guard current == expected else {
+    throw ProvisionFailure("the actor credential record changed before provisioning rollback")
+  }
+  try removeCredentialIfPresent(binding)
+}
+
+private func requireCredentialMatching(
+  _ expected: ActorCredentialRecord,
+  binding: LauncherBinding
+) throws {
+  guard let current = try readCredentialIfPresent(binding), current == expected else {
+    throw ProvisionFailure("the actor credential record changed before provisioning rollback")
+  }
+}
+
 private func validateStoredCredential(
   _ stored: StoredCredential,
   record: ActorCredentialRecord
@@ -884,12 +1234,11 @@ private func keychainItemExists(
   binding: LauncherBinding
 ) throws -> Bool {
   do {
-    var stored = try store.read(
+    _ = try store.inspect(
       service: binding.keychainService,
       account: binding.keychainAccount,
       launcherPath: binding.launcherPath
     )
-    stored.secret.resetBytes(in: 0..<stored.secret.count)
     return true
   } catch StoreFailure.itemNotFound {
     return false
@@ -900,7 +1249,7 @@ private func provision(
   binding: LauncherBinding,
   store: SecretStore,
   generator: CredentialGenerator
-) throws {
+) throws -> ProvisionRollback {
   try ensureCredentialDirectory(for: binding)
   let recordExists = try readCredentialIfPresent(binding) != nil
   let itemExists = try keychainItemExists(store: store, binding: binding)
@@ -911,28 +1260,23 @@ private func provision(
   }
   var secret = try generator.generate()
   defer { secret.resetBytes(in: 0..<secret.count) }
-  try store.add(
+  let createdItem = try store.add(
     service: binding.keychainService,
     account: binding.keychainAccount,
     secret: secret,
     launcherPath: binding.launcherPath
   )
+  let record = ActorCredentialRecord(
+    schemaVersion: credentialSchemaVersion,
+    actor: binding.actor,
+    purpose: credentialPurpose,
+    tokenSha256: sha256Hex(secret)
+  )
   do {
-    try writeCredentialAtomic(
-      ActorCredentialRecord(
-        schemaVersion: credentialSchemaVersion,
-        actor: binding.actor,
-        purpose: credentialPurpose,
-        tokenSha256: sha256Hex(secret)
-      ),
-      binding: binding
-    )
+    try writeCredentialAtomic(record, binding: binding)
   } catch {
     do {
-      do {
-        try store.delete(service: binding.keychainService, account: binding.keychainAccount)
-      } catch StoreFailure.itemNotFound {
-      }
+      try store.deleteCreated(createdItem)
       try removeCredentialIfPresent(binding)
     } catch {
       throw ProvisionFailure(
@@ -941,6 +1285,23 @@ private func provision(
     }
     throw ProvisionFailure(
       "actor credential provisioning failed while installing the digest; partial state was revoked"
+    )
+  }
+  return ProvisionRollback(createdItem: createdItem, record: record)
+}
+
+private func rollbackProvision(
+  _ rollback: ProvisionRollback,
+  binding: LauncherBinding,
+  store: SecretStore
+) throws {
+  do {
+    try requireCredentialMatching(rollback.record, binding: binding)
+    try store.deleteCreated(rollback.createdItem)
+    try removeCredentialIfMatching(rollback.record, binding: binding)
+  } catch {
+    throw ProvisionFailure(
+      "the completed actor credential provision could not be fully rolled back"
     )
   }
 }
@@ -954,7 +1315,7 @@ private func rotate(
   guard let record = try readCredentialIfPresent(binding) else {
     throw ProvisionFailure("the actor credential record is missing")
   }
-  var previous = try store.read(
+  var previous = try store.readOwnerInteractive(
     service: binding.keychainService,
     account: binding.keychainAccount,
     launcherPath: binding.launcherPath
@@ -1025,19 +1386,6 @@ private func revoke(binding: LauncherBinding, store: SecretStore) throws {
   try removeCredentialIfPresent(binding)
 }
 
-private func verify(binding: LauncherBinding, store: SecretStore) throws {
-  guard let record = try readCredentialIfPresent(binding) else {
-    throw ProvisionFailure("the actor credential record is missing")
-  }
-  var stored = try store.read(
-    service: binding.keychainService,
-    account: binding.keychainAccount,
-    launcherPath: binding.launcherPath
-  )
-  defer { stored.secret.resetBytes(in: 0..<stored.secret.count) }
-  try validateStoredCredential(stored, record: record)
-}
-
 private func writeResult(_ action: ProvisionAction, binding: LauncherBinding, ready: Bool) throws {
   let encoder = JSONEncoder()
   encoder.outputFormatting = [.sortedKeys]
@@ -1066,28 +1414,41 @@ private func main() throws {
   try clearInheritedEnvironment()
   let binding = try loadAndValidateBinding(arguments)
   #if AUTOMATION_ACTOR_PROVISION_TESTING
+    let interactionController = FakeKeychainInteractionController(
+      mode: arguments.testInteractionMode,
+      stateRoot: arguments.stateRoot,
+      actor: arguments.actor
+    )
     let store: SecretStore = try FakeSecretStore(
       state: arguments.testKeychainState,
-      stateRoot: arguments.stateRoot
+      stateRoot: arguments.stateRoot,
+      interactionController: interactionController
     )
     let generator: CredentialGenerator = FakeCredentialGenerator()
   #else
+    let interactionController = SystemKeychainInteractionController()
     let store: SecretStore = KeychainSecretStore()
     let generator: CredentialGenerator = SecureCredentialGenerator()
   #endif
   switch arguments.action {
   case .provision:
-    try provision(binding: binding, store: store, generator: generator)
+    _ = try withKeychainInteractionDisabled(
+      controller: interactionController,
+      restorationFailureCleanup: { rollback in
+        try rollbackProvision(rollback, binding: binding, store: store)
+      }
+    ) {
+      try provision(binding: binding, store: store, generator: generator)
+    }
     try writeResult(arguments.action, binding: binding, ready: true)
   case .rotate:
     try rotate(binding: binding, store: store, generator: generator)
     try writeResult(arguments.action, binding: binding, ready: true)
   case .revoke:
-    try revoke(binding: binding, store: store)
+    try withKeychainInteractionDisabled(controller: interactionController) {
+      try revoke(binding: binding, store: store)
+    }
     try writeResult(arguments.action, binding: binding, ready: false)
-  case .verify:
-    try verify(binding: binding, store: store)
-    try writeResult(arguments.action, binding: binding, ready: true)
   }
 }
 
@@ -1101,9 +1462,6 @@ do {
   exit(1)
 } catch StoreFailure.duplicateItem {
   fputs("automation-actor-provision: the actor Keychain credential already exists\n", stderr)
-  exit(1)
-} catch StoreFailure.invalidACL {
-  fputs("automation-actor-provision: the actor Keychain ACL is invalid\n", stderr)
   exit(1)
 } catch {
   fputs("automation-actor-provision: an unexpected provisioning error occurred\n", stderr)

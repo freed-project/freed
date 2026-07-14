@@ -6,6 +6,8 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  renameSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -227,15 +229,17 @@ function writeLauncherRecord(
   } = {},
 ) {
   const attestation = launcherAttestation(value, attestationOverrides);
-  const launcherPath = path.join(value.root, "trusted-launcher");
-  writeFileSync(
-    launcherPath,
-    `#!/bin/sh\nprintf '%s\\n' ${shellQuote(JSON.stringify(attestation))}\n`,
-    { mode: 0o700 },
-  );
+  const launcherContents =
+    `#!/bin/sh\nprintf '%s\\n' ${shellQuote(JSON.stringify(attestation))}\n`;
   const launcherSha256 =
-    digest ??
-    createHash("sha256").update(readFileSync(launcherPath)).digest("hex");
+    digest ?? createHash("sha256").update(launcherContents).digest("hex");
+  const launcherPath = path.join(
+    value.launcherRecordRoot,
+    "bin",
+    `${value.spec.id}-${launcherSha256}`,
+  );
+  mkdirSync(path.dirname(launcherPath), { recursive: true, mode: 0o700 });
+  writeFileSync(launcherPath, launcherContents, { mode: 0o700 });
   const runtimeContents = {
     nodePath: "pinned node fixture\n",
     controlEntryPath: "pinned control entry fixture\n",
@@ -487,7 +491,6 @@ test("matching active actor is valid only after the complete trusted handoff exi
   writeLauncherRecord(value);
   const result = audit(value, {
     launcherInspector: () => ({ ready: true, reason: "" }),
-    keychainLookup: () => ({ ready: true, reason: "" }),
   });
 
   assert.equal(result.issueCount, 0);
@@ -550,7 +553,6 @@ test("credential and launcher records reject permissive modes and digest drift",
         requiredUid:
           typeof process.getuid === "function" ? process.getuid() : 0,
       }),
-    keychainLookup: () => ({ ready: true, reason: "" }),
   });
   assert.equal(readiness.ready, false);
   assert.match(readiness.reason, /digest does not match/);
@@ -571,6 +573,19 @@ test("credential and launcher records reject permissive modes and digest drift",
   );
   assert.equal(untrustedRecord.ready, false);
   assert.match(untrustedRecord.reason, /not root-owned and immutable/);
+});
+
+test("credential readiness rejects a symlink without reading its target", () => {
+  const value = fixture();
+  const credentialPath = writeCredential(value);
+  const targetPath = path.join(value.root, "credential-target.json");
+  renameSync(credentialPath, targetPath);
+  symlinkSync(targetPath, credentialPath);
+
+  const readiness = actorCredentialReadiness(value.stateRoot, value.spec.id);
+
+  assert.equal(readiness.ready, false);
+  assert.match(readiness.reason, /cannot be read/);
 });
 
 test("general actor launcher records pin the complete root-owned runtime", () => {
@@ -603,7 +618,6 @@ test("general actor launcher records pin the complete root-owned runtime", () =>
         requiredUid:
           typeof process.getuid === "function" ? process.getuid() : 0,
       }),
-    keychainLookup: () => ({ ready: true, reason: "" }),
     launcherAttestor: () => ({
       ready: true,
       reason: "",
@@ -636,7 +650,7 @@ test("general actor runtime pins reject missing fields, escapes, writable files,
           .update(readFileSync(outsidePath))
           .digest("hex");
       },
-      expected: /not a canonical path under the automation actor runtime root/,
+      expected: /identity or handoff contract is invalid/,
     },
     {
       name: "mixed runtime versions",
@@ -658,7 +672,7 @@ test("general actor runtime pins reject missing fields, escapes, writable files,
           .update(readFileSync(differentRuntimePath))
           .digest("hex");
       },
-      expected: /do not share one content-addressed runtime/,
+      expected: /identity or handoff contract is invalid/,
     },
     {
       name: "writable file",
@@ -672,7 +686,7 @@ test("general actor runtime pins reject missing fields, escapes, writable files,
       mutate(record) {
         record.controlLibrarySha256 = "0".repeat(64);
       },
-      expected: /automation control library pin digest does not match/,
+      expected: /identity or handoff contract is invalid/,
     },
   ];
 
@@ -697,7 +711,6 @@ test("general actor runtime pins reject missing fields, escapes, writable files,
           requiredUid:
             typeof process.getuid === "function" ? process.getuid() : 0,
         }),
-      keychainLookup: () => ({ ready: true, reason: "" }),
     });
     assert.equal(readiness.ready, false, scenario.name);
     assert.match(readiness.reason, scenario.expected, scenario.name);
@@ -741,7 +754,6 @@ test("active actor rejects a launcher attestation that does not verify the crede
   });
   const result = audit(value, {
     launcherInspector: () => ({ ready: true, reason: "" }),
-    keychainLookup: () => ({ ready: true, reason: "" }),
   });
 
   assert.equal(result.records[0].handoffReady, false);
@@ -754,6 +766,39 @@ test("active actor rejects a launcher attestation that does not verify the crede
       (item) => item.code === "active-without-trusted-handoff",
     ),
   );
+});
+
+test("active actor fails closed on bounded timeout and malformed launcher output", () => {
+  for (const scenario of ["timeout", "malformed"]) {
+    const value = fixture();
+    writeSavedAutomation(value, { status: "ACTIVE" });
+    writeCredential(value);
+    writeLauncherRecord(value);
+    const result = audit(value, {
+      launcherInspector: () => ({ ready: true, reason: "" }),
+      launcherAttestor:
+        scenario === "timeout"
+          ? (_request, { timeoutMs }) => ({
+              ready: false,
+              reason: `trusted launcher readiness attestation exceeded ${timeoutMs.toLocaleString()} ms`,
+            })
+          : (request) => ({
+              ready: true,
+              reason: "",
+              attestation: {
+                ...launcherAttestation(value),
+                actor: request.actor,
+                unexpected: true,
+              },
+            }),
+    });
+    assert.equal(result.records[0].handoffReady, false, scenario);
+    assert.match(
+      result.records[0].launcher.reason,
+      scenario === "timeout" ? /5,000 ms/ : /does not match/,
+      scenario,
+    );
+  }
 });
 
 test("launcher attestation is bound to actor, state root, lease, lifetime, and digest", () => {
@@ -773,7 +818,6 @@ test("launcher attestation is bound to actor, state root, lease, lifetime, and d
     writeLauncherRecord(value);
     const result = audit(value, {
       launcherInspector: () => ({ ready: true, reason: "" }),
-      keychainLookup: () => ({ ready: true, reason: "" }),
       launcherAttestor: () => ({
         ready: true,
         reason: "",

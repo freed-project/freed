@@ -1,7 +1,6 @@
 import CryptoKit
 import Darwin
 import Foundation
-import LocalAuthentication
 import Security
 
 private let bindingSchemaVersion = 1
@@ -61,6 +60,7 @@ private struct ParsedArguments {
     let testBindingPath: String
     let testRuntimeRoot: String
     let testControlMode: String
+    let testKeychainMode: String
   #endif
 }
 
@@ -168,17 +168,37 @@ private protocol SecretReader {
   func readSecret(service: String, account: String) throws -> Data
 }
 
+private protocol KeychainInteractionController: AnyObject {
+  func currentState() throws -> Bool
+  func setAllowed(_ allowed: Bool) throws
+}
+
+private final class SystemKeychainInteractionController: KeychainInteractionController {
+  func currentState() throws -> Bool {
+    var state = DarwinBoolean(false)
+    guard SecKeychainGetUserInteractionAllowed(&state) == errSecSuccess else {
+      throw HostFailure("the Keychain interaction policy could not be read")
+    }
+    return state.boolValue
+  }
+
+  func setAllowed(_ allowed: Bool) throws {
+    guard
+      SecKeychainSetUserInteractionAllowed(allowed) == errSecSuccess
+    else {
+      throw HostFailure("the Keychain interaction policy could not be changed")
+    }
+  }
+}
+
 private struct KeychainSecretReader: SecretReader {
   func readSecret(service: String, account: String) throws -> Data {
-    let authenticationContext = LAContext()
-    authenticationContext.interactionNotAllowed = true
     let query: [CFString: Any] = [
       kSecClass: kSecClassGenericPassword,
       kSecAttrService: service,
       kSecAttrAccount: account,
       kSecReturnData: true,
       kSecMatchLimit: kSecMatchLimitOne,
-      kSecUseAuthenticationContext: authenticationContext,
     ]
     var item: CFTypeRef?
     let status = SecItemCopyMatching(query as CFDictionary, &item)
@@ -190,15 +210,96 @@ private struct KeychainSecretReader: SecretReader {
 }
 
 #if AUTOMATION_ACTOR_HOST_TESTING
+  private final class FakeKeychainInteractionController: KeychainInteractionController {
+    private let mode: String
+    private(set) var interactionAllowed: Bool
+
+    init(mode: String) {
+      self.mode = mode
+      interactionAllowed = mode != "initially-disabled"
+    }
+
+    func currentState() throws -> Bool {
+      if mode == "get-failure" {
+        throw HostFailure("the test Keychain interaction policy could not be read")
+      }
+      return interactionAllowed
+    }
+
+    func setAllowed(_ allowed: Bool) throws {
+      if !allowed, mode == "disable-failure" {
+        throw HostFailure("the test Keychain interaction policy could not be disabled")
+      }
+      if !allowed, mode == "disable-noop" {
+        return
+      }
+      if allowed, mode == "restore-failure" {
+        throw HostFailure("the test Keychain interaction policy could not be restored")
+      }
+      interactionAllowed = allowed
+    }
+  }
+
   private struct FakeSecretReader: SecretReader {
+    let interactionController: FakeKeychainInteractionController
+    let mode: String
+
     func readSecret(service: String, account: String) throws -> Data {
       guard service == keychainService, actorLeaseNames[account] != nil else {
         throw HostFailure("the test Keychain request did not match the actor binding")
+      }
+      guard !interactionController.interactionAllowed else {
+        throw HostFailure("the test Keychain credential read permitted user interaction")
+      }
+      if mode == "read-failure" {
+        throw HostFailure("the test Keychain credential could not be read")
       }
       return fakeCredential
     }
   }
 #endif
+
+private func readSecretWithoutInteraction(
+  reader: SecretReader,
+  interactionController: KeychainInteractionController,
+  service: String,
+  account: String
+) throws -> Data {
+  let previousInteractionState = try interactionController.currentState()
+  try interactionController.setAllowed(false)
+  guard try interactionController.currentState() == false else {
+    throw HostFailure("the Keychain interaction policy remained enabled after the disable request")
+  }
+
+  var secret: Data?
+  var readFailure: Error?
+  do {
+    secret = try reader.readSecret(service: service, account: account)
+  } catch {
+    readFailure = error
+  }
+
+  do {
+    try interactionController.setAllowed(previousInteractionState)
+    guard try interactionController.currentState() == previousInteractionState else {
+      throw HostFailure("the Keychain interaction policy restored an unexpected state")
+    }
+  } catch {
+    if let secretCount = secret?.count {
+      secret?.resetBytes(in: 0..<secretCount)
+    }
+    throw HostFailure(
+      "the Keychain interaction policy could not be restored after the credential read"
+    )
+  }
+  if let readFailure {
+    throw readFailure
+  }
+  guard let secret else {
+    throw HostFailure("the actor Keychain credential read returned no data")
+  }
+  return secret
+}
 
 private protocol ControlInvoker {
   func run(
@@ -576,6 +677,7 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
       allowed.insert("--test-binding")
       allowed.insert("--test-runtime-root")
       allowed.insert("--test-control-mode")
+      allowed.insert("--test-keychain-mode")
     #endif
     guard allowed.contains(value), index + 1 < values.count,
       options[value] == nil
@@ -646,6 +748,13 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
     guard ["valid", "oversized", "short-token", "overlong"].contains(testControlMode) else {
       throw HostFailure("the actor host test control mode is invalid")
     }
+    let testKeychainMode = options["--test-keychain-mode"] ?? "valid"
+    guard [
+      "valid", "read-failure", "get-failure", "disable-failure", "disable-noop",
+      "restore-failure", "initially-disabled",
+    ].contains(testKeychainMode) else {
+      throw HostFailure("the actor host test Keychain mode is invalid")
+    }
     return ParsedArguments(
       mode: mode,
       actor: actor,
@@ -657,7 +766,8 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
       keychainAccount: keychainAccount,
       testBindingPath: testBindingPath,
       testRuntimeRoot: testRuntimeRoot,
-      testControlMode: testControlMode
+      testControlMode: testControlMode,
+      testKeychainMode: testKeychainMode
     )
   #else
     return ParsedArguments(
@@ -1093,11 +1203,20 @@ private func main() throws {
   let binding = try loadAndValidateBinding(arguments)
   let credential = try readAndValidateCredential(binding)
   #if AUTOMATION_ACTOR_HOST_TESTING
-    let secretReader: SecretReader = FakeSecretReader()
+    let interactionController = FakeKeychainInteractionController(
+      mode: arguments.testKeychainMode
+    )
+    let secretReader: SecretReader = FakeSecretReader(
+      interactionController: interactionController,
+      mode: arguments.testKeychainMode
+    )
   #else
+    let interactionController = SystemKeychainInteractionController()
     let secretReader: SecretReader = KeychainSecretReader()
   #endif
-  var secret = try secretReader.readSecret(
+  var secret = try readSecretWithoutInteraction(
+    reader: secretReader,
+    interactionController: interactionController,
     service: binding.keychainService,
     account: binding.keychainAccount
   )
