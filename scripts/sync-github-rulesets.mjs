@@ -14,10 +14,15 @@ import { fileURLToPath } from "node:url";
 
 import {
   loadAndVerifyReleaseTagPublisher,
+  verifyReleaseTagPublisherInstallation,
+  verifyReleaseTagPublisherInstallationReadiness,
   verifyReleaseTagPublisherReadiness,
 } from "./lib/release-tag-publisher.mjs";
 
-export { verifyReleaseTagPublisherReadiness };
+export {
+  verifyReleaseTagPublisherInstallationReadiness,
+  verifyReleaseTagPublisherReadiness,
+};
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_RULESET_DIR = path.resolve(
@@ -359,25 +364,22 @@ export function verifyLiveReleaseTagAuthority(rulesets, expectedReleaseAppId) {
 }
 
 export function verifyReleaseAppReadiness({
-  app,
   installations,
-  repositories,
+  installationReadiness,
   releaseAppId,
   releaseAppSlug,
   repo,
 }) {
   const actorId = Number(releaseAppId);
-  if (
-    Number(app?.id) !== actorId ||
-    String(app?.slug ?? "").toLowerCase() !==
-      String(releaseAppSlug ?? "").toLowerCase()
-  ) {
-    throw new Error(
-      `Release App ${releaseAppSlug} does not match GitHub App ID ${actorId.toLocaleString()}.`,
-    );
-  }
+  const native = verifyReleaseTagPublisherInstallationReadiness(
+    installationReadiness,
+    { repo, releaseAppId, releaseAppSlug },
+  );
   const installation = (installations ?? []).find(
-    (item) => Number(item?.app_id) === actorId,
+    (item) =>
+      Number.isSafeInteger(item?.app_id) &&
+      item.app_id === actorId &&
+      item.app_slug === releaseAppSlug,
   );
   if (!installation) {
     throw new Error(
@@ -387,20 +389,42 @@ export function verifyReleaseAppReadiness({
   if (installation.suspended_at || installation.suspended_by) {
     throw new Error(`Release App ${releaseAppSlug} installation is suspended.`);
   }
-  if (installation.permissions?.contents !== "write") {
+  if (!Number.isSafeInteger(installation.id) || installation.id <= 0) {
     throw new Error(
-      `Release App ${releaseAppSlug} installation requires exact Contents write permission.`,
+      `Release App ${releaseAppSlug} installation ID is invalid.`,
     );
   }
-  if (!(repositories ?? []).some((item) => item?.full_name === repo)) {
+  const permissionKeys = Object.keys(installation.permissions ?? {}).sort();
+  if (
+    JSON.stringify(permissionKeys) !==
+      JSON.stringify(["contents", "metadata"]) ||
+    installation.permissions.contents !== "write" ||
+    installation.permissions.metadata !== "read"
+  ) {
     throw new Error(
-      `Release App ${releaseAppSlug} installation cannot access ${repo}.`,
+      `Release App ${releaseAppSlug} installation requires exact Contents write and Metadata read permissions.`,
+    );
+  }
+  if (
+    installation.account?.login !== "freed-project" ||
+    installation.account?.type !== "Organization" ||
+    installation.target_type !== "Organization" ||
+    installation.repository_selection !== "selected" ||
+    JSON.stringify(installation.events ?? []) !== JSON.stringify([])
+  ) {
+    throw new Error(
+      `Release App ${releaseAppSlug} must be an event-free selected-repository installation owned by freed-project.`,
+    );
+  }
+  if (native.installationId !== installation.id) {
+    throw new Error(
+      `Release App ${releaseAppSlug} native installation proof does not match the organization installation.`,
     );
   }
   return {
     ready: true,
     appId: actorId,
-    installationId: Number(installation.id),
+    installationId: installation.id,
   };
 }
 
@@ -617,32 +641,23 @@ function findCodeownersReadinessEvidence(
   return verifyCodeownersReadiness(branch, apiFile, desiredText);
 }
 
-function findReleaseAppReadinessEvidence(
+export function findReleaseAppReadinessEvidence(
   repo,
   releaseAppId,
   releaseAppSlug,
+  installationReadiness,
   { exec = execFileSync } = {},
 ) {
-  const app = ghJson(["api", `apps/${releaseAppSlug}`], { exec });
+  const [owner, name, ...extra] = repo.split("/");
+  if (!owner || !name || extra.length > 0) {
+    throw new Error("Release repository must use the owner/name format.");
+  }
   const installations =
-    ghJson(["api", "user/installations?per_page=100"], { exec })
+    ghJson(["api", `orgs/${owner}/installations?per_page=100`], { exec })
       .installations ?? [];
-  const installation = installations.find(
-    (item) => Number(item?.app_id) === Number(releaseAppId),
-  );
-  const repositories = installation
-    ? (ghJson(
-        [
-          "api",
-          `user/installations/${installation.id}/repositories?per_page=100`,
-        ],
-        { exec },
-      ).repositories ?? [])
-    : [];
   return verifyReleaseAppReadiness({
-    app,
     installations,
-    repositories,
+    installationReadiness,
     releaseAppId,
     releaseAppSlug,
     repo,
@@ -664,7 +679,12 @@ function findReleaseTagPublisherReadinessEvidence(
       "Root-owned release tag publisher binding does not match the reviewed repository and App identity.",
     );
   }
-  return { ready: true, publisherDigest: binding.publisherSha256 };
+  const installation = verifyReleaseTagPublisherInstallation(binding);
+  return {
+    ready: true,
+    publisherDigest: binding.publisherSha256,
+    installationAttestation: installation.attestation,
+  };
 }
 
 export function parseArgs(argv) {
@@ -777,15 +797,16 @@ function main() {
   let releaseEvidence = null;
   if (args.apply && args.releaseTags) {
     verifyReleaseTagLockdown(current);
-    const app = findReleaseAppReadinessEvidence(
-      args.repo,
-      args.releaseAppId,
-      args.releaseAppSlug,
-    );
     const publisher = findReleaseTagPublisherReadinessEvidence(
       args.repo,
       args.releaseAppId,
       args.releaseAppSlug,
+    );
+    const app = findReleaseAppReadinessEvidence(
+      args.repo,
+      args.releaseAppId,
+      args.releaseAppSlug,
+      publisher.installationAttestation,
     );
     releaseEvidence = { app, publisher };
     process.stdout.write(

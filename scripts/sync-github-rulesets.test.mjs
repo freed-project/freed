@@ -14,6 +14,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  findReleaseAppReadinessEvidence,
   loadRulesets,
   parseArgs,
   planRulesetSync,
@@ -329,17 +330,40 @@ test("release tag creation stays pending while immutability grants no bypass", (
 });
 
 test("release tag activation verifies the exact App installation and repository", () => {
+  const installationReadiness = {
+    schemaVersion: 1,
+    purpose: "freed-release-tag-publisher-installation-readiness",
+    repo: "freed-project/freed",
+    appId: 123456,
+    appSlug: "freed-release-publisher",
+    appName: "Freed Release Publisher",
+    appExternalUrl: "https://freed.wtf",
+    appOwnerLogin: "freed-project",
+    appOwnerType: "Organization",
+    appPermissions: { contents: "write", metadata: "read" },
+    appEvents: [],
+    installationId: 42,
+    accountLogin: "freed-project",
+    accountType: "Organization",
+    repositorySelection: "selected",
+    permissions: { contents: "write", metadata: "read" },
+    repositories: ["freed-project/freed"],
+  };
   const input = {
-    app: { id: 123456, slug: "freed-release-publisher" },
     installations: [
       {
         id: 42,
         app_id: 123456,
-        permissions: { contents: "write" },
+        app_slug: "freed-release-publisher",
+        account: { login: "freed-project", type: "Organization" },
+        target_type: "Organization",
+        repository_selection: "selected",
+        permissions: { contents: "write", metadata: "read" },
+        events: [],
         suspended_at: null,
       },
     ],
-    repositories: [{ full_name: "freed-project/freed" }],
+    installationReadiness,
     releaseAppId: 123456,
     releaseAppSlug: "freed-release-publisher",
     publisherDigest: "a".repeat(64),
@@ -352,15 +376,33 @@ test("release tag activation verifies the exact App installation and repository"
   });
   assert.throws(
     () => verifyReleaseAppReadiness({ ...input, releaseAppId: 999999 }),
-    /does not match GitHub App ID/,
+    /does not match the dedicated selected-repository App contract/,
+  );
+  assert.throws(
+    () =>
+      verifyReleaseAppReadiness({
+        ...input,
+        installationReadiness: {
+          ...installationReadiness,
+          appExternalUrl: "https://example.com",
+        },
+      }),
+    /does not match the dedicated selected-repository App contract/,
   );
   assert.throws(
     () => verifyReleaseAppReadiness({ ...input, installations: [] }),
     /is not installed/,
   );
   assert.throws(
-    () => verifyReleaseAppReadiness({ ...input, repositories: [] }),
-    /cannot access freed-project\/freed/,
+    () =>
+      verifyReleaseAppReadiness({
+        ...input,
+        installationReadiness: {
+          ...installationReadiness,
+          repositories: [],
+        },
+      }),
+    /does not match the dedicated selected-repository App contract/,
   );
   assert.throws(
     () =>
@@ -370,11 +412,16 @@ test("release tag activation verifies the exact App installation and repository"
           {
             id: 42,
             app_id: 123456,
-            permissions: { contents: "read" },
+            app_slug: "freed-release-publisher",
+            account: { login: "freed-project", type: "Organization" },
+            target_type: "Organization",
+            repository_selection: "selected",
+            permissions: { contents: "read", metadata: "read" },
+            events: [],
           },
         ],
       }),
-    /requires exact Contents write permission/,
+    /requires exact Contents write and Metadata read permissions/,
   );
   assert.throws(
     () =>
@@ -384,12 +431,87 @@ test("release tag activation verifies the exact App installation and repository"
           {
             id: 42,
             app_id: 123456,
-            permissions: { contents: "write" },
+            app_slug: "freed-release-publisher",
+            account: { login: "freed-project", type: "Organization" },
+            target_type: "Organization",
+            repository_selection: "selected",
+            permissions: { contents: "write", metadata: "read" },
+            events: [],
             suspended_at: "2026-07-12T00:00:00Z",
           },
         ],
       }),
     /installation is suspended/,
+  );
+});
+
+test("release activation uses organization installation evidence and never user installations", () => {
+  const calls = [];
+  const installationReadiness = {
+    schemaVersion: 1,
+    purpose: "freed-release-tag-publisher-installation-readiness",
+    repo: "freed-project/freed",
+    appId: 123456,
+    appSlug: "freed-release-publisher",
+    appName: "Freed Release Publisher",
+    appExternalUrl: "https://freed.wtf",
+    appOwnerLogin: "freed-project",
+    appOwnerType: "Organization",
+    appPermissions: { contents: "write", metadata: "read" },
+    appEvents: [],
+    installationId: 42,
+    accountLogin: "freed-project",
+    accountType: "Organization",
+    repositorySelection: "selected",
+    permissions: { contents: "write", metadata: "read" },
+    repositories: ["freed-project/freed"],
+  };
+  const result = findReleaseAppReadinessEvidence(
+    "freed-project/freed",
+    123456,
+    "freed-release-publisher",
+    installationReadiness,
+    {
+      exec(file, args) {
+        calls.push([file, ...args]);
+        if (args[1] === "orgs/freed-project/installations?per_page=100") {
+          return JSON.stringify({
+            installations: [
+              {
+                id: 42,
+                app_id: 123456,
+                app_slug: "freed-release-publisher",
+                account: {
+                  login: "freed-project",
+                  type: "Organization",
+                },
+                target_type: "Organization",
+                repository_selection: "selected",
+                permissions: { contents: "write", metadata: "read" },
+                events: [],
+                suspended_at: null,
+              },
+            ],
+          });
+        }
+        throw new Error(`Unexpected fake gh call: ${args.join(" ")}`);
+      },
+    },
+  );
+  assert.equal(result.installationId, 42);
+  assert.equal(
+    calls.some((call) => call.join(" ").includes("user/installations")),
+    false,
+  );
+  assert.equal(
+    calls.some((call) => call.join(" ").includes("apps/")),
+    false,
+  );
+  assert.equal(
+    calls.some((call) =>
+      call.join(" ").includes("orgs/freed-project/installations?per_page=100"),
+    ),
+    true,
   );
 });
 

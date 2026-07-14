@@ -26,7 +26,11 @@
       "status": "upcoming",
       "source": "docs/PHASE-9-BROWSER-EXTENSION.md"
     },
-    { "id": 10, "status": "upcoming", "source": "docs/PHASE-10-POLISH.md" },
+    {
+      "id": 10,
+      "status": "upcoming",
+      "source": "docs/PHASE-10-POLISH.md"
+    },
     { "id": 11, "status": "upcoming", "source": "docs/PHASE-11-OPENCLAW.md" },
     {
       "id": 12,

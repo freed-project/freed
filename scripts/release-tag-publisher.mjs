@@ -3,19 +3,24 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { loadAndVerifyReleaseTagPublisher } from "./lib/release-tag-publisher.mjs";
+import {
+  loadAndVerifyReleaseTagPublisher,
+  verifyReleaseTagPublisherInstallation,
+} from "./lib/release-tag-publisher.mjs";
 
 function main() {
   const args = process.argv.slice(2);
   const command = args[0];
   if (!command || command === "--help" || command === "-h") {
     process.stdout.write(
-      "Usage: node scripts/release-tag-publisher.mjs <attest|publish> [publisher arguments]\n",
+      "Usage: node scripts/release-tag-publisher.mjs <attest|verify-installation|publish> [publisher arguments]\n",
     );
     return;
   }
-  if (!["attest", "publish"].includes(command)) {
-    throw new Error("Release tag publisher command must be attest or publish.");
+  if (!["attest", "verify-installation", "publish"].includes(command)) {
+    throw new Error(
+      "Release tag publisher command must be attest, verify-installation, or publish.",
+    );
   }
   const binding = loadAndVerifyReleaseTagPublisher();
   if (command === "attest") {
@@ -30,6 +35,11 @@ function main() {
         publisherSha256: binding.publisherSha256,
       })}\n`,
     );
+    return;
+  }
+  if (command === "verify-installation") {
+    const result = verifyReleaseTagPublisherInstallation(binding);
+    process.stdout.write(`${JSON.stringify(result.attestation)}\n`);
     return;
   }
   execFileSync(binding.publisherPath, args, { stdio: "inherit" });
