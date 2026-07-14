@@ -218,7 +218,7 @@ export function filterByAuthor(
 | 6.13 | Add to homescreen prompt               | Low        |
 | 6.14 | First-run legal gate with local-only acceptance storage | Low |
 | 6.15 | URL navigation state with browser back/forward support | Low |
-| 6.16 | Public-safe and private bug report bundles | Medium |
+| 6.16 | Public-safe bundles and private GitHub vulnerability reports | Medium |
 
 ---
 
@@ -252,6 +252,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Active view, feed filters, and reader selection round-trip through the URL for browser back/forward navigation
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Bug report actions now label whether they download a public-safe or private bundle, and private diagnostics can be toggled as one group before emailing a report
+- [x] Private reports can send a redacted description and selected stack traces to the repository's private GitHub vulnerability inbox after an explicit click, with no automatic retry and no diagnostic zip upload
 - [x] PWA Settings surfaces Feeds, X / Twitter, Facebook, Instagram, LinkedIn, and Google Contacts as status-only sections with Freed Desktop sync and download handoff states
 - [x] PWA Settings surfaces cloud sync diagnostics for connected Google Drive accounts so users can see whether the browser downloaded, merged, uploaded, hit an error, is waiting for local changes, or needs a manual `Sync now` pass, while local PWA edits schedule Drive uploads even when no LAN relay is connected
 - [x] PWA Google Drive resume, manual sync, OAuth callback sync, and LAN relay resume wait until the Automerge worker has initialized the local document before merging remote Drive data
@@ -267,6 +268,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Private diagnostics stay opt-in and are clearly separated from public GitHub sharing
 - [x] PWA installable on mobile (add to homescreen) — manifest ids and scope set, browser install notice shipped, iOS Safari homescreen guidance shipped, Playwright coverage added
 - [x] Offline access works (service worker + image cache), article HTML and cacheable reader images are warmed locally for offline reading
+- [x] The article proxy resolves and pins public addresses, revalidates every bounded redirect, rejects non-HTML responses, and stops oversized response bodies before they exhaust server memory
 - [x] Saved reader content uses the permanent pinned cache tier by default, with local cache modes for Saved Only, Everything Opened, Recent Feed, and Manual Only
 
 ---

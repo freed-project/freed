@@ -14,6 +14,7 @@
     "./opml": "./src/opml.ts",
     "./google-contacts": "./src/google-contacts.ts",
     "./google-contacts-automation": "./src/google-contacts-automation.ts",
+    "./redact-sensitive": "./src/redact-sensitive.ts",
     "./contact-matching": "./src/contact-matching.ts"
   },
   "scripts": {

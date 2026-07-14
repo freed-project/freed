@@ -30,6 +30,7 @@
 /packages/desktop/src/hooks/usePostLoginAutoSync.ts @AubreyF
 /packages/desktop/src/hooks/useProviderRiskGate.tsx @AubreyF
 /packages/desktop/src/lib/background-runtime-coordinator.ts @AubreyF
+/packages/desktop/src/lib/bug-report.ts @AubreyF
 /packages/desktop/src/lib/capture.ts @AubreyF
 /packages/desktop/src/lib/content-fetcher.ts @AubreyF
 /packages/desktop/src/lib/dev-sync-triggers.ts @AubreyF
@@ -72,21 +73,29 @@
 /packages/capture-medium/ @AubreyF
 /packages/capture-*/src/ @AubreyF
 /packages/pwa/api/oauth/google.ts @AubreyF
+/packages/pwa/api/fetch-url.ts @AubreyF
+/packages/pwa/api/security-report.ts @AubreyF
 /packages/pwa/src/components/OAuthCallback.tsx @AubreyF
 /packages/pwa/src/components/PwaSyncSettings.tsx @AubreyF
 /packages/pwa/src/components/SyncConnectDialog.tsx @AubreyF
 /packages/pwa/src/lib/cloud-oauth.ts @AubreyF
+/packages/pwa/src/lib/bug-report.ts @AubreyF
 /packages/pwa/src/lib/contacts.ts @AubreyF
 /packages/pwa/src/lib/oauth-redirect.ts @AubreyF
 /packages/pwa/src/lib/reader-cache.ts @AubreyF
 /packages/pwa/src/lib/sync.ts @AubreyF
 /packages/pwa/src/lib/youtube-handoff.ts @AubreyF
 /packages/shared/src/google-contacts-automation.ts @AubreyF
+/packages/shared/src/bug-report.ts @AubreyF
+/packages/shared/src/redact-sensitive.ts @AubreyF
 /packages/shared/src/google-contacts.ts @AubreyF
 /packages/shared/src/legal.ts @AubreyF
 /packages/shared/src/schema.ts @AubreyF
 /packages/shared/src/youtube.ts @AubreyF
 /packages/ui/src/components/feed/ReaderView.tsx @AubreyF
+/packages/ui/src/components/report/ReportComposer.tsx @AubreyF
+/packages/ui/src/context/PlatformContext.tsx @AubreyF
+/packages/ui/src/lib/bug-report.ts @AubreyF
 /packages/ui/src/components/feed/YouTubeFocusPlayer.tsx @AubreyF
 
 # Stability automation, validation, provider gates, and release tooling.

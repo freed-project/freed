@@ -8,9 +8,13 @@ import type {
   BugReportArtifactDefinition,
   BugReportBundleManifest,
   GeneratedBugReportBundle,
+  PrivateVulnerabilityReportPayload,
+  PrivateVulnerabilityReportResult,
   ReportPrivacyTier,
   RuntimeErrorSnapshot,
 } from "@freed/shared";
+export { redactSensitiveText } from "@freed/shared/redact-sensitive";
+import { redactSensitiveText } from "@freed/shared/redact-sensitive";
 
 const MAX_REPORT_EVENTS = 250;
 
@@ -125,15 +129,6 @@ function stableHash(input: string): string {
     hash = Math.imul(hash, 16777619);
   }
   return Math.abs(hash >>> 0).toString(16).padStart(8, "0");
-}
-
-export function redactSensitiveText(input: string): string {
-  return input
-    .replace(/(auth[_-]?token|access[_-]?token|refresh[_-]?token|cookie|authorization)["'=:\s]+([^,\s]+)/gi, "$1=[REDACTED]")
-    .replace(/([?&](?:token|code|state|auth|key|sig|signature|session)=)[^&\s]+/gi, "$1[REDACTED]")
-    .replace(/\/Users\/[^/\s]+/g, "/Users/[REDACTED]")
-    .replace(/C:\\Users\\[^\\\s]+/g, "C:\\Users\\[REDACTED]")
-    .replace(/\b[A-Za-z0-9_\-.]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "[REDACTED_EMAIL]");
 }
 
 function createErrorSnapshot(input: {
@@ -402,6 +397,78 @@ export function buildBugReportSummaryMarkdown(input: {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function pickPrivateReportMetadata(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  const allowedKeys = [
+    "version",
+    "releaseChannel",
+    "buildKind",
+    "commitSha",
+    "commitRef",
+    "deployedAt",
+    "platform",
+    "appMode",
+  ];
+  const metadata = Object.fromEntries(
+    allowedKeys.flatMap((key) => {
+      const candidate = source[key];
+      if (typeof candidate !== "string" && typeof candidate !== "boolean") return [];
+      return [[key, candidate]];
+    }),
+  );
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+export function buildPrivateVulnerabilityReportPayload(input: {
+  draft: BugReportDraft;
+  bundle: GeneratedBugReportBundle;
+}): PrivateVulnerabilityReportPayload {
+  const includesRawStack = input.bundle.manifest.includedArtifacts.includes("raw-stack");
+  const stackTrace = includesRawStack && typeof input.bundle.diagnostics.rawStack === "string"
+    ? redactSensitiveText(input.bundle.diagnostics.rawStack)
+    : undefined;
+  const componentStack =
+    includesRawStack && typeof input.bundle.diagnostics.componentStack === "string"
+      ? redactSensitiveText(input.bundle.diagnostics.componentStack)
+      : undefined;
+
+  return {
+    title: redactSensitiveText(input.draft.title.trim() || "Freed vulnerability report"),
+    description: redactSensitiveText(input.bundle.summaryMarkdown),
+    stackTrace,
+    componentStack,
+    crashFingerprint: input.bundle.manifest.crashFingerprint,
+    stackFingerprint: input.bundle.manifest.stackFingerprint,
+    appMetadata: pickPrivateReportMetadata(input.bundle.diagnostics.runtime),
+  };
+}
+
+export async function submitPrivateVulnerabilityReport(
+  endpoint: string,
+  payload: PrivateVulnerabilityReportPayload,
+): Promise<PrivateVulnerabilityReportResult> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const body = (await response.json().catch(() => null)) as
+    | { advisoryUrl?: unknown; error?: unknown }
+    | null;
+  if (!response.ok) {
+    const message = typeof body?.error === "string"
+      ? body.error
+      : "The private report could not be submitted.";
+    throw new Error(message);
+  }
+  if (typeof body?.advisoryUrl !== "string" || !body.advisoryUrl.startsWith("https://github.com/")) {
+    throw new Error("GitHub accepted the report without returning a valid advisory URL.");
+  }
+  return { advisoryUrl: body.advisoryUrl };
 }
 
 export function summarizeStateForReport(input: {

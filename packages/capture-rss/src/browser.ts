@@ -13,6 +13,7 @@
 
 import { XMLParser } from "fast-xml-parser";
 import type { ParsedFeed, ParsedFeedItem } from "./types.js";
+import { SECURE_XML_ENTITY_OPTIONS } from "./xml-security.js";
 
 // Re-export everything that is Node-free
 export * from "./types.js";
@@ -41,6 +42,7 @@ const XML = new XMLParser({
   attributeNamePrefix: "@_",
   textNodeName: "#text",
   parseAttributeValue: false,
+  processEntities: SECURE_XML_ENTITY_OPTIONS,
   isArray: (_name, jpath) =>
     jpath === "rss.channel.item" ||
     jpath === "feed.entry" ||
