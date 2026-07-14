@@ -19,6 +19,7 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 const GOVERNANCE_BACKPORT_BRANCH_PATTERN =
   /^fix\/main-governance-[a-z0-9._-]+$/;
 const GOVERNANCE_BACKPORT_FILES = new Set([
+  ".github/CODEOWNERS",
   ".agents/skills/freed-build-feature/SKILL.md",
   ".agents/skills/freed-provider-risk-review/SKILL.md",
   "AGENTS.md",
@@ -26,8 +27,19 @@ const GOVERNANCE_BACKPORT_FILES = new Set([
   "docs/NIGHTLY-SELF-IMPROVE.md",
   "docs/STABILITY-PROGRAM.md",
   "docs/stability-tasks/W1-06-provider-visible-single-source.md",
+  "scripts/automation-control.mjs",
+  "scripts/automation-control.test.mjs",
+  "scripts/lib/automation-control.mjs",
+  "scripts/lib/cargo-lock-release.mjs",
+  "scripts/lib/node-tooling.sh",
+  "scripts/lib/provider-visible-paths.mjs",
+  "scripts/lib/provider-visible-paths.test.mjs",
   "scripts/release-promotion.test.mjs",
+  "scripts/release-promotion-shared.mjs",
+  "scripts/trusted-worktree-publish.sh",
+  "scripts/validate-main-backflow.mjs",
   "scripts/validate-main-pr.mjs",
+  "scripts/validate-release-promotion.mjs",
   "scripts/worktree-publish.sh",
   "scripts/worktree-publish.test.mjs",
 ]);

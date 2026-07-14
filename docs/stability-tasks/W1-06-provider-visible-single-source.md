@@ -40,7 +40,9 @@ approval when unrelated files changed.
 10. A narrow `fix/main-governance-*` lane may backport these exact governance
     files to `main`. Every changed file must be on the control-plane allowlist
     and byte-for-byte equal to `origin/dev`. Product changes remain confined to
-    the normal release promotion lane.
+    the normal release promotion lane. The allowlist includes the publisher's
+    release-control dependencies and their focused tests so the backported
+    publisher is runnable rather than a decorative shell script.
 
 ## Human workflow
 
