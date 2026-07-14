@@ -56,7 +56,7 @@ The graph occupies a constrained galactic plane. `x` and `y` encode stable seman
 - Labels are billboard text rendered in a batched GPU SDF or MSDF layer, not an HTML cloud or one scene object per label.
 - Avatars appear at close zoom for selected or high-priority identities and load after motion settles through a texture atlas.
 - Links remain short and visible. Global hairball edges are forbidden.
-- Nebula, constellation-ring, and combined treatments remain switchable in a development comparison control.
+- Nebula is the default provider-field treatment. Constellation streams and a combined treatment remain switchable in a development comparison control.
 - Depth creates restrained, perceptible parallax without sacrificing navigation clarity.
 - The visual render layer fills beneath the primary app sidebar, while the pointer interaction lane and controls remain bounded between sidebars.
 - Reduced-motion settings disable pulses and settle animation without removing information.
@@ -168,6 +168,10 @@ As of July 12, 2026, other tasks are running on the development machine. The own
 - The canvas compatibility renderer caches its decorative star background, avoids per-node blur filters, keeps connectors visible, and draws a capped screen-space label set during motion.
 - Mobile regression coverage now includes browser-generated two-finger input in the PWA, pinch-to-pan continuation, and the same touch state path under WebKit's iPhone profile. Linking and pinning remain context-menu-only workflows.
 - Neon and Scriptorium visual passes confirm that node cores, background stars, labels, edges, and provider fields follow the active theme.
+- Provider sectors now use deterministic logarithmic spiral placement shared by the atlas and renderer. Procedural nebula arms, themed dust, and constellation streams replace simple elliptical region outlines.
+- Linked accounts occupy tighter local identity systems, with their person as the stable center and short semantic links available only while that constellation is hovered or selected.
+- Billboard labels anchor directly to their parent stars, use a stronger outline, and retain the accepted label set during camera movement.
+- Graph utility controls use the shared Freed secondary button surface so their backgrounds remain legible in every active theme.
 
 ### Next structural target
 

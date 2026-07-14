@@ -497,6 +497,7 @@ async function readGraphDebug(page: Page) {
           visibleProviderLabelCount: number;
           rendererLabelCount: number;
           readyRendererLabelCount: number;
+          rendererEdgeCount: number;
           sourceNodeCount?: number;
           visibleNodeCount?: number;
           renderedPrimitiveCount?: number;
@@ -531,6 +532,7 @@ async function readGraphSummary(page: Page) {
           visibleProviderLabelCount: number;
           rendererLabelCount: number;
           readyRendererLabelCount: number;
+          rendererEdgeCount: number;
           qualityMode: "interactive" | "settled";
         };
       };
@@ -5541,6 +5543,19 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
   await expect.poll(async () => {
     return (await readGraphDebug(page))?.metrics.visibleLabelCount ?? 0;
   }, { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect.poll(async () => {
+    return (await readGraphDebug(page))?.metrics.rendererEdgeCount ?? -1;
+  }).toBe(0);
+
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { setSelectedFriend: (id: string) => void };
+    };
+    store.getState().setSelectedFriend("friend-ada");
+  });
+  await expect.poll(async () => {
+    return (await readGraphDebug(page))?.metrics.rendererEdgeCount ?? 0;
+  }).toBe(6);
 });
 
 // ---------------------------------------------------------------------------

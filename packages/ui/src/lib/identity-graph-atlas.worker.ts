@@ -4,7 +4,6 @@ import {
   type IdentityGraphAtlasModel,
 } from "./identity-graph-atlas.js";
 import {
-  compileIdentityGalaxyEdgeIndicesFromIndex,
   compileIdentityGalaxyScene,
 } from "./identity-galaxy-scene.js";
 import {
@@ -16,7 +15,6 @@ import {
 interface CachedGalaxyModel {
   sourceRevision: number;
   model: IdentityGraphAtlasModel;
-  nodeIndexById: Map<string, number>;
 }
 
 let cachedGalaxy: CachedGalaxyModel | null = null;
@@ -38,7 +36,6 @@ self.onmessage = (event: MessageEvent<IdentityGalaxyWorkerRequest>) => {
     cachedGalaxy = {
       sourceRevision: request.sourceRevision,
       model,
-      nodeIndexById: new Map(model.nodes.map((node, index) => [node.id, index])),
     };
     rebuilt = true;
   }
@@ -61,17 +58,12 @@ self.onmessage = (event: MessageEvent<IdentityGalaxyWorkerRequest>) => {
   if (rebuilt) {
     response.scene = compileIdentityGalaxyScene({
       nodes: cachedGalaxy.model.nodes,
-      edges: atlas.edges,
+      edges: cachedGalaxy.model.edges,
     }, {
       quality: request.viewport.quality,
       selectedPersonId: request.viewport.selectedPersonId,
       selectedAccountId: request.viewport.selectedAccountId,
     });
-  } else {
-    response.edgeIndices = compileIdentityGalaxyEdgeIndicesFromIndex(
-      cachedGalaxy.nodeIndexById,
-      atlas.edges,
-    );
   }
 
   response.durationMs = nowMs() - startedAt;

@@ -2,12 +2,19 @@ import * as THREE from "three";
 import type {
   IdentityGraphAtlas,
   IdentityGraphAtlasQuality,
+  IdentityGraphAtlasRegion,
 } from "./identity-graph-atlas.js";
 import {
+  compileIdentityGalaxyContextEdgeIndices,
   IdentityGalaxyColorRole,
   IdentityGalaxyNodeFlag,
   type IdentityGalaxyScene,
 } from "./identity-galaxy-scene.js";
+import {
+  providerGalaxyArmCount,
+  providerGalaxyLocalPoint,
+  providerGalaxySeed,
+} from "./identity-galaxy-provider-field.js";
 import type { ViewTransform } from "./identity-graph-layout.js";
 import {
   IDENTITY_GALAXY_CAMERA_FOV,
@@ -301,9 +308,9 @@ function makeGalaxyEdgeMaterial(): THREE.ShaderMaterial {
     blending: THREE.NormalBlending,
     uniforms: {
       color: { value: new THREE.Color("#7dd3fc") },
-      opacity: { value: 0.64 },
+      opacity: { value: 0.76 },
       resolution: { value: new THREE.Vector2(1, 1) },
-      width: { value: 1.35 },
+      width: { value: 1.6 },
     },
     vertexShader: `
       uniform vec2 resolution;
@@ -345,10 +352,169 @@ function makeGalaxyEdgeMaterial(): THREE.ShaderMaterial {
   });
 }
 
+function makeProviderNebulaMaterial(color: THREE.Color, provider: string): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+    blending: THREE.NormalBlending,
+    side: THREE.DoubleSide,
+    uniforms: {
+      color: { value: color },
+      seed: { value: providerGalaxySeed(provider) },
+      arms: { value: providerGalaxyArmCount(provider) },
+      opacity: { value: 0.3 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 color;
+      uniform float seed;
+      uniform float arms;
+      uniform float opacity;
+      varying vec2 vUv;
+
+      float hash21(vec2 point) {
+        point = fract(point * vec2(123.34, 456.21));
+        point += dot(point, point + 45.32);
+        return fract(point.x * point.y);
+      }
+
+      float noise(vec2 point) {
+        vec2 cell = floor(point);
+        vec2 local = fract(point);
+        local = local * local * (3.0 - 2.0 * local);
+        return mix(
+          mix(hash21(cell), hash21(cell + vec2(1.0, 0.0)), local.x),
+          mix(hash21(cell + vec2(0.0, 1.0)), hash21(cell + vec2(1.0, 1.0)), local.x),
+          local.y
+        );
+      }
+
+      float fbm(vec2 point) {
+        float value = 0.0;
+        float amplitude = 0.54;
+        for (int octave = 0; octave < 4; octave += 1) {
+          value += noise(point) * amplitude;
+          point = point * 2.03 + vec2(11.7, 7.9);
+          amplitude *= 0.48;
+        }
+        return value;
+      }
+
+      void main() {
+        vec2 point = (vUv - 0.5) * 2.0;
+        float radius = length(point);
+        float angle = atan(point.y, point.x);
+        float turbulence = fbm(point * 3.1 + seed * 17.0);
+        float warpedRadius = radius + (turbulence - 0.5) * 0.25 + sin(angle * 5.0 + seed * 19.0) * 0.045;
+        float envelope = 1.0 - smoothstep(0.48, 1.08, warpedRadius);
+        float spiral = 0.5 + 0.5 * cos(angle * arms - radius * 10.8 + seed * 6.28318);
+        spiral = pow(spiral, 4.0);
+        float core = 1.0 - smoothstep(0.02, 0.48, warpedRadius);
+        float dust = envelope * (0.18 + spiral * 0.82) * (0.38 + turbulence * 0.86);
+        vec2 starCell = floor((point + seed * 0.37) * 76.0);
+        float speck = step(0.991, hash21(starCell)) * envelope;
+        float alpha = clamp((dust * 0.72 + core * 0.2) * opacity + speck * 0.5, 0.0, 0.72);
+        if (alpha < 0.012) discard;
+        vec3 nebulaColor = mix(color * 0.72, color, spiral * 0.62 + core * 0.2);
+        nebulaColor = mix(nebulaColor, vec3(1.0), speck * 0.72);
+        gl_FragColor = vec4(nebulaColor, alpha);
+      }
+    `,
+  });
+}
+
+function makeProviderStreamGeometry(region: IdentityGraphAtlasRegion): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const armCount = providerGalaxyArmCount(region.provider);
+  const seed = providerGalaxySeed(region.provider);
+  const segmentCount = 58;
+  for (let armIndex = 0; armIndex < armCount; armIndex += 1) {
+    let previous = providerGalaxyLocalPoint(
+      region.provider,
+      armIndex,
+      0.025,
+      region.radiusX,
+      region.radiusY,
+    );
+    for (let step = 1; step <= segmentCount; step += 1) {
+      const progress = 0.025 + (step / segmentCount) * 0.94;
+      const current = providerGalaxyLocalPoint(
+        region.provider,
+        armIndex,
+        progress,
+        region.radiusX,
+        region.radiusY,
+      );
+      const gap = (step + armIndex * 5 + Math.floor(seed * 17)) % 14 === 0;
+      if (!gap) {
+        positions.push(
+          region.x + previous.x,
+          -region.y - previous.y,
+          -126,
+          region.x + current.x,
+          -region.y - current.y,
+          -126,
+        );
+      }
+      previous = current;
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  return geometry;
+}
+
+function makeProviderDustGeometry(
+  region: IdentityGraphAtlasRegion,
+  color: THREE.Color,
+): THREE.BufferGeometry {
+  const count = Math.min(320, Math.max(120, Math.ceil(Math.sqrt(Math.max(1, region.count))) * 16));
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+  const armCount = providerGalaxyArmCount(region.provider);
+  for (let index = 0; index < count; index += 1) {
+    const armIndex = index % armCount;
+    const progress = Math.pow(seededUnit(`${region.provider}:dust:${index}:progress`), 0.82);
+    const angularOffset = (seededUnit(`${region.provider}:dust:${index}:angle`) - 0.5) * 0.42;
+    const point = providerGalaxyLocalPoint(
+      region.provider,
+      armIndex,
+      progress,
+      region.radiusX,
+      region.radiusY,
+      angularOffset,
+    );
+    const scatter = 0.9 + seededUnit(`${region.provider}:dust:${index}:scatter`) * 0.2;
+    positions[index * 3] = region.x + point.x * scatter;
+    positions[index * 3 + 1] = -region.y - point.y * scatter;
+    positions[index * 3 + 2] = -118 - seededUnit(`${region.provider}:dust:${index}:depth`) * 44;
+    const brightness = 0.34 + seededUnit(`${region.provider}:dust:${index}:brightness`) * 0.66;
+    colors[index * 3] = color.r * brightness;
+    colors[index * 3 + 1] = color.g * brightness;
+    colors[index * 3 + 2] = color.b * brightness;
+    sizes[index] = 1.4 + seededUnit(`${region.provider}:dust:${index}:size`) * 4.2;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute("pointSize", new THREE.BufferAttribute(sizes, 1));
+  return geometry;
+}
+
 const LABEL_ATLAS_CELL_SIZE = 64;
 const LABEL_ATLAS_FONT_SIZE = 42;
 const LABEL_ATLAS_MAX_GLYPHS = 256;
 const LABEL_TEXT_MAX_CHARACTERS = 44;
+const LABEL_OUTLINE_ATLAS_PIXELS = 4.2;
 
 function nextPowerOfTwo(value: number): number {
   let result = 1;
@@ -429,7 +595,7 @@ function makeGalaxyLabelMaterial(texture: THREE.Texture): THREE.ShaderMaterial {
 
       void main() {
         float fill = texture2D(atlas, vGlyphUv).a;
-        vec2 spread = atlasTexel * 1.6;
+        vec2 spread = atlasTexel * ${LABEL_OUTLINE_ATLAS_PIXELS.toFixed(1)};
         float outline = fill;
         outline = max(outline, texture2D(atlas, vGlyphUv + vec2(spread.x, 0.0)).a);
         outline = max(outline, texture2D(atlas, vGlyphUv - vec2(spread.x, 0.0)).a);
@@ -633,6 +799,7 @@ function drawFallbackLabels(
   const smallViewport = width < 720;
   const cap = smallViewport ? 24 : 72;
   const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = [];
+  const nodeById = new Map(atlas.nodes.map((node) => [node.id, node]));
   let visibleCount = 0;
   context.textAlign = "center";
   context.textBaseline = "middle";
@@ -647,7 +814,12 @@ function drawFallbackLabels(
           : smallViewport ? 12 : 13;
     const text = truncateGalaxyLabel(label.text);
     const screenX = transform.x + label.x * transform.scale;
-    const screenY = transform.y + label.y * transform.scale - fontSize - 14;
+    const parentNode = nodeById.get(label.nodeId);
+    const starRadius = parentNode
+      ? Math.max(5, parentNode.radius * 0.82 * transform.scale)
+      : 5;
+    const labelOffset = starRadius + fontSize * 0.68 + 3;
+    const screenY = transform.y + label.y * transform.scale - labelOffset;
     context.font = `600 ${String(fontSize)}px ${palette.fontFamily}`;
     const textWidth = context.measureText(text).width;
     const bounds = {
@@ -665,7 +837,7 @@ function drawFallbackLabels(
     );
     if (outside || collides) continue;
     occupied.push(bounds);
-    context.lineWidth = label.kind === "provider_cluster" ? 4.5 : 3.5;
+    context.lineWidth = label.kind === "provider_cluster" ? 5.5 : 4.5;
     context.strokeStyle = palette.labelFill;
     context.fillStyle = palette.text;
     context.strokeText(text, screenX, screenY);
@@ -683,6 +855,7 @@ function drawFallbackStarfield(
   palette: GraphPalette,
   selectedPersonId: string | null | undefined,
   selectedAccountId: string | null | undefined,
+  variation: IdentityGalaxyVariation,
 ): number {
   const context = canvas.getContext("2d");
   if (!context) return 0;
@@ -708,24 +881,52 @@ function drawFallbackStarfield(
   context.translate(transform.x, transform.y);
   context.scale(transform.scale, transform.scale);
   for (const region of atlas.regions) {
-    context.beginPath();
-    context.ellipse(region.x, region.y, region.radiusX, region.radiusY, 0, 0, Math.PI * 2);
-    context.fillStyle = providerColor(region.provider, palette).replace(/\/ 0\.\d+\)/, "/ 0.12)");
-    context.strokeStyle = providerColor(region.provider, palette).replace(/\/ 0\.\d+\)/, "/ 0.38)");
-    context.lineWidth = 1.2 / transform.scale;
-    context.fill();
-    context.stroke();
+    const armCount = providerGalaxyArmCount(region.provider);
+    const traceStreams = () => {
+      context.beginPath();
+      for (let armIndex = 0; armIndex < armCount; armIndex += 1) {
+        for (let step = 0; step <= 58; step += 1) {
+          const point = providerGalaxyLocalPoint(
+            region.provider,
+            armIndex,
+            0.025 + (step / 58) * 0.94,
+            region.radiusX,
+            region.radiusY,
+          );
+          const x = region.x + point.x;
+          const y = region.y + point.y;
+          if (step === 0 || (step + armIndex * 5) % 14 === 0) context.moveTo(x, y);
+          else context.lineTo(x, y);
+        }
+      }
+    };
+    if (variation === "nebula-rings" || variation === "nebula") {
+      traceStreams();
+      context.strokeStyle = providerColor(region.provider, palette);
+      context.globalAlpha = 0.12;
+      context.lineWidth = 34 / transform.scale;
+      context.stroke();
+    }
+    if (variation === "nebula-rings" || variation === "rings") {
+      traceStreams();
+      context.strokeStyle = providerColor(region.provider, palette);
+      context.globalAlpha = 0.48;
+      context.lineWidth = 1.4 / transform.scale;
+      context.stroke();
+    }
   }
+  context.globalAlpha = 1;
+  const contextualEdges = compileIdentityGalaxyContextEdgeIndices(galaxyScene);
   context.beginPath();
-  for (let edgeOffset = 0; edgeOffset < galaxyScene.edgeIndices.length; edgeOffset += 2) {
-    const sourceOffset = galaxyScene.edgeIndices[edgeOffset]! * 3;
-    const targetOffset = galaxyScene.edgeIndices[edgeOffset + 1]! * 3;
+  for (let edgeOffset = 0; edgeOffset < contextualEdges.length; edgeOffset += 2) {
+    const sourceOffset = contextualEdges[edgeOffset]! * 3;
+    const targetOffset = contextualEdges[edgeOffset + 1]! * 3;
     context.moveTo(galaxyScene.positions[sourceOffset]!, -galaxyScene.positions[sourceOffset + 1]!);
     context.lineTo(galaxyScene.positions[targetOffset]!, -galaxyScene.positions[targetOffset + 1]!);
   }
-  context.strokeStyle = palette.edge;
-  context.lineWidth = 1.5 / transform.scale;
-  context.globalAlpha = 0.86;
+  context.strokeStyle = palette.selection;
+  context.lineWidth = 2 / transform.scale;
+  context.globalAlpha = 0.9;
   context.stroke();
   context.globalAlpha = 1;
   for (let index = 0; index < atlas.nodes.length; index += 1) {
@@ -889,13 +1090,18 @@ class StarfieldGraphRenderer {
     const surfaceColor = colorFromCss(palette.surface, "#06070d");
     const surfaceLuminance = surfaceColor.r * 0.2126 + surfaceColor.g * 0.7152 + surfaceColor.b * 0.0722;
     this.nodeMaterial.uniforms.lightSurface.value = THREE.MathUtils.smoothstep(surfaceLuminance, 0.55, 0.8);
-    this.edgeMaterial.uniforms.color.value.copy(colorFromCss(palette.edge, "#7dd3fc"));
-    this.edgeMaterial.uniforms.opacity.value = quality === "interactive" ? 0.28 : 0.64;
+    this.edgeMaterial.uniforms.color.value.copy(colorFromCss(palette.selection, "#67e8f9"));
+    this.edgeMaterial.uniforms.opacity.value = quality === "interactive" ? 0.42 : 0.76;
     this.labelMaterial.uniforms.textColor.value.copy(colorFromCss(palette.text, "#f8fafc"));
     this.labelMaterial.uniforms.outlineColor.value.copy(colorFromCss(palette.labelFill, "#020617"));
     this.syncEdges(galaxyScene);
     this.syncNodes(galaxyScene, palette);
     this.syncLabels(atlas, galaxyScene, palette, quality);
+  }
+
+  updateInteraction(galaxyScene: IdentityGalaxyScene, palette: GraphPalette): void {
+    this.syncEdges(galaxyScene);
+    this.syncNodes(galaxyScene, palette);
   }
 
   render(transform: ViewTransform): void {
@@ -914,6 +1120,10 @@ class StarfieldGraphRenderer {
 
   get readyLabelCount(): number {
     return this.renderedLabelCount;
+  }
+
+  get edgeCount(): number {
+    return this.edgeGeometry.instanceCount;
   }
 
   pickNode(
@@ -1070,6 +1280,10 @@ class StarfieldGraphRenderer {
 
   private clearRegions(): void {
     for (const child of this.regionGroup.children) {
+      if (child instanceof THREE.Points) {
+        child.geometry.dispose();
+        continue;
+      }
       if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
         child.geometry.dispose();
         const material = child.material;
@@ -1087,54 +1301,47 @@ class StarfieldGraphRenderer {
     this.clearRegions();
     for (const region of atlas.regions) {
       const color = colorFromCss(providerColor(region.provider, palette), "#38bdf8");
+      const dust = new THREE.Points(makeProviderDustGeometry(region, color), this.starMaterial);
+      dust.frustumCulled = false;
+      dust.renderOrder = -1;
+      this.regionGroup.add(dust);
       if (variation === "nebula-rings" || variation === "nebula") {
         const haze = new THREE.Mesh(
-          new THREE.CircleGeometry(1, 128),
-          new THREE.MeshBasicMaterial({
-            color,
-            transparent: true,
-            opacity: 0.105,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-          }),
+          new THREE.PlaneGeometry(2, 2),
+          makeProviderNebulaMaterial(color, region.provider),
         );
-        haze.position.set(region.x, -region.y, -170);
-        haze.scale.set(region.radiusX, region.radiusY, 1);
+        haze.position.set(region.x, -region.y, -182);
+        haze.scale.set(region.radiusX * 1.12, region.radiusY * 1.12, 1);
+        haze.renderOrder = -2;
         this.regionGroup.add(haze);
       }
       if (variation === "nebula-rings" || variation === "rings") {
-        const points = Array.from({ length: 97 }, (_, index) => {
-          const angle = (index / 96) * Math.PI * 2;
-          return new THREE.Vector3(
-            region.x + Math.cos(angle) * region.radiusX,
-            -region.y + Math.sin(angle) * region.radiusY,
-            -92,
-          );
-        });
-        const ring = new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints(points),
+        const streams = new THREE.LineSegments(
+          makeProviderStreamGeometry(region),
           new THREE.LineBasicMaterial({
             color,
             transparent: true,
-            opacity: 0.42,
-            blending: THREE.AdditiveBlending,
+            opacity: 0.5,
+            blending: THREE.NormalBlending,
             depthWrite: false,
+            depthTest: false,
           }),
         );
-        this.regionGroup.add(ring);
+        streams.renderOrder = -1;
+        this.regionGroup.add(streams);
       }
     }
   }
 
   private syncEdges(galaxyScene: IdentityGalaxyScene): void {
-    const edgeCount = galaxyScene.edgeIndices.length / 2;
+    const contextualEdges = compileIdentityGalaxyContextEdgeIndices(galaxyScene);
+    const edgeCount = contextualEdges.length / 2;
     const sources = new Float32Array(edgeCount * 3);
     const targets = new Float32Array(edgeCount * 3);
     let edgeIndex = 0;
-    for (let edgeOffset = 0; edgeOffset < galaxyScene.edgeIndices.length; edgeOffset += 2) {
-      const sourceOffset = galaxyScene.edgeIndices[edgeOffset]! * 3;
-      const targetOffset = galaxyScene.edgeIndices[edgeOffset + 1]! * 3;
+    for (let edgeOffset = 0; edgeOffset < contextualEdges.length; edgeOffset += 2) {
+      const sourceOffset = contextualEdges[edgeOffset]! * 3;
+      const targetOffset = contextualEdges[edgeOffset + 1]! * 3;
       const attributeOffset = edgeIndex * 3;
       sources[attributeOffset] = galaxyScene.positions[sourceOffset]!;
       sources[attributeOffset + 1] = galaxyScene.positions[sourceOffset + 1]!;
@@ -1223,12 +1430,21 @@ class StarfieldGraphRenderer {
       const nodeDepth = nodeIndex === undefined
         ? label.kind === "provider_cluster" ? -38 : 0
         : galaxyScene.positions[nodeIndex * 3 + 2]! + 6;
+      const starRadius = nodeIndex === undefined
+        ? 5
+        : galaxyScene.pointSizes[nodeIndex]! * 0.5;
+      const nodeX = nodeIndex === undefined
+        ? label.x
+        : galaxyScene.positions[nodeIndex * 3]!;
+      const nodeY = nodeIndex === undefined
+        ? -label.y
+        : galaxyScene.positions[nodeIndex * 3 + 1]!;
       return {
         id: label.id,
         text: truncateGalaxyLabel(label.text),
         fontSize,
-        offsetY: fontSize + (label.kind === "provider_cluster" ? 20 : 14),
-        position: new THREE.Vector3(label.x, -label.y, nodeDepth),
+        offsetY: starRadius + fontSize * 0.68 + (label.kind === "provider_cluster" ? 4 : 3),
+        position: new THREE.Vector3(nodeX, nodeY, nodeDepth),
       };
     });
     const signature = [
@@ -1265,6 +1481,7 @@ export class IdentityGalaxyEngine {
   private palette: GraphPalette | null = null;
   private selectedPersonId: string | null | undefined;
   private selectedAccountId: string | null | undefined;
+  private variation: IdentityGalaxyVariation = "nebula";
   private fallbackLabelCount = 0;
   private fallbackReadyLabelCount = 0;
 
@@ -1290,6 +1507,11 @@ export class IdentityGalaxyEngine {
     return this.renderer?.readyLabelCount ?? this.fallbackReadyLabelCount;
   }
 
+  get edgeCount(): number {
+    if (this.renderer) return this.renderer.edgeCount;
+    return this.scene ? compileIdentityGalaxyContextEdgeIndices(this.scene).length / 2 : 0;
+  }
+
   resize(width: number, height: number): void {
     this.renderer?.resize(width, height);
   }
@@ -1305,10 +1527,18 @@ export class IdentityGalaxyEngine {
     this.palette = palette;
     this.selectedPersonId = options.selectedPersonId;
     this.selectedAccountId = options.selectedAccountId;
+    this.variation = options.variation;
     if (!this.renderer && options.quality === "settled") {
       this.fallbackLabelCount = Math.min(atlas.labels.length, this.canvas.clientWidth < 720 ? 24 : 72);
     }
     this.renderer?.syncScene(atlas, scene, palette, options.variation, options.quality);
+  }
+
+  updateInteraction(scene: IdentityGalaxyScene): void {
+    this.scene = scene;
+    if (this.renderer && this.palette) {
+      this.renderer.updateInteraction(scene, this.palette);
+    }
   }
 
   render(transform: ViewTransform): void {
@@ -1325,6 +1555,7 @@ export class IdentityGalaxyEngine {
       this.palette,
       this.selectedPersonId,
       this.selectedAccountId,
+      this.variation,
     );
   }
 

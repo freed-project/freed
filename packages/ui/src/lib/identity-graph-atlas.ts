@@ -10,6 +10,7 @@ import type {
   IdentityGraphActivitySummary,
 } from "./identity-graph-activity-summary.js";
 import { socialActivitySummaryKey } from "./identity-graph-activity-summary.js";
+import { providerGalaxyNodePoint } from "./identity-galaxy-provider-field.js";
 import type { ViewTransform } from "./identity-graph-layout.js";
 
 export type IdentityGraphAtlasNodeKind =
@@ -451,12 +452,12 @@ export function buildIdentityGraphAtlasModel({
         maximumRingCapacity,
         Math.max(1, siblings.length - ringIndex * maximumRingCapacity),
       );
-      const orbit = linkedPerson.radius + 18 + ringIndex * 15;
+      const orbit = linkedPerson.radius + 10 + ringIndex * 12;
       const orbitRotation = seededUnit(`person:${linkedPersonId}:orbit`) * Math.PI * 2;
       const angle = orbitRotation + (Math.PI * 2 * (indexInRing + ringIndex * 0.36)) / ringPopulation;
       fallback = {
         x: linkedPerson.x + Math.cos(angle) * orbit,
-        y: linkedPerson.y + Math.sin(angle) * orbit * 0.86,
+        y: linkedPerson.y + Math.sin(angle) * orbit * 0.9,
       };
     } else {
       fallback = {
@@ -549,7 +550,7 @@ export function buildIdentityGraphAtlasModel({
   const providers = [...providerBuckets.values()].sort((left, right) =>
     safeText(left.provider, "other").localeCompare(safeText(right.provider, "other")),
   );
-  const outerRadius = Math.max(620, friendFieldRadius + connectionFieldWidth + 300);
+  const outerRadius = Math.max(560, friendFieldRadius + connectionFieldWidth + 170);
   for (let providerIndex = 0; providerIndex < providers.length; providerIndex += 1) {
     const bucket = providers[providerIndex]!;
     const unlinked = [...bucket.accounts, ...bucket.feeds].sort((left, right) =>
@@ -561,16 +562,17 @@ export function buildIdentityGraphAtlasModel({
     const islandRadius = outerRadius + islandRing * 140;
     const islandX = centerX + Math.cos(angle) * islandRadius;
     const islandY = centerY + Math.sin(angle) * islandRadius * 0.82;
-    const rows = Math.max(1, Math.ceil(Math.sqrt(unlinked.length)));
-    const islandSize = Math.max(96, Math.ceil(Math.sqrt(unlinked.length)) * 22);
+    const islandSize = Math.max(96, Math.ceil(Math.sqrt(unlinked.length)) * 20);
+    const regionRadiusX = islandSize + 48;
+    const regionRadiusY = islandSize * 0.78 + 38;
     regions.push({
       id: `region:${bucket.provider}`,
       provider: bucket.provider,
       label: providerLabel(bucket.provider),
       x: islandX,
       y: islandY,
-      radiusX: islandSize + 54,
-      radiusY: islandSize * 0.72 + 42,
+      radiusX: regionRadiusX,
+      radiusY: regionRadiusY,
       count: bucket.linkedCount + unlinked.length,
       linkedCount: bucket.linkedCount,
       unlinkedCount: unlinked.length,
@@ -593,11 +595,16 @@ export function buildIdentityGraphAtlasModel({
     }
 
     unlinked.forEach((node, index) => {
-      const col = index % rows;
-      const row = Math.floor(index / rows);
+      const localPoint = providerGalaxyNodePoint(
+        bucket.provider,
+        index,
+        unlinked.length,
+        regionRadiusX,
+        regionRadiusY,
+      );
       const fallback = {
-        x: islandX + (col - (rows - 1) / 2) * 26 + (seededUnit(`${node.id}:x`) - 0.5) * 8,
-        y: islandY + (row - (Math.ceil(unlinked.length / rows) - 1) / 2) * 26 + (seededUnit(`${node.id}:y`) - 0.5) * 8,
+        x: islandX + localPoint.x,
+        y: islandY + localPoint.y,
       };
       if (node.accountId) {
         const account = accounts[node.accountId];
@@ -691,10 +698,10 @@ export function sliceIdentityGraphAtlas({
       })
       .map((region) => ({
         id: `label:${region.id}`,
-        nodeId: region.id,
+        nodeId: `provider:${region.provider}`,
         text: `${region.label} ${region.count.toLocaleString()}`,
         x: region.x,
-        y: region.y - region.radiusY - 20,
+        y: region.y,
         priority: 1_200 + region.count,
         kind: "provider_cluster",
       }));
@@ -702,7 +709,6 @@ export function sliceIdentityGraphAtlas({
     ? []
     : visibleNodes
       .filter((node) =>
-        node.kind === "provider_cluster" ||
         selectedNodeIds.has(node.id) ||
         (lod === "overview" && node.kind === "friend_person" && node.priority >= 980) ||
         (lod === "middle" && (node.kind === "friend_person" || node.priority >= 620)) ||
@@ -713,7 +719,7 @@ export function sliceIdentityGraphAtlas({
         nodeId: node.id,
         text: node.label,
         x: node.x,
-        y: node.y + node.radius + 16,
+        y: node.y,
         priority: node.priority,
         kind: node.kind,
       }));

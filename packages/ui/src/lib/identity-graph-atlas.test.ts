@@ -222,7 +222,7 @@ describe("buildIdentityGraphAtlas", () => {
     const maxAccountDistance = Math.max(
       ...accountNodes.map((node) => Math.hypot(node.x - personNode!.x, node.y - personNode!.y)),
     );
-    expect(maxAccountDistance).toBeLessThanOrEqual(personNode!.radius + 55);
+    expect(maxAccountDistance).toBeLessThanOrEqual(personNode!.radius + 26);
   });
 
   it("distributes a sparse set of linked accounts around a complete local orbit", () => {
@@ -249,12 +249,55 @@ describe("buildIdentityGraphAtlas", () => {
       model.nodes
         .filter((node) => node.linkedPersonId === linkedPerson.id)
         .map((node) => {
-          const angle = Math.atan2((node.y - personNode.y) / 0.86, node.x - personNode.x);
+          const angle = Math.atan2((node.y - personNode.y) / 0.9, node.x - personNode.x);
           return Math.floor(((angle + Math.PI * 2) % (Math.PI * 2)) / (Math.PI / 2));
         }),
     );
 
     expect(occupiedQuadrants.size).toBe(4);
+  });
+
+  it("distributes unlinked provider accounts through bounded spiral arms", () => {
+    const providerAccounts = Array.from({ length: 48 }, (_, index) => ({
+      ...account(index),
+      id: `provider-account-${index}`,
+      personId: undefined,
+      provider: "instagram",
+      externalId: `provider-author-${index}`,
+    } satisfies Account));
+    const input = {
+      persons: [],
+      accounts: Object.fromEntries(providerAccounts.map((entry) => [entry.id, entry])),
+      feeds: {},
+      activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+      mode: "all_content" as const,
+      width: 1_200,
+      height: 800,
+    };
+    const model = buildIdentityGraphAtlasModel(input);
+    const repeated = buildIdentityGraphAtlasModel(input);
+    const region = model.regions.find((entry) => entry.provider === "instagram")!;
+    const providerNode = model.nodes.find((entry) => entry.id === "provider:instagram")!;
+    const accountNodes = model.nodes.filter((entry) => entry.accountId?.startsWith("provider-account-"));
+    const normalizedRadii = accountNodes.map((entry) => Math.hypot(
+      (entry.x - providerNode.x) / region.radiusX,
+      (entry.y - providerNode.y) / region.radiusY,
+    ));
+    const occupiedSectors = new Set(accountNodes.map((entry) => {
+      const angle = Math.atan2(
+        (entry.y - providerNode.y) / region.radiusY,
+        (entry.x - providerNode.x) / region.radiusX,
+      );
+      return Math.floor(((angle + Math.PI * 2) % (Math.PI * 2)) / (Math.PI / 4));
+    }));
+
+    expect(accountNodes).toHaveLength(providerAccounts.length);
+    expect(Math.min(...normalizedRadii)).toBeGreaterThan(0.1);
+    expect(Math.max(...normalizedRadii)).toBeLessThan(0.9);
+    expect(occupiedSectors.size).toBe(8);
+    expect(repeated.nodes.map((entry) => [entry.id, entry.x, entry.y])).toEqual(
+      model.nodes.map((entry) => [entry.id, entry.x, entry.y]),
+    );
   });
 
   it("spaces dense friend systems far enough apart for their account fields", () => {

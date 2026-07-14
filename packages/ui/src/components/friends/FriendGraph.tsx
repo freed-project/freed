@@ -163,6 +163,7 @@ interface GraphPerfSnapshot {
   visibleProviderLabelCount: number;
   rendererLabelCount: number;
   readyRendererLabelCount: number;
+  rendererEdgeCount: number;
   denseRenderMode: "dense" | "containers";
   denseInteractionEligible: boolean;
   denseInteractionNodeCount: number;
@@ -209,7 +210,7 @@ const WHEEL_ZOOM_SPEED = 0.0014;
 const INTERACTION_SETTLE_DELAY_MS = 180;
 const DENSE_INTERACTION_SETTLE_DELAY_MS = 420;
 const GRAPH_LAYOUT_WORKER_TIMEOUT_MS = 2_400;
-const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
+const CONTROL_BASE = "btn-secondary rounded-lg px-3 py-1.5 text-xs shadow-sm";
 const EMPTY_GRAPH_VIEWPORT_INSETS: GraphViewportInsets = {
   top: 0,
   right: 0,
@@ -475,6 +476,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const pendingWorkerTimeoutsRef = useRef<Map<number, number>>(new Map());
   const drawRafRef = useRef(0);
   const sceneDirtyRef = useRef(true);
+  const interactionDirtyRef = useRef(false);
   const settleTimerRef = useRef<number | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const hasFittedInitialAtlasRef = useRef(false);
@@ -495,7 +497,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const [contextMenu, setContextMenu] = useState<GraphContextMenuState | null>(null);
   const [linkPickerAccountId, setLinkPickerAccountId] = useState<string | null>(null);
   const [linkPickerQuery, setLinkPickerQuery] = useState("");
-  const [starfieldVariation, setStarfieldVariation] = useState<IdentityGalaxyVariation>("nebula-rings");
+  const [starfieldVariation, setStarfieldVariation] = useState<IdentityGalaxyVariation>("nebula");
 
   const activitySummaries = useMemo(
     () => activitySummariesProp ?? buildIdentityGraphActivitySummaries(feedItems ?? {}),
@@ -595,6 +597,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       visibleProviderLabelCount: atlas.labels.filter((label) => label.kind === "provider_cluster").length,
       rendererLabelCount: engineRef.current?.labelCount ?? 0,
       readyRendererLabelCount: engineRef.current?.readyLabelCount ?? 0,
+      rendererEdgeCount: engineRef.current?.edgeCount ?? 0,
       denseRenderMode: sourceNodeCount >= 1_200 ? "dense" : "containers",
       denseInteractionEligible: sourceNodeCount >= 1_200,
       denseInteractionNodeCount: latestQualityRef.current === "interactive" ? visibleNodeCount : 0,
@@ -628,6 +631,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       container.dataset.visibleLabelCount = String(atlas.labels.length);
       container.dataset.rendererLabelCount = String(engineRef.current?.labelCount ?? 0);
       container.dataset.readyRendererLabelCount = String(engineRef.current?.readyLabelCount ?? 0);
+      container.dataset.rendererEdgeCount = String(engineRef.current?.edgeCount ?? 0);
       container.dataset.graphQualityMode = latestQualityRef.current;
       container.dataset.graphVisibleNodeCount = String(visibleNodeCount);
       container.dataset.graphResidentNodeCount = String(residentNodeCount);
@@ -673,6 +677,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       perf.transformScale = transformRef.current.scale;
       perf.rendererLabelCount = engineRef.current?.labelCount ?? perf.rendererLabelCount;
       perf.readyRendererLabelCount = engineRef.current?.readyLabelCount ?? perf.readyRendererLabelCount;
+      perf.rendererEdgeCount = engineRef.current?.edgeCount ?? perf.rendererEdgeCount;
     }
     const debug = graphWindow.__FREED_GRAPH_DEBUG__;
     if (debug) {
@@ -696,7 +701,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         throw new Error("Friends galaxy scene is unavailable");
       }
       const shouldSyncScene = sceneDirtyRef.current;
-      if (shouldSyncScene) {
+      const shouldSyncInteraction = shouldSyncScene || interactionDirtyRef.current;
+      if (shouldSyncInteraction) {
         updateIdentityGalaxySceneInteraction(galaxyScene, {
           quality: latestQualityRef.current,
           selectedPersonId,
@@ -737,15 +743,25 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         sceneSyncMs = nowMs() - syncStartedAt;
         sceneSyncCountRef.current += 1;
         if (atlas.edges.length > 0) edgeRebuildCountRef.current += 1;
+      } else if (shouldSyncInteraction) {
+        engine.updateInteraction(galaxyScene);
+        const perf = (window as typeof window & {
+          __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot;
+        }).__FREED_GRAPH_PERF__;
+        if (perf) perf.rendererEdgeCount = engine.edgeCount;
+        if (containerRef.current) {
+          containerRef.current.dataset.rendererEdgeCount = String(engine.edgeCount);
+        }
       }
       engine.render(transformRef.current);
       sceneDirtyRef.current = false;
+      interactionDirtyRef.current = false;
       if (!firstVisibleMsRef.current && atlas.nodes.length > 0) {
         firstVisibleMsRef.current = nowMs() - mountedAtRef.current;
       }
       if (shouldSyncScene || engineCreated) {
         exposeDiagnostics(atlas, sceneSyncMs);
-      } else {
+      } else if (!shouldSyncInteraction) {
         updateTransformDiagnostics();
       }
     } catch (error) {
@@ -826,7 +842,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       const atlas = sliceIdentityGraphAtlas({ model, ...viewport });
       const galaxyScene = compileIdentityGalaxyScene({
         nodes: model.nodes,
-        edges: atlas.edges,
+        edges: model.edges,
       }, {
         quality: viewport.quality,
         selectedPersonId: viewport.selectedPersonId,
@@ -1399,7 +1415,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         const nextHovered = hit?.id ?? null;
         if (hoveredNodeIdRef.current !== nextHovered) {
           hoveredNodeIdRef.current = nextHovered;
-          sceneDirtyRef.current = true;
+          interactionDirtyRef.current = true;
           scheduleDraw();
         }
       }
@@ -1434,7 +1450,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (event.pointerType === "touch") return;
     if (hoveredNodeIdRef.current) {
       hoveredNodeIdRef.current = null;
-      sceneDirtyRef.current = true;
+      interactionDirtyRef.current = true;
       scheduleDraw();
     }
     dragStateRef.current = null;
@@ -1707,9 +1723,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
             onChange={(event) => setStarfieldVariation(event.target.value as IdentityGalaxyVariation)}
             aria-label="Starfield variation"
           >
-            <option value="nebula-rings">Nebula and rings</option>
+            <option value="nebula-rings">Cosmic blend</option>
             <option value="nebula">Nebula</option>
-            <option value="rings">Rings</option>
+            <option value="rings">Star streams</option>
           </select>
         </div>
       ) : null}

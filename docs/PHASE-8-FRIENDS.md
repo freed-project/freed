@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry in Freed Desktop, Google Contacts sync now feeds the same top-toolbar background activity monitor as social providers with elapsed active-work timers, the Friends workspace now defaults to `All content`, and the graph surface now uses a worker-built graph atlas with a theme-aware Three.js starfield renderer, one-batch billboard glyph labels, visible-node caps, provider nebula and ring variations, confirmed friend stars closer to the camera, provisional human identities in the middle field, linked channel satellites packed into tight fields around people with short bright connectors, unlinked provider constellations around the edge, RSS treated as a normal provider island, context-menu linking and pinning, native iPhone and Mac Safari zoom gestures, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map uses a persistent lower-left time range slider for historical, current, and future location windows
+> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry in Freed Desktop, Google Contacts sync now feeds the same top-toolbar background activity monitor as social providers with elapsed active-work timers, the Friends workspace now defaults to `All content`, and the graph surface now uses a worker-built graph atlas with a theme-aware Three.js starfield renderer, one-batch billboard glyph labels, visible-node caps, procedural provider spiral galaxies with Nebula as the default treatment, confirmed friend stars closer to the camera, provisional human identities in the middle field, linked channel satellites packed into tight fields around people with contextual connectors, unlinked provider constellations around the edge, RSS treated as a normal provider island, context-menu linking and pinning, native iPhone and Mac Safari zoom gestures, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map uses a persistent lower-left time range slider for historical, current, and future location windows
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -173,6 +173,8 @@ The current atlas starfield remains the shipping compatibility surface while the
 
 The foundation compiles the complete semantic galaxy into compact typed buffers for stable 3D positions, semantic prominence, bounded activity and recency brightness, theme color roles, interaction flags, and indexed edges. The atlas worker caches the rich semantic model by source revision and transfers the full star buffers only when graph source data or layout dimensions change. Pan and zoom retain those star buffers and move only the locked camera. Settled viewport requests return capped label, hit, and edge detail. Hover and selection patch dynamic typed arrays in place without rebuilding positions. An imperative engine owns the locked perspective camera, one instanced procedural star pass, one instanced settled edge pass, one instanced glyph label pass, depth-aware projected picking, theme palette resolution, WebGL fallback selection, resize, scene synchronization, rendering, and disposal. The React shell owns product props, worker lifecycle, interaction orchestration, and product callbacks. The complete approved vision, interaction contract, rendering contract, and staged roadmap live in [FRIENDS-GALAXY-ARCHITECTURE.md](./FRIENDS-GALAXY-ARCHITECTURE.md).
 
+Provider sectors now follow deterministic logarithmic spirals shared by layout and rendering. The default Nebula treatment combines procedural arms and themed dust without per-star scene objects. Linked accounts stay close to their parent identity, billboard labels sit close to their parent star with a stronger outline, and semantic links remain absent until one star in that identity system is hovered or selected.
+
 ### Scale targets
 
 - Default showcase sample: 250 friends, 1,250 connected social identities, 15 feeds, and 1,445 items
@@ -202,6 +204,7 @@ The foundation compiles the complete semantic galaxy into compact typed buffers 
 - `packages/ui/src/lib/identity-galaxy-camera.ts` - locked perspective camera and plane-to-viewport projection math
 - `packages/ui/src/lib/identity-galaxy-worker-protocol.ts` - typed worker request, response, and transferable buffer contract
 - `packages/ui/src/lib/identity-galaxy-engine.ts` - imperative rendering engine and current Three.js plus canvas compatibility backends
+- `packages/ui/src/lib/identity-galaxy-provider-field.ts` - deterministic provider spiral geometry shared by atlas placement and rendering
 - `packages/ui/src/components/friends/index.ts` — barrel export
 
 ---
@@ -374,6 +377,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.64 | Route iPhone graph gestures through native non-passive touch events, with browser-generated multitouch and WebKit regression coverage | High | Done |
 | 8.65 | Route Mac Safari trackpad gestures through native gesture events while keeping motion transform-only and labels resident | High | Done |
 | 8.66 | Add the close-zoom avatar texture atlas for selected and high-priority identities | High | Planned |
+| 8.67 | Replace elliptical provider regions with theme-aware spiral nebulae, tighten identity systems and labels, and reveal links only for the active constellation | High | Done |
 
 ---
 
@@ -460,6 +464,8 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] iPhone pan and pinch use native non-passive touch events instead of WebKit pointer capture, preserve the pinch midpoint, recover after touch cancellation, and leave browser zoom unchanged
 - [x] Billboard labels render through one instanced glyph-atlas draw, avoid screen-space collisions after settle, remain visible during motion, and use active theme colors
 - [x] Mac Safari trackpad pinch uses native gesture events, preserves its focal point, leaves browser page zoom unchanged, and does not synchronize the graph scene during movement
+- [x] Provider sectors use deterministic spiral placement and theme-aware nebula fields, with Nebula as the default treatment and no idle identity-to-account links
+- [x] Identity labels remain close to their parent stars with a stronger outline, and shared utility button surfaces stay legible across active themes
 - [x] Desktop browser tests cover mixed-tier graph load, context-menu link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
 - [ ] macOS native contact picker (CNContactStore)

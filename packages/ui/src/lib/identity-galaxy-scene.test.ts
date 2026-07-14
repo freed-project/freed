@@ -4,6 +4,7 @@ import type {
   IdentityGraphAtlasNode,
 } from "./identity-graph-atlas.js";
 import {
+  compileIdentityGalaxyContextEdgeIndices,
   compileIdentityGalaxyScene,
   IdentityGalaxyColorRole,
   IdentityGalaxyNodeFlag,
@@ -166,6 +167,52 @@ describe("compileIdentityGalaxyScene", () => {
     expect(scene.flags[1]! & IdentityGalaxyNodeFlag.LinkedToSelection).not.toBe(0);
     expect(scene.flags[1]! & IdentityGalaxyNodeFlag.SuggestedHigh).not.toBe(0);
     expect(scene.pointSizes[0]).toBeGreaterThan(basePointSize);
+  });
+
+  it("reveals only the hovered or selected identity constellation edges", () => {
+    const input = atlas(
+      [
+        node("person:alpha", { personId: "alpha" }),
+        node("account:alpha-one", {
+          kind: "account",
+          accountId: "alpha-one",
+          linkedPersonId: "alpha",
+        }),
+        node("account:alpha-two", {
+          kind: "account",
+          accountId: "alpha-two",
+          linkedPersonId: "alpha",
+        }),
+        node("person:beta", { personId: "beta" }),
+        node("account:beta-one", {
+          kind: "account",
+          accountId: "beta-one",
+          linkedPersonId: "beta",
+        }),
+      ],
+      [
+        { id: "edge:alpha-one", sourceId: "person:alpha", targetId: "account:alpha-one" },
+        { id: "edge:alpha-two", sourceId: "person:alpha", targetId: "account:alpha-two" },
+        { id: "edge:beta-one", sourceId: "person:beta", targetId: "account:beta-one" },
+      ],
+    );
+    const scene = compileIdentityGalaxyScene(input, { quality: "settled", now: 1_000 });
+
+    expect(compileIdentityGalaxyContextEdgeIndices(scene)).toHaveLength(0);
+
+    updateIdentityGalaxySceneInteraction(scene, {
+      quality: "settled",
+      hoveredNodeId: "account:alpha-one",
+      now: 1_000,
+    });
+    expect(compileIdentityGalaxyContextEdgeIndices(scene)).toEqual(new Uint32Array([0, 1, 0, 2]));
+
+    updateIdentityGalaxySceneInteraction(scene, {
+      quality: "settled",
+      selectedAccountId: "beta-one",
+      now: 1_000,
+    });
+    expect(compileIdentityGalaxyContextEdgeIndices(scene)).toEqual(new Uint32Array([3, 4]));
   });
 
   it("exposes each typed scene buffer exactly once for worker transfer", () => {

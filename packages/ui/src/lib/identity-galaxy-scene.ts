@@ -226,6 +226,42 @@ export function compileIdentityGalaxyEdgeIndicesFromIndex(
   return edgeOffset === edgeIndices.length ? edgeIndices : edgeIndices.slice(0, edgeOffset);
 }
 
+export function compileIdentityGalaxyContextEdgeIndices(
+  scene: IdentityGalaxyScene,
+): Uint32Array {
+  const focusedPersonIds = new Set<string>();
+  const focusMask = IdentityGalaxyNodeFlag.Selected | IdentityGalaxyNodeFlag.Hovered;
+  for (let index = 0; index < scene.nodeIds.length; index += 1) {
+    if ((scene.flags[index]! & focusMask) === 0) continue;
+    const personId = scene.personIds[index] ?? scene.linkedPersonIds[index];
+    if (personId) focusedPersonIds.add(personId);
+  }
+  if (focusedPersonIds.size === 0 || scene.edgeIndices.length === 0) {
+    return new Uint32Array(0);
+  }
+
+  const visibleEdges = new Uint32Array(scene.edgeIndices.length);
+  let visibleOffset = 0;
+  for (let edgeOffset = 0; edgeOffset < scene.edgeIndices.length; edgeOffset += 2) {
+    const sourceIndex = scene.edgeIndices[edgeOffset]!;
+    const targetIndex = scene.edgeIndices[edgeOffset + 1]!;
+    const sourcePersonId = scene.personIds[sourceIndex] ?? scene.linkedPersonIds[sourceIndex];
+    const targetPersonId = scene.personIds[targetIndex] ?? scene.linkedPersonIds[targetIndex];
+    if (
+      (!sourcePersonId || !focusedPersonIds.has(sourcePersonId)) &&
+      (!targetPersonId || !focusedPersonIds.has(targetPersonId))
+    ) {
+      continue;
+    }
+    visibleEdges[visibleOffset] = sourceIndex;
+    visibleEdges[visibleOffset + 1] = targetIndex;
+    visibleOffset += 2;
+  }
+  return visibleOffset === visibleEdges.length
+    ? visibleEdges
+    : visibleEdges.slice(0, visibleOffset);
+}
+
 export function compileIdentityGalaxyScene(
   source: IdentityGalaxySceneSource,
   options: CompileIdentityGalaxySceneOptions,
