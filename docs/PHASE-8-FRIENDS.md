@@ -72,10 +72,6 @@ interface Person {
   reachOutLog?: ReachOutLog[];
   tags?: string[];
   notes?: string;
-  graphX?: number;
-  graphY?: number;
-  graphPinned?: boolean;
-  graphUpdatedAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -93,10 +89,6 @@ interface Account {
   phone?: string;
   email?: string;
   address?: string;
-  graphX?: number;
-  graphY?: number;
-  graphPinned?: boolean;
-  graphUpdatedAt?: number;
   importedAt: number;
   firstSeenAt: number;
   lastSeenAt: number;
@@ -112,6 +104,8 @@ interface Account {
 ```
 
 Legacy `Friend`, `FriendSource`, and `DeviceContact` shims still exist for compatibility, but canonical persistence now lives in `persons` and `accounts` inside the Automerge document. Legacy docs hydrate through a migration that splits embedded sources and contact data into standalone account records.
+
+Legacy Person and Account types retain optional graph placement fields only so older documents can be read. Current clients migrate valid pins once into a versioned device-local layout store, ignore later stale synchronized coordinates, and keep each viewport's pin positions out of Automerge.
 
 Default nudge intervals by care level:
 
@@ -154,6 +148,7 @@ Default nudge intervals by care level:
   - right click or long press a node to open graph actions
   - link accounts through a context-menu person picker
   - pin people or accounts from the node context menu
+  - keep pin coordinates local to the current viewport while identity and account relationships continue to sync
   - non-selected clusters dim when a person or channel is focused
 
 ### Visual encoding
@@ -272,7 +267,7 @@ The Friends graph now defaults to `All content`, keeps confirmed friends as larg
 Unlinked accounts can now be promoted to friends or linked to an existing friend directly from the Friends sidebar workflow, while unlinked map markers route into that same account workflow instead of dead-ending.
 Map popovers now use a wider card layout and deliberately omit the old MapLibre tail, so place names and actions fit cleanly without the popup looking like a speech bubble from a cheaper app.
 Friends and Map now consume the same shared theme tokens, button treatments, shell backgrounds, surface recipes, and theme-native map palettes as the rest of Freed, so themes like Neon, Midas, Vesper, Ember, and Scriptorium land consistently across the graph, sidebars, popovers, mini-map cards, editor, contact-sync flows, and map basemap itself.
-The shared map now includes a persisted `Friends` / `All content` toggle. It restores the user's last mode from preferences and defaults to `All content` when the library has geolocatable followed accounts but no friend-linked pins yet.
+The shared map now includes a device-local `Friends` / `All content` toggle. It restores the current device's last mode and defaults to `All content` when the library has geolocatable followed accounts but no friend-linked pins yet.
 That same `Friends` / `All content` lens now lives in the shared toolbar for feed surfaces too, so the operator can collapse Freed down to real-world people without leaving the main reading views.
 The shared map now exposes a persistent lower-left time range slider. The left handle starts at the earliest location day, the right handle starts at the farthest future location day, and all available time is visible by default. Dragging either handle snaps to whole-day values and narrows the visible location windows without sending the operator back to the toolbar. Handle labels travel underneath the selected start and end points, offset sideways on tight ranges so they stay on one row without overlapping. The card header also exposes `all time`, `today + future`, `today`, and `last week` text presets, with the active range highlighted.
 Friends and Map now use the shared top toolbar for identity controls, and feed-only bulk actions no longer appear in those workspaces.
@@ -338,7 +333,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.40 | Keep Pixi while making all graph roles theme-aware across node, edge, label, glow, provider island, hover, drag, and selection states | High | Done |
 | 8.41 | Use bounded D3 Force in the worker for the person field while keeping transform-only pan and zoom interaction | High | Done |
 | 8.42 | Treat RSS as a normal provider island, with linked RSS accounts orbiting their person like other channels | Medium | Done |
-| 8.43 | Persist optional graph placement and support context-menu pinning and linking | Medium | Done |
+| 8.43 | Persist device-local graph placement and support context-menu pinning and linking | Medium | Done |
 | 8.44 | Expand showcase and stress sample graph coverage to 250 friends plus 1,250 identities and 1,000 friends plus 5,000 identities | Medium | Done |
 | 8.45 | Add semantic zoom hierarchy so provider island labels dominate low zoom and person labels appear at closer zoom | Medium | Done |
 | 8.46 | Search and filter the primary feed by followed social channel names, with profile navigation and promotion commands | Medium | Done |
@@ -403,7 +398,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Followed RSS feeds render as outer graph channels in `All content`
 - [x] RSS is treated as a normal provider island, and linked RSS accounts orbit their person like other social channels
 - [x] Graph color roles are theme-aware across background, nodes, labels, edges, hover, selection, glow, and provider constellations
-- [x] Optional graph placement fields persist for persons and accounts
+- [x] Person and account graph pins persist in a versioned device-local layout, migrate once from legacy synchronized fields, and cannot be replayed by a stale Automerge update
 - [x] Node context menus pin graph positions and link accounts through a searchable person picker
 - [x] Stress coverage exercises 1,000 friends plus 5,000 connected social identities
 - [x] Primary search can find followed social channels by account name or handle, filter the feed to that exact channel, open the profile in Friends or Map, and promote the profile to Friends or Fam

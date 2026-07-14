@@ -248,9 +248,13 @@ const handlers: Record<string, Handler> = {
       mayProceed: true,
     };
   },
+  get_desktop_installation_witness: () => "a".repeat(64),
   get_updater_target: () => "darwin-aarch64",
   retry_startup_after_crash: () => null,
   export_startup_diagnostics: () => "/Users/test/Downloads/freed-diagnostics-test.json",
+  clear_factory_reset_runtime_artifacts: () => null,
+  factory_reset_sync_relay: () => "factory-reset-pairing-token",
+  resume_sync_relay_after_factory_reset: () => null,
   reset_pairing_token: () => null,
   get_recent_logs: () => [],
   start_relay: () => null,

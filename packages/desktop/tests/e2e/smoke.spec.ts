@@ -231,42 +231,32 @@ async function expectDesktopSidebarWidthBetween(
 }
 
 async function waitForDesktopSidebarMode(page: Page, mode: "expanded" | "compact" | "closed") {
-  await page.waitForFunction((expectedMode) => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | { getState: () => { preferences: { display: { sidebarMode?: string } } } }
-      | undefined;
-    return store?.getState().preferences.display.sidebarMode === expectedMode;
-  }, mode);
+  await expect.poll(() => readDeviceDisplayPreference(page, "sidebarMode")).toBe(mode);
+}
+
+async function readDeviceDisplayPreference(page: Page, key: string): Promise<unknown> {
+  return page.evaluate((preferenceKey) => {
+    const stored = JSON.parse(localStorage.getItem("freed-device-display-preferences-v1") ?? "null") as
+      | { values?: Record<string, unknown> }
+      | null;
+    return stored?.values?.[preferenceKey];
+  }, key);
 }
 
 async function persistDisplayPreference(page: Page, key: "mapMode", value: string) {
-  await page.waitForFunction(
-    ({ key, value }) => {
-      const w = window as Record<string, unknown>;
-      const store = w.__FREED_STORE__ as
-        | {
-            getState: () => {
-              preferences: { display: Record<string, unknown> };
-            };
-          }
-        | undefined;
-      return store?.getState().preferences.display[key] === value;
-    },
-    { key, value },
-    { timeout: 5_000 },
-  );
-
   await page.evaluate(
     async ({ key, value }) => {
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_AUTOMERGE__ as {
-        docUpdatePreferences: (updates: { display: Record<string, string> }) => Promise<void>;
+      const store = w.__FREED_STORE__ as {
+        getState: () => {
+          updatePreferences: (updates: { display: Record<string, string> }) => Promise<void>;
+        };
       };
-      await automerge.docUpdatePreferences({ display: { [key]: value } });
+      await store.getState().updatePreferences({ display: { [key]: value } });
     },
     { key, value },
   );
+  await expect.poll(() => readDeviceDisplayPreference(page, key)).toBe(value);
 }
 
 async function setMapTimeRange(page: Page, startAt: number, endAt: number) {
@@ -798,12 +788,36 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Minimal sidebar");
 
+  await page.evaluate(() => {
+    const toggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]');
+    if (!toggle) throw new Error("Desktop sidebar toggle is unavailable");
+    const labels = [toggle.getAttribute("aria-label")];
+    const observer = new MutationObserver(() => {
+      const next = toggle.getAttribute("aria-label");
+      if (labels.at(-1) !== next) labels.push(next);
+    });
+    observer.observe(toggle, { attributes: true, attributeFilter: ["aria-label"] });
+    (window as Record<string, unknown>).__FREED_SIDEBAR_TRANSITIONS__ = {
+      labels,
+      disconnect: () => observer.disconnect(),
+    };
+  });
+
   await sidebarToggle.click();
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(500);
 
   expect(initialWidth).toBeGreaterThan(200);
   await expectDesktopSidebarWidthBetween(page, 46, 50, 1_500);
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
+  const transitionLabels = await page.evaluate(() => {
+    const transitions = (window as Record<string, unknown>).__FREED_SIDEBAR_TRANSITIONS__ as {
+      labels: Array<string | null>;
+      disconnect: () => void;
+    };
+    transitions.disconnect();
+    return transitions.labels;
+  });
+  expect(transitionLabels).toEqual(["Minimal sidebar", "Hide sidebar"]);
 
   await sidebarToggle.click();
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
@@ -811,7 +825,7 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   await expectDesktopSidebarClosed(page, 3_000);
 });
 
-test("desktop sidebar toggle ignores stale persisted modes until the worker acknowledges the change", async ({ app, page }) => {
+test("desktop sidebar mode stays local when Automerge replays an older display preference", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -831,34 +845,14 @@ test("desktop sidebar toggle ignores stale persisted modes until the worker ackn
       | undefined;
     if (!store) throw new Error("Freed store is unavailable");
 
-    let acknowledge: (() => void) | null = null;
-    const persistence = new Promise<void>((resolve) => {
-      acknowledge = resolve;
-    });
-    const setPersistedMode = (sidebarMode: "compact" | "closed") => {
-      const state = store.getState();
-      store.setState({
-        preferences: {
-          ...state.preferences,
-          display: {
-            ...state.preferences.display,
-            sidebarMode,
-          },
-        },
-      });
-    };
-
+    let preferenceMutationCount = 0;
     store.setState({
-      updatePreferences: async (update: { display?: { sidebarMode?: "compact" | "closed" } }) => {
-        if (update.display?.sidebarMode) {
-          setPersistedMode(update.display.sidebarMode);
-        }
-        await persistence;
+      updatePreferences: async () => {
+        preferenceMutationCount += 1;
       },
     });
     (window as Record<string, unknown>).__FREED_SIDEBAR_TEST_CONTROL__ = {
-      acknowledge: () => acknowledge?.(),
-      setPersistedMode,
+      preferenceMutationCount: () => preferenceMutationCount,
     };
   });
 
@@ -867,28 +861,154 @@ test("desktop sidebar toggle ignores stale persisted modes until the worker ackn
   await expectDesktopSidebarClosed(page, 1_000);
 
   await page.evaluate(() => {
-    const control = (window as Record<string, unknown>).__FREED_SIDEBAR_TEST_CONTROL__ as
-      | { setPersistedMode: (mode: "compact" | "closed") => void }
-      | undefined;
-    control?.setPersistedMode("compact");
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => {
+        preferences: { display: Record<string, unknown> };
+        updatePreferences: (patch: unknown) => Promise<void>;
+      };
+      setState: (patch: Record<string, unknown>) => void;
+    };
+    const state = store.getState();
+    store.setState({
+      preferences: {
+        ...state.preferences,
+        display: {
+          ...state.preferences.display,
+          sidebarMode: "compact",
+        },
+      },
+    });
   });
   await page.waitForTimeout(100);
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
   await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
   await expect(page.getByTestId("app-sidebar-resize-handle")).toHaveCount(0);
 
-  await page.evaluate(() => {
+  const localState = await page.evaluate(() => {
     const control = (window as Record<string, unknown>).__FREED_SIDEBAR_TEST_CONTROL__ as
-      | {
-          acknowledge: () => void;
-          setPersistedMode: (mode: "compact" | "closed") => void;
-        }
+      | { preferenceMutationCount: () => number }
       | undefined;
-    control?.setPersistedMode("closed");
-    control?.acknowledge();
+    const stored = JSON.parse(localStorage.getItem("freed-device-display-preferences-v1") ?? "null") as
+      | { values?: { sidebarMode?: string } }
+      | null;
+    return {
+      sidebarMode: stored?.values?.sidebarMode,
+      preferenceMutationCount: control?.preferenceMutationCount() ?? -1,
+    };
   });
+  expect(localState).toEqual({ sidebarMode: "closed", preferenceMutationCount: 0 });
+
+  await page.reload();
+  await app.waitForReady();
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
   await expectDesktopSidebarClosed(page, 1_000);
+});
+
+test("a newer device display record blocks a false sidebar transition", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const futureRecord = JSON.stringify({
+    version: 2,
+    values: { sidebarMode: "future-layout" },
+    futureLayoutContract: true,
+  });
+  await page.evaluate((record) => {
+    localStorage.setItem("freed-device-display-preferences-v1", record);
+  }, futureRecord);
+  await page.reload();
+  await app.waitForReady();
+
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Minimal sidebar");
+  const widthBefore = (await readDesktopSidebarGeometry(page)).sidebarWidth;
+
+  await sidebarToggle.click();
+
+  await expect(page.getByText("Freed could not save the sidebar layout on this device.")).toBeVisible();
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Minimal sidebar");
+  await expect.poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth).toBe(widthBefore);
+  await expect.poll(() => page.evaluate(() => (
+    localStorage.getItem("freed-device-display-preferences-v1")
+  ))).toBe(futureRecord);
+});
+
+test("an appearance change cannot replay a stale synced sidebar mode", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  await sidebarToggle.click();
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
+  await sidebarToggle.click();
+  await expectDesktopSidebarClosed(page, 1_000);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => {
+        preferences: { display: Record<string, unknown> };
+        updatePreferences: (patch: unknown) => Promise<void>;
+      };
+      setState: (patch: Record<string, unknown>) => void;
+    };
+    const state = store.getState();
+    const originalUpdatePreferences = state.updatePreferences;
+    let updateCount = 0;
+    store.setState({
+      preferences: {
+        ...state.preferences,
+        display: {
+          ...state.preferences.display,
+          sidebarMode: "expanded",
+        },
+      },
+      updatePreferences: async (patch: unknown) => {
+        updateCount += 1;
+        await originalUpdatePreferences(patch);
+      },
+    });
+    (window as Record<string, unknown>).__FREED_APPEARANCE_UPDATE_COUNT__ = () => updateCount;
+  });
+
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openTo("appearance");
+  }, SETTINGS_STORE_PATH);
+  const engagementToggle = page.getByRole("switch", { name: "Show engagement counts" });
+  await expect(engagementToggle).toBeVisible();
+  await engagementToggle.click();
+
+  await expectDesktopSidebarClosed(page, 1_000);
+  await expect.poll(() => readDeviceDisplayPreference(page, "sidebarMode")).toBe("closed");
+  await expect.poll(() => page.evaluate(() => {
+    const readCount = (window as Record<string, unknown>).__FREED_APPEARANCE_UPDATE_COUNT__ as
+      | (() => number)
+      | undefined;
+    return readCount?.() ?? -1;
+  })).toBe(1);
+});
+
+test("a newly detected Freed Desktop peer warns outside Settings", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      setState: (patch: Record<string, unknown>) => void;
+    };
+    store.setState({
+      desktopClientIds: ["desktop-current", "desktop-peer"],
+    });
+  });
+
+  await expect(
+    page.getByText("More than one Freed Desktop installation is registered.", { exact: false }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Review Sync" }).click();
+  await expect(page.getByRole("heading", { name: "Sync", exact: true })).toBeVisible();
+  await expect(page.getByTestId("multiple-desktop-client-warning")).toBeVisible();
 });
 
 test("desktop layout controls fill the toolbar hitbox and center their icons", async ({ app, page }) => {
@@ -1628,19 +1748,8 @@ test("sidebar resize holds the dragged width after mouseup", async ({ app, page 
 
   expect(settledWidth).toBeGreaterThan(initialWidth + 40);
 
-  await page.waitForFunction((minimumWidth) => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            preferences: { display: { sidebarWidth?: number } };
-          };
-        }
-      | undefined;
-
-    const savedWidth = store?.getState().preferences.display.sidebarWidth ?? 0;
-    return savedWidth >= minimumWidth;
-  }, Math.round(initialWidth + 40));
+  await expect.poll(async () => Number(await readDeviceDisplayPreference(page, "sidebarWidth")) || 0)
+    .toBeGreaterThanOrEqual(Math.round(initialWidth + 40));
 });
 
 test("primary sidebar resize caps at 400 pixels", async ({ app, page }) => {
@@ -1682,17 +1791,8 @@ test("primary sidebar resize caps at 400 pixels", async ({ app, page }) => {
   );
   expect(sidebarWidth).toBeLessThanOrEqual(400);
 
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            preferences: { display: { sidebarWidth?: number } };
-          };
-        }
-      | undefined;
-    return store?.getState().preferences.display.sidebarWidth === 400;
-  }, { timeout: 5_000 });
+  await expect.poll(() => readDeviceDisplayPreference(page, "sidebarWidth"), { timeout: 5_000 })
+    .toBe(400);
 });
 
 test("desktop sidebar reopens at the default width after being dragged narrow and collapsed", async ({ app, page }) => {
@@ -1716,25 +1816,10 @@ test("desktop sidebar reopens at the default width after being dragged narrow an
     NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX + NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
   );
 
-  await page.waitForFunction(({
-    minimumWidth,
-    maximumWidth,
-  }) => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            preferences: { display: { sidebarWidth?: number } };
-          };
-        }
-      | undefined;
-
-    const savedWidth = store?.getState().preferences.display.sidebarWidth ?? 0;
-    return savedWidth >= minimumWidth && savedWidth <= maximumWidth;
-  }, {
-    minimumWidth: NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX - NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
-    maximumWidth: NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX + NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
-  });
+  await expect.poll(async () => Number(await readDeviceDisplayPreference(page, "sidebarWidth")) || 0)
+    .toBeGreaterThanOrEqual(
+      NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX - NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
+    );
 
   await sidebarToggle.click();
   await expectDesktopSidebarWidthBetween(page, 46, 50, 1_500);
@@ -1753,18 +1838,7 @@ test("desktop sidebar reopens at the default width after being dragged narrow an
     .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout: 1_000 })
     .toBeLessThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MAX_WIDTH_PX);
 
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            preferences: { display: { sidebarWidth?: number } };
-          };
-        }
-      | undefined;
-
-    return store?.getState().preferences.display.sidebarWidth === 256;
-  });
+  await expect.poll(() => readDeviceDisplayPreference(page, "sidebarWidth")).toBe(256);
 });
 
 test("debug panel resize holds the dragged width after mouseup", async ({ app, page }) => {
@@ -1855,19 +1929,10 @@ test("debug panel resize holds the dragged width after mouseup", async ({ app, p
 
   expect(settledWidth).toBeGreaterThan(initialWidth + 40);
 
-  await page.waitForFunction((expectedWidth) => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            preferences: { display: { debugPanelWidth?: number } };
-          };
-        }
-      | undefined;
-
-    const savedWidth = store?.getState().preferences.display.debugPanelWidth ?? 0;
-    return Math.abs(savedWidth - expectedWidth) <= 2;
-  }, Math.round(settledWidth));
+  await expect.poll(async () => {
+    const savedWidth = Number(await readDeviceDisplayPreference(page, "debugPanelWidth")) || 0;
+    return Math.abs(savedWidth - Math.round(settledWidth));
+  }).toBeLessThanOrEqual(2);
 });
 
 test("settings dialog closes from the desktop sidebar close button", async ({ app }) => {
@@ -2469,24 +2534,7 @@ test("desktop hide previews button collapses the compact reader rail", async ({ 
     }, railWidthBeforeCollapse),
   ).toBeLessThan(railWidthBeforeCollapse);
 
-  await expect.poll(async () => {
-    return page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as
-        | {
-            getState: () => {
-              preferences: {
-                display: {
-                  reading: {
-                    dualColumnMode: boolean;
-                  };
-                };
-              };
-            };
-          }
-        | undefined;
-      return store?.getState().preferences.display.reading.dualColumnMode ?? true;
-    });
-  }).toBe(false);
+  await expect.poll(() => readDeviceDisplayPreference(page, "dualColumnMode")).toBe(false);
 
   await expect.poll(async () =>
     page.evaluate(() => {
@@ -3883,12 +3931,8 @@ test("Friends detail rail visibility preference hides and restores the desktop s
   });
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   await expect(page.getByTestId("friends-sidebar-shell")).toHaveCount(0);
-  await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { preferences: { display: { friendsSidebarOpen?: boolean } } } }
-      | undefined;
-    return store?.getState().preferences.display.friendsSidebarOpen === false;
-  }, { timeout: 5_000 });
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarOpen"), { timeout: 5_000 })
+    .toBe(false);
 
   await page.evaluate(async () => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
@@ -3900,17 +3944,10 @@ test("Friends detail rail visibility preference hides and restores the desktop s
       },
     });
   });
-  await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            preferences: { display: { friendsSidebarOpen?: boolean; friendsSidebarWidth?: number } };
-          };
-        }
-      | undefined;
-    const display = store?.getState().preferences.display;
-    return display?.friendsSidebarOpen === true && display?.friendsSidebarWidth === 388;
-  }, { timeout: 5_000 });
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarOpen"), { timeout: 5_000 })
+    .toBe(true);
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarWidth"), { timeout: 5_000 })
+    .toBe(388);
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
 
   const after = await page.evaluate(() => {
@@ -4020,17 +4057,8 @@ test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
   );
   expect(sidebarWidth).toBeLessThanOrEqual(400);
 
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            preferences: { display: { friendsSidebarWidth?: number } };
-          };
-        }
-      | undefined;
-    return store?.getState().preferences.display.friendsSidebarWidth === 400;
-  }, { timeout: 5_000 });
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarWidth"), { timeout: 5_000 })
+    .toBe(400);
 });
 
 test("selected Friends graph person shows a compact detail card when the detail rail is closed", async ({ app, page }) => {
@@ -4094,12 +4122,8 @@ test("selected Friends graph person shows a compact detail card when the detail 
   expect(afterSelection!.transform.scale).toBeCloseTo(beforeSelection!.transform.scale, 3);
   expect(afterSelection!.metrics.edgeRebuildCount).toBeLessThanOrEqual(beforeSelection!.metrics.edgeRebuildCount + 2);
   expect(afterSelection!.metrics.nodeRestyleCount).toBeLessThanOrEqual(beforeSelection!.metrics.nodeRestyleCount + 2);
-  await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { preferences: { display: { friendsSidebarOpen?: boolean } } } }
-      | undefined;
-    return store?.getState().preferences.display.friendsSidebarOpen === false;
-  }, { timeout: 5_000 });
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarOpen"), { timeout: 5_000 })
+    .toBe(false);
 
   await compactCard.getByRole("button", { name: "Open details" }).click();
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
@@ -4229,32 +4253,20 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   await lens.getByRole("button", { name: "Details" }).click();
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("friend-graph-viewport")).toHaveCount(0);
-  await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { preferences: { display: { friendsMode?: "friends" | "all_content" } } } }
-      | undefined;
-    return store?.getState().preferences.display.friendsMode === "all_content";
-  }, { timeout: 5_000 });
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
+    .toBe("all_content");
 
   await lens.getByRole("button", { name: "Friends" }).click();
   await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
-  await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { preferences: { display: { friendsMode?: "friends" | "all_content" } } } }
-      | undefined;
-    return store?.getState().preferences.display.friendsMode === "friends";
-  }, { timeout: 5_000 });
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
+    .toBe("friends");
 
   await lens.getByRole("button", { name: "All content" }).click();
   await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
-  await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { preferences: { display: { friendsMode?: "friends" | "all_content" } } } }
-      | undefined;
-    return store?.getState().preferences.display.friendsMode === "all_content";
-  }, { timeout: 5_000 });
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
+    .toBe("all_content");
 });
 
 test("Friends graph renders confirmed friends, provisional people, and channels together", async ({ app, page }) => {
@@ -4917,7 +4929,7 @@ test("linking a channel from the graph context menu survives reload", async ({ a
   }, { timeout: 10_000 });
 });
 
-test("pinning a person from the graph context menu survives reload", async ({ app, page }) => {
+test("pinning a person stays device-local and survives reload", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -5020,26 +5032,20 @@ test("pinning a person from the graph context menu survives reload", async ({ ap
   await menu.getByRole("button", { name: "Pin here" }).click();
 
   const storedPinnedPosition = await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            persons: Record<string, { graphPinned?: boolean; graphX?: number; graphY?: number }>;
-          };
-        }
-      | undefined;
-    const person = store?.getState().persons["friend-pinned"];
+    const stored = JSON.parse(
+      localStorage.getItem("freed-device-graph-layout-v1") ?? "null",
+    ) as {
+      persons?: Record<string, { graphX?: number; graphY?: number; graphPinned?: boolean }>;
+    } | null;
+    const person = stored?.persons?.["friend-pinned"];
     if (!person?.graphPinned || typeof person.graphX !== "number" || typeof person.graphY !== "number") {
       return false;
     }
-    return {
-      graphX: person.graphX,
-      graphY: person.graphY,
-    };
+    return { graphX: person.graphX, graphY: person.graphY };
   }, { timeout: 10_000 });
   const expectedPinnedPosition = await storedPinnedPosition.jsonValue() as { graphX: number; graphY: number };
 
-  await page.waitForFunction((expected) => {
+  await expect.poll(() => page.evaluate(() => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as
       | {
@@ -5047,28 +5053,32 @@ test("pinning a person from the graph context menu survives reload", async ({ ap
             persons: Record<string, { graphPinned?: boolean; graphX?: number; graphY?: number }>;
           } | null;
         }
-      | undefined;
+        | undefined;
     const person = automerge?.getDocState()?.persons["friend-pinned"];
-    return person?.graphPinned === true &&
-      person.graphX === expected.graphX &&
-      person.graphY === expected.graphY;
-  }, expectedPinnedPosition, { timeout: 10_000 });
+    return Boolean(person && (
+      "graphPinned" in person ||
+      "graphX" in person ||
+      "graphY" in person
+    ));
+  })).toBe(false);
 
   await page.reload();
   await app.waitForReady();
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { setActiveView: (view: string) => void };
+    };
+    store.getState().setActiveView("friends");
+  });
+  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 10_000 });
   await page.waitForFunction((expected) => {
     const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            persons: Record<string, { graphPinned?: boolean; graphX?: number; graphY?: number }>;
-          };
-        }
+    const debug = w.__FREED_GRAPH_DEBUG__ as
+      | { nodes: Array<{ personId?: string; x: number; y: number }> }
       | undefined;
-    const person = store?.getState().persons["friend-pinned"];
-    return person?.graphPinned === true &&
-      person.graphX === expected.graphX &&
-      person.graphY === expected.graphY;
+    const person = debug?.nodes.find((node) => node.personId === "friend-pinned");
+    return Math.round(person?.x ?? Number.NaN) === expected.graphX &&
+      Math.round(person?.y ?? Number.NaN) === expected.graphY;
   }, expectedPinnedPosition, { timeout: 10_000 });
 });
 

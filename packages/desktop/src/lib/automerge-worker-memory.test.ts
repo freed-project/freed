@@ -161,8 +161,8 @@ describe("automerge worker memory routing", () => {
     const initBody = caseBody("INIT");
     const replaceBody = caseBody("REPLACE_DOC");
 
-    expect(workerSource).toContain("createDocFromData");
-    expect(compactBody).toContain("createDocFromData(plain)");
+    expect(workerSource).toContain("createDocFromTrustedCompatibilityData");
+    expect(compactBody).toContain("createDocFromTrustedCompatibilityData(plain)");
     expect(compactBody).toContain("rebuilt compacted document");
     expect(compactBody).toContain("summary.changed > 0");
     expect(compactBody).not.toContain("shouldProbeLargeHistory");
@@ -221,14 +221,6 @@ describe("automerge worker memory routing", () => {
     expect(workerSource).toContain("reason=social_dedup");
   });
 
-  it("last sync persists without rehydrating the full document", () => {
-    const body = caseBody("UPDATE_LAST_SYNC");
-
-    expect(body).toContain("persistAndBroadcastWithoutHydration");
-    expect(body).not.toContain("applyRequestChange");
-    expect(body).not.toContain("saveAndBroadcast");
-  });
-
   it("RSS feed metadata writes avoid full feed item hydration", () => {
     const addBody = caseBody("ADD_RSS_FEED");
     const updateBody = caseBody("UPDATE_RSS_FEED");
@@ -263,7 +255,8 @@ describe("automerge worker memory routing", () => {
     expect(body).not.toContain("applyRequestChange");
     expect(applyBody).toContain("persistAndBroadcastWithoutHydration");
     expect(applyBody).toContain("PREFERENCES_PATCH");
-    expect(applyBody).toContain("updates, mutation");
+    expect(applyBody).toContain("updates: syncedUpdates, mutation");
+    expect(applyBody).toContain("stripDeviceLocalPreferenceUpdates(updates)");
     expect(applyBody).toContain("saveAndBroadcast");
     expect(workerSource).not.toContain("A.toJS(doc.preferences");
     expect(requiresBody).toContain("updates.weights !== undefined");

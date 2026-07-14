@@ -19,7 +19,11 @@ import type {
   RssFeed,
   SampleDataClearSummary,
   UserPreferences,
+  DesktopClientRegistration,
 } from "@freed/shared";
+import type { DocumentHistoryRelation } from "@freed/shared/schema";
+
+export type { DocumentHistoryRelation } from "@freed/shared/schema";
 
 // ---------------------------------------------------------------------------
 // Hydrated state - identical to PWA's DocState (imported for type safety)
@@ -33,6 +37,7 @@ export interface DocState {
   accounts: Record<string, Account>;
   friends: Record<string, Friend>;
   preferences: UserPreferences;
+  desktopClientIds: string[];
   feedUnreadCounts: Record<string, number>;
   feedTotalCounts: Record<string, number>;
   totalUnreadCount: number;
@@ -68,9 +73,18 @@ export interface DocStats {
 
 export type WorkerRequest =
   // Lifecycle
-  | { reqId: number; type: "INIT" }
+  | {
+      reqId: number;
+      type: "INIT";
+      desktopClientRegistration?: DesktopClientRegistration;
+    }
   | { reqId: number; type: "CLEAR_LOCAL" }
-  | { reqId: number; type: "REPLACE_DOC"; binary: Uint8Array }
+  | {
+      reqId: number;
+      type: "REPLACE_DOC";
+      binary: Uint8Array;
+      desktopClientRegistration?: DesktopClientRegistration;
+    }
   // Mutations shared with PWA
   | { reqId: number; type: "MARK_AS_READ"; globalId: string }
   | { reqId: number; type: "MARK_ITEMS_AS_READ"; globalIds: string[] }
@@ -110,7 +124,6 @@ export type WorkerRequest =
   | { reqId: number; type: "UPDATE_RSS_FEED"; url: string; updates: Partial<RssFeed> }
   | { reqId: number; type: "REMOVE_ALL_FEEDS"; includeItems: boolean }
   | { reqId: number; type: "UPDATE_PREFERENCES"; updates: Partial<UserPreferences> }
-  | { reqId: number; type: "UPDATE_LAST_SYNC" }
   | { reqId: number; type: "ADD_PERSON"; person: Person }
   | { reqId: number; type: "ADD_PERSONS"; persons: Person[] }
   | { reqId: number; type: "UPDATE_PERSON"; personId: string; updates: Partial<Person> }
@@ -131,8 +144,10 @@ export type WorkerRequest =
   | { reqId: number; type: "GET_ALL_ITEM_IDS" }
   | { reqId: number; type: "GET_DOC_BINARY" }
   | { reqId: number; type: "GET_HEADS" }
+  | { reqId: number; type: "COMPARE_DOC"; binary: Uint8Array }
   | { reqId: number; type: "GET_SAVED_YOUTUBE_URLS" }
   | { reqId: number; type: "GET_ITEM_PRESERVED_TEXT"; globalId: string }
+  | { reqId: number; type: "GET_ITEM_LEGACY_HTML"; globalId: string }
   // Relay management (fire-and-forget, reqId ignored)
   | { reqId: number; type: "UPDATE_RELAY_CLIENT_COUNT"; count: number };
 
@@ -193,7 +208,7 @@ export type WorkerResponse =
   /** Debug panel event forwarding */
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
   /** Doc size snapshot for the debug panel */
-  | { type: "DEBUG_SNAPSHOT"; deviceId: string; itemCount: number; feedCount: number; binarySize: number }
+  | { type: "DEBUG_SNAPSHOT"; documentId: string; itemCount: number; feedCount: number; binarySize: number }
   /** Sent once when the worker module finishes loading */
   | { type: "READY" }
   /**
@@ -212,12 +227,16 @@ export type WorkerResponse =
    * unloaded). Never forces a document load; null before the first INIT.
    */
   | { reqId: number; type: "DOC_HEADS"; heads: string[] | null }
+  /** Automerge history containment of an incoming document relative to local. */
+  | { reqId: number; type: "DOC_RELATIONSHIP"; relation: DocumentHistoryRelation }
   /** Canonical URLs for every saved YouTube item in the complete document. */
   | { reqId: number; type: "SAVED_YOUTUBE_URLS"; urls: string[] }
   /** Sent once per INIT with its cost, for the worker-INIT runtime counter. */
   | { type: "INIT_STATS"; durationMs: number; docBytes: number }
   /** On-demand preserved article text for the active reader item. */
   | { reqId: number; type: "ITEM_PRESERVED_TEXT"; globalId: string; text: string | null }
+  /** On-demand compatibility HTML retained from older synced documents. */
+  | { reqId: number; type: "ITEM_LEGACY_HTML"; globalId: string; html: string | null }
   /** One-batch content signal backfill summary. */
   | { reqId: number; type: "CONTENT_SIGNAL_BACKFILL_RESULT"; summary: ContentSignalBackfillSummary }
   /** Clear generated sample data result. */

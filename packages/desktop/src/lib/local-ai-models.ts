@@ -28,6 +28,10 @@ import type {
   LocalAIModelDownloadProgress,
   LocalAIModelViewState,
 } from "@freed/ui/context";
+import {
+  isFactoryResetInProgress,
+  waitForFactoryResetDrain,
+} from "@freed/ui/lib/factory-reset";
 import { safeUnlisten } from "./safe-unlisten";
 
 const STATE_VERSION = 1;
@@ -35,6 +39,7 @@ const MODEL_ROOT_DIR = "local-ai-models";
 const STATE_FILE = "state.json";
 const MIN_STREAM_WRITE_BYTES = 1024 * 1024;
 const MIN_PROGRESS_INTERVAL_MS = 250;
+const FACTORY_RESET_DRAIN_TIMEOUT_MS = 180_000;
 const LEGACY_LOCAL_AI_MODEL_ID: LocalAIModelId = "integrated-local-ai";
 type LocalAIModelStateSubscriber = () => void;
 const localAIModelStateSubscribers = new Set<LocalAIModelStateSubscriber>();
@@ -324,7 +329,23 @@ export function createLocalAIModelService(
   manifest: readonly LocalAIModelManifestEntry[] = LOCAL_AI_MODEL_MANIFEST,
 ) {
   const activeDownloads = new Map<LocalAIModelId, AbortController>();
+  const activeModelOperations = new Set<Promise<unknown>>();
+  let storageGeneration = 0;
+  let resetInProgress = false;
   const byId = (id: LocalAIModelId) => findManifestEntry(manifest, id);
+
+  function runModelOperation<T>(operation: () => Promise<T>): Promise<T> {
+    if (resetInProgress || isFactoryResetInProgress()) {
+      return Promise.reject(new Error("Local AI models are being reset"));
+    }
+    const pending = operation();
+    activeModelOperations.add(pending);
+    void pending.then(
+      () => activeModelOperations.delete(pending),
+      () => activeModelOperations.delete(pending),
+    );
+    return pending;
+  }
 
   async function rootDir(): Promise<string> {
     return joinPath(await deps.appDataDir(), MODEL_ROOT_DIR);
@@ -419,7 +440,7 @@ export function createLocalAIModelService(
     return next;
   }
 
-  async function listModels(): Promise<LocalAIModelViewState[]> {
+  async function listModelsInternal(): Promise<LocalAIModelViewState[]> {
     const persisted = await loadPersisted();
     const webGPUAvailable = deps.webGPUAvailable();
     const selectedModelId = persisted.selectedModelId ?? LOCAL_AI_BALANCED_PACK_ID;
@@ -431,12 +452,20 @@ export function createLocalAIModelService(
     }));
   }
 
-  async function selectModel(id: LocalAIModelId): Promise<LocalAIModelViewState[]> {
+  function listModels(): Promise<LocalAIModelViewState[]> {
+    return runModelOperation(listModelsInternal);
+  }
+
+  async function selectModelInternal(id: LocalAIModelId): Promise<LocalAIModelViewState[]> {
     byId(id);
     const persisted = await loadPersisted();
     persisted.selectedModelId = id;
     await savePersisted(persisted);
-    return listModels();
+    return listModelsInternal();
+  }
+
+  function selectModel(id: LocalAIModelId): Promise<LocalAIModelViewState[]> {
+    return runModelOperation(() => selectModelInternal(id));
   }
 
   async function measuredDownloadedBytes(model: LocalAIModelManifestEntry): Promise<number> {
@@ -667,12 +696,14 @@ export function createLocalAIModelService(
     return file.sizeBytes;
   }
 
-  async function downloadModel(
+  async function runDownloadModel(
     id: LocalAIModelId,
     onProgress?: (progress: LocalAIModelDownloadProgress) => void,
   ): Promise<LocalAIModelViewState[]> {
+    const operationGeneration = storageGeneration;
     const model = byId(id);
-    await selectModel(id);
+    await selectModelInternal(id);
+    if (operationGeneration !== storageGeneration) return listModelsInternal();
     const webGPUAvailable = deps.webGPUAvailable();
     if (model.requiresWebGPU && !model.wasmFallback && !webGPUAvailable) {
       await updateModelState(id, (current) => ({
@@ -681,7 +712,7 @@ export function createLocalAIModelService(
         updatedAt: deps.now(),
         lastError: "WebGPU is required for this model pack.",
       }));
-      return listModels();
+      return listModelsInternal();
     }
 
     activeDownloads.get(id)?.abort();
@@ -761,10 +792,17 @@ export function createLocalAIModelService(
       }
     }
 
-    return listModels();
+    return listModelsInternal();
   }
 
-  async function pauseDownload(id: LocalAIModelId): Promise<LocalAIModelViewState[]> {
+  function downloadModel(
+    id: LocalAIModelId,
+    onProgress?: (progress: LocalAIModelDownloadProgress) => void,
+  ): Promise<LocalAIModelViewState[]> {
+    return runModelOperation(() => runDownloadModel(id, onProgress));
+  }
+
+  async function pauseDownloadInternal(id: LocalAIModelId): Promise<LocalAIModelViewState[]> {
     activeDownloads.get(id)?.abort();
     await deps.cancelModelFileDownload?.(id);
     await updateModelState(id, (current) => ({
@@ -772,10 +810,14 @@ export function createLocalAIModelService(
       status: current.status === "downloading" ? "paused" : current.status,
       updatedAt: deps.now(),
     }));
-    return listModels();
+    return listModelsInternal();
   }
 
-  async function removeModel(id: LocalAIModelId): Promise<LocalAIModelViewState[]> {
+  function pauseDownload(id: LocalAIModelId): Promise<LocalAIModelViewState[]> {
+    return runModelOperation(() => pauseDownloadInternal(id));
+  }
+
+  async function removeModelInternal(id: LocalAIModelId): Promise<LocalAIModelViewState[]> {
     activeDownloads.get(id)?.abort();
     const model = byId(id);
     const dir = joinPath(await rootDir(), model.id);
@@ -783,10 +825,39 @@ export function createLocalAIModelService(
       await deps.remove(dir, { recursive: true });
     }
     await updateModelState(id, () => defaultState(model, deps.now(), deps.webGPUAvailable()));
-    return listModels();
+    return listModelsInternal();
   }
 
-  async function updateHealth(
+  function removeModel(id: LocalAIModelId): Promise<LocalAIModelViewState[]> {
+    return runModelOperation(() => removeModelInternal(id));
+  }
+
+  async function clearAllModels(): Promise<void> {
+    resetInProgress = true;
+    storageGeneration += 1;
+    try {
+      const activeIds = Array.from(activeDownloads.keys());
+      for (const controller of activeDownloads.values()) controller.abort();
+      const cancellations = activeIds
+        .map((id) => deps.cancelModelFileDownload?.(id))
+        .filter((operation): operation is Promise<void> => Boolean(operation));
+      await waitForFactoryResetDrain(
+        () => [...activeModelOperations, ...cancellations],
+        "Local AI model operations",
+        FACTORY_RESET_DRAIN_TIMEOUT_MS,
+      );
+
+      const root = await rootDir();
+      if (await deps.exists(root)) {
+        await deps.remove(root, { recursive: true });
+      }
+      notifyLocalAIModelState();
+    } finally {
+      resetInProgress = false;
+    }
+  }
+
+  async function updateHealthInternal(
     id: LocalAIModelId,
     health: LocalAIModelHealth,
   ): Promise<LocalAIModelViewState[]> {
@@ -798,7 +869,14 @@ export function createLocalAIModelService(
       },
       updatedAt: deps.now(),
     }));
-    return listModels();
+    return listModelsInternal();
+  }
+
+  function updateHealth(
+    id: LocalAIModelId,
+    health: LocalAIModelHealth,
+  ): Promise<LocalAIModelViewState[]> {
+    return runModelOperation(() => updateHealthInternal(id, health));
   }
 
   async function getHardwareProfile(): Promise<LocalAIHardwareProfile | null> {
@@ -816,6 +894,7 @@ export function createLocalAIModelService(
     downloadModel,
     pauseDownload,
     removeModel,
+    clearAllModels,
     getHardwareProfile,
     updateHealth,
   };

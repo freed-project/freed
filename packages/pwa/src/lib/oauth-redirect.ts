@@ -4,6 +4,8 @@ const GOOGLE_OAUTH_STATE_VERSION = 1;
 const GOOGLE_OAUTH_RELAY_ORIGIN = "https://app.freed.wtf";
 
 const GOOGLE_REDIRECT_URI_STORAGE_KEY = "freed_pkce_google_redirect_uri";
+const PKCE_PROVIDER_STORAGE_KEY = "freed_pkce_provider";
+const PKCE_VERIFIER_STORAGE_KEY = "freed_pkce_verifier";
 
 export interface GoogleOAuthState {
   version: typeof GOOGLE_OAUTH_STATE_VERSION;
@@ -32,6 +34,13 @@ export function storeGoogleOAuthRedirectUri(redirectUri: string): void {
 
 export function clearStoredGoogleOAuthRedirectUri(): void {
   sessionStorage.removeItem(GOOGLE_REDIRECT_URI_STORAGE_KEY);
+}
+
+/** Remove every single-use OAuth handoff value from this browser session. */
+export function clearPwaOAuthSessionState(): void {
+  sessionStorage.removeItem(PKCE_PROVIDER_STORAGE_KEY);
+  sessionStorage.removeItem(PKCE_VERIFIER_STORAGE_KEY);
+  clearStoredGoogleOAuthRedirectUri();
 }
 
 export function createGoogleOAuthState(

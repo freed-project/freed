@@ -13,6 +13,7 @@ import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
 import { ToastContainer, toast } from "@freed/ui/components/Toast";
+import { useSettingsStore } from "@freed/ui/lib/settings-store";
 import {
   PlatformProvider,
   type AvailableUpdateInfo,
@@ -20,22 +21,32 @@ import {
   type UpdateDownloadProgress,
 } from "@freed/ui/context";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
+import {
+  getDeviceAIPreferences,
+  subscribeDeviceAIPreferences,
+} from "@freed/ui/lib/device-ai-preferences";
 import { UpdateNotification, type UpdateState } from "./components/UpdateNotification";
 import { CloudSyncNudge } from "./components/CloudSyncNudge";
 import { useAppStore } from "./lib/store";
 import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML, refreshRssFeeds } from "./lib/capture";
-import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
+import {
+  startRssPoller,
+  stopRssPoller,
+  stopRssPollerAndDrain,
+} from "./lib/rss-poller";
 import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import {
   startSync,
   stopSync,
   startAllCloudSyncs,
+  restartCloudSync,
   stopAllCloudSyncs,
   getActiveProviders,
   getCloudToken,
   getValidCloudToken,
   forceRefreshCloudToken,
+  captureCloudLifecycle,
   clearCloudProvider,
   deleteCloudFile,
   startCloudSync,
@@ -45,7 +56,12 @@ import {
   storeCloudToken,
   type CloudProvider,
 } from "./lib/sync";
-import { clearLocalDoc, getCachedDocStats, getItemPreservedText } from "./lib/automerge";
+import {
+  clearLocalDoc,
+  getCachedDocStats,
+  getItemLegacyHtml,
+  getItemPreservedText,
+} from "./lib/automerge";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -67,16 +83,53 @@ import { captureFbFeed } from "./lib/fb-capture";
 import { captureIgFeed } from "./lib/instagram-capture";
 import { captureLiFeed } from "./lib/li-capture";
 import { captureYouTube } from "./lib/youtube-capture";
-import { addYouTubeVideoToOfflinePlaylist } from "./lib/youtube-playlist";
+import {
+  addYouTubeVideoToOfflinePlaylist,
+  clearYouTubePlaylistState,
+} from "./lib/youtube-playlist";
 import { contentCache } from "./lib/content-cache";
+import { clearAllRssRuntimeState } from "./lib/rss-runtime-state";
+import { clearSocialOutboxState } from "./lib/social-outbox-state";
+import { clearFacebookGroupDiscovery } from "./lib/facebook-group-discovery";
+import {
+  clearDesktopClientWarningAcknowledgement,
+  desktopClientWarningSignature,
+  isDesktopClientWarningAcknowledged,
+} from "./lib/desktop-client-warning";
+import { clearDeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
+import { clearDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
+import { clearDeviceGraphLayout } from "@freed/ui/lib/device-graph-layout";
+import { resetFeedCardDensity } from "@freed/ui/lib/feed-card-density";
+import { resetInterfaceZoom } from "@freed/ui/lib/interface-zoom";
+import { resetReaderOfflineCacheMode } from "@freed/ui/lib/reader-cache-settings";
+import {
+  runFactoryResetOperations,
+  runFactoryResetWithRecovery,
+} from "@freed/ui/lib/factory-reset";
+import { clearArticleCacheStorage } from "@freed/ui/lib/article-cache";
+import { clearGeocodingCache } from "@freed/ui/lib/geocoding-cache";
+import { resetThemePreference } from "@freed/ui/lib/theme";
 import { saveUrlInDesktop } from "./lib/save-url";
 import { hydrateReaderItem as hydrateReaderItemForDesktop } from "./lib/reader-hydration";
 import { importMarkdownFiles, exportLibrary } from "./lib/import-export";
 import { secureStorage } from "./lib/secure-storage";
 import { localAIModels } from "./lib/local-ai-models";
-import { pinReaderItem, start as startContentFetcher, stop as stopContentFetcher } from "./lib/content-fetcher";
-import { start as startSemanticClassifier, stop as stopSemanticClassifier } from "./lib/semantic-classifier";
-import { useAppStore as useDesktopStore, withProviderSyncing } from "./lib/store";
+import {
+  pinReaderItem,
+  start as startContentFetcher,
+  stop as stopContentFetcher,
+  stopAndDrain as stopAndDrainContentFetcher,
+} from "./lib/content-fetcher";
+import {
+  start as startSemanticClassifier,
+  stop as stopSemanticClassifier,
+  stopAndDrain as stopAndDrainSemanticClassifier,
+} from "./lib/semantic-classifier";
+import {
+  quiesceDesktopStoreForFactoryReset,
+  useAppStore as useDesktopStore,
+  withProviderSyncing,
+} from "./lib/store";
 import { pickContactViaTauri } from "./lib/contacts";
 import { fetchGoogleContactsViaTauri } from "./lib/google-contacts";
 import { googleDriveFetchViaTauri } from "./lib/google-drive";
@@ -92,14 +145,20 @@ import { DesktopLegalSettingsSection } from "./components/DesktopLegalSettingsSe
 import { DesktopShortcutsSettingsSection } from "./components/DesktopShortcutsSettingsSection";
 import { refreshSampleLibraryData, summarizeSampleData } from "@freed/ui/lib/sample-library-seed";
 import { acceptDesktopBundle, acceptProviderRisk, hasAcceptedDesktopBundle } from "./lib/legal-consent";
-import { clearProviderPause, forgetRssFeedHealth, initProviderHealth } from "./lib/provider-health";
+import {
+  clearProviderHealth,
+  clearProviderPause,
+  forgetRssFeedHealth,
+  initProviderHealth,
+} from "./lib/provider-health";
 import { getDesktopSourceStatus } from "./lib/source-status";
 import { clearContactSyncState, setContactSyncError } from "./lib/contact-sync-storage";
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
 import { importMetaExportFiles } from "./lib/meta-export-import";
-import { summarizeMediaVault } from "./lib/media-vault";
+import { clearMediaVault, summarizeMediaVault } from "./lib/media-vault";
+import { clearScraperWindowPreferences } from "./lib/scraper-prefs";
 import { publishStoryWallToGitHubPages } from "./lib/story-wall-publisher";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
 import { startMemoryMonitor, stopMemoryMonitor } from "./lib/memory-monitor";
@@ -126,6 +185,7 @@ import {
 import { rendererHeartbeatTiming } from "./lib/renderer-heartbeat";
 import { DESKTOP_CHANGELOG_PREVIEW } from "./lib/changelog-preview";
 import { useClipboardSaveShortcut } from "./hooks/useClipboardSaveShortcut";
+import { clearClipboardSaveShortcutConfig } from "./lib/clipboard-save-shortcut";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
@@ -271,6 +331,9 @@ function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const error = useAppStore((state) => state.error);
+  const desktopClientIds = useAppStore((state) => state.desktopClientIds);
+  const desktopWarningSignatureValue = desktopClientWarningSignature(desktopClientIds);
+  const lastDesktopWarningToast = useRef("");
   const tauriRuntimeAvailable = import.meta.env.VITE_TEST_TAURI === "1" || isTauri();
   const [lockedStartupState, setLockedStartupState] = useState<LockedStartupState>(
     tauriRuntimeAvailable ? "checking" : "ready",
@@ -290,6 +353,30 @@ function App() {
   const fatalError = useFatalRuntimeError();
 
   useDesktopNavigationHistory(legalAccepted);
+
+  useEffect(() => {
+    if (
+      !isInitialized ||
+      desktopClientIds.length < 2 ||
+      !desktopWarningSignatureValue ||
+      lastDesktopWarningToast.current === desktopWarningSignatureValue ||
+      isDesktopClientWarningAcknowledged(desktopWarningSignatureValue)
+    ) {
+      return;
+    }
+    lastDesktopWarningToast.current = desktopWarningSignatureValue;
+    toast.info(
+      "More than one Freed Desktop installation is registered. Each installation can contact your connected provider accounts, which can duplicate request traffic.",
+      {
+        actionLabel: "Review Sync",
+        onAction: () => useSettingsStore.getState().openTo("sync"),
+      },
+    );
+  }, [
+    desktopClientIds.length,
+    desktopWarningSignatureValue,
+    isInitialized,
+  ]);
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
@@ -441,7 +528,7 @@ function App() {
     // Wire the LAN relay change subscription and client-count polling.
     startSync();
     // Resume cloud sync loops for any previously authenticated providers.
-    startAllCloudSyncs();
+    void startAllCloudSyncs();
     if (isTauri()) {
       void startSnapshotManager();
     }
@@ -451,18 +538,25 @@ function App() {
     startSemanticClassifier({
       isEnabled: () => {
         const prefs = useDesktopStore.getState().preferences.ai;
-        return prefs.provider === "integrated" && prefs.extractTopics;
+        return getDeviceAIPreferences().provider === "integrated" && prefs.extractTopics;
       },
-      subscribeToPreferenceChanges: (callback) =>
-        useDesktopStore.subscribe((state, previous) => {
+      subscribeToPreferenceChanges: (callback) => {
+        const unsubscribeStore = useDesktopStore.subscribe((state, previous) => {
           if (state.preferences.ai !== previous.preferences.ai) {
             callback();
           }
-        }),
+        });
+        const unsubscribeDevice = subscribeDeviceAIPreferences(callback);
+        return () => {
+          unsubscribeStore();
+          unsubscribeDevice();
+        };
+      },
     });
     return () => {
       stopRssPoller();
       stopSync();
+      stopAllCloudSyncs();
       stopSnapshotManager();
       stopContentFetcher();
       stopSemanticClassifier();
@@ -862,31 +956,98 @@ function App() {
   );
 
   const handleFactoryReset = useCallback(async (deleteFromCloud: boolean) => {
-    const providers = getActiveProviders();
-    if (deleteFromCloud) {
-      for (const provider of providers) {
-        const token = getCloudToken(provider);
-        if (token) await deleteCloudFile(provider, token);
-      }
-    } else {
-      stopAllCloudSyncs();
-    }
-    clearStoredCookies();
-    await disconnectFb().catch(() => {});
-    await disconnectIg().catch(() => {});
-    await disconnectLi().catch(() => {});
-    await disconnectYouTube().catch(() => {});
-    for (const provider of providers) clearCloudProvider(provider);
-    clearContactSyncState();
-    await clearSnapshots();
-    await clearLocalDoc();
-    location.reload();
+    await runFactoryResetWithRecovery({
+      reset: async () => {
+        stopRssPoller();
+        stopSync();
+        stopAllCloudSyncs();
+        stopSnapshotManager();
+        stopContentFetcher();
+        stopSemanticClassifier();
+        await runFactoryResetOperations({
+          quiesceLocalWriters: [
+            quiesceDesktopStoreForFactoryReset,
+            stopRssPollerAndDrain,
+            stopAndDrainContentFetcher,
+            stopAndDrainSemanticClassifier,
+          ],
+          clearDeviceStores: () => [
+            clearAllRssRuntimeState(),
+            clearSocialOutboxState(),
+            clearFacebookGroupDiscovery(),
+            clearDeviceDisplayPreferences(),
+            clearDeviceAIPreferences(),
+            clearDeviceGraphLayout(),
+          ],
+          clearLocalSettings: [
+            resetReaderOfflineCacheMode,
+            resetFeedCardDensity,
+            resetInterfaceZoom,
+            resetThemePreference,
+            clearYouTubePlaylistState,
+            clearStoredCookies,
+            clearContactSyncState,
+            clearDesktopClientWarningAcknowledgement,
+            clearScraperWindowPreferences,
+          ],
+          clearLocalData: [
+            clearSnapshots,
+            () => contentCache.clear(),
+            clearArticleCacheStorage,
+            clearGeocodingCache,
+            () => secureStorage.clearAllCredentials(),
+            () => localAIModels.clearAllModels(),
+            clearMediaVault,
+            clearProviderHealth,
+            clearClipboardSaveShortcutConfig,
+            async () => {
+              await invoke("clear_factory_reset_runtime_artifacts");
+            },
+          ],
+          clearProviderDataAndConnections: async () => {
+            const providers = getActiveProviders();
+            const cloudFilesToDelete = deleteFromCloud
+              ? providers.flatMap((provider) => {
+                  const token = getCloudToken(provider);
+                  return token ? [{ provider, token }] : [];
+                })
+              : [];
+            stopAllCloudSyncs();
+            const cleanupResults = await Promise.allSettled([
+              ...cloudFilesToDelete.map(({ provider, token }) =>
+                deleteCloudFile(provider, token)
+              ),
+              disconnectFb(),
+              disconnectIg(),
+              disconnectLi(),
+              disconnectYouTube(),
+              Promise.resolve().then(() => clearCloudProvider("gdrive")),
+              Promise.resolve().then(() => clearCloudProvider("dropbox")),
+              invoke("factory_reset_sync_relay"),
+            ]);
+            const cleanupFailures = cleanupResults
+              .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+              .map((result) => result.reason);
+            if (cleanupFailures.length > 0) throw cleanupFailures[0];
+          },
+          clearDocument: async () => {
+            await clearLocalDoc();
+            await invoke("resume_sync_relay_after_factory_reset");
+          },
+        });
+      },
+      reload: () => location.reload(),
+      onFailure: () => {
+        void invoke("resume_sync_relay_after_factory_reset").catch(() => undefined);
+        toast.error(
+          "Factory reset stopped because Freed could not clear all local data. Reloading Freed to restore background services.",
+        );
+      },
+    });
   }, []);
 
   const retryCloudProvider = useCallback(async (provider: CloudProvider) => {
-    const token = await getValidCloudToken(provider);
-    if (!token) return;
-    await startCloudSync(provider, token);
+    await restartCloudSync(provider);
   }, []);
 
   const recordGoogleContactsConnectError = useCallback((error: unknown) => {
@@ -898,8 +1059,10 @@ function App() {
 
   const reconnectCloudProvider = useCallback(async (provider: CloudProvider) => {
     clearCloudProvider(provider);
+    const lifecycle = captureCloudLifecycle(provider);
     try {
       const token = await initiateDesktopOAuth(provider);
+      if (!lifecycle.isCurrent()) return;
       storeCloudToken(provider, token);
       await startCloudSync(provider, token.accessToken);
     } catch (error) {
@@ -908,6 +1071,7 @@ function App() {
   }, []);
 
   const connectGoogleContacts = useCallback(async (options?: { signal?: AbortSignal }) => {
+    const lifecycle = captureCloudLifecycle("gdrive");
     let token: Awaited<ReturnType<typeof initiateDesktopOAuth>>;
     try {
       token = await initiateDesktopOAuth("gdrive", options);
@@ -920,6 +1084,7 @@ function App() {
       throw error;
     }
 
+    if (!lifecycle.isCurrent()) return;
     storeCloudToken("gdrive", token);
     try {
       await startCloudSync("gdrive", token.accessToken);
@@ -1147,7 +1312,14 @@ function App() {
         return getDesktopSourceStatus(sourceId, desktopState, health);
       },
       // Local content cache (Tauri FS layer)
-      getLocalContent: (globalId) => contentCache.get(globalId),
+      getLocalContent: async (globalId) => {
+        const cached = await contentCache.get(globalId);
+        if (cached) return cached;
+        const legacyHtml = await getItemLegacyHtml(globalId);
+        if (!legacyHtml) return null;
+        await contentCache.set(globalId, legacyHtml).catch(() => {});
+        return legacyHtml;
+      },
       getLocalPreservedText: (globalId) => getItemPreservedText(globalId),
       hydrateReaderItem: hydrateReaderItemForDesktop,
       pinReaderItem,

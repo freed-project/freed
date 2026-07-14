@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDefaultPreferences } from "@freed/shared";
+import { createDefaultPreferences, type Account, type Person } from "@freed/shared";
+import {
+  getDeviceDisplayPreferences,
+  resetDeviceDisplayPreferencesForTests,
+} from "@freed/ui/lib/device-display-preferences";
+import {
+  getFacebookGroupDiscovery,
+  resetFacebookGroupDiscoveryForTests,
+} from "./facebook-group-discovery";
 
 const {
   mockDocBackfillContentSignals,
@@ -10,6 +18,7 @@ const {
   mockRunBackgroundJob,
   mockStartOutboxProcessor,
   mockSubscribe,
+  mockUnsubscribe,
 } = vi.hoisted(() => ({
   mockDocBackfillContentSignals: vi.fn(),
   mockDocDeduplicateFeedItems: vi.fn(),
@@ -18,7 +27,8 @@ const {
   mockInitDoc: vi.fn(),
   mockRunBackgroundJob: vi.fn(),
   mockStartOutboxProcessor: vi.fn(),
-  mockSubscribe: vi.fn(() => () => {}),
+  mockSubscribe: vi.fn(),
+  mockUnsubscribe: vi.fn(),
 }));
 
 vi.mock("./automerge", () => ({
@@ -75,6 +85,13 @@ vi.mock("./outbox", () => ({
   startOutboxProcessor: mockStartOutboxProcessor,
 }));
 
+vi.mock("./desktop-client-registration", () => ({
+  getOrCreateDesktopClientRegistration: vi.fn(async () => ({
+    id: "desktop-startup-test",
+    registeredAt: 1,
+  })),
+}));
+
 vi.mock("./x-auth", () => ({
   loadStoredCookies: vi.fn(() => null),
 }));
@@ -108,6 +125,7 @@ function createDocState() {
     accounts: {},
     friends: {},
     preferences: createDefaultPreferences(),
+    desktopClientIds: [],
     feedUnreadCounts: {},
     feedTotalCounts: {},
     totalUnreadCount: 0,
@@ -141,8 +159,12 @@ describe("store startup migrations", () => {
     mockRunBackgroundJob.mockImplementation(async (task) => task.run());
     mockStartOutboxProcessor.mockReset();
     mockStartOutboxProcessor.mockReturnValue(() => {});
-    mockSubscribe.mockClear();
+    mockSubscribe.mockReset();
+    mockSubscribe.mockReturnValue(mockUnsubscribe);
+    mockUnsubscribe.mockReset();
     localStorage.clear();
+    resetDeviceDisplayPreferencesForTests();
+    resetFacebookGroupDiscoveryForTests();
   });
 
   afterEach(() => {
@@ -203,5 +225,116 @@ describe("store startup migrations", () => {
     expect(mockDocDeduplicateFeedItems).not.toHaveBeenCalled();
     expect(mockDocPruneArchivedItems).not.toHaveBeenCalled();
     expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
+  });
+
+  it("imports the legacy sidebar mode before initialization completes", async () => {
+    const state = createDocState();
+    state.preferences.display.sidebarMode = "closed";
+    mockInitDoc.mockResolvedValue(state);
+    const { useAppStore } = await import("./store");
+
+    await useAppStore.getState().initialize();
+
+    expect(useAppStore.getState().isInitialized).toBe(true);
+    expect(getDeviceDisplayPreferences().sidebarMode).toBe("closed");
+  });
+
+  it("imports legacy Facebook group discovery before initialization completes", async () => {
+    const state = createDocState();
+    state.preferences.fbCapture.knownGroups = {
+      "group-one": {
+        id: "group-one",
+        name: "Local group",
+        url: "https://www.facebook.com/groups/group-one",
+      },
+    };
+    mockInitDoc.mockResolvedValue(state);
+    const { useAppStore } = await import("./store");
+
+    await useAppStore.getState().initialize();
+
+    expect(useAppStore.getState().isInitialized).toBe(true);
+    expect(getFacebookGroupDiscovery()).toEqual(state.preferences.fbCapture.knownGroups);
+  });
+
+  it("coalesces concurrent initialization into one worker subscription", async () => {
+    let resolveInit!: (state: ReturnType<typeof createDocState>) => void;
+    mockInitDoc.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveInit = resolve;
+      }),
+    );
+    const { useAppStore } = await import("./store");
+
+    const initialize = useAppStore.getState().initialize;
+    const first = initialize();
+    const second = initialize();
+
+    expect(second).toBe(first);
+    await vi.waitFor(() => expect(mockInitDoc).toHaveBeenCalledTimes(1));
+    resolveInit(createDocState());
+    await Promise.all([first, second]);
+
+    expect(mockInitDoc).toHaveBeenCalledTimes(1);
+    expect(mockSubscribe).toHaveBeenCalledTimes(1);
+    expect(mockStartOutboxProcessor).toHaveBeenCalledTimes(1);
+  });
+
+  it("replaces the document subscription when initialization runs again", async () => {
+    const { useAppStore } = await import("./store");
+
+    await useAppStore.getState().initialize();
+    useAppStore.setState({ isInitialized: false });
+    await useAppStore.getState().initialize();
+
+    expect(mockSubscribe).toHaveBeenCalledTimes(2);
+    expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("prunes stale graph pins from successful Desktop worker states", async () => {
+    const person: Person = {
+      id: "person-removed",
+      name: "Removed",
+      relationshipStatus: "friend",
+      careLevel: 3,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const account: Account = {
+      id: "account-linked",
+      personId: person.id,
+      kind: "social",
+      provider: "instagram",
+      externalId: "linked",
+      firstSeenAt: 1,
+      lastSeenAt: 1,
+      discoveredFrom: "captured_item",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const initial = createDocState();
+    initial.persons = { [person.id]: person };
+    initial.accounts = { [account.id]: account };
+    mockInitDoc.mockResolvedValueOnce(initial);
+    const { useAppStore } = await import("./store");
+    const {
+      getDeviceAccountGraphLayout,
+      getDevicePersonGraphLayout,
+      setDeviceAccountGraphPosition,
+      setDevicePersonGraphPosition,
+    } = await import("@freed/ui/lib/device-graph-layout");
+
+    await useAppStore.getState().initialize();
+    setDevicePersonGraphPosition(person.id, 10, 20, 100);
+    setDeviceAccountGraphPosition(account.id, 30, 40, 200);
+
+    const subscriber = mockSubscribe.mock.calls.at(-1)?.[0] as
+      | ((state: ReturnType<typeof createDocState>) => void)
+      | undefined;
+    expect(subscriber).toBeTypeOf("function");
+    subscriber?.(createDocState());
+
+    expect(getDevicePersonGraphLayout(person.id)).toBeNull();
+    expect(getDeviceAccountGraphLayout(account.id)).toBeNull();
   });
 });

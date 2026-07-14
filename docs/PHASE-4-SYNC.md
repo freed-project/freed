@@ -3,7 +3,7 @@
 > **Status:** 🚧 In Progress
 > **Dependencies:** Phase 1-2 (Capture layers ✓)
 >
-> Local relay, Google Drive cloud sync, desktop local snapshot rotation, "Sync Now" button, "Last synced" indicator, proxied Google token exchange for Freed Desktop with a built-in production proxy default, durable Google OAuth refresh, recoverable Google Contacts token-refresh failures, a production callback relay for dev and preview PWA Google OAuth, appDataFolder Drive polling, cloud sync health diagnostics, visible Drive transfer diagnostics in Settings, manual Drive sync from Desktop and PWA Settings, cloud sync activity timelines, global background activity visibility for Desktop cloud work, initial Drive download auth-refresh recovery, merged-upload local convergence, destructive Automerge merge blocking, pinned explicit local wins and cloud wins recovery actions, PWA local-change cloud uploads, PWA document-init-gated cloud startup, runtime-gated cloud upload waits, mobile-safe Drive upload bodies, and the no-cloud-sync launch banner are all working. Dropbox remains behind a coming-soon gate while its provider work is finished. iCloud is the remaining core document-sync item. Large offline media uses a separate future transport plan.
+> Local relay, Google Drive cloud sync, desktop local snapshot rotation, "Sync Now" button, "Last synced" indicator, proxied Google token exchange for Freed Desktop with a built-in production proxy default, durable Google OAuth refresh, recoverable Google Contacts token-refresh failures, a production callback relay for dev and preview PWA Google OAuth, appDataFolder Drive polling, cloud sync health diagnostics, visible Drive transfer diagnostics in Settings, manual Drive sync from Desktop and PWA Settings, cloud sync activity timelines, global background activity visibility for Desktop cloud work, initial Drive download auth-refresh recovery, merged-upload local convergence, destructive Automerge merge blocking, pinned explicit local wins and cloud wins recovery actions, PWA local-change cloud uploads, PWA document-init-gated cloud startup, runtime-gated cloud upload waits, mobile-safe Drive upload bodies, the multi-Desktop request warning, and the no-cloud-sync launch banner are all working. Dropbox remains behind a coming-soon gate while its provider work is finished. iCloud is the remaining core document-sync item. Large offline media uses a separate future transport plan.
 
 ---
 
@@ -299,6 +299,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.16 | Destructive Automerge merge guard     | ✓      | Medium     |
 | 4.17 | Desktop cloud sync activity in the global background monitor | ✓ | Low |
 | 4.18 | Dedicated large-media transfer lane, LAN first with encrypted user-cloud fallback | ☐ | High |
+| 4.19 | Synced Freed Desktop registration and duplicate provider request warning | ✓ | Low |
 
 ---
 
@@ -327,6 +328,7 @@ recovery, telemetry, milestones, and acceptance tests.
 - [x] Desktop surfaces cloud sync health with retry/reconnect actions, recent failures, and debug charts
 - [x] Desktop no-cloud-sync launch banner self-dismisses after 15 seconds with a gentle countdown ring
 - [x] Desktop writes rotating local snapshots and can restore an older Automerge copy from Settings
+- [x] Each Freed Desktop installation keeps its opaque identity locally, registers durable topology metadata after document initialization and merges, and warns in Sync setup when another Freed Desktop could duplicate RSS or authenticated provider requests. PWA readers do not count toward the warning.
 - [ ] iCloud sync integration
 - [ ] Large media packages transfer outside Automerge through an authenticated,
       resumable, integrity-checked path with explicit storage and deletion rules

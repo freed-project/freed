@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as A from "@automerge/automerge";
 import type { LocalAIModelManifestEntry } from "@freed/shared";
 import {
@@ -154,6 +154,9 @@ function modelPath(path: string): string {
 }
 
 describe("local AI model manager", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   it("recommends local packs from hardware", () => {
     const gib = 1024 ** 3;
 
@@ -187,8 +190,6 @@ describe("local AI model manager", () => {
     const models = await service.listModels();
 
     expect(createDefaultPreferences().ai).toEqual({
-      provider: "none",
-      model: "",
       autoSummarize: false,
       extractTopics: false,
     });
@@ -436,6 +437,103 @@ describe("local AI model manager", () => {
     expect(files.has(modelPath("model.bin"))).toBe(false);
   });
 
+  it("clears every local model pack and its selected-pack state", async () => {
+    const { deps, files } = createDeps();
+    const service = createLocalAIModelService(deps, TEST_MANIFEST);
+
+    await service.downloadModel("integrated-balanced");
+    await service.clearAllModels();
+
+    expect(
+      Array.from(files.keys()).filter((path) => path.startsWith("/app/local-ai-models")),
+    ).toEqual([]);
+    expect((await service.listModels())[0]).toMatchObject({
+      selected: true,
+      state: { status: "not_downloaded", downloadedBytes: 0 },
+    });
+  });
+
+  it("drains every model-state mutation and blocks new ones before removal", async () => {
+    const { deps } = createDeps();
+    const originalWriteTextFile = deps.writeTextFile;
+    const originalRemove = deps.remove;
+    let releaseWrite!: () => void;
+    const writeStarted = new Promise<void>((resolve) => {
+      deps.writeTextFile = async (path, contents) => {
+        if (path.endsWith("/state.json")) {
+          await new Promise<void>((release) => {
+            releaseWrite = release;
+            resolve();
+          });
+        }
+        await originalWriteTextFile(path, contents);
+      };
+    });
+    const removedRoot = vi.fn();
+    deps.remove = async (path, options) => {
+      if (path === "/app/local-ai-models") removedRoot();
+      await originalRemove(path, options);
+    };
+    const service = createLocalAIModelService(deps, TEST_MANIFEST);
+
+    const selecting = service.selectModel("integrated-balanced");
+    await writeStarted;
+    const clearing = service.clearAllModels();
+    await Promise.resolve();
+
+    expect(removedRoot).not.toHaveBeenCalled();
+    await expect(
+      service.updateHealth("integrated-balanced", { lastRunAt: 1 }),
+    ).rejects.toThrow("Local AI models are being reset");
+
+    releaseWrite();
+    await Promise.all([selecting, clearing]);
+    expect(removedRoot).toHaveBeenCalledOnce();
+  });
+
+  it("propagates a local model directory removal failure", async () => {
+    const { deps } = createDeps({
+      seedFiles: {
+        "/app/local-ai-models/state.json": JSON.stringify({ version: 1, models: {} }),
+      },
+    });
+    const removalError = new Error("model directory is not writable");
+    deps.remove = async (path) => {
+      if (path === "/app/local-ai-models") throw removalError;
+    };
+    const service = createLocalAIModelService(deps, TEST_MANIFEST);
+
+    await expect(service.clearAllModels()).rejects.toBe(removalError);
+  });
+
+  it("times out a stuck native download and allows a later reset retry", async () => {
+    vi.useFakeTimers();
+    const { deps } = createDeps();
+    let releaseDownload!: () => void;
+    const downloadStarted = vi.fn();
+    deps.downloadModelFile = () => {
+      downloadStarted();
+      return new Promise<number>((resolve) => {
+        releaseDownload = () => resolve(0);
+      });
+    };
+    deps.cancelModelFileDownload = async () => undefined;
+    const service = createLocalAIModelService(deps, TEST_MANIFEST);
+
+    const downloading = service.downloadModel("integrated-balanced");
+    await vi.waitFor(() => expect(downloadStarted).toHaveBeenCalledOnce());
+    const clearing = service.clearAllModels();
+    const rejection = expect(clearing).rejects.toThrow(
+      "Local AI model operations did not stop within 180,000 ms.",
+    );
+    await vi.advanceTimersByTimeAsync(180_000);
+    await rejection;
+
+    releaseDownload();
+    await downloading;
+    await expect(service.clearAllModels()).resolves.toBeUndefined();
+  });
+
   it("persists the selected pack locally", async () => {
     const { deps } = createDeps();
     const service = createLocalAIModelService(deps, TEST_MANIFEST);
@@ -508,8 +606,6 @@ describe("local AI model manager", () => {
     expect(serialized).not.toContain("vector");
     expect(serialized).not.toContain("localAI");
     expect((plain.preferences as Record<string, unknown>).ai).toEqual({
-      provider: "none",
-      model: "",
       autoSummarize: false,
       extractTopics: false,
     });

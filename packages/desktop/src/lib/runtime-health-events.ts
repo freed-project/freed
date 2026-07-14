@@ -33,7 +33,7 @@ export function runtimeHealthIdentityFields(): RuntimeHealthIdentityFields {
   };
 }
 
-export type CloudUploadCause = "subscriber" | "manual" | "poll";
+export type CloudUploadCause = "subscriber" | "manual" | "poll" | "startup-repair";
 
 export type SocialScrapeTrigger =
   | "manual"
@@ -44,6 +44,13 @@ export type SocialScrapeTrigger =
   | "unknown";
 
 export type ScrapeOutcomeProvider = "facebook" | "instagram" | "linkedin" | "youtube" | "x";
+export type RssPullTrigger = "manual" | "scheduled" | "subscription";
+export type FacebookGroupDiscoverySource =
+  | "group_scrape"
+  | "feed_items"
+  | "membership_check"
+  | "legacy_migration"
+  | "factory_reset";
 
 export function recordRuntimeHealthEvent(
   payload: { event: string } & Record<string, unknown>,
@@ -100,6 +107,52 @@ export function recordScrapeOutcome(input: {
   durationMs: number;
 }): void {
   recordRuntimeHealthEvent({ event: "scrape_outcome", ...input });
+}
+
+/**
+ * One line immediately before a social outbox provider action runs. The event
+ * deliberately excludes item IDs, content, URLs, account identifiers, and
+ * error text. It measures outbox action surface without recording user data.
+ */
+export function recordSocialOutboxAttempt(input: {
+  provider: string;
+  action: "like" | "seen";
+  attempt: number;
+  maxAttempts: number;
+}): void {
+  recordRuntimeHealthEvent({ event: "social_outbox_attempt", ...input });
+}
+
+/** Aggregate group discovery changes without recording group or account data. */
+export function recordFacebookGroupDiscoveryUpdate(input: {
+  source: FacebookGroupDiscoverySource;
+  observedCount: number;
+  storedCount: number;
+  changedCount: number;
+  removedCount: number;
+}): void {
+  recordRuntimeHealthEvent({ event: "facebook_group_discovery_update", ...input });
+}
+
+/** One privacy-safe event immediately before each RSS HTTP pull. */
+export function recordRssPullAttempt(input: { trigger: RssPullTrigger }): void {
+  recordRuntimeHealthEvent({ event: "rss_pull_attempt", ...input });
+}
+
+/** One privacy-safe event immediately before an AI provider request. */
+export function recordAiRequestAttempt(input: {
+  provider: "ollama" | "openai" | "anthropic" | "gemini";
+  purpose: "summarize" | "reachability";
+}): void {
+  recordRuntimeHealthEvent({ event: "ai_request_attempt", ...input });
+}
+
+/** One privacy-safe event immediately before an article page request. */
+export function recordReaderArticleFetchAttempt(input: {
+  source: "reader-open" | "background-cache";
+  pin?: boolean;
+}): void {
+  recordRuntimeHealthEvent({ event: "reader_article_fetch_attempt", ...input });
 }
 
 /**

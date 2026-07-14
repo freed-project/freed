@@ -64,7 +64,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     });
     useDebugStore.setState({
       docSnapshot: {
-        deviceId: "iphone",
+        documentId: "document-1",
         itemCount: 1,
         feedCount: 0,
         binarySize: 1536,

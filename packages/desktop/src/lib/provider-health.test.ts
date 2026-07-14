@@ -29,6 +29,7 @@ async function loadProviderHealthModule(options: { native?: boolean } = {}) {
 
   const nativeFiles = new Map<string, string>();
   const nativeWrites: Array<{ path: string; contents: string }> = [];
+  const nativeFs = { removeError: null as Error | null };
   const toastInfo = vi.fn();
   const openTo = vi.fn();
   const storeState = createMockAppState();
@@ -48,6 +49,10 @@ async function loadProviderHealthModule(options: { native?: boolean } = {}) {
     writeTextFile: vi.fn(async (path: string, contents: string) => {
       nativeWrites.push({ path, contents });
       nativeFiles.set(path, contents);
+    }),
+    remove: vi.fn(async (path: string) => {
+      if (nativeFs.removeError) throw nativeFs.removeError;
+      if (!nativeFiles.delete(path)) throw new Error(`ENOENT: ${path}`);
     }),
     rename: vi.fn(async (oldPath: string, newPath: string) => {
       const value = nativeFiles.get(oldPath);
@@ -90,6 +95,7 @@ async function loadProviderHealthModule(options: { native?: boolean } = {}) {
   return {
     mod,
     nativeFiles,
+    nativeFs,
     nativeWrites,
     toastInfo,
     openTo,
@@ -223,6 +229,52 @@ describe("provider health", () => {
     const provider = debugStore.useDebugStore.getState().health?.providers.x;
     expect(provider?.lastOutcome).toBe("error");
     expect(provider?.lastError).toBe("Rate limit exceeded");
+  });
+
+  it("clears native provider history and publishes an empty health snapshot", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, nativeFiles, debugStore } = await loadProviderHealthModule({ native: true });
+    await mod.recordProviderHealthEvent({
+      provider: "x",
+      outcome: "error",
+      reason: "Stored provider failure",
+      finishedAt: now.getTime(),
+    });
+    expect(nativeFiles.has("/mock/app-data/sync-health.json")).toBe(true);
+
+    await mod.clearProviderHealth();
+
+    expect(nativeFiles.has("/mock/app-data/sync-health.json")).toBe(false);
+    expect(window.localStorage.getItem("freed.provider-health")).toBeNull();
+    expect(
+      window.localStorage.getItem("__TAURI_MOCK_STORE__:sync-health.json"),
+    ).toBeNull();
+    expect(debugStore.useDebugStore.getState().health?.providers.x.status).toBe("idle");
+    expect(debugStore.useDebugStore.getState().health?.providers.x.latestAttempts).toEqual([]);
+  });
+
+  it("rejects provider-health clearing when the native file cannot be removed", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, nativeFiles, nativeFs, debugStore } = await loadProviderHealthModule({ native: true });
+    await mod.recordProviderHealthEvent({
+      provider: "x",
+      outcome: "error",
+      reason: "Keep this failure",
+      finishedAt: now.getTime(),
+    });
+    const error = new Error("provider health file is not writable");
+    nativeFs.removeError = error;
+
+    await expect(mod.clearProviderHealth()).rejects.toBe(error);
+
+    expect(nativeFiles.has("/mock/app-data/sync-health.json")).toBe(true);
+    expect(debugStore.useDebugStore.getState().health?.providers.x.status).toBe("degraded");
   });
 
   it("compacts retained RSS feed attempts before writing diagnostics", async () => {

@@ -10,6 +10,7 @@ const addDebugEventMock = vi.fn();
 const updateCloudProviderMock = vi.fn();
 const recordCloudProviderEventMock = vi.fn();
 const subscribeMock = vi.fn();
+const compareDocMock = vi.fn();
 
 vi.mock("@freed/sync/cloud", () => ({
   gdriveDownloadLatest: gdriveDownloadLatestMock,
@@ -23,6 +24,7 @@ vi.mock("@freed/sync/cloud", () => ({
 }));
 
 vi.mock("./automerge", () => ({
+  compareDoc: compareDocMock,
   getDocBinary: getDocBinaryMock,
   initDoc: initDocMock,
   mergeDoc: mergeDocMock,
@@ -51,6 +53,8 @@ describe("PWA cloud sync auth refresh", () => {
     recordCloudProviderEventMock.mockReset();
     subscribeMock.mockReset();
     subscribeMock.mockReturnValue(vi.fn());
+    compareDocMock.mockReset();
+    compareDocMock.mockResolvedValue("equal");
     localStorage.clear();
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       access_token: "refreshed-access-token",

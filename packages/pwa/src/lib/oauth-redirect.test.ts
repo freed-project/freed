@@ -1,13 +1,19 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createGoogleOAuthRelayTarget,
   createGoogleOAuthState,
+  clearPwaOAuthSessionState,
   getGoogleOAuthRedirectUri,
   getOAuthCallbackUri,
 } from "./oauth-redirect";
 
 describe("OAuth redirect helpers", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    vi.restoreAllMocks();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -59,5 +65,30 @@ describe("OAuth redirect helpers", () => {
     expect(getOAuthCallbackUri("https://preview-aubreyfs-projects.vercel.app")).toBe(
       "https://preview-aubreyfs-projects.vercel.app/oauth-callback",
     );
+  });
+
+  it("clears every pending OAuth handoff value during factory reset", () => {
+    window.sessionStorage.setItem("freed_pkce_provider", "gdrive");
+    window.sessionStorage.setItem("freed_pkce_verifier", "secret-verifier");
+    window.sessionStorage.setItem(
+      "freed_pkce_google_redirect_uri",
+      "https://app.freed.wtf/oauth-callback",
+    );
+    window.sessionStorage.setItem("unrelated", "keep-me");
+
+    clearPwaOAuthSessionState();
+
+    expect(window.sessionStorage.getItem("freed_pkce_provider")).toBeNull();
+    expect(window.sessionStorage.getItem("freed_pkce_verifier")).toBeNull();
+    expect(window.sessionStorage.getItem("freed_pkce_google_redirect_uri")).toBeNull();
+    expect(window.sessionStorage.getItem("unrelated")).toBe("keep-me");
+  });
+
+  it("propagates OAuth session removal failures", () => {
+    vi.spyOn(window, "sessionStorage", "get").mockImplementation(() => {
+      throw new Error("session storage unavailable");
+    });
+
+    expect(() => clearPwaOAuthSessionState()).toThrow("session storage unavailable");
   });
 });

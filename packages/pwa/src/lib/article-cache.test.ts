@@ -1,13 +1,30 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cacheArticleHtml,
+  clearArticleCacheStorage,
   collectCacheableArticleImageUrls,
   getCachedArticleHtml,
   warmArticleImageCache,
 } from "@freed/ui/lib/article-cache";
+import {
+  resetFactoryResetStateForTests,
+  runFactoryResetOperations,
+} from "@freed/ui/lib/factory-reset";
+
+function runEmptyReset(): Promise<void> {
+  return runFactoryResetOperations({
+    quiesceLocalWriters: [],
+    clearDeviceStores: () => [],
+    clearLocalSettings: [],
+    clearLocalData: [],
+    clearProviderDataAndConnections: async () => undefined,
+    clearDocument: async () => undefined,
+  });
+}
 
 describe("article cache helpers", () => {
   afterEach(() => {
+    resetFactoryResetStateForTests();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -116,5 +133,101 @@ describe("article cache helpers", () => {
       "https://example.com/needs-cache.jpg",
       expect.any(Response),
     );
+  });
+
+  it("clears every mutable cache while preserving the Workbox app shell", async () => {
+    const deleteCache = vi
+      .fn<(cacheName: string) => Promise<boolean>>()
+      .mockResolvedValue(true);
+    const keys = vi.fn(async () => [
+      "workbox-precache-v2-https://app.freed.wtf/",
+      "freed-articles-v1",
+      "freed-sync-v1",
+      "freed-network",
+      "freed-wasm",
+      "future-user-data-cache",
+    ]);
+    vi.stubGlobal("caches", { delete: deleteCache, keys });
+
+    await clearArticleCacheStorage();
+
+    expect(new Set(deleteCache.mock.calls.map(([cacheName]) => cacheName))).toEqual(new Set([
+      "freed-articles-v1",
+      "freed-articles-pinned-v1",
+      "freed-images",
+      "freed-sync-v1",
+      "freed-network",
+      "freed-wasm",
+      "future-user-data-cache",
+    ]));
+    expect(deleteCache).not.toHaveBeenCalledWith(
+      "workbox-precache-v2-https://app.freed.wtf/",
+    );
+  });
+
+  it("does not commit delayed article HTML after factory reset starts", async () => {
+    const put = vi.fn(async () => undefined);
+    let finishOpen!: (cache: { put: typeof put }) => void;
+    const open = vi.fn(() => new Promise<{ put: typeof put }>((resolve) => {
+      finishOpen = resolve;
+    }));
+    vi.stubGlobal("caches", { open });
+
+    const write = cacheArticleHtml(
+      "https://example.com/delayed",
+      "saved:delayed",
+      "<article>Delayed</article>",
+    );
+    const reset = runEmptyReset();
+    finishOpen({ put });
+
+    await write;
+    await reset;
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it("drains a delayed cache lookup without reopening caches after reset starts", async () => {
+    const match = vi.fn(async () => undefined);
+    let finishOpen!: (cache: { match: typeof match }) => void;
+    const open = vi.fn(() => new Promise<{ match: typeof match }>((resolve) => {
+      finishOpen = resolve;
+    }));
+    vi.stubGlobal("caches", { open });
+
+    const lookup = getCachedArticleHtml("saved:delayed-read");
+    const reset = runEmptyReset();
+    finishOpen({ match });
+
+    await expect(lookup).resolves.toBeNull();
+    await reset;
+    expect(open).toHaveBeenCalledOnce();
+    expect(match).not.toHaveBeenCalled();
+  });
+
+  it("does not commit delayed article images after factory reset starts", async () => {
+    let finishFetch!: (response: Response) => void;
+    const put = vi.fn(async () => undefined);
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => {
+      finishFetch = resolve;
+    }));
+    vi.stubGlobal("caches", {
+      open: vi.fn(async () => ({
+        match: vi.fn(async () => undefined),
+        put,
+      })),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const warming = warmArticleImageCache(
+      '<img src="https://example.com/delayed.jpg" />',
+      "https://example.com/article",
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const reset = runEmptyReset();
+    finishFetch(new Response("image"));
+
+    await warming;
+    await reset;
+    expect(put).not.toHaveBeenCalled();
   });
 });

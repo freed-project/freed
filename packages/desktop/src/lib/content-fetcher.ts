@@ -25,14 +25,20 @@ import { contentCache } from "./content-cache.js";
 import { docUpdateFeedItem, subscribe } from "./automerge.js";
 import { useAppStore } from "./store.js";
 import { summarize } from "./ai-summarizer.js";
+import { recordReaderArticleFetchAttempt } from "./runtime-health-events.js";
 import { secureStorage } from "./secure-storage.js";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import {
+  DEFAULT_OLLAMA_URL,
+  getDeviceAIPreferences,
+} from "@freed/ui/lib/device-ai-preferences";
 import { log } from "./logger.js";
 import { toSyncedPreservedText } from "./preserved-text.js";
 import {
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
 } from "./background-runtime-coordinator.js";
+import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const AI_SUMMARY_TIMEOUT_MS = 60_000;
@@ -50,6 +56,7 @@ const UI_DEFER_DELAY_MS = 15_000;
 const CONTENT_FETCH_MEMORY_DEFER_MS = 5 * 60_000;
 const CONTENT_FETCH_WEBKIT_FOOTPRINT_DEFER_BYTES = 512 * 1024 * 1024;
 const CONTENT_FETCH_WEBKIT_RESIDENT_DEFER_BYTES = 768 * 1024 * 1024;
+const FACTORY_RESET_DRAIN_TIMEOUT_MS = 180_000;
 
 interface ContentFetcherOptions {
   startupDelayMs?: number;
@@ -110,6 +117,15 @@ let lastUserInteractionAt = 0;
 let removeUserInteractionListeners: (() => void) | null = null;
 let memoryGuardEnabled = false;
 let startupDelayUntil = 0;
+let factoryResetDrainInProgress = false;
+const activeResetSensitiveOperations = new Set<Promise<unknown>>();
+
+function trackResetSensitiveOperation<T>(operation: Promise<T>): Promise<T> {
+  let tracked: Promise<T>;
+  tracked = operation.finally(() => activeResetSensitiveOperations.delete(tracked));
+  activeResetSensitiveOperations.add(tracked);
+  return tracked;
+}
 
 // Status subscribers
 type StatusSubscriber = (status: FetcherStatus) => void;
@@ -229,6 +245,7 @@ function hasRecentFailure(globalId: string, now = Date.now()): boolean {
  * Skips items already queued, already failed, or that already have content.
  */
 export function enqueue(items: FeedItem[], options: EnqueueOptions = {}): void {
+  if (factoryResetDrainInProgress) return;
   const newEntries = newStubItems(items, { force: options.force });
   if (options.reopenSaveDialogOnError) {
     for (const entry of newEntries) {
@@ -251,12 +268,19 @@ export function enqueue(items: FeedItem[], options: EnqueueOptions = {}): void {
   }
 }
 
-export async function pinReaderItem(item: FeedItem): Promise<void> {
+async function pinReaderItemInternal(item: FeedItem): Promise<void> {
   const url = item.content.linkPreview?.url;
   await contentCache.set(item.globalId, renderItemReaderHtml(item));
   if (url) {
     enqueue([item], { priority: true, force: true });
   }
+}
+
+export function pinReaderItem(item: FeedItem): Promise<void> {
+  if (factoryResetDrainInProgress) {
+    return Promise.reject(new Error("Content fetcher is being reset"));
+  }
+  return trackResetSensitiveOperation(pinReaderItemInternal(item));
 }
 
 function maybeScanVisibleItems(items: FeedItem[], docItemCount: number): void {
@@ -469,7 +493,7 @@ async function runWorkerOnce(): Promise<void> {
       kind: "content-fetch",
       source: "content-fetcher",
       timeoutMs: 180_000,
-      run: processNext,
+      run: () => trackResetSensitiveOperation(processNext()),
     });
   } catch (err) {
     if (isBackgroundRuntimeDeferredError(err)) {
@@ -512,6 +536,7 @@ async function processNext(): Promise<ProcessOutcome> {
     // Fetch HTML via Tauri IPC (bypasses CORS, uses native HTTP).
     // Race against a 30s timeout so a stalled network request on a sleeping
     // machine can't freeze the interval forever.
+    recordReaderArticleFetchAttempt({ source: "background-cache" });
     const html = await Promise.race([
       invoke<string>("fetch_url", { url: entry.url, maxBytes: MAX_BACKGROUND_HTML_BYTES }),
       new Promise<never>((_, reject) =>
@@ -529,7 +554,15 @@ async function processNext(): Promise<ProcessOutcome> {
     await contentCache.set(entry.globalId, content.html);
 
     // Get current AI preferences from the store (worker keeps preferences in sync)
-    const prefs = (useAppStore.getState().preferences as { ai?: AIPreferences })?.ai;
+    const syncedPrefs = (useAppStore.getState().preferences as { ai?: AIPreferences })?.ai;
+    const deviceAI = getDeviceAIPreferences();
+    const prefs = syncedPrefs
+      ? {
+          ...syncedPrefs,
+          ...deviceAI,
+          ollamaUrl: deviceAI.ollamaUrl.trim() || DEFAULT_OLLAMA_URL,
+        }
+      : undefined;
 
     // Keep the synced document small. Full article HTML already lives in the
     // device-local cache, so Automerge only needs a compact fallback excerpt.
@@ -689,6 +722,17 @@ export function stop(): void {
   lastUserInteractionAt = 0;
 
   log.info("[content-fetcher] stopped");
+}
+
+/** Stop future work and wait for every cache or document write already in flight. */
+export async function stopAndDrain(): Promise<void> {
+  factoryResetDrainInProgress = true;
+  stop();
+  await waitForFactoryResetDrain(
+    () => Array.from(activeResetSensitiveOperations),
+    "Content fetcher",
+    FACTORY_RESET_DRAIN_TIMEOUT_MS,
+  );
 }
 
 /** Get current fetcher status without subscribing */

@@ -7,7 +7,7 @@ const {
   mockReplaceLocalDoc,
   subscribers,
 } = vi.hoisted(() => ({
-  mockDocBinary: vi.fn<() => Uint8Array>(),
+  mockDocBinary: vi.fn<() => Uint8Array | Promise<Uint8Array>>(),
   mockDocState: vi.fn(),
   mockReplaceLocalDoc: vi.fn<(binary: Uint8Array) => Promise<void>>(),
   subscribers: new Set<() => void>(),
@@ -38,6 +38,7 @@ vi.mock("./automerge", () => ({
 }));
 
 import { exists, readDir, remove, writeFile } from "@tauri-apps/plugin-fs";
+import * as fs from "@tauri-apps/plugin-fs";
 import {
   clearSnapshots,
   createSnapshot,
@@ -133,6 +134,92 @@ describe("snapshots", () => {
     const restored = JSON.parse(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY) ?? "{}");
     expect(restored.cachedContacts).toHaveLength(1);
     expect(restored.pendingMatches).toHaveLength(1);
+  });
+
+  it("waits for an in-flight snapshot before clearing local history", async () => {
+    const originalWriteFile = fs.writeFile;
+    let releaseWrite!: () => void;
+    const writeGate = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const write = vi.spyOn(fs, "writeFile").mockImplementationOnce(
+      async (...args: Parameters<typeof fs.writeFile>) => {
+        await writeGate;
+        await originalWriteFile(...args);
+      },
+    );
+
+    const creating = createSnapshot("manual");
+    await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
+    const cleared = vi.fn();
+    const clearing = clearSnapshots().then(cleared);
+    await Promise.resolve();
+    expect(cleared).not.toHaveBeenCalled();
+
+    releaseWrite();
+    await creating;
+    await clearing;
+
+    await expect(listSnapshots()).resolves.toEqual([]);
+  });
+
+  it("waits for an in-flight restore before clearing snapshot history", async () => {
+    const snapshot = await createSnapshot("manual");
+    expect(snapshot).not.toBeNull();
+    let releaseRestore!: () => void;
+    const restoreGate = new Promise<void>((resolve) => {
+      releaseRestore = resolve;
+    });
+    mockReplaceLocalDoc.mockImplementationOnce(async () => {
+      await restoreGate;
+    });
+
+    const restoring = restoreSnapshot(snapshot!.id);
+    await vi.waitFor(() => expect(mockReplaceLocalDoc).toHaveBeenCalledOnce());
+    const cleared = vi.fn();
+    const clearing = clearSnapshots().then(cleared);
+    await Promise.resolve();
+    expect(cleared).not.toHaveBeenCalled();
+
+    releaseRestore();
+    await restoring;
+    await clearing;
+    await expect(listSnapshots()).resolves.toEqual([]);
+  });
+
+  it("allows snapshot writes after a failed clear", async () => {
+    await createSnapshot("manual");
+    const error = new Error("snapshot directory is not writable");
+    vi.spyOn(fs, "remove").mockRejectedValueOnce(error);
+
+    await expect(clearSnapshots()).rejects.toBe(error);
+    await expect(createSnapshot("manual")).resolves.toEqual(
+      expect.objectContaining({ reason: "manual" }),
+    );
+  });
+
+  it("times out a stuck snapshot operation and releases the reset gate", async () => {
+    vi.useFakeTimers();
+    let releaseSnapshot!: () => void;
+    mockDocBinary.mockImplementationOnce(() => new Promise<Uint8Array>((resolve) => {
+      releaseSnapshot = () => resolve(new Uint8Array([1, 2, 3, 4]));
+    }));
+
+    const creating = createSnapshot("manual");
+    await vi.runAllTicks();
+    const clearing = clearSnapshots();
+    const rejection = expect(clearing).rejects.toThrow(
+      "Snapshot operations did not stop within 180,000 ms.",
+    );
+    await vi.advanceTimersByTimeAsync(180_000);
+    await rejection;
+
+    releaseSnapshot();
+    await creating;
+    mockDocBinary.mockReturnValue(new Uint8Array([1, 2, 3, 4]));
+    await expect(createSnapshot("manual")).resolves.toEqual(
+      expect.objectContaining({ reason: "manual" }),
+    );
   });
 
   it("prunes older snapshots beyond the retention window", async () => {

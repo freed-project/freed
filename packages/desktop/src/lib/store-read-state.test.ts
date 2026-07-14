@@ -181,6 +181,44 @@ describe("store read-state batching", () => {
     });
   });
 
+  it("drains an in-flight provider capture before reset cleanup begins", async () => {
+    const { quiesceDesktopStoreForFactoryReset, withProviderSyncing } =
+      await loadStoreModule();
+    let releaseCapture!: () => void;
+    const captureGate = new Promise<void>((resolve) => {
+      releaseCapture = resolve;
+    });
+    const captureSettled = vi.fn();
+    const capturing = withProviderSyncing("facebook", async () => {
+      await captureGate;
+      captureSettled();
+    });
+    await Promise.resolve();
+
+    const cleanupStarted = vi.fn();
+    const quiescing = quiesceDesktopStoreForFactoryReset().then(cleanupStarted);
+    await Promise.resolve();
+    expect(cleanupStarted).not.toHaveBeenCalled();
+
+    releaseCapture();
+    await capturing;
+    await quiescing;
+    expect(captureSettled.mock.invocationCallOrder[0]).toBeLessThan(
+      cleanupStarted.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+  });
+
+  it("drops queued read marks when reset quiescence starts", async () => {
+    const { quiesceDesktopStoreForFactoryReset, useAppStore } =
+      await loadStoreModule();
+
+    await useAppStore.getState().markAsRead("item-never-written");
+    await quiesceDesktopStoreForFactoryReset();
+    await vi.advanceTimersByTimeAsync(READ_MARK_BATCH_DELAY_MS_FOR_TESTS);
+
+    expect(mockDocMarkItemsAsRead).not.toHaveBeenCalled();
+  });
+
   it("clears provider sync activity when the provider task throws", async () => {
     const { withProviderSyncing } = await loadStoreModule();
     const { useBackgroundActivityStore } = await import("@freed/ui/lib/background-activity-store");

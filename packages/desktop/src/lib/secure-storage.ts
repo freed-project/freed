@@ -12,7 +12,7 @@
 import { Store, load } from "@tauri-apps/plugin-store";
 import { scheduleSideEffect } from "./side-effect-scheduler";
 
-type ApiKeyProvider = "openai" | "anthropic" | "gemini";
+type ApiKeyProvider = "openai" | "anthropic" | "gemini" | "github_story_wall";
 
 // Singleton store instance -- lazy-initialized on first use
 let _store: Store | null = null;
@@ -70,6 +70,20 @@ export const secureStorage = {
       run: async () => {
         const store = await getStore();
         await store.delete(`apiKey.${provider}`);
+      },
+    });
+  },
+
+  /** Remove every credential from the encrypted device-local store. */
+  async clearAllCredentials(): Promise<void> {
+    await scheduleSideEffect({
+      queue: "nativeStore",
+      source: "secure-storage",
+      kind: "clearAllCredentials",
+      run: async () => {
+        const store = await getStore();
+        await store.clear();
+        await store.save();
       },
     });
   },

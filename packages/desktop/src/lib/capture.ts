@@ -28,7 +28,16 @@ import {
   type RssRefreshPlanOptions,
 } from "./rss-refresh-plan";
 import { isRuntimeDeferredStage } from "./social-capture-runtime";
-import type { SocialScrapeTrigger } from "./runtime-health-events";
+import {
+  recordRssPullAttempt,
+  type RssPullTrigger,
+  type SocialScrapeTrigger,
+} from "./runtime-health-events";
+import {
+  setRssRuntimeState,
+  withRssRuntimeState,
+  withRssRuntimeStates,
+} from "./rss-runtime-state";
 
 export type SocialProviderRefreshStatus =
   | "success"
@@ -76,7 +85,11 @@ interface FetchedFeed {
  * Returns feed-level metadata alongside items so the refresh pipeline can heal
  * "Untitled Feed" sentinels even when the feed currently has zero items.
  */
-async function fetchRssFeed(feedUrl: string): Promise<FetchedFeed> {
+async function fetchRssFeed(
+  feedUrl: string,
+  trigger: RssPullTrigger,
+): Promise<FetchedFeed> {
+  recordRssPullAttempt({ trigger });
   const xml = await fetchUrl(feedUrl);
   const parsed = await parseFeedXml(xml, feedUrl);
   return {
@@ -96,6 +109,7 @@ export async function addRssFeed(feedUrl: string): Promise<void> {
   store.setError(null);
 
   try {
+    recordRssPullAttempt({ trigger: "subscription" });
     const xml = await fetchUrl(feedUrl);
     const parsed = await parseFeedXml(xml, feedUrl);
 
@@ -149,24 +163,26 @@ function nextFailedFeedRetryMs(feed: RssFeed): number {
 }
 
 function markFeedFetchSucceeded(feed: RssFeed, now: number): RssFeed {
-  return {
-    ...feed,
-    lastFetched: now,
+  setRssRuntimeState(feed.url, {
     lastFetchAttemptedAt: now,
     nextFetchAfter: 0,
     consecutiveFailures: 0,
     lastFetchError: "",
+  });
+  return {
+    ...feed,
+    lastFetched: now,
   };
 }
 
-function markFeedFetchFailed(feed: RssFeed, message: string, now: number): RssFeed {
-  return {
-    ...feed,
+function markFeedFetchFailed(feed: RssFeed, message: string, now: number): void {
+  const runtimeFeed = withRssRuntimeState(feed);
+  setRssRuntimeState(feed.url, {
     lastFetchAttemptedAt: now,
-    nextFetchAfter: now + nextFailedFeedRetryMs(feed),
-    consecutiveFailures: (feed.consecutiveFailures ?? 0) + 1,
+    nextFetchAfter: now + nextFailedFeedRetryMs(runtimeFeed),
+    consecutiveFailures: (runtimeFeed.consecutiveFailures ?? 0) + 1,
     lastFetchError: message.slice(0, 500),
-  };
+  });
 }
 
 function shouldRetrySocialStage(stage: string | null): boolean {
@@ -353,6 +369,7 @@ function summarizeSocialRefreshResult(
 async function refreshEnabledRssFeeds(
   store: ReturnType<typeof useAppStore.getState>,
   feeds: RssFeed[],
+  trigger: Extract<RssPullTrigger, "manual" | "scheduled">,
 ): Promise<void> {
   if (feeds.length === 0) return;
   try {
@@ -373,6 +390,7 @@ async function refreshEnabledRssFeeds(
           batch.map(async (feed) => {
             const { items, liveTitle, liveSiteUrl } = await fetchRssFeed(
               feed.url,
+              trigger,
             );
             const isUntitled =
               feed.title === "Untitled Feed" || feed.title === feed.url;
@@ -434,7 +452,7 @@ async function refreshEnabledRssFeeds(
             addDebugEvent("error", `[RSS] feed fetch failed: ${msg}`);
             const failedFeed = batch[resultIndex];
             if (failedFeed) {
-              feedUpdates.push(markFeedFetchFailed(failedFeed, msg, Date.now()));
+              markFeedFetchFailed(failedFeed, msg, Date.now());
               await recordProviderHealthEvent({
                 provider: "rss",
                 scope: "rss_feed",
@@ -516,15 +534,18 @@ export async function refreshRssFeeds(
     return;
   }
   const store = useAppStore.getState();
-  const enabledFeeds = Object.values(store.feeds).filter((f) => f.enabled);
-  const feeds = selectRssFeedsForRefresh(enabledFeeds, options);
+  const enabledFeeds = withRssRuntimeStates(Object.values(store.feeds).filter((f) => f.enabled));
+  const feeds = selectRssFeedsForRefresh(enabledFeeds, {
+    ...options,
+    respectRetryWindow: false,
+  });
   if (feeds.length === 0) return;
 
   store.setSyncing(true);
   store.setError(null);
 
   try {
-    await refreshEnabledRssFeeds(store, feeds);
+    await refreshEnabledRssFeeds(store, feeds, "manual");
   } finally {
     store.setSyncing(false);
   }
@@ -544,8 +565,11 @@ export async function refreshAllFeeds(
     return;
   }
   const store = useAppStore.getState();
-  const enabledFeeds = Object.values(store.feeds).filter((f) => f.enabled);
-  const feeds = selectRssFeedsForRefresh(enabledFeeds, options);
+  const enabledFeeds = withRssRuntimeStates(Object.values(store.feeds).filter((f) => f.enabled));
+  const feeds = selectRssFeedsForRefresh(enabledFeeds, {
+    ...options,
+    respectRetryWindow: true,
+  });
   const tauriAvailable = isTauri();
   const hasNativeSocialRefresh =
     tauriAvailable &&
@@ -561,7 +585,7 @@ export async function refreshAllFeeds(
   store.setError(null);
 
   try {
-    await refreshEnabledRssFeeds(store, feeds);
+    await refreshEnabledRssFeeds(store, feeds, "scheduled");
 
     // ── X timeline ────────────────────────────────────────────────────────────
     // Always runs, fully independent of RSS outcome.

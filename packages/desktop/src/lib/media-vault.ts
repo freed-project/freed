@@ -4,10 +4,15 @@ import {
   exists,
   mkdir,
   readTextFile,
+  remove,
   writeFile,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
 import type { FeedItem } from "@freed/shared";
+import {
+  isFactoryResetInProgress,
+  waitForFactoryResetDrain,
+} from "@freed/ui/lib/factory-reset";
 
 export type MediaVaultProvider = "facebook" | "instagram";
 export type MediaVaultImportSource = "meta_export" | "profile_backfill" | "continuous";
@@ -95,10 +100,25 @@ export interface MediaVaultCandidate {
 const MANIFEST_FILE = "manifest.json";
 const MANIFEST_VERSION = 1;
 const MAX_RETRY_DELAY_MS = 24 * 60 * 60 * 1000;
+const FACTORY_RESET_DRAIN_TIMEOUT_MS = 180_000;
 const PROVIDERS: MediaVaultProvider[] = ["facebook", "instagram"];
 
 let rootDirCache: string | null = null;
+let resetInProgress = false;
+const activeMutations = new Set<Promise<unknown>>();
 const listeners = new Set<() => void>();
+
+function runMutation<T>(operation: () => Promise<T>): Promise<T> {
+  if (resetInProgress || isFactoryResetInProgress()) {
+    return Promise.reject(new Error("Media vault is being reset"));
+  }
+  let tracked: Promise<T>;
+  tracked = Promise.resolve()
+    .then(operation)
+    .finally(() => activeMutations.delete(tracked));
+  activeMutations.add(tracked);
+  return tracked;
+}
 
 function defaultProviderState(): MediaVaultProviderState {
   return {
@@ -151,12 +171,17 @@ function joinPath(base: string, ...parts: string[]): string {
   return cleaned.filter(Boolean).join("/");
 }
 
-async function getMediaVaultRootDir(): Promise<string> {
+async function resolveMediaVaultRootDir(): Promise<string> {
   if (rootDirCache) return rootDirCache;
   const dataDir = await appDataDir();
   rootDirCache = joinPath(dataDir, "media-vault");
-  await mkdir(rootDirCache, { recursive: true });
   return rootDirCache;
+}
+
+async function getMediaVaultRootDir(): Promise<string> {
+  const rootDir = await resolveMediaVaultRootDir();
+  await mkdir(rootDir, { recursive: true });
+  return rootDir;
 }
 
 async function getManifestPath(): Promise<string> {
@@ -292,7 +317,7 @@ async function fetchMediaBytes(url: string): Promise<Uint8Array> {
   return new Uint8Array(await response.arrayBuffer());
 }
 
-export async function setMediaVaultEnabled(
+async function setMediaVaultEnabledInternal(
   provider: MediaVaultProvider,
   enabled: boolean,
 ): Promise<void> {
@@ -304,7 +329,14 @@ export async function setMediaVaultEnabled(
   await writeManifest(manifest);
 }
 
-export async function addMediaVaultOwnerHandle(
+export function setMediaVaultEnabled(
+  provider: MediaVaultProvider,
+  enabled: boolean,
+): Promise<void> {
+  return runMutation(() => setMediaVaultEnabledInternal(provider, enabled));
+}
+
+async function addMediaVaultOwnerHandleInternal(
   provider: MediaVaultProvider,
   handle: string | undefined,
 ): Promise<void> {
@@ -317,7 +349,16 @@ export async function addMediaVaultOwnerHandle(
   await writeManifest(manifest);
 }
 
-export async function archiveMediaVaultCandidate(candidate: MediaVaultCandidate): Promise<MediaVaultEntry | null> {
+export function addMediaVaultOwnerHandle(
+  provider: MediaVaultProvider,
+  handle: string | undefined,
+): Promise<void> {
+  return runMutation(() => addMediaVaultOwnerHandleInternal(provider, handle));
+}
+
+async function archiveMediaVaultCandidateInternal(
+  candidate: MediaVaultCandidate,
+): Promise<MediaVaultEntry | null> {
   const manifest = await readMediaVaultManifest();
   if (!manifest.providers[candidate.provider].enabled && candidate.importSource !== "meta_export") {
     return null;
@@ -400,6 +441,12 @@ export async function archiveMediaVaultCandidate(candidate: MediaVaultCandidate)
   }
 }
 
+export function archiveMediaVaultCandidate(
+  candidate: MediaVaultCandidate,
+): Promise<MediaVaultEntry | null> {
+  return runMutation(() => archiveMediaVaultCandidateInternal(candidate));
+}
+
 function mediaTypeAt(types: FeedItem["content"]["mediaTypes"], index: number): "image" | "video" | "unknown" {
   const type = types[index];
   return type === "image" || type === "video" ? type : "unknown";
@@ -416,7 +463,7 @@ function profileUrlFromItem(item: FeedItem): string | undefined {
   return undefined;
 }
 
-export async function upsertMediaVaultRosterFromItems(
+async function upsertMediaVaultRosterFromItemsInternal(
   provider: MediaVaultProvider,
   items: FeedItem[],
 ): Promise<void> {
@@ -459,7 +506,14 @@ export async function upsertMediaVaultRosterFromItems(
   if (changed) await writeManifest(manifest);
 }
 
-export async function archiveRecentProviderMedia(
+export function upsertMediaVaultRosterFromItems(
+  provider: MediaVaultProvider,
+  items: FeedItem[],
+): Promise<void> {
+  return runMutation(() => upsertMediaVaultRosterFromItemsInternal(provider, items));
+}
+
+async function archiveRecentProviderMediaInternal(
   provider: MediaVaultProvider,
   items: FeedItem[],
   importSource: MediaVaultImportSource = "continuous",
@@ -498,6 +552,14 @@ export async function archiveRecentProviderMedia(
   return archived;
 }
 
+export function archiveRecentProviderMedia(
+  provider: MediaVaultProvider,
+  items: FeedItem[],
+  importSource: MediaVaultImportSource = "continuous",
+): Promise<number> {
+  return runMutation(() => archiveRecentProviderMediaInternal(provider, items, importSource));
+}
+
 export async function summarizeMediaVault(provider: MediaVaultProvider): Promise<MediaVaultSummary> {
   const manifest = await readMediaVaultManifest();
   const entries = Object.values(manifest.entries).filter((entry) => entry.provider === provider);
@@ -511,6 +573,26 @@ export async function summarizeMediaVault(provider: MediaVaultProvider): Promise
     failureCount,
     ownerHandles: manifest.providers[provider].ownerHandles,
   };
+}
+
+/** Permanently remove the local media archive and its manifest. */
+export async function clearMediaVault(): Promise<void> {
+  resetInProgress = true;
+  try {
+    await waitForFactoryResetDrain(
+      () => Array.from(activeMutations),
+      "Media vault operations",
+      FACTORY_RESET_DRAIN_TIMEOUT_MS,
+    );
+    const rootDir = await resolveMediaVaultRootDir();
+    if (await exists(rootDir)) {
+      await remove(rootDir, { recursive: true });
+    }
+  } finally {
+    rootDirCache = null;
+    resetInProgress = false;
+  }
+  notify();
 }
 
 export function subscribeMediaVault(listener: () => void): () => void {

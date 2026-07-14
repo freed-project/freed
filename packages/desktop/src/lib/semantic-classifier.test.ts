@@ -3,9 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 async function loadSemanticClassifierModule({
   enabled,
   summary = { updated: 1, remaining: 0, total: 28_349 },
+  backfillImpl,
 }: {
   enabled: { current: boolean };
   summary?: { updated: number; remaining: number; total: number };
+  backfillImpl?: () => Promise<{ updated: number; remaining: number; total: number }>;
 }) {
   vi.resetModules();
 
@@ -18,7 +20,9 @@ async function loadSemanticClassifierModule({
     model: null,
     preferences: null,
   };
-  const mockDocBackfillContentSignals = vi.fn(async () => summary);
+  const mockDocBackfillContentSignals = vi.fn(
+    backfillImpl ?? (async () => summary),
+  );
   const mockUpdateHealth = vi.fn(async () => undefined);
   const mockListModels = vi.fn(async () => [
     {
@@ -89,6 +93,40 @@ describe("semantic classifier", () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     vi.resetModules();
+  });
+
+  it("drains an in-flight document backfill before reset cleanup begins", async () => {
+    vi.useFakeTimers();
+    let releaseWrite!: () => void;
+    const writeGate = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const writeSettled = vi.fn();
+    const enabled = { current: true };
+    const { mockDocBackfillContentSignals, mod } =
+      await loadSemanticClassifierModule({
+        enabled,
+        backfillImpl: async () => {
+          await writeGate;
+          writeSettled();
+          return { updated: 1, remaining: 0, total: 1 };
+        },
+      });
+
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+    expect(mockDocBackfillContentSignals).toHaveBeenCalledOnce();
+
+    const cleanupStarted = vi.fn();
+    const draining = mod.stopAndDrain().then(cleanupStarted);
+    await Promise.resolve();
+    expect(cleanupStarted).not.toHaveBeenCalled();
+
+    releaseWrite();
+    await draining;
+    expect(writeSettled).toHaveBeenCalledOnce();
+    expect(writeSettled.mock.invocationCallOrder[0]).toBeLessThan(
+      cleanupStarted.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
   });
 
   it("does not backfill or record health while workflow preferences are disabled", async () => {

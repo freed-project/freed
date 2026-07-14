@@ -16,6 +16,7 @@ import type {
   RssFeed,
   UserPreferences,
   DocumentMeta,
+  DesktopClientRegistration,
   FacebookCapturePreferences,
   ContentSignal,
   ContentSignalBackfillSummary,
@@ -25,6 +26,16 @@ import type {
   SampleDataClearSummary,
 } from "./types.js";
 import { createDefaultPreferences, createDefaultMeta } from "./types.js";
+import { stripDeviceLocalPreferenceUpdates } from "./preferences.js";
+import {
+  type ExhaustiveSyncWritePolicy,
+  sanitizeAccountWrite,
+  sanitizeDesktopClientRegistrationWrite,
+  sanitizeFeedItemWrite,
+  sanitizePersonWrite,
+  sanitizeReachOutLogWrite,
+  sanitizeRssFeedWrite,
+} from "./sync-write-policy.js";
 import { friendForAuthor, personForAuthor } from "./friends.js";
 import { hasSampleDataFingerprint } from "./sample-data.js";
 import {
@@ -66,6 +77,23 @@ export interface FreedDoc {
   meta: DocumentMeta;
 }
 
+/**
+ * Static synchronized roots. Desktop client registrations are the sole
+ * namespaced root exception and are admitted separately by their own policy.
+ */
+const FREED_DOC_WRITE_POLICY = {
+  feedItems: "nested",
+  rssFeeds: "nested",
+  persons: "nested",
+  accounts: "nested",
+  preferences: "nested",
+  meta: "nested",
+} as const satisfies ExhaustiveSyncWritePolicy<FreedDoc>;
+
+const STATIC_FREED_DOC_ROOT_KEYS = new Set<string>(
+  Object.keys(FREED_DOC_WRITE_POLICY),
+);
+
 // =============================================================================
 // Document Creation
 // =============================================================================
@@ -88,11 +116,19 @@ export function createEmptyDoc(): FreedDoc {
 }
 
 /**
- * Initialize document from existing data (for migrations)
+ * Rebuild a document from trusted compatibility data.
+ *
+ * This constructor deliberately retains roots the current client does not
+ * understand. It is only for data materialized from an already trusted Freed
+ * document, such as history compaction. New imports must use the schema write
+ * helpers so unknown input cannot enter the synchronized document.
  */
-export function createDocFromData(data: Partial<FreedDoc>): FreedDoc {
+export function createDocFromTrustedCompatibilityData(
+  data: Partial<FreedDoc>,
+): FreedDoc {
   const migrated = migrateLegacyIdentityData(data);
   const doc: FreedDoc = {
+    ...collectCompatibleRootEntries(data),
     feedItems: migrated.feedItems ?? {},
     rssFeeds: migrated.rssFeeds ?? {},
     persons: migrated.persons ?? {},
@@ -103,6 +139,99 @@ export function createDocFromData(data: Partial<FreedDoc>): FreedDoc {
   return A.from(
     doc as unknown as Record<string, unknown>
   ) as unknown as FreedDoc;
+}
+
+const DESKTOP_CLIENT_KEY_PREFIX = "desktopClient:";
+const LEGACY_MIGRATED_ROOT_KEYS = new Set(["friends"]);
+
+// Registrations use namespaced root keys at runtime so concurrent clients add
+// distinct Automerge map entries. They stay behind helpers instead of widening
+// every FreedDoc consumer with a string index signature.
+
+function desktopClientKey(id: string): `desktopClient:${string}` {
+  return `${DESKTOP_CLIENT_KEY_PREFIX}${id}`;
+}
+
+function isDesktopClientRegistration(value: unknown): value is DesktopClientRegistration {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Partial<DesktopClientRegistration>;
+  return (
+    typeof candidate.id === "string" &&
+    candidate.id.length > 0 &&
+    candidate.id.length <= 128 &&
+    typeof candidate.registeredAt === "number" &&
+    Number.isFinite(candidate.registeredAt) &&
+    candidate.registeredAt >= 0
+  );
+}
+
+function isDesktopClientRegistrationEntry(
+  key: string,
+  value: unknown,
+): value is DesktopClientRegistration {
+  return (
+    isDesktopClientRegistration(value) &&
+    key === desktopClientKey(value.id)
+  );
+}
+
+/**
+ * Preserve roots this client does not understand when rebuilding trusted data.
+ * Current writes remain restricted to the explicit schema helpers, but an
+ * older client must not erase fields created by a newer client during compaction.
+ */
+function collectCompatibleRootEntries(
+  data: Partial<FreedDoc>,
+): Record<string, unknown> {
+  const entries: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (STATIC_FREED_DOC_ROOT_KEYS.has(key)) continue;
+    if (LEGACY_MIGRATED_ROOT_KEYS.has(key)) continue;
+    if (
+      key.startsWith(DESKTOP_CLIENT_KEY_PREFIX) &&
+      !isDesktopClientRegistrationEntry(key, value)
+    ) {
+      continue;
+    }
+    entries[key] = value;
+  }
+  return entries;
+}
+
+/**
+ * Register one Freed Desktop installation with this synchronized library.
+ *
+ * The map is durable topology metadata used to warn about duplicate provider
+ * polling. It deliberately does not contain presence or last-seen timestamps.
+ */
+export function registerDesktopClient(
+  doc: FreedDoc,
+  registration: DesktopClientRegistration,
+): FreedDoc {
+  const synchronized = sanitizeDesktopClientRegistrationWrite(registration);
+  if (!isDesktopClientRegistration(synchronized)) return doc;
+  const key = desktopClientKey(synchronized.id);
+  const existing = (doc as unknown as Record<string, unknown>)[key];
+  if (isDesktopClientRegistrationEntry(key, existing)) return doc;
+
+  return A.change(doc, "Register Freed Desktop client", (draft) => {
+    const root = draft as unknown as Record<string, unknown>;
+    if (root[key] !== undefined) delete root[key];
+    root[key] = synchronized;
+  });
+}
+
+/** Return every valid Freed Desktop registration in this library. */
+export function getRegisteredDesktopClients(doc: FreedDoc): DesktopClientRegistration[] {
+  return Object.entries(doc)
+    .filter(([key, value]) => isDesktopClientRegistrationEntry(key, value))
+    .map(([, registration]) => registration as DesktopClientRegistration)
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** Return every Freed Desktop installation registered with this library. */
+export function getRegisteredDesktopClientIds(doc: FreedDoc): string[] {
+  return getRegisteredDesktopClients(doc).map((registration) => registration.id);
 }
 
 interface LegacyFriend {
@@ -121,9 +250,9 @@ interface LegacyFriend {
   updatedAt: number;
 }
 
-interface LegacyFreedDoc extends Partial<FreedDoc> {
+type LegacyFreedDoc = Partial<FreedDoc> & {
   friends?: Record<string, LegacyFriend>;
-}
+};
 
 function contactProviderForLegacyContact(contact: LegacyDeviceContact): Account["provider"] {
   switch (contact.importedFrom) {
@@ -697,6 +826,40 @@ function mergeSyncedTimestamp(left?: number, right?: number): number | undefined
   return Math.min(left, right);
 }
 
+function mergeLikedIntentState(
+  target: FeedItem["userState"],
+  source: FeedItem["userState"],
+): void {
+  const targetLikedAt = target.likedAt;
+  const sourceLikedAt = source.likedAt;
+  if (
+    Number.isFinite(targetLikedAt) &&
+    Number.isFinite(sourceLikedAt) &&
+    targetLikedAt !== sourceLikedAt
+  ) {
+    if ((sourceLikedAt as number) > (targetLikedAt as number)) {
+      target.likedAt = sourceLikedAt;
+      assignOptionalField(
+        target as unknown as Record<string, unknown>,
+        "likedSyncedAt",
+        source.likedSyncedAt,
+      );
+    }
+    return;
+  }
+
+  assignOptionalField(
+    target as unknown as Record<string, unknown>,
+    "likedAt",
+    mergeTimestamp(targetLikedAt, sourceLikedAt, "min"),
+  );
+  assignOptionalField(
+    target as unknown as Record<string, unknown>,
+    "likedSyncedAt",
+    mergeSyncedTimestamp(target.likedSyncedAt, source.likedSyncedAt),
+  );
+}
+
 function mergeUserState(target: FeedItem["userState"], source: FeedItem["userState"]): void {
   target.hidden = target.hidden || source.hidden;
   target.saved = target.saved || source.saved;
@@ -721,16 +884,7 @@ function mergeUserState(target: FeedItem["userState"], source: FeedItem["userSta
     "archivedAt",
     mergeTimestamp(target.archivedAt, source.archivedAt, "min"),
   );
-  assignOptionalField(
-    target as unknown as Record<string, unknown>,
-    "likedAt",
-    mergeTimestamp(target.likedAt, source.likedAt, "min"),
-  );
-  assignOptionalField(
-    target as unknown as Record<string, unknown>,
-    "likedSyncedAt",
-    mergeSyncedTimestamp(target.likedSyncedAt, source.likedSyncedAt),
-  );
+  mergeLikedIntentState(target, source);
   assignOptionalField(
     target as unknown as Record<string, unknown>,
     "seenSyncedAt",
@@ -758,8 +912,10 @@ function applyContentSignalsToItem(
   if (!target.scores) {
     target.scores = {};
   }
-  for (const key of Object.keys(target.scores) as ContentSignal[]) {
-    delete target.scores[key];
+  const knownSignals = new Set<string>(CONTENT_SIGNAL_KEYS);
+  const targetScores = target.scores as Record<string, number>;
+  for (const key of Object.keys(targetScores)) {
+    if (knownSignals.has(key)) delete targetScores[key];
   }
   for (const signal of CONTENT_SIGNAL_KEYS) {
     const score = clean.scores[signal];
@@ -771,7 +927,18 @@ function applyContentSignalsToItem(
   if (!target.tags) {
     target.tags = [];
   }
-  target.tags.splice(0, target.tags.length, ...clean.tags);
+  const futureTags = (target.tags as string[]).filter(
+    (tag) => !knownSignals.has(tag),
+  );
+  const nextTags = Array.from(new Set<string>([
+    ...clean.tags,
+    ...futureTags,
+  ]));
+  target.tags.splice(
+    0,
+    target.tags.length,
+    ...(nextTags as ContentSignal[]),
+  );
 }
 
 function isStrongerLocationSource(source: LocationSource | undefined): boolean {
@@ -904,7 +1071,11 @@ function mergeLinkPreview(target: FeedItem["content"], source: FeedItem["content
   }
 }
 
-function mergeFeedItemInto(target: FeedItem, source: FeedItem): void {
+function mergeFeedItemInto(
+  target: FeedItem,
+  source: FeedItem,
+  options: { preserveLegacyHtml?: boolean } = {},
+): void {
   target.capturedAt = Math.min(target.capturedAt, source.capturedAt);
   target.publishedAt = Math.min(target.publishedAt, source.publishedAt);
 
@@ -939,7 +1110,18 @@ function mergeFeedItemInto(target: FeedItem, source: FeedItem): void {
     target.fbGroup = stripUndefined(source.fbGroup);
   }
   if (!target.preservedContent && source.preservedContent) {
-    target.preservedContent = stripUndefined(source.preservedContent);
+    const preservedContent = stripUndefined(source.preservedContent);
+    if (!options.preserveLegacyHtml && "html" in preservedContent) {
+      delete preservedContent.html;
+    }
+    target.preservedContent = preservedContent;
+  } else if (
+    options.preserveLegacyHtml &&
+    target.preservedContent &&
+    !target.preservedContent.html &&
+    source.preservedContent?.html
+  ) {
+    target.preservedContent.html = source.preservedContent.html;
   }
   if (!target.sourceUrl && source.sourceUrl) {
     target.sourceUrl = source.sourceUrl;
@@ -1074,7 +1256,7 @@ export function deduplicateDocFeedItems(doc: FreedDoc): number {
       if (id === keepId) continue;
       const duplicate = doc.feedItems[id];
       if (!duplicate) continue;
-      mergeFeedItemInto(keeper, duplicate);
+      mergeFeedItemInto(keeper, duplicate, { preserveLegacyHtml: true });
       delete doc.feedItems[id];
       deleted += 1;
     }
@@ -1084,25 +1266,7 @@ export function deduplicateDocFeedItems(doc: FreedDoc): number {
 }
 
 function normalizePerson(person: Person): Person {
-  return stripUndefined({
-    id: person.id,
-    name: person.name,
-    avatarUrl: person.avatarUrl,
-    bio: person.bio,
-    relationshipStatus: person.relationshipStatus,
-    careLevel: person.careLevel,
-    reachOutIntervalDays: person.reachOutIntervalDays,
-    reachOutLog: person.reachOutLog,
-    tags: person.tags,
-    notes: person.notes,
-    graphX: person.graphX,
-    graphY: person.graphY,
-    graphPinned: person.graphPinned,
-    graphUpdatedAt: person.graphUpdatedAt,
-    sampleDataFingerprint: person.sampleDataFingerprint,
-    createdAt: person.createdAt,
-    updatedAt: person.updatedAt,
-  });
+  return stripUndefined(sanitizePersonWrite(person)) as Person;
 }
 
 export function clearSampleData(doc: FreedDoc): SampleDataClearSummary {
@@ -1165,7 +1329,7 @@ export function clearSampleData(doc: FreedDoc): SampleDataClearSummary {
  * @param item - The feed item to add
  */
 export function addFeedItem(doc: FreedDoc, item: FeedItem): void {
-  const next = stripUndefined({ ...item }) as FeedItem;
+  const next = stripUndefined(sanitizeFeedItemWrite(item)) as FeedItem;
   if (!hasCurrentContentSignals(next)) {
     applySemanticEnrichmentToItem(next);
   }
@@ -1190,17 +1354,47 @@ export function updateFeedItem(
 ): void {
   const existing = doc.feedItems[globalId];
   if (existing) {
-    const cleanUpdates = stripUndefined(updates);
+    const sanitizedUpdates = sanitizeFeedItemWrite(updates);
+    const cleanUpdates = stripUndefined(sanitizedUpdates);
+    const preservedContentUpdate = cleanUpdates.preservedContent;
+    delete cleanUpdates.preservedContent;
+    if (preservedContentUpdate) {
+      if (existing.preservedContent) {
+        Object.assign(existing.preservedContent, preservedContentUpdate);
+      } else {
+        existing.preservedContent = stripUndefined(preservedContentUpdate) as FeedItem["preservedContent"];
+      }
+    }
+    const userStateUpdate = cleanUpdates.userState;
+    delete cleanUpdates.userState;
+    if (userStateUpdate) {
+      const mutableUserState = existing.userState as unknown as Record<string, unknown>;
+      for (const [key, value] of Object.entries(userStateUpdate)) {
+        const currentValue = mutableUserState[key];
+        if (Array.isArray(value) && Array.isArray(currentValue)) {
+          currentValue.splice(0, currentValue.length, ...value);
+        } else {
+          mutableUserState[key] = value;
+        }
+      }
+    }
     const nextSignals = cleanUpdates.contentSignals;
     delete cleanUpdates.contentSignals;
-    Object.assign(existing, cleanUpdates);
+    deepMergeInto(
+      existing as unknown as Record<string, unknown>,
+      cleanUpdates as unknown as Record<string, unknown>,
+    );
     if (nextSignals) {
       applyContentSignalsToItem(existing, nextSignals);
       applyEventCandidateToItem(existing);
-    } else if (feedItemUpdatesAffectContentSignals(updates)) {
+    } else if (feedItemUpdatesAffectContentSignals(sanitizedUpdates)) {
       applySemanticEnrichmentToItem(existing);
     }
   }
+}
+
+function stripDeviceLocalRssFeedState<T extends Partial<RssFeed>>(feed: T): T {
+  return sanitizeRssFeedWrite(feed) as T;
 }
 
 function createEmptyContentSignalCounts(): Record<ContentSignal, number> {
@@ -1568,7 +1762,7 @@ export function toggleLiked(doc: FreedDoc, globalId: string): void {
  *
  * @param doc - The Automerge document (mutable within A.change)
  * @param globalId - The item's global ID
- * @param syncedAt - Timestamp when the sync completed (or -1 for permanent failure)
+ * @param syncedAt - Positive timestamp when the sync completed
  */
 export function confirmLikedSynced(
   doc: FreedDoc,
@@ -1576,7 +1770,7 @@ export function confirmLikedSynced(
   syncedAt: number = Date.now(),
 ): void {
   const item = doc.feedItems[globalId];
-  if (item) {
+  if (item && Number.isFinite(syncedAt) && syncedAt > 0) {
     (item.userState as unknown as Record<string, unknown>).likedSyncedAt = syncedAt;
   }
 }
@@ -1587,7 +1781,7 @@ export function confirmLikedSynced(
  *
  * @param doc - The Automerge document (mutable within A.change)
  * @param globalId - The item's global ID
- * @param syncedAt - Timestamp when the sync completed (or -1 for permanent failure)
+ * @param syncedAt - Positive timestamp when the sync completed
  */
 export function confirmSeenSynced(
   doc: FreedDoc,
@@ -1595,7 +1789,7 @@ export function confirmSeenSynced(
   syncedAt: number = Date.now(),
 ): void {
   const item = doc.feedItems[globalId];
-  if (item) {
+  if (item && Number.isFinite(syncedAt) && syncedAt > 0) {
     (item.userState as unknown as Record<string, unknown>).seenSyncedAt = syncedAt;
   }
 }
@@ -1615,7 +1809,7 @@ export function confirmSeenSynced(
  * @param feed - The RSS feed to add
  */
 export function addRssFeed(doc: FreedDoc, feed: RssFeed): void {
-  doc.rssFeeds[feed.url] = stripUndefined(feed);
+  doc.rssFeeds[feed.url] = stripUndefined(stripDeviceLocalRssFeedState(feed));
 }
 
 /**
@@ -1634,7 +1828,10 @@ export function updateRssFeed(
 ): void {
   const existing = doc.rssFeeds[url];
   if (existing) {
-    Object.assign(existing, stripUndefined(updates));
+    deepMergeInto(
+      existing as unknown as Record<string, unknown>,
+      stripUndefined(stripDeviceLocalRssFeedState(updates)) as Record<string, unknown>,
+    );
   }
 }
 
@@ -1728,6 +1925,9 @@ export function updatePerson(
   const existing = doc.persons[id];
   if (!existing) return;
 
+  updates = sanitizePersonWrite(updates, { preserveUndefined: true });
+  if (Object.keys(updates).length === 0) return;
+
   // Replace reachOutLog array by splicing
   const { reachOutLog, ...scalars } = updates;
   const mutablePerson = existing as unknown as Record<string, unknown>;
@@ -1736,7 +1936,22 @@ export function updatePerson(
       delete mutablePerson[key];
       continue;
     }
-    mutablePerson[key] = value;
+    const currentValue = mutablePerson[key];
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      currentValue !== null &&
+      typeof currentValue === "object" &&
+      !Array.isArray(currentValue)
+    ) {
+      deepMergeInto(
+        currentValue as Record<string, unknown>,
+        value as unknown as Record<string, unknown>,
+      );
+    } else {
+      mutablePerson[key] = value;
+    }
   }
 
   if (reachOutLog !== undefined) {
@@ -1786,10 +2001,14 @@ export function logReachOut(
   const person = doc.persons[id];
   if (!person) return;
 
+  const synchronizedEntry = stripUndefined(
+    sanitizeReachOutLogWrite(entry),
+  ) as ReachOutLog;
+
   if (!person.reachOutLog) {
-    person.reachOutLog = [entry];
+    person.reachOutLog = [synchronizedEntry];
   } else {
-    person.reachOutLog.unshift(entry);
+    person.reachOutLog.unshift(synchronizedEntry);
     // Keep the log bounded to 20 entries
     if (person.reachOutLog.length > 20) {
       person.reachOutLog.splice(20);
@@ -1805,7 +2024,7 @@ export function logReachOut(
 
 export function addAccount(doc: FreedDoc, account: Account): void {
   ensureIdentityGraphRoots(doc);
-  doc.accounts[account.id] = stripUndefined(account);
+  doc.accounts[account.id] = stripUndefined(sanitizeAccountWrite(account)) as Account;
 }
 
 export function addAccounts(doc: FreedDoc, accounts: Account[]): void {
@@ -1877,7 +2096,10 @@ export function reconcileYouTubeCapture(
   for (const item of items) {
     const existing = doc.feedItems[item.globalId];
     if (existing) {
-      mergeFeedItemInto(existing, item);
+      mergeFeedItemInto(
+        existing,
+        stripUndefined(sanitizeFeedItemWrite(item)) as FeedItem,
+      );
     } else {
       addFeedItem(doc, item);
     }
@@ -1892,13 +2114,30 @@ export function updateAccount(
   ensureIdentityGraphRoots(doc);
   const existing = doc.accounts[id];
   if (!existing) return;
+  updates = sanitizeAccountWrite(updates, { preserveUndefined: true });
+  if (Object.keys(updates).length === 0) return;
   const mutableAccount = existing as unknown as Record<string, unknown>;
   for (const [key, value] of Object.entries(updates)) {
     if (value === undefined) {
       delete mutableAccount[key];
       continue;
     }
-    mutableAccount[key] = value;
+    const currentValue = mutableAccount[key];
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      currentValue !== null &&
+      typeof currentValue === "object" &&
+      !Array.isArray(currentValue)
+    ) {
+      deepMergeInto(
+        currentValue as Record<string, unknown>,
+        value as unknown as Record<string, unknown>,
+      );
+    } else {
+      mutableAccount[key] = value;
+    }
   }
   existing.updatedAt = Date.now();
 }
@@ -1967,6 +2206,7 @@ export function updatePreferences(
   doc: FreedDoc,
   updates: Partial<UserPreferences>
 ): void {
+  updates = stripDeviceLocalPreferenceUpdates(updates);
   const fbCaptureUpdate = updates.fbCapture;
   if (fbCaptureUpdate) {
     applyFbCapturePreferenceUpdate(
@@ -2001,12 +2241,14 @@ function applyFbCapturePreferenceUpdate(
 ): void {
   if (!preferences.fbCapture) {
     preferences.fbCapture = {
-      knownGroups: {},
       excludedGroupIds: {},
     };
   }
 
   if (updates.knownGroups) {
+    if (!preferences.fbCapture.knownGroups) {
+      preferences.fbCapture.knownGroups = {};
+    }
     replaceRecord(preferences.fbCapture.knownGroups, updates.knownGroups);
   }
   if (updates.excludedGroupIds) {
@@ -2063,19 +2305,6 @@ export function setPlatformWeight(
 }
 
 // =============================================================================
-// Document Metadata Operations
-// =============================================================================
-
-/**
- * Update last sync timestamp
- *
- * @param doc - The Automerge document (mutable within A.change)
- */
-export function updateLastSync(doc: FreedDoc): void {
-  doc.meta.lastSync = Date.now();
-}
-
-// =============================================================================
 // Sync Safety Helpers
 // =============================================================================
 
@@ -2114,58 +2343,28 @@ function countFeedItems(doc: FreedDoc): number {
   return Object.keys(doc.feedItems ?? {}).length;
 }
 
-function countDocumentLibraryEntries(doc: FreedDoc): number {
-  return (
-    Object.keys(doc.feedItems ?? {}).length +
-    Object.keys(doc.rssFeeds ?? {}).length +
-    Object.keys(doc.persons ?? {}).length +
-    Object.keys(doc.accounts ?? {}).length
-  );
-}
-
-export type PopulatedEmptyMergeInput = "local" | "incoming";
+export type DocumentHistoryRelation =
+  | "equal"
+  | "local-ahead"
+  | "incoming-ahead"
+  | "diverged";
 
 /**
- * Skip Automerge's expensive merge when one feed library is empty and the
- * other side already has feed history. This is intentionally feed-scoped:
- * normal populated peers still go through CRDT merge semantics.
+ * Compare two documents by Automerge change history, from the local side.
+ * This stays inside the worker so callers never load a full document on the
+ * renderer thread merely to decide whether a cloud repair upload is needed.
  */
-export function choosePopulatedInputForFeedEmptyPreMerge(
+export function compareDocumentHistories(
   localDoc: FreedDoc,
   incomingDoc: FreedDoc,
-): PopulatedEmptyMergeInput | null {
-  const localItemCount = countFeedItems(localDoc);
-  const incomingItemCount = countFeedItems(incomingDoc);
-  if (localItemCount === 0 && incomingItemCount > 0) return "incoming";
-  if (incomingItemCount === 0 && localItemCount > 0) return "local";
-  return null;
-}
+): DocumentHistoryRelation {
+  const localContainsIncoming = A.hasHeads(localDoc, A.getHeads(incomingDoc));
+  const incomingContainsLocal = A.hasHeads(incomingDoc, A.getHeads(localDoc));
 
-/**
- * When an empty first-sync document carries stale delete history, Automerge can
- * merge a populated peer down to an empty result. In that exact case, keep the
- * populated side instead of treating an empty library as a destructive winner.
- */
-export function choosePopulatedInputForEmptyMerge(
-  localDoc: FreedDoc,
-  incomingDoc: FreedDoc,
-  mergedDoc: FreedDoc,
-): PopulatedEmptyMergeInput | null {
-  const localItemCount = countFeedItems(localDoc);
-  const incomingItemCount = countFeedItems(incomingDoc);
-  const mergedItemCount = countFeedItems(mergedDoc);
-  if (mergedItemCount === 0) {
-    if (localItemCount === 0 && incomingItemCount > 0) return "incoming";
-    if (incomingItemCount === 0 && localItemCount > 0) return "local";
-  }
-
-  if (countDocumentLibraryEntries(mergedDoc) > 0) return null;
-
-  const localEntries = countDocumentLibraryEntries(localDoc);
-  const incomingEntries = countDocumentLibraryEntries(incomingDoc);
-  if (localEntries === 0 && incomingEntries > 0) return "incoming";
-  if (incomingEntries === 0 && localEntries > 0) return "local";
-  return null;
+  if (localContainsIncoming && incomingContainsLocal) return "equal";
+  if (localContainsIncoming) return "local-ahead";
+  if (incomingContainsLocal) return "incoming-ahead";
+  return "diverged";
 }
 
 function formatDestructiveMergeMessage(

@@ -53,7 +53,7 @@ test("cloud conflict recovery click shows progress without a blocking browser co
     const debugMod = await import(debugStorePath);
     debugMod.useDebugStore.setState({
       docSnapshot: {
-        deviceId: "device-1",
+        documentId: "document-1",
         itemCount: 10880,
         feedCount: 106,
         binarySize: 13_150_000,

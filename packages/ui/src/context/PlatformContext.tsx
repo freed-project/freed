@@ -338,9 +338,9 @@ export interface PlatformConfig {
 
   /**
    * Perform a factory reset on this device.
-   * Wipes IndexedDB + localStorage. When `deleteFromCloud` is true, also
-   * deletes the sync file from the active cloud provider before clearing.
-   * Always ends with `location.reload()`.
+   * Clears owned local data and saved connection credentials. Cloud data stays
+   * available for restoration after reconnecting unless `deleteFromCloud` is true.
+   * A successful reset ends with a process or page reload.
    */
   factoryReset?: (deleteFromCloud: boolean) => Promise<void>;
 

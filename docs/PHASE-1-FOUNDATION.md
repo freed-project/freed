@@ -77,8 +77,8 @@ export interface FeedItem {
 export interface UserPreferences {
   weights: WeightPreferences; // Author, topic, platform weights
   ulysses: UlyssesPreferences; // Feed blocking settings
-  sync: SyncPreferences; // Cloud backup config
-  display: DisplayPreferences; // UI settings
+  sync?: SyncPreferences; // Deprecated legacy shape. Cloud runtime is device-local.
+  display: DisplayPreferences; // Synchronized appearance and reading policy
   xCapture: XCapturePreferences; // X capture mode and lists
 }
 ```
@@ -91,7 +91,7 @@ export interface FreedDoc {
   feedItems: Record<string, FeedItem>; // All captured content
   rssFeeds: Record<string, RssFeed>; // RSS subscriptions
   preferences: UserPreferences; // User settings
-  meta: DocumentMeta; // Device ID, sync state
+  meta: DocumentMeta; // Synchronized document identity only
 }
 
 // CRUD operations

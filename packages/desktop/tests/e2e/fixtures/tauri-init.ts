@@ -45,6 +45,7 @@ export function tauriInitScript(): string {
       download_local_ai_model_file: (args) => args && args.request ? args.request.expectedSizeBytes || 0 : 0,
       cancel_local_ai_model_download: () => null,
       get_sync_client_count: () => 0,
+      get_desktop_installation_witness: () => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       get_desktop_session_state: () => window.__TAURI_MOCK_DESKTOP_SESSION_STATE__ || ({
         available: true,
         screenLocked: false,
@@ -148,6 +149,9 @@ export function tauriInitScript(): string {
       retry_startup_after_crash: () => null,
       export_startup_diagnostics: () => '/Users/test/Downloads/freed-diagnostics-test.json',
       reset_pairing_token: () => null,
+      clear_factory_reset_runtime_artifacts: () => null,
+      factory_reset_sync_relay: () => 'factory-reset-pairing-token',
+      resume_sync_relay_after_factory_reset: () => null,
       get_recent_logs: () => [],
       get_recent_runtime_health: () => [],
       start_relay: () => null,

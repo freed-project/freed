@@ -49,8 +49,7 @@ export class SyncManager<T extends DocType = DocType> {
         rssFeeds: {},
         preferences: {},
         meta: {
-          deviceId: crypto.randomUUID(),
-          lastSync: 0,
+          documentId: crypto.randomUUID(),
           version: 1,
         },
       } as unknown as T);

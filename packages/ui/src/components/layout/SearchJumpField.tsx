@@ -22,6 +22,7 @@ import {
   type CommandPaletteAction,
 } from "../../lib/command-palette.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
+import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import { buildSettingsSectionMetas } from "../../lib/settings-sections.js";
 import {
@@ -345,7 +346,7 @@ export function SearchJumpField({
   const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const display = useAppStore((s) => s.preferences.display);
+  const [deviceDisplay] = useDeviceDisplayPreferences();
   const [inputValue, setInputValue] = useState(searchQuery);
   const [isFocused, setIsFocused] = useState(false);
   const [isTriggerOpen, setIsTriggerOpen] = useState(false);
@@ -384,7 +385,7 @@ export function SearchJumpField({
     searchQuery,
     activeFilter,
     searchCorpusVersion,
-    display.friendsMode ?? "all_content",
+    deviceDisplay.friendsMode,
     persons,
     accounts,
     friends,

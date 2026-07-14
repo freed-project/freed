@@ -27,7 +27,11 @@ import { getFbScraperWindowMode } from "./scraper-prefs";
 import { storeFbAuthState } from "./fb-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
-import { recordScrapeOutcome, type SocialScrapeTrigger } from "./runtime-health-events";
+import {
+  recordScrapeOutcome,
+  type FacebookGroupDiscoverySource,
+  type SocialScrapeTrigger,
+} from "./runtime-health-events";
 import {
   formatBytesForMemoryLog,
   formatScrapeMemoryPressureDetails,
@@ -52,12 +56,16 @@ import {
 import {
   facebookGroupsFromFeedItems,
   isMissingFacebookGroupName,
-  mergeFacebookGroupRecords,
 } from "./facebook-groups";
 import {
   loadSocialProviderCookieState,
   socialProviderMissingAuthCookieMessage,
 } from "./social-auth-cookie-state";
+import {
+  getFacebookGroupDiscovery,
+  removeFacebookGroupDiscovery,
+  updateFacebookGroupDiscovery,
+} from "./facebook-group-discovery";
 
 // =============================================================================
 // Rate Limiting
@@ -345,22 +353,15 @@ function filterExcludedGroups(
 
 async function updateKnownFacebookGroups(
   groups: readonly FbGroupInfo[],
-): Promise<ReturnType<typeof mergeFacebookGroupRecords>> {
-  const store = useAppStore.getState();
-  const merge = mergeFacebookGroupRecords(
-    store.preferences.fbCapture?.knownGroups ?? {},
-    groups,
-  );
-
-  if (merge.changedCount > 0) {
-    await store.updatePreferences({
-      fbCapture: {
-        knownGroups: merge.knownGroups,
-        excludedGroupIds: store.preferences.fbCapture?.excludedGroupIds ?? {},
-      },
-    });
+  source: FacebookGroupDiscoverySource,
+): Promise<ReturnType<typeof updateFacebookGroupDiscovery>> {
+  const merge = updateFacebookGroupDiscovery(groups, source);
+  if (merge.changedCount > 0 && !merge.persisted) {
+    addDebugEvent(
+      "error",
+      "[FB] group discovery update stayed in recovery mode because local storage was unavailable or newer",
+    );
   }
-
   return merge;
 }
 
@@ -370,15 +371,15 @@ export async function repairStoredFacebookGroupNamesFromItems(
   const groups = facebookGroupsFromFeedItems(items);
   if (groups.length === 0) return 0;
 
-  const merge = await updateKnownFacebookGroups(groups);
-  if (merge.repairedNameCount > 0) {
+  const merge = await updateKnownFacebookGroups(groups, "feed_items");
+  if (merge.persisted && merge.repairedNameCount > 0) {
     addDebugEvent(
       "change",
       `[FB] repaired ${merge.repairedNameCount.toLocaleString()} stored group name${merge.repairedNameCount === 1 ? "" : "s"} from captured posts`,
     );
   }
 
-  return merge.repairedNameCount;
+  return merge.persisted ? merge.repairedNameCount : 0;
 }
 
 // =============================================================================
@@ -630,12 +631,13 @@ export async function captureFbGroups(
     windowMode: getFbScraperWindowMode(),
   });
 
-  const merge = await updateKnownFacebookGroups(groups);
+  const merge = await updateKnownFacebookGroups(groups, "group_scrape");
   const hydrated = await hydrateMissingFacebookGroupNames(options);
+  const repairedFromScrape = merge.persisted ? merge.repairedNameCount : 0;
 
   addDebugEvent(
     "change",
-    `[FB] groups refreshed: ${groups.length.toLocaleString()} group${groups.length === 1 ? "" : "s"}${merge.repairedNameCount + hydrated.repairedNameCount > 0 ? `, repaired ${(merge.repairedNameCount + hydrated.repairedNameCount).toLocaleString()} stored name${merge.repairedNameCount + hydrated.repairedNameCount === 1 ? "" : "s"}` : ""}${hydrated.removedCount > 0 ? `, removed ${hydrated.removedCount.toLocaleString()} stale group${hydrated.removedCount === 1 ? "" : "s"}` : ""}`,
+    `[FB] groups refreshed: ${groups.length.toLocaleString()} group${groups.length === 1 ? "" : "s"}${repairedFromScrape + hydrated.repairedNameCount > 0 ? `, repaired ${(repairedFromScrape + hydrated.repairedNameCount).toLocaleString()} stored name${repairedFromScrape + hydrated.repairedNameCount === 1 ? "" : "s"}` : ""}${hydrated.removedCount > 0 ? `, removed ${hydrated.removedCount.toLocaleString()} stale group${hydrated.removedCount === 1 ? "" : "s"}` : ""}`,
   );
 
   return groups;
@@ -653,22 +655,27 @@ async function checkFacebookGroupMembership(group: FbGroupInfo): Promise<FbGroup
 
 async function removeKnownFacebookGroup(groupId: string): Promise<boolean> {
   const store = useAppStore.getState();
-  const knownGroups = { ...(store.preferences.fbCapture?.knownGroups ?? {}) };
   const excludedGroupIds = { ...(store.preferences.fbCapture?.excludedGroupIds ?? {}) };
-  const existed = Boolean(knownGroups[groupId] || excludedGroupIds[groupId]);
-  delete knownGroups[groupId];
+  const discoveryRemoval = removeFacebookGroupDiscovery(groupId);
+  if (!discoveryRemoval.persisted) {
+    addDebugEvent(
+      "error",
+      "[FB] group removal stayed in recovery mode because local storage was unavailable or newer",
+    );
+    return false;
+  }
+  const removedExclusion = Boolean(excludedGroupIds[groupId]);
   delete excludedGroupIds[groupId];
 
-  if (existed) {
+  if (removedExclusion) {
     await store.updatePreferences({
       fbCapture: {
-        knownGroups,
         excludedGroupIds,
-      },
+      } as typeof store.preferences.fbCapture,
     });
   }
 
-  return existed;
+  return discoveryRemoval.existed || removedExclusion;
 }
 
 async function hydrateMissingFacebookGroupNames(
@@ -678,8 +685,7 @@ async function hydrateMissingFacebookGroupNames(
   repairedNameCount: number;
   removedCount: number;
 }> {
-  const store = useAppStore.getState();
-  const missingGroups = Object.values(store.preferences.fbCapture?.knownGroups ?? {}).filter(
+  const missingGroups = Object.values(getFacebookGroupDiscovery()).filter(
     isMissingFacebookGroupName,
   );
 
@@ -711,8 +717,8 @@ async function hydrateMissingFacebookGroupNames(
           name: check.name,
           url: check.url || group.url,
         },
-      ]);
-      repairedNameCount += merge.repairedNameCount;
+      ], "membership_check");
+      if (merge.persisted) repairedNameCount += merge.repairedNameCount;
     } catch (err) {
       addDebugEvent(
         "error",
@@ -742,8 +748,8 @@ export async function verifyFacebookGroupLeave(
         name: check.name,
         url: check.url || group.url,
       },
-    ]);
-    repairedNameCount = merge.repairedNameCount;
+    ], "membership_check");
+    repairedNameCount = merge.persisted ? merge.repairedNameCount : 0;
   }
 
   if (check.stillJoined !== false) {

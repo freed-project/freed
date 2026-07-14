@@ -44,6 +44,11 @@ export function setReaderOfflineCacheMode(mode: ReaderOfflineCacheMode): void {
   window.localStorage.setItem(STORAGE_KEY, mode);
 }
 
+export function resetReaderOfflineCacheMode(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(STORAGE_KEY);
+}
+
 export function shouldPinOpenedReaderItem(mode: ReaderOfflineCacheMode): boolean {
   return mode === "everything_opened" || mode === "recent_feed";
 }

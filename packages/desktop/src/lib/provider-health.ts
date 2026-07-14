@@ -20,7 +20,11 @@ import { storeFbAuthState } from "./fb-auth";
 import { storeIgAuthState } from "./instagram-auth";
 import { storeLiAuthState } from "./li-auth";
 import { storeYouTubeAuthState } from "./youtube-auth";
-import { readNativeJsonFile, writeNativeJsonFile } from "./native-json-store";
+import {
+  readNativeJsonFile,
+  removeNativeJsonFile,
+  writeNativeJsonFile,
+} from "./native-json-store";
 
 const HEALTH_STORE_FILE = "sync-health.json";
 const HEALTH_STORE_KEY = "provider-health";
@@ -219,6 +223,12 @@ function fallbackWrite(state: PersistedHealthState): void {
   } catch {
     // Ignore mock store persistence failures.
   }
+}
+
+function clearFallbackState(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(FALLBACK_STORAGE_KEY);
+  window.localStorage.removeItem(MOCK_STORE_STORAGE_KEY);
 }
 
 function coerceBuckets<T extends HealthDailyBucket | HealthHourlyBucket>(
@@ -1214,6 +1224,34 @@ export async function initProviderHealth(): Promise<void> {
     })();
   }
   await initPromise;
+}
+
+/** Remove every device-local provider and RSS health record. */
+export async function clearProviderHealth(): Promise<void> {
+  if (initPromise) {
+    await initPromise.catch(() => {});
+  }
+  const deferredState = pendingPersistState;
+  if (pendingPersistTimer) {
+    clearTimeout(pendingPersistTimer);
+    pendingPersistTimer = null;
+  }
+  pendingPersistState = null;
+
+  try {
+    if (isTauri()) {
+      await removeNativeJsonFile(HEALTH_STORE_FILE, "provider-health-reset");
+    }
+    clearFallbackState();
+  } catch (error) {
+    if (deferredState) schedulePersistState(deferredState);
+    throw error;
+  }
+
+  const emptyState = createEmptyState();
+  currentState = emptyState;
+  latestFailingRssFeeds = [];
+  publishState(emptyState);
 }
 
 export function isProviderPaused(provider: HealthProviderId): boolean {

@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultPreferences } from "@freed/shared";
+import {
+  DEVICE_AI_PREFERENCES_STORAGE_KEY,
+  resetDeviceAIPreferencesForTests,
+} from "@freed/ui/lib/device-ai-preferences";
+import {
+  DEVICE_DISPLAY_PREFERENCES_STORAGE_KEY,
+  resetDeviceDisplayPreferencesForTests,
+} from "@freed/ui/lib/device-display-preferences";
 
 const {
   mockDocUpdatePreferences,
@@ -61,21 +69,17 @@ import { useAppStore } from "./store";
 
 describe("store.updatePreferences", () => {
   beforeEach(() => {
+    window.localStorage.clear();
+    resetDeviceDisplayPreferencesForTests();
+    resetDeviceAIPreferencesForTests();
     mockDocUpdatePreferences.mockReset();
     mockRecordRuntimeError.mockReset();
     mockRecordBugReportEvent.mockReset();
     useAppStore.setState({ preferences: createDefaultPreferences() });
   });
 
-  it("applies display preference updates locally before persistence resolves", async () => {
-    let resolvePersistence: (() => void) | undefined;
-    mockDocUpdatePreferences.mockImplementationOnce(
-      () => new Promise<void>((resolve) => {
-        resolvePersistence = resolve;
-      }),
-    );
-
-    const updatePromise = useAppStore.getState().updatePreferences({
+  it("does not send device-local display preferences to Automerge", async () => {
+    await useAppStore.getState().updatePreferences({
       display: {
         reading: {
           dualColumnMode: false,
@@ -83,17 +87,35 @@ describe("store.updatePreferences", () => {
       },
     } as never);
 
-    expect(useAppStore.getState().preferences.display.reading.dualColumnMode).toBe(false);
-    expect(mockDocUpdatePreferences).toHaveBeenCalledWith({
-      display: {
-        reading: {
-          dualColumnMode: false,
-        },
-      },
-    });
+    expect(useAppStore.getState().preferences.display.reading.dualColumnMode).toBeUndefined();
+    expect(mockDocUpdatePreferences).not.toHaveBeenCalled();
+    expect(JSON.parse(window.localStorage.getItem("freed-device-display-preferences-v1") ?? "null"))
+      .toMatchObject({ values: { dualColumnMode: false } });
+  });
 
-    resolvePersistence?.();
-    await expect(updatePromise).resolves.toBeUndefined();
+  it("rejects device-local preference writes when a newer record owns the key", async () => {
+    const futureDisplay = JSON.stringify({ version: 2, values: { sidebarMode: "closed" } });
+    window.localStorage.setItem(DEVICE_DISPLAY_PREFERENCES_STORAGE_KEY, futureDisplay);
+    resetDeviceDisplayPreferencesForTests();
+
+    await expect(useAppStore.getState().updatePreferences({
+      display: { sidebarMode: "compact" },
+    } as never)).rejects.toThrow("could not save the display settings");
+
+    expect(mockDocUpdatePreferences).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(DEVICE_DISPLAY_PREFERENCES_STORAGE_KEY)).toBe(futureDisplay);
+
+    window.localStorage.removeItem(DEVICE_DISPLAY_PREFERENCES_STORAGE_KEY);
+    const futureAI = JSON.stringify({ version: 2, values: { provider: "future" } });
+    window.localStorage.setItem(DEVICE_AI_PREFERENCES_STORAGE_KEY, futureAI);
+    resetDeviceAIPreferencesForTests();
+
+    await expect(useAppStore.getState().updatePreferences({
+      ai: { provider: "integrated" },
+    } as never)).rejects.toThrow("could not save the AI settings");
+
+    expect(mockDocUpdatePreferences).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(DEVICE_AI_PREFERENCES_STORAGE_KEY)).toBe(futureAI);
   });
 
   it("defaults animations to detailed", () => {
@@ -139,9 +161,9 @@ describe("store.updatePreferences", () => {
 
     await expect(
       useAppStore.getState().updatePreferences({
-        display: { sidebarWidth: 320 },
+        display: { showEngagementCounts: true },
       } as never),
-    ).resolves.toBeUndefined();
+    ).rejects.toBe(error);
 
     expect(mockRecordRuntimeError).toHaveBeenCalledWith({
       source: "desktop:updatePreferences",
@@ -154,34 +176,30 @@ describe("store.updatePreferences", () => {
       "Preference update failed",
       error.message,
     );
-    expect(useAppStore.getState().preferences.display.sidebarWidth).toBeUndefined();
+    expect(useAppStore.getState().preferences.display.showEngagementCounts).toBe(false);
   });
 
-  it("passes map mode preference updates through to persistence", async () => {
+  it("ignores legacy map display updates", async () => {
     await expect(
       useAppStore.getState().updatePreferences({
         display: { mapMode: "all_content" },
       } as never),
     ).resolves.toBeUndefined();
 
-    expect(mockDocUpdatePreferences).toHaveBeenCalledWith({
-      display: { mapMode: "all_content" },
-    });
+    expect(mockDocUpdatePreferences).not.toHaveBeenCalled();
   });
 
-  it("passes map time preference updates through to persistence", async () => {
+  it("ignores legacy map time updates", async () => {
     await expect(
       useAppStore.getState().updatePreferences({
         display: { mapTimeMode: "future" },
       } as never),
     ).resolves.toBeUndefined();
 
-    expect(mockDocUpdatePreferences).toHaveBeenCalledWith({
-      display: { mapTimeMode: "future" },
-    });
+    expect(mockDocUpdatePreferences).not.toHaveBeenCalled();
   });
 
-  it("replaces Facebook exclusion records during optimistic updates", async () => {
+  it("replaces Facebook exclusions without synchronizing local group discovery", async () => {
     useAppStore.setState((state) => ({
       preferences: {
         ...state.preferences,
@@ -221,15 +239,15 @@ describe("store.updatePreferences", () => {
     } as never);
 
     expect(useAppStore.getState().preferences.fbCapture.excludedGroupIds).toEqual({});
+    expect(useAppStore.getState().preferences.fbCapture.knownGroups).toEqual({
+      one: {
+        id: "one",
+        name: "One",
+        url: "https://facebook.com/groups/one",
+      },
+    });
     expect(mockDocUpdatePreferences).toHaveBeenCalledWith({
       fbCapture: {
-        knownGroups: {
-          one: {
-            id: "one",
-            name: "One",
-            url: "https://facebook.com/groups/one",
-          },
-        },
         excludedGroupIds: {},
       },
     });

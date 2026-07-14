@@ -25,6 +25,7 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { SearchJumpField } from "./SearchJumpField.js";
 import { resolveAnimationIntensity } from "../../lib/animation-preferences.js";
+import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 import { buildTopLevelTagFilters, childTagsOf, collectAllTags } from "../../lib/tag-navigation.js";
 import { navigateToFeedView } from "../../lib/workspace-navigation.js";
 import {
@@ -629,11 +630,8 @@ export function Sidebar({
   const primarySidebarGapWidthPx = scaleInterfaceChromePx(PRIMARY_SIDEBAR_GAP_WIDTH_PX, interfaceZoom);
   const friendsSidebarGapWidthPx = scaleInterfaceChromePx(FRIENDS_SIDEBAR_GAP_WIDTH_PX, interfaceZoom);
   const mobileMenuTopPx = scaleInterfaceChromePx(MOBILE_MENU_TOP_PX, interfaceZoom);
-  const persistedSidebarBaseWidth = Math.min(
-    MAX_WIDTH,
-    useAppStore((s) => s.preferences.display.sidebarWidth) ?? DEFAULT_WIDTH,
-  );
-  const updatePreferences = useAppStore((s) => s.updatePreferences);
+  const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
+  const persistedSidebarBaseWidth = Math.min(MAX_WIDTH, deviceDisplay.sidebarWidth);
   const items = useAppStore((s) => s.items);
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
@@ -647,7 +645,7 @@ export function Sidebar({
   const mapFriendCount = useAppStore((s) => s.mapFriendLocationCount);
   const mapAllContentCount = useAppStore((s) => s.mapAllContentLocationCount);
   const effectiveMapMode = resolveMapMode(
-    display.mapMode,
+    deviceDisplay.mapMode,
     mapFriendCount,
     mapAllContentCount,
   );
@@ -682,7 +680,6 @@ export function Sidebar({
   const [sourceMenuAnchorRect, setSourceMenuAnchorRect] = useState<DOMRect | null>(null);
   const [sourceMenuAnchorElement, setSourceMenuAnchorElement] = useState<HTMLElement | null>(null);
   const dragging = useRef(false);
-  const pendingPersistedWidth = useRef<number | null>(null);
   const previousDesktopMode = useRef(desktopMode);
 
 
@@ -715,10 +712,6 @@ export function Sidebar({
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
     if (openingExpandedFromClosed) return;
-    if (pendingPersistedWidth.current !== null) {
-      if (persistedSidebarBaseWidth !== pendingPersistedWidth.current) return;
-      pendingPersistedWidth.current = null;
-    }
     setCommittedWidth(persistedSidebarBaseWidth);
   }, [dragWidth, openingExpandedFromClosed, persistedSidebarBaseWidth]);
 
@@ -727,14 +720,12 @@ export function Sidebar({
     previousDesktopMode.current = desktopMode;
     if (!wasClosed || desktopMode !== "expanded") return;
 
-    pendingPersistedWidth.current = DEFAULT_WIDTH;
-    setCommittedWidth(DEFAULT_WIDTH);
-    void updatePreferences({ display: { sidebarWidth: DEFAULT_WIDTH } } as Parameters<typeof updatePreferences>[0]).catch(() => {
-      if (pendingPersistedWidth.current === DEFAULT_WIDTH) {
-        pendingPersistedWidth.current = null;
-      }
-    });
-  }, [desktopMode, updatePreferences]);
+    if (setDeviceDisplay({ sidebarWidth: DEFAULT_WIDTH })) {
+      setCommittedWidth(DEFAULT_WIDTH);
+    } else {
+      toast.error("Freed could not save the sidebar width on this device.");
+    }
+  }, [desktopMode, setDeviceDisplay]);
 
   const rawDesktopWidth = dragWidth
     ?? (desktopMode === "compact"
@@ -753,7 +744,7 @@ export function Sidebar({
   const compactReaderRailVisible =
     activeView === "feed" &&
     !!selectedItemId &&
-    display.reading.dualColumnMode &&
+    deviceDisplay.dualColumnMode &&
     !forceCompactDesktopRail;
   const visualGapWidthPx = compactReaderRailVisible
     ? Math.min(effectiveGapWidthPx, COMPACT_READER_RAIL_VISUAL_GAP_WIDTH_PX)
@@ -942,13 +933,16 @@ export function Sidebar({
             MAX_WIDTH,
             Math.max(0, Math.round(final / interfaceChromeScale)),
           );
-          pendingPersistedWidth.current = finalBaseWidth;
+          if (!setDeviceDisplay({ sidebarWidth: finalBaseWidth })) {
+            setDragWidth(null);
+            toast.error("Freed could not save the sidebar width on this device.");
+            document.body.style.cursor = previousCursor;
+            document.body.style.userSelect = previousUserSelect;
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            return;
+          }
           setCommittedWidth(finalBaseWidth);
-          void updatePreferences({ display: { sidebarWidth: finalBaseWidth } } as Parameters<typeof updatePreferences>[0]).catch(() => {
-            if (pendingPersistedWidth.current === finalBaseWidth) {
-              pendingPersistedWidth.current = null;
-            }
-          });
         }
         onDesktopModeChange(nextMode);
         setDragWidth(null);
@@ -970,7 +964,7 @@ export function Sidebar({
       isMobileDevice,
       maxSidebarWidthPx,
       onDesktopModeChange,
-      updatePreferences,
+      setDeviceDisplay,
     ],
   );
 

@@ -1,10 +1,11 @@
 /**
  * AI settings section for the Settings panel.
  *
- * Provider preferences sync through Automerge. API keys stay device-local.
+ * Provider, model, endpoint, and API keys stay device-local. Only content
+ * processing intent syncs through Automerge.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AIPreferences, LocalAIHardwareProfile, LocalAIModelId } from "@freed/shared";
 import { recommendLocalAIModelId } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
@@ -19,10 +20,20 @@ import {
 } from "../../lib/background-activity-store.js";
 import { formatMediumDateShortTime } from "../../lib/date-format.js";
 import { SettingsToggle } from "../SettingsToggle.js";
+import { toast } from "../Toast.js";
 import { ExternalLinkIcon } from "../icons.js";
+import {
+  useDeviceAIPreferences,
+  type DeviceAIProvider,
+} from "../../lib/device-ai-preferences.js";
 
-type AIProvider = AIPreferences["provider"];
+type AIProvider = DeviceAIProvider;
 type CloudAIProvider = Extract<AIProvider, "openai" | "anthropic" | "gemini">;
+type ResolvedAIPreferences = AIPreferences & {
+  provider: AIProvider;
+  model: string;
+  ollamaUrl: string;
+};
 
 const DEFAULT_MODELS: Record<AIProvider, string> = {
   none: "",
@@ -101,7 +112,7 @@ function getAIProviderSharingLabel(provider: AIProvider): string {
   return active.sharing;
 }
 
-function sameAIPreferences(left: AIPreferences, right: AIPreferences): boolean {
+function sameAIPreferences(left: ResolvedAIPreferences, right: ResolvedAIPreferences): boolean {
   return (
     left.provider === right.provider &&
     left.model === right.model &&
@@ -543,21 +554,21 @@ export function AISection() {
   const preferences = useAppStore((state) => state.preferences);
   const updatePreferences = useAppStore((state) => state.updatePreferences);
 
-  const ai: AIPreferences = preferences.ai ?? {
-    provider: "none",
-    model: "",
-    autoSummarize: false,
-    extractTopics: false,
+  const [deviceAI, setDeviceAI] = useDeviceAIPreferences();
+  const ai: ResolvedAIPreferences = {
+    autoSummarize: preferences.ai?.autoSummarize ?? false,
+    extractTopics: preferences.ai?.extractTopics ?? false,
+    ...deviceAI,
   };
 
-  const [optimisticAI, setOptimisticAI] = useState<AIPreferences | null>(null);
+  const [optimisticAI, setOptimisticAI] = useState<ResolvedAIPreferences | null>(null);
+  const updateSequenceRef = useRef(0);
   const [showOllamaUrl, setShowOllamaUrl] = useState(false);
   const [localModels, setLocalModels] = useState<LocalAIModelViewState[]>([]);
   const [hardwareProfile, setHardwareProfile] = useState<LocalAIHardwareProfile | null>(null);
   const [localModelsLoading, setLocalModelsLoading] = useState(false);
   const [busyModelId, setBusyModelId] = useState<LocalAIModelId | null>(null);
   const displayedAI = optimisticAI ?? ai;
-  const ollamaUrl = displayedAI.ollamaUrl ?? "http://localhost:11434";
   const cloudProvider = isCloudProvider(displayedAI.provider) ? displayedAI.provider : null;
   const requiresKey = cloudProvider !== null;
   const selectedProviderLabel = PROVIDER_LABELS[displayedAI.provider];
@@ -625,12 +636,44 @@ export function AISection() {
   }, [busyModelId, displayedAI.provider, localAIModels, refreshLocalModelHealth]);
 
   const update = useCallback(
-    (patch: Partial<AIPreferences>) => {
+    (patch: Partial<ResolvedAIPreferences>) => {
+      const updateSequence = updateSequenceRef.current + 1;
+      updateSequenceRef.current = updateSequence;
+      const previousDeviceAI = deviceAI;
       const nextAI = { ...displayedAI, ...patch };
+      const localUpdate = {
+        ...(patch.provider !== undefined ? { provider: nextAI.provider } : {}),
+        ...(patch.model !== undefined ? { model: nextAI.model } : {}),
+        ...(patch.ollamaUrl !== undefined ? { ollamaUrl: nextAI.ollamaUrl } : {}),
+      };
+      const hasLocalUpdate = Object.keys(localUpdate).length > 0;
+      if (hasLocalUpdate && !setDeviceAI(localUpdate)) {
+        toast.error("Freed could not save the AI settings on this device.");
+        return;
+      }
       setOptimisticAI(nextAI);
-      void updatePreferences({ ai: nextAI });
+      const syncedUpdate: Partial<Pick<AIPreferences, "autoSummarize" | "extractTopics">> = {
+        ...(patch.autoSummarize !== undefined
+          ? { autoSummarize: patch.autoSummarize }
+          : {}),
+        ...(patch.extractTopics !== undefined
+          ? { extractTopics: patch.extractTopics }
+          : {}),
+      };
+      if (Object.keys(syncedUpdate).length > 0) {
+        void updatePreferences({
+          ai: syncedUpdate,
+        } as Parameters<typeof updatePreferences>[0]).catch(() => {
+          if (updateSequenceRef.current !== updateSequence) return;
+          if (hasLocalUpdate && !setDeviceAI(previousDeviceAI)) {
+            toast.error("Freed could not restore the previous AI settings on this device.");
+          }
+          setOptimisticAI(null);
+          toast.error("Freed could not save the AI settings.");
+        });
+      }
     },
-    [displayedAI, updatePreferences],
+    [deviceAI, displayedAI, setDeviceAI, updatePreferences],
   );
 
   const handleProviderChange = (provider: AIProvider) => {
@@ -809,8 +852,8 @@ export function AISection() {
           </h3>
           <div className="rounded-lg border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_82%,transparent)] p-4">
             <div className="flex items-center gap-2 text-sm text-[var(--theme-text-muted)]">
-              <OllamaStatus url={ollamaUrl} />
-              <span>Endpoint: {ollamaUrl}</span>
+              <OllamaStatus url={displayedAI.ollamaUrl} />
+              <span>Endpoint: {displayedAI.ollamaUrl}</span>
               <button
                 type="button"
                 onClick={() => setShowOllamaUrl((value) => !value)}
@@ -822,8 +865,8 @@ export function AISection() {
             {showOllamaUrl && (
               <input
                 type="url"
-                value={displayedAI.ollamaUrl ?? ""}
-                onChange={(event) => update({ ollamaUrl: event.target.value || undefined })}
+                value={displayedAI.ollamaUrl}
+                onChange={(event) => update({ ollamaUrl: event.target.value })}
                 placeholder="http://localhost:11434"
                 className="mt-3 w-full rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:border-[var(--theme-border-strong)] focus:outline-none"
               />

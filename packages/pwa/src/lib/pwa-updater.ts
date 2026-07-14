@@ -12,6 +12,11 @@ import { registerSW } from "virtual:pwa-register";
 import { recordBugReportEvent } from "@freed/ui/lib/bug-report";
 
 const POLL_INTERVAL_MS = 60 * 60 * 1_000; // 1 hour
+const SERVICE_WORKER_QUIESCE_TIMEOUT_MS = 10_000;
+const FACTORY_RESET_QUIESCE_MESSAGE = "FREED_FACTORY_RESET_QUIESCE";
+const FACTORY_RESET_QUIESCED_MESSAGE = "FREED_FACTORY_RESET_QUIESCED";
+const FACTORY_RESET_RESUME_MESSAGE = "FREED_FACTORY_RESET_RESUME";
+const FACTORY_RESET_RESUMED_MESSAGE = "FREED_FACTORY_RESET_RESUMED";
 
 type UpdateListener = (available: boolean) => void;
 
@@ -105,6 +110,73 @@ export function applyPwaUpdate() {
   } else {
     window.location.reload();
   }
+}
+
+async function sendFactoryResetServiceWorkerMessage(
+  requestType: string,
+  responseType: string,
+  timeoutDescription: string,
+): Promise<void> {
+  const controller = navigator.serviceWorker?.controller;
+  if (!controller) return;
+
+  await new Promise<void>((resolve, reject) => {
+    const channel = new MessageChannel();
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const cleanup = () => {
+      if (timeout !== null) clearTimeout(timeout);
+      channel.port1.onmessage = null;
+      channel.port1.close();
+    };
+    timeout = setTimeout(() => {
+      cleanup();
+      reject(
+        new Error(
+          `The service worker did not ${timeoutDescription} within ${SERVICE_WORKER_QUIESCE_TIMEOUT_MS.toLocaleString()} ms.`,
+        ),
+      );
+    }, SERVICE_WORKER_QUIESCE_TIMEOUT_MS);
+    channel.port1.onmessage = (event: MessageEvent<unknown>) => {
+      if (
+        typeof event.data !== "object" ||
+        event.data === null ||
+        !("type" in event.data) ||
+        event.data.type !== responseType
+      ) return;
+      cleanup();
+      resolve();
+    };
+    channel.port1.start();
+    try {
+      controller.postMessage({ type: requestType }, [channel.port2]);
+    } catch (error) {
+      cleanup();
+      reject(error);
+    }
+  });
+}
+
+/** Stop Workbox cache writes before factory reset deletes mutable caches. */
+export async function quiescePwaServiceWorkerCacheWrites(): Promise<void> {
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+  }
+
+  await sendFactoryResetServiceWorkerMessage(
+    FACTORY_RESET_QUIESCE_MESSAGE,
+    FACTORY_RESET_QUIESCED_MESSAGE,
+    "stop cache writes",
+  );
+}
+
+/** Restore Workbox cache writes after reset finishes or aborts. */
+export async function resumePwaServiceWorkerCacheWrites(): Promise<void> {
+  await sendFactoryResetServiceWorkerMessage(
+    FACTORY_RESET_RESUME_MESSAGE,
+    FACTORY_RESET_RESUMED_MESSAGE,
+    "resume cache writes",
+  );
 }
 
 /**

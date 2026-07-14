@@ -17,7 +17,13 @@
  */
 
 import { useEffect, useState } from "react";
-import { startCloudSync, storeCloudToken, type CloudProvider, type CloudTokenBundle } from "../lib/sync";
+import {
+  captureCloudLifecycle,
+  startCloudSync,
+  storeCloudToken,
+  type CloudProvider,
+  type CloudTokenBundle,
+} from "../lib/sync";
 import {
   clearStoredGoogleOAuthRedirectUri,
   createGoogleOAuthRelayTarget,
@@ -146,6 +152,7 @@ export function OAuthCallback() {
       }
 
       const exchange = provider === "gdrive" ? exchangeGDrive : exchangeDropbox;
+      const lifecycle = captureCloudLifecycle();
 
       try {
         const result = await exchange(code, verifier);
@@ -157,6 +164,7 @@ export function OAuthCallback() {
           return;
         }
 
+        if (cancelled || !lifecycle.isCurrent()) return;
         storeCloudToken(provider, result.token);
 
         // Fire-and-forget — token exchange is the success condition.

@@ -30,8 +30,16 @@ import type {
   RssFeed,
   SampleDataClearSummary,
   UserPreferences,
+  DesktopClientRegistration,
 } from "@freed/shared";
-import type { DocChangeEvent, DocState, DocStats, WorkerRequest, WorkerResponse } from "./automerge-types";
+import type {
+  DocChangeEvent,
+  DocState,
+  DocStats,
+  DocumentHistoryRelation,
+  WorkerRequest,
+  WorkerResponse,
+} from "./automerge-types";
 import { applyItemPatchesToState, createItemIndex, type ItemIndex } from "./automerge-state-patches";
 import { log } from "./logger.js";
 import { recordRuntimeHealthEvent, recordWorkerInit } from "./runtime-health-events";
@@ -56,12 +64,38 @@ let workerReady: Promise<void> | null = null;
 let appDocumentInitialized = false;
 let workerDocumentInitialized = false;
 let latestRelayClientCount = 0;
+let desktopClientRegistration: DesktopClientRegistration | null = null;
+let initPromise: Promise<DocState> | null = null;
+let workerDocumentInitPromise: Promise<DocState> | null = null;
 let idleWorkerStopTimer: ReturnType<typeof setTimeout> | null = null;
+
+class WorkerLifecycleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WorkerLifecycleError";
+  }
+}
 
 type PendingRequestFailureHandler = {
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 };
+
+type PendingWorkerInitialization = PendingRequestFailureHandler & {
+  worker: Worker;
+  cleanup: () => void;
+};
+
+let pendingWorkerInitialization: PendingWorkerInitialization | null = null;
+
+function rejectPendingWorkerInitialization(error: Error): void {
+  const pendingInit = pendingWorkerInitialization;
+  if (!pendingInit) return;
+  pendingWorkerInitialization = null;
+  clearTimeout(pendingInit.timer);
+  pendingInit.cleanup();
+  pendingInit.reject(new WorkerLifecycleError(error.message));
+}
 
 function getWorker(): Worker {
   if (!worker) startWorker();
@@ -85,12 +119,15 @@ function rejectPendingMap<T extends PendingRequestFailureHandler>(pendingMap: Ma
 }
 
 function rejectPendingWorkerRequests(error: Error): void {
+  rejectPendingWorkerInitialization(error);
   rejectPendingMap(pending, error);
   rejectPendingMap(pendingAllItemIds, error);
   rejectPendingMap(pendingDocBinary, error);
   rejectPendingMap(pendingDocHeads, error);
+  rejectPendingMap(pendingDocRelationship, error);
   rejectPendingMap(pendingSavedYouTubeUrls, error);
   rejectPendingMap(pendingPreservedText, error);
+  rejectPendingMap(pendingLegacyHtml, error);
   rejectPendingMap(pendingContentSignalBackfill, error);
   rejectPendingMap(pendingSampleDataClear, error);
 }
@@ -102,6 +139,7 @@ function resetFailedWorker(failedWorker: Worker, error: Error, phase: string): v
   worker = null;
   workerReady = null;
   workerDocumentInitialized = false;
+  workerDocumentInitPromise = null;
   if (idleWorkerStopTimer) {
     clearTimeout(idleWorkerStopTimer);
     idleWorkerStopTimer = null;
@@ -199,12 +237,15 @@ async function ensureWorkerReady(): Promise<void> {
 
 function hasPendingWorkerRequests(): boolean {
   return (
+    pendingWorkerInitialization !== null ||
     pending.size > 0 ||
     pendingAllItemIds.size > 0 ||
     pendingDocBinary.size > 0 ||
     pendingDocHeads.size > 0 ||
+    pendingDocRelationship.size > 0 ||
     pendingSavedYouTubeUrls.size > 0 ||
     pendingPreservedText.size > 0 ||
+    pendingLegacyHtml.size > 0 ||
     pendingContentSignalBackfill.size > 0 ||
     pendingSampleDataClear.size > 0
   );
@@ -219,6 +260,7 @@ function stopIdleWorker(): boolean {
   worker = null;
   workerReady = null;
   workerDocumentInitialized = false;
+  workerDocumentInitPromise = null;
   log.info("[automerge-worker] terminated idle worker");
   addDebugEvent("change", "[automerge-worker] terminated idle worker");
   return true;
@@ -240,13 +282,12 @@ async function ensureWorkerDocumentReadyFor(type: WorkerRequest["type"]): Promis
     !appDocumentInitialized ||
     workerDocumentInitialized ||
     type === "INIT" ||
-    type === "CLEAR_LOCAL" ||
-    type === "REPLACE_DOC"
+    type === "CLEAR_LOCAL"
   ) {
     return;
   }
   log.info(`[automerge-worker] reinitializing idle worker op=${type}`);
-  await sendInit();
+  await initializeWorkerDocument();
 }
 
 startWorker();
@@ -280,6 +321,14 @@ const pendingDocHeads = new Map<
     timer: ReturnType<typeof setTimeout>;
   }
 >();
+const pendingDocRelationship = new Map<
+  number,
+  {
+    resolve: (relation: DocumentHistoryRelation) => void;
+    reject: (err: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }
+>();
 const pendingSavedYouTubeUrls = new Map<
   number,
   {
@@ -292,6 +341,14 @@ const pendingPreservedText = new Map<
   number,
   {
     resolve: (text: string | null) => void;
+    reject: (err: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }
+>();
+const pendingLegacyHtml = new Map<
+  number,
+  {
+    resolve: (html: string | null) => void;
     reject: (err: Error) => void;
     timer: ReturnType<typeof setTimeout>;
   }
@@ -510,7 +567,7 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   if (msg.type === "DEBUG_SNAPSHOT") {
     lastDocStats = { binaryBytes: msg.binarySize, itemCount: msg.itemCount };
     setDocSnapshot({
-      deviceId: msg.deviceId,
+      documentId: msg.documentId,
       itemCount: msg.itemCount,
       feedCount: msg.feedCount,
       binarySize: msg.binarySize,
@@ -546,6 +603,15 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     return;
   }
 
+  if (msg.type === "DOC_RELATIONSHIP") {
+    const pendingRelationship = pendingDocRelationship.get(msg.reqId);
+    if (!pendingRelationship) return;
+    clearTimeout(pendingRelationship.timer);
+    pendingDocRelationship.delete(msg.reqId);
+    pendingRelationship.resolve(msg.relation);
+    return;
+  }
+
   if (msg.type === "SAVED_YOUTUBE_URLS") {
     const pendingUrls = pendingSavedYouTubeUrls.get(msg.reqId);
     if (!pendingUrls) return;
@@ -561,6 +627,15 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     clearTimeout(pendingText.timer);
     pendingPreservedText.delete(msg.reqId);
     pendingText.resolve(msg.text);
+    return;
+  }
+
+  if (msg.type === "ITEM_LEGACY_HTML") {
+    const pendingHtml = pendingLegacyHtml.get(msg.reqId);
+    if (!pendingHtml) return;
+    clearTimeout(pendingHtml.timer);
+    pendingLegacyHtml.delete(msg.reqId);
+    pendingHtml.resolve(msg.html);
     return;
   }
 
@@ -604,6 +679,22 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     clearTimeout(pendingUrls.timer);
     pendingSavedYouTubeUrls.delete(msg.reqId);
     pendingUrls.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingRelationship = pendingDocRelationship.get(msg.reqId);
+  if (pendingRelationship && msg.error) {
+    clearTimeout(pendingRelationship.timer);
+    pendingDocRelationship.delete(msg.reqId);
+    pendingRelationship.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingHtml = pendingLegacyHtml.get(msg.reqId);
+  if (pendingHtml && msg.error) {
+    clearTimeout(pendingHtml.timer);
+    pendingLegacyHtml.delete(msg.reqId);
+    pendingHtml.reject(new Error(msg.error));
     return;
   }
 
@@ -664,9 +755,18 @@ function sendInit(): Promise<DocState> {
     let initAcked = false;
     let resolved = false;
 
+    const cleanup = () => {
+      activeWorker.removeEventListener("message", stateHandler);
+      if (pendingWorkerInitialization?.worker === activeWorker) {
+        clearTimeout(pendingWorkerInitialization.timer);
+        pendingWorkerInitialization = null;
+      }
+    };
+
     function tryResolve() {
       if (!initialState || !initAcked || resolved) return;
       resolved = true;
+      cleanup();
       appDocumentInitialized = true;
       workerDocumentInitialized = true;
       resolve(initialState);
@@ -685,8 +785,8 @@ function sendInit(): Promise<DocState> {
           () => "(doc lives in worker - not directly accessible)",
           () => new Uint8Array(0),
         );
-        activeWorker.removeEventListener("message", stateHandler);
         if (msg.error) {
+          cleanup();
           reject(new Error(msg.error));
         } else {
           initAcked = true;
@@ -696,24 +796,72 @@ function sendInit(): Promise<DocState> {
     };
 
     activeWorker.addEventListener("message", stateHandler);
-    activeWorker.postMessage({ reqId, type: "INIT" } satisfies WorkerRequest);
+    const timer = setTimeout(() => {
+      if (pendingWorkerInitialization?.worker !== activeWorker) return;
+      resetFailedWorker(
+        activeWorker,
+        new Error(
+          `[automerge-worker] request TIMEOUT op=INIT reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
+        ),
+        "runtime_init_timeout",
+      );
+    }, WORKER_REQUEST_TIMEOUT_MS);
+    pendingWorkerInitialization = { worker: activeWorker, reject, timer, cleanup };
+    activeWorker.postMessage({
+      reqId,
+      type: "INIT",
+      desktopClientRegistration: desktopClientRegistration ?? undefined,
+    } satisfies WorkerRequest);
   });
 }
 
-export async function initDoc(): Promise<DocState> {
-  await ensureWorkerReady();
-  try {
-    const state = await sendInit();
-    appDocumentInitialized = true;
-    workerDocumentInitialized = true;
-    return state;
-  } catch {
-    await clearLocalDoc();
-    const state = await sendInit();
-    appDocumentInitialized = true;
-    workerDocumentInitialized = true;
-    return state;
+function initializeWorkerDocument(): Promise<DocState> {
+  if (workerDocumentInitialized && lastDocState) {
+    return Promise.resolve(lastDocState);
   }
+  if (workerDocumentInitPromise) return workerDocumentInitPromise;
+
+  const activeWorker = getWorker();
+  workerDocumentInitPromise = sendInit().finally(() => {
+    if (worker === activeWorker) workerDocumentInitPromise = null;
+  });
+  return workerDocumentInitPromise;
+}
+
+export function initDoc(
+  registration?: DesktopClientRegistration,
+): Promise<DocState> {
+  if (registration) {
+    desktopClientRegistration = registration;
+  }
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    await ensureWorkerReady();
+    try {
+      const state = await initializeWorkerDocument();
+      appDocumentInitialized = true;
+      workerDocumentInitialized = true;
+      return state;
+    } catch (error) {
+      if (error instanceof WorkerLifecycleError) {
+        await ensureWorkerReady();
+        const state = await initializeWorkerDocument();
+        appDocumentInitialized = true;
+        workerDocumentInitialized = true;
+        return state;
+      }
+      await clearLocalDoc();
+      const state = await initializeWorkerDocument();
+      appDocumentInitialized = true;
+      workerDocumentInitialized = true;
+      return state;
+    }
+  })().finally(() => {
+    initPromise = null;
+  });
+
+  return initPromise;
 }
 
 /** Latest hydrated state from the worker. Returns null before first INIT. */
@@ -763,6 +911,33 @@ export async function getDocHeads(): Promise<string[] | null> {
 
     pendingDocHeads.set(reqId, { resolve, reject, timer });
     activeWorker.postMessage({ reqId, type: "GET_HEADS" } satisfies WorkerRequest);
+  });
+}
+
+/** Compare incoming Automerge history with the current local document. */
+export async function compareDoc(
+  incoming: Uint8Array,
+): Promise<DocumentHistoryRelation> {
+  await ensureWorkerDocumentReadyFor("COMPARE_DOC");
+  const activeWorker = getWorker();
+  return new Promise((resolve, reject) => {
+    const reqId = nextReqId++;
+    const timer = setTimeout(() => {
+      if (!pendingDocRelationship.has(reqId)) return;
+      pendingDocRelationship.delete(reqId);
+      reject(
+        new Error(
+          `[automerge-worker] request TIMEOUT op=COMPARE_DOC reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
+        ),
+      );
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pendingDocRelationship.set(reqId, { resolve, reject, timer });
+    activeWorker.postMessage({
+      reqId,
+      type: "COMPARE_DOC",
+      binary: incoming,
+    } satisfies WorkerRequest);
   });
 }
 
@@ -831,6 +1006,26 @@ export async function getItemPreservedText(globalId: string): Promise<string | n
   });
 }
 
+export async function getItemLegacyHtml(globalId: string): Promise<string | null> {
+  await ensureWorkerDocumentReadyFor("GET_ITEM_LEGACY_HTML");
+  const activeWorker = getWorker();
+  return new Promise((resolve, reject) => {
+    const reqId = nextReqId++;
+    const timer = setTimeout(() => {
+      if (!pendingLegacyHtml.has(reqId)) return;
+      pendingLegacyHtml.delete(reqId);
+      reject(
+        new Error(
+          `[automerge-worker] request TIMEOUT op=GET_ITEM_LEGACY_HTML reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
+        ),
+      );
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pendingLegacyHtml.set(reqId, { resolve, reject, timer });
+    activeWorker.postMessage({ reqId, type: "GET_ITEM_LEGACY_HTML", globalId } satisfies WorkerRequest);
+  });
+}
+
 export async function mergeDoc(incoming: Uint8Array): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "MERGE_DOC", binary: incoming });
@@ -843,7 +1038,12 @@ export async function clearLocalDoc(): Promise<void> {
 
 export async function replaceLocalDoc(binary: Uint8Array): Promise<void> {
   const reqId = nextReqId++;
-  return request({ reqId, type: "REPLACE_DOC", binary });
+  return request({
+    reqId,
+    type: "REPLACE_DOC",
+    binary,
+    desktopClientRegistration: desktopClientRegistration ?? undefined,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1025,11 +1225,6 @@ export async function docRemoveAllFeeds(includeItems: boolean): Promise<void> {
 export async function docUpdatePreferences(updates: Partial<UserPreferences>): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "UPDATE_PREFERENCES", updates });
-}
-
-export async function docUpdateLastSync(): Promise<void> {
-  const reqId = nextReqId++;
-  return request({ reqId, type: "UPDATE_LAST_SYNC" });
 }
 
 export async function docAddPerson(person: Person): Promise<void> {

@@ -701,7 +701,7 @@ test("paused provider health is visible in X settings and can be resumed", async
   await app.goto();
   await app.waitForReady();
 
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       setState: (partial: Record<string, unknown>) => void;
@@ -1724,20 +1724,11 @@ test("toolbar activity spinner opens job activity popover in compact sidebar mod
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        preferences: { display: Record<string, unknown> };
+        updatePreferences: (patch: { display: Record<string, unknown> }) => Promise<void>;
       };
       setState: (partial: Record<string, unknown>) => void;
     };
-    const current = store.getState();
-    store.setState({
-      preferences: {
-        ...current.preferences,
-        display: {
-          ...current.preferences.display,
-          sidebarMode: "compact",
-        },
-      },
-    });
+    await store.getState().updatePreferences({ display: { sidebarMode: "compact" } });
     const activity = await import(activityStorePath) as typeof import("../../../ui/src/lib/background-activity-store");
     activity.startBackgroundActivity({
       id: "job:content-fetch:e2e",
@@ -1962,30 +1953,18 @@ test("source rows swap counts for an actions menu on hover", async ({ app, page 
   await app.goto();
   await app.waitForReady();
 
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        preferences: {
-          display: {
-            sidebarMode?: string;
-            sidebarWidth?: number;
-          };
-        };
+        updatePreferences: (patch: { display: Record<string, unknown> }) => Promise<void>;
       };
       setState: (partial: Record<string, unknown>) => void;
     };
-    const current = store.getState();
-
+    await store.getState().updatePreferences({
+      display: { sidebarMode: "expanded", sidebarWidth: 256 },
+    });
     store.setState({
-      preferences: {
-        ...current.preferences,
-        display: {
-          ...current.preferences.display,
-          sidebarMode: "expanded",
-          sidebarWidth: 256,
-        },
-      },
       xAuth: {
         isAuthenticated: true,
         cookies: { ct0: "ct0", authToken: "token" },
@@ -2030,7 +2009,7 @@ test("source menu trigger toggles open and closed", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
 
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
@@ -2073,30 +2052,19 @@ test("source menu stays open and acknowledges sync now while syncing is already 
   await app.goto();
   await app.waitForReady();
 
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
-        preferences: {
-          display: {
-            sidebarMode?: string;
-            sidebarWidth?: number;
-          };
-        };
+        updatePreferences: (patch: { display: Record<string, unknown> }) => Promise<void>;
         providerSyncCounts: Record<string, number>;
       };
       setState: (partial: Record<string, unknown>) => void;
     };
-    const current = store.getState();
+    await store.getState().updatePreferences({
+      display: { sidebarMode: "expanded", sidebarWidth: 256 },
+    });
     store.setState({
-      preferences: {
-        ...current.preferences,
-        display: {
-          ...current.preferences.display,
-          sidebarMode: "expanded",
-          sidebarWidth: 256,
-        },
-      },
       xAuth: {
         isAuthenticated: true,
         cookies: { ct0: "ct0", authToken: "token" },

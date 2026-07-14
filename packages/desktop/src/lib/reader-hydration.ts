@@ -8,6 +8,12 @@ import { docUpdateFeedItem } from "./automerge";
 import { useAppStore } from "./store";
 import { fetchFacebookComments, fetchInstagramComments } from "./social-comment-hydration";
 import { fetchXThreadReplies } from "./x-capture";
+import { recordReaderArticleFetchAttempt } from "./runtime-health-events";
+import {
+  captureFactoryResetWriteEpoch,
+  isFactoryResetWriteAllowed,
+  trackFactoryResetSensitiveOperation,
+} from "@freed/ui/lib/factory-reset";
 
 function xTweetId(item: FeedItem): string | null {
   if (item.platform !== "x") return null;
@@ -34,24 +40,35 @@ function replyFromItem(item: FeedItem): ReaderThreadReply {
 async function hydrateArticle(item: FeedItem, pin: boolean): Promise<ReaderHydrationResult | null> {
   const url = item.content.linkPreview?.url;
   if (!url) return null;
+  const resetEpoch = captureFactoryResetWriteEpoch();
+  if (resetEpoch === null) return null;
 
-  const rawHtml = await invoke<string>("fetch_url", { url });
-  const content = extractContentBrowser(rawHtml, url);
-  await contentCache.set(item.globalId, content.html);
-  await docUpdateFeedItem(item.globalId, {
-    preservedContent: {
-      text: toSyncedPreservedText(content.text),
-      ...(content.author ? { author: content.author } : {}),
-      wordCount: content.wordCount,
-      readingTime: content.readingTime,
-      preservedAt: Date.now(),
-    },
-  });
+  return trackFactoryResetSensitiveOperation(
+    Promise.resolve().then(async () => {
+      recordReaderArticleFetchAttempt({ source: "reader-open", pin });
+      const rawHtml = await invoke<string>("fetch_url", { url });
+      const content = extractContentBrowser(rawHtml, url);
+      if (!isFactoryResetWriteAllowed(resetEpoch)) return null;
 
-  return {
-    html: content.html,
-    status: pin ? "hydrated" : "partial",
-  };
+      await contentCache.set(item.globalId, content.html);
+      if (!isFactoryResetWriteAllowed(resetEpoch)) return null;
+
+      await docUpdateFeedItem(item.globalId, {
+        preservedContent: {
+          text: toSyncedPreservedText(content.text),
+          ...(content.author ? { author: content.author } : {}),
+          wordCount: content.wordCount,
+          readingTime: content.readingTime,
+          preservedAt: Date.now(),
+        },
+      });
+
+      return {
+        html: content.html,
+        status: pin ? "hydrated" : "partial",
+      };
+    }),
+  );
 }
 
 async function hydrateXReplies(item: FeedItem): Promise<ReaderThreadReply[]> {

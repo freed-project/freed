@@ -14,6 +14,7 @@ const gdriveUploadSafeMock = vi.fn();
 const gdriveUploadReplaceMock = vi.fn();
 const gdriveDeleteFileMock = vi.fn();
 const replaceLocalDocMock = vi.fn();
+const compareDocMock = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
@@ -41,7 +42,9 @@ vi.mock("@freed/sync/cloud", () => ({
 }));
 
 vi.mock("./automerge", () => ({
+  compareDoc: compareDocMock,
   getDocBinary: vi.fn(async () => new Uint8Array()),
+  getDocHeads: vi.fn(async () => ["test-head"]),
   mergeDoc: vi.fn(),
   replaceLocalDoc: replaceLocalDocMock,
   setRelayClientCount: vi.fn(),
@@ -89,6 +92,15 @@ describe("desktop cloud sync auth refresh", () => {
     gdriveUploadReplaceMock.mockReset();
     gdriveDeleteFileMock.mockReset();
     replaceLocalDocMock.mockReset();
+    compareDocMock.mockReset();
+    compareDocMock.mockResolvedValue("equal");
+    gdriveUploadSafeMock.mockResolvedValue({
+      fileId: "file-1",
+      uploadedBinary: new Uint8Array(),
+      uploadedBytes: 0,
+      remoteBytes: 0,
+      mergedRemote: false,
+    });
     localStorage.clear();
   });
 
@@ -136,7 +148,7 @@ describe("desktop cloud sync auth refresh", () => {
       }
       return null;
     });
-    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveDownloadLatestMock.mockResolvedValue(new Uint8Array([1]));
     gdriveStartPollLoopMock.mockRejectedValue(
       Object.assign(new Error("GDrive changes failed: 403 Forbidden - insufficientPermissions"), {
         status: 403,
@@ -180,7 +192,7 @@ describe("desktop cloud sync auth refresh", () => {
       }
       return null;
     });
-    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveDownloadLatestMock.mockResolvedValue(new Uint8Array([1]));
     gdriveStartPollLoopMock.mockRejectedValue(
       Object.assign(new Error("GDrive changes failed: 401 Unauthorized"), {
         status: 401,
@@ -276,7 +288,7 @@ describe("desktop cloud sync auth refresh", () => {
   });
 
   it("runs an immediate Google Drive download and upload for manual sync", async () => {
-    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveDownloadLatestMock.mockResolvedValue(new Uint8Array([1]));
     gdriveUploadSafeMock.mockResolvedValue({
       fileId: "file-1",
       uploadedBytes: 0,
@@ -378,7 +390,7 @@ describe("desktop cloud sync auth refresh", () => {
       remoteBytes: 0,
       mergedRemote: false,
     });
-    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveDownloadLatestMock.mockResolvedValue(new Uint8Array([1]));
 
     await resolveCloudSyncConflict("gdrive", "local");
     stopAllCloudSyncs();
@@ -411,7 +423,7 @@ describe("desktop cloud sync auth refresh", () => {
       refreshToken: "refresh-token",
       expiresAt: Date.now() + 3_600_000,
     });
-    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveDownloadLatestMock.mockResolvedValue(new Uint8Array([1]));
     gdriveUploadSafeMock.mockRejectedValueOnce(new Error(destructiveMergeMessage));
 
     await expect(syncCloudProviderNow("gdrive")).rejects.toThrow(/blocked a sync merge/);
@@ -463,7 +475,7 @@ describe("desktop cloud sync auth refresh", () => {
       remoteBytes: 0,
       mergedRemote: false,
     });
-    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveDownloadLatestMock.mockResolvedValue(new Uint8Array([1]));
 
     let releaseIndexing!: () => void;
     const indexing = coordinator.runBackgroundJob({
@@ -500,7 +512,7 @@ describe("desktop cloud sync auth refresh", () => {
     });
     gdriveDownloadLatestMock
       .mockResolvedValueOnce(remote)
-      .mockResolvedValue(null);
+      .mockResolvedValue(remote);
 
     await resolveCloudSyncConflict("gdrive", "cloud");
     stopAllCloudSyncs();

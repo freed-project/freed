@@ -1,6 +1,6 @@
 # Freed Technical Architecture
 
-Accurate as of 2026-07-10 (dev @ v26.7.1000-dev). This document describes the system as shipped, not as aspired to. Known defects and program-tracked limitations cite finding IDs from [stability-findings.json](stability-findings.json); the remediation plan is [STABILITY-PROGRAM.md](STABILITY-PROGRAM.md).
+Accurate as of 2026-07-13 (`dev` @ v26.7.1301-dev). This document describes the system as shipped, not as aspired to. Known defects and program-tracked limitations cite finding IDs from [stability-findings.json](stability-findings.json); the remediation plan is [STABILITY-PROGRAM.md](STABILITY-PROGRAM.md).
 
 ## What Freed is
 
@@ -49,6 +49,16 @@ Session cookies live in the scraper WebViews' data stores. Known misclassificati
 ## Data model and sync
 
 One Automerge document holds items, preferences, and social graph data (`packages/shared/src/schema.ts`). Schema changes must be backward compatible: add optional fields, never delete.
+
+The document only stores state whose meaning survives moving to another device. Content, subscriptions, identity relationships, user-authored organization, ranking policy, capture policy, and accessibility preferences belong in Automerge. Window geometry, shell visibility, view modes, sort and filter selections, graph pin coordinates, machine endpoints, connection scheduling, and transient operation status stay in device-local storage. Central mutation guards enforce this boundary before preference, person, account, feed, or Story Wall changes reach Automerge. Legacy schema fields remain optional and deprecated so older documents still load, but current clients neither create nor update them. The synchronized metadata identifies the document itself. Runtime timestamps, presence, and machine-local settings do not belong in the document.
+
+A minimal Freed Desktop registration map is the deliberate exception because its meaning is cross-device coordination. It lets a library detect that more than one Freed Desktop installation has been configured and warn that provider polling may be duplicated. Each opaque installation identifier originates in local native storage. The synced map records only the stable identifier and first registration time. It does not record PWA readers, online presence, last-seen heartbeats, provider credentials, or machine details.
+
+Older documents can still contain full reader HTML and RSS retry fields. Current clients never create or update those fields in Automerge. Reader HTML remains read-only compatibility data so an upgrade cannot delete another device's only reader copy. It stays out of hydrated list state, is fetched from the worker only for the active reader, and is then cached locally. Deprecated synchronized RSS retry, error, and validator fields are ignored so one device's old failure cannot throttle another device.
+
+RSS subscriptions and the last successful content refresh time sync. Retry windows, failure counters, and fetch errors stay local to the polling device. Deprecated synchronized HTTP validator fields are ignored. The current transport does not persist validators. If conditional requests are added later, their validators must stay local too. A failed network request on one machine must not delay another machine's scheduler.
+
+Graph pin coordinates are migrated once from legacy Person and Account fields into a versioned local layout store. Current person and account mutations strip those fields at the store, optimistic projection, and schema boundaries. Rendering removes any stale synchronized coordinates before overlaying the current device's layout.
 
 - **Worker ownership:** each app runs the document inside a dedicated worker (`automerge.worker.ts` in desktop and PWA). Mutations go through worker messages; `STATE_UPDATE` fans hydrated state back to subscribers. Persistence is IndexedDB with incremental appends plus periodic snapshots (`automerge-persistence.ts`, `snapshots.ts`).
 - **LAN relay:** the desktop Rust side runs a WebSocket relay (default port 8765, `FREED_SYNC_PORT` override). The PWA pairs via QR code and connects as a client. Today the relay broadcasts desktop state to clients but never merges client pushes into the desktop document, and the PWA pushes only once per connection. Phone-to-desktop convergence over LAN does not exist yet and rides on cloud sync instead (F02/F23; Wave 3 builds the inbound path).

@@ -6,7 +6,6 @@
 import * as A from "@automerge/automerge";
 import {
   assertNonDestructiveMerge,
-  choosePopulatedInputForEmptyMerge,
   type DestructiveMergeGuardOptions,
   type FreedDoc,
 } from "@freed/shared/schema";
@@ -23,13 +22,11 @@ export function mergeBinaries(
   const docA = A.load<FreedDoc>(a);
   const docB = A.load<FreedDoc>(b);
   const merged = A.merge(docA, docB);
-  const populatedSide = choosePopulatedInputForEmptyMerge(docA, docB, merged);
-  const resolved = populatedSide === "local" ? docA : populatedSide === "incoming" ? docB : merged;
-  assertNonDestructiveMerge(docA, docB, resolved, {
+  assertNonDestructiveMerge(docA, docB, merged, {
     source: "cloud upload",
     ...options,
   });
-  return A.save(resolved);
+  return A.save(merged);
 }
 
 export function delay(ms: number): Promise<void> {

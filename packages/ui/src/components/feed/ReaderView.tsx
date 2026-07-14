@@ -18,9 +18,11 @@ import {
   noDragRegionStyle as noDrag,
 } from "../../lib/native-drag-region.js";
 import { Tooltip } from "../Tooltip.js";
+import { toast } from "../Toast.js";
 import { ExternalLinkIcon, TrashIcon } from "../icons.js";
 import { FocusText } from "./FocusText.js";
 import { YouTubeFocusPlayer } from "./YouTubeFocusPlayer.js";
+import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 
 interface ReaderViewProps {
   item: FeedItemType;
@@ -354,18 +356,15 @@ export function ReaderView({
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const storedDisplay = useAppStore((s) => s.preferences.display);
+  const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
 
   const [focusOptions, setFocusOptions] = useState<FocusOptions>({
     enabled: storedDisplay.reading.focusMode,
     intensity: storedDisplay.reading.focusIntensity,
   });
-  const storedDisplayRef = useRef(storedDisplay);
-
+  const focusEnabledRef = useRef(storedDisplay.reading.focusMode);
   useEffect(() => {
-    storedDisplayRef.current = storedDisplay;
-  }, [storedDisplay]);
-
-  useEffect(() => {
+    focusEnabledRef.current = storedDisplay.reading.focusMode;
     setFocusOptions({
       enabled: storedDisplay.reading.focusMode,
       intensity: storedDisplay.reading.focusIntensity,
@@ -711,34 +710,34 @@ export function ReaderView({
 
   const prefTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => () => {
+    if (prefTimerRef.current) clearTimeout(prefTimerRef.current);
+  }, []);
+
   const toggleFocus = useCallback(() => {
-    setFocusOptions((prev) => {
-      const next = { ...prev, enabled: !prev.enabled };
-      if (prefTimerRef.current) clearTimeout(prefTimerRef.current);
-      prefTimerRef.current = setTimeout(() => {
-        prefTimerRef.current = null;
-        const latestDisplay = storedDisplayRef.current;
-        updatePreferences({
-          display: {
-            ...latestDisplay,
-            reading: { ...latestDisplay.reading, focusMode: next.enabled, focusIntensity: next.intensity },
-          },
-        });
-      }, 1_000);
-      return next;
-    });
-  }, [updatePreferences, storedDisplay]);
+    const enabled = !focusEnabledRef.current;
+    focusEnabledRef.current = enabled;
+    setFocusOptions((prev) => ({ ...prev, enabled }));
+    if (prefTimerRef.current) clearTimeout(prefTimerRef.current);
+    prefTimerRef.current = setTimeout(() => {
+      prefTimerRef.current = null;
+      void updatePreferences({
+        display: {
+          reading: { focusMode: enabled },
+        },
+      } as Parameters<typeof updatePreferences>[0]).catch(() => {
+        focusEnabledRef.current = !enabled;
+        setFocusOptions((prev) => ({ ...prev, enabled: !enabled }));
+        toast.error("Freed could not save the focus setting.");
+      });
+    }, 1_000);
+  }, [updatePreferences]);
 
   const toggleDualColumn = useCallback(() => {
-    const latestDisplay = storedDisplayRef.current;
-    const next = !latestDisplay.reading.dualColumnMode;
-    updatePreferences({
-      display: {
-        ...latestDisplay,
-        reading: { ...latestDisplay.reading, dualColumnMode: next },
-      },
-    });
-  }, [updatePreferences]);
+    if (!setDeviceDisplay({ dualColumnMode: !deviceDisplay.dualColumnMode })) {
+      toast.error("Freed could not save the reader layout on this device.");
+    }
+  }, [deviceDisplay.dualColumnMode, setDeviceDisplay]);
 
   const timeAgo = useMemo(
     () => formatDistanceToNow(item.publishedAt, { addSuffix: true }),

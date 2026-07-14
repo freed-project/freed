@@ -1,10 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultPreferences, type Account, type FeedItem, type Person, type RssFeed } from "@freed/shared";
+import {
+  DEVICE_GRAPH_LAYOUT_STORAGE_KEY,
+  getDeviceAccountGraphLayout,
+  getDevicePersonGraphLayout,
+  resetDeviceGraphLayoutForTests,
+  setDeviceAccountGraphPosition,
+  setDevicePersonGraphPosition,
+} from "@freed/ui/lib/device-graph-layout";
 
 const {
   mockDocArchiveItems,
   mockDocMarkItemsAsRead,
   mockDocRemoveFeedItem,
+  mockDocRemovePerson,
   mockDocToggleArchived,
   mockDocToggleLiked,
   mockDocToggleSaved,
@@ -17,6 +26,7 @@ const {
   mockDocArchiveItems: vi.fn(),
   mockDocMarkItemsAsRead: vi.fn(),
   mockDocRemoveFeedItem: vi.fn(),
+  mockDocRemovePerson: vi.fn(),
   mockDocToggleArchived: vi.fn(),
   mockDocToggleLiked: vi.fn(),
   mockDocToggleSaved: vi.fn(),
@@ -59,6 +69,7 @@ vi.mock("./automerge", () => ({
   docUpdatePerson: mockDocUpdatePerson,
   docUpdateFriend: vi.fn(),
   docRemoveFriend: vi.fn(),
+  docRemovePerson: mockDocRemovePerson,
   docUpsertConnectionPersons: vi.fn(),
   docLogReachOut: vi.fn(),
   docUpdateAccount: mockDocUpdateAccount,
@@ -158,9 +169,12 @@ describe("store optimistic mutations", () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    localStorage.clear();
+    resetDeviceGraphLayoutForTests();
     mockDocArchiveItems.mockResolvedValue(undefined);
     mockDocMarkItemsAsRead.mockResolvedValue(undefined);
     mockDocRemoveFeedItem.mockResolvedValue(undefined);
+    mockDocRemovePerson.mockResolvedValue(undefined);
     mockDocToggleArchived.mockResolvedValue(undefined);
     mockDocToggleLiked.mockResolvedValue(undefined);
     mockDocToggleSaved.mockResolvedValue(undefined);
@@ -170,6 +184,80 @@ describe("store optimistic mutations", () => {
     mockDocUpdatePreferences.mockResolvedValue(undefined);
     mockDocUpdateRssFeed.mockResolvedValue(undefined);
     resetStore();
+  });
+
+  it("routes graph placement locally without sending it to Automerge", async () => {
+    useAppStore.setState({
+      persons: { person: makePerson("person") },
+      accounts: { account: makeAccount("account") },
+    });
+
+    await useAppStore.getState().updatePerson("person", {
+      graphX: 12,
+      graphY: 24,
+      graphPinned: true,
+      graphUpdatedAt: 100,
+    });
+    await useAppStore.getState().updateAccount("account", {
+      graphX: 36,
+      graphY: 48,
+      graphPinned: true,
+      graphUpdatedAt: 200,
+    });
+
+    expect(getDevicePersonGraphLayout("person")).toMatchObject({ graphX: 12, graphY: 24 });
+    expect(getDeviceAccountGraphLayout("account")).toMatchObject({ graphX: 36, graphY: 48 });
+    expect(useAppStore.getState().persons.person).not.toHaveProperty("graphX");
+    expect(useAppStore.getState().accounts.account).not.toHaveProperty("graphX");
+    expect(mockDocUpdatePerson).not.toHaveBeenCalled();
+    expect(mockDocUpdateAccount).not.toHaveBeenCalled();
+
+    await useAppStore.getState().updatePerson("person", {
+      name: "Renamed",
+      graphX: 60,
+      graphY: 72,
+    });
+    expect(mockDocUpdatePerson).toHaveBeenCalledWith("person", { name: "Renamed" });
+    expect(getDevicePersonGraphLayout("person")).toMatchObject({ graphX: 60, graphY: 72 });
+  });
+
+  it("rejects graph updates when a newer device layout record cannot be replaced", async () => {
+    const futureLayout = JSON.stringify({
+      version: 2,
+      legacyMigrationCompleted: true,
+      persons: {},
+      accounts: {},
+    });
+    localStorage.setItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY, futureLayout);
+    resetDeviceGraphLayoutForTests();
+
+    await expect(useAppStore.getState().updatePerson("person", {
+      graphX: 12,
+      graphY: 24,
+      graphPinned: true,
+    })).rejects.toThrow("could not save this graph position");
+
+    expect(mockDocUpdatePerson).not.toHaveBeenCalled();
+    expect(localStorage.getItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY)).toBe(futureLayout);
+  });
+
+  it("keeps person and linked account pins when document removal fails", async () => {
+    const person = makePerson("person");
+    const account = { ...makeAccount("account"), personId: person.id };
+    useAppStore.setState({
+      persons: { [person.id]: person },
+      accounts: { [account.id]: account },
+    });
+    setDevicePersonGraphPosition(person.id, 12, 24, 100);
+    setDeviceAccountGraphPosition(account.id, 36, 48, 200);
+    mockDocRemovePerson.mockRejectedValueOnce(new Error("persistence failed"));
+
+    await expect(useAppStore.getState().removePerson(person.id)).rejects.toThrow(
+      "persistence failed",
+    );
+
+    expect(getDevicePersonGraphLayout(person.id)).toMatchObject({ graphX: 12, graphY: 24 });
+    expect(getDeviceAccountGraphLayout(account.id)).toMatchObject({ graphX: 36, graphY: 48 });
   });
 
   afterEach(() => {
@@ -254,9 +342,9 @@ describe("store optimistic mutations", () => {
     await accountPromise;
 
     const preferencesPromise = useAppStore.getState().updatePreferences({
-      display: { sidebarWidth: 320 },
+      display: { showEngagementCounts: true },
     } as never);
-    expect(useAppStore.getState().preferences.display.sidebarWidth).toBe(320);
+    expect(useAppStore.getState().preferences.display.showEngagementCounts).toBe(true);
     preferenceUpdate.resolve();
     await preferencesPromise;
   });

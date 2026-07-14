@@ -13,9 +13,12 @@ import {
   accountsFromLegacyFriend,
   buildConnectionPersonDraftFromAccounts,
   createDefaultPreferences,
+  getDeviceLocalGraphPositionUpdates,
+  getDeviceLocalPreferenceUpdates,
   isPrunableConnectionPerson,
   personFromLegacyFriend,
-  resolveFeedSignalModesFromDisplay,
+  stripDeviceLocalPreferenceUpdates,
+  stripDeviceLocalGraphPositionUpdates,
 } from "@freed/shared";
 import {
   projectArchiveAllReadUnsaved,
@@ -36,6 +39,27 @@ import {
 } from "@freed/shared/optimistic-state";
 import type { Account, BaseAppState, Friend, Person, ReachOutLog, RemoveFeedOptions, SampleLibraryData } from "@freed/shared";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
+import {
+  DEFAULT_FACTORY_RESET_PHASE_TIMEOUT_MS,
+  waitForFactoryResetDrain,
+} from "@freed/ui/lib/factory-reset";
+import {
+  getDeviceDisplayPreferences,
+  migrateLegacyDeviceDisplayPreferences,
+  setDeviceDisplayPreferences,
+} from "@freed/ui/lib/device-display-preferences";
+import {
+  migrateLegacyDeviceAIPreferences,
+  setDeviceAIPreferences,
+} from "@freed/ui/lib/device-ai-preferences";
+import {
+  applyDeviceAccountGraphPositionUpdate,
+  applyDevicePersonGraphPositionUpdate,
+  getDeviceGraphLayout,
+  migrateLegacyDeviceGraphLayout,
+  pruneDeviceGraphLayout,
+  restoreReplacedDeviceAccountGraphPositions,
+} from "@freed/ui/lib/device-graph-layout";
 import {
   initDoc,
   subscribe,
@@ -74,6 +98,11 @@ import {
 } from "./automerge";
 import type { DocState } from "./automerge";
 import { pinReaderItemInPwa } from "./reader-cache";
+
+let appInitializationPromise: Promise<void> | null = null;
+let documentSubscriptionTeardown: (() => void) | null = null;
+let startupMigrationsStopped = false;
+const pendingStartupMigrations = new Set<Promise<void>>();
 
 function readStateIdTails(ids: readonly string[]): string[] {
   return ids.slice(0, 5).map((id) => `...${id.slice(-8)}`);
@@ -195,8 +224,9 @@ async function pruneConnectionPersonIfNeeded(
 }
 
 async function runStartupMigrations(archivePruneDays: number): Promise<void> {
+  if (startupMigrationsStopped) return;
   try {
-    if (archivePruneDays > 0) {
+    if (archivePruneDays > 0 && !startupMigrationsStopped) {
       await docPruneArchivedItems(archivePruneDays * 24 * 60 * 60 * 1000);
     }
   } catch {
@@ -204,14 +234,37 @@ async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   }
 
   try {
-    for (;;) {
+    while (!startupMigrationsStopped) {
       const summary = await docBackfillContentSignals(200);
-      if (summary.updated === 0 || summary.remaining === 0) break;
+      if (
+        startupMigrationsStopped ||
+        summary.updated === 0 ||
+        summary.remaining === 0
+      ) break;
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
   } catch {
     // non-fatal
   }
+}
+
+function startStartupMigrations(archivePruneDays: number): void {
+  if (startupMigrationsStopped) return;
+  const migration = runStartupMigrations(archivePruneDays);
+  pendingStartupMigrations.add(migration);
+  void migration.finally(() => {
+    pendingStartupMigrations.delete(migration);
+  });
+}
+
+/** Stop new startup maintenance and drain work already touching the local document. */
+export async function quiescePwaStartupMigrations(): Promise<void> {
+  startupMigrationsStopped = true;
+  await waitForFactoryResetDrain(
+    () => [...pendingStartupMigrations],
+    "PWA startup migrations",
+    DEFAULT_FACTORY_RESET_PHASE_TIMEOUT_MS,
+  );
 }
 
 function hasStoredCloudSyncCredentials(): boolean {
@@ -261,61 +314,69 @@ export const useAppStore = create<AppState>((set, get) => ({
   pendingMatchCount: 0,
 
   // Initialize from Automerge worker
-  initialize: async () => {
-    if (get().isInitialized) return;
+  initialize: () => {
+    if (get().isInitialized) return Promise.resolve();
+    if (appInitializationPromise) return appInitializationPromise;
 
-    try {
-      set({ isLoading: true });
-      const state = await initDoc();
+    appInitializationPromise = (async () => {
+      try {
+        set({ isLoading: true });
+        const state = await initDoc();
+        migrateLegacyDeviceDisplayPreferences(state.preferences.display);
+        migrateLegacyDeviceAIPreferences(state.preferences.ai);
+        migrateLegacyDeviceGraphLayout(state.persons, state.accounts);
+        pruneDeviceGraphLayout(state.persons, state.accounts);
 
-      // Subscribe to future changes before flipping isInitialized so background
-      // mutations (prune, sync merges) propagate to the UI immediately.
-      // Reuse count map references when values are unchanged to avoid
-      // re-rendering sidebar selectors on unrelated mutations.
-      subscribe((next: DocState) => {
-        const prev = get();
-        const merged = {
-          ...next,
-        } as Partial<AppState>;
-        const previousFeedSignalModes = resolveFeedSignalModesFromDisplay(prev.preferences.display);
-        const nextFeedSignalModes = resolveFeedSignalModesFromDisplay(next.preferences.display);
-        if (shallowEqualRecord(next.feedUnreadCounts, prev.feedUnreadCounts))
-          merged.feedUnreadCounts = prev.feedUnreadCounts;
-        if (shallowEqualRecord(next.feedTotalCounts, prev.feedTotalCounts))
-          merged.feedTotalCounts = prev.feedTotalCounts;
-        if (shallowEqualRecord(next.unreadCountByPlatform, prev.unreadCountByPlatform))
-          merged.unreadCountByPlatform = prev.unreadCountByPlatform;
-        if (shallowEqualRecord(next.itemCountByPlatform, prev.itemCountByPlatform))
-          merged.itemCountByPlatform = prev.itemCountByPlatform;
-        if (nextFeedSignalModes.join(",") !== previousFeedSignalModes.join(",")) {
-          merged.activeFilter = applyFeedSignalModesToFilter(prev.activeFilter, nextFeedSignalModes);
+        // Subscribe to future changes before flipping isInitialized so background
+        // mutations (prune, sync merges) propagate to the UI immediately.
+        // Reuse count map references when values are unchanged to avoid
+        // re-rendering sidebar selectors on unrelated mutations.
+        documentSubscriptionTeardown?.();
+        documentSubscriptionTeardown = subscribe((next: DocState) => {
+          pruneDeviceGraphLayout(next.persons, next.accounts);
+          const prev = get();
+          const merged = {
+            ...next,
+          } as Partial<AppState>;
+          if (shallowEqualRecord(next.feedUnreadCounts, prev.feedUnreadCounts))
+            merged.feedUnreadCounts = prev.feedUnreadCounts;
+          if (shallowEqualRecord(next.feedTotalCounts, prev.feedTotalCounts))
+            merged.feedTotalCounts = prev.feedTotalCounts;
+          if (shallowEqualRecord(next.unreadCountByPlatform, prev.unreadCountByPlatform))
+            merged.unreadCountByPlatform = prev.unreadCountByPlatform;
+          if (shallowEqualRecord(next.itemCountByPlatform, prev.itemCountByPlatform))
+            merged.itemCountByPlatform = prev.itemCountByPlatform;
+          set(merged);
+        });
+
+        set({
+          ...state,
+          activeFilter: applyFeedSignalModesToFilter(
+            get().activeFilter,
+            getDeviceDisplayPreferences().feedSignalModes,
+          ),
+          isInitialized: true,
+          isLoading: false,
+        });
+
+        // Do not mutate the local doc before cloud sync has reconciled it.
+        if (!hasStoredCloudSyncCredentials()) {
+          const pruneDays = state.preferences.display.archivePruneDays ?? 30;
+          startStartupMigrations(pruneDays);
         }
-        set(merged);
-      });
-
-      set({
-        ...state,
-        activeFilter: applyFeedSignalModesToFilter(
-          get().activeFilter,
-          resolveFeedSignalModesFromDisplay(state.preferences.display),
-        ),
-        isInitialized: true,
-        isLoading: false,
-      });
-
-      // Do not mutate the local doc before cloud sync has reconciled it.
-      if (!hasStoredCloudSyncCredentials()) {
-        const pruneDays = state.preferences.display.archivePruneDays ?? 30;
-        void runStartupMigrations(pruneDays);
+      } catch (error) {
+        recordRuntimeError({ source: "pwa:initialize", error, fatal: false });
+        recordBugReportEvent("pwa:initialize", "error", "Initialization failed");
+        set({
+          error: error instanceof Error ? error.message : "Failed to initialize",
+          isLoading: false,
+        });
       }
-    } catch (error) {
-      recordRuntimeError({ source: "pwa:initialize", error, fatal: false });
-      recordBugReportEvent("pwa:initialize", "error", "Initialization failed");
-      set({
-        error: error instanceof Error ? error.message : "Failed to initialize",
-        isLoading: false,
-      });
-    }
+    })().finally(() => {
+      appInitializationPromise = null;
+    });
+
+    return appInitializationPromise;
   },
 
   // Item actions — errors propagate to callers so UI can surface them
@@ -523,12 +584,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updatePerson: async (id: string, updates: Partial<Person>) => {
+    const localGraphUpdate = getDeviceLocalGraphPositionUpdates(updates);
+    if (
+      Object.keys(localGraphUpdate).length > 0
+      && !applyDevicePersonGraphPositionUpdate(id, localGraphUpdate)
+    ) {
+      throw new Error("Freed could not save this graph position on this device.");
+    }
+    const syncedUpdates = stripDeviceLocalGraphPositionUpdates(updates);
+    if (Object.keys(syncedUpdates).length === 0) return;
     await runOptimisticMutation(
       get,
       set,
       "pwa:updatePerson",
-      (state) => projectUpdatePerson(state, id, updates),
-      () => docUpdatePerson(id, updates),
+      (state) => projectUpdatePerson(state, id, syncedUpdates),
+      () => docUpdatePerson(id, syncedUpdates),
     );
   },
 
@@ -613,10 +683,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     } as Friend;
     await docUpdatePerson(id, personFromLegacyFriend(nextFriend));
     const existingAccounts = Object.values(get().accounts).filter((account) => account.personId === id);
+    const existingAccountIds = new Set(existingAccounts.map((account) => account.id));
+    const graphLayoutBeforeReplacement = getDeviceGraphLayout();
     await Promise.all(existingAccounts.map((account) => docRemoveAccount(account.id)));
     const nextAccounts = accountsFromLegacyFriend(nextFriend);
     if (nextAccounts.length > 0) {
       await docAddAccounts(nextAccounts);
+      restoreReplacedDeviceAccountGraphPositions(
+        nextAccounts
+          .map((account) => account.id)
+          .filter((accountId) => existingAccountIds.has(accountId)),
+        graphLayoutBeforeReplacement,
+      );
     }
   },
 
@@ -633,12 +711,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateAccount: async (id: string, updates: Partial<Account>) => {
+    const localGraphUpdate = getDeviceLocalGraphPositionUpdates(updates);
+    if (
+      Object.keys(localGraphUpdate).length > 0
+      && !applyDeviceAccountGraphPositionUpdate(id, localGraphUpdate)
+    ) {
+      throw new Error("Freed could not save this graph position on this device.");
+    }
+    const syncedUpdates = stripDeviceLocalGraphPositionUpdates(updates);
+    if (Object.keys(syncedUpdates).length === 0) return;
     await runOptimisticMutation(
       get,
       set,
       "pwa:updateAccount",
-      (state) => projectUpdateAccount(state, id, updates),
-      () => docUpdateAccount(id, updates),
+      (state) => projectUpdateAccount(state, id, syncedUpdates),
+      () => docUpdateAccount(id, syncedUpdates),
     );
   },
 
@@ -650,12 +737,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Preference actions
   updatePreferences: async (update) => {
+    const localUpdate = getDeviceLocalPreferenceUpdates(update);
+    if (localUpdate.display && !setDeviceDisplayPreferences(localUpdate.display)) {
+      throw new Error("Freed could not save the display settings on this device.");
+    }
+    if (localUpdate.ai && !setDeviceAIPreferences(localUpdate.ai)) {
+      throw new Error("Freed could not save the AI settings on this device.");
+    }
+    const syncedUpdate = stripDeviceLocalPreferenceUpdates(update);
+    if (Object.keys(syncedUpdate).length === 0) return;
     await runOptimisticMutation(
       get,
       set,
       "pwa:updatePreferences",
-      (state) => projectUpdatePreferences(state, update),
-      () => docUpdatePreferences(update),
+      (state) => projectUpdatePreferences(state, syncedUpdate),
+      () => docUpdatePreferences(syncedUpdate),
     );
   },
 

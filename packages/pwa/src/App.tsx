@@ -16,7 +16,7 @@ import {
   type AvailableUpdateInfo,
   type PlatformConfig,
 } from "@freed/ui/context";
-import { useAppStore } from "./lib/store";
+import { quiescePwaStartupMigrations, useAppStore } from "./lib/store";
 import {
   connect,
   disconnect,
@@ -30,8 +30,15 @@ import {
   clearCloudSync,
   deleteCloudFile,
 } from "./lib/sync";
-import { clearLocalDoc } from "./lib/automerge";
-import { checkForPwaUpdate, applyPwaUpdate, initPwaUpdater, onUpdateAvailable } from "./lib/pwa-updater";
+import { clearLocalDoc, getItemLegacyHtml } from "./lib/automerge";
+import {
+  applyPwaUpdate,
+  checkForPwaUpdate,
+  initPwaUpdater,
+  onUpdateAvailable,
+  quiescePwaServiceWorkerCacheWrites,
+  resumePwaServiceWorkerCacheWrites,
+} from "./lib/pwa-updater";
 import { pickContactViaWebApi } from "./lib/contacts";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
 import { PwaSyncSettings } from "./components/PwaSyncSettings";
@@ -55,7 +62,23 @@ import {
   persistReleaseChannel,
 } from "@freed/ui/lib/release-channel";
 import { saveUrlInPwa } from "./lib/save-url";
-import { getCachedArticleHtml } from "@freed/ui/lib/article-cache";
+import {
+  cacheArticleHtml,
+  clearArticleCacheStorage,
+  getCachedArticleHtml,
+} from "@freed/ui/lib/article-cache";
+import { clearDeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
+import { clearDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
+import { clearDeviceGraphLayout } from "@freed/ui/lib/device-graph-layout";
+import { resetFeedCardDensity } from "@freed/ui/lib/feed-card-density";
+import { resetInterfaceZoom } from "@freed/ui/lib/interface-zoom";
+import {
+  runFactoryResetOperations,
+  runFactoryResetWithRecovery,
+} from "@freed/ui/lib/factory-reset";
+import { clearGeocodingCache } from "@freed/ui/lib/geocoding-cache";
+import { resetReaderOfflineCacheMode } from "@freed/ui/lib/reader-cache-settings";
+import { resetThemePreference } from "@freed/ui/lib/theme";
 import { hydrateReaderItemInPwa, pinReaderItemInPwa } from "./lib/reader-cache";
 import { refreshSampleLibraryData, summarizeSampleData } from "@freed/ui/lib/sample-library-seed";
 import {
@@ -66,6 +89,8 @@ import {
   type InstallNotice,
 } from "./lib/pwa-install";
 import { openPwaUrl } from "./lib/youtube-handoff";
+import { clearPersistedWorkerDebugEvents } from "./lib/automerge-worker-debug";
+import { clearPwaOAuthSessionState } from "./lib/oauth-redirect";
 
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
 const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
@@ -211,6 +236,7 @@ function App() {
     return () => {
       unsubscribe();
       disconnect();
+      stopCloudSync();
     };
   }, [isInitialized, legalAccepted, setSyncConnected]);
 
@@ -260,17 +286,70 @@ function App() {
   }, [releaseChannel]);
 
   const handleFactoryReset = useCallback(async (deleteFromCloud: boolean) => {
-    const provider = getCloudProvider();
-    const token = provider ? getCloudToken(provider) : null;
-    if (deleteFromCloud && provider && token) {
-      await deleteCloudFile(provider, token);
-    } else {
-      stopCloudSync();
-    }
-    clearStoredRelayUrl();
-    if (provider) clearCloudSync(provider);
-    await clearLocalDoc();
-    location.reload();
+    await runFactoryResetWithRecovery({
+      reset: async () => {
+        disconnect();
+        stopCloudSync();
+        await runFactoryResetOperations({
+          quiesceLocalWriters: [
+            quiescePwaStartupMigrations,
+            quiescePwaServiceWorkerCacheWrites,
+          ],
+          clearDeviceStores: () => [
+            clearDeviceDisplayPreferences(),
+            clearDeviceAIPreferences(),
+            clearDeviceGraphLayout(),
+          ],
+          clearLocalSettings: [
+            resetReaderOfflineCacheMode,
+            resetFeedCardDensity,
+            resetInterfaceZoom,
+            resetThemePreference,
+            clearPersistedWorkerDebugEvents,
+            clearPwaOAuthSessionState,
+          ],
+          clearLocalData: [
+            clearArticleCacheStorage,
+            clearGeocodingCache,
+          ],
+          clearProviderDataAndConnections: async () => {
+            const provider = getCloudProvider();
+            const token = provider ? getCloudToken(provider) : null;
+            stopCloudSync();
+            if (deleteFromCloud && provider && token) {
+              await deleteCloudFile(provider, token);
+            }
+            const credentialClearFailures: unknown[] = [];
+            try {
+              clearStoredRelayUrl();
+            } catch (error) {
+              credentialClearFailures.push(error);
+            }
+            for (const cloudProvider of ["gdrive", "dropbox"] as const) {
+              try {
+                clearCloudSync(cloudProvider);
+              } catch (error) {
+                credentialClearFailures.push(error);
+              }
+            }
+            if (credentialClearFailures.length > 0) {
+              throw credentialClearFailures[0];
+            }
+          },
+          clearDocument: async () => {
+            await clearLocalDoc();
+            await resumePwaServiceWorkerCacheWrites();
+          },
+        });
+      },
+      reload: () => location.reload(),
+      onFailure: () => {
+        void resumePwaServiceWorkerCacheWrites().catch(() => undefined);
+        toast.error(
+          "Factory reset stopped because Freed could not clear all local data. Reloading Freed to restore background services.",
+        );
+      },
+    });
   }, []);
   const handleDismissInstallNotice = useCallback(() => {
     dismissInstallNotice();
@@ -329,7 +408,18 @@ function App() {
       // PWA local content: check the Workbox Cache API
       getLocalContent: async (globalId: string) => {
         try {
-          return await getCachedArticleHtml(globalId);
+          const cached = await getCachedArticleHtml(globalId);
+          if (cached) return cached;
+          const legacyHtml = await getItemLegacyHtml(globalId);
+          if (!legacyHtml) return null;
+          const item = useAppStore.getState().items.find((candidate) => candidate.globalId === globalId);
+          const articleUrl = item?.content.linkPreview?.url
+            ?? item?.sourceUrl
+            ?? `/reader-item/${encodeURIComponent(globalId)}`;
+          await cacheArticleHtml(articleUrl, globalId, legacyHtml, {
+            pinned: item?.userState.saved ?? false,
+          }).catch(() => {});
+          return legacyHtml;
         } catch {
           return null;
         }

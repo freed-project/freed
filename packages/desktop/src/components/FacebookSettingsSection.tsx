@@ -16,7 +16,7 @@ import {
 import { ProviderStatusIndicator } from "@freed/ui/components/ProviderStatusIndicator";
 import { SettingsListPanel } from "@freed/ui/components/settings/SettingsListPanel";
 import { Tooltip } from "@freed/ui/components/Tooltip";
-import type { FbGroupInfo } from "@freed/shared";
+import type { FbGroupInfo, UserPreferences } from "@freed/shared";
 import { TrashIcon } from "@freed/ui/components/icons";
 import { useAppStore } from "../lib/store";
 import {
@@ -53,6 +53,7 @@ import { socialProviderCopy } from "../lib/social-provider-copy";
 import { isRuntimeDeferredStage } from "../lib/social-capture-runtime";
 import { log } from "../lib/logger";
 import { usePostLoginAutoSync } from "../hooks/usePostLoginAutoSync";
+import { useFacebookGroupDiscovery } from "../lib/facebook-group-discovery";
 
 const FACEBOOK_LEAVE_CHECK_DELAY_MS = import.meta.env.VITE_TEST_TAURI === "1" ? 100 : 60_000;
 const FACEBOOK_LEAVE_CHECK_FOCUS_GRACE_MS = import.meta.env.VITE_TEST_TAURI === "1" ? 0 : 5_000;
@@ -246,7 +247,9 @@ export function FacebookSettingsSection({
 }: SyncProviderSectionProps) {
   const fbAuth = useAppStore((s) => s.fbAuth);
   const setFbAuth = useAppStore((s) => s.setFbAuth);
-  const fbCapture = useAppStore((s) => s.preferences.fbCapture);
+  const excludedGroupIds = useAppStore(
+    (s) => s.preferences.fbCapture.excludedGroupIds,
+  );
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const isLoading = useAppStore((s) => s.isLoading);
   const items = useAppStore((s) => s.items);
@@ -267,8 +270,7 @@ export function FacebookSettingsSection({
   const copy = socialProviderCopy("facebook");
   const { confirm, dialog } = useProviderRiskGate("facebook");
 
-  const knownGroups = fbCapture?.knownGroups ?? {};
-  const excludedGroupIds = fbCapture?.excludedGroupIds ?? {};
+  const knownGroups = useFacebookGroupDiscovery();
   const groups = Object.values(knownGroups).sort((a, b) =>
     getFacebookGroupDisplayName(a).localeCompare(getFacebookGroupDisplayName(b)),
   );
@@ -366,12 +368,11 @@ export function FacebookSettingsSection({
     async (nextExcludedGroupIds: Record<string, true>) => {
       await updatePreferences({
         fbCapture: {
-          knownGroups,
           excludedGroupIds: nextExcludedGroupIds,
-        },
+        } as UserPreferences["fbCapture"],
       });
     },
-    [knownGroups, updatePreferences],
+    [updatePreferences],
   );
 
   const handleToggleGroup = useCallback(

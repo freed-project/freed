@@ -116,7 +116,7 @@ The command palette now covers:
 - **Create flows**: Add RSS Feed, Save URL, import Freed Markdown, export Freed Markdown
 - **Current item actions**: Open original URL, close reader, save or unsave, archive or unarchive, like or unlike when supported
 - **Current scope actions**: Mark current scope read, archive visible read items in one batch, unarchive saved items, sync RSS, sync the current provider, and check for updates when supported
-- **Danger actions**: Delete all archived items plus local or cloud-backed factory reset, guarded by typed confirmation
+- **Danger actions**: Delete all archived items plus local or cloud-backed factory reset, guarded by typed confirmation. Factory reset clears every owned local data surface before deleting the document or optional cloud copy, and stops on any cleanup failure.
 
 Blank suggestions now stay compact. Individual RSS feeds and danger actions are hidden until the operator starts typing, and broad matches are capped so a large feed list cannot turn the command surface into a scroll chore.
 
@@ -467,7 +467,7 @@ Reward security researchers for responsible disclosure.
 
 - [ ] Topic extraction works (at least one method)
 - [ ] Summarization available for long content
-- [x] AI settings in Freed Desktop start with a single provider choice that determines whether content stays local, goes to Ollama, or goes to a selected API provider, without selection flicker while preferences persist. The PWA hides AI controls because it cannot run those providers, downloads, or key storage paths.
+- [x] AI settings in Freed Desktop start with a device-local provider, model, and endpoint choice that determines whether content stays local, goes to Ollama, or goes to a selected API provider, without selection flicker while settings persist. Only content-processing intent syncs through Automerge. The PWA hides AI controls because it cannot run those providers, downloads, or key storage paths.
 - [x] Local content signals classify existing and newly ingested items without cloud AI on Desktop and PWA, with inclusive saved feed filter presets, saved sort controls, expanded semantic signals, and compact event metadata for high-confidence upcoming items
 - [x] Optional local AI stays out of the installer, remains off by default, recommends Light, Balanced, or Pro from local hardware, stores pack selection plus model files in device-local state, and refreshes semantic scan health while settings is open
 - [x] Friend suggestions consume local `contentSignals` and optional Integrated AI enrichment without adding a cloud prompt path or automatic friend promotion
@@ -488,6 +488,7 @@ Reward security researchers for responsible disclosure.
 - [x] Desktop and PWA expose a shared bug report flow with public-safe bundles by default and private diagnostics as an explicit opt-in path
 - [x] Shared bug report actions now reflect the selected bundle privacy tier, bulk-toggle private diagnostics, and disable public GitHub issue drafts while private artifacts are selected
 - [x] Settings keeps Support out of the primary section list and opens the existing report composer from a dedicated Support modal launched at the top of Danger Zone
+- [x] Factory reset clears device preferences and recovery copies, credentials, provider runtime state, article and geocoding caches, local AI and media files, diagnostics, and the local document in a failure-aware order while preserving installation identity and legal acceptance
 
 ---
 

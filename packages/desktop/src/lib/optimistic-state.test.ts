@@ -166,7 +166,10 @@ describe("optimistic state projections", () => {
     expect(projectRenameFeed({ feeds: { [feed.url]: feed } }, feed.url, "New")?.feeds?.[feed.url].title).toBe("New");
     expect(projectUpdatePerson({ persons: { person }, friends: { person: friend } }, "person", { name: "New" }, 80)?.persons?.person.name).toBe("New");
     expect(projectUpdateAccount({ accounts: { account } }, "account", { handle: "new" }, 90)?.accounts?.account.handle).toBe("new");
-    expect(projectUpdatePreferences({ preferences }, { display: { ...preferences.display, compactMode: true } })?.preferences?.display.compactMode).toBe(true);
+    expect(projectUpdatePreferences(
+      { preferences },
+      { display: { ...preferences.display, showEngagementCounts: true } },
+    )?.preferences?.display.showEngagementCounts).toBe(true);
   });
 
   it("rolls back only slices that still match the failed projection", () => {
