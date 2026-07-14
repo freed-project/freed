@@ -188,6 +188,7 @@ five general actors from a clean `dev` checkout at exact `origin/dev`:
 ```bash
 npm run automation:actors -- provision --all
 npm run automation:actors -- verify --all
+npm run automation:actors -- accept-host --all
 npm run validate:host-automations
 ```
 
@@ -197,20 +198,45 @@ state from an earlier owner action. Revoke the actor named by the error, then
 retry. A `provision_rollback_failed` result names any earlier actors that also
 need explicit owner recovery.
 
-This helper needs no signing identity. It installs a root-owned,
-content-addressed copy of the pinned Node and control runtime, plus one
-actor-specific launcher binding. The native provisioner stores the persistent
-credential in the owner's Keychain with access limited to that launcher. Keep
-the saved actors paused until the real-host verification proves unattended
-Keychain access. Provisioning does not grant task authority or provider
-approval, and it does not contact a provider.
+The helper uses deterministic linker output names, so identical native builds
+receive the same linker-generated ad hoc signature. It does not select or need a
+developer signing identity. It installs a root-owned, content-addressed copy of
+the pinned Node and control runtime, plus one actor-specific launcher binding.
+The native provisioner stores the persistent credential in the owner's Keychain
+with access limited to that launcher. Verification checks the digest record and
+binding, then asks the exact installed launcher for a nonmutating readiness
+attestation. It never uses a freshly compiled provisioner to read the secret.
+Keep the saved actors paused until real-host verification and host acceptance
+prove unattended Keychain access. Provisioning does not grant task authority or
+provider approval, and it does not contact a provider.
 
-The unsigned handoff is cooperative among processes running as the same macOS
-user. It pins the selected role and protects the persistent credential, but it
-cannot prove which saved automation invoked a provisioned general actor
+The ad hoc signed handoff is cooperative among processes running as the same
+macOS user. It pins the selected role and protects the persistent credential,
+but it cannot prove which saved automation invoked a provisioned general actor
 launcher. Do not provision the five launchers if those roles require hard
 caller isolation. Stored task ceilings, provider approvals, the global behavior
 slot, owner governance, publisher isolation, and GitHub review remain enforced.
+
+Verify, acquire, and host acceptance disable Keychain user interaction and fail
+closed instead of opening a password dialog. Their child processes, output, and
+lifecycle steps are bounded. `accept-host` proves one acquire, heartbeat, and
+release lifecycle for every actor, attempts release after any successful
+acquisition even when a later step fails, and returns no credential or lease
+token. `rotate` is different because it must read
+the prior secret for rollback. It is an explicit owner-interactive action. If
+macOS asks during rotation, choose one-time **Allow**, never **Always Allow**. A
+prompt from provision, verify, acquire, revoke, or host acceptance is a failure.
+
+After the repaired helper reaches `dev`, replace credentials touched by the old
+prompting flow before any actor is activated:
+
+```bash
+npm run automation:actors -- revoke --all
+npm run automation:actors -- provision --all
+npm run automation:actors -- verify --all
+npm run automation:actors -- accept-host --all
+npm run validate:host-automations
+```
 
 Before mutation, the executor must:
 
@@ -241,6 +267,7 @@ Validate the checked-in automation contract with:
 npm run validate:automations
 npm run validate:host-automations
 npm run automation:actors -- verify --all
+npm run automation:actors -- accept-host --all
 node --test scripts/automation-control.test.mjs
 ```
 

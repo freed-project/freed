@@ -73,9 +73,6 @@ async function compileSwift(source, output, testingFlag = undefined) {
   ];
   if (testingFlag) arguments_.push("-D", testingFlag);
   arguments_.push(source, "-o", output, "-framework", "Security");
-  if (source === hostSource) {
-    arguments_.push("-framework", "LocalAuthentication");
-  }
   arguments_.push("-framework", "CryptoKit");
   await execFileAsync("/usr/bin/xcrun", arguments_, {
     cwd: root,
@@ -118,6 +115,16 @@ function sha256(data) {
 
 async function sha256File(file) {
   return sha256(await readFile(file));
+}
+
+async function codeIdentifier(file) {
+  const { stderr } = await execFileAsync("/usr/bin/codesign", ["-dvv", file]);
+  const match = /^Identifier=(.+)$/m.exec(stderr);
+  assert.ok(match, `missing linker ad hoc identifier for ${file}`);
+  assert.match(stderr, /^Signature=adhoc$/m);
+  assert.match(stderr, /^TeamIdentifier=not set$/m);
+  assert.doesNotMatch(stderr, /^Authority=/m);
+  return match[1];
 }
 
 function runtimeDigest({
@@ -260,6 +267,7 @@ async function createFixture({
     runtimeRoot,
     stateRoot,
     credentialPath,
+    keychainSnapshotPath: path.join(stateRoot, "test-keychain-item.json"),
     host: launcherPath,
   };
 }
@@ -307,6 +315,7 @@ function acquisitionArguments(fixture, overrides = {}) {
     leaseName: fixture.binding.leaseName,
     ttlSeconds: "1800",
     controlMode: "valid",
+    keychainMode: "valid",
     ...overrides,
   };
   return [
@@ -325,10 +334,17 @@ function acquisitionArguments(fixture, overrides = {}) {
     fixture.runtimeRoot,
     "--test-control-mode",
     values.controlMode,
+    "--test-keychain-mode",
+    values.keychainMode,
   ];
 }
 
-function provisionerArguments(fixture, action, keychainState) {
+function provisionerArguments(
+  fixture,
+  action,
+  keychainState,
+  interactionMode = "valid",
+) {
   return [
     action,
     "--actor",
@@ -341,6 +357,8 @@ function provisionerArguments(fixture, action, keychainState) {
     fixture.runtimeRoot,
     "--test-keychain-state",
     keychainState,
+    "--test-interaction-mode",
+    interactionMode,
   ];
 }
 
@@ -480,6 +498,42 @@ test(
 );
 
 test(
+  "native actor host disables legacy Keychain UI and restores policy before continuing",
+  { skip: !darwinOnly },
+  async (t) => {
+    const fixture = await createFixture();
+    t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+    for (const [keychainMode, pattern] of [
+      ["read-failure", /test Keychain credential could not be read/],
+      ["get-failure", /interaction policy could not be read/],
+      ["disable-failure", /interaction policy could not be disabled/],
+      ["disable-noop", /interaction policy remained enabled/],
+      ["restore-failure", /could not be restored after the credential read/],
+    ]) {
+      const result = await run(
+        fixture.host,
+        acquisitionArguments(fixture, { keychainMode }),
+      );
+      assert.equal(result.code, 1);
+      assert.match(result.stderr, pattern);
+      if (keychainMode === "disable-noop") {
+        assert.doesNotMatch(result.stderr, /credential read permitted user interaction/);
+      }
+      assert.equal(result.stdout, "");
+    }
+    const initiallyDisabled = await run(
+      fixture.host,
+      acquisitionArguments(fixture, { keychainMode: "initially-disabled" }),
+    );
+    assert.equal(initiallyDisabled.code, 0, initiallyDisabled.stderr);
+    assert.equal(
+      JSON.parse(initiallyDisabled.stdout).leaseName,
+      "scaffolding-writer",
+    );
+  },
+);
+
+test(
   "native actor host rejects oversized, overlong, and implausible control responses",
   { skip: !darwinOnly },
   async (t) => {
@@ -585,7 +639,7 @@ test(
 );
 
 test(
-  "native provisioner performs provision, rotate, verify, and recoverable revoke transitions",
+  "native provisioner performs provision, owner-interactive rotate, and non-secret revoke transitions",
   { skip: !darwinOnly },
   async (t) => {
     const provisionFixture = await createFixture({ credential: null });
@@ -640,36 +694,150 @@ test(
         .tokenSha256,
       sha256(existingCredential),
     );
-    const verifiedRollback = await run(
-      testProvisioner,
-      provisionerArguments(rollbackFixture, "verify", "valid"),
+    assert.deepEqual(
+      JSON.parse(await readFile(rollbackFixture.keychainSnapshotPath, "utf8")),
+      {
+        launcherACLMatches: true,
+        present: true,
+        secretSha256: sha256(existingCredential),
+      },
     );
-    assert.equal(verifiedRollback.code, 0, verifiedRollback.stderr);
 
-    const verifyFixture = await createFixture();
+    const partialRotationFixture = await createFixture();
     t.after(() =>
-      rm(verifyFixture.fixtureRoot, { recursive: true, force: true }),
+      rm(partialRotationFixture.fixtureRoot, { recursive: true, force: true }),
     );
-    const verified = await run(
+    const partialRotation = await run(
       testProvisioner,
-      provisionerArguments(verifyFixture, "verify", "valid"),
+      provisionerArguments(
+        partialRotationFixture,
+        "rotate",
+        "partial-rotation-failure",
+      ),
     );
-    assert.equal(verified.code, 0, verified.stderr);
-    assert.equal(JSON.parse(verified.stdout).ready, true);
-
+    assert.equal(partialRotation.code, 1);
+    assert.match(
+      partialRotation.stderr,
+      /failed before the digest changed; the previous credential was restored/,
+    );
+    assert.equal(
+      JSON.parse(
+        await readFile(partialRotationFixture.credentialPath, "utf8"),
+      ).tokenSha256,
+      sha256(existingCredential),
+    );
+    assert.deepEqual(
+      JSON.parse(
+        await readFile(partialRotationFixture.keychainSnapshotPath, "utf8"),
+      ),
+      {
+        launcherACLMatches: true,
+        present: true,
+        secretSha256: sha256(existingCredential),
+      },
+    );
     const revokeFixture = await createFixture();
     t.after(() =>
       rm(revokeFixture.fixtureRoot, { recursive: true, force: true }),
     );
     const revoked = await run(
       testProvisioner,
-      provisionerArguments(revokeFixture, "revoke", "empty"),
+      provisionerArguments(
+        revokeFixture,
+        "revoke",
+        "metadata-only",
+        "initially-disabled",
+      ),
     );
     assert.equal(revoked.code, 0, revoked.stderr);
     await assert.rejects(readFile(revokeFixture.credentialPath), {
       code: "ENOENT",
     });
     assert.equal(JSON.parse(revoked.stdout).ready, false);
+  },
+);
+
+test(
+  "native provision and revoke fail closed when Keychain UI policy cannot be controlled",
+  { skip: !darwinOnly },
+  async (t) => {
+    for (const action of ["provision", "revoke"]) {
+      for (const [interactionMode, pattern] of [
+        ["get-failure", /interaction policy could not be read/],
+        ["disable-failure", /interaction policy could not be disabled/],
+        ["disable-noop", /interaction policy remained enabled/],
+        ["restore-failure", /could not be restored after the lifecycle action/],
+      ]) {
+        const fixture = await createFixture({
+          credential: action === "provision" ? null : existingCredential,
+        });
+        t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+        const result = await run(
+          testProvisioner,
+          provisionerArguments(
+            fixture,
+            action,
+            action === "provision" ? "empty" : "metadata-only",
+            interactionMode,
+          ),
+        );
+        assert.equal(result.code, 1);
+        assert.match(result.stderr, pattern);
+        assert.equal(result.stdout, "");
+        if (interactionMode === "disable-noop") {
+          assert.doesNotMatch(
+            result.stderr,
+            /fake Keychain (inspection|add|deletion) permitted user interaction/,
+          );
+        }
+        if (action === "provision" && interactionMode === "restore-failure") {
+          await assert.rejects(readFile(fixture.credentialPath), {
+            code: "ENOENT",
+          });
+          assert.deepEqual(
+            JSON.parse(
+              await readFile(fixture.keychainSnapshotPath, "utf8"),
+            ),
+            { present: false },
+          );
+        }
+      }
+    }
+
+    const driftFixture = await createFixture({ credential: null });
+    t.after(() =>
+      rm(driftFixture.fixtureRoot, { recursive: true, force: true }),
+    );
+    const driftedRollback = await run(
+      testProvisioner,
+      provisionerArguments(
+        driftFixture,
+        "provision",
+        "empty",
+        "restore-failure-with-digest-drift",
+      ),
+    );
+    assert.equal(driftedRollback.code, 1);
+    assert.match(
+      driftedRollback.stderr,
+      /could not be restored and the completed lifecycle action could not be rolled back/,
+    );
+    assert.equal(driftedRollback.stdout, "");
+    assert.equal(
+      JSON.parse(await readFile(driftFixture.credentialPath, "utf8"))
+        .tokenSha256,
+      "0".repeat(64),
+    );
+    assert.deepEqual(
+      JSON.parse(
+        await readFile(driftFixture.keychainSnapshotPath, "utf8"),
+      ),
+      {
+        launcherACLMatches: true,
+        present: true,
+        secretSha256: sha256(rotatedCredential),
+      },
+    );
   },
 );
 
@@ -690,7 +858,7 @@ test(
     t.after(() => rm(itemOnly.fixtureRoot, { recursive: true, force: true }));
     const itemOnlyResult = await run(
       testProvisioner,
-      provisionerArguments(itemOnly, "provision", "valid"),
+      provisionerArguments(itemOnly, "provision", "metadata-only"),
     );
     assert.equal(itemOnlyResult.code, 1);
     assert.match(itemOnlyResult.stderr, /run revoke, then retry/);
@@ -701,7 +869,7 @@ test(
     );
     const wrongSecretResult = await run(
       testProvisioner,
-      provisionerArguments(wrongSecret, "verify", "wrong-secret"),
+      provisionerArguments(wrongSecret, "rotate", "wrong-secret"),
     );
     assert.equal(wrongSecretResult.code, 1);
     assert.match(
@@ -713,7 +881,7 @@ test(
     t.after(() => rm(wrongACL.fixtureRoot, { recursive: true, force: true }));
     const wrongACLResult = await run(
       testProvisioner,
-      provisionerArguments(wrongACL, "verify", "wrong-acl"),
+      provisionerArguments(wrongACL, "rotate", "wrong-acl"),
     );
     assert.equal(wrongACLResult.code, 1);
     assert.match(
@@ -729,7 +897,7 @@ test(
   async () => {
     for (const actor of ["freed-owner", "freed-pr-publisher"]) {
       const result = await run(testProvisioner, [
-        "verify",
+        "revoke",
         "--actor",
         actor,
         "--state-root",
@@ -748,6 +916,29 @@ test(
 );
 
 test(
+  "native provisioner pins exact launcher trust while suppressing unsigned prompt defaults",
+  { skip: !darwinOnly },
+  async () => {
+    const source = await readFile(provisionerSource, "utf8");
+    assert.match(
+      source,
+      /SecKeychainPromptSelector\.unsignedAct\.union\(\.invalidAct\)/,
+    );
+    assert.match(source, /selector == launcherPromptSelector/);
+    assert.match(source, /trustedApplications\.count == 1/);
+    assert.doesNotMatch(
+      source,
+      /launcherPromptSelector\s*=\s*SecKeychainPromptSelector\.unsigned\b/,
+    );
+    assert.doesNotMatch(
+      source,
+      /launcherPromptSelector\s*=.*SecKeychainPromptSelector\.invalid\b/,
+    );
+    assert.doesNotMatch(source, /func verify\s*\(/);
+  },
+);
+
+test(
   "production binaries contain no test credential or test-only override",
   { skip: !darwinOnly },
   async () => {
@@ -757,7 +948,12 @@ test(
       assert.doesNotMatch(stdout, new RegExp(rotatedCredential));
       assert.doesNotMatch(stdout, /--test-binding|--test-runtime-root/);
       assert.doesNotMatch(stdout, /--test-keychain-state|--test-control-mode/);
-      assert.doesNotMatch(stdout, /digest-write-failure/);
+      assert.doesNotMatch(stdout, /--test-keychain-mode/);
+      assert.doesNotMatch(stdout, /--test-interaction-mode/);
+      assert.doesNotMatch(
+        stdout,
+        /digest-write-failure|partial-rotation-failure|disable-noop|restore-failure-with-digest-drift/,
+      );
     }
     const hostResult = await run(productionHost, [
       "--acquire-lease",
@@ -774,22 +970,47 @@ test(
     ]);
     assert.equal(hostResult.code, 1);
     assert.match(hostResult.stderr, /unsupported or duplicate argument/);
+    const { stdout: hostUndefinedSymbols } = await execFileAsync(
+      "/usr/bin/nm",
+      ["-u", productionHost],
+    );
+    assert.match(
+      hostUndefinedSymbols,
+      /_SecKeychainGetUserInteractionAllowed/,
+    );
+    assert.match(
+      hostUndefinedSymbols,
+      /_SecKeychainSetUserInteractionAllowed/,
+    );
+    const { stdout: provisionerUndefinedSymbols } = await execFileAsync(
+      "/usr/bin/nm",
+      ["-u", productionProvisioner],
+    );
+    assert.match(
+      provisionerUndefinedSymbols,
+      /_SecKeychainGetUserInteractionAllowed/,
+    );
+    assert.match(
+      provisionerUndefinedSymbols,
+      /_SecKeychainSetUserInteractionAllowed/,
+    );
     const provisionerResult = await run(productionProvisioner, [
       "verify",
       "--actor",
       defaultActor,
       "--state-root",
       "/tmp",
-      "--test-binding",
-      "/tmp/binding.json",
     ]);
     assert.equal(provisionerResult.code, 1);
-    assert.match(provisionerResult.stderr, /unsupported or duplicate argument/);
+    assert.match(
+      provisionerResult.stderr,
+      /requires provision, rotate, or revoke/,
+    );
   },
 );
 
 test(
-  "native build helper emits unsigned production tools with no signing flags",
+  "native build helper emits deterministic linker ad hoc tools with no signing identity",
   { skip: !darwinOnly },
   async (t) => {
     const outputRoot = await realpath(
@@ -802,6 +1023,16 @@ test(
       outputRoot,
       "automation-actor-provision",
     );
+    const secondOutputRoot = await realpath(
+      await mkdtemp(path.join(os.tmpdir(), "freed-actor-build-helper-second-")),
+    );
+    t.after(() => rm(secondOutputRoot, { recursive: true, force: true }));
+    await chmod(secondOutputRoot, 0o700);
+    const secondHostOutput = path.join(secondOutputRoot, "host-result");
+    const secondProvisionerOutput = path.join(
+      secondOutputRoot,
+      "provisioner-result",
+    );
     const result = await run(buildScript, [
       "--host-output",
       hostOutput,
@@ -809,8 +1040,33 @@ test(
       provisionerOutput,
     ]);
     assert.equal(result.code, 0, result.stderr);
+    const secondResult = await run(buildScript, [
+      "--host-output",
+      secondHostOutput,
+      "--provisioner-output",
+      secondProvisionerOutput,
+    ]);
+    assert.equal(secondResult.code, 0, secondResult.stderr);
     assert.equal((await stat(hostOutput)).mode & 0o777, 0o755);
     assert.equal((await stat(provisionerOutput)).mode & 0o777, 0o755);
+    assert.equal(await sha256File(hostOutput), await sha256File(secondHostOutput));
+    assert.equal(
+      await sha256File(provisionerOutput),
+      await sha256File(secondProvisionerOutput),
+    );
+    assert.equal(await codeIdentifier(hostOutput), "automation-actor-host");
+    assert.equal(
+      await codeIdentifier(secondHostOutput),
+      "automation-actor-host",
+    );
+    assert.equal(
+      await codeIdentifier(provisionerOutput),
+      "automation-actor-provision",
+    );
+    assert.equal(
+      await codeIdentifier(secondProvisionerOutput),
+      "automation-actor-provision",
+    );
     const source = await readFile(buildScript, "utf8");
     assert.doesNotMatch(source, /codesign|signing-identity|--identity/);
     for (const binary of [hostOutput, provisionerOutput]) {

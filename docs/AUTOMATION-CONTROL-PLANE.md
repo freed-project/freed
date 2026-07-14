@@ -73,15 +73,17 @@ Every actor specification also requires `trusted-launcher` and
    and account, and confirm both digest verification and canonical lease
    readiness.
 
-The validator does not read a Keychain secret and does not write host files. The
-root-owned launcher reads the Keychain secret inside its attestation boundary,
-compares it to the credential digest, and returns only the non-secret result.
-An ACTIVE actor fails closed if any
-overlay or readiness check fails. A missing
-actor remains safely PAUSED and is reported as reconciliation drift. A saved
-PAUSED actor may await owner provisioning, but its installed overlay still must
-be valid. Reconcile through the Codex host automation controls, never by editing
-`automation.toml` directly.
+The validator does not read a Keychain secret and does not write host files.
+`automation:actors verify` validates the private digest record and root-owned
+public binding, then invokes the exact installed launcher for the same
+nonmutating attestation. It does not compile or invoke a disposable provisioner
+to read the secret. The installed launcher reads the Keychain secret inside its
+attestation boundary, compares it to the credential digest, and returns only the
+non-secret result. An ACTIVE actor fails closed if any overlay or readiness
+check fails. A missing actor remains safely PAUSED and is reported as
+reconciliation drift. A saved PAUSED actor may await owner provisioning, but
+its installed overlay still must be valid. Reconcile through the Codex host
+automation controls, never by editing `automation.toml` directly.
 
 ### Owner provisioning for general actors
 
@@ -93,8 +95,18 @@ checkout is current, run:
 ```bash
 npm run automation:actors -- provision --all
 npm run automation:actors -- verify --all
+npm run automation:actors -- accept-host --all
 npm run validate:host-automations
 ```
+
+`accept-host` is the owner-run real-host acceptance gate. For each actor it
+acquires the canonical lease through the installed launcher, heartbeats that
+lease, and releases it before reporting success. Each child process, output,
+and lifecycle step is bounded. After a successful acquisition, cleanup still
+attempts release if the heartbeat or a later check fails. The command does not
+create or mutate a task, grant task or
+provider authority, activate an actor, or expose a persistent credential or
+short-lived lease token in its result.
 
 If `provision --all` fails after creating earlier credentials, it revokes only
 the actors completed by that invocation, in reverse order. It never revokes the
@@ -103,19 +115,27 @@ state from an earlier attempt. Run `revoke --actor <actor named in the error>`,
 then retry provisioning. A `provision_rollback_failed` result names every actor
 that still requires explicit owner recovery.
 
-The helper compiles two native Swift programs without a signing identity. It
-installs only public, content-addressed runtime files and actor-specific launcher
-bindings through `sudo`. The native provisioner then generates each persistent
-credential with the system random source, stores it in the current owner's
-Keychain, restricts the item to the exact installed launcher, and writes only its
-digest to the private automation state directory. The orchestration script,
-shell, and agent never receive the credential. It never appears in arguments,
-standard output, logs, task state, or agent state.
+The helper compiles two native Swift programs with deterministic linker output
+names. The macOS linker gives identical builds the same ad hoc signature. This
+is a linker-generated identity, not a developer signing identity, and the build
+does not select or require one. The helper installs only public,
+content-addressed runtime files and actor-specific launcher bindings through
+`sudo`. The native provisioner then generates each persistent credential with
+the system random source, stores it in the current owner's Keychain, restricts
+the item to the exact installed launcher, and writes only its digest to the
+private automation state directory. The orchestration script, shell, and agent
+never receive the credential. It never appears in arguments, standard output,
+logs, task state, or agent state.
 
 The installed launcher clears inherited environment state, verifies its own
-root-owned binding and every pinned runtime digest, reads the Keychain item with
-interaction disabled, and invokes only the pinned control entry. That child
-process is the only JavaScript process that receives the persistent credential,
+root-owned binding and every pinned runtime digest, disables Keychain user
+interaction for the credential read, restores the prior interaction policy,
+and invokes only the pinned control entry. A failure to disable interaction,
+read the credential, or restore the prior policy fails closed. Verify, acquire,
+and host acceptance must never display a Keychain password dialog. The launcher
+and orchestration layer bound child runtime and output, terminate a timed-out
+child, and reject late, oversized, or malformed results. The pinned control
+child is the only JavaScript process that receives the persistent credential,
 and receives it only long enough to acquire the actor's canonical lease. The
 launcher returns only the short-lived lease result. General actor leases have a
 30 minute absolute lifetime. Heartbeats cannot extend them past the original
@@ -139,14 +159,38 @@ npm run automation:actors -- verify --actor freed-nightly-runner
 npm run automation:actors -- acquire --actor freed-nightly-runner
 ```
 
-Keep every saved actor paused until both verification commands pass on the real
-host. The first installation must prove that the root-owned launcher built
-without a signing identity can use its Keychain ACL unattended on the current
-macOS version. A source-level test cannot prove that host policy. Provisioning
-enables the five general policy roles inside the cooperative same-user boundary.
-It does not create task authority, bypass owner governance, authorize
-provider-visible behavior, contact a provider, or consume the one behavioral
-soak slot.
+`rotate` is the only actor command allowed to request owner interaction with an
+existing Keychain item. Rotation reads the prior credential so it can restore
+that credential if installing the new digest fails. Run it only as an explicit
+owner action. If macOS asks for Keychain access, choose one-time **Allow**. Never
+choose **Always Allow**. Provision, verify, acquire, revoke, and `accept-host`
+are not interactive commands. A prompt from any of them is a failure, not an
+installation step to click through.
+
+Keep every saved actor paused until `verify --all`, `accept-host --all`, and
+`validate:host-automations` pass on the real host. The first installation must
+prove that the root-owned launcher with its deterministic linker ad hoc
+signature can use its Keychain ACL unattended on the current macOS version. A
+source-level test cannot prove that host policy. Provisioning enables the five
+general policy roles inside the cooperative same-user boundary. It does not
+create task authority, bypass owner governance, authorize provider-visible
+behavior, contact a provider, or consume the one behavioral soak slot.
+
+Any credentials exposed to repeated Keychain approval dialogs before this
+contract was installed must be replaced after the repair reaches `dev`. Keep
+all actors paused, update a clean `dev` checkout to exact `origin/dev`, then run:
+
+```bash
+npm run automation:actors -- revoke --all
+npm run automation:actors -- provision --all
+npm run automation:actors -- verify --all
+npm run automation:actors -- accept-host --all
+npm run validate:host-automations
+```
+
+Do not activate an actor until that complete sequence succeeds without a
+Keychain dialog and the acquire, heartbeat, and release acceptance result is
+clean for all five actors.
 
 ## Atomic current task manifest
 
@@ -784,6 +828,7 @@ contract.
 npm run validate:automations
 npm run validate:host-automations
 npm run automation:actors -- verify --all
+npm run automation:actors -- accept-host --all
 npm run validate:roadmap
 npm run governance:rulesets
 node --test scripts/automation-control.test.mjs
