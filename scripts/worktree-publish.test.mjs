@@ -1232,7 +1232,8 @@ test(
     });
     const trusted = await createTrustedControlCheckout(t);
     const candidateScripts = path.join(fixture.worktree, "scripts");
-    await fs.mkdir(candidateScripts, { recursive: true });
+    const candidateScriptLib = path.join(candidateScripts, "lib");
+    await fs.mkdir(candidateScriptLib, { recursive: true });
     await fs.copyFile(
       path.join(repoRoot, "scripts/validate-main-pr.mjs"),
       path.join(candidateScripts, "validate-main-pr.mjs"),
@@ -1240,6 +1241,10 @@ test(
     await fs.copyFile(
       path.join(repoRoot, "scripts/release-promotion-shared.mjs"),
       path.join(candidateScripts, "release-promotion-shared.mjs"),
+    );
+    await fs.copyFile(
+      path.join(repoRoot, "scripts/lib/cargo-lock-release.mjs"),
+      path.join(candidateScriptLib, "cargo-lock-release.mjs"),
     );
     assert.equal(
       run("git", ["add", "scripts"], { cwd: fixture.worktree }).status,
