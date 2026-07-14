@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -13,6 +20,7 @@ import {
   parseManifestCallback,
   provisionReleaseAppPrivateKey,
   releaseAppIdentityPath,
+  validateManifestConversion,
   writeReleaseAppIdentity,
 } from "./create-release-github-app.mjs";
 
@@ -198,7 +206,13 @@ test("completed creation writes and logs only nonsecret App identity", async (t)
     "verify-installation",
   ]);
   assert.equal(opened.length, 1);
-  assert.match(opened[0], /github\.com\/apps\/freed-release-publisher/);
+  const installationUrl = new URL(opened[0]);
+  assert.equal(installationUrl.origin, "https://github.com");
+  assert.equal(
+    installationUrl.pathname,
+    "/apps/freed-release-publisher/installations/new",
+  );
+  assert.equal(installationUrl.searchParams.get("target_id"), "257444947");
   assert.deepEqual(result, {
     status: "ready",
     repo: "freed-project/freed",
@@ -229,4 +243,17 @@ test("completed creation writes and logs only nonsecret App identity", async (t)
     appSlug: "freed-release-publisher",
     ownerId: 257444947,
   });
+});
+
+test("identity persistence rejects a symlinked private directory", (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-release-app-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const target = path.join(root, "unexpected-target");
+  mkdirSync(target, { mode: 0o700 });
+  symlinkSync(target, path.join(root, "release-tag-publisher"), "dir");
+  const { identity } = validateManifestConversion(conversion());
+  assert.throws(
+    () => writeReleaseAppIdentity(identity, { stateRoot: root }),
+    /identity directory is invalid/,
+  );
 });

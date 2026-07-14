@@ -3,9 +3,11 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import {
-  chmodSync,
   closeSync,
+  constants,
   existsSync,
+  fchmodSync,
+  fstatSync,
   fsyncSync,
   lstatSync,
   mkdirSync,
@@ -83,6 +85,34 @@ function stateRoot(candidate = undefined) {
     throw new Error("The release App state root must be absolute.");
   }
   return path.resolve(configured);
+}
+
+function openPrivateDirectory(directory, { recursive, label }) {
+  try {
+    mkdirSync(directory, { recursive, mode: 0o700 });
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
+  }
+  let descriptor;
+  try {
+    descriptor = openSync(
+      directory,
+      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+    );
+    const metadata = fstatSync(descriptor);
+    if (
+      !metadata.isDirectory() ||
+      metadata.uid !== process.getuid() ||
+      (metadata.mode & 0o077) !== 0
+    ) {
+      throw new Error(`${label} must be a private current-user directory.`);
+    }
+    fchmodSync(descriptor, 0o700);
+    return descriptor;
+  } catch {
+    if (descriptor !== undefined) closeSync(descriptor);
+    throw new Error(`${label} is invalid.`);
+  }
 }
 
 function verifyPreparedExecutable(filePath, label) {
@@ -342,45 +372,36 @@ export function writeReleaseAppIdentity(
   const filePath = releaseAppIdentityPath(candidateStateRoot);
   const root = stateRoot(candidateStateRoot);
   const directory = path.dirname(filePath);
-  mkdirSync(root, { recursive: true, mode: 0o700 });
-  if (lstatSync(root).isSymbolicLink() || !lstatSync(root).isDirectory()) {
-    throw new Error("The release GitHub App state root is invalid.");
-  }
-  chmodSync(root, 0o700);
-  if (existsSync(directory)) {
-    if (
-      lstatSync(directory).isSymbolicLink() ||
-      !lstatSync(directory).isDirectory()
-    ) {
-      throw new Error("The release GitHub App identity directory is invalid.");
-    }
-  } else {
-    mkdirSync(directory, { mode: 0o700 });
-  }
-  if (lstatSync(directory).isSymbolicLink()) {
-    throw new Error("The release GitHub App identity directory is invalid.");
-  }
-  chmodSync(directory, 0o700);
+  const rootDescriptor = openPrivateDirectory(root, {
+    recursive: true,
+    label: "The release GitHub App state root",
+  });
+  let directoryDescriptor;
   const temporaryPath = path.join(
     directory,
     `.github-app.${process.pid.toLocaleString("en-US", { useGrouping: false })}.${randomUUID()}.tmp`,
   );
   let descriptor;
   try {
+    directoryDescriptor = openPrivateDirectory(directory, {
+      recursive: false,
+      label: "The release GitHub App identity directory",
+    });
     descriptor = openSync(temporaryPath, "wx", 0o600);
     writeFileSync(descriptor, `${JSON.stringify(identity, null, 2)}\n`, "utf8");
     fsyncSync(descriptor);
     closeSync(descriptor);
     descriptor = undefined;
     renameSync(temporaryPath, filePath);
-    chmodSync(filePath, 0o600);
-    const directoryDescriptor = openSync(directory, "r");
     fsyncSync(directoryDescriptor);
-    closeSync(directoryDescriptor);
+    fsyncSync(rootDescriptor);
   } catch (error) {
     if (descriptor !== undefined) closeSync(descriptor);
     rmSync(temporaryPath, { force: true });
     throw error;
+  } finally {
+    if (directoryDescriptor !== undefined) closeSync(directoryDescriptor);
+    closeSync(rootDescriptor);
   }
   return filePath;
 }
