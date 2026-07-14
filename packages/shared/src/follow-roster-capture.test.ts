@@ -8,6 +8,8 @@ import {
   createEmptyDoc,
   mergeFeedItemInto,
   reconcileFollowRosterCapture,
+  reconcileProviderEssayItems,
+  reconcileYouTubeCapture,
   stripUndefined,
   updateFeedItem,
 } from "./schema.js";
@@ -83,6 +85,38 @@ describe("feed item sanitization", () => {
     expect(Object.hasOwn(doc.feedItems[captured.globalId], "__proto__")).toBe(false);
     expect(Object.hasOwn(doc.feedItems[captured.globalId].content, "constructor")).toBe(false);
     expect(Object.hasOwn(doc.feedItems[captured.globalId].content, "prototype")).toBe(false);
+  });
+
+  it("rejects unsafe record IDs before capture reconciliation", () => {
+    const unsafeIds = ["__proto__", "constructor", "prototype"];
+    const doc = A.change(createEmptyDoc(), (draft) => {
+      for (const id of unsafeIds) {
+        addAccount(draft, account({ id }));
+        addFeedItem(draft, item({ globalId: id, contentType: "post" }));
+      }
+      reconcileFollowRosterCapture(
+        draft,
+        unsafeIds.map((id) => account({ id })),
+        unsafeIds.map((globalId) => item({ globalId, contentType: "post" })),
+        { provider: "substack", capturedAt: now },
+      );
+      reconcileProviderEssayItems(
+        draft,
+        unsafeIds.map((globalId) => item({ globalId })),
+        "substack",
+      );
+      reconcileYouTubeCapture(
+        draft,
+        unsafeIds.map((id) => account({ id, provider: "youtube" })),
+        unsafeIds.map((globalId) => item({ globalId, platform: "youtube" })),
+        { rosterComplete: true, capturedAt: now },
+      );
+    });
+
+    expect(Object.keys(doc.accounts)).toEqual([]);
+    expect(Object.keys(doc.feedItems)).toEqual([]);
+    expect((Object.prototype as Record<string, unknown>).priority).toBeUndefined();
+    expect((Object.prototype as Record<string, unknown>).priorityComputedAt).toBeUndefined();
   });
 });
 

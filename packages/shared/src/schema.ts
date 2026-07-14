@@ -1181,6 +1181,7 @@ export function clearSampleData(doc: FreedDoc): SampleDataClearSummary {
  * @param item - The feed item to add
  */
 export function addFeedItem(doc: FreedDoc, item: FeedItem): void {
+  if (UNSAFE_OBJECT_KEYS.has(item.globalId)) return;
   const next = stripUndefined({ ...item }) as FeedItem;
   if (!hasCurrentContentSignals(next)) {
     applySemanticEnrichmentToItem(next);
@@ -1821,6 +1822,7 @@ export function logReachOut(
 
 export function addAccount(doc: FreedDoc, account: Account): void {
   ensureIdentityGraphRoots(doc);
+  if (UNSAFE_OBJECT_KEYS.has(account.id)) return;
   doc.accounts[account.id] = stripUndefined(account);
 }
 
@@ -2007,6 +2009,7 @@ export function reconcileProviderEssayItems(
   }
 
   for (const incoming of items) {
+    if (["__proto__", "constructor", "prototype"].includes(incoming.globalId)) continue;
     if (incoming.platform !== provider || incoming.contentType !== "article") continue;
     const url = canonicalEssayItemUrl(incoming);
     const exact = doc.feedItems[incoming.globalId] as FeedItem | undefined;
@@ -2068,9 +2071,14 @@ export function reconcileFollowRosterCapture(
   options: ReconcileFollowRosterCaptureOptions,
 ): void {
   ensureIdentityGraphRoots(doc);
-  const providerItems = items.filter((item) => item.platform === options.provider);
+  const providerItems = items.filter(
+    (item) =>
+      item.platform === options.provider &&
+      !["__proto__", "constructor", "prototype"].includes(item.globalId),
+  );
 
   for (const account of accounts) {
+    if (["__proto__", "constructor", "prototype"].includes(account.id)) continue;
     if (account.provider !== options.provider) continue;
     const existing = doc.accounts[account.id];
     if (!existing) {
@@ -2119,6 +2127,7 @@ export function reconcileFollowRosterCapture(
 
   for (const item of providerItems) {
     if (item.contentType === "article") continue;
+    if (["__proto__", "constructor", "prototype"].includes(item.globalId)) continue;
     const existing = doc.feedItems[item.globalId];
     if (existing) {
       mergeFeedItemInto(existing, item);
@@ -2154,6 +2163,7 @@ export function reconcileYouTubeCapture(
   const incomingAccountIds = new Set(accounts.map((account) => account.id));
 
   for (const account of accounts) {
+    if (["__proto__", "constructor", "prototype"].includes(account.id)) continue;
     const existing = doc.accounts[account.id];
     if (!existing) {
       addAccount(doc, {
@@ -2191,6 +2201,7 @@ export function reconcileYouTubeCapture(
   }
 
   for (const item of items) {
+    if (["__proto__", "constructor", "prototype"].includes(item.globalId)) continue;
     const existing = doc.feedItems[item.globalId];
     if (existing) {
       mergeFeedItemInto(existing, item);
