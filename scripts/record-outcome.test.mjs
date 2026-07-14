@@ -51,7 +51,7 @@ function acquireActorLease(stateRoot, actor) {
     owner: actor,
     token,
     actorCredentialToken,
-    ttlMs: 60 * 60 * 1_000,
+    ttlMs: policy.maxLeaseLifetimeMs,
   });
   return { actor, leaseName: policy.leaseName, leaseToken: token };
 }
