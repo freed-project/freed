@@ -90,7 +90,7 @@ function outcomeAuthentication(stateRoot, actor, nowMs) {
       token,
       actorCredentialToken: actorCredential(stateRoot, actor),
       nowMs: nowMs - 1_000,
-      ttlMs: 60 * 60 * 1_000,
+      ttlMs: policy.maxLeaseLifetimeMs,
     });
     ACTOR_LEASES.set(key, token);
   }

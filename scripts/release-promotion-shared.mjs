@@ -38,6 +38,8 @@ export const PROMOTION_BRANCH_PATTERN =
 export const RELEASE_PREP_BRANCH_PATTERN = /^chore\/release-[a-z0-9._-]+$/;
 export const PROMOTION_COMMIT_SUBJECT_PATTERN =
   /^chore: promote dev (?:into|to) main(?: for production release)?(?: \(#\d+\))?$/;
+const DEV_BACKPORT_COMMIT_SUBJECT_PATTERN =
+  /^(?:chore|fix): backport .+(?: \(#\d+\))?$/;
 export const REVERSE_INTEGRATION_COMMIT_SUBJECT_PATTERN =
   /^(?:chore|fix): (?:merge main (?:back )?into dev(?: .*)?|reverse integrate (?:main|v\d+\.\d+\.\d+)(?: into dev| after v\d+\.\d+\.\d+| production release)?|backflow v\d+\.\d+\.\d+ main into dev|sync main(?: release artifacts)?(?: back)? into dev(?: .*)?)(?: \(#\d+\))?$/;
 
@@ -279,7 +281,8 @@ export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
       if (
         mainBlobId &&
         mainChange &&
-        PROMOTION_COMMIT_SUBJECT_PATTERN.test(mainChange.subject) &&
+        (PROMOTION_COMMIT_SUBJECT_PATTERN.test(mainChange.subject) ||
+          DEV_BACKPORT_COMMIT_SUBJECT_PATTERN.test(mainChange.subject)) &&
         blobExistsInHistory(devRef, filePath, mainBlobId, { cwd })
       ) {
         return false;
