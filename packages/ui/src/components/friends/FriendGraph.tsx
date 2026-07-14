@@ -1,5 +1,3 @@
-/// <reference path="../../types/troika-three-text.d.ts" />
-
 import {
   forwardRef,
   useCallback,
@@ -10,8 +8,6 @@ import {
   useRef,
   useState,
 } from "react";
-import * as THREE from "three";
-import { Text as TroikaText } from "troika-three-text";
 import type {
   Account,
   FeedItem,
@@ -21,19 +17,36 @@ import type {
   RssFeed,
 } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
+import { CopyIcon } from "../icons.js";
 import {
   buildIdentityGraphActivitySummaries,
   type IdentityGraphActivitySummaries,
 } from "../../lib/identity-graph-activity-summary.js";
 import {
-  buildIdentityGraphAtlas,
+  buildIdentityGraphAtlasModel,
   fitTransformToAtlasBounds,
-  type BuildIdentityGraphAtlasInput,
+  sliceIdentityGraphAtlas,
+  type BuildIdentityGraphAtlasModelInput,
   type IdentityGraphAtlas,
   type IdentityGraphAtlasBounds,
   type IdentityGraphAtlasNode,
   type IdentityGraphAtlasQuality,
 } from "../../lib/identity-graph-atlas.js";
+import {
+  compileIdentityGalaxyScene,
+  IdentityGalaxyNodeKindCode,
+  type IdentityGalaxyScene,
+  updateIdentityGalaxySceneInteraction,
+} from "../../lib/identity-galaxy-scene.js";
+import {
+  IdentityGalaxyEngine,
+  type IdentityGalaxyVariation,
+} from "../../lib/identity-galaxy-engine.js";
+import { viewportPointToIdentityGalaxyPlane } from "../../lib/identity-galaxy-camera.js";
+import type {
+  IdentityGalaxyWorkerResponse,
+  IdentityGalaxyWorkerViewportInput,
+} from "../../lib/identity-galaxy-worker-protocol.js";
 import {
   FRIEND_GRAPH_DEFAULT_TRANSFORM,
   type ViewTransform,
@@ -94,7 +107,17 @@ type PinchState = {
   moved: boolean;
 };
 
-type StarfieldVariation = "nebula-rings" | "nebula" | "rings";
+type SafariGestureState = {
+  initialScale: number;
+  localPoint: TouchPoint;
+  worldPoint: TouchPoint;
+};
+
+interface SafariGestureEvent extends Event {
+  scale?: number;
+  clientX?: number;
+  clientY?: number;
+}
 
 type GraphContextMenuState = {
   x: number;
@@ -138,6 +161,9 @@ interface GraphPerfSnapshot {
   visibleLabelCount: number;
   visibleNodeLabelCount: number;
   visibleProviderLabelCount: number;
+  rendererLabelCount: number;
+  readyRendererLabelCount: number;
+  rendererEdgeCount: number;
   denseRenderMode: "dense" | "containers";
   denseInteractionEligible: boolean;
   denseInteractionNodeCount: number;
@@ -145,6 +171,7 @@ interface GraphPerfSnapshot {
   denseInteractionRebuildCount: number;
   qualityMode: "interactive" | "settled";
   sourceNodeCount: number;
+  residentNodeCount: number;
   visibleNodeCount: number;
   renderedPrimitiveCount: number;
   firstVisibleMs: number;
@@ -152,7 +179,7 @@ interface GraphPerfSnapshot {
   longTaskCount: number;
   memoryEstimateBytes: number;
   rendererType: "three-starfield" | "canvas-starfield-fallback";
-  touchInputMode: "pointer-events";
+  touchInputMode: "native-touch-events";
   lod: string;
   capped: boolean;
 }
@@ -165,46 +192,35 @@ interface GraphSurfacePerfSnapshot extends GraphPerfSnapshot {
   transformScale: number;
 }
 
-interface AtlasResponse {
-  requestId: number;
-  atlas: IdentityGraphAtlas;
-  durationMs: number;
-}
-
-interface GraphPalette {
-  surface: string;
-  text: string;
-  mutedText: string;
-  edge: string;
-  friendFill: string;
-  friendStroke: string;
-  connectionFill: string;
-  connectionStroke: string;
-  accountFill: string;
-  feedFill: string;
-  providerFill: string;
-  selection: string;
-  highlight: string;
-  labelFill: string;
-  labelStroke: string;
-  providerColors: Record<string, string>;
-}
+type ApplyIdentityGraphAtlas = (
+  requestId: number,
+  atlas: IdentityGraphAtlas,
+  galaxyScene: IdentityGalaxyScene | undefined,
+  edgeIndices: Uint32Array | undefined,
+  durationMs: number,
+) => void;
 
 const MIN_SCALE = 0.18;
 const MAX_SCALE = 3.2;
 const FIT_PADDING = 96;
+const DESKTOP_INITIAL_SCALE = 0.34;
+const MOBILE_INITIAL_SCALE = 0.42;
 const TRACKPAD_PINCH_ZOOM_SPEED = 0.0035;
 const WHEEL_ZOOM_SPEED = 0.0014;
 const INTERACTION_SETTLE_DELAY_MS = 180;
 const DENSE_INTERACTION_SETTLE_DELAY_MS = 420;
 const GRAPH_LAYOUT_WORKER_TIMEOUT_MS = 2_400;
-const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
+const CONTROL_BASE = "btn-secondary rounded-lg px-3 py-1.5 text-xs shadow-sm";
 const EMPTY_GRAPH_VIEWPORT_INSETS: GraphViewportInsets = {
   top: 0,
   right: 0,
   bottom: 0,
   left: 0,
 };
+
+function fitPaddingForViewport(width: number): number {
+  return width <= 700 ? 28 : FIT_PADDING;
+}
 
 function nowMs(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -252,6 +268,81 @@ function fitTransformToVisibleAtlasBounds(
   };
 }
 
+function initialGalaxyBounds(
+  atlasBounds: IdentityGraphAtlasBounds,
+  scene: IdentityGalaxyScene,
+  viewportWidth: number,
+): IdentityGraphAtlasBounds {
+  let left = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (let index = 0; index < scene.nodeIds.length; index += 1) {
+    const kind = scene.kinds[index];
+    if (kind !== IdentityGalaxyNodeKindCode.FriendPerson &&
+      kind !== IdentityGalaxyNodeKindCode.ConnectionPerson) {
+      continue;
+    }
+    const x = scene.positions[index * 3]!;
+    const y = -scene.positions[index * 3 + 1]!;
+    const radius = scene.radii[index]!;
+    left = Math.min(left, x - radius);
+    right = Math.max(right, x + radius);
+    top = Math.min(top, y - radius);
+    bottom = Math.max(bottom, y + radius);
+  }
+  if (!Number.isFinite(left)) return atlasBounds;
+  const padding = viewportWidth <= 700 ? 72 : 150;
+  return {
+    left: left - padding,
+    right: right + padding,
+    top: top - padding,
+    bottom: bottom + padding,
+  };
+}
+
+function ensureInitialGalaxyScale(
+  transform: ViewTransform,
+  bounds: IdentityGraphAtlasBounds,
+  width: number,
+  height: number,
+  viewportInsets: GraphViewportInsets,
+): ViewTransform {
+  const minimumScale = width <= 700 ? MOBILE_INITIAL_SCALE : DESKTOP_INITIAL_SCALE;
+  if (transform.scale >= minimumScale) return transform;
+  const center = visibleViewportCenter(width, height, viewportInsets);
+  const worldCenterX = (bounds.left + bounds.right) / 2;
+  const worldCenterY = (bounds.top + bounds.bottom) / 2;
+  return {
+    x: center.x - worldCenterX * minimumScale,
+    y: center.y - worldCenterY * minimumScale,
+    scale: minimumScale,
+  };
+}
+
+function initialGalaxyTransform(
+  atlasBounds: IdentityGraphAtlasBounds,
+  scene: IdentityGalaxyScene,
+  width: number,
+  height: number,
+  viewportInsets: GraphViewportInsets,
+): ViewTransform {
+  const bounds = initialGalaxyBounds(atlasBounds, scene, width);
+  return ensureInitialGalaxyScale(
+    fitTransformToVisibleAtlasBounds(
+      bounds,
+      width,
+      height,
+      fitPaddingForViewport(width),
+      viewportInsets,
+    ),
+    bounds,
+    width,
+    height,
+    viewportInsets,
+  );
+}
+
 function visibleViewportCenter(width: number, height: number, viewportInsets: GraphViewportInsets): TouchPoint {
   return {
     x: viewportInsets.left + Math.max(1, width - viewportInsets.left - viewportInsets.right) / 2,
@@ -259,61 +350,16 @@ function visibleViewportCenter(width: number, height: number, viewportInsets: Gr
   };
 }
 
-function cssRgbVar(style: CSSStyleDeclaration, name: string, fallback: string): string {
-  const raw = style.getPropertyValue(name).trim();
-  if (!raw) return fallback;
-  const parts = raw.split(/\s+/).map((part) => Number(part)).filter(Number.isFinite);
-  if (parts.length < 3) return fallback;
-  return `${parts[0]} ${parts[1]} ${parts[2]}`;
-}
-
-function rgb(rgbParts: string, alpha = 1): string {
-  return `rgb(${rgbParts} / ${alpha})`;
-}
-
-function readGraphPalette(element: HTMLElement | null): GraphPalette {
-  const style = element ? getComputedStyle(element) : getComputedStyle(document.documentElement);
-  const primary = cssRgbVar(style, "--theme-accent-primary-rgb", "59 130 246");
-  const secondary = cssRgbVar(style, "--theme-accent-secondary-rgb", "139 92 246");
-  const tertiary = cssRgbVar(style, "--theme-accent-tertiary-rgb", "6 182 212");
-  const shell = cssRgbVar(style, "--theme-shell-rgb", "6 7 13");
-  return {
-    surface: rgb(shell, 0.2),
-    text: style.getPropertyValue("--theme-text") || rgb("255 255 255", 0.9),
-    mutedText: style.getPropertyValue("--theme-text-muted") || rgb("255 255 255", 0.62),
-    edge: rgb(primary, 0.32),
-    friendFill: rgb(primary, 0.42),
-    friendStroke: rgb(primary, 0.82),
-    connectionFill: rgb(secondary, 0.34),
-    connectionStroke: rgb(secondary, 0.72),
-    accountFill: rgb(tertiary, 0.46),
-    feedFill: rgb("245 158 11", 0.42),
-    providerFill: rgb(secondary, 0.24),
-    selection: rgb(tertiary, 0.92),
-    highlight: rgb(secondary, 0.9),
-    labelFill: rgb(shell, 0.86),
-    labelStroke: rgb(primary, 0.34),
-    providerColors: {
-      instagram: rgb("236 72 153", 0.78),
-      facebook: rgb("59 130 246", 0.78),
-      linkedin: rgb("14 165 233", 0.78),
-      x: rgb("226 232 240", 0.78),
-      rss: rgb("245 158 11", 0.8),
-      substack: rgb("249 115 22", 0.78),
-      medium: rgb("34 197 94", 0.72),
-      other: rgb(tertiary, 0.72),
-    },
-  };
-}
-
-function providerColor(provider: string | undefined, palette: GraphPalette): string {
-  return palette.providerColors[provider ?? "other"] ?? palette.providerColors.other;
-}
-
 function shouldExposeGraphDebug(): boolean {
   return typeof window !== "undefined" &&
     (window as typeof window & { __FREED_GRAPH_DEBUG_ENABLED__?: boolean })
       .__FREED_GRAPH_DEBUG_ENABLED__ === true;
+}
+
+function isGraphGestureUiTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest(
+    'button, input, select, textarea, [role="menu"], [data-graph-gesture-ignore="true"]',
+  ));
 }
 
 function buildGraphDebugNodes(nodes: IdentityGraphAtlasNode[]): GraphDebugNode[] {
@@ -381,541 +427,6 @@ function findHitNode(
   return best;
 }
 
-function hashValue(value: string): number {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = Math.imul(31, hash) + value.charCodeAt(index) | 0;
-  }
-  return Math.abs(hash);
-}
-
-function seededUnit(value: string): number {
-  return (hashValue(value) % 10_000) / 10_000;
-}
-
-function colorFromCss(value: string, fallback = "#7dd3fc"): THREE.Color {
-  const match = value.match(/rgb\((\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/);
-  if (!match) return new THREE.Color(fallback);
-  return new THREE.Color(Number(match[1]) / 255, Number(match[2]) / 255, Number(match[3]) / 255);
-}
-
-function nodeDepth(node: IdentityGraphAtlasNode): number {
-  if (node.kind === "friend_person") {
-    const tierBoost = node.priority >= 980 ? 90 : node.priority >= 880 ? 64 : 36;
-    return tierBoost + Math.min(46, Math.sqrt(node.activityCount + 1) * 2.8);
-  }
-  if (node.kind === "connection_person") return 16 + Math.min(22, Math.sqrt(node.activityCount + 1) * 1.3);
-  if (node.kind === "account") return -30 - seededUnit(node.id) * 46;
-  if (node.kind === "feed") return -48 - seededUnit(node.id) * 52;
-  return -128;
-}
-
-function nodePointSize(
-  node: IdentityGraphAtlasNode,
-  selected: boolean,
-  hovered: boolean,
-  quality: IdentityGraphAtlasQuality,
-): number {
-  const roleSize = node.kind === "friend_person"
-    ? 34
-    : node.kind === "connection_person"
-      ? 28
-      : node.kind === "provider_cluster"
-        ? 40
-        : node.kind === "feed"
-          ? 20
-          : 22;
-  const size = roleSize + node.radius * 1.05 + (selected ? 22 : hovered ? 12 : 0);
-  return Math.max(8, size * (quality === "interactive" ? 0.78 : 1));
-}
-
-function graphNodeColor(
-  node: IdentityGraphAtlasNode,
-  palette: GraphPalette,
-  selected: boolean,
-  linkedToSelected: boolean,
-  hovered: boolean,
-): THREE.Color {
-  if (selected) return colorFromCss(palette.selection, "#67e8f9");
-  if (hovered || linkedToSelected) return colorFromCss(palette.highlight, "#f0abfc");
-  if (node.kind === "friend_person") return colorFromCss(palette.friendStroke, "#60a5fa");
-  if (node.kind === "connection_person") return colorFromCss(palette.connectionStroke, "#c084fc");
-  if (node.kind === "feed") return new THREE.Color("#f59e0b");
-  return colorFromCss(providerColor(node.provider, palette), "#38bdf8");
-}
-
-function makePointMaterial(): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
-    transparent: true,
-    depthWrite: false,
-    depthTest: true,
-    blending: THREE.AdditiveBlending,
-    uniforms: {
-      pixelRatio: { value: Math.min(1.5, window.devicePixelRatio || 1) },
-    },
-    vertexShader: `
-      attribute float pointSize;
-      varying vec3 vColor;
-      varying float vAlpha;
-
-      void main() {
-        vColor = color;
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        float depthScale = clamp(940.0 / max(280.0, -mvPosition.z), 0.68, 2.35);
-        gl_PointSize = pointSize * depthScale;
-        gl_Position = projectionMatrix * mvPosition;
-        vAlpha = clamp(pointSize / 48.0, 0.36, 1.0);
-      }
-    `,
-    fragmentShader: `
-      varying vec3 vColor;
-      varying float vAlpha;
-
-      void main() {
-        vec2 center = gl_PointCoord - vec2(0.5);
-        float distanceFromCenter = length(center);
-        float core = smoothstep(0.34, 0.02, distanceFromCenter);
-        float halo = smoothstep(0.5, 0.08, distanceFromCenter) * 0.52;
-        float alpha = max(core, halo) * vAlpha;
-        if (alpha < 0.02) discard;
-        gl_FragColor = vec4(vColor, alpha);
-      }
-    `,
-    vertexColors: true,
-  });
-}
-
-function makeStarGeometry(count: number, width: number, height: number, palette: GraphPalette): THREE.BufferGeometry {
-  const positions = new Float32Array(count * 3);
-  const colors = new Float32Array(count * 3);
-  const sizes = new Float32Array(count);
-  const themeColors = [
-    colorFromCss(palette.text, "#f8fafc"),
-    colorFromCss(palette.friendStroke, "#93c5fd"),
-    colorFromCss(palette.connectionStroke, "#c4b5fd"),
-    colorFromCss(palette.accountFill, "#67e8f9"),
-    colorFromCss(palette.feedFill, "#fbbf24"),
-  ];
-  const span = Math.max(width, height, 1) * 8.5;
-  for (let index = 0; index < count; index += 1) {
-    const seed = `star:${index}`;
-    const angle = seededUnit(`${seed}:angle`) * Math.PI * 2;
-    const radius = Math.sqrt(seededUnit(`${seed}:radius`)) * span;
-    const arm = Math.sin(angle * 3 + seededUnit(`${seed}:arm`) * 4) * span * 0.055;
-    positions[index * 3] = Math.cos(angle) * radius + Math.cos(angle + Math.PI / 2) * arm;
-    positions[index * 3 + 1] = Math.sin(angle) * radius * 0.64 + Math.sin(angle + Math.PI / 2) * arm;
-    positions[index * 3 + 2] = -360 - seededUnit(`${seed}:depth`) * 2_600;
-    const color = themeColors[Math.floor(seededUnit(`${seed}:color`) * themeColors.length)] ?? themeColors[0]!;
-    const brightness = 0.2 + seededUnit(`${seed}:brightness`) * 0.68;
-    colors[index * 3] = color.r * brightness;
-    colors[index * 3 + 1] = color.g * brightness;
-    colors[index * 3 + 2] = color.b * brightness;
-    sizes[index] = 1.2 + seededUnit(`${seed}:size`) * 4.4;
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-  geometry.setAttribute("pointSize", new THREE.BufferAttribute(sizes, 1));
-  return geometry;
-}
-
-function drawFallbackStarfield(
-  canvas: HTMLCanvasElement,
-  atlas: IdentityGraphAtlas,
-  transform: ViewTransform,
-  palette: GraphPalette,
-  selectedPersonId: string | null | undefined,
-  selectedAccountId: string | null | undefined,
-): void {
-  const context = canvas.getContext("2d");
-  if (!context) return;
-  const width = canvas.clientWidth;
-  const height = canvas.clientHeight;
-  const pixelRatio = Math.min(1.5, window.devicePixelRatio || 1);
-  const pixelWidth = Math.max(1, Math.floor(width * pixelRatio));
-  const pixelHeight = Math.max(1, Math.floor(height * pixelRatio));
-  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-    canvas.width = pixelWidth;
-    canvas.height = pixelHeight;
-  }
-  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-  context.clearRect(0, 0, width, height);
-  const gradient = context.createRadialGradient(width * 0.5, height * 0.45, 0, width * 0.5, height * 0.45, Math.max(width, height) * 0.85);
-  gradient.addColorStop(0, palette.surface);
-  gradient.addColorStop(1, "transparent");
-  context.fillStyle = gradient;
-  context.fillRect(0, 0, width, height);
-
-  for (let index = 0; index < 2_800; index += 1) {
-    const x = seededUnit(`fallback-star-x:${index}`) * width;
-    const y = seededUnit(`fallback-star-y:${index}`) * height;
-    const depth = seededUnit(`fallback-star-z:${index}`);
-    context.globalAlpha = 0.08 + depth * 0.34;
-    context.fillStyle = index % 7 === 0 ? palette.friendStroke : palette.mutedText;
-    context.fillRect(x, y, 1 + depth * 1.8, 1 + depth * 1.8);
-  }
-  context.globalAlpha = 1;
-
-  context.save();
-  context.translate(transform.x, transform.y);
-  context.scale(transform.scale, transform.scale);
-  for (const region of atlas.regions) {
-    context.beginPath();
-    context.ellipse(region.x, region.y, region.radiusX, region.radiusY, 0, 0, Math.PI * 2);
-    context.fillStyle = providerColor(region.provider, palette).replace(/\/ 0\.\d+\)/, "/ 0.12)");
-    context.strokeStyle = providerColor(region.provider, palette).replace(/\/ 0\.\d+\)/, "/ 0.38)");
-    context.lineWidth = 1.2 / transform.scale;
-    context.fill();
-    context.stroke();
-  }
-  for (const node of atlas.nodes) {
-    const selected =
-      (!!node.personId && node.personId === selectedPersonId) ||
-      (!!node.accountId && node.accountId === selectedAccountId);
-    const depth = nodeDepth(node);
-    const parallax = 1 + Math.max(-0.24, Math.min(0.42, depth / 260));
-    const radius = Math.max(5, node.radius * 0.82 * parallax + (selected ? 7 : 0));
-    context.beginPath();
-    context.arc(node.x, node.y, radius, 0, Math.PI * 2);
-    context.fillStyle = node.kind === "friend_person"
-      ? palette.friendStroke
-      : node.kind === "connection_person"
-        ? palette.connectionStroke
-        : providerColor(node.provider, palette);
-    context.shadowBlur = selected ? 20 / transform.scale : 8 / transform.scale;
-    context.shadowColor = context.fillStyle;
-    context.fill();
-    context.shadowBlur = 0;
-  }
-  context.restore();
-}
-
-class StarfieldGraphRenderer {
-  private readonly renderer: THREE.WebGLRenderer;
-  private readonly scene = new THREE.Scene();
-  private readonly camera = new THREE.PerspectiveCamera(42, 1, 1, 8_000);
-  private readonly graphGroup = new THREE.Group();
-  private readonly regionGroup = new THREE.Group();
-  private readonly labelGroup = new THREE.Group();
-  private readonly nodeGeometry = new THREE.BufferGeometry();
-  private readonly nodeMaterial = makePointMaterial();
-  private readonly nodePoints: THREE.Points;
-  private readonly edgeGeometry = new THREE.BufferGeometry();
-  private readonly edgeMaterial = new THREE.LineBasicMaterial({
-    color: 0x7dd3fc,
-    transparent: true,
-    opacity: 0.58,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    depthTest: false,
-  });
-  private readonly edgeLines: THREE.LineSegments;
-  private readonly starMaterial = makePointMaterial();
-  private starPoints: THREE.Points | null = null;
-  private labels: TroikaText[] = [];
-  private width = 1;
-  private height = 1;
-  private starCount = 0;
-  private paletteKey = "";
-  private pixelRatio = 0;
-  private disposed = false;
-
-  constructor(canvas: HTMLCanvasElement) {
-    const context = canvas.getContext("webgl2", {
-      alpha: true,
-      antialias: false,
-      powerPreference: "high-performance",
-      premultipliedAlpha: true,
-    }) as WebGL2RenderingContext | null;
-    if (!context) {
-      throw new Error("WebGL unavailable");
-    }
-    this.renderer = new THREE.WebGLRenderer({
-      canvas,
-      context,
-      alpha: true,
-      antialias: false,
-      powerPreference: "high-performance",
-      premultipliedAlpha: true,
-    });
-    this.renderer.setClearColor(0x000000, 0);
-    this.renderer.sortObjects = false;
-    this.scene.add(this.graphGroup);
-    this.scene.add(this.labelGroup);
-    this.graphGroup.add(this.regionGroup);
-    this.edgeLines = new THREE.LineSegments(this.edgeGeometry, this.edgeMaterial);
-    this.edgeLines.frustumCulled = false;
-    this.graphGroup.add(this.edgeLines);
-    this.nodePoints = new THREE.Points(this.nodeGeometry, this.nodeMaterial);
-    this.nodePoints.frustumCulled = false;
-    this.graphGroup.add(this.nodePoints);
-  }
-
-  resize(width: number, height: number): void {
-    if (this.disposed) return;
-    const nextWidth = Math.max(1, Math.floor(width));
-    const nextHeight = Math.max(1, Math.floor(height));
-    const pixelRatio = Math.min(1.5, window.devicePixelRatio || 1);
-    if (this.width === nextWidth && this.height === nextHeight && this.pixelRatio === pixelRatio) {
-      return;
-    }
-    this.width = nextWidth;
-    this.height = nextHeight;
-    this.pixelRatio = pixelRatio;
-    this.renderer.setPixelRatio(pixelRatio);
-    this.renderer.setSize(this.width, this.height, false);
-    this.camera.aspect = this.width / this.height;
-    this.camera.position.set(0, 0, this.height / 2 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
-    this.camera.lookAt(0, 0, 0);
-    this.camera.updateProjectionMatrix();
-    this.nodeMaterial.uniforms.pixelRatio.value = pixelRatio;
-    this.starMaterial.uniforms.pixelRatio.value = pixelRatio;
-  }
-
-  syncScene(
-    atlas: IdentityGraphAtlas,
-    palette: GraphPalette,
-    selectedPersonId: string | null | undefined,
-    selectedAccountId: string | null | undefined,
-    hoveredNodeId: string | null,
-    variation: StarfieldVariation,
-    quality: IdentityGraphAtlasQuality,
-  ): void {
-    if (this.disposed) return;
-    const nextPaletteKey = [
-      palette.surface,
-      palette.text,
-      palette.friendStroke,
-      palette.connectionStroke,
-      palette.accountFill,
-      palette.feedFill,
-    ].join("|");
-    const smallViewport = this.width <= 720 || this.height <= 620;
-    const starBudget = smallViewport
-      ? { min: 3_000, max: 7_000, perSource: 2 }
-      : { min: 5_000, max: 12_000, perSource: 3 };
-    const nextStarCount = Math.max(
-      starBudget.min,
-      Math.min(starBudget.max, atlas.metrics.sourceNodeCount * starBudget.perSource),
-    );
-    if (nextStarCount !== this.starCount || nextPaletteKey !== this.paletteKey || !this.starPoints) {
-      if (this.starPoints) {
-        this.scene.remove(this.starPoints);
-        this.starPoints.geometry.dispose();
-      }
-      this.starPoints = new THREE.Points(makeStarGeometry(nextStarCount, this.width, this.height, palette), this.starMaterial);
-      this.starPoints.frustumCulled = false;
-      this.scene.add(this.starPoints);
-      this.starCount = nextStarCount;
-      this.paletteKey = nextPaletteKey;
-    }
-    this.syncRegions(atlas, palette, variation);
-    this.edgeMaterial.color.copy(colorFromCss(palette.edge, "#7dd3fc"));
-    this.edgeMaterial.opacity = quality === "interactive" ? 0.26 : 0.58;
-    this.syncEdges(atlas);
-    this.syncNodes(atlas, palette, selectedPersonId, selectedAccountId, hoveredNodeId, quality);
-    this.syncLabels(atlas, palette, quality);
-  }
-
-  render(transform: ViewTransform, quality: IdentityGraphAtlasQuality): void {
-    if (this.disposed) return;
-    this.applyTransform(transform);
-    if (this.starPoints) {
-      this.starPoints.visible = quality !== "interactive";
-      this.starPoints.position.set(
-        (transform.x - this.width / 2) * 0.055,
-        (this.height / 2 - transform.y) * 0.055,
-        0,
-      );
-      this.starPoints.scale.setScalar(1.01 + transform.scale * 0.018);
-    }
-    this.regionGroup.visible = quality !== "interactive";
-    this.renderer.render(this.scene, this.camera);
-  }
-
-  dispose(): void {
-    this.disposed = true;
-    this.clearRegions();
-    this.clearLabels();
-    this.nodeGeometry.dispose();
-    this.nodeMaterial.dispose();
-    this.edgeGeometry.dispose();
-    this.edgeMaterial.dispose();
-    if (this.starPoints) {
-      this.starPoints.geometry.dispose();
-    }
-    this.starMaterial.dispose();
-    this.renderer.dispose();
-  }
-
-  private applyTransform(transform: ViewTransform): void {
-    this.graphGroup.position.set(transform.x - this.width / 2, this.height / 2 - transform.y, 0);
-    this.graphGroup.scale.set(transform.scale, transform.scale, transform.scale);
-    this.labelGroup.position.copy(this.graphGroup.position);
-    this.labelGroup.scale.copy(this.graphGroup.scale);
-    for (const label of this.labels) {
-      label.quaternion.copy(this.camera.quaternion);
-    }
-  }
-
-  private nodePosition(node: IdentityGraphAtlasNode): THREE.Vector3 {
-    return new THREE.Vector3(node.x, -node.y, nodeDepth(node));
-  }
-
-  private clearRegions(): void {
-    for (const child of this.regionGroup.children) {
-      if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
-        child.geometry.dispose();
-        const material = child.material;
-        if (Array.isArray(material)) {
-          material.forEach((entry) => entry.dispose());
-        } else {
-          material.dispose();
-        }
-      }
-    }
-    this.regionGroup.clear();
-  }
-
-  private syncRegions(atlas: IdentityGraphAtlas, palette: GraphPalette, variation: StarfieldVariation): void {
-    this.clearRegions();
-    for (const region of atlas.regions) {
-      const color = colorFromCss(providerColor(region.provider, palette), "#38bdf8");
-      if (variation === "nebula-rings" || variation === "nebula") {
-        const haze = new THREE.Mesh(
-          new THREE.CircleGeometry(1, 128),
-          new THREE.MeshBasicMaterial({
-            color,
-            transparent: true,
-            opacity: 0.105,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-          }),
-        );
-        haze.position.set(region.x, -region.y, -170);
-        haze.scale.set(region.radiusX, region.radiusY, 1);
-        this.regionGroup.add(haze);
-      }
-      if (variation === "nebula-rings" || variation === "rings") {
-        const points = Array.from({ length: 97 }, (_, index) => {
-          const angle = (index / 96) * Math.PI * 2;
-          return new THREE.Vector3(
-            region.x + Math.cos(angle) * region.radiusX,
-            -region.y + Math.sin(angle) * region.radiusY,
-            -92,
-          );
-        });
-        const ring = new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints(points),
-          new THREE.LineBasicMaterial({
-            color,
-            transparent: true,
-            opacity: 0.42,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-          }),
-        );
-        this.regionGroup.add(ring);
-      }
-    }
-  }
-
-  private syncEdges(atlas: IdentityGraphAtlas): void {
-    const nodeById = new Map(atlas.nodes.map((node) => [node.id, node]));
-    const positions = new Float32Array(atlas.edges.length * 6);
-    let offset = 0;
-    for (const edge of atlas.edges) {
-      const source = nodeById.get(edge.sourceId);
-      const target = nodeById.get(edge.targetId);
-      if (!source || !target) continue;
-      const sourcePoint = this.nodePosition(source);
-      const targetPoint = this.nodePosition(target);
-      positions[offset] = sourcePoint.x;
-      positions[offset + 1] = sourcePoint.y;
-      positions[offset + 2] = sourcePoint.z - 8;
-      positions[offset + 3] = targetPoint.x;
-      positions[offset + 4] = targetPoint.y;
-      positions[offset + 5] = targetPoint.z - 8;
-      offset += 6;
-    }
-    this.edgeGeometry.setAttribute("position", new THREE.BufferAttribute(positions.slice(0, offset), 3));
-    this.edgeGeometry.computeBoundingSphere();
-  }
-
-  private syncNodes(
-    atlas: IdentityGraphAtlas,
-    palette: GraphPalette,
-    selectedPersonId: string | null | undefined,
-    selectedAccountId: string | null | undefined,
-    hoveredNodeId: string | null,
-    quality: IdentityGraphAtlasQuality,
-  ): void {
-    const positions = new Float32Array(atlas.nodes.length * 3);
-    const colors = new Float32Array(atlas.nodes.length * 3);
-    const sizes = new Float32Array(atlas.nodes.length);
-    for (let index = 0; index < atlas.nodes.length; index += 1) {
-      const node = atlas.nodes[index]!;
-      const selected =
-        (!!node.personId && node.personId === selectedPersonId) ||
-        (!!node.accountId && node.accountId === selectedAccountId);
-      const linkedToSelected = !!selectedPersonId && node.linkedPersonId === selectedPersonId;
-      const hovered = node.id === hoveredNodeId;
-      const point = this.nodePosition(node);
-      const color = graphNodeColor(node, palette, selected, linkedToSelected, hovered);
-      const muted = selectedPersonId || selectedAccountId
-        ? selected || linkedToSelected || hovered ? 1 : 0.34
-        : 1;
-      positions[index * 3] = point.x;
-      positions[index * 3 + 1] = point.y;
-      positions[index * 3 + 2] = point.z;
-      colors[index * 3] = color.r * muted;
-      colors[index * 3 + 1] = color.g * muted;
-      colors[index * 3 + 2] = color.b * muted;
-      sizes[index] = nodePointSize(node, selected, hovered, quality);
-    }
-    this.nodeGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    this.nodeGeometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    this.nodeGeometry.setAttribute("pointSize", new THREE.BufferAttribute(sizes, 1));
-    this.nodeGeometry.computeBoundingSphere();
-  }
-
-  private clearLabels(): void {
-    for (const label of this.labels) {
-      this.labelGroup.remove(label);
-      label.dispose();
-    }
-    this.labels = [];
-  }
-
-  private syncLabels(atlas: IdentityGraphAtlas, palette: GraphPalette, quality: IdentityGraphAtlasQuality): void {
-    this.clearLabels();
-    if (quality === "interactive") return;
-    const cap = window.innerWidth < 720 ? 44 : 110;
-    for (const label of atlas.labels.slice(0, cap)) {
-      const text = new TroikaText();
-      text.text = label.text;
-      text.fontSize = label.kind === "provider_cluster"
-        ? 26
-        : label.kind === "friend_person"
-          ? 19
-          : label.kind === "connection_person"
-            ? 17
-            : 15;
-      text.anchorX = "center";
-      text.anchorY = "middle";
-      text.color = colorFromCss(palette.text, "#f8fafc");
-      text.outlineColor = colorFromCss(palette.labelFill, "#020617");
-      text.outlineWidth = label.kind === "provider_cluster" ? "8%" : "10%";
-      text.position.set(label.x, -label.y - 24 / Math.max(0.7, label.priority / 600), label.kind === "provider_cluster" ? -38 : 86);
-      text.renderOrder = 10;
-      text.sync();
-      this.labels.push(text);
-      this.labelGroup.add(text);
-    }
-  }
-}
-
 export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(function FriendGraph(
   {
     persons,
@@ -942,23 +453,30 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
-  const rendererRef = useRef<StarfieldGraphRenderer | null>(null);
+  const engineRef = useRef<IdentityGalaxyEngine | null>(null);
   const workerRef = useRef<Worker | null>(null);
+  const applyAtlasRef = useRef<ApplyIdentityGraphAtlas | null>(null);
   const atlasRef = useRef<IdentityGraphAtlas | null>(null);
-  const webglUnavailableRef = useRef(false);
+  const galaxySceneRef = useRef<IdentityGalaxyScene | null>(null);
   const hitBucketsRef = useRef<Map<string, string[]>>(new Map());
+  const atlasNodeByIdRef = useRef<Map<string, IdentityGraphAtlasNode>>(new Map());
+  const visibleNodeIdsRef = useRef<string[]>([]);
   const transformRef = useRef<ViewTransform>({ ...FRIEND_GRAPH_DEFAULT_TRANSFORM });
   const dragStateRef = useRef<DragState | null>(null);
   const pinchStateRef = useRef<PinchState | null>(null);
+  const safariGestureStateRef = useRef<SafariGestureState | null>(null);
+  const lastPointerPointRef = useRef<TouchPoint | null>(null);
   const activeTouchPointsRef = useRef<Map<number, TouchPoint>>(new Map());
+  const ignoredTouchIdsRef = useRef<Set<number>>(new Set());
   const hoveredNodeIdRef = useRef<string | null>(null);
   const latestRequestIdRef = useRef(0);
   const latestResolvedRequestIdRef = useRef(0);
+  const nextSourceRevisionRef = useRef(0);
+  const postedSourceRevisionRef = useRef(-1);
   const pendingWorkerTimeoutsRef = useRef<Map<number, number>>(new Map());
-  const atlasRafRef = useRef(0);
   const drawRafRef = useRef(0);
-  const drawPendingRef = useRef(false);
   const sceneDirtyRef = useRef(true);
+  const interactionDirtyRef = useRef(false);
   const settleTimerRef = useRef<number | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const hasFittedInitialAtlasRef = useRef(false);
@@ -968,9 +486,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const frameSamplesRef = useRef<number[]>([]);
   const lastFrameAtRef = useRef<number | null>(null);
   const longTaskCountRef = useRef(0);
+  const sceneSyncCountRef = useRef(0);
+  const transformOnlySyncCountRef = useRef(0);
+  const edgeRebuildCountRef = useRef(0);
   const latestQualityRef = useRef<IdentityGraphAtlasQuality>("settled");
-  const paletteKeyRef = useRef("");
-  const paletteRef = useRef<GraphPalette | null>(null);
   const viewportInsetsRef = useRef<GraphViewportInsets>(EMPTY_GRAPH_VIEWPORT_INSETS);
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: 640 });
   const [viewportInsets, setViewportInsets] = useState<GraphViewportInsets>(EMPTY_GRAPH_VIEWPORT_INSETS);
@@ -978,7 +497,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const [contextMenu, setContextMenu] = useState<GraphContextMenuState | null>(null);
   const [linkPickerAccountId, setLinkPickerAccountId] = useState<string | null>(null);
   const [linkPickerQuery, setLinkPickerQuery] = useState("");
-  const [starfieldVariation, setStarfieldVariation] = useState<StarfieldVariation>("nebula-rings");
+  const [starfieldVariation, setStarfieldVariation] = useState<IdentityGalaxyVariation>("nebula");
 
   const activitySummaries = useMemo(
     () => activitySummariesProp ?? buildIdentityGraphActivitySummaries(feedItems ?? {}),
@@ -1029,18 +548,35 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     () => buildSuggestionRecord(friendSuggestionStrengthByAccount),
     [friendSuggestionStrengthByAccount],
   );
-
-  const getPalette = useCallback(() => {
-    const key = themeId ?? "default";
-    if (!paletteRef.current || paletteKeyRef.current !== key) {
-      paletteKeyRef.current = key;
-      paletteRef.current = readGraphPalette(containerRef.current);
-    }
-    return paletteRef.current;
-  }, [themeId]);
+  const galaxySource = useMemo(() => ({
+    revision: nextSourceRevisionRef.current + 1,
+    input: {
+      persons,
+      accounts,
+      feeds,
+      activitySummaries,
+      mode,
+      width: canvasSize.width,
+      height: canvasSize.height,
+      friendSuggestionStrengthByPerson: friendSuggestionStrengthByPersonRecord,
+      friendSuggestionStrengthByAccount: friendSuggestionStrengthByAccountRecord,
+    } satisfies BuildIdentityGraphAtlasModelInput,
+  }), [
+    accounts,
+    activitySummaries,
+    canvasSize.height,
+    canvasSize.width,
+    feeds,
+    friendSuggestionStrengthByAccountRecord,
+    friendSuggestionStrengthByPersonRecord,
+    mode,
+    persons,
+  ]);
+  nextSourceRevisionRef.current = galaxySource.revision;
 
   const exposeDiagnostics = useCallback((atlas: IdentityGraphAtlas, sceneSyncMs: number) => {
     const sourceNodeCount = canonicalNodeCount;
+    const residentNodeCount = galaxySceneRef.current?.nodeIds.length ?? atlas.metrics.visibleNodeCount;
     const visibleNodeCount = atlas.metrics.visibleNodeCount;
     const p95Samples = [...frameSamplesRef.current].sort((left, right) => left - right);
     const frameP95Ms = p95Samples[Math.floor(p95Samples.length * 0.95)] ?? 0;
@@ -1049,16 +585,19 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       layoutMs: atlas.metrics.buildMs,
       sceneSyncMs,
       labelPassMs: 0,
-      sceneSyncCount: ((window as typeof window & { __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot }).__FREED_GRAPH_PERF__?.sceneSyncCount ?? 0) + 1,
+      sceneSyncCount: sceneSyncCountRef.current,
       contentSyncCount: 1,
-      transformOnlySyncCount: latestQualityRef.current === "interactive" ? 1 : 0,
-      edgeRebuildCount: atlas.edges.length > 0 ? 1 : 0,
-      nodeRestyleCount: visibleNodeCount,
+      transformOnlySyncCount: transformOnlySyncCountRef.current,
+      edgeRebuildCount: edgeRebuildCountRef.current,
+      nodeRestyleCount: residentNodeCount,
       labelLayoutCount: atlas.labels.length > 0 ? 1 : 0,
       avatarDisplayCount: 0,
       visibleLabelCount: atlas.labels.length,
       visibleNodeLabelCount: atlas.labels.filter((label) => label.kind !== "provider_cluster").length,
       visibleProviderLabelCount: atlas.labels.filter((label) => label.kind === "provider_cluster").length,
+      rendererLabelCount: engineRef.current?.labelCount ?? 0,
+      readyRendererLabelCount: engineRef.current?.readyLabelCount ?? 0,
+      rendererEdgeCount: engineRef.current?.edgeCount ?? 0,
       denseRenderMode: sourceNodeCount >= 1_200 ? "dense" : "containers",
       denseInteractionEligible: sourceNodeCount >= 1_200,
       denseInteractionNodeCount: latestQualityRef.current === "interactive" ? visibleNodeCount : 0,
@@ -1066,14 +605,15 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       denseInteractionRebuildCount: atlas.metrics.capped ? 1 : 0,
       qualityMode: latestQualityRef.current,
       sourceNodeCount,
+      residentNodeCount,
       visibleNodeCount,
-      renderedPrimitiveCount: atlas.metrics.renderedPrimitiveCount,
+      renderedPrimitiveCount: residentNodeCount + atlas.edges.length + atlas.regions.length + atlas.labels.length,
       firstVisibleMs: firstVisibleMsRef.current,
       frameP95Ms,
       longTaskCount: longTaskCountRef.current,
       memoryEstimateBytes: estimateMemoryBytes(atlas),
-      rendererType: webglUnavailableRef.current ? "canvas-starfield-fallback" : "three-starfield",
-      touchInputMode: "pointer-events",
+      rendererType: engineRef.current?.rendererType ?? "three-starfield",
+      touchInputMode: "native-touch-events",
       lod: atlas.metrics.lod,
       capped: atlas.metrics.capped,
       nodeCount: sourceNodeCount,
@@ -1089,9 +629,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       container.dataset.graphPersonCount = String(personCount);
       container.dataset.graphChannelCount = String(channelCount);
       container.dataset.visibleLabelCount = String(atlas.labels.length);
+      container.dataset.rendererLabelCount = String(engineRef.current?.labelCount ?? 0);
+      container.dataset.readyRendererLabelCount = String(engineRef.current?.readyLabelCount ?? 0);
+      container.dataset.rendererEdgeCount = String(engineRef.current?.edgeCount ?? 0);
       container.dataset.graphQualityMode = latestQualityRef.current;
       container.dataset.graphVisibleNodeCount = String(visibleNodeCount);
-      container.dataset.graphRenderer = webglUnavailableRef.current ? "canvas-starfield-fallback" : "three-starfield";
+      container.dataset.graphResidentNodeCount = String(residentNodeCount);
+      container.dataset.graphRenderer = engineRef.current?.rendererType ?? "three-starfield";
     }
     (window as typeof window & { __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot }).__FREED_GRAPH_PERF__ = perf;
     if (shouldExposeGraphDebug()) {
@@ -1113,15 +657,65 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
   }, [activitySummaries.buildMs, canonicalLinkCount, canonicalNodeCount, channelCount, personCount]);
 
+  const updateTransformDiagnostics = useCallback(() => {
+    transformOnlySyncCountRef.current += 1;
+    const graphWindow = window as typeof window & {
+      __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot;
+      __FREED_GRAPH_DEBUG__?: {
+        nodes: GraphDebugNode[];
+        regions: IdentityGraphAtlas["regions"];
+        transform: ViewTransform;
+        qualityMode: "interactive" | "settled";
+        metrics: GraphPerfSnapshot;
+      };
+    };
+    const perf = graphWindow.__FREED_GRAPH_PERF__;
+    if (perf) {
+      perf.sceneSyncMs = 0;
+      perf.transformOnlySyncCount = transformOnlySyncCountRef.current;
+      perf.qualityMode = latestQualityRef.current;
+      perf.transformScale = transformRef.current.scale;
+      perf.rendererLabelCount = engineRef.current?.labelCount ?? perf.rendererLabelCount;
+      perf.readyRendererLabelCount = engineRef.current?.readyLabelCount ?? perf.readyRendererLabelCount;
+      perf.rendererEdgeCount = engineRef.current?.edgeCount ?? perf.rendererEdgeCount;
+    }
+    const debug = graphWindow.__FREED_GRAPH_DEBUG__;
+    if (debug) {
+      debug.transform = { ...transformRef.current };
+      debug.qualityMode = latestQualityRef.current;
+      if (perf) debug.metrics = perf;
+    }
+    const container = containerRef.current;
+    if (container && container.dataset.graphQualityMode !== latestQualityRef.current) {
+      container.dataset.graphQualityMode = latestQualityRef.current;
+    }
+  }, []);
+
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     const atlas = atlasRef.current;
     if (!canvas || !atlas) return;
+    const galaxyScene = galaxySceneRef.current;
     try {
-      let renderer = rendererRef.current;
-      if (!renderer && !webglUnavailableRef.current) {
-        renderer = new StarfieldGraphRenderer(canvas);
-        rendererRef.current = renderer;
+      if (!galaxyScene) {
+        throw new Error("Friends galaxy scene is unavailable");
+      }
+      const shouldSyncScene = sceneDirtyRef.current;
+      const shouldSyncInteraction = shouldSyncScene || interactionDirtyRef.current;
+      if (shouldSyncInteraction) {
+        updateIdentityGalaxySceneInteraction(galaxyScene, {
+          quality: latestQualityRef.current,
+          selectedPersonId,
+          selectedAccountId,
+          hoveredNodeId: hoveredNodeIdRef.current,
+        });
+      }
+      let engine = engineRef.current;
+      let engineCreated = false;
+      if (!engine) {
+        engine = new IdentityGalaxyEngine(canvas, containerRef.current);
+        engineRef.current = engine;
+        engineCreated = true;
       }
       const frameAt = nowMs();
       if (lastFrameAtRef.current !== null) {
@@ -1132,53 +726,45 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         }
       }
       lastFrameAtRef.current = frameAt;
-      const startedAt = nowMs();
-      if (renderer) {
-        renderer.resize(canvasSize.width, canvasSize.height);
-        if (sceneDirtyRef.current) {
-          renderer.syncScene(
-            atlas,
-            getPalette(),
+      engine.resize(canvasSize.width, canvasSize.height);
+      let sceneSyncMs = 0;
+      if (shouldSyncScene || engineCreated) {
+        const syncStartedAt = nowMs();
+        engine.syncScene(
+          atlas,
+          galaxyScene,
+          {
             selectedPersonId,
             selectedAccountId,
-            hoveredNodeIdRef.current,
-            starfieldVariation,
-            latestQualityRef.current,
-          );
-          sceneDirtyRef.current = false;
-        }
-        renderer.render(transformRef.current, latestQualityRef.current);
-      } else {
-        drawFallbackStarfield(
-          canvas,
-          atlas,
-          transformRef.current,
-          getPalette(),
-          selectedPersonId,
-          selectedAccountId,
+            variation: starfieldVariation,
+            quality: latestQualityRef.current,
+          },
         );
+        sceneSyncMs = nowMs() - syncStartedAt;
+        sceneSyncCountRef.current += 1;
+        if (atlas.edges.length > 0) edgeRebuildCountRef.current += 1;
+      } else if (shouldSyncInteraction) {
+        engine.updateInteraction(galaxyScene);
+        const perf = (window as typeof window & {
+          __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot;
+        }).__FREED_GRAPH_PERF__;
+        if (perf) perf.rendererEdgeCount = engine.edgeCount;
+        if (containerRef.current) {
+          containerRef.current.dataset.rendererEdgeCount = String(engine.edgeCount);
+        }
       }
+      engine.render(transformRef.current);
+      sceneDirtyRef.current = false;
+      interactionDirtyRef.current = false;
       if (!firstVisibleMsRef.current && atlas.nodes.length > 0) {
         firstVisibleMsRef.current = nowMs() - mountedAtRef.current;
       }
-      exposeDiagnostics(atlas, nowMs() - startedAt);
-    } catch (error) {
-      if (error instanceof Error && error.message === "WebGL unavailable") {
-        webglUnavailableRef.current = true;
-        drawFallbackStarfield(
-          canvas,
-          atlas,
-          transformRef.current,
-          getPalette(),
-          selectedPersonId,
-          selectedAccountId,
-        );
-        if (!firstVisibleMsRef.current && atlas.nodes.length > 0) {
-          firstVisibleMsRef.current = nowMs() - mountedAtRef.current;
-        }
-        exposeDiagnostics(atlas, 0);
-        return;
+      if (shouldSyncScene || engineCreated) {
+        exposeDiagnostics(atlas, sceneSyncMs);
+      } else if (!shouldSyncInteraction) {
+        updateTransformDiagnostics();
       }
+    } catch (error) {
       (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string }).__FREED_GRAPH_DRAW_ERROR__ =
         error instanceof Error ? error.message : String(error);
       console.warn("[friends-graph] starfield draw failed", error);
@@ -1187,22 +773,27 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     canvasSize.height,
     canvasSize.width,
     exposeDiagnostics,
-    getPalette,
     selectedAccountId,
     selectedPersonId,
     starfieldVariation,
+    updateTransformDiagnostics,
   ]);
 
   const scheduleDraw = useCallback(() => {
-    if (drawPendingRef.current) return;
-    drawPendingRef.current = true;
+    if (drawRafRef.current !== 0) return;
     drawRafRef.current = requestAnimationFrame(() => {
-      drawPendingRef.current = false;
+      drawRafRef.current = 0;
       draw();
     });
   }, [draw]);
 
-  const applyAtlas = useCallback((requestId: number, atlas: IdentityGraphAtlas, durationMs: number) => {
+  const applyAtlas = useCallback((
+    requestId: number,
+    atlas: IdentityGraphAtlas,
+    galaxyScene: IdentityGalaxyScene | undefined,
+    edgeIndices: Uint32Array | undefined,
+    durationMs: number,
+  ) => {
     if (requestId < latestResolvedRequestIdRef.current) return;
     const timeout = pendingWorkerTimeoutsRef.current.get(requestId);
     if (timeout !== undefined) {
@@ -1212,14 +803,24 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     latestResolvedRequestIdRef.current = requestId;
     atlas.metrics.buildMs = durationMs;
     atlasRef.current = atlas;
+    if (galaxyScene) {
+      galaxySceneRef.current = galaxyScene;
+    } else if (edgeIndices && galaxySceneRef.current) {
+      galaxySceneRef.current.edgeIndices = edgeIndices;
+    }
+    if (!galaxySceneRef.current) {
+      throw new Error("Friends galaxy atlas arrived without a semantic scene");
+    }
     hitBucketsRef.current = buildHitBucketMap(atlas);
+    atlasNodeByIdRef.current = new Map(atlas.nodes.map((node) => [node.id, node]));
+    visibleNodeIdsRef.current = atlas.nodes.map((node) => node.id);
     sceneDirtyRef.current = true;
     if (!hasFittedInitialAtlasRef.current && !hasUserAdjustedTransformRef.current) {
-      transformRef.current = fitTransformToVisibleAtlasBounds(
+      transformRef.current = initialGalaxyTransform(
         atlas.bounds,
+        galaxySceneRef.current,
         canvasSize.width,
         canvasSize.height,
-        FIT_PADDING,
         viewportInsetsRef.current,
       );
       hasFittedInitialAtlasRef.current = true;
@@ -1228,12 +829,26 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     draw();
     scheduleDraw();
   }, [canvasSize.height, canvasSize.width, draw, scheduleDraw]);
+  applyAtlasRef.current = applyAtlas;
 
-  const runAtlasOnMainThread = useCallback((requestId: number, input: BuildIdentityGraphAtlasInput) => {
+  const runAtlasOnMainThread = useCallback((
+    requestId: number,
+    source: BuildIdentityGraphAtlasModelInput,
+    viewport: IdentityGalaxyWorkerViewportInput,
+  ) => {
     window.setTimeout(() => {
       const startedAt = nowMs();
-      const atlas = buildIdentityGraphAtlas(input);
-      applyAtlas(requestId, atlas, nowMs() - startedAt);
+      const model = buildIdentityGraphAtlasModel(source);
+      const atlas = sliceIdentityGraphAtlas({ model, ...viewport });
+      const galaxyScene = compileIdentityGalaxyScene({
+        nodes: model.nodes,
+        edges: model.edges,
+      }, {
+        quality: viewport.quality,
+        selectedPersonId: viewport.selectedPersonId,
+        selectedAccountId: viewport.selectedAccountId,
+      });
+      applyAtlas(requestId, atlas, galaxyScene, undefined, nowMs() - startedAt);
     }, 0);
   }, [applyAtlas]);
 
@@ -1241,24 +856,17 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     latestQualityRef.current = quality;
     const requestId = latestRequestIdRef.current + 1;
     latestRequestIdRef.current = requestId;
-    const input: BuildIdentityGraphAtlasInput = {
-      persons,
-      accounts,
-      feeds,
-      activitySummaries,
-      mode,
+    const viewport: IdentityGalaxyWorkerViewportInput = {
       transform: transformRef.current,
       width: canvasSize.width,
       height: canvasSize.height,
       quality,
       selectedPersonId,
       selectedAccountId,
-      friendSuggestionStrengthByPerson: friendSuggestionStrengthByPersonRecord,
-      friendSuggestionStrengthByAccount: friendSuggestionStrengthByAccountRecord,
     };
     const worker = workerRef.current;
     if (!worker) {
-      runAtlasOnMainThread(requestId, input);
+      runAtlasOnMainThread(requestId, galaxySource.input, viewport);
       return;
     }
     const timeout = window.setTimeout(() => {
@@ -1267,46 +875,52 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       if (workerRef.current === worker) {
         worker.terminate();
         workerRef.current = null;
+        postedSourceRevisionRef.current = -1;
       }
-      runAtlasOnMainThread(requestId, input);
+      runAtlasOnMainThread(requestId, galaxySource.input, viewport);
     }, GRAPH_LAYOUT_WORKER_TIMEOUT_MS);
     pendingWorkerTimeoutsRef.current.set(requestId, timeout);
-    worker.postMessage({ requestId, ...input });
+    if (postedSourceRevisionRef.current !== galaxySource.revision) {
+      postedSourceRevisionRef.current = galaxySource.revision;
+      worker.postMessage({
+        kind: "build",
+        requestId,
+        sourceRevision: galaxySource.revision,
+        source: galaxySource.input,
+        viewport,
+      });
+    } else {
+      worker.postMessage({
+        kind: "viewport",
+        requestId,
+        sourceRevision: galaxySource.revision,
+        viewport,
+      });
+    }
   }, [
-    accounts,
-    activitySummaries,
     canvasSize.height,
     canvasSize.width,
-    feeds,
-    friendSuggestionStrengthByAccountRecord,
-    friendSuggestionStrengthByPersonRecord,
-    mode,
-    persons,
+    galaxySource,
     runAtlasOnMainThread,
     selectedAccountId,
     selectedPersonId,
   ]);
 
-  const scheduleAtlas = useCallback((quality: IdentityGraphAtlasQuality) => {
-    window.cancelAnimationFrame(atlasRafRef.current);
-    atlasRafRef.current = window.requestAnimationFrame(() => requestAtlas(quality));
-  }, [requestAtlas]);
-
   const markInteractive = useCallback(() => {
-    const wasInteractive = latestQualityRef.current === "interactive";
     latestQualityRef.current = "interactive";
     scheduleDraw();
-    if (!wasInteractive) {
-      sceneDirtyRef.current = true;
-      scheduleAtlas("interactive");
-    }
     if (settleTimerRef.current !== null) {
       window.clearTimeout(settleTimerRef.current);
     }
     const sourceCount = atlasRef.current?.metrics.sourceNodeCount ?? 0;
     const delay = sourceCount >= 1_200 ? DENSE_INTERACTION_SETTLE_DELAY_MS : INTERACTION_SETTLE_DELAY_MS;
     const settleWhenIdle = () => {
-      if (dragStateRef.current || pinchStateRef.current || activeTouchPointsRef.current.size > 0) {
+      if (
+        dragStateRef.current ||
+        pinchStateRef.current ||
+        safariGestureStateRef.current ||
+        activeTouchPointsRef.current.size > 0
+      ) {
         settleTimerRef.current = window.setTimeout(settleWhenIdle, delay);
         return;
       }
@@ -1315,21 +929,34 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       requestAtlas("settled");
     };
     settleTimerRef.current = window.setTimeout(settleWhenIdle, delay);
-  }, [requestAtlas, scheduleAtlas, scheduleDraw]);
+  }, [requestAtlas, scheduleDraw]);
 
   const viewportToWorld = useCallback((clientX: number, clientY: number) => {
     const container = containerRef.current;
     if (!container) return { x: 0, y: 0 };
     const rect = container.getBoundingClientRect();
-    return {
-      x: (clientX - rect.left - transformRef.current.x) / transformRef.current.scale,
-      y: (clientY - rect.top - transformRef.current.y) / transformRef.current.scale,
-    };
+    return viewportPointToIdentityGalaxyPlane(
+      clientX - rect.left,
+      clientY - rect.top,
+      transformRef.current,
+    );
   }, []);
 
   const hitNodeAt = useCallback((clientX: number, clientY: number) => {
     const atlas = atlasRef.current;
     if (!atlas) return null;
+    const container = containerRef.current;
+    const scene = galaxySceneRef.current;
+    const engine = engineRef.current;
+    if (container && scene && engine) {
+      const rect = container.getBoundingClientRect();
+      const nodeId = engine.pickNode(
+        clientX - rect.left,
+        clientY - rect.top,
+        visibleNodeIdsRef.current,
+      );
+      if (nodeId) return atlasNodeByIdRef.current.get(nodeId) ?? null;
+    }
     const point = viewportToWorld(clientX, clientY);
     return findHitNode(atlas, hitBucketsRef.current, point.x, point.y);
   }, [viewportToWorld]);
@@ -1362,7 +989,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       atlas.bounds,
       canvasSize.width,
       canvasSize.height,
-      FIT_PADDING,
+      fitPaddingForViewport(canvasSize.width),
       viewportInsetsRef.current,
     );
     hasUserAdjustedTransformRef.current = true;
@@ -1395,12 +1022,20 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       { type: "module" },
     );
     workerRef.current = worker;
-    worker.onmessage = (event: MessageEvent<AtlasResponse>) => {
-      applyAtlas(event.data.requestId, event.data.atlas, event.data.durationMs);
+    postedSourceRevisionRef.current = -1;
+    worker.onmessage = (event: MessageEvent<IdentityGalaxyWorkerResponse>) => {
+      applyAtlasRef.current?.(
+        event.data.requestId,
+        event.data.atlas,
+        event.data.scene,
+        event.data.edgeIndices,
+        event.data.durationMs,
+      );
     };
     worker.onerror = () => {
       if (workerRef.current === worker) {
         workerRef.current = null;
+        postedSourceRevisionRef.current = -1;
       }
     };
     return () => {
@@ -1411,9 +1046,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       worker.terminate();
       if (workerRef.current === worker) {
         workerRef.current = null;
+        postedSourceRevisionRef.current = -1;
       }
     };
-  }, [applyAtlas]);
+  }, []);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -1452,19 +1088,20 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
   useEffect(() => {
     if (!atlasReady) return;
-    rendererRef.current?.resize(canvasSize.width, canvasSize.height);
+    engineRef.current?.resize(canvasSize.width, canvasSize.height);
     scheduleDraw();
   }, [atlasReady, canvasSize.height, canvasSize.width, scheduleDraw]);
 
   useEffect(() => {
     if (!atlasReady) return;
     const atlas = atlasRef.current;
-    if (atlas && !hasUserAdjustedTransformRef.current) {
-      transformRef.current = fitTransformToVisibleAtlasBounds(
+    const scene = galaxySceneRef.current;
+    if (atlas && scene && !hasUserAdjustedTransformRef.current) {
+      transformRef.current = initialGalaxyTransform(
         atlas.bounds,
+        scene,
         canvasSize.width,
         canvasSize.height,
-        FIT_PADDING,
         viewportInsets,
       );
     }
@@ -1473,7 +1110,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   }, [atlasReady, canvasSize.height, canvasSize.width, requestAtlas, scheduleDraw, viewportInsets]);
 
   useEffect(() => {
-    paletteKeyRef.current = "";
     sceneDirtyRef.current = true;
     scheduleDraw();
   }, [scheduleDraw, themeId]);
@@ -1482,20 +1118,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     sceneDirtyRef.current = true;
     scheduleDraw();
   }, [scheduleDraw, selectedAccountId, selectedPersonId, starfieldVariation]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const preventGestureDefault = (event: Event) => event.preventDefault();
-    container.addEventListener("gesturestart", preventGestureDefault, { passive: false });
-    container.addEventListener("gesturechange", preventGestureDefault, { passive: false });
-    container.addEventListener("gestureend", preventGestureDefault, { passive: false });
-    return () => {
-      container.removeEventListener("gesturestart", preventGestureDefault);
-      container.removeEventListener("gesturechange", preventGestureDefault);
-      container.removeEventListener("gestureend", preventGestureDefault);
-    };
-  }, []);
 
   useEffect(() => {
     if (typeof PerformanceObserver === "undefined") return;
@@ -1512,16 +1134,17 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
   useEffect(() => {
     return () => {
-      window.cancelAnimationFrame(atlasRafRef.current);
       window.cancelAnimationFrame(drawRafRef.current);
+      drawRafRef.current = 0;
       if (settleTimerRef.current !== null) {
         window.clearTimeout(settleTimerRef.current);
       }
       if (longPressTimerRef.current !== null) {
         window.clearTimeout(longPressTimerRef.current);
       }
-      rendererRef.current?.dispose();
-      rendererRef.current = null;
+      engineRef.current?.dispose();
+      engineRef.current = null;
+      galaxySceneRef.current = null;
     };
   }, []);
 
@@ -1544,6 +1167,84 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     markInteractive();
   }, [markInteractive]);
 
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const gesturePoint = (event: SafariGestureEvent) => {
+      const rect = container.getBoundingClientRect();
+      const eventX = typeof event.clientX === "number" ? event.clientX : Number.NaN;
+      const eventY = typeof event.clientY === "number" ? event.clientY : Number.NaN;
+      if (
+        Number.isFinite(eventX) &&
+        Number.isFinite(eventY) &&
+        eventX >= rect.left &&
+        eventX <= rect.right &&
+        eventY >= rect.top &&
+        eventY <= rect.bottom
+      ) {
+        return { clientX: eventX, clientY: eventY };
+      }
+      const pointer = lastPointerPointRef.current;
+      if (pointer) return { clientX: pointer.x, clientY: pointer.y };
+      const center = visibleViewportCenter(
+        canvasSize.width,
+        canvasSize.height,
+        viewportInsetsRef.current,
+      );
+      return { clientX: rect.left + center.x, clientY: rect.top + center.y };
+    };
+
+    const beginGesture = (event: SafariGestureEvent) => {
+      if (isGraphGestureUiTarget(event.target)) return;
+      event.preventDefault();
+      const point = gesturePoint(event);
+      const rect = container.getBoundingClientRect();
+      safariGestureStateRef.current = {
+        initialScale: transformRef.current.scale,
+        localPoint: {
+          x: point.clientX - rect.left,
+          y: point.clientY - rect.top,
+        },
+        worldPoint: viewportToWorld(point.clientX, point.clientY),
+      };
+      setContextMenu(null);
+      setLinkPickerAccountId(null);
+      markInteractive();
+    };
+
+    const updateGesture = (event: SafariGestureEvent) => {
+      if (isGraphGestureUiTarget(event.target)) return;
+      event.preventDefault();
+      if (!safariGestureStateRef.current) beginGesture(event);
+      const gesture = safariGestureStateRef.current;
+      if (!gesture) return;
+      const scale = clampScale(gesture.initialScale * Math.max(0.05, event.scale ?? 1));
+      transformRef.current = {
+        scale,
+        x: gesture.localPoint.x - gesture.worldPoint.x * scale,
+        y: gesture.localPoint.y - gesture.worldPoint.y * scale,
+      };
+      hasUserAdjustedTransformRef.current = true;
+      markInteractive();
+    };
+
+    const endGesture = (event: SafariGestureEvent) => {
+      if (!safariGestureStateRef.current) return;
+      event.preventDefault();
+      safariGestureStateRef.current = null;
+    };
+
+    container.addEventListener("gesturestart", beginGesture as EventListener, { passive: false });
+    container.addEventListener("gesturechange", updateGesture as EventListener, { passive: false });
+    container.addEventListener("gestureend", endGesture as EventListener, { passive: false });
+    return () => {
+      container.removeEventListener("gesturestart", beginGesture as EventListener);
+      container.removeEventListener("gesturechange", updateGesture as EventListener);
+      container.removeEventListener("gestureend", endGesture as EventListener);
+    };
+  }, [canvasSize.height, canvasSize.width, markInteractive, viewportToWorld]);
+
   const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
     if (event.ctrlKey || event.metaKey) {
@@ -1565,163 +1266,100 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     markInteractive();
   }, [markInteractive, zoomAtPoint]);
 
-  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const container = containerRef.current;
-    if (!container) return;
-    container.setPointerCapture(event.pointerId);
-    setContextMenu(null);
-    setLinkPickerAccountId(null);
+  const clearLongPress = useCallback(() => {
+    if (longPressTimerRef.current === null) return;
+    window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  }, []);
 
-    if (event.pointerType === "touch") {
-      activeTouchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      if (longPressTimerRef.current !== null) {
-        window.clearTimeout(longPressTimerRef.current);
-      }
-      if (activeTouchPointsRef.current.size >= 2) {
-        if (longPressTimerRef.current !== null) {
-          window.clearTimeout(longPressTimerRef.current);
-          longPressTimerRef.current = null;
-        }
-        const [firstEntry, secondEntry] = [...activeTouchPointsRef.current.entries()];
-        if (firstEntry && secondEntry) {
-          const initialDistance = distanceBetween(firstEntry[1], secondEntry[1]);
-          const initialMidpoint = midpointBetween(firstEntry[1], secondEntry[1]);
-          pinchStateRef.current = {
-            pointerIds: [firstEntry[0], secondEntry[0]],
-            initialDistance,
-            initialScale: transformRef.current.scale,
-            initialMidpoint,
-            initialWorldPoint: viewportToWorld(initialMidpoint.x, initialMidpoint.y),
-            moved: false,
-          };
-          dragStateRef.current = null;
-        }
-      } else {
-        longPressTimerRef.current = window.setTimeout(() => {
-          if (activeTouchPointsRef.current.has(event.pointerId)) {
-            dragStateRef.current = null;
-            openNodeContextMenu(event.clientX, event.clientY);
-            scheduleDraw();
-          }
-        }, 520);
-        dragStateRef.current = {
-          kind: "pan",
-          pointerId: event.pointerId,
-          startX: event.clientX,
-          startY: event.clientY,
-          originX: transformRef.current.x,
-          originY: transformRef.current.y,
-          moved: false,
-        };
-      }
-      overlayRef.current?.classList.add("cursor-grabbing");
-      markInteractive();
-      event.preventDefault();
-      return;
-    }
-
-    dragStateRef.current = {
-      kind: "pan",
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: transformRef.current.x,
-      originY: transformRef.current.y,
+  const beginNativePinch = useCallback(() => {
+    const [firstEntry, secondEntry] = [...activeTouchPointsRef.current.entries()];
+    if (!firstEntry || !secondEntry) return false;
+    const initialDistance = distanceBetween(firstEntry[1], secondEntry[1]);
+    if (initialDistance <= 0) return false;
+    const initialMidpoint = midpointBetween(firstEntry[1], secondEntry[1]);
+    clearLongPress();
+    pinchStateRef.current = {
+      pointerIds: [firstEntry[0], secondEntry[0]],
+      initialDistance,
+      initialScale: transformRef.current.scale,
+      initialMidpoint,
+      initialWorldPoint: viewportToWorld(initialMidpoint.x, initialMidpoint.y),
       moved: false,
     };
-    overlayRef.current?.classList.add("cursor-grabbing");
-    markInteractive();
-  }, [markInteractive, openNodeContextMenu, scheduleDraw, viewportToWorld]);
+    dragStateRef.current = null;
+    return true;
+  }, [clearLongPress, viewportToWorld]);
 
-  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "touch") {
-      activeTouchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    }
+  const beginNativePan = useCallback((touchId: number, point: TouchPoint, moved = false) => {
+    clearLongPress();
+    dragStateRef.current = {
+      kind: "pan",
+      pointerId: touchId,
+      startX: point.x,
+      startY: point.y,
+      originX: transformRef.current.x,
+      originY: transformRef.current.y,
+      moved,
+    };
+    if (moved) return;
+    longPressTimerRef.current = window.setTimeout(() => {
+      const currentPoint = activeTouchPointsRef.current.get(touchId);
+      const drag = dragStateRef.current;
+      if (!currentPoint || !drag || drag.pointerId !== touchId || drag.moved || pinchStateRef.current) return;
+      dragStateRef.current = null;
+      openNodeContextMenu(currentPoint.x, currentPoint.y);
+      scheduleDraw();
+    }, 520);
+  }, [clearLongPress, openNodeContextMenu, scheduleDraw]);
+
+  const updateNativePinch = useCallback(() => {
     const pinch = pinchStateRef.current;
-    if (pinch && pinch.pointerIds.includes(event.pointerId)) {
-      const first = activeTouchPointsRef.current.get(pinch.pointerIds[0]);
-      const second = activeTouchPointsRef.current.get(pinch.pointerIds[1]);
-      if (!first || !second || pinch.initialDistance <= 0) return;
-      const currentDistance = distanceBetween(first, second);
-      const midpoint = midpointBetween(first, second);
-      pinch.moved = pinch.moved ||
-        Math.abs(currentDistance - pinch.initialDistance) > 4 ||
-        distanceBetween(midpoint, pinch.initialMidpoint) > 4;
-      const container = containerRef.current;
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
-      const scale = clampScale(pinch.initialScale * (currentDistance / pinch.initialDistance));
-      const localX = midpoint.x - rect.left;
-      const localY = midpoint.y - rect.top;
-      transformRef.current = {
-        scale,
-        x: localX - pinch.initialWorldPoint.x * scale,
-        y: localY - pinch.initialWorldPoint.y * scale,
-      };
-      hasUserAdjustedTransformRef.current = true;
-      markInteractive();
-      event.preventDefault();
-      return;
-    }
-
-    const drag = dragStateRef.current;
-    if (!drag) {
-      if (event.pointerType === "mouse" || event.pointerType === "pen") {
-        const hit = hitNodeAt(event.clientX, event.clientY);
-        const nextHovered = hit?.id ?? null;
-        if (hoveredNodeIdRef.current !== nextHovered) {
-          hoveredNodeIdRef.current = nextHovered;
-          sceneDirtyRef.current = true;
-          scheduleDraw();
-        }
-      }
-      return;
-    }
-    if (drag.pointerId !== event.pointerId) return;
-    const moved = Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3;
-    drag.moved = drag.moved || moved;
-    if (drag.moved && longPressTimerRef.current !== null) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
+    if (!pinch) return false;
+    const first = activeTouchPointsRef.current.get(pinch.pointerIds[0]);
+    const second = activeTouchPointsRef.current.get(pinch.pointerIds[1]);
+    if (!first || !second || pinch.initialDistance <= 0) return false;
+    const container = containerRef.current;
+    if (!container) return false;
+    const currentDistance = distanceBetween(first, second);
+    const midpoint = midpointBetween(first, second);
+    pinch.moved = pinch.moved ||
+      Math.abs(currentDistance - pinch.initialDistance) > 4 ||
+      distanceBetween(midpoint, pinch.initialMidpoint) > 4;
+    const rect = container.getBoundingClientRect();
+    const scale = clampScale(pinch.initialScale * (currentDistance / pinch.initialDistance));
+    const localX = midpoint.x - rect.left;
+    const localY = midpoint.y - rect.top;
     transformRef.current = {
-      ...transformRef.current,
-      x: drag.originX + event.clientX - drag.startX,
-      y: drag.originY + event.clientY - drag.startY,
+      scale,
+      x: localX - pinch.initialWorldPoint.x * scale,
+      y: localY - pinch.initialWorldPoint.y * scale,
     };
     hasUserAdjustedTransformRef.current = true;
     markInteractive();
-    if (event.pointerType === "touch") event.preventDefault();
-  }, [hitNodeAt, markInteractive, scheduleDraw]);
+    return true;
+  }, [markInteractive]);
 
-  const handlePointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "touch") {
-      activeTouchPointsRef.current.delete(event.pointerId);
-    }
-    if (longPressTimerRef.current !== null) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-    const pinch = pinchStateRef.current;
-    if (pinch && pinch.pointerIds.includes(event.pointerId)) {
-      pinchStateRef.current = null;
-      dragStateRef.current = null;
-      overlayRef.current?.classList.toggle("cursor-grabbing", activeTouchPointsRef.current.size > 0);
-      requestAtlas("settled");
-      return;
-    }
-
+  const updateNativePan = useCallback(() => {
     const drag = dragStateRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    dragStateRef.current = null;
-    overlayRef.current?.classList.remove("cursor-grabbing");
+    if (!drag) return false;
+    const point = activeTouchPointsRef.current.get(drag.pointerId);
+    if (!point) return false;
+    const moved = Math.abs(point.x - drag.startX) > 3 || Math.abs(point.y - drag.startY) > 3;
+    drag.moved = drag.moved || moved;
+    if (drag.moved) clearLongPress();
+    transformRef.current = {
+      ...transformRef.current,
+      x: drag.originX + point.x - drag.startX,
+      y: drag.originY + point.y - drag.startY,
+    };
+    hasUserAdjustedTransformRef.current = true;
+    markInteractive();
+    return true;
+  }, [clearLongPress, markInteractive]);
 
-    if (drag.moved) {
-      requestAtlas("settled");
-      return;
-    }
-
-    const hit = hitNodeAt(event.clientX, event.clientY);
+  const selectNodeAt = useCallback((clientX: number, clientY: number) => {
+    const hit = hitNodeAt(clientX, clientY);
     if (!hit) {
       onClearSelection?.();
       scheduleDraw();
@@ -1742,27 +1380,234 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     onSelectAccount,
     onSelectPerson,
     personsById,
-    requestAtlas,
     scheduleDraw,
   ]);
 
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch" || isGraphGestureUiTarget(event.target)) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    lastPointerPointRef.current = { x: event.clientX, y: event.clientY };
+    const container = containerRef.current;
+    if (!container) return;
+    container.setPointerCapture(event.pointerId);
+    setContextMenu(null);
+    setLinkPickerAccountId(null);
+    dragStateRef.current = {
+      kind: "pan",
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: transformRef.current.x,
+      originY: transformRef.current.y,
+      moved: false,
+    };
+    overlayRef.current?.classList.add("cursor-grabbing");
+    markInteractive();
+  }, [markInteractive]);
+
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") return;
+    lastPointerPointRef.current = { x: event.clientX, y: event.clientY };
+    const drag = dragStateRef.current;
+    if (!drag) {
+      if (event.pointerType === "mouse" || event.pointerType === "pen") {
+        const hit = hitNodeAt(event.clientX, event.clientY);
+        const nextHovered = hit?.id ?? null;
+        if (hoveredNodeIdRef.current !== nextHovered) {
+          hoveredNodeIdRef.current = nextHovered;
+          interactionDirtyRef.current = true;
+          scheduleDraw();
+        }
+      }
+      return;
+    }
+    if (drag.pointerId !== event.pointerId) return;
+    const moved = Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3;
+    drag.moved = drag.moved || moved;
+    transformRef.current = {
+      ...transformRef.current,
+      x: drag.originX + event.clientX - drag.startX,
+      y: drag.originY + event.clientY - drag.startY,
+    };
+    hasUserAdjustedTransformRef.current = true;
+    markInteractive();
+  }, [hitNodeAt, markInteractive, scheduleDraw]);
+
+  const handlePointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") return;
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragStateRef.current = null;
+    overlayRef.current?.classList.remove("cursor-grabbing");
+    if (drag.moved) {
+      requestAtlas("settled");
+      return;
+    }
+    selectNodeAt(event.clientX, event.clientY);
+  }, [requestAtlas, selectNodeAt]);
+
   const handlePointerLeave = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") return;
     if (hoveredNodeIdRef.current) {
       hoveredNodeIdRef.current = null;
-      sceneDirtyRef.current = true;
+      interactionDirtyRef.current = true;
       scheduleDraw();
     }
-    if (event.pointerType === "touch") {
-      activeTouchPointsRef.current.delete(event.pointerId);
-    }
-    if (longPressTimerRef.current !== null) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
     dragStateRef.current = null;
-    pinchStateRef.current = null;
     overlayRef.current?.classList.remove("cursor-grabbing");
   }, [scheduleDraw]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const syncActiveTouches = (touches: TouchList) => {
+      const activePoints = activeTouchPointsRef.current;
+      activePoints.clear();
+      for (let index = 0; index < touches.length; index += 1) {
+        const touch = touches.item(index);
+        if (!touch || ignoredTouchIdsRef.current.has(touch.identifier)) continue;
+        activePoints.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+      }
+    };
+
+    const touchPointFromList = (touches: TouchList, touchId: number): TouchPoint | null => {
+      for (let index = 0; index < touches.length; index += 1) {
+        const touch = touches.item(index);
+        if (touch?.identifier === touchId) return { x: touch.clientX, y: touch.clientY };
+      }
+      return null;
+    };
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (isGraphGestureUiTarget(event.target)) {
+        for (let index = 0; index < event.changedTouches.length; index += 1) {
+          const touch = event.changedTouches.item(index);
+          if (touch) ignoredTouchIdsRef.current.add(touch.identifier);
+        }
+        return;
+      }
+      syncActiveTouches(event.touches);
+      if (activeTouchPointsRef.current.size === 0) return;
+      event.preventDefault();
+      setContextMenu(null);
+      setLinkPickerAccountId(null);
+      if (activeTouchPointsRef.current.size >= 2) {
+        beginNativePinch();
+      } else {
+        const firstEntry = activeTouchPointsRef.current.entries().next().value as
+          | [number, TouchPoint]
+          | undefined;
+        if (firstEntry) beginNativePan(firstEntry[0], firstEntry[1]);
+      }
+      overlayRef.current?.classList.add("cursor-grabbing");
+      markInteractive();
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      syncActiveTouches(event.touches);
+      if (activeTouchPointsRef.current.size === 0) return;
+      event.preventDefault();
+      if (activeTouchPointsRef.current.size >= 2) {
+        const pinch = pinchStateRef.current;
+        if (!pinch ||
+          !activeTouchPointsRef.current.has(pinch.pointerIds[0]) ||
+          !activeTouchPointsRef.current.has(pinch.pointerIds[1])) {
+          beginNativePinch();
+        }
+        updateNativePinch();
+        return;
+      }
+      updateNativePan();
+    };
+
+    const handleTouchEnd = (event: TouchEvent) => {
+      const hadActiveGesture = activeTouchPointsRef.current.size > 0;
+      for (let index = 0; index < event.changedTouches.length; index += 1) {
+        const touch = event.changedTouches.item(index);
+        if (touch) ignoredTouchIdsRef.current.delete(touch.identifier);
+      }
+      syncActiveTouches(event.touches);
+      if (!hadActiveGesture && activeTouchPointsRef.current.size === 0) return;
+      event.preventDefault();
+      clearLongPress();
+
+      const pinch = pinchStateRef.current;
+      if (pinch) {
+        if (activeTouchPointsRef.current.size >= 2) {
+          beginNativePinch();
+          markInteractive();
+          return;
+        }
+        pinchStateRef.current = null;
+        const remainingTouch = activeTouchPointsRef.current.entries().next().value as
+          | [number, TouchPoint]
+          | undefined;
+        if (remainingTouch) {
+          beginNativePan(remainingTouch[0], remainingTouch[1], true);
+          overlayRef.current?.classList.add("cursor-grabbing");
+          markInteractive();
+          return;
+        }
+        dragStateRef.current = null;
+        overlayRef.current?.classList.remove("cursor-grabbing");
+        requestAtlas("settled");
+        return;
+      }
+
+      const drag = dragStateRef.current;
+      if (!drag) {
+        if (activeTouchPointsRef.current.size === 0) {
+          overlayRef.current?.classList.remove("cursor-grabbing");
+          requestAtlas("settled");
+        }
+        return;
+      }
+      if (activeTouchPointsRef.current.has(drag.pointerId)) return;
+      dragStateRef.current = null;
+      overlayRef.current?.classList.remove("cursor-grabbing");
+      if (drag.moved) {
+        requestAtlas("settled");
+        return;
+      }
+      const releasePoint = touchPointFromList(event.changedTouches, drag.pointerId) ?? {
+        x: drag.startX,
+        y: drag.startY,
+      };
+      selectNodeAt(releasePoint.x, releasePoint.y);
+    };
+
+    const handleTouchCancel = (event: TouchEvent) => {
+      if (event.cancelable) event.preventDefault();
+      clearLongPress();
+      activeTouchPointsRef.current.clear();
+      ignoredTouchIdsRef.current.clear();
+      pinchStateRef.current = null;
+      dragStateRef.current = null;
+      overlayRef.current?.classList.remove("cursor-grabbing");
+      requestAtlas("settled");
+    };
+
+    container.addEventListener("touchstart", handleTouchStart, { passive: false });
+    container.addEventListener("touchmove", handleTouchMove, { passive: false });
+    container.addEventListener("touchend", handleTouchEnd, { passive: false });
+    container.addEventListener("touchcancel", handleTouchCancel, { passive: false });
+    return () => {
+      container.removeEventListener("touchstart", handleTouchStart);
+      container.removeEventListener("touchmove", handleTouchMove);
+      container.removeEventListener("touchend", handleTouchEnd);
+      container.removeEventListener("touchcancel", handleTouchCancel);
+    };
+  }, [
+    beginNativePan,
+    beginNativePinch,
+    clearLongPress,
+    markInteractive,
+    requestAtlas,
+    selectNodeAt,
+    updateNativePan,
+    updateNativePinch,
+  ]);
 
   const handleCopyDiagnostics = useCallback(async () => {
     const debug = {
@@ -1869,18 +1714,18 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           className="absolute inset-0 cursor-grab"
         />
       </div>
-      {import.meta.env.DEV ? (
-        <div className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-xl border border-[color:rgb(var(--theme-border-rgb)/0.22)] bg-[color:rgb(var(--theme-surface-rgb)/0.78)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)] shadow-lg backdrop-blur-md">
-          <span className="font-semibold text-[color:var(--theme-text-primary)]">Starfield</span>
+      {import.meta.env.DEV || import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1" ? (
+        <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-xl border border-[color:rgb(var(--theme-border-rgb)/0.22)] bg-[color:rgb(var(--theme-surface-rgb)/0.78)] px-2 py-2 text-xs text-[color:var(--theme-text-secondary)] shadow-lg backdrop-blur-md sm:left-4 sm:top-4 sm:px-3">
+          <span className="hidden font-semibold text-[color:var(--theme-text-primary)] sm:inline">Starfield</span>
           <select
-            className="rounded-lg border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:var(--theme-bg-card)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)]"
+            className="max-w-[8.5rem] rounded-lg border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:var(--theme-bg-card)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)] sm:max-w-none"
             value={starfieldVariation}
-            onChange={(event) => setStarfieldVariation(event.target.value as StarfieldVariation)}
+            onChange={(event) => setStarfieldVariation(event.target.value as IdentityGalaxyVariation)}
             aria-label="Starfield variation"
           >
-            <option value="nebula-rings">Nebula and rings</option>
+            <option value="nebula-rings">Cosmic blend</option>
             <option value="nebula">Nebula</option>
-            <option value="rings">Rings</option>
+            <option value="rings">Star streams</option>
           </select>
         </div>
       ) : null}
@@ -1967,13 +1812,20 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       ) : null}
       <div
         data-testid="friend-graph-controls"
-        className="absolute right-4 top-4 z-10 flex items-center gap-2"
+        className="absolute right-3 top-3 z-10 flex items-center gap-2 sm:right-4 sm:top-4"
       >
         <button type="button" className={CONTROL_BASE} onClick={fitAll}>
           Fit all
         </button>
-        <button type="button" className={CONTROL_BASE} onClick={handleCopyDiagnostics}>
-          Copy diagnostics
+        <button
+          type="button"
+          className={`${CONTROL_BASE} inline-flex items-center px-2 sm:px-3`}
+          onClick={handleCopyDiagnostics}
+          aria-label="Copy diagnostics"
+          title="Copy diagnostics"
+        >
+          <CopyIcon className="h-4 w-4" />
+          <span className="hidden sm:inline">Copy diagnostics</span>
         </button>
       </div>
     </div>

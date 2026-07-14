@@ -5,6 +5,16 @@ interface IconProps {
   style?: React.CSSProperties;
 }
 
+/** Overlapping sheets for copy actions. */
+export function CopyIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+      <rect x="8" y="8" width="11" height="11" rx="2" />
+      <path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
+    </svg>
+  );
+}
+
 // ─── Layout / navigation ────────────────────────────────────────────────────
 
 /** Crystal core mark for the unified feed and all-sources navigation. */

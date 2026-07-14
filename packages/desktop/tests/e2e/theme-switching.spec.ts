@@ -503,4 +503,15 @@ test("friends graph controls align to the graph lane between sidebars", async ({
     fitAllTopGapPx: 16,
     controlsRightGapPx: 16,
   });
+
+  const controlBackgrounds = await page
+    .getByTestId("friend-graph-controls")
+    .locator("button")
+    .evaluateAll((buttons) => buttons.map((button) => getComputedStyle(button).backgroundColor));
+  expect(controlBackgrounds).toHaveLength(2);
+  for (const background of controlBackgrounds) {
+    expect(background).not.toBe("transparent");
+    expect(background).not.toBe("rgba(0, 0, 0, 0)");
+  }
+  await expect(page.getByLabel("Starfield variation")).toHaveValue("nebula");
 });
