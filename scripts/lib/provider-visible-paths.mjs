@@ -147,11 +147,36 @@ export const PROVIDER_VISIBLE_ORCHESTRATION_FILES = new Set([
 // Keep the values sorted because approval packets compare exact scopes.
 export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
   [
+    "packages/desktop/src-tauri/src/lib.rs",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
     "packages/desktop/src/App.tsx",
     ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
   ],
+  [
+    "packages/desktop/src/components/FacebookSettingsSection.tsx",
+    ["facebook"],
+  ],
+  [
+    "packages/desktop/src/components/InstagramSettingsSection.tsx",
+    ["instagram"],
+  ],
+  [
+    "packages/desktop/src/components/LinkedInSettingsSection.tsx",
+    ["linkedin"],
+  ],
   ["packages/desktop/src/components/MobileSyncTab.tsx", ["other"]],
+  ["packages/desktop/src/components/XSettingsSection.tsx", ["x"]],
+  [
+    "packages/desktop/src/components/YouTubeSettingsSection.tsx",
+    ["youtube"],
+  ],
   ["packages/desktop/src/hooks/useCloudProviders.ts", ["other"]],
+  [
+    "packages/desktop/src/hooks/usePostLoginAutoSync.ts",
+    ["facebook", "instagram", "linkedin"],
+  ],
   ["packages/desktop/src/lib/ai-summarizer.ts", ["other"]],
   [
     "packages/desktop/src/lib/automerge-types.ts",
@@ -165,7 +190,12 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
     "packages/desktop/src/lib/automerge.worker.ts",
     ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
   ],
+  [
+    "packages/desktop/src/lib/capture.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
   ["packages/desktop/src/lib/contact-sync-storage.ts", ["other"]],
+  ["packages/desktop/src/lib/content-fetcher.ts", ["other"]],
   ["packages/desktop/src/lib/facebook-group-discovery.ts", ["facebook"]],
   [
     "packages/desktop/src/lib/factory-reset-guard.ts",
@@ -189,6 +219,10 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
     "packages/desktop/src/lib/provider-health.ts",
     ["facebook", "instagram", "linkedin", "x", "youtube"],
   ],
+  [
+    "packages/desktop/src/lib/reader-hydration.ts",
+    ["facebook", "instagram", "other", "x"],
+  ],
   ["packages/desktop/src/lib/rss-poller.ts", ["other"]],
   ["packages/desktop/src/lib/rss-refresh-plan.ts", ["other"]],
   ["packages/desktop/src/lib/rss-runtime-state.ts", ["other"]],
@@ -204,6 +238,10 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
   [
     "packages/desktop/src/lib/social-auth-transient-errors.ts",
     ["facebook", "instagram", "linkedin", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/social-comment-hydration.ts",
+    ["facebook", "instagram"],
   ],
   [
     "packages/desktop/src/lib/social-outbox-state.ts",
@@ -224,6 +262,10 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
   ["packages/shared/src/contact-sync-state.ts", ["other"]],
   ["packages/shared/src/preferences.ts", ["other"]],
   [
+    "packages/shared/src/schema.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
     "packages/shared/src/sync-write-policy.ts",
     ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
   ],
@@ -231,6 +273,10 @@ export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
   [
     "packages/ui/src/components/SettingsDialog.tsx",
     ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
+    "packages/ui/src/components/feed/ReaderView.tsx",
+    ["facebook", "instagram", "other", "x"],
   ],
   ["packages/ui/src/components/settings/AISection.tsx", ["other"]],
   ["packages/ui/src/hooks/useContactSync.ts", ["other"]],

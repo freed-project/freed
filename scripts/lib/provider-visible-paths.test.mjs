@@ -26,11 +26,36 @@ const repoRoot = path.resolve(moduleDir, "../..");
 
 const EXACT_SCOPE_CASES = [
   [
+    "packages/desktop/src-tauri/src/lib.rs",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
     "packages/desktop/src/App.tsx",
     ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
   ],
+  [
+    "packages/desktop/src/components/FacebookSettingsSection.tsx",
+    ["facebook"],
+  ],
+  [
+    "packages/desktop/src/components/InstagramSettingsSection.tsx",
+    ["instagram"],
+  ],
+  [
+    "packages/desktop/src/components/LinkedInSettingsSection.tsx",
+    ["linkedin"],
+  ],
   ["packages/desktop/src/components/MobileSyncTab.tsx", ["other"]],
+  ["packages/desktop/src/components/XSettingsSection.tsx", ["x"]],
+  [
+    "packages/desktop/src/components/YouTubeSettingsSection.tsx",
+    ["youtube"],
+  ],
   ["packages/desktop/src/hooks/useCloudProviders.ts", ["other"]],
+  [
+    "packages/desktop/src/hooks/usePostLoginAutoSync.ts",
+    ["facebook", "instagram", "linkedin"],
+  ],
   ["packages/desktop/src/lib/ai-summarizer.ts", ["other"]],
   [
     "packages/desktop/src/lib/automerge-types.ts",
@@ -44,7 +69,12 @@ const EXACT_SCOPE_CASES = [
     "packages/desktop/src/lib/automerge.worker.ts",
     ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
   ],
+  [
+    "packages/desktop/src/lib/capture.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
   ["packages/desktop/src/lib/contact-sync-storage.ts", ["other"]],
+  ["packages/desktop/src/lib/content-fetcher.ts", ["other"]],
   ["packages/desktop/src/lib/facebook-group-discovery.ts", ["facebook"]],
   [
     "packages/desktop/src/lib/factory-reset-guard.ts",
@@ -68,6 +98,10 @@ const EXACT_SCOPE_CASES = [
     "packages/desktop/src/lib/provider-health.ts",
     ["facebook", "instagram", "linkedin", "x", "youtube"],
   ],
+  [
+    "packages/desktop/src/lib/reader-hydration.ts",
+    ["facebook", "instagram", "other", "x"],
+  ],
   ["packages/desktop/src/lib/rss-poller.ts", ["other"]],
   ["packages/desktop/src/lib/rss-refresh-plan.ts", ["other"]],
   ["packages/desktop/src/lib/rss-runtime-state.ts", ["other"]],
@@ -83,6 +117,10 @@ const EXACT_SCOPE_CASES = [
   [
     "packages/desktop/src/lib/social-auth-transient-errors.ts",
     ["facebook", "instagram", "linkedin", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/social-comment-hydration.ts",
+    ["facebook", "instagram"],
   ],
   [
     "packages/desktop/src/lib/social-outbox-state.ts",
@@ -103,6 +141,10 @@ const EXACT_SCOPE_CASES = [
   ["packages/shared/src/contact-sync-state.ts", ["other"]],
   ["packages/shared/src/preferences.ts", ["other"]],
   [
+    "packages/shared/src/schema.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
     "packages/shared/src/sync-write-policy.ts",
     ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
   ],
@@ -110,6 +152,10 @@ const EXACT_SCOPE_CASES = [
   [
     "packages/ui/src/components/SettingsDialog.tsx",
     ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
+    "packages/ui/src/components/feed/ReaderView.tsx",
+    ["facebook", "instagram", "other", "x"],
   ],
   ["packages/ui/src/components/settings/AISection.tsx", ["other"]],
   ["packages/ui/src/hooks/useContactSync.ts", ["other"]],
@@ -525,17 +571,17 @@ test("the governance trust base has owner review coverage", () => {
 function validApproval(overrides = {}) {
   return {
     schemaVersion: 1,
-    approvalId: "provider-risk-2026-07-10-facebook-lifecycle",
+    approvalId: "provider-risk-2026-07-10-native-provider-lifecycle",
     approvedBy: "AubreyF",
     ownerApprovalReference: "Owner confirmation in task 019f",
     approvalSource: { kind: "control-task", reference: "P1-04" },
     approvedAt: "2026-07-10T16:00:00.000Z",
     expiresAt: "2026-07-17T16:00:00.000Z",
-    providers: ["facebook"],
+    providers: ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
     observableBehavior:
-      "Changes when the existing Facebook scraper window is recycled.",
+      "Changes when existing provider work is coordinated by the native runtime.",
     fingerprintingRisk:
-      "A more regular recycle interval could make the Facebook session pattern easier to distinguish.",
+      "A more regular provider lifecycle could make the session pattern easier to distinguish.",
     lowestProfileAlternative:
       "Keep the current lifecycle and collect passive diagnostics.",
     diffSha: "a".repeat(40),
@@ -543,7 +589,14 @@ function validApproval(overrides = {}) {
     pathScopes: [
       {
         path: "packages/desktop/src-tauri/src/lib.rs",
-        providers: ["facebook"],
+        providers: [
+          "facebook",
+          "instagram",
+          "linkedin",
+          "other",
+          "x",
+          "youtube",
+        ],
       },
     ],
     ...overrides,
@@ -632,7 +685,14 @@ test("structured provider approval validates exact path scope and expiry", () =>
   );
 
   assert.equal(approval.schemaVersion, 1);
-  assert.deepEqual(approval.providers, ["facebook"]);
+  assert.deepEqual(approval.providers, [
+    "facebook",
+    "instagram",
+    "linkedin",
+    "other",
+    "x",
+    "youtube",
+  ]);
   assert.deepEqual(approval.paths, ["packages/desktop/src-tauri/src/lib.rs"]);
   assert.match(approval.authorizationDigest, /^sha256:[0-9a-f]{64}$/);
 });
@@ -833,7 +893,7 @@ test("provider-specific paths infer the provider used to validate approval scope
   ]);
   assert.deepEqual(
     providerIdsForPath("packages/desktop/src-tauri/src/lib.rs"),
-    [],
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
   );
 });
 
