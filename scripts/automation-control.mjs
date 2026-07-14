@@ -71,16 +71,18 @@ Lease options:
   --scope-json <json>               Required target scope for pr-publisher acquisition or head binding.
   --capability-file <path>          One-use signed broker capability for pr-publisher acquisition.
   --owner-capability-file <path>    One-use signed broker capability for freed-owner acquisition.
-  --owner-task-id <task-id>         Exact task bound to the owner capability.
-  --owner-intent-digest <sha256>    Exact canonical governance intent bound to the capability.
+  --owner-confirmation-file <path> Current-task owner confirmation for one exact freed-owner operation.
+  --owner-task-id <task-id>         Exact task bound to the owner authorization.
+  --owner-intent-digest <sha256>    Exact canonical governance intent bound to the owner authorization.
   --head-sha <sha>                  Exact commit bound once to the publisher lease.
   Lease authority is derived from the checked-in actor policy. It cannot be supplied by the caller.
   Non-owner acquisition except freed-pr-publisher requires the matching
   persistent credential in FREED_AUTOMATION_ACTOR_TOKEN.
   freed-pr-publisher requires a broker-signed one-use capability file and does
   not accept a reusable actor credential.
-  freed-owner requires a root-pinned broker signature, an exact task and intent
-  digest, and the capability-bound lease token in FREED_OWNER_LEASE_TOKEN.
+  freed-owner accepts either a root-pinned broker signature or an explicit
+  current-task owner confirmation, both bound to one exact task and intent.
+  The signed capability also requires FREED_OWNER_LEASE_TOKEN.
 
 All successful commands print one JSON object to stdout. Errors print one JSON object to stderr.
 `;
@@ -426,6 +428,7 @@ export function executeCommand(command, { env = process.env } = {}) {
       "scopeJson",
       "capabilityFile",
       "ownerCapabilityFile",
+      "ownerConfirmationFile",
       "ownerTaskId",
       "ownerIntentDigest",
     ]);
@@ -442,7 +445,8 @@ export function executeCommand(command, { env = process.env } = {}) {
             required(options, "ttlSeconds", "--ttl-seconds"),
             "--ttl-seconds",
           ) * 1_000,
-        ...(owner === "freed-owner"
+        ...(owner === "freed-owner" &&
+        options.ownerConfirmationFile === undefined
           ? {
               token: requiredOptionOrEnv(
                 {},
@@ -454,6 +458,7 @@ export function executeCommand(command, { env = process.env } = {}) {
             }
           : {}),
         ownerCapabilityFile: options.ownerCapabilityFile,
+        ownerConfirmationFile: options.ownerConfirmationFile,
         ownerCapabilityTaskId: options.ownerTaskId,
         ownerCapabilityIntentDigest: options.ownerIntentDigest,
         actorCredentialToken: env.FREED_AUTOMATION_ACTOR_TOKEN,

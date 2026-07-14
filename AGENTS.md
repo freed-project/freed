@@ -29,6 +29,8 @@
 
 Before activating a saved Freed automation, run `npm run validate:host-automations`. It compares identity, prompt, schedule, authoritative callable model and supported reasoning effort, target, working directories, execution environment, credential record, root-owned launcher binding and digest, and non-secret Keychain item presence without editing host files. An ACTIVE actor fails closed unless its trusted launcher can exchange the persistent Keychain credential for only the actor's short-lived canonical lease. Missing actors remain PAUSED. Reconcile missing or drifted actors through the Codex host automation controls, and never repair drift by editing `automation.toml` directly.
 
+When the owner explicitly approves one exact lifecycle operation in the current task, a private current-task owner confirmation file is the supported cooperative fallback for that operation. It may acquire only a short `freed-owner` lease bound to the named task and canonical operation intent. Store the file outside the repository. The file does not authenticate the owner, does not grant provider traffic, and does not replace either provider-risk gate or CODEOWNER review. Each different operation requires its own exact intent and confirmation record.
+
 ## Versioning
 
 CalVer `YY.M.DDBUILD` — patch segment encodes the day and build number:
