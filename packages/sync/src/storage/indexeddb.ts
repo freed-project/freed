@@ -3,6 +3,7 @@ import type { StorageAdapter } from "../types.js";
 const DB_NAME = "freed";
 const STORE_NAME = "automerge";
 const DOC_KEY = "feed";
+const CORRUPT_DOC_RECOVERY_KEY = "feed-corrupt-recovery";
 
 /**
  * IndexedDB storage adapter for browser/PWA
@@ -13,7 +14,7 @@ export class IndexedDBStorage implements StorageAdapter {
   private async getDB(): Promise<IDBDatabase> {
     if (this.dbPromise) return this.dbPromise;
 
-    this.dbPromise = new Promise((resolve, reject) => {
+    const opening = new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, 1);
 
       request.onerror = () => reject(request.error);
@@ -27,7 +28,29 @@ export class IndexedDBStorage implements StorageAdapter {
       };
     });
 
-    return this.dbPromise;
+    const tracked = opening.catch((error) => {
+      if (this.dbPromise === tracked) this.dbPromise = null;
+      throw error;
+    });
+    this.dbPromise = tracked;
+    void tracked
+      .then((db) => {
+        const reset = () => {
+          if (this.dbPromise === tracked) this.dbPromise = null;
+        };
+        db.addEventListener("close", reset, { once: true });
+        db.addEventListener(
+          "versionchange",
+          () => {
+            db.close();
+            reset();
+          },
+          { once: true },
+        );
+      })
+      .catch(() => {});
+
+    return tracked;
   }
 
   async load(): Promise<Uint8Array | null> {
@@ -58,10 +81,31 @@ export class IndexedDBStorage implements StorageAdapter {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, "readwrite");
       const store = transaction.objectStore(STORE_NAME);
-      const request = store.put(data.buffer, DOC_KEY);
+      store.put(data.buffer, DOC_KEY);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () =>
+        reject(transaction.error ?? new Error("Save transaction failed"));
+      transaction.onabort = () =>
+        reject(transaction.error ?? new Error("Save transaction aborted"));
+    });
+  }
 
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve();
+  async replaceCorruptDocumentWithRecoveryCopy(
+    data: Uint8Array,
+  ): Promise<void> {
+    const db = await this.getDB();
+    const recoveryCopy = data.slice().buffer;
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      store.put(recoveryCopy, CORRUPT_DOC_RECOVERY_KEY);
+      store.delete(DOC_KEY);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () =>
+        reject(transaction.error ?? new Error("Recovery transaction failed"));
+      transaction.onabort = () =>
+        reject(transaction.error ?? new Error("Recovery transaction aborted"));
     });
   }
 
@@ -71,10 +115,12 @@ export class IndexedDBStorage implements StorageAdapter {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, "readwrite");
       const store = transaction.objectStore(STORE_NAME);
-      const request = store.delete(DOC_KEY);
-
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve();
+      store.delete(DOC_KEY);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () =>
+        reject(transaction.error ?? new Error("Clear transaction failed"));
+      transaction.onabort = () =>
+        reject(transaction.error ?? new Error("Clear transaction aborted"));
     });
   }
 }

@@ -94,7 +94,7 @@ Must land AFTER the P1 dampers or the relay and cloud loops amplify each other.
 - PWA outbound on change: debounced broadcastDoc from the doc-change subscriber, skipping relay-sourced merges.
 - PWA socket lifecycle: connection-generation guard, jittered backoff; Rust relay server-initiated pings, Drop-guard client count, accept-loop log-and-continue, persist current_doc across restarts.
 - GDrive poll resilience: capped-backoff restart on non-auth errors (one 403 currently kills change detection for the session).
-- initDoc wipe guard: clear local doc only on confirmed corrupt-document parse error; snapshot before any wipe.
+- [W3-01](stability-tasks/W3-01-automerge-init-recovery.md): clear local data only after a confirmed corrupt-document parse error, and preserve the exact binary before replacing it.
 
 ## Wave 4 — Auth truth + scheduler (summaries)
 

@@ -153,6 +153,20 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     return;
   }
 
+  if (msg.type === "INIT_RECOVERY") {
+    const detail =
+      `worker_init_recovery reason=${msg.reason}` +
+      ` action=${msg.action}` +
+      ` recoveryBytes=${msg.recoveryBytes.toLocaleString()}`;
+    addDebugEvent("error", detail, msg.recoveryBytes);
+    persistWorkerDebugEvent({
+      kind: "worker_init_recovery",
+      detail,
+      bytes: msg.recoveryBytes,
+    });
+    return;
+  }
+
   if (msg.type === "DEBUG_EVENT") {
     addDebugEvent(msg.kind as Parameters<typeof addDebugEvent>[0], msg.detail, msg.bytes);
     persistWorkerDebugEvent({ kind: msg.kind, detail: msg.detail, bytes: msg.bytes });
@@ -275,10 +289,7 @@ export async function initDoc(): Promise<DocState> {
   if (lastDocState) return lastDocState;
   if (initPromise) return initPromise;
 
-  initPromise = sendInit().catch(async () => {
-    await clearLocalDoc();
-    return sendInit();
-  }).finally(() => {
+  initPromise = sendInit().finally(() => {
     initPromise = null;
   });
   return initPromise;

@@ -70,6 +70,7 @@ import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types"
 // ---------------------------------------------------------------------------
 
 const storage = new IndexedDBStorage();
+const INIT_STORAGE_LOAD_RETRY_MS = 250;
 let currentDoc: FreedDoc | null = null;
 let searchCorpusVersion = 0;
 let requestChain: Promise<void> = Promise.resolve();
@@ -81,6 +82,24 @@ const HYDRATED_FEED_ITEM_LIMIT = 2_500;
 
 function send(msg: WorkerResponse): void {
   self.postMessage(msg);
+}
+
+async function loadStoredDocumentWithRetry(): Promise<Uint8Array | null> {
+  try {
+    return await storage.load();
+  } catch (error) {
+    send({
+      type: "DEBUG_EVENT",
+      kind: "error",
+      detail:
+        "[automerge-worker] INIT storage load failed, retrying once" +
+        ` message=${error instanceof Error ? error.message : String(error)}`,
+    });
+    await new Promise((resolve) =>
+      setTimeout(resolve, INIT_STORAGE_LOAD_RETRY_MS),
+    );
+    return storage.load();
+  }
 }
 
 function ack(reqId: number, error?: string): void {
@@ -332,15 +351,30 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
       case "INIT": {
         const initStartedAt = performance.now();
         let docBytes = 0;
-        const saved = await storage.load();
+        const saved = await loadStoredDocumentWithRetry();
         if (saved) {
+          let loadedDoc: FreedDoc | null = null;
           try {
-            currentDoc = A.load<FreedDoc>(saved);
+            loadedDoc = A.load<FreedDoc>(saved);
+          } catch {
+            await storage.replaceCorruptDocumentWithRecoveryCopy(saved);
+            currentDoc = null;
+            send({
+              type: "INIT_RECOVERY",
+              reason: "confirmed_corrupt_document",
+              action: "preserved_recovery_copy_then_cleared_local",
+              recoveryBytes: saved.byteLength,
+            });
+            send({
+              type: "DEBUG_EVENT",
+              kind: "init",
+              detail: "corrupt doc recovery copy preserved, creating fresh",
+            });
+          }
+          if (loadedDoc) {
+            currentDoc = loadedDoc;
             docBytes = saved.byteLength;
             migrateLoadedIdentityGraph("Migrate legacy identity graph");
-          } catch {
-            await storage.clear();
-            send({ type: "DEBUG_EVENT", kind: "init", detail: "corrupt doc cleared, creating fresh" });
           }
         }
         if (!currentDoc) {
