@@ -55,6 +55,7 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
+    "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
     "desktop e2e perf",
@@ -73,6 +74,7 @@ test("feature plan for feed UI changes runs desktop perf checks", () => {
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
+    "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
     "desktop e2e perf",
@@ -91,6 +93,7 @@ test("feature plan for Friends UI changes runs desktop perf checks", () => {
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
+    "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
     "desktop e2e perf",
@@ -109,6 +112,7 @@ test("feature plan for sidebar UI changes runs desktop perf checks", () => {
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
+    "pwa performance tests",
     "desktop unit tests",
     "desktop e2e smoke",
     "desktop e2e perf",
@@ -402,6 +406,7 @@ test("dev plan runs desktop smoke, regression, perf, and visual lanes", () => {
   assert.ok(labels.includes("desktop e2e regression"));
   assert.ok(labels.includes("desktop e2e perf"));
   assert.ok(labels.includes("desktop e2e visual"));
+  assert.ok(labels.includes("pwa performance tests"));
   assert.ok(labels.includes("native rust clippy"));
   assert.ok(labels.includes("native rust tests"));
   assert.ok(!labels.includes("desktop e2e full"));

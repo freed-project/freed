@@ -417,6 +417,17 @@ function socialProviderFocusedE2eCommand() {
   );
 }
 
+function pwaTestCommands() {
+  return [
+    npmCommand("pwa unit tests", ["run", "test:unit"], "packages/pwa"),
+    npmCommand(
+      "pwa performance tests",
+      ["run", "test:perf"],
+      "packages/pwa",
+    ),
+  ];
+}
+
 function addCaptureWorkspaceChecks(plan, workspacePath) {
   if (workspaceHasScript(workspacePath, "test")) {
     addCommand(
@@ -538,7 +549,7 @@ export function buildValidationPlan(mode, changedFiles) {
       npmCommand("root typecheck", ["run", "typecheck"]),
       npmCommand("root lint", ["run", "lint"]),
       npmCommand("website tests", ["run", "test"], "website"),
-      npmCommand("pwa unit tests", ["run", "test:unit"], "packages/pwa"),
+      ...pwaTestCommands(),
       npmCommand(
         "desktop unit tests",
         ["run", "test:unit"],
@@ -690,10 +701,9 @@ export function buildValidationPlan(mode, changedFiles) {
       plan,
       npmCommand("pwa typecheck", ["run", "typecheck"], "packages/pwa"),
     );
-    addCommand(
-      plan,
-      npmCommand("pwa unit tests", ["run", "test:unit"], "packages/pwa"),
-    );
+    for (const check of pwaTestCommands()) {
+      addCommand(plan, check);
+    }
   }
 
   if (desktopSurfaceChanged) {
