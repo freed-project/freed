@@ -585,6 +585,67 @@ test("validate-main-backflow rejects a main rollback to an older dev blob", (t) 
   assert.match(result.stderr, /packages\/pwa\/src\/app\.ts/);
 });
 
+test("validate-main-backflow accepts a dev-origin backport after dev advances", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'backported';\n",
+  );
+  commitAll(cwd, "fix: simplify shared behavior");
+  updateOriginRef(cwd, "dev");
+
+  git(cwd, ["checkout", "main"]);
+  git(cwd, ["checkout", "dev", "--", "packages/pwa/src/app.ts"]);
+  commitAll(cwd, "fix: backport simplified shared behavior (#980)");
+  updateOriginRef(cwd, "main");
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'newer dev state';\n",
+  );
+  commitAll(cwd, "feat: advance shared behavior");
+  updateOriginRef(cwd, "dev");
+
+  const result = runNode(VALIDATE_MAIN_BACKFLOW, [
+    `--cwd=${cwd}`,
+    "--dev-ref=origin/dev",
+    "--main-ref=origin/main",
+  ]);
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Main backflow is in sync/);
+});
+
+test("validate-main-backflow rejects a main-only change named as a backport", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "main"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'main only';\n",
+  );
+  commitAll(cwd, "fix: backport unverified behavior (#981)");
+  updateOriginRef(cwd, "main");
+
+  const result = runNode(VALIDATE_MAIN_BACKFLOW, [
+    `--cwd=${cwd}`,
+    "--dev-ref=origin/dev",
+    "--main-ref=origin/main",
+  ]);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Dev refresh needed/);
+  assert.match(result.stderr, /packages\/pwa\/src\/app\.ts/);
+});
+
 test("validate-main-backflow accepts a reverse-integrated main hotfix after dev advances", (t) => {
   const cwd = makeTempRepo();
   t.after(() => rmSync(cwd, { recursive: true, force: true }));

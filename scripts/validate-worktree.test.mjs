@@ -430,7 +430,11 @@ test("feature plan for capture-only changes runs the touched workspace check", (
     buildValidationPlan("feature", ["packages/capture-rss/src/index.ts"]),
   );
 
-  assert.deepEqual(labels, ["root typecheck", "packages/capture-rss build"]);
+  assert.deepEqual(labels, [
+    "root typecheck",
+    "packages/capture-rss tests",
+    "packages/capture-rss build",
+  ]);
 });
 
 test("feature plan for release tooling changes runs script tests and artifact validation", () => {
