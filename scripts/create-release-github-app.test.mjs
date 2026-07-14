@@ -45,15 +45,23 @@ test("release App manifest is private, event-free, and Contents-only", () => {
   const manifest = buildReleaseGitHubAppManifest({
     origin: "http://127.0.0.1:43123",
   });
+  assert.deepEqual(Object.keys(manifest).sort(), [
+    "default_events",
+    "default_permissions",
+    "description",
+    "name",
+    "public",
+    "redirect_url",
+    "request_oauth_on_install",
+    "setup_on_update",
+    "url",
+  ]);
+  assert.equal("hook_attributes" in manifest, false);
   assert.deepEqual(manifest, {
     name: "Freed Release Publisher",
     url: "https://freed.wtf",
     description:
       "Creates one reviewed immutable release tag for freed-project/freed.",
-    hook_attributes: {
-      url: "http://127.0.0.1:43123/github-app/inactive-webhook",
-      active: false,
-    },
     redirect_url: "http://127.0.0.1:43123/github-app/callback",
     public: false,
     default_permissions: { contents: "write" },
@@ -70,6 +78,7 @@ test("release App manifest is private, event-free, and Contents-only", () => {
     /organizations\/freed-project\/settings\/apps\/new\?state=/,
   );
   assert.match(html, /method="post"/);
+  assert.doesNotMatch(html, /hook_attributes|inactive-webhook/);
   assert.doesNotMatch(html, /client_secret|webhook_secret|BEGIN RSA/);
 });
 

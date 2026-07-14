@@ -1161,9 +1161,15 @@ function overlayIssues({ spec, saved, modelCatalog }) {
       );
     }
   } else {
-    if (saved.destination !== "thread") {
+    if (
+      saved.destination !== undefined &&
+      saved.destination !== "thread"
+    ) {
       issues.push(
-        issue("target-drift", "heartbeat destination must be thread"),
+        issue(
+          "target-drift",
+          "heartbeat destination, when set, must be thread",
+        ),
       );
     }
     if (
