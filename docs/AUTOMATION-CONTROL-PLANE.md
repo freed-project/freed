@@ -21,7 +21,7 @@ release.
 | `~/.freed/automation/control/task-transactions/`  | Recoverable write-ahead records that bind each task revision to its audit event                                                                           |
 | `~/.freed/automation/control/events.jsonl`        | Append-only audit history for task, authority, lease, and observer events                                                                                 |
 | `~/.freed/automation/control/leases/`             | Token-bound leases that prevent duplicate writers                                                                                                         |
-| `~/.freed/automation/control/actor-credentials/`  | Private local credential records used by pinned general actor launchers to acquire canonical role leases                                                   |
+| `~/.freed/automation/control/actor-credentials/`  | Private local credential records used by pinned general actor launchers to acquire canonical role leases                                                  |
 | `~/.freed/automation/control/owner-capabilities/` | Broker-signed one-use owner governance capabilities, split into pending and consumed records                                                              |
 | `~/.freed/automation/outcomes.jsonl`              | Versioned merge, install, and observed-effect outcomes                                                                                                    |
 | `~/.freed/automation/soaks/`                      | Installed-build evidence windows and verdicts                                                                                                             |
@@ -310,30 +310,35 @@ authority, provider policy, stored task authority, or lifecycle destinations.
 Release tags have a separate external trust boundary. The checked-in
 `release-tag-lockdown.json` is the bootstrap authority. Apply it with
 `--lock-release-tags --apply` before App provisioning. It restricts creation,
-update, and deletion with no bypass in one API mutation. The separate creation
-and immutability policies describe the activated end state. Activation first
-requires an owner-reviewed change that pins the creation policy to the exact App
-ID. It then uses
-`node scripts/sync-github-rulesets.mjs --release-tags --release-app-id <id> --release-app-slug <slug> --apply`.
-The command verifies the public App identity, an unsuspended installation with
-Contents write permission, exact repository access, and the fixed root-owned
-publisher binding at `/Library/Application Support/Freed/release-tag-publisher.json`
-before it applies either policy. It verifies both split policies live before it
-removes the bootstrap lockdown. The creation policy grants that App one bypass.
-The immutability policy grants none. The PR publisher App, user
-identities, administrator roles, teams, and deploy keys are never acceptable
-substitutes.
+update, and deletion with no bypass. `release-tag-publisher-install.mjs prepare`
+builds and installs the fixed root-owned native host and provisioner. The
+manifest helper then creates the private `Freed Release Publisher` organization
+App, pipes its private key into the native provisioner, activates the digest
+pinned binding, and requires a selected-repository installation for only
+`freed-project/freed`. The Keychain item uses service
+`freed-release-tag-publisher` and account `github-app-private-key`.
+
+Activation requires an owner-reviewed change that pins the App ID in the
+creation policy. The release ruleset command verifies the exact App,
+installation, repository, permission, native binding, and publisher proof. It
+then applies the creation and immutability policies, verifies both live, and
+only then removes the lockdown. The creation policy grants the release App one
+bypass. The immutability policy grants none. The full owner runbook is in
+`docs/RELEASE-SECRETS.md`.
 
 `scripts/release-publish.sh` fails closed until the live release-tag policy is
 active. It also requires the release commit to equal the current protected
 channel branch, validates the fixed product and promoted dev receipts, rejects
 an existing local or remote tag, and delegates one exact annotated-tag creation
 through the same fixed root-owned publisher binding used during activation. The
-binding, parent chain, executable digest, App identity, and broker attestation
-are rechecked immediately before use. That broker rechecks the branch tip and receipt at
-push time, then obtains a short-lived installation credential. The delayed
-workflow checks that the tag commit remains in protected channel history. It
-does not compare against a moving branch tip or a later dev snapshot.
+binding, parent chain, executable digest, App identity, Keychain credential,
+selected repository, and installation permissions are rechecked immediately
+before use. The native host rechecks the branch tip and receipt at publication,
+then obtains and revokes one short-lived installation token. It does not accept
+a user token, personal access token, general actor credential, or the separate
+PR publisher as a tag-creation fallback. The delayed workflow checks that the
+tag commit remains in protected channel history. It does not compare against a
+moving branch tip or a later dev snapshot.
 
 The optional broker-backed PR publisher uses a separate fail-closed identity contract. It does not
 accept `FREED_AUTOMATION_ACTOR_TOKEN` or

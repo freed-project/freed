@@ -7,7 +7,7 @@
 
 ## Overview
 
-Final polish, accessibility, UX refinements, global animation controls, Integrated AI pack selection, local semantic enrichment for friend suggestions, and community infrastructure.
+Final polish, accessibility, UX refinements, global animation controls, Integrated AI pack selection, local semantic enrichment for friend suggestions, governed release automation, and community infrastructure.
 
 ---
 
@@ -296,7 +296,7 @@ Generate summaries for long-form content.
 // packages/pwa/src/lib/ai/summarize.ts
 export async function summarizeContent(
   content: string,
-  maxLength: number = 200
+  maxLength: number = 200,
 ): Promise<string> {
   // Runs locally or via user-provided API
   const summarizer = await getSummarizer();
@@ -406,24 +406,24 @@ Reward security researchers for responsible disclosure.
 | 10.4  | Export to CSV                      | Low        |
 | 10.5  | Keyboard shortcuts                 | Medium     | ✓ Complete (PWA reader keys, command palette, navigation history keys, and Freed Desktop Save Content shortcut) |
 | 10.6  | Screen reader support              | Medium     |
-| 10.7  | Reduced motion support             | Low        | ✓ Complete (Appearance animation intensity controls plus global app motion gating)
+| 10.7  | Reduced motion support             | Low        | ✓ Complete (Appearance animation intensity controls plus global app motion gating)                              |
 | 10.8  | Color contrast audit               | Low        |
 | 10.9  | Native Liquid Glass buttons        | High       |
-| 10.24 | Command bar — full action launcher | High       | ✓ Complete (Global `Cmd/Ctrl+K` palette with navigation, creation, current-item, sync, and danger actions)
+| 10.24 | Command bar: full action launcher | High       | ✓ Complete (Global `Cmd/Ctrl+K` palette with navigation, creation, current-item, sync, and danger actions)      |
 
 ### AI Features
 
-| Task  | Description              | Complexity |
-| ----- | ------------------------ | ---------- |
-| 10.10 | Topic extraction (local) | High       | ✓ Complete (Ollama via ai-summarizer.ts)
-| 10.11 | Topic extraction (API)   | Medium     | ✓ Complete (OpenAI/Anthropic/Gemini adapters)
-| 10.12 | Content summarization    | High       | ✓ Complete (summarize() in content-fetcher.ts)
-| 10.13 | Sentiment analysis       | Medium     | ✓ Complete (AISummary.sentiment field)
-| 10.14 | Smart notifications      | High       |
-| 10.15 | AI settings UI           | Medium     | ✓ Complete (Freed Desktop provider selector for Integrated AI, Ollama, OpenAI, Anthropic, and Gemini with provider-scoped sharing tags, optimistic selection, default workflows when AI is enabled, and no PWA controls for AI paths the browser cannot run)
-| 10.25 | Local content signals    | Medium     | ✓ Complete (rule-based contentSignals metadata, automatic ingestion inference, resumable desktop and PWA semantic backfill, inclusive saved toolbar filter presets, saved sort controls, expanded signal taxonomy, and compact event candidate extraction)
-| 10.26 | Optional local AI packs  | High       | ✓ Complete (disabled-by-default Light, Balanced, and Pro Integrated AI packs, hardware-based recommendations, pinned download manifests, semantic scan health, source links, resumable desktop downloads, raw-file checksum verification, and removal controls)
-| 10.27 | Local AI signal consumers | Medium | ✓ Complete (Friends suggestions improve from Integrated AI `Topics and ranking` contentSignals while still working deterministically when AI is off)
+| Task  | Description               | Complexity |
+| ----- | ------------------------- | ---------- |
+| 10.10 | Topic extraction (local)  | High       | ✓ Complete (Ollama via ai-summarizer.ts)                                                                                                                                                                                                                        |
+| 10.11 | Topic extraction (API)    | Medium     | ✓ Complete (OpenAI/Anthropic/Gemini adapters)                                                                                                                                                                                                                   |
+| 10.12 | Content summarization     | High       | ✓ Complete (summarize() in content-fetcher.ts)                                                                                                                                                                                                                  |
+| 10.13 | Sentiment analysis        | Medium     | ✓ Complete (AISummary.sentiment field)                                                                                                                                                                                                                          |
+| 10.14 | Smart notifications       | High       |
+| 10.15 | AI settings UI            | Medium     | ✓ Complete (Freed Desktop provider selector for Integrated AI, Ollama, OpenAI, Anthropic, and Gemini with provider-scoped sharing tags, optimistic selection, default workflows when AI is enabled, and no PWA controls for AI paths the browser cannot run)    |
+| 10.25 | Local content signals     | Medium     | ✓ Complete (rule-based contentSignals metadata, automatic ingestion inference, resumable desktop and PWA semantic backfill, inclusive saved toolbar filter presets, saved sort controls, expanded signal taxonomy, and compact event candidate extraction)      |
+| 10.26 | Optional local AI packs   | High       | ✓ Complete (disabled-by-default Light, Balanced, and Pro Integrated AI packs, hardware-based recommendations, pinned download manifests, semantic scan health, source links, resumable desktop downloads, raw-file checksum verification, and removal controls) |
+| 10.27 | Local AI signal consumers | Medium     | ✓ Complete (Friends suggestions improve from Integrated AI `Topics and ranking` contentSignals while still working deterministically when AI is off)                                                                                                            |
 
 ### Extensibility
 
@@ -439,15 +439,15 @@ Reward security researchers for responsible disclosure.
 | ----- | -------------------- | ---------- |
 | 10.19 | Discord server setup | Low        |
 | 10.20 | Bug bounty program   | Medium     |
-| 10.21 | Release automation   | Medium     |
+| 10.21 | Release automation   | Medium     | ✓ Complete (reviewed release prep, protected branch promotion, dedicated release App provisioning, root-owned native tag publication, split tag rulesets, and fail-closed release identity checks) |
 | 10.22 | Documentation site   | Medium     |
 
 ### Resilience
 
-| Task  | Description                     | Complexity |
-| ----- | ------------------------------- | ---------- |
-| 10.23 | Crash / stale-bundle recovery dialog with in-place updater fallback | Medium |
-| 10.24 | Public-safe and private bug reporting flow | Medium |
+| Task  | Description                                                         | Complexity |
+| ----- | ------------------------------------------------------------------- | ---------- |
+| 10.23 | Crash / stale-bundle recovery dialog with in-place updater fallback | Medium     |
+| 10.24 | Public-safe and private bug reporting flow                          | Medium     |
 
 ---
 
@@ -478,6 +478,7 @@ Reward security researchers for responsible disclosure.
 - [ ] Discord server active
 - [ ] Bug bounty program published
 - [ ] Regular release schedule established
+- [x] Release automation permits only one dedicated selected-repository GitHub App to create the exact approved annotated tag through a root-owned native publisher, keeps tag updates and deletion without bypass, and fails closed on any identity, branch, receipt, installation, or digest mismatch
 - [x] Local nightly improvement runner ranks preflight risks, duplicate peer work, peer worktree, bug fix, performance, stability, release, and roadmap targets before autonomous work begins, with strict machine preflight, runnable canonical task gating, an atomic task and target-scoped lease control plane, checked-in actor authority, owner-run general actor provisioning with pinned root-owned runtimes and short-lived handoff, pending outcome transactions, evidence-derived comparisons, full installed identity, process-identity collector locks, portable dual-source canary bundles, verified historical cohorts, versioned stability artifacts, a separate signed publisher handoff scaffold with fail-closed host readiness, provider-visible draft review gates, local soak pointer repair, typed preflight actions, dev-branch context checks, and unattended app-interaction continuation rules
 - [ ] Documentation site live
 

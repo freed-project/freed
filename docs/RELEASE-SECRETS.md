@@ -5,10 +5,10 @@ certain secrets to be configured in the GitHub repository settings.
 
 ## Required (for any release)
 
-| Secret | Description |
-|--------|-------------|
-| `TAURI_SIGNING_PRIVATE_KEY` | Contents of `~/.tauri/freed.key`. Used to sign update artifacts so the in-app updater can verify them. |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password for the private key. Empty string if generated without one. |
+| Secret                               | Description                                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `TAURI_SIGNING_PRIVATE_KEY`          | Contents of `~/.tauri/freed.key`. Used to sign update artifacts so the in-app updater can verify them. |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password for the private key. Empty string if generated without one.                                   |
 
 The corresponding **public key** is already embedded in
 `packages/desktop/src-tauri/tauri.conf.json` under `plugins.updater.pubkey`.
@@ -19,15 +19,15 @@ These are required for macOS release builds. The release workflow now fails
 on macOS if any required Apple secret is missing so we never publish an
 unsigned DMG by accident.
 
-| Secret | Description |
-|--------|-------------|
-| `APPLE_CERTIFICATE` | Base64-encoded `.p12` Developer ID Application certificate |
-| `APPLE_CERTIFICATE_PASSWORD` | Password for the `.p12` file |
-| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
-| `APPLE_TEAM_ID` | 10-character Apple Team ID |
-| `APPLE_ID` | Apple ID email for notarization |
-| `APPLE_PASSWORD` | App-specific password for notarization (generate at appleid.apple.com) |
-| `APPLE_PROVIDER_SHORT_NAME` | Optional. Required only if the Apple ID belongs to multiple provider teams |
+| Secret                       | Description                                                                |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| `APPLE_CERTIFICATE`          | Base64-encoded `.p12` Developer ID Application certificate                 |
+| `APPLE_CERTIFICATE_PASSWORD` | Password for the `.p12` file                                               |
+| `APPLE_SIGNING_IDENTITY`     | e.g. `Developer ID Application: Your Name (TEAMID)`                        |
+| `APPLE_TEAM_ID`              | 10-character Apple Team ID                                                 |
+| `APPLE_ID`                   | Apple ID email for notarization                                            |
+| `APPLE_PASSWORD`             | App-specific password for notarization (generate at appleid.apple.com)     |
+| `APPLE_PROVIDER_SHORT_NAME`  | Optional. Required only if the Apple ID belongs to multiple provider teams |
 
 ### How to export the certificate
 
@@ -53,13 +53,13 @@ and disabled scaffold live in `docs/WINDOWS-SIGNING.md`.
 
 Planned GitHub configuration:
 
-| Secret or variable | Description |
-|--------------------|-------------|
-| `AZURE_TENANT_ID` | Microsoft Entra tenant ID |
-| `AZURE_CLIENT_ID` | App registration client ID for GitHub Actions OIDC |
-| `WINDOWS_TRUSTED_SIGNING_ACCOUNT_NAME` | Microsoft Artifact Signing account name |
-| `WINDOWS_TRUSTED_SIGNING_CERT_PROFILE` | Public Trust certificate profile name |
-| `WINDOWS_TRUSTED_SIGNING_ENDPOINT` | Region endpoint, for example `https://eus.codesigning.azure.net/` |
+| Secret or variable                     | Description                                                       |
+| -------------------------------------- | ----------------------------------------------------------------- |
+| `AZURE_TENANT_ID`                      | Microsoft Entra tenant ID                                         |
+| `AZURE_CLIENT_ID`                      | App registration client ID for GitHub Actions OIDC                |
+| `WINDOWS_TRUSTED_SIGNING_ACCOUNT_NAME` | Microsoft Artifact Signing account name                           |
+| `WINDOWS_TRUSTED_SIGNING_CERT_PROFILE` | Public Trust certificate profile name                             |
+| `WINDOWS_TRUSTED_SIGNING_ENDPOINT`     | Region endpoint, for example `https://eus.codesigning.azure.net/` |
 
 Do not add `AZURE_CLIENT_SECRET` unless GitHub Actions OIDC cannot be made to
 work. If a client secret is used temporarily, document its expiration and
@@ -120,65 +120,144 @@ On Vercel, the current project configuration uses `GITHUB_RELEASES_TOKEN`.
 
 Release tags are an external trust boundary. GitHub loads a tag-push workflow
 from the tagged commit, so a workflow cannot prove that its own source was
-reviewed. Two live rulesets form the root control. `Freed release tag creation`
-targets every `refs/tags/v*` tag and grants its only bypass to one dedicated
-release GitHub App with repository Contents write permission. `Freed release
-tag immutability` targets the same tags and restricts update and deletion with
-no bypass, including no bypass for the release App.
+reviewed. Release tags remain intentionally locked until the owner completes
+this runbook. Checked-in publisher code is not proof that the App or its live
+rulesets are active.
 
-The checked-in `.github/rulesets/release-tag-lockdown.json` policy is the safe
-bootstrap. Apply it before App provisioning. It blocks creation, update, and
-deletion with no bypass in one API mutation. The checked-in creation and
-immutability policies then describe the split activated state. Do not add a
-user, administrator role, team, deploy key, or the PR publisher App as a
-substitute.
+### Apply the bootstrap lockdown
+
+The checked-in `.github/rulesets/release-tag-lockdown.json` policy blocks
+creation, update, and deletion for every `refs/tags/v*` tag with no bypass.
+Select the repository Node version, then apply the lockdown before building or
+provisioning the publisher. The App helper uses that exact Node executable when
+it activates the binding:
 
 ```bash
+nvm use --silent
 node scripts/sync-github-rulesets.mjs --lock-release-tags --apply
 ```
 
-After the dedicated release App and root-owned publisher are installed for
-`freed-project/freed`, an owner-reviewed PR must pin the App ID in the creation
-policy and set that policy active. Then an owner can verify and apply both
-rulesets:
+Do not add a user, administrator role, team, deploy key, personal access token,
+general automation actor, or the PR publisher App as a bypass.
+
+### Prepare the native publisher
+
+Run the owner helper from the reviewed source checkout:
+
+```bash
+node scripts/release-tag-publisher-install.mjs prepare
+```
+
+The helper runs `scripts/release-tag-publisher-build.sh` in a private temporary
+directory, builds the native Swift host and provisioner, and installs them as
+root-owned, read-only executables at these fixed paths:
+
+- `/Library/Application Support/Freed/release-tag-publisher`
+- `/Library/Application Support/Freed/release-tag-publisher-provision`
+
+The binding does not exist yet, so publication still fails closed.
+
+### Create and install the release App
+
+Use the manifest helper for normal provisioning:
+
+```bash
+node scripts/create-release-github-app.mjs
+```
+
+The helper opens a loopback GitHub manifest flow for the private organization
+App `Freed Release Publisher`, with slug `freed-release-publisher`. The manifest
+requests only repository Contents write permission. GitHub adds Metadata read
+implicitly. The App subscribes to no events, has no OAuth flow, and keeps its
+required webhook inactive.
+
+The helper converts the manifest, pipes the returned private key directly to
+the fixed native provisioner, and never writes the key to disk. The provisioner
+stores it in the macOS Keychain with:
+
+- service `freed-release-tag-publisher`
+- account `github-app-private-key`
+
+The Keychain ACL permits only the installed native host and provisioner. The
+helper then installs the root-owned binding at
+`/Library/Application Support/Freed/release-tag-publisher.json`, opens the App
+installation page, and waits for an active selected-repository installation
+whose only repository is `freed-project/freed`.
+
+The binding pins the repository, App ID, App slug, publisher path, and publisher
+SHA-256 digest. The nonsecret App identity is also recorded at
+`~/.freed/automation/release-tag-publisher/github-app.json`. Neither file
+contains the private key.
+
+### Activate the split tag rulesets
+
+Add the returned App ID to `.github/rulesets/release-tags.json` as the only
+`Integration` bypass actor, then merge that change through an owner-reviewed
+pull request. After the exact App ID is present on the protected branch, apply
+the split policies:
 
 ```bash
 node scripts/sync-github-rulesets.mjs \
   --release-tags \
   --release-app-id <github-app-id> \
-  --release-app-slug <github-app-slug> \
+  --release-app-slug freed-release-publisher \
   --apply
 ```
 
-The fixed root-owned binding at
-`/Library/Application Support/Freed/release-tag-publisher.json` pins the App,
-publisher path, and executable SHA-256 digest. Activation and every publication
-recheck that file, its parent chain, the executable, and the broker attestation.
-The binding schema is:
+Activation verifies the live lockdown, private App metadata through the native
+App JWT, an independent unsuspended organization installation, exact selected
+repository, exact permissions, empty event list, root-owned binding, executable
+digest, Keychain-backed App proof, and native publisher attestation. It applies
+`Freed release tag creation` with the dedicated App as its only bypass and
+`Freed release tag immutability` with no bypass. It reads both policies back
+from GitHub before removing the bootstrap lockdown. A partial activation leaves
+the lockdown in place.
 
-```json
-{
-  "schemaVersion": 1,
-  "purpose": "freed-release-tag-publisher-binding",
-  "status": "active",
-  "repo": "freed-project/freed",
-  "appId": 123456,
-  "appSlug": "freed-release-publisher",
-  "publisherPath": "/Library/Application Support/Freed/release-tag-publisher",
-  "publisherSha256": "<64 lowercase hexadecimal characters>"
-}
+### Verify, publish, rotate, or revoke
+
+Verify the installed publisher and its live App installation at any time:
+
+```bash
+node scripts/release-tag-publisher-install.mjs verify
+node scripts/validate-release-tag-authority.mjs --repo=freed-project/freed
 ```
 
-The binding, publisher executable, and every parent directory must be owned by
-root and must not be group or world writable. The executable must attest the
-same repository, App identity, digest, short-lived installation-token mode, and
-single `create-annotated-tag` operation before ruleset activation or release.
-The release publisher must request a short-lived installation token and expose
-only one operation: create the exact approved annotated tag at the exact current
-protected branch commit. It must not expose arbitrary refs, commits, updates,
-or deletions. `release-publish.sh` fails before publication when the checked-in
-App ID, either live ruleset, the publisher path, or any tag precondition is
-missing.
+`./scripts/release-publish.sh <version>` remains the only release entry point.
+It rejects a dirty or wrong branch, a commit that differs from the protected
+remote tip, an unapproved or mismatched release receipt, an existing tag, a
+missing live policy, a changed publisher digest, or a mismatched App
+installation. The native host requests one short-lived installation token
+scoped to `freed-project/freed`, rechecks the remote branch and committed
+receipt, creates one annotated tag, verifies the result, and revokes the token.
+It exposes no arbitrary ref, update, or deletion operation.
+
+Read-only GitHub checks may use the current `gh` login. Tag creation never
+falls back to `GITHUB_TOKEN`, `GH_TOKEN`, a personal access token, a user push,
+or a general automation credential.
+
+For key rotation, create a replacement private key in the GitHub App settings
+and keep the previous GitHub key active until verification succeeds. Save the
+replacement briefly as an absolute, current-user-owned mode `0600` file, then
+run:
+
+```bash
+node scripts/release-tag-publisher-install.mjs rotate \
+  --private-key-file /absolute/path/to/replacement.pem
+node scripts/release-tag-publisher-install.mjs verify
+```
+
+After verification, delete the old key in GitHub and remove the temporary PEM.
+The installer also exposes `provision` and `activate` for controlled recovery,
+but the manifest helper is the normal setup path because it keeps the initial
+private key off disk.
+
+To retire the publisher, restore the no-bypass lockdown first, then revoke the
+local key and binding:
+
+```bash
+node scripts/sync-github-rulesets.mjs --lock-release-tags --apply
+node scripts/release-tag-publisher-install.mjs revoke
+```
 
 ## Drafting release notes
 
@@ -203,8 +282,8 @@ That command:
 
 Optional local environment variable:
 
-| Variable | Description |
-|----------|-------------|
+| Variable         | Description                                                                |
+| ---------------- | -------------------------------------------------------------------------- |
 | `OPENAI_API_KEY` | Enables stronger AI-generated draft release notes during the prepare step. |
 
 Review and edit:
