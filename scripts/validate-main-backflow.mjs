@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -62,6 +63,86 @@ function usage() {
   );
 }
 
+function listModifiedFileNumstat({ devRef, mainRef, cwd }) {
+  const output = execFileSync(
+    "git",
+    [
+      "diff",
+      "--no-renames",
+      "--numstat",
+      "-z",
+      "--diff-filter=M",
+      mainRef,
+      devRef,
+    ],
+    { cwd, encoding: "utf8" },
+  );
+  const numstatByFile = new Map();
+
+  for (const record of output.split("\0")) {
+    if (!record) continue;
+
+    const additionsEnd = record.indexOf("\t");
+    const deletionsEnd = record.indexOf("\t", additionsEnd + 1);
+    if (additionsEnd < 0 || deletionsEnd < 0) {
+      throw new Error(
+        `Unexpected git numstat record: ${JSON.stringify(record)}`,
+      );
+    }
+
+    numstatByFile.set(record.slice(deletionsEnd + 1), {
+      additions: record.slice(0, additionsEnd),
+      deletions: record.slice(additionsEnd + 1, deletionsEnd),
+    });
+  }
+
+  return numstatByFile;
+}
+
+function listModifiedFileModes({ devRef, mainRef, cwd }) {
+  const output = execFileSync(
+    "git",
+    ["diff", "--no-renames", "--raw", "-z", "--diff-filter=M", mainRef, devRef],
+    { cwd, encoding: "utf8" },
+  );
+  const records = output.split("\0");
+  const modesByFile = new Map();
+
+  for (let index = 0; index < records.length;) {
+    const metadata = records[index];
+    index += 1;
+    if (!metadata) continue;
+
+    const filePath = records[index];
+    index += 1;
+    const match = /^:(\d{6}) (\d{6}) [0-9a-f]+ [0-9a-f]+ M$/.exec(metadata);
+    if (!match || !filePath) {
+      throw new Error(
+        `Unexpected git raw diff record: ${JSON.stringify({ metadata, filePath })}`,
+      );
+    }
+
+    modesByFile.set(filePath, {
+      mainMode: match[1],
+      devMode: match[2],
+    });
+  }
+
+  return modesByFile;
+}
+
+function fileHasOnlyDevAdditions(filePath, numstatByFile, modesByFile) {
+  const numstat = numstatByFile.get(filePath);
+  const modes = modesByFile.get(filePath);
+  return (
+    numstat !== undefined &&
+    modes !== undefined &&
+    modes.mainMode === modes.devMode &&
+    /^[1-9]\d*$/.test(numstat.additions) &&
+    numstat.deletions === "0"
+  );
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
@@ -72,11 +153,25 @@ function main() {
   ensureRefExists(options.devRef, { cwd: options.cwd });
   ensureRefExists(options.mainRef, { cwd: options.cwd });
 
-  const diffFiles = listMainBackflowDiffFiles({
+  const mainBackflowDiffFiles = listMainBackflowDiffFiles({
     devRef: options.devRef,
     mainRef: options.mainRef,
     cwd: options.cwd,
   });
+  const numstatByFile = listModifiedFileNumstat({
+    devRef: options.devRef,
+    mainRef: options.mainRef,
+    cwd: options.cwd,
+  });
+  const modesByFile = listModifiedFileModes({
+    devRef: options.devRef,
+    mainRef: options.mainRef,
+    cwd: options.cwd,
+  });
+  const diffFiles = mainBackflowDiffFiles.filter(
+    (filePath) =>
+      !fileHasOnlyDevAdditions(filePath, numstatByFile, modesByFile),
+  );
   const payload = {
     ok: diffFiles.length === 0,
     devRef: options.devRef,
@@ -96,7 +191,9 @@ function main() {
     );
     console.error(formatFileList(diffFiles));
     console.error("");
-    console.error("Reverse integrate main into dev before starting new product work.");
+    console.error(
+      "Reverse integrate main into dev before starting new product work.",
+    );
     process.exit(1);
   }
 

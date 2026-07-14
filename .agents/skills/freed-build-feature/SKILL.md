@@ -1,71 +1,66 @@
 ---
 name: freed-build-feature
-description: Scaffold product work in a dev-based worktree, implement a runnable slice, launch the lightest useful local preview early, validate it with the shared feature-tier runner before publish, and finish by committing, pushing, and opening a PR targeting dev (draft while iterating, marked ready for review at closeout). Use for Desktop, PWA, shared packages, sync, capture packages, release tooling, app behavior, and product docs targeting dev. Do not use for public marketing changes targeting www.
+description: Build governed Freed product work in a worktree based on origin/dev, verify the runnable slice, and publish a correctly staged pull request to dev. Use for Desktop, PWA, shared packages, sync, capture, release tooling, product behavior, and product documentation. Also use for stability tasks that require a stable task identity, a measurable counter, native validation, or an installed-build verification handoff. Do not use for public website work targeting www.
 disable-model-invocation: true
 ---
 
 # Build Feature
 
-Create a product worktree branch from the latest remote `dev`, implement enough of the feature or fix to run, launch the lightest useful local preview early, iterate against that preview, then validate with the shared feature-tier runner before committing the work, pushing the branch, and publishing the PR to `dev` (draft during iteration; `--ready` at closeout).
+Build one attributable product change from the latest `origin/dev`. Keep the change connected to its task, evidence, authority, and post-merge verification.
 
-Feature threads inherit the stability program rules in [docs/STABILITY-PROGRAM.md](../../../docs/STABILITY-PROGRAM.md) ("Program rules"): the watchdog freeze (no threshold, recovery-reason, or process-attribution changes), one product PR per soak cycle for behavioral changes, and the provider-visible lane (anything changing WebView loads, provider navigation, request frequency, cookies, headers, or extractor scripts stops for explicit owner approval first).
+## Establish the contract
 
-## Workflow
+1. Confirm the destination is `dev`. Route public website work to `freed-build-www`.
+2. Record a stable task ID. For stability work, use the existing program task ID. Do not invent a second task for the same root cause.
+3. Record canonical task authority as `observe-only`, `plan-only`, `pr-only`, or `merge-safe`. Record provider authority separately as `forbidden`, `approval-required`, or `approved`. Also record which external actions the user explicitly granted, such as publishing a PR, merging, releasing, or deploying. None of these fields substitutes for another.
+4. For sync, capture, memory, or recovery work, name the metric-registry entry that will judge the change. Record its event predicate, denominator, target, baseline window, minimum coverage, and expected direction.
+5. Treat missing build identity, mixed-build evidence, insufficient coverage, or broken sources as `inconclusive`. Do not turn absence of evidence into a passing result.
+6. Record the source build identity for every baseline: app version, channel, git SHA, native boot ID, app session ID, and exact start and end timestamps when available.
+7. Read [docs/STABILITY-PROGRAM.md](../../../docs/STABILITY-PROGRAM.md). Preserve the watchdog freeze and one global behavioral product change until its installed-build soak outcome completes.
+8. If the change can alter provider-visible behavior, stop and use `freed-provider-risk-review`. Preparation is not approval. A materially changed provider-visible diff requires renewed approval.
 
-1. Confirm the work is product work targeting `dev`.
-2. Reject or reroute public marketing work targeting `www`; use `freed-build-www` instead.
-3. Fetch the latest remote refs first with `git fetch --all --prune`.
-4. Check both `origin/dev` and `origin/main` before branching.
-   - Confirm whether local `dev` or `main` are behind their remote counterparts.
-   - Run `node scripts/validate-main-backflow.mjs --dev-ref=origin/dev --main-ref=origin/main`.
-   - If the backflow guard fails, call that out before continuing so the user can decide whether `dev` needs to be refreshed first.
-   - Do not block on raw commit graph differences alone. Squash-merged promotion and reverse-integration PRs can leave `main` commits absent from `dev` even when the content is already represented on `dev`.
-5. Create a new worktree branch from `origin/dev` using `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --install full --target <desktop|pwa|shared>`.
-   - When you are spinning up multiple speculative threads at once, prefer `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --swarm --target <desktop|pwa|shared>` so bootstrap stays deferred until that thread actually needs verification or a preview.
-6. If the worktree was created with deferred bootstrap on purpose, recover with `./scripts/worktree-bootstrap.sh <worktree> --target <desktop|pwa|shared>`.
-7. Implement a runnable slice of the requested change.
-8. Launch the lightest useful local preview for the changed surface as soon as the branch can run. Always start previews on an explicit fresh port so parallel agent threads do not reuse or stomp each other's previews.
-   - Compute a port first with `PORT=$(node scripts/lib/find-free-port.mjs <default-port>)`, then pass `--port "$PORT"` to `./scripts/worktree-preview.sh`.
-   - Use default port seed `1421` for PWA, `1422` for mocked Desktop, and `3000` for website only when this skill is intentionally routing a product-adjacent website check.
-   - Default to `PORT=$(node scripts/lib/find-free-port.mjs 1421) && ./scripts/worktree-preview.sh pwa --port "$PORT"` for normal product work, shared behavior, sync flows, reader UI, and most Desktop feature work.
-   - Use `PORT=$(node scripts/lib/find-free-port.mjs 1422) && ./scripts/worktree-preview.sh desktop --port "$PORT"` only when you need the Desktop shell running in the mocked browser preview.
-   - Use `./scripts/worktree-preview.sh desktop --native` only when the change depends on real Tauri behavior such as native windowing, tray behavior, updater wiring, filesystem or process plugins, native OAuth windows, or Rust-side integrations.
-   - Product previews launched through the helper set the feature-preview flag, auto-accept local legal gates, and seed sample data before inspection.
-   - Do not run `./scripts/dev-session-clean.sh` just to relaunch a preview. That kills tracked previews for other work unless scoped, which is how parallel threads end up doing slapstick with ports.
-   - When native Desktop preview is running, report the preview label so parallel native windows can be matched to the worktree and thread that launched them.
-9. Iterate against the preview. Use focused checks during iteration only when they answer an immediate implementation question, such as a targeted unit test, Desktop e2e test, browser check, or preview compile failure.
-   - For queued UI polish, keep stacking the user's small visual fixes in the same worktree and PR.
-   - For each small UI fix, prefer the cheapest thread-level proof that actually verifies the change: live preview, screenshot comparison, browser inspection, or a temporary geometry check.
-   - Do not add permanent tests for exact pixels, gaps, colors, shadows, padding, or one-off toolbar geometry unless the behavior is a shared layout contract, has already regressed, or cannot be checked reliably in-thread.
-   - Do not run `npm run validate:feature` after every small visual adjustment.
-   - If more queued tasks arrive while you are working, finish the current focused loop, then continue to the next queued task before publishing.
-10. If this change affects sync, capture, memory, or recovery behavior, name the runtime-health counter or soak assertion that will prove it (see the scorecard in docs/STABILITY-PROGRAM.md) and state the expected direction in the PR body. If no counter exists, add one in the same PR or justify in the PR body why a test suffices. Verification is counters, not vibes.
-11. Run `npm run validate:feature` from the worktree before publishing the draft PR, or earlier only when the user asks for a full validation checkpoint.
-   - Let the validator derive changed files from git by default.
-   - Use `npm run validate:feature -- --changed-files <file>...` only when you need to pin an explicit file list for debugging or tests.
-   - This is a pre publish gate, not an after-every-command inner loop.
-12. Escalate to broader checks only when the change crosses package boundaries or affects shared behavior.
-   - Shared schema, release tooling, shared UI primitives, and cross-app flows should earn broader validation before publish.
-   - Reserve the heaviest validation and release-shape smoke tests for `dev` integration and release prep, not every branch.
-   - Do not simplify test suites blindly. Profile specific slow commands first, then trim redundant coverage with evidence.
-   - Keep permanent tests only when they protect durable workflows, cross-boundary behavior, provider flows, recovery paths, stateful failures, performance budgets, maintained visual coverage, or shared layout contracts with known regression risk.
-13. Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run commands from the workspace directory itself, and when a hoisted binary is needed, prefix `PATH` with `<worktree>/node_modules/.bin`.
-14. Browser tooling is opt-in only. Do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging.
-15. Installed Desktop soaks and provider sync triggers follow the canonical contract in [docs/SOAK-AND-TRIGGERS.md](../../../docs/SOAK-AND-TRIGGERS.md). One-line summary: terminal-driven evidence only (`open -g`, logs, `runtime-health.jsonl`, `node scripts/dev-sync-trigger.mjs <provider>` with its gating), and never stall overnight for a click — ask with a 10 minute response window, then proceed, and ship a terminal trigger for anything recurring. Carry the same contract into generated task prompts, soak notes, and handoff instructions.
-16. When browser tooling was needed, clean browser automation only after preserving any preview the user still needs. Do not run broad cleanup while the local preview should remain open.
-   - If cleanup is needed before PR merge or thread archive, scope it to this worktree with `./scripts/dev-session-clean.sh --worktree <worktree>`.
-   - Before reporting final status, list this thread's preview with `./scripts/worktree-processes.sh list --worktree <worktree>` so the URL and owner are clear.
-   - When the PR is merged, the worktree is removed, or the thread is archived, stop only this thread's preview with `./scripts/worktree-processes.sh stop --worktree <worktree> --target <pwa|desktop>`.
-   - Never stop previews from other worktrees unless the user explicitly asks for global cleanup.
-17. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>" --ready`.
-   - Pass `--ready` only at closeout, once validation has passed and the work is complete. Interim publishes omit it so the PR stays draft while the thread iterates.
-   - If the branch intentionally adds new files, stage them yourself first or re-run with `--include-untracked`.
-18. Confirm the branch is pushed to `origin` and the PR targeting `dev` is marked ready for review (or intentionally left draft if the thread is still iterating, blocked, or needs discussion — say which in the closeout). Include the local preview URL or native preview label in the closeout.
-   - When a changed surface includes buttons, dialogs, or native fallback HTML, follow the repo's established primary and secondary control styling. Do not add hover lift, vertical motion, bounce, or ad hoc glossy or gradient CTA treatments.
-19. When the PR merges, append an outcome ledger entry via the W1-01 helper so the nightly planner learns from the result (see "Outcome recording" in docs/STABILITY-PROGRAM.md and docs/stability-tasks/W1-01-automation-state-out-of-tmp.md). Until the W1-01 helper (`scripts/record-outcome.mjs`) has landed, append the ledger line manually with the target or task id, PR number, build, and status.
+## Build the slice
 
-## Scope
+1. Run `git fetch --all --prune` and `node scripts/validate-main-backflow.mjs --dev-ref=origin/dev --main-ref=origin/main`.
+2. Create the worktree with `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --install full --target <desktop|pwa|shared>`. Use `--swarm` only for deliberately deferred speculative work.
+3. Before creating a component or hook, search the relevant package for an existing primitive. Before closeout, search for every new or changed export and confirm a real entry point consumes it.
+4. Implement one runnable slice. Keep instrumentation changes separate from the behavior they are intended to judge unless the metric cannot exist independently.
+5. Launch the lightest useful preview on a fresh port with `scripts/lib/find-free-port.mjs` and `scripts/worktree-preview.sh`. Use a native Desktop preview only when Tauri behavior matters.
+6. Iterate with the cheapest proof that answers the current question. Preserve useful previews until the user is finished reviewing them.
 
-Default allowed paths include `packages/`, product docs under `docs/`, release tooling, shared app config, and product CI.
+## Validate
 
-Do not use this skill for `website/` only marketing work, homepage copy, public roadmap presentation, or changelog presentation. Those changes target `www`.
+1. Run focused tests during implementation, then run `npm run validate:feature` at the publish checkpoint.
+2. Run workspace commands from the workspace directory. Do not dispatch workspace scripts from the repository root.
+3. If Rust or native orchestration changed, run the repository native validation lane. Until that lane is available, run `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test` from `packages/desktop/src-tauri`.
+4. Test the failure semantics, not only the success path. Cover task ownership, timeout settlement, retry bounds, telemetry fields, and recovery transitions when relevant.
+5. Record the candidate git SHA and focused test results. An installed-build claim is valid only after the installed version, channel, and git SHA match the candidate artifact.
+6. For stability changes, create a verification handoff containing task ID, metric ID, candidate SHA, release build identity, required scenario, exact window, and success threshold.
+
+## Keep roadmap lanes separate
+
+When product work changes any `docs/PHASE-*.md` file:
+
+1. Update the affected phase document in the product PR.
+2. Reconcile [docs/roadmap-status.json](../../../docs/roadmap-status.json) in the same product PR, even when the phase status remains unchanged.
+3. Run `node scripts/validate-roadmap-status.mjs`.
+4. Create a separate `www` handoff containing the source commit SHA, manifest digest, and the public phase copy that must be reconciled.
+5. Do not edit `website/src/app/roadmap/RoadmapContent.tsx` from the `dev` worktree.
+
+## Publish and close out
+
+1. Publish with `./scripts/worktree-publish.sh --title "<conventional title>" --summary "<change>" --test "<focused check>"` using the caller's existing GitHub authentication. When provider-visible paths changed, publish the draft first. The helper posts a review comment bound to the provider-only diff. After a CODEOWNER adds a GitHub thumbs-up reaction to that comment, rerun the helper with `--ready`. A valid signed control-task approval may authorize an unattended ready transition.
+   A host that deliberately provisions `FREED_TRUSTED_PUBLISHER` may invoke the
+   same helper through its capability and lease handoff for unattended work.
+   Missing optional broker provisioning does not block the normal publication
+   path. A partial trusted handoff still fails closed.
+2. Confirm the PR targets `dev`, required checks passed for the exact head SHA, and the PR state matches the granted authority.
+3. Do not merge owner-review or provider-visible work autonomously.
+4. For governed stability or control-plane work, record the canonical task ID
+   through the outcome helper after merge while the task is in `validated`,
+   using the live actor lease and exact merged-head evidence. The helper must
+   perform the `validated` to `merged` transition. General product work without
+   a canonical control task does not invent an outcome record. A completed task
+   stays closed unless fresh post-build evidence from a later window proves
+   regression.
+5. Stop only this worktree's preview when the PR merges, the worktree is removed, or the task is archived.
