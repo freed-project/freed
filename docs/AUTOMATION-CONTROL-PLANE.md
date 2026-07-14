@@ -127,6 +127,13 @@ private automation state directory. The orchestration script, shell, and agent
 never receive the credential. It never appears in arguments, standard output,
 logs, task state, or agent state.
 
+The launcher-only decrypt ACL uses an empty prompt selector. The trusted
+application list already limits access to the exact root-owned launcher.
+Setting the unsigned or invalid application prompt flags would require a
+passphrase for the deterministic ad hoc signature and would turn unattended
+acquisition into a password dialog. A missing or mismatched launcher trust
+entry must fail closed while Keychain interaction is disabled.
+
 The installed launcher clears inherited environment state, verifies its own
 root-owned binding and every pinned runtime digest, disables Keychain user
 interaction for the credential read, restores the prior interaction policy,
