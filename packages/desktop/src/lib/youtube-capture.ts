@@ -22,7 +22,7 @@ import {
   type SocialScrapeTrigger,
 } from "./runtime-health-events";
 
-const CAPTURE_TIMEOUT_MS = 120_000;
+const CAPTURE_TIMEOUT_MS = 275_000;
 let captureOperationChain: Promise<void> = Promise.resolve();
 
 function enqueueCaptureOperation<T>(operation: () => Promise<T>): Promise<T> {
@@ -51,6 +51,7 @@ interface YouTubeNativeVideo extends Partial<YouTubeCapturedVideo> {
 }
 
 export interface YouTubeCaptureEventPayload {
+  captureId?: string;
   stage?: string;
   channels?: YouTubeNativeChannel[];
   videos?: YouTubeNativeVideo[];
@@ -59,10 +60,22 @@ export interface YouTubeCaptureEventPayload {
   done?: boolean;
   extractedAt?: number;
   candidateCount?: number;
+  channelTotal?: number;
+  videoTotal?: number;
   unresolvedCount?: number;
   scrollPasses?: number;
   stopReason?: string;
+  pageEvidence?: boolean;
+  explicitEmpty?: boolean;
+  unsupportedCandidateCount?: number;
+  pendingContinuation?: boolean;
+  workBudgetExceeded?: boolean;
+  deadlineExceeded?: boolean;
   error?: string;
+}
+
+interface YouTubeCaptureCommandResult {
+  stages?: YouTubeCaptureEventPayload[];
 }
 
 export interface YouTubeSyncDiag {
@@ -172,73 +185,254 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function classifyYouTubeCaptureErrorStage(message: string, fallback: string): string {
+  return /not signed in|session (?:is )?(?:expired|invalid)/i.test(message)
+    ? "auth"
+    : fallback;
+}
+
+interface YouTubeCaptureProgress {
+  receivedAt: number;
+  stage: string | null;
+  channelCount: number;
+  videoCount: number;
+  candidateCount: number;
+  unresolvedCount: number;
+  scrollPasses: number;
+}
+
+interface YouTubeStageTerminal {
+  authoritative: boolean;
+  succeeded: boolean;
+  stopReason: string | null;
+  progress: YouTubeCaptureProgress;
+}
+
+function mergeDefined<T extends object>(current: T | undefined, incoming: T): T {
+  if (!current) return incoming;
+  return Object.fromEntries(
+    Object.entries({ ...current, ...incoming }).filter(([, value]) => value !== undefined),
+  ) as T;
+}
+
+function progressDiagnostic(progress: YouTubeCaptureProgress | null): string {
+  if (!progress) return "No matching progress event was received.";
+  const ageMs = Math.max(0, Date.now() - progress.receivedAt);
+  return [
+    `Last progress stage=${progress.stage ?? "unknown"}`,
+    `channels=${progress.channelCount.toLocaleString()}`,
+    `videos=${progress.videoCount.toLocaleString()}`,
+    `candidates=${progress.candidateCount.toLocaleString()}`,
+    `unresolved=${progress.unresolvedCount.toLocaleString()}`,
+    `scrollPasses=${progress.scrollPasses.toLocaleString()}`,
+    `ageMs=${ageMs.toLocaleString()}.`,
+  ].join(" ");
+}
+
+function appendProgressDiagnostic(
+  message: string,
+  progress: YouTubeCaptureProgress | null,
+): string {
+  if (message.includes("Last progress stage=")
+    || message.includes("No matching progress event was received.")) {
+    return message;
+  }
+  return `${message} ${progressDiagnostic(progress)}`;
+}
+
+async function cancelYouTubeCapture(captureId: string): Promise<void> {
+  try {
+    await invoke("yt_hide_login", { captureId });
+  } catch (error) {
+    addDebugEvent(
+      "error",
+      `[YouTube] emergency capture cleanup failed: ${errorMessage(error)}`,
+    );
+  }
+}
+
 async function fetchYouTubeCaptureOnce(
   includeRoster: boolean = true,
 ): Promise<YouTubeSyncResult> {
   const result = emptyResult();
-  const nativeChannels: YouTubeNativeChannel[] = [];
-  const nativeVideos: YouTubeNativeVideo[] = [];
-  let receivedEvent = false;
+  const captureId = globalThis.crypto.randomUUID();
+  const nativeChannelsById = new Map<string, YouTubeNativeChannel>();
+  const nativeVideosById = new Map<string, YouTubeNativeVideo>();
+  const stageTerminals = new Map<string, YouTubeStageTerminal>();
+  const latestProgressByStage = new Map<string, YouTubeCaptureProgress>();
+  const requiredFinalStages = includeRoster
+    ? ["channels", "subscriptions"]
+    : ["subscriptions"];
+  let receivedMatchingData = false;
+  let latestProgress: YouTubeCaptureProgress | null = null;
+  let needsEmergencyCancellation = false;
   let unlisten: UnlistenFn | null = null;
   let timeout: number | null = null;
 
+  const applyCapturePayload = (
+    payload: YouTubeCaptureEventPayload,
+    authoritative: boolean,
+  ): void => {
+    if (payload.captureId !== captureId) return;
+    receivedMatchingData = true;
+    if (payload.error) {
+      result.diag.errorStage = classifyYouTubeCaptureErrorStage(
+        payload.error,
+        payload.stage ?? "extract",
+      );
+      result.diag.errorMessage = payload.error;
+      return;
+    }
+    for (const channel of payload.channels ?? []) {
+      if (!channel.channelId) continue;
+      nativeChannelsById.set(
+        channel.channelId,
+        mergeDefined(nativeChannelsById.get(channel.channelId), channel),
+      );
+    }
+    for (const video of payload.videos ?? []) {
+      if (!video.videoId) continue;
+      nativeVideosById.set(
+        video.videoId,
+        mergeDefined(nativeVideosById.get(video.videoId), video),
+      );
+    }
+    result.diag.scrollPasses = Math.max(
+      result.diag.scrollPasses,
+      payload.scrollPasses ?? 0,
+    );
+    if (payload.stopReason) result.diag.stopReason = payload.stopReason;
+    if (Number.isFinite(payload.extractedAt)) {
+      result.capturedAt = Math.max(result.capturedAt, payload.extractedAt ?? result.capturedAt);
+    }
+    latestProgress = {
+      receivedAt: Date.now(),
+      stage: payload.stage ?? latestProgress?.stage ?? null,
+      channelCount: nativeChannelsById.size,
+      videoCount: nativeVideosById.size,
+      candidateCount: payload.candidateCount ?? latestProgress?.candidateCount ?? 0,
+      unresolvedCount: payload.unresolvedCount ?? latestProgress?.unresolvedCount ?? 0,
+      scrollPasses: payload.scrollPasses ?? latestProgress?.scrollPasses ?? 0,
+    };
+    if (payload.stage) latestProgressByStage.set(payload.stage, latestProgress);
+    if (payload.done === true && payload.stage) {
+      const existing = stageTerminals.get(payload.stage);
+      if (!existing?.authoritative || authoritative) {
+        const receiptChannelIds = new Set(
+          (payload.channels ?? []).map((channel) => channel.channelId).filter(Boolean),
+        );
+        const receiptVideoIds = new Set(
+          (payload.videos ?? []).map((video) => video.videoId).filter(Boolean),
+        );
+        const recordTotalsMatch = !authoritative || (
+          payload.channelTotal === (payload.channels?.length ?? 0)
+          && payload.videoTotal === (payload.videos?.length ?? 0)
+          && receiptChannelIds.size === (payload.channels?.length ?? 0)
+          && receiptVideoIds.size === (payload.videos?.length ?? 0)
+        );
+        const primaryRecordCount = payload.stage === "channels"
+          ? payload.channels?.length ?? 0
+          : payload.videos?.length ?? 0;
+        const evidenceComplete = payload.stopReason === "end-stable"
+          && payload.unresolvedCount === 0
+          && payload.pageEvidence === true
+          && (primaryRecordCount > 0 || payload.explicitEmpty === true)
+          && payload.unsupportedCandidateCount === 0
+          && payload.pendingContinuation === false
+          && payload.workBudgetExceeded === false
+          && payload.deadlineExceeded === false;
+        const succeeded = authoritative
+          && recordTotalsMatch
+          && evidenceComplete
+          && (payload.stage === "channels"
+            ? payload.rosterComplete === true
+            : payload.stage === "subscriptions" && payload.complete === true);
+        stageTerminals.set(payload.stage, {
+          authoritative,
+          succeeded,
+          stopReason: payload.stopReason ?? null,
+          progress: latestProgress,
+        });
+        if (authoritative && payload.stage === "channels") {
+          result.diag.rosterComplete = succeeded;
+        }
+      }
+    }
+    addDebugEvent(
+      "change",
+      `[YouTube] extraction pass channels=${(payload.channels?.length ?? 0).toLocaleString()} videos=${(payload.videos?.length ?? 0).toLocaleString()} candidates=${(payload.candidateCount ?? 0).toLocaleString()}${payload.done ? " final" : ""}`,
+    );
+  };
+
   try {
     unlisten = await listen<YouTubeCaptureEventPayload>("yt-capture-data", (event) => {
-      receivedEvent = true;
-      const payload = event.payload;
-      if (payload.error) {
-        result.diag.errorStage = /not signed in|session (?:is )?(?:expired|invalid)/i.test(payload.error)
-          ? "auth"
-          : payload.stage ?? "extract";
-        result.diag.errorMessage = payload.error;
-        return;
-      }
-      nativeChannels.push(...(payload.channels ?? []));
-      nativeVideos.push(...(payload.videos ?? []));
-      result.diag.rosterComplete ||=
-        payload.rosterComplete === true ||
-        (payload.rosterComplete === undefined && payload.complete === true);
-      result.diag.unresolvedCount = Math.max(
-        result.diag.unresolvedCount,
-        payload.unresolvedCount ?? 0,
-      );
-      result.diag.scrollPasses = Math.max(
-        result.diag.scrollPasses,
-        payload.scrollPasses ?? 0,
-      );
-      if (payload.stopReason) result.diag.stopReason = payload.stopReason;
-      if (Number.isFinite(payload.extractedAt)) {
-        result.capturedAt = Math.max(result.capturedAt, payload.extractedAt ?? result.capturedAt);
-      }
-      addDebugEvent(
-        "change",
-        `[YouTube] extraction pass channels=${(payload.channels?.length ?? 0).toLocaleString()} videos=${(payload.videos?.length ?? 0).toLocaleString()} candidates=${(payload.candidateCount ?? 0).toLocaleString()}${payload.done ? " final" : ""}`,
-      );
+      applyCapturePayload(event.payload, false);
     });
 
-    await Promise.race([
-      invoke("yt_capture", { includeRoster }),
+    const commandResult = await Promise.race([
+      invoke<YouTubeCaptureCommandResult>("yt_capture", { includeRoster, captureId }),
       new Promise<never>((_resolve, reject) => {
         timeout = window.setTimeout(
-          () => reject(new Error("YouTube capture timed out.")),
+          () => reject(new Error(`YouTube capture timed out. ${progressDiagnostic(latestProgress)}`)),
           CAPTURE_TIMEOUT_MS,
         );
       }),
     ]);
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
+    for (const payload of commandResult?.stages ?? []) {
+      applyCapturePayload(payload, true);
+    }
+    if (!result.diag.errorStage) {
+      if (!receivedMatchingData) {
+        result.diag.errorStage = "extract";
+        result.diag.errorMessage = "YouTube returned no capture data.";
+      } else {
+        const missingFinalStages = requiredFinalStages.filter(
+          (stage) => stageTerminals.get(stage)?.authoritative !== true,
+        );
+        if (missingFinalStages.length > 0) {
+          result.diag.errorStage = "extract";
+          result.diag.errorMessage = `YouTube capture ended without final markers for ${missingFinalStages.join(", ")}. ${progressDiagnostic(latestProgress)}`;
+        } else {
+          const incompleteStages = requiredFinalStages.filter(
+            (stage) => stageTerminals.get(stage)?.succeeded !== true,
+          );
+          if (incompleteStages.length > 0) {
+            const terminalDetails = incompleteStages.map((stage) => {
+              const terminal = stageTerminals.get(stage);
+              return `${stage} stopReason=${terminal?.stopReason ?? "unknown"}`;
+            }).join(", ");
+            const terminalProgress = stageTerminals.get(incompleteStages.at(-1) ?? "")?.progress
+              ?? latestProgress;
+            result.diag.errorStage = "extract";
+            result.diag.errorMessage = `YouTube capture ended incomplete for ${terminalDetails}. ${progressDiagnostic(terminalProgress)}`;
+          }
+        }
+      }
+    }
+    needsEmergencyCancellation = result.diag.errorStage !== null;
   } catch (error) {
-    result.diag.errorStage = result.diag.errorStage ?? "invoke";
-    result.diag.errorMessage = result.diag.errorMessage ?? errorMessage(error);
+    const message = result.diag.errorMessage ?? errorMessage(error);
+    result.diag.errorStage = result.diag.errorStage
+      ?? classifyYouTubeCaptureErrorStage(message, "invoke");
+    result.diag.errorMessage = appendProgressDiagnostic(
+      message,
+      latestProgress,
+    );
+    needsEmergencyCancellation = true;
   } finally {
     if (timeout !== null) window.clearTimeout(timeout);
     safeUnlisten(unlisten, "yt-capture-data");
+    if (needsEmergencyCancellation) await cancelYouTubeCapture(captureId);
   }
 
-  if (!receivedEvent && !result.diag.errorStage) {
-    result.diag.errorStage = "extract";
-    result.diag.errorMessage = "YouTube returned no capture data.";
-  }
+  const rosterProgress = latestProgressByStage.get("channels");
+  const subscriptionsProgress = latestProgressByStage.get("subscriptions");
+  result.diag.unresolvedCount = includeRoster
+    ? rosterProgress?.unresolvedCount ?? 0
+    : subscriptionsProgress?.unresolvedCount ?? 0;
 
+  const nativeChannels = Array.from(nativeChannelsById.values());
+  const nativeVideos = Array.from(nativeVideosById.values());
   const channels = normalizeNativeChannels(nativeChannels);
   const eligibleVideos = nativeVideos.filter((video) => video.isShort !== true);
   const videos = normalizeNativeVideos(eligibleVideos, channels, result.capturedAt);
