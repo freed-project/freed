@@ -916,24 +916,19 @@ test(
 );
 
 test(
-  "native provisioner pins exact launcher trust while suppressing unsigned prompt defaults",
+  "native provisioner lets the exact trusted ad hoc launcher read without a passphrase prompt",
   { skip: !darwinOnly },
   async () => {
     const source = await readFile(provisionerSource, "utf8");
     assert.match(
       source,
-      /SecKeychainPromptSelector\.unsignedAct\.union\(\.invalidAct\)/,
+      /launcherPromptSelector\s*=\s*SecKeychainPromptSelector\(\)/,
     );
     assert.match(source, /selector == launcherPromptSelector/);
     assert.match(source, /trustedApplications\.count == 1/);
-    assert.doesNotMatch(
-      source,
-      /launcherPromptSelector\s*=\s*SecKeychainPromptSelector\.unsigned\b/,
-    );
-    assert.doesNotMatch(
-      source,
-      /launcherPromptSelector\s*=.*SecKeychainPromptSelector\.invalid\b/,
-    );
+    assert.doesNotMatch(source, /SecKeychainPromptSelector\.unsignedAct/);
+    assert.doesNotMatch(source, /SecKeychainPromptSelector\.invalidAct/);
+    assert.doesNotMatch(source, /SecKeychainPromptSelector\.requirePassphase/);
     assert.doesNotMatch(source, /func verify\s*\(/);
   },
 );
