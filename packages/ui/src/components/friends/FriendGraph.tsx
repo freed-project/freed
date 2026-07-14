@@ -107,6 +107,18 @@ type PinchState = {
   moved: boolean;
 };
 
+type SafariGestureState = {
+  initialScale: number;
+  localPoint: TouchPoint;
+  worldPoint: TouchPoint;
+};
+
+interface SafariGestureEvent extends Event {
+  scale?: number;
+  clientX?: number;
+  clientY?: number;
+}
+
 type GraphContextMenuState = {
   x: number;
   y: number;
@@ -451,6 +463,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const transformRef = useRef<ViewTransform>({ ...FRIEND_GRAPH_DEFAULT_TRANSFORM });
   const dragStateRef = useRef<DragState | null>(null);
   const pinchStateRef = useRef<PinchState | null>(null);
+  const safariGestureStateRef = useRef<SafariGestureState | null>(null);
+  const lastPointerPointRef = useRef<TouchPoint | null>(null);
   const activeTouchPointsRef = useRef<Map<number, TouchPoint>>(new Map());
   const ignoredTouchIdsRef = useRef<Set<number>>(new Set());
   const hoveredNodeIdRef = useRef<string | null>(null);
@@ -459,9 +473,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const nextSourceRevisionRef = useRef(0);
   const postedSourceRevisionRef = useRef(-1);
   const pendingWorkerTimeoutsRef = useRef<Map<number, number>>(new Map());
-  const atlasRafRef = useRef(0);
   const drawRafRef = useRef(0);
-  const drawPendingRef = useRef(false);
   const sceneDirtyRef = useRef(true);
   const settleTimerRef = useRef<number | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
@@ -472,6 +484,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const frameSamplesRef = useRef<number[]>([]);
   const lastFrameAtRef = useRef<number | null>(null);
   const longTaskCountRef = useRef(0);
+  const sceneSyncCountRef = useRef(0);
+  const transformOnlySyncCountRef = useRef(0);
+  const edgeRebuildCountRef = useRef(0);
   const latestQualityRef = useRef<IdentityGraphAtlasQuality>("settled");
   const viewportInsetsRef = useRef<GraphViewportInsets>(EMPTY_GRAPH_VIEWPORT_INSETS);
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: 640 });
@@ -568,10 +583,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       layoutMs: atlas.metrics.buildMs,
       sceneSyncMs,
       labelPassMs: 0,
-      sceneSyncCount: ((window as typeof window & { __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot }).__FREED_GRAPH_PERF__?.sceneSyncCount ?? 0) + 1,
+      sceneSyncCount: sceneSyncCountRef.current,
       contentSyncCount: 1,
-      transformOnlySyncCount: latestQualityRef.current === "interactive" ? 1 : 0,
-      edgeRebuildCount: atlas.edges.length > 0 ? 1 : 0,
+      transformOnlySyncCount: transformOnlySyncCountRef.current,
+      edgeRebuildCount: edgeRebuildCountRef.current,
       nodeRestyleCount: residentNodeCount,
       labelLayoutCount: atlas.labels.length > 0 ? 1 : 0,
       avatarDisplayCount: 0,
@@ -638,6 +653,39 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
   }, [activitySummaries.buildMs, canonicalLinkCount, canonicalNodeCount, channelCount, personCount]);
 
+  const updateTransformDiagnostics = useCallback(() => {
+    transformOnlySyncCountRef.current += 1;
+    const graphWindow = window as typeof window & {
+      __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot;
+      __FREED_GRAPH_DEBUG__?: {
+        nodes: GraphDebugNode[];
+        regions: IdentityGraphAtlas["regions"];
+        transform: ViewTransform;
+        qualityMode: "interactive" | "settled";
+        metrics: GraphPerfSnapshot;
+      };
+    };
+    const perf = graphWindow.__FREED_GRAPH_PERF__;
+    if (perf) {
+      perf.sceneSyncMs = 0;
+      perf.transformOnlySyncCount = transformOnlySyncCountRef.current;
+      perf.qualityMode = latestQualityRef.current;
+      perf.transformScale = transformRef.current.scale;
+      perf.rendererLabelCount = engineRef.current?.labelCount ?? perf.rendererLabelCount;
+      perf.readyRendererLabelCount = engineRef.current?.readyLabelCount ?? perf.readyRendererLabelCount;
+    }
+    const debug = graphWindow.__FREED_GRAPH_DEBUG__;
+    if (debug) {
+      debug.transform = { ...transformRef.current };
+      debug.qualityMode = latestQualityRef.current;
+      if (perf) debug.metrics = perf;
+    }
+    const container = containerRef.current;
+    if (container && container.dataset.graphQualityMode !== latestQualityRef.current) {
+      container.dataset.graphQualityMode = latestQualityRef.current;
+    }
+  }, []);
+
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     const atlas = atlasRef.current;
@@ -672,9 +720,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         }
       }
       lastFrameAtRef.current = frameAt;
-      const startedAt = nowMs();
       engine.resize(canvasSize.width, canvasSize.height);
+      let sceneSyncMs = 0;
       if (shouldSyncScene || engineCreated) {
+        const syncStartedAt = nowMs();
         engine.syncScene(
           atlas,
           galaxyScene,
@@ -685,13 +734,20 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
             quality: latestQualityRef.current,
           },
         );
+        sceneSyncMs = nowMs() - syncStartedAt;
+        sceneSyncCountRef.current += 1;
+        if (atlas.edges.length > 0) edgeRebuildCountRef.current += 1;
       }
       engine.render(transformRef.current);
       sceneDirtyRef.current = false;
       if (!firstVisibleMsRef.current && atlas.nodes.length > 0) {
         firstVisibleMsRef.current = nowMs() - mountedAtRef.current;
       }
-      exposeDiagnostics(atlas, nowMs() - startedAt);
+      if (shouldSyncScene || engineCreated) {
+        exposeDiagnostics(atlas, sceneSyncMs);
+      } else {
+        updateTransformDiagnostics();
+      }
     } catch (error) {
       (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string }).__FREED_GRAPH_DRAW_ERROR__ =
         error instanceof Error ? error.message : String(error);
@@ -704,13 +760,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     selectedAccountId,
     selectedPersonId,
     starfieldVariation,
+    updateTransformDiagnostics,
   ]);
 
   const scheduleDraw = useCallback(() => {
-    if (drawPendingRef.current) return;
-    drawPendingRef.current = true;
+    if (drawRafRef.current !== 0) return;
     drawRafRef.current = requestAnimationFrame(() => {
-      drawPendingRef.current = false;
+      drawRafRef.current = 0;
       draw();
     });
   }, [draw]);
@@ -834,26 +890,21 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     selectedPersonId,
   ]);
 
-  const scheduleAtlas = useCallback((quality: IdentityGraphAtlasQuality) => {
-    window.cancelAnimationFrame(atlasRafRef.current);
-    atlasRafRef.current = window.requestAnimationFrame(() => requestAtlas(quality));
-  }, [requestAtlas]);
-
   const markInteractive = useCallback(() => {
-    const wasInteractive = latestQualityRef.current === "interactive";
     latestQualityRef.current = "interactive";
     scheduleDraw();
-    if (!wasInteractive) {
-      sceneDirtyRef.current = true;
-      scheduleAtlas("interactive");
-    }
     if (settleTimerRef.current !== null) {
       window.clearTimeout(settleTimerRef.current);
     }
     const sourceCount = atlasRef.current?.metrics.sourceNodeCount ?? 0;
     const delay = sourceCount >= 1_200 ? DENSE_INTERACTION_SETTLE_DELAY_MS : INTERACTION_SETTLE_DELAY_MS;
     const settleWhenIdle = () => {
-      if (dragStateRef.current || pinchStateRef.current || activeTouchPointsRef.current.size > 0) {
+      if (
+        dragStateRef.current ||
+        pinchStateRef.current ||
+        safariGestureStateRef.current ||
+        activeTouchPointsRef.current.size > 0
+      ) {
         settleTimerRef.current = window.setTimeout(settleWhenIdle, delay);
         return;
       }
@@ -862,7 +913,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       requestAtlas("settled");
     };
     settleTimerRef.current = window.setTimeout(settleWhenIdle, delay);
-  }, [requestAtlas, scheduleAtlas, scheduleDraw]);
+  }, [requestAtlas, scheduleDraw]);
 
   const viewportToWorld = useCallback((clientX: number, clientY: number) => {
     const container = containerRef.current;
@@ -1053,20 +1104,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   }, [scheduleDraw, selectedAccountId, selectedPersonId, starfieldVariation]);
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const preventGestureDefault = (event: Event) => event.preventDefault();
-    container.addEventListener("gesturestart", preventGestureDefault, { passive: false });
-    container.addEventListener("gesturechange", preventGestureDefault, { passive: false });
-    container.addEventListener("gestureend", preventGestureDefault, { passive: false });
-    return () => {
-      container.removeEventListener("gesturestart", preventGestureDefault);
-      container.removeEventListener("gesturechange", preventGestureDefault);
-      container.removeEventListener("gestureend", preventGestureDefault);
-    };
-  }, []);
-
-  useEffect(() => {
     if (typeof PerformanceObserver === "undefined") return;
     try {
       const observer = new PerformanceObserver((list) => {
@@ -1081,8 +1118,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
   useEffect(() => {
     return () => {
-      window.cancelAnimationFrame(atlasRafRef.current);
       window.cancelAnimationFrame(drawRafRef.current);
+      drawRafRef.current = 0;
       if (settleTimerRef.current !== null) {
         window.clearTimeout(settleTimerRef.current);
       }
@@ -1113,6 +1150,84 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     hasUserAdjustedTransformRef.current = true;
     markInteractive();
   }, [markInteractive]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const gesturePoint = (event: SafariGestureEvent) => {
+      const rect = container.getBoundingClientRect();
+      const eventX = typeof event.clientX === "number" ? event.clientX : Number.NaN;
+      const eventY = typeof event.clientY === "number" ? event.clientY : Number.NaN;
+      if (
+        Number.isFinite(eventX) &&
+        Number.isFinite(eventY) &&
+        eventX >= rect.left &&
+        eventX <= rect.right &&
+        eventY >= rect.top &&
+        eventY <= rect.bottom
+      ) {
+        return { clientX: eventX, clientY: eventY };
+      }
+      const pointer = lastPointerPointRef.current;
+      if (pointer) return { clientX: pointer.x, clientY: pointer.y };
+      const center = visibleViewportCenter(
+        canvasSize.width,
+        canvasSize.height,
+        viewportInsetsRef.current,
+      );
+      return { clientX: rect.left + center.x, clientY: rect.top + center.y };
+    };
+
+    const beginGesture = (event: SafariGestureEvent) => {
+      if (isGraphGestureUiTarget(event.target)) return;
+      event.preventDefault();
+      const point = gesturePoint(event);
+      const rect = container.getBoundingClientRect();
+      safariGestureStateRef.current = {
+        initialScale: transformRef.current.scale,
+        localPoint: {
+          x: point.clientX - rect.left,
+          y: point.clientY - rect.top,
+        },
+        worldPoint: viewportToWorld(point.clientX, point.clientY),
+      };
+      setContextMenu(null);
+      setLinkPickerAccountId(null);
+      markInteractive();
+    };
+
+    const updateGesture = (event: SafariGestureEvent) => {
+      if (isGraphGestureUiTarget(event.target)) return;
+      event.preventDefault();
+      if (!safariGestureStateRef.current) beginGesture(event);
+      const gesture = safariGestureStateRef.current;
+      if (!gesture) return;
+      const scale = clampScale(gesture.initialScale * Math.max(0.05, event.scale ?? 1));
+      transformRef.current = {
+        scale,
+        x: gesture.localPoint.x - gesture.worldPoint.x * scale,
+        y: gesture.localPoint.y - gesture.worldPoint.y * scale,
+      };
+      hasUserAdjustedTransformRef.current = true;
+      markInteractive();
+    };
+
+    const endGesture = (event: SafariGestureEvent) => {
+      if (!safariGestureStateRef.current) return;
+      event.preventDefault();
+      safariGestureStateRef.current = null;
+    };
+
+    container.addEventListener("gesturestart", beginGesture as EventListener, { passive: false });
+    container.addEventListener("gesturechange", updateGesture as EventListener, { passive: false });
+    container.addEventListener("gestureend", endGesture as EventListener, { passive: false });
+    return () => {
+      container.removeEventListener("gesturestart", beginGesture as EventListener);
+      container.removeEventListener("gesturechange", updateGesture as EventListener);
+      container.removeEventListener("gestureend", endGesture as EventListener);
+    };
+  }, [canvasSize.height, canvasSize.width, markInteractive, viewportToWorld]);
 
   const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -1255,6 +1370,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch" || isGraphGestureUiTarget(event.target)) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
+    lastPointerPointRef.current = { x: event.clientX, y: event.clientY };
     const container = containerRef.current;
     if (!container) return;
     container.setPointerCapture(event.pointerId);
@@ -1275,6 +1391,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
   const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch") return;
+    lastPointerPointRef.current = { x: event.clientX, y: event.clientY };
     const drag = dragStateRef.current;
     if (!drag) {
       if (event.pointerType === "mouse" || event.pointerType === "pen") {

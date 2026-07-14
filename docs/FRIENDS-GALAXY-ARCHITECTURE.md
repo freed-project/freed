@@ -144,7 +144,7 @@ As of July 12, 2026, other tasks are running on the development machine. The own
 - Linked accounts remain behind their identity while preserving stable deterministic positions.
 - The atlas worker transfers scene buffers instead of making the main thread compile duplicate GPU input.
 - Hover and selection update flags, emphasis, and point sizes in place without replacing static positions or indexed edges.
-- An imperative `IdentityGalaxyEngine` owns Three.js, Troika labels, palette resolution, WebGL fallback selection, resize, synchronization, rendering, and disposal.
+- An imperative `IdentityGalaxyEngine` owns Three.js, the batched glyph label layer, palette resolution, WebGL fallback selection, resize, synchronization, rendering, and disposal.
 - `FriendGraph.tsx` now owns React props, worker lifecycle, interaction orchestration, and product callbacks rather than renderer internals.
 - Semantic model construction and viewport atlas slicing are separate operations.
 - The worker caches the full rich semantic model by source revision.
@@ -160,13 +160,17 @@ As of July 12, 2026, other tasks are running on the development machine. The own
 - Confirmed friends use a deterministic golden-angle disk sized by local system footprint. Sparse linked accounts occupy complete local orbits instead of partial arcs.
 - Model compilation builds one account-to-person index and never rescans the full account library for each person.
 - The initial camera opens at the first useful semantic tier on Freed Desktop and at a closer exploration tier on iPhone. `Fit all` still reveals the complete provider universe.
-- Billboard labels redraw after asynchronous glyph generation, use settled screen-space collision, and read the active theme's real text and shell colors.
+- Billboard labels use one instanced glyph draw backed by a theme-font canvas atlas. Screen-space collision runs after settle, and camera movement keeps the accepted label set resident.
 - iPhone pan and pinch use native non-passive touch events rather than WebKit pointer capture. Pinch preserves its active midpoint, hands directly to one-finger pan when either touch lifts, recovers after touch cancellation, and leaves browser zoom unchanged. Mouse and pen input remain on Pointer Events.
+- Mac Safari trackpad pinch uses native `gesturestart`, `gesturechange`, and `gestureend` events. Gesture scale is mapped into the same midpoint-preserving camera transform used by touch and wheel input.
+- Active pan and pinch issue camera renders only. They do not request an interactive atlas, synchronize scene buffers, rebuild edges, reload labels, or write React state on movement.
+- The animation frame ID is the sole draw scheduler latch. Effect cleanup cancels and clears that ID so React development verification cannot leave gesture rendering permanently blocked.
+- The canvas compatibility renderer caches its decorative star background, avoids per-node blur filters, keeps connectors visible, and draws a capped screen-space label set during motion.
 - Mobile regression coverage now includes browser-generated two-finger input in the PWA, pinch-to-pan continuation, and the same touch state path under WebKit's iPhone profile. Linking and pinning remain context-menu-only workflows.
 - Neon and Scriptorium visual passes confirm that node cores, background stars, labels, edges, and provider fields follow the active theme.
 
 ### Next structural target
 
-Replace the remaining per-label Troika objects with a batched SDF or MSDF billboard layer. Then add the WebGPU renderer laboratory, close-zoom avatar texture atlas, incremental graph index maintenance, and repeated device performance baselines. The current WebGL2 engine remains the compatibility backend and functional integration surface during that work.
+Add the WebGPU renderer laboratory, close-zoom avatar texture atlas, incremental graph index maintenance, and repeated device performance baselines. The current WebGL2 engine and batched glyph layer remain the compatibility backend and functional integration surface during that work.
 
 Benchmarking is authorized only as repeated consistency runs while other machine tasks remain active. Single-run timing results are not decision evidence.

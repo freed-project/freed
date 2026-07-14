@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry in Freed Desktop, Google Contacts sync now feeds the same top-toolbar background activity monitor as social providers with elapsed active-work timers, the Friends workspace now defaults to `All content`, and the graph surface now uses a worker-built graph atlas with a theme-aware Three.js starfield renderer, Troika billboard labels, visible-node caps, provider nebula and ring variations, confirmed friend stars closer to the camera, provisional human identities in the middle field, linked channel satellites packed into tight fields around people with short bright connectors, unlinked provider constellations around the edge, RSS treated as a normal provider island, context-menu linking and pinning, semantic zoom labels, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map uses a persistent lower-left time range slider for historical, current, and future location windows
+> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry in Freed Desktop, Google Contacts sync now feeds the same top-toolbar background activity monitor as social providers with elapsed active-work timers, the Friends workspace now defaults to `All content`, and the graph surface now uses a worker-built graph atlas with a theme-aware Three.js starfield renderer, one-batch billboard glyph labels, visible-node caps, provider nebula and ring variations, confirmed friend stars closer to the camera, provisional human identities in the middle field, linked channel satellites packed into tight fields around people with short bright connectors, unlinked provider constellations around the edge, RSS treated as a normal provider island, context-menu linking and pinning, native iPhone and Mac Safari zoom gestures, AI-ranked suggestion-only friend candidates from local identity and content signals, Followed, Friends, and Fam relationship controls over the existing care-level model, reader author links that open the matching channel details in Friends, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map uses a persistent lower-left time range slider for historical, current, and future location windows
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -138,7 +138,7 @@ Default nudge intervals by care level:
 
 ### Renderer and layout
 
-- Renderer: imperative Three.js WebGL2 engine with GPU-resident semantic stars, instanced procedural star and edge passes, settled Troika billboard labels, and a canvas fallback when WebGL is unavailable
+- Renderer: imperative Three.js WebGL2 engine with GPU-resident semantic stars, instanced procedural star, edge, and glyph passes, plus a cached canvas fallback when WebGL is unavailable
 - Layout: off-main-thread worker that caches the complete semantic model, transfers typed scene buffers once per source revision, and computes capped label, edge, and hit detail from activity summaries
 - Tiering:
   - confirmed friends are the largest identity stars near the center and closer to the camera
@@ -171,7 +171,7 @@ Default nudge intervals by care level:
 
 The current atlas starfield remains the shipping compatibility surface while the next renderer is built behind it. The approved replacement uses a constrained 3D galactic plane with stable semantic geography on `x` and `y`, relationship prominence on `z`, tight identity systems, provider sectors on the outer rim, a locked perspective camera, and a renderer-neutral typed scene protocol. WebGPU is the preferred shared backend, WebGL2 is the compatibility backend, and native Metal remains gated on later device evidence.
 
-The foundation compiles the complete semantic galaxy into compact typed buffers for stable 3D positions, semantic prominence, bounded activity and recency brightness, theme color roles, interaction flags, and indexed edges. The atlas worker caches the rich semantic model by source revision and transfers the full star buffers only when graph source data or layout dimensions change. Pan, zoom, quality, and selection requests retain those star buffers while returning capped label, hit, and edge detail. Hover and selection patch dynamic typed arrays in place without rebuilding positions. An imperative engine owns the locked perspective camera, one instanced procedural star pass, one instanced settled edge pass, depth-aware projected picking, Troika labels with settled screen-space collision, theme palette resolution, WebGL fallback selection, resize, scene synchronization, rendering, and disposal. The React shell owns product props, worker lifecycle, interaction orchestration, and product callbacks. The complete approved vision, interaction contract, rendering contract, and staged roadmap live in [FRIENDS-GALAXY-ARCHITECTURE.md](./FRIENDS-GALAXY-ARCHITECTURE.md).
+The foundation compiles the complete semantic galaxy into compact typed buffers for stable 3D positions, semantic prominence, bounded activity and recency brightness, theme color roles, interaction flags, and indexed edges. The atlas worker caches the rich semantic model by source revision and transfers the full star buffers only when graph source data or layout dimensions change. Pan and zoom retain those star buffers and move only the locked camera. Settled viewport requests return capped label, hit, and edge detail. Hover and selection patch dynamic typed arrays in place without rebuilding positions. An imperative engine owns the locked perspective camera, one instanced procedural star pass, one instanced settled edge pass, one instanced glyph label pass, depth-aware projected picking, theme palette resolution, WebGL fallback selection, resize, scene synchronization, rendering, and disposal. The React shell owns product props, worker lifecycle, interaction orchestration, and product callbacks. The complete approved vision, interaction contract, rendering contract, and staged roadmap live in [FRIENDS-GALAXY-ARCHITECTURE.md](./FRIENDS-GALAXY-ARCHITECTURE.md).
 
 ### Scale targets
 
@@ -190,7 +190,7 @@ The foundation compiles the complete semantic galaxy into compact typed buffers 
 ### Files
 
 - `packages/ui/src/components/friends/FriendsView.tsx` — top-level view shell
-- `packages/ui/src/components/friends/FriendGraph.tsx`: graph atlas starfield shell with Three.js rendering, Troika labels, context menus, gestures, fallback rendering, and diagnostics
+- `packages/ui/src/components/friends/FriendGraph.tsx`: graph atlas starfield shell with camera gestures, context menus, worker orchestration, and diagnostics
 - `packages/ui/src/lib/identity-graph-model.ts` — derived person, channel, and feed graph model
 - `packages/shared/src/friend-suggestions.ts`: pure suggestion-only friend candidate ranking from identity, activity, content signals, and contact overlap
 - `packages/ui/src/lib/identity-graph-layout.ts` — stable radial layout plus spatial index helpers
@@ -268,11 +268,12 @@ That Friends detail rail now uses the same floating shell-card treatment and gap
 That same Friends rail can now be collapsed from a far-right toolbar toggle on larger screens, and narrow screens fold the detail surface into a third `Details` lens instead of stacking the graph and sidebar on top of each other like a punishment.
 When that rail is collapsed on desktop, selecting a friend or channel now opens a compact floating detail card instead of springing the full rail back open without consent.
 Clicking empty graph space now dismisses that collapsed floating detail card, so the graph behaves like a workspace again instead of trapping the last selection until the operator finds the tiny close button.
-Trackpad and multitouch pinch zoom are now captured by the Friends graph itself, with faster graph-native scaling and Safari gesture suppression so zooming the workspace no longer zooms the whole browser window.
-Panning the Friends graph no longer rebuilds every node, edge, and label object on each frame. The graph treats active movement as camera work instead of scene reconstruction.
+Trackpad and multitouch pinch zoom are now captured by the Friends graph itself. Mac Safari `GestureEvent` input, Chromium control-wheel input, and native iPhone touch input all map to the same locked camera while browser page zoom stays unchanged.
+Panning and pinching no longer request an interactive atlas or rebuild node, edge, region, or label resources. Settled billboard labels remain visible while the camera moves, and collision placement refreshes only after settle.
+The graph draw scheduler now uses its animation frame ID as the only pending state. React development effect cleanup clears that ID, which prevents the local preview from becoming stuck at one update every few seconds after its first canceled frame.
 Scriptorium also now gives the graph a darker node palette, stronger edges, and real label contrast, so the Friends view reads like an interface instead of a ghost story printed on oatmeal.
 The Friends graph viewport now owns its own soft-mask compensation instead of inheriting the primary sidebar offset, which restores the left-edge vignette so all four edges feather consistently like the map view.
-The identity graph now builds activity counts in one pass, uses cheaper bucketed overlap resolution in the worker, drops into an interaction-quality mode while you pan or pinch, and exposes internal timing counters so performance regressions can fail in desktop tests instead of sneaking into a merge.
+The identity graph now builds activity counts in one pass, uses cheaper bucketed overlap resolution in the worker, keeps motion transform-only, and exposes internal timing counters so performance regressions can fail in desktop tests instead of sneaking into a merge.
 The Friends graph now uses a graph atlas instead of the previous full-scene Pixi renderer. The worker builds capped viewport slices from activity summaries, the starfield renderer draws only the visible graph tier, provider labels stay visible at overview zoom, and diagnostics report source nodes separately from visible nodes so dense graph tests prove the cap instead of accidentally requiring the old expensive payload.
 The Friends graph now renders that atlas as a theme-aware 3D starfield. Prominent friends sit closer to the camera, panning has slight depth parallax, provider zones can switch between nebula clouds, constellation rings, or both in dev, and headless or no-WebGL environments use a canvas starfield fallback while preserving diagnostics.
 Graph linking and pinning now live in node context menus. Accounts link through a searchable person picker, and pinning writes the clicked node position without turning normal pan gestures into accidental edits.
@@ -369,8 +370,10 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.60 | Cache the full semantic galaxy model in the worker and retain every semantic star across viewport atlas updates | High | Done |
 | 8.61 | Add the locked perspective camera, world-plane projection, and depth-aware picking | High | Done |
 | 8.62 | Render semantic stars and settled relationship spokes through instanced procedural WebGL2 passes | High | Done |
-| 8.63 | Replace per-label Troika objects with a batched SDF or MSDF billboard layer and add the close-zoom avatar texture atlas | High | Planned |
+| 8.63 | Replace per-label Troika objects with one instanced glyph-atlas billboard layer | High | Done |
 | 8.64 | Route iPhone graph gestures through native non-passive touch events, with browser-generated multitouch and WebKit regression coverage | High | Done |
+| 8.65 | Route Mac Safari trackpad gestures through native gesture events while keeping motion transform-only and labels resident | High | Done |
+| 8.66 | Add the close-zoom avatar texture atlas for selected and high-priority identities | High | Planned |
 
 ---
 
@@ -428,7 +431,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Scriptorium graph colors stay legible instead of washing node fills and labels into the stage
 - [x] Graph model construction uses single-pass activity indexing instead of rescanning every captured item per node
 - [x] Worker layout uses local bucketed overlap resolution instead of naïve all-pairs nudging
-- [x] Active pan and zoom can temporarily lower graph label work, then restore full quality on settle
+- [x] Active pan and zoom keep the accepted billboard label set resident while deferring label collision refresh until settle
 - [x] Desktop tests assert graph timing and stress-fixture behavior through internal debug counters
 - [x] Followed RSS feeds render as outer graph channels in `All content`
 - [x] RSS is treated as a normal provider island, and linked RSS accounts orbit their person like other social channels
@@ -455,7 +458,8 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Galaxy compilation indexes accounts by person once instead of scanning the full account library for every identity
 - [x] Mobile pinch hands directly to one-finger pan when either touch lifts
 - [x] iPhone pan and pinch use native non-passive touch events instead of WebKit pointer capture, preserve the pinch midpoint, recover after touch cancellation, and leave browser zoom unchanged
-- [x] Settled billboard labels redraw after glyph generation, avoid screen-space collisions, and use active theme colors
+- [x] Billboard labels render through one instanced glyph-atlas draw, avoid screen-space collisions after settle, remain visible during motion, and use active theme colors
+- [x] Mac Safari trackpad pinch uses native gesture events, preserves its focal point, leaves browser page zoom unchanged, and does not synchronize the graph scene during movement
 - [x] Desktop browser tests cover mixed-tier graph load, context-menu link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
 - [ ] macOS native contact picker (CNContactStore)

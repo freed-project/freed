@@ -40,6 +40,71 @@ async function acceptLegalGateIfPresent(
   await expect(page.locator("main")).toBeVisible({ timeout: 5_000 });
 }
 
+async function openSeededFriendsGraph(page: Page, friendId: string, friendName: string): Promise<void> {
+  await page.addInitScript(() => {
+    (window as typeof window & { __FREED_GRAPH_DEBUG_ENABLED__?: boolean })
+      .__FREED_GRAPH_DEBUG_ENABLED__ = true;
+  });
+  await page.goto("/", { waitUntil: "load" });
+  await acceptLegalGateIfPresent(page);
+  await page.waitForFunction(() => {
+    const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as
+      | { getState?: () => { isInitialized?: boolean } }
+      | undefined;
+    return store?.getState?.().isInitialized === true;
+  });
+  await page.evaluate(async ({ id, name }) => {
+    const runtime = window as unknown as Record<string, unknown>;
+    const automerge = runtime.__FREED_AUTOMERGE__ as {
+      docAddFriend: (friend: unknown) => Promise<void>;
+    };
+    const store = runtime.__FREED_STORE__ as {
+      getState: () => {
+        setActiveView: (view: string) => void;
+      };
+    };
+    const now = Date.now();
+    await automerge.docAddFriend({
+      id,
+      name,
+      careLevel: 5,
+      sources: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    store.getState().setActiveView("friends");
+  }, { id: friendId, name: friendName });
+  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 10_000 });
+  const deadline = Date.now() + 15_000;
+  let previousSceneSyncCount = -1;
+  let stableSamples = 0;
+  while (Date.now() < deadline) {
+    const perf = await page.evaluate(() => (
+      window as typeof window & {
+        __FREED_GRAPH_PERF__?: {
+          qualityMode?: string;
+          sceneSyncCount?: number;
+          readyRendererLabelCount?: number;
+        };
+      }
+    ).__FREED_GRAPH_PERF__ ?? null);
+    const sceneSyncCount = perf?.sceneSyncCount ?? -1;
+    if (
+      perf?.qualityMode === "settled" &&
+      (perf.readyRendererLabelCount ?? 0) > 0 &&
+      sceneSyncCount === previousSceneSyncCount
+    ) {
+      stableSamples += 1;
+      if (stableSamples >= 2) return;
+    } else {
+      stableSamples = 0;
+    }
+    previousSceneSyncCount = sceneSyncCount;
+    await page.waitForTimeout(150);
+  }
+  throw new Error("Friends graph did not settle before gesture input");
+}
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 /**
@@ -223,43 +288,9 @@ test.describe("Safari viewport layout — iPhone 14 / WebKit", () => {
 
 test.describe("Friends graph touch gestures in WebKit", () => {
   test("native two-finger input zooms the graph instead of the page", async ({ page }) => {
-    await page.addInitScript(() => {
-      (window as typeof window & { __FREED_GRAPH_DEBUG_ENABLED__?: boolean })
-        .__FREED_GRAPH_DEBUG_ENABLED__ = true;
-    });
-    await page.goto("/", { waitUntil: "load" });
-    await acceptLegalGateIfPresent(page);
-    await page.waitForFunction(() => {
-      const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as
-        | { getState?: () => { isInitialized?: boolean } }
-        | undefined;
-      return store?.getState?.().isInitialized === true;
-    });
-    await page.evaluate(async () => {
-      const runtime = window as unknown as Record<string, unknown>;
-      const automerge = runtime.__FREED_AUTOMERGE__ as {
-        docAddFriend: (friend: unknown) => Promise<void>;
-      };
-      const store = runtime.__FREED_STORE__ as {
-        getState: () => {
-          friends: Record<string, unknown>;
-          setActiveView: (view: string) => void;
-        };
-      };
-      const now = Date.now();
-      await automerge.docAddFriend({
-        id: "friend-webkit-touch",
-        name: "WebKit Touch",
-        careLevel: 5,
-        sources: [],
-        createdAt: now,
-        updatedAt: now,
-      });
-      store.getState().setActiveView("friends");
-    });
+    await openSeededFriendsGraph(page, "friend-webkit-touch", "WebKit Touch");
 
     const viewport = page.getByTestId("friend-graph-viewport");
-    await expect(viewport).toBeVisible({ timeout: 10_000 });
     const readGraphScale = () => page.evaluate(() => (
       window as typeof window & {
         __FREED_GRAPH_PERF__?: { transformScale?: number };
@@ -328,6 +359,88 @@ test.describe("Friends graph touch gestures in WebKit", () => {
     expect(gestureResult.secondStartResult).toBe(false);
     expect(gestureResult.moveResult).toBe(false);
     await expect.poll(readGraphScale).toBeGreaterThan(beforeScale);
+    expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBe(1);
+  });
+
+  test("Safari trackpad gestures keep labels resident and move only the camera", async ({ page }) => {
+    await openSeededFriendsGraph(page, "friend-webkit-trackpad", "WebKit Trackpad");
+    const viewport = page.getByTestId("friend-graph-viewport");
+    const readGraphPerf = () => page.evaluate(() => (
+      window as typeof window & {
+        __FREED_GRAPH_PERF__?: {
+          transformScale?: number;
+          sceneSyncCount?: number;
+          rendererLabelCount?: number;
+          readyRendererLabelCount?: number;
+        };
+      }
+    ).__FREED_GRAPH_PERF__ ?? null);
+    await expect.poll(async () => (await readGraphPerf())?.readyRendererLabelCount ?? 0).toBeGreaterThan(0);
+    const before = await readGraphPerf();
+    expect(before).not.toBeNull();
+    const box = await viewport.boundingBox();
+    expect(box).not.toBeNull();
+
+    const result = await viewport.evaluate(async (element, gesture) => {
+      const target = element.querySelector('[data-testid="friend-graph-canvas-overlay"]') ?? element;
+      const dispatch = (type: "gesturestart" | "gesturechange" | "gestureend", scale: number) => {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperties(event, {
+          scale: { value: scale },
+          clientX: { value: gesture.centerX },
+          clientY: { value: gesture.centerY },
+        });
+        const allowed = target.dispatchEvent(event);
+        return { allowed, observedScale: (event as Event & { scale?: number }).scale };
+      };
+      const nextFrame = () => new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+
+      const startResult = dispatch("gesturestart", 1);
+      const changeResult = dispatch("gesturechange", 1.7);
+      await nextFrame();
+      await nextFrame();
+      const during = (window as typeof window & {
+        __FREED_GRAPH_PERF__?: {
+          transformScale?: number;
+          sceneSyncCount?: number;
+          rendererLabelCount?: number;
+          readyRendererLabelCount?: number;
+        };
+        __FREED_GRAPH_DEBUG__?: {
+          transform?: { scale?: number };
+          qualityMode?: string;
+        };
+        __FREED_GRAPH_DRAW_ERROR__?: string;
+      });
+      const duringPerf = during.__FREED_GRAPH_PERF__ ?? null;
+      const endResult = dispatch("gestureend", 1.7);
+      return {
+        startResult,
+        changeResult,
+        endResult,
+        during: duringPerf,
+        debugScale: during.__FREED_GRAPH_DEBUG__?.transform?.scale,
+        qualityMode: during.__FREED_GRAPH_DEBUG__?.qualityMode,
+        drawError: during.__FREED_GRAPH_DRAW_ERROR__,
+      };
+    }, {
+      centerX: box!.x + box!.width / 2,
+      centerY: box!.y + box!.height / 2,
+    });
+
+    expect(result.startResult.allowed).toBe(false);
+    expect(result.changeResult.allowed).toBe(false);
+    expect(result.endResult.allowed).toBe(false);
+    expect(result.changeResult.observedScale).toBe(1.7);
+    expect(
+      result.during?.transformScale ?? 0,
+      JSON.stringify(result),
+    ).toBeGreaterThan(before!.transformScale ?? 0);
+    expect(result.during?.sceneSyncCount).toBe(before!.sceneSyncCount);
+    expect(result.during?.rendererLabelCount ?? 0).toBeGreaterThan(0);
+    expect(result.during?.readyRendererLabelCount ?? 0).toBeGreaterThan(0);
     expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBe(1);
   });
 });

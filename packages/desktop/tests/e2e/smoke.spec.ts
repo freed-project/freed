@@ -495,6 +495,8 @@ async function readGraphDebug(page: Page) {
           visibleLabelCount: number;
           visibleNodeLabelCount: number;
           visibleProviderLabelCount: number;
+          rendererLabelCount: number;
+          readyRendererLabelCount: number;
           sourceNodeCount?: number;
           visibleNodeCount?: number;
           renderedPrimitiveCount?: number;
@@ -527,6 +529,8 @@ async function readGraphSummary(page: Page) {
           visibleLabelCount: number;
           visibleNodeLabelCount: number;
           visibleProviderLabelCount: number;
+          rendererLabelCount: number;
+          readyRendererLabelCount: number;
           qualityMode: "interactive" | "settled";
         };
       };
@@ -5303,7 +5307,7 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
     .toBeGreaterThan(40);
 });
 
-test("stress Friends graph degrades labels during motion and avoids expensive redraws on pan", async ({ app, page }) => {
+test("stress Friends graph keeps labels resident and avoids scene rebuilds during pan", async ({ app, page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
@@ -5371,15 +5375,23 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
 
     duringPan = await readGraphDebug(page);
     expect(duringPan).not.toBeNull();
-    expect(duringPan!.metrics.visibleLabelCount).toBeLessThanOrEqual(
-      initial!.metrics.visibleLabelCount,
-    );
+    expect(duringPan!.metrics.visibleLabelCount).toBe(initial!.metrics.visibleLabelCount);
+    expect(duringPan!.metrics.rendererLabelCount).toBe(initial!.metrics.rendererLabelCount);
+    expect(duringPan!.metrics.readyRendererLabelCount).toBeGreaterThan(0);
     await page.mouse.move(startX + 300, startY + 90, { steps: 4 });
     await page.waitForTimeout(250);
     const steadyPan = await readGraphDebug(page);
     expect(steadyPan).not.toBeNull();
     expect(steadyPan!.metrics.sceneSyncCount).toBe(duringPan!.metrics.sceneSyncCount);
     expect(steadyPan!.metrics.edgeRebuildCount).toBe(duringPan!.metrics.edgeRebuildCount);
+    expect(steadyPan!.metrics.rendererLabelCount).toBe(duringPan!.metrics.rendererLabelCount);
+    expect(steadyPan!.metrics.readyRendererLabelCount).toBeGreaterThan(0);
+    expect(steadyPan!.metrics.readyRendererLabelCount).toBeLessThanOrEqual(
+      steadyPan!.metrics.rendererLabelCount,
+    );
+    expect(steadyPan!.metrics.transformOnlySyncCount).toBeGreaterThan(
+      duringPan!.metrics.transformOnlySyncCount,
+    );
     expect(steadyPan!.metrics.sceneSyncMs).toBeLessThan(60);
   } finally {
     await page.mouse.up();

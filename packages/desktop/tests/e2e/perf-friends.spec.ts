@@ -20,8 +20,6 @@ const LONG_TASK_COUNT_BUDGET = 2;
 const CI_LONG_TASK_COUNT_BUDGET = 48;
 const LONG_TASK_WORST_BUDGET_MS = 140;
 const CI_LONG_TASK_WORST_BUDGET_MS = 700;
-const DENSE_INTERACTION_NODE_BUDGET = 300;
-
 async function readGraphDebug(page: Page) {
   return page.evaluate(() => {
     return (window as typeof window & {
@@ -42,6 +40,7 @@ async function readGraphDebug(page: Page) {
           sceneSyncMs: number;
           labelPassMs: number;
           sceneSyncCount: number;
+          edgeRebuildCount: number;
           avatarDisplayCount: number;
           visibleLabelCount: number;
           visibleNodeLabelCount: number;
@@ -52,6 +51,8 @@ async function readGraphDebug(page: Page) {
           denseInteractionNodeCount: number;
           denseInteractionCulled: boolean;
           denseInteractionRebuildCount: number;
+          rendererLabelCount: number;
+          readyRendererLabelCount: number;
         };
       };
     }).__FREED_GRAPH_DEBUG__ ?? null;
@@ -86,6 +87,12 @@ async function readGraphPerf(page: Page) {
         visibleProviderLabelCount?: number;
         denseInteractionNodeCount?: number;
         denseInteractionRebuildCount?: number;
+        sceneSyncCount?: number;
+        edgeRebuildCount?: number;
+        transformOnlySyncCount?: number;
+        rendererLabelCount?: number;
+        readyRendererLabelCount?: number;
+        transformScale?: number;
       };
     }).__FREED_GRAPH_PERF__ ?? null;
   });
@@ -330,8 +337,11 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
     await page.waitForTimeout(1_400);
   });
 
-  let denseInteractionNodeCount = 0;
-  let maxInteractiveProviderLabelCount = 0;
+  const beforeMotionPerf = await readGraphPerf(page);
+  expect(beforeMotionPerf).not.toBeNull();
+  let afterWheelPerf: Awaited<ReturnType<typeof readGraphPerf>> = null;
+  let beforePanPerf: Awaited<ReturnType<typeof readGraphPerf>> = null;
+  let duringPanPerf: Awaited<ReturnType<typeof readGraphPerf>> = null;
   const interaction = await collectLongTasksDuring(page, () =>
     measureFps(page, async () => {
       await page.evaluate(() => performance.mark("friends-wheel-start"));
@@ -354,22 +364,33 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
       await expect
         .poll(async () => {
           const perf = await readGraphPerf(page);
-          const nodeCount = perf?.denseInteractionNodeCount ?? 0;
-          denseInteractionNodeCount = Math.max(denseInteractionNodeCount, nodeCount);
-          if (perf?.qualityMode === "interactive") {
-            maxInteractiveProviderLabelCount = Math.max(
-              maxInteractiveProviderLabelCount,
-              perf.visibleProviderLabelCount ?? 0,
-            );
-          }
-          return nodeCount;
+          return (perf?.transformOnlySyncCount ?? 0) -
+            (beforeMotionPerf?.transformOnlySyncCount ?? 0);
         }, { timeout: 5_000 })
         .toBeGreaterThan(0);
+      afterWheelPerf = await readGraphPerf(page);
+      expect(afterWheelPerf).not.toBeNull();
+      expect(afterWheelPerf!.qualityMode).toBe("interactive");
+      expect(afterWheelPerf!.sceneSyncCount).toBe(beforeMotionPerf!.sceneSyncCount);
+      expect(afterWheelPerf!.edgeRebuildCount).toBe(beforeMotionPerf!.edgeRebuildCount);
+      expect(afterWheelPerf!.rendererLabelCount).toBe(beforeMotionPerf!.rendererLabelCount);
+      expect(afterWheelPerf!.readyRendererLabelCount ?? 0).toBeGreaterThan(0);
 
       await page.evaluate(() => performance.mark("friends-drag-start"));
       await page.mouse.move(box.x + box.width * 0.52, box.y + box.height * 0.46);
       await page.mouse.down();
+      await page.evaluate(() => new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }));
+      beforePanPerf = await readGraphPerf(page);
+      expect(beforePanPerf).not.toBeNull();
       await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.58, { steps: 24 });
+      duringPanPerf = await readGraphPerf(page);
+      expect(duringPanPerf).not.toBeNull();
+      expect(duringPanPerf!.sceneSyncCount).toBe(beforePanPerf!.sceneSyncCount);
+      expect(duringPanPerf!.edgeRebuildCount).toBe(beforePanPerf!.edgeRebuildCount);
+      expect(duringPanPerf!.rendererLabelCount).toBe(beforePanPerf!.rendererLabelCount);
+      expect(duringPanPerf!.readyRendererLabelCount ?? 0).toBeGreaterThan(0);
       await page.mouse.up();
       await page.evaluate(() => performance.mark("friends-drag-end"));
       await page.waitForTimeout(180);
@@ -412,15 +433,16 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   console.log(`[PERF] Friends interaction marks: ${JSON.stringify(interaction.marks)}`);
   console.log(`[PERF] Friends interaction long task entries: ${JSON.stringify(interaction.tasks)}`);
   console.log(`[PERF] Friends interaction scene sync: ${afterInteraction!.metrics.sceneSyncMs.toFixed(1)} ms`);
-  console.log(`[PERF] Friends dense interaction nodes: ${denseInteractionNodeCount.toLocaleString()}`);
+  console.log(`[PERF] Friends transform-only frames: ${(duringPanPerf?.transformOnlySyncCount ?? 0).toLocaleString()}`);
+  console.log(`[PERF] Friends resident labels during motion: ${(duringPanPerf?.rendererLabelCount ?? 0).toLocaleString()}`);
   console.log(`[PERF] Friends dense interaction rebuilds: ${afterInteraction!.metrics.denseInteractionRebuildCount.toLocaleString()}`);
   console.log(`[PERF] Friends accidental pinned nodes after pan: ${pinnedNodeCount.toLocaleString()}`);
 
   expect(afterInteraction!.transform.scale).toBeGreaterThan(initialDebug!.transform.scale);
   expect(interaction.result.sampleCount).toBeGreaterThan(0);
-  expect(denseInteractionNodeCount).toBeGreaterThan(0);
-  expect(denseInteractionNodeCount).toBeLessThanOrEqual(DENSE_INTERACTION_NODE_BUDGET);
-  expect(maxInteractiveProviderLabelCount).toBe(0);
+  expect(duringPanPerf?.transformOnlySyncCount ?? 0).toBeGreaterThan(
+    beforeMotionPerf?.transformOnlySyncCount ?? 0,
+  );
   expect(afterInteraction!.metrics.denseInteractionRebuildCount).toBeLessThanOrEqual(16);
   expect(pinnedNodeCount).toBe(0);
   expect(interaction.result.p95Ms).toBeLessThanOrEqual(p95Budget);
