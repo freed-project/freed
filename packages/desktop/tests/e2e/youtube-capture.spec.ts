@@ -70,27 +70,128 @@ test("authenticated YouTube login captures followed channels and recent videos",
     return hideIndex >= 0 && captureIndex > hideIndex;
   }).toBe(true);
 
+  let captureId = "";
+  await expect.poll(async () => {
+    const captureCall = (await ipc.invocations())
+      .findLast((call) => call.cmd === "yt_capture");
+    captureId = (captureCall?.args as { captureId?: string } | undefined)?.captureId ?? "";
+    return captureId.length;
+  }).toBeGreaterThan(0);
+
   await emitTauriEvent(page, "yt-capture-data", {
+    captureId,
+    stage: "channels",
     channels: [{ channelId, title: "Learning Channel" }],
+    videos: [],
+    channelTotal: 1,
+    videoTotal: 0,
+    unresolvedCount: 0,
+    scrollPasses: 1,
+    stopReason: "progress",
+    done: false,
+  });
+  await emitTauriEvent(page, "yt-capture-data", {
+    captureId,
+    stage: "channels",
+    channels: [],
+    videos: [],
+    rosterComplete: true,
+    complete: false,
+    channelTotal: 1,
+    videoTotal: 0,
+    unresolvedCount: 0,
+    scrollPasses: 2,
+    stopReason: "end-stable",
+    done: true,
+  });
+  await emitTauriEvent(page, "yt-capture-data", {
+    captureId,
+    stage: "subscriptions",
+    channels: [],
     videos: [{
       videoId: "dQw4w9WgXcQ",
       title: "Focused Study",
       channelId,
       channelTitle: "Learning Channel",
     }],
-    rosterComplete: true,
+    rosterComplete: false,
+    complete: false,
+    channelTotal: 1,
+    videoTotal: 1,
+    unresolvedCount: 0,
+    scrollPasses: 1,
+    stopReason: "progress",
+    done: false,
+  });
+  await emitTauriEvent(page, "yt-capture-data", {
+    captureId,
+    stage: "subscriptions",
+    channels: [],
+    videos: [],
+    rosterComplete: false,
     complete: true,
+    channelTotal: 1,
+    videoTotal: 1,
     unresolvedCount: 0,
     scrollPasses: 2,
-    stopReason: "stable",
+    stopReason: "end-stable",
     done: true,
   });
-  await page.evaluate(() => {
+  await page.evaluate(({ expectedCaptureId, expectedChannelId }) => {
     const globals = window as unknown as Record<string, unknown>;
     const resolve = globals.__YOUTUBE_CAPTURE_RESOLVE__ as ((value: unknown) => void) | undefined;
-    resolve?.(null);
+    const channel = { channelId: expectedChannelId, title: "Learning Channel" };
+    const video = {
+      videoId: "dQw4w9WgXcQ",
+      title: "Focused Study",
+      channelId: expectedChannelId,
+      channelTitle: "Learning Channel",
+    };
+    resolve?.({
+      stages: [{
+        captureId: expectedCaptureId,
+        stage: "channels",
+        channels: [channel],
+        videos: [],
+        rosterComplete: true,
+        complete: false,
+        channelTotal: 1,
+        videoTotal: 0,
+        candidateCount: 1,
+        unresolvedCount: 0,
+        scrollPasses: 2,
+        stopReason: "end-stable",
+        pageEvidence: true,
+        explicitEmpty: false,
+        unsupportedCandidateCount: 0,
+        workBudgetExceeded: false,
+        deadlineExceeded: false,
+        pendingContinuation: false,
+        done: true,
+      }, {
+        captureId: expectedCaptureId,
+        stage: "subscriptions",
+        channels: [channel],
+        videos: [video],
+        rosterComplete: false,
+        complete: true,
+        channelTotal: 1,
+        videoTotal: 1,
+        candidateCount: 1,
+        unresolvedCount: 0,
+        scrollPasses: 2,
+        stopReason: "end-stable",
+        pageEvidence: true,
+        explicitEmpty: false,
+        unsupportedCandidateCount: 0,
+        workBudgetExceeded: false,
+        deadlineExceeded: false,
+        pendingContinuation: false,
+        done: true,
+      }],
+    });
     delete globals.__YOUTUBE_CAPTURE_RESOLVE__;
-  });
+  }, { expectedCaptureId: captureId, expectedChannelId: channelId });
 
   await expect(page.getByText("Connected. Subscription sync finished.")).toBeVisible({
     timeout: 10_000,
@@ -123,7 +224,7 @@ test("YouTube login still syncs when the first hide request fails", async ({
   await ipc.setHandler("yt_hide_login", () => {
     throw new Error("Transient hide failure");
   });
-  await ipc.setHandler("yt_capture", () => {
+  await ipc.setHandler("yt_capture", (args) => {
     (window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
     const listeners = (
       window as unknown as Record<
@@ -131,18 +232,55 @@ test("YouTube login still syncs when the first hide request fails", async ({
         Record<string, Array<(event: { payload: unknown }) => void>>
       >
     ).__TAURI_EVENT_LISTENERS__ ?? {};
-    const payload = {
+    const captureId = (args as { captureId?: string } | undefined)?.captureId;
+    if (!captureId) throw new Error("Missing YouTube capture ID");
+    const channelsPayload = {
+      captureId,
+      stage: "channels",
       channels: [],
       videos: [],
       rosterComplete: true,
-      complete: true,
+      complete: false,
+      channelTotal: 0,
+      videoTotal: 0,
+      candidateCount: 0,
       unresolvedCount: 0,
       scrollPasses: 1,
-      stopReason: "stable",
+      stopReason: "end-stable",
+      pageEvidence: true,
+      explicitEmpty: true,
+      unsupportedCandidateCount: 0,
+      workBudgetExceeded: false,
+      deadlineExceeded: false,
+      pendingContinuation: false,
       done: true,
     };
-    for (const listener of listeners["yt-capture-data"] ?? []) listener({ payload });
-    return null;
+    const subscriptionsPayload = {
+      captureId,
+      stage: "subscriptions",
+      channels: [],
+      videos: [],
+      rosterComplete: false,
+      complete: true,
+      channelTotal: 0,
+      videoTotal: 0,
+      candidateCount: 0,
+      unresolvedCount: 0,
+      scrollPasses: 1,
+      stopReason: "end-stable",
+      pageEvidence: true,
+      explicitEmpty: true,
+      unsupportedCandidateCount: 0,
+      workBudgetExceeded: false,
+      deadlineExceeded: false,
+      pendingContinuation: false,
+      done: true,
+    };
+    for (const listener of listeners["yt-capture-data"] ?? []) {
+      listener({ payload: channelsPayload });
+      listener({ payload: subscriptionsPayload });
+    }
+    return { stages: [channelsPayload, subscriptionsPayload] };
   });
 
   await openYouTubeSettings(page);
