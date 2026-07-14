@@ -144,6 +144,23 @@ test("stability artifacts reject empty evidence and mistyped kind payloads", () 
 });
 
 test("provider review artifacts require named providers and human-readable risk fields", () => {
+  const supportedArtifact = controllerArtifact({
+    kind: "provider-risk-review",
+    status: "behavior_approved",
+    payload: {
+      providers: ["medium", "substack"],
+      observableBehavior:
+        "Factory reset cancels authenticated essay work before it contacts the provider.",
+      fingerprintingRisk:
+        "The provider can observe a request ending when reset overlaps capture.",
+      lowestProfileAlternative:
+        "Keep authenticated essay work stopped for the duration of reset.",
+      allowedBehavior:
+        "Only cancel Medium and Substack work that overlaps factory reset.",
+    },
+  });
+  assert.doesNotThrow(() => validateStabilityArtifact(supportedArtifact));
+
   const artifact = controllerArtifact({
     kind: "provider-risk-review",
     status: "behavior_approved",
