@@ -578,9 +578,8 @@ therefore cannot authorize another governance operation.
 The repository does not install the broker, root config, Keychain key, or owner
 capability. Missing host trust keeps broker-backed owner acquisition closed, but
 does not block normal publication. Provider work can use the signing-free
-`owner-confirmation` path described below. That path does not claim
-machine-verifiable owner identity. It relies on explicit confirmation in the
-current task and independent exact-diff CODEOWNER review.
+GitHub reaction path described below. GitHub records the CODEOWNER account that
+made the human Gate 2 decision.
 
 ## Authority model
 
@@ -592,16 +591,15 @@ Checked-in automation authority is one of:
 - `merge-safe`: execute and merge only work that existing governance marks safe
 
 Provider authority is separate. `forbidden` prohibits provider activity.
-`approval-required` may prepare an approval packet, but it cannot implement or
-publish provider-visible behavior without the owner's scoped Gate 1 decision
-and Gate 2 exact-diff confirmation. A task may move to provider authority
+`approval-required` may prepare a draft, but it cannot implement or make
+provider-visible work ready without the owner's scoped Gate 1 decision and the
+Gate 2 CODEOWNER reaction. A task may move to provider authority
 `approved` only with an approval reference. Only the `freed-owner` lease may
 change task authority, and the optional signed owner capability is the stronger
-machine-verifiable route for that mutation. The signing-free
-`owner-confirmation` route does not mutate task authority or pretend that the
-approval file authenticates the owner. It records the owner's explicit
-confirmation of the exact packet digest in the current task. Task authority
-never substitutes for the publish gate or CODEOWNER review. Creating a task
+machine-verifiable route for that mutation. The direct human route is the
+CODEOWNER's GitHub thumbs-up on the generated provider review comment. It does
+not mutate task authority. Task authority never substitutes for the publish
+gate or CODEOWNER review. Creating a task
 directly with provider authority `approved` also requires an approval reference.
 The current manifest retains that reference, and every task event carries the
 same approval snapshot.
@@ -794,36 +792,32 @@ lane.
 Provider approval JSON belongs outside the repository because the approved
 provider branch must remain clean. The record cannot be future-dated, may last
 at most seven days, must still be unexpired, and must name the exact
-provider-visible path set. Its `diffSha` must equal the hash of the full
-committed binary diff from `origin/<base>...HEAD`. It records `approvedBy`, one
-provider scope for every approved path, and either an `owner-confirmation` or
-`control-task` approval source. Provider names inferred from provider-specific
-paths must match that scope. Any branch edit invalidates the record.
+provider-visible path set. Its `diffSha` must equal the provider-only binary
+diff hash. It records `approvedBy`, one provider scope for every approved path,
+and a `control-task` approval source. Provider names inferred from
+provider-specific paths must match that scope. Any provider-visible edit
+invalidates the record.
 
 Gate 1 happens before code. The owner must explicitly approve the named
 provider, observable behavior, fingerprinting risk, and lowest-profile
 alternative. General permission to proceed with a plan or program is not this
 approval.
 
-Gate 2 happens after the exact diff is committed. Calculate the packet's
-canonical SHA-256 digest and show that exact digest to the owner in the current
-task. For the signing-free route, set `approvalSource.kind` to
-`owner-confirmation`, use a stable task or thread reference, and copy the exact
-digest into `authorizationDigest` only after the owner explicitly confirms it.
-The helper verifies that the stored digest still matches the packet. This is a
-cooperative record, not cryptographic owner authentication. A file that merely
-claims an owner name or copies a digest is not sufficient without the actual
-confirmation in the current task.
+Gate 2 happens after the provider-visible diff is committed and published as a
+draft. The helper posts a GitHub review comment containing the providers,
+provider-visible paths, behavior, risk, alternative, and provider-only diff
+fingerprint. The direct human authorization is a CODEOWNER thumbs-up reaction
+on that comment. The helper verifies the actor and fingerprint before marking
+the pull request ready. Unrelated branch edits preserve the reaction.
 
-For stronger machine-verifiable authorization, set `approvalSource.kind` to
+For machine-verifiable unattended authorization, set `approvalSource.kind` to
 `control-task`. Use the optional signed broker to authorize the same packet
 digest on the referenced task. The publish helper verifies the task manifest,
 approved provider authority, and matching owner capability event. Broker
-provisioning is optional and does not block the direct owner-confirmation path.
+provisioning is optional and does not block the GitHub reaction path.
 
-Neither source replaces external review. The publish helper always keeps the
-provider-visible PR in draft. After exact-head CODEOWNER review, the owner
-performs a separate authorized ready transition through GitHub.
+The signed source does not replace external review policy. The direct path uses
+the CODEOWNER reaction itself as the structured GitHub authorization event.
 
 See [W1-06](stability-tasks/W1-06-provider-visible-single-source.md) and the
 fingerprinting stop sign in [AGENTS.md](../AGENTS.md) for the full publish
