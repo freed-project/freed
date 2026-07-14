@@ -1,7 +1,11 @@
 import JSZip from "jszip";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
-import { recordRuntimeError, resetBugReportState } from "@freed/ui/lib/bug-report";
+import {
+  buildPrivateVulnerabilityReportPayload,
+  recordRuntimeError,
+  resetBugReportState,
+} from "@freed/ui/lib/bug-report";
 import { pwaBugReporting } from "./bug-report";
 import { useAppStore } from "./store";
 
@@ -87,6 +91,37 @@ describe("pwa bug reporting", () => {
     const zip = await JSZip.loadAsync(bundle.blob);
     expect(bundle.manifest.includedArtifacts).not.toContain("raw-stack");
     expect(Object.keys(zip.files).some((path) => path.startsWith("screenshots/"))).toBe(false);
+  });
+
+  it("pre-populates redacted stack traces for private vulnerability reports", async () => {
+    const bundle = await pwaBugReporting.generateBundle({
+      privacyTier: "private",
+      draft: {
+        issueType: "crash",
+        title: "Sensitive crash",
+        description: "It crashed",
+        reproSteps: "Open the reader",
+        expectedBehavior: "No crash",
+        actualBehavior: "Crash",
+        selectedArtifacts: ["app-metadata", "raw-stack"],
+      },
+    });
+    const payload = buildPrivateVulnerabilityReportPayload({
+      draft: {
+        issueType: "crash",
+        title: "Sensitive crash",
+        description: "It crashed",
+        reproSteps: "Open the reader",
+        expectedBehavior: "No crash",
+        actualBehavior: "Crash",
+        selectedArtifacts: ["app-metadata", "raw-stack"],
+      },
+      bundle,
+    });
+
+    expect(payload.stackTrace).toContain("PWA crash with token=[REDACTED]");
+    expect(payload.stackTrace).not.toContain("super-secret");
+    expect(payload.appMetadata).toMatchObject({ platform: expect.any(String) });
   });
 
   it("omits unchecked public-safe artifacts from exported zips", async () => {

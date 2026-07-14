@@ -485,6 +485,9 @@ async function readGraphDebug(page: Page) {
           visibleLabelCount: number;
           visibleNodeLabelCount: number;
           visibleProviderLabelCount: number;
+          rendererLabelCount: number;
+          readyRendererLabelCount: number;
+          rendererEdgeCount: number;
           sourceNodeCount?: number;
           visibleNodeCount?: number;
           renderedPrimitiveCount?: number;
@@ -517,6 +520,9 @@ async function readGraphSummary(page: Page) {
           visibleLabelCount: number;
           visibleNodeLabelCount: number;
           visibleProviderLabelCount: number;
+          rendererLabelCount: number;
+          readyRendererLabelCount: number;
+          rendererEdgeCount: number;
           qualityMode: "interactive" | "settled";
         };
       };
@@ -4414,12 +4420,14 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
       people: Number((element as HTMLElement).dataset.graphPersonCount ?? "0"),
       channels: Number((element as HTMLElement).dataset.graphChannelCount ?? "0"),
       links: Number((element as HTMLElement).dataset.graphLinkCount ?? "0"),
+      resident: Number((element as HTMLElement).dataset.graphResidentNodeCount ?? "0"),
     }));
   }).toEqual({
     nodes: 8,
     people: 3,
     channels: 5,
     links: 3,
+    resident: 10,
   });
 });
 
@@ -5266,46 +5274,53 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
   const panDelta = { x: 48, y: 32 };
 
   await viewport.evaluate(async (element, gesture) => {
-    const target = element as HTMLElement & {
-      setPointerCapture: (pointerId: number) => void;
-      releasePointerCapture: (pointerId: number) => void;
-    };
-    target.setPointerCapture = () => undefined;
-    target.releasePointerCapture = () => undefined;
-
-    const dispatchTouchPointer = (
-      type: "pointerdown" | "pointermove" | "pointerup",
-      pointerId: number,
-      x: number,
-      y: number,
-      isPrimary: boolean,
+    const target = element as HTMLElement;
+    const makeTouch = (identifier: number, x: number, y: number) => new Touch({
+      identifier,
+      target,
+      clientX: x,
+      clientY: y,
+      screenX: x,
+      screenY: y,
+      pageX: x,
+      pageY: y,
+      radiusX: 8,
+      radiusY: 8,
+      force: 1,
+    });
+    const dispatchTouch = (
+      type: "touchstart" | "touchmove",
+      touches: Touch[],
+      changedTouches: Touch[],
     ) => {
-      target.dispatchEvent(new PointerEvent(type, {
+      target.dispatchEvent(new TouchEvent(type, {
         bubbles: true,
         cancelable: true,
-        pointerId,
-        pointerType: "touch",
-        isPrimary,
-        clientX: x,
-        clientY: y,
-        width: 12,
-        height: 12,
-        buttons: type === "pointerup" ? 0 : 1,
+        touches,
+        targetTouches: touches,
+        changedTouches,
       }));
     };
     const nextFrame = () => new Promise<void>((resolve) => {
       requestAnimationFrame(() => resolve());
     });
 
-    dispatchTouchPointer("pointerdown", 11, gesture.centerX - 80, gesture.centerY, true);
-    dispatchTouchPointer("pointerdown", 12, gesture.centerX + 80, gesture.centerY, false);
+    const firstStart = makeTouch(11, gesture.centerX - 80, gesture.centerY);
+    dispatchTouch("touchstart", [firstStart], [firstStart]);
+    const secondStart = makeTouch(12, gesture.centerX + 80, gesture.centerY);
+    dispatchTouch("touchstart", [firstStart, secondStart], [secondStart]);
     await nextFrame();
-    dispatchTouchPointer("pointermove", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
-    await nextFrame();
-    dispatchTouchPointer("pointermove", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
-    await nextFrame();
-    dispatchTouchPointer("pointermove", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
-    dispatchTouchPointer("pointermove", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
+    const firstMoved = makeTouch(
+      11,
+      gesture.centerX - 140 + gesture.panDelta.x,
+      gesture.centerY - 18 + gesture.panDelta.y,
+    );
+    const secondMoved = makeTouch(
+      12,
+      gesture.centerX + 140 + gesture.panDelta.x,
+      gesture.centerY + 18 + gesture.panDelta.y,
+    );
+    dispatchTouch("touchmove", [firstMoved, secondMoved], [firstMoved, secondMoved]);
     await nextFrame();
   }, { centerX, centerY, panDelta });
 
@@ -5333,41 +5348,76 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
     }, { timeout: 8_000 })
     .toBeLessThanOrEqual(midpointTolerancePx);
 
-  await viewport.evaluate((element, gesture) => {
-    const target = element as HTMLElement & {
-      setPointerCapture: (pointerId: number) => void;
-      releasePointerCapture: (pointerId: number) => void;
-    };
-    target.setPointerCapture = () => undefined;
-    target.releasePointerCapture = () => undefined;
+  const afterPinch = await readGraphDebug(page);
+  expect(afterPinch).not.toBeNull();
 
-    const dispatchTouchPointer = (
-      type: "pointerup",
-      pointerId: number,
-      x: number,
-      y: number,
-      isPrimary: boolean,
+  await viewport.evaluate(async (element, gesture) => {
+    const target = element as HTMLElement;
+    const makeTouch = (identifier: number, x: number, y: number) => new Touch({
+      identifier,
+      target,
+      clientX: x,
+      clientY: y,
+      screenX: x,
+      screenY: y,
+      pageX: x,
+      pageY: y,
+      radiusX: 8,
+      radiusY: 8,
+      force: 1,
+    });
+    const dispatchTouch = (
+      type: "touchmove" | "touchend",
+      touches: Touch[],
+      changedTouches: Touch[],
     ) => {
-      target.dispatchEvent(new PointerEvent(type, {
+      target.dispatchEvent(new TouchEvent(type, {
         bubbles: true,
         cancelable: true,
-        pointerId,
-        pointerType: "touch",
-        isPrimary,
-        clientX: x,
-        clientY: y,
-        width: 12,
-        height: 12,
-        buttons: 0,
+        touches,
+        targetTouches: touches,
+        changedTouches,
       }));
     };
+    const nextFrame = () => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
 
-    dispatchTouchPointer("pointerup", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
-    dispatchTouchPointer("pointerup", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
+    const firstEnd = makeTouch(
+      11,
+      gesture.centerX - 140 + gesture.panDelta.x,
+      gesture.centerY - 18 + gesture.panDelta.y,
+    );
+    const secondCurrent = makeTouch(
+      12,
+      gesture.centerX + 140 + gesture.panDelta.x,
+      gesture.centerY + 18 + gesture.panDelta.y,
+    );
+    dispatchTouch("touchend", [secondCurrent], [firstEnd]);
+    await nextFrame();
+    const secondMoved = makeTouch(
+      12,
+      gesture.centerX + 204 + gesture.panDelta.x,
+      gesture.centerY + 42 + gesture.panDelta.y,
+    );
+    dispatchTouch("touchmove", [secondMoved], [secondMoved]);
+    await nextFrame();
+    dispatchTouch("touchend", [], [secondMoved]);
   }, { centerX, centerY, panDelta });
+
+  await expect
+    .poll(async () => {
+      const afterSingleFingerPan = await readGraphDebug(page);
+      if (!afterSingleFingerPan) return 0;
+      return Math.hypot(
+        afterSingleFingerPan.transform.x - afterPinch!.transform.x,
+        afterSingleFingerPan.transform.y - afterPinch!.transform.y,
+      );
+    }, { timeout: 8_000 })
+    .toBeGreaterThan(40);
 });
 
-test("stress Friends graph degrades labels during motion and avoids expensive redraws on pan", async ({ app, page }) => {
+test("stress Friends graph keeps labels resident and avoids scene rebuilds during pan", async ({ app, page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
@@ -5379,7 +5429,12 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
   await expect
     .poll(async () => {
       const debug = await readGraphSummary(page);
-      if (!debug || debug.qualityMode !== "settled" || debug.metrics.visibleLabelCount <= 0) {
+      if (
+        !debug ||
+        debug.qualityMode !== "settled" ||
+        debug.metrics.visibleLabelCount <= 0 ||
+        !debug.metrics.capped
+      ) {
         return 0;
       }
       return debug.metrics.sourceNodeCount ?? debug.nodeCount;
@@ -5430,15 +5485,23 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
 
     duringPan = await readGraphDebug(page);
     expect(duringPan).not.toBeNull();
-    expect(duringPan!.metrics.visibleLabelCount).toBeLessThanOrEqual(
-      initial!.metrics.visibleLabelCount,
-    );
+    expect(duringPan!.metrics.visibleLabelCount).toBe(initial!.metrics.visibleLabelCount);
+    expect(duringPan!.metrics.rendererLabelCount).toBe(initial!.metrics.rendererLabelCount);
+    expect(duringPan!.metrics.readyRendererLabelCount).toBeGreaterThan(0);
     await page.mouse.move(startX + 300, startY + 90, { steps: 4 });
     await page.waitForTimeout(250);
     const steadyPan = await readGraphDebug(page);
     expect(steadyPan).not.toBeNull();
     expect(steadyPan!.metrics.sceneSyncCount).toBe(duringPan!.metrics.sceneSyncCount);
     expect(steadyPan!.metrics.edgeRebuildCount).toBe(duringPan!.metrics.edgeRebuildCount);
+    expect(steadyPan!.metrics.rendererLabelCount).toBe(duringPan!.metrics.rendererLabelCount);
+    expect(steadyPan!.metrics.readyRendererLabelCount).toBeGreaterThan(0);
+    expect(steadyPan!.metrics.readyRendererLabelCount).toBeLessThanOrEqual(
+      steadyPan!.metrics.rendererLabelCount,
+    );
+    expect(steadyPan!.metrics.transformOnlySyncCount).toBeGreaterThan(
+      duringPan!.metrics.transformOnlySyncCount,
+    );
     expect(steadyPan!.metrics.sceneSyncMs).toBeLessThan(60);
   } finally {
     await page.mouse.up();
@@ -5588,6 +5651,19 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
   await expect.poll(async () => {
     return (await readGraphDebug(page))?.metrics.visibleLabelCount ?? 0;
   }, { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect.poll(async () => {
+    return (await readGraphDebug(page))?.metrics.rendererEdgeCount ?? -1;
+  }).toBe(0);
+
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { setSelectedFriend: (id: string) => void };
+    };
+    store.getState().setSelectedFriend("friend-ada");
+  });
+  await expect.poll(async () => {
+    return (await readGraphDebug(page))?.metrics.rendererEdgeCount ?? 0;
+  }).toBe(6);
 });
 
 // ---------------------------------------------------------------------------

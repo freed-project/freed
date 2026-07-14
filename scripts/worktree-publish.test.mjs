@@ -222,6 +222,29 @@ fs.appendFileSync(logFile, JSON.stringify({
 }) + "\\n");
 
 if (args[0] === "api") {
+  const endpoint = args[1];
+  const commentListMatch = endpoint.match(/^repos\\/freed-project\\/freed\\/issues\\/(\\d+)\\/comments$/);
+  const reactionListMatch = endpoint.match(/^repos\\/freed-project\\/freed\\/issues\\/comments\\/(\\d+)\\/reactions$/);
+  if (commentListMatch) {
+    if (args.includes("--method") && args[args.indexOf("--method") + 1] === "POST") {
+      const bodyField = args[args.indexOf("--field") + 1] || "body=";
+      const comment = {
+        id: state.nextCommentId || 7001,
+        body: bodyField.slice("body=".length),
+      };
+      state.nextCommentId = comment.id + 1;
+      state.comments = [...(state.comments || []), comment];
+      fs.writeFileSync(stateFile, JSON.stringify(state));
+      process.stdout.write(String(comment.id));
+      process.exit(0);
+    }
+    process.stdout.write(JSON.stringify(state.comments || []));
+    process.exit(0);
+  }
+  if (reactionListMatch) {
+    process.stdout.write(JSON.stringify((state.reactions || {})[reactionListMatch[1]] || []));
+    process.exit(0);
+  }
   const base = args[1].split("/").at(-1);
   if (state.canonicalRefOverrides && state.canonicalRefOverrides[base]) {
     process.stdout.write(state.canonicalRefOverrides[base]);
@@ -593,6 +616,11 @@ test("worktree-publish refreshes origin/dev before direct main validation", asyn
   await fs.copyFile(
     path.join(repoRoot, "scripts/release-promotion-shared.mjs"),
     path.join(candidateScripts, "release-promotion-shared.mjs"),
+  );
+  await fs.mkdir(path.join(candidateScripts, "lib"), { recursive: true });
+  await fs.copyFile(
+    path.join(repoRoot, "scripts/lib/cargo-lock-release.mjs"),
+    path.join(candidateScripts, "lib/cargo-lock-release.mjs"),
   );
   assert.equal(
     run("git", ["add", "scripts"], { cwd: fixture.worktree }).status,
@@ -1654,7 +1682,7 @@ test("worktree-publish permits cooperative direct publication from a nightly env
   );
 });
 
-test("worktree-publish rejects a provider file injected after initial inspection", async (t) => {
+test("worktree-publish publishes an injected provider file only as a reviewed draft", async (t) => {
   const fixture = await createPublishFixture(t);
   await fs.writeFile(
     path.join(fixture.worktree, "README.md"),
@@ -1673,16 +1701,14 @@ test("worktree-publish rejects a provider file injected after initial inspection
     { cwd: fixture.worktree, env: fixture.env },
   );
 
-  assert.notEqual(result.status, 0);
-  assert.match(
-    result.stderr,
-    /provider-visible paths changed after the publish gate/,
-  );
-  const ghCalls = await readGhLog(fixture.ghLogFile);
-  assert.equal(ghCalls.length, 0);
+  assertSuccess(result);
+  const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
+  assert.equal(state.comments.length, 1);
+  assert.match(state.comments[0].body, /media-vault\.ts/);
+  assert.match(state.comments[0].body, /React with a GitHub thumbs-up/);
 });
 
-test("worktree-publish refuses a committed provider-visible diff without approval", async (t) => {
+test("worktree-publish allows a committed provider-visible draft without Gate 2", async (t) => {
   const fixture = await createPublishFixture(t);
 
   const extractorPath = path.join(
@@ -1717,20 +1743,22 @@ test("worktree-publish refuses a committed provider-visible diff without approva
     },
   );
 
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /provider-visible paths/);
-  assert.match(
-    result.stderr,
-    /packages\/desktop\/src-tauri\/src\/fb-extract\.js/,
-  );
-  assert.match(result.stderr, /--provider-risk-approval-file/);
-
+  assertSuccess(result);
   const ghCalls = await readGhLog(fixture.ghLogFile);
-  assert.equal(ghCalls.length, 0);
+  const createCall = ghCalls.find((call) => call.args[1] === "create");
+  assert.ok(createCall?.args.includes("--draft"));
+  const body = createCall.args[createCall.args.indexOf("--body") + 1];
+  assert.match(body, /## Provider Review/);
+  assert.match(body, /packages\/desktop\/src-tauri\/src\/fb-extract\.js/);
+  const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
+  assert.equal(state.comments.length, 1);
 });
 
 test("worktree-publish treats a provider file renamed outside the provider tree as visible", async (t) => {
-  const fixture = await createPublishFixture(t, { seedProviderFile: true });
+  const fixture = await createPublishFixture(t, {
+    seedProviderFile: true,
+    preacquirePublisherLease: false,
+  });
 
   await fs.mkdir(path.join(fixture.worktree, "archive"), { recursive: true });
   assertSuccess(
@@ -1753,18 +1781,58 @@ test("worktree-publish treats a provider file renamed outside the provider tree 
   const result = run(
     "bash",
     [publishScript, "--title", "refactor: move provider extractor"],
-    { cwd: fixture.worktree, env: fixture.env },
+    { cwd: fixture.worktree, env: directPublishEnv(fixture) },
   );
 
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /provider-visible paths/);
+  assertSuccess(result);
+  const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
   assert.match(
-    result.stderr,
+    state.comments[0].body,
     /packages\/desktop\/src-tauri\/src\/fb-extract\.js/,
   );
+  assert.match(state.comments[0].body, /archive\/fb-extract\.js/);
+
+  state.prList = [
+    {
+      number: 999,
+      url: "https://github.com/freed-project/freed/pull/999",
+      isDraft: true,
+    },
+  ];
+  state.reactions = {
+    [state.comments[0].id]: [
+      { content: "+1", user: { login: "AubreyF" } },
+    ],
+  };
+  await fs.writeFile(fixture.ghStateFile, JSON.stringify(state));
+  await fs.appendFile(
+    path.join(fixture.worktree, "archive/fb-extract.js"),
+    "// changed after review\n",
+  );
+  assertSuccess(
+    run("git", ["add", "archive/fb-extract.js"], { cwd: fixture.worktree }),
+  );
+  assertSuccess(
+    run("git", ["commit", "-m", "fix: change moved provider extractor"], {
+      cwd: fixture.worktree,
+    }),
+  );
+
+  const changedResult = run(
+    "bash",
+    [publishScript, "--title", "fix: change moved provider extractor", "--ready"],
+    { cwd: fixture.worktree, env: directPublishEnv(fixture) },
+  );
+  assert.notEqual(changedResult.status, 0);
+  assert.match(changedResult.stderr, /needs a GitHub thumbs-up reaction/);
+  const changedState = JSON.parse(
+    await fs.readFile(fixture.ghStateFile, "utf8"),
+  );
+  assert.equal(changedState.comments.length, 2);
+  assert.match(changedState.comments[1].body, /archive\/fb-extract\.js/);
 });
 
-test("worktree-publish accepts an exact owner-confirmed provider approval through direct publication", async (t) => {
+test("worktree-publish retires owner-confirmed provider approval packets", async (t) => {
   const fixture = await createPublishFixture(t, {
     preacquirePublisherLease: false,
   });
@@ -1827,7 +1895,6 @@ test("worktree-publish accepts an exact owner-confirmed provider approval throug
   };
   approval.authorizationDigest = providerApprovalAuthorizationDigest(approval);
   await fs.writeFile(approvalPath, JSON.stringify(approval));
-  const authorizationDigest = approval.authorizationDigest;
   await fs.writeFile(
     fixture.ghStateFile,
     JSON.stringify({
@@ -1871,27 +1938,10 @@ test("worktree-publish accepts an exact owner-confirmed provider approval throug
     },
   );
 
-  assertSuccess(result);
-
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /owner-confirmation approval packets are retired/);
   const ghCalls = await readGhLog(fixture.ghLogFile);
-  const demoteIndex = ghCalls.findIndex(
-    (call) => call.args[1] === "ready" && call.args.includes("--undo"),
-  );
-  const editIndex = ghCalls.findIndex((call) => call.args[1] === "edit");
-  assert.ok(demoteIndex >= 0);
-  assert.ok(editIndex > demoteIndex);
-  const editCall = ghCalls[editIndex];
-  const body = editCall.args[editCall.args.indexOf("--body") + 1];
-  assert.match(body, /## Provider Visible Approval/);
-  assert.match(body, /Approved by: AubreyF/);
-  assert.match(
-    body,
-    /Owner approved the Facebook extractor repair in task 019f/,
-  );
-  assert.match(body, /Approved diff:/);
-  assert.match(body, new RegExp(authorizationDigest));
-  assert.match(body, new RegExp(diffSha));
-  assert.match(body, /packages\/desktop\/src-tauri\/src\/fb-extract\.js/);
+  assert.equal(ghCalls.some((call) => call.args[1] === "edit"), false);
 });
 
 test("worktree-publish revalidates provider approval immediately before PR creation", async (t) => {
@@ -1975,7 +2025,7 @@ test("worktree-publish revalidates provider approval immediately before PR creat
   );
 });
 
-test("worktree-publish cannot mark a provider-visible pull request ready", async (t) => {
+test("worktree-publish accepts signed control-task authority for provider ready state", async (t) => {
   const fixture = await createPublishFixture(t);
   const extractorPath = path.join(
     fixture.worktree,
@@ -2045,8 +2095,125 @@ test("worktree-publish cannot mark a provider-visible pull request ready", async
     { cwd: fixture.worktree, env: fixture.env },
   );
 
+  assertSuccess(result);
+  const ghCalls = await readGhLog(fixture.ghLogFile);
+  const createCall = ghCalls.find((call) => call.args[1] === "create");
+  assert.ok(createCall);
+  assert.equal(createCall.args.includes("--draft"), false);
+});
+
+test("worktree-publish accepts a CODEOWNER thumbs-up for an unchanged provider subdiff", async (t) => {
+  const fixture = await createPublishFixture(t);
+  const relativeExtractorPath =
+    "packages/desktop/src-tauri/src/fb-extract.js";
+  const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
+  await fs.mkdir(path.dirname(extractorPath), { recursive: true });
+  await fs.writeFile(extractorPath, "// reviewed provider change\n");
+  assertSuccess(run("git", ["add", relativeExtractorPath], { cwd: fixture.worktree }));
+  assertSuccess(
+    run("git", ["commit", "-m", "fix: adjust reviewed extractor"], {
+      cwd: fixture.worktree,
+    }),
+  );
+  const providerDiff = run(
+    "git",
+    [
+      "diff",
+      "--binary",
+      "--no-ext-diff",
+      "--no-textconv",
+      "origin/dev...HEAD",
+      "--",
+      relativeExtractorPath,
+    ],
+    { cwd: fixture.worktree },
+  ).stdout;
+  const providerDiffSha = run("git", ["hash-object", "--stdin"], {
+    cwd: fixture.worktree,
+    input: providerDiff,
+  }).stdout.trim();
+  await fs.writeFile(path.join(fixture.worktree, "README.md"), "docs after review\n");
+  assertSuccess(run("git", ["add", "README.md"], { cwd: fixture.worktree }));
+  assertSuccess(
+    run("git", ["commit", "-m", "docs: clarify reviewed change"], {
+      cwd: fixture.worktree,
+    }),
+  );
+  await fs.writeFile(
+    fixture.ghStateFile,
+    JSON.stringify({
+      prList: [
+        {
+          number: 321,
+          url: "https://github.com/freed-project/freed/pull/321",
+          isDraft: true,
+        },
+      ],
+      comments: [
+        {
+          id: 7100,
+          body: `(AI Generated).\n\n<!-- freed-provider-review:${providerDiffSha} -->`,
+        },
+      ],
+      reactions: {
+        7100: [{ content: "+1", user: { login: "AubreyF" } }],
+      },
+    }),
+  );
+
+  const result = run(
+    "bash",
+    [publishScript, "--title", "fix: adjust reviewed extractor", "--ready"],
+    { cwd: fixture.worktree, env: fixture.env },
+  );
+
+  assertSuccess(result);
+  const ghCalls = await readGhLog(fixture.ghLogFile);
+  assert.ok(
+    ghCalls.some(
+      (call) => call.args[1] === "ready" && !call.args.includes("--undo"),
+    ),
+  );
+  const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
+  assert.equal(state.comments.length, 1);
+});
+
+test("worktree-publish keeps a provider pull request draft without a CODEOWNER reaction", async (t) => {
+  const fixture = await createPublishFixture(t);
+  const relativeExtractorPath =
+    "packages/desktop/src-tauri/src/fb-extract.js";
+  const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
+  await fs.mkdir(path.dirname(extractorPath), { recursive: true });
+  await fs.writeFile(extractorPath, "// unapproved provider change\n");
+  assertSuccess(run("git", ["add", relativeExtractorPath], { cwd: fixture.worktree }));
+  assertSuccess(
+    run("git", ["commit", "-m", "fix: adjust unapproved extractor"], {
+      cwd: fixture.worktree,
+    }),
+  );
+  await fs.writeFile(
+    fixture.ghStateFile,
+    JSON.stringify({
+      prList: [
+        {
+          number: 321,
+          url: "https://github.com/freed-project/freed/pull/321",
+          isDraft: true,
+        },
+      ],
+    }),
+  );
+
+  const result = run(
+    "bash",
+    [publishScript, "--title", "fix: adjust unapproved extractor", "--ready"],
+    { cwd: fixture.worktree, env: fixture.env },
+  );
+
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /must remain draft until the CODEOWNER reviews/);
+  assert.match(result.stderr, /needs a GitHub thumbs-up reaction/);
+  const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
+  assert.equal(state.comments.length, 1);
 });
 
 test("worktree-publish requires a value for --provider-risk-approval-file", async (t) => {
@@ -2071,7 +2238,7 @@ test("worktree-publish requires a value for --provider-risk-approval-file", asyn
   assert.match(result.stderr, /--provider-risk-approval-file requires/);
 });
 
-test("worktree-publish rejects uncommitted provider-visible changes before approval", async (t) => {
+test("worktree-publish commits uncommitted provider-visible changes into a draft", async (t) => {
   const fixture = await createPublishFixture(t);
   const extractorPath = path.join(
     fixture.worktree,
@@ -2091,11 +2258,12 @@ test("worktree-publish rejects uncommitted provider-visible changes before appro
     { cwd: fixture.worktree, env: fixture.env },
   );
 
-  assert.notEqual(result.status, 0);
-  assert.match(
-    result.stderr,
-    /provider-visible changes must be committed before approval/,
-  );
+  assertSuccess(result);
+  const ghCalls = await readGhLog(fixture.ghLogFile);
+  const createCall = ghCalls.find((call) => call.args[1] === "create");
+  assert.ok(createCall?.args.includes("--draft"));
+  const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
+  assert.match(state.comments[0].body, /fb-extract\.js/);
 });
 
 test("worktree-publish --ready promotes an existing draft PR after updating it", async (t) => {

@@ -203,7 +203,7 @@ fi
   );
 });
 
-test("release tag creation stays pending while immutability grants no bypass", () => {
+test("release tag creation grants only the dedicated App while immutability grants no bypass", () => {
   const tagRulesets = loadRulesets().filter(
     (ruleset) => ruleset.target === "tag",
   );
@@ -217,10 +217,23 @@ test("release tag creation stays pending while immutability grants no bypass", (
     (ruleset) => ruleset.name === "Freed release tag lockdown",
   );
   assert.equal(creation.enforcement, "active");
-  assert.deepEqual(creation.bypass_actors, []);
+  assert.deepEqual(creation.bypass_actors, [
+    {
+      actor_id: 4296969,
+      actor_type: "Integration",
+      bypass_mode: "always",
+    },
+  ]);
   assert.equal(immutability.enforcement, "active");
   assert.deepEqual(immutability.bypass_actors, []);
   assert.equal(verifyReleaseTagLockdown(tagRulesets).lockdown, lockdown);
+  assert.deepEqual(
+    planRulesetSync(
+      tagRulesets,
+      tagRulesets.map((ruleset, index) => ({ ...ruleset, id: index + 1 })),
+    ).map((item) => item.action),
+    ["unchanged", "unchanged", "unchanged"],
+  );
   assert.throws(
     () =>
       verifyReleaseTagLockdown([
@@ -257,9 +270,9 @@ test("release tag creation stays pending while immutability grants no bypass", (
     () => parseArgs(["--apply", "--release-tags"]),
     /requires --release-app-id and --release-app-slug/,
   );
-  assert.throws(
-    () => verifyReleaseTagActivation(tagRulesets, 123456),
-    /Release tag creation is locked with no bypass/,
+  assert.equal(
+    verifyReleaseTagActivation(tagRulesets, 4296969).releaseAppId,
+    4296969,
   );
 
   const activeCreation = {

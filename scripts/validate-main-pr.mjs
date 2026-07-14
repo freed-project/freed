@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -15,6 +16,33 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..");
+const GOVERNANCE_BACKPORT_BRANCH_PATTERN =
+  /^fix\/main-governance-[a-z0-9._-]+$/;
+const GOVERNANCE_BACKPORT_FILES = new Set([
+  ".github/CODEOWNERS",
+  ".agents/skills/freed-build-feature/SKILL.md",
+  ".agents/skills/freed-provider-risk-review/SKILL.md",
+  "AGENTS.md",
+  "docs/AUTOMATION-CONTROL-PLANE.md",
+  "docs/NIGHTLY-SELF-IMPROVE.md",
+  "docs/STABILITY-PROGRAM.md",
+  "docs/stability-tasks/W1-06-provider-visible-single-source.md",
+  "scripts/automation-control.mjs",
+  "scripts/automation-control.test.mjs",
+  "scripts/lib/automation-control.mjs",
+  "scripts/lib/cargo-lock-release.mjs",
+  "scripts/lib/node-tooling.sh",
+  "scripts/lib/provider-visible-paths.mjs",
+  "scripts/lib/provider-visible-paths.test.mjs",
+  "scripts/release-promotion.test.mjs",
+  "scripts/release-promotion-shared.mjs",
+  "scripts/trusted-worktree-publish.sh",
+  "scripts/validate-main-backflow.mjs",
+  "scripts/validate-main-pr.mjs",
+  "scripts/validate-release-promotion.mjs",
+  "scripts/worktree-publish.sh",
+  "scripts/worktree-publish.test.mjs",
+]);
 
 function die(message) {
   console.error(message);
@@ -25,6 +53,21 @@ function usage() {
   console.error(
     "Usage: node scripts/validate-main-pr.mjs [--cwd=<path>] --base-ref=<ref> --head-ref=<ref> --head-branch=<branch>",
   );
+}
+
+function filesThatDifferFromDev(files, { cwd, headRef }) {
+  return files.filter((filePath) => {
+    const result = spawnSync(
+      "git",
+      ["diff", "--quiet", "origin/dev", headRef, "--", filePath],
+      { cwd, encoding: "utf8" },
+    );
+    if (result.status === 0) return false;
+    if (result.status === 1) return true;
+    die(
+      `Unable to compare ${filePath} with origin/dev: ${result.stderr || result.error?.message || "git diff failed"}`,
+    );
+  });
 }
 
 function parseArgs(argv) {
@@ -83,6 +126,29 @@ function main() {
     headRef: options.headRef,
     cwd: options.cwd,
   });
+
+  if (GOVERNANCE_BACKPORT_BRANCH_PATTERN.test(options.headBranch)) {
+    const unsupported = changedFiles.filter(
+      (filePath) => !GOVERNANCE_BACKPORT_FILES.has(filePath),
+    );
+    if (unsupported.length > 0) {
+      die(
+        `Governance backports to main contain unsupported files:\n${formatFileList(unsupported)}`,
+      );
+    }
+    const driftFiles = filesThatDifferFromDev(changedFiles, {
+      cwd: options.cwd,
+      headRef: options.headRef,
+    });
+    if (driftFiles.length > 0) {
+      die(
+        `Governance backport files must exactly match origin/dev:\n${formatFileList(driftFiles)}`,
+      );
+    }
+    console.log("Main PR guard passed. Governance backport matches origin/dev.");
+    return;
+  }
+
   const classified = classifyMainPrFiles(changedFiles, {
     baseRef: options.baseRef,
     headRef: options.headRef,

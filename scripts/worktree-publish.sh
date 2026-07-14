@@ -73,10 +73,11 @@ ready PR back to draft on purpose: the content moved since the owner saw it.
 Stages local changes, commits them when needed, pushes the current branch to origin,
 and opens a draft pull request.
 
-Branches whose diff touches provider-visible paths (canonical list:
-scripts/lib/provider-visible-paths.mjs) must be committed before publish and
-are refused unless --provider-risk-approval-file supplies a valid approval for
-the exact providers, behavior, path set, diff hash, owner reference, and expiry.
+Branches whose diff touches provider-visible paths publish as drafts without a
+Gate 2 packet. The helper posts one GitHub review comment bound to the provider
+subdiff. A CODEOWNER thumbs-up reaction on that comment authorizes the ready
+transition. Unrelated file changes do not invalidate that reaction. A signed
+control-task approval file remains available for unattended publication.
 EOF
 }
 
@@ -260,6 +261,171 @@ for file_path in approval["paths"]:
 PY
 }
 
+provider_review_markdown() {
+  local diff_sha="$1"
+  local files="$2"
+
+  printf '%s\n' "## Provider Review"
+  printf '%s\n' "- Status: Draft publication is allowed. Ready and merge require provider authority."
+  printf '%s\n' "- Review action: A provider CODEOWNER reacts with a GitHub thumbs-up on the generated provider review comment."
+  printf '%s\n' "- Provider subdiff: \`${diff_sha}\`"
+  printf '%s\n' "- Draft publication does not authorize new live provider traffic. Gate 1 behavior approval still applies."
+  printf '\n%s\n' "Files bound into this provider review:"
+  while IFS= read -r file_path; do
+    [[ -n "${file_path}" ]] || continue
+    printf '%s\n' "- \`${file_path}\`"
+  done <<< "${files}"
+}
+
+provider_diff_sha() {
+  local base_ref="$1"
+  local head_ref="$2"
+  local files="$3"
+  local path_args=()
+  local file_path
+
+  while IFS= read -r file_path; do
+    [[ -n "${file_path}" ]] || continue
+    path_args+=("${file_path}")
+  done <<< "${files}"
+  "${GIT_BIN}" diff --binary --no-ext-diff --no-textconv \
+    "${base_ref}...${head_ref}" -- "${path_args[@]}" |
+    "${GIT_BIN}" hash-object --stdin
+}
+
+provider_bound_files() {
+  local base_ref="$1"
+  local head_ref="$2"
+  local provider_files="$3"
+
+  "${GIT_BIN}" diff --name-status -z -M "${base_ref}...${head_ref}" |
+    "${PYTHON_BIN}" -c '
+import sys
+
+provider_paths = {path for path in sys.argv[1].splitlines() if path}
+tokens = sys.stdin.buffer.read().split(b"\0")
+bound = set()
+index = 0
+while index < len(tokens) and tokens[index]:
+    status = tokens[index].decode("ascii", "strict")
+    index += 1
+    path_count = 2 if status.startswith(("R", "C")) else 1
+    paths = [tokens[index + offset].decode("utf-8", "surrogateescape") for offset in range(path_count)]
+    index += path_count
+    if any(path in provider_paths for path in paths):
+        bound.update(paths)
+for path in sorted(bound):
+    print(path)
+' "${provider_files}"
+}
+
+provider_review_comment_body() {
+  local diff_sha="$1"
+  local files="$2"
+
+  printf '%s\n' '(AI Generated).'
+  printf '\n%s\n' "<!-- freed-provider-review:${diff_sha} -->"
+  printf '\n%s\n\n' "## Provider review"
+  printf '%s\n' "This review covers the provider-visible subdiff below. It does not approve unrelated files."
+  printf '%s\n' "React with a GitHub thumbs-up to authorize ready and merge. A provider code change creates a new review request."
+  printf '\n%s\n' "Provider subdiff: \`${diff_sha}\`"
+  printf '\n%s\n' "Files bound into this provider review:"
+  while IFS= read -r file_path; do
+    [[ -n "${file_path}" ]] || continue
+    printf '%s\n' "- \`${file_path}\`"
+  done <<< "${files}"
+}
+
+provider_codeowner_logins() {
+  "${PYTHON_BIN}" - "${SCRIPT_DIR}/../.github/CODEOWNERS" <<'PY'
+import pathlib
+import re
+import sys
+
+owners = set()
+for raw_line in pathlib.Path(sys.argv[1]).read_text().splitlines():
+    line = raw_line.split("#", 1)[0].strip()
+    if not line:
+        continue
+    for token in line.split()[1:]:
+        if re.fullmatch(r"@[A-Za-z0-9-]+", token):
+            owners.add(token[1:].lower())
+for owner in sorted(owners):
+    print(owner)
+PY
+}
+
+find_provider_review_comment_id() {
+  local pr_number="$1"
+  local diff_sha="$2"
+  local marker="<!-- freed-provider-review:${diff_sha} -->"
+
+  "${GH_BIN}" api "repos/${PUBLISH_REPO}/issues/${pr_number}/comments" --paginate --slurp |
+    "${PYTHON_BIN}" -c '
+import json
+import sys
+marker = sys.argv[1]
+comments = json.load(sys.stdin)
+if comments and isinstance(comments[0], list):
+    comments = [item for page in comments for item in page]
+matches = [str(item.get("id")) for item in comments if marker in str(item.get("body", ""))]
+if matches:
+    print(matches[-1])
+' "${marker}"
+}
+
+ensure_provider_review_comment() {
+  local pr_number="$1"
+  [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]] || return 0
+  [[ "${PROVIDER_APPROVAL_SOURCE_KIND}" == "control-task" ]] && return 0
+
+  local comment_id
+  local body
+  comment_id="$(find_provider_review_comment_id "${pr_number}" "${FINAL_PROVIDER_DIFF_SHA}")"
+  [[ -n "${comment_id}" ]] && return 0
+  body="$(provider_review_comment_body "${FINAL_PROVIDER_DIFF_SHA}" "${FINAL_PROVIDER_BOUND_FILES}")"
+  "${GH_BIN}" api "repos/${PUBLISH_REPO}/issues/${pr_number}/comments" \
+    --method POST \
+    --field body="${body}" \
+    --jq .id >/dev/null
+}
+
+verify_provider_ready_authority() {
+  local pr_number="$1"
+  [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]] || return 0
+  [[ "${PROVIDER_APPROVAL_SOURCE_KIND}" == "control-task" ]] && return 0
+
+  local comment_id
+  local codeowners
+  local reactions
+  comment_id="$(find_provider_review_comment_id "${pr_number}" "${FINAL_PROVIDER_DIFF_SHA}")"
+  if [[ -z "${comment_id}" ]]; then
+    echo "Error: provider review comment is missing for the current provider subdiff." >&2
+    exit 1
+  fi
+  codeowners="$(provider_codeowner_logins)"
+  reactions="$("${GH_BIN}" api "repos/${PUBLISH_REPO}/issues/comments/${comment_id}/reactions" --paginate --slurp)"
+  if ! "${PYTHON_BIN}" - "${codeowners}" "${reactions}" <<'PY'
+import json
+import sys
+
+owners = {value.strip().lower() for value in sys.argv[1].splitlines() if value.strip()}
+reactions = json.loads(sys.argv[2])
+if reactions and isinstance(reactions[0], list):
+    reactions = [item for page in reactions for item in page]
+approved = any(
+    item.get("content") == "+1"
+    and str((item.get("user") or {}).get("login", "")).lower() in owners
+    for item in reactions
+)
+raise SystemExit(0 if approved else 1)
+PY
+  then
+    echo "Error: the current provider subdiff needs a GitHub thumbs-up reaction from a provider CODEOWNER before ready or merge." >&2
+    exit 1
+  fi
+}
+
 TITLE=""
 BASE_BRANCH="dev"
 PUBLISH_REPO="freed-project/freed"
@@ -268,7 +434,9 @@ INCLUDE_UNTRACKED=false
 READY_FOR_REVIEW=false
 PROVIDER_RISK_APPROVAL_FILE=""
 PROVIDER_RISK_APPROVAL_JSON=""
+PROVIDER_APPROVAL_SOURCE_KIND=""
 FINAL_PROVIDER_VISIBLE_FILES=""
+FINAL_PROVIDER_BOUND_FILES=""
 FINAL_PROVIDER_DIFF_SHA=""
 PUBLISH_HEAD=""
 BRANCH_NAME=""
@@ -396,7 +564,7 @@ verify_remote_head() {
 }
 
 revalidate_provider_approval() {
-  if [[ -z "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
+  if [[ -z "${FINAL_PROVIDER_VISIBLE_FILES}" || -z "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
     return
   fi
   printf '%s\n' "${FINAL_PROVIDER_VISIBLE_FILES}" |
@@ -459,7 +627,6 @@ ensure_provider_pr_draft_before_push() {
   fi
   validate_publish_lease
   verify_canonical_base
-  revalidate_provider_approval
   verify_pr_target_head "${existing_number}" "${existing_head}"
   "${GH_BIN}" pr ready "${existing_number}" --repo "${PUBLISH_REPO}" --undo >/dev/null
 }
@@ -568,70 +735,17 @@ if ${TRUSTED_PUBLISH_MODE}; then
   fi
 fi
 
-# Provider-visible gate (stability task W1-06): refuse to publish a branch
-# whose committed diff touches provider-visible paths unless a scoped approval
-# record matches the exact diff. Canonical list + predicate:
-# scripts/lib/provider-visible-paths.mjs
+# Provider-visible gate (stability task W1-06): draft publication is allowed so
+# CI and previews can inspect the candidate. Ready and merge require either a
+# CODEOWNER thumbs-up on the provider-subdiff review comment or a signed
+# control-task approval. Canonical list + predicate:
+# scripts/lib/provider-visible-paths.mjs.
 COMMITTED_PROVIDER_VISIBLE_FILES="$(
   "${GIT_BIN}" diff --no-renames --no-ext-diff --name-only "origin/${BASE_BRANCH}...HEAD" |
     sort -u |
     "${NODE_BIN}" "${SCRIPT_DIR}/lib/provider-visible-paths.mjs" --stdin
 )"
-WORKING_PROVIDER_VISIBLE_FILES="$(
-  {
-    "${GIT_BIN}" diff --no-renames --no-ext-diff --name-only HEAD
-    if ${INCLUDE_UNTRACKED}; then
-      list_untracked_files
-    fi
-  } | sort -u | "${NODE_BIN}" "${SCRIPT_DIR}/lib/provider-visible-paths.mjs" --stdin
-)"
 PROVIDER_VISIBLE_FILES="${COMMITTED_PROVIDER_VISIBLE_FILES}"
-
-if [[ -n "${WORKING_PROVIDER_VISIBLE_FILES}" ]]; then
-  echo "Error: provider-visible changes must be committed before approval and publish:" >&2
-  echo "" >&2
-  printf '%s\n' "${WORKING_PROVIDER_VISIBLE_FILES}" >&2
-  echo "" >&2
-  echo "Commit the reviewed provider change, calculate its diff hash, then create a scoped approval JSON file." >&2
-  exit 1
-fi
-
-if [[ -n "${PROVIDER_VISIBLE_FILES}" && -z "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
-  echo "Error: this branch touches provider-visible paths:" >&2
-  echo "" >&2
-  printf '%s\n' "${PROVIDER_VISIBLE_FILES}" >&2
-  echo "" >&2
-  echo "Changes to provider-visible surfaces (WebView loads, provider navigation," >&2
-  echo "request frequency, cookies, headers, extractor scripts) require explicit" >&2
-  echo "owner approval before publish. See AGENTS.md and docs/STABILITY-PROGRAM.md." >&2
-  echo "" >&2
-  echo "After obtaining scoped approval for the committed diff, re-run with:" >&2
-  echo "  --provider-risk-approval-file <approval.json>" >&2
-  exit 1
-fi
-
-if [[ -n "${PROVIDER_VISIBLE_FILES}" ]]; then
-  if has_worktree_changes; then
-    echo "Error: a provider-approved branch must be clean so its diff hash cannot change during publish." >&2
-    exit 1
-  fi
-  PROVIDER_DIFF_SHA="$("${GIT_BIN}" diff --binary --no-ext-diff --no-textconv "origin/${BASE_BRANCH}...HEAD" | "${GIT_BIN}" hash-object --stdin)"
-  PROVIDER_RISK_APPROVAL_JSON="$(
-    printf '%s\n' "${PROVIDER_VISIBLE_FILES}" |
-      "${NODE_BIN}" "${SCRIPT_DIR}/lib/provider-visible-paths.mjs" \
-        --stdin \
-        --validate-approval "${PROVIDER_RISK_APPROVAL_FILE}" \
-        --diff-sha "${PROVIDER_DIFF_SHA}" \
-        --control-state-root "${PUBLISH_CONTROL_STATE_ROOT}"
-  )"
-  if ${READY_FOR_REVIEW}; then
-    echo "Error: provider-visible pull requests must remain draft until the CODEOWNER reviews the exact diff." >&2
-    exit 1
-  fi
-elif [[ -n "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
-  echo "Error: --provider-risk-approval-file was provided, but this branch has no provider-visible committed diff." >&2
-  exit 1
-fi
 
 if [[ "${BASE_BRANCH}" == "main" ]] && has_worktree_changes; then
   echo "Error: main publishing requires a committed, clean branch." >&2
@@ -686,24 +800,28 @@ FINAL_PROVIDER_VISIBLE_FILES="$(
     sort -u |
     "${NODE_BIN}" "${SCRIPT_DIR}/lib/provider-visible-paths.mjs" --stdin
 )"
-if [[ "${FINAL_PROVIDER_VISIBLE_FILES}" != "${PROVIDER_VISIBLE_FILES}" ]]; then
-  echo "Error: provider-visible paths changed after the publish gate inspected the branch." >&2
-  exit 1
-fi
+PROVIDER_VISIBLE_FILES="${FINAL_PROVIDER_VISIBLE_FILES}"
 if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
-  FINAL_PROVIDER_DIFF_SHA="$("${GIT_BIN}" diff --binary --no-ext-diff --no-textconv "origin/${BASE_BRANCH}...${PUBLISH_HEAD}" | "${GIT_BIN}" hash-object --stdin)"
-  if [[ "${FINAL_PROVIDER_DIFF_SHA}" != "${PROVIDER_DIFF_SHA}" ]]; then
-    echo "Error: the committed provider diff changed after owner approval validation." >&2
-    exit 1
+  FINAL_PROVIDER_BOUND_FILES="$(provider_bound_files "origin/${BASE_BRANCH}" "${PUBLISH_HEAD}" "${FINAL_PROVIDER_VISIBLE_FILES}")"
+  FINAL_PROVIDER_DIFF_SHA="$(provider_diff_sha "origin/${BASE_BRANCH}" "${PUBLISH_HEAD}" "${FINAL_PROVIDER_BOUND_FILES}")"
+  if [[ -n "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
+    PROVIDER_RISK_APPROVAL_JSON="$(
+      printf '%s\n' "${FINAL_PROVIDER_VISIBLE_FILES}" |
+        "${NODE_BIN}" "${SCRIPT_DIR}/lib/provider-visible-paths.mjs" \
+          --stdin \
+          --validate-approval "${PROVIDER_RISK_APPROVAL_FILE}" \
+          --diff-sha "${FINAL_PROVIDER_DIFF_SHA}" \
+          --control-state-root "${PUBLISH_CONTROL_STATE_ROOT}"
+    )"
+    PROVIDER_APPROVAL_SOURCE_KIND="$(json_nested_field "${PROVIDER_RISK_APPROVAL_JSON}" approvalSource kind)"
+    if [[ "${PROVIDER_APPROVAL_SOURCE_KIND}" != "control-task" ]]; then
+      echo "Error: owner-confirmation approval packets are retired. Publish the draft and use the GitHub provider review reaction." >&2
+      exit 1
+    fi
   fi
-  PROVIDER_RISK_APPROVAL_JSON="$(
-    printf '%s\n' "${FINAL_PROVIDER_VISIBLE_FILES}" |
-      "${NODE_BIN}" "${SCRIPT_DIR}/lib/provider-visible-paths.mjs" \
-        --stdin \
-        --validate-approval "${PROVIDER_RISK_APPROVAL_FILE}" \
-        --diff-sha "${FINAL_PROVIDER_DIFF_SHA}" \
-        --control-state-root "${PUBLISH_CONTROL_STATE_ROOT}"
-  )"
+elif [[ -n "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
+  echo "Error: --provider-risk-approval-file was provided, but this branch has no provider-visible committed diff." >&2
+  exit 1
 fi
 
 validate_publish_lease
@@ -738,6 +856,10 @@ if [[ -n "${PROVIDER_RISK_APPROVAL_JSON}" ]]; then
   APPROVAL_SECTION="$(provider_approval_markdown "${PROVIDER_RISK_APPROVAL_JSON}")"
   BODY_CONTENT="$(printf '%s\n\n%s' "${BODY_CONTENT}" "${APPROVAL_SECTION}")"
 fi
+if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
+  REVIEW_SECTION="$(provider_review_markdown "${FINAL_PROVIDER_DIFF_SHA}" "${FINAL_PROVIDER_BOUND_FILES}")"
+  BODY_CONTENT="$(printf '%s\n\n%s' "${BODY_CONTENT}" "${REVIEW_SECTION}")"
+fi
 
 EXISTING_PR_JSON="$(
   "${GH_BIN}" pr list \
@@ -763,6 +885,8 @@ if [[ -n "${EXISTING_PR_NUMBER}" ]]; then
     assert_publish_write_ready
     verify_pr_target "${EXISTING_PR_NUMBER}"
     "${GH_BIN}" pr edit "${EXISTING_PR_NUMBER}" --repo "${PUBLISH_REPO}" --title "${TITLE}" --body "${BODY_CONTENT}" >/dev/null
+    ensure_provider_review_comment "${EXISTING_PR_NUMBER}"
+    verify_provider_ready_authority "${EXISTING_PR_NUMBER}"
     if [[ "${EXISTING_PR_IS_DRAFT}" == "true" ]]; then
       assert_publish_write_ready
       verify_pr_target "${EXISTING_PR_NUMBER}"
@@ -782,6 +906,7 @@ if [[ -n "${EXISTING_PR_NUMBER}" ]]; then
   assert_publish_write_ready
   verify_pr_target "${EXISTING_PR_NUMBER}"
   "${GH_BIN}" pr edit "${EXISTING_PR_NUMBER}" --repo "${PUBLISH_REPO}" --title "${TITLE}" --body "${BODY_CONTENT}" >/dev/null
+  ensure_provider_review_comment "${EXISTING_PR_NUMBER}"
   verify_pr_target "${EXISTING_PR_NUMBER}"
   printf 'Updated draft PR: %s\n' "${EXISTING_PR_URL}"
   exit 0
@@ -793,10 +918,18 @@ CREATE_ARGS=(
   --title "${TITLE}"
   --body "${BODY_CONTENT}"
 )
+if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]] && ${READY_FOR_REVIEW} && [[ "${PROVIDER_APPROVAL_SOURCE_KIND}" != "control-task" ]]; then
+  echo "Error: publish the provider-visible pull request as a draft, then use its provider review comment for Gate 2." >&2
+  exit 1
+fi
 if ! ${READY_FOR_REVIEW}; then
   CREATE_ARGS=(--draft "${CREATE_ARGS[@]}")
 fi
 assert_publish_write_ready
 CREATED_PR_URL="$("${GH_BIN}" pr create --repo "${PUBLISH_REPO}" "${CREATE_ARGS[@]}")"
 verify_pr_target "${BRANCH_NAME}"
+if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
+  CREATED_PR_NUMBER="${CREATED_PR_URL##*/}"
+  ensure_provider_review_comment "${CREATED_PR_NUMBER}"
+fi
 printf '%s\n' "${CREATED_PR_URL}"

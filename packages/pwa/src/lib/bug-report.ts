@@ -15,6 +15,7 @@ import {
   redactSensitiveText,
   resolveArtifactsForTier,
   summarizeStateForReport,
+  submitPrivateVulnerabilityReport,
 } from "@freed/ui/lib/bug-report";
 import type { BugReportingConfig } from "@freed/ui/context";
 import { getCloudProvider } from "./sync";
@@ -165,6 +166,8 @@ export const pwaBugReporting: BugReportingConfig = {
   githubRepo: GITHUB_REPO,
   privateShareEmail: SUPPORT_EMAIL,
   generateBundle: buildPwaBundle,
+  submitPrivateReport: (payload) =>
+    submitPrivateVulnerabilityReport("/api/security-report", payload),
   openUrl: (url) => {
     window.open(url, "_blank", "noopener,noreferrer");
   },

@@ -20,6 +20,8 @@ import type {
   BugReportIssueType,
   FeedItem,
   GeneratedBugReportBundle,
+  PrivateVulnerabilityReportPayload,
+  PrivateVulnerabilityReportResult,
   ImportProgress,
   LocalAIModelId,
   LocalAIHardwareProfile,
@@ -127,6 +129,9 @@ export interface BugReportingConfig {
     privacyTier: ReportPrivacyTier;
   }) => Promise<GeneratedBugReportBundle>;
   exportBundle?: (bundle: GeneratedBugReportBundle) => Promise<void>;
+  submitPrivateReport?: (
+    payload: PrivateVulnerabilityReportPayload,
+  ) => Promise<PrivateVulnerabilityReportResult>;
   openUrl?: (url: string) => void;
 }
 

@@ -106,6 +106,7 @@ export const SOCIAL_PROVIDER_PACKAGE_PREFIXES = [
 // providers can observe but have no dedicated focused provider test lane, so
 // validate-worktree intentionally does not narrow validation for them.
 export const PROVIDER_VISIBLE_EXTRA_FILES = new Set([
+  "packages/desktop/src/lib/bug-report.ts",
   "packages/desktop/src/components/YouTubeSettingsSection.tsx",
   "packages/desktop/src-tauri/gen/schemas/capabilities.json",
   "packages/desktop/src/lib/rss-refresh-plan.ts",
@@ -114,21 +115,29 @@ export const PROVIDER_VISIBLE_EXTRA_FILES = new Set([
   "packages/desktop/src/lib/user-agent.ts",
   "packages/desktop/src-tauri/src/webkit-mask.js",
   "packages/pwa/api/oauth/google.ts",
+  "packages/pwa/api/fetch-url.ts",
+  "packages/pwa/api/security-report.ts",
   "packages/pwa/src/components/OAuthCallback.tsx",
   "packages/pwa/src/components/PwaSyncSettings.tsx",
   "packages/pwa/src/components/SyncConnectDialog.tsx",
   "packages/pwa/src/lib/cloud-oauth.ts",
+  "packages/pwa/src/lib/bug-report.ts",
   "packages/pwa/src/lib/contacts.ts",
   "packages/pwa/src/lib/oauth-redirect.ts",
   "packages/pwa/src/lib/reader-cache.ts",
   "packages/pwa/src/lib/sync.ts",
   "packages/pwa/src/lib/youtube-handoff.ts",
   "packages/shared/src/google-contacts-automation.ts",
+  "packages/shared/src/bug-report.ts",
+  "packages/shared/src/redact-sensitive.ts",
   "packages/shared/src/google-contacts.ts",
   "packages/shared/src/legal.ts",
   "packages/shared/src/schema.ts",
   "packages/shared/src/youtube.ts",
   "packages/ui/src/components/feed/ReaderView.tsx",
+  "packages/ui/src/components/report/ReportComposer.tsx",
+  "packages/ui/src/context/PlatformContext.tsx",
+  "packages/ui/src/lib/bug-report.ts",
   "packages/ui/src/components/feed/YouTubeFocusPlayer.tsx",
 ]);
 
@@ -550,6 +559,15 @@ export function providerIdsForPath(filePath) {
   )
     return ["other"];
   if (
+    normalizedPath.startsWith("packages/desktop/src/lib/bug-report") ||
+    normalizedPath.startsWith("packages/pwa/api/security-report") ||
+    normalizedPath.startsWith("packages/pwa/api/fetch-url") ||
+    normalizedPath.startsWith("packages/pwa/src/lib/bug-report") ||
+    normalizedPath.startsWith("packages/shared/src/bug-report") ||
+    normalizedPath.startsWith("packages/shared/src/redact-sensitive") ||
+    normalizedPath.startsWith("packages/ui/src/components/report/reportcomposer") ||
+    normalizedPath.startsWith("packages/ui/src/context/platformcontext") ||
+    normalizedPath.startsWith("packages/ui/src/lib/bug-report") ||
     normalizedPath.startsWith("packages/sync/src/cloud/") ||
     normalizedPath.startsWith("packages/pwa/api/oauth/google") ||
     normalizedPath.startsWith("packages/pwa/src/components/oauthcallback") ||
@@ -565,7 +583,9 @@ export function providerIdsForPath(filePath) {
     /\/(?:google|gdrive|dropbox)(?:[-_.\/]|$)/.test(normalizedPath)
   )
     return ["other"];
-  return [];
+  return CAPTURE_PROVIDER_CONTACT_FILE_PATTERN.test(normalizedPath)
+    ? ["other"]
+    : [];
 }
 
 function requireApprovalText(record, field, errors) {

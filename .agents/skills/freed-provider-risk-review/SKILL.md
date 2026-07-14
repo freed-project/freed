@@ -1,6 +1,6 @@
 ---
 name: freed-provider-risk-review
-description: Prepare and verify both owner gates for any Freed change that could alter behavior visible to X, Facebook, Instagram, LinkedIn, or another provider. Use before implementation that changes WebView loads, navigation, requests, retries, cadence, cookies, headers, scrolling, clicking, extraction scripts, media loading, login behavior, or provider timing, and again before publishing the exact committed diff. Preparing a packet never grants approval.
+description: Prepare and verify both owner gates for any Freed change that could alter behavior visible to X, Facebook, Instagram, LinkedIn, or another provider. Use before implementation that changes WebView loads, navigation, requests, retries, cadence, cookies, headers, scrolling, clicking, extraction scripts, media loading, login behavior, or provider timing, and again before making the pull request ready. Preparing a review never grants approval.
 disable-model-invocation: true
 ---
 
@@ -39,54 +39,50 @@ This first gate authorizes only implementation within the described behavior.
 It is not publish approval. General permission to proceed with a plan, program,
 or broad batch of work does not satisfy this gate.
 
-## Gate 2: exact diff authorization before publish
+## Gate 2: provider diff authorization before ready
 
-After implementation and validation, commit the candidate diff. Then create the
-schema version 1 approval JSON outside the repository with:
+After implementation and validation, publish the candidate as a draft. Draft
+publication does not authorize provider traffic. The publication helper posts
+one GitHub review comment that records:
 
-- Exact provider-visible path set and full committed binary diff hash
-- `approvedBy`, top-level provider union, and one exact provider scope for every
-  approved path
-- Observable behavior, fingerprinting risk, lowest-profile alternative,
-  approval time, and expiry no more than seven days later
-- Either an `owner-confirmation` source with a stable current task or thread
-  reference, or a `control-task` source with the governed task ID
+- Exact provider-visible path set and provider-only binary diff hash
+- Inferred provider set
+- Observable behavior, fingerprinting risk, and lowest-profile alternative
 
-For the signing-free path, create the packet with `approvalSource.kind` set to
-`owner-confirmation` and leave out `authorizationDigest`. Compute the digest with
-`node scripts/lib/provider-visible-paths.mjs --approval-digest <approval.json>`.
-Show the owner that exact digest with the provider behavior, risk, alternative,
-diff hash, and path set. Stop until the owner explicitly confirms that exact
-digest in the current task. Then add the unchanged digest as
-`authorizationDigest`. Do not change any other packet field.
+The human Gate 2 action is a CODEOWNER's GitHub thumbs-up reaction on that
+comment. GitHub records the acting account. Rerun the helper with `--ready`
+after the reaction exists. The helper verifies that the reaction came from a
+CODEOWNER and that the comment fingerprint still matches the current
+provider-visible diff.
 
-For stronger machine-verifiable authorization, use `control-task` and the
-optional signed broker. Bind the same digest to the governed task, set provider
+Changes outside the provider-visible path set preserve the approval. A change
+to any provider-visible file creates a new fingerprint, a new review comment,
+and a new reaction requirement. A material behavior change also returns to
+Gate 1 before implementation continues.
+
+For unattended publication, use a signed `control-task` approval record outside
+the repository. Bind its digest to the same provider-only diff, set provider
 authority to `approved`, and preserve the owner capability event. Broker
-provisioning is hardening, not a prerequisite for the signing-free path.
-
-This second gate authorizes only publishing the reviewed commit. Any material
-behavior or path change returns to Gate 1 before code changes continue. Any
-committed diff change returns to Gate 2 before publishing.
+provisioning is optional and does not block the GitHub reaction path.
 
 ## Approval rules
 
 - General permission to improve stability, build a feature, or "proceed with everything" is not a substitute for either scoped gate.
 - Behavior approval applies only to the described contact frequency, timing,
   provider, paths, and observable flow.
-- Do not contact a provider while preparing the packet.
-- Treat `owner-confirmation` as cooperative evidence. The JSON file does not
-  authenticate the owner. Require the explicit current-task confirmation and
-  preserve its stable reference.
+- Do not contact a provider while preparing the draft or review comment.
+- Treat the GitHub reaction as the direct human authorization record. Do not
+  ask the owner to copy or type a digest into the task.
 - Treat `control-task` as the optional machine-verifiable route. Require the
   matching task digest, approved provider authority, and owner capability event.
-- Publish only with `--provider-risk-approval-file <approval.json>`. The helper keeps provider-visible pull requests in draft. The repository CODEOWNER must review the exact diff before the pull request can become ready or merge.
+- Publish provider-visible work as a draft first. Use `--ready` only after the
+  CODEOWNER reaction exists, or provide a valid signed control-task approval.
 
 ## Result
 
 Return the state of both gates: `behavior_approved`, `diff_authorized`,
 `blocked_by_owner`, or `needs_revision`. Include the exact allowed behavior and,
-when Gate 2 is complete, the packet digest. Hand behavior-approved
+when Gate 2 is complete, the GitHub review comment reference. Hand behavior-approved
 implementation to `freed-build-feature`. Keep every out-of-scope idea blocked.
 
 Record that decision with kind `provider-risk-review` in the version 1
@@ -95,5 +91,5 @@ schema](../../../automation/artifact-schemas/stability-artifact-v1.schema.json).
 Validate and atomically store it with `node scripts/stability-artifact.mjs write
 --input <manifest.json>`. The canonical result lives under
 `~/.freed/automation/artifacts/provider-risk-review/<task-id>/`. This manifest
-describes the gate state. It does not replace the explicit Gate 1 decision, the
-exact Gate 2 confirmation, or CODEOWNER review.
+describes the gate state. It does not replace the explicit Gate 1 decision or
+the CODEOWNER's GitHub reaction.

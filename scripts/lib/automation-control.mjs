@@ -30,6 +30,7 @@ export const AUTOMATION_CONTROL_SCHEMA_VERSION = 1;
 export const PUBLISH_SCOPE_SCHEMA_VERSION = 2;
 export const PUBLISHER_CAPABILITY_SCHEMA_VERSION = 1;
 export const OWNER_CAPABILITY_SCHEMA_VERSION = 1;
+const OWNER_CONFIRMATION_SCHEMA_VERSION = 1;
 const OUTCOME_LEDGER_SCHEMA_VERSION = 3;
 export const DEFAULT_AUTOMATION_STATE_ROOT = path.join(
   os.homedir(),
@@ -269,6 +270,8 @@ const ORPHAN_LEASE_GRACE_MS = 5 * 60 * 1_000;
 const OWNER_LEASE_MAX_LIFETIME_MS = 15 * 60 * 1_000;
 const OWNER_CAPABILITY_LIFETIME_MS = 60 * 1_000;
 const OWNER_CAPABILITY_CLOCK_SKEW_MS = 30 * 1_000;
+const OWNER_CONFIRMATION_MAX_LIFETIME_MS = 7 * 24 * 60 * 60 * 1_000;
+const OWNER_CONFIRMATION_CLOCK_SKEW_MS = 30 * 1_000;
 const OWNER_CAPABILITY_PURPOSE = "owner-governance-capability";
 const OWNER_CAPABILITY_ISSUER = "trusted-publisher-host";
 const OWNER_TRUST_CONFIG_PATH =
@@ -1173,6 +1176,20 @@ function leaseAuthorizationProvenance(lease) {
           ownerCapabilityTaskId: lease.ownerCapabilityTaskId,
           ownerCapabilityIntentDigest: lease.ownerCapabilityIntentDigest,
         }),
+    ...(lease.ownerConfirmationId === undefined
+      ? {}
+      : {
+          ownerConfirmationId: lease.ownerConfirmationId,
+          ownerConfirmationTaskId: lease.ownerConfirmationTaskId,
+          ownerConfirmationIntentDigest: lease.ownerConfirmationIntentDigest,
+          ownerConfirmationDigest: lease.ownerConfirmationDigest,
+          ownerConfirmationReference: lease.ownerConfirmationReference,
+          ownerConfirmationApprovedBy: lease.ownerConfirmationApprovedBy,
+          ownerConfirmationApprovalReference:
+            lease.ownerConfirmationApprovalReference,
+          ownerConfirmationApprovedAt: lease.ownerConfirmationApprovedAt,
+          ownerConfirmationExpiresAt: lease.ownerConfirmationExpiresAt,
+        }),
     ...(lease.publisherCapabilityId === undefined
       ? {}
       : { publisherCapabilityId: lease.publisherCapabilityId }),
@@ -1442,7 +1459,7 @@ export function transitionTask({
   }
   const normalizedDetails =
     details === undefined ? undefined : requirePlainObject(details, "details");
-  const { policy } = requireMutationLease({
+  const { policy, lease } = requireMutationLease({
     stateRoot,
     actor,
     leaseName,
@@ -1694,6 +1711,7 @@ export function transitionTask({
       eventData: {
         fromState,
         toState,
+        authorizationProvenance: leaseAuthorizationProvenance(lease),
         ...(VERIFICATION_TASK_STATES.has(toState)
           ? { outcomeRequired: true }
           : {}),
@@ -2264,7 +2282,58 @@ function validateLeaseRecord(record, name) {
   const acquiredAtMs = Date.parse(String(record?.acquiredAt ?? ""));
   const heartbeatAtMs = Date.parse(String(record?.heartbeatAt ?? ""));
   const expiresAtMs = Date.parse(String(record?.expiresAt ?? ""));
+  const ownerConfirmationApprovedAtMs = Date.parse(
+    String(record?.ownerConfirmationApprovedAt ?? ""),
+  );
+  const ownerConfirmationExpiresAtMs = Date.parse(
+    String(record?.ownerConfirmationExpiresAt ?? ""),
+  );
   const maxLifetimeMs = actorLeaseMaxLifetimeMs(record?.owner);
+  const hasNoOwnerConfirmationFields =
+    record?.ownerConfirmationId === undefined &&
+    record?.ownerConfirmationTaskId === undefined &&
+    record?.ownerConfirmationIntentDigest === undefined &&
+    record?.ownerConfirmationDigest === undefined &&
+    record?.ownerConfirmationReference === undefined &&
+    record?.ownerConfirmationApprovedBy === undefined &&
+    record?.ownerConfirmationApprovalReference === undefined &&
+    record?.ownerConfirmationApprovedAt === undefined &&
+    record?.ownerConfirmationExpiresAt === undefined;
+  const validOwnerSignedCapability =
+    record?.credentialKind === "owner-signed-capability" &&
+    typeof record?.ownerCapabilityId === "string" &&
+    IDENTIFIER_PATTERN.test(record.ownerCapabilityId) &&
+    typeof record?.ownerCapabilityTaskId === "string" &&
+    IDENTIFIER_PATTERN.test(record.ownerCapabilityTaskId) &&
+    typeof record?.ownerCapabilityIntentDigest === "string" &&
+    /^[0-9a-f]{64}$/.test(record.ownerCapabilityIntentDigest) &&
+    hasNoOwnerConfirmationFields;
+  const validOwnerConfirmation =
+    record?.credentialKind === "owner-confirmation" &&
+    record?.ownerCapabilityId === undefined &&
+    record?.ownerCapabilityTaskId === undefined &&
+    record?.ownerCapabilityIntentDigest === undefined &&
+    typeof record?.ownerConfirmationId === "string" &&
+    IDENTIFIER_PATTERN.test(record.ownerConfirmationId) &&
+    typeof record?.ownerConfirmationTaskId === "string" &&
+    IDENTIFIER_PATTERN.test(record.ownerConfirmationTaskId) &&
+    typeof record?.ownerConfirmationIntentDigest === "string" &&
+    /^[0-9a-f]{64}$/.test(record.ownerConfirmationIntentDigest) &&
+    typeof record?.ownerConfirmationDigest === "string" &&
+    /^[0-9a-f]{64}$/.test(record.ownerConfirmationDigest) &&
+    typeof record?.ownerConfirmationReference === "string" &&
+    record.ownerConfirmationReference.trim() !== "" &&
+    record?.ownerConfirmationApprovedBy === "AubreyF" &&
+    typeof record?.ownerConfirmationApprovalReference === "string" &&
+    record.ownerConfirmationApprovalReference.trim() !== "" &&
+    Number.isFinite(ownerConfirmationApprovedAtMs) &&
+    Number.isFinite(ownerConfirmationExpiresAtMs) &&
+    ownerConfirmationExpiresAtMs > ownerConfirmationApprovedAtMs &&
+    ownerConfirmationExpiresAtMs - ownerConfirmationApprovedAtMs <=
+      OWNER_CONFIRMATION_MAX_LIFETIME_MS &&
+    ownerConfirmationApprovedAtMs <=
+      acquiredAtMs + OWNER_CONFIRMATION_CLOCK_SKEW_MS &&
+    ownerConfirmationExpiresAtMs >= expiresAtMs;
   if (
     record?.schemaVersion !== AUTOMATION_CONTROL_SCHEMA_VERSION ||
     record?.name !== name ||
@@ -2288,29 +2357,26 @@ function validateLeaseRecord(record, name) {
     policy.providerAuthority !== record?.providerAuthority ||
     ![
       "persistent-actor",
+      "owner-confirmation",
       "owner-signed-capability",
       "signed-capability",
     ].includes(record?.credentialKind) ||
     (record?.owner === "freed-owner"
-      ? record.credentialKind !== "owner-signed-capability" ||
-        typeof record?.ownerCapabilityId !== "string" ||
-        !IDENTIFIER_PATTERN.test(record.ownerCapabilityId) ||
-        typeof record?.ownerCapabilityTaskId !== "string" ||
-        !IDENTIFIER_PATTERN.test(record.ownerCapabilityTaskId) ||
-        typeof record?.ownerCapabilityIntentDigest !== "string" ||
-        !/^[0-9a-f]{64}$/.test(record.ownerCapabilityIntentDigest) ||
+      ? (!validOwnerSignedCapability && !validOwnerConfirmation) ||
         record?.publisherCapabilityId !== undefined
       : record?.owner === "freed-pr-publisher"
         ? record.credentialKind !== "signed-capability" ||
           record?.ownerCapabilityId !== undefined ||
           record?.ownerCapabilityTaskId !== undefined ||
           record?.ownerCapabilityIntentDigest !== undefined ||
+          !hasNoOwnerConfirmationFields ||
           typeof record?.publisherCapabilityId !== "string" ||
           !IDENTIFIER_PATTERN.test(record.publisherCapabilityId)
         : record.credentialKind !== "persistent-actor" ||
           record?.ownerCapabilityId !== undefined ||
           record?.ownerCapabilityTaskId !== undefined ||
           record?.ownerCapabilityIntentDigest !== undefined ||
+          !hasNoOwnerConfirmationFields ||
           record?.publisherCapabilityId !== undefined)
   ) {
     throw new AutomationControlError(
@@ -2410,6 +2476,15 @@ function canonicalIntentValue(value) {
 export function ownerGovernanceIntentDigest(intent) {
   const canonical = canonicalIntentValue(
     requirePlainObject(intent, "owner governance intent"),
+  );
+  return createHash("sha256")
+    .update(JSON.stringify(canonical), "utf8")
+    .digest("hex");
+}
+
+function ownerConfirmationDigest(confirmation) {
+  const canonical = canonicalIntentValue(
+    requirePlainObject(confirmation, "owner confirmation"),
   );
   return createHash("sha256")
     .update(JSON.stringify(canonical), "utf8")
@@ -3031,6 +3106,129 @@ function readAndValidateOwnerCapability({
   return { capabilityFile: expectedPath, consumedPath, payload };
 }
 
+function readAndValidateOwnerConfirmation({
+  confirmationFile,
+  taskId,
+  intentDigest,
+  ttlMs,
+  nowMs,
+}) {
+  if (
+    typeof confirmationFile !== "string" ||
+    !path.isAbsolute(confirmationFile)
+  ) {
+    throw new AutomationControlError(
+      "owner_confirmation_required",
+      "freed-owner requires an absolute current-task owner confirmation file when no signed capability is supplied.",
+    );
+  }
+  requirePrivateRegularFile(confirmationFile, {
+    missingCode: "owner_confirmation_required",
+    missingMessage: "The current-task owner confirmation file is unavailable.",
+    invalidCode: "owner_confirmation_permissions_invalid",
+    invalidMessage:
+      "The current-task owner confirmation must be a private regular file owned by the current user.",
+  });
+  let physicalConfirmationFile = "";
+  try {
+    physicalConfirmationFile = realpathSync(confirmationFile);
+  } catch {
+    // The private-file check above supplies the useful missing-file error.
+  }
+  if (physicalConfirmationFile !== confirmationFile) {
+    throw new AutomationControlError(
+      "owner_confirmation_invalid",
+      "The current-task owner confirmation path must be canonical.",
+    );
+  }
+
+  const confirmation = readJsonFile(confirmationFile);
+  const requiredKeys = [
+    "approvalSource",
+    "approvedAt",
+    "approvedBy",
+    "confirmationId",
+    "expiresAt",
+    "intent",
+    "intentDigest",
+    "kind",
+    "ownerApprovalReference",
+    "schemaVersion",
+    "taskId",
+  ].sort();
+  const sourceKeys = ["kind", "reference"];
+  const approvedAtMs = Date.parse(String(confirmation?.approvedAt ?? ""));
+  const expiresAtMs = Date.parse(String(confirmation?.expiresAt ?? ""));
+  const normalizedIntentDigest = String(intentDigest ?? "")
+    .trim()
+    .toLowerCase();
+  const confirmationIntentDigest = String(confirmation?.intentDigest ?? "")
+    .trim()
+    .toLowerCase();
+  let embeddedIntentDigest = "";
+  try {
+    embeddedIntentDigest = ownerGovernanceIntentDigest(confirmation?.intent);
+  } catch {
+    // The aggregate validation error below keeps approval failures uniform.
+  }
+  const source = confirmation?.approvalSource;
+  if (
+    confirmation?.schemaVersion !== OWNER_CONFIRMATION_SCHEMA_VERSION ||
+    Object.keys(confirmation ?? {})
+      .sort()
+      .join("\n") !== requiredKeys.join("\n") ||
+    confirmation?.kind !== "owner-confirmation" ||
+    typeof confirmation?.confirmationId !== "string" ||
+    !IDENTIFIER_PATTERN.test(confirmation.confirmationId) ||
+    confirmation?.approvedBy !== "AubreyF" ||
+    typeof confirmation?.ownerApprovalReference !== "string" ||
+    confirmation.ownerApprovalReference.trim() === "" ||
+    !source ||
+    typeof source !== "object" ||
+    Array.isArray(source) ||
+    Object.keys(source).sort().join("\n") !== sourceKeys.join("\n") ||
+    source.kind !== "current-task" ||
+    typeof source.reference !== "string" ||
+    source.reference.trim() === "" ||
+    confirmation?.taskId !== taskId ||
+    !IDENTIFIER_PATTERN.test(String(confirmation?.taskId ?? "")) ||
+    confirmation?.intent?.schemaVersion !== OWNER_CAPABILITY_SCHEMA_VERSION ||
+    confirmation?.intent?.taskId !== taskId ||
+    typeof confirmation?.intent?.action !== "string" ||
+    confirmation.intent.action.trim() === "" ||
+    !/^[0-9a-f]{64}$/.test(normalizedIntentDigest) ||
+    confirmationIntentDigest !== normalizedIntentDigest ||
+    embeddedIntentDigest !== confirmationIntentDigest ||
+    !Number.isFinite(approvedAtMs) ||
+    !Number.isFinite(expiresAtMs) ||
+    approvedAtMs > nowMs + OWNER_CONFIRMATION_CLOCK_SKEW_MS ||
+    expiresAtMs <= nowMs ||
+    expiresAtMs <= approvedAtMs ||
+    expiresAtMs - approvedAtMs > OWNER_CONFIRMATION_MAX_LIFETIME_MS ||
+    nowMs + ttlMs > expiresAtMs
+  ) {
+    throw new AutomationControlError(
+      "owner_confirmation_invalid",
+      "The current-task owner confirmation does not match this exact governance lease request or is outside its validity window.",
+    );
+  }
+  return {
+    confirmationFile,
+    confirmation: {
+      ...confirmation,
+      ownerApprovalReference: confirmation.ownerApprovalReference.trim(),
+      approvalSource: {
+        kind: source.kind,
+        reference: source.reference.trim(),
+      },
+      intentDigest: confirmationIntentDigest,
+      approvedAt: new Date(approvedAtMs).toISOString(),
+      expiresAt: new Date(expiresAtMs).toISOString(),
+    },
+    digest: ownerConfirmationDigest(confirmation),
+  };
+}
+
 function consumeOwnerCapability(capability) {
   ensurePrivateDirectory(path.dirname(capability.consumedPath));
   renameSync(capability.capabilityFile, capability.consumedPath);
@@ -3103,18 +3301,23 @@ function requireMutationLease({
   if (
     actor === "freed-owner" &&
     (typeof taskId !== "string" ||
-      record.ownerCapabilityTaskId !== taskId ||
+      (record.ownerCapabilityTaskId ?? record.ownerConfirmationTaskId) !==
+        taskId ||
       typeof ownerIntentDigest !== "string" ||
-      record.ownerCapabilityIntentDigest !== ownerIntentDigest)
+      (record.ownerCapabilityIntentDigest ??
+        record.ownerConfirmationIntentDigest) !== ownerIntentDigest)
   ) {
     throw new AutomationControlError(
       "owner_capability_intent_mismatch",
       "The owner governance lease is not authorized for this exact task and intent digest.",
       {
         taskId,
-        authorizedTaskId: record.ownerCapabilityTaskId,
+        authorizedTaskId:
+          record.ownerCapabilityTaskId ?? record.ownerConfirmationTaskId,
         ownerIntentDigest,
-        authorizedIntentDigest: record.ownerCapabilityIntentDigest,
+        authorizedIntentDigest:
+          record.ownerCapabilityIntentDigest ??
+          record.ownerConfirmationIntentDigest,
       },
     );
   }
@@ -3202,6 +3405,7 @@ export function acquireLease({
   token = randomUUID(),
   orphanGraceMs = ORPHAN_LEASE_GRACE_MS,
   ownerCapabilityFile = undefined,
+  ownerConfirmationFile = undefined,
   ownerCapabilityTaskId = undefined,
   ownerCapabilityIntentDigest = undefined,
   actorCredentialToken = undefined,
@@ -3238,7 +3442,9 @@ export function acquireLease({
   requirePositiveInteger(orphanGraceMs, "orphanGraceMs");
   if (
     owner === "freed-pr-publisher" &&
-    (actorCredentialToken !== undefined || ownerCapabilityFile !== undefined)
+    (actorCredentialToken !== undefined ||
+      ownerCapabilityFile !== undefined ||
+      ownerConfirmationFile !== undefined)
   ) {
     throw new AutomationControlError(
       "publisher_reusable_credential_forbidden",
@@ -3254,6 +3460,7 @@ export function acquireLease({
   if (
     owner !== "freed-owner" &&
     (ownerCapabilityFile !== undefined ||
+      ownerConfirmationFile !== undefined ||
       ownerCapabilityTaskId !== undefined ||
       ownerCapabilityIntentDigest !== undefined)
   ) {
@@ -3280,6 +3487,23 @@ export function acquireLease({
       `${owner} leases cannot exceed ${maxLeaseLifetimeMs.toLocaleString()} ms.`,
     );
   }
+  if (owner === "freed-owner") {
+    const authorizationCount =
+      Number(ownerCapabilityFile !== undefined) +
+      Number(ownerConfirmationFile !== undefined);
+    if (authorizationCount === 0) {
+      throw new AutomationControlError(
+        "owner_capability_required",
+        "freed-owner requires a signed owner capability or current-task owner confirmation.",
+      );
+    }
+    if (authorizationCount > 1) {
+      throw new AutomationControlError(
+        "owner_authorization_conflict",
+        "freed-owner accepts only one signed capability or current-task confirmation per lease.",
+      );
+    }
+  }
   const publisherScope =
     owner === "freed-pr-publisher" ? normalizePublisherScope(scope) : undefined;
   if (owner !== "freed-pr-publisher" && scope !== undefined) {
@@ -3296,13 +3520,23 @@ export function acquireLease({
       ensurePrivateDirectory(paths.leases);
       const leasePath = leasePathFor(paths, name);
       const ownerCapability =
-        owner === "freed-owner"
+        owner === "freed-owner" && ownerCapabilityFile !== undefined
           ? readAndValidateOwnerCapability({
               paths,
               capabilityFile: ownerCapabilityFile,
               taskId: ownerCapabilityTaskId,
               intentDigest: ownerCapabilityIntentDigest,
               leaseToken: token,
+              ttlMs,
+              nowMs,
+            })
+          : null;
+      const ownerConfirmation =
+        owner === "freed-owner" && ownerConfirmationFile !== undefined
+          ? readAndValidateOwnerConfirmation({
+              confirmationFile: ownerConfirmationFile,
+              taskId: ownerCapabilityTaskId,
+              intentDigest: ownerCapabilityIntentDigest,
               ttlMs,
               nowMs,
             })
@@ -3418,15 +3652,37 @@ export function acquireLease({
         credentialKind:
           ownerCapability !== null
             ? "owner-signed-capability"
-            : publisherCapability !== null
-              ? "signed-capability"
-              : "persistent-actor",
+            : ownerConfirmation !== null
+              ? "owner-confirmation"
+              : publisherCapability !== null
+                ? "signed-capability"
+                : "persistent-actor",
         ...(ownerCapability === null
           ? {}
           : {
               ownerCapabilityId: ownerCapability.payload.capabilityId,
               ownerCapabilityTaskId: ownerCapability.payload.taskId,
               ownerCapabilityIntentDigest: ownerCapability.payload.intentDigest,
+            }),
+        ...(ownerConfirmation === null
+          ? {}
+          : {
+              ownerConfirmationId:
+                ownerConfirmation.confirmation.confirmationId,
+              ownerConfirmationTaskId: ownerConfirmation.confirmation.taskId,
+              ownerConfirmationIntentDigest:
+                ownerConfirmation.confirmation.intentDigest,
+              ownerConfirmationDigest: ownerConfirmation.digest,
+              ownerConfirmationReference:
+                ownerConfirmation.confirmation.approvalSource.reference,
+              ownerConfirmationApprovedBy:
+                ownerConfirmation.confirmation.approvedBy,
+              ownerConfirmationApprovalReference:
+                ownerConfirmation.confirmation.ownerApprovalReference,
+              ownerConfirmationApprovedAt:
+                ownerConfirmation.confirmation.approvedAt,
+              ownerConfirmationExpiresAt:
+                ownerConfirmation.confirmation.expiresAt,
             }),
         ...(publisherCapability === null
           ? {}
@@ -3494,6 +3750,26 @@ export function acquireLease({
                 ownerCapabilityTaskId: ownerCapability.payload.taskId,
                 ownerCapabilityIntentDigest:
                   ownerCapability.payload.intentDigest,
+              }),
+          ...(ownerConfirmation === null
+            ? {}
+            : {
+                ownerConfirmationId:
+                  ownerConfirmation.confirmation.confirmationId,
+                ownerConfirmationTaskId: ownerConfirmation.confirmation.taskId,
+                ownerConfirmationIntentDigest:
+                  ownerConfirmation.confirmation.intentDigest,
+                ownerConfirmationDigest: ownerConfirmation.digest,
+                ownerConfirmationReference:
+                  ownerConfirmation.confirmation.approvalSource.reference,
+                ownerConfirmationApprovedBy:
+                  ownerConfirmation.confirmation.approvedBy,
+                ownerConfirmationApprovalReference:
+                  ownerConfirmation.confirmation.ownerApprovalReference,
+                ownerConfirmationApprovedAt:
+                  ownerConfirmation.confirmation.approvedAt,
+                ownerConfirmationExpiresAt:
+                  ownerConfirmation.confirmation.expiresAt,
               }),
           ...(credentialUpgrade ? { credentialUpgrade: true } : {}),
           ...(previous === null ? {} : { previous }),

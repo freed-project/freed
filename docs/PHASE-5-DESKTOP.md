@@ -225,7 +225,7 @@ export async function captureDomFeed(
 | 5.30 | Reviewed AI-assisted release notes and cumulative daily changelog cards | Medium     |
 | 5.31 | Provider health dashboard, charts, and unsubscribe flow                 | Medium     |
 | 5.32 | Rotating local database snapshots + restore UI                          | Medium     |
-| 5.33 | Public-safe and private bug report bundles                              | Medium     |
+| 5.33 | Public-safe bundles and private GitHub vulnerability reports             | Medium     |
 | 5.34 | Native startup recovery window outside the React tree                  | Medium     |
 | 5.35 | Hot-path side-effect scheduling for persistence, sync, and outbox work  | Medium     |
 | 5.36 | Event-aware Automerge subscription metadata for item-patch outbox drains | Medium     |
@@ -271,6 +271,7 @@ export async function captureDomFeed(
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Private diagnostic bundles are opt-in, redacted, and steered toward email instead of public GitHub attachment
 - [x] Bug report actions now label whether they download a public-safe or private bundle, bulk-toggle private diagnostics, and block public GitHub issue drafts while private diagnostics remain selected
+- [x] Private reports can send a redacted description and selected stack traces to the repository's private GitHub vulnerability inbox after an explicit click, with no automatic retry and no diagnostic zip upload
 - [x] Browser desktop preview now guards native-only LinkedIn auth listeners, background social refresh paths, and local snapshot controls, so opening Settings and switching themes no longer crashes the preview
 - [x] Freed Desktop emits native renderer heartbeats and warns in the local log when the main window goes silent long enough to suggest a renderer hang or crash
 - [x] If the renderer dies before the app finishes booting, the next launch opens a native recovery window with retry, immediate in-place update install, and channel-aware browser download fallback actions outside the React tree

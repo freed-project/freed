@@ -35,6 +35,7 @@
 /packages/desktop/src/lib/automerge.ts @AubreyF
 /packages/desktop/src/lib/automerge.worker.ts @AubreyF
 /packages/desktop/src/lib/background-runtime-coordinator.ts @AubreyF
+/packages/desktop/src/lib/bug-report.ts @AubreyF
 /packages/desktop/src/lib/capture.ts @AubreyF
 /packages/desktop/src/lib/contact-sync-storage.ts @AubreyF
 /packages/desktop/src/lib/content-fetcher.ts @AubreyF
@@ -87,6 +88,8 @@
 /packages/capture-*/src/ @AubreyF
 /packages/pwa/src/App.tsx @AubreyF
 /packages/pwa/api/oauth/google.ts @AubreyF
+/packages/pwa/api/fetch-url.ts @AubreyF
+/packages/pwa/api/security-report.ts @AubreyF
 /packages/pwa/src/components/OAuthCallback.tsx @AubreyF
 /packages/pwa/src/components/PwaSyncSettings.tsx @AubreyF
 /packages/pwa/src/components/SyncConnectDialog.tsx @AubreyF
@@ -94,6 +97,7 @@
 /packages/pwa/src/lib/automerge.ts @AubreyF
 /packages/pwa/src/lib/automerge.worker.ts @AubreyF
 /packages/pwa/src/lib/cloud-oauth.ts @AubreyF
+/packages/pwa/src/lib/bug-report.ts @AubreyF
 /packages/pwa/src/lib/contacts.ts @AubreyF
 /packages/pwa/src/lib/factory-reset-coordinator.ts @AubreyF
 /packages/pwa/src/lib/oauth-redirect.ts @AubreyF
@@ -102,6 +106,8 @@
 /packages/pwa/src/lib/sync.ts @AubreyF
 /packages/pwa/src/lib/youtube-handoff.ts @AubreyF
 /packages/shared/src/google-contacts-automation.ts @AubreyF
+/packages/shared/src/bug-report.ts @AubreyF
+/packages/shared/src/redact-sensitive.ts @AubreyF
 /packages/shared/src/google-contacts.ts @AubreyF
 /packages/shared/src/contact-sync-state.ts @AubreyF
 /packages/shared/src/legal.ts @AubreyF
@@ -110,6 +116,9 @@
 /packages/shared/src/sync-write-policy.ts @AubreyF
 /packages/shared/src/youtube.ts @AubreyF
 /packages/ui/src/components/feed/ReaderView.tsx @AubreyF
+/packages/ui/src/components/report/ReportComposer.tsx @AubreyF
+/packages/ui/src/context/PlatformContext.tsx @AubreyF
+/packages/ui/src/lib/bug-report.ts @AubreyF
 /packages/ui/src/components/feed/YouTubeFocusPlayer.tsx @AubreyF
 /packages/ui/src/components/SettingsDialog.tsx @AubreyF
 /packages/ui/src/components/settings/AISection.tsx @AubreyF

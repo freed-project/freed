@@ -1,7 +1,7 @@
 {
   "name": "@freed/desktop",
   "private": true,
-  "version": "26.7.1301",
+  "version": "26.7.1400",
   "type": "module",
   "scripts": {
     "dev": "node ../../node_modules/vite/bin/vite.js",
@@ -10,16 +10,16 @@
     "tauri": "node ./scripts/tauri-cli.mjs",
     "tauri:dev": "node ./scripts/tauri-cli.mjs dev",
     "tauri:build": "node ./scripts/tauri-cli.mjs build",
-    "test:unit": "node ../../node_modules/vitest/vitest.mjs run",
+    "test:unit": "node ../../node_modules/vitest/vitest.mjs run --maxWorkers=1",
     "test:unit:watch": "node ../../node_modules/vitest/vitest.mjs",
     "test:e2e": "node ../../node_modules/playwright/cli.js test",
     "test:e2e:automerge-worker": "node ../../node_modules/playwright/cli.js test automerge-worker-lifecycle.spec.ts",
     "test:e2e:smoke": "node ../../node_modules/playwright/cli.js test smoke.spec.ts legal-gate.spec.ts update-channel.spec.ts provider-health.spec.ts x-capture.spec.ts --grep \"app loads and renders without crashing|startup emits renderer health|no console errors on startup|settings backdrop stays blurred|first launch blocks|launch-time auto-check|health tab surfaces provider charts|X connect form accepts cookies\"",
-    "test:e2e:regression": "node ../../node_modules/playwright/cli.js test automerge-worker-lifecycle.spec.ts bug-report.spec.ts cloud-sync-nudge.spec.ts facebook-capture.spec.ts feed-card-ui.spec.ts google-contacts.spec.ts instagram-capture.spec.ts legal-gate.spec.ts linkedin-capture.spec.ts local-ai-settings.spec.ts provider-copy.spec.ts provider-health.spec.ts reader-hydration.spec.ts settings-saved.spec.ts social-memory-preflight.spec.ts social-story-filter.spec.ts smoke.spec.ts startup-recovery.spec.ts theme-switching.spec.ts update-channel.spec.ts x-capture.spec.ts youtube-capture.spec.ts --grep-invert \"stress Friends graph degrades labels|dense Friends graph stays visually structured|map view repaints across all themes\"",
+    "test:e2e:regression": "node ../../node_modules/playwright/cli.js test automerge-worker-lifecycle.spec.ts bug-report.spec.ts cloud-sync-nudge.spec.ts facebook-capture.spec.ts feed-card-ui.spec.ts google-contacts.spec.ts instagram-capture.spec.ts legal-gate.spec.ts linkedin-capture.spec.ts local-ai-settings.spec.ts provider-copy.spec.ts provider-health.spec.ts reader-hydration.spec.ts settings-saved.spec.ts social-memory-preflight.spec.ts social-story-filter.spec.ts smoke.spec.ts startup-recovery.spec.ts theme-switching.spec.ts update-channel.spec.ts x-capture.spec.ts youtube-capture.spec.ts --grep-invert \"stress Friends graph keeps labels resident|dense Friends graph stays visually structured|map view repaints across all themes\"",
     "test:e2e:full": "npm run test:e2e:regression",
     "test:e2e:perf": "npm run test:e2e:perf:feed && npm run test:e2e:perf:graph && npm run test:e2e:perf:friends && npm run test:e2e:perf:map && npm run test:e2e:perf:sidebar && npm run test:e2e:perf:settings",
     "test:e2e:perf:feed": "node ../../node_modules/playwright/cli.js test perf-feed.spec.ts",
-    "test:e2e:perf:graph": "node ../../node_modules/playwright/cli.js test smoke.spec.ts --grep \"stress Friends graph degrades labels\"",
+    "test:e2e:perf:graph": "node ../../node_modules/playwright/cli.js test smoke.spec.ts --grep \"stress Friends graph keeps labels resident\"",
     "test:e2e:perf:friends": "node ../../node_modules/playwright/cli.js test perf-friends.spec.ts",
     "test:e2e:perf:map": "node ../../node_modules/playwright/cli.js test perf-map.spec.ts",
     "test:e2e:perf:sidebar": "node ../../node_modules/playwright/cli.js test perf-sidebar.spec.ts",
@@ -56,7 +56,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-qr-code": "^2.0.18",
-    "react-router-dom": "^7.1.1",
+    "react-router-dom": "^7.18.1",
     "zustand": "^5.0.3"
   },
   "devDependencies": {
@@ -67,12 +67,12 @@
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.20",
     "jsdom": "^28.1.0",
-    "postcss": "^8.4.49",
+    "postcss": "^8.5.19",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.9.3",
-    "vite": "7.3.1",
+    "vite": "7.3.6",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.5.0",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.10"
   }
 }

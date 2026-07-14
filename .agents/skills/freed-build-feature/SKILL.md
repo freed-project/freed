@@ -17,7 +17,7 @@ Build one attributable product change from the latest `origin/dev`. Keep the cha
 5. Treat missing build identity, mixed-build evidence, insufficient coverage, or broken sources as `inconclusive`. Do not turn absence of evidence into a passing result.
 6. Record the source build identity for every baseline: app version, channel, git SHA, native boot ID, app session ID, and exact start and end timestamps when available.
 7. Read [docs/STABILITY-PROGRAM.md](../../../docs/STABILITY-PROGRAM.md). Preserve the watchdog freeze and one global behavioral product change until its installed-build soak outcome completes.
-8. If the change can alter provider-visible behavior, stop and use `freed-provider-risk-review`. Preparation is not approval. A materially changed diff requires renewed approval.
+8. If the change can alter provider-visible behavior, stop and use `freed-provider-risk-review`. Preparation is not approval. A materially changed provider-visible diff requires renewed approval.
 
 ## Build the slice
 
@@ -49,7 +49,7 @@ When product work changes any `docs/PHASE-*.md` file:
 
 ## Publish and close out
 
-1. Publish with `./scripts/worktree-publish.sh --title "<conventional title>" --summary "<change>" --test "<focused check>"` using the caller's existing GitHub authentication. Add `--ready` only when work is complete and no provider-visible path changed. The helper always keeps provider-visible pull requests draft. After exact-head CODEOWNER review, the owner performs a separate authorized ready transition through GitHub.
+1. Publish with `./scripts/worktree-publish.sh --title "<conventional title>" --summary "<change>" --test "<focused check>"` using the caller's existing GitHub authentication. When provider-visible paths changed, publish the draft first. The helper posts a review comment bound to the provider-only diff. After a CODEOWNER adds a GitHub thumbs-up reaction to that comment, rerun the helper with `--ready`. A valid signed control-task approval may authorize an unattended ready transition.
    A host that deliberately provisions `FREED_TRUSTED_PUBLISHER` may invoke the
    same helper through its capability and lease handoff for unattended work.
    Missing optional broker provisioning does not block the normal publication
