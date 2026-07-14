@@ -18,8 +18,10 @@ private let leaseLifetimeMilliseconds = 30 * 60 * 1_000
 private let maximumBindingBytes = 32 * 1_024
 private let maximumCredentialBytes = 4 * 1_024
 private let randomCredentialBytes = 32
-private let launcherPromptSelector =
-  SecKeychainPromptSelector.unsignedAct.union(.invalidAct)
+// The trusted application list already limits decryption to the exact
+// root-owned launcher. Requiring a passphrase for unsigned or invalid callers
+// would force a dialog for our deterministic ad hoc signed launcher.
+private let launcherPromptSelector = SecKeychainPromptSelector()
 #if AUTOMATION_ACTOR_PROVISION_TESTING
   private let fakeExistingCredential =
     Data("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".utf8)
