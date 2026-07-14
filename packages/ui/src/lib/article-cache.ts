@@ -1,22 +1,7 @@
-import {
-  captureFactoryResetWriteEpoch,
-  isFactoryResetWriteAllowed,
-  trackFactoryResetSensitiveOperation,
-} from "./factory-reset.js";
-
 const ARTICLE_CONTENT_CACHE_NAME = "freed-articles-v1";
 const PINNED_ARTICLE_CONTENT_CACHE_NAME = "freed-articles-pinned-v1";
 const PINNED_CONTENT_PATH_PREFIX = "/pinned-content/";
 const ARTICLE_IMAGE_CACHE_NAME = "freed-images";
-const KNOWN_USER_DATA_CACHE_NAMES = [
-  ARTICLE_CONTENT_CACHE_NAME,
-  PINNED_ARTICLE_CONTENT_CACHE_NAME,
-  ARTICLE_IMAGE_CACHE_NAME,
-  "freed-sync-v1",
-  "freed-network",
-  "freed-wasm",
-];
-const IMMUTABLE_APP_SHELL_CACHE_PREFIX = "workbox-precache";
 const CACHEABLE_PROTOCOLS = new Set(["http:", "https:"]);
 const IMAGE_ATTRIBUTE_NAMES = [
   "src",
@@ -82,99 +67,61 @@ export function collectCacheableArticleImageUrls(html: string, baseUrl: string):
   return [...urls];
 }
 
-export function cacheArticleHtml(
+export async function cacheArticleHtml(
   articleUrl: string,
   globalId: string,
   html: string,
   options: { pinned?: boolean } = {},
 ): Promise<void> {
-  if (!("caches" in window)) return Promise.resolve();
-  const writeEpoch = captureFactoryResetWriteEpoch();
-  if (!isFactoryResetWriteAllowed(writeEpoch)) return Promise.resolve();
+  if (!("caches" in window)) return;
 
-  return trackFactoryResetSensitiveOperation((async () => {
-    const cache = await caches.open(
-      options.pinned ? PINNED_ARTICLE_CONTENT_CACHE_NAME : ARTICLE_CONTENT_CACHE_NAME,
-    );
-    if (!isFactoryResetWriteAllowed(writeEpoch)) return;
-    const response = new Response(html, {
-      headers: { "Content-Type": "text/html; charset=utf-8" },
-    });
+  const cache = await caches.open(options.pinned ? PINNED_ARTICLE_CONTENT_CACHE_NAME : ARTICLE_CONTENT_CACHE_NAME);
+  const response = new Response(html, {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
 
-    await cache.put(articleUrl, response.clone());
-    if (!isFactoryResetWriteAllowed(writeEpoch)) return;
-    await cache.put(`/content/${globalId}`, response.clone());
-    if (options.pinned && isFactoryResetWriteAllowed(writeEpoch)) {
-      await cache.put(`${PINNED_CONTENT_PATH_PREFIX}${globalId}`, response);
+  await cache.put(articleUrl, response.clone());
+  await cache.put(`/content/${globalId}`, response.clone());
+  if (options.pinned) {
+    await cache.put(`${PINNED_CONTENT_PATH_PREFIX}${globalId}`, response);
+  }
+}
+
+export async function getCachedArticleHtml(globalId: string, articleUrl?: string): Promise<string | null> {
+  if (!("caches" in window)) return null;
+
+  const keys = articleUrl
+    ? [`${PINNED_CONTENT_PATH_PREFIX}${globalId}`, `/content/${globalId}`, articleUrl]
+    : [`${PINNED_CONTENT_PATH_PREFIX}${globalId}`, `/content/${globalId}`];
+  for (const cacheName of [PINNED_ARTICLE_CONTENT_CACHE_NAME, ARTICLE_CONTENT_CACHE_NAME]) {
+    const cache = await caches.open(cacheName);
+    for (const key of keys) {
+      const response = await cache.match(key);
+      if (response) return response.text();
     }
-  })());
+  }
+
+  return null;
 }
 
-export function getCachedArticleHtml(
-  globalId: string,
-  articleUrl?: string,
-): Promise<string | null> {
-  if (!("caches" in window)) return Promise.resolve(null);
-  const writeEpoch = captureFactoryResetWriteEpoch();
-  if (!isFactoryResetWriteAllowed(writeEpoch)) return Promise.resolve(null);
+export async function warmArticleImageCache(html: string, baseUrl: string): Promise<void> {
+  if (!("caches" in window)) return;
 
-  return trackFactoryResetSensitiveOperation((async () => {
-    const keys = articleUrl
-      ? [`${PINNED_CONTENT_PATH_PREFIX}${globalId}`, `/content/${globalId}`, articleUrl]
-      : [`${PINNED_CONTENT_PATH_PREFIX}${globalId}`, `/content/${globalId}`];
-    for (const cacheName of [PINNED_ARTICLE_CONTENT_CACHE_NAME, ARTICLE_CONTENT_CACHE_NAME]) {
-      if (!isFactoryResetWriteAllowed(writeEpoch)) return null;
-      const cache = await caches.open(cacheName);
-      if (!isFactoryResetWriteAllowed(writeEpoch)) return null;
-      for (const key of keys) {
-        const response = await cache.match(key);
-        if (response) return response.text();
-      }
-    }
+  await Promise.resolve();
 
-    return null;
-  })());
-}
+  const imageUrls = collectCacheableArticleImageUrls(html, baseUrl);
+  if (imageUrls.length === 0) return;
 
-export async function clearArticleCacheStorage(): Promise<void> {
-  if (typeof window === "undefined" || !("caches" in window)) return;
+  const cache = await caches.open(ARTICLE_IMAGE_CACHE_NAME);
 
-  const existingNames = typeof caches.keys === "function" ? await caches.keys() : [];
-  const namesToDelete = new Set([
-    ...KNOWN_USER_DATA_CACHE_NAMES,
-    ...existingNames.filter((cacheName) => !cacheName.startsWith(IMMUTABLE_APP_SHELL_CACHE_PREFIX)),
-  ]);
-  await Promise.all([...namesToDelete].map((cacheName) => caches.delete(cacheName)));
-}
+  await Promise.allSettled(
+    imageUrls.map(async (imageUrl) => {
+      const existing = await cache.match(imageUrl);
+      if (existing) return;
 
-export function warmArticleImageCache(html: string, baseUrl: string): Promise<void> {
-  if (!("caches" in window)) return Promise.resolve();
-  const writeEpoch = captureFactoryResetWriteEpoch();
-  if (!isFactoryResetWriteAllowed(writeEpoch)) return Promise.resolve();
-
-  return trackFactoryResetSensitiveOperation((async () => {
-    await Promise.resolve();
-    if (!isFactoryResetWriteAllowed(writeEpoch)) return;
-
-    const imageUrls = collectCacheableArticleImageUrls(html, baseUrl);
-    if (imageUrls.length === 0) return;
-
-    const cache = await caches.open(ARTICLE_IMAGE_CACHE_NAME);
-    if (!isFactoryResetWriteAllowed(writeEpoch)) return;
-
-    await Promise.allSettled(
-      imageUrls.map(async (imageUrl) => {
-        if (!isFactoryResetWriteAllowed(writeEpoch)) return;
-        const existing = await cache.match(imageUrl);
-        if (existing || !isFactoryResetWriteAllowed(writeEpoch)) return;
-
-        const response = await fetch(new Request(imageUrl, { mode: "no-cors" }));
-        if (
-          (!response.ok && response.type !== "opaque") ||
-          !isFactoryResetWriteAllowed(writeEpoch)
-        ) return;
-        await cache.put(imageUrl, response);
-      }),
-    );
-  })());
+      const response = await fetch(new Request(imageUrl, { mode: "no-cors" }));
+      if (!response.ok && response.type !== "opaque") return;
+      await cache.put(imageUrl, response);
+    }),
+  );
 }

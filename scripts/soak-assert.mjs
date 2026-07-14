@@ -15,6 +15,9 @@
 //   webkit_returns_to_baseline  machine-wide WebContent count returns to its
 //                           baseline between scrape cycles
 //   uploads_unchanged_heads unchanged cloud uploads < 5/h over >= 1h
+//   startup_repair_upload_budget at most one startup repair upload per
+//                           provider and app session
+//   social_outbox_retry_budget attempt and maxAttempts never exceed 3
 //   preflight_kills        active-operation window destruction count == 0
 //   scrape_zero_persist    novel items must be persisted; duplicate-only
 //                           scrapes are not data loss
@@ -768,6 +771,213 @@ export function summarizeWorkerIdleTerminations(healthLines) {
   };
 }
 
+function normalizedEventGroup(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "unknown";
+}
+
+function incrementNestedCount(groups, first, second) {
+  const firstKey = normalizedEventGroup(first);
+  const secondKey = normalizedEventGroup(second);
+  const nested = groups.get(firstKey) ?? new Map();
+  nested.set(secondKey, (nested.get(secondKey) ?? 0) + 1);
+  groups.set(firstKey, nested);
+}
+
+function nestedCountsToObject(groups) {
+  return Object.fromEntries(
+    [...groups.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [
+        key,
+        Object.fromEntries(
+          [...nested.entries()].sort(([left], [right]) =>
+            left.localeCompare(right),
+          ),
+        ),
+      ]),
+  );
+}
+
+function incrementCount(groups, key) {
+  const normalized = normalizedEventGroup(key);
+  groups.set(normalized, (groups.get(normalized) ?? 0) + 1);
+}
+
+function countsToObject(groups) {
+  return Object.fromEntries(
+    [...groups.entries()].sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+  );
+}
+
+function socialAttemptFieldsMeetContract(entry, target) {
+  const attempt = entry?.attempt;
+  const maxAttempts = entry?.maxAttempts;
+  return (
+    Number.isSafeInteger(attempt) &&
+    attempt >= 1 &&
+    Number.isSafeInteger(maxAttempts) &&
+    maxAttempts >= 1 &&
+    attempt <= maxAttempts &&
+    attempt <= target &&
+    maxAttempts <= target
+  );
+}
+
+/** Fold privacy-safe request-surface counters into stable grouped summaries. */
+export function summarizeRequestSurfaceEvents(healthLines) {
+  const socialByProviderAction = new Map();
+  const facebookBySource = new Map();
+  const rssByTrigger = new Map();
+  const aiByProviderPurpose = new Map();
+  const readerBySourcePin = new Map();
+  const startupByProvider = new Map();
+  const startupGroups = new Map();
+  let socialTotal = 0;
+  let socialInvalidContractCount = 0;
+  let socialMaxAttempt = 0;
+  let socialMaxAttempts = 0;
+  let facebookTotal = 0;
+  let facebookChangedCount = 0;
+  let facebookRemovedCount = 0;
+  let rssTotal = 0;
+  let aiTotal = 0;
+  let readerTotal = 0;
+  let startupTotal = 0;
+  let startupInvalidGroupCount = 0;
+
+  const socialTarget = metricContractForAssertion(
+    "social_outbox_retry_budget",
+  ).target.value;
+  for (const line of healthLines) {
+    const entry = line?.entry ?? line;
+    if (entry?.event === "social_outbox_attempt") {
+      socialTotal += 1;
+      incrementNestedCount(
+        socialByProviderAction,
+        entry.provider,
+        entry.action,
+      );
+      const attempt = entry.attempt;
+      const maxAttempts = entry.maxAttempts;
+      if (Number.isFinite(attempt)) {
+        socialMaxAttempt = Math.max(socialMaxAttempt, attempt);
+      }
+      if (Number.isFinite(maxAttempts)) {
+        socialMaxAttempts = Math.max(socialMaxAttempts, maxAttempts);
+      }
+      if (!socialAttemptFieldsMeetContract(entry, socialTarget)) {
+        socialInvalidContractCount += 1;
+      }
+      continue;
+    }
+    if (entry?.event === "facebook_group_discovery_update") {
+      facebookTotal += 1;
+      incrementCount(facebookBySource, entry.source);
+      const changedCount = Number(entry.changedCount);
+      const removedCount = Number(entry.removedCount);
+      if (Number.isSafeInteger(changedCount) && changedCount >= 0) {
+        facebookChangedCount += changedCount;
+      }
+      if (Number.isSafeInteger(removedCount) && removedCount >= 0) {
+        facebookRemovedCount += removedCount;
+      }
+      continue;
+    }
+    if (entry?.event === "rss_pull_attempt") {
+      rssTotal += 1;
+      incrementCount(rssByTrigger, entry.trigger);
+      continue;
+    }
+    if (entry?.event === "ai_request_attempt") {
+      aiTotal += 1;
+      incrementNestedCount(aiByProviderPurpose, entry.provider, entry.purpose);
+      continue;
+    }
+    if (entry?.event === "reader_article_fetch_attempt") {
+      readerTotal += 1;
+      const pin =
+        entry.pin === true
+          ? "pinned"
+          : entry.pin === false
+            ? "unpinned"
+            : "unspecified";
+      incrementNestedCount(readerBySourcePin, entry.source, pin);
+      continue;
+    }
+    if (
+      entry?.event === "cloud_upload_attempt" &&
+      entry.cause === "startup-repair"
+    ) {
+      startupTotal += 1;
+      const provider = normalizedEventGroup(entry.provider);
+      const appSessionId = normalizedEventGroup(entry.appSessionId);
+      incrementCount(startupByProvider, provider);
+      if (provider === "unknown" || appSessionId === "unknown") {
+        startupInvalidGroupCount += 1;
+        continue;
+      }
+      const key = JSON.stringify([appSessionId, provider]);
+      const prior = startupGroups.get(key);
+      startupGroups.set(key, {
+        appSessionId,
+        provider,
+        count: (prior?.count ?? 0) + 1,
+      });
+    }
+  }
+
+  const groups = [...startupGroups.values()].sort(
+    (left, right) =>
+      left.appSessionId.localeCompare(right.appSessionId) ||
+      left.provider.localeCompare(right.provider),
+  );
+  const startupTarget = metricContractForAssertion(
+    "startup_repair_upload_budget",
+  ).target.value;
+  return {
+    startupRepairUploads: {
+      total: startupTotal,
+      byProvider: countsToObject(startupByProvider),
+      groups,
+      maxPerProviderSession: groups.reduce(
+        (maximum, group) => Math.max(maximum, group.count),
+        0,
+      ),
+      overBudgetGroupCount: groups.filter(
+        (group) => group.count > startupTarget,
+      ).length,
+      invalidGroupCount: startupInvalidGroupCount,
+    },
+    socialOutboxAttempts: {
+      total: socialTotal,
+      byProviderAction: nestedCountsToObject(socialByProviderAction),
+      maxAttempt: socialMaxAttempt,
+      maxAttempts: socialMaxAttempts,
+      invalidContractCount: socialInvalidContractCount,
+    },
+    facebookGroupDiscoveryUpdates: {
+      total: facebookTotal,
+      bySource: countsToObject(facebookBySource),
+      changedCount: facebookChangedCount,
+      removedCount: facebookRemovedCount,
+    },
+    rssPullAttempts: {
+      total: rssTotal,
+      byTrigger: countsToObject(rssByTrigger),
+    },
+    aiRequestAttempts: {
+      total: aiTotal,
+      byProviderPurpose: nestedCountsToObject(aiByProviderPurpose),
+    },
+    readerArticleFetchAttempts: {
+      total: readerTotal,
+      bySourcePin: nestedCountsToObject(readerBySourcePin),
+    },
+  };
+}
+
 export function computeNativeMemoryPressureCoverage(
   healthLines,
   metricsRows,
@@ -1446,6 +1656,117 @@ export function assertWorkerIdleTerminationContract(
   );
 }
 
+export function assertRequestSurfaceContracts(
+  healthLines,
+  healthPath,
+  { runtimeEvidenceActionable = true } = {},
+) {
+  const summary = summarizeRequestSurfaceEvents(healthLines);
+  const startupLines = healthLines.filter(
+    ({ entry }) =>
+      entry?.event === "cloud_upload_attempt" &&
+      entry.cause === "startup-repair",
+  );
+  const socialLines = healthLines.filter(
+    ({ entry }) => entry?.event === "social_outbox_attempt",
+  );
+  if (!runtimeEvidenceActionable) {
+    return [
+      assertion(
+        "startup_repair_upload_budget",
+        "inconclusive",
+        `Runtime-health coverage or attribution is incomplete, so ${startupLines.length.toLocaleString()} observed startup repair upload${startupLines.length === 1 ? "" : "s"} cannot establish the per-provider, per-session budget.`,
+      ),
+      assertion(
+        "social_outbox_retry_budget",
+        "inconclusive",
+        `Runtime-health coverage or attribution is incomplete, so ${socialLines.length.toLocaleString()} observed social outbox attempt${socialLines.length === 1 ? "" : "s"} cannot establish the retry-field contract.`,
+      ),
+    ];
+  }
+
+  const startupTarget = metricContractForAssertion(
+    "startup_repair_upload_budget",
+  ).target.value;
+  const violatingStartupGroups = summary.startupRepairUploads.groups.filter(
+    (group) => group.count > startupTarget,
+  );
+  let startupAssertion;
+  if (violatingStartupGroups.length > 0) {
+    const violatingKeys = new Set(
+      violatingStartupGroups.map(({ appSessionId, provider }) =>
+        JSON.stringify([appSessionId, provider]),
+      ),
+    );
+    const violations = startupLines.filter(({ entry }) =>
+      violatingKeys.has(
+        JSON.stringify([
+          normalizedEventGroup(entry.appSessionId),
+          normalizedEventGroup(entry.provider),
+        ]),
+      ),
+    );
+    const breakdown = violatingStartupGroups
+      .map(
+        ({ provider, count }) =>
+          `${provider}=${count.toLocaleString()}`,
+      )
+      .join(", ");
+    startupAssertion = assertion(
+      "startup_repair_upload_budget",
+      "fail",
+      `${violatingStartupGroups.length.toLocaleString()} provider and app-session group${violatingStartupGroups.length === 1 ? "" : "s"} exceeded the startup repair upload budget of ${startupTarget.toLocaleString()} (${breakdown}).`,
+      violations
+        .slice(0, 10)
+        .map(({ line, raw }) => cite(healthPath, line, raw)),
+    );
+  } else if (summary.startupRepairUploads.invalidGroupCount > 0) {
+    startupAssertion = assertion(
+      "startup_repair_upload_budget",
+      "inconclusive",
+      `${summary.startupRepairUploads.invalidGroupCount.toLocaleString()} startup repair upload event${summary.startupRepairUploads.invalidGroupCount === 1 ? "" : "s"} lacked a provider or app session identity.`,
+      startupLines
+        .filter(
+          ({ entry }) =>
+            normalizedEventGroup(entry.provider) === "unknown" ||
+            normalizedEventGroup(entry.appSessionId) === "unknown",
+        )
+        .slice(0, 10)
+        .map(({ line, raw }) => cite(healthPath, line, raw)),
+    );
+  } else {
+    startupAssertion = assertion(
+      "startup_repair_upload_budget",
+      "pass",
+      `${summary.startupRepairUploads.total.toLocaleString()} startup repair upload${summary.startupRepairUploads.total === 1 ? "" : "s"}; no provider and app-session group exceeded ${startupTarget.toLocaleString()}.`,
+    );
+  }
+
+  const socialTarget = metricContractForAssertion(
+    "social_outbox_retry_budget",
+  ).target.value;
+  const invalidSocialLines = socialLines.filter(
+    ({ entry }) => !socialAttemptFieldsMeetContract(entry, socialTarget),
+  );
+  const socialAssertion =
+    invalidSocialLines.length > 0
+      ? assertion(
+          "social_outbox_retry_budget",
+          "fail",
+          `${invalidSocialLines.length.toLocaleString()} of ${socialLines.length.toLocaleString()} social outbox attempt events violated the attempt and maxAttempts ceiling of ${socialTarget.toLocaleString()}.`,
+          invalidSocialLines
+            .slice(0, 10)
+            .map(({ line, raw }) => cite(healthPath, line, raw)),
+        )
+      : assertion(
+          "social_outbox_retry_budget",
+          "pass",
+          `${socialLines.length.toLocaleString()} social outbox attempt${socialLines.length === 1 ? "" : "s"}; attempt and maxAttempts stayed at or below ${socialTarget.toLocaleString()}.`,
+        );
+
+  return [startupAssertion, socialAssertion];
+}
+
 export function isMetricRelevantRuntimeEntry(entry) {
   return Boolean(
     entry &&
@@ -1462,6 +1783,11 @@ export function isMetricRelevantRuntimeEntry(entry) {
       entry.event === "worker_init_recovery" ||
       entry.event === "worker_idle_terminated" ||
       entry.event === "native_runtime_memory_sample" ||
+      entry.event === "social_outbox_attempt" ||
+      entry.event === "facebook_group_discovery_update" ||
+      entry.event === "rss_pull_attempt" ||
+      entry.event === "ai_request_attempt" ||
+      entry.event === "reader_article_fetch_attempt" ||
       typeof entry.headsUnchanged === "boolean"),
   );
 }
@@ -1984,6 +2310,7 @@ export function buildVerdict({
   const unchangedUploads = healthLines.filter(
     ({ entry }) => entry.headsUnchanged === true,
   ).length;
+  const requestSurface = summarizeRequestSurfaceEvents(healthLines);
   const activeWindowDestructions = healthLines.filter(
     ({ entry }) =>
       entry.event === "window_destroyed" &&
@@ -2030,6 +2357,43 @@ export function buildVerdict({
         "unchanged-cloud-upload-rate",
         runtimeEvidenceActionable && measuredCloudEligibleHours
           ? unchangedUploads / measuredCloudEligibleHours
+          : null,
+      ),
+      "startup-repair-upload-surface": measurement(
+        "startup-repair-upload-surface",
+        runtimeEvidenceActionable && measuredCloudEligibleHours
+          ? requestSurface.startupRepairUploads.total /
+              measuredCloudEligibleHours
+          : null,
+      ),
+      "social-outbox-attempt-surface": measurement(
+        "social-outbox-attempt-surface",
+        runtimeEvidenceActionable && appAliveHours
+          ? requestSurface.socialOutboxAttempts.total / appAliveHours
+          : null,
+      ),
+      "facebook-group-discovery-update-rate": measurement(
+        "facebook-group-discovery-update-rate",
+        runtimeEvidenceActionable && appAliveHours
+          ? requestSurface.facebookGroupDiscoveryUpdates.total / appAliveHours
+          : null,
+      ),
+      "rss-pull-attempt-rate": measurement(
+        "rss-pull-attempt-rate",
+        runtimeEvidenceActionable && appAliveHours
+          ? requestSurface.rssPullAttempts.total / appAliveHours
+          : null,
+      ),
+      "ai-request-attempt-rate": measurement(
+        "ai-request-attempt-rate",
+        runtimeEvidenceActionable && appAliveHours
+          ? requestSurface.aiRequestAttempts.total / appAliveHours
+          : null,
+      ),
+      "reader-article-fetch-attempt-rate": measurement(
+        "reader-article-fetch-attempt-rate",
+        runtimeEvidenceActionable && appAliveHours
+          ? requestSurface.readerArticleFetchAttempts.total / appAliveHours
           : null,
       ),
       "active-operation-window-destruction": measurement(
@@ -2097,6 +2461,9 @@ export function buildVerdict({
       cloudCoverageHours: measuredCloudEligibleHours,
       runtimeEvidenceActionable,
     }),
+    ...assertRequestSurfaceContracts(healthLines, healthPath, {
+      runtimeEvidenceActionable,
+    }),
     assertAlarmCounts(healthLines, healthPath, { runtimeEvidenceActionable }),
   ];
 
@@ -2122,6 +2489,7 @@ export function buildVerdict({
     comparisonContext,
     eventSummaries: {
       workerIdleTerminations: summarizeWorkerIdleTerminations(healthLines),
+      requestSurface,
     },
     measurements,
     runtimeIdentity,

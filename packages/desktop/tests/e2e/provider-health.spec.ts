@@ -192,6 +192,29 @@ test("health tab surfaces provider charts and can unsubscribe a failing feed", a
         latestAttempts: [],
         pause: null,
       },
+      youtube: {
+        provider: "youtube",
+        dailyBuckets: [
+          { dateKey: "2026-03-27", attempts: 0, successes: 0, failures: 0, itemsSeen: 0, itemsAdded: 0, bytesMoved: 0 },
+          { dateKey: "2026-03-28", attempts: 0, successes: 0, failures: 0, itemsSeen: 0, itemsAdded: 0, bytesMoved: 0 },
+          { dateKey: "2026-03-29", attempts: 0, successes: 0, failures: 0, itemsSeen: 0, itemsAdded: 0, bytesMoved: 0 },
+          { dateKey: "2026-03-30", attempts: 0, successes: 0, failures: 0, itemsSeen: 0, itemsAdded: 0, bytesMoved: 0 },
+          { dateKey: "2026-03-31", attempts: 0, successes: 0, failures: 0, itemsSeen: 0, itemsAdded: 0, bytesMoved: 0 },
+          { dateKey: "2026-04-01", attempts: 0, successes: 0, failures: 0, itemsSeen: 0, itemsAdded: 0, bytesMoved: 0 },
+          { dateKey: "2026-04-02", attempts: 0, successes: 0, failures: 0, itemsSeen: 0, itemsAdded: 0, bytesMoved: 0 },
+        ],
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        pause: null,
+      },
       gdrive: {
         provider: "gdrive",
         dailyBuckets: [
@@ -393,7 +416,10 @@ test("health tab surfaces provider charts and can unsubscribe a failing feed", a
   await page.keyboard.press("Control+Shift+D");
   await expect(page.getByRole("heading", { name: "Sync Diagnostics" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Health" }).click();
+  await page
+    .getByTestId("debug-panel-surface")
+    .getByRole("button", { name: "Health" })
+    .click();
   await expect(page.getByText("Provider Health")).toBeVisible();
   await expect(page.getByText(FEED_URL, { exact: true })).toBeVisible();
   await expect(page.getByText("Rate limit exceeded").first()).toBeVisible();
@@ -619,6 +645,38 @@ test("paused provider health is visible in X settings and can be resumed", async
         totalAdded7d: 0,
         totalBytes7d: 0,
       },
+      youtube: {
+        provider: "youtube",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
       gdrive: {
         provider: "gdrive",
         status: "idle",
@@ -735,6 +793,32 @@ test("paused provider health is visible in X settings and can be resumed", async
 
 test("facebook groups settings separate last-active text, show active counts, and gate refresh", async ({ app, page, ipc }) => {
   await seedAcceptedDesktopConsent(page);
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "freed-device-facebook-groups-v1",
+      JSON.stringify({
+        version: 1,
+        legacyMigrationCompleted: true,
+        knownGroups: {
+          one: {
+            id: "one",
+            name: "CDA Buy Trade Or SellLast active about a minute ago",
+            url: "https://facebook.com/groups/one",
+          },
+          two: {
+            id: "two",
+            name: "North Idaho Lifelast active 2 hours ago",
+            url: "https://facebook.com/groups/two",
+          },
+          "377650389038228": {
+            id: "377650389038228",
+            name: "1m",
+            url: "https://facebook.com/groups/377650389038228",
+          },
+        },
+      }),
+    );
+  });
 
   await app.goto();
   await app.waitForReady();
@@ -757,23 +841,6 @@ test("facebook groups settings separate last-active text, show active counts, an
     });
     await state.updatePreferences({
       fbCapture: {
-        knownGroups: {
-          one: {
-            id: "one",
-            name: "CDA Buy Trade Or SellLast active about a minute ago",
-            url: "https://facebook.com/groups/one",
-          },
-          two: {
-            id: "two",
-            name: "North Idaho Lifelast active 2 hours ago",
-            url: "https://facebook.com/groups/two",
-          },
-          "377650389038228": {
-            id: "377650389038228",
-            name: "1m",
-            url: "https://facebook.com/groups/377650389038228",
-          },
-        },
         excludedGroupIds: {
           two: true,
         },
@@ -796,8 +863,11 @@ test("facebook groups settings separate last-active text, show active counts, an
         }
       | undefined;
     const fbCapture = store?.getState().preferences.fbCapture;
+    const localDiscovery = JSON.parse(
+      window.localStorage.getItem("freed-device-facebook-groups-v1") ?? "{}",
+    ) as { knownGroups?: Record<string, unknown> };
     return (
-      Object.keys(fbCapture?.knownGroups ?? {}).length === 3 &&
+      Object.keys(localDiscovery.knownGroups ?? {}).length === 3 &&
       fbCapture?.excludedGroupIds?.two === true
     );
   });
@@ -1125,6 +1195,38 @@ test("cooldown states use a specific label instead of generic attention copy", a
         totalAdded7d: 0,
         totalBytes7d: 0,
       },
+      youtube: {
+        provider: "youtube",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
       gdrive: {
         provider: "gdrive",
         status: "idle",
@@ -1237,6 +1339,38 @@ test("settings sources nav shows provider status dots", async ({ app, page }) =>
   await page.addInitScript(() => {
     const now = Date.now();
     const providers = {
+      youtube: {
+        provider: "youtube",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
       rss: {
         provider: "rss",
         status: "idle",
@@ -2064,6 +2198,7 @@ test("source menu stays open and acknowledges sync now while syncing is already 
     await store.getState().updatePreferences({
       display: { sidebarMode: "expanded", sidebarWidth: 256 },
     });
+    const current = store.getState();
     store.setState({
       xAuth: {
         isAuthenticated: true,
@@ -2129,6 +2264,22 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
       }));
 
     const providers = {
+      youtube: {
+        provider: "youtube",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: makeBuckets(),
+        hourlyBuckets: makeHourlyBuckets(),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
       rss: {
         provider: "rss",
         status: "degraded",

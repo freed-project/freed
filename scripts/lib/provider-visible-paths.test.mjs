@@ -9,6 +9,7 @@ import os from "node:os";
 import {
   CAPTURE_PROVIDER_CONTACT_FILE_PATTERN,
   isProviderVisiblePath,
+  PROVIDER_VISIBLE_EXACT_SCOPES,
   PROVIDER_VISIBLE_EXTRA_FILES,
   PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES,
   PROVIDER_VISIBLE_ORCHESTRATION_FILES,
@@ -22,6 +23,113 @@ import {
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const cliPath = path.join(moduleDir, "provider-visible-paths.mjs");
 const repoRoot = path.resolve(moduleDir, "../..");
+
+const EXACT_SCOPE_CASES = [
+  [
+    "packages/desktop/src/App.tsx",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  ["packages/desktop/src/components/MobileSyncTab.tsx", ["other"]],
+  ["packages/desktop/src/hooks/useCloudProviders.ts", ["other"]],
+  ["packages/desktop/src/lib/ai-summarizer.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/automerge-types.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/automerge.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/automerge.worker.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  ["packages/desktop/src/lib/contact-sync-storage.ts", ["other"]],
+  ["packages/desktop/src/lib/facebook-group-discovery.ts", ["facebook"]],
+  [
+    "packages/desktop/src/lib/factory-reset-guard.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  ["packages/desktop/src/lib/local-ai-models.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/media-vault.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/native-json-store.ts",
+    ["facebook", "instagram", "linkedin", "x", "youtube"],
+  ],
+  ["packages/desktop/src/lib/outbox.ts", ["facebook", "instagram", "x"]],
+  [
+    "packages/desktop/src/lib/provider-auth-lifecycle.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/provider-health.ts",
+    ["facebook", "instagram", "linkedin", "x", "youtube"],
+  ],
+  ["packages/desktop/src/lib/rss-poller.ts", ["other"]],
+  ["packages/desktop/src/lib/rss-refresh-plan.ts", ["other"]],
+  ["packages/desktop/src/lib/rss-runtime-state.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/scraper-prefs.ts",
+    ["facebook", "instagram", "linkedin", "x", "youtube"],
+  ],
+  ["packages/desktop/src/lib/secure-storage.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/semantic-classifier.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/social-auth-transient-errors.ts",
+    ["facebook", "instagram", "linkedin", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/social-outbox-state.ts",
+    ["facebook", "instagram", "x"],
+  ],
+  [
+    "packages/desktop/src/lib/store.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  ["packages/desktop/src/lib/sync.ts", ["other"]],
+  ["packages/desktop/src/lib/x-login-reset-controller.ts", ["x"]],
+  ["packages/pwa/src/App.tsx", ["other"]],
+  ["packages/pwa/src/lib/automerge-types.ts", ["other"]],
+  ["packages/pwa/src/lib/automerge.ts", ["other"]],
+  ["packages/pwa/src/lib/automerge.worker.ts", ["other"]],
+  ["packages/pwa/src/lib/factory-reset-coordinator.ts", ["other"]],
+  ["packages/pwa/src/lib/store.ts", ["other"]],
+  ["packages/shared/src/contact-sync-state.ts", ["other"]],
+  ["packages/shared/src/preferences.ts", ["other"]],
+  [
+    "packages/shared/src/sync-write-policy.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  ["packages/sync/src/storage/indexeddb.ts", ["other"]],
+  [
+    "packages/ui/src/components/SettingsDialog.tsx",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  ["packages/ui/src/components/settings/AISection.tsx", ["other"]],
+  ["packages/ui/src/hooks/useContactSync.ts", ["other"]],
+  ["packages/ui/src/lib/device-ai-preferences.ts", ["other"]],
+  [
+    "packages/ui/src/lib/factory-reset.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+];
+
+test("state, reset, and request boundaries have exact provider scopes", () => {
+  assert.deepEqual(
+    [...PROVIDER_VISIBLE_EXACT_SCOPES.keys()],
+    EXACT_SCOPE_CASES.map(([filePath]) => filePath),
+  );
+  for (const [filePath, providers] of EXACT_SCOPE_CASES) {
+    assert.equal(isProviderVisiblePath(filePath), true, filePath);
+    assert.deepEqual(providerIdsForPath(filePath), providers, filePath);
+  }
+});
 
 test("desktop capture, auth, and extractor files are provider-visible", () => {
   assert.equal(
@@ -353,6 +461,7 @@ test("every canonical provider-visible surface has an owner review rule", () => 
     ...SOCIAL_PROVIDER_DESKTOP_FILES,
     ...PROVIDER_VISIBLE_EXTRA_FILES,
     ...PROVIDER_VISIBLE_ORCHESTRATION_FILES,
+    ...PROVIDER_VISIBLE_EXACT_SCOPES.keys(),
     ...PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES.map(
       (prefix) => `${prefix}provider-contact.ts`,
     ),

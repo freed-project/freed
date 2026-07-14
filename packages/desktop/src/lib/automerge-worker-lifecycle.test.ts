@@ -39,6 +39,7 @@ class MockWorker {
 
   messages: unknown[] = [];
   terminated = false;
+  postMessageFailure: Error | null = null;
   onmessage: WorkerListener | null = null;
   onerror: WorkerListener | null = null;
   onmessageerror: WorkerListener | null = null;
@@ -59,6 +60,7 @@ class MockWorker {
   }
 
   postMessage(message: unknown): void {
+    if (this.postMessageFailure) throw this.postMessageFailure;
     this.messages.push(message);
   }
 
@@ -136,17 +138,18 @@ function makeState(items: FeedItem[] = []): DocState {
 async function waitForWorkerRequest(
   worker: MockWorker,
   type: string,
+  index = 0,
 ): Promise<{ reqId: number; type: string }> {
   let request: { reqId: number; type: string } | undefined;
   await vi.waitFor(() => {
-    request = worker.messages.find(
+    request = worker.messages.filter(
       (message): message is { reqId: number; type: string } =>
         typeof message === "object" &&
         message !== null &&
         "type" in message &&
         (message as { type?: unknown }).type === type &&
         "reqId" in message,
-    );
+    )[index];
     expect(request).toBeDefined();
   });
   return request!;
@@ -460,5 +463,254 @@ describe("automerge worker lifecycle", () => {
         ),
       ),
     ).toHaveLength(1);
+  });
+
+  it("preserves local data when INIT reports a non-corruption failure", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+
+    const initialization = automerge.initDoc();
+    const initRequest = await waitForWorkerRequest(worker, "INIT");
+    worker.emitMessage({
+      reqId: initRequest.reqId,
+      type: "ACK",
+      error: "IndexedDB save failed",
+    });
+
+    await expect(initialization).rejects.toThrow("IndexedDB save failed");
+    expect(
+      worker.messages.filter(
+        (message) => typeof message === "object"
+          && message !== null
+          && "type" in message
+          && (message as { type?: unknown }).type === "CLEAR_LOCAL",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("clears local data only for a typed corrupt document", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+
+    const initialization = automerge.initDoc();
+    const firstInit = await waitForWorkerRequest(worker, "INIT");
+    worker.emitMessage({
+      reqId: firstInit.reqId,
+      type: "ACK",
+      error: "The stored Automerge document could not be loaded",
+      errorCode: "CORRUPT_DOCUMENT",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const clearRequest = await waitForWorkerRequest(worker, "CLEAR_LOCAL");
+    worker.emitMessage({ reqId: clearRequest.reqId, type: "ACK" });
+    await vi.advanceTimersByTimeAsync(0);
+    const secondInit = await waitForWorkerRequest(worker, "INIT", 1);
+    worker.emitMessage({ type: "STATE_UPDATE", state: makeState() });
+    worker.emitMessage({ reqId: secondInit.reqId, type: "ACK" });
+
+    await expect(initialization).resolves.toEqual(makeState());
+    expect(
+      worker.messages.filter(
+        (message) => typeof message === "object"
+          && message !== null
+          && "type" in message
+          && (message as { type?: unknown }).type === "CLEAR_LOCAL",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("ignores delayed state, patch, and ACK messages from a failed worker generation", async () => {
+    const automerge = await import("./automerge");
+    const firstWorker = MockWorker.instances[0];
+    firstWorker.emitMessage({ type: "READY" });
+    await completeWorkerInit(firstWorker, automerge.initDoc());
+    const delayedHandler = firstWorker.onmessage;
+
+    const pendingBinary = automerge.getDocBinary();
+    await waitForWorkerRequest(firstWorker, "GET_DOC_BINARY");
+    firstWorker.emitError("worker failed after initialization");
+    await expect(pendingBinary).rejects.toThrow("worker failed after initialization");
+    expect(firstWorker.onmessage).toBeNull();
+    expect(firstWorker.onerror).toBeNull();
+    expect(firstWorker.onmessageerror).toBeNull();
+
+    const replacementInit = automerge.initDoc();
+    const replacementWorker = MockWorker.instances[1];
+    replacementWorker.emitMessage({ type: "READY" });
+    const replacementState = makeState([makeItem()]);
+    await completeWorkerInit(replacementWorker, replacementInit, replacementState);
+
+    const mutation = automerge.docAddFeedItem(makeItem());
+    const mutationRequest = await waitForWorkerRequest(replacementWorker, "ADD_FEED_ITEM");
+    let mutationSettled = false;
+    void mutation.finally(() => {
+      mutationSettled = true;
+    });
+
+    delayedHandler?.({
+      data: { type: "STATE_UPDATE", state: makeState() },
+      currentTarget: firstWorker,
+    });
+    delayedHandler?.({
+      data: {
+        type: "PREFERENCES_PATCH",
+        updates: { display: { themeId: "paper" } },
+      },
+      currentTarget: firstWorker,
+    });
+    delayedHandler?.({
+      data: { reqId: mutationRequest.reqId, type: "ACK" },
+      currentTarget: firstWorker,
+    });
+    await Promise.resolve();
+
+    expect(automerge.getDocState()).toEqual(replacementState);
+    expect(mutationSettled).toBe(false);
+
+    replacementWorker.emitMessage({ reqId: mutationRequest.reqId, type: "ACK" });
+    await expect(mutation).resolves.toBeUndefined();
+  });
+
+  it("rejects a synchronous postMessage failure without leaving pending work", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+    worker.postMessageFailure = new Error("structured clone failed");
+
+    await expect(automerge.docAddFeedItem(makeItem())).rejects.toThrow(
+      "Automerge worker postMessage failed: structured clone failed",
+    );
+    expect(worker.terminated).toBe(true);
+    expect(worker.onmessage).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("rejects a generation-owned result request when the worker ACKs an error", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+    await completeWorkerInit(worker, automerge.initDoc());
+
+    const binary = automerge.getDocBinary();
+    const request = await waitForWorkerRequest(worker, "GET_DOC_BINARY");
+    worker.emitMessage({
+      reqId: request.reqId,
+      type: "ACK",
+      error: "worker could not serialize the document",
+    });
+
+    await expect(binary).rejects.toThrow("worker could not serialize the document");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("closes document admission synchronously and still allows the reset clear", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+    await completeWorkerInit(worker, automerge.initDoc());
+
+    const quiescing = automerge.quiesceDesktopAutomergeForFactoryReset();
+    await expect(automerge.docAddFeedItem(makeItem())).rejects.toThrow(
+      "Automerge worker is quiesced for factory reset",
+    );
+    expect(
+      worker.messages.filter(
+        (message) => typeof message === "object"
+          && message !== null
+          && "type" in message
+          && (message as { type?: unknown }).type === "ADD_FEED_ITEM",
+      ),
+    ).toHaveLength(0);
+
+    const quiesceRequest = await waitForWorkerRequest(worker, "QUIESCE");
+    worker.emitMessage({ reqId: quiesceRequest.reqId, type: "ACK" });
+    await expect(quiescing).resolves.toBeUndefined();
+
+    const clearing = automerge.clearLocalDoc();
+    const clearRequest = await waitForWorkerRequest(worker, "CLEAR_LOCAL");
+    worker.emitMessage({ reqId: clearRequest.reqId, type: "ACK" });
+    await expect(clearing).resolves.toBeUndefined();
+  });
+
+  it("keeps document admission closed when worker quiescence fails", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+    await completeWorkerInit(worker, automerge.initDoc());
+
+    const quiescing = automerge.quiesceDesktopAutomergeForFactoryReset();
+    const quiesceRequest = await waitForWorkerRequest(worker, "QUIESCE");
+    worker.emitMessage({
+      reqId: quiesceRequest.reqId,
+      type: "ACK",
+      error: "worker could not quiesce",
+    });
+
+    await expect(quiescing).rejects.toThrow("worker could not quiesce");
+    await expect(automerge.docAddFeedItem(makeItem())).rejects.toThrow(
+      "Automerge worker is quiesced for factory reset",
+    );
+    expect(
+      worker.messages.filter(
+        (message) => typeof message === "object"
+          && message !== null
+          && "type" in message
+          && (message as { type?: unknown }).type === "ADD_FEED_ITEM",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("retires a silent worker generation when a runtime request times out", async () => {
+    const automerge = await import("./automerge");
+    const firstWorker = MockWorker.instances[0];
+    firstWorker.emitMessage({ type: "READY" });
+    await completeWorkerInit(firstWorker, automerge.initDoc());
+
+    const mutation = automerge.docAddFeedItem(makeItem());
+    const binary = automerge.getDocBinary();
+    await waitForWorkerRequest(firstWorker, "ADD_FEED_ITEM");
+    await waitForWorkerRequest(firstWorker, "GET_DOC_BINARY");
+    const mutationFailure = expect(mutation).rejects.toThrow("request TIMEOUT");
+    const binaryFailure = expect(binary).rejects.toThrow("request TIMEOUT");
+
+    await vi.advanceTimersByTimeAsync(180_000);
+
+    await mutationFailure;
+    await binaryFailure;
+    expect(firstWorker.terminated).toBe(true);
+    expect(firstWorker.onmessage).toBeNull();
+    expect(firstWorker.onerror).toBeNull();
+    expect(firstWorker.onmessageerror).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+
+    const replacementMutation = automerge.docAddFeedItem(makeItem());
+    await vi.waitFor(() => expect(MockWorker.instances).toHaveLength(2));
+    const replacementWorker = MockWorker.instances[1];
+    replacementWorker.emitMessage({ type: "READY" });
+
+    const replacementInit = await waitForWorkerRequest(replacementWorker, "INIT");
+    replacementWorker.emitMessage({ type: "STATE_UPDATE", state: makeState() });
+    replacementWorker.emitMessage({
+      type: "INIT_STATS",
+      durationMs: 8,
+      docBytes: 1_024,
+    });
+    replacementWorker.emitMessage({
+      reqId: replacementInit.reqId,
+      type: "ACK",
+    });
+
+    const replacementRequest = await waitForWorkerRequest(
+      replacementWorker,
+      "ADD_FEED_ITEM",
+    );
+    replacementWorker.emitMessage({
+      reqId: replacementRequest.reqId,
+      type: "ACK",
+    });
+    await expect(replacementMutation).resolves.toBeUndefined();
   });
 });

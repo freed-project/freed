@@ -19,17 +19,19 @@ vi.mock("./runtime-health-events", () => ({
 import {
   clearYouTubePlaylistState,
   getYouTubePlaylistState,
+  resetYouTubePlaylistStateForTests,
 } from "./youtube-playlist";
 
 const storageKey = "youtube_offline_playlist_state";
 
-describe("YouTube playlist factory reset", () => {
+describe("YouTube playlist state", () => {
   beforeEach(() => {
-    window.localStorage.clear();
     vi.restoreAllMocks();
+    window.localStorage.clear();
+    resetYouTubePlaylistStateForTests();
   });
 
-  it("clears account-specific playlist handoff and progress state", () => {
+  it("clears account-specific playlist handoff and progress state on disconnect", () => {
     window.localStorage.setItem(storageKey, JSON.stringify({
       playlistId: "PL12345678",
       playlistUrl: "https://www.youtube.com/playlist?list=PL12345678",
@@ -56,5 +58,16 @@ describe("YouTube playlist factory reset", () => {
     });
 
     expect(() => clearYouTubePlaylistState()).toThrow("storage unavailable");
+  });
+
+  it("does not normalize malformed playlist progress into an empty receipt list", () => {
+    const corrupt = JSON.stringify({
+      playlistId: "PL12345678",
+      syncedVideoIds: ["12345678901", "invalid"],
+    });
+    window.localStorage.setItem(storageKey, corrupt);
+
+    expect(getYouTubePlaylistState()).toEqual({});
+    expect(window.localStorage.getItem(storageKey)).toBe(corrupt);
   });
 });

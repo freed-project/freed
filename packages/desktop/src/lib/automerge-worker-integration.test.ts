@@ -26,6 +26,7 @@ const storageHarness = vi.hoisted(() => ({
   binary: null as Uint8Array | null,
   saveBytes: [] as number[],
   clearCount: 0,
+  failSave: false,
 }));
 
 vi.mock("@freed/sync/storage/indexeddb", () => ({
@@ -35,6 +36,7 @@ vi.mock("@freed/sync/storage/indexeddb", () => ({
     }
 
     async save(binary: Uint8Array): Promise<void> {
+      if (storageHarness.failSave) throw new Error("forced storage save failure");
       storageHarness.binary = binary.slice();
       storageHarness.saveBytes.push(binary.byteLength);
     }
@@ -163,12 +165,163 @@ describe("real Automerge worker module", () => {
     storageHarness.binary = A.save(createSmallCompatibilityDoc());
     storageHarness.saveBytes = [];
     storageHarness.clearCount = 0;
+    storageHarness.failSave = false;
     vi.stubGlobal("self", scope);
     await import("./automerge.worker");
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("reports corrupt bytes explicitly and waits for an explicit clear request", async () => {
+    storageHarness.binary = new Uint8Array([1, 2, 3, 4]);
+
+    sendRequest(scope, { reqId: 90, type: "INIT" });
+    const failure = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 90,
+    );
+
+    expect(failure.message).toMatchObject({
+      type: "ACK",
+      errorCode: "CORRUPT_DOCUMENT",
+    });
+    expect(storageHarness.clearCount).toBe(0);
+    expect(storageHarness.binary).toEqual(new Uint8Array([1, 2, 3, 4]));
+
+    sendRequest(scope, { reqId: 91, type: "CLEAR_LOCAL" });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 91,
+    );
+    expect(storageHarness.clearCount).toBe(1);
+    expect(storageHarness.binary).toBeNull();
+  });
+
+  it("preserves a valid stored document when INIT persistence fails", async () => {
+    const original = A.save(createSmallCompatibilityDoc());
+    storageHarness.binary = original.slice();
+    storageHarness.failSave = true;
+
+    sendRequest(scope, {
+      reqId: 92,
+      type: "INIT",
+      desktopClientRegistration: { id: "desktop-save-failure", registeredAt: 1_000 },
+    });
+    const failure = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 92,
+    );
+
+    expect(failure.message).toMatchObject({
+      type: "ACK",
+      error: "forced storage save failure",
+    });
+    expect(failure.message).not.toHaveProperty("errorCode");
+    expect(storageHarness.clearCount).toBe(0);
+    expect(storageHarness.binary).toEqual(original);
+  });
+
+  it("preserves valid Automerge bytes when a loaded-data migration throws", async () => {
+    const malformedLegacyDoc = A.change(
+      createEmptyDoc(),
+      "Add malformed legacy data",
+      (draft) => {
+        const root = draft as unknown as Record<string, unknown>;
+        root.friends = {
+          broken: {
+            id: "broken",
+            name: "Broken",
+            sources: [null],
+            careLevel: "medium",
+            reachOutLog: [],
+            tags: [],
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        };
+      },
+    );
+    const original = A.save(malformedLegacyDoc);
+    storageHarness.binary = original.slice();
+
+    sendRequest(scope, { reqId: 93, type: "INIT" });
+    const failure = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 93,
+    );
+
+    expect(failure.message).toMatchObject({ type: "ACK" });
+    expect(failure.message).toHaveProperty("error");
+    expect(failure.message).not.toHaveProperty("errorCode");
+    expect(storageHarness.clearCount).toBe(0);
+    expect(storageHarness.binary).toEqual(original);
+  });
+
+  it("drains accepted work before quiescing and rejects every later mutation", async () => {
+    sendRequest(scope, { reqId: 94, type: "INIT" });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 94,
+    );
+
+    const queuedItem: FeedItem = {
+      globalId: "saved:accepted-before-quiesce",
+      platform: "saved",
+      contentType: "article",
+      capturedAt: 2_000,
+      publishedAt: 2_000,
+      author: { id: "author", handle: "author", displayName: "Author" },
+      content: { text: "Accepted before quiesce", mediaUrls: [], mediaTypes: [] },
+      userState: { hidden: false, saved: true, archived: false, tags: [] },
+      topics: [],
+    };
+    const rejectedItem: FeedItem = {
+      ...queuedItem,
+      globalId: "saved:rejected-after-quiesce",
+      content: { ...queuedItem.content, text: "Rejected after quiesce" },
+    };
+
+    sendRequest(scope, { reqId: 95, type: "ADD_FEED_ITEM", item: queuedItem });
+    sendRequest(scope, { reqId: 96, type: "QUIESCE" });
+    sendRequest(scope, { reqId: 97, type: "ADD_FEED_ITEM", item: rejectedItem });
+
+    const rejected = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 97,
+    );
+    expect(rejected.message).toMatchObject({
+      type: "ACK",
+      error: "Automerge worker is quiesced for factory reset",
+    });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 95,
+    );
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 96,
+    );
+
+    const acceptedIndex = posts.findIndex(
+      ({ message }) => message.type === "ACK" && message.reqId === 95,
+    );
+    const quiesceIndex = posts.findIndex(
+      ({ message }) => message.type === "ACK" && message.reqId === 96,
+    );
+    expect(acceptedIndex).toBeGreaterThanOrEqual(0);
+    expect(quiesceIndex).toBeGreaterThan(acceptedIndex);
+    const persisted = A.load<FreedDoc>(storageHarness.binary!);
+    expect(persisted.feedItems[queuedItem.globalId]).toBeDefined();
+    expect(persisted.feedItems[rejectedItem.globalId]).toBeUndefined();
+
+    sendRequest(scope, { reqId: 98, type: "CLEAR_LOCAL" });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 98,
+    );
+    expect(storageHarness.binary).toBeNull();
   });
 
   it("loads a representative document, releases it, reloads once, and characterizes binary transport", async () => {
@@ -399,6 +552,7 @@ describe("real Automerge worker module", () => {
     if (statePost.message.type !== "STATE_UPDATE") {
       throw new Error("Expected replacement state");
     }
+    expect(statePost.message.mutation).toBe("REPLACE_DOC");
     expect(statePost.message.state.desktopClientIds).toEqual([
       "desktop-current",
       "desktop-snapshot",
@@ -490,6 +644,15 @@ describe("real Automerge worker module", () => {
       reqId: 302,
       type: "MERGE_DOC",
       binary: A.save(staleEmpty),
+    });
+    const mergeStatePost = await waitForPost(
+      posts,
+      (message) => message.type === "STATE_UPDATE" && message.mutation === "MERGE_DOC",
+      mergeStart,
+    );
+    expect(mergeStatePost.message).toMatchObject({
+      type: "STATE_UPDATE",
+      mutation: "MERGE_DOC",
     });
     await waitForPost(
       posts,

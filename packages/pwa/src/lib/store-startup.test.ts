@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultPreferences, type Account, type ContentSignalBackfillSummary, type Person, type SampleLibraryData } from "@freed/shared";
-import type { DocState } from "./automerge-types";
+import type { DocState, WorkerRequest } from "./automerge-types";
 import {
   getDeviceDisplayPreferences,
   resetDeviceDisplayPreferencesForTests,
@@ -105,6 +105,11 @@ function makeBackfillSummary(
   };
 }
 
+type StoreSubscriber = (
+  state: DocState,
+  event: { mutation?: WorkerRequest["type"] },
+) => void;
+
 describe("PWA store startup maintenance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -152,7 +157,75 @@ describe("PWA store startup maintenance", () => {
     expect(automerge.docUpdatePerson).not.toHaveBeenCalled();
   });
 
-  it("prunes pins from successful document states across cascades and replacements", async () => {
+  it("rejects a device-local preference write after this tab becomes stale", async () => {
+    localStorage.setItem("freed_pwa_factory_reset_tombstone", JSON.stringify({
+      version: 1,
+      resetId: "reset-preferences",
+      generation: 1,
+      startedAt: Date.now(),
+    }));
+    localStorage.setItem("freed_pwa_installation_generation", "1");
+
+    await expect(useAppStore.getState().updatePreferences({
+      display: {
+        ...createDefaultPreferences().display,
+        sidebarMode: "closed",
+      },
+    })).rejects.toThrow("installation generation that has been reset");
+    expect(getDeviceDisplayPreferences().sidebarMode).toBe("expanded");
+  });
+
+  it("keeps local pins through an empty startup until cloud merge restores their entities", async () => {
+    const person: Person = {
+      id: "person-cloud-restored",
+      name: "Cloud Restored",
+      relationshipStatus: "friend",
+      careLevel: 3,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const account: Account = {
+      id: "account-cloud-restored",
+      personId: person.id,
+      kind: "social",
+      provider: "instagram",
+      externalId: "cloud-restored",
+      firstSeenAt: 1,
+      lastSeenAt: 1,
+      discoveredFrom: "captured_item",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    setDevicePersonGraphPosition(person.id, 10, 20, 100);
+    setDeviceAccountGraphPosition(account.id, 30, 40, 200);
+
+    await useAppStore.getState().initialize();
+
+    expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
+    expect(getDeviceAccountGraphLayout(account.id)).not.toBeNull();
+
+    const subscriber = automerge.subscribe.mock.calls.at(-1)?.[0] as
+      | StoreSubscriber
+      | undefined;
+    const restored = makeDocState();
+    restored.persons = { [person.id]: person };
+    restored.accounts = { [account.id]: account };
+    subscriber?.(restored, { mutation: "MERGE_DOC" });
+
+    expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
+    expect(getDeviceAccountGraphLayout(account.id)).not.toBeNull();
+
+    const accountRemoved = makeDocState();
+    accountRemoved.persons = { [person.id]: person };
+    subscriber?.(accountRemoved, { mutation: "REMOVE_ACCOUNT" });
+    expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
+    expect(getDeviceAccountGraphLayout(account.id)).toBeNull();
+
+    subscriber?.(makeDocState(), { mutation: "REMOVE_PERSON" });
+    expect(getDevicePersonGraphLayout(person.id)).toBeNull();
+  });
+
+  it("prunes pins only after authoritative document mutations", async () => {
     const cascadePerson: Person = {
       id: "person-cascade",
       name: "Cascade",
@@ -215,10 +288,18 @@ describe("PWA store startup maintenance", () => {
       [liveAccount.id]: liveAccount,
     };
     const subscriber = automerge.subscribe.mock.calls.at(-1)?.[0] as
-      | ((state: DocState) => void)
+      | StoreSubscriber
       | undefined;
     expect(subscriber).toBeTypeOf("function");
-    subscriber?.(afterSuccessfulMutations);
+    subscriber?.(afterSuccessfulMutations, { mutation: "UPDATE_PERSON" });
+
+    expect(getDevicePersonGraphLayout(cascadePerson.id)).not.toBeNull();
+    expect(getDeviceAccountGraphLayout(linkedAccount.id)).not.toBeNull();
+    expect(getDevicePersonGraphLayout(samplePerson.id)).not.toBeNull();
+    expect(getDeviceAccountGraphLayout(sampleAccount.id)).not.toBeNull();
+    expect(getDeviceAccountGraphLayout(displacedAccount.id)).not.toBeNull();
+
+    subscriber?.(afterSuccessfulMutations, { mutation: "MERGE_DOC" });
 
     expect(getDevicePersonGraphLayout(cascadePerson.id)).toBeNull();
     expect(getDeviceAccountGraphLayout(linkedAccount.id)).toBeNull();
@@ -229,7 +310,7 @@ describe("PWA store startup maintenance", () => {
     expect(getDevicePersonGraphLayout(livePerson.id)).not.toBeNull();
     expect(getDeviceAccountGraphLayout(liveAccount.id)).not.toBeNull();
 
-    subscriber?.(initial);
+    subscriber?.(initial, { mutation: "MERGE_DOC" });
     expect(getDevicePersonGraphLayout(cascadePerson.id)).toBeNull();
     expect(getDeviceAccountGraphLayout(linkedAccount.id)).toBeNull();
     expect(getDevicePersonGraphLayout(samplePerson.id)).toBeNull();

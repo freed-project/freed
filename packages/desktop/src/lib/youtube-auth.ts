@@ -1,8 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { safeUnlisten } from "./safe-unlisten";
-import { clearTransientLastCaptureError } from "./social-auth-transient-errors";
+import {
+  clearTransientLastCaptureError,
+  persistDisconnectedSocialAuthStateForFactoryReset,
+  readStoredSocialAuthState,
+} from "./social-auth-transient-errors";
 import { clearYouTubePlaylistState } from "./youtube-playlist";
+import {
+  isDesktopProviderAuthAllowed,
+  requestDesktopProviderAuthCheck,
+  runDesktopProviderAuthRequest,
+} from "./provider-auth-lifecycle";
 
 export interface YouTubeAuthState {
   isAuthenticated: boolean;
@@ -18,7 +25,10 @@ const YOUTUBE_AUTH_KEY = "youtube_auth_state";
 
 /** Open YouTube in the persistent native session used for later capture. */
 export async function showYouTubeLogin(): Promise<void> {
-  await invoke("yt_show_login");
+  if (!isDesktopProviderAuthAllowed()) return;
+  await runDesktopProviderAuthRequest(async () => {
+    await invoke("yt_show_login");
+  });
 }
 
 /** Hide the visible login window while preserving its authenticated session. */
@@ -28,39 +38,30 @@ export async function hideYouTubeLogin(): Promise<void> {
 
 /** Verify the authenticated website session through the native YouTube WebView. */
 export async function checkYouTubeAuth(): Promise<boolean> {
-  let unlisten: UnlistenFn | null = null;
-  let timeout: number | null = null;
-  let resolveResult: ((loggedIn: boolean) => void) | null = null;
-  const result = new Promise<boolean>((resolve) => {
-    resolveResult = resolve;
+  if (!isDesktopProviderAuthAllowed()) return false;
+  return requestDesktopProviderAuthCheck<{ loggedIn: boolean }>({
+    eventName: "yt-auth-result",
+    command: "yt_check_auth",
+    timeoutMs: 20_000,
+    isLoggedIn: (payload) => payload.loggedIn,
   });
-
-  try {
-    unlisten = await listen<{ loggedIn: boolean }>("yt-auth-result", (event) => {
-      resolveResult?.(event.payload.loggedIn);
-    });
-    timeout = window.setTimeout(() => resolveResult?.(false), 20_000);
-    void invoke("yt_check_auth").catch(() => resolveResult?.(false));
-    return await result;
-  } catch {
-    return false;
-  } finally {
-    if (timeout !== null) window.clearTimeout(timeout);
-    safeUnlisten(unlisten, "yt-auth-result");
-  }
 }
 
 /** Remove the local YouTube website session without touching the user's account. */
 export async function disconnectYouTube(): Promise<void> {
-  try {
-    await invoke("yt_disconnect");
-  } finally {
-    localStorage.removeItem(YOUTUBE_AUTH_KEY);
-    clearYouTubePlaylistState();
-  }
+  localStorage.removeItem(YOUTUBE_AUTH_KEY);
+  clearYouTubePlaylistState();
+  await invoke("yt_disconnect");
+}
+
+/** Clear the native session while preserving request receipts and playlist progress. */
+export async function disconnectYouTubeForFactoryReset(): Promise<void> {
+  persistDisconnectedSocialAuthStateForFactoryReset(YOUTUBE_AUTH_KEY, "YouTube");
+  await invoke("yt_disconnect");
 }
 
 export function storeYouTubeAuthState(state: YouTubeAuthState): void {
+  if (!isDesktopProviderAuthAllowed()) return;
   localStorage.setItem(
     YOUTUBE_AUTH_KEY,
     JSON.stringify(clearTransientLastCaptureError(state)),
@@ -68,21 +69,8 @@ export function storeYouTubeAuthState(state: YouTubeAuthState): void {
 }
 
 export function initYouTubeAuth(): YouTubeAuthState {
-  const stored = localStorage.getItem(YOUTUBE_AUTH_KEY);
-  if (!stored) return { isAuthenticated: false };
-
-  try {
-    const parsed = JSON.parse(stored) as YouTubeAuthState;
-    return clearTransientLastCaptureError({
-      isAuthenticated: parsed.isAuthenticated === true,
-      lastCheckedAt: parsed.lastCheckedAt,
-      lastCapturedAt: parsed.lastCapturedAt,
-      lastCaptureError: parsed.lastCaptureError,
-      pausedUntil: parsed.pausedUntil,
-      pauseReason: parsed.pauseReason,
-      pauseLevel: parsed.pauseLevel,
-    });
-  } catch {
-    return { isAuthenticated: false };
-  }
+  const stored = readStoredSocialAuthState<YouTubeAuthState>(YOUTUBE_AUTH_KEY);
+  return stored.status === "supported"
+    ? stored.state
+    : { isAuthenticated: false };
 }

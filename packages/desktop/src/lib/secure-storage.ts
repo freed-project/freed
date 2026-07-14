@@ -74,17 +74,4 @@ export const secureStorage = {
     });
   },
 
-  /** Remove every credential from the encrypted device-local store. */
-  async clearAllCredentials(): Promise<void> {
-    await scheduleSideEffect({
-      queue: "nativeStore",
-      source: "secure-storage",
-      kind: "clearAllCredentials",
-      run: async () => {
-        const store = await getStore();
-        await store.clear();
-        await store.save();
-      },
-    });
-  },
 };

@@ -39,7 +39,7 @@ import {
   isDesktopClientWarningAcknowledged,
 } from "../lib/desktop-client-warning";
 
-/** Parse the LAN IP from a ws://ip:port?t=token URL. */
+/** Parse the LAN IP from a relay pairing URL. */
 function parseIp(url: string): string {
   try {
     return new URL(url).hostname;

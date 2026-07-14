@@ -116,7 +116,7 @@ The command palette now covers:
 - **Create flows**: Add RSS Feed, Save URL, import Freed Markdown, export Freed Markdown
 - **Current item actions**: Open original URL, close reader, save or unsave, archive or unarchive, like or unlike when supported
 - **Current scope actions**: Mark current scope read, archive visible read items in one batch, unarchive saved items, sync RSS, sync the current provider, and check for updates when supported
-- **Danger actions**: Delete all archived items plus local or cloud-backed factory reset, guarded by typed confirmation. Factory reset clears every owned local data surface before deleting the document or optional cloud copy, and stops on any cleanup failure.
+- **Danger actions**: Delete all archived items plus local or cloud-backed factory reset, guarded by typed confirmation. Factory reset fences active writers, clears its account and document state before deleting the document or optional cloud copy, and stops on any cleanup failure. Failed cloud cleanup leaves a durable barrier that blocks automatic cloud restart until reset succeeds or the user explicitly reconnects. Local request history, backoff ledgers, media dedupe state, local AI files, and stable WebView identity stay intact so reset cannot quietly increase third-party traffic.
 
 Blank suggestions now stay compact. Individual RSS feeds and danger actions are hidden until the operator starts typing, and broad matches are capped so a large feed list cannot turn the command surface into a scroll chore.
 
@@ -488,7 +488,7 @@ Reward security researchers for responsible disclosure.
 - [x] Desktop and PWA expose a shared bug report flow with public-safe bundles by default and private diagnostics as an explicit opt-in path
 - [x] Shared bug report actions now reflect the selected bundle privacy tier, bulk-toggle private diagnostics, and disable public GitHub issue drafts while private artifacts are selected
 - [x] Settings keeps Support out of the primary section list and opens the existing report composer from a dedicated Support modal launched at the top of Danger Zone
-- [x] Factory reset clears device preferences and recovery copies, credentials, provider runtime state, article and geocoding caches, local AI and media files, diagnostics, and the local document in a failure-aware order while preserving installation identity and legal acceptance
+- [x] Factory reset clears device preferences, selected provider sessions and sync credentials, recovery copies, diagnostics, relay-held document bytes, and the local document in a failure-aware order. It preserves local request history, retry and receipt ledgers, encrypted AI keys, local AI files, media archives, installation identity, and legal acceptance. It rotates the relay pairing token, rejects pre-reset mobile sessions, requires existing PWA readers to scan the current pairing QR code again, and leaves mobile sync paused if document deletion is uncertain.
 
 ---
 

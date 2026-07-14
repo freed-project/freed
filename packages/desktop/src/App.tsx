@@ -43,16 +43,16 @@ import {
   restartCloudSync,
   stopAllCloudSyncs,
   getActiveProviders,
-  getCloudToken,
   getValidCloudToken,
   forceRefreshCloudToken,
   captureCloudLifecycle,
   clearCloudProvider,
-  deleteCloudFile,
+  clearStoredCloudDataForFactoryReset,
   startCloudSync,
   setGoogleDriveFetch,
   initiateDesktopOAuth,
   isOAuthCanceledError,
+  quiesceDesktopOAuthForFactoryReset,
   storeCloudToken,
   type CloudProvider,
 } from "./lib/sync";
@@ -74,23 +74,17 @@ import {
   updateBackgroundActivity,
 } from "@freed/ui/lib/background-activity-store";
 import { clearStoredCookies, storeCookies } from "./lib/x-auth";
-import { disconnectIg, storeIgAuthState } from "./lib/instagram-auth";
-import { disconnectFb, storeFbAuthState } from "./lib/fb-auth";
-import { disconnectLi, storeLiAuthState } from "./lib/li-auth";
-import { disconnectYouTube } from "./lib/youtube-auth";
+import { disconnectIgForFactoryReset, storeIgAuthState } from "./lib/instagram-auth";
+import { disconnectFbForFactoryReset, storeFbAuthState } from "./lib/fb-auth";
+import { disconnectLiForFactoryReset, storeLiAuthState } from "./lib/li-auth";
+import { disconnectYouTubeForFactoryReset } from "./lib/youtube-auth";
 import { captureXTimeline } from "./lib/x-capture";
 import { captureFbFeed } from "./lib/fb-capture";
 import { captureIgFeed } from "./lib/instagram-capture";
 import { captureLiFeed } from "./lib/li-capture";
 import { captureYouTube } from "./lib/youtube-capture";
-import {
-  addYouTubeVideoToOfflinePlaylist,
-  clearYouTubePlaylistState,
-} from "./lib/youtube-playlist";
+import { addYouTubeVideoToOfflinePlaylist } from "./lib/youtube-playlist";
 import { contentCache } from "./lib/content-cache";
-import { clearAllRssRuntimeState } from "./lib/rss-runtime-state";
-import { clearSocialOutboxState } from "./lib/social-outbox-state";
-import { clearFacebookGroupDiscovery } from "./lib/facebook-group-discovery";
 import {
   clearDesktopClientWarningAcknowledgement,
   desktopClientWarningSignature,
@@ -101,19 +95,21 @@ import { clearDeviceDisplayPreferences } from "@freed/ui/lib/device-display-pref
 import { clearDeviceGraphLayout } from "@freed/ui/lib/device-graph-layout";
 import { resetFeedCardDensity } from "@freed/ui/lib/feed-card-density";
 import { resetInterfaceZoom } from "@freed/ui/lib/interface-zoom";
-import { resetReaderOfflineCacheMode } from "@freed/ui/lib/reader-cache-settings";
 import {
+  clearFactoryResetCloudCleanupBarrier,
+  beginFactoryResetBoundary,
+  hasFactoryResetCloudCleanupBarrier,
   runFactoryResetOperations,
   runFactoryResetWithRecovery,
 } from "@freed/ui/lib/factory-reset";
-import { clearArticleCacheStorage } from "@freed/ui/lib/article-cache";
-import { clearGeocodingCache } from "@freed/ui/lib/geocoding-cache";
+import { getDesktopFactoryResetFailureRecovery } from "./lib/factory-reset-recovery";
 import { resetThemePreference } from "@freed/ui/lib/theme";
 import { saveUrlInDesktop } from "./lib/save-url";
 import { hydrateReaderItem as hydrateReaderItemForDesktop } from "./lib/reader-hydration";
 import { importMarkdownFiles, exportLibrary } from "./lib/import-export";
 import { secureStorage } from "./lib/secure-storage";
 import { localAIModels } from "./lib/local-ai-models";
+import { checkOllamaReachable } from "./lib/ai-summarizer";
 import {
   pinReaderItem,
   start as startContentFetcher,
@@ -146,19 +142,17 @@ import { DesktopShortcutsSettingsSection } from "./components/DesktopShortcutsSe
 import { refreshSampleLibraryData, summarizeSampleData } from "@freed/ui/lib/sample-library-seed";
 import { acceptDesktopBundle, acceptProviderRisk, hasAcceptedDesktopBundle } from "./lib/legal-consent";
 import {
-  clearProviderHealth,
   clearProviderPause,
   forgetRssFeedHealth,
   initProviderHealth,
 } from "./lib/provider-health";
 import { getDesktopSourceStatus } from "./lib/source-status";
-import { clearContactSyncState, setContactSyncError } from "./lib/contact-sync-storage";
+import { setContactSyncError } from "./lib/contact-sync-storage";
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
 import { importMetaExportFiles } from "./lib/meta-export-import";
-import { clearMediaVault, summarizeMediaVault } from "./lib/media-vault";
-import { clearScraperWindowPreferences } from "./lib/scraper-prefs";
+import { summarizeMediaVault } from "./lib/media-vault";
 import { publishStoryWallToGitHubPages } from "./lib/story-wall-publisher";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
 import { startMemoryMonitor, stopMemoryMonitor } from "./lib/memory-monitor";
@@ -169,6 +163,11 @@ import {
   noteRendererRecoveryState,
   type RendererRecoveryStateEvent,
 } from "./lib/background-runtime-coordinator";
+import { quiesceDesktopProviderAuthForFactoryReset } from "./lib/provider-auth-lifecycle";
+import {
+  assertFactoryResetEpoch,
+  runFactoryResetSensitiveDesktopOperation,
+} from "./lib/factory-reset-guard";
 import {
   bootstrapDesktopReleaseChannel,
   loadDesktopReleaseChannelState,
@@ -958,6 +957,7 @@ function App() {
   const handleFactoryReset = useCallback(async (deleteFromCloud: boolean) => {
     await runFactoryResetWithRecovery({
       reset: async () => {
+        beginFactoryResetBoundary();
         stopRssPoller();
         stopSync();
         stopAllCloudSyncs();
@@ -965,83 +965,71 @@ function App() {
         stopContentFetcher();
         stopSemanticClassifier();
         await runFactoryResetOperations({
+          phaseTimeoutMs: 255_000,
+          trackedWorkDrainTimeoutMs: 240_000,
           quiesceLocalWriters: [
+            async () => {
+              await invoke("factory_reset_sync_relay");
+            },
+            quiesceDesktopProviderAuthForFactoryReset,
+            quiesceDesktopOAuthForFactoryReset,
             quiesceDesktopStoreForFactoryReset,
             stopRssPollerAndDrain,
             stopAndDrainContentFetcher,
             stopAndDrainSemanticClassifier,
           ],
           clearDeviceStores: () => [
-            clearAllRssRuntimeState(),
-            clearSocialOutboxState(),
-            clearFacebookGroupDiscovery(),
             clearDeviceDisplayPreferences(),
             clearDeviceAIPreferences(),
             clearDeviceGraphLayout(),
           ],
           clearLocalSettings: [
-            resetReaderOfflineCacheMode,
             resetFeedCardDensity,
             resetInterfaceZoom,
             resetThemePreference,
-            clearYouTubePlaylistState,
             clearStoredCookies,
-            clearContactSyncState,
             clearDesktopClientWarningAcknowledgement,
-            clearScraperWindowPreferences,
           ],
           clearLocalData: [
             clearSnapshots,
-            () => contentCache.clear(),
-            clearArticleCacheStorage,
-            clearGeocodingCache,
-            () => secureStorage.clearAllCredentials(),
-            () => localAIModels.clearAllModels(),
-            clearMediaVault,
-            clearProviderHealth,
             clearClipboardSaveShortcutConfig,
             async () => {
               await invoke("clear_factory_reset_runtime_artifacts");
             },
           ],
           clearProviderDataAndConnections: async () => {
-            const providers = getActiveProviders();
-            const cloudFilesToDelete = deleteFromCloud
-              ? providers.flatMap((provider) => {
-                  const token = getCloudToken(provider);
-                  return token ? [{ provider, token }] : [];
-                })
-              : [];
             stopAllCloudSyncs();
-            const cleanupResults = await Promise.allSettled([
-              ...cloudFilesToDelete.map(({ provider, token }) =>
-                deleteCloudFile(provider, token)
-              ),
-              disconnectFb(),
-              disconnectIg(),
-              disconnectLi(),
-              disconnectYouTube(),
-              Promise.resolve().then(() => clearCloudProvider("gdrive")),
-              Promise.resolve().then(() => clearCloudProvider("dropbox")),
-              invoke("factory_reset_sync_relay"),
-            ]);
-            const cleanupFailures = cleanupResults
-              .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-              .map((result) => result.reason);
-            if (cleanupFailures.length > 0) throw cleanupFailures[0];
+            await clearStoredCloudDataForFactoryReset(deleteFromCloud);
+            const disconnectFailures: unknown[] = [];
+            for (const disconnectProvider of [
+              disconnectFbForFactoryReset,
+              disconnectIgForFactoryReset,
+              disconnectLiForFactoryReset,
+              disconnectYouTubeForFactoryReset,
+            ]) {
+              try {
+                await disconnectProvider();
+              } catch (error) {
+                disconnectFailures.push(error);
+              }
+            }
+            if (disconnectFailures.length > 0) throw disconnectFailures[0];
           },
           clearDocument: async () => {
             await clearLocalDoc();
             await invoke("resume_sync_relay_after_factory_reset");
           },
         });
+        clearFactoryResetCloudCleanupBarrier();
       },
       reload: () => location.reload(),
-      onFailure: () => {
-        void invoke("resume_sync_relay_after_factory_reset").catch(() => undefined);
-        toast.error(
-          "Factory reset stopped because Freed could not clear all local data. Reloading Freed to restore background services.",
-        );
+      onFailure: (error) => {
+        const cloudCleanupPaused = hasFactoryResetCloudCleanupBarrier();
+        const recovery = getDesktopFactoryResetFailureRecovery(error, cloudCleanupPaused);
+        if (recovery.resumeRelay) {
+          void invoke("resume_sync_relay_after_factory_reset").catch(() => undefined);
+        }
+        toast.error(recovery.message);
       },
     });
   }, []);
@@ -1094,47 +1082,55 @@ function App() {
     }
   }, [recordGoogleContactsConnectError]);
 
-  const fetchGoogleContactsForDesktop = useCallback(async (
+  const fetchGoogleContactsForDesktop = useCallback((
     accessToken: string,
     syncToken?: string | null,
-  ) => {
-    log.info(`[contacts] Google sync requested mode=${syncToken ? "incremental" : "full"}`);
-    try {
-      const result = await fetchGoogleContactsViaTauri(accessToken, syncToken);
-      log.info(
-        `[contacts] Google sync fetched contacts=${result.contacts.length.toLocaleString()} deleted=${result.deleted.length.toLocaleString()} next_sync_token=${result.nextSyncToken ? "yes" : "no"}`,
-      );
-      return result;
-    } catch (error) {
-      const status = typeof error === "object" && error !== null && "status" in error
-        ? (error as { status?: number }).status
-        : undefined;
-      if (status === 401) {
-        let refreshedToken: string | null = null;
-        try {
-          refreshedToken = await forceRefreshCloudToken("gdrive");
-        } catch (refreshError) {
-          const message = refreshError instanceof Error
-            ? refreshError.message
-            : "Google token refresh failed.";
-          setContactSyncError(message, "auth");
-          log.warn(`[contacts] Google token refresh failed during sync: ${message}`);
-          throw refreshError;
+  ) => runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
+      log.info(`[contacts] Google sync requested mode=${syncToken ? "incremental" : "full"}`);
+      try {
+        assertFactoryResetEpoch(resetEpoch);
+        const result = await fetchGoogleContactsViaTauri(accessToken, syncToken);
+        assertFactoryResetEpoch(resetEpoch);
+        log.info(
+          `[contacts] Google sync fetched contacts=${result.contacts.length.toLocaleString()} deleted=${result.deleted.length.toLocaleString()} next_sync_token=${result.nextSyncToken ? "yes" : "no"}`,
+        );
+        return result;
+      } catch (error) {
+        assertFactoryResetEpoch(resetEpoch);
+        const status = typeof error === "object" && error !== null && "status" in error
+          ? (error as { status?: number }).status
+          : undefined;
+        if (status === 401) {
+          let refreshedToken: string | null = null;
+          try {
+            assertFactoryResetEpoch(resetEpoch);
+            refreshedToken = await forceRefreshCloudToken("gdrive");
+            assertFactoryResetEpoch(resetEpoch);
+          } catch (refreshError) {
+            assertFactoryResetEpoch(resetEpoch);
+            const message = refreshError instanceof Error
+              ? refreshError.message
+              : "Google token refresh failed.";
+            setContactSyncError(message, "auth");
+            log.warn(`[contacts] Google token refresh failed during sync: ${message}`);
+            throw refreshError;
+          }
+          if (refreshedToken && refreshedToken !== accessToken) {
+            assertFactoryResetEpoch(resetEpoch);
+            log.info("[contacts] Google sync retrying after token refresh");
+            const result = await fetchGoogleContactsViaTauri(refreshedToken, syncToken);
+            assertFactoryResetEpoch(resetEpoch);
+            log.info(
+              `[contacts] Google sync fetched contacts=${result.contacts.length.toLocaleString()} deleted=${result.deleted.length.toLocaleString()} next_sync_token=${result.nextSyncToken ? "yes" : "no"}`,
+            );
+            return result;
+          }
         }
-        if (refreshedToken && refreshedToken !== accessToken) {
-          log.info("[contacts] Google sync retrying after token refresh");
-          const result = await fetchGoogleContactsViaTauri(refreshedToken, syncToken);
-          log.info(
-            `[contacts] Google sync fetched contacts=${result.contacts.length.toLocaleString()} deleted=${result.deleted.length.toLocaleString()} next_sync_token=${result.nextSyncToken ? "yes" : "no"}`,
-          );
-          return result;
-        }
+        const message = error instanceof Error ? error.message : String(error);
+        log.warn(`[contacts] Google sync failed: ${message}`);
+        throw error;
       }
-      const message = error instanceof Error ? error.message : String(error);
-      log.warn(`[contacts] Google sync failed: ${message}`);
-      throw error;
-    }
-  }, []);
+    }), []);
 
   // Fake-authenticate all social providers for local testing. Writes stub
   // credentials to localStorage (matching the real auth persistence format)
@@ -1230,6 +1226,7 @@ function App() {
       installedReleaseChannel: IS_LOCAL_PREVIEW || !releaseChannelResolved ? undefined : installedReleaseChannel,
       setReleaseChannel: IS_LOCAL_PREVIEW || !releaseChannelResolved ? undefined : setReleaseChannel,
       factoryReset: handleFactoryReset,
+      factoryResetRevokesMobilePairing: true,
       seedSocialConnections,
       activeCloudProviderLabel: () => {
         const providers = getActiveProviders();
@@ -1333,6 +1330,7 @@ function App() {
         clearApiKey: (provider: string) => Promise<void>;
       },
       localAIModels,
+      checkOllamaReachable,
       importInstagramStoryWallArchive: (files) => importMetaExportFiles("instagram", files),
       getStoryWallArchiveSummaries: async () => {
         const [facebook, instagram] = await Promise.all([
@@ -1351,8 +1349,13 @@ function App() {
         ? {
             getToken: async () => {
               try {
-                return await getValidCloudToken("gdrive");
+                return await runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
+                  const token = await getValidCloudToken("gdrive");
+                  assertFactoryResetEpoch(resetEpoch);
+                  return token;
+                });
               } catch (error) {
+                if (isOAuthCanceledError(error)) return null;
                 const message = error instanceof Error ? error.message : String(error);
                 log.warn(`[contacts] Google token lookup failed: ${message}`);
                 return null;

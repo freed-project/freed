@@ -38,7 +38,10 @@ import {
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
 } from "./background-runtime-coordinator.js";
-import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
+import {
+  isFactoryResetInProgress,
+  waitForFactoryResetDrain,
+} from "@freed/ui/lib/factory-reset";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const AI_SUMMARY_TIMEOUT_MS = 60_000;
@@ -543,6 +546,7 @@ async function processNext(): Promise<ProcessOutcome> {
         setTimeout(() => reject(new Error("fetch_url TIMEOUT")), FETCH_TIMEOUT_MS),
       ),
     ]);
+    if (isFactoryResetInProgress()) return "skipped";
 
     // Extract structured content using browser-safe Readability
     const content = extractContentBrowser(html, entry.url);
@@ -571,12 +575,14 @@ async function processNext(): Promise<ProcessOutcome> {
 
     // Optionally run AI summarization (replaces raw text in Automerge with a concise summary)
     if (prefs?.autoSummarize && prefs.provider !== "none") {
+      if (isFactoryResetInProgress()) return "skipped";
       const cloudProvider = prefs.provider === "openai" ||
         prefs.provider === "anthropic" ||
         prefs.provider === "gemini"
         ? prefs.provider
         : null;
       const apiKey = cloudProvider ? await secureStorage.getApiKey(cloudProvider) : null;
+      if (isFactoryResetInProgress()) return "skipped";
       try {
         const aiResult = await withAiTimeout((signal) =>
           summarize(content.text, prefs, apiKey, { signal, throwOnError: true })
@@ -597,6 +603,8 @@ async function processNext(): Promise<ProcessOutcome> {
         }
       }
     }
+
+    if (isFactoryResetInProgress()) return "skipped";
 
     // Write metadata + short text summary to Automerge (syncs to all devices).
     // author is omitted rather than set to undefined — Automerge's proxy

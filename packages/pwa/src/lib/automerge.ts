@@ -27,7 +27,13 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from "./automerge-types";
+import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import { persistWorkerDebugEvent } from "./automerge-worker-debug";
+import {
+  capturePwaRuntimeLifecycle,
+  registerPwaFactoryResetQuiesceHandler,
+  type PwaRuntimeLifecycle,
+} from "./factory-reset-coordinator";
 export type { DocState } from "./automerge-types";
 
 // ---------------------------------------------------------------------------
@@ -36,6 +42,8 @@ export type { DocState } from "./automerge-types";
 
 const WORKER_START_TIMEOUT_MS = 15_000;
 const WORKER_INIT_TIMEOUT_MS = 180_000;
+const WORKER_QUIESCE_TIMEOUT_MS = 10_000;
+const WORKER_REQUEST_TIMEOUT_MS = 180_000;
 
 class WorkerLifecycleError extends Error {
   constructor(message: string) {
@@ -77,6 +85,8 @@ let activeGeneration: WorkerGeneration | null = null;
 let nextGenerationId = 1;
 let pendingInitialization: PendingInitialization | null = null;
 let appDocumentInitialized = false;
+let automergeQuiesced = false;
+let automergeQuiescePromise: Promise<void> | null = null;
 
 // ---------------------------------------------------------------------------
 // Request/response plumbing
@@ -281,22 +291,65 @@ function requestOnGeneration<T>(
   generation: WorkerGeneration,
   pendingMap: Map<number, GenerationOwnedRequest<T>>,
   message: WorkerRequest,
+  runtimeLifecycle?: PwaRuntimeLifecycle,
 ): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const request = { generationId: generation.id, resolve, reject };
+  return new Promise<T>((resolvePromise, rejectPromise) => {
+    try {
+      runtimeLifecycle?.assertCurrent();
+    } catch (error) {
+      rejectPromise(error instanceof Error ? error : new Error(String(error)));
+      return;
+    }
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      failWorkerGeneration(
+        generation,
+        lifecycleError(
+          `Automerge worker request ${message.type} timed out after ${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()} milliseconds`,
+        ),
+        "request_timeout",
+      );
+    }, WORKER_REQUEST_TIMEOUT_MS);
+    const request: GenerationOwnedRequest<T> = {
+      generationId: generation.id,
+      resolve: (value) => {
+        if (settled) return;
+        try {
+          runtimeLifecycle?.assertCurrent();
+        } catch (error) {
+          settled = true;
+          clearTimeout(timeout);
+          rejectPromise(error instanceof Error ? error : new Error(String(error)));
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        resolvePromise(value);
+      },
+      reject: (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        rejectPromise(error);
+      },
+    };
     pendingMap.set(message.reqId, request);
     try {
       postToGeneration(generation, message);
     } catch (error) {
       if (pendingMap.get(message.reqId) === request) {
         pendingMap.delete(message.reqId);
-        reject(error instanceof Error ? error : new Error(String(error)));
+        request.reject(error instanceof Error ? error : new Error(String(error)));
       }
     }
   });
 }
 
 async function getGenerationForRequest(type: WorkerRequest["type"]): Promise<WorkerGeneration> {
+  if (automergeQuiesced) {
+    throw lifecycleError("Automerge worker is quiesced for factory reset");
+  }
   const generation = await getReadyGenerationWithStartupRetry();
   if (
     type !== "INIT" &&
@@ -311,16 +364,20 @@ async function getGenerationForRequest(type: WorkerRequest["type"]): Promise<Wor
 }
 
 async function request(msg: WorkerRequest): Promise<void> {
+  const runtimeLifecycle = capturePwaRuntimeLifecycle();
+  runtimeLifecycle.assertCurrent();
   const generation = await getGenerationForRequest(msg.type);
-  return requestOnGeneration(generation, pending, msg);
+  return requestOnGeneration(generation, pending, msg, runtimeLifecycle);
 }
 
 async function requestResult<T>(
   pendingMap: Map<number, GenerationOwnedRequest<T>>,
   message: WorkerRequest,
 ): Promise<T> {
+  const runtimeLifecycle = capturePwaRuntimeLifecycle();
+  runtimeLifecycle.assertCurrent();
   const generation = await getGenerationForRequest(message.type);
-  return requestOnGeneration(generation, pendingMap, message);
+  return requestOnGeneration(generation, pendingMap, message, runtimeLifecycle);
 }
 
 // Latest binary fetched from the worker for the debug escape hatch.
@@ -572,7 +629,11 @@ function sendInit(generation: WorkerGeneration): Promise<DocState> {
           generation.documentInitialized = false;
           lastBinary = null;
           lastDocState = null;
-          reject(new InitDataError(msg.error));
+          reject(
+            msg.errorCode === "CORRUPT_DOCUMENT"
+              ? new InitDataError(msg.error)
+              : new Error(msg.error),
+          );
         } else {
           initAcked = true;
           tryResolve();
@@ -612,32 +673,12 @@ function sendInit(generation: WorkerGeneration): Promise<DocState> {
   });
 }
 
-async function initializeGenerationWithDataRecovery(
-  generation: WorkerGeneration,
-): Promise<DocState> {
-  try {
-    return await sendInit(generation);
-  } catch (error) {
-    if (!(error instanceof InitDataError)) throw error;
-    lastBinary = null;
-    lastDocState = null;
-    generation.documentInitialized = false;
-    const reqId = nextReqId++;
-    await requestOnGeneration(
-      generation,
-      pending,
-      { reqId, type: "CLEAR_LOCAL" } satisfies WorkerRequest,
-    );
-    return sendInit(generation);
-  }
-}
-
 async function initializeDocument(): Promise<DocState> {
   let lifecycleRetries = 0;
   while (true) {
     try {
       const generation = await getReadyGeneration();
-      return await initializeGenerationWithDataRecovery(generation);
+      return await sendInit(generation);
     } catch (error) {
       if (error instanceof WorkerLifecycleError && lifecycleRetries < 1) {
         lifecycleRetries += 1;
@@ -649,6 +690,8 @@ async function initializeDocument(): Promise<DocState> {
 }
 
 export function initDoc(): Promise<DocState> {
+  const runtimeLifecycle = capturePwaRuntimeLifecycle();
+  runtimeLifecycle.assertCurrent();
   if (initPromise) return initPromise;
   if (
     lastDocState &&
@@ -658,7 +701,10 @@ export function initDoc(): Promise<DocState> {
     return Promise.resolve(lastDocState);
   }
 
-  const initialization = initializeDocument().finally(() => {
+  const initialization = initializeDocument().then((state) => {
+    runtimeLifecycle.assertCurrent();
+    return state;
+  }).finally(() => {
     if (initPromise === initialization) initPromise = null;
   });
   initPromise = initialization;
@@ -720,6 +766,73 @@ export async function clearLocalDoc(): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "CLEAR_LOCAL" });
 }
+
+/** Stop the worker after all requests already accepted by it have settled. */
+export function quiescePwaAutomergeForFactoryReset(): Promise<void> {
+  if (automergeQuiescePromise) return automergeQuiescePromise;
+  automergeQuiesced = true;
+  automergeQuiescePromise = (async () => {
+    const generation = activeGeneration;
+    if (!generation || generation.failed) return;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let quiesceFailure: unknown = null;
+    try {
+      await Promise.race([
+        (async () => {
+          await generation.ready;
+          const reqId = nextReqId++;
+          await requestOnGeneration(
+            generation,
+            pending,
+            { reqId, type: "QUIESCE" } satisfies WorkerRequest,
+          );
+        })(),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(lifecycleError(
+              `Automerge worker did not quiesce within ${WORKER_QUIESCE_TIMEOUT_MS.toLocaleString()} milliseconds`,
+            )),
+            WORKER_QUIESCE_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } catch (error) {
+      quiesceFailure = error;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      generation.cleanupReady();
+      generation.worker.onmessage = null;
+      generation.worker.onerror = null;
+      generation.worker.onmessageerror = null;
+      generation.worker.terminate();
+      if (activeGeneration === generation) activeGeneration = null;
+      rejectGenerationRequests(
+        generation.id,
+        lifecycleError("Automerge worker stopped for factory reset"),
+      );
+      lastBinary = null;
+      lastDocState = null;
+      initPromise = null;
+      appDocumentInitialized = false;
+    }
+    if (quiesceFailure) throw quiesceFailure;
+  })();
+  return automergeQuiescePromise;
+}
+
+/** Clear IndexedDB only after every tab has acknowledged worker quiescence. */
+export async function clearLocalDocAfterPwaQuiesce(): Promise<void> {
+  if (!automergeQuiesced) {
+    throw new Error("Automerge must be quiesced before factory reset clears IndexedDB");
+  }
+  await new IndexedDBStorage().clear();
+}
+
+registerPwaFactoryResetQuiesceHandler(
+  "automerge-worker",
+  quiescePwaAutomergeForFactoryReset,
+  30,
+);
 
 // ---------------------------------------------------------------------------
 // Document mutations — one function per schema operation

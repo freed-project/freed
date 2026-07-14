@@ -6,7 +6,7 @@
  * surfaces cannot quietly invent different definitions for the same symptom.
  */
 
-export const STABILITY_METRIC_REGISTRY_VERSION = 4;
+export const STABILITY_METRIC_REGISTRY_VERSION = 5;
 export const MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS = 6;
 export const MIN_COMPARABLE_WINDOW_DURATION_RATIO = 0.8;
 export const MAX_COMPARABLE_WINDOW_DURATION_RATIO = 1.25;
@@ -150,6 +150,146 @@ export const STABILITY_METRICS = Object.freeze([
         direction: "lower",
         minimum: 0,
         denominator: "cloudEligibleHours",
+        tolerance: Object.freeze({ kind: "ratio", allowance: 1.5 }),
+      }),
+    ]),
+  }),
+  Object.freeze({
+    id: "startup-repair-upload-surface",
+    soakAssertionId: "startup_repair_upload_budget",
+    outcomeMeasurement: Object.freeze({
+      unit: "events/cloud-eligible-hour",
+      direction: "lower",
+      tolerance: 0.25,
+    }),
+    target: Object.freeze({
+      kind: "max_group_count",
+      groupBy: Object.freeze(["appSessionId", "provider"]),
+      value: 1,
+    }),
+    triageBucketId: "cloud-loop",
+    alarmNames: Object.freeze([]),
+    canaryMetrics: Object.freeze([
+      Object.freeze({
+        name: "startupRepairUploadsPerHour",
+        unit: "events/cloud-eligible-hour",
+        direction: "lower",
+        minimum: 0,
+        denominator: "cloudEligibleHours",
+        tolerance: Object.freeze({ kind: "absolute", allowance: 1 }),
+      }),
+    ]),
+  }),
+  Object.freeze({
+    id: "social-outbox-attempt-surface",
+    soakAssertionId: "social_outbox_retry_budget",
+    outcomeMeasurement: Object.freeze({
+      unit: "events/app-alive-hour",
+      direction: "lower",
+      tolerance: 0.25,
+    }),
+    target: Object.freeze({
+      kind: "max_event_fields",
+      fields: Object.freeze(["attempt", "maxAttempts"]),
+      value: 3,
+    }),
+    triageBucketId: null,
+    alarmNames: Object.freeze([]),
+    canaryMetrics: Object.freeze([
+      Object.freeze({
+        name: "socialOutboxAttemptsPerHour",
+        unit: "events/app-alive-hour",
+        direction: "lower",
+        minimum: 0,
+        denominator: "appAliveHours",
+        tolerance: Object.freeze({ kind: "ratio", allowance: 1.5 }),
+      }),
+    ]),
+  }),
+  Object.freeze({
+    id: "facebook-group-discovery-update-rate",
+    soakAssertionId: null,
+    outcomeMeasurement: Object.freeze({
+      unit: "events/app-alive-hour",
+      direction: "lower",
+      tolerance: 0.25,
+    }),
+    target: null,
+    triageBucketId: null,
+    alarmNames: Object.freeze([]),
+    canaryMetrics: Object.freeze([
+      Object.freeze({
+        name: "facebookGroupDiscoveryUpdatesPerHour",
+        unit: "events/app-alive-hour",
+        direction: "lower",
+        minimum: 0,
+        denominator: "appAliveHours",
+        tolerance: Object.freeze({ kind: "ratio", allowance: 1.5 }),
+      }),
+    ]),
+  }),
+  Object.freeze({
+    id: "rss-pull-attempt-rate",
+    soakAssertionId: null,
+    outcomeMeasurement: Object.freeze({
+      unit: "events/app-alive-hour",
+      direction: "lower",
+      tolerance: 0.25,
+    }),
+    target: null,
+    triageBucketId: null,
+    alarmNames: Object.freeze([]),
+    canaryMetrics: Object.freeze([
+      Object.freeze({
+        name: "rssPullAttemptsPerHour",
+        unit: "events/app-alive-hour",
+        direction: "lower",
+        minimum: 0,
+        denominator: "appAliveHours",
+        tolerance: Object.freeze({ kind: "ratio", allowance: 1.5 }),
+      }),
+    ]),
+  }),
+  Object.freeze({
+    id: "ai-request-attempt-rate",
+    soakAssertionId: null,
+    outcomeMeasurement: Object.freeze({
+      unit: "events/app-alive-hour",
+      direction: "lower",
+      tolerance: 0.25,
+    }),
+    target: null,
+    triageBucketId: null,
+    alarmNames: Object.freeze([]),
+    canaryMetrics: Object.freeze([
+      Object.freeze({
+        name: "aiRequestAttemptsPerHour",
+        unit: "events/app-alive-hour",
+        direction: "lower",
+        minimum: 0,
+        denominator: "appAliveHours",
+        tolerance: Object.freeze({ kind: "ratio", allowance: 1.5 }),
+      }),
+    ]),
+  }),
+  Object.freeze({
+    id: "reader-article-fetch-attempt-rate",
+    soakAssertionId: null,
+    outcomeMeasurement: Object.freeze({
+      unit: "events/app-alive-hour",
+      direction: "lower",
+      tolerance: 0.25,
+    }),
+    target: null,
+    triageBucketId: null,
+    alarmNames: Object.freeze([]),
+    canaryMetrics: Object.freeze([
+      Object.freeze({
+        name: "readerArticleFetchAttemptsPerHour",
+        unit: "events/app-alive-hour",
+        direction: "lower",
+        minimum: 0,
+        denominator: "appAliveHours",
         tolerance: Object.freeze({ kind: "ratio", allowance: 1.5 }),
       }),
     ]),

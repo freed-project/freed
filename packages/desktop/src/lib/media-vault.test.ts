@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
 
 vi.mock("@tauri-apps/api/path", async () => {
@@ -17,11 +17,9 @@ vi.mock("@tauri-apps/plugin-fs", async () => {
 });
 
 import { __readMemfs, __resetMemfs } from "../__mocks__/@tauri-apps/plugin-fs/index";
-import * as fs from "@tauri-apps/plugin-fs";
 import {
   archiveMediaVaultCandidate,
   archiveRecentProviderMedia,
-  clearMediaVault,
   getMediaVaultProviderDir,
   hashMediaBytes,
   readMediaVaultManifest,
@@ -61,10 +59,6 @@ describe("media vault", () => {
   beforeEach(() => {
     __resetMemfs();
     vi.restoreAllMocks();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   it("keeps filenames local filesystem safe", () => {
@@ -211,114 +205,5 @@ describe("media vault", () => {
     await expect(getMediaVaultProviderDir("facebook")).resolves.toBe(
       "/mock/app-data/media-vault/facebook",
     );
-  });
-
-  it("permanently clears archived files, roster data, failures, and the manifest", async () => {
-    await setMediaVaultEnabled("instagram", true);
-    const entry = await archiveMediaVaultCandidate({
-      provider: "instagram",
-      bytes: bytes("private-archive"),
-      mediaUrl: "https://cdn.example.com/private.jpg",
-      importSource: "meta_export",
-      ownerHandle: "ada",
-    });
-    expect(entry).not.toBeNull();
-
-    await clearMediaVault();
-
-    expect(__readMemfs(entry?.localPath ?? "")).toBeUndefined();
-    await expect(summarizeMediaVault("instagram")).resolves.toEqual({
-      enabled: false,
-      fileCount: 0,
-      byteSize: 0,
-      failureCount: 0,
-      ownerHandles: [],
-    });
-  });
-
-  it("waits for an in-flight archive before deleting the vault", async () => {
-    await setMediaVaultEnabled("instagram", true);
-    let releaseWrite!: () => void;
-    const writeGate = new Promise<void>((resolve) => {
-      releaseWrite = resolve;
-    });
-    const originalWriteFile = fs.writeFile;
-    const writeFile = vi.spyOn(fs, "writeFile").mockImplementationOnce(
-      async (...args: Parameters<typeof fs.writeFile>) => {
-        await writeGate;
-        await originalWriteFile(...args);
-      },
-    );
-
-    const archiving = archiveMediaVaultCandidate({
-      provider: "instagram",
-      bytes: bytes("archive-in-flight"),
-      mediaUrl: "https://cdn.example.com/in-flight.jpg",
-      importSource: "meta_export",
-    });
-    await vi.waitFor(() => expect(writeFile).toHaveBeenCalledOnce());
-
-    const cleared = vi.fn();
-    const clearing = clearMediaVault().then(cleared);
-    await Promise.resolve();
-    expect(cleared).not.toHaveBeenCalled();
-
-    releaseWrite();
-    await archiving;
-    await clearing;
-
-    expect(await readMediaVaultManifest()).toEqual(
-      expect.objectContaining({ entries: {}, failures: {}, roster: {} }),
-    );
-  });
-
-  it("rejects when the vault directory cannot be removed", async () => {
-    await setMediaVaultEnabled("facebook", true);
-    const entry = await archiveMediaVaultCandidate({
-      provider: "facebook",
-      bytes: bytes("must-survive-failed-reset"),
-      importSource: "meta_export",
-    });
-    const error = new Error("media vault is not writable");
-    vi.spyOn(fs, "remove").mockRejectedValueOnce(error);
-
-    await expect(clearMediaVault()).rejects.toBe(error);
-    expect(__readMemfs(entry?.localPath ?? "")).toEqual(
-      bytes("must-survive-failed-reset"),
-    );
-    await expect(setMediaVaultEnabled("instagram", true)).resolves.toBeUndefined();
-  });
-
-  it("times out a stuck media write and releases the reset gate", async () => {
-    vi.useFakeTimers();
-    await setMediaVaultEnabled("instagram", true);
-    let releaseWrite!: () => void;
-    const writeGate = new Promise<void>((resolve) => {
-      releaseWrite = resolve;
-    });
-    const originalWriteFile = fs.writeFile;
-    const writeFile = vi.spyOn(fs, "writeFile").mockImplementationOnce(
-      async (...args: Parameters<typeof fs.writeFile>) => {
-        await writeGate;
-        await originalWriteFile(...args);
-      },
-    );
-
-    const archiving = archiveMediaVaultCandidate({
-      provider: "instagram",
-      bytes: bytes("stuck-write"),
-      importSource: "meta_export",
-    });
-    await vi.waitFor(() => expect(writeFile).toHaveBeenCalledOnce());
-    const clearing = clearMediaVault();
-    const rejection = expect(clearing).rejects.toThrow(
-      "Media vault operations did not stop within 180,000 ms.",
-    );
-    await vi.advanceTimersByTimeAsync(180_000);
-    await rejection;
-
-    releaseWrite();
-    await archiving;
-    await expect(setMediaVaultEnabled("facebook", true)).resolves.toBeUndefined();
   });
 });

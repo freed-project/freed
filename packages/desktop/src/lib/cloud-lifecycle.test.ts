@@ -122,6 +122,22 @@ describe("desktop cloud lifecycle", () => {
     localStorage.clear();
   });
 
+  it("does not contact cloud storage when credential metadata is corrupt", async () => {
+    const raw = "{corrupt-cloud-credentials";
+    localStorage.setItem("freed_cloud_token_gdrive", "legacy-token");
+    localStorage.setItem("freed_cloud_token_meta_gdrive", raw);
+
+    const { startCloudSync } = await import("./sync");
+    await expect(startCloudSync("gdrive", "legacy-token")).rejects.toThrow(
+      "Stored Google Drive credentials could not be read",
+    );
+
+    expect(gdriveDownloadLatestMock).not.toHaveBeenCalled();
+    expect(gdriveStartPollLoopMock).not.toHaveBeenCalled();
+    expect(gdriveUploadSafeMock).not.toHaveBeenCalled();
+    expect(localStorage.getItem("freed_cloud_token_meta_gdrive")).toBe(raw);
+  });
+
   it("publishes a local Desktop registration once when the remote history lacks it", async () => {
     const remote = new Uint8Array([9, 8, 7]);
     gdriveDownloadLatestMock.mockResolvedValue(remote);
@@ -241,6 +257,59 @@ describe("desktop cloud lifecycle", () => {
 
     expect(localStorage.getItem("freed_cloud_token_gdrive")).toBeNull();
     expect(localStorage.getItem("freed_cloud_token_meta_gdrive")).toBeNull();
+  });
+
+  it("leaves an inactive Dropbox-only credential untouched without a remote request", async () => {
+    const sync = await import("./sync");
+    sync.storeCloudToken("dropbox", "dropbox-reset-token");
+
+    await sync.clearStoredCloudDataForFactoryReset(true);
+
+    expect(gdriveDeleteFileMock).not.toHaveBeenCalled();
+    expect(dropboxDeleteFileMock).not.toHaveBeenCalled();
+    expect(sync.getCloudToken("dropbox")).toBe("dropbox-reset-token");
+  });
+
+  it("keeps failed cleanup behind a reload-safe barrier through provider cleanup retry", async () => {
+    const sync = await import("./sync");
+    sync.storeCloudToken("gdrive", "gdrive-retry-token");
+    sync.storeCloudToken("dropbox", "dropbox-retry-token");
+    gdriveDeleteFileMock.mockRejectedValueOnce(new Error("Drive deletion failed"));
+
+    await expect(sync.clearStoredCloudDataForFactoryReset(true)).rejects.toThrow(
+      "Drive deletion failed",
+    );
+
+    expect(gdriveDeleteFileMock).toHaveBeenCalledWith(
+      "gdrive-retry-token",
+      undefined,
+    );
+    expect(dropboxDeleteFileMock).not.toHaveBeenCalled();
+    expect(sync.getCloudToken("gdrive")).toBe("gdrive-retry-token");
+    expect(sync.getCloudToken("dropbox")).toBe("dropbox-retry-token");
+    expect(localStorage.getItem("freed_factory_reset_cloud_cleanup_pending")).toBe("1");
+
+    vi.resetModules();
+    const reloadedSync = await import("./sync");
+    await reloadedSync.startAllCloudSyncs();
+    expect(gdriveDownloadLatestMock).not.toHaveBeenCalled();
+
+    await reloadedSync.clearStoredCloudDataForFactoryReset(true);
+    expect(gdriveDeleteFileMock).toHaveBeenCalledTimes(2);
+    expect(reloadedSync.getCloudToken("gdrive")).toBeNull();
+    expect(reloadedSync.getCloudToken("dropbox")).toBe("dropbox-retry-token");
+    expect(localStorage.getItem("freed_factory_reset_cloud_cleanup_pending")).toBe("1");
+  });
+
+  it("lets an explicit reconnect supersede a failed-cleanup barrier", async () => {
+    localStorage.setItem("freed_factory_reset_cloud_cleanup_pending", "1");
+    const sync = await import("./sync");
+
+    sync.storeCloudToken("gdrive", "new-explicit-token");
+    await sync.startCloudSync("gdrive", "new-explicit-token");
+
+    expect(localStorage.getItem("freed_factory_reset_cloud_cleanup_pending")).toBeNull();
+    expect(gdriveDownloadLatestMock).toHaveBeenCalledOnce();
   });
 
   it.each(["gdrive", "dropbox"] as const)(

@@ -61,10 +61,3 @@ export function getLiScraperWindowMode(): ScraperWindowMode {
 export function setLiScraperWindowMode(mode: ScraperWindowMode): void {
   writeMode(LI_KEY, mode);
 }
-
-/** Restore all device-local scraper WebView modes to the hidden default. */
-export function clearScraperWindowPreferences(): void {
-  for (const key of [FB_KEY, IG_KEY, LI_KEY]) {
-    localStorage.removeItem(key);
-  }
-}

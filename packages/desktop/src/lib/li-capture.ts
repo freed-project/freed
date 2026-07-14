@@ -38,6 +38,11 @@ import {
   waitForSocialScrapeEvents,
 } from "./social-capture-runtime";
 import { runBackgroundJob } from "./background-runtime-coordinator";
+import {
+  assertFactoryResetEpoch,
+  isFactoryResetEpochCurrent,
+  runFactoryResetSensitiveDesktopOperation,
+} from "./factory-reset-guard";
 
 // =============================================================================
 // Rate Limiting
@@ -169,7 +174,11 @@ function waitForLiZeroEventDrain(): Promise<void> {
  * The Rust command fires multiple 'li-feed-data' events (one per pass).
  * We accumulate them until the final pass, identified by a 'done' flag.
  */
-export async function fetchLiFeed(): Promise<LiSyncResult> {
+export function fetchLiFeed(): Promise<LiSyncResult> {
+  return runFactoryResetSensitiveDesktopOperation(fetchLiFeedInternal);
+}
+
+async function fetchLiFeedInternal(resetEpoch: number): Promise<LiSyncResult> {
   const emptyResult = createEmptyLiSyncResult();
   const diag = emptyResult.diag;
 
@@ -246,6 +255,7 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
       },
     );
 
+    assertFactoryResetEpoch(resetEpoch);
     await runBackgroundJob({
       kind: "social-scrape",
       source: "linkedin:feed",
@@ -254,12 +264,15 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
       waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
       run: () => invoke("li_scrape_feed", { windowMode: getLiScraperWindowMode() }),
     });
+    assertFactoryResetEpoch(resetEpoch);
     if (diag.extractionPasses === 0) {
       await waitForLiZeroEventDrain();
     } else {
       await waitForSocialScrapeEvents();
     }
+    assertFactoryResetEpoch(resetEpoch);
   } catch (err) {
+    if (!isFactoryResetEpochCurrent(resetEpoch)) throw err;
     if (!diag.errorStage) {
       if (applyRuntimeDeferredDiag(diag, err)) {
         return { items: [], diag };
@@ -316,40 +329,46 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
  * Capture LinkedIn feed and add items to the store.
  * Respects rate limiting to avoid triggering LinkedIn's anti-bot measures.
  */
-export async function captureLiFeed(
+export function captureLiFeed(
   trigger: SocialScrapeTrigger = "unknown",
 ): Promise<LiSyncResult> {
   if (!isTauri()) {
     addDebugEvent("change", "[LI] browser preview skips native LinkedIn capture");
-    return createEmptyLiSyncResult();
+    return Promise.resolve(createEmptyLiSyncResult());
   }
 
-  const scrapeStartedAt = Date.now();
-  try {
-    const result = await captureLiFeedInternal();
-    recordScrapeOutcome({
-      provider: "linkedin",
-      trigger,
-      itemsExtracted: result.diag.postsExtracted,
-      itemsPersisted: result.diag.itemsAdded,
-      stage: result.diag.errorStage ?? "ok",
-      durationMs: Date.now() - scrapeStartedAt,
-    });
-    return result;
-  } catch (error) {
-    recordScrapeOutcome({
-      provider: "linkedin",
-      trigger,
-      itemsExtracted: 0,
-      itemsPersisted: 0,
-      stage: "exception",
-      durationMs: Date.now() - scrapeStartedAt,
-    });
-    throw error;
-  }
+  return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
+    const scrapeStartedAt = Date.now();
+    try {
+      const result = await captureLiFeedInternal(resetEpoch);
+      assertFactoryResetEpoch(resetEpoch);
+      recordScrapeOutcome({
+        provider: "linkedin",
+        trigger,
+        itemsExtracted: result.diag.postsExtracted,
+        itemsPersisted: result.diag.itemsAdded,
+        stage: result.diag.errorStage ?? "ok",
+        durationMs: Date.now() - scrapeStartedAt,
+      });
+      return result;
+    } catch (error) {
+      if (isFactoryResetEpochCurrent(resetEpoch)) {
+        recordScrapeOutcome({
+          provider: "linkedin",
+          trigger,
+          itemsExtracted: 0,
+          itemsPersisted: 0,
+          stage: "exception",
+          durationMs: Date.now() - scrapeStartedAt,
+        });
+      }
+      throw error;
+    }
+  });
 }
 
-async function captureLiFeedInternal(): Promise<LiSyncResult> {
+async function captureLiFeedInternal(resetEpoch: number): Promise<LiSyncResult> {
+  assertFactoryResetEpoch(resetEpoch);
   const startedAt = Date.now();
   const providerPause = getProviderPause("linkedin");
   if (providerPause) {
@@ -410,7 +429,8 @@ async function captureLiFeedInternal(): Promise<LiSyncResult> {
 
   try {
     addDebugEvent("change", "[LI] sync started");
-    const result = await fetchLiFeed();
+    const result = await fetchLiFeedInternal(resetEpoch);
+    assertFactoryResetEpoch(resetEpoch);
 
     if (result.diag.errorStage) {
       const runtimeDeferred = isRuntimeDeferredStage(result.diag.errorStage);
@@ -428,6 +448,7 @@ async function captureLiFeedInternal(): Promise<LiSyncResult> {
         store.setLiAuth(errState);
         storeLiAuthState(errState);
       }
+      assertFactoryResetEpoch(resetEpoch);
       await recordProviderHealthEvent({
         provider: "linkedin",
         outcome: "error",
@@ -450,6 +471,7 @@ async function captureLiFeedInternal(): Promise<LiSyncResult> {
       );
       const before = store.items.filter((i) => i.platform === "linkedin").length;
       await store.addItems(result.items);
+      assertFactoryResetEpoch(resetEpoch);
       const after = useAppStore
         .getState()
         .items.filter((i) => i.platform === "linkedin").length;
@@ -469,6 +491,7 @@ async function captureLiFeedInternal(): Promise<LiSyncResult> {
     };
     store.setLiAuth(successState);
     storeLiAuthState(successState);
+    assertFactoryResetEpoch(resetEpoch);
     await recordProviderHealthEvent({
       provider: "linkedin",
       outcome: result.diag.postsExtracted > 0 ? "success" : "empty",
@@ -482,6 +505,7 @@ async function captureLiFeedInternal(): Promise<LiSyncResult> {
 
     return result;
   } catch (error) {
+    if (!isFactoryResetEpochCurrent(resetEpoch)) throw error;
     const message =
       error instanceof Error ? error.message : "Failed to capture LinkedIn feed";
     store.setError(message);
@@ -499,6 +523,6 @@ async function captureLiFeedInternal(): Promise<LiSyncResult> {
     });
     throw error;
   } finally {
-    store.setLoading(false);
+    if (isFactoryResetEpochCurrent(resetEpoch)) store.setLoading(false);
   }
 }

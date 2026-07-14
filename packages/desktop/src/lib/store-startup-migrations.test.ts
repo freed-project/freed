@@ -33,6 +33,7 @@ const {
 
 vi.mock("./automerge", () => ({
   initDoc: mockInitDoc,
+  quiesceDesktopAutomergeForFactoryReset: vi.fn(() => Promise.resolve()),
   subscribe: mockSubscribe,
   getDocState: vi.fn(() => null),
   docAddFeedItems: vi.fn(),
@@ -291,7 +292,7 @@ describe("store startup migrations", () => {
     expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it("prunes stale graph pins from successful Desktop worker states", async () => {
+  it("keeps pins through empty startup and prunes only authoritative Desktop states", async () => {
     const person: Person = {
       id: "person-removed",
       name: "Removed",
@@ -312,10 +313,6 @@ describe("store startup migrations", () => {
       createdAt: 1,
       updatedAt: 1,
     };
-    const initial = createDocState();
-    initial.persons = { [person.id]: person };
-    initial.accounts = { [account.id]: account };
-    mockInitDoc.mockResolvedValueOnce(initial);
     const { useAppStore } = await import("./store");
     const {
       getDeviceAccountGraphLayout,
@@ -324,15 +321,46 @@ describe("store startup migrations", () => {
       setDevicePersonGraphPosition,
     } = await import("@freed/ui/lib/device-graph-layout");
 
-    await useAppStore.getState().initialize();
     setDevicePersonGraphPosition(person.id, 10, 20, 100);
     setDeviceAccountGraphPosition(account.id, 30, 40, 200);
+    await useAppStore.getState().initialize();
+
+    expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
+    expect(getDeviceAccountGraphLayout(account.id)).not.toBeNull();
 
     const subscriber = mockSubscribe.mock.calls.at(-1)?.[0] as
-      | ((state: ReturnType<typeof createDocState>) => void)
+      | ((
+        state: ReturnType<typeof createDocState>,
+        event: { mutation?: string },
+      ) => void)
       | undefined;
     expect(subscriber).toBeTypeOf("function");
-    subscriber?.(createDocState());
+    subscriber?.(createDocState(), { mutation: "UPDATE_PERSON" });
+
+    expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
+    expect(getDeviceAccountGraphLayout(account.id)).not.toBeNull();
+
+    const restored = createDocState();
+    restored.persons = { [person.id]: person };
+    restored.accounts = { [account.id]: account };
+    subscriber?.(restored, { mutation: "MERGE_DOC" });
+
+    expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
+    expect(getDeviceAccountGraphLayout(account.id)).not.toBeNull();
+
+    const accountRemoved = createDocState();
+    accountRemoved.persons = { [person.id]: person };
+    subscriber?.(accountRemoved, { mutation: "REMOVE_ACCOUNT" });
+    expect(getDevicePersonGraphLayout(person.id)).not.toBeNull();
+    expect(getDeviceAccountGraphLayout(account.id)).toBeNull();
+
+    subscriber?.(createDocState(), { mutation: "REMOVE_PERSON" });
+    expect(getDevicePersonGraphLayout(person.id)).toBeNull();
+
+    setDevicePersonGraphPosition(person.id, 50, 60, 300);
+    setDeviceAccountGraphPosition(account.id, 70, 80, 400);
+    subscriber?.(restored, { mutation: "MERGE_DOC" });
+    subscriber?.(createDocState(), { mutation: "REPLACE_DOC" });
 
     expect(getDevicePersonGraphLayout(person.id)).toBeNull();
     expect(getDeviceAccountGraphLayout(account.id)).toBeNull();

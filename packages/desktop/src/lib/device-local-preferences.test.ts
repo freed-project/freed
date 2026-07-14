@@ -17,15 +17,21 @@ import {
   resetDeviceDisplayPreferencesForTests,
   setDeviceDisplayPreferences,
 } from "@freed/ui/lib/device-display-preferences";
+import {
+  beginFactoryResetBoundary,
+  resetFactoryResetStateForTests,
+} from "@freed/ui/lib/factory-reset";
 
 describe("device-local preferences", () => {
   beforeEach(() => {
+    resetFactoryResetStateForTests();
     window.localStorage.clear();
     resetDeviceDisplayPreferencesForTests();
     resetDeviceAIPreferencesForTests();
   });
 
   afterEach(() => {
+    resetFactoryResetStateForTests();
     vi.restoreAllMocks();
   });
 
@@ -259,5 +265,36 @@ describe("device-local preferences", () => {
     expect(clearDeviceAIPreferences()).toBe(false);
     expect(getDeviceDisplayPreferences().sidebarMode).toBe("closed");
     expect(getDeviceAIPreferences().provider).toBe("integrated");
+  });
+
+  it("blocks preference writers after reset starts while allowing reset clears", () => {
+    expect(setDeviceDisplayPreferences({ sidebarMode: "closed" })).toBe(true);
+    expect(setDeviceAIPreferences({ provider: "integrated" })).toBe(true);
+    const displayBeforeReset = window.localStorage.getItem(
+      DEVICE_DISPLAY_PREFERENCES_STORAGE_KEY,
+    );
+    const aiBeforeReset = window.localStorage.getItem(DEVICE_AI_PREFERENCES_STORAGE_KEY);
+
+    beginFactoryResetBoundary();
+
+    expect(setDeviceDisplayPreferences({ sidebarMode: "compact" })).toBe(false);
+    expect(setDeviceAIPreferences({ provider: "ollama" })).toBe(false);
+    expect(window.localStorage.getItem(DEVICE_DISPLAY_PREFERENCES_STORAGE_KEY))
+      .toBe(displayBeforeReset);
+    expect(window.localStorage.getItem(DEVICE_AI_PREFERENCES_STORAGE_KEY)).toBe(aiBeforeReset);
+
+    expect(clearDeviceDisplayPreferences()).toBe(true);
+    expect(clearDeviceAIPreferences()).toBe(true);
+    expect(getDeviceDisplayPreferences().sidebarMode).toBe("expanded");
+    expect(getDeviceAIPreferences().provider).toBe("none");
+
+    window.localStorage.clear();
+    resetDeviceDisplayPreferencesForTests();
+    resetDeviceAIPreferencesForTests();
+    const legacy = createDefaultPreferences();
+    expect(migrateLegacyDeviceDisplayPreferences(legacy.display)).toBe(false);
+    expect(migrateLegacyDeviceAIPreferences(legacy.ai)).toBe(false);
+    expect(window.localStorage.getItem(DEVICE_DISPLAY_PREFERENCES_STORAGE_KEY)).toBeNull();
+    expect(window.localStorage.getItem(DEVICE_AI_PREFERENCES_STORAGE_KEY)).toBeNull();
   });
 });

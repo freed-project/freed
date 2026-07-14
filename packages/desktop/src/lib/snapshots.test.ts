@@ -82,8 +82,22 @@ describe("snapshots", () => {
       JSON.stringify({
         syncToken: "sync-token",
         lastSyncedAt: 123,
-        cachedContacts: [{ resourceName: "people/1" }],
-        pendingMatches: [{ id: "match-1" }],
+        cachedContacts: [{
+          resourceName: "people/1",
+          name: { displayName: "Snapshot Contact" },
+          emails: [],
+          phones: [],
+          photos: [],
+          organizations: [],
+        }],
+        pendingMatches: [{
+          id: "match-1",
+          kind: "merge_accounts",
+          confidence: "high",
+          accountIds: ["account-1"],
+          label: "Snapshot suggestion",
+          createdAt: 123,
+        }],
         dismissedMatches: [],
       }),
     );
@@ -134,6 +148,41 @@ describe("snapshots", () => {
     const restored = JSON.parse(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY) ?? "{}");
     expect(restored.cachedContacts).toHaveLength(1);
     expect(restored.pendingMatches).toHaveLength(1);
+  });
+
+  it("preserves an unreadable contact sync ledger through snapshot restore", async () => {
+    const corruptRaw = "{unreadable-contact-sync-state";
+    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, corruptRaw);
+    const snapshot = await createSnapshot("manual");
+    expect(snapshot).not.toBeNull();
+
+    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, JSON.stringify({
+      syncToken: "replacement-token",
+      cachedContacts: [],
+    }));
+
+    await restoreSnapshot(snapshot!.id);
+
+    expect(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY)).toBe(corruptRaw);
+  });
+
+  it("does not create a snapshot when contact sync storage cannot be read", async () => {
+    const originalGetItem = Storage.prototype.getItem;
+    const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+    ) {
+      if (key === CONTACT_SYNC_STORAGE_KEY) {
+        throw new Error("contact sync storage unavailable");
+      }
+      return originalGetItem.call(this, key);
+    });
+
+    await expect(createSnapshot("manual")).rejects.toThrow("contact sync storage unavailable");
+    getItem.mockRestore();
+
+    await expect(listSnapshots()).resolves.toEqual([]);
+    await expect(readDir("/mock/app-data/snapshots").catch(() => [])).resolves.toEqual([]);
   });
 
   it("waits for an in-flight snapshot before clearing local history", async () => {

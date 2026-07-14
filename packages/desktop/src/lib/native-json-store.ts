@@ -9,10 +9,14 @@ function mockStoreStorageKey(file: string): string {
   return `__TAURI_MOCK_STORE__:${file}`;
 }
 
-function readMockStoreFile(file: string): Record<string, unknown> | null {
+function readMockStoreRaw(file: string): string | null {
   if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(mockStoreStorageKey(file));
+}
+
+function readMockStoreFile(file: string): Record<string, unknown> | null {
   try {
-    const raw = window.localStorage.getItem(mockStoreStorageKey(file));
+    const raw = readMockStoreRaw(file);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
@@ -89,6 +93,17 @@ async function readNativeJsonFileResult(file: string): Promise<NativeJsonFileRes
 export async function readNativeJsonFile(file: string): Promise<Record<string, unknown> | null> {
   if (!isTauri()) return readMockStoreFile(file);
   return (await readNativeJsonFileResult(file)).contents;
+}
+
+/** Read the exact persisted bytes so callers can preserve malformed evidence. */
+export async function readNativeJsonFileRaw(file: string): Promise<string | null> {
+  if (!isTauri()) return readMockStoreRaw(file);
+  try {
+    return await readTextFile(await nativeJsonPath(file));
+  } catch (error) {
+    if (isMissingFile(error)) return readMockStoreRaw(file);
+    throw error;
+  }
 }
 
 export async function readNativeJsonValue(file: string, key: string): Promise<unknown> {

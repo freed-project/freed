@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RssFeed } from "@freed/shared";
 import {
-  clearAllRssRuntimeState,
-  getRssRuntimeState,
   resetRssRuntimeStateForTests,
   setRssRuntimeState,
+  type RssRuntimeState,
   withRssRuntimeState,
   withRssRuntimeStates,
 } from "./rss-runtime-state";
@@ -35,37 +34,17 @@ describe("device-local RSS runtime state", () => {
       lastFetchError: "offline",
     });
 
-    expect(getRssRuntimeState(feed.url)).toEqual({
-      lastFetchAttemptedAt: 200,
-      nextFetchAfter: 300,
-      consecutiveFailures: 2,
-      lastFetchError: "offline",
-    });
     expect(withRssRuntimeState(feed)).toMatchObject({
+      lastFetchAttemptedAt: 200,
       lastFetched: 100,
       nextFetchAfter: 300,
       consecutiveFailures: 2,
+      lastFetchError: "offline",
     });
     expect(feed.nextFetchAfter).toBeUndefined();
   });
 
-  it("does not reuse a retry window after a factory reset", () => {
-    const url = "https://example.com/feed";
-    setRssRuntimeState(url, {
-      nextFetchAfter: 9_999,
-      consecutiveFailures: 3,
-      lastFetchError: "offline",
-    });
-
-    expect(clearAllRssRuntimeState()).toBe(true);
-
-    expect(getRssRuntimeState(url)).toEqual({});
-    expect(JSON.parse(
-      window.localStorage.getItem("freed-device-rss-runtime-v1") ?? "null",
-    )).toEqual({ version: 1, feeds: {} });
-  });
-
-  it("ignores legacy synced runtime state until this device records local state", () => {
+  it("migrates a legacy retry window once so an upgrade cannot pull early", () => {
     const feed: RssFeed = {
       url: "https://example.com/legacy-feed",
       title: "Legacy",
@@ -84,7 +63,13 @@ describe("device-local RSS runtime state", () => {
       title: "Legacy",
       enabled: true,
       trackUnread: false,
+      lastFetchAttemptedAt: 7_000,
+      nextFetchAfter: 8_000,
+      consecutiveFailures: 4,
+      lastFetchError: "legacy failure",
     });
+    expect(withRssRuntimeState(feed).etag).toBeUndefined();
+    expect(withRssRuntimeState(feed).lastModified).toBeUndefined();
 
     setRssRuntimeState(feed.url, {
       lastFetchAttemptedAt: 11_000,
@@ -102,7 +87,33 @@ describe("device-local RSS runtime state", () => {
     expect(withRssRuntimeState(feed).lastModified).toBeUndefined();
   });
 
-  it("ignores malformed local records instead of spreading them into a feed", () => {
+  it("keeps an existing local record ahead of stale synchronized retry state", () => {
+    const feed: RssFeed = {
+      url: "https://example.com/local-wins",
+      title: "Local wins",
+      enabled: true,
+      trackUnread: false,
+      lastFetchAttemptedAt: 7_000,
+      nextFetchAfter: 80_000,
+      consecutiveFailures: 4,
+      lastFetchError: "stale synchronized failure",
+    };
+    setRssRuntimeState(feed.url, {
+      lastFetchAttemptedAt: 11_000,
+      nextFetchAfter: 12_000,
+      consecutiveFailures: 1,
+      lastFetchError: "local failure",
+    });
+
+    expect(withRssRuntimeState(feed)).toMatchObject({
+      lastFetchAttemptedAt: 11_000,
+      nextFetchAfter: 12_000,
+      consecutiveFailures: 1,
+      lastFetchError: "local failure",
+    });
+  });
+
+  it("blocks scheduled pulls when a local feed record is malformed", () => {
     const url = "https://example.com/malformed-feed";
     window.localStorage.setItem("freed-device-rss-runtime-v1", JSON.stringify({
       version: 1,
@@ -124,8 +135,40 @@ describe("device-local RSS runtime state", () => {
       trackUnread: false,
     };
 
-    expect(getRssRuntimeState(url)).toEqual({});
-    expect(withRssRuntimeState(feed)).toEqual(feed);
+    const hydrated = withRssRuntimeState(feed);
+    expect(hydrated).toMatchObject({
+      url,
+      title: "Real title",
+      enabled: true,
+      nextFetchAfter: Number.MAX_SAFE_INTEGER,
+    });
+    expect(selectRssFeedsForRefresh([hydrated], { now: 1_000 })).toEqual([]);
+    expect(selectRssFeedsForRefresh([hydrated], {
+      now: 1_000,
+      respectRetryWindow: false,
+    })).toEqual([hydrated]);
+  });
+
+  it("blocks scheduled pulls when the ledger contains an invalid feed key", () => {
+    window.localStorage.setItem("freed-device-rss-runtime-v1", JSON.stringify({
+      version: 1,
+      feeds: {
+        "": {
+          nextFetchAfter: 50_000,
+          consecutiveFailures: 2,
+        },
+      },
+    }));
+
+    const feed: RssFeed = {
+      url: "https://example.com/valid-feed",
+      title: "Valid",
+      enabled: true,
+      trackUnread: false,
+    };
+    const hydrated = withRssRuntimeState(feed);
+    expect(hydrated.nextFetchAfter).toBe(Number.MAX_SAFE_INTEGER);
+    expect(selectRssFeedsForRefresh([hydrated], { now: 1_000 })).toEqual([]);
   });
 
   it("does not downgrade RSS runtime state written by a newer app", () => {
@@ -203,7 +246,6 @@ describe("device-local RSS runtime state", () => {
       nextFetchAfter: 20_000,
     });
 
-    expect(getRssRuntimeState(feed.url)).toEqual({});
     const hydrated = withRssRuntimeState(feed);
     expect(hydrated.nextFetchAfter).toBe(Number.MAX_SAFE_INTEGER);
     expect(selectRssFeedsForRefresh([hydrated], { now: 1_000 })).toEqual([]);
@@ -213,14 +255,44 @@ describe("device-local RSS runtime state", () => {
     })).toEqual([hydrated]);
   });
 
-  it("keeps retry state when factory reset cannot persist", () => {
-    const url = "https://example.com/stable-feed";
-    setRssRuntimeState(url, { nextFetchAfter: 9_999 });
-    vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
-      throw new Error("storage unavailable");
+  it("preserves a full retry ledger and blocks newly untracked feeds", () => {
+    const feeds = Object.fromEntries(
+      Array.from({ length: 10_000 }, (_, index) => [
+        `https://example.com/feed-${index.toLocaleString("en-US", { useGrouping: false })}`,
+        {
+          consecutiveFailures: 1,
+          nextFetchAfter: 20_000 + index,
+        },
+      ]),
+    );
+    window.localStorage.setItem("freed-device-rss-runtime-v1", JSON.stringify({
+      version: 1,
+      feeds,
+    }));
+    resetRssRuntimeStateForTests();
+    const existingUrl = "https://example.com/feed-0";
+    const newUrl = "https://example.com/feed-over-capacity";
+
+    setRssRuntimeState(existingUrl, { nextFetchAfter: 50_000 });
+    setRssRuntimeState(newUrl, {
+      consecutiveFailures: 1,
+      nextFetchAfter: 60_000,
     });
 
-    expect(clearAllRssRuntimeState()).toBe(false);
-    expect(getRssRuntimeState(url)).toEqual({ nextFetchAfter: 9_999 });
+    const stored = JSON.parse(
+      window.localStorage.getItem("freed-device-rss-runtime-v1") ?? "{}",
+    ) as { feeds?: Record<string, RssRuntimeState> };
+    expect(Object.keys(stored.feeds ?? {})).toHaveLength(10_000);
+    expect(stored.feeds?.[existingUrl]?.nextFetchAfter).toBe(50_000);
+    expect(stored.feeds?.[newUrl]).toBeUndefined();
+    const untrackedFeed: RssFeed = {
+      url: newUrl,
+      title: "Over capacity",
+      enabled: true,
+      trackUnread: false,
+    };
+    const hydrated = withRssRuntimeState(untrackedFeed);
+    expect(hydrated.nextFetchAfter).toBe(Number.MAX_SAFE_INTEGER);
+    expect(selectRssFeedsForRefresh([hydrated], { now: 1_000 })).toEqual([]);
   });
 });

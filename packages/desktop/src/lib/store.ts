@@ -95,6 +95,7 @@ import {
   docToggleLiked,
   docConfirmLikedSynced,
   docConfirmSeenSynced,
+  quiesceDesktopAutomergeForFactoryReset,
   type DocState,
 } from "./automerge";
 import { buildPlatformActionsRegistry } from "./platform-actions";
@@ -122,7 +123,10 @@ import { initLiAuth, storeLiAuthState, type LiAuthState } from "./li-auth";
 import { initYouTubeAuth, type YouTubeAuthState } from "./youtube-auth";
 import { reconcileSocialAuthStateHints } from "./social-auth-cookie-state";
 import { getOrCreateDesktopClientRegistration } from "./desktop-client-registration";
-import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
+import {
+  isFactoryResetInProgress,
+  waitForFactoryResetDrain,
+} from "@freed/ui/lib/factory-reset";
 
 let outboxTeardown: (() => void) | null = null;
 let startupMaintenanceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -139,6 +143,12 @@ function trackResetSensitiveStoreOperation<T>(operation: Promise<T>): Promise<T>
   tracked = operation.finally(() => activeResetSensitiveStoreOperations.delete(tracked));
   activeResetSensitiveStoreOperations.add(tracked);
   return tracked;
+}
+
+function assertDesktopStoreWritable(): void {
+  if (!storeAcceptingResetSensitiveWork || isFactoryResetInProgress()) {
+    throw new Error("Desktop store is quiesced for factory reset");
+  }
 }
 
 export type SyncProviderId =
@@ -369,6 +379,7 @@ async function runOptimisticMutation(
   task: () => Promise<void>,
   options: { recordFailure?: boolean; waitForPersistence?: boolean } = {},
 ): Promise<void> {
+  assertDesktopStoreWritable();
   const projected = project(getState());
   if (!projected) {
     if (options.waitForPersistence === false) {
@@ -655,6 +666,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Initialize from Automerge worker
   initialize: () => {
+    assertDesktopStoreWritable();
     if (get().isInitialized) return Promise.resolve();
     if (appInitializationPromise) return appInitializationPromise;
 
@@ -664,19 +676,28 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         // initDoc() now returns DocState (pre-hydrated, WASM ran in worker).
         const desktopClientRegistration = await getOrCreateDesktopClientRegistration();
+        assertDesktopStoreWritable();
         const docState = await initDoc(desktopClientRegistration);
+        assertDesktopStoreWritable();
         migrateLegacyDeviceDisplayPreferences(docState.preferences.display);
         migrateLegacyDeviceAIPreferences(docState.preferences.ai);
         migrateLegacyDeviceGraphLayout(docState.persons, docState.accounts);
         migrateLegacyFacebookGroupDiscovery(docState.preferences.fbCapture?.knownGroups);
-        pruneDeviceGraphLayout(docState.persons, docState.accounts);
 
         // Subscribe to future state updates from the worker. Each update is already
         // hydrated - no hydrateFromDoc(), no sort, no rank on the main thread.
         // Preserve object identity on count maps to avoid spurious selector re-renders.
         documentSubscriptionTeardown?.();
-        documentSubscriptionTeardown = subscribe((state: DocState) => {
-          pruneDeviceGraphLayout(state.persons, state.accounts);
+        documentSubscriptionTeardown = subscribe((state: DocState, event) => {
+          if (!storeAcceptingResetSensitiveWork || isFactoryResetInProgress()) return;
+          if (
+            event.mutation === "MERGE_DOC"
+            || event.mutation === "REPLACE_DOC"
+            || event.mutation === "REMOVE_PERSON"
+            || event.mutation === "REMOVE_ACCOUNT"
+          ) {
+            pruneDeviceGraphLayout(state.persons, state.accounts);
+          }
           const prev = get();
           let next: Partial<AppState> = { ...state };
 
@@ -704,6 +725,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (isTauri() || import.meta.env.VITE_TEST_TAURI === "1") {
           const previousAuth = { fbAuth, igAuth, liAuth };
           const reconciledAuth = await reconcileSocialAuthStateHints({ fbAuth, igAuth, liAuth });
+          assertDesktopStoreWritable();
           fbAuth = reconciledAuth.fbAuth;
           igAuth = reconciledAuth.igAuth;
           liAuth = reconciledAuth.liAuth;
@@ -978,6 +1000,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updatePerson: async (id: string, updates: Partial<Person>) => {
+    assertDesktopStoreWritable();
     const localGraphUpdate = getDeviceLocalGraphPositionUpdates(updates);
     if (
       Object.keys(localGraphUpdate).length > 0
@@ -1058,6 +1081,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateFriend: async (id: string, updates: Partial<Friend>) => {
+    assertDesktopStoreWritable();
     const current = get().friends[id];
     if (!current) {
       await docUpdatePerson(id, updates);
@@ -1076,6 +1100,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await Promise.all(existingAccounts.map((account) => docRemoveAccount(account.id)));
     const nextAccounts = accountsFromLegacyFriend(nextFriend);
     if (nextAccounts.length > 0) {
+      assertDesktopStoreWritable();
       await docAddAccounts(nextAccounts);
       restoreReplacedDeviceAccountGraphPositions(
         nextAccounts
@@ -1099,6 +1124,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateAccount: async (id: string, updates: Partial<Account>) => {
+    assertDesktopStoreWritable();
     const localGraphUpdate = getDeviceLocalGraphPositionUpdates(updates);
     if (
       Object.keys(localGraphUpdate).length > 0
@@ -1125,6 +1151,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Preference actions
   updatePreferences: async (update) => {
+    assertDesktopStoreWritable();
     const localUpdate = getDeviceLocalPreferenceUpdates(update);
     if (localUpdate.display && !setDeviceDisplayPreferences(localUpdate.display)) {
       throw new Error("Freed could not save the display settings on this device.");
@@ -1247,6 +1274,8 @@ export function withProviderSyncing<T>(
 /** Stop every store-owned writer and wait for already-issued work before document deletion. */
 export async function quiesceDesktopStoreForFactoryReset(): Promise<void> {
   storeAcceptingResetSensitiveWork = false;
+  documentSubscriptionTeardown?.();
+  documentSubscriptionTeardown = null;
 
   if (startupMaintenanceTimer) {
     clearTimeout(startupMaintenanceTimer);
@@ -1265,11 +1294,11 @@ export async function quiesceDesktopStoreForFactoryReset(): Promise<void> {
   readMarkBatchWaiters = [];
   readWaiters.forEach((resolve) => resolve());
 
-  outboxTeardown?.();
-  outboxTeardown = null;
+  await quiesceDesktopAutomergeForFactoryReset();
 
   const results = await Promise.allSettled([
     stopAndDrainOutboxProcessor(),
+    appInitializationPromise ?? Promise.resolve(),
     waitForFactoryResetDrain(
       () => Array.from(activeResetSensitiveStoreOperations),
       "Desktop store operations",
@@ -1279,5 +1308,6 @@ export async function quiesceDesktopStoreForFactoryReset(): Promise<void> {
   const failure = results.find(
     (result): result is PromiseRejectedResult => result.status === "rejected",
   );
+  outboxTeardown = null;
   if (failure) throw failure.reason;
 }

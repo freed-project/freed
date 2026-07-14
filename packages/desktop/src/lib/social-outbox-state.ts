@@ -3,6 +3,7 @@ import {
   readVersionedLocalStorage,
   writeVersionedLocalStorage,
   type VersionedLocalStorageCodec,
+  type VersionedLocalStorageRead,
 } from "@freed/ui/lib/versioned-local-storage";
 
 const STORAGE_KEY = "freed-device-social-outbox-v1";
@@ -52,6 +53,7 @@ export type SocialOutboxAttemptDecision =
 
 let current: StoredSocialOutboxState = emptyState();
 let hydrated = false;
+let storageStatus: VersionedLocalStorageRead<StoredSocialOutboxState>["status"] = "missing";
 const volatilePlatformConfirmations = new Map<string, number>();
 
 function emptyState(): StoredSocialOutboxState {
@@ -116,14 +118,18 @@ function normalizeRecord(value: unknown): SocialOutboxRetryRecord | null {
     attempts: candidate.attempts,
     updatedAt: candidate.updatedAt,
   };
-  if (
-    typeof candidate.platformConfirmedAt === "number"
-    && Number.isFinite(candidate.platformConfirmedAt)
-    && candidate.platformConfirmedAt >= 0
-  ) {
+  if (Object.prototype.hasOwnProperty.call(candidate, "platformConfirmedAt")) {
+    if (
+      typeof candidate.platformConfirmedAt !== "number"
+      || !Number.isFinite(candidate.platformConfirmedAt)
+      || candidate.platformConfirmedAt < 0
+    ) {
+      return null;
+    }
     record.platformConfirmedAt = candidate.platformConfirmedAt;
   }
-  if (candidate.explicitLocalIntent === true) {
+  if (Object.prototype.hasOwnProperty.call(candidate, "explicitLocalIntent")) {
+    if (candidate.explicitLocalIntent !== true) return null;
     record.explicitLocalIntent = true;
   }
   return record;
@@ -152,26 +158,33 @@ function readState(): StoredSocialOutboxState {
   if (hydrated) return current;
   hydrated = true;
   const stored = readVersionedLocalStorage(STORAGE_KEY, STORAGE_CODEC);
+  storageStatus = stored.status;
   current = stored.status === "supported" ? stored.value : emptyState();
   return current;
 }
 
-function persistState(
-  next: StoredSocialOutboxState,
-  replaceUnsupportedVersion = false,
-  purgeRecoveryCopies = false,
-): boolean {
-  if (!writeVersionedLocalStorage(
-    STORAGE_KEY,
-    STORAGE_CODEC,
-    next,
-    { replaceUnsupportedVersion, purgeRecoveryCopies },
-  )) {
+function persistState(next: StoredSocialOutboxState): boolean {
+  readState();
+  if (
+    storageStatus === "unsupported"
+    || storageStatus === "corrupt"
+    || storageStatus === "unavailable"
+  ) {
+    return false;
+  }
+  if (!writeVersionedLocalStorage(STORAGE_KEY, STORAGE_CODEC, next)) {
+    storageStatus = "unavailable";
     return false;
   }
   current = next;
   hydrated = true;
+  storageStatus = "supported";
   return true;
+}
+
+function storageAllowsProviderAttempt(): boolean {
+  readState();
+  return storageStatus === "missing" || storageStatus === "supported";
 }
 
 function withoutOlderIntents(
@@ -203,6 +216,7 @@ export function recordExplicitSocialOutboxIntent(
 ): boolean {
   const normalized = normalizeIntent(intent);
   if (!normalized) return false;
+  if (!storageAllowsProviderAttempt()) return false;
   const entries = withoutOlderIntents(readState().entries, normalized);
   const key = intentKey(normalized);
   const existing = entries[key];
@@ -256,6 +270,7 @@ export function beginSocialOutboxAttempt(
   if (volatileConfirmedAt !== undefined) {
     return { kind: "confirmed", confirmedAt: volatileConfirmedAt };
   }
+  if (!storageAllowsProviderAttempt()) return { kind: "capacity" };
   const entries = withoutOlderIntents(readState().entries, normalized);
   const existing = entries[key];
   if (existing?.platformConfirmedAt !== undefined) {
@@ -312,44 +327,15 @@ export function completeSocialOutboxIntent(intent: SocialOutboxIntent): void {
   const normalized = normalizeIntent(intent);
   if (!normalized) return;
   const key = intentKey(normalized);
-  volatilePlatformConfirmations.delete(key);
   const entries = { ...readState().entries };
-  if (!(key in entries)) return;
+  if (!(key in entries)) {
+    if (storageAllowsProviderAttempt()) volatilePlatformConfirmations.delete(key);
+    return;
+  }
   delete entries[key];
-  persistState({ version: 1, entries });
-}
-
-/**
- * Remove records that no longer correspond to a pending document intent.
- * Full outbox scans call this before draining, so completed, deleted, and
- * historical sentinel actions cannot grow the device-local ledger forever.
- */
-export function pruneSocialOutboxState(activeIntents: readonly SocialOutboxIntent[]): void {
-  const activeKeys = new Set(
-    activeIntents.map(normalizeIntent)
-      .filter((intent): intent is SocialOutboxIntent => intent !== null)
-      .map(intentKey),
-  );
-  const entries = { ...readState().entries };
-  let changed = false;
-  for (const key of Object.keys(entries)) {
-    if (!activeKeys.has(key)) {
-      delete entries[key];
-      changed = true;
-    }
+  if (persistState({ version: 1, entries })) {
+    volatilePlatformConfirmations.delete(key);
   }
-  for (const key of volatilePlatformConfirmations.keys()) {
-    if (!activeKeys.has(key)) volatilePlatformConfirmations.delete(key);
-  }
-  if (changed) persistState({ version: 1, entries });
-}
-
-/** Clear every device-local social outbox retry record during factory reset. */
-export function clearSocialOutboxState(): boolean {
-  const cleared = emptyState();
-  const persisted = persistState(cleared, true, true);
-  if (persisted) volatilePlatformConfirmations.clear();
-  return persisted;
 }
 
 export function getSocialOutboxRecordForTests(
@@ -363,5 +349,6 @@ export function getSocialOutboxRecordForTests(
 export function resetSocialOutboxStateForTests(): void {
   current = emptyState();
   hydrated = false;
+  storageStatus = "missing";
   volatilePlatformConfirmations.clear();
 }

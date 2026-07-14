@@ -55,6 +55,7 @@ import {
   parseMetricsTsv,
   runtimeHealthEvidenceFingerprint,
   runtimeIdentityFromHealthLines,
+  summarizeRequestSurfaceEvents,
   summarizeWorkerIdleTerminations,
 } from "./soak-assert.mjs";
 import {
@@ -1154,6 +1155,9 @@ export function computeCanarySummary(
   const workerIdleTerminations = summarizeWorkerIdleTerminations(
     entries.map((entry) => ({ entry })),
   );
+  const requestSurface = summarizeRequestSurfaceEvents(
+    entries.map((entry) => ({ entry })),
+  );
 
   const scrapeByProvider = {};
   for (const e of entries) {
@@ -1230,10 +1234,60 @@ export function computeCanarySummary(
         cloudHours === null
           ? null
           : Number((uploadsUnchanged.length / cloudHours).toFixed(2)),
+      startupRepairUploadsPerHour:
+        cloudHours === null
+          ? null
+          : Number(
+              (
+                requestSurface.startupRepairUploads.total / cloudHours
+              ).toFixed(2),
+            ),
       uploadSkipsPerHour:
         cloudHours === null
           ? null
           : Number((uploadSkips / cloudHours).toFixed(2)),
+      socialOutboxAttemptsPerHour: Number(
+        (
+          requestSurface.socialOutboxAttempts.total / appAliveHours
+        ).toFixed(2),
+      ),
+      facebookGroupDiscoveryUpdatesPerHour: Number(
+        (
+          requestSurface.facebookGroupDiscoveryUpdates.total / appAliveHours
+        ).toFixed(2),
+      ),
+      rssPullAttemptsPerHour: Number(
+        (requestSurface.rssPullAttempts.total / appAliveHours).toFixed(2),
+      ),
+      aiRequestAttemptsPerHour: Number(
+        (requestSurface.aiRequestAttempts.total / appAliveHours).toFixed(2),
+      ),
+      readerArticleFetchAttemptsPerHour: Number(
+        (
+          requestSurface.readerArticleFetchAttempts.total / appAliveHours
+        ).toFixed(2),
+      ),
+      startupRepairUploadsByProvider:
+        requestSurface.startupRepairUploads.byProvider,
+      startupRepairUploadGroups: requestSurface.startupRepairUploads.groups,
+      startupRepairUploadMaxPerProviderSession:
+        requestSurface.startupRepairUploads.maxPerProviderSession,
+      startupRepairUploadOverBudgetGroupCount:
+        requestSurface.startupRepairUploads.overBudgetGroupCount,
+      socialOutboxAttemptsByProviderAction:
+        requestSurface.socialOutboxAttempts.byProviderAction,
+      socialOutboxAttemptMax: requestSurface.socialOutboxAttempts.maxAttempt,
+      socialOutboxMaxAttempts:
+        requestSurface.socialOutboxAttempts.maxAttempts,
+      socialOutboxInvalidContractCount:
+        requestSurface.socialOutboxAttempts.invalidContractCount,
+      facebookGroupDiscoveryUpdatesBySource:
+        requestSurface.facebookGroupDiscoveryUpdates.bySource,
+      rssPullAttemptsByTrigger: requestSurface.rssPullAttempts.byTrigger,
+      aiRequestAttemptsByProviderPurpose:
+        requestSurface.aiRequestAttempts.byProviderPurpose,
+      readerArticleFetchAttemptsBySourcePin:
+        requestSurface.readerArticleFetchAttempts.bySourcePin,
       workerInitsPerHour: Number((workerInits / appAliveHours).toFixed(2)),
       workerIdleTerminationsByReason: workerIdleTerminations.byReason,
       workerIdleTerminationInvalidReasonCount:

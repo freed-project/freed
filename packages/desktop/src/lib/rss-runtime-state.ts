@@ -7,6 +7,7 @@ import {
 } from "@freed/ui/lib/versioned-local-storage";
 
 const STORAGE_KEY = "freed-device-rss-runtime-v1";
+const MAX_TRACKED_FEEDS = 10_000;
 
 export type RssRuntimeState = Pick<
   RssFeed,
@@ -45,45 +46,53 @@ function withoutLegacySyncedRuntimeState(feed: RssFeed): RssFeed {
   return clean;
 }
 
-function normalizeRuntimeState(value: unknown): RssRuntimeState {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+function normalizeRuntimeState(value: unknown): RssRuntimeState | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
   const normalized: RssRuntimeState = {};
-  if (
-    typeof candidate.lastFetchAttemptedAt === "number" &&
-    Number.isFinite(candidate.lastFetchAttemptedAt) &&
-    candidate.lastFetchAttemptedAt >= 0
-  ) {
+  if ("lastFetchAttemptedAt" in candidate) {
+    if (
+      typeof candidate.lastFetchAttemptedAt !== "number"
+      || !Number.isFinite(candidate.lastFetchAttemptedAt)
+      || candidate.lastFetchAttemptedAt < 0
+    ) return null;
     normalized.lastFetchAttemptedAt = candidate.lastFetchAttemptedAt;
   }
-  if (
-    typeof candidate.nextFetchAfter === "number" &&
-    Number.isFinite(candidate.nextFetchAfter) &&
-    candidate.nextFetchAfter >= 0
-  ) {
+  if ("nextFetchAfter" in candidate) {
+    if (
+      typeof candidate.nextFetchAfter !== "number"
+      || !Number.isFinite(candidate.nextFetchAfter)
+      || candidate.nextFetchAfter < 0
+    ) return null;
     normalized.nextFetchAfter = candidate.nextFetchAfter;
   }
-  if (
-    typeof candidate.consecutiveFailures === "number" &&
-    Number.isSafeInteger(candidate.consecutiveFailures) &&
-    candidate.consecutiveFailures >= 0
-  ) {
+  if ("consecutiveFailures" in candidate) {
+    if (
+      typeof candidate.consecutiveFailures !== "number"
+      || !Number.isSafeInteger(candidate.consecutiveFailures)
+      || candidate.consecutiveFailures < 0
+    ) return null;
     normalized.consecutiveFailures = candidate.consecutiveFailures;
   }
-  if (typeof candidate.lastFetchError === "string") {
+  if ("lastFetchError" in candidate) {
+    if (typeof candidate.lastFetchError !== "string") return null;
     normalized.lastFetchError = candidate.lastFetchError.slice(0, 500);
   }
   return normalized;
 }
 
-function normalizeStoredState(value: unknown): StoredRssRuntimeState {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([url]) => url.length > 0 && url.length <= 4_096)
-      .slice(0, 10_000)
-      .map(([url, state]) => [url, normalizeRuntimeState(state)]),
-  );
+function normalizeStoredState(value: unknown): StoredRssRuntimeState | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entries = Object.entries(value);
+  if (entries.length > MAX_TRACKED_FEEDS) return null;
+  const normalized: StoredRssRuntimeState = {};
+  for (const [url, state] of entries) {
+    if (url.length === 0 || url.length > 4_096) return null;
+    const runtimeState = normalizeRuntimeState(state);
+    if (runtimeState === null) return null;
+    normalized[url] = runtimeState;
+  }
+  return normalized;
 }
 
 function readAll(): StoredRssRuntimeState {
@@ -95,15 +104,8 @@ function readAll(): StoredRssRuntimeState {
   return current;
 }
 
-function writeAll(
-  state: StoredRssRuntimeState,
-  replaceUnsupportedVersion = false,
-  purgeRecoveryCopies = false,
-): boolean {
-  const persisted = writeVersionedLocalStorage(STORAGE_KEY, STORAGE_CODEC, state, {
-    replaceUnsupportedVersion,
-    purgeRecoveryCopies,
-  });
+function writeAll(state: StoredRssRuntimeState): boolean {
+  const persisted = writeVersionedLocalStorage(STORAGE_KEY, STORAGE_CODEC, state);
   if (persisted) {
     storageStatus = "supported";
   } else if (storageStatus !== "unsupported" && storageStatus !== "corrupt") {
@@ -122,47 +124,92 @@ function storageRequiresScheduledPullBlock(): boolean {
     || storageStatus === "unavailable";
 }
 
-function overlayRuntimeState(feed: RssFeed, state: RssRuntimeState): RssFeed {
+function legacyRuntimeState(feed: RssFeed): RssRuntimeState | null {
+  const migrated = normalizeRuntimeState(feed);
+  return migrated && Object.keys(migrated).length > 0 ? migrated : null;
+}
+
+/**
+ * Seed the device ledger from the synchronized retry fields written by older
+ * Freed versions. Local records always win. Keeping the old retry deadline is
+ * the conservative upgrade path because dropping it could contact a feed
+ * sooner than the previous client intended.
+ */
+function migrateLegacyRuntimeStates(feeds: readonly RssFeed[]): StoredRssRuntimeState {
+  const state = readAll();
+  if (storageRequiresScheduledPullBlock()) return state;
+
+  let next: StoredRssRuntimeState | null = null;
+  let trackedCount = Object.keys(state).length;
+  for (const feed of feeds) {
+    const activeState = next ?? state;
+    if (Object.prototype.hasOwnProperty.call(activeState, feed.url)) continue;
+    const legacy = legacyRuntimeState(feed);
+    if (!legacy || trackedCount >= MAX_TRACKED_FEEDS) continue;
+    next ??= { ...state };
+    next[feed.url] = legacy;
+    trackedCount += 1;
+  }
+
+  if (next && writeAll(next)) current = next;
+  return current;
+}
+
+function overlayRuntimeState(
+  feed: RssFeed,
+  state: RssRuntimeState,
+  untrackedAtCapacity: boolean,
+): RssFeed {
   return {
     ...withoutLegacySyncedRuntimeState(feed),
     ...state,
-    ...(storageRequiresScheduledPullBlock()
+    ...(storageRequiresScheduledPullBlock() || untrackedAtCapacity
       ? { nextFetchAfter: BLOCK_SCHEDULED_PULLS_UNTIL }
       : {}),
   };
 }
 
-export function getRssRuntimeState(url: string): RssRuntimeState {
+function getRssRuntimeState(url: string): RssRuntimeState {
   return readAll()[url] ?? {};
 }
 
 export function setRssRuntimeState(url: string, update: RssRuntimeState): void {
   const state = readAll();
+  if (
+    !Object.prototype.hasOwnProperty.call(state, url)
+    && Object.keys(state).length >= MAX_TRACKED_FEEDS
+  ) {
+    return;
+  }
   const next = { ...state, [url]: { ...state[url], ...update } };
   if (writeAll(next)) current = next;
 }
 
 export function withRssRuntimeState(feed: RssFeed): RssFeed {
-  return overlayRuntimeState(feed, getRssRuntimeState(feed.url));
+  const state = migrateLegacyRuntimeStates([feed]);
+  const untrackedAtCapacity = Object.keys(state).length >= MAX_TRACKED_FEEDS
+    && !Object.prototype.hasOwnProperty.call(state, feed.url);
+  return overlayRuntimeState(
+    feed,
+    getRssRuntimeState(feed.url),
+    untrackedAtCapacity,
+  );
 }
 
 export function withRssRuntimeStates(feeds: RssFeed[]): RssFeed[] {
-  const state = readAll();
-  return feeds.map((feed) => overlayRuntimeState(feed, state[feed.url] ?? {}));
+  const state = migrateLegacyRuntimeStates(feeds);
+  const atCapacity = Object.keys(state).length >= MAX_TRACKED_FEEDS;
+  return feeds.map((feed) => overlayRuntimeState(
+    feed,
+    state[feed.url] ?? {},
+    atCapacity && !Object.prototype.hasOwnProperty.call(state, feed.url),
+  ));
 }
 
 export function removeRssRuntimeState(url: string): void {
   const state = { ...readAll() };
   delete state[url];
   if (writeAll(state)) current = state;
-}
-
-/** Clear every device-local RSS retry record. */
-export function clearAllRssRuntimeState(): boolean {
-  if (!writeAll({}, true, true)) return false;
-  current = {};
-  hydrated = true;
-  return true;
 }
 
 export function resetRssRuntimeStateForTests(): void {

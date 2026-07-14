@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   cacheSet: vi.fn(async () => {}),
   docUpdateFeedItem: vi.fn(async () => {}),
   recordReaderArticleFetchAttempt: vi.fn(),
+  fetchFacebookComments: vi.fn(async () => []),
+  fetchInstagramComments: vi.fn(async () => []),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
@@ -19,8 +21,8 @@ vi.mock("./store", () => ({
   useAppStore: { getState: () => ({ xAuth: { isAuthenticated: false, cookies: null } }) },
 }));
 vi.mock("./social-comment-hydration", () => ({
-  fetchFacebookComments: vi.fn(async () => []),
-  fetchInstagramComments: vi.fn(async () => []),
+  fetchFacebookComments: mocks.fetchFacebookComments,
+  fetchInstagramComments: mocks.fetchInstagramComments,
 }));
 vi.mock("./x-capture", () => ({ fetchXThreadReplies: vi.fn(async () => ({ replies: [] })) }));
 vi.mock("./runtime-health-events", () => ({
@@ -108,10 +110,47 @@ describe("reader hydration request counter", () => {
         <p>A complete article body for the local reader cache.</p>
       </article>
     `);
-    await Promise.all([hydration, reset]);
+    await expect(hydration).rejects.toThrow("Factory reset is in progress");
+    await reset;
 
     expect(mocks.cacheSet).not.toHaveBeenCalled();
     expect(mocks.docUpdateFeedItem).not.toHaveBeenCalled();
+    expect(clearDocument).toHaveBeenCalledOnce();
+  });
+
+  it("tracks social reply hydration and rejects its stale result after reset", async () => {
+    let releaseReplies!: (replies: []) => void;
+    mocks.fetchFacebookComments.mockImplementation(
+      () => new Promise<[]>((resolve) => {
+        releaseReplies = resolve;
+      }),
+    );
+    const item: FeedItem = {
+      ...makeItem(),
+      globalId: "facebook:reader-thread",
+      platform: "facebook",
+      contentType: "post",
+      sourceUrl: "https://www.facebook.com/posts/123",
+    };
+    const hydration = hydrateReaderItem(item, { pin: false, includeReplies: true });
+    await vi.waitFor(() => expect(mocks.fetchFacebookComments).toHaveBeenCalledOnce());
+
+    const clearDocument = vi.fn(async () => undefined);
+    const reset = runFactoryResetOperations({
+      quiesceLocalWriters: [],
+      clearDeviceStores: () => [],
+      clearLocalSettings: [],
+      clearLocalData: [],
+      clearProviderDataAndConnections: async () => undefined,
+      clearDocument,
+    });
+    await Promise.resolve();
+    expect(clearDocument).not.toHaveBeenCalled();
+
+    releaseReplies([]);
+    await expect(hydration).rejects.toThrow("Factory reset is in progress");
+    await reset;
+
     expect(clearDocument).toHaveBeenCalledOnce();
   });
 });

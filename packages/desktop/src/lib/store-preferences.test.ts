@@ -21,6 +21,7 @@ const {
 
 vi.mock("./automerge", () => ({
   initDoc: vi.fn(),
+  quiesceDesktopAutomergeForFactoryReset: vi.fn(() => Promise.resolve()),
   subscribe: vi.fn(() => () => {}),
   getDocState: vi.fn(() => null),
   docAddFeedItems: vi.fn(),

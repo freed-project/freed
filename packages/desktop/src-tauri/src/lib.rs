@@ -52,6 +52,8 @@ use objc2_web_kit::WKWebViewConfiguration;
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
 const DEFAULT_SYNC_RELAY_PORT: u16 = 8765;
+const FACTORY_RESET_RELAY_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+const FACTORY_RESET_RELAY_DRAIN_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const MAIN_WINDOW_LABEL: &str = "main";
 const MAIN_WINDOW_RECOVERY_KEEPALIVE_LABEL: &str = "main-recovery-keepalive";
 const PRIMARY_MENU_ITEM_SHOW: &str = "show";
@@ -2835,7 +2837,7 @@ struct SyncRelayState {
     disconnect_tx: broadcast::Sender<u64>,
     /// Incremented before factory-reset relay state is cleared.
     generation: std::sync::atomic::AtomicU64,
-    /// Blocks renderer broadcasts between relay reset and local document deletion.
+    /// Blocks renderer and mobile writes until local document deletion completes.
     accepting_doc_updates: std::sync::atomic::AtomicBool,
     /// Live connection count (displayed in tray / sync indicator).
     client_count: RwLock<usize>,
@@ -5506,7 +5508,27 @@ async fn factory_reset_sync_relay_in(
     Ok(new_token)
 }
 
-/// Rotate pairing, reject old connections, and clear relay-held document bytes.
+async fn wait_for_relay_clients_to_disconnect(
+    state: &RelayState,
+    drain_timeout: Duration,
+) -> Result<(), String> {
+    let deadline = Instant::now() + drain_timeout;
+    loop {
+        let client_count = *state.client_count.read().await;
+        if client_count == 0 {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "sync relay still has {} client(s) after factory reset drain",
+                client_count
+            ));
+        }
+        tokio::time::sleep(FACTORY_RESET_RELAY_DRAIN_POLL_INTERVAL).await;
+    }
+}
+
+/// Revoke existing mobile sessions, clear held bytes, and drain old connections.
 #[tauri::command]
 async fn factory_reset_sync_relay(
     app: tauri::AppHandle,
@@ -5514,7 +5536,8 @@ async fn factory_reset_sync_relay(
 ) -> Result<String, String> {
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let token = factory_reset_sync_relay_in(&data_dir, &state).await?;
-    info!("[Sync] Relay reset for factory reset");
+    wait_for_relay_clients_to_disconnect(&state, FACTORY_RESET_RELAY_DRAIN_TIMEOUT).await?;
+    info!("[Sync] Relay reset and old mobile clients drained for factory reset");
     Ok(token)
 }
 
@@ -5541,8 +5564,6 @@ fn clear_factory_reset_runtime_artifacts_in(data_dir: &Path) -> Result<(), Strin
         runtime_diagnostics_path(data_dir),
         dev_sync_trigger_path(data_dir),
         dev_sync_trigger_result_path(data_dir),
-        data_dir.join("scraper-window-preferences.json"),
-        data_dir.join("user-agent.json"),
     ];
 
     let entries = std::fs::read_dir(data_dir)
@@ -10661,6 +10682,20 @@ fn relay_connection_can_exchange_docs(state: &RelayState, connection_generation:
         && connection_generation == state.generation.load(std::sync::atomic::Ordering::SeqCst)
 }
 
+fn relay_request_token_matches(query: Option<&str>, expected_token: &str) -> bool {
+    query
+        .and_then(|query| {
+            query.split('&').find_map(|pair| {
+                let mut fields = pair.splitn(2, '=');
+                (fields.next() == Some("t"))
+                    .then(|| fields.next())
+                    .flatten()
+            })
+        })
+        .map(|token| token == expected_token)
+        .unwrap_or(false)
+}
+
 async fn store_relay_client_doc_if_current(
     state: &RelayState,
     connection_generation: u64,
@@ -10697,18 +10732,7 @@ async fn handle_connection(
     let ws_stream = match accept_hdr_async(
         stream,
         move |req: &WsRequest, resp: WsResponse| -> Result<WsResponse, ErrorResponse> {
-            let token_ok = req
-                .uri()
-                .query()
-                .and_then(|q| {
-                    // Parse ?t=<value> from the query string
-                    q.split('&').find_map(|pair| {
-                        let mut kv = pair.splitn(2, '=');
-                        (kv.next() == Some("t")).then(|| kv.next()).flatten()
-                    })
-                })
-                .map(|t| t == expected_token.as_str())
-                .unwrap_or(false);
+            let token_ok = relay_request_token_matches(req.uri().query(), &expected_token);
 
             if token_ok {
                 Ok(resp)
@@ -10744,8 +10768,11 @@ async fn handle_connection(
         let _ = app.emit("sync-client-count", new_count);
     }
 
-    // Push current doc to the new client immediately
-    if relay_connection_can_exchange_docs(&state, connection_generation) {
+    if !relay_connection_can_exchange_docs(&state, connection_generation) {
+        let _ = ws_sender.send(Message::Close(None)).await;
+        info!("[Sync] Client {} rejected during relay reset", addr);
+    } else {
+        // Push current doc to the new client immediately
         if let Some(doc) = state.current_doc.read().await.clone() {
             if let Err(e) = ws_sender
                 .send(Message::Binary(doc.as_ref().clone().into()))
@@ -10754,59 +10781,59 @@ async fn handle_connection(
                 error!("[Sync] Failed to send initial doc: {}", e);
             }
         }
-    }
 
-    let mut broadcast_rx = state.broadcast_tx.subscribe();
+        let mut broadcast_rx = state.broadcast_tx.subscribe();
 
-    loop {
-        tokio::select! {
-            msg = ws_receiver.next() => {
-                match msg {
-                    Some(Ok(Message::Binary(data))) => {
-                        // Client pushed a doc update — store and rebroadcast
-                        let bytes = Arc::new(data.to_vec());
-                        if !store_relay_client_doc_if_current(
-                            &state,
-                            connection_generation,
-                            bytes.clone(),
-                        ).await {
-                            info!("[Sync] Ignored stale client update after relay reset");
+        loop {
+            tokio::select! {
+                msg = ws_receiver.next() => {
+                    match msg {
+                        Some(Ok(Message::Binary(data))) => {
+                            // Client pushed a document update, store and rebroadcast it.
+                            let bytes = Arc::new(data.to_vec());
+                            if !store_relay_client_doc_if_current(
+                                &state,
+                                connection_generation,
+                                bytes.clone(),
+                            ).await {
+                                info!("[Sync] Ignored stale client update after relay reset");
+                                break;
+                            }
+                            let _ = state.broadcast_tx.send(bytes);
+                        }
+                        Some(Ok(Message::Close(_))) | None => {
+                            info!("[Sync] Client {} disconnected", addr);
                             break;
                         }
-                        let _ = state.broadcast_tx.send(bytes);
-                    }
-                    Some(Ok(Message::Close(_))) | None => {
-                        info!("[Sync] Client {} disconnected", addr);
-                        break;
-                    }
-                    Some(Ok(Message::Ping(data))) => {
-                        let _ = ws_sender.send(Message::Pong(data)).await;
-                    }
-                    Some(Err(e)) => {
-                        error!("[Sync] Error from {}: {}", addr, e);
-                        break;
-                    }
-                    _ => {}
-                }
-            }
-            broadcast = broadcast_rx.recv() => {
-                if !relay_connection_can_exchange_docs(&state, connection_generation) {
-                    let _ = ws_sender.send(Message::Close(None)).await;
-                    info!("[Sync] Client {} rejected a broadcast after relay reset", addr);
-                    break;
-                }
-                if let Ok(doc) = broadcast {
-                    if let Err(e) = ws_sender.send(Message::Binary(doc.as_ref().clone().into())).await {
-                        error!("[Sync] Failed to send to {}: {}", addr, e);
-                        break;
+                        Some(Ok(Message::Ping(data))) => {
+                            let _ = ws_sender.send(Message::Pong(data)).await;
+                        }
+                        Some(Err(e)) => {
+                            error!("[Sync] Error from {}: {}", addr, e);
+                            break;
+                        }
+                        _ => {}
                     }
                 }
-            }
-            reset = disconnect_rx.recv() => {
-                if reset.is_ok() {
-                    let _ = ws_sender.send(Message::Close(None)).await;
-                    info!("[Sync] Client {} disconnected by factory reset", addr);
-                    break;
+                broadcast = broadcast_rx.recv() => {
+                    if !relay_connection_can_exchange_docs(&state, connection_generation) {
+                        let _ = ws_sender.send(Message::Close(None)).await;
+                        info!("[Sync] Client {} rejected a broadcast after relay reset", addr);
+                        break;
+                    }
+                    if let Ok(doc) = broadcast {
+                        if let Err(e) = ws_sender.send(Message::Binary(doc.as_ref().clone().into())).await {
+                            error!("[Sync] Failed to send to {}: {}", addr, e);
+                            break;
+                        }
+                    }
+                }
+                reset = disconnect_rx.recv() => {
+                    if reset.is_ok() {
+                        let _ = ws_sender.send(Message::Close(None)).await;
+                        info!("[Sync] Client {} disconnected by factory reset", addr);
+                        break;
+                    }
                 }
             }
         }
@@ -13246,8 +13273,6 @@ mod tests {
             RUNTIME_DIAGNOSTICS_FILE,
             DEV_SYNC_TRIGGER_FILE,
             DEV_SYNC_TRIGGER_RESULT_FILE,
-            "scraper-window-preferences.json",
-            "user-agent.json",
             "runtime-health-20260712.jsonl",
             "runtime-health-20260713.jsonl",
         ];
@@ -13258,6 +13283,8 @@ mod tests {
             "release-channel.json",
             "desktop-client-registration.json",
             "pairing-token",
+            "scraper-window-preferences.json",
+            "user-agent.json",
         ];
         for name in preserved_files {
             std::fs::write(data_dir.path().join(name), "installation state").unwrap();
@@ -13307,6 +13334,7 @@ mod tests {
             std::fs::read_to_string(data_dir.path().join("pairing-token")).unwrap(),
             new_token
         );
+        assert_eq!(state.pairing_token.read().unwrap().as_str(), new_token);
         assert!(state.current_doc.read().await.is_none());
         assert_eq!(
             state.generation.load(std::sync::atomic::Ordering::SeqCst),
@@ -13323,11 +13351,73 @@ mod tests {
         assert!(!relay_connection_can_exchange_docs(&state, 8));
         assert!(state.current_doc.read().await.is_none());
 
+        let drain_state = state.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            *drain_state.client_count.write().await = 0;
+        });
+        wait_for_relay_clients_to_disconnect(&state, Duration::from_millis(100))
+            .await
+            .unwrap();
+
         state
             .accepting_doc_updates
             .store(true, std::sync::atomic::Ordering::SeqCst);
         assert!(!relay_connection_can_exchange_docs(&state, 7));
         assert!(relay_connection_can_exchange_docs(&state, 8));
+        assert!(!relay_request_token_matches(
+            Some("t=old-token"),
+            &new_token
+        ));
+        let new_query = format!("t={new_token}");
+        assert!(relay_request_token_matches(Some(&new_query), &new_token));
+    }
+
+    #[tokio::test]
+    async fn factory_reset_relay_persistence_failure_preserves_state_and_sessions() {
+        let data_dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(data_dir.path().join("pairing-token")).unwrap();
+        let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
+        let (disconnect_tx, _) = broadcast::channel::<u64>(16);
+        let mut disconnect_rx = disconnect_tx.subscribe();
+        let state = Arc::new(SyncRelayState {
+            port: DEFAULT_SYNC_RELAY_PORT,
+            broadcast_tx,
+            current_doc: RwLock::new(Some(Arc::new(vec![1, 2, 3]))),
+            disconnect_tx,
+            generation: std::sync::atomic::AtomicU64::new(7),
+            accepting_doc_updates: std::sync::atomic::AtomicBool::new(true),
+            client_count: RwLock::new(1),
+            pairing_token: StdRwLock::new("old-token".to_string()),
+        });
+
+        assert!(factory_reset_sync_relay_in(data_dir.path(), &state)
+            .await
+            .is_err());
+
+        assert_eq!(state.pairing_token.read().unwrap().as_str(), "old-token");
+        assert_eq!(
+            state.generation.load(std::sync::atomic::Ordering::SeqCst),
+            7
+        );
+        assert!(state
+            .accepting_doc_updates
+            .load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(
+            state
+                .current_doc
+                .read()
+                .await
+                .as_deref()
+                .map(|bytes| bytes.as_slice()),
+            Some(&[1, 2, 3][..])
+        );
+        assert_eq!(*state.client_count.read().await, 1);
+        assert!(relay_connection_can_exchange_docs(&state, 7));
+        assert!(matches!(
+            disconnect_rx.try_recv(),
+            Err(broadcast::error::TryRecvError::Empty)
+        ));
     }
 
     #[cfg(unix)]

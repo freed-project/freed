@@ -6,6 +6,7 @@ import {
   writeVersionedLocalStorage,
   type VersionedLocalStorageCodec,
 } from "./versioned-local-storage.js";
+import { isFactoryResetInProgress } from "./factory-reset.js";
 
 export type DeviceAIProvider = NonNullable<AIPreferences["provider"]>;
 
@@ -71,6 +72,7 @@ function persist(
   value: DeviceAIPreferences,
   replaceUnsupportedVersion = false,
 ): boolean {
+  if (isFactoryResetInProgress()) return false;
   return writeVersionedLocalStorage(
     DEVICE_AI_PREFERENCES_STORAGE_KEY,
     STORAGE_CODEC,

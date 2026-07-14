@@ -44,6 +44,13 @@ import {
   finishBackgroundActivity,
   startBackgroundActivity,
 } from "@freed/ui/lib/background-activity-store";
+import {
+  beginFactoryResetCloudCleanup,
+  clearFactoryResetCloudCleanupBarrier,
+  clearStoredCloudProvidersForFactoryReset,
+  hasFactoryResetCloudCleanupBarrier,
+  isFactoryResetInProgress,
+} from "@freed/ui/lib/factory-reset";
 import { log } from "./logger.js";
 import { recordProviderHealthEvent } from "./provider-health";
 import { scheduleSideEffect } from "./side-effect-scheduler";
@@ -113,7 +120,7 @@ export async function getAllLocalIPs(): Promise<NetworkInterface[]> {
 
 /**
  * Get the sync relay URL for PWA to connect to.
- * The returned URL includes the pairing token as `?t=<token>`.
+ * The returned URL includes the pairing token.
  */
 export async function getSyncUrl(): Promise<string> {
   try {
@@ -587,11 +594,19 @@ const GDRIVE_TOKEN_PROXY_URL =
 const GDRIVE_FORCE_TOKEN_PROXY = import.meta.env.VITE_GDRIVE_FORCE_TOKEN_PROXY === "1";
 const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+let acceptingDesktopOAuth = true;
+const activeDesktopOAuthControllers = new Set<AbortController>();
+const activeDesktopOAuthOperations = new Set<Promise<unknown>>();
 
 export interface CloudTokenBundle {
   accessToken: string;
   refreshToken?: string;
   expiresAt?: number;
+}
+
+interface CloudTokenReadResult {
+  bundle: CloudTokenBundle | null;
+  hasStoredCredentials: boolean;
 }
 
 export interface DesktopOAuthOptions {
@@ -621,7 +636,7 @@ export function isOAuthCanceledError(error: unknown): boolean {
 }
 
 function throwIfOAuthCanceled(signal?: AbortSignal): void {
-  if (signal?.aborted) {
+  if (signal?.aborted || !acceptingDesktopOAuth || isFactoryResetInProgress()) {
     throw createOAuthCanceledError();
   }
 }
@@ -643,27 +658,70 @@ function tokenBundleFromResponse(
   };
 }
 
-function readCloudTokenBundle(provider: CloudProvider): CloudTokenBundle | null {
+function decodeCloudTokenMetadata(raw: string): CloudTokenBundle | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return null;
+  }
+  const record = parsed as Record<string, unknown>;
+  if (typeof record.accessToken !== "string" || record.accessToken.trim().length === 0) {
+    return null;
+  }
+  if (
+    record.refreshToken !== undefined
+    && (typeof record.refreshToken !== "string" || record.refreshToken.trim().length === 0)
+  ) {
+    return null;
+  }
+  if (
+    record.expiresAt !== undefined
+    && (typeof record.expiresAt !== "number" || !Number.isFinite(record.expiresAt))
+  ) {
+    return null;
+  }
+
+  return {
+    accessToken: record.accessToken,
+    refreshToken: record.refreshToken as string | undefined,
+    expiresAt: record.expiresAt as number | undefined,
+  };
+}
+
+function readCloudTokenState(provider: CloudProvider): CloudTokenReadResult {
   const meta = localStorage.getItem(CLOUD_TOKEN_META_KEY(provider));
-  if (meta) {
-    try {
-      const parsed = JSON.parse(meta) as Partial<CloudTokenBundle>;
-      if (typeof parsed.accessToken === "string" && parsed.accessToken) {
-        return {
-          accessToken: parsed.accessToken,
-          refreshToken: typeof parsed.refreshToken === "string" ? parsed.refreshToken : undefined,
-          expiresAt: typeof parsed.expiresAt === "number" && Number.isFinite(parsed.expiresAt)
-            ? parsed.expiresAt
-            : undefined,
-        };
-      }
-    } catch {
-      localStorage.removeItem(CLOUD_TOKEN_META_KEY(provider));
-    }
+  if (meta !== null) {
+    return {
+      bundle: decodeCloudTokenMetadata(meta),
+      hasStoredCredentials: true,
+    };
   }
 
   const legacyToken = localStorage.getItem(CLOUD_TOKEN_KEY(provider));
-  return legacyToken ? { accessToken: legacyToken } : null;
+  return {
+    bundle: legacyToken && legacyToken.trim().length > 0
+      ? { accessToken: legacyToken }
+      : null,
+    hasStoredCredentials: legacyToken !== null,
+  };
+}
+
+function readCloudTokenBundle(provider: CloudProvider): CloudTokenBundle | null {
+  return readCloudTokenState(provider).bundle;
+}
+
+function readCloudTokenBundleForAuthFailure(
+  provider: CloudProvider,
+  fallbackToken: string,
+): CloudTokenBundle | null {
+  const result = readCloudTokenState(provider);
+  if (result.bundle) return result.bundle;
+  return result.hasStoredCredentials ? null : { accessToken: fallbackToken };
 }
 
 interface CloudTokenStorageSnapshot {
@@ -721,8 +779,10 @@ function persistCloudToken(provider: CloudProvider, token: string | CloudTokenBu
 
 /** Persist OAuth credentials for a cloud provider. */
 export function storeCloudToken(provider: CloudProvider, token: string | CloudTokenBundle): void {
+  if (isFactoryResetInProgress()) throw createOAuthCanceledError();
   invalidateCloudCredentials(provider);
   persistCloudToken(provider, token);
+  clearFactoryResetCloudCleanupBarrier();
 }
 
 /** Retrieve the stored OAuth access token for a cloud provider. */
@@ -1021,12 +1081,48 @@ async function resolveCloudTokenForGeneration(
   return resolvedToken ?? (hadStoredCredentials ? null : fallbackToken ?? null);
 }
 
+function createCloudCredentialUnavailableError(provider: CloudProvider): Error {
+  const providerName = provider === "gdrive" ? "Google Drive" : "Dropbox";
+  return new Error(
+    `Stored ${providerName} credentials could not be read. Reconnect ${providerName} to resume sync.`,
+  );
+}
+
+async function requireCloudTokenForGeneration(
+  provider: CloudProvider,
+  fallbackToken: string | undefined,
+  generation: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  const token = await resolveCloudTokenForGeneration(
+    provider,
+    fallbackToken,
+    generation,
+    signal,
+  );
+  if (!token) throw createCloudCredentialUnavailableError(provider);
+  return token;
+}
+
 /** Refresh a provider token even when its stored expiry still looks valid. */
 export async function forceRefreshCloudToken(provider: CloudProvider): Promise<string | null> {
   const bundle = readCloudTokenBundle(provider);
   if (!bundle) return null;
   if (!bundle.refreshToken) return bundle.accessToken;
-  return refreshCloudToken(provider, bundle);
+  const generation = currentCloudGeneration(provider);
+  const snapshot = captureCloudTokenStorage(provider);
+  const credentialRevision = currentCloudCredentialRevision(provider);
+  const refreshed = await refreshCloudToken(provider, bundle);
+  if (!isCloudGenerationCurrent(provider, generation)) {
+    restoreCloudTokenStorageIfStale(
+      provider,
+      snapshot,
+      refreshed,
+      credentialRevision,
+    );
+    return null;
+  }
+  return refreshed;
 }
 
 /** Return all supported providers that have a stored access token. */
@@ -1074,11 +1170,41 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
  *
  * Resolves with OAuth credentials on success.
  */
-export async function initiateDesktopOAuth(
+export function initiateDesktopOAuth(
   provider: CloudProvider,
   options: DesktopOAuthOptions = {},
 ): Promise<CloudTokenBundle> {
-  const { signal } = options;
+  if (!acceptingDesktopOAuth || isFactoryResetInProgress()) {
+    return Promise.reject(createOAuthCanceledError());
+  }
+
+  const controller = new AbortController();
+  const handleCallerAbort = () => controller.abort();
+  options.signal?.addEventListener("abort", handleCallerAbort, { once: true });
+  if (options.signal?.aborted) controller.abort();
+  activeDesktopOAuthControllers.add(controller);
+
+  let tracked: Promise<CloudTokenBundle>;
+  tracked = initiateDesktopOAuthInternal(provider, controller.signal).finally(() => {
+    options.signal?.removeEventListener("abort", handleCallerAbort);
+    activeDesktopOAuthControllers.delete(controller);
+    activeDesktopOAuthOperations.delete(tracked);
+  });
+  activeDesktopOAuthOperations.add(tracked);
+  return tracked;
+}
+
+/** Abort browser callbacks and wait for issued token requests before destructive reset phases. */
+export async function quiesceDesktopOAuthForFactoryReset(): Promise<void> {
+  acceptingDesktopOAuth = false;
+  for (const controller of activeDesktopOAuthControllers) controller.abort();
+  await Promise.allSettled([...activeDesktopOAuthOperations]);
+}
+
+async function initiateDesktopOAuthInternal(
+  provider: CloudProvider,
+  signal: AbortSignal,
+): Promise<CloudTokenBundle> {
   throwIfOAuthCanceled(signal);
 
   const verifier = generateCodeVerifier();
@@ -1180,7 +1306,7 @@ export async function initiateDesktopOAuth(
   throwIfOAuthCanceled(signal);
 
   // Exchange the authorization code for an access token.
-  return exchangeCode(provider, code, verifier, redirectUri);
+  return exchangeCode(provider, code, verifier, redirectUri, signal);
 }
 
 async function exchangeCode(
@@ -1188,7 +1314,9 @@ async function exchangeCode(
   code: string,
   codeVerifier: string,
   redirectUri: string,
+  signal: AbortSignal,
 ): Promise<CloudTokenBundle> {
+  throwIfOAuthCanceled(signal);
   const params = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -1199,7 +1327,9 @@ async function exchangeCode(
   let tokenUrl: string;
   if (provider === "gdrive") {
     if (shouldUseGoogleTokenProxy()) {
-      return exchangeGoogleCodeViaProxy(code, codeVerifier, redirectUri);
+      const bundle = await exchangeGoogleCodeViaProxy(code, codeVerifier, redirectUri);
+      throwIfOAuthCanceled(signal);
+      return bundle;
     }
 
     params.set("client_id", GDRIVE_CLIENT_ID);
@@ -1209,7 +1339,11 @@ async function exchangeCode(
     if (GDRIVE_CLIENT_SECRET) {
       params.set("client_secret", GDRIVE_CLIENT_SECRET);
     }
-    return tokenBundleFromResponse(await postGoogleToken(params, "Google token exchange failed"));
+    const bundle = tokenBundleFromResponse(
+      await postGoogleToken(params, "Google token exchange failed"),
+    );
+    throwIfOAuthCanceled(signal);
+    return bundle;
   } else {
     params.set("client_id", DROPBOX_CLIENT_ID);
     tokenUrl = "https://api.dropboxapi.com/oauth2/token";
@@ -1219,14 +1353,18 @@ async function exchangeCode(
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params,
+    signal,
   });
+  throwIfOAuthCanceled(signal);
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`Token exchange failed (${res.status}): ${body}`);
   }
 
-  return tokenBundleFromResponse((await res.json()) as TokenExchangeResponse);
+  const bundle = tokenBundleFromResponse((await res.json()) as TokenExchangeResponse);
+  throwIfOAuthCanceled(signal);
+  return bundle;
 }
 
 // ─── Sync loops ───────────────────────────────────────────────────────────────
@@ -1258,11 +1396,9 @@ async function runInitialCloudDownload(
     if (!isCloudGenerationCurrent(provider, generation, signal)) return null;
     const refreshSnapshot = captureCloudTokenStorage("gdrive");
     const refreshCredentialRevision = currentCloudCredentialRevision("gdrive");
-    const refreshed = await refreshCloudTokenAfterAuthFailure(
-      "gdrive",
-      readCloudTokenBundle("gdrive") ?? { accessToken: fallbackToken },
-      error,
-    );
+    const authBundle = readCloudTokenBundleForAuthFailure("gdrive", fallbackToken);
+    if (!authBundle) throw createCloudCredentialUnavailableError("gdrive");
+    const refreshed = await refreshCloudTokenAfterAuthFailure("gdrive", authBundle, error);
     if (!isCloudGenerationCurrent(provider, generation, signal)) {
       restoreCloudTokenStorageIfStale(
         "gdrive",
@@ -1415,13 +1551,14 @@ function nextUploadRetryMs(provider: CloudProvider, reason: string): number {
  */
 export async function startCloudSync(provider: CloudProvider, token: string): Promise<void> {
   stopCloudSync(provider);
+  if (hasFactoryResetCloudCleanupBarrier()) return;
   if (cloudDeletesInProgress.has(provider)) return;
   const generation = currentCloudGeneration(provider);
   const controller = new AbortController();
   cloudAborts.set(provider, controller);
   const { signal } = controller;
-  const resolveToken = async () =>
-    (await resolveCloudTokenForGeneration(provider, token, generation, signal)) ?? token;
+  const resolveToken = () =>
+    requireCloudTokenForGeneration(provider, token, generation, signal);
 
   // Immediate pull to catch up on any changes since last session.
   try {
@@ -1519,11 +1656,9 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
           if (status !== 401 && status !== 403) throw error;
           const refreshSnapshot = captureCloudTokenStorage("gdrive");
           const refreshCredentialRevision = currentCloudCredentialRevision("gdrive");
-          const refreshed = await refreshCloudTokenAfterAuthFailure(
-            "gdrive",
-            readCloudTokenBundle("gdrive") ?? { accessToken: pollToken },
-            error,
-          );
+          const authBundle = readCloudTokenBundleForAuthFailure("gdrive", pollToken);
+          if (!authBundle) throw createCloudCredentialUnavailableError("gdrive");
+          const refreshed = await refreshCloudTokenAfterAuthFailure("gdrive", authBundle, error);
           if (!isCloudGenerationCurrent(provider, generation, signal)) {
             restoreCloudTokenStorageIfStale(
               "gdrive",
@@ -1666,6 +1801,20 @@ export async function deleteCloudFile(provider: CloudProvider, token: string): P
   } finally {
     cloudDeletesInProgress.delete(provider);
   }
+}
+
+/** Delete the active cloud copies, then clear credentials only after all deletions succeed. */
+export async function clearStoredCloudDataForFactoryReset(
+  deleteFromCloud: boolean,
+): Promise<void> {
+  beginFactoryResetCloudCleanup();
+  await clearStoredCloudProvidersForFactoryReset({
+    providers: getActiveProviders(),
+    deleteFromCloud,
+    getStoredToken: getCloudToken,
+    deleteCloudFile,
+    clearStoredCredentials: clearCloudProvider,
+  });
 }
 
 export type CloudConflictWinner = "local" | "cloud";
@@ -1984,9 +2133,12 @@ async function runCloudUpload(
     byteLength = binary.byteLength;
     await recordCloudUploadAttemptCounters(provider, cause, snapshot);
     if (!isCloudGenerationCurrent(provider, options.generation)) return;
-    const uploadToken = token ?? await getValidCloudToken(provider);
+    const uploadToken = await requireCloudTokenForGeneration(
+      provider,
+      token,
+      options.generation,
+    );
     if (!isCloudGenerationCurrent(provider, options.generation)) return;
-    if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
     markCloudAttempt(provider, "upload", "Uploading local document to cloud storage.");
     if (provider === "gdrive") {
       const result = options.authoritativeReplace
@@ -2199,15 +2351,13 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
       timeoutMs: 180_000,
       waitForActiveJobMs: UPLOAD_ACTIVE_JOB_WAIT_MS,
       waitForActiveJobKinds: UPLOAD_WAIT_FOR_ACTIVE_JOB_KINDS,
-      run: () => runInitialCloudDownload(provider, signal, async () => {
-        const currentToken = await resolveCloudTokenForGeneration(
+      run: () => runInitialCloudDownload(provider, signal, () =>
+        requireCloudTokenForGeneration(
           provider,
           token,
           generation,
           signal,
-        );
-        return currentToken ?? token;
-      }, generation),
+        ), generation),
     });
     await trackCloudOperation(provider, download);
     if (!isCloudGenerationCurrent(provider, generation, signal)) return;
@@ -2243,6 +2393,7 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
  */
 export async function restartCloudSync(provider: CloudProvider): Promise<void> {
   stopCloudSync(provider);
+  if (hasFactoryResetCloudCleanupBarrier()) return;
   if (cloudDeletesInProgress.has(provider)) return;
   const generation = currentCloudGeneration(provider);
   const controller = new AbortController();
@@ -2276,6 +2427,7 @@ export async function restartCloudSync(provider: CloudProvider): Promise<void> {
 }
 
 export async function startAllCloudSyncs(): Promise<void> {
+  if (hasFactoryResetCloudCleanupBarrier()) return;
   await Promise.all(getActiveProviders().map(async (provider) => {
     await restartCloudSync(provider).catch((err) => {
       const msg = err instanceof Error ? err.message : String(err);

@@ -16,10 +16,14 @@ vi.mock("./runtime-health-events", () => ({
   recordSocialOutboxAttempt: mockRecordSocialOutboxAttempt,
 }));
 
-async function loadOutbox() {
+async function loadOutbox(
+  scheduleSideEffect: (task: {
+    run: () => Promise<unknown> | unknown;
+  }) => Promise<unknown> = async (task) => task.run(),
+) {
   vi.resetModules();
   vi.doMock("./side-effect-scheduler", () => ({
-    scheduleSideEffect: vi.fn(async (task: { run: () => Promise<unknown> | unknown }) => task.run()),
+    scheduleSideEffect: vi.fn(scheduleSideEffect),
   }));
   return import("./outbox");
 }
@@ -305,6 +309,66 @@ describe("outbox processor", () => {
 
     expect(like).toHaveBeenCalledTimes(3);
     secondTeardown();
+  });
+
+  it("keeps retry history for a pending item omitted from the hydrated list", async () => {
+    vi.useFakeTimers();
+    const hiddenIntent = {
+      globalId: "x:hidden-pending",
+      platform: "x" as const,
+      action: "like" as const,
+      intentAt: 41,
+    };
+    const state = await import("./social-outbox-state");
+    expect(state.beginSocialOutboxAttempt(hiddenIntent, 1_000)).toMatchObject({
+      kind: "attempt",
+      attempt: 1,
+    });
+
+    const { startOutboxProcessor } = await loadOutbox();
+    let subscriber: ((event: DocChangeEvent) => void) | null = null;
+    const like = vi.fn(async () => false);
+    const actions: PlatformActions = {
+      like,
+      unlike: vi.fn(async () => true),
+      markSeen: vi.fn(async () => true),
+      commentUrl: vi.fn(() => null),
+    };
+    const teardown = startOutboxProcessor(
+      () => [makeItem("x:visible")],
+      (cb) => {
+        subscriber = cb;
+        return () => {
+          subscriber = null;
+        };
+      },
+      new Map([["x", actions]]),
+      vi.fn(async () => undefined),
+      vi.fn(async () => undefined),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+
+    const hiddenPending = makeItem(hiddenIntent.globalId, {
+      liked: true,
+      likedAt: hiddenIntent.intentAt,
+    });
+    requireSubscriber(subscriber)(makePatchEvent(hiddenPending));
+    await vi.runAllTimersAsync();
+
+    expect(like).toHaveBeenCalledTimes(2);
+    expect(mockRecordSocialOutboxAttempt).toHaveBeenNthCalledWith(1, {
+      provider: "x",
+      action: "like",
+      attempt: 2,
+      maxAttempts: 3,
+    });
+    expect(mockRecordSocialOutboxAttempt).toHaveBeenNthCalledWith(2, {
+      provider: "x",
+      action: "like",
+      attempt: 3,
+      maxAttempts: 3,
+    });
+    teardown();
   });
 
   it("treats historical synchronized failure sentinels as terminal", async () => {
@@ -614,5 +678,126 @@ describe("outbox processor", () => {
     await vi.runAllTimersAsync();
     expect(confirmLiked).toHaveBeenCalledOnce();
     expect(window.localStorage.length).toBe(0);
+  });
+
+  it("drops a provider action queued by the debounce when reset begins", async () => {
+    vi.useFakeTimers();
+    const { startOutboxProcessor, stopAndDrainOutboxProcessor } = await loadOutbox();
+    let subscriber: ((event: DocChangeEvent) => void) | null = null;
+    const like = vi.fn(async () => true);
+    const confirmLiked = vi.fn(async () => undefined);
+    const actions: PlatformActions = {
+      like,
+      unlike: vi.fn(async () => true),
+      markSeen: vi.fn(async () => true),
+      commentUrl: vi.fn(() => null),
+    };
+
+    startOutboxProcessor(
+      () => [],
+      (callback) => {
+        subscriber = callback;
+        return () => {
+          subscriber = null;
+        };
+      },
+      new Map([["x", actions]]),
+      confirmLiked,
+      vi.fn(async () => undefined),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+
+    const pendingItem = makeItem("x:queued-reset", {
+      liked: true,
+      likedAt: 95,
+    });
+    requireSubscriber(subscriber)(makePatchEvent(pendingItem));
+
+    const draining = stopAndDrainOutboxProcessor();
+    await draining;
+
+    expect(like).not.toHaveBeenCalled();
+    expect(confirmLiked).not.toHaveBeenCalled();
+    await vi.runAllTimersAsync();
+    expect(like).not.toHaveBeenCalled();
+  });
+
+  it("does not wait for scheduled work that has not issued a provider action", async () => {
+    vi.useFakeTimers();
+    let releaseSchedule!: () => void;
+    const scheduleGate = new Promise<void>((resolve) => {
+      releaseSchedule = resolve;
+    });
+    const scheduleSideEffect = vi.fn(async () => scheduleGate);
+    const { startOutboxProcessor, stopAndDrainOutboxProcessor } = await loadOutbox(
+      scheduleSideEffect,
+    );
+    const like = vi.fn(async () => true);
+    const actions: PlatformActions = {
+      like,
+      unlike: vi.fn(async () => true),
+      markSeen: vi.fn(async () => true),
+      commentUrl: vi.fn(() => null),
+    };
+
+    startOutboxProcessor(
+      () => [makeItem("x:not-issued", { liked: true, likedAt: 100 })],
+      () => () => {},
+      new Map([["x", actions]]),
+      vi.fn(async () => undefined),
+      vi.fn(async () => undefined),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(scheduleSideEffect).toHaveBeenCalledOnce();
+
+    await stopAndDrainOutboxProcessor();
+
+    expect(like).not.toHaveBeenCalled();
+    releaseSchedule();
+    await vi.runAllTimersAsync();
+    expect(like).not.toHaveBeenCalled();
+  });
+
+  it("waits for the issued provider action without starting the next one", async () => {
+    vi.useFakeTimers();
+    const { startOutboxProcessor, stopAndDrainOutboxProcessor } = await loadOutbox();
+    const firstItem = makeItem("x:reset-first", { liked: true, likedAt: 101 });
+    const secondItem = makeItem("x:reset-second", { liked: true, likedAt: 102 });
+    let resolveFirstLike!: (value: boolean) => void;
+    const like = vi.fn()
+      .mockImplementationOnce(() => new Promise<boolean>((resolve) => {
+        resolveFirstLike = resolve;
+      }))
+      .mockResolvedValue(true);
+    const confirmLiked = vi.fn(async () => undefined);
+    const actions: PlatformActions = {
+      like,
+      unlike: vi.fn(async () => true),
+      markSeen: vi.fn(async () => true),
+      commentUrl: vi.fn(() => null),
+    };
+
+    startOutboxProcessor(
+      () => [firstItem, secondItem],
+      () => () => {},
+      new Map([["x", actions]]),
+      confirmLiked,
+      vi.fn(async () => undefined),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(like).toHaveBeenCalledOnce();
+    expect(like).toHaveBeenCalledWith(firstItem);
+
+    const draining = stopAndDrainOutboxProcessor();
+    await Promise.resolve();
+    expect(confirmLiked).not.toHaveBeenCalled();
+
+    resolveFirstLike(true);
+    await draining;
+
+    expect(like).toHaveBeenCalledOnce();
+    expect(confirmLiked).toHaveBeenCalledOnce();
+    await vi.runAllTimersAsync();
+    expect(like).toHaveBeenCalledOnce();
   });
 });

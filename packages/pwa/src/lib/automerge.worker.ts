@@ -62,7 +62,12 @@ import {
   sortByPriority,
 } from "@freed/shared";
 import type { Account, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
-import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
+import type {
+  DocState,
+  WorkerErrorCode,
+  WorkerRequest,
+  WorkerResponse,
+} from "./automerge-types";
 
 // ---------------------------------------------------------------------------
 // State
@@ -72,6 +77,7 @@ const storage = new IndexedDBStorage();
 let currentDoc: FreedDoc | null = null;
 let searchCorpusVersion = 0;
 let requestChain: Promise<void> = Promise.resolve();
+let acceptingRequests = true;
 const HYDRATED_FEED_ITEM_LIMIT = 2_500;
 
 // ---------------------------------------------------------------------------
@@ -82,8 +88,22 @@ function send(msg: WorkerResponse): void {
   self.postMessage(msg);
 }
 
-function ack(reqId: number, error?: string): void {
-  send({ reqId, type: "ACK", error });
+class CorruptDocumentError extends Error {
+  readonly code: WorkerErrorCode = "CORRUPT_DOCUMENT";
+
+  constructor() {
+    super("The stored Automerge document could not be loaded");
+    this.name = "CorruptDocumentError";
+  }
+}
+
+function ack(reqId: number, error?: string, errorCode?: WorkerErrorCode): void {
+  send({
+    reqId,
+    type: "ACK",
+    ...(error ? { error } : {}),
+    ...(errorCode ? { errorCode } : {}),
+  });
 }
 
 function sendSyncBreadcrumb(detail: string, bytes?: number): void {
@@ -323,12 +343,13 @@ async function applyChange(
   changeFn: (doc: FreedDoc) => void,
   message: string,
   searchCorpusChanged = false,
+  mutation?: WorkerRequest["type"],
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
   currentDoc = A.change(currentDoc, message, changeFn);
   if (searchCorpusChanged) bumpSearchCorpusVersion();
   send({ type: "DEBUG_EVENT", kind: "change", detail: message });
-  await saveAndBroadcast();
+  await saveAndBroadcast(undefined, undefined, mutation);
 }
 
 // ---------------------------------------------------------------------------
@@ -338,19 +359,24 @@ async function applyChange(
 async function handleRequest(req: WorkerRequest): Promise<void> {
   try {
     switch (req.type) {
+      case "QUIESCE":
+        ack(req.reqId);
+        break;
+
       case "INIT": {
         const initStartedAt = performance.now();
         let docBytes = 0;
         const saved = await storage.load();
         if (saved) {
+          let loadedDoc: FreedDoc;
           try {
-            currentDoc = A.load<FreedDoc>(saved);
-            docBytes = saved.byteLength;
-            migrateLoadedIdentityGraph("Migrate legacy identity graph");
+            loadedDoc = A.load<FreedDoc>(saved);
           } catch {
-            await storage.clear();
-            send({ type: "DEBUG_EVENT", kind: "init", detail: "corrupt doc cleared, creating fresh" });
+            throw new CorruptDocumentError();
           }
+          currentDoc = loadedDoc;
+          docBytes = saved.byteLength;
+          migrateLoadedIdentityGraph("Migrate legacy identity graph");
         }
         if (!currentDoc) {
           currentDoc = createEmptyDoc();
@@ -621,7 +647,12 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
         break;
 
       case "REMOVE_PERSON":
-        await applyChange((doc) => removePerson(doc, req.personId), "Remove person");
+        await applyChange(
+          (doc) => removePerson(doc, req.personId),
+          "Remove person",
+          false,
+          req.type,
+        );
         ack(req.reqId);
         break;
 
@@ -646,7 +677,12 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
         break;
 
       case "REMOVE_ACCOUNT":
-        await applyChange((doc) => removeAccount(doc, req.accountId), "Remove account");
+        await applyChange(
+          (doc) => removeAccount(doc, req.accountId),
+          "Remove account",
+          false,
+          req.type,
+        );
         ack(req.reqId);
         break;
 
@@ -770,7 +806,11 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
       }
     }
   } catch (err) {
-    ack(req.reqId, err instanceof Error ? err.message : String(err));
+    ack(
+      req.reqId,
+      err instanceof Error ? err.message : String(err),
+      err instanceof CorruptDocumentError ? err.code : undefined,
+    );
   }
 }
 
@@ -783,7 +823,17 @@ function enqueueRequest(req: WorkerRequest): void {
 }
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
-  enqueueRequest(event.data);
+  const request = event.data;
+  if (request.type === "QUIESCE") {
+    acceptingRequests = false;
+    enqueueRequest(request);
+    return;
+  }
+  if (!acceptingRequests) {
+    ack(request.reqId, "Automerge worker is quiesced for factory reset");
+    return;
+  }
+  enqueueRequest(request);
 };
 
 // Signal the main thread that the module finished loading and the onmessage

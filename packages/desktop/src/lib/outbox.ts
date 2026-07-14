@@ -38,7 +38,6 @@ import {
   completeSocialOutboxIntent,
   getExplicitSocialOutboxIntent,
   markSocialOutboxPlatformConfirmed,
-  pruneSocialOutboxState,
   recordExplicitSocialOutboxIntent,
   type SocialOutboxAction,
   type SocialOutboxIntent,
@@ -174,10 +173,9 @@ export function startOutboxProcessor(
     intent: SocialOutboxIntent;
   }
 
-  async function collectPendingQueues(items: FeedItem[], shouldPrune: boolean) {
+  async function collectPendingQueues(items: FeedItem[]) {
     const likeQueue: PendingAction[] = [];
     const seenQueue: PendingAction[] = [];
-    const activeIntents: SocialOutboxIntent[] = [];
 
     for (let index = 0; index < items.length; index += 1) {
       if (index > 0 && index % SCAN_YIELD_EVERY === 0) {
@@ -198,7 +196,6 @@ export function startOutboxProcessor(
           : makeIntent(item, "like", us.likedAt);
         if (intent) {
           likeQueue.push({ item, intent });
-          activeIntents.push(intent);
         }
       }
 
@@ -206,12 +203,10 @@ export function startOutboxProcessor(
         const intent = makeIntent(item, "seen", us.readAt);
         if (intent) {
           seenQueue.push({ item, intent });
-          activeIntents.push(intent);
         }
       }
     }
 
-    if (shouldPrune) pruneSocialOutboxState(activeIntents);
     return { likeQueue, seenQueue };
   }
 
@@ -304,7 +299,6 @@ export function startOutboxProcessor(
     drainRequested = false;
 
     let items: FeedItem[];
-    let shouldPrune = false;
     if (fullScanRequested) {
       const currentItems = getItems();
       if (!currentItems) {
@@ -314,7 +308,6 @@ export function startOutboxProcessor(
       fullScanRequested = false;
       pendingChangedItems.clear();
       items = currentItems;
-      shouldPrune = true;
     } else {
       items = Array.from(pendingChangedItems.values());
       pendingChangedItems.clear();
@@ -325,7 +318,7 @@ export function startOutboxProcessor(
       return;
     }
 
-    const { likeQueue, seenQueue } = await collectPendingQueues(items, shouldPrune);
+    const { likeQueue, seenQueue } = await collectPendingQueues(items);
 
     if (likeQueue.length > 0) {
       addDebugEvent("change", `[Outbox] draining ${likeQueue.length.toLocaleString()} pending like(s)`);
@@ -335,12 +328,14 @@ export function startOutboxProcessor(
     }
 
     for (const pending of likeQueue) {
+      if (stopped) break;
       const actions = platformActions.get(pending.item.platform);
       if (!actions) continue;
       await processPendingAction(pending, actions.like.bind(actions), confirmLiked);
     }
 
     for (const pending of seenQueue) {
+      if (stopped) break;
       const actions = platformActions.get(pending.item.platform);
       if (!actions) continue;
       await processPendingAction(pending, actions.markSeen.bind(actions), confirmSeen);
@@ -434,13 +429,11 @@ export function startOutboxProcessor(
 /** Stop future outbox scheduling and wait for an authorized action already in flight. */
 export async function stopAndDrainOutboxProcessor(): Promise<void> {
   factoryResetDrainInProgress = true;
-  activeOutboxRuntime?.stop();
+  const runtime = activeOutboxRuntime;
   activeOutboxRuntime = null;
+  runtime?.stop();
   await waitForFactoryResetDrain(
-    () => [
-      ...(activeDrain ? [activeDrain] : []),
-      ...activeResetSensitiveOperations,
-    ],
+    () => Array.from(activeResetSensitiveOperations),
     "Social outbox",
     FACTORY_RESET_DRAIN_TIMEOUT_MS,
   );

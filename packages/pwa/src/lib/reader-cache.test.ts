@@ -1,21 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
-import {
-  resetFactoryResetStateForTests,
-  runFactoryResetOperations,
-} from "@freed/ui/lib/factory-reset";
-import { hydrateReaderItemInPwa, pinReaderItemInPwa } from "./reader-cache";
-
-function runEmptyReset(): Promise<void> {
-  return runFactoryResetOperations({
-    quiesceLocalWriters: [],
-    clearDeviceStores: () => [],
-    clearLocalSettings: [],
-    clearLocalData: [],
-    clearProviderDataAndConnections: async () => undefined,
-    clearDocument: async () => undefined,
-  });
-}
+import { pinReaderItemInPwa } from "./reader-cache";
 
 function makePost(overrides: Partial<FeedItem> = {}): FeedItem {
   return {
@@ -39,7 +24,6 @@ function makePost(overrides: Partial<FeedItem> = {}): FeedItem {
 
 describe("PWA reader cache", () => {
   afterEach(() => {
-    resetFactoryResetStateForTests();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     window.localStorage.clear();
@@ -93,40 +77,5 @@ describe("PWA reader cache", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(pinnedStore.has("/pinned-content/youtube:dQw4w9WgXcQ")).toBe(true);
-  });
-
-  it("does not cache PWA hydration that finishes after reset starts", async () => {
-    let finishFetch!: (response: Response) => void;
-    const put = vi.fn(async () => undefined);
-    vi.stubGlobal("caches", {
-      open: vi.fn(async () => ({ put, match: vi.fn(async () => undefined) })),
-    });
-    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => {
-      finishFetch = resolve;
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-    const item = makePost({
-      globalId: "saved:delayed-hydration",
-      platform: "saved",
-      content: {
-        text: "Delayed article",
-        mediaUrls: [],
-        mediaTypes: [],
-        linkPreview: { url: "https://example.com/delayed-hydration" },
-      },
-      sourceUrl: "https://example.com/delayed-hydration",
-    });
-
-    const hydration = hydrateReaderItemInPwa(item, {
-      cacheMode: "everything_opened",
-      pin: true,
-    });
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    const reset = runEmptyReset();
-    finishFetch(new Response("<article>Delayed</article>"));
-
-    await expect(hydration).resolves.toMatchObject({ html: "<article>Delayed</article>" });
-    await reset;
-    expect(put).not.toHaveBeenCalled();
   });
 });

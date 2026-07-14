@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Account, Person } from "@freed/shared";
 import {
   applyDeviceAccountGraphPositionUpdate,
@@ -19,6 +19,10 @@ import {
   setDevicePersonGraphPosition,
   subscribeDeviceGraphLayout,
 } from "./device-graph-layout";
+import {
+  beginFactoryResetBoundary,
+  resetFactoryResetStateForTests,
+} from "./factory-reset";
 
 function makePerson(id: string, update: Partial<Person> = {}): Person {
   return {
@@ -49,8 +53,14 @@ function makeAccount(id: string, update: Partial<Account> = {}): Account {
 
 describe("device graph layout", () => {
   beforeEach(() => {
+    resetFactoryResetStateForTests();
     window.localStorage.clear();
     resetDeviceGraphLayoutForTests();
+  });
+
+  afterEach(() => {
+    resetFactoryResetStateForTests();
+    vi.restoreAllMocks();
   });
 
   it("routes legacy partial graph updates into local layout", () => {
@@ -348,5 +358,33 @@ describe("device graph layout", () => {
     expect(clearDeviceGraphLayout()).toBe(false);
     expect(getDevicePersonGraphLayout("person-stable")?.graphX).toBe(10);
     expect(getDevicePersonGraphLayout("person-lost")).toBeNull();
+  });
+
+  it("blocks graph writers after reset starts while allowing the reset clear", () => {
+    const person = makePerson("person-reset", {
+      graphX: 70,
+      graphY: 80,
+      graphPinned: true,
+    });
+    expect(setDevicePersonGraphPosition(person.id, 10, 20, 100)).toBe(true);
+    const beforeReset = window.localStorage.getItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY);
+    const beforeReplacement = getDeviceGraphLayout();
+
+    beginFactoryResetBoundary();
+
+    expect(setDevicePersonGraphPosition(person.id, 30, 40, 200)).toBe(false);
+    expect(applyDevicePersonGraphPositionUpdate(person.id, { graphPinned: false })).toBe(false);
+    expect(pruneDeviceGraphLayout({}, {})).toBe(false);
+    expect(restoreReplacedDeviceAccountGraphPositions(["account-reset"], beforeReplacement))
+      .toBe(false);
+    expect(window.localStorage.getItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY)).toBe(beforeReset);
+
+    expect(clearDeviceGraphLayout()).toBe(true);
+    expect(getDeviceGraphLayout()).toMatchObject({ persons: {}, accounts: {} });
+
+    window.localStorage.removeItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY);
+    resetDeviceGraphLayoutForTests();
+    expect(migrateLegacyDeviceGraphLayout({ [person.id]: person }, {})).toBe(false);
+    expect(window.localStorage.getItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY)).toBeNull();
   });
 });

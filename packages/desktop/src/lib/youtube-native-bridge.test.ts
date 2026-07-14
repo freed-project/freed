@@ -1,4 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  beginFactoryResetBoundary,
+  resetFactoryResetStateForTests,
+  runFactoryResetOperations,
+} from "@freed/ui/lib/factory-reset";
 
 type EventHandler = (event: { payload: unknown }) => void;
 
@@ -69,6 +74,7 @@ import {
   clearYouTubePlaylistState,
   getYouTubePlaylistState,
   resetYouTubePlaylistProgress,
+  resetYouTubePlaylistStateForTests,
   syncSavedYouTubeVideosToOfflinePlaylist,
 } from "./youtube-playlist";
 
@@ -159,6 +165,54 @@ describe("YouTube native bridge", () => {
     mocks.state.ytAuth = { isAuthenticated: true };
     mocks.state.setYtAuth.mockClear();
     localStorage.clear();
+    resetYouTubePlaylistStateForTests();
+  });
+
+  afterEach(() => {
+    resetFactoryResetStateForTests();
+  });
+
+  it("does not issue a raw capture after the reset boundary closes", async () => {
+    beginFactoryResetBoundary();
+
+    await expect(fetchYouTubeCapture()).rejects.toThrow("Factory reset is in progress");
+
+    expect(mocks.invoke).not.toHaveBeenCalledWith("yt_capture", expect.anything());
+  });
+
+  it("drains an issued raw capture and rejects its late native result", async () => {
+    let resolveCapture!: (value: { stages: [] }) => void;
+    mocks.invoke.mockImplementation((command: string) => {
+      if (command === "yt_capture") {
+        return new Promise<{ stages: [] }>((resolve) => {
+          resolveCapture = resolve;
+        });
+      }
+      return Promise.resolve();
+    });
+
+    const capture = fetchYouTubeCapture();
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith(
+      "yt_capture",
+      expect.anything(),
+    ));
+    const clearDocument = vi.fn(async () => undefined);
+    const reset = runFactoryResetOperations({
+      quiesceLocalWriters: [],
+      clearDeviceStores: () => [],
+      clearLocalSettings: [],
+      clearLocalData: [],
+      clearProviderDataAndConnections: async () => undefined,
+      clearDocument,
+    });
+    await Promise.resolve();
+    expect(clearDocument).not.toHaveBeenCalled();
+
+    resolveCapture({ stages: [] });
+    await expect(capture).rejects.toThrow("Factory reset is in progress");
+    await reset;
+
+    expect(clearDocument).toHaveBeenCalledOnce();
   });
 
   it("registers the auth listener before invoking the native check", async () => {
@@ -976,6 +1030,21 @@ describe("YouTube native bridge", () => {
       remainingCount: 0,
     });
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not issue playlist actions when local progress is corrupt", async () => {
+    const corrupt = JSON.stringify({
+      playlistId: "PL-freed-offline",
+      syncedVideoIds: ["dQw4w9WgXcQ", "invalid"],
+    });
+    localStorage.setItem("youtube_offline_playlist_state", corrupt);
+
+    await expect(syncSavedYouTubeVideosToOfflinePlaylist([
+      "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    ])).rejects.toThrow("could not verify");
+
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(localStorage.getItem("youtube_offline_playlist_state")).toBe(corrupt);
   });
 
   it("caps each saved playlist batch and resumes from local checkpoints", async () => {

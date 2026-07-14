@@ -149,9 +149,10 @@ describe("automerge worker memory routing", () => {
     expect(clientSource).toContain("function stopIdleWorker()");
     expect(clientSource).toContain("function scheduleIdleWorkerStop()");
     expect(clientSource).toContain("if (!stopIdleWorker() && worker)");
-    expect(clientSource).toContain("worker.terminate()");
+    expect(clientSource).toContain("detachWorkerHandlers(idleWorker)");
+    expect(clientSource).toContain("idleWorker.terminate()");
     expect(clientSource).toContain("ensureWorkerDocumentReadyFor(msg.type)");
-    expect(clientSource).toContain("await sendInit()");
+    expect(clientSource).toContain("workerDocumentInitPromise = sendInit().finally");
     expect(clientSource).toContain("(msg.detail ?? \"\").startsWith(\"[automerge-worker] released idle document\")");
     expect(clientSource).toContain("scheduleIdleWorkerStop();");
   });

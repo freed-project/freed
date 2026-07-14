@@ -428,16 +428,27 @@ function LocalModelCard({
   );
 }
 
-function OllamaStatus({ url }: { url: string }) {
+function OllamaStatus({
+  url,
+  checkReachable,
+}: {
+  url: string;
+  checkReachable?: (ollamaUrl: string) => Promise<boolean>;
+}) {
   const [reachable, setReachable] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(2_000) })
-      .then((response) => { if (!cancelled) setReachable(response.ok); })
+    const check = checkReachable
+      ? checkReachable(url)
+      : fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(2_000) }).then(
+          (response) => response.ok,
+        );
+    check
+      .then((isReachable) => { if (!cancelled) setReachable(isReachable); })
       .catch(() => { if (!cancelled) setReachable(false); });
     return () => { cancelled = true; };
-  }, [url]);
+  }, [checkReachable, url]);
 
   if (reachable === null) return null;
   return (
@@ -550,7 +561,12 @@ function ModelNameField({
 }
 
 export function AISection() {
-  const { secureStorage, localAIModels, openUrl } = usePlatform();
+  const {
+    secureStorage,
+    localAIModels,
+    checkOllamaReachable,
+    openUrl,
+  } = usePlatform();
   const preferences = useAppStore((state) => state.preferences);
   const updatePreferences = useAppStore((state) => state.updatePreferences);
 
@@ -852,7 +868,10 @@ export function AISection() {
           </h3>
           <div className="rounded-lg border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_82%,transparent)] p-4">
             <div className="flex items-center gap-2 text-sm text-[var(--theme-text-muted)]">
-              <OllamaStatus url={displayedAI.ollamaUrl} />
+              <OllamaStatus
+                url={displayedAI.ollamaUrl}
+                checkReachable={checkOllamaReachable}
+              />
               <span>Endpoint: {displayedAI.ollamaUrl}</span>
               <button
                 type="button"

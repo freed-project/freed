@@ -6,6 +6,7 @@ export interface FactoryResetOperations {
   clearProviderDataAndConnections: () => Promise<void>;
   clearDocument: () => Promise<void>;
   phaseTimeoutMs?: number;
+  trackedWorkDrainTimeoutMs?: number;
 }
 
 export interface FactoryResetRecoveryOptions {
@@ -15,11 +16,60 @@ export interface FactoryResetRecoveryOptions {
   recoveryDelayMs?: number;
 }
 
+export type FactoryResetPhase =
+  | "quiesce local writers"
+  | "clear device stores"
+  | "clear local settings"
+  | "clear local data"
+  | "clear provider data and connections"
+  | "clear document";
+
+export class FactoryResetPhaseError extends Error {
+  readonly phase: FactoryResetPhase;
+  readonly originalError: unknown;
+
+  constructor(phase: FactoryResetPhase, error: unknown) {
+    super(error instanceof Error ? error.message : String(error));
+    this.name = "FactoryResetPhaseError";
+    this.phase = phase;
+    this.originalError = error;
+  }
+}
+
+export interface ClearStoredCloudProvidersOptions<Provider extends string> {
+  providers: readonly Provider[];
+  deleteFromCloud: boolean;
+  getStoredToken: (provider: Provider) => string | null;
+  deleteCloudFile: (provider: Provider, token: string) => Promise<void>;
+  clearStoredCredentials: (provider: Provider) => void | Promise<void>;
+}
+
 export const DEFAULT_FACTORY_RESET_PHASE_TIMEOUT_MS = 15_000;
+const FACTORY_RESET_CLOUD_CLEANUP_BARRIER_KEY =
+  "freed_factory_reset_cloud_cleanup_pending";
 
 let factoryResetEpoch = 0;
 let factoryResetStarted = false;
 const pendingFactoryResetSensitiveOperations = new Set<Promise<unknown>>();
+
+/** Block automatic cloud startup until the full factory reset succeeds. */
+export function beginFactoryResetCloudCleanup(): void {
+  localStorage.setItem(FACTORY_RESET_CLOUD_CLEANUP_BARRIER_KEY, "1");
+}
+
+/** True while a factory reset that reached cloud cleanup remains incomplete. */
+export function hasFactoryResetCloudCleanupBarrier(): boolean {
+  try {
+    return localStorage.getItem(FACTORY_RESET_CLOUD_CLEANUP_BARRIER_KEY) !== null;
+  } catch {
+    return true;
+  }
+}
+
+/** Remove the startup barrier after full cleanup or an explicit reconnect. */
+export function clearFactoryResetCloudCleanupBarrier(): void {
+  localStorage.removeItem(FACTORY_RESET_CLOUD_CLEANUP_BARRIER_KEY);
+}
 
 /** Capture permission for an operation that may write device-local data. */
 export function captureFactoryResetWriteEpoch(): number | null {
@@ -45,7 +95,8 @@ export function trackFactoryResetSensitiveOperation<T>(operation: Promise<T>): P
   return tracked;
 }
 
-function beginFactoryReset(): void {
+/** Close the shared reset-sensitive work boundary before any asynchronous reset coordination. */
+export function beginFactoryResetBoundary(): void {
   if (factoryResetStarted) return;
   factoryResetEpoch += 1;
   factoryResetStarted = true;
@@ -64,8 +115,36 @@ function throwFirstFailure(failures: readonly unknown[]): void {
   throw first instanceof Error ? first : new Error(String(first));
 }
 
+/**
+ * Delete the requested cloud copies in caller-provided order before clearing
+ * their device credentials. A failed deletion leaves every credential
+ * available for an explicit retry.
+ */
+export async function clearStoredCloudProvidersForFactoryReset<Provider extends string>({
+  providers,
+  deleteFromCloud,
+  getStoredToken,
+  deleteCloudFile,
+  clearStoredCredentials,
+}: ClearStoredCloudProvidersOptions<Provider>): Promise<void> {
+  const storedTokens = providers.flatMap((provider) => {
+    const token = getStoredToken(provider);
+    return token ? [{ provider, token }] : [];
+  });
+
+  if (deleteFromCloud) {
+    for (const { provider, token } of storedTokens) {
+      await deleteCloudFile(provider, token);
+    }
+  }
+
+  for (const provider of providers) {
+    await clearStoredCredentials(provider);
+  }
+}
+
 async function runFactoryResetPhase<T>(
-  label: string,
+  label: FactoryResetPhase,
   timeoutMs: number,
   operation: () => Promise<T> | T,
 ): Promise<T> {
@@ -83,6 +162,9 @@ async function runFactoryResetPhase<T>(
         }, timeoutMs);
       }),
     ]);
+  } catch (error) {
+    if (error instanceof FactoryResetPhaseError) throw error;
+    throw new FactoryResetPhaseError(label, error);
   } finally {
     if (timeoutHandle !== null) clearTimeout(timeoutHandle);
   }
@@ -106,7 +188,7 @@ export async function waitForFactoryResetDrain(
 
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     try {
-      const results = await Promise.race([
+      await Promise.race([
         Promise.allSettled(pending),
         new Promise<never>((_, reject) => {
           timeoutHandle = setTimeout(() => {
@@ -118,11 +200,6 @@ export async function waitForFactoryResetDrain(
           }, remainingMs);
         }),
       ]);
-      throwFirstFailure(
-        results
-          .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-          .map((result) => result.reason),
-      );
     } finally {
       if (timeoutHandle !== null) clearTimeout(timeoutHandle);
     }
@@ -140,15 +217,26 @@ export async function runFactoryResetOperations(
   if (!Number.isFinite(phaseTimeoutMs) || phaseTimeoutMs <= 0) {
     throw new Error("Factory reset phase timeout must be greater than zero.");
   }
+  const trackedWorkDrainTimeoutMs =
+    operations.trackedWorkDrainTimeoutMs ?? phaseTimeoutMs;
+  if (
+    !Number.isFinite(trackedWorkDrainTimeoutMs)
+    || trackedWorkDrainTimeoutMs <= 0
+    || trackedWorkDrainTimeoutMs > phaseTimeoutMs
+  ) {
+    throw new Error(
+      "Factory reset tracked work timeout must be greater than zero and no longer than the phase timeout.",
+    );
+  }
 
-  beginFactoryReset();
+  beginFactoryResetBoundary();
 
   await runFactoryResetPhase("quiesce local writers", phaseTimeoutMs, async () => {
     const quiesceResults = await Promise.allSettled([
       waitForFactoryResetDrain(
         () => [...pendingFactoryResetSensitiveOperations],
         "Device-local cache work",
-        phaseTimeoutMs,
+        trackedWorkDrainTimeoutMs,
       ),
       ...operations.quiesceLocalWriters.map((quiesce) => quiesce()),
     ]);

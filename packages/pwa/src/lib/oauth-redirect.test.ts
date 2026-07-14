@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createGoogleOAuthRelayTarget,
   createGoogleOAuthState,
-  clearPwaOAuthSessionState,
+  consumePwaOAuthRuntimeGeneration,
   getGoogleOAuthRedirectUri,
   getOAuthCallbackUri,
+  isPwaOAuthRuntimeGenerationValid,
+  storePwaOAuthRuntimeGeneration,
 } from "./oauth-redirect";
 
 describe("OAuth redirect helpers", () => {
@@ -67,28 +69,14 @@ describe("OAuth redirect helpers", () => {
     );
   });
 
-  it("clears every pending OAuth handoff value during factory reset", () => {
-    window.sessionStorage.setItem("freed_pkce_provider", "gdrive");
-    window.sessionStorage.setItem("freed_pkce_verifier", "secret-verifier");
-    window.sessionStorage.setItem(
-      "freed_pkce_google_redirect_uri",
-      "https://app.freed.wtf/oauth-callback",
-    );
-    window.sessionStorage.setItem("unrelated", "keep-me");
+  it("requires an exact installation generation for an OAuth callback", () => {
+    storePwaOAuthRuntimeGeneration(7);
 
-    clearPwaOAuthSessionState();
-
-    expect(window.sessionStorage.getItem("freed_pkce_provider")).toBeNull();
-    expect(window.sessionStorage.getItem("freed_pkce_verifier")).toBeNull();
-    expect(window.sessionStorage.getItem("freed_pkce_google_redirect_uri")).toBeNull();
-    expect(window.sessionStorage.getItem("unrelated")).toBe("keep-me");
+    const storedGeneration = consumePwaOAuthRuntimeGeneration();
+    expect(isPwaOAuthRuntimeGenerationValid(storedGeneration, 7)).toBe(true);
+    expect(isPwaOAuthRuntimeGenerationValid(storedGeneration, 8)).toBe(false);
+    expect(consumePwaOAuthRuntimeGeneration()).toBeNull();
+    expect(isPwaOAuthRuntimeGenerationValid(null, 7)).toBe(false);
   });
 
-  it("propagates OAuth session removal failures", () => {
-    vi.spyOn(window, "sessionStorage", "get").mockImplementation(() => {
-      throw new Error("session storage unavailable");
-    });
-
-    expect(() => clearPwaOAuthSessionState()).toThrow("session storage unavailable");
-  });
 });

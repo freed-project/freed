@@ -66,6 +66,11 @@ import {
   removeFacebookGroupDiscovery,
   updateFacebookGroupDiscovery,
 } from "./facebook-group-discovery";
+import {
+  assertFactoryResetEpoch,
+  isFactoryResetEpochCurrent,
+  runFactoryResetSensitiveDesktopOperation,
+} from "./factory-reset-guard";
 
 // =============================================================================
 // Rate Limiting
@@ -395,7 +400,11 @@ export async function repairStoredFacebookGroupNamesFromItems(
  * 3. Wait for the extraction script to emit results via the event
  * 4. Normalize raw posts to FeedItem[]
  */
-export async function fetchFbFeed(): Promise<FbSyncResult> {
+export function fetchFbFeed(): Promise<FbSyncResult> {
+  return runFactoryResetSensitiveDesktopOperation(fetchFbFeedInternal);
+}
+
+async function fetchFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> {
   const diag = createEmptyFbSyncDiag();
 
   const cookieState = await loadSocialProviderCookieState("facebook");
@@ -529,6 +538,7 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
       },
     );
 
+    assertFactoryResetEpoch(resetEpoch);
     await runBackgroundJob({
       kind: "social-scrape",
       source: "facebook:feed",
@@ -537,8 +547,11 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
       waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
       run: () => invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() }),
     });
+    assertFactoryResetEpoch(resetEpoch);
     await waitForSocialScrapeEvents();
+    assertFactoryResetEpoch(resetEpoch);
   } catch (err) {
+    if (!isFactoryResetEpochCurrent(resetEpoch)) throw err;
     if (!diag.errorStage) {
       if (applyRuntimeDeferredDiag(diag, err)) {
         return { items: [], diag };
@@ -614,11 +627,21 @@ interface CaptureFbGroupsOptions {
   onCheckingGroup?: (groupId: string | null) => void;
 }
 
-export async function captureFbGroups(
+export function captureFbGroups(
   options: CaptureFbGroupsOptions = {},
+): Promise<FbGroupInfo[]> {
+  return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
+    captureFbGroupsInternal(options, resetEpoch)
+  );
+}
+
+async function captureFbGroupsInternal(
+  options: CaptureFbGroupsOptions,
+  resetEpoch: number,
 ): Promise<FbGroupInfo[]> {
   addDebugEvent("change", "[FB] group refresh started");
   const memoryPrep = await prepareSocialScrapeMemory("facebook", "groups scrape");
+  assertFactoryResetEpoch(resetEpoch);
   if (!memoryPrep.mayProceed) {
     addDebugEvent(
       "change",
@@ -630,9 +653,12 @@ export async function captureFbGroups(
   const groups = await invoke<FbGroupInfo[]>("fb_scrape_groups", {
     windowMode: getFbScraperWindowMode(),
   });
+  assertFactoryResetEpoch(resetEpoch);
 
   const merge = await updateKnownFacebookGroups(groups, "group_scrape");
-  const hydrated = await hydrateMissingFacebookGroupNames(options);
+  assertFactoryResetEpoch(resetEpoch);
+  const hydrated = await hydrateMissingFacebookGroupNames(options, resetEpoch);
+  assertFactoryResetEpoch(resetEpoch);
   const repairedFromScrape = merge.persisted ? merge.repairedNameCount : 0;
 
   addDebugEvent(
@@ -643,14 +669,20 @@ export async function captureFbGroups(
   return groups;
 }
 
-async function checkFacebookGroupMembership(group: FbGroupInfo): Promise<FbGroupMembershipCheck> {
+async function checkFacebookGroupMembership(
+  group: FbGroupInfo,
+  resetEpoch: number,
+): Promise<FbGroupMembershipCheck> {
   const groupUrl =
     group.url.trim() || `https://www.facebook.com/groups/${encodeURIComponent(group.id)}`;
-  return invoke<FbGroupMembershipCheck>("fb_check_group_membership", {
+  assertFactoryResetEpoch(resetEpoch);
+  const result = await invoke<FbGroupMembershipCheck>("fb_check_group_membership", {
     groupId: group.id,
     groupUrl,
     windowMode: getFbScraperWindowMode(),
   });
+  assertFactoryResetEpoch(resetEpoch);
+  return result;
 }
 
 async function removeKnownFacebookGroup(groupId: string): Promise<boolean> {
@@ -679,7 +711,8 @@ async function removeKnownFacebookGroup(groupId: string): Promise<boolean> {
 }
 
 async function hydrateMissingFacebookGroupNames(
-  options: CaptureFbGroupsOptions = {},
+  options: CaptureFbGroupsOptions,
+  resetEpoch: number,
 ): Promise<{
   checkedCount: number;
   repairedNameCount: number;
@@ -693,10 +726,12 @@ async function hydrateMissingFacebookGroupNames(
   let removedCount = 0;
 
   for (const group of missingGroups) {
+    assertFactoryResetEpoch(resetEpoch);
     options.onCheckingGroup?.(group.id);
     try {
-      const check = await checkFacebookGroupMembership(group);
+      const check = await checkFacebookGroupMembership(group, resetEpoch);
       if (check.stillJoined === false) {
+        assertFactoryResetEpoch(resetEpoch);
         if (await removeKnownFacebookGroup(group.id)) {
           removedCount += 1;
         }
@@ -718,8 +753,10 @@ async function hydrateMissingFacebookGroupNames(
           url: check.url || group.url,
         },
       ], "membership_check");
+      assertFactoryResetEpoch(resetEpoch);
       if (merge.persisted) repairedNameCount += merge.repairedNameCount;
     } catch (err) {
+      if (!isFactoryResetEpochCurrent(resetEpoch)) throw err;
       addDebugEvent(
         "error",
         `[FB] group name repair failed for ...${group.id.slice(-8)}: ${err instanceof Error ? err.message : String(err)}`,
@@ -736,12 +773,22 @@ async function hydrateMissingFacebookGroupNames(
   };
 }
 
-export async function verifyFacebookGroupLeave(
+export function verifyFacebookGroupLeave(
   group: FbGroupInfo,
 ): Promise<FbGroupLeaveVerification> {
-  const check = await checkFacebookGroupMembership(group);
+  return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
+    verifyFacebookGroupLeaveInternal(group, resetEpoch)
+  );
+}
+
+async function verifyFacebookGroupLeaveInternal(
+  group: FbGroupInfo,
+  resetEpoch: number,
+): Promise<FbGroupLeaveVerification> {
+  const check = await checkFacebookGroupMembership(group, resetEpoch);
   let repairedNameCount = 0;
   if (check.name && check.stillJoined !== false) {
+    assertFactoryResetEpoch(resetEpoch);
     const merge = await updateKnownFacebookGroups([
       {
         id: group.id,
@@ -749,6 +796,7 @@ export async function verifyFacebookGroupLeave(
         url: check.url || group.url,
       },
     ], "membership_check");
+    assertFactoryResetEpoch(resetEpoch);
     repairedNameCount = merge.persisted ? merge.repairedNameCount : 0;
   }
 
@@ -760,7 +808,9 @@ export async function verifyFacebookGroupLeave(
     return { check, removed: false, repairedNameCount };
   }
 
+  assertFactoryResetEpoch(resetEpoch);
   const existed = await removeKnownFacebookGroup(group.id);
+  assertFactoryResetEpoch(resetEpoch);
 
   addDebugEvent(
     "change",
@@ -778,35 +828,41 @@ export async function verifyFacebookGroupLeave(
  * Capture Facebook feed and add items to the store.
  * Respects rate limiting to avoid triggering Facebook's anti-bot measures.
  */
-export async function captureFbFeed(
+export function captureFbFeed(
   trigger: SocialScrapeTrigger = "unknown",
 ): Promise<FbSyncResult> {
-  const scrapeStartedAt = Date.now();
-  try {
-    const result = await captureFbFeedInternal();
-    recordScrapeOutcome({
-      provider: "facebook",
-      trigger,
-      itemsExtracted: result.diag.postsExtracted,
-      itemsPersisted: result.diag.itemsAdded,
-      stage: result.diag.errorStage ?? "ok",
-      durationMs: Date.now() - scrapeStartedAt,
-    });
-    return result;
-  } catch (error) {
-    recordScrapeOutcome({
-      provider: "facebook",
-      trigger,
-      itemsExtracted: 0,
-      itemsPersisted: 0,
-      stage: "exception",
-      durationMs: Date.now() - scrapeStartedAt,
-    });
-    throw error;
-  }
+  return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
+    const scrapeStartedAt = Date.now();
+    try {
+      const result = await captureFbFeedInternal(resetEpoch);
+      assertFactoryResetEpoch(resetEpoch);
+      recordScrapeOutcome({
+        provider: "facebook",
+        trigger,
+        itemsExtracted: result.diag.postsExtracted,
+        itemsPersisted: result.diag.itemsAdded,
+        stage: result.diag.errorStage ?? "ok",
+        durationMs: Date.now() - scrapeStartedAt,
+      });
+      return result;
+    } catch (error) {
+      if (isFactoryResetEpochCurrent(resetEpoch)) {
+        recordScrapeOutcome({
+          provider: "facebook",
+          trigger,
+          itemsExtracted: 0,
+          itemsPersisted: 0,
+          stage: "exception",
+          durationMs: Date.now() - scrapeStartedAt,
+        });
+      }
+      throw error;
+    }
+  });
 }
 
-async function captureFbFeedInternal(): Promise<FbSyncResult> {
+async function captureFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> {
+  assertFactoryResetEpoch(resetEpoch);
   const startedAt = Date.now();
   const providerPause = getProviderPause("facebook");
   if (providerPause) {
@@ -852,7 +908,8 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
   try {
     addDebugEvent("change", "[FB] sync started");
     const fetchStartedAt = performance.now();
-    const result = await fetchFbFeed();
+    const result = await fetchFbFeedInternal(resetEpoch);
+    assertFactoryResetEpoch(resetEpoch);
     log.info(
       `[FB] fetch finished duration=${formatSocialCaptureDuration(socialCaptureDurationMs(fetchStartedAt))} ` +
         `items=${result.items.length.toLocaleString()} stage=${result.diag.errorStage ?? "ok"}`,
@@ -879,6 +936,7 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
         store.setFbAuth(errState);
         storeFbAuthState(errState);
       }
+      assertFactoryResetEpoch(resetEpoch);
       await recordProviderHealthEvent({
         provider: "facebook",
         outcome: "error",
@@ -894,7 +952,9 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
 
     recordScrape();
     if (result.items.length > 0) {
+      assertFactoryResetEpoch(resetEpoch);
       await repairStoredFacebookGroupNamesFromItems(result.items);
+      assertFactoryResetEpoch(resetEpoch);
       const excludedGroupIds =
         useAppStore.getState().preferences.fbCapture?.excludedGroupIds ?? {};
       const filteredItems = filterExcludedGroups(result.items, excludedGroupIds);
@@ -912,6 +972,7 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
       const before = beforeFacebookItems.length;
       const writeStartedAt = performance.now();
       await store.addItems(filteredItems);
+      assertFactoryResetEpoch(resetEpoch);
       const writeDurationMs = socialCaptureDurationMs(writeStartedAt);
       const after = useAppStore
         .getState()
@@ -922,10 +983,12 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
       );
       const mediaStartedAt = performance.now();
       await upsertMediaVaultRosterFromItems("facebook", filteredItems);
+      assertFactoryResetEpoch(resetEpoch);
       const archivedCount = await archiveRecentProviderMedia(
         "facebook",
         filteredItems,
       );
+      assertFactoryResetEpoch(resetEpoch);
       const mediaDurationMs = socialCaptureDurationMs(mediaStartedAt);
       const archivedTotal = archivedCount ?? 0;
       log.info(
@@ -951,6 +1014,7 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
       };
       store.setFbAuth(emptyState);
       storeFbAuthState(emptyState);
+      assertFactoryResetEpoch(resetEpoch);
       await recordProviderHealthEvent({
         provider: "facebook",
         outcome: "empty",
@@ -968,6 +1032,7 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
     const successState = { ...useAppStore.getState().fbAuth, lastCapturedAt: Date.now(), lastCaptureError: undefined };
     store.setFbAuth(successState);
     storeFbAuthState(successState);
+    assertFactoryResetEpoch(resetEpoch);
     await recordProviderHealthEvent({
       provider: "facebook",
       outcome: result.diag.postsExtracted > 0 ? "success" : "empty",
@@ -986,6 +1051,7 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
 
     return result;
   } catch (error) {
+    if (!isFactoryResetEpochCurrent(resetEpoch)) throw error;
     const message =
       error instanceof Error ? error.message : "Failed to capture Facebook feed";
     store.setError(message);
@@ -1003,6 +1069,6 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
     });
     throw error;
   } finally {
-    store.setLoading(false);
+    if (isFactoryResetEpochCurrent(resetEpoch)) store.setLoading(false);
   }
 }

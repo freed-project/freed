@@ -11,13 +11,6 @@ import {
   resetInterfaceZoom,
   setInterfaceZoom,
 } from "@freed/ui/lib/interface-zoom";
-import {
-  DEFAULT_READER_OFFLINE_CACHE_MODE,
-  getReaderOfflineCacheMode,
-  resetReaderOfflineCacheMode,
-  setReaderOfflineCacheMode,
-} from "@freed/ui/lib/reader-cache-settings";
-
 describe("local reader and interface settings", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -25,16 +18,13 @@ describe("local reader and interface settings", () => {
     delete document.documentElement.dataset.interfaceZoom;
   });
 
-  it("removes device-specific reader and interface choices during a reset", () => {
-    setReaderOfflineCacheMode("everything_opened");
+  it("removes device-specific interface choices during a reset", () => {
     setFeedCardDensity("compact");
     setInterfaceZoom(150);
 
-    resetReaderOfflineCacheMode();
     resetFeedCardDensity();
     resetInterfaceZoom();
 
-    expect(getReaderOfflineCacheMode()).toBe(DEFAULT_READER_OFFLINE_CACHE_MODE);
     expect(getFeedCardDensity()).toBe(DEFAULT_FEED_CARD_DENSITY);
     expect(getInterfaceZoom()).toBe(INTERFACE_ZOOM_DEFAULT);
     expect(window.localStorage).toHaveLength(0);

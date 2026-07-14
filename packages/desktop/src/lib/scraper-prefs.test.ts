@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  clearScraperWindowPreferences,
   getFbScraperWindowMode,
   getIgScraperWindowMode,
   getLiScraperWindowMode,
@@ -46,19 +45,5 @@ describe("scraper-prefs", () => {
 
     expect(localStorage.getItem("li_scraper_debug_window")).toBeNull();
     expect(getLiScraperWindowMode()).toBe("hidden");
-  });
-
-  it("clears every scraper mode without disturbing unrelated local state", () => {
-    setFbScraperWindowMode("shown");
-    setIgScraperWindowMode("cloaked");
-    setLiScraperWindowMode("shown");
-    localStorage.setItem("unrelated", "preserve");
-
-    clearScraperWindowPreferences();
-
-    expect(getFbScraperWindowMode()).toBe("hidden");
-    expect(getIgScraperWindowMode()).toBe("hidden");
-    expect(getLiScraperWindowMode()).toBe("hidden");
-    expect(localStorage.getItem("unrelated")).toBe("preserve");
   });
 });

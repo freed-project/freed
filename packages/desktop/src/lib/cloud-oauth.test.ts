@@ -128,6 +128,43 @@ describe("desktop Google OAuth", () => {
     });
   });
 
+  it("does not open a provider when reset begins while the callback server starts", async () => {
+    let finishServer!: (port: number) => void;
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "start_oauth_server") {
+        return new Promise<number>((resolve) => {
+          finishServer = resolve;
+        });
+      }
+      return Promise.resolve(null);
+    });
+    const { initiateDesktopOAuth, quiesceDesktopOAuthForFactoryReset } = await import("./sync");
+    const oauth = initiateDesktopOAuth("gdrive");
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("start_oauth_server"));
+
+    const quiesce = quiesceDesktopOAuthForFactoryReset();
+    finishServer(45555);
+
+    await expect(oauth).rejects.toMatchObject({ name: "AbortError" });
+    await quiesce;
+    expect(shellOpenMock).not.toHaveBeenCalled();
+  });
+
+  it("aborts a pending callback without starting token exchange", async () => {
+    shellOpenMock.mockResolvedValue(undefined);
+    const { initiateDesktopOAuth, quiesceDesktopOAuthForFactoryReset } = await import("./sync");
+    const oauth = initiateDesktopOAuth("gdrive");
+    await vi.waitFor(() => expect(shellOpenMock).toHaveBeenCalledOnce());
+
+    const quiesce = quiesceDesktopOAuthForFactoryReset();
+
+    await expect(oauth).rejects.toMatchObject({ name: "AbortError" });
+    await quiesce;
+    expect(invokeMock.mock.calls.map(([command]) => command)).toEqual([
+      "start_oauth_server",
+    ]);
+  });
+
   it("uses the default Google token proxy when the proxy URL env is empty", async () => {
     vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "");
     const oauthCalls = await completeGoogleOAuth();
@@ -337,6 +374,45 @@ describe("desktop Google OAuth", () => {
     const { getActiveProviders } = await import("./sync");
 
     expect(getActiveProviders()).toEqual(["gdrive"]);
+  });
+
+  it.each([
+    ["malformed JSON", "{corrupt-cloud-credentials"],
+    [
+      "an invalid expiry",
+      JSON.stringify({ accessToken: "metadata-token", expiresAt: "never" }),
+    ],
+  ])("fails closed for %s and preserves the exact cloud credential record", async (_case, raw) => {
+    localStorage.setItem("freed_cloud_token_gdrive", "legacy-token");
+    localStorage.setItem("freed_cloud_token_meta_gdrive", raw);
+
+    const { getActiveProviders, getCloudToken, getValidCloudToken } = await import("./sync");
+
+    expect(getCloudToken("gdrive")).toBeNull();
+    await expect(getValidCloudToken("gdrive")).resolves.toBeNull();
+    expect(getActiveProviders()).toEqual([]);
+    expect(localStorage.getItem("freed_cloud_token_meta_gdrive")).toBe(raw);
+    expect(localStorage.getItem("freed_cloud_token_gdrive")).toBe("legacy-token");
+  });
+
+  it("lets an explicit reconnect replace a corrupt cloud credential record", async () => {
+    const raw = "{corrupt-cloud-credentials";
+    localStorage.setItem("freed_cloud_token_gdrive", "legacy-token");
+    localStorage.setItem("freed_cloud_token_meta_gdrive", raw);
+
+    const { getCloudToken, storeCloudToken } = await import("./sync");
+    storeCloudToken("gdrive", {
+      accessToken: "replacement-token",
+      refreshToken: "replacement-refresh",
+      expiresAt: Date.now() + 60_000,
+    });
+
+    expect(getCloudToken("gdrive")).toBe("replacement-token");
+    expect(localStorage.getItem("freed_cloud_token_gdrive")).toBe("replacement-token");
+    expect(JSON.parse(localStorage.getItem("freed_cloud_token_meta_gdrive") ?? "{}")).toMatchObject({
+      accessToken: "replacement-token",
+      refreshToken: "replacement-refresh",
+    });
   });
 
   it("does not immediately refresh again when the token proxy omits expires_in", async () => {

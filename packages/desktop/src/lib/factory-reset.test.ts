@@ -1,11 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  beginFactoryResetCloudCleanup,
+  captureFactoryResetWriteEpoch,
+  clearFactoryResetCloudCleanupBarrier,
+  hasFactoryResetCloudCleanupBarrier,
+  isFactoryResetWriteAllowed,
+  resetFactoryResetStateForTests,
   runFactoryResetOperations,
   runFactoryResetWithRecovery,
+  trackFactoryResetSensitiveOperation,
   waitForFactoryResetDrain,
 } from "@freed/ui/lib/factory-reset";
 
 afterEach(() => {
+  vi.restoreAllMocks();
+  clearFactoryResetCloudCleanupBarrier();
+  resetFactoryResetStateForTests();
   vi.useRealTimers();
 });
 
@@ -72,6 +82,44 @@ describe("factory reset sequencing", () => {
     expect(reset.input.clearDeviceStores).not.toHaveBeenCalled();
     expect(reset.input.clearLocalData[0]).not.toHaveBeenCalled();
     expect(reset.input.clearDocument).not.toHaveBeenCalled();
+  });
+
+  it("treats tracked operation rejection as settled before destructive phases", async () => {
+    let rejectWrite!: (error: Error) => void;
+    const tracked = trackFactoryResetSensitiveOperation(
+      new Promise<void>((_resolve, reject) => {
+        rejectWrite = reject;
+      }),
+    );
+    void tracked.catch(() => undefined);
+    const reset = operations();
+    const resetting = runFactoryResetOperations(reset.input);
+    await Promise.resolve();
+    expect(reset.input.clearDeviceStores).not.toHaveBeenCalled();
+
+    rejectWrite(new Error("expected cancellation"));
+    await resetting;
+
+    expect(reset.input.clearDeviceStores).toHaveBeenCalledOnce();
+    expect(reset.input.clearDocument).toHaveBeenCalledOnce();
+  });
+
+  it("continues after the reset boundary cancels tracked work before its first microtask", async () => {
+    const epoch = captureFactoryResetWriteEpoch();
+    const canceled = trackFactoryResetSensitiveOperation(
+      Promise.resolve().then(() => {
+        if (!isFactoryResetWriteAllowed(epoch)) {
+          throw new Error("factory reset canceled the queued operation");
+        }
+      }),
+    );
+    void canceled.catch(() => undefined);
+    const reset = operations();
+
+    await runFactoryResetOperations(reset.input);
+
+    expect(reset.input.clearDeviceStores).toHaveBeenCalledOnce();
+    expect(reset.input.clearDocument).toHaveBeenCalledOnce();
   });
 
   it("stops before destructive work when a device store cannot persist reset state", async () => {
@@ -159,6 +207,20 @@ describe("factory reset sequencing", () => {
 });
 
 describe("factory reset runtime recovery", () => {
+  it("treats an unrecognized cleanup barrier value as blocking", () => {
+    localStorage.setItem("freed_factory_reset_cloud_cleanup_pending", "future-version");
+
+    expect(hasFactoryResetCloudCleanupBarrier()).toBe(true);
+  });
+
+  it("keeps cloud startup blocked when the cleanup barrier cannot be read", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+
+    expect(hasFactoryResetCloudCleanupBarrier()).toBe(true);
+  });
+
   it("fails a hung writer drain within its reset deadline", async () => {
     vi.useFakeTimers();
     const pending = new Promise<void>(() => undefined);
@@ -214,5 +276,61 @@ describe("factory reset runtime recovery", () => {
     expect(reload).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("keeps cloud startup blocked when provider cleanup resolves after its phase timed out", async () => {
+    vi.useFakeTimers();
+    let finishProviderCleanup!: () => void;
+    const providerCleanup = new Promise<void>((resolve) => {
+      finishProviderCleanup = resolve;
+    });
+    const reload = vi.fn();
+    const reset = operations({
+      phaseTimeoutMs: 50,
+      clearProviderDataAndConnections: async () => {
+        beginFactoryResetCloudCleanup();
+        await providerCleanup;
+      },
+    });
+
+    const resetting = runFactoryResetWithRecovery({
+      reset: async () => {
+        await runFactoryResetOperations(reset.input);
+        clearFactoryResetCloudCleanupBarrier();
+      },
+      reload,
+      onFailure: vi.fn(),
+      recoveryDelayMs: 25,
+    });
+    const rejection = expect(resetting).rejects.toMatchObject({
+      phase: "clear provider data and connections",
+    });
+
+    await vi.advanceTimersByTimeAsync(50);
+    await rejection;
+    expect(hasFactoryResetCloudCleanupBarrier()).toBe(true);
+
+    finishProviderCleanup();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(25);
+
+    expect(reload).toHaveBeenCalledOnce();
+    expect(reset.input.clearDocument).not.toHaveBeenCalled();
+    expect(hasFactoryResetCloudCleanupBarrier()).toBe(true);
+  });
+
+  it("lifts the cloud cleanup barrier only after the full reset succeeds", async () => {
+    const reset = operations({
+      clearProviderDataAndConnections: async () => {
+        beginFactoryResetCloudCleanup();
+      },
+    });
+
+    await runFactoryResetOperations(reset.input);
+    expect(hasFactoryResetCloudCleanupBarrier()).toBe(true);
+
+    clearFactoryResetCloudCleanupBarrier();
+    expect(hasFactoryResetCloudCleanupBarrier()).toBe(false);
+    expect(reset.input.clearDocument).toHaveBeenCalledOnce();
   });
 });

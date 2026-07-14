@@ -46,6 +46,11 @@ import {
   SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
   waitForSocialScrapeEvents,
 } from "./social-capture-runtime";
+import {
+  assertFactoryResetEpoch,
+  isFactoryResetEpochCurrent,
+  runFactoryResetSensitiveDesktopOperation,
+} from "./factory-reset-guard";
 
 // =============================================================================
 // Rate Limiting
@@ -211,7 +216,11 @@ function applyInstagramPlaceholderDiag(diag: IgSyncDiag, error: unknown): boolea
  * 3. Wait for the extraction script to emit results via the event
  * 4. Normalize raw posts to FeedItem[]
  */
-export async function fetchIgFeed(): Promise<IgSyncResult> {
+export function fetchIgFeed(): Promise<IgSyncResult> {
+  return runFactoryResetSensitiveDesktopOperation(fetchIgFeedInternal);
+}
+
+async function fetchIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> {
   const diag = createEmptyIgSyncDiag();
 
   if (await applyLockedSessionDeferredDiag(diag)) {
@@ -289,6 +298,7 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
       }
     });
 
+    assertFactoryResetEpoch(resetEpoch);
     await runBackgroundJob({
       kind: "social-scrape",
       source: "instagram:feed",
@@ -297,9 +307,12 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
       waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
       run: () => invoke("ig_scrape_feed", { windowMode: getIgScraperWindowMode() }),
     });
+    assertFactoryResetEpoch(resetEpoch);
 
     await waitForSocialScrapeEvents();
+    assertFactoryResetEpoch(resetEpoch);
   } catch (err) {
+    if (!isFactoryResetEpochCurrent(resetEpoch)) throw err;
     if (applyRuntimeDeferredDiag(diag, err)) {
       return { items: [], diag };
     }
@@ -354,35 +367,41 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
  * Capture Instagram feed and add items to the store.
  * Respects rate limiting to avoid triggering Instagram's anti-bot measures.
  */
-export async function captureIgFeed(
+export function captureIgFeed(
   trigger: SocialScrapeTrigger = "unknown",
 ): Promise<IgSyncResult> {
-  const scrapeStartedAt = Date.now();
-  try {
-    const result = await captureIgFeedInternal();
-    recordScrapeOutcome({
-      provider: "instagram",
-      trigger,
-      itemsExtracted: result.diag.postsExtracted,
-      itemsPersisted: result.diag.itemsAdded,
-      stage: result.diag.errorStage ?? "ok",
-      durationMs: Date.now() - scrapeStartedAt,
-    });
-    return result;
-  } catch (error) {
-    recordScrapeOutcome({
-      provider: "instagram",
-      trigger,
-      itemsExtracted: 0,
-      itemsPersisted: 0,
-      stage: "exception",
-      durationMs: Date.now() - scrapeStartedAt,
-    });
-    throw error;
-  }
+  return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
+    const scrapeStartedAt = Date.now();
+    try {
+      const result = await captureIgFeedInternal(resetEpoch);
+      assertFactoryResetEpoch(resetEpoch);
+      recordScrapeOutcome({
+        provider: "instagram",
+        trigger,
+        itemsExtracted: result.diag.postsExtracted,
+        itemsPersisted: result.diag.itemsAdded,
+        stage: result.diag.errorStage ?? "ok",
+        durationMs: Date.now() - scrapeStartedAt,
+      });
+      return result;
+    } catch (error) {
+      if (isFactoryResetEpochCurrent(resetEpoch)) {
+        recordScrapeOutcome({
+          provider: "instagram",
+          trigger,
+          itemsExtracted: 0,
+          itemsPersisted: 0,
+          stage: "exception",
+          durationMs: Date.now() - scrapeStartedAt,
+        });
+      }
+      throw error;
+    }
+  });
 }
 
-async function captureIgFeedInternal(): Promise<IgSyncResult> {
+async function captureIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> {
+  assertFactoryResetEpoch(resetEpoch);
   const startedAt = Date.now();
   const providerPause = getProviderPause("instagram");
   if (providerPause) {
@@ -428,7 +447,8 @@ async function captureIgFeedInternal(): Promise<IgSyncResult> {
   try {
     addDebugEvent("change", "[IG] sync started");
     const fetchStartedAt = performance.now();
-    const result = await fetchIgFeed();
+    const result = await fetchIgFeedInternal(resetEpoch);
+    assertFactoryResetEpoch(resetEpoch);
     log.info(
       `[IG] fetch finished duration=${formatSocialCaptureDuration(socialCaptureDurationMs(fetchStartedAt))} ` +
         `items=${result.items.length.toLocaleString()} stage=${result.diag.errorStage ?? "ok"}`,
@@ -450,6 +470,7 @@ async function captureIgFeedInternal(): Promise<IgSyncResult> {
         store.setIgAuth(errState);
         storeIgAuthState(errState);
       }
+      assertFactoryResetEpoch(resetEpoch);
       await recordProviderHealthEvent({
         provider: "instagram",
         outcome: "error",
@@ -472,6 +493,7 @@ async function captureIgFeedInternal(): Promise<IgSyncResult> {
       const before = store.items.filter((i) => i.platform === "instagram").length;
       const writeStartedAt = performance.now();
       await store.addItems(result.items);
+      assertFactoryResetEpoch(resetEpoch);
       const writeDurationMs = socialCaptureDurationMs(writeStartedAt);
       const after = useAppStore
         .getState()
@@ -482,10 +504,12 @@ async function captureIgFeedInternal(): Promise<IgSyncResult> {
       );
       const mediaStartedAt = performance.now();
       await upsertMediaVaultRosterFromItems("instagram", result.items);
+      assertFactoryResetEpoch(resetEpoch);
       const archivedCount = await archiveRecentProviderMedia(
         "instagram",
         result.items,
       );
+      assertFactoryResetEpoch(resetEpoch);
       const mediaDurationMs = socialCaptureDurationMs(mediaStartedAt);
       const archivedTotal = archivedCount ?? 0;
       log.info(
@@ -509,6 +533,7 @@ async function captureIgFeedInternal(): Promise<IgSyncResult> {
     const successState = { ...useAppStore.getState().igAuth, lastCapturedAt: Date.now(), lastCaptureError: undefined };
     store.setIgAuth(successState);
     storeIgAuthState(successState);
+    assertFactoryResetEpoch(resetEpoch);
     await recordProviderHealthEvent({
       provider: "instagram",
       outcome: result.diag.postsExtracted > 0 ? "success" : "empty",
@@ -522,6 +547,7 @@ async function captureIgFeedInternal(): Promise<IgSyncResult> {
 
     return result;
   } catch (error) {
+    if (!isFactoryResetEpochCurrent(resetEpoch)) throw error;
     const message =
       error instanceof Error ? error.message : "Failed to capture Instagram feed";
     store.setError(message);
@@ -539,6 +565,6 @@ async function captureIgFeedInternal(): Promise<IgSyncResult> {
     });
     throw error;
   } finally {
-    store.setLoading(false);
+    if (isFactoryResetEpochCurrent(resetEpoch)) store.setLoading(false);
   }
 }

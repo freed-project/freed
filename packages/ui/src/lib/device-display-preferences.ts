@@ -13,6 +13,7 @@ import {
   writeVersionedLocalStorage,
   type VersionedLocalStorageCodec,
 } from "./versioned-local-storage.js";
+import { isFactoryResetInProgress } from "./factory-reset.js";
 
 export const DEVICE_DISPLAY_PREFERENCES_STORAGE_KEY = "freed-device-display-preferences-v1";
 
@@ -139,6 +140,7 @@ function persistPreferences(
   values: DeviceDisplayPreferences,
   replaceUnsupportedVersion = false,
 ): boolean {
+  if (isFactoryResetInProgress()) return false;
   return writeVersionedLocalStorage(
     DEVICE_DISPLAY_PREFERENCES_STORAGE_KEY,
     STORAGE_CODEC,

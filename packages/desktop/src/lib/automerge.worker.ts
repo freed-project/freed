@@ -70,7 +70,14 @@ import {
   stripDeviceLocalPreferenceUpdates,
 } from "@freed/shared";
 import type { Account, DesktopClientRegistration, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
-import type { DocState, FeedItemPatch, RssFeedPatch, WorkerRequest, WorkerResponse } from "./automerge-types";
+import type {
+  DocState,
+  FeedItemPatch,
+  RssFeedPatch,
+  WorkerErrorCode,
+  WorkerRequest,
+  WorkerResponse,
+} from "./automerge-types";
 import {
   createPersistenceState,
   persistDoc,
@@ -95,6 +102,7 @@ let relayClientCount = 0;
 let activeDesktopClientRegistration: DesktopClientRegistration | null = null;
 let queuedRequestCount = 0;
 let requestChain: Promise<void> = Promise.resolve();
+let acceptingRequests = true;
 let searchCorpusVersion = 0;
 let linkPreviewUrlCounts = new Map<string, number>();
 
@@ -123,8 +131,22 @@ function send(msg: WorkerResponse): void {
   self.postMessage(msg);
 }
 
-function ack(reqId: number, error?: string): void {
-  send({ reqId, type: "ACK", error });
+class CorruptDocumentError extends Error {
+  readonly code: WorkerErrorCode = "CORRUPT_DOCUMENT";
+
+  constructor() {
+    super("The stored Automerge document could not be loaded");
+    this.name = "CorruptDocumentError";
+  }
+}
+
+function ack(reqId: number, error?: string, errorCode?: WorkerErrorCode): void {
+  send({
+    reqId,
+    type: "ACK",
+    ...(error ? { error } : {}),
+    ...(errorCode ? { errorCode } : {}),
+  });
 }
 
 function itemLinkPreviewUrl(item: FeedItem | undefined): string | null {
@@ -1006,6 +1028,7 @@ async function handleRequest(
 
   if (
     req.type !== "INIT" &&
+    req.type !== "QUIESCE" &&
     req.type !== "CLEAR_LOCAL" &&
     req.type !== "REPLACE_DOC" &&
     req.type !== "GET_DOC_BINARY" &&
@@ -1022,29 +1045,31 @@ async function handleRequest(
 
   try {
     switch (req.type) {
+      case "QUIESCE":
+        ack(req.reqId);
+        break;
+
       case "INIT": {
         activeDesktopClientRegistration = req.desktopClientRegistration ?? null;
         let loadedDocNeedsPersist = false;
         const saved = await storage.load();
         if (saved) {
+          let loadedDoc: FreedDoc;
           try {
-            currentDoc = A.load<FreedDoc>(saved);
-            currentBinary = saved;
-            persistenceState = createPersistenceState(saved);
-            loadedDocNeedsPersist =
-              migrateLoadedIdentityGraph("Migrate legacy identity graph") || loadedDocNeedsPersist;
-            loadedDocNeedsPersist =
-              compactLoadedFeedText("Compact oversized synced feed text", {
-                rebuildHistory: true,
-                previousBinaryBytes: saved.byteLength,
-              }) || loadedDocNeedsPersist;
+            loadedDoc = A.load<FreedDoc>(saved);
           } catch {
-            await storage.clear();
-            currentDoc = null;
-            currentBinary = null;
-            persistenceState = createPersistenceState(null);
-            send({ type: "DEBUG_EVENT", kind: "init", detail: "corrupt doc cleared, creating fresh" });
+            throw new CorruptDocumentError();
           }
+          currentDoc = loadedDoc;
+          currentBinary = saved;
+          persistenceState = createPersistenceState(saved);
+          loadedDocNeedsPersist =
+            migrateLoadedIdentityGraph("Migrate legacy identity graph") || loadedDocNeedsPersist;
+          loadedDocNeedsPersist =
+            compactLoadedFeedText("Compact oversized synced feed text", {
+              rebuildHistory: true,
+              previousBinaryBytes: saved.byteLength,
+            }) || loadedDocNeedsPersist;
         }
         if (!currentDoc) {
           currentDoc = createEmptyDoc();
@@ -1646,7 +1671,11 @@ async function handleRequest(
         ` message=${message}`,
       "error",
     );
-    ack(req.reqId, message);
+    ack(
+      req.reqId,
+      message,
+      err instanceof CorruptDocumentError ? err.code : undefined,
+    );
     return;
   }
 
@@ -1690,6 +1719,15 @@ function enqueueRequest(req: WorkerRequest): void {
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const req = event.data;
+  if (req.type === "QUIESCE") {
+    acceptingRequests = false;
+    enqueueRequest(req);
+    return;
+  }
+  if (!acceptingRequests && req.type !== "CLEAR_LOCAL") {
+    ack(req.reqId, "Automerge worker is quiesced for factory reset");
+    return;
+  }
   if (req.type === "UPDATE_RELAY_CLIENT_COUNT") {
     relayClientCount = req.count;
     return;

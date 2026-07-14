@@ -11,7 +11,6 @@ vi.mock("./runtime-health-events", () => ({
 
 import {
   FACEBOOK_GROUP_DISCOVERY_STORAGE_KEY,
-  clearFacebookGroupDiscovery,
   getFacebookGroupDiscovery,
   migrateLegacyFacebookGroupDiscovery,
   removeFacebookGroupDiscovery,
@@ -43,7 +42,6 @@ describe("device-local Facebook group discovery", () => {
     expect(getFacebookGroupDiscovery()).toEqual({ one: group("one") });
     expect(migrateLegacyFacebookGroupDiscovery({ two: group("two") })).toBe(false);
 
-    expect(clearFacebookGroupDiscovery()).toBe(true);
     window.localStorage.clear();
     resetFacebookGroupDiscoveryForTests();
     expect(migrateLegacyFacebookGroupDiscovery({})).toBe(true);
@@ -118,7 +116,17 @@ describe("device-local Facebook group discovery", () => {
     expect(window.localStorage.getItem(FACEBOOK_GROUP_DISCOVERY_STORAGE_KEY)).toBe(future);
   });
 
-  it("preserves corrupt data before a normal repair write", () => {
+  it("keeps automatic observations from replacing corrupt discovery state", () => {
+    const corrupt = "not-json";
+    window.localStorage.setItem(FACEBOOK_GROUP_DISCOVERY_STORAGE_KEY, corrupt);
+    resetFacebookGroupDiscoveryForTests();
+
+    expect(updateFacebookGroupDiscovery([group("one")], "feed_items").persisted).toBe(false);
+    expect(updateFacebookGroupDiscovery([group("one")], "membership_check").persisted).toBe(false);
+    expect(window.localStorage.getItem(FACEBOOK_GROUP_DISCOVERY_STORAGE_KEY)).toBe(corrupt);
+  });
+
+  it("lets an explicit full group refresh repair corrupt discovery state", () => {
     const corrupt = "not-json";
     window.localStorage.setItem(FACEBOOK_GROUP_DISCOVERY_STORAGE_KEY, corrupt);
     resetFacebookGroupDiscoveryForTests();
@@ -142,31 +150,5 @@ describe("device-local Facebook group discovery", () => {
     resetFacebookGroupDiscoveryForTests();
 
     expect(updateFacebookGroupDiscovery([group("one")], "group_scrape").persisted).toBe(false);
-  });
-
-  it("factory reset replaces a future version with an explicit empty tombstone", () => {
-    window.localStorage.setItem(FACEBOOK_GROUP_DISCOVERY_STORAGE_KEY, JSON.stringify({
-      version: 2,
-      knownGroups: { future: group("future") },
-    }));
-    resetFacebookGroupDiscoveryForTests();
-
-    expect(clearFacebookGroupDiscovery()).toBe(true);
-
-    expect(JSON.parse(window.localStorage.getItem(FACEBOOK_GROUP_DISCOVERY_STORAGE_KEY)!)).toEqual({
-      version: 1,
-      legacyMigrationCompleted: true,
-      knownGroups: {},
-    });
-  });
-
-  it("keeps discovered groups when factory reset cannot persist", () => {
-    expect(migrateLegacyFacebookGroupDiscovery({ one: group("one") })).toBe(true);
-    vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
-      throw new Error("storage unavailable");
-    });
-
-    expect(clearFacebookGroupDiscovery()).toBe(false);
-    expect(getFacebookGroupDiscovery()).toEqual({ one: group("one") });
   });
 });

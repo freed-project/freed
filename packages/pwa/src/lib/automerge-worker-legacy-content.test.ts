@@ -13,6 +13,8 @@ import type { WorkerRequest, WorkerResponse } from "./automerge-types";
 
 const storageHarness = vi.hoisted(() => ({
   binary: null as Uint8Array | null,
+  failSave: false,
+  clearCount: 0,
 }));
 
 vi.mock("@freed/sync/storage/indexeddb", () => ({
@@ -22,11 +24,13 @@ vi.mock("@freed/sync/storage/indexeddb", () => ({
     }
 
     async save(binary: Uint8Array): Promise<void> {
+      if (storageHarness.failSave) throw new Error("forced IndexedDB save failure");
       storageHarness.binary = binary.slice();
     }
 
     async clear(): Promise<void> {
       storageHarness.binary = null;
+      storageHarness.clearCount += 1;
     }
   },
 }));
@@ -90,6 +94,8 @@ describe("PWA Automerge worker legacy reader compatibility", () => {
   beforeEach(async () => {
     vi.resetModules();
     storageHarness.binary = A.save(makeLegacyDoc());
+    storageHarness.failSave = false;
+    storageHarness.clearCount = 0;
     posts = [];
     scope = {
       onmessage: null,
@@ -134,6 +140,44 @@ describe("PWA Automerge worker legacy reader compatibility", () => {
     expect(persisted.feedItems["saved:legacy-reader"].preservedContent?.html).toBe(
       "<article>legacy reader copy</article>",
     );
+  });
+
+  it("reports corrupt bytes without clearing them inside INIT", async () => {
+    storageHarness.binary = new Uint8Array([1, 2, 3, 4]);
+    if (!scope.onmessage) throw new Error("Worker message handler missing");
+
+    scope.onmessage({ data: { reqId: 30, type: "INIT" } } as MessageEvent<WorkerRequest>);
+    const failure = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 30,
+    );
+
+    expect(failure).toMatchObject({
+      type: "ACK",
+      errorCode: "CORRUPT_DOCUMENT",
+    });
+    expect(storageHarness.clearCount).toBe(0);
+    expect(storageHarness.binary).toEqual(new Uint8Array([1, 2, 3, 4]));
+  });
+
+  it("preserves a valid document when INIT cannot save", async () => {
+    const original = storageHarness.binary!.slice();
+    storageHarness.failSave = true;
+    if (!scope.onmessage) throw new Error("Worker message handler missing");
+
+    scope.onmessage({ data: { reqId: 31, type: "INIT" } } as MessageEvent<WorkerRequest>);
+    const failure = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 31,
+    );
+
+    expect(failure).toMatchObject({
+      type: "ACK",
+      error: "forced IndexedDB save failure",
+    });
+    expect(failure).not.toHaveProperty("errorCode");
+    expect(storageHarness.clearCount).toBe(0);
+    expect(storageHarness.binary).toEqual(original);
   });
 
   it("keeps local RSS and preferences without resurrecting a deleted feed item", async () => {
@@ -184,6 +228,10 @@ describe("PWA Automerge worker legacy reader compatibility", () => {
         binary: A.save(staleEmpty),
       },
     } as MessageEvent<WorkerRequest>);
+    await waitForPost(
+      posts,
+      (message) => message.type === "STATE_UPDATE" && message.mutation === "MERGE_DOC",
+    );
     await waitForPost(posts, (message) => message.type === "ACK" && message.reqId === 11);
 
     const persisted = A.load<FreedDoc>(storageHarness.binary!);
@@ -232,6 +280,30 @@ describe("PWA Automerge worker legacy reader compatibility", () => {
         message.reqId === 13 &&
         message.relation === "incoming-ahead",
     );
+  });
+
+  it("tags explicit graph removals with their mutation provenance", async () => {
+    if (!scope.onmessage) throw new Error("Worker message handler missing");
+    scope.onmessage({ data: { reqId: 20, type: "INIT" } } as MessageEvent<WorkerRequest>);
+    await waitForPost(posts, (message) => message.type === "ACK" && message.reqId === 20);
+
+    scope.onmessage({
+      data: { reqId: 21, type: "REMOVE_PERSON", personId: "missing-person" },
+    } as MessageEvent<WorkerRequest>);
+    await waitForPost(
+      posts,
+      (message) => message.type === "STATE_UPDATE" && message.mutation === "REMOVE_PERSON",
+    );
+    await waitForPost(posts, (message) => message.type === "ACK" && message.reqId === 21);
+
+    scope.onmessage({
+      data: { reqId: 22, type: "REMOVE_ACCOUNT", accountId: "missing-account" },
+    } as MessageEvent<WorkerRequest>);
+    await waitForPost(
+      posts,
+      (message) => message.type === "STATE_UPDATE" && message.mutation === "REMOVE_ACCOUNT",
+    );
+    await waitForPost(posts, (message) => message.type === "ACK" && message.reqId === 22);
   });
 
 });

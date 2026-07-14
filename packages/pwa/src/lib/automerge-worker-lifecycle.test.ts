@@ -135,6 +135,8 @@ describe("PWA Automerge worker lifecycle", () => {
     vi.resetModules();
     vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => {});
+    localStorage.clear();
+    sessionStorage.clear();
     MockWorker.instances = [];
     vi.stubGlobal("Worker", MockWorker);
   });
@@ -171,7 +173,7 @@ describe("PWA Automerge worker lifecycle", () => {
     },
   );
 
-  it("clears local data only after an actual INIT acknowledgement error", async () => {
+  it("preserves local data after a typed corrupt-document INIT error", async () => {
     const automerge = await import("./automerge");
     const worker = MockWorker.instances[0];
     worker.emitMessage({ type: "READY" });
@@ -182,14 +184,45 @@ describe("PWA Automerge worker lifecycle", () => {
       reqId: failedInit.reqId,
       type: "ACK",
       error: "stored document could not be loaded",
+      errorCode: "CORRUPT_DOCUMENT",
     });
 
-    const clear = await waitForRequest(worker, "CLEAR_LOCAL");
-    worker.emitMessage({ reqId: clear.reqId, type: "ACK" });
-    await completeInit(worker, initialization, 1);
-
+    await expect(initialization).rejects.toThrow("stored document could not be loaded");
     expect(MockWorker.instances).toHaveLength(1);
-    expect(requestsOfType(worker, "CLEAR_LOCAL")).toHaveLength(1);
+    expect(requestsOfType(worker, "CLEAR_LOCAL")).toHaveLength(0);
+  });
+
+  it("terminates a silent worker when factory-reset quiescence times out", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+
+    const quiesce = automerge.quiescePwaAutomergeForFactoryReset();
+    const rejected = expect(quiesce).rejects.toThrow(
+      "Automerge worker did not quiesce within 10,000 milliseconds",
+    );
+    await waitForRequest(worker, "QUIESCE");
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await rejected;
+    expect(worker.terminated).toBe(true);
+  });
+
+  it("preserves local data after a generic INIT acknowledgement error", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+
+    const initialization = automerge.initDoc();
+    const failedInit = await waitForRequest(worker, "INIT");
+    worker.emitMessage({
+      reqId: failedInit.reqId,
+      type: "ACK",
+      error: "IndexedDB save failed",
+    });
+
+    await expect(initialization).rejects.toThrow("IndexedDB save failed");
+    expect(requestsOfType(worker, "CLEAR_LOCAL")).toHaveLength(0);
   });
 
   it("times out INIT, removes its listener, and retries without clearing local data", async () => {
@@ -212,6 +245,48 @@ describe("PWA Automerge worker lifecycle", () => {
     await completeInit(replacementWorker, initialization);
     expect(replacementWorker.listenerCount("message")).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([
+    {
+      label: "mutation",
+      requestType: "MARK_ALL_AS_READ",
+      start: (automerge: typeof import("./automerge")) => automerge.docMarkAllAsRead(),
+    },
+    {
+      label: "result",
+      requestType: "GET_DOC_BINARY",
+      start: (automerge: typeof import("./automerge")) => automerge.getDocBinary(),
+    },
+  ])("retires a silent generation after a $label request timeout and reinitializes before reuse", async ({
+    requestType,
+    start,
+  }) => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+    await completeInit(worker, automerge.initDoc());
+
+    const pendingRequest = start(automerge);
+    const rejected = expect(pendingRequest).rejects.toThrow(
+      `Automerge worker request ${requestType} timed out after 180,000 milliseconds`,
+    );
+    await waitForRequest(worker, requestType);
+    await vi.advanceTimersByTimeAsync(180_000);
+
+    await rejected;
+    expect(worker.terminated).toBe(true);
+
+    const retry = automerge.docMarkAllAsRead();
+    await vi.waitFor(() => expect(MockWorker.instances).toHaveLength(2));
+    const replacementWorker = MockWorker.instances[1];
+    replacementWorker.emitMessage({ type: "READY" });
+    const init = await waitForRequest(replacementWorker, "INIT");
+    replacementWorker.emitMessage({ type: "STATE_UPDATE", state: makeState() });
+    replacementWorker.emitMessage({ reqId: init.reqId, type: "ACK" });
+    const mutation = await waitForRequest(replacementWorker, "MARK_ALL_AS_READ");
+    replacementWorker.emitMessage({ reqId: mutation.reqId, type: "ACK" });
+    await expect(retry).resolves.toBeUndefined();
   });
 
   it("rejects failed generation requests and initializes the replacement before reuse", async () => {
@@ -240,5 +315,27 @@ describe("PWA Automerge worker lifecycle", () => {
     replacementWorker.emitMessage({ reqId: mutation.reqId, type: "ACK" });
     await expect(retry).resolves.toBeUndefined();
     expect(requestsOfType(replacementWorker, "CLEAR_LOCAL")).toHaveLength(0);
+  });
+
+  it("rejects a worker response that arrives after the PWA generation changes", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+    await completeInit(worker, automerge.initDoc());
+
+    const mutation = automerge.docMarkAllAsRead();
+    const request = await waitForRequest(worker, "MARK_ALL_AS_READ");
+    localStorage.setItem("freed_pwa_installation_generation", "1");
+    localStorage.setItem("freed_pwa_factory_reset_tombstone", JSON.stringify({
+      version: 1,
+      resetId: "reset-during-worker-request",
+      generation: 1,
+      startedAt: Date.now(),
+    }));
+    worker.emitMessage({ reqId: request.reqId, type: "ACK" });
+
+    await expect(mutation).rejects.toThrow(
+      "installation generation that has been reset",
+    );
   });
 });

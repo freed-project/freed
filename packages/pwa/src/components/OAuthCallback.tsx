@@ -26,10 +26,13 @@ import {
 } from "../lib/sync";
 import {
   clearStoredGoogleOAuthRedirectUri,
+  consumePwaOAuthRuntimeGeneration,
   createGoogleOAuthRelayTarget,
   getOAuthCallbackUri,
   getStoredGoogleOAuthRedirectUri,
+  isPwaOAuthRuntimeGenerationValid,
 } from "../lib/oauth-redirect";
+import { capturePwaRuntimeLifecycle } from "../lib/factory-reset-coordinator";
 
 const DROPBOX_TOKEN_ENDPOINT = "https://api.dropboxapi.com/oauth2/token";
 
@@ -40,10 +43,12 @@ const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
 const OAUTH_REDIRECT_URI = getOAuthCallbackUri();
 
 type ExchangeResult =
-  | { ok: true; token: CloudTokenBundle }
-  | { ok: false; error: string };
+  { ok: true; token: CloudTokenBundle } | { ok: false; error: string };
 
-async function exchangeGDrive(code: string, verifier: string): Promise<ExchangeResult> {
+async function exchangeGDrive(
+  code: string,
+  verifier: string,
+): Promise<ExchangeResult> {
   const redirectUri = getStoredGoogleOAuthRedirectUri();
   // Token exchange is proxied server-side: Google requires a client_secret
   // even for PKCE, so we never expose it to the browser.
@@ -53,26 +58,38 @@ async function exchangeGDrive(code: string, verifier: string): Promise<ExchangeR
     body: JSON.stringify({ code, verifier, redirectUri }),
   });
 
-  const data = await res.json().catch(() => ({ error: "invalid JSON from proxy" }));
+  const data = await res
+    .json()
+    .catch(() => ({ error: "invalid JSON from proxy" }));
 
   if (!res.ok) {
-    return { ok: false, error: `GDrive token exchange failed: ${data.error ?? res.status}` };
+    return {
+      ok: false,
+      error: `GDrive token exchange failed: ${data.error ?? res.status}`,
+    };
   }
 
   const { access_token, refresh_token, expires_in } = data;
-  if (!access_token) return { ok: false, error: "GDrive proxy returned no access_token" };
+  if (!access_token)
+    return { ok: false, error: "GDrive proxy returned no access_token" };
 
   return {
     ok: true,
     token: {
       accessToken: access_token as string,
       refreshToken: refresh_token as string | undefined,
-      expiresAt: typeof expires_in === "number" ? Date.now() + expires_in * 1000 : undefined,
+      expiresAt:
+        typeof expires_in === "number"
+          ? Date.now() + expires_in * 1000
+          : undefined,
     },
   };
 }
 
-async function exchangeDropbox(code: string, verifier: string): Promise<ExchangeResult> {
+async function exchangeDropbox(
+  code: string,
+  verifier: string,
+): Promise<ExchangeResult> {
   const body = new URLSearchParams({
     code,
     grant_type: "authorization_code",
@@ -89,18 +106,25 @@ async function exchangeDropbox(code: string, verifier: string): Promise<Exchange
 
   if (!res.ok) {
     const text = await res.text();
-    return { ok: false, error: `Dropbox token exchange failed (${res.status}): ${text}` };
+    return {
+      ok: false,
+      error: `Dropbox token exchange failed (${res.status}): ${text}`,
+    };
   }
 
   const { access_token, refresh_token, expires_in } = await res.json();
-  if (!access_token) return { ok: false, error: "Dropbox returned no access_token" };
+  if (!access_token)
+    return { ok: false, error: "Dropbox returned no access_token" };
 
   return {
     ok: true,
     token: {
       accessToken: access_token as string,
       refreshToken: refresh_token as string | undefined,
-      expiresAt: typeof expires_in === "number" ? Date.now() + expires_in * 1000 : undefined,
+      expiresAt:
+        typeof expires_in === "number"
+          ? Date.now() + expires_in * 1000
+          : undefined,
     },
   };
 }
@@ -113,10 +137,16 @@ export function OAuthCallback() {
 
   useEffect(() => {
     let cancelled = false;
+    let returnTimer: ReturnType<typeof setTimeout> | null = null;
 
     const run = async () => {
+      const runtimeLifecycle = capturePwaRuntimeLifecycle();
+      if (!runtimeLifecycle.isCurrent()) return;
       const params = new URLSearchParams(window.location.search);
-      const relayTarget = createGoogleOAuthRelayTarget(window.location.origin, params);
+      const relayTarget = createGoogleOAuthRelayTarget(
+        window.location.origin,
+        params,
+      );
       if (relayTarget) {
         window.location.replace(relayTarget);
         return;
@@ -125,8 +155,11 @@ export function OAuthCallback() {
       const code = params.get("code");
       const oauthError = params.get("error");
 
-      const provider = sessionStorage.getItem("freed_pkce_provider") as CloudProvider | null;
+      const provider = sessionStorage.getItem(
+        "freed_pkce_provider",
+      ) as CloudProvider | null;
       const verifier = sessionStorage.getItem("freed_pkce_verifier");
+      const oauthGeneration = consumePwaOAuthRuntimeGeneration();
 
       // Clean up PKCE state immediately, single-use.
       sessionStorage.removeItem("freed_pkce_provider");
@@ -141,7 +174,16 @@ export function OAuthCallback() {
         return;
       }
 
-      if (!code || !provider || !verifier) {
+      if (
+        !code ||
+        !provider ||
+        !verifier ||
+        !isPwaOAuthRuntimeGenerationValid(
+          oauthGeneration,
+          runtimeLifecycle.generation,
+        ) ||
+        !runtimeLifecycle.isCurrent()
+      ) {
         if (!cancelled) {
           setStatus("error");
           setErrorMessage(
@@ -157,14 +199,23 @@ export function OAuthCallback() {
       try {
         const result = await exchange(code, verifier);
         if (!result.ok) {
-          if (!cancelled) {
+          if (
+            !cancelled &&
+            runtimeLifecycle.isCurrent() &&
+            lifecycle.isCurrent()
+          ) {
             setStatus("error");
             setErrorMessage(result.error);
           }
           return;
         }
 
-        if (cancelled || !lifecycle.isCurrent()) return;
+        if (
+          cancelled ||
+          !runtimeLifecycle.isCurrent() ||
+          !lifecycle.isCurrent()
+        )
+          return;
         storeCloudToken(provider, result.token);
 
         // Fire-and-forget — token exchange is the success condition.
@@ -179,15 +230,27 @@ export function OAuthCallback() {
         setStatus("success");
 
         // Give the user a moment to see the success state before navigating.
-        setTimeout(() => {
+        returnTimer = setTimeout(() => {
+          if (
+            cancelled ||
+            !runtimeLifecycle.isCurrent() ||
+            !lifecycle.isCurrent()
+          )
+            return;
           window.location.replace("/");
         }, 1200);
       } catch (err: unknown) {
         console.error("[OAuthCallback] token exchange threw:", err);
-        if (!cancelled) {
+        if (
+          !cancelled &&
+          runtimeLifecycle.isCurrent() &&
+          lifecycle.isCurrent()
+        ) {
           setStatus("error");
           setErrorMessage(
-            err instanceof Error ? err.message : "Unexpected error during token exchange.",
+            err instanceof Error
+              ? err.message
+              : "Unexpected error during token exchange.",
           );
         }
       }
@@ -197,6 +260,7 @@ export function OAuthCallback() {
 
     return () => {
       cancelled = true;
+      if (returnTimer !== null) clearTimeout(returnTimer);
     };
   }, []);
 
@@ -206,32 +270,64 @@ export function OAuthCallback() {
         {status === "exchanging" && (
           <>
             <div className="mx-auto mb-5 h-10 w-10 animate-spin rounded-full border-2 border-[var(--theme-accent-secondary)] border-t-transparent" />
-            <p className="font-medium text-[var(--theme-text-primary)]">Connecting cloud sync...</p>
-            <p className="mt-2 text-sm text-[var(--theme-text-muted)]">Exchanging authorization code</p>
+            <p className="font-medium text-[var(--theme-text-primary)]">
+              Connecting cloud sync...
+            </p>
+            <p className="mt-2 text-sm text-[var(--theme-text-muted)]">
+              Exchanging authorization code
+            </p>
           </>
         )}
 
         {status === "success" && (
           <>
             <div className="theme-icon-well-success mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full border-2">
-              <svg className="theme-icon-success h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <svg
+                className="theme-icon-success h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             </div>
-            <p className="font-medium text-[var(--theme-text-primary)]">Cloud sync connected</p>
-            <p className="mt-2 text-sm text-[var(--theme-text-muted)]">Returning to your feed...</p>
+            <p className="font-medium text-[var(--theme-text-primary)]">
+              Cloud sync connected
+            </p>
+            <p className="mt-2 text-sm text-[var(--theme-text-muted)]">
+              Returning to your feed...
+            </p>
           </>
         )}
 
         {status === "error" && (
           <>
             <div className="theme-icon-well-danger mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full border-2">
-              <svg className="theme-icon-danger h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg
+                className="theme-icon-danger h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </div>
-            <p className="font-medium text-[var(--theme-text-primary)]">Connection failed</p>
-            <p className="mb-5 mt-2 text-sm text-[var(--theme-text-muted)]">{errorMessage}</p>
+            <p className="font-medium text-[var(--theme-text-primary)]">
+              Connection failed
+            </p>
+            <p className="mb-5 mt-2 text-sm text-[var(--theme-text-muted)]">
+              {errorMessage}
+            </p>
             <button
               onClick={() => window.location.replace("/")}
               className="btn-primary text-sm px-5 py-2.5"

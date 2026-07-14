@@ -1,12 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   beginSocialOutboxAttempt,
-  clearSocialOutboxState,
   completeSocialOutboxIntent,
   getSocialOutboxRecordForTests,
   getExplicitSocialOutboxIntent,
   markSocialOutboxPlatformConfirmed,
-  pruneSocialOutboxState,
   recordExplicitSocialOutboxIntent,
   resetSocialOutboxStateForTests,
   type SocialOutboxIntent,
@@ -104,33 +102,8 @@ describe("device-local social outbox state", () => {
     expect(getSocialOutboxRecordForTests(intent)).toBeNull();
   });
 
-  it("prunes records that no longer have a pending document intent", () => {
-    const active = likeIntent(100, "x:active");
-    const deleted = likeIntent(100, "x:deleted");
-    beginSocialOutboxAttempt(active, 1_000);
-    beginSocialOutboxAttempt(deleted, 2_000);
-
-    pruneSocialOutboxState([active]);
-
-    expect(getSocialOutboxRecordForTests(active)).not.toBeNull();
-    expect(getSocialOutboxRecordForTests(deleted)).toBeNull();
-  });
-
-  it("clears every record for factory reset", () => {
-    const intent = likeIntent(100);
-    beginSocialOutboxAttempt(intent, 1_000);
-
-    expect(clearSocialOutboxState()).toBe(true);
-
-    expect(getSocialOutboxRecordForTests(intent)).toBeNull();
-    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual({
-      version: 1,
-      entries: {},
-    });
-  });
-
-  it("rejects malformed persisted records", () => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+  it("fails closed on malformed persisted records without replacing them", () => {
+    const corrupt = JSON.stringify({
       version: 1,
       entries: {
         bad: {
@@ -142,10 +115,45 @@ describe("device-local social outbox state", () => {
           updatedAt: 200,
         },
       },
-    }));
+    });
+    window.localStorage.setItem(STORAGE_KEY, corrupt);
     resetSocialOutboxStateForTests();
 
+    expect(beginSocialOutboxAttempt(likeIntent(100, "x:bad"), 1_000)).toEqual({
+      kind: "capacity",
+    });
+    expect(recordExplicitSocialOutboxIntent(likeIntent(100, "x:bad"), 1_000)).toBe(false);
     expect(getSocialOutboxRecordForTests(likeIntent(100, "x:bad"))).toBeNull();
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(corrupt);
+  });
+
+  it.each([
+    ["provider confirmation receipt", { platformConfirmedAt: "1,500" }],
+    ["explicit local intent marker", { explicitLocalIntent: false }],
+  ])("fails closed on a malformed %s without replacing it", (_label, malformedField) => {
+    const intent = likeIntent(100);
+    const key = JSON.stringify([
+      intent.action,
+      intent.platform,
+      intent.globalId,
+      intent.intentAt,
+    ]);
+    const corrupt = JSON.stringify({
+      version: 1,
+      entries: {
+        [key]: {
+          ...intent,
+          attempts: 1,
+          updatedAt: 200,
+          ...malformedField,
+        },
+      },
+    });
+    window.localStorage.setItem(STORAGE_KEY, corrupt);
+    resetSocialOutboxStateForTests();
+
+    expect(beginSocialOutboxAttempt(intent, 1_000)).toEqual({ kind: "capacity" });
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(corrupt);
   });
 
   it("refuses to downgrade a future version or run a provider attempt", () => {
@@ -158,27 +166,14 @@ describe("device-local social outbox state", () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe(future);
   });
 
-  it("preserves corrupt data before replacing it with a supported retry record", () => {
+  it("does not turn corrupt data into a fresh provider attempt budget", () => {
     const corrupt = "{this is not json";
     window.localStorage.setItem(STORAGE_KEY, corrupt);
     resetSocialOutboxStateForTests();
 
-    expect(beginSocialOutboxAttempt(likeIntent(100), 1_000)).toMatchObject({
-      kind: "attempt",
-      attempt: 1,
-    });
-
-    const recoveryKey = Array.from({ length: window.localStorage.length }, (_, index) =>
-      window.localStorage.key(index)
-    ).find((key) => key?.startsWith(`${STORAGE_KEY}.recovery.`));
-    expect(recoveryKey).toBeTruthy();
-    expect(JSON.parse(window.localStorage.getItem(recoveryKey!)!)).toMatchObject({
-      reason: "corrupt",
-      raw: corrupt,
-    });
-    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toMatchObject({
-      version: 1,
-    });
+    expect(beginSocialOutboxAttempt(likeIntent(100), 1_000)).toEqual({ kind: "capacity" });
+    expect(recordExplicitSocialOutboxIntent(likeIntent(100), 1_000)).toBe(false);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(corrupt);
   });
 
   it("fails closed when local storage cannot be read", () => {
@@ -188,16 +183,5 @@ describe("device-local social outbox state", () => {
     resetSocialOutboxStateForTests();
 
     expect(beginSocialOutboxAttempt(likeIntent(100), 1_000)).toEqual({ kind: "capacity" });
-  });
-
-  it("keeps the retry ledger in memory when factory reset cannot persist", () => {
-    const intent = likeIntent(100);
-    expect(beginSocialOutboxAttempt(intent, 1_000)).toMatchObject({ kind: "attempt" });
-    vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
-      throw new Error("storage unavailable");
-    });
-
-    expect(clearSocialOutboxState()).toBe(false);
-    expect(getSocialOutboxRecordForTests(intent)?.attempts).toBe(1);
   });
 });

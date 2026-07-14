@@ -40,6 +40,7 @@ import { withProviderSyncing } from "../lib/store";
 import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
 import { socialProviderCopy } from "../lib/social-provider-copy";
 import { usePostLoginAutoSync } from "../hooks/usePostLoginAutoSync";
+import { isDesktopProviderAuthAllowed } from "../lib/provider-auth-lifecycle";
 
 // =============================================================================
 // Diagnostic Panel
@@ -133,6 +134,7 @@ export function LinkedInSettingsSection({
 
   const handleAuthResult = useCallback(
     (loggedIn: boolean) => {
+      if (!isDesktopProviderAuthAllowed()) return;
       if (loggedIn) {
         const newState = { isAuthenticated: true, lastCheckedAt: Date.now() };
         setLiAuth(newState);
@@ -164,6 +166,7 @@ export function LinkedInSettingsSection({
       try {
         await showLiLogin();
       } catch (err) {
+        if (!isDesktopProviderAuthAllowed()) return;
         setActionError(err instanceof Error ? err.message : "Failed to open login window");
       }
     });
@@ -175,6 +178,7 @@ export function LinkedInSettingsSection({
       setActionError(null);
       try {
         const loggedIn = await checkLiAuth();
+        if (!isDesktopProviderAuthAllowed()) return;
         const newState = { isAuthenticated: loggedIn, lastCheckedAt: Date.now() };
         setLiAuth(newState);
         storeLiAuthState(newState);
@@ -183,9 +187,10 @@ export function LinkedInSettingsSection({
           setActionError("Not logged in. Please log in through the LinkedIn window first.");
         }
       } catch (err) {
+        if (!isDesktopProviderAuthAllowed()) return;
         setActionError(err instanceof Error ? err.message : "Auth check failed");
       } finally {
-        setChecking(false);
+        if (isDesktopProviderAuthAllowed()) setChecking(false);
       }
     });
   }, [confirm, setLiAuth]);

@@ -37,8 +37,19 @@ import {
   rollbackOptimisticPatch,
   type OptimisticPatch,
 } from "@freed/shared/optimistic-state";
-import type { Account, BaseAppState, Friend, Person, ReachOutLog, RemoveFeedOptions, SampleLibraryData } from "@freed/shared";
-import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
+import type {
+  Account,
+  BaseAppState,
+  Friend,
+  Person,
+  ReachOutLog,
+  RemoveFeedOptions,
+  SampleLibraryData,
+} from "@freed/shared";
+import {
+  recordBugReportEvent,
+  recordRuntimeError,
+} from "@freed/ui/lib/bug-report";
 import {
   DEFAULT_FACTORY_RESET_PHASE_TIMEOUT_MS,
   waitForFactoryResetDrain,
@@ -98,17 +109,26 @@ import {
 } from "./automerge";
 import type { DocState } from "./automerge";
 import { pinReaderItemInPwa } from "./reader-cache";
+import {
+  assertPwaRuntimeCurrent,
+  capturePwaRuntimeLifecycle,
+  registerPwaFactoryResetQuiesceHandler,
+} from "./factory-reset-coordinator";
 
 let appInitializationPromise: Promise<void> | null = null;
 let documentSubscriptionTeardown: (() => void) | null = null;
 let startupMigrationsStopped = false;
+let storeQuiesced = false;
 const pendingStartupMigrations = new Set<Promise<void>>();
 
 function readStateIdTails(ids: readonly string[]): string[] {
   return ids.slice(0, 5).map((id) => `...${id.slice(-8)}`);
 }
 
-function recordReadStateInfo(message: string, detail: Record<string, unknown>): void {
+function recordReadStateInfo(
+  message: string,
+  detail: Record<string, unknown>,
+): void {
   recordBugReportEvent(
     "pwa:readState",
     "info",
@@ -138,7 +158,10 @@ function shallowEqualRecord(
   );
 }
 
-function optimisticBefore(state: AppState, patch: OptimisticPatch): OptimisticPatch {
+function optimisticBefore(
+  state: AppState,
+  patch: OptimisticPatch,
+): OptimisticPatch {
   const before: OptimisticPatch = {};
   for (const key of Object.keys(patch) as Array<keyof OptimisticPatch>) {
     before[key] = state[key] as never;
@@ -148,11 +171,20 @@ function optimisticBefore(state: AppState, patch: OptimisticPatch): OptimisticPa
 
 function optimisticMutationTestFailure(source: string): Error | null {
   if (import.meta.env.VITE_TEST_TAURI !== "1") return null;
-  const hook = (globalThis as unknown as {
-    __FREED_FAIL_OPTIMISTIC_MUTATION__?: (source: string) => string | false | null | undefined;
-  }).__FREED_FAIL_OPTIMISTIC_MUTATION__;
+  const hook = (
+    globalThis as unknown as {
+      __FREED_FAIL_OPTIMISTIC_MUTATION__?: (
+        source: string,
+      ) => string | false | null | undefined;
+    }
+  ).__FREED_FAIL_OPTIMISTIC_MUTATION__;
   const message = hook?.(source);
   return message ? new Error(message) : null;
+}
+
+function assertPwaStoreWritable(): void {
+  if (storeQuiesced) throw new Error("PWA store is quiesced for factory reset");
+  assertPwaRuntimeCurrent();
 }
 
 async function runOptimisticMutation(
@@ -163,6 +195,7 @@ async function runOptimisticMutation(
   task: () => Promise<void>,
   options: { recordFailure?: boolean; waitForPersistence?: boolean } = {},
 ): Promise<void> {
+  assertPwaStoreWritable();
   const projected = project(getState());
   if (!projected) {
     if (options.waitForPersistence === false) {
@@ -170,7 +203,12 @@ async function runOptimisticMutation(
         if (options.recordFailure !== false) {
           const detail = error instanceof Error ? error.message : String(error);
           recordRuntimeError({ source, error, fatal: false });
-          recordBugReportEvent(source, "error", "Optimistic mutation failed", detail);
+          recordBugReportEvent(
+            source,
+            "error",
+            "Optimistic mutation failed",
+            detail,
+          );
         }
       });
       return;
@@ -198,7 +236,12 @@ async function runOptimisticMutation(
       if (options.recordFailure !== false) {
         const detail = error instanceof Error ? error.message : String(error);
         recordRuntimeError({ source, error, fatal: false });
-        recordBugReportEvent(source, "error", "Optimistic mutation failed", detail);
+        recordBugReportEvent(
+          source,
+          "error",
+          "Optimistic mutation failed",
+          detail,
+        );
       }
       throw error;
     }
@@ -217,14 +260,21 @@ async function pruneConnectionPersonIfNeeded(
   ignoredAccountIds: string[] = [],
 ): Promise<void> {
   const state = getState();
-  if (!isPrunableConnectionPerson(state.persons, state.accounts, personId, ignoredAccountIds)) {
+  if (
+    !isPrunableConnectionPerson(
+      state.persons,
+      state.accounts,
+      personId,
+      ignoredAccountIds,
+    )
+  ) {
     return;
   }
   await docRemovePerson(personId!);
 }
 
 async function runStartupMigrations(archivePruneDays: number): Promise<void> {
-  if (startupMigrationsStopped) return;
+  if (startupMigrationsStopped || storeQuiesced) return;
   try {
     if (archivePruneDays > 0 && !startupMigrationsStopped) {
       await docPruneArchivedItems(archivePruneDays * 24 * 60 * 60 * 1000);
@@ -240,7 +290,8 @@ async function runStartupMigrations(archivePruneDays: number): Promise<void> {
         startupMigrationsStopped ||
         summary.updated === 0 ||
         summary.remaining === 0
-      ) break;
+      )
+        break;
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
   } catch {
@@ -249,7 +300,7 @@ async function runStartupMigrations(archivePruneDays: number): Promise<void> {
 }
 
 function startStartupMigrations(archivePruneDays: number): void {
-  if (startupMigrationsStopped) return;
+  if (startupMigrationsStopped || storeQuiesced) return;
   const migration = runStartupMigrations(archivePruneDays);
   pendingStartupMigrations.add(migration);
   void migration.finally(() => {
@@ -259,13 +310,24 @@ function startStartupMigrations(archivePruneDays: number): void {
 
 /** Stop new startup maintenance and drain work already touching the local document. */
 export async function quiescePwaStartupMigrations(): Promise<void> {
-  startupMigrationsStopped = true;
+  stopPwaStoreForFactoryReset();
   await waitForFactoryResetDrain(
     () => [...pendingStartupMigrations],
     "PWA startup migrations",
     DEFAULT_FACTORY_RESET_PHASE_TIMEOUT_MS,
   );
+  if (appInitializationPromise)
+    await Promise.allSettled([appInitializationPromise]);
 }
+
+function stopPwaStoreForFactoryReset(): void {
+  storeQuiesced = true;
+  startupMigrationsStopped = true;
+  documentSubscriptionTeardown?.();
+  documentSubscriptionTeardown = null;
+}
+
+registerPwaFactoryResetQuiesceHandler("store", stopPwaStoreForFactoryReset, 20);
 
 function hasStoredCloudSyncCredentials(): boolean {
   try {
@@ -315,25 +377,40 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Initialize from Automerge worker
   initialize: () => {
+    if (storeQuiesced)
+      return Promise.reject(
+        new Error("PWA store is quiesced for factory reset"),
+      );
+    assertPwaRuntimeCurrent();
     if (get().isInitialized) return Promise.resolve();
     if (appInitializationPromise) return appInitializationPromise;
 
     appInitializationPromise = (async () => {
+      const runtimeLifecycle = capturePwaRuntimeLifecycle();
       try {
         set({ isLoading: true });
         const state = await initDoc();
+        runtimeLifecycle.assertCurrent();
+        if (storeQuiesced)
+          throw new Error("PWA store is quiesced for factory reset");
         migrateLegacyDeviceDisplayPreferences(state.preferences.display);
         migrateLegacyDeviceAIPreferences(state.preferences.ai);
         migrateLegacyDeviceGraphLayout(state.persons, state.accounts);
-        pruneDeviceGraphLayout(state.persons, state.accounts);
 
         // Subscribe to future changes before flipping isInitialized so background
-        // mutations (prune, sync merges) propagate to the UI immediately.
+        // mutations and sync merges propagate to the UI immediately.
         // Reuse count map references when values are unchanged to avoid
         // re-rendering sidebar selectors on unrelated mutations.
         documentSubscriptionTeardown?.();
-        documentSubscriptionTeardown = subscribe((next: DocState) => {
-          pruneDeviceGraphLayout(next.persons, next.accounts);
+        documentSubscriptionTeardown = subscribe((next: DocState, event) => {
+          if (storeQuiesced || !runtimeLifecycle.isCurrent()) return;
+          if (
+            event.mutation === "MERGE_DOC" ||
+            event.mutation === "REMOVE_PERSON" ||
+            event.mutation === "REMOVE_ACCOUNT"
+          ) {
+            pruneDeviceGraphLayout(next.persons, next.accounts);
+          }
           const prev = get();
           const merged = {
             ...next,
@@ -342,9 +419,19 @@ export const useAppStore = create<AppState>((set, get) => ({
             merged.feedUnreadCounts = prev.feedUnreadCounts;
           if (shallowEqualRecord(next.feedTotalCounts, prev.feedTotalCounts))
             merged.feedTotalCounts = prev.feedTotalCounts;
-          if (shallowEqualRecord(next.unreadCountByPlatform, prev.unreadCountByPlatform))
+          if (
+            shallowEqualRecord(
+              next.unreadCountByPlatform,
+              prev.unreadCountByPlatform,
+            )
+          )
             merged.unreadCountByPlatform = prev.unreadCountByPlatform;
-          if (shallowEqualRecord(next.itemCountByPlatform, prev.itemCountByPlatform))
+          if (
+            shallowEqualRecord(
+              next.itemCountByPlatform,
+              prev.itemCountByPlatform,
+            )
+          )
             merged.itemCountByPlatform = prev.itemCountByPlatform;
           set(merged);
         });
@@ -366,9 +453,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       } catch (error) {
         recordRuntimeError({ source: "pwa:initialize", error, fatal: false });
-        recordBugReportEvent("pwa:initialize", "error", "Initialization failed");
+        recordBugReportEvent(
+          "pwa:initialize",
+          "error",
+          "Initialization failed",
+        );
         set({
-          error: error instanceof Error ? error.message : "Failed to initialize",
+          error:
+            error instanceof Error ? error.message : "Failed to initialize",
           isLoading: false,
         });
       }
@@ -473,7 +565,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     if (shouldPin) {
       void pinReaderItemInPwa(item).catch((error) => {
-        recordRuntimeError({ source: "pwa:pinReaderItem", error, fatal: false });
+        recordRuntimeError({
+          source: "pwa:pinReaderItem",
+          error,
+          fatal: false,
+        });
       });
     }
   },
@@ -546,8 +642,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     await docAddSampleLibraryData({
       feeds: data.feeds,
       items: data.items,
-      persons: data.friends.map((friend) => personFromLegacyFriend(friend as Friend)),
-      accounts: data.friends.flatMap((friend) => accountsFromLegacyFriend(friend as Friend)),
+      persons: data.friends.map((friend) =>
+        personFromLegacyFriend(friend as Friend),
+      ),
+      accounts: data.friends.flatMap((friend) =>
+        accountsFromLegacyFriend(friend as Friend),
+      ),
     });
   },
 
@@ -584,12 +684,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updatePerson: async (id: string, updates: Partial<Person>) => {
+    assertPwaStoreWritable();
     const localGraphUpdate = getDeviceLocalGraphPositionUpdates(updates);
     if (
-      Object.keys(localGraphUpdate).length > 0
-      && !applyDevicePersonGraphPositionUpdate(id, localGraphUpdate)
+      Object.keys(localGraphUpdate).length > 0 &&
+      !applyDevicePersonGraphPositionUpdate(id, localGraphUpdate)
     ) {
-      throw new Error("Freed could not save this graph position on this device.");
+      throw new Error(
+        "Freed could not save this graph position on this device.",
+      );
     }
     const syncedUpdates = stripDeviceLocalGraphPositionUpdates(updates);
     if (Object.keys(syncedUpdates).length === 0) return;
@@ -629,10 +732,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     await pruneConnectionPersonIfNeeded(get, previousPersonId, [accountId]);
   },
 
-  createConnectionPersonFromAccounts: async (accountIds: string[], personOverride?: Person) => {
-    const person = buildConnectionPersonDraftFromAccounts(get().accounts, accountIds, Date.now(), personOverride);
+  createConnectionPersonFromAccounts: async (
+    accountIds: string[],
+    personOverride?: Person,
+  ) => {
+    const person = buildConnectionPersonDraftFromAccounts(
+      get().accounts,
+      accountIds,
+      Date.now(),
+      personOverride,
+    );
     if (!person) {
-      throw new Error("Connection person requires at least one social account with a likely human name.");
+      throw new Error(
+        "Connection person requires at least one social account with a likely human name.",
+      );
     }
     if (get().persons[person.id]) {
       await docUpdatePerson(person.id, person);
@@ -661,15 +774,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   addFriends: async (friends: Friend[]) => {
-    const persons = friends.map((friend) => personFromLegacyFriend(friend as Friend));
+    const persons = friends.map((friend) =>
+      personFromLegacyFriend(friend as Friend),
+    );
     await docAddPersons(persons);
-    const accounts = friends.flatMap((friend) => accountsFromLegacyFriend(friend as Friend));
+    const accounts = friends.flatMap((friend) =>
+      accountsFromLegacyFriend(friend as Friend),
+    );
     if (accounts.length > 0) {
       await docAddAccounts(accounts);
     }
   },
 
   updateFriend: async (id: string, updates: Partial<Friend>) => {
+    assertPwaStoreWritable();
     const current = get().friends[id];
     if (!current) {
       await docUpdatePerson(id, updates);
@@ -678,17 +796,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     const nextFriend = {
       ...current,
       ...updates,
-      sources: "sources" in updates ? ((updates as Partial<Friend>).sources ?? []) : current.sources,
-      contact: "contact" in updates ? (updates as Partial<Friend>).contact : current.contact,
+      sources:
+        "sources" in updates
+          ? ((updates as Partial<Friend>).sources ?? [])
+          : current.sources,
+      contact:
+        "contact" in updates
+          ? (updates as Partial<Friend>).contact
+          : current.contact,
     } as Friend;
     await docUpdatePerson(id, personFromLegacyFriend(nextFriend));
-    const existingAccounts = Object.values(get().accounts).filter((account) => account.personId === id);
-    const existingAccountIds = new Set(existingAccounts.map((account) => account.id));
+    const existingAccounts = Object.values(get().accounts).filter(
+      (account) => account.personId === id,
+    );
+    const existingAccountIds = new Set(
+      existingAccounts.map((account) => account.id),
+    );
     const graphLayoutBeforeReplacement = getDeviceGraphLayout();
-    await Promise.all(existingAccounts.map((account) => docRemoveAccount(account.id)));
+    await Promise.all(
+      existingAccounts.map((account) => docRemoveAccount(account.id)),
+    );
     const nextAccounts = accountsFromLegacyFriend(nextFriend);
     if (nextAccounts.length > 0) {
       await docAddAccounts(nextAccounts);
+      assertPwaStoreWritable();
       restoreReplacedDeviceAccountGraphPositions(
         nextAccounts
           .map((account) => account.id)
@@ -711,12 +842,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateAccount: async (id: string, updates: Partial<Account>) => {
+    assertPwaStoreWritable();
     const localGraphUpdate = getDeviceLocalGraphPositionUpdates(updates);
     if (
-      Object.keys(localGraphUpdate).length > 0
-      && !applyDeviceAccountGraphPositionUpdate(id, localGraphUpdate)
+      Object.keys(localGraphUpdate).length > 0 &&
+      !applyDeviceAccountGraphPositionUpdate(id, localGraphUpdate)
     ) {
-      throw new Error("Freed could not save this graph position on this device.");
+      throw new Error(
+        "Freed could not save this graph position on this device.",
+      );
     }
     const syncedUpdates = stripDeviceLocalGraphPositionUpdates(updates);
     if (Object.keys(syncedUpdates).length === 0) return;
@@ -737,9 +871,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Preference actions
   updatePreferences: async (update) => {
+    assertPwaStoreWritable();
     const localUpdate = getDeviceLocalPreferenceUpdates(update);
-    if (localUpdate.display && !setDeviceDisplayPreferences(localUpdate.display)) {
-      throw new Error("Freed could not save the display settings on this device.");
+    if (
+      localUpdate.display &&
+      !setDeviceDisplayPreferences(localUpdate.display)
+    ) {
+      throw new Error(
+        "Freed could not save the display settings on this device.",
+      );
     }
     if (localUpdate.ai && !setDeviceAIPreferences(localUpdate.ai)) {
       throw new Error("Freed could not save the AI settings on this device.");
@@ -761,9 +901,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   // UI actions
   setFilter: (filter) => set({ activeFilter: filter }),
   setSelectedItem: (id) => set({ selectedItemId: id }),
-  setSelectedPerson: (id) => set({ selectedPersonId: id, selectedAccountId: null, selectedFriendId: id }),
-  setSelectedAccount: (id) => set({ selectedPersonId: null, selectedAccountId: id, selectedFriendId: null }),
-  setSelectedFriend: (id) => set({ selectedPersonId: id, selectedAccountId: null, selectedFriendId: id }),
+  setSelectedPerson: (id) =>
+    set({
+      selectedPersonId: id,
+      selectedAccountId: null,
+      selectedFriendId: id,
+    }),
+  setSelectedAccount: (id) =>
+    set({
+      selectedPersonId: null,
+      selectedAccountId: id,
+      selectedFriendId: null,
+    }),
+  setSelectedFriend: (id) =>
+    set({
+      selectedPersonId: id,
+      selectedAccountId: null,
+      selectedFriendId: id,
+    }),
   setLoading: (isLoading) => set({ isLoading }),
   setSyncing: (isSyncing) => set({ isSyncing }),
   setError: (error) => set({ error }),

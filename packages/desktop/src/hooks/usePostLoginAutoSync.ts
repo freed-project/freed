@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { canUseTauriEvents } from "../lib/tauri-runtime";
+import {
+  isDesktopProviderAuthAllowed,
+  registerDesktopProviderAuthQuiesceHandler,
+} from "../lib/provider-auth-lifecycle";
 
 type PostLoginSyncState = "idle" | "starting" | "healthy" | "failed";
 
@@ -74,10 +78,22 @@ export function usePostLoginAutoSync({
     setStatus("idle");
   }, [clearCloseTimer]);
 
+  const quiesce = useCallback(() => {
+    clearCloseTimer();
+    pendingRef.current = false;
+    statusRef.current = "idle";
+  }, [clearCloseTimer]);
+
+  useEffect(
+    () => registerDesktopProviderAuthQuiesceHandler(quiesce),
+    [quiesce],
+  );
+
   const scheduleLoginClose = useCallback(() => {
     clearCloseTimer();
     closeTimerRef.current = window.setTimeout(() => {
       closeTimerRef.current = null;
+      if (!isDesktopProviderAuthAllowed()) return;
       if (!pendingRef.current || !isAuthenticatedRef.current()) return;
       pendingRef.current = false;
       statusRef.current = "idle";
@@ -95,6 +111,7 @@ export function usePostLoginAutoSync({
     if (!canUseTauriEvents()) return;
 
     const unlisten = listen<{ loggedIn: boolean }>(authEvent, (event) => {
+      if (!isDesktopProviderAuthAllowed()) return;
       const loggedIn = event.payload.loggedIn;
       onAuthResultRef.current(loggedIn);
       clearCloseTimer();
@@ -112,10 +129,12 @@ export function usePostLoginAutoSync({
       setPending(true);
       setStatus("starting");
       void runSyncRef.current("post_login").then(() => {
+        if (!isDesktopProviderAuthAllowed()) return;
         if (!pendingRef.current || statusRef.current === "healthy") return;
         statusRef.current = "failed";
         setStatus("failed");
       }).catch(() => {
+        if (!isDesktopProviderAuthAllowed()) return;
         if (!pendingRef.current) return;
         statusRef.current = "failed";
         setStatus("failed");
@@ -130,6 +149,7 @@ export function usePostLoginAutoSync({
     if (!canUseTauriEvents()) return;
 
     const unlisten = listen<{ closed: boolean }>(loginWindowClosedEvent, (event) => {
+      if (!isDesktopProviderAuthAllowed()) return;
       if (!event.payload.closed) return;
       cancel();
     });
@@ -142,6 +162,7 @@ export function usePostLoginAutoSync({
     if (!canUseTauriEvents()) return;
 
     const unlisten = listen(scrapeHealthyEvent, () => {
+      if (!isDesktopProviderAuthAllowed()) return;
       if (!pendingRef.current || !isAuthenticatedRef.current()) return;
       statusRef.current = "healthy";
       setStatus("healthy");
@@ -156,6 +177,7 @@ export function usePostLoginAutoSync({
     if (!canUseTauriEvents()) return;
 
     const unlisten = listen(scrapeStartFailedEvent, () => {
+      if (!isDesktopProviderAuthAllowed()) return;
       if (!pendingRef.current) return;
       clearCloseTimer();
       statusRef.current = "failed";

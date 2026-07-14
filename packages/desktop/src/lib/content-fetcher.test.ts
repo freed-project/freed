@@ -67,6 +67,7 @@ function makeTextPostItem(): FeedItem {
 
 async function loadContentFetcherModule(options: {
   cacheSetImpl?: () => Promise<void>;
+  isFactoryResetInProgress?: () => boolean;
 } = {}) {
   vi.resetModules();
 
@@ -143,6 +144,15 @@ async function loadContentFetcherModule(options: {
   vi.doMock("@freed/ui/lib/debug-store", () => ({
     addDebugEvent: vi.fn(),
   }));
+  vi.doMock("@freed/ui/lib/factory-reset", async () => {
+    const actual = await vi.importActual<typeof import("@freed/ui/lib/factory-reset")>(
+      "@freed/ui/lib/factory-reset",
+    );
+    return {
+      ...actual,
+      isFactoryResetInProgress: options.isFactoryResetInProgress ?? (() => false),
+    };
+  });
   vi.doMock("./logger.js", () => ({
     log: {
       info: vi.fn(),
@@ -168,16 +178,20 @@ async function loadContentFetcherModuleWithAi({
   provider = "openai",
   summarizeImpl,
   invokeImpl,
+  getApiKeyImpl,
+  isFactoryResetInProgress,
 }: {
   autoSummarize: boolean;
   extractTopics: boolean;
-  provider?: "integrated" | "openai";
+  provider?: "integrated" | "openai" | "anthropic" | "gemini";
   summarizeImpl?: () => Promise<{
     summary: string;
     topics: string[];
     sentiment: "positive" | "negative" | "neutral" | "mixed";
   } | null>;
   invokeImpl?: (...args: unknown[]) => Promise<unknown>;
+  getApiKeyImpl?: () => Promise<string | null>;
+  isFactoryResetInProgress?: () => boolean;
 }) {
   vi.resetModules();
 
@@ -211,7 +225,7 @@ async function loadContentFetcherModuleWithAi({
     topics: ["ai", "reading"],
     sentiment: "neutral" as const,
   })));
-  const mockGetApiKey = vi.fn(async () => "test-key");
+  const mockGetApiKey = vi.fn(getApiKeyImpl ?? (async () => "test-key"));
 
   vi.doMock("@tauri-apps/api/core", () => ({ invoke: mockInvoke }));
   vi.doMock("@freed/capture-save/browser", () => ({
@@ -233,7 +247,7 @@ async function loadContentFetcherModuleWithAi({
             autoSummarize,
             extractTopics,
             provider,
-            model: provider === "openai" ? "gpt-4o-mini" : "",
+            model: provider === "integrated" ? "" : "test-model",
           },
         },
       }),
@@ -243,7 +257,7 @@ async function loadContentFetcherModuleWithAi({
     DEFAULT_OLLAMA_URL: "http://localhost:11434",
     getDeviceAIPreferences: () => ({
       provider,
-      model: provider === "openai" ? "gpt-4o-mini" : "",
+      model: provider === "integrated" ? "" : "test-model",
       ollamaUrl: "http://localhost:11434",
     }),
   }));
@@ -261,6 +275,15 @@ async function loadContentFetcherModuleWithAi({
   vi.doMock("@freed/ui/lib/debug-store", () => ({
     addDebugEvent: vi.fn(),
   }));
+  vi.doMock("@freed/ui/lib/factory-reset", async () => {
+    const actual = await vi.importActual<typeof import("@freed/ui/lib/factory-reset")>(
+      "@freed/ui/lib/factory-reset",
+    );
+    return {
+      ...actual,
+      isFactoryResetInProgress: isFactoryResetInProgress ?? (() => false),
+    };
+  });
   vi.doMock("./logger.js", () => ({
     log: {
       info: vi.fn(),
@@ -322,6 +345,90 @@ describe("content fetcher", () => {
     expect(writeSettled.mock.invocationCallOrder[0]).toBeLessThan(
       cleanupStarted.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
     );
+  });
+
+  it.each(["openai", "anthropic", "gemini"] as const)(
+    "waits for an issued article fetch without starting %s after reset",
+    async (provider) => {
+      vi.useFakeTimers();
+      let releaseFetch!: (html: string) => void;
+      const fetchGate = new Promise<string>((resolve) => {
+        releaseFetch = resolve;
+      });
+      let resetActive = false;
+      const {
+        mod,
+        subscriberRef,
+        mockInvoke,
+        mockCacheSet,
+        mockDocUpdateFeedItem,
+        mockSummarize,
+        mockGetApiKey,
+      } = await loadContentFetcherModuleWithAi({
+        autoSummarize: true,
+        extractTopics: true,
+        provider,
+        invokeImpl: () => fetchGate,
+        isFactoryResetInProgress: () => resetActive,
+      });
+
+      mod.start();
+      subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mockInvoke).toHaveBeenCalledOnce();
+
+      resetActive = true;
+      const resetFinished = vi.fn();
+      const draining = mod.stopAndDrain().then(resetFinished);
+      await Promise.resolve();
+      expect(resetFinished).not.toHaveBeenCalled();
+
+      releaseFetch(SAMPLE_HTML);
+      await draining;
+
+      expect(mockCacheSet).not.toHaveBeenCalled();
+      expect(mockGetApiKey).not.toHaveBeenCalled();
+      expect(mockSummarize).not.toHaveBeenCalled();
+      expect(mockDocUpdateFeedItem).not.toHaveBeenCalled();
+      expect(resetFinished).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("checks reset again after credential lookup before starting summarization", async () => {
+    vi.useFakeTimers();
+    let releaseApiKey!: (apiKey: string | null) => void;
+    const apiKeyGate = new Promise<string | null>((resolve) => {
+      releaseApiKey = resolve;
+    });
+    let resetActive = false;
+    const {
+      mod,
+      subscriberRef,
+      mockCacheSet,
+      mockDocUpdateFeedItem,
+      mockSummarize,
+      mockGetApiKey,
+    } = await loadContentFetcherModuleWithAi({
+      autoSummarize: true,
+      extractTopics: true,
+      provider: "openai",
+      getApiKeyImpl: () => apiKeyGate,
+      isFactoryResetInProgress: () => resetActive,
+    });
+
+    mod.start();
+    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockCacheSet).toHaveBeenCalledOnce();
+    expect(mockGetApiKey).toHaveBeenCalledOnce();
+
+    resetActive = true;
+    const draining = mod.stopAndDrain();
+    releaseApiKey("test-key");
+    await draining;
+
+    expect(mockSummarize).not.toHaveBeenCalled();
+    expect(mockDocUpdateFeedItem).not.toHaveBeenCalled();
   });
 
   it("keeps full HTML in the local cache but syncs only a compact excerpt", async () => {

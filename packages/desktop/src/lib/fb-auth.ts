@@ -7,11 +7,18 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { selectPlatformUA, clearPlatformUA } from "./user-agent";
 import { log } from "./logger";
-import { safeUnlisten } from "./safe-unlisten";
-import { clearTransientLastCaptureError } from "./social-auth-transient-errors";
+import {
+  clearTransientLastCaptureError,
+  persistDisconnectedSocialAuthStateForFactoryReset,
+  readStoredSocialAuthState,
+} from "./social-auth-transient-errors";
+import {
+  isDesktopProviderAuthAllowed,
+  requestDesktopProviderAuthCheck,
+  runDesktopProviderAuthRequest,
+} from "./provider-auth-lifecycle";
 
 export interface FbAuthState {
   isAuthenticated: boolean;
@@ -34,17 +41,20 @@ const FB_AUTH_KEY = "fb_auth_state";
  * in, Freed marks the session connected and the user closes the window.
  */
 export async function showFbLogin(): Promise<void> {
-  // Generate and persist a fresh session UA at connect time.
-  const userAgent = selectPlatformUA("facebook");
-  log.info("[FB] show login requested");
-  try {
-    await invoke("fb_show_login", { userAgent });
-    log.info("[FB] show login IPC completed");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    log.error(`[FB] show login IPC failed: ${message}`);
-    throw error;
-  }
+  if (!isDesktopProviderAuthAllowed()) return;
+  await runDesktopProviderAuthRequest(async () => {
+    // Generate and persist a fresh session UA at connect time.
+    const userAgent = selectPlatformUA("facebook");
+    log.info("[FB] show login requested");
+    try {
+      await invoke("fb_show_login", { userAgent });
+      log.info("[FB] show login IPC completed");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log.error(`[FB] show login IPC failed: ${message}`);
+      throw error;
+    }
+  });
 }
 
 /**
@@ -61,26 +71,12 @@ export async function hideFbLogin(): Promise<void> {
  * result event arrives.
  */
 export async function checkFbAuth(): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    let unlisten: UnlistenFn | null = null;
-    const timeout = setTimeout(() => {
-      safeUnlisten(unlisten, "fb-auth-result:timeout");
-      resolve(false);
-    }, 15_000);
-
-    listen<{ loggedIn: boolean }>("fb-auth-result", (event) => {
-      clearTimeout(timeout);
-      safeUnlisten(unlisten, "fb-auth-result");
-      resolve(event.payload.loggedIn);
-    }).then((fn) => {
-      unlisten = fn;
-    });
-
-    invoke("fb_check_auth").catch(() => {
-      clearTimeout(timeout);
-      safeUnlisten(unlisten, "fb-auth-result:error");
-      resolve(false);
-    });
+  if (!isDesktopProviderAuthAllowed()) return false;
+  return requestDesktopProviderAuthCheck<{ loggedIn: boolean }>({
+    eventName: "fb-auth-result",
+    command: "fb_check_auth",
+    timeoutMs: 15_000,
+    isLoggedIn: (payload) => payload.loggedIn,
   });
 }
 
@@ -88,15 +84,22 @@ export async function checkFbAuth(): Promise<boolean> {
  * Disconnect Facebook by clearing all WebView browsing data.
  */
 export async function disconnectFb(): Promise<void> {
-  await invoke("fb_disconnect");
   localStorage.removeItem(FB_AUTH_KEY);
+  await invoke("fb_disconnect");
   clearPlatformUA("facebook");
+}
+
+/** Clear the native session while preserving request history, pause state, and platform identity. */
+export async function disconnectFbForFactoryReset(): Promise<void> {
+  persistDisconnectedSocialAuthStateForFactoryReset(FB_AUTH_KEY, "Facebook");
+  await invoke("fb_disconnect");
 }
 
 /**
  * Persist auth state to localStorage for fast startup.
  */
 export function storeFbAuthState(state: FbAuthState): void {
+  if (!isDesktopProviderAuthAllowed()) return;
   localStorage.setItem(FB_AUTH_KEY, JSON.stringify(clearTransientLastCaptureError(state)));
 }
 
@@ -105,20 +108,8 @@ export function storeFbAuthState(state: FbAuthState): void {
  * the real check happens via checkFbAuth().
  */
 export function initFbAuth(): FbAuthState {
-  const stored = localStorage.getItem(FB_AUTH_KEY);
-  if (!stored) return { isAuthenticated: false };
-  try {
-    const parsed = JSON.parse(stored) as FbAuthState;
-    return clearTransientLastCaptureError({
-      isAuthenticated: !!parsed.isAuthenticated,
-      lastCheckedAt: parsed.lastCheckedAt,
-      lastCapturedAt: parsed.lastCapturedAt,
-      lastCaptureError: parsed.lastCaptureError,
-      pausedUntil: parsed.pausedUntil,
-      pauseReason: parsed.pauseReason,
-      pauseLevel: parsed.pauseLevel,
-    });
-  } catch {
-    return { isAuthenticated: false };
-  }
+  const stored = readStoredSocialAuthState<FbAuthState>(FB_AUTH_KEY);
+  return stored.status === "supported"
+    ? stored.state
+    : { isAuthenticated: false };
 }

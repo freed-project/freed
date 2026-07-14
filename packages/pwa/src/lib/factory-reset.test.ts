@@ -31,6 +31,18 @@ afterEach(() => {
 });
 
 describe("shared factory reset phase bounds", () => {
+  it.each([0, Number.POSITIVE_INFINITY, 51])(
+    "rejects an invalid tracked work timeout of %s ms before reset begins",
+    async (trackedWorkDrainTimeoutMs) => {
+      await expect(runFactoryResetOperations(operations({
+        phaseTimeoutMs: 50,
+        trackedWorkDrainTimeoutMs,
+      }))).rejects.toThrow(
+        "Factory reset tracked work timeout must be greater than zero and no longer than the phase timeout.",
+      );
+    },
+  );
+
   it.each([
     {
       label: "quiesce local writers",
@@ -93,5 +105,21 @@ describe("shared factory reset phase bounds", () => {
 
     expect(clearLocalData).toHaveBeenCalledOnce();
     expect(clearDocument).toHaveBeenCalledOnce();
+  });
+
+  it("bounds tracked device-local work before the outer phase deadline", async () => {
+    vi.useFakeTimers();
+    trackFactoryResetSensitiveOperation(never());
+
+    const reset = runFactoryResetOperations(operations({
+      phaseTimeoutMs: 100,
+      trackedWorkDrainTimeoutMs: 40,
+    }));
+    const rejection = expect(reset).rejects.toThrow(
+      "Device-local cache work did not stop within 40 ms.",
+    );
+
+    await vi.advanceTimersByTimeAsync(40);
+    await rejection;
   });
 });

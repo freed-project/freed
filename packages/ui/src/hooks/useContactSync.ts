@@ -1,8 +1,10 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import {
   CONTACT_SYNC_STORAGE_KEY,
-  createEmptyContactSyncState,
+  CONTACT_SYNC_STATE_VERSION,
+  createContactSyncStateForManualRepair,
   parseContactSyncState,
+  serializeContactSyncState,
   type ContactMatch,
   type ContactSyncState,
   type FeedItem,
@@ -21,6 +23,15 @@ import {
   startBackgroundActivity,
   updateBackgroundActivity,
 } from "../lib/background-activity-store.js";
+import {
+  writeVersionedLocalStorage,
+  type VersionedLocalStorageCodec,
+} from "../lib/versioned-local-storage.js";
+import {
+  captureFactoryResetWriteEpoch,
+  isFactoryResetWriteAllowed,
+  trackFactoryResetSensitiveOperation,
+} from "../lib/factory-reset.js";
 
 const SYNC_INTERVAL_MS = 15 * 60 * 1000;
 const CONTACT_SYNC_TIMEOUT_MS = 60 * 1000;
@@ -43,34 +54,79 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   }
 }
 
-function loadSyncState(): ContactSyncState {
+interface LoadedContactSyncState {
+  state: ContactSyncState;
+  requiresManualRepair: boolean;
+}
+
+const CONTACT_SYNC_STORAGE_CODEC: VersionedLocalStorageCodec<ContactSyncState> = {
+  version: CONTACT_SYNC_STATE_VERSION,
+  decode(value) {
+    const parsed = parseContactSyncState(JSON.stringify(value));
+    return parsed.status === "valid" && parsed.format === "current"
+      ? parsed.state
+      : null;
+  },
+  encode(value) {
+    const encoded = JSON.parse(serializeContactSyncState(value)) as Record<string, unknown>;
+    delete encoded.version;
+    return encoded;
+  },
+};
+
+function loadSyncState(): LoadedContactSyncState {
   try {
     const parsed = parseContactSyncState(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY));
+    if (parsed.status === "corrupt" || parsed.status === "unsupported") {
+      return { state: parsed.state, requiresManualRepair: true };
+    }
+    const state = parsed.state;
     if (
-      parsed.syncStatus === "syncing" &&
-      (!parsed.syncStartedAt || Date.now() - parsed.syncStartedAt > STALE_SYNCING_MS)
+      state.syncStatus === "syncing" &&
+      (!state.syncStartedAt || Date.now() - state.syncStartedAt > STALE_SYNCING_MS)
     ) {
       return {
-        ...parsed,
-        syncStatus: parsed.lastSyncedAt ? "idle" : "error",
-        syncStartedAt: null,
-        lastErrorCode: parsed.lastSyncedAt ? undefined : "network",
-        lastErrorMessage: parsed.lastSyncedAt
-          ? undefined
-          : "Google Contacts sync did not finish. Try syncing again.",
+        state: {
+          ...state,
+          syncStatus: state.lastSyncedAt ? "idle" : "error",
+          syncStartedAt: null,
+          lastErrorCode: state.lastSyncedAt ? undefined : "network",
+          lastErrorMessage: state.lastSyncedAt
+            ? undefined
+            : "Google Contacts sync did not finish. Try syncing again.",
+        },
+        requiresManualRepair: false,
       };
     }
-    return parsed;
+    return { state, requiresManualRepair: false };
   } catch {
-    return createEmptyContactSyncState();
+    return {
+      state: createContactSyncStateForManualRepair("unavailable"),
+      requiresManualRepair: true,
+    };
   }
 }
 
-function saveSyncState(state: ContactSyncState): void {
+function saveSyncState(
+  state: ContactSyncState,
+  options: { allowLedgerRepair?: boolean } = {},
+): boolean {
+  if (typeof window === "undefined") return false;
   try {
-    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, JSON.stringify(state));
+    const existing = parseContactSyncState(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY));
+    if (existing.status === "corrupt" || existing.status === "unsupported") {
+      if (!options.allowLedgerRepair) return false;
+      return writeVersionedLocalStorage(
+        CONTACT_SYNC_STORAGE_KEY,
+        CONTACT_SYNC_STORAGE_CODEC,
+        state,
+        { replaceUnsupportedVersion: true },
+      );
+    }
+    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, serializeContactSyncState(state));
+    return true;
   } catch {
-    // Ignore storage errors.
+    return false;
   }
 }
 
@@ -144,9 +200,11 @@ export function useContactSync() {
   accountsRef.current = accounts;
   itemsRef.current = items;
 
-  const [syncState, setSyncState] = useState<ContactSyncState>(() => loadSyncState());
+  const [loadedSyncState] = useState<LoadedContactSyncState>(() => loadSyncState());
+  const [syncState, setSyncState] = useState<ContactSyncState>(loadedSyncState.state);
   const syncStateRef = useRef(syncState);
   syncStateRef.current = syncState;
+  const ledgerRepairRequiredRef = useRef(loadedSyncState.requiresManualRepair);
   const matchesRef = useRef<Map<string, ContactMatch>>(new Map());
   const syncPromiseRef = useRef<Promise<ContactSyncState> | null>(null);
   const mountedAtRef = useRef(Date.now());
@@ -155,25 +213,66 @@ export function useContactSync() {
     setPendingMatchCount(syncState.pendingSuggestions.length);
   }, [setPendingMatchCount, syncState.pendingSuggestions.length]);
 
-  const commitSyncState = useCallback((nextState: ContactSyncState) => {
+  const commitSyncState = useCallback((
+    nextState: ContactSyncState,
+    options: { allowLedgerRepair?: boolean } = {},
+  ): boolean => {
+    if (ledgerRepairRequiredRef.current && !options.allowLedgerRepair) return false;
+    if (!saveSyncState(nextState, options)) {
+      const unavailableState = createContactSyncStateForManualRepair("unavailable");
+      ledgerRepairRequiredRef.current = true;
+      syncStateRef.current = unavailableState;
+      setSyncState(unavailableState);
+      return false;
+    }
+    ledgerRepairRequiredRef.current = false;
     syncStateRef.current = nextState;
     setSyncState(nextState);
-    saveSyncState(nextState);
+    return true;
   }, []);
 
   const runSync = useCallback((options: { force?: boolean } = {}) => {
     if (syncPromiseRef.current) return syncPromiseRef.current;
+    const resetEpoch = captureFactoryResetWriteEpoch();
+    if (resetEpoch === null) return Promise.resolve(syncStateRef.current);
 
     let syncPromise!: Promise<ContactSyncState>;
-    syncPromise = (async () => {
+    const operation = (async () => {
       const current = syncStateRef.current;
+      if (!isFactoryResetWriteAllowed(resetEpoch)) return current;
+      if (!options.force && ledgerRepairRequiredRef.current) return current;
+      if (!options.force) {
+        let persistedLedger: ReturnType<typeof parseContactSyncState> | null = null;
+        try {
+          persistedLedger = parseContactSyncState(
+            localStorage.getItem(CONTACT_SYNC_STORAGE_KEY),
+          );
+        } catch {
+          // The same fail-closed state below handles unavailable storage.
+        }
+        if (
+          persistedLedger === null
+          || persistedLedger.status === "corrupt"
+          || persistedLedger.status === "unsupported"
+        ) {
+          const repairState = persistedLedger?.state
+            ?? createContactSyncStateForManualRepair("unavailable");
+          ledgerRepairRequiredRef.current = true;
+          syncStateRef.current = repairState;
+          setSyncState(repairState);
+          return repairState;
+        }
+      }
+      const commitOptions = { allowLedgerRepair: options.force === true };
       const now = Date.now();
       if (!options.force && current.syncStatus === "syncing") {
         const nextState: ContactSyncState = current.lastSyncedAt
           ? { ...current, syncStatus: "idle", syncStartedAt: null }
           : withError(current, "network", "Google Contacts sync did not finish. Try syncing again.");
-        commitSyncState(nextState);
-        return nextState;
+        if (!isFactoryResetWriteAllowed(resetEpoch)) return current;
+        return commitSyncState(nextState, commitOptions)
+          ? nextState
+          : syncStateRef.current;
       }
 
       if (
@@ -196,41 +295,63 @@ export function useContactSync() {
       let token: string | null = null;
       if (contactsApi) {
         try {
+          if (!isFactoryResetWriteAllowed(resetEpoch)) return current;
           token = await withTimeout(
             Promise.resolve(contactsApi.getToken()),
             CONTACT_SYNC_TIMEOUT_MS,
             "Google Contacts token lookup",
           );
+          if (!isFactoryResetWriteAllowed(resetEpoch)) return current;
         } catch (error) {
+          if (!isFactoryResetWriteAllowed(resetEpoch)) return current;
           const message = error instanceof Error ? error.message : "Google Contacts token lookup failed.";
           const nextState = withError(current, "auth", message);
-          commitSyncState(nextState);
-          finishBackgroundActivity(activityId, "error", `Google Contacts token lookup failed: ${message}`);
-          return nextState;
+          const persisted = commitSyncState(nextState, commitOptions);
+          finishBackgroundActivity(
+            activityId,
+            "error",
+            persisted
+              ? `Google Contacts token lookup failed: ${message}`
+              : "Google Contacts sync state could not be saved.",
+          );
+          return persisted ? nextState : syncStateRef.current;
         }
       }
 
       if (!token) {
+        if (!isFactoryResetWriteAllowed(resetEpoch)) return current;
         const nextState = withError(current, "missing_token", "Reconnect Google to sync contacts.");
-        commitSyncState(nextState);
-        finishBackgroundActivity(activityId, "error", "Reconnect Google to sync contacts.");
-        return nextState;
+        const persisted = commitSyncState(nextState, commitOptions);
+        finishBackgroundActivity(
+          activityId,
+          "error",
+          persisted
+            ? "Reconnect Google to sync contacts."
+            : "Google Contacts sync state could not be saved.",
+        );
+        return persisted ? nextState : syncStateRef.current;
       }
 
-      commitSyncState({
+      if (!isFactoryResetWriteAllowed(resetEpoch)) return current;
+      const syncingPersisted = commitSyncState({
         ...current,
         authStatus: "connected",
         syncStatus: "syncing",
         syncStartedAt: now,
         lastErrorCode: undefined,
         lastErrorMessage: undefined,
-      });
+      }, commitOptions);
+      if (!syncingPersisted) {
+        finishBackgroundActivity(activityId, "error", "Google Contacts sync state could not be saved.");
+        return syncStateRef.current;
+      }
       updateBackgroundActivity(activityId, {
         message: "Fetching Google Contacts.",
         log: true,
       });
 
       try {
+        if (!isFactoryResetWriteAllowed(resetEpoch)) return current;
         const contactsPromise: Promise<GoogleContactsResult> = contactsApi?.fetchContacts
           ? contactsApi.fetchContacts(token, current.syncToken)
           : fetchGoogleContacts(token, current.syncToken);
@@ -239,6 +360,7 @@ export function useContactSync() {
           CONTACT_SYNC_TIMEOUT_MS,
           "Google Contacts sync",
         );
+        if (!isFactoryResetWriteAllowed(resetEpoch)) return current;
         const merged = mergeContactChanges(current.cachedContacts, result.contacts, result.deleted);
         const allMatches = matchContacts(
           merged,
@@ -267,7 +389,11 @@ export function useContactSync() {
           createdFriendCount: current.createdFriendCount,
         };
 
-        commitSyncState(nextState);
+        if (!isFactoryResetWriteAllowed(resetEpoch)) return current;
+        if (!commitSyncState(nextState, commitOptions)) {
+          finishBackgroundActivity(activityId, "error", "Google Contacts sync state could not be saved.");
+          return syncStateRef.current;
+        }
         finishBackgroundActivity(
           activityId,
           "success",
@@ -275,14 +401,22 @@ export function useContactSync() {
         );
         return nextState;
       } catch (error) {
+        if (!isFactoryResetWriteAllowed(resetEpoch)) return current;
         const message = error instanceof Error ? error.message : "Google Contacts sync failed.";
         const code = isAuthSyncError(error) ? "auth" : "network";
         const nextState = withError(syncStateRef.current, code, message);
-        commitSyncState(nextState);
-        finishBackgroundActivity(activityId, "error", `Google Contacts sync failed: ${message}`);
-        return nextState;
+        const persisted = commitSyncState(nextState, commitOptions);
+        finishBackgroundActivity(
+          activityId,
+          "error",
+          persisted
+            ? `Google Contacts sync failed: ${message}`
+            : "Google Contacts sync state could not be saved.",
+        );
+        return persisted ? nextState : syncStateRef.current;
       }
-    })().finally(() => {
+    })();
+    syncPromise = trackFactoryResetSensitiveOperation(operation).finally(() => {
       if (syncPromiseRef.current === syncPromise) {
         syncPromiseRef.current = null;
       }
@@ -311,6 +445,7 @@ export function useContactSync() {
   }, [commitSyncState, googleContacts, runSync]);
 
   const dismissSuggestion = useCallback((suggestionId: string) => {
+    if (ledgerRepairRequiredRef.current) return;
     const current = syncStateRef.current;
     const dismissedSuggestionIds = Array.from(new Set([...current.dismissedSuggestionIds, suggestionId]));
     commitSyncState({

@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import {
-  getWebsiteHostForChannel,
-  type ReleaseChannel,
-} from "@freed/shared";
+import { getWebsiteHostForChannel, type ReleaseChannel } from "@freed/shared";
 import { AppShell } from "@freed/ui/components/layout";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
 import { FeedView } from "@freed/ui/components/feed";
@@ -22,22 +19,22 @@ import {
   disconnect,
   onStatusChange,
   getStoredRelayUrl,
-  clearStoredRelayUrl,
+  clearStoredRelayUrlForFactoryReset,
   startCloudSync,
   stopCloudSync,
   getCloudProvider,
   getCloudToken,
-  clearCloudSync,
-  deleteCloudFile,
+  clearStoredCloudDataForFactoryReset,
 } from "./lib/sync";
-import { clearLocalDoc, getItemLegacyHtml } from "./lib/automerge";
+import {
+  clearLocalDocAfterPwaQuiesce,
+  getItemLegacyHtml,
+} from "./lib/automerge";
 import {
   applyPwaUpdate,
   checkForPwaUpdate,
   initPwaUpdater,
   onUpdateAvailable,
-  quiescePwaServiceWorkerCacheWrites,
-  resumePwaServiceWorkerCacheWrites,
 } from "./lib/pwa-updater";
 import { pickContactViaWebApi } from "./lib/contacts";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
@@ -55,7 +52,10 @@ import { PwaLegalSettingsSection } from "./components/PwaLegalSettingsSection";
 import { acceptPwaBundle, hasAcceptedPwaBundle } from "./lib/legal-consent";
 import { useBrowserNavigationHistory } from "./lib/navigation-history";
 import { pwaBugReporting } from "./lib/bug-report";
-import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
+import {
+  clearFatalRuntimeError,
+  useFatalRuntimeError,
+} from "@freed/ui/lib/bug-report";
 import {
   bootstrapReleaseChannel,
   buildPwaReleaseChannelUrl,
@@ -64,7 +64,6 @@ import {
 import { saveUrlInPwa } from "./lib/save-url";
 import {
   cacheArticleHtml,
-  clearArticleCacheStorage,
   getCachedArticleHtml,
 } from "@freed/ui/lib/article-cache";
 import { clearDeviceAIPreferences } from "@freed/ui/lib/device-ai-preferences";
@@ -73,14 +72,19 @@ import { clearDeviceGraphLayout } from "@freed/ui/lib/device-graph-layout";
 import { resetFeedCardDensity } from "@freed/ui/lib/feed-card-density";
 import { resetInterfaceZoom } from "@freed/ui/lib/interface-zoom";
 import {
+  beginFactoryResetBoundary,
+  clearFactoryResetCloudCleanupBarrier,
+  FactoryResetPhaseError,
+  hasFactoryResetCloudCleanupBarrier,
   runFactoryResetOperations,
   runFactoryResetWithRecovery,
 } from "@freed/ui/lib/factory-reset";
-import { clearGeocodingCache } from "@freed/ui/lib/geocoding-cache";
-import { resetReaderOfflineCacheMode } from "@freed/ui/lib/reader-cache-settings";
 import { resetThemePreference } from "@freed/ui/lib/theme";
 import { hydrateReaderItemInPwa, pinReaderItemInPwa } from "./lib/reader-cache";
-import { refreshSampleLibraryData, summarizeSampleData } from "@freed/ui/lib/sample-library-seed";
+import {
+  refreshSampleLibraryData,
+  summarizeSampleData,
+} from "@freed/ui/lib/sample-library-seed";
 import {
   clearInstallNoticeDismissal,
   dismissInstallNotice,
@@ -90,10 +94,14 @@ import {
 } from "./lib/pwa-install";
 import { openPwaUrl } from "./lib/youtube-handoff";
 import { clearPersistedWorkerDebugEvents } from "./lib/automerge-worker-debug";
-import { clearPwaOAuthSessionState } from "./lib/oauth-redirect";
+import {
+  preparePwaFactoryResetReload,
+  runCoordinatedPwaFactoryReset,
+} from "./lib/factory-reset-coordinator";
 
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
-const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
+const LOCAL_PREVIEW_LABEL =
+  import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
 
 function OAuthRouter() {
   if (window.location.pathname === "/oauth-callback") {
@@ -124,8 +132,12 @@ function FloatingNotice({
       data-testid={testId}
     >
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-[var(--theme-text-primary)]">{title}</p>
-        <p className="mt-0.5 text-xs leading-relaxed text-[var(--theme-text-muted)]">{body}</p>
+        <p className="text-sm font-medium text-[var(--theme-text-primary)]">
+          {title}
+        </p>
+        <p className="mt-0.5 text-xs leading-relaxed text-[var(--theme-text-muted)]">
+          {body}
+        </p>
       </div>
       {actionLabel && onAction && (
         <button
@@ -143,7 +155,12 @@ function FloatingNotice({
         data-testid={testId ? `${testId}-dismiss` : undefined}
       >
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path
+            d="M1 1l12 12M13 1L1 13"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
         </svg>
       </button>
     </div>
@@ -156,12 +173,14 @@ function App() {
   const error = useAppStore((state) => state.error);
   const setSyncConnected = useAppStore((state) => state.setSyncConnected);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
-  const [installNotice, setInstallNotice] = useState<InstallNotice | null>(null);
+  const [installNotice, setInstallNotice] = useState<InstallNotice | null>(
+    null,
+  );
 
   const [legalResolved, setLegalResolved] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
-  const [releaseChannel, setReleaseChannelState] = useState<ReleaseChannel>(() =>
-    bootstrapReleaseChannel(),
+  const [releaseChannel, setReleaseChannelState] = useState<ReleaseChannel>(
+    () => bootstrapReleaseChannel(),
   );
   const fatalError = useFatalRuntimeError();
   const legalAcceptedRef = useRef(legalAccepted);
@@ -194,8 +213,11 @@ function App() {
 
     const state = useAppStore.getState();
     const sampleSummary = summarizeSampleData(state);
-    const hasTimeWindowMapSamples = state.items.some((item) =>
-      item.globalId.includes("sample-location-window:") && item.location?.coordinates && item.timeRange
+    const hasTimeWindowMapSamples = state.items.some(
+      (item) =>
+        item.globalId.includes("sample-location-window:") &&
+        item.location?.coordinates &&
+        item.timeRange,
     );
     if (sampleSummary.total > 0 && hasTimeWindowMapSamples) return;
 
@@ -267,86 +289,74 @@ function App() {
     });
   }, [legalResolved]);
 
-  const checkForUpdates = useCallback(async (): Promise<AvailableUpdateInfo | null> => {
-    const version = await checkForPwaUpdate();
-    return version ? { version, channel: releaseChannel } : null;
-  }, [releaseChannel]);
-  const setReleaseChannel = useCallback((channel: ReleaseChannel) => {
-    if (channel === releaseChannel) {
-      return;
-    }
+  const checkForUpdates =
+    useCallback(async (): Promise<AvailableUpdateInfo | null> => {
+      const version = await checkForPwaUpdate();
+      return version ? { version, channel: releaseChannel } : null;
+    }, [releaseChannel]);
+  const setReleaseChannel = useCallback(
+    (channel: ReleaseChannel) => {
+      if (channel === releaseChannel) {
+        return;
+      }
 
-    persistReleaseChannel(channel);
-    setReleaseChannelState(channel);
+      persistReleaseChannel(channel);
+      setReleaseChannelState(channel);
 
-    const nextUrl = buildPwaReleaseChannelUrl(window.location.href, channel);
-    if (nextUrl !== window.location.href) {
-      window.location.assign(nextUrl);
-    }
-  }, [releaseChannel]);
+      const nextUrl = buildPwaReleaseChannelUrl(window.location.href, channel);
+      if (nextUrl !== window.location.href) {
+        window.location.assign(nextUrl);
+      }
+    },
+    [releaseChannel],
+  );
 
   const handleFactoryReset = useCallback(async (deleteFromCloud: boolean) => {
     await runFactoryResetWithRecovery({
       reset: async () => {
-        disconnect();
-        stopCloudSync();
-        await runFactoryResetOperations({
-          quiesceLocalWriters: [
-            quiescePwaStartupMigrations,
-            quiescePwaServiceWorkerCacheWrites,
-          ],
-          clearDeviceStores: () => [
-            clearDeviceDisplayPreferences(),
-            clearDeviceAIPreferences(),
-            clearDeviceGraphLayout(),
-          ],
-          clearLocalSettings: [
-            resetReaderOfflineCacheMode,
-            resetFeedCardDensity,
-            resetInterfaceZoom,
-            resetThemePreference,
-            clearPersistedWorkerDebugEvents,
-            clearPwaOAuthSessionState,
-          ],
-          clearLocalData: [
-            clearArticleCacheStorage,
-            clearGeocodingCache,
-          ],
-          clearProviderDataAndConnections: async () => {
-            const provider = getCloudProvider();
-            const token = provider ? getCloudToken(provider) : null;
-            stopCloudSync();
-            if (deleteFromCloud && provider && token) {
-              await deleteCloudFile(provider, token);
-            }
-            const credentialClearFailures: unknown[] = [];
-            try {
-              clearStoredRelayUrl();
-            } catch (error) {
-              credentialClearFailures.push(error);
-            }
-            for (const cloudProvider of ["gdrive", "dropbox"] as const) {
-              try {
-                clearCloudSync(cloudProvider);
-              } catch (error) {
-                credentialClearFailures.push(error);
-              }
-            }
-            if (credentialClearFailures.length > 0) {
-              throw credentialClearFailures[0];
-            }
-          },
-          clearDocument: async () => {
-            await clearLocalDoc();
-            await resumePwaServiceWorkerCacheWrites();
-          },
+        beginFactoryResetBoundary();
+        await runCoordinatedPwaFactoryReset(async () => {
+          disconnect();
+          stopCloudSync();
+          await runFactoryResetOperations({
+            quiesceLocalWriters: [quiescePwaStartupMigrations],
+            clearDeviceStores: () => [
+              clearDeviceDisplayPreferences(),
+              clearDeviceAIPreferences(),
+              clearDeviceGraphLayout(),
+            ],
+            clearLocalSettings: [
+              resetFeedCardDensity,
+              resetInterfaceZoom,
+              resetThemePreference,
+              clearPersistedWorkerDebugEvents,
+            ],
+            clearLocalData: [],
+            clearProviderDataAndConnections: async () => {
+              stopCloudSync();
+              await clearStoredCloudDataForFactoryReset(deleteFromCloud);
+              clearStoredRelayUrlForFactoryReset();
+            },
+            clearDocument: clearLocalDocAfterPwaQuiesce,
+          });
+          clearFactoryResetCloudCleanupBarrier();
         });
       },
-      reload: () => location.reload(),
-      onFailure: () => {
-        void resumePwaServiceWorkerCacheWrites().catch(() => undefined);
+      reload: () => {
+        preparePwaFactoryResetReload();
+        location.reload();
+      },
+      onFailure: (error) => {
+        const providerCleanupFailed =
+          error instanceof FactoryResetPhaseError &&
+          error.phase === "clear provider data and connections";
+        const cloudCleanupPaused = hasFactoryResetCloudCleanupBarrier();
         toast.error(
-          "Factory reset stopped because Freed could not clear all local data. Reloading Freed to restore background services.",
+          providerCleanupFailed
+            ? "Factory reset stopped because account cleanup did not finish. Freed will reload with cloud sync paused so you can retry safely."
+            : cloudCleanupPaused
+              ? "Factory reset stopped before cleanup finished. Freed will reload with cloud sync paused so you can retry safely."
+              : "Factory reset stopped because Freed could not finish local cleanup. Reloading Freed so you can retry safely.",
         );
       },
     });
@@ -412,10 +422,13 @@ function App() {
           if (cached) return cached;
           const legacyHtml = await getItemLegacyHtml(globalId);
           if (!legacyHtml) return null;
-          const item = useAppStore.getState().items.find((candidate) => candidate.globalId === globalId);
-          const articleUrl = item?.content.linkPreview?.url
-            ?? item?.sourceUrl
-            ?? `/reader-item/${encodeURIComponent(globalId)}`;
+          const item = useAppStore
+            .getState()
+            .items.find((candidate) => candidate.globalId === globalId);
+          const articleUrl =
+            item?.content.linkPreview?.url ??
+            item?.sourceUrl ??
+            `/reader-item/${encodeURIComponent(globalId)}`;
           await cacheArticleHtml(articleUrl, globalId, legacyHtml, {
             pinned: item?.userState.saved ?? false,
           }).catch(() => {});
@@ -503,10 +516,16 @@ function App() {
                     ? "Add Freed to your home screen for faster launch and offline reading."
                     : "Add Freed to your home screen for faster launch and offline reading. In Safari, open Share, then tap Add to Home Screen."
                 }
-                actionLabel={installNotice.kind === "browser" ? "Install" : undefined}
-                onAction={installNotice.kind === "browser" ? () => {
-                  void handleInstallAction();
-                } : undefined}
+                actionLabel={
+                  installNotice.kind === "browser" ? "Install" : undefined
+                }
+                onAction={
+                  installNotice.kind === "browser"
+                    ? () => {
+                        void handleInstallAction();
+                      }
+                    : undefined
+                }
                 onDismiss={handleDismissInstallNotice}
                 testId="pwa-install-notice"
               />

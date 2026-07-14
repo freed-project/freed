@@ -78,6 +78,7 @@ export type WorkerRequest =
       type: "INIT";
       desktopClientRegistration?: DesktopClientRegistration;
     }
+  | { reqId: number; type: "QUIESCE" }
   | { reqId: number; type: "CLEAR_LOCAL" }
   | {
       reqId: number;
@@ -185,9 +186,11 @@ export type DocChangeEvent =
 // Worker → main thread
 // ---------------------------------------------------------------------------
 
+export type WorkerErrorCode = "CORRUPT_DOCUMENT";
+
 export type WorkerResponse =
   /** Simple acknowledgement for mutations that return void */
-  | { reqId: number; type: "ACK"; error?: string }
+  | { reqId: number; type: "ACK"; error?: string; errorCode?: WorkerErrorCode }
   /** Broadcast on every doc mutation - main thread uses this to update UI */
   | { type: "STATE_UPDATE"; state: DocState; mutation?: WorkerRequest["type"] }
   /** Preference-only mutation that avoids cloning, ranking, and hydrating every feed item. */

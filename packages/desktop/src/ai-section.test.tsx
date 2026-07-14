@@ -55,8 +55,10 @@ describe("AISection device-local transaction", () => {
     preferences.ai.autoSummarize = true;
     preferences.ai.extractTopics = true;
     const useTestStore = create(() => ({ preferences, updatePreferences }));
+    const checkOllamaReachable = vi.fn(async () => true);
     const platform = {
       store: useTestStore,
+      checkOllamaReachable,
       SourceIndicator: null,
       HeaderSyncIndicator: null,
       SettingsExtraSections: null,
@@ -78,7 +80,12 @@ describe("AISection device-local transaction", () => {
           <AISection />
         </PlatformProvider>,
       );
+      await Promise.resolve();
     });
+
+    expect(checkOllamaReachable).toHaveBeenCalledWith(
+      "http://localhost:11434",
+    );
 
     const openAIButton = Array.from(container.querySelectorAll("button"))
       .find((button) => button.textContent?.includes("OpenAI"));

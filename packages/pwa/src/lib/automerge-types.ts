@@ -55,6 +55,7 @@ export interface DocState {
 
 export type WorkerRequest =
   | { reqId: number; type: "INIT" }
+  | { reqId: number; type: "QUIESCE" }
   | { reqId: number; type: "MARK_AS_READ"; globalId: string }
   | { reqId: number; type: "MARK_ITEMS_AS_READ"; globalIds: string[] }
   | { reqId: number; type: "MARK_ALL_AS_READ"; platform?: string }
@@ -109,9 +110,11 @@ export type WorkerRequest =
 // Worker → main thread
 // ---------------------------------------------------------------------------
 
+export type WorkerErrorCode = "CORRUPT_DOCUMENT";
+
 export type WorkerResponse =
   /** Simple acknowledgement for mutations that return void */
-  | { reqId: number; type: "ACK"; error?: string }
+  | { reqId: number; type: "ACK"; error?: string; errorCode?: WorkerErrorCode }
   /** Broadcast on every doc mutation — main thread uses this to update UI */
   | {
       type: "STATE_UPDATE";

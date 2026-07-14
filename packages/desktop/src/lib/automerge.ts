@@ -61,6 +61,8 @@ const IDLE_WORKER_STOP_RETRY_MS = 1_000;
 
 let worker: Worker | null = null;
 let workerReady: Promise<void> | null = null;
+let activeWorkerGenerationId = 0;
+let nextWorkerGenerationId = 1;
 let appDocumentInitialized = false;
 let workerDocumentInitialized = false;
 let latestRelayClientCount = 0;
@@ -68,6 +70,8 @@ let desktopClientRegistration: DesktopClientRegistration | null = null;
 let initPromise: Promise<DocState> | null = null;
 let workerDocumentInitPromise: Promise<DocState> | null = null;
 let idleWorkerStopTimer: ReturnType<typeof setTimeout> | null = null;
+let automergeQuiesced = false;
+let automergeQuiescePromise: Promise<void> | null = null;
 
 class WorkerLifecycleError extends Error {
   constructor(message: string) {
@@ -76,7 +80,15 @@ class WorkerLifecycleError extends Error {
   }
 }
 
+class InitDataError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InitDataError";
+  }
+}
+
 type PendingRequestFailureHandler = {
+  generationId: number;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 };
@@ -88,9 +100,9 @@ type PendingWorkerInitialization = PendingRequestFailureHandler & {
 
 let pendingWorkerInitialization: PendingWorkerInitialization | null = null;
 
-function rejectPendingWorkerInitialization(error: Error): void {
+function rejectPendingWorkerInitialization(generationId: number, error: Error): void {
   const pendingInit = pendingWorkerInitialization;
-  if (!pendingInit) return;
+  if (!pendingInit || pendingInit.generationId !== generationId) return;
   pendingWorkerInitialization = null;
   clearTimeout(pendingInit.timer);
   pendingInit.cleanup();
@@ -110,41 +122,66 @@ function workerErrorMessage(err: ErrorEvent | MessageEvent): string {
   return String(err);
 }
 
-function rejectPendingMap<T extends PendingRequestFailureHandler>(pendingMap: Map<number, T>, error: Error): void {
-  for (const pendingRequest of pendingMap.values()) {
+function rejectPendingMap<T extends PendingRequestFailureHandler>(
+  pendingMap: Map<number, T>,
+  generationId: number,
+  error: Error,
+): void {
+  for (const [reqId, pendingRequest] of pendingMap) {
+    if (pendingRequest.generationId !== generationId) continue;
     clearTimeout(pendingRequest.timer);
     pendingRequest.reject(error);
+    pendingMap.delete(reqId);
   }
-  pendingMap.clear();
 }
 
-function rejectPendingWorkerRequests(error: Error): void {
-  rejectPendingWorkerInitialization(error);
-  rejectPendingMap(pending, error);
-  rejectPendingMap(pendingAllItemIds, error);
-  rejectPendingMap(pendingDocBinary, error);
-  rejectPendingMap(pendingDocHeads, error);
-  rejectPendingMap(pendingDocRelationship, error);
-  rejectPendingMap(pendingSavedYouTubeUrls, error);
-  rejectPendingMap(pendingPreservedText, error);
-  rejectPendingMap(pendingLegacyHtml, error);
-  rejectPendingMap(pendingContentSignalBackfill, error);
-  rejectPendingMap(pendingSampleDataClear, error);
+function rejectPendingWorkerRequests(generationId: number, error: Error): void {
+  rejectPendingWorkerInitialization(generationId, error);
+  rejectPendingMap(pending, generationId, error);
+  rejectPendingMap(pendingAllItemIds, generationId, error);
+  rejectPendingMap(pendingDocBinary, generationId, error);
+  rejectPendingMap(pendingDocHeads, generationId, error);
+  rejectPendingMap(pendingDocRelationship, generationId, error);
+  rejectPendingMap(pendingSavedYouTubeUrls, generationId, error);
+  rejectPendingMap(pendingPreservedText, generationId, error);
+  rejectPendingMap(pendingLegacyHtml, generationId, error);
+  rejectPendingMap(pendingContentSignalBackfill, generationId, error);
+  rejectPendingMap(pendingSampleDataClear, generationId, error);
 }
 
-function resetFailedWorker(failedWorker: Worker, error: Error, phase: string): void {
-  if (worker !== failedWorker) return;
+function isActiveWorkerGeneration(source: Worker, generationId: number): boolean {
+  return worker === source && activeWorkerGenerationId === generationId;
+}
 
+function detachWorkerHandlers(target: Worker): void {
+  target.onmessage = null;
+  target.onerror = null;
+  target.onmessageerror = null;
+}
+
+function resetFailedWorker(
+  failedWorker: Worker,
+  generationId: number,
+  error: Error,
+  phase: string,
+): void {
+  if (!isActiveWorkerGeneration(failedWorker, generationId)) return;
+
+  detachWorkerHandlers(failedWorker);
   failedWorker.terminate();
   worker = null;
   workerReady = null;
+  activeWorkerGenerationId = 0;
   workerDocumentInitialized = false;
   workerDocumentInitPromise = null;
   if (idleWorkerStopTimer) {
     clearTimeout(idleWorkerStopTimer);
     idleWorkerStopTimer = null;
   }
-  rejectPendingWorkerRequests(error);
+  lastDocState = null;
+  lastDocStats = null;
+  lastItemIndexById = new Map();
+  rejectPendingWorkerRequests(generationId, error);
   log.error(`[automerge-worker] reset failed worker phase=${phase}: ${error.message}`);
   addDebugEvent("error", `[automerge-worker] reset failed worker phase=${phase}: ${error.message}`);
   recordRuntimeHealthEvent({
@@ -160,7 +197,9 @@ function startWorker(): void {
   const nextWorker = new Worker(new URL("./automerge.worker.ts", import.meta.url), {
     type: "module",
   });
+  const generationId = nextWorkerGenerationId++;
   worker = nextWorker;
+  activeWorkerGenerationId = generationId;
   workerDocumentInitialized = false;
   log.info("[automerge-worker] started worker");
   recordRuntimeHealthEvent({ event: "worker_spawn" });
@@ -173,7 +212,7 @@ function startWorker(): void {
       nextWorker.removeEventListener("message", onReady);
       nextWorker.removeEventListener("error", onStartupError);
       nextWorker.removeEventListener("messageerror", onStartupMessageError);
-      resetFailedWorker(nextWorker, error, phase);
+      resetFailedWorker(nextWorker, generationId, error, phase);
       reject(error);
     };
     const timeout = setTimeout(() => {
@@ -201,13 +240,14 @@ function startWorker(): void {
     nextWorker.addEventListener("messageerror", onStartupMessageError);
   });
   void workerReady.catch(() => {});
-  nextWorker.onmessage = handleWorkerMessage;
-  nextWorker.onerror = handleWorkerError;
-  nextWorker.onmessageerror = handleWorkerMessageError;
+  nextWorker.onmessage = (event) => handleWorkerMessage(nextWorker, generationId, event);
+  nextWorker.onerror = (event) => handleWorkerError(nextWorker, generationId, event);
+  nextWorker.onmessageerror = (event) =>
+    handleWorkerMessageError(nextWorker, generationId, event);
   if (latestRelayClientCount > 0) {
     void workerReady.then(() => {
-      if (worker !== nextWorker) return;
-      nextWorker.postMessage({
+      if (!isActiveWorkerGeneration(nextWorker, generationId)) return;
+      postToWorkerGeneration(nextWorker, generationId, {
         reqId: nextReqId++,
         type: "UPDATE_RELAY_CLIENT_COUNT",
         count: latestRelayClientCount,
@@ -256,9 +296,12 @@ function stopIdleWorker(): boolean {
   if (hasPendingWorkerRequests()) {
     return false;
   }
-  worker.terminate();
+  const idleWorker = worker;
+  detachWorkerHandlers(idleWorker);
+  idleWorker.terminate();
   worker = null;
   workerReady = null;
+  activeWorkerGenerationId = 0;
   workerDocumentInitialized = false;
   workerDocumentInitPromise = null;
   log.info("[automerge-worker] terminated idle worker");
@@ -277,11 +320,13 @@ function scheduleIdleWorkerStop(): void {
 }
 
 async function ensureWorkerDocumentReadyFor(type: WorkerRequest["type"]): Promise<void> {
+  assertAutomergeRequestAccepted(type);
   await ensureWorkerReady();
   if (
     !appDocumentInitialized ||
     workerDocumentInitialized ||
     type === "INIT" ||
+    type === "QUIESCE" ||
     type === "CLEAR_LOCAL"
   ) {
     return;
@@ -297,97 +342,132 @@ startWorker();
 // ---------------------------------------------------------------------------
 
 let nextReqId = 1;
-const pending = new Map<
-  number,
-  { resolve: () => void; reject: (err: Error) => void; timer: ReturnType<typeof setTimeout> }
->();
-const pendingAllItemIds = new Map<
-  number,
-  { resolve: (ids: string[]) => void; reject: (err: Error) => void; timer: ReturnType<typeof setTimeout> }
->();
-const pendingDocBinary = new Map<
-  number,
-  {
-    resolve: (binary: Uint8Array) => void;
-    reject: (err: Error) => void;
-    timer: ReturnType<typeof setTimeout>;
-  }
->();
-const pendingDocHeads = new Map<
-  number,
-  {
-    resolve: (heads: string[] | null) => void;
-    reject: (err: Error) => void;
-    timer: ReturnType<typeof setTimeout>;
-  }
->();
-const pendingDocRelationship = new Map<
-  number,
-  {
-    resolve: (relation: DocumentHistoryRelation) => void;
-    reject: (err: Error) => void;
-    timer: ReturnType<typeof setTimeout>;
-  }
->();
-const pendingSavedYouTubeUrls = new Map<
-  number,
-  {
-    resolve: (urls: string[]) => void;
-    reject: (err: Error) => void;
-    timer: ReturnType<typeof setTimeout>;
-  }
->();
-const pendingPreservedText = new Map<
-  number,
-  {
-    resolve: (text: string | null) => void;
-    reject: (err: Error) => void;
-    timer: ReturnType<typeof setTimeout>;
-  }
->();
-const pendingLegacyHtml = new Map<
-  number,
-  {
-    resolve: (html: string | null) => void;
-    reject: (err: Error) => void;
-    timer: ReturnType<typeof setTimeout>;
-  }
->();
+type PendingRequest<T> = PendingRequestFailureHandler & {
+  resolve: (value: T) => void;
+};
+
+const pending = new Map<number, PendingRequest<void>>();
+const pendingAllItemIds = new Map<number, PendingRequest<string[]>>();
+const pendingDocBinary = new Map<number, PendingRequest<Uint8Array>>();
+const pendingDocHeads = new Map<number, PendingRequest<string[] | null>>();
+const pendingDocRelationship = new Map<number, PendingRequest<DocumentHistoryRelation>>();
+const pendingSavedYouTubeUrls = new Map<number, PendingRequest<string[]>>();
+const pendingPreservedText = new Map<number, PendingRequest<string | null>>();
+const pendingLegacyHtml = new Map<number, PendingRequest<string | null>>();
 const pendingContentSignalBackfill = new Map<
   number,
-  {
-    resolve: (summary: ContentSignalBackfillSummary) => void;
-    reject: (err: Error) => void;
-    timer: ReturnType<typeof setTimeout>;
-  }
+  PendingRequest<ContentSignalBackfillSummary>
 >();
-const pendingSampleDataClear = new Map<
-  number,
-  {
-    resolve: (summary: SampleDataClearSummary) => void;
-    reject: (err: Error) => void;
-    timer: ReturnType<typeof setTimeout>;
+const pendingSampleDataClear = new Map<number, PendingRequest<SampleDataClearSummary>>();
+
+function assertAutomergeRequestAccepted(type: WorkerRequest["type"]): void {
+  if (
+    automergeQuiesced
+    && type !== "QUIESCE"
+    && type !== "CLEAR_LOCAL"
+  ) {
+    throw new WorkerLifecycleError("Automerge worker is quiesced for factory reset");
   }
->();
+}
+
+function postToWorkerGeneration(
+  targetWorker: Worker,
+  generationId: number,
+  message: WorkerRequest,
+): void {
+  if (!isActiveWorkerGeneration(targetWorker, generationId)) {
+    throw new WorkerLifecycleError("Automerge worker generation is no longer active");
+  }
+  try {
+    targetWorker.postMessage(message);
+  } catch (error) {
+    const failure = new WorkerLifecycleError(
+      `Automerge worker postMessage failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    resetFailedWorker(targetWorker, generationId, failure, "post_message_error");
+    throw failure;
+  }
+}
 async function request(msg: WorkerRequest): Promise<void> {
+  assertAutomergeRequestAccepted(msg.type);
   await ensureWorkerDocumentReadyFor(msg.type);
   const activeWorker = getWorker();
+  const generationId = activeWorkerGenerationId;
   return new Promise((resolve, reject) => {
+    let pendingRequest: PendingRequest<void>;
     const timer = setTimeout(() => {
-      if (!pending.has(msg.reqId)) return;
+      if (pending.get(msg.reqId) !== pendingRequest) return;
       const pendingCount = pending.size;
-      pending.delete(msg.reqId);
       const opType = (msg as { type: string }).type;
       const errMsg =
         `[automerge-worker] request TIMEOUT op=${opType} reqId=${msg.reqId} ` +
         `timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()} pending=${pendingCount.toLocaleString()}`;
-      log.error(errMsg);
-      addDebugEvent("error", errMsg);
-      reject(new Error(errMsg));
+      const failure = new WorkerLifecycleError(errMsg);
+      if (isActiveWorkerGeneration(activeWorker, generationId)) {
+        resetFailedWorker(
+          activeWorker,
+          generationId,
+          failure,
+          "runtime_request_timeout",
+        );
+        return;
+      }
+      pending.delete(msg.reqId);
+      reject(failure);
     }, WORKER_REQUEST_TIMEOUT_MS);
 
-    pending.set(msg.reqId, { resolve, reject, timer });
-    activeWorker.postMessage(msg);
+    pendingRequest = { generationId, resolve, reject, timer };
+    pending.set(msg.reqId, pendingRequest);
+    try {
+      postToWorkerGeneration(activeWorker, generationId, msg);
+    } catch (error) {
+      if (pending.get(msg.reqId) === pendingRequest) {
+        pending.delete(msg.reqId);
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
+  });
+}
+
+function requestResultOnWorker<T>(
+  activeWorker: Worker,
+  pendingMap: Map<number, PendingRequest<T>>,
+  message: WorkerRequest,
+): Promise<T> {
+  assertAutomergeRequestAccepted(message.type);
+  const generationId = activeWorkerGenerationId;
+  return new Promise<T>((resolve, reject) => {
+    let pendingRequest: PendingRequest<T>;
+    const timer = setTimeout(() => {
+      if (pendingMap.get(message.reqId) !== pendingRequest) return;
+      const failure = new WorkerLifecycleError(
+        `[automerge-worker] request TIMEOUT op=${message.type} reqId=${message.reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
+      );
+      if (isActiveWorkerGeneration(activeWorker, generationId)) {
+        resetFailedWorker(
+          activeWorker,
+          generationId,
+          failure,
+          "runtime_request_timeout",
+        );
+        return;
+      }
+      pendingMap.delete(message.reqId);
+      reject(failure);
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pendingRequest = { generationId, resolve, reject, timer };
+    pendingMap.set(message.reqId, pendingRequest);
+    try {
+      postToWorkerGeneration(activeWorker, generationId, message);
+    } catch (error) {
+      if (pendingMap.get(message.reqId) === pendingRequest) {
+        pendingMap.delete(message.reqId);
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
   });
 }
 
@@ -445,23 +525,38 @@ function publishState(state: DocState, event: DocChangeEvent): void {
 
 export function setRelayClientCount(n: number): void {
   latestRelayClientCount = n;
-  if (!worker) return;
+  if (automergeQuiesced || !worker) return;
   const activeWorker = worker;
+  const generationId = activeWorkerGenerationId;
   void ensureWorkerReady().then(() => {
-    if (worker !== activeWorker) return;
-    activeWorker.postMessage({
+    if (!isActiveWorkerGeneration(activeWorker, generationId)) return;
+    postToWorkerGeneration(activeWorker, generationId, {
       reqId: nextReqId++,
       type: "UPDATE_RELAY_CLIENT_COUNT",
       count: n,
     } satisfies WorkerRequest);
-  });
+  }).catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
 // Inbound worker message handler
 // ---------------------------------------------------------------------------
 
-function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
+function getGenerationPending<T>(
+  pendingMap: Map<number, PendingRequest<T>>,
+  reqId: number,
+  generationId: number,
+): PendingRequest<T> | null {
+  const pendingRequest = pendingMap.get(reqId);
+  return pendingRequest?.generationId === generationId ? pendingRequest : null;
+}
+
+function handleWorkerMessage(
+  sourceWorker: Worker,
+  generationId: number,
+  event: MessageEvent<WorkerResponse>,
+) {
+  if (!isActiveWorkerGeneration(sourceWorker, generationId)) return;
   const msg = event.data;
 
   if (msg.type === "READY") return;
@@ -577,7 +672,7 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   }
 
   if (msg.type === "ALL_ITEM_IDS") {
-    const pendingIds = pendingAllItemIds.get(msg.reqId);
+    const pendingIds = getGenerationPending(pendingAllItemIds, msg.reqId, generationId);
     if (!pendingIds) return;
     clearTimeout(pendingIds.timer);
     pendingAllItemIds.delete(msg.reqId);
@@ -586,7 +681,7 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   }
 
   if (msg.type === "DOC_BINARY") {
-    const pendingBinary = pendingDocBinary.get(msg.reqId);
+    const pendingBinary = getGenerationPending(pendingDocBinary, msg.reqId, generationId);
     if (!pendingBinary) return;
     clearTimeout(pendingBinary.timer);
     pendingDocBinary.delete(msg.reqId);
@@ -595,7 +690,7 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   }
 
   if (msg.type === "DOC_HEADS") {
-    const pendingHeads = pendingDocHeads.get(msg.reqId);
+    const pendingHeads = getGenerationPending(pendingDocHeads, msg.reqId, generationId);
     if (!pendingHeads) return;
     clearTimeout(pendingHeads.timer);
     pendingDocHeads.delete(msg.reqId);
@@ -604,7 +699,11 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   }
 
   if (msg.type === "DOC_RELATIONSHIP") {
-    const pendingRelationship = pendingDocRelationship.get(msg.reqId);
+    const pendingRelationship = getGenerationPending(
+      pendingDocRelationship,
+      msg.reqId,
+      generationId,
+    );
     if (!pendingRelationship) return;
     clearTimeout(pendingRelationship.timer);
     pendingDocRelationship.delete(msg.reqId);
@@ -613,7 +712,7 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   }
 
   if (msg.type === "SAVED_YOUTUBE_URLS") {
-    const pendingUrls = pendingSavedYouTubeUrls.get(msg.reqId);
+    const pendingUrls = getGenerationPending(pendingSavedYouTubeUrls, msg.reqId, generationId);
     if (!pendingUrls) return;
     clearTimeout(pendingUrls.timer);
     pendingSavedYouTubeUrls.delete(msg.reqId);
@@ -622,7 +721,7 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   }
 
   if (msg.type === "ITEM_PRESERVED_TEXT") {
-    const pendingText = pendingPreservedText.get(msg.reqId);
+    const pendingText = getGenerationPending(pendingPreservedText, msg.reqId, generationId);
     if (!pendingText) return;
     clearTimeout(pendingText.timer);
     pendingPreservedText.delete(msg.reqId);
@@ -631,7 +730,7 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   }
 
   if (msg.type === "ITEM_LEGACY_HTML") {
-    const pendingHtml = pendingLegacyHtml.get(msg.reqId);
+    const pendingHtml = getGenerationPending(pendingLegacyHtml, msg.reqId, generationId);
     if (!pendingHtml) return;
     clearTimeout(pendingHtml.timer);
     pendingLegacyHtml.delete(msg.reqId);
@@ -640,7 +739,11 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   }
 
   if (msg.type === "CONTENT_SIGNAL_BACKFILL_RESULT") {
-    const pendingBackfill = pendingContentSignalBackfill.get(msg.reqId);
+    const pendingBackfill = getGenerationPending(
+      pendingContentSignalBackfill,
+      msg.reqId,
+      generationId,
+    );
     if (!pendingBackfill) return;
     clearTimeout(pendingBackfill.timer);
     pendingContentSignalBackfill.delete(msg.reqId);
@@ -649,7 +752,11 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   }
 
   if (msg.type === "SAMPLE_DATA_CLEAR_RESULT") {
-    const pendingClear = pendingSampleDataClear.get(msg.reqId);
+    const pendingClear = getGenerationPending(
+      pendingSampleDataClear,
+      msg.reqId,
+      generationId,
+    );
     if (!pendingClear) return;
     clearTimeout(pendingClear.timer);
     pendingSampleDataClear.delete(msg.reqId);
@@ -658,7 +765,11 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   }
 
   // ACK
-  const pendingBackfill = pendingContentSignalBackfill.get(msg.reqId);
+  const pendingBackfill = getGenerationPending(
+    pendingContentSignalBackfill,
+    msg.reqId,
+    generationId,
+  );
   if (pendingBackfill && msg.error) {
     clearTimeout(pendingBackfill.timer);
     pendingContentSignalBackfill.delete(msg.reqId);
@@ -666,7 +777,11 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     return;
   }
 
-  const pendingClear = pendingSampleDataClear.get(msg.reqId);
+  const pendingClear = getGenerationPending(
+    pendingSampleDataClear,
+    msg.reqId,
+    generationId,
+  );
   if (pendingClear && msg.error) {
     clearTimeout(pendingClear.timer);
     pendingSampleDataClear.delete(msg.reqId);
@@ -674,7 +789,31 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     return;
   }
 
-  const pendingUrls = pendingSavedYouTubeUrls.get(msg.reqId);
+  const pendingBinary = getGenerationPending(pendingDocBinary, msg.reqId, generationId);
+  if (pendingBinary && msg.error) {
+    clearTimeout(pendingBinary.timer);
+    pendingDocBinary.delete(msg.reqId);
+    pendingBinary.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingHeads = getGenerationPending(pendingDocHeads, msg.reqId, generationId);
+  if (pendingHeads && msg.error) {
+    clearTimeout(pendingHeads.timer);
+    pendingDocHeads.delete(msg.reqId);
+    pendingHeads.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingIds = getGenerationPending(pendingAllItemIds, msg.reqId, generationId);
+  if (pendingIds && msg.error) {
+    clearTimeout(pendingIds.timer);
+    pendingAllItemIds.delete(msg.reqId);
+    pendingIds.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingUrls = getGenerationPending(pendingSavedYouTubeUrls, msg.reqId, generationId);
   if (pendingUrls && msg.error) {
     clearTimeout(pendingUrls.timer);
     pendingSavedYouTubeUrls.delete(msg.reqId);
@@ -682,7 +821,11 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     return;
   }
 
-  const pendingRelationship = pendingDocRelationship.get(msg.reqId);
+  const pendingRelationship = getGenerationPending(
+    pendingDocRelationship,
+    msg.reqId,
+    generationId,
+  );
   if (pendingRelationship && msg.error) {
     clearTimeout(pendingRelationship.timer);
     pendingDocRelationship.delete(msg.reqId);
@@ -690,7 +833,7 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     return;
   }
 
-  const pendingHtml = pendingLegacyHtml.get(msg.reqId);
+  const pendingHtml = getGenerationPending(pendingLegacyHtml, msg.reqId, generationId);
   if (pendingHtml && msg.error) {
     clearTimeout(pendingHtml.timer);
     pendingLegacyHtml.delete(msg.reqId);
@@ -698,7 +841,15 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
     return;
   }
 
-  const p = pending.get(msg.reqId);
+  const pendingText = getGenerationPending(pendingPreservedText, msg.reqId, generationId);
+  if (pendingText && msg.error) {
+    clearTimeout(pendingText.timer);
+    pendingPreservedText.delete(msg.reqId);
+    pendingText.reject(new Error(msg.error));
+    return;
+  }
+
+  const p = getGenerationPending(pending, msg.reqId, generationId);
   if (!p) return;
   clearTimeout(p.timer);
   pending.delete(msg.reqId);
@@ -706,24 +857,31 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>) {
   else p.resolve();
 }
 
-function handleWorkerError(err: ErrorEvent) {
+function handleWorkerError(
+  failedWorker: Worker,
+  generationId: number,
+  err: ErrorEvent,
+) {
   const msg = workerErrorMessage(err);
   log.error(`[automerge-worker] unhandled error: ${msg}`);
   addDebugEvent("error", `[AutomergeWorker] unhandled error: ${msg}`);
-  const failedWorker = (err.currentTarget as Worker | null) ?? worker;
-  if (failedWorker) {
-    resetFailedWorker(failedWorker, new Error(msg), "runtime_error");
-  }
+  resetFailedWorker(failedWorker, generationId, new Error(msg), "runtime_error");
 }
 
-function handleWorkerMessageError(err: MessageEvent) {
+function handleWorkerMessageError(
+  failedWorker: Worker,
+  generationId: number,
+  err: MessageEvent,
+) {
   const msg = workerErrorMessage(err);
   log.error(`[automerge-worker] message error: ${msg}`);
   addDebugEvent("error", `[AutomergeWorker] message error: ${msg}`);
-  const failedWorker = (err.currentTarget as Worker | null) ?? worker;
-  if (failedWorker) {
-    resetFailedWorker(failedWorker, new Error(msg), "runtime_message_error");
-  }
+  resetFailedWorker(
+    failedWorker,
+    generationId,
+    new Error(msg),
+    "runtime_message_error",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -749,6 +907,7 @@ function withImportProgress<T>(
 function sendInit(): Promise<DocState> {
   return new Promise((resolve, reject) => {
     const activeWorker = getWorker();
+    const generationId = activeWorkerGenerationId;
     const reqId = nextReqId++;
 
     let initialState: DocState | null = null;
@@ -757,7 +916,10 @@ function sendInit(): Promise<DocState> {
 
     const cleanup = () => {
       activeWorker.removeEventListener("message", stateHandler);
-      if (pendingWorkerInitialization?.worker === activeWorker) {
+      if (
+        pendingWorkerInitialization?.worker === activeWorker
+        && pendingWorkerInitialization.generationId === generationId
+      ) {
         clearTimeout(pendingWorkerInitialization.timer);
         pendingWorkerInitialization = null;
       }
@@ -773,6 +935,7 @@ function sendInit(): Promise<DocState> {
     }
 
     const stateHandler = (event: MessageEvent<WorkerResponse>) => {
+      if (!isActiveWorkerGeneration(activeWorker, generationId)) return;
       const msg = event.data;
       if (msg.type === "STATE_UPDATE" && !initialState) {
         lastDocState = msg.state;
@@ -787,7 +950,11 @@ function sendInit(): Promise<DocState> {
         );
         if (msg.error) {
           cleanup();
-          reject(new Error(msg.error));
+          reject(
+            msg.errorCode === "CORRUPT_DOCUMENT"
+              ? new InitDataError(msg.error)
+              : new Error(msg.error),
+          );
         } else {
           initAcked = true;
           tryResolve();
@@ -797,21 +964,43 @@ function sendInit(): Promise<DocState> {
 
     activeWorker.addEventListener("message", stateHandler);
     const timer = setTimeout(() => {
-      if (pendingWorkerInitialization?.worker !== activeWorker) return;
+      if (
+        pendingWorkerInitialization?.worker !== activeWorker
+        || pendingWorkerInitialization.generationId !== generationId
+      ) return;
       resetFailedWorker(
         activeWorker,
+        generationId,
         new Error(
           `[automerge-worker] request TIMEOUT op=INIT reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
         ),
         "runtime_init_timeout",
       );
     }, WORKER_REQUEST_TIMEOUT_MS);
-    pendingWorkerInitialization = { worker: activeWorker, reject, timer, cleanup };
-    activeWorker.postMessage({
-      reqId,
-      type: "INIT",
-      desktopClientRegistration: desktopClientRegistration ?? undefined,
-    } satisfies WorkerRequest);
+    pendingWorkerInitialization = {
+      worker: activeWorker,
+      generationId,
+      reject,
+      timer,
+      cleanup,
+    };
+    try {
+      postToWorkerGeneration(activeWorker, generationId, {
+        reqId,
+        type: "INIT",
+        desktopClientRegistration: desktopClientRegistration ?? undefined,
+      } satisfies WorkerRequest);
+    } catch (error) {
+      if (
+        pendingWorkerInitialization?.worker === activeWorker
+        && pendingWorkerInitialization.generationId === generationId
+      ) {
+        pendingWorkerInitialization = null;
+        clearTimeout(timer);
+        cleanup();
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
   });
 }
 
@@ -828,9 +1017,27 @@ function initializeWorkerDocument(): Promise<DocState> {
   return workerDocumentInitPromise;
 }
 
+async function initializeWorkerDocumentWithDataRecovery(): Promise<DocState> {
+  try {
+    return await initializeWorkerDocument();
+  } catch (error) {
+    if (!(error instanceof InitDataError)) throw error;
+    if (automergeQuiesced) {
+      throw new WorkerLifecycleError("Automerge worker is quiesced for factory reset");
+    }
+    lastDocState = null;
+    lastDocStats = null;
+    lastItemIndexById = new Map();
+    workerDocumentInitialized = false;
+    await request({ reqId: nextReqId++, type: "CLEAR_LOCAL" });
+    return initializeWorkerDocument();
+  }
+}
+
 export function initDoc(
   registration?: DesktopClientRegistration,
 ): Promise<DocState> {
+  assertAutomergeRequestAccepted("INIT");
   if (registration) {
     desktopClientRegistration = registration;
   }
@@ -839,23 +1046,19 @@ export function initDoc(
   initPromise = (async () => {
     await ensureWorkerReady();
     try {
-      const state = await initializeWorkerDocument();
+      const state = await initializeWorkerDocumentWithDataRecovery();
       appDocumentInitialized = true;
       workerDocumentInitialized = true;
       return state;
     } catch (error) {
       if (error instanceof WorkerLifecycleError) {
         await ensureWorkerReady();
-        const state = await initializeWorkerDocument();
+        const state = await initializeWorkerDocumentWithDataRecovery();
         appDocumentInitialized = true;
         workerDocumentInitialized = true;
         return state;
       }
-      await clearLocalDoc();
-      const state = await initializeWorkerDocument();
-      appDocumentInitialized = true;
-      workerDocumentInitialized = true;
-      return state;
+      throw error;
     }
   })().finally(() => {
     initPromise = null;
@@ -872,21 +1075,11 @@ export function getDocState(): DocState | null {
 export async function getDocBinary(): Promise<Uint8Array> {
   await ensureWorkerDocumentReadyFor("GET_DOC_BINARY");
   const activeWorker = getWorker();
-  return new Promise((resolve, reject) => {
-    const reqId = nextReqId++;
-    const timer = setTimeout(() => {
-      if (!pendingDocBinary.has(reqId)) return;
-      pendingDocBinary.delete(reqId);
-      reject(
-        new Error(
-          `[automerge-worker] request TIMEOUT op=GET_DOC_BINARY reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
-        ),
-      );
-    }, WORKER_REQUEST_TIMEOUT_MS);
-
-    pendingDocBinary.set(reqId, { resolve, reject, timer });
-    activeWorker.postMessage({ reqId, type: "GET_DOC_BINARY" } satisfies WorkerRequest);
-  });
+  return requestResultOnWorker(
+    activeWorker,
+    pendingDocBinary,
+    { reqId: nextReqId++, type: "GET_DOC_BINARY" } satisfies WorkerRequest,
+  );
 }
 
 /**
@@ -895,23 +1088,14 @@ export async function getDocBinary(): Promise<Uint8Array> {
  * with the heads at last save, and a fresh worker answers null.
  */
 export async function getDocHeads(): Promise<string[] | null> {
+  assertAutomergeRequestAccepted("GET_HEADS");
   await ensureWorkerReady();
   const activeWorker = getWorker();
-  return new Promise((resolve, reject) => {
-    const reqId = nextReqId++;
-    const timer = setTimeout(() => {
-      if (!pendingDocHeads.has(reqId)) return;
-      pendingDocHeads.delete(reqId);
-      reject(
-        new Error(
-          `[automerge-worker] request TIMEOUT op=GET_HEADS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
-        ),
-      );
-    }, WORKER_REQUEST_TIMEOUT_MS);
-
-    pendingDocHeads.set(reqId, { resolve, reject, timer });
-    activeWorker.postMessage({ reqId, type: "GET_HEADS" } satisfies WorkerRequest);
-  });
+  return requestResultOnWorker(
+    activeWorker,
+    pendingDocHeads,
+    { reqId: nextReqId++, type: "GET_HEADS" } satisfies WorkerRequest,
+  );
 }
 
 /** Compare incoming Automerge history with the current local document. */
@@ -920,46 +1104,22 @@ export async function compareDoc(
 ): Promise<DocumentHistoryRelation> {
   await ensureWorkerDocumentReadyFor("COMPARE_DOC");
   const activeWorker = getWorker();
-  return new Promise((resolve, reject) => {
-    const reqId = nextReqId++;
-    const timer = setTimeout(() => {
-      if (!pendingDocRelationship.has(reqId)) return;
-      pendingDocRelationship.delete(reqId);
-      reject(
-        new Error(
-          `[automerge-worker] request TIMEOUT op=COMPARE_DOC reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
-        ),
-      );
-    }, WORKER_REQUEST_TIMEOUT_MS);
-
-    pendingDocRelationship.set(reqId, { resolve, reject, timer });
-    activeWorker.postMessage({
-      reqId,
-      type: "COMPARE_DOC",
-      binary: incoming,
-    } satisfies WorkerRequest);
-  });
+  return requestResultOnWorker(
+    activeWorker,
+    pendingDocRelationship,
+    { reqId: nextReqId++, type: "COMPARE_DOC", binary: incoming } satisfies WorkerRequest,
+  );
 }
 
 /** Canonical URLs for every saved YouTube item in the complete document. */
 export async function getSavedYouTubeVideoUrls(): Promise<string[]> {
   await ensureWorkerDocumentReadyFor("GET_SAVED_YOUTUBE_URLS");
   const activeWorker = getWorker();
-  return new Promise((resolve, reject) => {
-    const reqId = nextReqId++;
-    const timer = setTimeout(() => {
-      if (!pendingSavedYouTubeUrls.has(reqId)) return;
-      pendingSavedYouTubeUrls.delete(reqId);
-      reject(
-        new Error(
-          `[automerge-worker] request TIMEOUT op=GET_SAVED_YOUTUBE_URLS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
-        ),
-      );
-    }, WORKER_REQUEST_TIMEOUT_MS);
-
-    pendingSavedYouTubeUrls.set(reqId, { resolve, reject, timer });
-    activeWorker.postMessage({ reqId, type: "GET_SAVED_YOUTUBE_URLS" } satisfies WorkerRequest);
-  });
+  return requestResultOnWorker(
+    activeWorker,
+    pendingSavedYouTubeUrls,
+    { reqId: nextReqId++, type: "GET_SAVED_YOUTUBE_URLS" } satisfies WorkerRequest,
+  );
 }
 
 export function getCachedDocStats(): DocStats | null {
@@ -969,61 +1129,31 @@ export function getCachedDocStats(): DocStats | null {
 export async function getAllItemIds(): Promise<string[]> {
   await ensureWorkerDocumentReadyFor("GET_ALL_ITEM_IDS");
   const activeWorker = getWorker();
-  return new Promise((resolve, reject) => {
-    const reqId = nextReqId++;
-    const timer = setTimeout(() => {
-      if (!pendingAllItemIds.has(reqId)) return;
-      pendingAllItemIds.delete(reqId);
-      reject(
-        new Error(
-          `[automerge-worker] request TIMEOUT op=GET_ALL_ITEM_IDS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
-        ),
-      );
-    }, WORKER_REQUEST_TIMEOUT_MS);
-
-    pendingAllItemIds.set(reqId, { resolve, reject, timer });
-    activeWorker.postMessage({ reqId, type: "GET_ALL_ITEM_IDS" } satisfies WorkerRequest);
-  });
+  return requestResultOnWorker(
+    activeWorker,
+    pendingAllItemIds,
+    { reqId: nextReqId++, type: "GET_ALL_ITEM_IDS" } satisfies WorkerRequest,
+  );
 }
 
 export async function getItemPreservedText(globalId: string): Promise<string | null> {
   await ensureWorkerDocumentReadyFor("GET_ITEM_PRESERVED_TEXT");
   const activeWorker = getWorker();
-  return new Promise((resolve, reject) => {
-    const reqId = nextReqId++;
-    const timer = setTimeout(() => {
-      if (!pendingPreservedText.has(reqId)) return;
-      pendingPreservedText.delete(reqId);
-      reject(
-        new Error(
-          `[automerge-worker] request TIMEOUT op=GET_ITEM_PRESERVED_TEXT reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
-        ),
-      );
-    }, WORKER_REQUEST_TIMEOUT_MS);
-
-    pendingPreservedText.set(reqId, { resolve, reject, timer });
-    activeWorker.postMessage({ reqId, type: "GET_ITEM_PRESERVED_TEXT", globalId } satisfies WorkerRequest);
-  });
+  return requestResultOnWorker(
+    activeWorker,
+    pendingPreservedText,
+    { reqId: nextReqId++, type: "GET_ITEM_PRESERVED_TEXT", globalId } satisfies WorkerRequest,
+  );
 }
 
 export async function getItemLegacyHtml(globalId: string): Promise<string | null> {
   await ensureWorkerDocumentReadyFor("GET_ITEM_LEGACY_HTML");
   const activeWorker = getWorker();
-  return new Promise((resolve, reject) => {
-    const reqId = nextReqId++;
-    const timer = setTimeout(() => {
-      if (!pendingLegacyHtml.has(reqId)) return;
-      pendingLegacyHtml.delete(reqId);
-      reject(
-        new Error(
-          `[automerge-worker] request TIMEOUT op=GET_ITEM_LEGACY_HTML reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
-        ),
-      );
-    }, WORKER_REQUEST_TIMEOUT_MS);
-
-    pendingLegacyHtml.set(reqId, { resolve, reject, timer });
-    activeWorker.postMessage({ reqId, type: "GET_ITEM_LEGACY_HTML", globalId } satisfies WorkerRequest);
-  });
+  return requestResultOnWorker(
+    activeWorker,
+    pendingLegacyHtml,
+    { reqId: nextReqId++, type: "GET_ITEM_LEGACY_HTML", globalId } satisfies WorkerRequest,
+  );
 }
 
 export async function mergeDoc(incoming: Uint8Array): Promise<void> {
@@ -1034,6 +1164,17 @@ export async function mergeDoc(incoming: Uint8Array): Promise<void> {
 export async function clearLocalDoc(): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "CLEAR_LOCAL" });
+}
+
+/** Close document admission after every request already accepted by the worker. */
+export function quiesceDesktopAutomergeForFactoryReset(): Promise<void> {
+  if (automergeQuiescePromise) return automergeQuiescePromise;
+  automergeQuiesced = true;
+  automergeQuiescePromise = request({
+    reqId: nextReqId++,
+    type: "QUIESCE",
+  });
+  return automergeQuiescePromise;
 }
 
 export async function replaceLocalDoc(binary: Uint8Array): Promise<void> {
@@ -1101,21 +1242,11 @@ export async function docRemoveFeedItem(globalId: string): Promise<void> {
 export async function docClearSampleData(): Promise<SampleDataClearSummary> {
   await ensureWorkerDocumentReadyFor("CLEAR_SAMPLE_DATA");
   const activeWorker = getWorker();
-  return new Promise((resolve, reject) => {
-    const reqId = nextReqId++;
-    const timer = setTimeout(() => {
-      if (!pendingSampleDataClear.has(reqId)) return;
-      pendingSampleDataClear.delete(reqId);
-      reject(
-        new Error(
-          `[automerge-worker] request TIMEOUT op=CLEAR_SAMPLE_DATA reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
-        ),
-      );
-    }, WORKER_REQUEST_TIMEOUT_MS);
-
-    pendingSampleDataClear.set(reqId, { resolve, reject, timer });
-    activeWorker.postMessage({ reqId, type: "CLEAR_SAMPLE_DATA" } satisfies WorkerRequest);
-  });
+  return requestResultOnWorker(
+    activeWorker,
+    pendingSampleDataClear,
+    { reqId: nextReqId++, type: "CLEAR_SAMPLE_DATA" } satisfies WorkerRequest,
+  );
 }
 
 export async function docUpdateFeedItem(
@@ -1331,21 +1462,11 @@ export async function docBackfillContentSignals(
 ): Promise<ContentSignalBackfillSummary> {
   await ensureWorkerDocumentReadyFor("BACKFILL_CONTENT_SIGNALS");
   const activeWorker = getWorker();
-  return new Promise((resolve, reject) => {
-    const reqId = nextReqId++;
-    const timer = setTimeout(() => {
-      if (!pendingContentSignalBackfill.has(reqId)) return;
-      pendingContentSignalBackfill.delete(reqId);
-      reject(
-        new Error(
-          `[automerge-worker] request TIMEOUT op=BACKFILL_CONTENT_SIGNALS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
-        ),
-      );
-    }, WORKER_REQUEST_TIMEOUT_MS);
-
-    pendingContentSignalBackfill.set(reqId, { resolve, reject, timer });
-    activeWorker.postMessage({ reqId, type: "BACKFILL_CONTENT_SIGNALS", batchSize } satisfies WorkerRequest);
-  });
+  return requestResultOnWorker(
+    activeWorker,
+    pendingContentSignalBackfill,
+    { reqId: nextReqId++, type: "BACKFILL_CONTENT_SIGNALS", batchSize } satisfies WorkerRequest,
+  );
 }
 
 /**

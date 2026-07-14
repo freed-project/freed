@@ -176,9 +176,20 @@ export function updateFacebookGroupDiscovery(
   groups: readonly FbGroupInfo[],
   source: FacebookGroupDiscoverySource,
 ): FacebookGroupDiscoveryUpdateResult {
+  const stored = readStored();
   const merge = mergeFacebookGroupRecords(getFacebookGroupDiscovery(), groups);
   if (merge.changedCount === 0) {
-    return { ...merge, persisted: true };
+    return {
+      ...merge,
+      persisted: stored.status === "missing" || stored.status === "supported",
+    };
+  }
+  if (
+    stored.status === "unsupported"
+    || stored.status === "unavailable"
+    || (stored.status === "corrupt" && source !== "group_scrape")
+  ) {
+    return { ...merge, persisted: false };
   }
   const persisted = persist(merge.knownGroups);
   if (persisted) {
@@ -225,31 +236,6 @@ export function migrateLegacyFacebookGroupDiscovery(
     storedCount: Object.keys(next).length,
     changedCount: Object.keys(next).length,
     removedCount: 0,
-  });
-  return true;
-}
-
-export function clearFacebookGroupDiscovery(): boolean {
-  const removedCount = Object.keys(getFacebookGroupDiscovery()).length;
-  const cleared: StoredFacebookGroupDiscovery = {
-    legacyMigrationCompleted: true,
-    knownGroups: {},
-  };
-  const persisted = writeVersionedLocalStorage(
-    FACEBOOK_GROUP_DISCOVERY_STORAGE_KEY,
-    STORAGE_CODEC,
-    cleared,
-    { replaceUnsupportedVersion: true, purgeRecoveryCopies: true },
-  );
-  if (!persisted) return false;
-  current = cleared;
-  hydrated = true;
-  emitChange();
-  recordUpdate("factory_reset", {
-    observedCount: 0,
-    storedCount: 0,
-    changedCount: removedCount,
-    removedCount,
   });
   return true;
 }

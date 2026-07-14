@@ -164,7 +164,7 @@ const handlers: Record<string, Handler> = {
   x_api_request: (args: Record<string, unknown>) => proxyFetch(args),
   get_local_ip: () => "127.0.0.1",
   get_all_local_ips: () => [],
-  get_sync_url: () => "ws://127.0.0.1:8765",
+  get_sync_url: () => "ws://127.0.0.1:8765?t=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   sha256_file: () => "",
   download_local_ai_model_file: (args: Record<string, unknown>) => {
     const request = args.request as { expectedSizeBytes?: number } | undefined;

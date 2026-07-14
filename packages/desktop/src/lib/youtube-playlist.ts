@@ -4,6 +4,10 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getSavedYouTubeVideoUrls } from "./automerge";
 import { safeUnlisten } from "./safe-unlisten";
 import { recordRuntimeHealthEvent } from "./runtime-health-events";
+import {
+  assertFactoryResetEpoch,
+  runFactoryResetSensitiveDesktopOperation,
+} from "./factory-reset-guard";
 
 const PLAYLIST_STATE_KEY = "youtube_offline_playlist_state";
 const PLAYLIST_STATE_EVENT = "freed:youtube-offline-playlist";
@@ -49,6 +53,13 @@ interface YouTubePlaylistEventPayload {
 }
 
 let playlistOperationChain: Promise<void> = Promise.resolve();
+let playlistStorageUnavailable = false;
+
+type YouTubePlaylistStateRead =
+  | { status: "missing"; state: YouTubePlaylistState }
+  | { status: "supported"; state: YouTubePlaylistState }
+  | { status: "corrupt" }
+  | { status: "unavailable" };
 
 function enqueuePlaylistOperation<T>(operation: () => Promise<T>): Promise<T> {
   const next = playlistOperationChain.then(operation, operation);
@@ -85,34 +96,107 @@ function canonicalPlaylistUrl(playlistId: string): string {
   return url.toString();
 }
 
-function writePlaylistState(state: YouTubePlaylistState): void {
-  localStorage.setItem(PLAYLIST_STATE_KEY, JSON.stringify(state));
-  window.dispatchEvent(new Event(PLAYLIST_STATE_EVENT));
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readYouTubePlaylistState(): YouTubePlaylistStateRead {
+  if (playlistStorageUnavailable) return { status: "unavailable" };
+  let stored: string | null;
+  try {
+    stored = localStorage.getItem(PLAYLIST_STATE_KEY);
+  } catch {
+    playlistStorageUnavailable = true;
+    return { status: "unavailable" };
+  }
+  if (stored === null) return { status: "missing", state: {} };
+
+  try {
+    const parsed = JSON.parse(stored) as unknown;
+    if (!isRecord(parsed)) return { status: "corrupt" };
+    const idFromField = parsed.playlistId === undefined
+      ? undefined
+      : validPlaylistId(parsed.playlistId);
+    const idFromUrl = parsed.playlistUrl === undefined
+      ? undefined
+      : parseYouTubePlaylistId(parsed.playlistUrl);
+    if (
+      (parsed.playlistId !== undefined && !idFromField)
+      || (parsed.playlistUrl !== undefined && !idFromUrl)
+      || (idFromField && idFromUrl && idFromField !== idFromUrl)
+    ) {
+      return { status: "corrupt" };
+    }
+    const playlistId = idFromField ?? idFromUrl;
+    if (
+      parsed.lastSyncedAt !== undefined
+      && (
+        typeof parsed.lastSyncedAt !== "number"
+        || !Number.isFinite(parsed.lastSyncedAt)
+        || parsed.lastSyncedAt < 0
+      )
+    ) {
+      return { status: "corrupt" };
+    }
+    if (
+      parsed.syncedVideoIds !== undefined
+      && (
+        !playlistId
+        || !Array.isArray(parsed.syncedVideoIds)
+        || parsed.syncedVideoIds.some(
+          (id) => typeof id !== "string" || !VIDEO_ID_PATTERN.test(id),
+        )
+      )
+    ) {
+      return { status: "corrupt" };
+    }
+    return {
+      status: "supported",
+      state: {
+        ...(playlistId
+          ? { playlistId, playlistUrl: canonicalPlaylistUrl(playlistId) }
+          : {}),
+        ...(typeof parsed.lastSyncedAt === "number"
+          ? { lastSyncedAt: parsed.lastSyncedAt }
+          : {}),
+        ...(playlistId && Array.isArray(parsed.syncedVideoIds)
+          ? { syncedVideoIds: Array.from(new Set(parsed.syncedVideoIds as string[])) }
+          : {}),
+      },
+    };
+  } catch {
+    return { status: "corrupt" };
+  }
+}
+
+function requireReadablePlaylistState(): YouTubePlaylistState {
+  const stored = readYouTubePlaylistState();
+  if (stored.status === "missing" || stored.status === "supported") {
+    return stored.state;
+  }
+  throw new Error(
+    "Freed could not verify the YouTube playlist progress on this device. Disconnect and reconnect YouTube before trying again.",
+  );
+}
+
+function writePlaylistState(state: YouTubePlaylistState): boolean {
+  const stored = readYouTubePlaylistState();
+  if (stored.status === "corrupt" || stored.status === "unavailable") return false;
+  try {
+    localStorage.setItem(PLAYLIST_STATE_KEY, JSON.stringify(state));
+    window.dispatchEvent(new Event(PLAYLIST_STATE_EVENT));
+    return true;
+  } catch {
+    playlistStorageUnavailable = true;
+    return false;
+  }
 }
 
 export function getYouTubePlaylistState(): YouTubePlaylistState {
-  const stored = localStorage.getItem(PLAYLIST_STATE_KEY);
-  if (!stored) return {};
-  try {
-    const parsed = JSON.parse(stored) as YouTubePlaylistState;
-    const playlistId = validPlaylistId(parsed.playlistId) ??
-      parseYouTubePlaylistId(parsed.playlistUrl);
-    return {
-      ...(playlistId
-        ? { playlistId, playlistUrl: canonicalPlaylistUrl(playlistId) }
-        : {}),
-      ...(Number.isFinite(parsed.lastSyncedAt) ? { lastSyncedAt: parsed.lastSyncedAt } : {}),
-      ...(playlistId && Array.isArray(parsed.syncedVideoIds)
-        ? {
-            syncedVideoIds: Array.from(new Set(
-              parsed.syncedVideoIds.filter((id) => VIDEO_ID_PATTERN.test(id)),
-            )),
-          }
-        : {}),
-    };
-  } catch {
-    return {};
-  }
+  const stored = readYouTubePlaylistState();
+  return stored.status === "missing" || stored.status === "supported"
+    ? stored.state
+    : {};
 }
 
 export function subscribeYouTubePlaylistState(
@@ -130,6 +214,7 @@ export function subscribeYouTubePlaylistState(
 /** Clear account-specific playlist metadata when the YouTube session is removed. */
 export function clearYouTubePlaylistState(): void {
   localStorage.removeItem(PLAYLIST_STATE_KEY);
+  playlistStorageUnavailable = false;
   window.dispatchEvent(new Event(PLAYLIST_STATE_EVENT));
 }
 
@@ -145,10 +230,14 @@ export function resetYouTubePlaylistProgress(): void {
   });
 }
 
-async function addOneVideo(videoUrl: string): Promise<YouTubeOfflinePlaylistResult> {
+async function addOneVideo(
+  videoUrl: string,
+  resetEpoch: number,
+): Promise<YouTubeOfflinePlaylistResult> {
   const startedAt = Date.now();
   const reference = parseYouTubeVideoUrl(videoUrl);
   if (!reference) throw new Error("This is not a supported YouTube video URL.");
+  const previous = requireReadablePlaylistState();
 
   let unlisten: UnlistenFn | null = null;
   let timeout: number | null = null;
@@ -168,11 +257,13 @@ async function addOneVideo(videoUrl: string): Promise<YouTubeOfflinePlaylistResu
       () => rejectResult?.(new Error("YouTube playlist update timed out.")),
       PLAYLIST_ACTION_TIMEOUT_MS,
     );
+    assertFactoryResetEpoch(resetEpoch);
     void invoke("yt_add_to_offline_playlist", {
       videoUrl: reference.canonicalWatchUrl,
     }).catch((error) => rejectResult?.(error));
 
     const payload = await result;
+    assertFactoryResetEpoch(resetEpoch);
     if (payload.error || payload.result === "error") {
       throw new Error(payload.error ?? "YouTube could not update Freed Offline.");
     }
@@ -187,17 +278,21 @@ async function addOneVideo(videoUrl: string): Promise<YouTubeOfflinePlaylistResu
     const playlistUrl = canonicalPlaylistUrl(playlistId);
 
     const added = payload.added ?? payload.alreadyPresent !== true;
-    const previous = getYouTubePlaylistState();
     const syncedVideoIds = new Set(
       previous.playlistId === playlistId ? previous.syncedVideoIds ?? [] : [],
     );
     syncedVideoIds.add(reference.videoId);
-    writePlaylistState({
+    assertFactoryResetEpoch(resetEpoch);
+    if (!writePlaylistState({
       playlistId,
       playlistUrl,
       lastSyncedAt: Date.now(),
       syncedVideoIds: Array.from(syncedVideoIds),
-    });
+    })) {
+      throw new Error(
+        "YouTube confirmed the playlist update, but Freed could not store its receipt. Disconnect and reconnect YouTube before trying again.",
+      );
+    }
     recordRuntimeHealthEvent({
       event: "youtube_playlist_outcome",
       result: added ? "added" : "existing",
@@ -233,7 +328,12 @@ async function addOneVideo(videoUrl: string): Promise<YouTubeOfflinePlaylistResu
 export function addYouTubeVideoToOfflinePlaylist(
   videoUrl: string,
 ): Promise<YouTubeOfflinePlaylistResult> {
-  return enqueuePlaylistOperation(() => addOneVideo(videoUrl));
+  return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
+    enqueuePlaylistOperation(() => {
+      assertFactoryResetEpoch(resetEpoch);
+      return addOneVideo(videoUrl, resetEpoch);
+    })
+  );
 }
 
 /** Reconcile every locally saved YouTube item into the user's Freed Offline playlist. */
@@ -241,7 +341,9 @@ export function syncSavedYouTubeVideosToOfflinePlaylist(
   videoUrls?: readonly string[],
   signal?: AbortSignal,
 ): Promise<YouTubePlaylistSyncResult> {
-  return enqueuePlaylistOperation(async () => {
+  return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
+    enqueuePlaylistOperation(async () => {
+    assertFactoryResetEpoch(resetEpoch);
     if (signal?.aborted) throw new Error("YouTube playlist sync was stopped.");
     const urls = Array.from(new Set(videoUrls ?? await getSavedYouTubeVideoUrls()));
     if (urls.length === 0) {
@@ -268,11 +370,13 @@ export function syncSavedYouTubeVideosToOfflinePlaylist(
     let existingCount = references.length - pending.length;
     let latest: YouTubeOfflinePlaylistResult | null = null;
     for (const reference of batch) {
+      assertFactoryResetEpoch(resetEpoch);
       if (signal?.aborted) {
         throw new Error("YouTube playlist sync stopped. Run it again to continue from the last confirmed video.");
       }
       try {
-        latest = await addOneVideo(reference.canonicalWatchUrl);
+        latest = await addOneVideo(reference.canonicalWatchUrl, resetEpoch);
+        assertFactoryResetEpoch(resetEpoch);
         if (latest.added) addedCount += 1;
         else existingCount += 1;
       } catch (error) {
@@ -312,5 +416,12 @@ export function syncSavedYouTubeVideosToOfflinePlaylist(
       existingCount,
       remainingCount,
     };
-  });
+    })
+  );
+}
+
+/** Reset module-only storage failure state between isolated tests. */
+export function resetYouTubePlaylistStateForTests(): void {
+  playlistStorageUnavailable = false;
+  playlistOperationChain = Promise.resolve();
 }

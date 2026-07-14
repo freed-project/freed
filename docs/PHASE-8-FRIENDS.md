@@ -72,6 +72,14 @@ interface Person {
   reachOutLog?: ReachOutLog[];
   tags?: string[];
   notes?: string;
+  /** @deprecated Legacy synchronized graph placement. */
+  graphX?: number;
+  /** @deprecated Legacy synchronized graph placement. */
+  graphY?: number;
+  /** @deprecated Legacy synchronized graph placement. */
+  graphPinned?: boolean;
+  /** @deprecated Legacy synchronized graph placement. */
+  graphUpdatedAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -98,6 +106,14 @@ interface Account {
     | "contact_import"
     | "manual_entry"
     | "follow_roster";
+  /** @deprecated Legacy synchronized graph placement. */
+  graphX?: number;
+  /** @deprecated Legacy synchronized graph placement. */
+  graphY?: number;
+  /** @deprecated Legacy synchronized graph placement. */
+  graphPinned?: boolean;
+  /** @deprecated Legacy synchronized graph placement. */
+  graphUpdatedAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -359,7 +375,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] FriendEditor links social sources and imports contact info
 - [x] Friends shown in Sidebar as a live navigation destination
 - [x] Google Contacts import creates friend persons by default and suggests same-person matches without auto-linking
-- [x] Google Contacts sync reuses native, refreshable Google credentials in Freed Desktop, retries once after an API 401 with a forced refresh, and streams People API pages into normalized results without retaining duplicate raw page arrays
+- [x] Google Contacts sync reuses native, refreshable Google credentials in Freed Desktop, retries once after an API 401 with a forced refresh, streams People API pages into normalized results without retaining duplicate raw page arrays, keeps its incremental token, cached contacts, suggestion decisions, and request history device-local through factory reset, and blocks automatic provider requests when that local ledger is corrupt or from an unsupported version until an explicit sync or reconnect repairs it
 - [x] Desktop snapshot restore preserves cached Google contacts and pending match suggestions
 - [x] Google Contacts appears as a first-class source in Settings and Friends, with full management in Freed Desktop and status-only visibility in the PWA
 - [x] Captured social authors can backfill orphan followed-account records before the operator confirms identity

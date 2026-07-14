@@ -53,6 +53,7 @@ import { socialProviderCopy } from "../lib/social-provider-copy";
 import { isRuntimeDeferredStage } from "../lib/social-capture-runtime";
 import { log } from "../lib/logger";
 import { usePostLoginAutoSync } from "../hooks/usePostLoginAutoSync";
+import { isDesktopProviderAuthAllowed } from "../lib/provider-auth-lifecycle";
 import { useFacebookGroupDiscovery } from "../lib/facebook-group-discovery";
 
 const FACEBOOK_LEAVE_CHECK_DELAY_MS = import.meta.env.VITE_TEST_TAURI === "1" ? 100 : 60_000;
@@ -288,6 +289,7 @@ export function FacebookSettingsSection({
 
   const handleAuthResult = useCallback(
     (loggedIn: boolean) => {
+      if (!isDesktopProviderAuthAllowed()) return;
       log.info(`[FB] auth result received logged_in=${loggedIn}`);
       const currentAuth = useAppStore.getState().fbAuth;
       const newState = {
@@ -333,8 +335,10 @@ export function FacebookSettingsSection({
       setActionError(null);
       try {
         await showFbLogin();
+        if (!isDesktopProviderAuthAllowed()) return;
         log.info("[FB] reconnect login window requested");
       } catch (err) {
+        if (!isDesktopProviderAuthAllowed()) return;
         const message = err instanceof Error ? err.message : "Failed to open login window";
         log.error(`[FB] reconnect failed: ${message}`);
         addDebugEvent("error", `[FB] reconnect failed: ${message}`);
@@ -349,6 +353,7 @@ export function FacebookSettingsSection({
       setActionError(null);
       try {
         const loggedIn = await checkFbAuth();
+        if (!isDesktopProviderAuthAllowed()) return;
         const newState = { isAuthenticated: loggedIn, lastCheckedAt: Date.now() };
         setFbAuth(newState);
         storeFbAuthState(newState);
@@ -357,9 +362,10 @@ export function FacebookSettingsSection({
           setActionError("Not logged in. Please log in through the Facebook window first.");
         }
       } catch (err) {
+        if (!isDesktopProviderAuthAllowed()) return;
         setActionError(err instanceof Error ? err.message : "Auth check failed");
       } finally {
-        setChecking(false);
+        if (isDesktopProviderAuthAllowed()) setChecking(false);
       }
     });
   }, [confirm, setFbAuth]);

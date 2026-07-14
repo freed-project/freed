@@ -7,9 +7,17 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { selectPlatformUA, clearPlatformUA } from "./user-agent";
-import { safeUnlisten } from "./safe-unlisten";
+import {
+  clearTransientLastCaptureError,
+  persistDisconnectedSocialAuthStateForFactoryReset,
+  readStoredSocialAuthState,
+} from "./social-auth-transient-errors";
+import {
+  isDesktopProviderAuthAllowed,
+  requestDesktopProviderAuthCheck,
+  runDesktopProviderAuthRequest,
+} from "./provider-auth-lifecycle";
 
 export interface LiAuthState {
   isAuthenticated: boolean;
@@ -32,9 +40,12 @@ const LI_AUTH_KEY = "li_auth_state";
  * in, Freed marks the session connected and the user closes the window.
  */
 export async function showLiLogin(): Promise<void> {
-  // Generate and persist a fresh session UA at connect time.
-  const userAgent = selectPlatformUA("linkedin");
-  await invoke("li_show_login", { userAgent });
+  if (!isDesktopProviderAuthAllowed()) return;
+  await runDesktopProviderAuthRequest(async () => {
+    // Generate and persist a fresh session UA at connect time.
+    const userAgent = selectPlatformUA("linkedin");
+    await invoke("li_show_login", { userAgent });
+  });
 }
 
 /**
@@ -51,26 +62,12 @@ export async function hideLiLogin(): Promise<void> {
  * the auth result event arrives.
  */
 export async function checkLiAuth(): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    let unlisten: UnlistenFn | null = null;
-    const timeout = setTimeout(() => {
-      safeUnlisten(unlisten, "li-auth-result:timeout");
-      resolve(false);
-    }, 15_000);
-
-    listen<{ loggedIn: boolean }>("li-auth-result", (event) => {
-      clearTimeout(timeout);
-      safeUnlisten(unlisten, "li-auth-result");
-      resolve(event.payload.loggedIn);
-    }).then((fn) => {
-      unlisten = fn;
-    });
-
-    invoke("li_check_auth").catch(() => {
-      clearTimeout(timeout);
-      safeUnlisten(unlisten, "li-auth-result:error");
-      resolve(false);
-    });
+  if (!isDesktopProviderAuthAllowed()) return false;
+  return requestDesktopProviderAuthCheck<{ loggedIn: boolean }>({
+    eventName: "li-auth-result",
+    command: "li_check_auth",
+    timeoutMs: 15_000,
+    isLoggedIn: (payload) => payload.loggedIn,
   });
 }
 
@@ -78,16 +75,23 @@ export async function checkLiAuth(): Promise<boolean> {
  * Disconnect LinkedIn by clearing all WebView browsing data.
  */
 export async function disconnectLi(): Promise<void> {
-  await invoke("li_disconnect");
   localStorage.removeItem(LI_AUTH_KEY);
+  await invoke("li_disconnect");
   clearPlatformUA("linkedin");
+}
+
+/** Clear the native session while preserving request history, pause state, and platform identity. */
+export async function disconnectLiForFactoryReset(): Promise<void> {
+  persistDisconnectedSocialAuthStateForFactoryReset(LI_AUTH_KEY, "LinkedIn");
+  await invoke("li_disconnect");
 }
 
 /**
  * Persist auth state to localStorage for fast startup.
  */
 export function storeLiAuthState(state: LiAuthState): void {
-  localStorage.setItem(LI_AUTH_KEY, JSON.stringify(state));
+  if (!isDesktopProviderAuthAllowed()) return;
+  localStorage.setItem(LI_AUTH_KEY, JSON.stringify(clearTransientLastCaptureError(state)));
 }
 
 /**
@@ -95,20 +99,8 @@ export function storeLiAuthState(state: LiAuthState): void {
  * the real check happens via checkLiAuth().
  */
 export function initLiAuth(): LiAuthState {
-  const stored = localStorage.getItem(LI_AUTH_KEY);
-  if (!stored) return { isAuthenticated: false };
-  try {
-    const parsed = JSON.parse(stored) as LiAuthState;
-    return {
-      isAuthenticated: !!parsed.isAuthenticated,
-      lastCheckedAt: parsed.lastCheckedAt,
-      lastCapturedAt: parsed.lastCapturedAt,
-      lastCaptureError: parsed.lastCaptureError,
-      pausedUntil: parsed.pausedUntil,
-      pauseReason: parsed.pauseReason,
-      pauseLevel: parsed.pauseLevel,
-    };
-  } catch {
-    return { isAuthenticated: false };
-  }
+  const stored = readStoredSocialAuthState<LiAuthState>(LI_AUTH_KEY);
+  return stored.status === "supported"
+    ? stored.state
+    : { isAuthenticated: false };
 }

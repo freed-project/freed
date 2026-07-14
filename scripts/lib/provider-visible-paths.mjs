@@ -141,6 +141,106 @@ export const PROVIDER_VISIBLE_ORCHESTRATION_FILES = new Set([
   "packages/desktop/src-tauri/src/lib.rs",
 ]);
 
+// Exact state, reset, and request boundaries whose provider scope is known.
+// These files may not name a provider in their path, but a change can still
+// alter whether provider work starts, retries, commits, or survives reset.
+// Keep the values sorted because approval packets compare exact scopes.
+export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
+  [
+    "packages/desktop/src/App.tsx",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  ["packages/desktop/src/components/MobileSyncTab.tsx", ["other"]],
+  ["packages/desktop/src/hooks/useCloudProviders.ts", ["other"]],
+  ["packages/desktop/src/lib/ai-summarizer.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/automerge-types.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/automerge.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/automerge.worker.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  ["packages/desktop/src/lib/contact-sync-storage.ts", ["other"]],
+  ["packages/desktop/src/lib/facebook-group-discovery.ts", ["facebook"]],
+  [
+    "packages/desktop/src/lib/factory-reset-guard.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  ["packages/desktop/src/lib/local-ai-models.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/media-vault.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/native-json-store.ts",
+    ["facebook", "instagram", "linkedin", "x", "youtube"],
+  ],
+  ["packages/desktop/src/lib/outbox.ts", ["facebook", "instagram", "x"]],
+  [
+    "packages/desktop/src/lib/provider-auth-lifecycle.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/provider-health.ts",
+    ["facebook", "instagram", "linkedin", "x", "youtube"],
+  ],
+  ["packages/desktop/src/lib/rss-poller.ts", ["other"]],
+  ["packages/desktop/src/lib/rss-refresh-plan.ts", ["other"]],
+  ["packages/desktop/src/lib/rss-runtime-state.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/scraper-prefs.ts",
+    ["facebook", "instagram", "linkedin", "x", "youtube"],
+  ],
+  ["packages/desktop/src/lib/secure-storage.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/semantic-classifier.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/social-auth-transient-errors.ts",
+    ["facebook", "instagram", "linkedin", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/social-outbox-state.ts",
+    ["facebook", "instagram", "x"],
+  ],
+  [
+    "packages/desktop/src/lib/store.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  ["packages/desktop/src/lib/sync.ts", ["other"]],
+  ["packages/desktop/src/lib/x-login-reset-controller.ts", ["x"]],
+  ["packages/pwa/src/App.tsx", ["other"]],
+  ["packages/pwa/src/lib/automerge-types.ts", ["other"]],
+  ["packages/pwa/src/lib/automerge.ts", ["other"]],
+  ["packages/pwa/src/lib/automerge.worker.ts", ["other"]],
+  ["packages/pwa/src/lib/factory-reset-coordinator.ts", ["other"]],
+  ["packages/pwa/src/lib/store.ts", ["other"]],
+  ["packages/shared/src/contact-sync-state.ts", ["other"]],
+  ["packages/shared/src/preferences.ts", ["other"]],
+  [
+    "packages/shared/src/sync-write-policy.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  ["packages/sync/src/storage/indexeddb.ts", ["other"]],
+  [
+    "packages/ui/src/components/SettingsDialog.tsx",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+  ["packages/ui/src/components/settings/AISection.tsx", ["other"]],
+  ["packages/ui/src/hooks/useContactSync.ts", ["other"]],
+  ["packages/ui/src/lib/device-ai-preferences.ts", ["other"]],
+  [
+    "packages/ui/src/lib/factory-reset.ts",
+    ["facebook", "instagram", "linkedin", "other", "x", "youtube"],
+  ],
+]);
+
 export const PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES = [
   "packages/capture-linkedin/",
   "packages/capture-youtube/",
@@ -165,7 +265,8 @@ export function isProviderVisiblePath(filePath) {
   if (
     SOCIAL_PROVIDER_DESKTOP_FILES.has(normalizedPath) ||
     PROVIDER_VISIBLE_EXTRA_FILES.has(normalizedPath) ||
-    PROVIDER_VISIBLE_ORCHESTRATION_FILES.has(normalizedPath)
+    PROVIDER_VISIBLE_ORCHESTRATION_FILES.has(normalizedPath) ||
+    PROVIDER_VISIBLE_EXACT_SCOPES.has(normalizedPath)
   ) {
     return true;
   }
@@ -235,7 +336,10 @@ export function providerApprovalAuthorizationDigest(record) {
 }
 
 export function providerIdsForPath(filePath) {
-  const normalizedPath = normalizeProviderPath(filePath).toLowerCase();
+  const canonicalPath = normalizeProviderPath(filePath);
+  const exactScope = PROVIDER_VISIBLE_EXACT_SCOPES.get(canonicalPath);
+  if (exactScope) return [...exactScope];
+  const normalizedPath = canonicalPath.toLowerCase();
   if (
     normalizedPath === "packages/desktop/src/lib/legal-consent.ts" ||
     normalizedPath === "packages/shared/src/legal.ts"

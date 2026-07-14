@@ -468,6 +468,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     applyUpdate,
     headerDragRegion,
     factoryReset,
+    factoryResetRevokesMobilePairing,
     activeCloudProviderLabel,
     openUrl,
     seedSocialConnections,
@@ -2219,7 +2220,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <div>
                 <p className="text-sm font-semibold text-text-primary">Reset this device?</p>
                 <p className="mt-0.5 text-xs text-text-secondary">
-                  Clears all local data and saved connection credentials from this device.
+                  Clears this device's Freed library and disconnects active accounts. Freed keeps local request history and downloaded files so reconnecting doesn't repeat work.
+                  {factoryResetRevokesMobilePairing &&
+                    " Connected mobile readers will need to scan the pairing QR code again after reset."}
                   {!deleteFromCloud &&
                     " Your cloud data remains available. Reconnect cloud sync after reset to restore it."}
                 </p>

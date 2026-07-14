@@ -1,10 +1,5 @@
 import type { GeoLocation } from "@freed/shared";
 import { getFromCache, saveToCache } from "./geocoding-cache.js";
-import {
-  captureFactoryResetWriteEpoch,
-  isFactoryResetWriteAllowed,
-  trackFactoryResetSensitiveOperation,
-} from "./factory-reset.js";
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const USER_AGENT = "Freed/1.0 (app.freed.wtf)";
@@ -42,7 +37,7 @@ function drainQueue() {
   }, wait);
 }
 
-function throttledFetch(url: string, writeEpoch: number): Promise<Response> {
+function throttledFetch(url: string): Promise<Response> {
   return new Promise((resolve, reject) => {
     if (pendingQueue.length >= 3) {
       reject(new Error("Geocoding queue full"));
@@ -50,10 +45,6 @@ function throttledFetch(url: string, writeEpoch: number): Promise<Response> {
     }
 
     pendingQueue.push(() => {
-      if (!isFactoryResetWriteAllowed(writeEpoch)) {
-        reject(new Error("Factory reset stopped the pending geocoding request"));
-        return;
-      }
       fetch(url, { headers: { "User-Agent": USER_AGENT } })
         .then(resolve)
         .catch(reject);
@@ -64,8 +55,6 @@ function throttledFetch(url: string, writeEpoch: number): Promise<Response> {
 }
 
 export async function geocode(query: string): Promise<GeoLocation | null> {
-  const writeEpoch = captureFactoryResetWriteEpoch();
-  if (!isFactoryResetWriteAllowed(writeEpoch)) return null;
   if (memoryCache.has(query)) {
     return memoryCache.get(query) ?? null;
   }
@@ -73,9 +62,7 @@ export async function geocode(query: string): Promise<GeoLocation | null> {
   const inFlight = inFlightRequests.get(query);
   if (inFlight) return inFlight;
 
-  const request = trackFactoryResetSensitiveOperation(
-    geocodeWithCache(query, writeEpoch),
-  );
+  const request = geocodeWithCache(query);
   inFlightRequests.set(query, request);
 
   try {
@@ -86,38 +73,30 @@ export async function geocode(query: string): Promise<GeoLocation | null> {
   }
 }
 
-async function geocodeWithCache(
-  query: string,
-  writeEpoch: number,
-): Promise<GeoLocation | null> {
+async function geocodeWithCache(query: string): Promise<GeoLocation | null> {
   const cached = await getFromCache(query);
   if (cached !== undefined) {
-    if (isFactoryResetWriteAllowed(writeEpoch)) memoryCache.set(query, cached);
+    memoryCache.set(query, cached);
     return cached;
   }
 
-  if (!isFactoryResetWriteAllowed(writeEpoch)) return null;
-  const location = await geocodeUncached(query, writeEpoch);
-  if (isFactoryResetWriteAllowed(writeEpoch)) memoryCache.set(query, location);
+  const location = await geocodeUncached(query);
+  memoryCache.set(query, location);
   return location;
 }
 
-async function geocodeUncached(
-  query: string,
-  writeEpoch: number,
-): Promise<GeoLocation | null> {
+async function geocodeUncached(query: string): Promise<GeoLocation | null> {
   try {
-    if (!isFactoryResetWriteAllowed(writeEpoch)) return null;
     const url = `${NOMINATIM_URL}?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1`;
-    const res = await throttledFetch(url, writeEpoch);
+    const res = await throttledFetch(url);
     if (!res.ok) {
-      if (isFactoryResetWriteAllowed(writeEpoch)) await saveToCache(query, null);
+      await saveToCache(query, null);
       return null;
     }
 
     const results: NominatimResult[] = await res.json();
     if (results.length === 0) {
-      if (isFactoryResetWriteAllowed(writeEpoch)) await saveToCache(query, null);
+      await saveToCache(query, null);
       return null;
     }
 
@@ -130,7 +109,7 @@ async function geocodeUncached(
       country: result.address?.country,
     };
 
-    if (isFactoryResetWriteAllowed(writeEpoch)) await saveToCache(query, location);
+    await saveToCache(query, location);
     return location;
   } catch {
     return null;

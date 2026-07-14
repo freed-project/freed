@@ -6,6 +6,7 @@ import {
   writeVersionedLocalStorage,
   type VersionedLocalStorageCodec,
 } from "./versioned-local-storage.js";
+import { isFactoryResetInProgress } from "./factory-reset.js";
 
 export const DEVICE_GRAPH_LAYOUT_STORAGE_KEY = "freed-device-graph-layout-v1";
 
@@ -113,6 +114,7 @@ function persistSnapshot(
   snapshot: DeviceGraphLayoutSnapshot,
   replaceUnsupportedVersion = false,
 ): boolean {
+  if (isFactoryResetInProgress()) return false;
   return writeVersionedLocalStorage(
     DEVICE_GRAPH_LAYOUT_STORAGE_KEY,
     STORAGE_CODEC,
@@ -167,6 +169,7 @@ function setLayoutRecord(
   graphY: number,
   graphUpdatedAt: number,
 ): boolean {
+  if (isFactoryResetInProgress()) return false;
   if (!id) return false;
   const record = normalizeLayoutRecord({
     graphX,
@@ -185,6 +188,7 @@ function setLayoutRecord(
 }
 
 function removeLayoutRecord(kind: "persons" | "accounts", id: string): boolean {
+  if (isFactoryResetInProgress()) return false;
   const snapshot = getDeviceGraphLayout();
   if (!snapshot[kind][id]) return true;
   const next = { ...snapshot[kind] };
@@ -305,6 +309,7 @@ export function pruneDeviceGraphLayout(
   persons: Readonly<Record<string, Person>>,
   accounts: Readonly<Record<string, Account>>,
 ): boolean {
+  if (isFactoryResetInProgress()) return false;
   const snapshot = getDeviceGraphLayout();
   let nextPersons: Record<string, DeviceGraphLayoutRecord> | null = null;
   let nextAccounts: Record<string, DeviceGraphLayoutRecord> | null = null;
@@ -337,6 +342,7 @@ export function restoreReplacedDeviceAccountGraphPositions(
   retainedAccountIds: Iterable<string>,
   beforeReplacement: DeviceGraphLayoutSnapshot,
 ): boolean {
+  if (isFactoryResetInProgress()) return false;
   const snapshot = getDeviceGraphLayout();
   let nextAccounts: Record<string, DeviceGraphLayoutRecord> | null = null;
 
@@ -379,6 +385,7 @@ export function migrateLegacyDeviceGraphLayout(
   persons: Readonly<Record<string, Person>>,
   accounts: Readonly<Record<string, Account>>,
 ): boolean {
+  if (isFactoryResetInProgress()) return false;
   const stored = readStoredSnapshot();
   if (
     stored.status === "unsupported"
