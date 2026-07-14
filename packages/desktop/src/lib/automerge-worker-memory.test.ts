@@ -141,19 +141,40 @@ describe("automerge worker memory routing", () => {
     expect(handleBody).toContain("ensureCurrentDocLoaded(req.type)");
   });
 
-  it("terminates idle workers and restarts them before later requests", () => {
+  it("keeps the unloaded worker shell through a bounded quiet window", () => {
     expect(clientSource).toContain("let worker: Worker | null = null");
     expect(clientSource).toContain("let idleWorkerStopTimer");
+    expect(clientSource).toContain("IDLE_WORKER_STOP_DELAY_MS = 30_000");
     expect(clientSource).toContain("IDLE_WORKER_STOP_RETRY_MS = 1_000");
     expect(clientSource).toContain("function hasPendingWorkerRequests()");
+    expect(clientSource).toContain("pendingInit.size > 0");
+    expect(clientSource).toContain("pendingRelayClientCount.size > 0");
     expect(clientSource).toContain("function stopIdleWorker()");
-    expect(clientSource).toContain("function scheduleIdleWorkerStop()");
-    expect(clientSource).toContain("if (!stopIdleWorker() && worker)");
+    expect(clientSource).toContain("function cancelIdleWorkerStop()");
+    expect(clientSource).toContain("function completeWorkerActivity(");
+    expect(clientSource).toContain("function scheduleIdleWorkerStop(");
+    expect(clientSource).toMatch(
+      /scheduleIdleWorkerStop\(\s*IDLE_WORKER_STOP_RETRY_MS,\s*"pending_request_retry",?\s*\)/,
+    );
     expect(clientSource).toContain("worker.terminate()");
     expect(clientSource).toContain("ensureWorkerDocumentReadyFor(msg.type)");
+    expect(clientSource).toContain("cancelIdleWorkerStop();");
+    expect(clientSource).toMatch(
+      /completeWorkerActivity\(\s*IDLE_WORKER_STOP_RETRY_MS,\s*"request_timeout_cleanup",?\s*\)/,
+    );
+    expect(clientSource).toContain('if ("reqId" in msg && appDocumentInitialized)');
     expect(clientSource).toContain("await sendInit()");
     expect(clientSource).toContain("(msg.detail ?? \"\").startsWith(\"[automerge-worker] released idle document\")");
     expect(clientSource).toContain("scheduleIdleWorkerStop();");
+    expect(clientSource).toContain("pendingInit.set(reqId, {");
+    expect(clientSource).toContain("idleWorkerStopTimer !== scheduledTimer");
+    expect(clientSource).toContain("worker !== scheduledWorker");
+    expect(clientSource).toContain("sourceWorker !== worker");
+    expect(clientSource).toContain("error instanceof WorkerInitFailureError");
+    expect(clientSource).toContain("error instanceof WorkerInitResponseError");
+    expect(workerSource).toMatch(
+      /if \(req\.type === "UPDATE_RELAY_CLIENT_COUNT"\) \{[\s\S]*?ack\(req\.reqId\);[\s\S]*?return;/,
+    );
   });
 
   it("rebuilds a fresh Automerge document only after compacting oversized text", () => {

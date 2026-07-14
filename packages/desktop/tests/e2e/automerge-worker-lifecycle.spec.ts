@@ -49,7 +49,7 @@ test("large document survives real worker idle termination and reinitialization"
   app,
   page,
 }, testInfo) => {
-  test.setTimeout(120_000);
+  test.setTimeout(150_000);
 
   const fixture = createLargeAutomergeFixture();
   expect(fixture.manifest.binaryBytes).toBeGreaterThanOrEqual(
@@ -249,6 +249,41 @@ test("large document survives real worker idle termination and reinitialization"
     )
     .toBe(true);
 
+  const quietWindowBinaryBytes = await page.evaluate(async () => {
+    const automerge = (
+      window as Window & {
+        __FREED_AUTOMERGE__?: {
+          getDocBinary: () => Promise<Uint8Array>;
+        };
+      }
+    ).__FREED_AUTOMERGE__;
+    if (!automerge) throw new Error("Automerge test API is unavailable");
+    return (await automerge.getDocBinary()).byteLength;
+  });
+  expect(quietWindowBinaryBytes).toBeGreaterThan(0);
+
+  const recordsAfterQuietWindowRead = await readWorkerProbeRecords(page);
+  const quietWindowWorker = recordsAfterQuietWindowRead.find(
+    (record) => record.generation === replacementGeneration,
+  );
+  if (!quietWindowWorker) {
+    throw new Error("Replacement worker disappeared during quiet-window read");
+  }
+  expect(
+    quietWindowWorker.outbound.some(
+      (message) =>
+        message.sequence > replacementSequence &&
+        message.type === "GET_DOC_BINARY",
+    ),
+  ).toBe(true);
+  expect(
+    recordsAfterQuietWindowRead.filter(
+      (record) =>
+        record.url.includes("automerge.worker") &&
+        record.generation > replacementGeneration,
+    ),
+  ).toHaveLength(0);
+
   await expect
     .poll(
       async () => {
@@ -257,7 +292,7 @@ test("large document survives real worker idle termination and reinitialization"
         );
         return record?.terminatedSequence ?? 0;
       },
-      { timeout: 30_000 },
+      { timeout: 75_000 },
     )
     .toBeGreaterThan(replacementSequence);
 

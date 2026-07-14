@@ -133,7 +133,7 @@ export type WorkerRequest =
   | { reqId: number; type: "GET_HEADS" }
   | { reqId: number; type: "GET_SAVED_YOUTUBE_URLS" }
   | { reqId: number; type: "GET_ITEM_PRESERVED_TEXT"; globalId: string }
-  // Relay management (fire-and-forget, reqId ignored)
+  // Relay management (bypasses the document queue but returns an ACK)
   | { reqId: number; type: "UPDATE_RELAY_CLIENT_COUNT"; count: number };
 
 export type DocChangeEvent =

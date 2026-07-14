@@ -107,7 +107,7 @@ Must land AFTER the P1 dampers or the relay and cloud loops amplify each other.
 ## Wave 5 — Memory demand-side (summaries)
 
 - Raw-bytes transport: transferable Uint8Array postMessage + Tauri raw ArrayBuffer invoke (deletes the 16-20x number[]/JSON amplification).
-- Worker lifecycle: time-based idle unload (30-60s) instead of unload-on-queue-drain + 1s kill; persist compaction bookkeeping across unloads.
+- Worker lifecycle: [W5-01](stability-tasks/W5-01-worker-idle-quiet-window.md) keeps immediate document release but holds the unloaded worker shell for a 30 second sliding quiet window. The candidate is implemented and awaiting PR 949 plus separately approved native identity stamping, then a measurement-only baseline followed by its separate installed-build effect soak. Concurrent INIT coalescing remains a separate later slice.
 - UPDATE_FEED_ITEM through ITEM_PATCH; batch imports persist once.
 - Cloud merge moves into the Automerge worker.
 - Re-enable eviction for cloud users from markCloudSuccess (guarded by destructive-merge guard + snapshots).

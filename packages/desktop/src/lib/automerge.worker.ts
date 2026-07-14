@@ -1669,6 +1669,7 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const req = event.data;
   if (req.type === "UPDATE_RELAY_CLIENT_COUNT") {
     relayClientCount = req.count;
+    ack(req.reqId);
     return;
   }
 
