@@ -3,7 +3,7 @@
   "version": "26.7.1301-dev",
   "channel": "dev",
   "dayKey": "26.7.13",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-07-14T04:15:20.327Z",
   "model": "heuristic",
@@ -44,21 +44,15 @@
     ]
   },
   "release": {
-    "deck": "Unattended YouTube validation now runs through the normal authenticated sync path with stricter build and soak evidence",
+    "deck": "YouTube now completes authenticated background capture and closes its hidden session cleanly",
     "features": [],
     "fixes": [
-      "Complete YouTube capture lifecycle",
-      "Bootstrap automation actor leases",
-      "Bind release lockfile to version bump",
-      "Harden the stability control plane",
-      "Pinned Node when sourced by zsh resolved",
-      "Start the normal authenticated YouTube sync from a dev build through the terminal without foreground clicks",
-      "Require complete subscription roster evidence, recent Subscriptions media evidence, and exact installed-build identity during the soak"
+      "Complete authenticated YouTube subscription and recent video capture",
+      "Close hidden YouTube capture windows after completion, cancellation, or timeout",
+      "Fail safely when YouTube returns incomplete or ambiguous page evidence",
+      "Harden unattended stability checks and release validation"
     ],
-    "followUps": [
-      "Reverse integrate main into dev",
-      "Prepare v26.7.1300-dev"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1301-dev\n\nUnattended YouTube validation now runs through the normal authenticated sync path with stricter build and soak evidence\n\n### Fixes\n\n- Complete YouTube capture lifecycle\n- Bootstrap automation actor leases\n- Bind release lockfile to version bump\n- Harden the stability control plane\n- Pinned Node when sourced by zsh resolved\n- Start the normal authenticated YouTube sync from a dev build through the terminal without foreground clicks\n- Require complete subscription roster evidence, recent Subscriptions media evidence, and exact installed-build identity during the soak\n\n### Follow-ups\n\n- Reverse integrate main into dev\n- Prepare v26.7.1300-dev\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1301-dev\n\nYouTube now completes authenticated background capture and closes its hidden session cleanly\n\n### Fixes\n\n- Complete authenticated YouTube subscription and recent video capture\n- Close hidden YouTube capture windows after completion, cancellation, or timeout\n- Fail safely when YouTube returns incomplete or ambiguous page evidence\n- Harden unattended stability checks and release validation\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

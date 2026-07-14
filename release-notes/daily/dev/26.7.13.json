@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.7.13",
   "date": "2026-07-13",
-  "preferredDeck": "Unattended YouTube validation now runs through the normal authenticated sync path with stricter build and soak evidence",
+  "preferredDeck": "YouTube now completes authenticated background capture and closes its hidden session cleanly",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
