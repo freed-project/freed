@@ -5160,46 +5160,53 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
   const panDelta = { x: 48, y: 32 };
 
   await viewport.evaluate(async (element, gesture) => {
-    const target = element as HTMLElement & {
-      setPointerCapture: (pointerId: number) => void;
-      releasePointerCapture: (pointerId: number) => void;
-    };
-    target.setPointerCapture = () => undefined;
-    target.releasePointerCapture = () => undefined;
-
-    const dispatchTouchPointer = (
-      type: "pointerdown" | "pointermove" | "pointerup",
-      pointerId: number,
-      x: number,
-      y: number,
-      isPrimary: boolean,
+    const target = element as HTMLElement;
+    const makeTouch = (identifier: number, x: number, y: number) => new Touch({
+      identifier,
+      target,
+      clientX: x,
+      clientY: y,
+      screenX: x,
+      screenY: y,
+      pageX: x,
+      pageY: y,
+      radiusX: 8,
+      radiusY: 8,
+      force: 1,
+    });
+    const dispatchTouch = (
+      type: "touchstart" | "touchmove",
+      touches: Touch[],
+      changedTouches: Touch[],
     ) => {
-      target.dispatchEvent(new PointerEvent(type, {
+      target.dispatchEvent(new TouchEvent(type, {
         bubbles: true,
         cancelable: true,
-        pointerId,
-        pointerType: "touch",
-        isPrimary,
-        clientX: x,
-        clientY: y,
-        width: 12,
-        height: 12,
-        buttons: type === "pointerup" ? 0 : 1,
+        touches,
+        targetTouches: touches,
+        changedTouches,
       }));
     };
     const nextFrame = () => new Promise<void>((resolve) => {
       requestAnimationFrame(() => resolve());
     });
 
-    dispatchTouchPointer("pointerdown", 11, gesture.centerX - 80, gesture.centerY, true);
-    dispatchTouchPointer("pointerdown", 12, gesture.centerX + 80, gesture.centerY, false);
+    const firstStart = makeTouch(11, gesture.centerX - 80, gesture.centerY);
+    dispatchTouch("touchstart", [firstStart], [firstStart]);
+    const secondStart = makeTouch(12, gesture.centerX + 80, gesture.centerY);
+    dispatchTouch("touchstart", [firstStart, secondStart], [secondStart]);
     await nextFrame();
-    dispatchTouchPointer("pointermove", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
-    await nextFrame();
-    dispatchTouchPointer("pointermove", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
-    await nextFrame();
-    dispatchTouchPointer("pointermove", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
-    dispatchTouchPointer("pointermove", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
+    const firstMoved = makeTouch(
+      11,
+      gesture.centerX - 140 + gesture.panDelta.x,
+      gesture.centerY - 18 + gesture.panDelta.y,
+    );
+    const secondMoved = makeTouch(
+      12,
+      gesture.centerX + 140 + gesture.panDelta.x,
+      gesture.centerY + 18 + gesture.panDelta.y,
+    );
+    dispatchTouch("touchmove", [firstMoved, secondMoved], [firstMoved, secondMoved]);
     await nextFrame();
   }, { centerX, centerY, panDelta });
 
@@ -5231,42 +5238,57 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
   expect(afterPinch).not.toBeNull();
 
   await viewport.evaluate(async (element, gesture) => {
-    const target = element as HTMLElement & {
-      setPointerCapture: (pointerId: number) => void;
-      releasePointerCapture: (pointerId: number) => void;
-    };
-    target.setPointerCapture = () => undefined;
-    target.releasePointerCapture = () => undefined;
-
-    const dispatchTouchPointer = (
-      type: "pointermove" | "pointerup",
-      pointerId: number,
-      x: number,
-      y: number,
-      isPrimary: boolean,
+    const target = element as HTMLElement;
+    const makeTouch = (identifier: number, x: number, y: number) => new Touch({
+      identifier,
+      target,
+      clientX: x,
+      clientY: y,
+      screenX: x,
+      screenY: y,
+      pageX: x,
+      pageY: y,
+      radiusX: 8,
+      radiusY: 8,
+      force: 1,
+    });
+    const dispatchTouch = (
+      type: "touchmove" | "touchend",
+      touches: Touch[],
+      changedTouches: Touch[],
     ) => {
-      target.dispatchEvent(new PointerEvent(type, {
+      target.dispatchEvent(new TouchEvent(type, {
         bubbles: true,
         cancelable: true,
-        pointerId,
-        pointerType: "touch",
-        isPrimary,
-        clientX: x,
-        clientY: y,
-        width: 12,
-        height: 12,
-        buttons: type === "pointerup" ? 0 : 1,
+        touches,
+        targetTouches: touches,
+        changedTouches,
       }));
     };
     const nextFrame = () => new Promise<void>((resolve) => {
       requestAnimationFrame(() => resolve());
     });
 
-    dispatchTouchPointer("pointerup", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
+    const firstEnd = makeTouch(
+      11,
+      gesture.centerX - 140 + gesture.panDelta.x,
+      gesture.centerY - 18 + gesture.panDelta.y,
+    );
+    const secondCurrent = makeTouch(
+      12,
+      gesture.centerX + 140 + gesture.panDelta.x,
+      gesture.centerY + 18 + gesture.panDelta.y,
+    );
+    dispatchTouch("touchend", [secondCurrent], [firstEnd]);
     await nextFrame();
-    dispatchTouchPointer("pointermove", 12, gesture.centerX + 204 + gesture.panDelta.x, gesture.centerY + 42 + gesture.panDelta.y, false);
+    const secondMoved = makeTouch(
+      12,
+      gesture.centerX + 204 + gesture.panDelta.x,
+      gesture.centerY + 42 + gesture.panDelta.y,
+    );
+    dispatchTouch("touchmove", [secondMoved], [secondMoved]);
     await nextFrame();
-    dispatchTouchPointer("pointerup", 12, gesture.centerX + 204 + gesture.panDelta.x, gesture.centerY + 42 + gesture.panDelta.y, false);
+    dispatchTouch("touchend", [], [secondMoved]);
   }, { centerX, centerY, panDelta });
 
   await expect

@@ -115,7 +115,7 @@ The graph occupies a constrained galactic plane. `x` and `y` encode stable seman
 3. Replace mount-time item scans with an incrementally maintained graph index and transferable typed arrays.
 4. Build the deterministic hierarchical galaxy compiler with semantic zones, local identity systems, bounded prominence depth, stable coordinates, and incremental patches.
 5. Build the GPU engine with instanced stars, procedural coronae, short links, provider fields, batched billboard text, texture-atlas avatars, and depth-aware picking.
-6. Build the locked camera and pointer gesture state machine with transform-only movement.
+6. Build the locked camera and native touch plus pointer gesture state machine with transform-only movement.
 7. Restore every workflow: selection, details, context menus, linking, pinning, promotion, suggestions, reconnect state, reader links, and Map links.
 8. Add the development visual laboratory for nebula, rings, combined fields, plane thickness, prominence curves, and label density.
 9. Prove stress behavior, mobile interaction, accessibility, reduced motion, theme coverage, installed diagnostics, and memory budgets.
@@ -161,7 +161,8 @@ As of July 12, 2026, other tasks are running on the development machine. The own
 - Model compilation builds one account-to-person index and never rescans the full account library for each person.
 - The initial camera opens at the first useful semantic tier on Freed Desktop and at a closer exploration tier on iPhone. `Fit all` still reveals the complete provider universe.
 - Billboard labels redraw after asynchronous glyph generation, use settled screen-space collision, and read the active theme's real text and shell colors.
-- Two-touch pinch hands directly to one-finger pan when either touch lifts. Linking and pinning remain context-menu-only workflows.
+- iPhone pan and pinch use native non-passive touch events rather than WebKit pointer capture. Pinch preserves its active midpoint, hands directly to one-finger pan when either touch lifts, recovers after touch cancellation, and leaves browser zoom unchanged. Mouse and pen input remain on Pointer Events.
+- Mobile regression coverage now includes browser-generated two-finger input in the PWA, pinch-to-pan continuation, and the same touch state path under WebKit's iPhone profile. Linking and pinning remain context-menu-only workflows.
 - Neon and Scriptorium visual passes confirm that node cores, background stars, labels, edges, and provider fields follow the active theme.
 
 ### Next structural target

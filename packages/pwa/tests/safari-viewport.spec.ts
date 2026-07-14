@@ -221,6 +221,117 @@ test.describe("Safari viewport layout — iPhone 14 / WebKit", () => {
   });
 });
 
+test.describe("Friends graph touch gestures in WebKit", () => {
+  test("native two-finger input zooms the graph instead of the page", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as typeof window & { __FREED_GRAPH_DEBUG_ENABLED__?: boolean })
+        .__FREED_GRAPH_DEBUG_ENABLED__ = true;
+    });
+    await page.goto("/", { waitUntil: "load" });
+    await acceptLegalGateIfPresent(page);
+    await page.waitForFunction(() => {
+      const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as
+        | { getState?: () => { isInitialized?: boolean } }
+        | undefined;
+      return store?.getState?.().isInitialized === true;
+    });
+    await page.evaluate(async () => {
+      const runtime = window as unknown as Record<string, unknown>;
+      const automerge = runtime.__FREED_AUTOMERGE__ as {
+        docAddFriend: (friend: unknown) => Promise<void>;
+      };
+      const store = runtime.__FREED_STORE__ as {
+        getState: () => {
+          friends: Record<string, unknown>;
+          setActiveView: (view: string) => void;
+        };
+      };
+      const now = Date.now();
+      await automerge.docAddFriend({
+        id: "friend-webkit-touch",
+        name: "WebKit Touch",
+        careLevel: 5,
+        sources: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      store.getState().setActiveView("friends");
+    });
+
+    const viewport = page.getByTestId("friend-graph-viewport");
+    await expect(viewport).toBeVisible({ timeout: 10_000 });
+    const readGraphScale = () => page.evaluate(() => (
+      window as typeof window & {
+        __FREED_GRAPH_PERF__?: { transformScale?: number };
+      }
+    ).__FREED_GRAPH_PERF__?.transformScale ?? 0);
+    await expect.poll(readGraphScale).toBeGreaterThan(0);
+    const beforeScale = await readGraphScale();
+    const box = await viewport.boundingBox();
+    expect(box).not.toBeNull();
+
+    const gestureResult = await viewport.evaluate(async (element, gesture) => {
+      type SyntheticTouch = {
+        identifier: number;
+        target: EventTarget;
+        clientX: number;
+        clientY: number;
+      };
+      const target = element.querySelector('[data-testid="friend-graph-canvas-overlay"]') ?? element;
+      const makeTouch = (identifier: number, clientX: number, clientY: number): SyntheticTouch => ({
+        identifier,
+        target,
+        clientX,
+        clientY,
+      });
+      const makeTouchList = (touches: SyntheticTouch[]) => {
+        const list = [...touches] as SyntheticTouch[] & {
+          item: (index: number) => SyntheticTouch | null;
+        };
+        list.item = (index) => list[index] ?? null;
+        return list;
+      };
+      const dispatch = (
+        type: "touchstart" | "touchmove" | "touchend",
+        touches: SyntheticTouch[],
+        changedTouches: SyntheticTouch[],
+      ) => {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperties(event, {
+          touches: { value: makeTouchList(touches) },
+          targetTouches: { value: makeTouchList(touches) },
+          changedTouches: { value: makeTouchList(changedTouches) },
+        });
+        return target.dispatchEvent(event);
+      };
+      const nextFrame = () => new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+
+      const firstStart = makeTouch(41, gesture.centerX - 44, gesture.centerY);
+      const firstStartResult = dispatch("touchstart", [firstStart], [firstStart]);
+      const secondStart = makeTouch(42, gesture.centerX + 44, gesture.centerY);
+      const secondStartResult = dispatch("touchstart", [firstStart, secondStart], [secondStart]);
+      await nextFrame();
+      const firstMove = makeTouch(41, gesture.centerX - 104, gesture.centerY - 10);
+      const secondMove = makeTouch(42, gesture.centerX + 104, gesture.centerY + 10);
+      const moveResult = dispatch("touchmove", [firstMove, secondMove], [firstMove, secondMove]);
+      await nextFrame();
+      dispatch("touchend", [], [firstMove, secondMove]);
+      return { firstStartResult, secondStartResult, moveResult };
+    }, {
+      centerX: box!.x + box!.width / 2,
+      centerY: box!.y + box!.height / 2,
+    });
+
+    expect(gestureResult.firstStartResult).toBe(false);
+    expect(gestureResult.secondStartResult).toBe(false);
+    expect(gestureResult.moveResult).toBe(false);
+    await expect.poll(readGraphScale).toBeGreaterThan(beforeScale);
+    expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBe(1);
+  });
+});
+
 test.describe("BottomSheet / drawer viewport", () => {
   test("Settings drawer panel is visible and its top edge is within viewport", async ({ page }) => {
     await page.goto("/", { waitUntil: "load" });

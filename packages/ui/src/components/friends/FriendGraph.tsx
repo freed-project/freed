@@ -166,7 +166,7 @@ interface GraphPerfSnapshot {
   longTaskCount: number;
   memoryEstimateBytes: number;
   rendererType: "three-starfield" | "canvas-starfield-fallback";
-  touchInputMode: "pointer-events";
+  touchInputMode: "native-touch-events";
   lod: string;
   capped: boolean;
 }
@@ -343,6 +343,12 @@ function shouldExposeGraphDebug(): boolean {
       .__FREED_GRAPH_DEBUG_ENABLED__ === true;
 }
 
+function isGraphGestureUiTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest(
+    'button, input, select, textarea, [role="menu"], [data-graph-gesture-ignore="true"]',
+  ));
+}
+
 function buildGraphDebugNodes(nodes: IdentityGraphAtlasNode[]): GraphDebugNode[] {
   return nodes.map((node) => ({
     id: node.id,
@@ -446,6 +452,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const dragStateRef = useRef<DragState | null>(null);
   const pinchStateRef = useRef<PinchState | null>(null);
   const activeTouchPointsRef = useRef<Map<number, TouchPoint>>(new Map());
+  const ignoredTouchIdsRef = useRef<Set<number>>(new Set());
   const hoveredNodeIdRef = useRef<string | null>(null);
   const latestRequestIdRef = useRef(0);
   const latestResolvedRequestIdRef = useRef(0);
@@ -588,7 +595,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       longTaskCount: longTaskCountRef.current,
       memoryEstimateBytes: estimateMemoryBytes(atlas),
       rendererType: engineRef.current?.rendererType ?? "three-starfield",
-      touchInputMode: "pointer-events",
+      touchInputMode: "native-touch-events",
       lod: atlas.metrics.lod,
       capped: atlas.metrics.capped,
       nodeCount: sourceNodeCount,
@@ -1128,176 +1135,100 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     markInteractive();
   }, [markInteractive, zoomAtPoint]);
 
-  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const container = containerRef.current;
-    if (!container) return;
-    container.setPointerCapture(event.pointerId);
-    setContextMenu(null);
-    setLinkPickerAccountId(null);
+  const clearLongPress = useCallback(() => {
+    if (longPressTimerRef.current === null) return;
+    window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  }, []);
 
-    if (event.pointerType === "touch") {
-      activeTouchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-      if (longPressTimerRef.current !== null) {
-        window.clearTimeout(longPressTimerRef.current);
-      }
-      if (activeTouchPointsRef.current.size >= 2) {
-        if (longPressTimerRef.current !== null) {
-          window.clearTimeout(longPressTimerRef.current);
-          longPressTimerRef.current = null;
-        }
-        const [firstEntry, secondEntry] = [...activeTouchPointsRef.current.entries()];
-        if (firstEntry && secondEntry) {
-          const initialDistance = distanceBetween(firstEntry[1], secondEntry[1]);
-          const initialMidpoint = midpointBetween(firstEntry[1], secondEntry[1]);
-          pinchStateRef.current = {
-            pointerIds: [firstEntry[0], secondEntry[0]],
-            initialDistance,
-            initialScale: transformRef.current.scale,
-            initialMidpoint,
-            initialWorldPoint: viewportToWorld(initialMidpoint.x, initialMidpoint.y),
-            moved: false,
-          };
-          dragStateRef.current = null;
-        }
-      } else {
-        longPressTimerRef.current = window.setTimeout(() => {
-          if (activeTouchPointsRef.current.has(event.pointerId)) {
-            dragStateRef.current = null;
-            openNodeContextMenu(event.clientX, event.clientY);
-            scheduleDraw();
-          }
-        }, 520);
-        dragStateRef.current = {
-          kind: "pan",
-          pointerId: event.pointerId,
-          startX: event.clientX,
-          startY: event.clientY,
-          originX: transformRef.current.x,
-          originY: transformRef.current.y,
-          moved: false,
-        };
-      }
-      overlayRef.current?.classList.add("cursor-grabbing");
-      markInteractive();
-      event.preventDefault();
-      return;
-    }
-
-    dragStateRef.current = {
-      kind: "pan",
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: transformRef.current.x,
-      originY: transformRef.current.y,
+  const beginNativePinch = useCallback(() => {
+    const [firstEntry, secondEntry] = [...activeTouchPointsRef.current.entries()];
+    if (!firstEntry || !secondEntry) return false;
+    const initialDistance = distanceBetween(firstEntry[1], secondEntry[1]);
+    if (initialDistance <= 0) return false;
+    const initialMidpoint = midpointBetween(firstEntry[1], secondEntry[1]);
+    clearLongPress();
+    pinchStateRef.current = {
+      pointerIds: [firstEntry[0], secondEntry[0]],
+      initialDistance,
+      initialScale: transformRef.current.scale,
+      initialMidpoint,
+      initialWorldPoint: viewportToWorld(initialMidpoint.x, initialMidpoint.y),
       moved: false,
     };
-    overlayRef.current?.classList.add("cursor-grabbing");
-    markInteractive();
-  }, [markInteractive, openNodeContextMenu, scheduleDraw, viewportToWorld]);
+    dragStateRef.current = null;
+    return true;
+  }, [clearLongPress, viewportToWorld]);
 
-  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "touch") {
-      activeTouchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    }
+  const beginNativePan = useCallback((touchId: number, point: TouchPoint, moved = false) => {
+    clearLongPress();
+    dragStateRef.current = {
+      kind: "pan",
+      pointerId: touchId,
+      startX: point.x,
+      startY: point.y,
+      originX: transformRef.current.x,
+      originY: transformRef.current.y,
+      moved,
+    };
+    if (moved) return;
+    longPressTimerRef.current = window.setTimeout(() => {
+      const currentPoint = activeTouchPointsRef.current.get(touchId);
+      const drag = dragStateRef.current;
+      if (!currentPoint || !drag || drag.pointerId !== touchId || drag.moved || pinchStateRef.current) return;
+      dragStateRef.current = null;
+      openNodeContextMenu(currentPoint.x, currentPoint.y);
+      scheduleDraw();
+    }, 520);
+  }, [clearLongPress, openNodeContextMenu, scheduleDraw]);
+
+  const updateNativePinch = useCallback(() => {
     const pinch = pinchStateRef.current;
-    if (pinch && pinch.pointerIds.includes(event.pointerId)) {
-      const first = activeTouchPointsRef.current.get(pinch.pointerIds[0]);
-      const second = activeTouchPointsRef.current.get(pinch.pointerIds[1]);
-      if (!first || !second || pinch.initialDistance <= 0) return;
-      const currentDistance = distanceBetween(first, second);
-      const midpoint = midpointBetween(first, second);
-      pinch.moved = pinch.moved ||
-        Math.abs(currentDistance - pinch.initialDistance) > 4 ||
-        distanceBetween(midpoint, pinch.initialMidpoint) > 4;
-      const container = containerRef.current;
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
-      const scale = clampScale(pinch.initialScale * (currentDistance / pinch.initialDistance));
-      const localX = midpoint.x - rect.left;
-      const localY = midpoint.y - rect.top;
-      transformRef.current = {
-        scale,
-        x: localX - pinch.initialWorldPoint.x * scale,
-        y: localY - pinch.initialWorldPoint.y * scale,
-      };
-      hasUserAdjustedTransformRef.current = true;
-      markInteractive();
-      event.preventDefault();
-      return;
-    }
-
-    const drag = dragStateRef.current;
-    if (!drag) {
-      if (event.pointerType === "mouse" || event.pointerType === "pen") {
-        const hit = hitNodeAt(event.clientX, event.clientY);
-        const nextHovered = hit?.id ?? null;
-        if (hoveredNodeIdRef.current !== nextHovered) {
-          hoveredNodeIdRef.current = nextHovered;
-          sceneDirtyRef.current = true;
-          scheduleDraw();
-        }
-      }
-      return;
-    }
-    if (drag.pointerId !== event.pointerId) return;
-    const moved = Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3;
-    drag.moved = drag.moved || moved;
-    if (drag.moved && longPressTimerRef.current !== null) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
+    if (!pinch) return false;
+    const first = activeTouchPointsRef.current.get(pinch.pointerIds[0]);
+    const second = activeTouchPointsRef.current.get(pinch.pointerIds[1]);
+    if (!first || !second || pinch.initialDistance <= 0) return false;
+    const container = containerRef.current;
+    if (!container) return false;
+    const currentDistance = distanceBetween(first, second);
+    const midpoint = midpointBetween(first, second);
+    pinch.moved = pinch.moved ||
+      Math.abs(currentDistance - pinch.initialDistance) > 4 ||
+      distanceBetween(midpoint, pinch.initialMidpoint) > 4;
+    const rect = container.getBoundingClientRect();
+    const scale = clampScale(pinch.initialScale * (currentDistance / pinch.initialDistance));
+    const localX = midpoint.x - rect.left;
+    const localY = midpoint.y - rect.top;
     transformRef.current = {
-      ...transformRef.current,
-      x: drag.originX + event.clientX - drag.startX,
-      y: drag.originY + event.clientY - drag.startY,
+      scale,
+      x: localX - pinch.initialWorldPoint.x * scale,
+      y: localY - pinch.initialWorldPoint.y * scale,
     };
     hasUserAdjustedTransformRef.current = true;
     markInteractive();
-    if (event.pointerType === "touch") event.preventDefault();
-  }, [hitNodeAt, markInteractive, scheduleDraw]);
+    return true;
+  }, [markInteractive]);
 
-  const handlePointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "touch") {
-      activeTouchPointsRef.current.delete(event.pointerId);
-    }
-    if (longPressTimerRef.current !== null) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-    const pinch = pinchStateRef.current;
-    if (pinch && pinch.pointerIds.includes(event.pointerId)) {
-      pinchStateRef.current = null;
-      const remainingTouch = activeTouchPointsRef.current.entries().next().value as
-        | [number, TouchPoint]
-        | undefined;
-      dragStateRef.current = remainingTouch
-        ? {
-            kind: "pan",
-            pointerId: remainingTouch[0],
-            startX: remainingTouch[1].x,
-            startY: remainingTouch[1].y,
-            originX: transformRef.current.x,
-            originY: transformRef.current.y,
-            moved: true,
-          }
-        : null;
-      overlayRef.current?.classList.toggle("cursor-grabbing", !!remainingTouch);
-      requestAtlas("settled");
-      return;
-    }
-
+  const updateNativePan = useCallback(() => {
     const drag = dragStateRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    dragStateRef.current = null;
-    overlayRef.current?.classList.remove("cursor-grabbing");
+    if (!drag) return false;
+    const point = activeTouchPointsRef.current.get(drag.pointerId);
+    if (!point) return false;
+    const moved = Math.abs(point.x - drag.startX) > 3 || Math.abs(point.y - drag.startY) > 3;
+    drag.moved = drag.moved || moved;
+    if (drag.moved) clearLongPress();
+    transformRef.current = {
+      ...transformRef.current,
+      x: drag.originX + point.x - drag.startX,
+      y: drag.originY + point.y - drag.startY,
+    };
+    hasUserAdjustedTransformRef.current = true;
+    markInteractive();
+    return true;
+  }, [clearLongPress, markInteractive]);
 
-    if (drag.moved) {
-      requestAtlas("settled");
-      return;
-    }
-
-    const hit = hitNodeAt(event.clientX, event.clientY);
+  const selectNodeAt = useCallback((clientX: number, clientY: number) => {
+    const hit = hitNodeAt(clientX, clientY);
     if (!hit) {
       onClearSelection?.();
       scheduleDraw();
@@ -1318,27 +1249,232 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     onSelectAccount,
     onSelectPerson,
     personsById,
-    requestAtlas,
     scheduleDraw,
   ]);
 
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch" || isGraphGestureUiTarget(event.target)) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const container = containerRef.current;
+    if (!container) return;
+    container.setPointerCapture(event.pointerId);
+    setContextMenu(null);
+    setLinkPickerAccountId(null);
+    dragStateRef.current = {
+      kind: "pan",
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: transformRef.current.x,
+      originY: transformRef.current.y,
+      moved: false,
+    };
+    overlayRef.current?.classList.add("cursor-grabbing");
+    markInteractive();
+  }, [markInteractive]);
+
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") return;
+    const drag = dragStateRef.current;
+    if (!drag) {
+      if (event.pointerType === "mouse" || event.pointerType === "pen") {
+        const hit = hitNodeAt(event.clientX, event.clientY);
+        const nextHovered = hit?.id ?? null;
+        if (hoveredNodeIdRef.current !== nextHovered) {
+          hoveredNodeIdRef.current = nextHovered;
+          sceneDirtyRef.current = true;
+          scheduleDraw();
+        }
+      }
+      return;
+    }
+    if (drag.pointerId !== event.pointerId) return;
+    const moved = Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3;
+    drag.moved = drag.moved || moved;
+    transformRef.current = {
+      ...transformRef.current,
+      x: drag.originX + event.clientX - drag.startX,
+      y: drag.originY + event.clientY - drag.startY,
+    };
+    hasUserAdjustedTransformRef.current = true;
+    markInteractive();
+  }, [hitNodeAt, markInteractive, scheduleDraw]);
+
+  const handlePointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") return;
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragStateRef.current = null;
+    overlayRef.current?.classList.remove("cursor-grabbing");
+    if (drag.moved) {
+      requestAtlas("settled");
+      return;
+    }
+    selectNodeAt(event.clientX, event.clientY);
+  }, [requestAtlas, selectNodeAt]);
+
   const handlePointerLeave = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") return;
     if (hoveredNodeIdRef.current) {
       hoveredNodeIdRef.current = null;
       sceneDirtyRef.current = true;
       scheduleDraw();
     }
-    if (event.pointerType === "touch") {
-      activeTouchPointsRef.current.delete(event.pointerId);
-    }
-    if (longPressTimerRef.current !== null) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
     dragStateRef.current = null;
-    pinchStateRef.current = null;
     overlayRef.current?.classList.remove("cursor-grabbing");
   }, [scheduleDraw]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const syncActiveTouches = (touches: TouchList) => {
+      const activePoints = activeTouchPointsRef.current;
+      activePoints.clear();
+      for (let index = 0; index < touches.length; index += 1) {
+        const touch = touches.item(index);
+        if (!touch || ignoredTouchIdsRef.current.has(touch.identifier)) continue;
+        activePoints.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+      }
+    };
+
+    const touchPointFromList = (touches: TouchList, touchId: number): TouchPoint | null => {
+      for (let index = 0; index < touches.length; index += 1) {
+        const touch = touches.item(index);
+        if (touch?.identifier === touchId) return { x: touch.clientX, y: touch.clientY };
+      }
+      return null;
+    };
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (isGraphGestureUiTarget(event.target)) {
+        for (let index = 0; index < event.changedTouches.length; index += 1) {
+          const touch = event.changedTouches.item(index);
+          if (touch) ignoredTouchIdsRef.current.add(touch.identifier);
+        }
+        return;
+      }
+      syncActiveTouches(event.touches);
+      if (activeTouchPointsRef.current.size === 0) return;
+      event.preventDefault();
+      setContextMenu(null);
+      setLinkPickerAccountId(null);
+      if (activeTouchPointsRef.current.size >= 2) {
+        beginNativePinch();
+      } else {
+        const firstEntry = activeTouchPointsRef.current.entries().next().value as
+          | [number, TouchPoint]
+          | undefined;
+        if (firstEntry) beginNativePan(firstEntry[0], firstEntry[1]);
+      }
+      overlayRef.current?.classList.add("cursor-grabbing");
+      markInteractive();
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      syncActiveTouches(event.touches);
+      if (activeTouchPointsRef.current.size === 0) return;
+      event.preventDefault();
+      if (activeTouchPointsRef.current.size >= 2) {
+        const pinch = pinchStateRef.current;
+        if (!pinch ||
+          !activeTouchPointsRef.current.has(pinch.pointerIds[0]) ||
+          !activeTouchPointsRef.current.has(pinch.pointerIds[1])) {
+          beginNativePinch();
+        }
+        updateNativePinch();
+        return;
+      }
+      updateNativePan();
+    };
+
+    const handleTouchEnd = (event: TouchEvent) => {
+      const hadActiveGesture = activeTouchPointsRef.current.size > 0;
+      for (let index = 0; index < event.changedTouches.length; index += 1) {
+        const touch = event.changedTouches.item(index);
+        if (touch) ignoredTouchIdsRef.current.delete(touch.identifier);
+      }
+      syncActiveTouches(event.touches);
+      if (!hadActiveGesture && activeTouchPointsRef.current.size === 0) return;
+      event.preventDefault();
+      clearLongPress();
+
+      const pinch = pinchStateRef.current;
+      if (pinch) {
+        if (activeTouchPointsRef.current.size >= 2) {
+          beginNativePinch();
+          markInteractive();
+          return;
+        }
+        pinchStateRef.current = null;
+        const remainingTouch = activeTouchPointsRef.current.entries().next().value as
+          | [number, TouchPoint]
+          | undefined;
+        if (remainingTouch) {
+          beginNativePan(remainingTouch[0], remainingTouch[1], true);
+          overlayRef.current?.classList.add("cursor-grabbing");
+          markInteractive();
+          return;
+        }
+        dragStateRef.current = null;
+        overlayRef.current?.classList.remove("cursor-grabbing");
+        requestAtlas("settled");
+        return;
+      }
+
+      const drag = dragStateRef.current;
+      if (!drag) {
+        if (activeTouchPointsRef.current.size === 0) {
+          overlayRef.current?.classList.remove("cursor-grabbing");
+          requestAtlas("settled");
+        }
+        return;
+      }
+      if (activeTouchPointsRef.current.has(drag.pointerId)) return;
+      dragStateRef.current = null;
+      overlayRef.current?.classList.remove("cursor-grabbing");
+      if (drag.moved) {
+        requestAtlas("settled");
+        return;
+      }
+      const releasePoint = touchPointFromList(event.changedTouches, drag.pointerId) ?? {
+        x: drag.startX,
+        y: drag.startY,
+      };
+      selectNodeAt(releasePoint.x, releasePoint.y);
+    };
+
+    const handleTouchCancel = (event: TouchEvent) => {
+      if (event.cancelable) event.preventDefault();
+      clearLongPress();
+      activeTouchPointsRef.current.clear();
+      ignoredTouchIdsRef.current.clear();
+      pinchStateRef.current = null;
+      dragStateRef.current = null;
+      overlayRef.current?.classList.remove("cursor-grabbing");
+      requestAtlas("settled");
+    };
+
+    container.addEventListener("touchstart", handleTouchStart, { passive: false });
+    container.addEventListener("touchmove", handleTouchMove, { passive: false });
+    container.addEventListener("touchend", handleTouchEnd, { passive: false });
+    container.addEventListener("touchcancel", handleTouchCancel, { passive: false });
+    return () => {
+      container.removeEventListener("touchstart", handleTouchStart);
+      container.removeEventListener("touchmove", handleTouchMove);
+      container.removeEventListener("touchend", handleTouchEnd);
+      container.removeEventListener("touchcancel", handleTouchCancel);
+    };
+  }, [
+    beginNativePan,
+    beginNativePinch,
+    clearLongPress,
+    markInteractive,
+    requestAtlas,
+    selectNodeAt,
+    updateNativePan,
+    updateNativePinch,
+  ]);
 
   const handleCopyDiagnostics = useCallback(async () => {
     const debug = {

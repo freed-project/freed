@@ -370,6 +370,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.61 | Add the locked perspective camera, world-plane projection, and depth-aware picking | High | Done |
 | 8.62 | Render semantic stars and settled relationship spokes through instanced procedural WebGL2 passes | High | Done |
 | 8.63 | Replace per-label Troika objects with a batched SDF or MSDF billboard layer and add the close-zoom avatar texture atlas | High | Planned |
+| 8.64 | Route iPhone graph gestures through native non-passive touch events, with browser-generated multitouch and WebKit regression coverage | High | Done |
 
 ---
 
@@ -453,6 +454,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Linked accounts occupy complete local orbits, and dense people fields reserve enough space for those systems
 - [x] Galaxy compilation indexes accounts by person once instead of scanning the full account library for every identity
 - [x] Mobile pinch hands directly to one-finger pan when either touch lifts
+- [x] iPhone pan and pinch use native non-passive touch events instead of WebKit pointer capture, preserve the pinch midpoint, recover after touch cancellation, and leave browser zoom unchanged
 - [x] Settled billboard labels redraw after glyph generation, avoid screen-space collisions, and use active theme colors
 - [x] Desktop browser tests cover mixed-tier graph load, context-menu link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
