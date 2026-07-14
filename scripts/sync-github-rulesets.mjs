@@ -53,6 +53,16 @@ function hasExactRuleTypes(ruleset, expectedTypes) {
   );
 }
 
+function hasSafeTagUpdateRule(ruleset) {
+  const update = ruleset.rules?.find((rule) => rule.type === "update");
+  if (!update) return false;
+  if (update.parameters == null) return true;
+  return (
+    Object.keys(update.parameters).length === 1 &&
+    update.parameters.update_allows_fetch_and_merge === false
+  );
+}
+
 function hasExactReleaseTagTarget(ruleset) {
   return (
     JSON.stringify(ruleset?.conditions?.ref_name?.include) ===
@@ -121,12 +131,9 @@ export function validateRuleset(ruleset, fileName = "ruleset") {
           `${fileName}: release tag lockdown must be active, have no bypass, and contain only creation, update, and deletion rules.`,
         );
       }
-      const update = ruleset.rules.find(
-        (rule) => rule.type === "update",
-      )?.parameters;
-      if (update?.update_allows_fetch_and_merge !== false) {
+      if (!hasSafeTagUpdateRule(ruleset)) {
         throw new Error(
-          `${fileName}: release tag lockdown must reject fetch and merge updates.`,
+          `${fileName}: release tag lockdown has an unsafe update rule.`,
         );
       }
       return ruleset;
@@ -145,12 +152,9 @@ export function validateRuleset(ruleset, fileName = "ruleset") {
         `${fileName}: release tag immutability must be active, have no bypass, and contain only update and deletion rules.`,
       );
     }
-    const update = ruleset.rules.find(
-      (rule) => rule.type === "update",
-    )?.parameters;
-    if (update?.update_allows_fetch_and_merge !== false) {
+    if (!hasSafeTagUpdateRule(ruleset)) {
       throw new Error(
-        `${fileName}: release tag updates must not allow fetch and merge.`,
+        `${fileName}: release tag immutability has an unsafe update rule.`,
       );
     }
     return ruleset;
@@ -305,8 +309,7 @@ export function verifyReleaseTagLockdown(rulesets) {
     lockdown.bypass_actors?.length !== 0 ||
     !hasExactReleaseTagTarget(lockdown) ||
     !hasExactRuleTypes(lockdown, TAG_LOCKDOWN_RULE_TYPES) ||
-    lockdown.rules.find((rule) => rule.type === "update")?.parameters
-      ?.update_allows_fetch_and_merge !== false
+    !hasSafeTagUpdateRule(lockdown)
   ) {
     throw new Error(
       "Release tag lockdown must actively restrict creation, update, and deletion with no bypass.",
@@ -352,12 +355,9 @@ export function verifyLiveReleaseTagAuthority(rulesets, expectedReleaseAppId) {
       "Live release tag immutability must be active, target every refs/tags/v* tag, contain only update and deletion rules, and grant no bypass.",
     );
   }
-  const update = immutability.rules.find(
-    (rule) => rule.type === "update",
-  )?.parameters;
-  if (update?.update_allows_fetch_and_merge !== false) {
+  if (!hasSafeTagUpdateRule(immutability)) {
     throw new Error(
-      "The live release tag authority must reject fetch and merge updates.",
+      "The live release tag authority has an unsafe update rule.",
     );
   }
   return { ready: true, releaseAppId: expectedAppId };
