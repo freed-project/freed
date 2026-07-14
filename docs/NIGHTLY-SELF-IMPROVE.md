@@ -341,16 +341,13 @@ remain visible in `rejectedEntries` and cannot suppress work.
 
 The runner excludes provider-visible tasks by default. Provider-visible peer worktrees are still pulled into the evidence queue so they cannot hide in the local swarm. Do not allow autonomous changes that alter authenticated WebView loads, provider navigation, provider API call frequency, scripted scrolling, cookies, headers, or scraping timing without explicit approval.
 
-Provider approval is a structured, expiring record, not a general instruction to
-"proceed with everything." Store the JSON outside the repository. It cannot be
-future-dated, may last at most seven days, must match the exact provider-visible
-path set, and must bind the full committed binary diff from
-`origin/<base>...HEAD`. The branch must remain clean. Publish only with
-`--provider-risk-approval-file <approval.json>`. Any diff change requires new
-approval. The record must include the owner identity, approval source, and an
-exact provider scope for every path. The publish helper always keeps
-provider-visible PRs draft. After the CODEOWNER reviews the exact head, the
-owner performs a separate authorized ready transition through GitHub.
+Provider approval is scoped evidence, not a general instruction to "proceed
+with everything." Human work publishes as a draft first. The helper posts a
+GitHub review comment bound to the provider-visible path set and provider-only
+binary diff. A CODEOWNER thumbs-up reaction on that comment authorizes the
+ready transition. Provider-visible edits require a new reaction. Unrelated
+branch edits do not. A signed control-task approval remains available for
+unattended publication and must bind the same provider-only fingerprint.
 
 Release work is also gated. A dev build should ship only after actual fixes merge into `dev`, not after planning artifacts alone.
 

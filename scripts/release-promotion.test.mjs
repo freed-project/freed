@@ -892,6 +892,55 @@ test("validate-main-pr rejects product changes on a non-promotion branch", (t) =
   assert.match(result.stderr, /must come from a promotion branch/);
 });
 
+test("validate-main-pr allows an exact governance backport from dev", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(cwd, "AGENTS.md", "# Updated governance\n");
+  commitAll(cwd, "docs: update governance");
+  updateOriginRef(cwd, "dev");
+
+  git(cwd, ["checkout", "-b", "fix/main-governance-provider-review", "main"]);
+  writeRepoFile(cwd, "AGENTS.md", "# Updated governance\n");
+  commitAll(cwd, "fix: backport governance");
+
+  const result = runNode(VALIDATE_MAIN_PR, [
+    `--cwd=${cwd}`,
+    "--base-ref=origin/main",
+    "--head-ref=HEAD",
+    "--head-branch=fix/main-governance-provider-review",
+  ]);
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Governance backport matches origin\/dev/);
+});
+
+test("validate-main-pr rejects drift in a governance backport", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(cwd, "AGENTS.md", "# Updated governance\n");
+  commitAll(cwd, "docs: update governance");
+  updateOriginRef(cwd, "dev");
+
+  git(cwd, ["checkout", "-b", "fix/main-governance-provider-review", "main"]);
+  writeRepoFile(cwd, "AGENTS.md", "# Different governance\n");
+  commitAll(cwd, "fix: drift governance");
+
+  const result = runNode(VALIDATE_MAIN_PR, [
+    `--cwd=${cwd}`,
+    "--base-ref=origin/main",
+    "--head-ref=HEAD",
+    "--head-branch=fix/main-governance-provider-review",
+  ]);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /must exactly match origin\/dev/);
+  assert.match(result.stderr, /AGENTS\.md/);
+});
+
 test("validate-main-pr allows release-only metadata updates on a release branch", (t) => {
   const cwd = makeTempRepo();
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
