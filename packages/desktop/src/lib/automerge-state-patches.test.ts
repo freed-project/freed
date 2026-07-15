@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultPreferences, type FeedItem } from "@freed/shared";
 import type { DocState } from "./automerge-types";
-import { applyItemPatchesToState, createItemIndex } from "./automerge-state-patches";
+import {
+  applyItemPatchesToState,
+  applyPreferencePatchToState,
+  createItemIndex,
+} from "./automerge-state-patches";
 
 const FEED_URL = "https://example.com/feed.xml";
 
@@ -65,6 +69,51 @@ function makeState(items: FeedItem[]): DocState {
 }
 
 describe("Automerge item patch state updates", () => {
+  it("replaces Facebook capture maps so removed groups stay removed", () => {
+    const state = makeState([]);
+    state.preferences.fbCapture = {
+      knownGroups: {
+        one: { id: "one", name: "One", url: "https://facebook.com/groups/one" },
+        two: { id: "two", name: "Two", url: "https://facebook.com/groups/two" },
+      },
+      excludedGroupIds: { one: true },
+    };
+
+    const result = applyPreferencePatchToState(state, {
+      fbCapture: {
+        knownGroups: {
+          two: { id: "two", name: "Two", url: "https://facebook.com/groups/two" },
+        },
+        excludedGroupIds: {},
+      },
+    });
+
+    expect(result.preferences.fbCapture.knownGroups).toEqual({
+      two: { id: "two", name: "Two", url: "https://facebook.com/groups/two" },
+    });
+    expect(result.preferences.fbCapture.excludedGroupIds).toEqual({});
+    expect(result.preferences.display).toEqual(state.preferences.display);
+  });
+
+  it("preserves the omitted Facebook capture map in a partial patch", () => {
+    const state = makeState([]);
+    state.preferences.fbCapture = {
+      knownGroups: {
+        one: { id: "one", name: "One", url: "https://facebook.com/groups/one" },
+      },
+      excludedGroupIds: { one: true },
+    };
+
+    const result = applyPreferencePatchToState(state, {
+      fbCapture: { excludedGroupIds: {} },
+    });
+
+    expect(result.preferences.fbCapture.knownGroups).toEqual(
+      state.preferences.fbCapture.knownGroups,
+    );
+    expect(result.preferences.fbCapture.excludedGroupIds).toEqual({});
+  });
+
   it("updates read and archivable counts without rebuilding every count from items", () => {
     const unread = makeItem("rss:unread");
     const read = makeItem("rss:read", { readAt: 10 });

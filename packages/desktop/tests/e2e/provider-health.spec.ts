@@ -924,12 +924,32 @@ test("facebook groups settings separate last-active text, show active counts, an
   await page.getByTestId("facebook-group-one-leave").click();
   await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toBe("https://facebook.com/groups/one");
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(page.getByTestId("facebook-group-one-label")).toHaveCount(0);
-  await expect(page.getByText("1 active of 2 total")).toBeVisible();
   await expect.poll(async () => {
     const calls = await ipc.invocations();
-    return calls.some((call) => call.cmd === "fb_check_group_membership");
+    return calls.some(
+      (call) =>
+        call.cmd === "fb_check_group_membership" &&
+        (call.args as { groupId?: string } | undefined)?.groupId === "one",
+    );
   }).toBe(true);
+  await page.waitForFunction(() => {
+    const store = (window as Window & {
+      __FREED_STORE__?: {
+        getState: () => {
+          preferences: {
+            fbCapture?: {
+              knownGroups?: Record<string, unknown>;
+            };
+          };
+        };
+      };
+    }).__FREED_STORE__;
+    const knownGroups = store?.getState().preferences.fbCapture?.knownGroups;
+    if (!knownGroups) return false;
+    return !("one" in knownGroups) && Object.keys(knownGroups).length === 2;
+  });
+  await expect(page.getByText("1 active of 2 total")).toBeVisible();
+  await expect(page.getByTestId("facebook-group-one-label")).toHaveCount(0);
 
   await page.getByTestId("facebook-groups-filter").fill("North Idaho");
   await expect(page.getByRole("button", { name: "Activate shown", exact: true })).toBeVisible();

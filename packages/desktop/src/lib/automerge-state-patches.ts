@@ -1,7 +1,11 @@
-import type { FeedItem } from "@freed/shared";
+import type { FeedItem, UserPreferences } from "@freed/shared";
 import type { DocState, FeedItemPatch } from "./automerge-types";
 
 export type ItemIndex = Map<string, number>;
+
+type PreferencePatch = Omit<Partial<UserPreferences>, "fbCapture"> & {
+  fbCapture?: Partial<UserPreferences["fbCapture"]>;
+};
 
 interface CountState {
   feedUnreadCounts: Record<string, number>;
@@ -17,6 +21,46 @@ interface CountState {
 
 export function createItemIndex(items: FeedItem[]): ItemIndex {
   return new Map(items.map((item, index) => [item.globalId, index]));
+}
+
+function isMergeablePreferenceObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergePreferencePatch<T extends object>(current: T, update: Partial<T>): T {
+  const next = { ...current };
+
+  for (const key of Object.keys(update) as Array<keyof T>) {
+    const currentValue = current[key];
+    const updateValue = update[key];
+    next[key] = (
+      isMergeablePreferenceObject(currentValue) && isMergeablePreferenceObject(updateValue)
+        ? mergePreferencePatch<Record<string, unknown>>(currentValue, updateValue)
+        : updateValue
+    ) as T[typeof key];
+  }
+
+  return next;
+}
+
+export function applyPreferencePatchToState(
+  state: DocState,
+  updates: PreferencePatch,
+): DocState {
+  const { fbCapture, ...remainingUpdates } = updates;
+  const preferences = mergePreferencePatch(state.preferences, remainingUpdates);
+  if (fbCapture !== undefined) {
+    preferences.fbCapture = {
+      knownGroups: fbCapture.knownGroups !== undefined
+        ? { ...fbCapture.knownGroups }
+        : { ...state.preferences.fbCapture.knownGroups },
+      excludedGroupIds: fbCapture.excludedGroupIds !== undefined
+        ? { ...fbCapture.excludedGroupIds }
+        : { ...state.preferences.fbCapture.excludedGroupIds },
+    };
+  }
+
+  return { ...state, preferences };
 }
 
 function cloneCountState(state: DocState): CountState {
