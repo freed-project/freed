@@ -10,6 +10,52 @@ export type IdentityGalaxyWorkerViewportInput = Pick<
   "transform" | "width" | "height" | "quality" | "selectedPersonId" | "selectedAccountId"
 >;
 
+export type IdentityGalaxyWorkerSelection = Pick<
+  IdentityGalaxyWorkerViewportInput,
+  "selectedPersonId" | "selectedAccountId"
+>;
+
+export function identityGalaxyWorkerSelectionsMatch(
+  left: IdentityGalaxyWorkerSelection,
+  right: IdentityGalaxyWorkerSelection,
+): boolean {
+  return (left.selectedPersonId ?? null) === (right.selectedPersonId ?? null) &&
+    (left.selectedAccountId ?? null) === (right.selectedAccountId ?? null);
+}
+
+export function shouldReconcileIdentityGalaxyWorkerSelection(
+  requestSelection: IdentityGalaxyWorkerSelection,
+  currentSelection: IdentityGalaxyWorkerSelection,
+): boolean {
+  return !identityGalaxyWorkerSelectionsMatch(requestSelection, currentSelection);
+}
+
+export function shouldRequestIdentityGalaxyWorkerSelection(
+  latestRequestSelection: IdentityGalaxyWorkerSelection | undefined,
+  currentSelection: IdentityGalaxyWorkerSelection,
+): boolean {
+  return !latestRequestSelection ||
+    !identityGalaxyWorkerSelectionsMatch(latestRequestSelection, currentSelection);
+}
+
+export type IdentityGalaxyWorkerResponseDisposition = "apply" | "ignore" | "reconcile";
+
+export function identityGalaxyWorkerResponseDisposition(
+  requestId: number,
+  latestResolvedRequestId: number,
+  requestSelection: IdentityGalaxyWorkerSelection | undefined,
+  currentSelection: IdentityGalaxyWorkerSelection,
+): IdentityGalaxyWorkerResponseDisposition {
+  if (requestId <= latestResolvedRequestId) return "ignore";
+  if (
+    requestSelection &&
+    shouldReconcileIdentityGalaxyWorkerSelection(requestSelection, currentSelection)
+  ) {
+    return "reconcile";
+  }
+  return "apply";
+}
+
 interface IdentityGalaxyWorkerRequestBase {
   requestId: number;
   sourceRevision: number;

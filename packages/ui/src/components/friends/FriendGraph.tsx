@@ -45,7 +45,13 @@ import {
 import { viewportPointToIdentityGalaxyPlane } from "../../lib/identity-galaxy-camera.js";
 import type {
   IdentityGalaxyWorkerResponse,
+  IdentityGalaxyWorkerSelection,
   IdentityGalaxyWorkerViewportInput,
+} from "../../lib/identity-galaxy-worker-protocol.js";
+import {
+  identityGalaxyWorkerResponseDisposition,
+  identityGalaxyWorkerSelectionsMatch,
+  shouldRequestIdentityGalaxyWorkerSelection,
 } from "../../lib/identity-galaxy-worker-protocol.js";
 import {
   FRIEND_GRAPH_DEFAULT_TRANSFORM,
@@ -194,6 +200,7 @@ interface GraphSurfacePerfSnapshot extends GraphPerfSnapshot {
 
 type ApplyIdentityGraphAtlas = (
   requestId: number,
+  sourceRevision: number,
   atlas: IdentityGraphAtlas,
   galaxyScene: IdentityGalaxyScene | undefined,
   edgeIndices: Uint32Array | undefined,
@@ -456,6 +463,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const engineRef = useRef<IdentityGalaxyEngine | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const applyAtlasRef = useRef<ApplyIdentityGraphAtlas | null>(null);
+  const requestAtlasRef = useRef<((quality: IdentityGraphAtlasQuality) => void) | null>(null);
+  const requestSelectionByIdRef = useRef<Map<number, IdentityGalaxyWorkerSelection>>(new Map());
   const atlasRef = useRef<IdentityGraphAtlas | null>(null);
   const galaxySceneRef = useRef<IdentityGalaxyScene | null>(null);
   const hitBucketsRef = useRef<Map<string, string[]>>(new Map());
@@ -469,6 +478,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const activeTouchPointsRef = useRef<Map<number, TouchPoint>>(new Map());
   const ignoredTouchIdsRef = useRef<Set<number>>(new Set());
   const hoveredNodeIdRef = useRef<string | null>(null);
+  const selectedPersonIdRef = useRef(selectedPersonId);
+  const selectedAccountIdRef = useRef(selectedAccountId);
+  const previousSelectionRef = useRef<IdentityGalaxyWorkerSelection>({
+    selectedPersonId,
+    selectedAccountId,
+  });
   const latestRequestIdRef = useRef(0);
   const latestResolvedRequestIdRef = useRef(0);
   const nextSourceRevisionRef = useRef(0);
@@ -498,6 +513,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const [linkPickerAccountId, setLinkPickerAccountId] = useState<string | null>(null);
   const [linkPickerQuery, setLinkPickerQuery] = useState("");
   const [starfieldVariation, setStarfieldVariation] = useState<IdentityGalaxyVariation>("nebula");
+  const starfieldVariationRef = useRef(starfieldVariation);
+  selectedPersonIdRef.current = selectedPersonId;
+  selectedAccountIdRef.current = selectedAccountId;
+  starfieldVariationRef.current = starfieldVariation;
 
   const activitySummaries = useMemo(
     () => activitySummariesProp ?? buildIdentityGraphActivitySummaries(feedItems ?? {}),
@@ -705,8 +724,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       if (shouldSyncInteraction) {
         updateIdentityGalaxySceneInteraction(galaxyScene, {
           quality: latestQualityRef.current,
-          selectedPersonId,
-          selectedAccountId,
+          selectedPersonId: selectedPersonIdRef.current,
+          selectedAccountId: selectedAccountIdRef.current,
           hoveredNodeId: hoveredNodeIdRef.current,
         });
       }
@@ -734,9 +753,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           atlas,
           galaxyScene,
           {
-            selectedPersonId,
-            selectedAccountId,
-            variation: starfieldVariation,
+            selectedPersonId: selectedPersonIdRef.current,
+            selectedAccountId: selectedAccountIdRef.current,
+            variation: starfieldVariationRef.current,
             quality: latestQualityRef.current,
           },
         );
@@ -744,11 +763,19 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         sceneSyncCountRef.current += 1;
         if (atlas.edges.length > 0) edgeRebuildCountRef.current += 1;
       } else if (shouldSyncInteraction) {
-        engine.updateInteraction(galaxyScene);
+        engine.updateInteraction(
+          galaxyScene,
+          selectedPersonIdRef.current,
+          selectedAccountIdRef.current,
+        );
+        if (galaxyScene.edgeIndices.length > 0) edgeRebuildCountRef.current += 1;
         const perf = (window as typeof window & {
           __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot;
         }).__FREED_GRAPH_PERF__;
-        if (perf) perf.rendererEdgeCount = engine.edgeCount;
+        if (perf) {
+          perf.edgeRebuildCount = edgeRebuildCountRef.current;
+          perf.rendererEdgeCount = engine.edgeCount;
+        }
         if (containerRef.current) {
           containerRef.current.dataset.rendererEdgeCount = String(engine.edgeCount);
         }
@@ -773,9 +800,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     canvasSize.height,
     canvasSize.width,
     exposeDiagnostics,
-    selectedAccountId,
-    selectedPersonId,
-    starfieldVariation,
     updateTransformDiagnostics,
   ]);
 
@@ -787,20 +811,61 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     });
   }, [draw]);
 
+  const requestSelectionAwareAtlas = useCallback((quality: IdentityGraphAtlasQuality) => {
+    const currentSelection: IdentityGalaxyWorkerSelection = {
+      selectedPersonId: selectedPersonIdRef.current,
+      selectedAccountId: selectedAccountIdRef.current,
+    };
+    const latestRequestSelection = requestSelectionByIdRef.current.get(latestRequestIdRef.current);
+    if (!shouldRequestIdentityGalaxyWorkerSelection(latestRequestSelection, currentSelection)) return;
+    requestAtlasRef.current?.(quality);
+  }, []);
+
   const applyAtlas = useCallback((
     requestId: number,
+    sourceRevision: number,
     atlas: IdentityGraphAtlas,
     galaxyScene: IdentityGalaxyScene | undefined,
     edgeIndices: Uint32Array | undefined,
     durationMs: number,
   ) => {
-    if (requestId < latestResolvedRequestIdRef.current) return;
     const timeout = pendingWorkerTimeoutsRef.current.get(requestId);
     if (timeout !== undefined) {
       window.clearTimeout(timeout);
       pendingWorkerTimeoutsRef.current.delete(requestId);
     }
+    const requestSelection = requestSelectionByIdRef.current.get(requestId);
+    const currentSelection: IdentityGalaxyWorkerSelection = {
+      selectedPersonId: selectedPersonIdRef.current,
+      selectedAccountId: selectedAccountIdRef.current,
+    };
+    const disposition = identityGalaxyWorkerResponseDisposition(
+      requestId,
+      latestResolvedRequestIdRef.current,
+      requestSelection,
+      currentSelection,
+    );
+    if (disposition === "ignore") {
+      if (requestId < latestResolvedRequestIdRef.current) {
+        requestSelectionByIdRef.current.delete(requestId);
+      }
+      return;
+    }
+    if (disposition === "reconcile") {
+      latestResolvedRequestIdRef.current = requestId;
+      if (galaxyScene && sourceRevision === galaxySource.revision) {
+        galaxySceneRef.current = galaxyScene;
+      }
+      for (const resolvedRequestId of requestSelectionByIdRef.current.keys()) {
+        if (resolvedRequestId < requestId) requestSelectionByIdRef.current.delete(resolvedRequestId);
+      }
+      requestSelectionAwareAtlas("settled");
+      return;
+    }
     latestResolvedRequestIdRef.current = requestId;
+    for (const resolvedRequestId of requestSelectionByIdRef.current.keys()) {
+      if (resolvedRequestId < requestId) requestSelectionByIdRef.current.delete(resolvedRequestId);
+    }
     atlas.metrics.buildMs = durationMs;
     atlasRef.current = atlas;
     if (galaxyScene) {
@@ -828,11 +893,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     setAtlasReady(true);
     draw();
     scheduleDraw();
-  }, [canvasSize.height, canvasSize.width, draw, scheduleDraw]);
+  }, [canvasSize.height, canvasSize.width, draw, galaxySource.revision, requestSelectionAwareAtlas, scheduleDraw]);
   applyAtlasRef.current = applyAtlas;
 
   const runAtlasOnMainThread = useCallback((
     requestId: number,
+    sourceRevision: number,
     source: BuildIdentityGraphAtlasModelInput,
     viewport: IdentityGalaxyWorkerViewportInput,
   ) => {
@@ -848,7 +914,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         selectedPersonId: viewport.selectedPersonId,
         selectedAccountId: viewport.selectedAccountId,
       });
-      applyAtlas(requestId, atlas, galaxyScene, undefined, nowMs() - startedAt);
+      applyAtlas(requestId, sourceRevision, atlas, galaxyScene, undefined, nowMs() - startedAt);
     }, 0);
   }, [applyAtlas]);
 
@@ -861,12 +927,16 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       width: canvasSize.width,
       height: canvasSize.height,
       quality,
-      selectedPersonId,
-      selectedAccountId,
+      selectedPersonId: selectedPersonIdRef.current,
+      selectedAccountId: selectedAccountIdRef.current,
     };
+    requestSelectionByIdRef.current.set(requestId, {
+      selectedPersonId: viewport.selectedPersonId,
+      selectedAccountId: viewport.selectedAccountId,
+    });
     const worker = workerRef.current;
     if (!worker) {
-      runAtlasOnMainThread(requestId, galaxySource.input, viewport);
+      runAtlasOnMainThread(requestId, galaxySource.revision, galaxySource.input, viewport);
       return;
     }
     const timeout = window.setTimeout(() => {
@@ -877,7 +947,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         workerRef.current = null;
         postedSourceRevisionRef.current = -1;
       }
-      runAtlasOnMainThread(requestId, galaxySource.input, viewport);
+      runAtlasOnMainThread(requestId, galaxySource.revision, galaxySource.input, viewport);
     }, GRAPH_LAYOUT_WORKER_TIMEOUT_MS);
     pendingWorkerTimeoutsRef.current.set(requestId, timeout);
     if (postedSourceRevisionRef.current !== galaxySource.revision) {
@@ -902,9 +972,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     canvasSize.width,
     galaxySource,
     runAtlasOnMainThread,
-    selectedAccountId,
-    selectedPersonId,
   ]);
+  requestAtlasRef.current = requestAtlas;
 
   const markInteractive = useCallback(() => {
     latestQualityRef.current = "interactive";
@@ -1026,6 +1095,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     worker.onmessage = (event: MessageEvent<IdentityGalaxyWorkerResponse>) => {
       applyAtlasRef.current?.(
         event.data.requestId,
+        event.data.sourceRevision,
         event.data.atlas,
         event.data.scene,
         event.data.edgeIndices,
@@ -1043,6 +1113,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         window.clearTimeout(timeout);
       }
       pendingWorkerTimeoutsRef.current.clear();
+      requestSelectionByIdRef.current.clear();
       worker.terminate();
       if (workerRef.current === worker) {
         workerRef.current = null;
@@ -1117,7 +1188,23 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   useEffect(() => {
     sceneDirtyRef.current = true;
     scheduleDraw();
-  }, [scheduleDraw, selectedAccountId, selectedPersonId, starfieldVariation]);
+  }, [scheduleDraw, starfieldVariation]);
+
+  useEffect(() => {
+    const currentSelection: IdentityGalaxyWorkerSelection = {
+      selectedPersonId,
+      selectedAccountId,
+    };
+    if (identityGalaxyWorkerSelectionsMatch(previousSelectionRef.current, currentSelection)) {
+      return;
+    }
+    previousSelectionRef.current = currentSelection;
+    interactionDirtyRef.current = true;
+    scheduleDraw();
+    if (atlasReady) {
+      requestSelectionAwareAtlas("settled");
+    }
+  }, [atlasReady, requestSelectionAwareAtlas, scheduleDraw, selectedAccountId, selectedPersonId]);
 
   useEffect(() => {
     if (typeof PerformanceObserver === "undefined") return;

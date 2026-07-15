@@ -601,7 +601,7 @@ async function seedStressIdentityGraph(page: Page) {
     };
 
     const now = Date.now();
-    const personCount = 360;
+    const personCount = 1_200;
     const accountCount = 1_440;
     const feedCount = 80;
     const friendCutoff = Math.round(personCount * 0.82);
@@ -3941,6 +3941,123 @@ test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
   }, { timeout: 5_000 });
 });
 
+test("selection while the initial Friends atlas is pending retains the semantic scene", async ({ app, page }) => {
+  await page.addInitScript(() => {
+    const OriginalWorker = window.Worker;
+    const control: {
+      held: boolean;
+      released: boolean;
+      release: (() => void) | null;
+      outbound: unknown[];
+    } = {
+      held: false,
+      released: false,
+      release: null,
+      outbound: [],
+    };
+
+    class DelayedIdentityGalaxyWorker extends OriginalWorker {
+      private readonly identityGalaxyWorker: boolean;
+      private readonly heldMessages: unknown[] = [];
+
+      constructor(scriptURL: string | URL, options?: WorkerOptions) {
+        super(scriptURL, options);
+        this.identityGalaxyWorker = String(scriptURL).includes("identity-graph-atlas.worker");
+        if (!this.identityGalaxyWorker) return;
+        this.addEventListener("message", (event) => {
+          if (control.released) return;
+          event.stopImmediatePropagation();
+          this.heldMessages.push(event.data);
+          control.held = true;
+          control.release = () => {
+            if (control.released) return;
+            control.released = true;
+            for (const data of this.heldMessages.splice(0)) {
+              this.dispatchEvent(new MessageEvent("message", { data }));
+            }
+          };
+        });
+      }
+
+      override postMessage(
+        message: unknown,
+        transferOrOptions?: Transferable[] | StructuredSerializeOptions,
+      ): void {
+        if (this.identityGalaxyWorker) control.outbound.push(message);
+        if (transferOrOptions === undefined) {
+          OriginalWorker.prototype.postMessage.call(this, message);
+        } else {
+          OriginalWorker.prototype.postMessage.call(this, message, transferOrOptions);
+        }
+      }
+    }
+
+    Object.defineProperty(window, "Worker", {
+      configurable: true,
+      writable: true,
+      value: DelayedIdentityGalaxyWorker,
+    });
+    (window as typeof window & {
+      __FREED_GALAXY_WORKER_HOLD__?: typeof control;
+    }).__FREED_GALAXY_WORKER_HOLD__ = control;
+  });
+
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(page);
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarOpen: boolean } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+        setSelectedPerson: (personId: string | null) => void;
+      };
+    };
+    await store.getState().updatePreferences({
+      display: {
+        friendsMode: "friends",
+        friendsSidebarOpen: false,
+      },
+    });
+    store.getState().setSelectedPerson(null);
+    store.getState().setActiveView("friends");
+  });
+
+  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 10_000 });
+  await page.waitForFunction(() => {
+    return (window as typeof window & {
+      __FREED_GALAXY_WORKER_HOLD__?: { held: boolean };
+    }).__FREED_GALAXY_WORKER_HOLD__?.held === true;
+  }, { timeout: 10_000 });
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { setSelectedPerson: (personId: string | null) => void };
+    };
+    store.getState().setSelectedPerson("friend-ada");
+    const control = (window as typeof window & {
+      __FREED_GALAXY_WORKER_HOLD__?: { release: (() => void) | null };
+    }).__FREED_GALAXY_WORKER_HOLD__;
+    control?.release?.();
+  });
+
+  await expect(page.getByTestId("friends-collapsed-selection-card")).toContainText(
+    "Ada Lovelace",
+    { timeout: 10_000 },
+  );
+  await expect
+    .poll(async () => {
+      const debug = await readGraphDebug(page);
+      return debug?.nodes.some((node) => node.personId === "friend-ada") ?? false;
+    }, { timeout: 10_000 })
+    .toBe(true);
+  const drawError = await page.evaluate(() => {
+    return (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string })
+      .__FREED_GRAPH_DRAW_ERROR__ ?? null;
+  });
+  expect(drawError).toBeNull();
+});
+
 test("selected Friends graph person shows a compact detail card when the detail rail is closed", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
@@ -3995,11 +4112,13 @@ test("selected Friends graph person shows a compact detail card when the detail 
   const compactCard = page.getByTestId("friends-collapsed-selection-card");
   await expect(compactCard).toBeVisible({ timeout: 5_000 });
   await expect(compactCard).toContainText("Ada Lovelace");
-  const afterSelection = await readGraphSummary(page);
+  await waitForGraphSceneSyncAfter(page, beforeSelection!.metrics.sceneSyncCount);
+  const afterSelection = await waitForGraphPerfToSettle(page);
   expect(afterSelection).not.toBeNull();
   expect(afterSelection!.transform.x).toBeCloseTo(beforeSelection!.transform.x, 1);
   expect(afterSelection!.transform.y).toBeCloseTo(beforeSelection!.transform.y, 1);
   expect(afterSelection!.transform.scale).toBeCloseTo(beforeSelection!.transform.scale, 3);
+  expect(afterSelection!.metrics.sceneSyncCount).toBe(beforeSelection!.metrics.sceneSyncCount + 1);
   expect(afterSelection!.metrics.edgeRebuildCount).toBeLessThanOrEqual(beforeSelection!.metrics.edgeRebuildCount + 2);
   expect(afterSelection!.metrics.nodeRestyleCount).toBeLessThanOrEqual(beforeSelection!.metrics.nodeRestyleCount + 2);
   await page.waitForFunction(() => {
@@ -5345,7 +5464,106 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
   expect(initial!.metrics.layoutMs).toBeLessThan(1_000);
   expect(initial!.metrics.sceneSyncMs).toBeLessThan(250);
 
-  const benchmarkPoint = await graphNodeScreenPoint(page, { personId: "stress-person-0" });
+  const outOfSliceSelection = await page.evaluate(() => {
+    const debug = (window as typeof window & {
+      __FREED_GRAPH_DEBUG__?: {
+        nodes: Array<{ personId?: string; accountId?: string }>;
+      };
+    }).__FREED_GRAPH_DEBUG__;
+    const visiblePersonIds = new Set(
+      debug?.nodes.flatMap((node) => node.personId ? [node.personId] : []) ?? [],
+    );
+    const visibleAccountIds = new Set(
+      debug?.nodes.flatMap((node) => node.accountId ? [node.accountId] : []) ?? [],
+    );
+    let personId: string | null = null;
+    for (let index = 1_199; index >= 0; index -= 1) {
+      const candidate = `stress-person-${index}`;
+      if (!visiblePersonIds.has(candidate)) {
+        personId = candidate;
+        break;
+      }
+    }
+    let accountId: string | null = null;
+    for (let index = 1_439; index >= 0; index -= 1) {
+      const candidate = `stress-account-${index}`;
+      if (!visibleAccountIds.has(candidate)) {
+        accountId = candidate;
+        break;
+      }
+    }
+    return { personId, accountId };
+  });
+  if (!outOfSliceSelection.personId || !outOfSliceSelection.accountId) {
+    throw new Error("Dense Friends fixture did not produce out-of-slice identities");
+  }
+  const selectExternalIdentity = async (selection: {
+    personId: string | null;
+    accountId: string | null;
+  }) => {
+    const beforeSelection = await readGraphDebug(page);
+    expect(beforeSelection).not.toBeNull();
+    await page.evaluate((nextSelection) => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => {
+          setSelectedPerson: (selectedPersonId: string | null) => void;
+          setSelectedAccount: (selectedAccountId: string | null) => void;
+        };
+      };
+      if (nextSelection.personId) {
+        store.getState().setSelectedPerson(nextSelection.personId);
+      } else if (nextSelection.accountId) {
+        store.getState().setSelectedAccount(nextSelection.accountId);
+      } else {
+        store.getState().setSelectedPerson(null);
+      }
+    }, selection);
+    if (selection.personId || selection.accountId) {
+      await expect
+        .poll(async () => {
+          const debug = await readGraphDebug(page);
+          return debug?.nodes.some((node) =>
+            node.personId === selection.personId || node.accountId === selection.accountId
+          ) ?? false;
+        }, { timeout: 10_000 })
+        .toBe(true);
+    }
+    await waitForGraphSceneSyncAfter(page, beforeSelection!.metrics.sceneSyncCount);
+    const afterSelection = await waitForGraphPerfToSettle(page);
+    expect(afterSelection!.metrics.sceneSyncCount).toBe(
+      beforeSelection!.metrics.sceneSyncCount + 1,
+    );
+  };
+  await selectExternalIdentity({
+    personId: outOfSliceSelection.personId,
+    accountId: null,
+  });
+  await selectExternalIdentity({
+    personId: null,
+    accountId: outOfSliceSelection.accountId,
+  });
+  await selectExternalIdentity({ personId: null, accountId: null });
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => {
+        selectedPersonId: string | null;
+        selectedAccountId: string | null;
+      };
+    };
+    const state = store.getState();
+    return state.selectedPersonId === null && state.selectedAccountId === null;
+  });
+
+  const benchmarkPersonId = await page.evaluate(() => {
+    const debug = (window as typeof window & {
+      __FREED_GRAPH_DEBUG__?: {
+        nodes: Array<{ personId?: string }>;
+      };
+    }).__FREED_GRAPH_DEBUG__;
+    return debug?.nodes.find((node) => node.personId)?.personId ?? null;
+  });
+  expect(benchmarkPersonId).not.toBeNull();
+  const benchmarkPoint = await graphNodeScreenPoint(page, { personId: benchmarkPersonId! });
   expect(benchmarkPoint).not.toBeNull();
 
   await page.mouse.move(benchmarkPoint!.x, benchmarkPoint!.y);
