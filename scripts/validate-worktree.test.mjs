@@ -430,7 +430,7 @@ test("release mode remains a compatibility alias for production", () => {
   );
 });
 
-test("feature plan for capture-only changes runs the touched workspace check", () => {
+test("feature plan for capture-only changes runs the touched workspace checks", () => {
   const labels = describePlan(
     buildValidationPlan("feature", ["packages/capture-rss/src/index.ts"]),
   );
