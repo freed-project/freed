@@ -153,10 +153,10 @@ describe("buildIdentityGraphAtlas", () => {
     expect(atlas.metrics.lod).toBe("overview");
   });
 
-  it("keeps selected nodes visible even when the atlas is capped", () => {
-    const persons = Array.from({ length: 400 }, (_, index) => person(index));
+  it("keeps selected people, accounts, and labels visible when the atlas is capped", () => {
+    const persons = Array.from({ length: 800 }, (_, index) => person(index));
     const accounts = Object.fromEntries(
-      Array.from({ length: 1_000 }, (_, index) => {
+      Array.from({ length: 1_400 }, (_, index) => {
         const entry = account(index);
         return [entry.id, entry];
       }),
@@ -168,7 +168,7 @@ describe("buildIdentityGraphAtlas", () => {
       itemCount: 0,
     };
 
-    const atlas = buildIdentityGraphAtlas({
+    const input = {
       persons,
       accounts,
       feeds: {},
@@ -178,10 +178,46 @@ describe("buildIdentityGraphAtlas", () => {
       width: 390,
       height: 760,
       quality: "settled",
-      selectedPersonId: "person-399",
+    } as const;
+    const unselectedAtlas = buildIdentityGraphAtlas(input);
+    const visiblePersonIds = new Set(unselectedAtlas.nodes.flatMap((node) =>
+      node.personId ? [node.personId] : []
+    ));
+    const visibleAccountIds = new Set(unselectedAtlas.nodes.flatMap((node) =>
+      node.accountId ? [node.accountId] : []
+    ));
+    const selectedPersonId = persons.find((entry) => !visiblePersonIds.has(entry.id))?.id;
+    const selectedAccountId = Object.values(accounts).find((entry) =>
+      !visibleAccountIds.has(entry.id)
+    )?.id;
+    expect(selectedPersonId).toBeTruthy();
+    expect(selectedAccountId).toBeTruthy();
+
+    const selectedPersonAtlas = buildIdentityGraphAtlas({
+      ...input,
+      selectedPersonId,
+    });
+    const selectedAccountAtlas = buildIdentityGraphAtlas({
+      ...input,
+      selectedAccountId,
     });
 
-    expect(atlas.nodes.some((node) => node.personId === "person-399")).toBe(true);
+    expect(selectedPersonAtlas.nodes.some((node) => node.personId === selectedPersonId)).toBe(true);
+    expect(selectedPersonAtlas.labels.some((label) => label.nodeId === `person:${selectedPersonId}`)).toBe(true);
+    expect(selectedAccountAtlas.nodes.some((node) => node.accountId === selectedAccountId)).toBe(true);
+    expect(selectedAccountAtlas.labels.some((label) => label.nodeId === `account:${selectedAccountId}`)).toBe(true);
+
+    const unlabeledVisibleNode = unselectedAtlas.nodes.find((node) =>
+      !unselectedAtlas.labels.some((label) => label.nodeId === node.id) &&
+      (!!node.personId || !!node.accountId)
+    );
+    expect(unlabeledVisibleNode).toBeTruthy();
+    const selectedVisibleAtlas = buildIdentityGraphAtlas({
+      ...input,
+      selectedPersonId: unlabeledVisibleNode?.personId,
+      selectedAccountId: unlabeledVisibleNode?.accountId,
+    });
+    expect(selectedVisibleAtlas.labels.some((label) => label.nodeId === unlabeledVisibleNode?.id)).toBe(true);
   });
 
   it("packs linked accounts into tight fields around their person", () => {
