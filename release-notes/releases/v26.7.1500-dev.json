@@ -5,7 +5,8 @@
   "dayKey": "26.7.15",
   "approved": true,
   "editorialNotes": [
-    "Reviewed 2026-07-15: retained the reviewed Friends Galaxy highlights because the immutable v26.7.1400-dev and v26.7.1402-dev tags published no installer. Rebound this replacement to the exact current dev product commit after the PWA handler type repair, release workflow validation fix, and release notes deduplication repair merged."
+    "Reviewed 2026-07-15: retained the reviewed Friends Galaxy highlights because the immutable v26.7.1400-dev and v26.7.1402-dev tags published no installer. Rebound this replacement to the exact current dev product commit after the PWA handler type repair, release workflow validation fix, release notes deduplication repair, and Friends selection synchronization fix merged.",
+    "Corrected 2026-07-15: the Friends selection synchronization PR merged immediately before the release preparation PR, so this receipt now binds its source to 310a85e625b4af3f5b3bccd5c41e1fadab00034b before protected tag creation."
   ],
   "generatedAt": "2026-07-15T07:09:45.075Z",
   "model": "heuristic",
@@ -14,7 +15,7 @@
     "previousPublishedTag": "v26.7.1200-dev",
     "previousPublishedDayTag": "v26.7.1200-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "bb7443162ef9d53cc96cb19e7d7ffb63f00537fc",
+    "productCommitSha": "310a85e625b4af3f5b3bccd5c41e1fadab00034b",
     "promotedDevCommitSha": null,
     "isLatestOfDay": true,
     "sameDayTagsIncluded": [
@@ -52,9 +53,11 @@
       1013,
       1015,
       1016,
-      1021
+      1021,
+      1022
     ],
     "commitSubjects": [
+      "fix: stabilize Friends selection atlas updates (#1022)",
       "fix: avoid duplicate pinned release highlights (#1021)",
       "fix: unblock dev release validation (#1016)",
       "chore: prepare v26.7.1402-dev (#1015)",
