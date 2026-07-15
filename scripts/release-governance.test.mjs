@@ -30,6 +30,10 @@ const releaseWorkflow = readFileSync(
   path.join(scriptsDir, "..", ".github", "workflows", "release.yml"),
   "utf8",
 );
+const ciWorkflow = readFileSync(
+  path.join(scriptsDir, "..", ".github", "workflows", "ci.yml"),
+  "utf8",
+);
 
 test("release preparation uses the channel's protected branch as its exact base", () => {
   assert.match(releasePrep, /CHANNEL="production"/);
@@ -119,6 +123,11 @@ test("release failure triage binds GitHub CLI to the triggering repository", () 
   assert.match(triageJob, /gh issue comment/);
   assert.match(triageJob, /gh issue create/);
   assert.doesNotMatch(triageJob, /uses:\s*actions\/checkout/);
+});
+
+test("feature validation installs Playwright for every desktop e2e plan", () => {
+  assert.match(ciWorkflow, /grep -q '\^desktop \.\*e2e'/);
+  assert.doesNotMatch(ciWorkflow, /grep -q '\^desktop e2e '/);
 });
 
 test("release preparation validates canonical CalVer before mutating version files", () => {
