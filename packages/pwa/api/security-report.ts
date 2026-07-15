@@ -30,6 +30,19 @@ interface RateLimitEntry {
   resetAt: number;
 }
 
+interface ServerlessRequest {
+  method?: string;
+  headers?: Record<string, string | string[] | undefined>;
+  body?: unknown;
+}
+
+interface JsonServerlessResponse {
+  setHeader(name: string, value: string): void;
+  status(code: number): JsonServerlessResponse;
+  json(body: unknown): void;
+  end(): void;
+}
+
 let cachedInstallationToken: InstallationToken | null = null;
 const rateLimits = new Map<string, RateLimitEntry>();
 
@@ -289,7 +302,10 @@ function setResponseHeaders(
   }
 }
 
-export default async function handler(req: any, res: any) {
+export default async function handler(
+  req: ServerlessRequest,
+  res: JsonServerlessResponse,
+): Promise<void> {
   const origin = requestOrigin(req);
   setResponseHeaders(res, origin);
   if (req.method === "OPTIONS") {

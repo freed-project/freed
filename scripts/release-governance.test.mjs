@@ -30,6 +30,10 @@ const releaseWorkflow = readFileSync(
   path.join(scriptsDir, "..", ".github", "workflows", "release.yml"),
   "utf8",
 );
+const ciWorkflow = readFileSync(
+  path.join(scriptsDir, "..", ".github", "workflows", "ci.yml"),
+  "utf8",
+);
 
 test("release preparation uses the channel's protected branch as its exact base", () => {
   assert.match(releasePrep, /CHANNEL="production"/);
@@ -107,6 +111,23 @@ test("release publication delegates one exact tag to the trusted App publisher",
     releaseWorkflow,
     /validate-release-promotion\.mjs --from-ref=origin\/dev/,
   );
+});
+
+test("release failure triage binds GitHub CLI to the triggering repository", () => {
+  const triageJobStart = releaseWorkflow.indexOf("\n  triage-on-failure:");
+  assert.ok(triageJobStart >= 0, "release workflow should define failure triage");
+  const triageJob = releaseWorkflow.slice(triageJobStart);
+
+  assert.match(triageJob, /GH_REPO:\s*\$\{\{ github\.repository \}\}/);
+  assert.match(triageJob, /gh issue list/);
+  assert.match(triageJob, /gh issue comment/);
+  assert.match(triageJob, /gh issue create/);
+  assert.doesNotMatch(triageJob, /uses:\s*actions\/checkout/);
+});
+
+test("feature validation installs Playwright for every desktop e2e plan", () => {
+  assert.match(ciWorkflow, /grep -q '\^desktop \.\*e2e'/);
+  assert.doesNotMatch(ciWorkflow, /grep -q '\^desktop e2e '/);
 });
 
 test("release preparation validates canonical CalVer before mutating version files", () => {

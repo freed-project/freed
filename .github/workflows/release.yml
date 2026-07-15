@@ -620,6 +620,7 @@ jobs:
       - name: Open or update the automation-triage issue
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           title="Release pipeline failure: ${GITHUB_REF_NAME}"
           body="(AI Generated).
