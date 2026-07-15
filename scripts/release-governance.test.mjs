@@ -109,6 +109,18 @@ test("release publication delegates one exact tag to the trusted App publisher",
   );
 });
 
+test("release failure triage binds GitHub CLI to the triggering repository", () => {
+  const triageJobStart = releaseWorkflow.indexOf("\n  triage-on-failure:");
+  assert.ok(triageJobStart >= 0, "release workflow should define failure triage");
+  const triageJob = releaseWorkflow.slice(triageJobStart);
+
+  assert.match(triageJob, /GH_REPO:\s*\$\{\{ github\.repository \}\}/);
+  assert.match(triageJob, /gh issue list/);
+  assert.match(triageJob, /gh issue comment/);
+  assert.match(triageJob, /gh issue create/);
+  assert.doesNotMatch(triageJob, /uses:\s*actions\/checkout/);
+});
+
 test("release preparation validates canonical CalVer before mutating version files", () => {
   const validationIndex = releasePrep.indexOf("scripts/release-version.mjs");
   const firstMutationIndex = releasePrep.indexOf(
