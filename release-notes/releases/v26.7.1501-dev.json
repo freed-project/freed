@@ -3,8 +3,10 @@
   "version": "26.7.1501-dev",
   "channel": "dev",
   "dayKey": "26.7.15",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed 2026-07-15: retained the reviewed Friends Galaxy, Medium and Substack beta, YouTube, and private security highlights because v26.7.1400-dev, v26.7.1402-dev, and v26.7.1500-dev published no installer. Bound this replacement to the exact dev product commit after the Facebook preference patch and beta label layout repairs merged."
+  ],
   "generatedAt": "2026-07-15T08:58:46.391Z",
   "model": "heuristic",
   "source": {
@@ -101,26 +103,18 @@
   "release": {
     "deck": "Friends is now a theme-aware personal galaxy with native touch and trackpad navigation, tight identity constellations, and cosmic provider nebulae",
     "features": [
-      "Build next-generation Friends Galaxy",
-      "Authenticated essay capture",
-      "Private vulnerability reporting"
+      "Explore Friends as a hardware-accelerated 3D galaxy where relationship importance controls depth, identities form tight constellations, and every starfield follows the active Freed theme",
+      "Pan, zoom, and focus the galaxy with a mouse, trackpad, or midpoint-preserving iPhone pinch gestures while billboard labels stay visible and close to their stars",
+      "Use the new Medium and Substack beta sources in Freed Desktop to capture essays, visible relationships, subscriptions, and activity through your signed-in sessions"
     ],
     "fixes": [
-      "Reader, feed, and header polish",
-      "Release build and type-safety cleanup",
-      "Preserve removed Facebook group preferences",
-      "Align tooling fixtures with current policy",
-      "Enable YouTube terminal sync soaks",
-      "Medium and Substack beta sources",
-      "Completed YouTube capture"
+      "Friends selection now settles on the current person or account without stale atlas updates, while provider regions form spiral nebulae and identity links stay focused on the active constellation",
+      "Facebook groups confirmed as left now stay removed from the source list",
+      "Medium and Substack beta labels remain readable through 150% interface zoom, with their source menus still keyboard accessible",
+      "YouTube followed-channel and subscription capture now reports bounded progress, cancels stale work, and closes hidden capture sessions when finished",
+      "Security reports can now be submitted privately with redacted diagnostics and hardened fetched-content handling"
     ],
-    "followUps": [
-      "Rebind v26.7.1500-dev release identity",
-      "Prepare v26.7.1402-dev",
-      "Pin release publisher app bypass",
-      "Dedicated release tag publisher",
-      "Reverse integrate main into dev"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1501-dev\n\nFriends is now a theme-aware personal galaxy with native touch and trackpad navigation, tight identity constellations, and cosmic provider nebulae\n\n### Features\n\n- Build next-generation Friends Galaxy\n- Authenticated essay capture\n- Private vulnerability reporting\n\n### Fixes\n\n- Reader, feed, and header polish\n- Release build and type-safety cleanup\n- Preserve removed Facebook group preferences\n- Align tooling fixtures with current policy\n- Enable YouTube terminal sync soaks\n- Medium and Substack beta sources\n- Completed YouTube capture\n\n### Follow-ups\n\n- Rebind v26.7.1500-dev release identity\n- Prepare v26.7.1402-dev\n- Pin release publisher app bypass\n- Dedicated release tag publisher\n- Reverse integrate main into dev\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1501-dev\n\nFriends is now a theme-aware personal galaxy with native touch and trackpad navigation, tight identity constellations, and cosmic provider nebulae.\n\n### Features\n\n- Explore Friends as a hardware-accelerated 3D galaxy where relationship importance controls depth, identities form tight constellations, and every starfield follows the active Freed theme\n- Pan, zoom, and focus the galaxy with a mouse, trackpad, or midpoint-preserving iPhone pinch gestures while billboard labels stay visible and close to their stars\n- Use the new Medium and Substack beta sources in Freed Desktop to capture essays, visible relationships, subscriptions, and activity through your signed-in sessions\n\n### Fixes\n\n- Friends selection now settles on the current person or account without stale atlas updates, while provider regions form spiral nebulae and identity links stay focused on the active constellation\n- Facebook groups confirmed as left now stay removed from the source list\n- Medium and Substack beta labels remain readable through 150% interface zoom, with their source menus still keyboard accessible\n- YouTube followed-channel and subscription capture now reports bounded progress, cancels stale work, and closes hidden capture sessions when finished\n- Security reports can now be submitted privately with redacted diagnostics and hardened fetched-content handling\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
