@@ -2,13 +2,19 @@
   "channel": "dev",
   "dayKey": "26.7.15",
   "date": "2026-07-15",
-  "preferredDeck": null,
+  "preferredDeck": "Friends is now a theme-aware personal galaxy with native touch and trackpad navigation, tight identity constellations, and cosmic provider nebulae",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
-  "pinnedHighlights": [],
-  "editorialNotes": [],
-  "updatedAt": "2026-07-15T07:09:45.076Z"
+  "pinnedHighlights": [
+    "Friends Galaxy",
+    "Medium and Substack beta sources",
+    "Completed YouTube capture"
+  ],
+  "editorialNotes": [
+    "Lead with the user-facing Friends Galaxy. Keep release governance and superseded release-prep commits out of public copy."
+  ],
+  "updatedAt": "2026-07-15T07:10:39.000Z"
 }
