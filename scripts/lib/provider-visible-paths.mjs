@@ -1022,11 +1022,13 @@ function readRecoveredControlState(stateRoot) {
 // CLI: print the provider-visible subset of the given paths, one per line.
 //   node scripts/lib/provider-visible-paths.mjs <path>...
 //   git diff --name-only ... | node scripts/lib/provider-visible-paths.mjs --stdin
+// Add --provider-ids to print the sorted provider union for those paths.
 const isMain =
   process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isMain) {
   const args = process.argv.slice(2);
+  const providerIdsMode = args.includes("--provider-ids");
   const approvalDigestFlagIndex = args.indexOf("--approval-digest");
   const approvalDigestFile =
     approvalDigestFlagIndex >= 0 ? args[approvalDigestFlagIndex + 1] : null;
@@ -1040,6 +1042,14 @@ if (isMain) {
     controlStateRootFlagIndex >= 0 ? args[controlStateRootFlagIndex + 1] : null;
   if (approvalDigestFlagIndex >= 0 && !approvalDigestFile) {
     throw new Error("--approval-digest requires a JSON file path.");
+  }
+  if (
+    providerIdsMode &&
+    (approvalDigestFlagIndex >= 0 || approvalFlagIndex >= 0)
+  ) {
+    throw new Error(
+      "--provider-ids cannot be combined with approval validation flags.",
+    );
   }
   if (approvalDigestFile) {
     const record = JSON.parse(readFileSync(approvalDigestFile, "utf8"));
@@ -1066,7 +1076,7 @@ if (isMain) {
   }
 
   const pathArgs = args.filter((arg, index) => {
-    if (arg === "--stdin") return false;
+    if (arg === "--stdin" || arg === "--provider-ids") return false;
     if (
       approvalFlagIndex >= 0 &&
       (index === approvalFlagIndex || index === approvalFlagIndex + 1)
@@ -1093,6 +1103,24 @@ if (isMain) {
     .map((line) => line.trim())
     .filter(Boolean)
     .filter(isProviderVisiblePath);
+
+  if (providerIdsMode) {
+    const unresolvedPaths = matches.filter(
+      (filePath) => providerIdsForPath(filePath).length === 0,
+    );
+    if (unresolvedPaths.length > 0) {
+      throw new Error(
+        `Provider-visible paths are missing inferred provider scopes:\n- ${unresolvedPaths.join("\n- ")}`,
+      );
+    }
+    const providers = [
+      ...new Set(matches.flatMap((filePath) => providerIdsForPath(filePath))),
+    ].sort();
+    if (providers.length > 0) {
+      process.stdout.write(`${providers.join("\n")}\n`);
+    }
+    process.exit(0);
+  }
 
   if (approvalFile) {
     const record = JSON.parse(readFileSync(approvalFile, "utf8"));

@@ -63,7 +63,7 @@ fi
 usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/worktree-publish.sh --title "<conventional-commit title>" [--summary "<bullet>"]... [--test "<bullet>"]... [--base <branch>] [--body-file <path>] [--include-untracked] [--ready] [--provider-risk-approval-file <path>]
+  ./scripts/worktree-publish.sh --title "<conventional-commit title>" [--summary "<bullet>"]... [--test "<bullet>"]... [--base <branch>] [--body-file <path>] [--include-untracked] [--ready] [--provider-risk-review-artifact <path>] [--provider-risk-approval-file <path>]
 
 Draft is the default so interim publishes never look reviewable. Pass --ready at
 closeout, once validation has passed and the work is complete, to mark the PR
@@ -74,10 +74,11 @@ Stages local changes, commits them when needed, pushes the current branch to ori
 and opens a draft pull request.
 
 Branches whose diff touches provider-visible paths publish as drafts without a
-Gate 2 packet. The helper posts one GitHub review comment bound to the provider
-subdiff. A CODEOWNER thumbs-up reaction on that comment authorizes the ready
-transition. Unrelated file changes do not invalidate that reaction. A signed
-control-task approval file remains available for unattended publication.
+Gate 2 packet. The human review path requires one validated provider-risk-review
+artifact and posts one GitHub comment bound to both that artifact and the
+provider subdiff. A CODEOWNER thumbs-up reaction on that comment authorizes the
+ready transition. Unrelated file changes do not invalidate that reaction. A
+signed control-task approval file remains available for unattended publication.
 EOF
 }
 
@@ -233,6 +234,26 @@ print(value)
 PY
 }
 
+json_array_lines() {
+  local json="$1"
+  shift
+
+  "${PYTHON_BIN}" - "${json}" "$@" <<'PY'
+import json
+import sys
+
+value = json.loads(sys.argv[1])
+for key in sys.argv[2:]:
+    if not isinstance(value, dict) or key not in value:
+        raise SystemExit(1)
+    value = value[key]
+if not isinstance(value, list):
+    raise SystemExit(1)
+for item in sorted({str(item).strip() for item in value if str(item).strip()}):
+    print(item)
+PY
+}
+
 provider_approval_markdown() {
   local json="$1"
 
@@ -261,15 +282,41 @@ for file_path in approval["paths"]:
 PY
 }
 
+provider_review_context_markdown() {
+  local artifact_json="$1"
+
+  "${PYTHON_BIN}" - "${artifact_json}" <<'PY'
+import json
+import sys
+
+artifact = json.loads(sys.argv[1])
+payload = artifact["payload"]
+
+def one_line(value):
+    return " ".join(str(value).split())
+
+print(f"- Gate 1 task: `{one_line(artifact['taskId'])}`")
+print(f"- Gate 1 artifact: `{artifact['artifactDigest']}`")
+print(f"- Providers: {', '.join(sorted(payload['providers']))}")
+print(f"- Observable behavior: {one_line(payload['observableBehavior'])}")
+print(f"- Fingerprinting risk: {one_line(payload['fingerprintingRisk'])}")
+print(f"- Lowest profile alternative: {one_line(payload['lowestProfileAlternative'])}")
+PY
+}
+
 provider_review_markdown() {
   local diff_sha="$1"
   local files="$2"
+  local artifact_json="${3:-}"
 
   printf '%s\n' "## Provider Review"
   printf '%s\n' "- Status: Draft publication is allowed. Ready and merge require provider authority."
   printf '%s\n' "- Review action: A provider CODEOWNER reacts with a GitHub thumbs-up on the generated provider review comment."
   printf '%s\n' "- Provider subdiff: \`${diff_sha}\`"
   printf '%s\n' "- Draft publication does not authorize new live provider traffic. Gate 1 behavior approval still applies."
+  if [[ -n "${artifact_json}" ]]; then
+    provider_review_context_markdown "${artifact_json}"
+  fi
   printf '\n%s\n' "Files bound into this provider review:"
   while IFS= read -r file_path; do
     [[ -n "${file_path}" ]] || continue
@@ -322,13 +369,17 @@ for path in sorted(bound):
 provider_review_comment_body() {
   local diff_sha="$1"
   local files="$2"
+  local artifact_json="$3"
+  local artifact_digest="$4"
 
   printf '%s\n' '(AI Generated).'
   printf '\n%s\n' "<!-- freed-provider-review:${diff_sha} -->"
+  printf '%s\n' "<!-- freed-provider-risk-review-artifact:${artifact_digest} -->"
   printf '\n%s\n\n' "## Provider review"
   printf '%s\n' "This review covers the provider-visible subdiff below. It does not approve unrelated files."
   printf '%s\n' "React with a GitHub thumbs-up to authorize ready and merge. A provider code change creates a new review request."
   printf '\n%s\n' "Provider subdiff: \`${diff_sha}\`"
+  provider_review_context_markdown "${artifact_json}"
   printf '\n%s\n' "Files bound into this provider review:"
   while IFS= read -r file_path; do
     [[ -n "${file_path}" ]] || continue
@@ -355,23 +406,36 @@ for owner in sorted(owners):
 PY
 }
 
-find_provider_review_comment_id() {
+find_provider_review_comment_metadata() {
   local pr_number="$1"
   local diff_sha="$2"
+  local artifact_digest="$3"
+  local expected_body="$4"
   local marker="<!-- freed-provider-review:${diff_sha} -->"
+  local artifact_marker="<!-- freed-provider-risk-review-artifact:${artifact_digest} -->"
 
   "${GH_BIN}" api "repos/${PUBLISH_REPO}/issues/${pr_number}/comments" --paginate --slurp |
     "${PYTHON_BIN}" -c '
 import json
 import sys
 marker = sys.argv[1]
+artifact_marker = sys.argv[2]
+expected_body = sys.argv[3]
 comments = json.load(sys.stdin)
 if comments and isinstance(comments[0], list):
     comments = [item for page in comments for item in page]
-matches = [str(item.get("id")) for item in comments if marker in str(item.get("body", ""))]
+matches = [
+    "{}\t{}".format(item.get("id"), item.get("updated_at"))
+    for item in comments
+    if marker in str(item.get("body", ""))
+    and artifact_marker in str(item.get("body", ""))
+    and str(item.get("body", "")) == expected_body
+    and item.get("created_at")
+    and item.get("created_at") == item.get("updated_at")
+]
 if matches:
     print(matches[-1])
-' "${marker}"
+' "${marker}" "${artifact_marker}" "${expected_body}"
 }
 
 ensure_provider_review_comment() {
@@ -379,11 +443,13 @@ ensure_provider_review_comment() {
   [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]] || return 0
   [[ "${PROVIDER_APPROVAL_SOURCE_KIND}" == "control-task" ]] && return 0
 
+  local comment_metadata
   local comment_id
   local body
-  comment_id="$(find_provider_review_comment_id "${pr_number}" "${FINAL_PROVIDER_DIFF_SHA}")"
+  body="$(provider_review_comment_body "${FINAL_PROVIDER_DIFF_SHA}" "${FINAL_PROVIDER_BOUND_FILES}" "${PROVIDER_RISK_REVIEW_ARTIFACT_JSON}" "${PROVIDER_REVIEW_ARTIFACT_DIGEST}")"
+  comment_metadata="$(find_provider_review_comment_metadata "${pr_number}" "${FINAL_PROVIDER_DIFF_SHA}" "${PROVIDER_REVIEW_ARTIFACT_DIGEST}" "${body}")"
+  comment_id="${comment_metadata%%$'\t'*}"
   [[ -n "${comment_id}" ]] && return 0
-  body="$(provider_review_comment_body "${FINAL_PROVIDER_DIFF_SHA}" "${FINAL_PROVIDER_BOUND_FILES}")"
   "${GH_BIN}" api "repos/${PUBLISH_REPO}/issues/${pr_number}/comments" \
     --method POST \
     --field body="${body}" \
@@ -395,33 +461,56 @@ verify_provider_ready_authority() {
   [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]] || return 0
   [[ "${PROVIDER_APPROVAL_SOURCE_KIND}" == "control-task" ]] && return 0
 
+  local body
+  local comment_metadata
   local comment_id
+  local comment_updated_at
   local codeowners
   local reactions
-  comment_id="$(find_provider_review_comment_id "${pr_number}" "${FINAL_PROVIDER_DIFF_SHA}")"
+  body="$(provider_review_comment_body "${FINAL_PROVIDER_DIFF_SHA}" "${FINAL_PROVIDER_BOUND_FILES}" "${PROVIDER_RISK_REVIEW_ARTIFACT_JSON}" "${PROVIDER_REVIEW_ARTIFACT_DIGEST}")"
+  comment_metadata="$(find_provider_review_comment_metadata "${pr_number}" "${FINAL_PROVIDER_DIFF_SHA}" "${PROVIDER_REVIEW_ARTIFACT_DIGEST}" "${body}")"
+  comment_id="${comment_metadata%%$'\t'*}"
+  comment_updated_at="${comment_metadata#*$'\t'}"
   if [[ -z "${comment_id}" ]]; then
-    echo "Error: provider review comment is missing for the current provider subdiff." >&2
+    echo "Error: an exact, unedited provider review comment is missing for the current provider subdiff and Gate 1 artifact." >&2
     exit 1
   fi
   codeowners="$(provider_codeowner_logins)"
   reactions="$("${GH_BIN}" api "repos/${PUBLISH_REPO}/issues/comments/${comment_id}/reactions" --paginate --slurp)"
-  if ! "${PYTHON_BIN}" - "${codeowners}" "${reactions}" <<'PY'
+  if ! "${PYTHON_BIN}" - "${codeowners}" "${reactions}" "${comment_updated_at}" <<'PY'
+from datetime import datetime
 import json
 import sys
 
 owners = {value.strip().lower() for value in sys.argv[1].splitlines() if value.strip()}
 reactions = json.loads(sys.argv[2])
+
+def parse_timestamp(value):
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+comment_updated_at = parse_timestamp(sys.argv[3])
+if comment_updated_at is None:
+    raise SystemExit(1)
 if reactions and isinstance(reactions[0], list):
     reactions = [item for page in reactions for item in page]
-approved = any(
-    item.get("content") == "+1"
-    and str((item.get("user") or {}).get("login", "")).lower() in owners
-    for item in reactions
-)
+
+def is_fresh_approval(item):
+    created_at = parse_timestamp(item.get("created_at"))
+    return (
+        item.get("content") == "+1"
+        and str((item.get("user") or {}).get("login", "")).lower() in owners
+        and created_at is not None
+        and created_at >= comment_updated_at
+    )
+
+approved = any(is_fresh_approval(item) for item in reactions)
 raise SystemExit(0 if approved else 1)
 PY
   then
-    echo "Error: the current provider subdiff needs a GitHub thumbs-up reaction from a provider CODEOWNER before ready or merge." >&2
+    echo "Error: the current provider subdiff and Gate 1 artifact need a fresh GitHub thumbs-up reaction from a provider CODEOWNER after the exact review comment was created." >&2
     exit 1
   fi
 }
@@ -435,9 +524,13 @@ READY_FOR_REVIEW=false
 PROVIDER_RISK_APPROVAL_FILE=""
 PROVIDER_RISK_APPROVAL_JSON=""
 PROVIDER_APPROVAL_SOURCE_KIND=""
+PROVIDER_RISK_REVIEW_ARTIFACT_FILE=""
+PROVIDER_RISK_REVIEW_ARTIFACT_JSON=""
+PROVIDER_REVIEW_ARTIFACT_DIGEST=""
 FINAL_PROVIDER_VISIBLE_FILES=""
 FINAL_PROVIDER_BOUND_FILES=""
 FINAL_PROVIDER_DIFF_SHA=""
+FINAL_PROVIDER_IDS=""
 PUBLISH_HEAD=""
 BRANCH_NAME=""
 SCOPE_HEAD_SHA=""
@@ -575,11 +668,67 @@ revalidate_provider_approval() {
       --control-state-root "${PUBLISH_CONTROL_STATE_ROOT}" >/dev/null
 }
 
+load_provider_review_artifact() {
+  "${NODE_BIN}" "${SCRIPT_DIR}/stability-artifact.mjs" validate \
+    --input "${PROVIDER_RISK_REVIEW_ARTIFACT_FILE}" \
+    --kind provider-risk-review >/dev/null
+
+  PROVIDER_RISK_REVIEW_ARTIFACT_JSON="$(<"${PROVIDER_RISK_REVIEW_ARTIFACT_FILE}")"
+  local artifact_status
+  local source_status
+  local artifact_providers
+  artifact_status="$(json_nested_field "${PROVIDER_RISK_REVIEW_ARTIFACT_JSON}" status)"
+  source_status="$(json_nested_field "${PROVIDER_RISK_REVIEW_ARTIFACT_JSON}" source status)"
+  PROVIDER_REVIEW_ARTIFACT_DIGEST="$(json_nested_field "${PROVIDER_RISK_REVIEW_ARTIFACT_JSON}" artifactDigest)"
+  artifact_providers="$(json_array_lines "${PROVIDER_RISK_REVIEW_ARTIFACT_JSON}" payload providers)"
+
+  if [[ "${source_status}" != "healthy" ]]; then
+    echo "Error: provider-risk-review artifact source must be healthy." >&2
+    exit 1
+  fi
+  case "${artifact_status}" in
+    behavior_approved|diff_authorized)
+      ;;
+    *)
+      echo "Error: provider-risk-review artifact must record behavior_approved or diff_authorized." >&2
+      exit 1
+      ;;
+  esac
+  if [[ ! "${PROVIDER_REVIEW_ARTIFACT_DIGEST}" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "Error: provider-risk-review artifact must include its immutable artifactDigest." >&2
+    exit 1
+  fi
+  if [[ "${artifact_providers}" != "${FINAL_PROVIDER_IDS}" ]]; then
+    echo "Error: provider-risk-review artifact providers do not match the current provider-visible diff." >&2
+    printf 'Expected providers:\n%s\n' "${FINAL_PROVIDER_IDS}" >&2
+    printf 'Artifact providers:\n%s\n' "${artifact_providers}" >&2
+    exit 1
+  fi
+}
+
+revalidate_provider_review_artifact() {
+  if [[ -z "${PROVIDER_RISK_REVIEW_ARTIFACT_FILE}" ]]; then
+    return
+  fi
+  "${NODE_BIN}" "${SCRIPT_DIR}/stability-artifact.mjs" validate \
+    --input "${PROVIDER_RISK_REVIEW_ARTIFACT_FILE}" \
+    --kind provider-risk-review >/dev/null
+  local current_json
+  local current_digest
+  current_json="$(<"${PROVIDER_RISK_REVIEW_ARTIFACT_FILE}")"
+  current_digest="$(json_nested_field "${current_json}" artifactDigest)"
+  if [[ "${current_digest}" != "${PROVIDER_REVIEW_ARTIFACT_DIGEST}" ]]; then
+    echo "Error: provider-risk-review artifact changed after publish inspection." >&2
+    exit 1
+  fi
+}
+
 assert_publish_write_ready() {
   validate_publish_lease
   verify_canonical_base
   verify_remote_head
   revalidate_provider_approval
+  revalidate_provider_review_artifact
 }
 
 verify_pr_target_head() {
@@ -668,6 +817,11 @@ while [[ $# -gt 0 ]]; do
       READY_FOR_REVIEW=true
       shift
       ;;
+    --provider-risk-review-artifact)
+      [[ $# -ge 2 && -n "$2" ]] || { echo "Error: --provider-risk-review-artifact requires a JSON file path." >&2; exit 1; }
+      PROVIDER_RISK_REVIEW_ARTIFACT_FILE="$2"
+      shift 2
+      ;;
     --provider-risk-approval-file)
       [[ $# -ge 2 && -n "$2" ]] || { echo "Error: --provider-risk-approval-file requires a JSON file path." >&2; exit 1; }
       PROVIDER_RISK_APPROVAL_FILE="$2"
@@ -691,6 +845,10 @@ done
 
 if [[ -z "${TITLE}" ]]; then
   usage
+  exit 1
+fi
+if [[ -n "${PROVIDER_RISK_REVIEW_ARTIFACT_FILE}" && -n "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
+  echo "Error: --provider-risk-review-artifact and --provider-risk-approval-file are mutually exclusive." >&2
   exit 1
 fi
 
@@ -804,6 +962,12 @@ PROVIDER_VISIBLE_FILES="${FINAL_PROVIDER_VISIBLE_FILES}"
 if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
   FINAL_PROVIDER_BOUND_FILES="$(provider_bound_files "origin/${BASE_BRANCH}" "${PUBLISH_HEAD}" "${FINAL_PROVIDER_VISIBLE_FILES}")"
   FINAL_PROVIDER_DIFF_SHA="$(provider_diff_sha "origin/${BASE_BRANCH}" "${PUBLISH_HEAD}" "${FINAL_PROVIDER_BOUND_FILES}")"
+  FINAL_PROVIDER_IDS="$(
+    printf '%s\n' "${FINAL_PROVIDER_VISIBLE_FILES}" |
+      "${NODE_BIN}" "${SCRIPT_DIR}/lib/provider-visible-paths.mjs" \
+        --stdin \
+        --provider-ids
+  )"
   if [[ -n "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
     PROVIDER_RISK_APPROVAL_JSON="$(
       printf '%s\n' "${FINAL_PROVIDER_VISIBLE_FILES}" |
@@ -818,13 +982,27 @@ if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
       echo "Error: owner-confirmation approval packets are retired. Publish the draft and use the GitHub provider review reaction." >&2
       exit 1
     fi
+  else
+    if [[ -z "${PROVIDER_RISK_REVIEW_ARTIFACT_FILE}" ]]; then
+      echo "Error: provider-visible draft publication requires --provider-risk-review-artifact." >&2
+      exit 1
+    fi
+    load_provider_review_artifact
   fi
-elif [[ -n "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
-  echo "Error: --provider-risk-approval-file was provided, but this branch has no provider-visible committed diff." >&2
-  exit 1
+else
+  if [[ -n "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
+    echo "Error: --provider-risk-approval-file was provided, but this branch has no provider-visible committed diff." >&2
+    exit 1
+  fi
+  if [[ -n "${PROVIDER_RISK_REVIEW_ARTIFACT_FILE}" ]]; then
+    echo "Error: --provider-risk-review-artifact was provided, but this branch has no provider-visible committed diff." >&2
+    exit 1
+  fi
 fi
 
 validate_publish_lease
+revalidate_provider_approval
+revalidate_provider_review_artifact
 ensure_provider_pr_draft_before_push
 verify_canonical_base
 "${GIT_BIN}" push -u origin "${PUBLISH_HEAD}:refs/heads/${BRANCH_NAME}"
@@ -857,7 +1035,7 @@ if [[ -n "${PROVIDER_RISK_APPROVAL_JSON}" ]]; then
   BODY_CONTENT="$(printf '%s\n\n%s' "${BODY_CONTENT}" "${APPROVAL_SECTION}")"
 fi
 if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
-  REVIEW_SECTION="$(provider_review_markdown "${FINAL_PROVIDER_DIFF_SHA}" "${FINAL_PROVIDER_BOUND_FILES}")"
+  REVIEW_SECTION="$(provider_review_markdown "${FINAL_PROVIDER_DIFF_SHA}" "${FINAL_PROVIDER_BOUND_FILES}" "${PROVIDER_RISK_REVIEW_ARTIFACT_JSON}")"
   BODY_CONTENT="$(printf '%s\n\n%s' "${BODY_CONTENT}" "${REVIEW_SECTION}")"
 fi
 

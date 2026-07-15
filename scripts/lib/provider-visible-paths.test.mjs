@@ -1093,6 +1093,35 @@ test("CLI filters stdin to provider-visible paths only", () => {
   ]);
 });
 
+test("CLI prints the sorted provider union for provider-visible paths", () => {
+  const input = [
+    "packages/desktop/src-tauri/src/fb-extract.js",
+    "packages/desktop/src/lib/authenticated-essay-auth.ts",
+    "packages/pwa/src/lib/sync.ts",
+    "packages/desktop/src/lib/x-capture.ts",
+    "docs/STABILITY-PROGRAM.md",
+    "",
+  ].join("\n");
+
+  const result = spawnSync(
+    process.execPath,
+    [cliPath, "--stdin", "--provider-ids"],
+    {
+      input,
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(result.stdout.split("\n").filter(Boolean), [
+    "facebook",
+    "medium",
+    "other",
+    "substack",
+    "x",
+  ]);
+});
+
 test("CLI prints nothing when no path is provider-visible", () => {
   const result = spawnSync(process.execPath, [cliPath, "--stdin"], {
     input: "docs/README.md\nscripts/release.sh\n",

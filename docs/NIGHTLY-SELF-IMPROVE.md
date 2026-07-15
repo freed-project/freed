@@ -369,12 +369,14 @@ remain visible in `rejectedEntries` and cannot suppress work.
 The runner excludes provider-visible tasks by default. Provider-visible peer worktrees are still pulled into the evidence queue so they cannot hide in the local swarm. Do not allow autonomous changes that alter authenticated WebView loads, provider navigation, provider API call frequency, scripted scrolling, cookies, headers, or scraping timing without explicit approval.
 
 Provider approval is scoped evidence, not a general instruction to "proceed
-with everything." Human work publishes as a draft first. The helper posts a
-GitHub review comment bound to the provider-visible path set and provider-only
-binary diff. A CODEOWNER thumbs-up reaction on that comment authorizes the
-ready transition. Provider-visible edits require a new reaction. Unrelated
-branch edits do not. A signed control-task approval remains available for
-unattended publication and must bind the same provider-only fingerprint.
+with everything." Human work records Gate 1 in a healthy provider risk review
+artifact and publishes as a draft with that artifact. The helper posts a GitHub
+review comment bound to the artifact, provider-visible path set, and
+provider-only binary diff. A CODEOWNER thumbs-up reaction on that exact,
+unedited comment authorizes the ready transition. Provider-visible edits or a
+changed Gate 1 artifact require a new reaction. Unrelated branch edits do not.
+A signed control-task approval remains available for unattended publication
+and must bind the same provider-only fingerprint.
 
 Release work is also gated. A dev build should ship only after actual fixes merge into `dev`, not after planning artifacts alone.
 
