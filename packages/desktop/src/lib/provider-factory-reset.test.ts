@@ -91,10 +91,10 @@ describe("provider factory reset", () => {
         isAuthenticated: false,
         lastCapturedAt: 200,
         pausedUntil: 300,
-        pauseReason: "cooldown",
+        pauseReason: "Provider work is temporarily paused.",
         pauseLevel: 2,
-        futureField: "preserved",
       });
+      expect(JSON.parse(window.localStorage.getItem(key)!)).not.toHaveProperty("futureField");
       expect(JSON.parse(window.localStorage.getItem(key)!)).not.toHaveProperty("lastCaptureError");
     }
     expect(window.localStorage.getItem("youtube_offline_playlist_state")).toBe(playlist);

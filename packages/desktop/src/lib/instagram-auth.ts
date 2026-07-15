@@ -9,9 +9,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { selectPlatformUA, clearPlatformUA } from "./user-agent";
 import {
-  clearTransientLastCaptureError,
   persistDisconnectedSocialAuthStateForFactoryReset,
   readStoredSocialAuthState,
+  serializeSocialAuthStateForStorage,
 } from "./social-auth-transient-errors";
 import {
   isDesktopProviderAuthAllowed,
@@ -89,7 +89,7 @@ export async function disconnectIgForFactoryReset(): Promise<void> {
  */
 export function storeIgAuthState(state: IgAuthState): void {
   if (!isDesktopProviderAuthAllowed()) return;
-  localStorage.setItem(IG_AUTH_KEY, JSON.stringify(clearTransientLastCaptureError(state)));
+  localStorage.setItem(IG_AUTH_KEY, serializeSocialAuthStateForStorage(state));
 }
 
 /**

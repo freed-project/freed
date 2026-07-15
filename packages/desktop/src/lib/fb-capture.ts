@@ -908,7 +908,7 @@ async function captureFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> 
   try {
     addDebugEvent("change", "[FB] sync started");
     const fetchStartedAt = performance.now();
-    const result = await fetchFbFeedInternal(resetEpoch);
+    const result = await fetchFbFeed();
     assertFactoryResetEpoch(resetEpoch);
     log.info(
       `[FB] fetch finished duration=${formatSocialCaptureDuration(socialCaptureDurationMs(fetchStartedAt))} ` +

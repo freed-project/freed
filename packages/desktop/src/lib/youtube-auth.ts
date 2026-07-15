@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
-  clearTransientLastCaptureError,
   persistDisconnectedSocialAuthStateForFactoryReset,
   readStoredSocialAuthState,
+  serializeSocialAuthStateForStorage,
 } from "./social-auth-transient-errors";
 import { clearYouTubePlaylistState } from "./youtube-playlist";
 import {
@@ -64,7 +64,7 @@ export function storeYouTubeAuthState(state: YouTubeAuthState): void {
   if (!isDesktopProviderAuthAllowed()) return;
   localStorage.setItem(
     YOUTUBE_AUTH_KEY,
-    JSON.stringify(clearTransientLastCaptureError(state)),
+    serializeSocialAuthStateForStorage(state),
   );
 }
 

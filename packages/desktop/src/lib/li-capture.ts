@@ -429,7 +429,7 @@ async function captureLiFeedInternal(resetEpoch: number): Promise<LiSyncResult> 
 
   try {
     addDebugEvent("change", "[LI] sync started");
-    const result = await fetchLiFeedInternal(resetEpoch);
+    const result = await fetchLiFeed();
     assertFactoryResetEpoch(resetEpoch);
 
     if (result.diag.errorStage) {

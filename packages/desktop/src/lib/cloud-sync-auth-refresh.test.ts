@@ -558,4 +558,44 @@ describe("desktop cloud sync auth refresh", () => {
     }));
     expect(logWarnMock).toHaveBeenCalledWith(expect.stringContaining("Failed to refresh gdrive on startup"));
   });
+
+  it("does not retain raw Google OAuth failures in provider health or logs", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "google_oauth_proxy_request") {
+        return {
+          status: 400,
+          headers: [["content-type", "application/json"]],
+          body: Array.from(new TextEncoder().encode(JSON.stringify({
+            error: "invalid_request",
+            error_description:
+              "access_token=health-secret refresh_token=refresh-secret user@example.com",
+          }))),
+        };
+      }
+      return null;
+    });
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "expired-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() - 60_000,
+    }));
+
+    const { startAllCloudSyncs } = await import("./sync");
+    await expect(startAllCloudSyncs()).resolves.toBeUndefined();
+
+    expect(recordProviderHealthEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      provider: "gdrive",
+      outcome: "error",
+      stage: "auth",
+      reason: "Google token proxy failed. Google rejected the OAuth request.",
+    }));
+    const retainedText = JSON.stringify([
+      recordProviderHealthEventMock.mock.calls,
+      logWarnMock.mock.calls,
+      logErrorMock.mock.calls,
+    ]);
+    expect(retainedText).not.toContain("health-secret");
+    expect(retainedText).not.toContain("refresh-secret");
+    expect(retainedText).not.toContain("user@example.com");
+  });
 });

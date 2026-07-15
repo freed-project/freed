@@ -481,7 +481,7 @@ export function captureYouTube(
   return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
     const startedAt = Date.now();
     const store = useAppStore.getState();
-    const result = await fetchYouTubeCaptureForEpoch(trigger !== "scheduled", resetEpoch);
+    const result = await fetchYouTubeCapture(trigger !== "scheduled");
     assertFactoryResetEpoch(resetEpoch);
 
     if (result.diag.errorStage) {

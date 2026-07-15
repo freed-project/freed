@@ -447,7 +447,7 @@ async function captureIgFeedInternal(resetEpoch: number): Promise<IgSyncResult> 
   try {
     addDebugEvent("change", "[IG] sync started");
     const fetchStartedAt = performance.now();
-    const result = await fetchIgFeedInternal(resetEpoch);
+    const result = await fetchIgFeed();
     assertFactoryResetEpoch(resetEpoch);
     log.info(
       `[IG] fetch finished duration=${formatSocialCaptureDuration(socialCaptureDurationMs(fetchStartedAt))} ` +

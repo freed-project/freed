@@ -9,9 +9,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { selectPlatformUA, clearPlatformUA } from "./user-agent";
 import {
-  clearTransientLastCaptureError,
   persistDisconnectedSocialAuthStateForFactoryReset,
   readStoredSocialAuthState,
+  serializeSocialAuthStateForStorage,
 } from "./social-auth-transient-errors";
 import {
   isDesktopProviderAuthAllowed,
@@ -87,11 +87,11 @@ export async function disconnectLiForFactoryReset(): Promise<void> {
 }
 
 /**
- * Persist auth state to localStorage for fast startup.
+ * Persist only nonsecret auth hints and controlled failure summaries for fast startup.
  */
 export function storeLiAuthState(state: LiAuthState): void {
   if (!isDesktopProviderAuthAllowed()) return;
-  localStorage.setItem(LI_AUTH_KEY, JSON.stringify(clearTransientLastCaptureError(state)));
+  localStorage.setItem(LI_AUTH_KEY, serializeSocialAuthStateForStorage(state));
 }
 
 /**

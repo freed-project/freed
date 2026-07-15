@@ -924,8 +924,7 @@ async function refreshCloudTokenInner(
   });
 
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Token refresh failed (${res.status}): ${body}`);
+    throw dropboxOAuthError("Token refresh failed", res.status);
   }
 
   const refreshed = tokenBundleFromResponse((await res.json()) as TokenExchangeResponse);
@@ -952,31 +951,60 @@ function decodeNativeBody(body: number[]): string {
 
 function googleOAuthError(prefix: string, status: number, body: string): Error {
   const trimmed = body.trim();
-  if (!trimmed) return new Error(`${prefix} (${status})`);
+  let errorCode: string | undefined;
   try {
     const parsed = JSON.parse(trimmed) as {
       error?: string;
       error_description?: string;
       message?: string;
     };
+    errorCode = parsed.error;
     const detail = parsed.error_description ?? parsed.message ?? parsed.error;
-    if (detail) {
-      if (detail === "client_secret is missing.") {
-        if (prefix.includes("proxy")) {
-          return new Error(
-            `${prefix} (${status}): client_secret is missing. The Google token proxy is missing its configured Google client secret.`,
-          );
-        }
+    if (detail === "client_secret is missing.") {
+      if (prefix.includes("proxy")) {
         return new Error(
-          `${prefix} (${status}): client_secret is missing. Freed Desktop is using direct Google token exchange for an OAuth client that requires a secret. Configure the Google token proxy or provide VITE_GDRIVE_CLIENT_SECRET.`,
+          `${prefix}. The Google token proxy is missing its configured Google client secret.`,
         );
       }
-      return new Error(`${prefix} (${status}): ${detail}`);
+      return new Error(
+        `${prefix}. Freed Desktop is using direct Google token exchange for an OAuth client that requires a secret. Configure the Google token proxy or provide VITE_GDRIVE_CLIENT_SECRET.`,
+      );
     }
   } catch {
-    // Use the raw body below.
+    // Fall through to a controlled summary.
   }
-  return new Error(`${prefix} (${status}): ${trimmed.slice(0, 500)}`);
+  if (errorCode === "invalid_scope") {
+    return new Error(`${prefix}. Google rejected one or more requested permissions.`);
+  }
+  if (errorCode === "invalid_grant" || status === 401 || status === 403) {
+    return new Error(`${prefix}. Reconnect Google Drive and try again.`);
+  }
+  if (errorCode === "invalid_client" || errorCode === "unauthorized_client") {
+    return new Error(`${prefix}. Freed Desktop's Google OAuth configuration was rejected.`);
+  }
+  if (errorCode === "access_denied") {
+    return new Error(`${prefix}. Google authorization was denied.`);
+  }
+  if (status === 429) {
+    return new Error(`${prefix}. Google is temporarily limiting OAuth requests.`);
+  }
+  if (status >= 500) {
+    return new Error(`${prefix}. Google OAuth is temporarily unavailable.`);
+  }
+  return new Error(`${prefix}. Google rejected the OAuth request.`);
+}
+
+function dropboxOAuthError(prefix: string, status: number): Error {
+  if (status === 400 || status === 401 || status === 403) {
+    return new Error(`${prefix}. Reconnect Dropbox and try again.`);
+  }
+  if (status === 429) {
+    return new Error(`${prefix}. Dropbox is temporarily limiting OAuth requests.`);
+  }
+  if (status >= 500) {
+    return new Error(`${prefix}. Dropbox OAuth is temporarily unavailable.`);
+  }
+  return new Error(`${prefix}. Dropbox rejected the OAuth request.`);
 }
 
 async function postNativeGoogleOAuth(
@@ -1358,8 +1386,7 @@ async function exchangeCode(
   throwIfOAuthCanceled(signal);
 
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Token exchange failed (${res.status}): ${body}`);
+    throw dropboxOAuthError("Token exchange failed", res.status);
   }
 
   const bundle = tokenBundleFromResponse((await res.json()) as TokenExchangeResponse);

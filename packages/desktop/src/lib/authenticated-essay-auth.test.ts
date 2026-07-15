@@ -86,7 +86,7 @@ describe("authenticated essay auth", () => {
     expect(initMediumAuth()).toEqual({
       isAuthenticated: true,
       lastCheckedAt: 300,
-      lastCaptureError: "Needs attention",
+      lastCaptureError: "The last provider sync failed.",
       captureCooldownUntil: 350,
     });
   });
@@ -168,7 +168,7 @@ describe("authenticated essay auth", () => {
       lastCheckedAt: expect.any(Number),
       lastCapturedAt: 200,
       pausedUntil: 300,
-      pauseReason: "Provider cooldown",
+      pauseReason: "Provider work is temporarily paused.",
       pauseLevel: 2,
     });
     expect(initMediumAuth()).toMatchObject({

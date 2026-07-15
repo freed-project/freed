@@ -5,7 +5,11 @@ import {
   requestDesktopProviderAuthCheck,
   runDesktopProviderAuthRequest,
 } from "./provider-auth-lifecycle";
-import { persistDisconnectedSocialAuthStateForFactoryReset } from "./social-auth-transient-errors";
+import {
+  persistDisconnectedSocialAuthStateForFactoryReset,
+  readStoredSocialAuthState,
+  serializeSocialAuthStateForStorage,
+} from "./social-auth-transient-errors";
 
 type AuthenticatedEssayAuthProvider = "substack" | "medium";
 
@@ -28,32 +32,6 @@ interface AuthenticatedEssayAuthConfig {
   showLoginCommand: `${AuthenticatedEssayAuthProvider}_show_login`;
   checkAuthCommand: `${AuthenticatedEssayAuthProvider}_check_auth`;
   disconnectCommand: `${AuthenticatedEssayAuthProvider}_disconnect`;
-}
-
-function finiteNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function parseStoredAuthState(value: string | null): AuthenticatedEssayAuthState {
-  if (!value) return { isAuthenticated: false };
-  try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    const pauseLevel = parsed.pauseLevel;
-    return {
-      isAuthenticated: parsed.isAuthenticated === true,
-      lastCheckedAt: finiteNumber(parsed.lastCheckedAt),
-      lastCapturedAt: finiteNumber(parsed.lastCapturedAt),
-      lastCaptureError:
-        typeof parsed.lastCaptureError === "string" ? parsed.lastCaptureError : undefined,
-      captureCooldownUntil: finiteNumber(parsed.captureCooldownUntil),
-      pausedUntil: finiteNumber(parsed.pausedUntil),
-      pauseReason: typeof parsed.pauseReason === "string" ? parsed.pauseReason : undefined,
-      pauseLevel:
-        pauseLevel === 1 || pauseLevel === 2 || pauseLevel === 3 ? pauseLevel : undefined,
-    };
-  } catch {
-    return { isAuthenticated: false };
-  }
 }
 
 export function createAuthenticatedEssayAuth(config: AuthenticatedEssayAuthConfig) {
@@ -95,11 +73,15 @@ export function createAuthenticatedEssayAuth(config: AuthenticatedEssayAuthConfi
 
   const storeAuthState = (state: AuthenticatedEssayAuthState): void => {
     if (!isDesktopProviderAuthAllowed()) return;
-    localStorage.setItem(config.storageKey, JSON.stringify(state));
+    localStorage.setItem(config.storageKey, serializeSocialAuthStateForStorage(state));
   };
 
-  const initAuth = (): AuthenticatedEssayAuthState =>
-    parseStoredAuthState(localStorage.getItem(config.storageKey));
+  const initAuth = (): AuthenticatedEssayAuthState => {
+    const stored = readStoredSocialAuthState<AuthenticatedEssayAuthState>(config.storageKey);
+    return stored.status === "supported"
+      ? stored.state
+      : { isAuthenticated: false };
+  };
 
   return {
     showLogin,

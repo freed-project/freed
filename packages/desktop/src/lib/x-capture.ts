@@ -557,7 +557,7 @@ async function captureXTimelineInternal(
     }
 
     addDebugEvent("change", "[X] sync started");
-    const result = await fetchXTimelineInternal(cookies, requester, resetEpoch);
+    const result = await fetchXTimeline(cookies, requester);
     assertFactoryResetEpoch(resetEpoch);
 
     if (result.diag.errorStage) {

@@ -10,9 +10,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { selectPlatformUA, clearPlatformUA } from "./user-agent";
 import { log } from "./logger";
 import {
-  clearTransientLastCaptureError,
   persistDisconnectedSocialAuthStateForFactoryReset,
   readStoredSocialAuthState,
+  serializeSocialAuthStateForStorage,
 } from "./social-auth-transient-errors";
 import {
   isDesktopProviderAuthAllowed,
@@ -100,7 +100,7 @@ export async function disconnectFbForFactoryReset(): Promise<void> {
  */
 export function storeFbAuthState(state: FbAuthState): void {
   if (!isDesktopProviderAuthAllowed()) return;
-  localStorage.setItem(FB_AUTH_KEY, JSON.stringify(clearTransientLastCaptureError(state)));
+  localStorage.setItem(FB_AUTH_KEY, serializeSocialAuthStateForStorage(state));
 }
 
 /**
