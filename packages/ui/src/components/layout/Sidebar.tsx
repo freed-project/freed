@@ -139,8 +139,14 @@ function SidebarNavRow({
   const content = (
     <>
       <span data-sidebar-icon-slot="true">{icon}</span>
-      <span className={labelClass}>{label}</span>
-      {afterLabel}
+      {afterLabel ? (
+        <span className="flex min-w-0 flex-1 items-center gap-1">
+          <span className={labelClass}>{label}</span>
+          {afterLabel}
+        </span>
+      ) : (
+        <span className={labelClass}>{label}</span>
+      )}
     </>
   );
 
@@ -1150,7 +1156,10 @@ export function Sidebar({
     ? "absolute right-0 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]"
     : "absolute top-[-1px] bottom-[-1px] right-0 flex items-center justify-center rounded-md px-1 transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]";
   const sourceActionSlotClass = (source: SourceNavigationItem) => {
-    if (rowCountsVisible) return SOURCE_ACTION_SLOT_WITH_COUNTS_CLASS;
+    if (rowCountsVisible) {
+      if (sourceTotalCount(source) > 0) return SOURCE_ACTION_SLOT_WITH_COUNTS_CLASS;
+      return sourceMenusVisible && canShowSourceMenu(source) ? "ml-0 w-8" : "ml-0 w-0";
+    }
     if (!sourceMenusVisible || !canShowSourceMenu(source)) return "ml-0 w-0";
     return openMenuSourceKey === sourceKey(source)
       ? "ml-0 w-[26px]"
