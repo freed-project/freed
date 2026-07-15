@@ -350,6 +350,25 @@ test("applyPinnedHighlightsToRelease keeps missing pinned items visible", () => 
   );
 });
 
+test("applyPinnedHighlightsToRelease treats a matching deck theme as visible", () => {
+  const release = applyPinnedHighlightsToRelease(
+    {
+      deck: "Friends is now a theme-aware personal galaxy with native touch and trackpad navigation, tight identity constellations, and cosmic provider nebulae",
+      features: [
+        "Explore Friends as a hardware-accelerated 3D galaxy where relationship importance controls depth",
+      ],
+      fixes: ["Release validation now installs every required browser"],
+      followUps: [],
+    },
+    ["Friends Galaxy"],
+  );
+
+  assert.deepEqual(release.fixes, [
+    "Release validation now installs every required browser",
+  ]);
+  assert.deepEqual(validateReleaseShape(release).errors, []);
+});
+
 test("validateReleaseShape allows previous-day theme overlap in the deck", () => {
   const result = validateReleaseShape(
     {
