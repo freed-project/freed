@@ -11,6 +11,18 @@ interface ResolvedAddress {
   family: number;
 }
 
+interface ServerlessRequest {
+  method?: string;
+  headers?: Record<string, string | string[] | undefined>;
+  body?: unknown;
+}
+
+interface TextServerlessResponse {
+  setHeader(name: string, value: string): void;
+  status(code: number): TextServerlessResponse;
+  send(body: string): void;
+}
+
 type ResolveHost = (hostname: string) => Promise<ResolvedAddress[]>;
 
 function allowedOrigin(origin: string): boolean {
@@ -167,7 +179,10 @@ export async function fetchPublicHtml(
   throw new Error("Too many article redirects.");
 }
 
-export default async function handler(req: any, res: any): Promise<void> {
+export default async function handler(
+  req: ServerlessRequest,
+  res: TextServerlessResponse,
+): Promise<void> {
   if (req.method !== "POST") {
     res.status(405).send("Method Not Allowed");
     return;

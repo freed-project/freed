@@ -91,7 +91,7 @@ jobs:
           PLAN_LABELS="$(npm run --silent validate:feature -- --plan-labels)"
           echo "Feature validation plan:"
           printf '%s\n' "$PLAN_LABELS"
-          if printf '%s\n' "$PLAN_LABELS" | grep -q '^desktop e2e '; then
+          if printf '%s\n' "$PLAN_LABELS" | grep -q '^desktop .*e2e'; then
             echo "needs_playwright=true" >> "$GITHUB_OUTPUT"
           else
             echo "needs_playwright=false" >> "$GITHUB_OUTPUT"
