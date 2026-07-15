@@ -1534,8 +1534,14 @@ export class IdentityGalaxyEngine {
     this.renderer?.syncScene(atlas, scene, palette, options.variation, options.quality);
   }
 
-  updateInteraction(scene: IdentityGalaxyScene): void {
+  updateInteraction(
+    scene: IdentityGalaxyScene,
+    selectedPersonId: string | null | undefined,
+    selectedAccountId: string | null | undefined,
+  ): void {
     this.scene = scene;
+    this.selectedPersonId = selectedPersonId;
+    this.selectedAccountId = selectedAccountId;
     if (this.renderer && this.palette) {
       this.renderer.updateInteraction(scene, this.palette);
     }

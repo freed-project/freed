@@ -720,7 +720,7 @@ export function sliceIdentityGraphAtlas({
         text: node.label,
         x: node.x,
         y: node.y,
-        priority: node.priority,
+        priority: node.priority + (selectedNodeIds.has(node.id) ? 10_000 : 0),
         kind: node.kind,
       }));
   const labels = [...regionLabels, ...nodeLabels]
