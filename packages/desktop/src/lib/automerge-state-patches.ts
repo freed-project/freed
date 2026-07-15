@@ -47,14 +47,15 @@ export function applyPreferencePatchToState(
   state: DocState,
   updates: PreferencePatch,
 ): DocState {
-  const preferences = mergePreferencePatch(state.preferences, updates);
-  if (updates.fbCapture !== undefined) {
+  const { fbCapture, ...remainingUpdates } = updates;
+  const preferences = mergePreferencePatch(state.preferences, remainingUpdates);
+  if (fbCapture !== undefined) {
     preferences.fbCapture = {
-      knownGroups: updates.fbCapture.knownGroups !== undefined
-        ? { ...updates.fbCapture.knownGroups }
+      knownGroups: fbCapture.knownGroups !== undefined
+        ? { ...fbCapture.knownGroups }
         : { ...state.preferences.fbCapture.knownGroups },
-      excludedGroupIds: updates.fbCapture.excludedGroupIds !== undefined
-        ? { ...updates.fbCapture.excludedGroupIds }
+      excludedGroupIds: fbCapture.excludedGroupIds !== undefined
+        ? { ...fbCapture.excludedGroupIds }
         : { ...state.preferences.fbCapture.excludedGroupIds },
     };
   }
