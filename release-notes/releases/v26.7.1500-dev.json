@@ -5,7 +5,7 @@
   "dayKey": "26.7.15",
   "approved": true,
   "editorialNotes": [
-    "Reviewed 2026-07-15: retained the reviewed Friends Galaxy highlights because the immutable v26.7.1400-dev and v26.7.1402-dev tags published no installer. Rebound this replacement to the exact current dev product commit after the PWA handler type repair, release workflow validation fix, and release notes deduplication repair merged."
+    "Reviewed 2026-07-15: retained the reviewed Friends Galaxy highlights because the immutable v26.7.1400-dev and v26.7.1402-dev tags published no installer. Rebound this replacement to the exact current dev product commit after the PWA handler type repair, release workflow validation fix, release notes deduplication repair, and Friends selection repair merged."
   ],
   "generatedAt": "2026-07-15T07:09:45.075Z",
   "model": "heuristic",
@@ -14,7 +14,7 @@
     "previousPublishedTag": "v26.7.1200-dev",
     "previousPublishedDayTag": "v26.7.1200-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "bb7443162ef9d53cc96cb19e7d7ffb63f00537fc",
+    "productCommitSha": "310a85e625b4af3f5b3bccd5c41e1fadab00034b",
     "promotedDevCommitSha": null,
     "isLatestOfDay": true,
     "sameDayTagsIncluded": [
@@ -52,9 +52,11 @@
       1013,
       1015,
       1016,
-      1021
+      1021,
+      1022
     ],
     "commitSubjects": [
+      "fix: stabilize Friends selection atlas updates (#1022)",
       "fix: avoid duplicate pinned release highlights (#1021)",
       "fix: unblock dev release validation (#1016)",
       "chore: prepare v26.7.1402-dev (#1015)",
@@ -96,11 +98,11 @@
       "Use the new Medium and Substack beta sources in Freed Desktop to capture essays, visible relationships, subscriptions, and activity through your signed-in sessions"
     ],
     "fixes": [
-      "Provider regions now form spiral nebulae instead of flat ellipses, and identity links appear only for the hovered or selected constellation",
+      "Friends selection now settles on the current person or account without stale atlas updates, while provider regions form spiral nebulae and identity links stay focused on the active constellation",
       "YouTube followed-channel and subscription capture now reports bounded progress, cancels stale work, and closes hidden capture sessions when finished",
       "Security reports can now be submitted privately with redacted diagnostics and hardened fetched-content handling"
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1500-dev\n\nFriends is now a theme-aware personal galaxy with native touch and trackpad navigation, tight identity constellations, and cosmic provider nebulae.\n\n### Features\n\n- Explore Friends as a hardware-accelerated 3D galaxy where relationship importance controls depth, identities form tight constellations, and every starfield follows the active Freed theme\n- Pan, zoom, and focus the galaxy with a mouse, trackpad, or midpoint-preserving iPhone pinch gestures while billboard labels stay visible and close to their stars\n- Use the new Medium and Substack beta sources in Freed Desktop to capture essays, visible relationships, subscriptions, and activity through your signed-in sessions\n\n### Fixes\n\n- Provider regions now form spiral nebulae instead of flat ellipses, and identity links appear only for the hovered or selected constellation\n- YouTube followed-channel and subscription capture now reports bounded progress, cancels stale work, and closes hidden capture sessions when finished\n- Security reports can now be submitted privately with redacted diagnostics and hardened fetched-content handling\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1500-dev\n\nFriends is now a theme-aware personal galaxy with native touch and trackpad navigation, tight identity constellations, and cosmic provider nebulae.\n\n### Features\n\n- Explore Friends as a hardware-accelerated 3D galaxy where relationship importance controls depth, identities form tight constellations, and every starfield follows the active Freed theme\n- Pan, zoom, and focus the galaxy with a mouse, trackpad, or midpoint-preserving iPhone pinch gestures while billboard labels stay visible and close to their stars\n- Use the new Medium and Substack beta sources in Freed Desktop to capture essays, visible relationships, subscriptions, and activity through your signed-in sessions\n\n### Fixes\n\n- Friends selection now settles on the current person or account without stale atlas updates, while provider regions form spiral nebulae and identity links stay focused on the active constellation\n- YouTube followed-channel and subscription capture now reports bounded progress, cancels stale work, and closes hidden capture sessions when finished\n- Security reports can now be submitted privately with redacted diagnostics and hardened fetched-content handling\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
